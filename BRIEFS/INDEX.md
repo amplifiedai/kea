@@ -45,11 +45,12 @@ See ROADMAP.md for details. Briefs will be written as earlier phases complete.
 
 Needs more design work. Briefs exist but aren't implementation-ready.
 
-### Phase 0e-0g
+### Phase 0e-0h
 
 6. **[Runtime effects](design/0e-runtime-effects.md)** (weeks 6-8) — Handler compilation strategy (evidence passing vs CPS vs segmented stacks), tail-resumptive optimisation, IO runtime, Fail optimised path, arena allocation. Highest risk phase.
 7. **[Memory model](design/0f-memory-model.md)** (weeks 8-9) — Unique T, borrow convention, reuse analysis (pure optimisation, not load-bearing), unsafe/Ptr, @unboxed, fixed-width integers.
-8. **[Advanced type features](design/0g-advanced-types.md)** (weeks 9-11) — GADTs, HKTs, associated types, supertraits, deriving, full stdlib, error message investment.
+8. **[Advanced type features](design/0g-advanced-types.md)** (weeks 9-11) — GADTs, HKTs, associated types, supertraits. Type theory pieces.
+9. **[Stdlib, deriving, and error messages](design/0h-stdlib-errors.md)** (weeks 10-11) — @derive, full stdlib (Map, Set, String, IO, JSON), error message investment. Engineering work, parallelizable. Can start once 0g type features are stable.
 
 ### Other design work
 
@@ -84,9 +85,11 @@ Completed briefs. Kept for reference and design rationale.
  │    │         │    │
  │    │         │    └── 0f: memory model (Unique, borrow, unsafe)
  │    │         │         │
- │    │         │         └── 0g: advanced types (GADTs, HKTs, stdlib)
+ │    │         │         └── 0g: advanced types (GADTs, HKTs)
  │    │         │              │
- │    │         │              └── Phase 1: self-hosting
+ │    │         │              ├── 0h: stdlib, deriving, errors (parallelizable)
+ │    │         │              │
+ │    │         │              └── Phase 1: self-hosting (needs both 0g + 0h)
  │    │         │
  │    │         └── (0d unblocks practical programs even without runtime effects)
  │    │

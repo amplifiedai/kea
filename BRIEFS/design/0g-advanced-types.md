@@ -3,15 +3,18 @@
 **Status:** design
 **Priority:** v1-critical
 **Depends on:** 0f-memory-model (Unique/borrow must be settled)
-**Blocks:** Phase 1 (self-hosting requires full type system)
+**Blocks:** 0h-stdlib-errors, Phase 1 (self-hosting requires full type system)
 
 ## Motivation
 
-The bootstrap compiler needs GADTs (for typed actor protocols),
-HKTs (for Functor/Monad/Traversable), associated types, supertraits,
-and deriving to be feature-complete enough to compile a Kea compiler
-written in Kea. This brief also covers the full stdlib needed for
-self-hosting and investment in error message quality.
+GADTs (for typed actor protocols), HKTs (for Functor/Monad/Traversable),
+associated types, and supertraits are the type system features that make
+Kea's abstractions work. GADTs enable typed actor message protocols where
+the response type is encoded in the message constructor. HKTs enable
+Functor/Monad/Traversable across container types. These are the type
+theory pieces — the stdlib, deriving, and error messages are split into
+a separate brief (0h) since they're engineering work that can be
+parallelized.
 
 ## What transfers from Rill
 
@@ -127,51 +130,8 @@ Implementation:
 
 ### 5. Deriving (KERNEL §6.9)
 
-```kea
-@derive(Show, Eq)
-struct Point
-  x: Float
-  y: Float
-```
-
-Compiler-generated trait implementations. Implementation:
-- For each derivable trait, a codegen recipe that produces an
-  impl block from the struct/enum definition
-- Start with: Show, Eq, Ord, Codec
-- Each derived impl must type-check (it's generated code, not
-  magic)
-
-### 6. Full stdlib for self-hosting
-
-The Kea compiler in Kea needs:
-- **Collections:** Map (HAMT), Set (HAMT), SortedMap, SortedSet
-- **String interning:** for identifier deduplication
-- **File IO:** read/write source files (via IO effect)
-- **CLI:** argument parsing for `kea build`, `kea run`
-- **JSON:** for MCP protocol, config files
-- **Formatting:** string formatting, pretty-printing for
-  diagnostics
-
-Reference: rill-eval's stdlib modules provide behavioral specs
-for all of these. The implementations will be different (compiled
-vs interpreted) but the APIs inform design.
-
-### 7. Error message investment
-
-KERNEL ethos: "error messages are a feature." This phase invests
-heavily:
-- Row polymorphism errors must not show raw type variables
-  — explain in terms of "this function expects a record with
-  field X, but you passed one without it"
-- Effect errors must explain which effect is unhandled and
-  suggest adding a handler
-- GADT errors must explain refinement failures
-- HKT errors must explain kind mismatches in plain language
-- Ambiguous dispatch errors must suggest qualified syntax
-  (CALL-SYNTAX.md diagnostic section)
-
-Adapt rill-diag's diagnostic patterns. Rill has good error
-infrastructure — extend it for Kea's novel type features.
+Moved to 0h-stdlib-errors brief. Deriving is implementation
+machinery that depends on the type features above being stable.
 
 ## Implementation Plan
 
@@ -199,30 +159,10 @@ infrastructure — extend it for Kea's novel type features.
 - Both should be partially available from rill — check what
   transfers and extend
 
-### Step 4: Deriving
+### Step 4: Deriving, stdlib, error messages
 
-- @derive macro expansion
-- Implement derive for Show, Eq, Ord, Codec
-- Test: derived impls produce correct behavior, type-check
-
-### Step 5: Stdlib
-
-- Map/Set (HAMT implementation)
-- String operations (split, join, replace, contains, etc.)
-- File IO (via IO effect)
-- CLI argument parsing
-- JSON encode/decode
-- Pretty-printing for diagnostics
-
-This is parallelizable — each stdlib module is independent.
-
-### Step 6: Error messages
-
-- Audit all type errors for human readability
-- Add "did you mean" suggestions for misspelled identifiers
-- Add "try adding `use Trait`" for missing trait methods
-- Add qualified dispatch suggestions for ambiguity
-- Snapshot test every error message
+See 0h-stdlib-errors brief. Can begin in parallel once GADTs
+and HKTs are stable.
 
 ## Testing
 
@@ -233,9 +173,7 @@ This is parallelizable — each stdlib module is independent.
   polymorphic types
 - Supertraits: supertrait methods available, missing supertrait
   impl is clear error
-- Deriving: generated impls are correct, derive on enum works
-- Stdlib: comprehensive tests for Map, Set, String, IO, JSON
-- Error messages: snapshot tests for every error category
+- Deriving, stdlib, error messages: see 0h-stdlib-errors brief
 
 ## Definition of Done
 
@@ -243,11 +181,8 @@ This is parallelizable — each stdlib module is independent.
 - HKTs work (Functor, Applicative, Monad, Traversable)
 - Associated types resolve correctly
 - Supertraits checked and available
-- @derive works for Show, Eq, Ord, Codec
-- Stdlib sufficient for compiler self-hosting
-- Error messages are human-readable for all type features
-- The bootstrap compiler is feature-complete enough to start
-  Phase 1 (self-hosting)
+- The type system supports the abstractions needed for
+  self-hosting (0h handles the rest)
 - `mise run check` passes
 
 ## Open Questions
@@ -260,9 +195,5 @@ This is parallelizable — each stdlib module is independent.
   arm that refines a type variable — does this affect the
   effect row? Probably not — effect variables and type
   variables are independent. But needs verification.)
-- Which traits should be derivable in v0? (Proposal: Show, Eq,
-  Ord, Codec. Everything else requires manual implementation.)
-- Should Map/Set use HAMT from the start or a simpler tree?
-  (Proposal: HAMT. It's the specified representation in
-  KERNEL §1.2, and there are good Rust HAMT implementations
-  to reference.)
+- Which traits should be derivable in v0? (Moved to 0h.)
+- Should Map/Set use HAMT from the start? (Moved to 0h.)
