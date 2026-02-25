@@ -36,3 +36,28 @@ pub fn parse_type_source(
     let tokens = lex_layout(source, file)?.0;
     parse_type(tokens, file)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use kea_ast::{DeclKind, ExprKind};
+
+    #[test]
+    fn parse_expr_source_supports_layout_blocks() {
+        let expr = parse_expr_source("if true\n  1\nelse\n  2", FileId(0)).expect("parse expr");
+        assert!(matches!(expr.node, ExprKind::If { .. }));
+    }
+
+    #[test]
+    fn parse_module_source_supports_indented_fn_body() {
+        let module = parse_module_source("fn id(x) -> Int\n  x", FileId(0)).expect("parse module");
+        assert_eq!(module.declarations.len(), 1);
+        assert!(matches!(module.declarations[0].node, DeclKind::Function(_)));
+    }
+
+    #[test]
+    fn parse_type_source_parses_type_annotation() {
+        let ty = parse_type_source("List(Int)", FileId(0)).expect("parse type");
+        assert!(matches!(ty.node, TypeAnnotation::Applied(_, _)));
+    }
+}
