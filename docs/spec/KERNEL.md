@@ -1321,6 +1321,100 @@ not an expression — it always returns `()`.
 
 For collecting results, use `.map()` or `.fold()` instead of `for`.
 
+### 10.6 With Expressions (Callback Flattening)
+
+`with` is syntactic sugar for passing the rest of the current block
+as a callback (the last argument) to a function. It exists to flatten
+nested handler application and resource scoping.
+
+**Non-binding form:**
+
+```kea
+with Logging.with_stdout
+with Database.with_transaction(conn)
+let result = catch OrderService.process_order(order)
+IO.stdout(result.show())
+```
+
+Desugars to:
+
+```kea
+Logging.with_stdout(|| ->
+  Database.with_transaction(conn, || ->
+    let result = catch OrderService.process_order(order)
+    IO.stdout(result.show())
+  )
+)
+```
+
+Each `with expr` takes everything after it in the current block,
+wraps it in `|| ->`, and appends it as the last argument to `expr`.
+
+**Binding form:**
+
+```kea
+with conn <- Db.with_connection(config)
+with file <- File.with_open(path)
+process(conn, file)
+```
+
+Desugars to:
+
+```kea
+Db.with_connection(config, |conn| ->
+  File.with_open(path, |file| ->
+    process(conn, file)
+  )
+)
+```
+
+Each `with pattern <- expr` wraps everything after it in
+`|pattern| ->` and appends it as the last argument to `expr`.
+The pattern must be irrefutable (variable binding or destructuring
+that always succeeds). Refutable matching should use `match`
+inside the continuation.
+
+**Typing rules:**
+
+`with expr` requires `expr` to be a function application missing
+its last argument, where that last argument has function type.
+The compiler inserts the generated callback as the final argument.
+
+For `with expr` (non-binding): the missing last argument must
+have type `() -[e1]> T` for some effects `e1` and return type `T`.
+
+For `with pattern <- expr` (binding): the missing last argument
+must have type `(A) -[e1]> T` for some `A`, effects `e1`, and
+return type `T`. The bound pattern has type `A`.
+
+The effects and return type of the `with` expression are
+determined by the complete function call (including the generated
+callback). Effect tracking works normally — the compiler sees the
+full desugared form.
+
+**Scope:** `with` captures everything after it until the end of
+the enclosing block (indentation level). Multiple `with`
+statements in sequence nest from top to bottom (outermost first).
+
+**Not trait-dispatched.** `with` is purely syntactic sugar. It
+does not dispatch through any trait. The function being called
+determines what happens — effect handlers, resource managers,
+or any function whose last parameter is a callback. This is
+the same approach as Gleam's `use` keyword.
+
+**Interaction with `let`, `match`, and other statements:**
+`with` can appear anywhere in a block. Statements before `with`
+are outside the callback. Statements after `with` are inside it.
+
+```kea
+let config = load_config()
+with Logging.with_stdout
+with conn <- Db.with_connection(config.db)
+-- config is visible here (captured by the callback)
+-- conn is bound by the with
+query(conn, "SELECT 1")
+```
+
 ---
 
 ## 11. Modules
@@ -2053,10 +2147,10 @@ keys, no casting, no `Any`.
 ```
 struct  enum  trait  effect  fn   let   const  match  if  then  else
 where   use   pub   as   self  Self   true   false
-type    fail  catch  for  in  handle  resume  unsafe  borrow
+type    fail  catch  for  in  handle  resume  unsafe  borrow  with
 ```
 
-30 reserved words.
+31 reserved words.
 
 ## Appendix B: Tokens
 
@@ -2068,6 +2162,7 @@ type    fail  catch  for  in  handle  resume  unsafe  borrow
 ?  error propagation        @  annotation
 ++ concatenation            <> monoidal combine
 .. spread/rest (in patterns)
+<- with-binding              (in with expressions)
 {  }  struct/row literal    [  ]  list literal
 (  )  grouping/tuple        ,  separator
 =  binding                  |  lambda parameter delimiter
