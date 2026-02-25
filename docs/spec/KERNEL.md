@@ -2312,7 +2312,7 @@ fn handle(_ self: Self, _ msg: CounterMsg T, _ reply: T -> ()) -[Send]> Self
   match msg
     Increment ->
       reply(())
-      { self | count: self.count + 1 }
+      self~{ count: self.count + 1 }
     Get ->
       reply(self.count)
       self
@@ -2327,17 +2327,17 @@ fn handle(_ self: Self, _ msg: PoolMsg T, _ reply: T -> ()) -[Send]> Self
       match self.available
         conn :: rest ->
           reply(conn)
-          { self | available: rest }
+          self~{ available: rest }
         [] ->
           -- Park the caller; reply when a connection is returned
-          { self | waiting: self.waiting ++ [reply] }
+          self~{ waiting: self.waiting ++ [reply] }
     Release(conn) ->
       match self.waiting
         next :: rest ->
           next(conn)   -- reply to the parked caller
-          { self | waiting: rest }
+          self~{ waiting: rest }
         [] ->
-          { self | available: self.available ++ [conn] }
+          self~{ available: self.available ++ [conn] }
 ```
 
 This maps to OTP's `From` parameter in `handle_call`. The caller
