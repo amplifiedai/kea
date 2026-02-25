@@ -1,0 +1,5 @@
+[package]
+name = "kea-ast"
+description = "AST node definitions and source spans for Kea"
+edition.workspace = true
+version.workspace = true
