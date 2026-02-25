@@ -492,8 +492,34 @@ fn add(_ a: Int, _ b: Int) -> Int
 fn read(_ path: String) -[IO, Fail FileError]> Bytes
 ```
 
-A function with `->` has the empty effect set. A function with no
-annotation has its effects inferred.
+`->` asserts the empty effect set (pure). `-[effects]>` asserts
+exactly the listed effects.
+
+**Annotation requirements by visibility:**
+
+- **`pub fn`** — explicit effect annotation required. This is
+  the API contract with callers. A public function with no
+  effect annotation is a compile error.
+- **`fn` (private)** — effects inferred. Annotations are
+  optional; when present, the compiler checks them against the
+  inferred set. The LSP shows inferred effects on hover.
+- **Lambdas** — always inferred.
+- **Trait method declarations** — explicit by nature (no body).
+- **`Type as Trait` implementations** — must match the trait's
+  declared effect signature.
+
+```
+error: public function `load` requires an effect annotation
+  --> src/db.kea:3:1
+   |
+3  | pub fn load(_ id: Id) -> Entity
+   |                       ^^ inferred effects: [IO, Fail DbError]
+   |
+   = help: add -[IO, Fail DbError]> or mark the function private
+```
+
+When a private function is promoted to `pub`, the compiler
+immediately requires an explicit annotation.
 
 ### 5.2 Defining Effects
 
@@ -823,7 +849,11 @@ pure modulo allocation strategy.
 
 Effects are inferred bottom-up. The effect set of a function body
 is the union of the effect sets of all expressions in the body.
-Explicit annotations are checked against the inferred effects.
+
+For private functions without annotations, the inferred effect
+set becomes the function's signature. For public functions (and
+any function with an explicit annotation), the compiler checks
+the annotation against the inferred set.
 
 An explicit annotation may be broader than inferred (declaring
 more effects than used). It may not be narrower (claiming purity
