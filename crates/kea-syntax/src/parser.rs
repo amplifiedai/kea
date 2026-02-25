@@ -527,13 +527,16 @@ impl Parser {
             );
         }
         let mut derives = Vec::new();
-        self.expect(&TokenKind::LBrace, "expected '{' after record name")?;
+        let delimiter = self.expect_block_start("expected record body block after record name")?;
         let mut fields = Vec::new();
         let mut field_annotations = Vec::new();
         self.skip_newlines();
-        if !self.check(&TokenKind::RBrace) {
+        if !self.at_block_end(delimiter) {
             loop {
                 self.skip_newlines();
+                if self.at_block_end(delimiter) {
+                    break;
+                }
                 let anns = self.parse_annotations()?;
                 self.skip_newlines();
                 let field_name = self.expect_ident("expected field name in record definition")?;
@@ -542,20 +545,21 @@ impl Parser {
                 fields.push((field_name, field_type.node));
                 field_annotations.push(anns);
                 self.skip_newlines();
-                if !self.match_token(&TokenKind::Comma) {
-                    break;
-                }
-                self.skip_newlines();
-                if self.check(&TokenKind::RBrace) {
-                    break; // trailing comma
+                if delimiter == BlockDelimiter::Brace {
+                    if !self.match_token(&TokenKind::Comma) {
+                        break;
+                    }
+                    self.skip_newlines();
+                    if self.at_block_end(delimiter) {
+                        break; // trailing comma
+                    }
+                } else {
+                    let _ = self.match_token(&TokenKind::Comma);
                 }
             }
         }
         self.skip_newlines();
-        let end_brace = self.expect(
-            &TokenKind::RBrace,
-            "expected '}' to close record definition",
-        )?;
+        self.expect_block_end(delimiter, "expected end of record definition")?;
         if self.check(&TokenKind::Deriving) {
             let mut post_derives = self.parse_deriving_clause()?;
             derives.append(&mut post_derives);
@@ -572,7 +576,7 @@ impl Parser {
                 field_annotations,
                 derives,
             }),
-            start.merge(end_brace.span).merge(end),
+            start.merge(end),
         ))
     }
 
@@ -867,12 +871,11 @@ impl Parser {
             }
         }
         let fundeps = self.parse_trait_fundeps()?;
-        self.skip_newlines();
-        self.expect(&TokenKind::LBrace, "expected '{' after trait name")?;
+        let delimiter = self.expect_block_start("expected trait body block after trait name")?;
         let mut associated_types = Vec::new();
         let mut methods = Vec::new();
         self.skip_newlines();
-        while !self.check(&TokenKind::RBrace) && !self.at_eof() {
+        while !self.at_block_end(delimiter) && !self.at_eof() {
             // Associated type declaration:
             // `type Name`
             // `type Name where Name: Constraint`
@@ -921,7 +924,7 @@ impl Parser {
             self.skip_newlines();
         }
         let end = self.current_span();
-        self.expect(&TokenKind::RBrace, "expected '}' to close trait definition")?;
+        self.expect_block_end(delimiter, "expected end of trait definition")?;
         Some(Spanned::new(
             DeclKind::TraitDef(TraitDef {
                 public,
@@ -1139,8 +1142,7 @@ impl Parser {
             }
         }
 
-        self.skip_newlines();
-        self.expect(&TokenKind::LBrace, "expected '{' after impl header")?;
+        let delimiter = self.expect_block_start("expected impl body block after impl header")?;
         let mut methods: Vec<FnDecl> = Vec::new();
         self.skip_newlines();
 
@@ -1150,7 +1152,7 @@ impl Parser {
             _ => None,
         });
 
-        while !self.check(&TokenKind::RBrace) && !self.at_eof() {
+        while !self.at_block_end(delimiter) && !self.at_eof() {
             let method_start = self.current_span();
             let method_doc = self.consume_doc_comment_block();
             let method_public = self.match_token(&TokenKind::Pub);
@@ -1166,7 +1168,7 @@ impl Parser {
             self.skip_newlines();
         }
         let end = self.current_span();
-        self.expect(&TokenKind::RBrace, "expected '}' to close impl block")?;
+        self.expect_block_end(delimiter, "expected end of impl block")?;
 
         Some(Spanned::new(
             DeclKind::ImplBlock(ImplBlock {
@@ -6345,6 +6347,17 @@ mod tests {
     }
 
     #[test]
+    fn parse_record_multiline_indented() {
+        let module = parse_mod("record User\n  name: String\n  age: Int\n  active: Bool");
+        match &module.declarations[0].node {
+            DeclKind::RecordDef(def) => {
+                assert_eq!(def.fields.len(), 3);
+            }
+            _ => panic!("expected RecordDef"),
+        }
+    }
+
+    #[test]
     fn parse_record_missing_brace() {
         let errors = parse_mod_err("record User { name: String");
         assert!(!errors.is_empty());
@@ -6877,6 +6890,17 @@ mod tests {
     }
 
     #[test]
+    fn parse_trait_with_methods_indented() {
+        let m = parse_mod("trait Additive\n  fn zero() -> Self\n  fn add(self, other: Self) -> Self");
+        match &m.declarations[0].node {
+            DeclKind::TraitDef(td) => {
+                assert_eq!(td.methods.len(), 2);
+            }
+            _ => panic!("expected TraitDef"),
+        }
+    }
+
+    #[test]
     fn parse_trait_method_with_where_clause() {
         let m = parse_mod(
             "trait Traversable(T: * -> *) {\n  fn traverse(value: T(a), f: fn(a) -> F(b)) -> F(T(b)) where F: Applicative\n}",
@@ -7024,6 +7048,22 @@ mod tests {
                 assert_eq!(ib.trait_name.node, "Additive");
                 assert_eq!(ib.type_name.node, "Int");
                 assert!(ib.type_params.is_empty());
+                assert_eq!(ib.methods.len(), 2);
+                assert_eq!(ib.methods[0].name.node, "zero");
+                assert_eq!(ib.methods[1].name.node, "add");
+            }
+            _ => panic!("expected ImplBlock"),
+        }
+    }
+
+    #[test]
+    fn parse_impl_trait_for_type_indented() {
+        let m = parse_mod(
+            "impl Additive for Int\n  fn zero() -> Int\n    0\n  fn add(self, other) -> Int\n    self + other",
+        );
+        assert_eq!(m.declarations.len(), 1);
+        match &m.declarations[0].node {
+            DeclKind::ImplBlock(ib) => {
                 assert_eq!(ib.methods.len(), 2);
                 assert_eq!(ib.methods[0].name.node, "zero");
                 assert_eq!(ib.methods[1].name.node, "add");
