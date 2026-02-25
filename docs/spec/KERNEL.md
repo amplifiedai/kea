@@ -586,6 +586,27 @@ fn map(_ self: List A, _ f: A -[e]> B) -[e]> List B
 If `f` is pure, `map` is pure. If `f` has `IO`, `map` has `IO`.
 The effect variable `e` represents an arbitrary effect set.
 
+Effect row variables can appear in type aliases (§11.5) and
+where clauses (§7.6), making effect sets reusable:
+
+```kea
+type DbEffects = [IO, Fail DbError]
+type WebEffects = [IO, Fail AppError, Log]
+
+fn query(_ sql: String) -DbEffects> Rows
+fn handle_request(_ req: Request) -WebEffects> Response
+```
+
+Effect row variables in where clauses constrain effect sets:
+
+```kea
+fn retry(_ n: Int, _ f: () -[Fail E, e]> T) -[e]> Option T
+  where E: Show
+```
+
+This constrains the error type to be showable while propagating
+all other effects. See §11.5 for the full rules on effect aliases.
+
 ### 5.6 Handlers
 
 A handler intercepts effect operations and provides their
@@ -1374,10 +1395,70 @@ The pattern must be irrefutable (variable binding or destructuring
 that always succeeds). Refutable matching should use `match`
 inside the continuation.
 
+**`@with` annotation required.** `with` only works with functions
+whose last parameter is annotated `@with`. This prevents accidental
+control-flow rewrites — a function whose last parameter happens to
+be a callback is not automatically `with`-able.
+
+```kea
+struct Logging
+  @with
+  fn with_stdout(_ f: () -[Log, e]> T) -[IO, e]> T
+    handle f()
+      Log.log(level, msg) ->
+        IO.stdout("[{level}] {msg}")
+        resume ()
+
+struct Db
+  @with
+  fn with_connection(_ config: DbConfig, _ f: Connection -[e]> T)
+    -[IO, Fail DbError, e]> T
+    let conn = Db.connect(config)?
+    let result = f(conn)
+    conn.close()
+    result
+```
+
+A function without `@with` on its last parameter cannot be used
+with `with`. This is a compile error:
+
+```
+error: cannot use `with` — Pool.register is not marked @with
+  --> src/app.kea:5:6
+   |
+5  |   with Pool.register("worker")
+   |        ^^^^^^^^^^^^^^^^^^^^^^^ not @with-able
+   |
+   = help: `with` requires the target function's last parameter
+     to be annotated @with. Pool.register takes a callback as its
+     last argument but is not designed for scoped use.
+```
+
+**Placement rule.** `with` statements should appear contiguously
+at the beginning of a block (after initial `let` bindings).
+Interleaving `with` with other statements is a lint warning:
+
+```kea
+-- Good: with statements at top of block
+let config = load_config()
+with Logging.with_stdout
+with conn <- Db.with_connection(config.db)
+query(conn, "SELECT 1")
+
+-- Lint warning: with after non-with statement
+do_setup()
+with Logging.with_stdout   -- warning: with after non-with statement
+do_work()
+```
+
+The grammar permits `with` anywhere in a block, but the linter
+enforces contiguous placement. This keeps scoping predictable —
+readers can see the full handler stack at a glance.
+
 **Typing rules:**
 
 `with expr` requires `expr` to be a function application missing
-its last argument, where that last argument has function type.
+its last `@with` argument, where that argument has function type.
 The compiler inserts the generated callback as the final argument.
 
 For `with expr` (non-binding): the missing last argument must
@@ -1387,24 +1468,14 @@ For `with pattern <- expr` (binding): the missing last argument
 must have type `(A) -[e1]> T` for some `A`, effects `e1`, and
 return type `T`. The bound pattern has type `A`.
 
-The effects and return type of the `with` expression are
-determined by the complete function call (including the generated
-callback). Effect tracking works normally — the compiler sees the
-full desugared form.
+The desugared program is what gets type-checked. `with` introduces
+no special effect behavior — the callback's effect row is inferred
+normally. All existing inference and diagnostics apply to the
+desugared form.
 
 **Scope:** `with` captures everything after it until the end of
 the enclosing block (indentation level). Multiple `with`
 statements in sequence nest from top to bottom (outermost first).
-
-**Not trait-dispatched.** `with` is purely syntactic sugar. It
-does not dispatch through any trait. The function being called
-determines what happens — effect handlers, resource managers,
-or any function whose last parameter is a callback. This is
-the same approach as Gleam's `use` keyword.
-
-**Interaction with `let`, `match`, and other statements:**
-`with` can appear anywhere in a block. Statements before `with`
-are outside the callback. Statements after `with` are inside it.
 
 ```kea
 let config = load_config()
@@ -1470,6 +1541,48 @@ use site. They introduce no new nominal type and cannot have trait
 implementations.
 
 Aliases may be parameterised. They may not be recursive.
+
+**Effect row aliases.** Type aliases may name effect rows using
+bracket syntax. An effect alias expands to an effect set wherever
+an effect annotation is expected:
+
+```kea
+type DbEffects = [IO, Fail DbError]
+type WebEffects = [IO, Fail AppError, Log]
+
+fn query(_ sql: String) -DbEffects> Rows
+-- expands to: fn query(_ sql: String) -[IO, Fail DbError]> Rows
+
+fn serve(_ req: Request) -WebEffects> Response
+-- expands to: fn serve(_ req: Request) -[IO, Fail AppError, Log]> Response
+```
+
+Effect aliases may be parameterised and may include row tails:
+
+```kea
+type Failable E = [Fail E]
+type WithDb e = [IO, Fail DbError, e]
+
+fn load(_ id: Id) -WithDb e> Entity
+-- expands to: fn load(_ id: Id) -[IO, Fail DbError, e]> Entity
+```
+
+Effect aliases compose by union. Using multiple aliases in one
+annotation merges them:
+
+```kea
+type Logs = [Log]
+type Stores = [IO, Fail DbError]
+
+fn process(_ x: Input) -[Logs, Stores]> Output
+-- expands to: fn process(_ x: Input) -[Log, IO, Fail DbError]> Output
+```
+
+Effect aliases are purely syntactic — the compiler expands them
+before type checking. They do not create new effects or change
+the effect algebra. They exist so that common effect bundles
+(like "all the effects a database layer needs") can be named
+once and reused.
 
 ---
 
@@ -2096,8 +2209,57 @@ trait Actor
   type Msg: * -> *       -- GADT message protocol
   type Config
   fn init(_ config: Self.Config) -> Self
-  fn handle(_ self: Self, _ msg: Self.Msg T) -[Send]> (Self, T)
+  fn handle(_ self: Self, _ msg: Self.Msg T, _ reply: T -> ()) -[Send]> Self
 ```
+
+`handle` receives the message and a `reply` callback. The actor
+calls `reply(value)` to send the response back to the caller.
+This decouples *when* the reply happens from message processing.
+
+**Immediate reply** — the common case:
+
+```kea
+fn handle(_ self: Self, _ msg: CounterMsg T, _ reply: T -> ()) -[Send]> Self
+  match msg
+    Increment ->
+      reply(())
+      { self | count: self.count + 1 }
+    Get ->
+      reply(self.count)
+      self
+```
+
+**Deferred reply** — store the callback, reply later:
+
+```kea
+fn handle(_ self: Self, _ msg: PoolMsg T, _ reply: T -> ()) -[Send]> Self
+  match msg
+    Acquire ->
+      match self.available
+        conn :: rest ->
+          reply(conn)
+          { self | available: rest }
+        [] ->
+          -- Park the caller; reply when a connection is returned
+          { self | waiting: self.waiting ++ [reply] }
+    Release(conn) ->
+      match self.waiting
+        next :: rest ->
+          next(conn)   -- reply to the parked caller
+          { self | waiting: rest }
+        [] ->
+          { self | available: self.available ++ [conn] }
+```
+
+This maps to OTP's `From` parameter in `handle_call`. The caller
+blocks on `Send.ask` until `reply` is called — whether that
+happens immediately in the same `handle` invocation, or later
+when another message triggers it.
+
+**Fire-and-forget** — for `M ()` messages sent via `tell`, the
+runtime inserts `reply(())` automatically if `handle` returns
+without calling `reply`. This is a convenience; explicit
+`reply(())` is also valid.
 
 `handle` may have the `Send` effect (messaging other actors).
 It may not have `IO`. Side effects in handlers happen through
@@ -2116,7 +2278,9 @@ The GADT parameter `T` encodes the response type. The type system
 ensures:
 - `tell` only works with `M ()` messages
 - `ask` returns the exact type `T` for the specific message
-- `handle` must return `(Self, T)` matching the message's `T`
+- The `reply` callback in `handle` has type `T -> ()`, matching
+  the message's `T` — calling `reply` with the wrong type is
+  a compile error
 
 ### 19.5 Supervision (Library)
 
