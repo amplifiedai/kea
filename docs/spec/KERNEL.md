@@ -862,6 +862,73 @@ The handled effect `E` is removed. The handler body's effects
 `H` are added. All other effects `R` pass through. This is
 row polymorphism on the effect set.
 
+### 5.14 Effect-Parameterised Types
+
+Structs and enums may take effect row parameters. This lets
+types carry their effect footprint, enabling reusable abstractions
+over effectful computations.
+
+```kea
+type Handler E = Request -[E]> Response
+
+struct Server E
+  handler: Handler E
+  port: Int
+  middleware: List (Handler E -> Handler E)
+```
+
+`E` here has kind `Eff` (an effect row). The type is instantiated
+with a concrete effect set:
+
+```kea
+let server: Server [IO, Fail AppError] = Server
+  handler: my_handler
+  port: 8080
+  middleware: [logging, auth]
+```
+
+**Effect-parameterised enums:**
+
+```kea
+enum Step E A
+  Continue(A)
+  Yield(A, () -[E]> Step E A)
+  Done
+```
+
+This enables lazy, effectful iteration where the effect set is
+a parameter of the stream type.
+
+**Handler wrapper pattern.** A common use is abstracting over
+handler-shaped functions:
+
+```kea
+type Wrap E_in E_out T = (() -[E_in]> T) -[E_out]> T
+
+fn compose_handlers(_ outer: Wrap E1 E2 T, _ inner: Wrap E2 E3 T)
+  -> Wrap E1 E3 T
+  |f| -> outer(|| -> inner(f))
+```
+
+This gives middleware composition without needing effect
+subtraction operators. The compiler infers `E1`, `E2`, `E3`
+at each application site.
+
+**Restrictions (v0):**
+
+1. Effect row variables in type parameter position only — not
+   arbitrary computed effect expressions.
+2. Effect rows remain sets (no duplicates, commutative).
+3. No effect subtraction or addition operators at the type level.
+   Effect removal happens operationally via `handle`, not via
+   type-level algebra.
+
+These restrictions keep inference tractable and error messages
+clear. If effect-set algebra proves necessary for real library
+design, it can be added later without breaking existing code.
+
+See §6.6 for the kind system, §11.5 for effect row aliases.
+
 The `then` clause (optional) transforms the result when the
 handled computation completes normally (without performing the
 handled effect):
@@ -950,8 +1017,30 @@ trait Functor F
   fn map(_ self: F A, _ f: A -> B) -> F B
 ```
 
-`F` here has kind `* -> *`. Kind inference is performed by the compiler.
-Explicit kind annotations are not part of v0.
+`F` here has kind `* -> *`. Kind inference is performed by the
+compiler. Explicit kind annotations are not part of v0.
+
+**Kind system.** The kinds in Kea are:
+
+- `*` — ordinary types (Int, String, List Int)
+- `* -> *` — type constructors (List, Option, Ref)
+- `* -> * -> *` — binary type constructors (Map, Result)
+- `Eff` — effect rows ([IO, Fail E], [Send, Spawn])
+
+Effect row parameters have kind `Eff`. The compiler infers
+kinds from usage — a type parameter used in effect position
+(`-[E]>`) is inferred to have kind `Eff`:
+
+```kea
+struct Server E        -- E : Eff (inferred from usage below)
+  handler: Request -[E]> Response
+
+trait Runnable E       -- E : Eff
+  fn run(_ self: Self) -[E]> ()
+```
+
+Kind errors are reported when a type parameter is used
+inconsistently (e.g., as both a type and an effect row).
 
 ### 6.7 Supertraits
 
