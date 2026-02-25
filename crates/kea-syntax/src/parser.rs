@@ -81,7 +81,6 @@ struct Parser {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum BlockDelimiter {
-    Brace,
     Indent,
 }
 
@@ -545,17 +544,7 @@ impl Parser {
                 fields.push((field_name, field_type.node));
                 field_annotations.push(anns);
                 self.skip_newlines();
-                if delimiter == BlockDelimiter::Brace {
-                    if !self.match_token(&TokenKind::Comma) {
-                        break;
-                    }
-                    self.skip_newlines();
-                    if self.at_block_end(delimiter) {
-                        break; // trailing comma
-                    }
-                } else {
-                    let _ = self.match_token(&TokenKind::Comma);
-                }
+                let _ = self.match_token(&TokenKind::Comma);
             }
         }
         self.skip_newlines();
@@ -1038,7 +1027,7 @@ impl Parser {
         self.skip_newlines();
 
         // Optional default body
-        let default_body = if self.check(&TokenKind::LBrace) || self.check(&TokenKind::Indent) {
+        let default_body = if self.check(&TokenKind::Indent) {
             Some(self.parse_block_expr("expected trait method default body block")?)
         } else {
             None
@@ -2167,13 +2156,6 @@ impl Parser {
             return self.yield_from_expr();
         }
 
-        // Block: { exprs }
-        if self.check(&TokenKind::LBrace) {
-            self.advance();
-            let body = self.block_body(BlockDelimiter::Brace)?;
-            return Some(body);
-        }
-
         // Tuple: #(exprs)
         if self.check(&TokenKind::HashParen) {
             return self.tuple_expr();
@@ -3128,15 +3110,8 @@ impl Parser {
         while !self.at_block_end(delimiter) && !self.at_eof() {
             arms.push(self.case_arm()?);
             self.skip_newlines();
-            if delimiter == BlockDelimiter::Brace {
-                if !self.match_token(&TokenKind::Comma) {
-                    break;
-                }
-                self.skip_newlines();
-            } else {
-                let _ = self.match_token(&TokenKind::Comma);
-                self.skip_newlines();
-            }
+            let _ = self.match_token(&TokenKind::Comma);
+            self.skip_newlines();
         }
         let end = self.current_span();
         self.expect_block_end(delimiter, "expected end of case block")?;
@@ -3160,15 +3135,8 @@ impl Parser {
         while !self.at_block_end(delimiter) && !self.at_eof() {
             arms.push(self.cond_arm()?);
             self.skip_newlines();
-            if delimiter == BlockDelimiter::Brace {
-                if !self.match_token(&TokenKind::Comma) {
-                    break;
-                }
-                self.skip_newlines();
-            } else {
-                let _ = self.match_token(&TokenKind::Comma);
-                self.skip_newlines();
-            }
+            let _ = self.match_token(&TokenKind::Comma);
+            self.skip_newlines();
         }
         let end = self.current_span();
         self.expect_block_end(delimiter, "expected end of cond block")?;
@@ -3190,7 +3158,7 @@ impl Parser {
         };
         self.expect(&TokenKind::Arrow, "expected '->' after cond arm condition")?;
         self.skip_newlines();
-        let body = if self.check(&TokenKind::LBrace) || self.check(&TokenKind::Indent) {
+        let body = if self.check(&TokenKind::Indent) {
             self.parse_block_expr("expected cond arm body block or expression")?
         } else {
             self.expression()?
@@ -3229,7 +3197,7 @@ impl Parser {
             self.skip_newlines();
 
             // Allow trailing comma before the body block.
-            if self.check(&TokenKind::LBrace) || self.check(&TokenKind::Indent) {
+            if self.check(&TokenKind::Indent) {
                 break;
             }
 
@@ -3346,7 +3314,7 @@ impl Parser {
         };
         self.expect(&TokenKind::Arrow, "expected '->' after pattern")?;
         self.skip_newlines();
-        let body = if self.check(&TokenKind::LBrace) || self.check(&TokenKind::Indent) {
+        let body = if self.check(&TokenKind::Indent) {
             self.parse_block_expr("expected case arm body block or expression")?
         } else {
             self.expression()?
@@ -3368,15 +3336,8 @@ impl Parser {
         while !self.at_block_end(delimiter) && !self.at_eof() {
             arms.push(self.col_cond_arm()?);
             self.skip_newlines();
-            if delimiter == BlockDelimiter::Brace {
-                if !self.match_token(&TokenKind::Comma) {
-                    break;
-                }
-                self.skip_newlines();
-            } else {
-                let _ = self.match_token(&TokenKind::Comma);
-                self.skip_newlines();
-            }
+            let _ = self.match_token(&TokenKind::Comma);
+            self.skip_newlines();
         }
         let end = self.current_span();
         self.expect_block_end(delimiter, "expected end of cond block")?;
@@ -3861,7 +3822,7 @@ impl Parser {
 
     /// Parse a lambda body: either a block `{ ... }` or a single expression.
     fn lambda_body(&mut self) -> Option<Expr> {
-        if self.check(&TokenKind::LBrace) || self.check(&TokenKind::Indent) {
+        if self.check(&TokenKind::Indent) {
             self.parse_block_expr("expected lambda body block")
         } else {
             self.expression()
@@ -3976,9 +3937,9 @@ impl Parser {
         let (parts, atom_fields) = parse_block_parts(&body, start, self.file, &mut self.errors);
         let config = if self.check_ident("with") {
             self.advance(); // consume `with`
-            self.expect(&TokenKind::LBrace, "expected `{` after `with`")?;
-            let cfg = self.parse_embedded_block_config()?;
-            self.expect(&TokenKind::RBrace, "expected `}` to close block config")?;
+            let delimiter = self.expect_block_start("expected config block after `with`")?;
+            let cfg = self.parse_embedded_block_config(delimiter)?;
+            self.expect_block_end(delimiter, "expected end of block config")?;
             end = self.current_span();
             Some(cfg)
         } else {
@@ -4020,9 +3981,9 @@ impl Parser {
         let (parts, atom_fields) = parse_block_parts(&body, start, self.file, &mut self.errors);
         let config = if self.check_ident("with") {
             self.advance(); // consume `with`
-            self.expect(&TokenKind::LBrace, "expected `{` after `with`")?;
-            let cfg = self.parse_embedded_block_config()?;
-            self.expect(&TokenKind::RBrace, "expected `}` to close block config")?;
+            let delimiter = self.expect_block_start("expected config block after `with`")?;
+            let cfg = self.parse_embedded_block_config(delimiter)?;
+            self.expect_block_end(delimiter, "expected end of block config")?;
             end = self.current_span();
             Some(cfg)
         } else {
@@ -4049,10 +4010,10 @@ impl Parser {
         // Optionally parse `with { ... }` config block
         let config = if self.check_ident("with") {
             self.advance(); // consume `with`
-            self.expect(&TokenKind::LBrace, "expected `{` after `with`")?;
-            let config = self.parse_spawn_config()?;
+            let delimiter = self.expect_block_start("expected config block after `with`")?;
+            let config = self.parse_spawn_config(delimiter)?;
             end = self.current_span();
-            self.expect(&TokenKind::RBrace, "expected `}` to close spawn config")?;
+            self.expect_block_end(delimiter, "expected end of spawn config")?;
             Some(Box::new(config))
         } else {
             None
@@ -4077,10 +4038,10 @@ impl Parser {
 
         if self.check_ident("with") {
             self.advance(); // consume `with`
-            self.expect(&TokenKind::LBrace, "expected `{` after `with`")?;
-            buffer_size = self.parse_stream_config()?;
+            let delimiter = self.expect_block_start("expected config block after `with`")?;
+            buffer_size = self.parse_stream_config(delimiter)?;
             end = self.current_span();
-            self.expect(&TokenKind::RBrace, "expected `}` to close stream config")?;
+            self.expect_block_end(delimiter, "expected end of stream config")?;
         }
 
         Some(Spanned::new(
@@ -4094,9 +4055,10 @@ impl Parser {
 
     /// Parse stream config inside `stream { ... } with { ... }`.
     /// Currently only supports `buffer: <int>`.
-    fn parse_stream_config(&mut self) -> Option<usize> {
+    fn parse_stream_config(&mut self, delimiter: BlockDelimiter) -> Option<usize> {
         let mut buffer_size: Option<usize> = None;
-        while !self.check(&TokenKind::RBrace) && !self.at_eof() {
+        self.skip_newlines();
+        while !self.at_block_end(delimiter) && !self.at_eof() {
             let key_tok = self.advance();
             let key = match &key_tok.kind {
                 TokenKind::Ident(s) => s.clone(),
@@ -4127,9 +4089,8 @@ impl Parser {
                 }
             }
 
-            if self.check(&TokenKind::Comma) {
-                self.advance();
-            }
+            let _ = self.match_token(&TokenKind::Comma);
+            self.skip_newlines();
         }
         Some(buffer_size.unwrap_or(32))
     }
@@ -4162,7 +4123,7 @@ impl Parser {
 
     /// Parse the key-value pairs inside `spawn ... with { ... }`.
     /// Allowed keys: mailbox_size, supervision, max_restarts, call_timeout.
-    fn parse_spawn_config(&mut self) -> Option<SpawnConfig> {
+    fn parse_spawn_config(&mut self, delimiter: BlockDelimiter) -> Option<SpawnConfig> {
         let mut config = SpawnConfig {
             mailbox_size: None,
             supervision: None,
@@ -4170,7 +4131,8 @@ impl Parser {
             call_timeout: None,
         };
 
-        while !self.check(&TokenKind::RBrace) && !self.at_eof() {
+        self.skip_newlines();
+        while !self.at_block_end(delimiter) && !self.at_eof() {
             let key_tok = self.advance();
             let key = match &key_tok.kind {
                 TokenKind::Ident(s) => s.clone(),
@@ -4203,10 +4165,8 @@ impl Parser {
                     return None;
                 }
             }
-            // Optional trailing comma
-            if self.check(&TokenKind::Comma) {
-                self.advance();
-            }
+            let _ = self.match_token(&TokenKind::Comma);
+            self.skip_newlines();
         }
         Some(config)
     }
@@ -4214,18 +4174,20 @@ impl Parser {
     /// Parse generic embedded-block config inside `... with { ... }`.
     ///
     /// Keys are validated by type checking based on block kind.
-    fn parse_embedded_block_config(&mut self) -> Option<Vec<(Spanned<String>, Expr)>> {
+    fn parse_embedded_block_config(
+        &mut self,
+        delimiter: BlockDelimiter,
+    ) -> Option<Vec<(Spanned<String>, Expr)>> {
         let mut entries = Vec::new();
-        while !self.check(&TokenKind::RBrace) && !self.at_eof() {
+        self.skip_newlines();
+        while !self.at_block_end(delimiter) && !self.at_eof() {
             let key = self.expect_ident("expected config key")?;
             self.expect(&TokenKind::Colon, "expected `:` after config key")?;
             self.skip_newlines();
             let value = self.expression()?;
             entries.push((key, value));
             self.skip_newlines();
-            if !self.match_token(&TokenKind::Comma) {
-                break;
-            }
+            let _ = self.match_token(&TokenKind::Comma);
             self.skip_newlines();
         }
         Some(entries)
@@ -4507,9 +4469,7 @@ impl Parser {
 
     fn expect_block_start(&mut self, expected_msg: &str) -> Option<BlockDelimiter> {
         self.skip_newlines();
-        if self.match_token(&TokenKind::LBrace) {
-            Some(BlockDelimiter::Brace)
-        } else if self.match_token(&TokenKind::Indent) {
+        if self.match_token(&TokenKind::Indent) {
             Some(BlockDelimiter::Indent)
         } else {
             self.error_at_current(expected_msg);
@@ -4519,16 +4479,12 @@ impl Parser {
 
     fn at_block_end(&self, delimiter: BlockDelimiter) -> bool {
         match delimiter {
-            BlockDelimiter::Brace => self.check(&TokenKind::RBrace),
             BlockDelimiter::Indent => self.check(&TokenKind::Dedent),
         }
     }
 
     fn expect_block_end(&mut self, delimiter: BlockDelimiter, expected_msg: &str) -> Option<()> {
         match delimiter {
-            BlockDelimiter::Brace => {
-                self.expect(&TokenKind::RBrace, expected_msg)?;
-            }
             BlockDelimiter::Indent => {
                 self.expect(&TokenKind::Dedent, expected_msg)?;
             }
@@ -5363,7 +5319,7 @@ fn parse_block_parts(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lexer::{lex, lex_layout};
+    use crate::lexer::lex_layout;
 
     fn parse(source: &str) -> Expr {
         let tokens = lex_layout(source, FileId(0)).expect("lex failed").0;
@@ -5807,7 +5763,7 @@ mod tests {
 
     #[test]
     fn parse_if_else() {
-        let expr = parse("if true { 1 } else { 2 }");
+        let expr = parse("if true\n  1\nelse\n  2");
         match &expr.node {
             ExprKind::If {
                 condition,
@@ -5844,7 +5800,7 @@ mod tests {
 
     #[test]
     fn parse_if_no_else() {
-        let errors = parse_err("if x { 42 }");
+        let errors = parse_err("if x\n  42");
         assert!(!errors.is_empty());
         assert!(
             errors
@@ -5856,7 +5812,7 @@ mod tests {
 
     #[test]
     fn parse_case_arm_when_guard() {
-        let expr = parse("case x { n when n > 0 -> n, _ -> 0 }");
+        let expr = parse("case x\n  n when n > 0 -> n\n  _ -> 0");
         match &expr.node {
             ExprKind::Case { arms, .. } => {
                 assert_eq!(arms.len(), 2);
@@ -6098,20 +6054,14 @@ mod tests {
 
     #[test]
     fn parse_block() {
-        let expr = parse("{\n  let x = 1\n  x + 2\n}");
-        match &expr.node {
-            ExprKind::Block(exprs) => {
-                assert_eq!(exprs.len(), 2);
-            }
-            _ => panic!("expected Block, got {:?}", expr.node),
-        }
+        let errors = parse_err("{\n  let x = 1\n  x + 2\n}");
+        assert!(!errors.is_empty(), "brace blocks should be rejected");
     }
 
     #[test]
     fn parse_single_expr_block() {
-        // A block with a single expression should unwrap
-        let expr = parse("{ 42 }");
-        assert_eq!(expr.node, ExprKind::Lit(Lit::Int(42)));
+        let errors = parse_err("{ 42 }");
+        assert!(!errors.is_empty(), "brace blocks should be rejected");
     }
 
     // -- Grouping --
@@ -6145,7 +6095,7 @@ mod tests {
 
     #[test]
     fn parse_record_def() {
-        let module = parse_mod("record User { name: String, age: Int }");
+        let module = parse_mod("record User\n  name: String\n  age: Int");
         assert_eq!(module.declarations.len(), 1);
         match &module.declarations[0].node {
             DeclKind::RecordDef(def) => {
@@ -6161,7 +6111,7 @@ mod tests {
 
     #[test]
     fn parse_fn_declaration_annotations() {
-        let module = parse_mod("@deprecated(\"use new_api\") fn old(x: Int) -> Int { x }");
+        let module = parse_mod("@deprecated(\"use new_api\") fn old(x: Int) -> Int\n  x");
         match &module.declarations[0].node {
             DeclKind::Function(def) => {
                 assert_eq!(def.annotations.len(), 1);
@@ -6174,8 +6124,9 @@ mod tests {
 
     #[test]
     fn parse_record_field_annotations() {
-        let module =
-            parse_mod("record User { @rename(\"user_name\") name: String, @default(30) age: Int }");
+        let module = parse_mod(
+            "record User\n  @rename(\"user_name\") name: String\n  @default(30) age: Int",
+        );
         match &module.declarations[0].node {
             DeclKind::RecordDef(def) => {
                 assert_eq!(def.field_annotations.len(), 2);
@@ -6225,7 +6176,7 @@ mod tests {
 
     #[test]
     fn parse_pub_record_def() {
-        let module = parse_mod("pub record Point { x: Float, y: Float }");
+        let module = parse_mod("pub record Point\n  x: Float\n  y: Float");
         match &module.declarations[0].node {
             DeclKind::RecordDef(def) => {
                 assert!(def.public);
@@ -6238,7 +6189,7 @@ mod tests {
 
     #[test]
     fn parse_record_def_with_type_params() {
-        let module = parse_mod("record Box(t) { value: t }");
+        let module = parse_mod("record Box(t)\n  value: t");
         match &module.declarations[0].node {
             DeclKind::RecordDef(def) => {
                 assert_eq!(def.name.node, "Box");
@@ -6324,7 +6275,7 @@ mod tests {
 
     #[test]
     fn parse_record_def_with_derive() {
-        let module = parse_mod("record Point { x: Int, y: Int } deriving Eq, Hash");
+        let module = parse_mod("record Point\n  x: Int\n  y: Int\nderiving Eq, Hash");
         match &module.declarations[0].node {
             DeclKind::RecordDef(def) => {
                 assert_eq!(def.name.node, "Point");
@@ -6338,7 +6289,7 @@ mod tests {
 
     #[test]
     fn parse_record_single_field() {
-        let module = parse_mod("record Wrapper { value: Int }");
+        let module = parse_mod("record Wrapper\n  value: Int");
         match &module.declarations[0].node {
             DeclKind::RecordDef(def) => {
                 assert_eq!(def.fields.len(), 1);
@@ -6350,7 +6301,7 @@ mod tests {
 
     #[test]
     fn parse_record_trailing_comma() {
-        let module = parse_mod("record Pair { a: Int, b: String, }");
+        let module = parse_mod("record Pair\n  a: Int,\n  b: String,");
         match &module.declarations[0].node {
             DeclKind::RecordDef(def) => {
                 assert_eq!(def.fields.len(), 2);
@@ -6361,7 +6312,7 @@ mod tests {
 
     #[test]
     fn parse_record_with_fn() {
-        let module = parse_mod("record Point { x: Float, y: Float }\nfn origin() -> Int { 0 }");
+        let module = parse_mod("record Point\n  x: Float\n  y: Float\nfn origin() -> Int\n  0");
         assert_eq!(module.declarations.len(), 2);
         assert!(matches!(
             module.declarations[0].node,
@@ -6372,7 +6323,7 @@ mod tests {
 
     #[test]
     fn parse_record_multiline() {
-        let module = parse_mod("record User {\n  name: String,\n  age: Int,\n  active: Bool\n}");
+        let module = parse_mod("record User\n  name: String,\n  age: Int,\n  active: Bool");
         match &module.declarations[0].node {
             DeclKind::RecordDef(def) => {
                 assert_eq!(def.fields.len(), 3);
@@ -6402,7 +6353,7 @@ mod tests {
 
     #[test]
     fn parse_fn_decl() {
-        let source = "fn add(x, y) -> Int { x + y }";
+        let source = "fn add(x, y) -> Int\n  x + y";
         let tokens = lex_layout(source, FileId(0)).unwrap().0;
         let module = parse_module(tokens, FileId(0)).unwrap();
         assert_eq!(module.declarations.len(), 1);
@@ -6433,8 +6384,7 @@ mod tests {
 
     #[test]
     fn parse_fn_decl_with_postfix_testing_block() {
-        let module =
-            parse_mod("fn double(x: Int) -> Int { x + x } testing { assert_eq double(3), 6 }");
+        let module = parse_mod("fn double(x: Int) -> Int\n  x + x\ntesting\n  assert_eq double(3), 6");
         match &module.declarations[0].node {
             DeclKind::Function(f) => {
                 assert!(f.testing.is_some(), "expected postfix testing block");
@@ -6447,7 +6397,7 @@ mod tests {
     #[test]
     fn parse_fn_decl_with_postfix_testing_tags() {
         let module = parse_mod(
-            "fn double(x: Int) -> Int { x + x } testing tags [:fast, :unit] { assert_eq double(3), 6 }",
+            "fn double(x: Int) -> Int\n  x + x\ntesting tags [:fast, :unit]\n  assert_eq double(3), 6",
         );
         match &module.declarations[0].node {
             DeclKind::Function(f) => {
@@ -6461,7 +6411,7 @@ mod tests {
 
     #[test]
     fn parse_fn_doc_comment() {
-        let module = parse_mod("--| Adds two numbers.\nfn add(x, y) -> Int { x + y }");
+        let module = parse_mod("--| Adds two numbers.\nfn add(x, y) -> Int\n  x + y");
         match &module.declarations[0].node {
             DeclKind::Function(f) => {
                 assert_eq!(f.name.node, "add");
@@ -6473,7 +6423,7 @@ mod tests {
 
     #[test]
     fn parse_multiline_doc_comment() {
-        let module = parse_mod("--| Summary.\n--|\n--| Details.\nfn f() -> Int { 1 }");
+        let module = parse_mod("--| Summary.\n--|\n--| Details.\nfn f() -> Int\n  1");
         match &module.declarations[0].node {
             DeclKind::Function(f) => {
                 assert_eq!(f.doc.as_deref(), Some("Summary.\n\nDetails."));
@@ -6485,12 +6435,7 @@ mod tests {
     #[test]
     fn parse_doc_comments_for_type_record_trait() {
         let module = parse_mod(
-            "--| T docs\n\
-             type T = A\n\
-             --| R docs\n\
-             record R { x: Int }\n\
-             --| Tr docs\n\
-             trait Tr { fn m() -> Int }",
+            "--| T docs\ntype T = A\n--| R docs\nrecord R\n  x: Int\n--| Tr docs\ntrait Tr\n  fn m() -> Int\n    0",
         );
         match &module.declarations[0].node {
             DeclKind::TypeDef(def) => assert_eq!(def.doc.as_deref(), Some("T docs")),
@@ -6519,9 +6464,7 @@ mod tests {
 
     #[test]
     fn parse_pub_fn() {
-        let source = "pub fn hello() -> Int { 42 }";
-        let tokens = lex(source, FileId(0)).unwrap().0;
-        let module = parse_module(tokens, FileId(0)).unwrap();
+        let module = parse_mod("pub fn hello() -> Int\n  42");
         match &module.declarations[0].node {
             DeclKind::Function(f) => {
                 assert!(f.public);
@@ -6533,9 +6476,7 @@ mod tests {
 
     #[test]
     fn parse_fn_with_return_type() {
-        let source = "fn id(x: Int) -> Int { x }";
-        let tokens = lex(source, FileId(0)).unwrap().0;
-        let module = parse_module(tokens, FileId(0)).unwrap();
+        let module = parse_mod("fn id(x: Int) -> Int\n  x");
         match &module.declarations[0].node {
             DeclKind::Function(f) => {
                 assert!(f.params[0].annotation.is_some());
@@ -6547,9 +6488,7 @@ mod tests {
 
     #[test]
     fn parse_fn_with_effect_clause() {
-        let source = "fn id(x: Int) -[pure]> Int { x }";
-        let tokens = lex(source, FileId(0)).unwrap().0;
-        let module = parse_module(tokens, FileId(0)).unwrap();
+        let module = parse_mod("fn id(x: Int) -[pure]> Int\n  x");
         match &module.declarations[0].node {
             DeclKind::Function(f) => {
                 assert!(matches!(
@@ -6591,7 +6530,7 @@ mod tests {
 
     #[test]
     fn parse_case_simple() {
-        let expr = parse("case x { 1 -> \"one\", _ -> \"other\" }");
+        let expr = parse("case x\n  1 -> \"one\"\n  _ -> \"other\"");
         match &expr.node {
             ExprKind::Case { scrutinee, arms } => {
                 assert_eq!(scrutinee.node, ExprKind::Var("x".into()));
@@ -6608,7 +6547,7 @@ mod tests {
 
     #[test]
     fn parse_case_constructor() {
-        let expr = parse("case x { Some(v) -> v, None -> 0 }");
+        let expr = parse("case x\n  Some(v) -> v\n  None -> 0");
         match &expr.node {
             ExprKind::Case { arms, .. } => {
                 assert_eq!(arms.len(), 2);
@@ -6634,7 +6573,7 @@ mod tests {
 
     #[test]
     fn parse_case_tuple() {
-        let expr = parse("case p { #(0, y) -> y, #(x, _) -> x }");
+        let expr = parse("case p\n  #(0, y) -> y\n  #(x, _) -> x");
         match &expr.node {
             ExprKind::Case { arms, .. } => {
                 assert_eq!(arms.len(), 2);
@@ -6653,7 +6592,7 @@ mod tests {
 
     #[test]
     fn parse_case_nested() {
-        let expr = parse("case x { Some(#(a, b)) -> a + b, _ -> 0 }");
+        let expr = parse("case x\n  Some(#(a, b)) -> a + b\n  _ -> 0");
         match &expr.node {
             ExprKind::Case { arms, .. } => {
                 assert_eq!(arms.len(), 2);
@@ -6672,18 +6611,18 @@ mod tests {
 
     #[test]
     fn parse_case_no_arms() {
-        let expr = parse("case x { }");
-        match &expr.node {
-            ExprKind::Case { arms, .. } => {
-                assert!(arms.is_empty());
-            }
-            _ => panic!("expected Case"),
-        }
+        let errors = parse_err("case x");
+        assert!(
+            errors
+                .iter()
+                .any(|d| d.message.contains("expected block after case scrutinee")),
+            "expected missing-case-block diagnostic, got {errors:?}"
+        );
     }
 
     #[test]
     fn parse_case_wildcard() {
-        let expr = parse("case x { _ -> 42 }");
+        let expr = parse("case x\n  _ -> 42");
         match &expr.node {
             ExprKind::Case { arms, .. } => {
                 assert_eq!(arms.len(), 1);
@@ -6696,7 +6635,7 @@ mod tests {
 
     #[test]
     fn parse_case_var_binding() {
-        let expr = parse("case x { n -> n + 1 }");
+        let expr = parse("case x\n  n -> n + 1");
         match &expr.node {
             ExprKind::Case { arms, .. } => {
                 assert_eq!(arms.len(), 1);
@@ -6787,7 +6726,7 @@ mod tests {
 
     #[test]
     fn parse_named_record_pattern() {
-        let expr = parse("case x { User { name, age } -> name }");
+        let expr = parse("case x\n  User { name, age } -> name");
         match &expr.node {
             ExprKind::Case { arms, .. } => {
                 assert_eq!(arms.len(), 1);
@@ -6808,7 +6747,7 @@ mod tests {
 
     #[test]
     fn parse_named_record_pattern_with_rest() {
-        let expr = parse("case x { User { name, .. } -> name }");
+        let expr = parse("case x\n  User { name, .. } -> name");
         match &expr.node {
             ExprKind::Case { arms, .. } => match &arms[0].pattern.node {
                 PatternKind::Record { name, fields, rest } => {
@@ -6824,7 +6763,7 @@ mod tests {
 
     #[test]
     fn parse_named_record_pattern_with_subpattern() {
-        let expr = parse("case x { User { name: n } -> n }");
+        let expr = parse("case x\n  User { name: n } -> n");
         match &expr.node {
             ExprKind::Case { arms, .. } => match &arms[0].pattern.node {
                 PatternKind::Record { fields, .. } => {
@@ -6839,7 +6778,7 @@ mod tests {
 
     #[test]
     fn parse_case_bool_pattern() {
-        let expr = parse("case x { true -> 1, false -> 0 }");
+        let expr = parse("case x\n  true -> 1\n  false -> 0");
         match &expr.node {
             ExprKind::Case { arms, .. } => {
                 assert_eq!(arms.len(), 2);
@@ -6858,7 +6797,7 @@ mod tests {
 
     #[test]
     fn parse_cond_simple() {
-        let expr = parse("cond { 1 > 2 -> \"no\", _ -> \"yes\" }");
+        let expr = parse("cond\n  1 > 2 -> \"no\"\n  _ -> \"yes\"");
         match &expr.node {
             ExprKind::Cond { arms } => {
                 assert_eq!(arms.len(), 2);
@@ -6900,25 +6839,19 @@ mod tests {
 
     #[test]
     fn parse_trait_empty() {
-        let m = parse_mod("trait Additive { }");
-        assert_eq!(m.declarations.len(), 1);
-        match &m.declarations[0].node {
-            DeclKind::TraitDef(td) => {
-                assert_eq!(td.name.node, "Additive");
-                assert!(!td.public);
-                assert!(td.type_params.is_empty());
-                assert!(td.supertraits.is_empty());
-                assert!(td.fundeps.is_empty());
-                assert!(td.methods.is_empty());
-            }
-            _ => panic!("expected TraitDef"),
-        }
+        let errors = parse_mod_err("trait Additive");
+        assert!(
+            errors
+                .iter()
+                .any(|d| d.message.contains("expected trait body block after trait name")),
+            "expected missing-trait-body diagnostic, got {errors:?}"
+        );
     }
 
     #[test]
     fn parse_trait_with_methods() {
         let m = parse_mod(
-            "trait Additive {\n  fn zero() -> Self\n  fn add(self, other: Self) -> Self\n}",
+            "trait Additive\n  fn zero() -> Self\n  fn add(self, other: Self) -> Self",
         );
         match &m.declarations[0].node {
             DeclKind::TraitDef(td) => {
@@ -6953,7 +6886,7 @@ mod tests {
     #[test]
     fn parse_trait_method_with_where_clause() {
         let m = parse_mod(
-            "trait Traversable(T: * -> *) {\n  fn traverse(value: T(a), f: fn(a) -> F(b)) -> F(T(b)) where F: Applicative\n}",
+            "trait Traversable(T: * -> *)\n  fn traverse(value: T(a), f: fn(a) -> F(b)) -> F(T(b)) where F: Applicative",
         );
         match &m.declarations[0].node {
             DeclKind::TraitDef(td) => {
@@ -6970,7 +6903,7 @@ mod tests {
 
     #[test]
     fn parse_trait_method_with_effect_clause() {
-        let m = parse_mod("trait TaskLike { fn run(self) -[impure]> Int }");
+        let m = parse_mod("trait TaskLike\n  fn run(self) -[impure]> Int");
         match &m.declarations[0].node {
             DeclKind::TraitDef(td) => {
                 let method = &td.methods[0];
@@ -6985,7 +6918,7 @@ mod tests {
 
     #[test]
     fn parse_pub_trait() {
-        let m = parse_mod("pub trait Show { fn show(self) -> String }");
+        let m = parse_mod("pub trait Show\n  fn show(self) -> String");
         match &m.declarations[0].node {
             DeclKind::TraitDef(td) => {
                 assert!(td.public);
@@ -7001,7 +6934,7 @@ mod tests {
 
     #[test]
     fn parse_trait_with_supertraits() {
-        let m = parse_mod("trait Orderable: Eq + Display { fn compare(self, other: Self) -> Int }");
+        let m = parse_mod("trait Orderable: Eq + Display\n  fn compare(self, other: Self) -> Int");
         match &m.declarations[0].node {
             DeclKind::TraitDef(td) => {
                 assert_eq!(td.name.node, "Orderable");
@@ -7018,7 +6951,7 @@ mod tests {
 
     #[test]
     fn parse_trait_with_fundep() {
-        let m = parse_mod("trait Collection(C: *, E: *) | C -> E { fn empty() -> C }");
+        let m = parse_mod("trait Collection(C: *, E: *) | C -> E\n  fn empty() -> C");
         match &m.declarations[0].node {
             DeclKind::TraitDef(td) => {
                 assert_eq!(td.fundeps.len(), 1);
@@ -7033,7 +6966,8 @@ mod tests {
 
     #[test]
     fn parse_trait_with_multi_param_fundep() {
-        let m = parse_mod("trait Convert(A: *, B: *, C: *) | (A, B) -> C, C -> A { }");
+        let m =
+            parse_mod("trait Convert(A: *, B: *, C: *) | (A, B) -> C, C -> A\n  fn convert(a: A, b: B) -> C");
         match &m.declarations[0].node {
             DeclKind::TraitDef(td) => {
                 assert_eq!(td.fundeps.len(), 2);
@@ -7044,6 +6978,7 @@ mod tests {
                 assert_eq!(td.fundeps[0].to[0].node, "C");
                 assert_eq!(td.fundeps[1].from[0].node, "C");
                 assert_eq!(td.fundeps[1].to[0].node, "A");
+                assert_eq!(td.methods.len(), 1);
             }
             other => panic!("expected TraitDef, got {other:?}"),
         }
@@ -7051,7 +6986,7 @@ mod tests {
 
     #[test]
     fn parse_trait_with_kinded_type_param() {
-        let m = parse_mod("trait Bind(F: * -> *) { fn bind(value: Int) -> Int }");
+        let m = parse_mod("trait Bind(F: * -> *)\n  fn bind(value: Int) -> Int");
         match &m.declarations[0].node {
             DeclKind::TraitDef(td) => {
                 assert_eq!(td.name.node, "Bind");
@@ -7071,7 +7006,7 @@ mod tests {
 
     #[test]
     fn parse_trait_method_with_default_body() {
-        let m = parse_mod("trait Defaultable {\n  fn value() -> Int { 42 }\n}");
+        let m = parse_mod("trait Defaultable\n  fn value() -> Int\n    42");
         match &m.declarations[0].node {
             DeclKind::TraitDef(td) => {
                 assert_eq!(td.methods.len(), 1);
@@ -7090,7 +7025,7 @@ mod tests {
     #[test]
     fn parse_impl_trait_for_type() {
         let m = parse_mod(
-            "impl Additive for Int {\n  fn zero() -> Int { 0 }\n  fn add(self, other) -> Int { self + other }\n}",
+            "impl Additive for Int\n  fn zero() -> Int\n    0\n  fn add(self, other) -> Int\n    self + other",
         );
         assert_eq!(m.declarations.len(), 1);
         match &m.declarations[0].node {
@@ -7125,7 +7060,7 @@ mod tests {
     #[test]
     fn parse_impl_with_type_params() {
         let m = parse_mod(
-            "impl Show for List(t) where t: Show {\n  fn show(self) -> String { \"list\" }\n}",
+            "impl Show for List(t) where t: Show\n  fn show(self) -> String\n    \"list\"",
         );
         match &m.declarations[0].node {
             DeclKind::ImplBlock(ib) => {
@@ -7150,7 +7085,7 @@ mod tests {
     #[test]
     fn parse_impl_with_multiple_type_params() {
         let m = parse_mod(
-            "impl Collectable for Map(k, v) where Element = Pair(k, v), k: Hashable {\n  fn empty() -> Int { 0 }\n}",
+            "impl Collectable for Map(k, v) where Element = Pair(k, v), k: Hashable\n  fn empty() -> Int\n    0",
         );
         match &m.declarations[0].node {
             DeclKind::ImplBlock(ib) => {
@@ -7194,7 +7129,7 @@ mod tests {
 
     #[test]
     fn parse_impl_with_return_annotation() {
-        let m = parse_mod("impl Show for Bool {\n  fn show(self) -> String { \"bool\" }\n}");
+        let m = parse_mod("impl Show for Bool\n  fn show(self) -> String\n    \"bool\"");
         match &m.declarations[0].node {
             DeclKind::ImplBlock(ib) => {
                 assert_eq!(ib.trait_name.node, "Show");
@@ -7207,7 +7142,7 @@ mod tests {
     #[test]
     fn parse_impl_separate_methods() {
         let m = parse_mod(
-            "impl Show for Bool {\n  fn show(self) -> String { \"bool\" }\n  fn to_int(self) -> Int { 0 }\n}",
+            "impl Show for Bool\n  fn show(self) -> String\n    \"bool\"\n  fn to_int(self) -> Int\n    0",
         );
         match &m.declarations[0].node {
             DeclKind::ImplBlock(ib) => {
@@ -7223,7 +7158,7 @@ mod tests {
 
     #[test]
     fn parse_fn_with_where_clause() {
-        let m = parse_mod("fn total(x) -> Int where x: Additive { x }");
+        let m = parse_mod("fn total(x) -> Int where x: Additive\n  x");
         match &m.declarations[0].node {
             DeclKind::Function(fd) => {
                 assert_eq!(fd.where_clause.len(), 1);
@@ -7236,7 +7171,7 @@ mod tests {
 
     #[test]
     fn parse_fn_with_multiple_where_bounds() {
-        let m = parse_mod("fn combine(a, b) -> T where a: Show, b: Additive { a }");
+        let m = parse_mod("fn combine(a, b) -> T where a: Show, b: Additive\n  a");
         match &m.declarations[0].node {
             DeclKind::Function(fd) => {
                 assert_eq!(fd.where_clause.len(), 2);
@@ -7251,7 +7186,7 @@ mod tests {
 
     #[test]
     fn parse_fn_with_uppercase_where_type_var() {
-        let m = parse_mod("fn sequence(xs) -> Int where F: Applicative { xs }");
+        let m = parse_mod("fn sequence(xs) -> Int where F: Applicative\n  xs");
         match &m.declarations[0].node {
             DeclKind::Function(fd) => {
                 assert_eq!(fd.where_clause.len(), 1);
@@ -7264,7 +7199,7 @@ mod tests {
 
     #[test]
     fn parse_fn_type_annotation_in_param() {
-        let m = parse_mod("fn apply(xs, f: fn(Int) -> Option(Int)) -> Int { xs }");
+        let m = parse_mod("fn apply(xs, f: fn(Int) -> Option(Int)) -> Int\n  xs");
         match &m.declarations[0].node {
             DeclKind::Function(fd) => {
                 let ann = fd.params[1]
@@ -7292,7 +7227,7 @@ mod tests {
 
     #[test]
     fn parse_fn_type_annotation_with_effect_in_param() {
-        let m = parse_mod("fn apply(f: fn(Int) -[pure]> Option(Int)) -> Int { 0 }");
+        let m = parse_mod("fn apply(f: fn(Int) -[pure]> Option(Int)) -> Int\n  0");
         match &m.declarations[0].node {
             DeclKind::Function(fd) => {
                 let ann = fd.params[0]
@@ -7321,7 +7256,7 @@ mod tests {
 
     #[test]
     fn parse_decimal_type_annotation_arguments_allow_int_literals() {
-        let m = parse_mod("fn as_money(x: Decimal(18, 2)) -> Decimal(18, 2) { x }");
+        let m = parse_mod("fn as_money(x: Decimal(18, 2)) -> Decimal(18, 2)\n  x");
         match &m.declarations[0].node {
             DeclKind::Function(fd) => {
                 let param_ann = fd.params[0]
@@ -7344,7 +7279,7 @@ mod tests {
 
     #[test]
     fn parse_list_of_decimal_type_annotation_with_int_args() {
-        let m = parse_mod("fn prices(xs: List(Decimal(18, 2))) -> List(Decimal(18, 2)) { xs }");
+        let m = parse_mod("fn prices(xs: List(Decimal(18, 2))) -> List(Decimal(18, 2))\n  xs");
         match &m.declarations[0].node {
             DeclKind::Function(fd) => {
                 let param_ann = fd.params[0]
@@ -7376,7 +7311,7 @@ mod tests {
     fn parse_int_literal_in_any_type_application_arg() {
         // Parser accepts int literals in any type application position.
         // Type checker validates whether the constructor accepts dim params.
-        let m = parse_mod("fn f(xs: List(1)) -> Int { 0 }");
+        let m = parse_mod("fn f(xs: List(1)) -> Int\n  0");
         match &m.declarations[0].node {
             DeclKind::Function(fd) => {
                 let param_ann = fd.params[0]
@@ -7398,7 +7333,7 @@ mod tests {
 
     #[test]
     fn parse_rank2_forall_type_annotation_in_param() {
-        let m = parse_mod("fn apply(f: forall a. fn(a) -> a, x: Int) -> Int { x }");
+        let m = parse_mod("fn apply(f: forall a. fn(a) -> a, x: Int) -> Int\n  x");
         match &m.declarations[0].node {
             DeclKind::Function(fd) => {
                 let ann = fd.params[0]
@@ -7431,7 +7366,7 @@ mod tests {
 
     #[test]
     fn parse_fn_without_where_clause() {
-        let m = parse_mod("fn identity(x) -> Int { x }");
+        let m = parse_mod("fn identity(x) -> Int\n  x");
         match &m.declarations[0].node {
             DeclKind::Function(fd) => {
                 assert!(fd.where_clause.is_empty());
@@ -7442,7 +7377,7 @@ mod tests {
 
     #[test]
     fn parse_fn_with_return_and_where() {
-        let m = parse_mod("fn total(xs) -> Int where xs: Additive { 0 }");
+        let m = parse_mod("fn total(xs) -> Int where xs: Additive\n  0");
         match &m.declarations[0].node {
             DeclKind::Function(fd) => {
                 assert!(fd.return_annotation.is_some());
@@ -7454,7 +7389,7 @@ mod tests {
 
     #[test]
     fn parse_tuple_type_annotation_in_return() {
-        let m = parse_mod("fn swap(a: Int, b: String) -> #(String, Int) { #(b, a) }");
+        let m = parse_mod("fn swap(a: Int, b: String) -> #(String, Int)\n  #(b, a)");
         match &m.declarations[0].node {
             DeclKind::Function(fd) => {
                 let ret = fd
@@ -7476,7 +7411,7 @@ mod tests {
 
     #[test]
     fn parse_tuple_type_annotation_in_param() {
-        let m = parse_mod("fn first(pair: #(Int, String)) -> Int { 0 }");
+        let m = parse_mod("fn first(pair: #(Int, String)) -> Int\n  0");
         match &m.declarations[0].node {
             DeclKind::Function(fd) => {
                 let ann = fd.params[0]
@@ -7498,7 +7433,7 @@ mod tests {
 
     #[test]
     fn parse_nested_tuple_type_annotation() {
-        let m = parse_mod("fn nested(x: #(#(Int, Bool), String)) -> #(#(Int, Bool), String) { x }");
+        let m = parse_mod("fn nested(x: #(#(Int, Bool), String)) -> #(#(Int, Bool), String)\n  x");
         match &m.declarations[0].node {
             DeclKind::Function(fd) => {
                 // Check param annotation
@@ -7531,7 +7466,7 @@ mod tests {
     #[test]
     fn parse_tuple_type_in_generic_position() {
         let m =
-            parse_mod("fn wrap(x: List(#(Int, String))) -> Result(#(Int, String), Bool) { Ok(x) }");
+            parse_mod("fn wrap(x: List(#(Int, String))) -> Result(#(Int, String), Bool)\n  Ok(x)");
         match &m.declarations[0].node {
             DeclKind::Function(fd) => {
                 let ann = fd.params[0].annotation.as_ref().expect("param annotation");
@@ -7554,7 +7489,7 @@ mod tests {
     #[test]
     fn parse_mixed_declarations() {
         let m = parse_mod(
-            "record Point { x: Float, y: Float }\ntrait Additive { fn zero() -> Self }\nimpl Additive for Point { fn zero() -> Int { 0 } }\nfn main() -> Int { 1 }",
+            "record Point\n  x: Float\n  y: Float\ntrait Additive\n  fn zero() -> Self\nimpl Additive for Point\n  fn zero() -> Int\n    0\nfn main() -> Int\n  1",
         );
         assert_eq!(m.declarations.len(), 4);
         assert!(matches!(m.declarations[0].node, DeclKind::RecordDef(_)));
@@ -7567,7 +7502,7 @@ mod tests {
 
     #[test]
     fn parse_expr_basic() {
-        let m = parse_mod("expr double(x: Int) -> Int { x + x }");
+        let m = parse_mod("expr double(x: Int) -> Int\n  x + x");
         assert_eq!(m.declarations.len(), 1);
         match &m.declarations[0].node {
             DeclKind::ExprFn(ed) => {
@@ -7596,8 +7531,7 @@ mod tests {
 
     #[test]
     fn parse_expr_with_postfix_testing_block() {
-        let m =
-            parse_mod("expr double(x: Int) -> Int { x + x } testing { assert_eq double(0), 0 }");
+        let m = parse_mod("expr double(x: Int) -> Int\n  x + x\ntesting\n  assert_eq double(0), 0");
         match &m.declarations[0].node {
             DeclKind::ExprFn(ed) => {
                 assert!(ed.testing.is_some(), "expected postfix testing block");
@@ -7609,7 +7543,7 @@ mod tests {
 
     #[test]
     fn parse_test_decl_with_tags() {
-        let m = parse_mod("test \"basic\" tags [:fast, :io] { assert true }");
+        let m = parse_mod("test \"basic\" tags [:fast, :io]\n  assert true");
         match &m.declarations[0].node {
             DeclKind::Test(td) => {
                 assert_eq!(td.tags.len(), 2);
@@ -7635,7 +7569,7 @@ mod tests {
 
     #[test]
     fn parse_expr_with_effect_clause() {
-        let m = parse_mod("expr double(x: Int) -[e]> Int { x + x }");
+        let m = parse_mod("expr double(x: Int) -[e]> Int\n  x + x");
         match &m.declarations[0].node {
             DeclKind::ExprFn(ed) => {
                 assert!(matches!(
@@ -7649,7 +7583,7 @@ mod tests {
 
     #[test]
     fn parse_pub_expr() {
-        let m = parse_mod("pub expr add(x: Int, y: Int) -> Int { x + y }");
+        let m = parse_mod("pub expr add(x: Int, y: Int) -> Int\n  x + y");
         match &m.declarations[0].node {
             DeclKind::ExprFn(ed) => {
                 assert!(ed.public);
@@ -7662,7 +7596,7 @@ mod tests {
 
     #[test]
     fn parse_expr_with_doc_comment() {
-        let m = parse_mod("--| Doubles an integer.\nexpr double(x: Int) -> Int { x + x }");
+        let m = parse_mod("--| Doubles an integer.\nexpr double(x: Int) -> Int\n  x + x");
         match &m.declarations[0].node {
             DeclKind::ExprFn(ed) => {
                 assert_eq!(ed.doc.as_deref(), Some("Doubles an integer."));
@@ -7717,7 +7651,7 @@ mod tests {
 
     #[test]
     fn parse_expr_with_where_clause() {
-        let m = parse_mod("expr total(x) -> Int where x: Additive { x }");
+        let m = parse_mod("expr total(x) -> Int where x: Additive\n  x");
         match &m.declarations[0].node {
             DeclKind::ExprFn(ed) => {
                 assert_eq!(ed.where_clause.len(), 1);
@@ -7739,7 +7673,7 @@ mod tests {
 
     #[test]
     fn parse_expr_in_mixed_declarations() {
-        let m = parse_mod("fn regular(x) -> Int { x }\nexpr pure(x: Int) -> Int { x + 1 }");
+        let m = parse_mod("fn regular(x) -> Int\n  x\nexpr pure(x: Int) -> Int\n  x + 1");
         assert_eq!(m.declarations.len(), 2);
         assert!(matches!(m.declarations[0].node, DeclKind::Function(_)));
         assert!(matches!(m.declarations[1].node, DeclKind::ExprFn(_)));
@@ -7747,7 +7681,7 @@ mod tests {
 
     #[test]
     fn parse_expr_multiline_body() {
-        let m = parse_mod("expr clamp(x: Int) -> Int {\n  let y = x + 1\n  y\n}");
+        let m = parse_mod("expr clamp(x: Int) -> Int\n  let y = x + 1\n  y");
         match &m.declarations[0].node {
             DeclKind::ExprFn(ed) => {
                 assert_eq!(ed.name.node, "clamp");
@@ -7758,7 +7692,7 @@ mod tests {
 
     #[test]
     fn parse_expr_cond_body() {
-        let m = parse_mod("expr abs(x: Int) -> Int { cond { x >= 0 -> x, _ -> 0 - x } }");
+        let m = parse_mod("expr abs(x: Int) -> Int\n  cond\n    x >= 0 -> x\n    _ -> 0 - x");
         match &m.declarations[0].node {
             DeclKind::ExprFn(ed) => {
                 assert_eq!(ed.name.node, "abs");
@@ -7791,9 +7725,7 @@ mod tests {
 
     #[test]
     fn parse_trait_with_associated_type() {
-        let m = parse_mod(
-            "trait From {\n  type Source\n  fn from(value: Self.Source) -> Result(Self, String)\n}",
-        );
+        let m = parse_mod("trait From\n  type Source\n  fn from(value: Self.Source) -> Result(Self, String)");
         match &m.declarations[0].node {
             DeclKind::TraitDef(td) => {
                 assert_eq!(td.name.node, "From");
@@ -7820,7 +7752,7 @@ mod tests {
     #[test]
     fn parse_trait_with_constrained_associated_type() {
         let m = parse_mod(
-            "trait Actor {\n  type Message where Message: Sendable\n  fn handle(self, msg: Self.Message) -> Self\n}",
+            "trait Actor\n  type Message where Message: Sendable\n  fn handle(self, msg: Self.Message) -> Self",
         );
         match &m.declarations[0].node {
             DeclKind::TraitDef(td) => {
@@ -7837,7 +7769,7 @@ mod tests {
     #[test]
     fn parse_trait_with_default_associated_type() {
         let m =
-            parse_mod("trait Container {\n  type Item = String\n  fn head(self) -> Self.Item\n}");
+            parse_mod("trait Container\n  type Item = String\n  fn head(self) -> Self.Item");
         match &m.declarations[0].node {
             DeclKind::TraitDef(td) => {
                 assert_eq!(td.associated_types.len(), 1);
@@ -7854,9 +7786,7 @@ mod tests {
 
     #[test]
     fn parse_impl_with_where_clause() {
-        let m = parse_mod(
-            "impl From for Int where Source = String {\n  fn from(value) -> Int { 0 }\n}",
-        );
+        let m = parse_mod("impl From for Int where Source = String\n  fn from(value) -> Int\n    0");
         match &m.declarations[0].node {
             DeclKind::ImplBlock(ib) => {
                 assert_eq!(ib.trait_name.node, "From");
@@ -7888,7 +7818,7 @@ mod tests {
 
     #[test]
     fn parse_record_deriving() {
-        let m = parse_mod("record Point { x: Int, y: Int } deriving Eq, Display");
+        let m = parse_mod("record Point\n  x: Int\n  y: Int\nderiving Eq, Display");
         match &m.declarations[0].node {
             DeclKind::RecordDef(def) => {
                 assert_eq!(def.name.node, "Point");
@@ -7941,7 +7871,7 @@ mod tests {
 
     #[test]
     fn parse_self_dot_name_type_annotation() {
-        let m = parse_mod("trait Convert {\n  type Output\n  fn convert(self) -> Self.Output\n}");
+        let m = parse_mod("trait Convert\n  type Output\n  fn convert(self) -> Self.Output");
         match &m.declarations[0].node {
             DeclKind::TraitDef(td) => {
                 let ret = td.methods[0].return_annotation.as_ref().unwrap();
@@ -7959,7 +7889,7 @@ mod tests {
 
     #[test]
     fn parse_existential_single_bound_annotation() {
-        let m = parse_mod("fn f(x: any Show) -> Int { x }");
+        let m = parse_mod("fn f(x: any Show) -> Int\n  x");
         match &m.declarations[0].node {
             DeclKind::Function(fd) => {
                 let ann = fd.params[0].annotation.as_ref().expect("annotation");
@@ -7980,7 +7910,9 @@ mod tests {
 
     #[test]
     fn parse_existential_multi_bound_with_assoc_constraints() {
-        let m = parse_mod("fn f(x: any (Show, Eq) where Item = Int, Source = String) -> Int { x }");
+        let m = parse_mod(
+            "fn f(x: any (Show, Eq) where Item = Int, Source = String) -> Int\n  x",
+        );
         match &m.declarations[0].node {
             DeclKind::Function(fd) => {
                 let ann = fd.params[0].annotation.as_ref().expect("annotation");
@@ -8795,7 +8727,7 @@ mod tests {
 
     #[test]
     fn parse_sql_block_with_config() {
-        let expr = parse("sql { SELECT * FROM t } with { source: conn, timeout: 30 }");
+        let expr = parse("sql { SELECT * FROM t } with\n  source: conn, timeout: 30");
         match &expr.node {
             ExprKind::EmbeddedBlock { kind, config, .. } => {
                 assert_eq!(*kind, BlockKind::Sql);
@@ -8873,7 +8805,7 @@ mod tests {
 
     #[test]
     fn parse_html_block_with_config() {
-        let expr = parse("html { <h1>${:name}</h1> } with { lang: \"en\" }");
+        let expr = parse("html { <h1>${:name}</h1> } with\n  lang: \"en\"");
         match &expr.node {
             ExprKind::EmbeddedBlock { kind, config, .. } => {
                 assert_eq!(*kind, BlockKind::Html);
@@ -8913,32 +8845,15 @@ mod tests {
 
     #[test]
     fn parse_cond_in_column_expr() {
-        let expr = parse(
-            "frame { score: [95] } |> mutate(grade: cond { :score > 90 -> \"A\", _ -> \"B\" })",
+        let errors = parse_err(
+            "frame { score: [95] } |> mutate(\n  grade: cond\n    :score > 90 -> \"A\"\n    _ -> \"B\"\n)",
         );
-        match &expr.node {
-            ExprKind::Pipe { right, .. } => match &right.node {
-                ExprKind::DfVerb {
-                    args: DfVerbArgs::Mutate(items),
-                    ..
-                } => match &items[0] {
-                    DfColAssignment::Named(_, col_expr) => match &col_expr.node {
-                        ColExprKind::Cond { arms } => {
-                            assert_eq!(arms.len(), 2);
-                            assert!(matches!(
-                                arms[0].condition.node,
-                                ColExprKind::BinaryOp { .. }
-                            ));
-                            assert!(matches!(arms[1].condition.node, ColExprKind::Wildcard));
-                        }
-                        other => panic!("expected ColExprKind::Cond, got {other:?}"),
-                    },
-                    other => panic!("expected named mutate assignment, got {other:?}"),
-                },
-                _ => panic!("expected DfVerb"),
-            },
-            _ => panic!("expected Pipe"),
-        }
+        assert!(
+            errors
+                .iter()
+                .any(|d| d.message.contains("expected block after cond")),
+            "expected missing-cond-block diagnostic, got {errors:?}"
+        );
     }
 
     #[test]
@@ -9197,7 +9112,7 @@ mod tests {
 
     #[test]
     fn parse_import_with_fn_decl() {
-        let module = parse_mod("import Kea.Core\nfn add(x, y) -> Int { x + y }");
+        let module = parse_mod("import Kea.Core\nfn add(x, y) -> Int\n  x + y");
         assert_eq!(module.declarations.len(), 2);
         assert!(matches!(module.declarations[0].node, DeclKind::Import(_)));
         assert!(matches!(module.declarations[1].node, DeclKind::Function(_)));
@@ -9231,7 +9146,7 @@ mod tests {
 
     #[test]
     fn parse_spawn_with_config() {
-        let expr = parse("spawn Counter { count: 0 } with { mailbox_size: 100, max_restarts: 5 }");
+        let expr = parse("spawn Counter { count: 0 } with\n  mailbox_size: 100, max_restarts: 5");
         match &expr.node {
             ExprKind::Spawn { value, config } => {
                 assert!(
@@ -9262,7 +9177,7 @@ mod tests {
     #[test]
     fn parse_spawn_config_all_keys() {
         let expr = parse(
-            "spawn x with { mailbox_size: 50, supervision: :restart, max_restarts: 10, call_timeout: 5000 }",
+            "spawn x with\n  mailbox_size: 50, supervision: :restart, max_restarts: 10, call_timeout: 5000",
         );
         match &expr.node {
             ExprKind::Spawn { config, .. } => {
@@ -9278,7 +9193,7 @@ mod tests {
 
     #[test]
     fn parse_spawn_supervisor_key_errors() {
-        let errors = parse_err("spawn x with { supervisor: parent }");
+        let errors = parse_err("spawn x with\n  supervisor: parent");
         assert!(!errors.is_empty(), "supervisor key should produce error");
         let msg = format!("{:?}", errors);
         assert!(
@@ -9289,7 +9204,7 @@ mod tests {
 
     #[test]
     fn parse_spawn_unknown_key_errors() {
-        let errors = parse_err("spawn x with { bad_key: 1 }");
+        let errors = parse_err("spawn x with\n  bad_key: 1");
         assert!(!errors.is_empty(), "unknown key should produce error");
         let msg = format!("{:?}", errors);
         assert!(msg.contains("unknown spawn config key"), "got: {msg}");
@@ -9297,7 +9212,7 @@ mod tests {
 
     #[test]
     fn parse_stream_block() {
-        let expr = parse("stream { yield 1 }");
+        let expr = parse("stream\n  yield 1");
         match &expr.node {
             ExprKind::StreamBlock { body, buffer_size } => {
                 assert_eq!(*buffer_size, 32);
@@ -9314,7 +9229,7 @@ mod tests {
 
     #[test]
     fn parse_stream_block_with_buffer_config() {
-        let expr = parse("stream { yield 1 } with { buffer: 128 }");
+        let expr = parse("stream\n  yield 1\nwith\n  buffer: 128");
         match &expr.node {
             ExprKind::StreamBlock { buffer_size, .. } => {
                 assert_eq!(*buffer_size, 128);
@@ -9325,7 +9240,7 @@ mod tests {
 
     #[test]
     fn parse_stream_yield_from() {
-        let expr = parse("stream { yield_from other }");
+        let expr = parse("stream\n  yield_from other");
         match &expr.node {
             ExprKind::StreamBlock { body, .. } => match &body.node {
                 ExprKind::YieldFrom { source } => {
@@ -9339,7 +9254,7 @@ mod tests {
 
     #[test]
     fn parse_stream_unknown_key_errors() {
-        let errors = parse_err("stream { yield 1 } with { bad_key: 1 }");
+        let errors = parse_err("stream\n  yield 1\nwith\n  bad_key: 1");
         assert!(!errors.is_empty(), "unknown key should produce error");
         let msg = format!("{:?}", errors);
         assert!(msg.contains("unknown stream config key"), "got: {msg}");
@@ -9347,7 +9262,7 @@ mod tests {
 
     #[test]
     fn parse_for_simple_generator() {
-        let expr = parse("for x in [1, 2, 3] { x + 1 }");
+        let expr = parse("for x in [1, 2, 3]\n  x + 1");
         match &expr.node {
             ExprKind::For(f) => {
                 assert_eq!(f.clauses.len(), 1);
@@ -9378,7 +9293,7 @@ mod tests {
 
     #[test]
     fn parse_for_generators_guards_and_into() {
-        let expr = parse("for x in xs when x > 0, y in ys when y != x { #(x, y) } into Set");
+        let expr = parse("for x in xs when x > 0, y in ys when y != x\n  #(x, y)\ninto Set");
         match &expr.node {
             ExprKind::For(f) => {
                 assert_eq!(f.clauses.len(), 4);
@@ -9395,7 +9310,7 @@ mod tests {
 
     #[test]
     fn parse_for_pattern_generator_clause() {
-        let expr = parse("for Ok(x) in results { x }");
+        let expr = parse("for Ok(x) in results\n  x");
         match &expr.node {
             ExprKind::For(f) => match &f.clauses[0] {
                 ForClause::Generator { pattern, .. } => match &pattern.node {
