@@ -495,31 +495,44 @@ fn read(_ path: String) -[IO, Fail FileError]> Bytes
 `->` asserts the empty effect set (pure). `-[effects]>` asserts
 exactly the listed effects.
 
-**Annotation requirements by visibility:**
+**All `fn` definitions require a full signature** — parameter
+types, return type, and effect annotation. `->` is a pure
+assertion; `-[effects]>` lists the exact effect set. The
+compiler infers the body's effects and checks them against
+the declared signature.
 
-- **`pub fn`** — explicit effect annotation required. This is
-  the API contract with callers. A public function with no
-  effect annotation is a compile error.
-- **`fn` (private)** — effects inferred. Annotations are
-  optional; when present, the compiler checks them against the
-  inferred set. The LSP shows inferred effects on hover.
-- **Lambdas** — always inferred.
-- **Trait method declarations** — explicit by nature (no body).
-- **`Type as Trait` implementations** — must match the trait's
-  declared effect signature.
+**Closures have inferred signatures.** Parameter types, return
+type, and effects are all inferred from context. Annotations
+are optional.
+
+```kea
+-- fn definitions: full signature required
+fn add(_ a: Int, _ b: Int) -> Int
+fn load(_ path: String) -[IO, Fail ConfigError]> Config
+
+-- Closures: everything inferred
+users.filter(|u| -> u.active)
+users.map(|u| -> u.name.to_uppercase())
+
+-- Closures CAN have annotations
+users.map(|u: User| -> u.name)
+```
+
+This means every `fn` is self-documenting — the signature
+tells you the inputs, outputs, and effects without hovering
+in the LSP. Effect provenance is traceable by reading
+signatures alone. `grep -r "\-\[IO\]"` finds every function
+that performs IO.
 
 ```
-error: public function `load` requires an effect annotation
+error: function `load` requires an effect annotation
   --> src/db.kea:3:1
    |
-3  | pub fn load(_ id: Id) -> Entity
-   |                       ^^ inferred effects: [IO, Fail DbError]
+3  | fn load(_ path: String)
+   |    ^^^^ missing return type and effect annotation
    |
-   = help: add -[IO, Fail DbError]> or mark the function private
+   = note: inferred signature: -[IO, Fail DbError]> Config
 ```
-
-When a private function is promoted to `pub`, the compiler
-immediately requires an explicit annotation.
 
 ### 5.2 Defining Effects
 
@@ -850,10 +863,9 @@ pure modulo allocation strategy.
 Effects are inferred bottom-up. The effect set of a function body
 is the union of the effect sets of all expressions in the body.
 
-For private functions without annotations, the inferred effect
-set becomes the function's signature. For public functions (and
-any function with an explicit annotation), the compiler checks
-the annotation against the inferred set.
+For `fn` definitions, inference is verification — the compiler
+infers the body's effects and checks them against the explicit
+annotation. For closures, inference determines the signature.
 
 An explicit annotation may be broader than inferred (declaring
 more effects than used). It may not be narrower (claiming purity
