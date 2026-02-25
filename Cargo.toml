@@ -6,10 +6,16 @@ members = [
 
 [workspace.package]
 edition = "2024"
+version = "0.1.0"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/cigrainger/kea"
 
 [workspace.dependencies]
+# Workspace crates
+kea-ast = { path = "crates/kea-ast" }
+kea-diag = { path = "crates/kea-diag" }
+kea-syntax = { path = "crates/kea-syntax" }
+
 # Diagnostics
 miette = { version = "7", features = ["fancy"] }
 thiserror = "2"

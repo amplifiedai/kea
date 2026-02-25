@@ -1,0 +1,9 @@
+[package]
+name = "kea-syntax"
+description = "Lexer and recursive descent parser for Kea"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+kea-ast.workspace = true
+kea-diag.workspace = true

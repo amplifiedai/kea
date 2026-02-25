@@ -1,0 +1,8 @@
+[package]
+name = "kea-diag"
+description = "Error reporting and diagnostics for Kea"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+thiserror.workspace = true
