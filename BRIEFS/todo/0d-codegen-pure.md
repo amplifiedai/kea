@@ -162,6 +162,25 @@ Create `crates/kea/` (the binary crate):
 - Refcounting keeps memory bounded (no leaks on simple programs)
 - `mise run check` passes
 
+## Decisions
+
+- **Full monomorphization for v0.** Every generic function is
+  compiled once per concrete type instantiation. No type erasure,
+  no dictionary passing, no hybrid strategy. This is what
+  Cranelift expects and produces the best runtime code. The
+  compilation speed cost is a scaling concern — at bootstrap size
+  (~50K lines) it's fine. If monomorphization becomes a bottleneck
+  later, known solutions exist (type erasure for cold paths,
+  dictionary passing for polymorphic recursion), but don't build
+  them until profiling shows you need them.
+
+- **Refcount atomicity is effect-directed.** Functions whose
+  effect set includes no concurrency effects (Send, Spawn, Par)
+  emit non-atomic refcount operations. Functions with concurrency
+  effects emit atomic operations. Values crossing thread
+  boundaries (at Send.tell, Spawn.spawn, Par.map) are promoted
+  to atomic at the boundary. See §12.2 discussion (pending).
+
 ## Open Questions
 
 - Do we need an evaluator (kea-eval) for bootstrap, or can we

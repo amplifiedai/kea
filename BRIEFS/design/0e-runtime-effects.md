@@ -250,6 +250,41 @@ allocation behavior.
   state as a parameter (stretch goal: < 3x)
 - `mise run check` passes
 
+## Decisions
+
+- **Refcount atomicity: scope model.** Non-atomic refcounts by
+  default. The current function's effect set determines atomicity
+  of new allocations — no concurrency effects (Send, Spawn, Par)
+  means non-atomic. Values crossing thread boundaries are promoted
+  to atomic at the Send.tell / Spawn.spawn / Par.map boundary.
+
+  Scope model (not infection model): atomicity is determined by
+  the current function's effect set, not the provenance of input
+  values. A pure function processing actor-received data allocates
+  non-atomic intermediaries. Existing atomic refcounts on inputs
+  remain atomic (can't downgrade), but new allocations are
+  non-atomic. This means mixed atomic/non-atomic values in the
+  same data structure — handled by a per-value flag that determines
+  `add` vs `lock xadd` on retain/release. The flag overhead is
+  trivial (one bit per allocation header).
+
+  This matters because single-threaded code (most code) should
+  pay zero atomic overhead. The effect system gives the compiler
+  the information to make this decision per-function, for free.
+
+- **Lazy runtime activation.** No thread pool or scheduler spins
+  up unless the program's effect set includes Send, Spawn, or Par.
+  A program with only `-[IO]>` runs on the main thread like a C
+  program. The runtime exists but is dormant until concurrency
+  effects are used. Specified in KERNEL §20 (pending).
+
+- **Par effect for data parallelism.** Separate from actor
+  concurrency. Par.map requires a pure callback (`-> B`). The
+  compiler verifies safety via the effect signature, codegen
+  decides strategy (chunk size, thread count, work-stealing).
+  Distinct from Enum.concurrent_map which uses actors for
+  IO-bound work. Based on Rill's Par design.
+
 ## Open Questions
 
 - Should we support tail-resumptive handlers specially? (A handler

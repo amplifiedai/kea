@@ -27,6 +27,26 @@ is a parallelizable surface area.
 - Diagnostic infrastructure extends for new error categories
 - Span-based error reporting patterns transfer directly
 
+## Decisions
+
+- **Stdlib uses inherent methods, not HKT trait dispatch.**
+  `List.map`, `Option.map`, `Result.map` are inherent methods on
+  their respective types — direct calls, monomorphized once per
+  concrete callback type. The HKT traits (`Functor`, `Applicative`,
+  `Monad`) exist for library authors who need generic programming,
+  and each stdlib type implements them, but the stdlib doesn't
+  route its own internals through HKT dispatch.
+
+  This minimizes monomorphization pressure. Most application code
+  calls `list.map(f)` which resolves to the inherent method (§9.1
+  prefers inherent over trait methods). Only code that explicitly
+  quantifies over `F: Functor` pays the HKT abstraction cost.
+
+  Rill's approach: the evaluator routes through trait evidence
+  (HKT dispatch). Kea's compiled stdlib should NOT do this — use
+  inherent methods for concrete types, HKT traits as an opt-in
+  abstraction layer on top.
+
 ## Implementation Plan
 
 ### Step 1: Deriving (KERNEL §6.9)
