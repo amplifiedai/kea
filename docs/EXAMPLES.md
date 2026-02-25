@@ -51,31 +51,34 @@ JobQueue as Actor
   fn init(_ config: Int) -> JobQueue
     JobQueue.empty(config)
 
-  fn handle(_ self: JobQueue, _ msg: QueueMsg T) -[Send]> (JobQueue, T)
+  fn handle(_ self: JobQueue, _ msg: QueueMsg T, _ reply: T -> ()) -[Send]> JobQueue
     match msg
       Submit(job) ->
         if self.pending.length() + self.running.size() >= self.capacity
-          (self, Err(QueueFull))
+          reply(Err(QueueFull))
+          self
         else
           let id = TicketId(self.next_id)
-          let queue = self~{
+          reply(Ok(id))
+          self~{
             pending: self.pending ++ [job~{ id: Some(id) }],
             next_id: self.next_id + 1,
           }
-          (queue, Ok(id))
       Status(id) ->
         let status = if self.results.contains(id)
           then Done(result: self.results.get(id).unwrap())
           else if self.running.contains(id) then Running
           else if self.pending.any(|j| -> j.id == Some(id)) then Pending
           else Unknown
-        (self, status)
+        reply(status)
+        self
       Drain ->
         let all_results = self.results.values().to_list()
-        let queue = self~{ results: Map.empty() }
-        (queue, all_results)
+        reply(all_results)
+        self~{ results: Map.empty() }
       SetCapacity(max) ->
-        (self~{ capacity: max }, ())
+        reply(())
+        self~{ capacity: max }
 ```
 
 ### Where it works
@@ -96,44 +99,49 @@ small structs but imagine an actor with 8 fields — the update
 chain gets verbose. Not a syntax problem per se, but a usability
 one.
 
-**Backpressure is just "return Err".** This is honest — the caller
-decides what to do. But there's no built-in mechanism for "block
-until capacity is available" like Go channels or Erlang's
-`gen_server:call` with timeout. You'd need a `WaitForSlot` message
-that parks the caller via `ask`, and the actor resumes them later.
-But `ask` is synchronous from the caller's perspective — it
-suspends until the actor responds. So the actor would need to
-*delay* the response. That means the handler doesn't call `resume`
-immediately... but `handle` in the Actor trait must return
-`(Self, T)`. There's no way to say "I'll respond later."
+### Backpressure with deferred reply
 
-**This is a real design gap.** OTP solves this with `noreply` —
-the gen_server can hold onto the `From` pid and reply later. Kea's
-Actor trait forces an immediate response. For backpressure you'd
-need something like:
+The `reply` callback enables deferred reply — the actor stores
+the callback and calls it later when capacity is available. This
+maps to OTP's `noreply` + `gen_server:reply(From, Value)`:
 
 ```kea
--- Option A: return a future/promise type
-fn handle(_ self: Self, _ msg: Self.Msg T) -[Send]> (Self, Reply T)
+-- A pool actor that parks callers when no connections are available
+struct ConnPool
+  available: List Connection
+  waiting: List (Connection -> ())  -- parked reply callbacks
 
-enum Reply T
-  Immediate(value: T)
-  Deferred(id: DeferredId)  -- actor will call Reply.send(id, value) later
+ConnPool as Actor
+  type Msg = PoolMsg
+  type Config = PoolConfig
+
+  fn init(_ config: PoolConfig) -> ConnPool
+    ConnPool
+      available: config.connections
+      waiting: []
+
+  fn handle(_ self: ConnPool, _ msg: PoolMsg T, _ reply: T -> ()) -[Send]> ConnPool
+    match msg
+      Acquire ->
+        match self.available
+          conn :: rest ->
+            reply(conn)
+            self~{ available: rest }
+          [] ->
+            -- Don't reply yet — park the caller
+            self~{ waiting: self.waiting ++ [reply] }
+      Release(conn) ->
+        match self.waiting
+          next :: rest ->
+            next(conn)  -- unpark the oldest waiting caller
+            self~{ waiting: rest }
+          [] ->
+            self~{ available: self.available ++ [conn] }
 ```
 
-Or:
-
-```kea
--- Option B: separate tell-only and ask messages at the type level
-enum QueueCmd          -- tell-only, no response
-  Submit(job: Job, reply_to: Ref ResultMsg)
-
-enum QueueQuery T      -- ask messages
-  Status(id: TicketId) : QueueQuery JobStatus
-```
-
-Neither feels great. Option A adds ceremony. Option B splits the
-protocol into two GADTs which loses the single-protocol elegance.
+The caller writes `let conn = Send.ask(pool, Acquire)` and blocks
+until the pool calls `reply(conn)` — whether that's immediate or
+after another actor releases a connection.
 
 ---
 
@@ -421,6 +429,7 @@ enum Level
 -- A handler for Log that writes to stdout
 struct Logging
 
+  @with
   fn with_stdout(_ f: () -[Log, e]> T) -[IO, e]> T
     handle f()
       Log.log(level, msg) ->
@@ -430,6 +439,7 @@ struct Logging
 -- A handler for Tx using a real database connection
 struct Database
 
+  @with
   fn with_transaction(_ conn: Connection, _ f: () -[Tx, e]> T)
     -[IO, Fail DbError, e]> T
     IO.stdout("BEGIN")
@@ -454,6 +464,7 @@ struct Database
 -- A handler for RateLimit using a cache actor
 struct RateLimiter
 
+  @with
   fn with_rate_limit(_ cache: Ref CacheMsg, _ f: () -[RateLimit, e]> T)
     -[Send, Fail RateLimited, e]> T
     handle f()
@@ -467,6 +478,7 @@ struct RateLimiter
 -- A handler for Cache using a Map in State
 struct Caching
 
+  @with
   fn with_map_cache(_ f: () -[Cache K V, e]> T) -[State (Map K V), e]> T
     where K: Eq
     handle f()
@@ -675,28 +687,29 @@ struct Middlewares
       next(req)
 ```
 
-### Where it falls down
+### Where it works now (updated)
 
-**The `Middleware I O` type alias doesn't work.** Effect sets
-aren't just types you can name — they're *row variables*. Writing
-`Middleware e (IO, e)` means "the output effect set is `IO` union
-`e`". But `(IO, e)` isn't valid syntax for an effect set in a type
-alias — effect sets only appear between `-[` and `]>`. You'd need:
+**Effect aliases and effect-parameterised types (§5.14, §11.5)
+make this work.** The `Middleware I O` type alias is now valid:
 
 ```kea
--- This doesn't parse. Effect sets aren't first-class types.
 type Middleware I O = (Request -[I]> Response) -> (Request -[O]> Response)
 ```
 
-Effect rows live inside function arrows. They're not reifiable as
-standalone types. So the Middleware abstraction has to be written
-as a concrete function each time, or you accept that composition
-happens at the call site (nesting handlers).
+`I` and `O` have kind `Eff` — they're effect row parameters.
+This lets you name, store, and compose middleware:
 
-This is a fundamental limitation of the effect system as specified.
-Effect sets are structural, not nominal. You can't abstract over
-"the transformation an effect handler performs" without
-higher-order effect rows, which is research territory.
+```kea
+struct App E
+  handler: Request -[E]> Response
+  middleware: List (Request -[E]> Response -> Request -[E]> Response)
+```
+
+**What you still can't do:** Abstract over "the transformation
+a handler performs" — i.e., a function from effect set to effect
+set. That would require effect-set algebra (Level 4), which we've
+explicitly deferred. But the `Wrap E_in E_out T` pattern from
+§5.14 covers the practical cases.
 
 ---
 
@@ -714,23 +727,20 @@ higher-order effect rows, which is research territory.
 
 ### Syntax concerns
 - **`with` solves handler nesting** — KERNEL §10.6 flattens the
-  callback pyramid into sequential `with` statements
+  callback pyramid into sequential `with` statements. Requires
+  `@with` annotation on target functions.
 - **Single `Fail E` per effect set** means error types proliferate
   into sum types with `From` boilerplate (keep for v0, invest
   in `@derive(From)` tooling)
-- **Effect sets aren't first-class** — you can't abstract over
-  "what an effect handler does to the effect set" (accept for v0,
-  `with` makes it tolerable)
-- **Actor trait forces immediate response** — no deferred reply
-  pattern for backpressure (needs design work — pass reply
-  callback explicitly?)
 
-### Design questions surfaced
-1. ~~Should there be sugar for composing handlers?~~ Yes — `with`
-   (KERNEL §10.6)
-2. Should `Fail` support multiple error types without manual
-   unification? (No for v0 — invest in `@derive(From)` instead)
-3. Should the Actor trait support deferred responses? (Yes — needs
-   design. See §19.3 discussion.)
-4. Can effect sets be abstracted over in type aliases? (Not in v0.
-   Revisit if library authors hit this wall repeatedly.)
+### Resolved since initial writing
+1. ~~Effect sets aren't first-class~~ — KERNEL §5.14 adds
+   effect-parameterised types (`Server E`, `Wrap E_in E_out T`).
+   §11.5 adds effect row aliases (`type DbEffects = [IO, Fail DbError]`).
+2. ~~Actor trait forces immediate response~~ — KERNEL §19.3 now
+   uses `reply: T -> ()` callback, enabling deferred reply (see
+   ConnPool example above).
+3. ~~Should there be sugar for composing handlers?~~ Yes — `with`
+   (KERNEL §10.6) with `@with` opt-in annotation.
+4. ~~Can effect sets be abstracted over?~~ Yes — effect row
+   aliases and effect-parameterised types (§5.14, §11.5).
