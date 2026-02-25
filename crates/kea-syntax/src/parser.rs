@@ -3190,7 +3190,11 @@ impl Parser {
         };
         self.expect(&TokenKind::Arrow, "expected '->' after cond arm condition")?;
         self.skip_newlines();
-        let body = self.expression()?;
+        let body = if self.check(&TokenKind::LBrace) || self.check(&TokenKind::Indent) {
+            self.parse_block_expr("expected cond arm body block or expression")?
+        } else {
+            self.expression()?
+        };
         let span = start.merge(body.span);
         Some(CondArm {
             condition: Box::new(condition),
@@ -3342,7 +3346,11 @@ impl Parser {
         };
         self.expect(&TokenKind::Arrow, "expected '->' after pattern")?;
         self.skip_newlines();
-        let body = self.expression()?;
+        let body = if self.check(&TokenKind::LBrace) || self.check(&TokenKind::Indent) {
+            self.parse_block_expr("expected case arm body block or expression")?
+        } else {
+            self.expression()?
+        };
         Some(CaseArm {
             pattern,
             guard,
@@ -5873,6 +5881,21 @@ mod tests {
         }
     }
 
+    #[test]
+    fn parse_case_indented_arm_multiline_body() {
+        let expr = parse("case x\n  Some(v) ->\n    let y = v + 1\n    y\n  _ -> 0");
+        match &expr.node {
+            ExprKind::Case { arms, .. } => {
+                assert_eq!(arms.len(), 2);
+                match &arms[0].body.node {
+                    ExprKind::Block(exprs) => assert_eq!(exprs.len(), 2),
+                    other => panic!("expected first arm block body, got {other:?}"),
+                }
+            }
+            other => panic!("expected Case, got {other:?}"),
+        }
+    }
+
     // -- Lambda --
 
     #[test]
@@ -6853,6 +6876,21 @@ mod tests {
         match &expr.node {
             ExprKind::Cond { arms } => {
                 assert_eq!(arms.len(), 2);
+            }
+            other => panic!("expected Cond, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_cond_indented_arm_multiline_body() {
+        let expr = parse("cond\n  x > 0 ->\n    let y = x\n    y\n  _ -> 0");
+        match &expr.node {
+            ExprKind::Cond { arms } => {
+                assert_eq!(arms.len(), 2);
+                match &arms[0].body.node {
+                    ExprKind::Block(exprs) => assert_eq!(exprs.len(), 2),
+                    other => panic!("expected first arm block body, got {other:?}"),
+                }
             }
             other => panic!("expected Cond, got {other:?}"),
         }
