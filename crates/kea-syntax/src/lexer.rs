@@ -91,6 +91,9 @@ fn apply_layout(tokens: Vec<Token>, source: &str, file: FileId) -> (Vec<Token>, 
         if next.kind == TokenKind::Eof {
             continue;
         }
+        if previous_line_continues_expression(&tokens, idx) {
+            continue;
+        }
         if next.kind == TokenKind::Dot {
             // Kea method-chain continuation line:
             // expr
@@ -175,6 +178,60 @@ fn next_non_newline_token(tokens: &[Token], mut idx: usize) -> Option<&Token> {
         idx += 1;
     }
     None
+}
+
+fn previous_non_newline_token(tokens: &[Token], newline_idx: usize) -> Option<&Token> {
+    if newline_idx == 0 {
+        return None;
+    }
+    let mut idx = newline_idx - 1;
+    loop {
+        let tok = tokens.get(idx)?;
+        if tok.kind != TokenKind::Newline {
+            return Some(tok);
+        }
+        if idx == 0 {
+            return None;
+        }
+        idx -= 1;
+    }
+}
+
+fn previous_line_continues_expression(tokens: &[Token], newline_idx: usize) -> bool {
+    let Some(prev) = previous_non_newline_token(tokens, newline_idx) else {
+        return false;
+    };
+
+    matches!(
+        &prev.kind,
+        TokenKind::Plus
+            | TokenKind::PlusPlus
+            | TokenKind::Minus
+            | TokenKind::Star
+            | TokenKind::Slash
+            | TokenKind::Percent
+            | TokenKind::EqEq
+            | TokenKind::BangEq
+            | TokenKind::Lt
+            | TokenKind::LtEq
+            | TokenKind::Gt
+            | TokenKind::GtEq
+            | TokenKind::DiamondOp
+            | TokenKind::PipeGt
+            | TokenKind::DollarGt
+            | TokenKind::BangGt
+            | TokenKind::And
+            | TokenKind::Or
+            | TokenKind::In
+            | TokenKind::DotDot
+            | TokenKind::DotDotEq
+            | TokenKind::Eq
+            | TokenKind::LeftArrow
+            | TokenKind::Comma
+            | TokenKind::Colon
+            | TokenKind::Dot
+            | TokenKind::Pipe
+    )
 }
 
 fn line_start_offset(source: &str, offset: usize) -> usize {

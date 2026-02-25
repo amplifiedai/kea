@@ -79,6 +79,12 @@ struct Parser {
     allow_pipe_placeholder: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BlockDelimiter {
+    Brace,
+    Indent,
+}
+
 impl Parser {
     fn new(tokens: Vec<Token>, file: FileId) -> Self {
         Self {
@@ -605,6 +611,8 @@ impl Parser {
 
         self.expect(&TokenKind::Eq, "expected '=' after type name")?;
         self.skip_newlines();
+        let _ = self.match_token(&TokenKind::Indent);
+        self.skip_newlines();
 
         // Optional leading pipe: type Color = | Red | Green | Blue
         self.match_token(&TokenKind::Pipe);
@@ -706,6 +714,11 @@ impl Parser {
                 where_clause,
             });
             self.skip_newlines();
+            let _ = self.match_token(&TokenKind::Indent);
+            self.skip_newlines();
+            if self.match_token(&TokenKind::Dedent) {
+                break;
+            }
             if !self.match_token(&TokenKind::Pipe) {
                 break;
             }
@@ -1022,9 +1035,8 @@ impl Parser {
         self.skip_newlines();
 
         // Optional default body
-        let default_body = if self.check(&TokenKind::LBrace) {
-            self.advance();
-            Some(self.block_body()?)
+        let default_body = if self.check(&TokenKind::LBrace) || self.check(&TokenKind::Indent) {
+            Some(self.parse_block_expr("expected trait method default body block")?)
         } else {
             None
         };
@@ -1288,9 +1300,7 @@ impl Parser {
         let return_annotation = Some(self.type_annotation()?);
         let where_clause = self.where_clause()?;
 
-        self.skip_newlines();
-        self.expect(&TokenKind::LBrace, "expected '{' for function body")?;
-        let body = self.block_body()?;
+        let body = self.parse_block_expr("expected function body block")?;
         let (testing, testing_tags) = if self.check(&TokenKind::Testing) {
             let (tags, block) = self.testing_block()?;
             (Some(Box::new(block)), tags)
@@ -1338,9 +1348,7 @@ impl Parser {
         let return_annotation = Some(self.type_annotation()?);
         let where_clause = self.where_clause()?;
 
-        self.skip_newlines();
-        self.expect(&TokenKind::LBrace, "expected '{' for expr body")?;
-        let body = self.block_body()?;
+        let body = self.parse_block_expr("expected expr body block")?;
         let (testing, testing_tags) = if self.check(&TokenKind::Testing) {
             let (tags, block) = self.testing_block()?;
             (Some(Box::new(block)), tags)
@@ -1370,11 +1378,8 @@ impl Parser {
 
     fn testing_block(&mut self) -> Option<(Vec<Spanned<String>>, Expr)> {
         self.expect(&TokenKind::Testing, "expected `testing`")?;
-        self.skip_newlines();
         let tags = self.parse_optional_tags_clause()?;
-        self.skip_newlines();
-        self.expect(&TokenKind::LBrace, "expected '{' after `testing`")?;
-        let body = self.block_body()?;
+        let body = self.parse_block_expr("expected testing block body")?;
         Some((tags, body))
     }
 
@@ -1426,11 +1431,8 @@ impl Parser {
             }
         };
 
-        self.skip_newlines();
         let tags = self.parse_optional_tags_clause()?;
-        self.skip_newlines();
-        self.expect(&TokenKind::LBrace, "expected '{' for test body")?;
-        let body = self.block_body()?;
+        let body = self.parse_block_expr("expected test body block")?;
         let end = self.current_span();
 
         Some(Spanned::new(
@@ -2166,7 +2168,7 @@ impl Parser {
         // Block: { exprs }
         if self.check(&TokenKind::LBrace) {
             self.advance();
-            let body = self.block_body()?;
+            let body = self.block_body(BlockDelimiter::Brace)?;
             return Some(body);
         }
 
@@ -3081,9 +3083,7 @@ impl Parser {
         self.advance(); // consume 'if'
 
         let condition = self.expression()?;
-        self.skip_newlines();
-        self.expect(&TokenKind::LBrace, "expected '{' after if condition")?;
-        let then_branch = self.block_body()?;
+        let then_branch = self.parse_block_expr("expected block after if condition")?;
 
         self.skip_newlines();
         if !self.match_token(&TokenKind::Else) {
@@ -3095,8 +3095,7 @@ impl Parser {
             // else if
             Box::new(self.if_expr()?)
         } else {
-            self.expect(&TokenKind::LBrace, "expected '{' after else")?;
-            Box::new(self.block_body()?)
+            Box::new(self.parse_block_expr("expected block after else")?)
         };
 
         let end = else_branch.span;
@@ -3120,21 +3119,25 @@ impl Parser {
         self.restrict_struct_literals = true;
         let scrutinee = self.expression()?;
         self.restrict_struct_literals = prev;
-        self.skip_newlines();
-        self.expect(&TokenKind::LBrace, "expected '{' after case scrutinee")?;
+        let delimiter = self.expect_block_start("expected block after case scrutinee")?;
 
         let mut arms = Vec::new();
         self.skip_newlines();
-        while !self.check(&TokenKind::RBrace) && !self.at_eof() {
+        while !self.at_block_end(delimiter) && !self.at_eof() {
             arms.push(self.case_arm()?);
             self.skip_newlines();
-            if !self.match_token(&TokenKind::Comma) {
-                break;
+            if delimiter == BlockDelimiter::Brace {
+                if !self.match_token(&TokenKind::Comma) {
+                    break;
+                }
+                self.skip_newlines();
+            } else {
+                let _ = self.match_token(&TokenKind::Comma);
+                self.skip_newlines();
             }
-            self.skip_newlines();
         }
         let end = self.current_span();
-        self.expect(&TokenKind::RBrace, "expected '}' to close case")?;
+        self.expect_block_end(delimiter, "expected end of case block")?;
 
         Some(Spanned::new(
             ExprKind::Case {
@@ -3148,21 +3151,25 @@ impl Parser {
     fn cond_expr(&mut self) -> Option<Expr> {
         let start = self.current_span();
         self.advance(); // consume 'cond'
-        self.skip_newlines();
-        self.expect(&TokenKind::LBrace, "expected '{' after cond")?;
+        let delimiter = self.expect_block_start("expected block after cond")?;
 
         let mut arms = Vec::new();
         self.skip_newlines();
-        while !self.check(&TokenKind::RBrace) && !self.at_eof() {
+        while !self.at_block_end(delimiter) && !self.at_eof() {
             arms.push(self.cond_arm()?);
             self.skip_newlines();
-            if !self.match_token(&TokenKind::Comma) {
-                break;
+            if delimiter == BlockDelimiter::Brace {
+                if !self.match_token(&TokenKind::Comma) {
+                    break;
+                }
+                self.skip_newlines();
+            } else {
+                let _ = self.match_token(&TokenKind::Comma);
+                self.skip_newlines();
             }
-            self.skip_newlines();
         }
         let end = self.current_span();
-        self.expect(&TokenKind::RBrace, "expected '}' to close cond")?;
+        self.expect_block_end(delimiter, "expected end of cond block")?;
 
         Some(Spanned::new(ExprKind::Cond { arms }, start.merge(end)))
     }
@@ -3216,7 +3223,7 @@ impl Parser {
             self.skip_newlines();
 
             // Allow trailing comma before the body block.
-            if self.check(&TokenKind::LBrace) {
+            if self.check(&TokenKind::LBrace) || self.check(&TokenKind::Indent) {
                 break;
             }
 
@@ -3245,12 +3252,7 @@ impl Parser {
             return None;
         }
 
-        self.skip_newlines();
-        self.expect(
-            &TokenKind::LBrace,
-            "expected '{' before for-comprehension body",
-        )?;
-        let body = self.block_body()?;
+        let body = self.parse_block_expr("expected block before for-comprehension body")?;
         let mut end = body.span;
 
         self.skip_newlines();
@@ -3349,21 +3351,25 @@ impl Parser {
     fn col_cond_expr(&mut self) -> Option<ColExpr> {
         let start = self.current_span();
         self.advance(); // consume 'cond'
-        self.skip_newlines();
-        self.expect(&TokenKind::LBrace, "expected '{' after cond")?;
+        let delimiter = self.expect_block_start("expected block after cond")?;
 
         let mut arms = Vec::new();
         self.skip_newlines();
-        while !self.check(&TokenKind::RBrace) && !self.at_eof() {
+        while !self.at_block_end(delimiter) && !self.at_eof() {
             arms.push(self.col_cond_arm()?);
             self.skip_newlines();
-            if !self.match_token(&TokenKind::Comma) {
-                break;
+            if delimiter == BlockDelimiter::Brace {
+                if !self.match_token(&TokenKind::Comma) {
+                    break;
+                }
+                self.skip_newlines();
+            } else {
+                let _ = self.match_token(&TokenKind::Comma);
+                self.skip_newlines();
             }
-            self.skip_newlines();
         }
         let end = self.current_span();
-        self.expect(&TokenKind::RBrace, "expected '}' to close cond")?;
+        self.expect_block_end(delimiter, "expected end of cond block")?;
 
         Some(Spanned::new(ColExprKind::Cond { arms }, start.merge(end)))
     }
@@ -3845,9 +3851,8 @@ impl Parser {
 
     /// Parse a lambda body: either a block `{ ... }` or a single expression.
     fn lambda_body(&mut self) -> Option<Expr> {
-        if self.check(&TokenKind::LBrace) {
-            self.advance();
-            self.block_body()
+        if self.check(&TokenKind::LBrace) || self.check(&TokenKind::Indent) {
+            self.parse_block_expr("expected lambda body block")
         } else {
             self.expression()
         }
@@ -4056,8 +4061,7 @@ impl Parser {
     fn stream_block_expr(&mut self) -> Option<Expr> {
         let start = self.current_span();
         self.advance(); // consume `stream`
-        self.expect(&TokenKind::LBrace, "expected `{` after `stream`")?;
-        let body = self.block_body()?;
+        let body = self.parse_block_expr("expected block after `stream`")?;
         let mut end = body.span;
         let mut buffer_size = 32usize;
 
@@ -4333,7 +4337,11 @@ impl Parser {
         let mut args = Vec::new();
         loop {
             self.skip_newlines();
-            if self.check_newline() || self.check(&TokenKind::RBrace) || self.at_eof() {
+            if self.check_newline()
+                || self.check(&TokenKind::RBrace)
+                || self.check(&TokenKind::Dedent)
+                || self.at_eof()
+            {
                 break;
             }
             args.push(Argument {
@@ -4487,20 +4495,56 @@ impl Parser {
         Some(exprs)
     }
 
-    fn block_body(&mut self) -> Option<Expr> {
+    fn expect_block_start(&mut self, expected_msg: &str) -> Option<BlockDelimiter> {
+        self.skip_newlines();
+        if self.match_token(&TokenKind::LBrace) {
+            Some(BlockDelimiter::Brace)
+        } else if self.match_token(&TokenKind::Indent) {
+            Some(BlockDelimiter::Indent)
+        } else {
+            self.error_at_current(expected_msg);
+            None
+        }
+    }
+
+    fn at_block_end(&self, delimiter: BlockDelimiter) -> bool {
+        match delimiter {
+            BlockDelimiter::Brace => self.check(&TokenKind::RBrace),
+            BlockDelimiter::Indent => self.check(&TokenKind::Dedent),
+        }
+    }
+
+    fn expect_block_end(&mut self, delimiter: BlockDelimiter, expected_msg: &str) -> Option<()> {
+        match delimiter {
+            BlockDelimiter::Brace => {
+                self.expect(&TokenKind::RBrace, expected_msg)?;
+            }
+            BlockDelimiter::Indent => {
+                self.expect(&TokenKind::Dedent, expected_msg)?;
+            }
+        }
+        Some(())
+    }
+
+    fn parse_block_expr(&mut self, expected_msg: &str) -> Option<Expr> {
+        let delimiter = self.expect_block_start(expected_msg)?;
+        self.block_body(delimiter)
+    }
+
+    fn block_body(&mut self, delimiter: BlockDelimiter) -> Option<Expr> {
         let start = self.current_span();
         let mut exprs = Vec::new();
         self.skip_newlines();
 
-        while !self.check(&TokenKind::RBrace) && !self.at_eof() {
+        while !self.at_block_end(delimiter) && !self.at_eof() {
             let expr = self.expression()?;
             exprs.push(expr);
-            // Expect newline or closing brace
+            // Expressions inside blocks are newline-delimited.
             self.skip_newlines();
         }
 
         let end = self.current_span();
-        self.expect(&TokenKind::RBrace, "expected '}' to close block")?;
+        self.expect_block_end(delimiter, "expected end of block")?;
 
         let span = start.merge(end);
         match exprs.len() {
@@ -5309,10 +5353,10 @@ fn parse_block_parts(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lexer::lex;
+    use crate::lexer::{lex, lex_layout};
 
     fn parse(source: &str) -> Expr {
-        let tokens = lex(source, FileId(0)).expect("lex failed").0;
+        let tokens = lex_layout(source, FileId(0)).expect("lex failed").0;
         parse_expr(tokens, FileId(0)).expect("parse failed")
     }
 
@@ -5325,7 +5369,7 @@ mod tests {
     }
 
     fn parse_err(source: &str) -> Vec<Diagnostic> {
-        let tokens = lex(source, FileId(0)).expect("lex failed").0;
+        let tokens = lex_layout(source, FileId(0)).expect("lex failed").0;
         parse_expr(tokens, FileId(0)).unwrap_err()
     }
 
@@ -5757,6 +5801,26 @@ mod tests {
     }
 
     #[test]
+    fn parse_if_else_indented() {
+        let expr = parse("if true\n  1\nelse\n  2");
+        match &expr.node {
+            ExprKind::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                assert_eq!(condition.node, ExprKind::Lit(Lit::Bool(true)));
+                assert_eq!(then_branch.node, ExprKind::Lit(Lit::Int(1)));
+                assert!(matches!(
+                    else_branch.as_deref().map(|e| &e.node),
+                    Some(ExprKind::Lit(Lit::Int(2)))
+                ));
+            }
+            other => panic!("expected If, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn parse_if_no_else() {
         let errors = parse_err("if x { 42 }");
         assert!(!errors.is_empty());
@@ -5779,6 +5843,17 @@ mod tests {
                     "expected `when` guard on first arm"
                 );
                 assert!(arms[1].guard.is_none(), "expected no guard on wildcard arm");
+            }
+            other => panic!("expected Case, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_case_indented_arms() {
+        let expr = parse("case x\n  Some(v) -> v\n  _ -> 0");
+        match &expr.node {
+            ExprKind::Case { arms, .. } => {
+                assert_eq!(arms.len(), 2);
             }
             other => panic!("expected Case, got {other:?}"),
         }
@@ -5835,6 +5910,17 @@ mod tests {
                 }
             }
             _ => panic!("expected Lambda"),
+        }
+    }
+
+    #[test]
+    fn parse_lambda_with_indented_block_body() {
+        let expr = parse("x ->\n  let y = x + 1\n  y");
+        match &expr.node {
+            ExprKind::Lambda { body, .. } => {
+                assert!(matches!(body.node, ExprKind::Block(_)));
+            }
+            other => panic!("expected Lambda, got {other:?}"),
         }
     }
 
@@ -6011,12 +6097,12 @@ mod tests {
     // -- Record declarations --
 
     fn parse_mod(source: &str) -> Module {
-        let tokens = lex(source, FileId(0)).unwrap().0;
+        let tokens = lex_layout(source, FileId(0)).unwrap().0;
         parse_module(tokens, FileId(0)).unwrap()
     }
 
     fn parse_mod_err(source: &str) -> Vec<Diagnostic> {
-        let tokens = lex(source, FileId(0)).unwrap().0;
+        let tokens = lex_layout(source, FileId(0)).unwrap().0;
         parse_module(tokens, FileId(0)).unwrap_err()
     }
 
@@ -6269,7 +6355,7 @@ mod tests {
     #[test]
     fn parse_fn_decl() {
         let source = "fn add(x, y) -> Int { x + y }";
-        let tokens = lex(source, FileId(0)).unwrap().0;
+        let tokens = lex_layout(source, FileId(0)).unwrap().0;
         let module = parse_module(tokens, FileId(0)).unwrap();
         assert_eq!(module.declarations.len(), 1);
         match &module.declarations[0].node {
@@ -6281,6 +6367,19 @@ mod tests {
                 assert!(f.testing.is_none());
             }
             _ => panic!("expected Function"),
+        }
+    }
+
+    #[test]
+    fn parse_fn_decl_with_indented_body() {
+        let module = parse_mod("fn add(x, y) -> Int\n  x + y");
+        match &module.declarations[0].node {
+            DeclKind::Function(f) => {
+                assert_eq!(f.name.node, "add");
+                assert_eq!(f.params.len(), 2);
+                assert!(matches!(f.body.node, ExprKind::BinaryOp { .. }));
+            }
+            other => panic!("expected Function, got {other:?}"),
         }
     }
 
@@ -6720,6 +6819,17 @@ mod tests {
                 assert!(matches!(arms[1].body.node, ExprKind::Lit(Lit::String(_))));
             }
             _ => panic!("expected Cond"),
+        }
+    }
+
+    #[test]
+    fn parse_cond_simple_indented() {
+        let expr = parse("cond\n  1 > 2 -> \"no\"\n  _ -> \"yes\"");
+        match &expr.node {
+            ExprKind::Cond { arms } => {
+                assert_eq!(arms.len(), 2);
+            }
+            other => panic!("expected Cond, got {other:?}"),
         }
     }
 
@@ -7383,6 +7493,18 @@ mod tests {
     }
 
     #[test]
+    fn parse_expr_basic_indented_body() {
+        let m = parse_mod("expr double(x: Int) -> Int\n  x + x");
+        match &m.declarations[0].node {
+            DeclKind::ExprFn(ed) => {
+                assert_eq!(ed.name.node, "double");
+                assert!(matches!(ed.body.node, ExprKind::BinaryOp { .. }));
+            }
+            other => panic!("expected ExprFn, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn parse_expr_with_postfix_testing_block() {
         let m =
             parse_mod("expr double(x: Int) -> Int { x + x } testing { assert_eq double(0), 0 }");
@@ -7398,6 +7520,19 @@ mod tests {
     #[test]
     fn parse_test_decl_with_tags() {
         let m = parse_mod("test \"basic\" tags [:fast, :io] { assert true }");
+        match &m.declarations[0].node {
+            DeclKind::Test(td) => {
+                assert_eq!(td.tags.len(), 2);
+                assert_eq!(td.tags[0].node, "fast");
+                assert_eq!(td.tags[1].node, "io");
+            }
+            other => panic!("expected Test, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_test_decl_with_tags_indented_body() {
+        let m = parse_mod("test \"basic\" tags [:fast, :io]\n  assert true");
         match &m.declarations[0].node {
             DeclKind::Test(td) => {
                 assert_eq!(td.tags.len(), 2);
@@ -9133,6 +9268,18 @@ mod tests {
                     }
                     other => panic!("expected generator clause, got {other:?}"),
                 }
+                assert!(f.into_type.is_none());
+            }
+            other => panic!("expected For expression, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_for_simple_generator_indented_body() {
+        let expr = parse("for x in [1, 2, 3]\n  x + 1");
+        match &expr.node {
+            ExprKind::For(f) => {
+                assert_eq!(f.clauses.len(), 1);
                 assert!(f.into_type.is_none());
             }
             other => panic!("expected For expression, got {other:?}"),
