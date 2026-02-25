@@ -987,6 +987,101 @@ When `E` is performed: the handler body runs. Whether to
 When `E` is NOT performed: the `then` clause transforms the
 result. If no `then` clause, the result passes through unchanged.
 
+### 5.15 Effect Compilation Guarantees
+
+Effects are a type-system feature first and a runtime feature
+second. The compiler classifies effects by compilation strategy
+to ensure effectful code is competitive with hand-written
+imperative code.
+
+**Capability effects** — compile to direct calls with no
+handler overhead:
+
+| Effect  | Compilation                                  |
+|---------|----------------------------------------------|
+| `IO`    | Direct runtime calls (syscalls, libc)        |
+| `Send`  | Direct actor runtime calls                   |
+| `Spawn` | Direct actor runtime calls                   |
+
+These effects exist for type-level tracking. In production,
+their handler is the runtime — there is no continuation
+capture, no evidence lookup, no closure allocation. An
+`-[IO]>` function compiles to the same code as an equivalent
+function with direct syscalls in C or Go.
+
+In tests, these effects can be handled by mock handlers
+(§5.6), which use the general handler machinery. The
+performance cost is only paid when you opt into it.
+
+**Zero-resumption effects** — compile to early return:
+
+| Effect    | Compilation                                |
+|-----------|--------------------------------------------|
+| `Fail E`  | Result-passing, branch-on-error            |
+
+`Fail.fail(e)` compiles to returning an error value.
+`?` compiles to a conditional branch. `catch` compiles to
+a match on the result. No continuation capture — the handler
+never resumes, so there is no continuation to capture. This
+is equivalent to Rust's `Result` + `?` at the machine level.
+
+**Tail-resumptive handlers** — compile to direct function
+calls:
+
+A handler clause where `resume` is the last expression
+(tail position) does not need continuation capture. The
+handler body executes, then control returns to the operation
+call site. This covers the vast majority of handlers in
+practice:
+
+```kea
+-- Tail-resumptive: resume is last expression
+Log.log(level, msg) ->
+  IO.stdout("[{level}] {msg}")
+  resume ()              -- tail position → direct call
+
+State.get() ->
+  resume state.freeze()  -- tail position → direct call
+```
+
+The compiler classifies each handler clause at compile time.
+Tail-resumptive clauses compile as direct function calls with
+no stack manipulation. Only non-tail-resumptive handlers
+(where `resume` appears in non-tail position) use the full
+handler machinery.
+
+**General handlers** — full handler compilation:
+
+Non-tail-resumptive handlers require continuation capture.
+This is the most expensive compilation strategy and is
+reserved for handlers that transform the computation around
+the resume point:
+
+```kea
+-- Non-tail-resumptive: resume in non-tail position
+Choose.choose(options) ->
+  let picked = resume(options.first())
+  transform(picked)    -- code after resume
+```
+
+This case is rare in practice. Most real-world handlers are
+tail-resumptive (log-and-resume, read-state-and-resume,
+write-state-and-resume).
+
+**Monomorphization.** Generic functions are monomorphized by
+default (like Rust). A function `fn map(list: List A, f: A -> B) -> List B`
+generates specialised code for each concrete `A` and `B`.
+Trait method calls on known types are direct calls, not
+dynamic dispatch. Dynamic dispatch (trait objects) is opt-in
+for cases that require runtime polymorphism.
+
+**Performance target.** Effectful code using capability
+effects and tail-resumptive handlers should have no
+measurable overhead compared to equivalent code without
+effects. The effect system is a zero-cost abstraction for
+the common case — you pay only for the handler machinery
+you actually use.
+
 ---
 
 ## 6. Traits
