@@ -1,0 +1,93 @@
+# Kea Workboard
+
+Single source of truth for project work status. Read this first to know what's happening.
+
+See `AGENTS.md` > "Briefs and Workboard" for how to manage this file.
+
+---
+
+## Active
+
+Work in progress right now. Each entry should have a `## Progress` section in its brief.
+
+*(nothing active — next up: 0a-lexer-parser)*
+
+---
+
+## Ready
+
+Designed and approved. Ready to pick up. Ordered by execution sequence per ROADMAP.md phases.
+
+### Phase 0a: Lexer + Parser (week 1)
+
+1. **[Lexer and indentation-sensitive parser](todo/0a-lexer-parser.md)** — Indentation-sensitive lexer (INDENT/DEDENT), recursive descent + Pratt parser, kea-ast, kea-syntax, kea-diag crates. Cannibalises rill-syntax, rill-ast, rill-diag.
+
+### Phase 0b: Type System Core (weeks 1-3)
+
+2. **[Type system core](todo/0b-type-system-core.md)** — HM inference, Rémy row unification (records + effects), trait system, UMS resolution, effect annotations. kea-types, kea-infer crates. Cannibalises rill-types, rill-infer.
+
+### Phase 0c: Effect Handlers (weeks 3-4)
+
+3. **[Effect handlers](todo/0c-effect-handlers.md)** — `effect` declarations, `handle`/`resume` expressions, handler typing, at-most-once resumption, `Fail` sugar (`?`, `fail`, `catch`). Genuinely new — no rill code to cannibalise.
+
+### Phase 0d: Code Generation — Pure Subset (weeks 4-6)
+
+4. **[Codegen — pure subset](todo/0d-codegen-pure.md)** — Cranelift backend (JIT + AOT), struct/enum layout, pattern matching compilation, refcounting, CoW, basic stdlib, CLI. kea-hir, kea-mir, kea-codegen, kea crates. Cannibalises rill-codegen, rill-mir.
+
+### Phase 0e-0g: Not yet briefed
+
+- **0e: Runtime effects** (weeks 6-8) — Handler compilation strategy (evidence passing vs CPS vs segmented stacks), IO runtime, arena allocation. Highest risk.
+- **0f: Memory model** (weeks 8-9) — Unique T, borrow convention, reuse analysis, unsafe/Ptr.
+- **0g: Advanced type features** (weeks 9-11) — GADTs, HKTs, associated types, supertraits, deriving, full stdlib.
+
+### Phase 1-3: Not yet briefed
+
+See ROADMAP.md for details. Briefs will be written as earlier phases complete.
+
+---
+
+## Design
+
+Needs more design work before briefing.
+
+- **Supervision trait API** — How exactly does the `Supervisor` trait work? KERNEL §19.5 sketches it loosely. Needs concrete trait definition for kea-actors. Depends on Actor trait (§19.3) being implemented.
+- **Arena allocation semantics** — `Alloc` effect, deep-copy at boundary, interaction with Unique. KERNEL §12.7 specifies behavior; implementation strategy is the open question.
+- **Lean formalization** — Transfer rill's formal methods to Kea. Priority order in ROADMAP.md "Formal Methods Strategy." Depends on type system being stable enough to formalize.
+
+---
+
+## Done (recent)
+
+Completed briefs. Kept for reference and design rationale.
+
+| Brief | Summary |
+|-------|---------|
+| [bootstrap-infra](done/bootstrap-infra.md) | Cargo workspace, mise tasks, scripts, BRIEFS system, docs, .claude setup. Cannibalised from rill. |
+
+---
+
+## Dependency Graph
+
+```
+0a: lexer + parser (kea-ast, kea-syntax, kea-diag)
+ │
+ ├── 0b: type system core (kea-types, kea-infer)
+ │    │
+ │    ├── 0c: effect handlers (extends kea-infer)
+ │    │    │
+ │    │    └── 0d: codegen pure (kea-hir, kea-mir, kea-codegen, kea)
+ │    │         │
+ │    │         ├── 0e: runtime effects
+ │    │         │    │
+ │    │         │    └── 0f: memory model (Unique, borrow, unsafe)
+ │    │         │         │
+ │    │         │         └── 0g: advanced types (GADTs, HKTs, stdlib)
+ │    │         │              │
+ │    │         │              └── Phase 1: self-hosting
+ │    │         │
+ │    │         └── (0d unblocks practical programs even without runtime effects)
+ │    │
+ │    └── (0b unblocks 0c and partially unblocks 0d for pure subset)
+ │
+ └── (0a is the critical path — everything starts here)
+```
