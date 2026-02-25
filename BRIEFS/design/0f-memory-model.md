@@ -85,6 +85,13 @@ This is a MIR optimisation pass. It doesn't require Unique —
 it works on regular refcounted values when the analysis can
 prove single ownership. Perceus (Koka) and Lean 4 both do this.
 
+**Critical design constraint: reuse analysis is a PURE OPTIMISATION.**
+Programs must be correct without it. Reuse makes them faster, not
+different. If we make reuse analysis load-bearing (correctness
+depends on it firing), we end up with Rust-like "fighting the
+borrow checker" complexity. Keep it as a transparent optimisation
+that the programmer never needs to think about.
+
 ### 4. Unsafe and Ptr T (KERNEL §17.2, §17.3)
 
 - `@unsafe` functions can use raw pointer operations

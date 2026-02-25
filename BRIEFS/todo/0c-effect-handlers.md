@@ -220,3 +220,12 @@ the runtime-handled effect. `Fail` has sugar.
   handler or an error? (Proposal: it re-performs the effect,
   which must be handled by an outer handler. The current handler
   does not handle its own body's effects.)
+- Must a handler cover all operations of the handled effect?
+  (Proposal: yes — a handler for `Log` must handle `Log.log`.
+  Partial handling (handle some operations, pass others through)
+  is not supported in v0. If an effect has multiple operations,
+  you handle all of them or none. This keeps the typing rule
+  simple: handling effect E removes E entirely. Partial handling
+  would need a way to express "E minus operation X" in the type,
+  which is possible with row polymorphism but adds complexity.
+  Defer to post-v0 if there's demand.)

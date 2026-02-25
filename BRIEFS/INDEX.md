@@ -10,7 +10,7 @@ See `AGENTS.md` > "Briefs and Workboard" for how to manage this file.
 
 Work in progress right now. Each entry should have a `## Progress` section in its brief.
 
-*(nothing active — next up: 0a-lexer-parser)*
+1. **[Lexer and indentation-sensitive parser](in-progress/0a-lexer-parser.md)** — Indentation-sensitive lexer (INDENT/DEDENT), recursive descent + Pratt parser, kea-ast, kea-syntax, kea-diag crates. Cannibalises rill-syntax, rill-ast, rill-diag.
 
 ---
 
@@ -20,19 +20,20 @@ Designed and approved. Ready to pick up. Ordered by execution sequence per ROADM
 
 ### Phase 0a: Lexer + Parser (week 1)
 
-1. **[Lexer and indentation-sensitive parser](todo/0a-lexer-parser.md)** — Indentation-sensitive lexer (INDENT/DEDENT), recursive descent + Pratt parser, kea-ast, kea-syntax, kea-diag crates. Cannibalises rill-syntax, rill-ast, rill-diag.
+*(in progress)*
 
 ### Phase 0b: Type System Core (weeks 1-3)
 
 2. **[Type system core](todo/0b-type-system-core.md)** — HM inference, Rémy row unification (records + effects), trait system, UMS resolution, effect annotations. kea-types, kea-infer crates. Cannibalises rill-types, rill-infer.
+3. **[MCP server](todo/0b-mcp-server.md)** — Compiler-as-MCP-server for agent feedback loop. Lands immediately after type checker works. Cannibalises rill-mcp (371 LOC).
 
 ### Phase 0c: Effect Handlers (weeks 3-4)
 
-3. **[Effect handlers](todo/0c-effect-handlers.md)** — `effect` declarations, `handle`/`resume` expressions, handler typing, at-most-once resumption, `Fail` sugar (`?`, `fail`, `catch`). Genuinely new — no rill code to cannibalise.
+4. **[Effect handlers](todo/0c-effect-handlers.md)** — `effect` declarations, `handle`/`resume` expressions, handler typing, at-most-once resumption, `Fail` sugar (`?`, `fail`, `catch`). Genuinely new — no rill code to cannibalise.
 
 ### Phase 0d: Code Generation — Pure Subset (weeks 4-6)
 
-4. **[Codegen — pure subset](todo/0d-codegen-pure.md)** — Cranelift backend (JIT + AOT), struct/enum layout, pattern matching compilation, refcounting, CoW, basic stdlib, CLI. kea-hir, kea-mir, kea-codegen, kea crates. Cannibalises rill-codegen, rill-mir.
+5. **[Codegen — pure subset](todo/0d-codegen-pure.md)** — Cranelift backend (JIT + AOT), struct/enum layout, pattern matching compilation, refcounting, CoW, basic stdlib, CLI. kea-hir, kea-mir, kea-codegen, kea crates. Cannibalises rill-codegen, rill-mir.
 
 ### Phase 1-3: Not yet briefed
 
@@ -46,9 +47,9 @@ Needs more design work. Briefs exist but aren't implementation-ready.
 
 ### Phase 0e-0g
 
-5. **[Runtime effects](design/0e-runtime-effects.md)** (weeks 6-8) — Handler compilation strategy (evidence passing vs CPS vs segmented stacks), IO runtime, Fail optimised path, arena allocation. Highest risk phase.
-6. **[Memory model](design/0f-memory-model.md)** (weeks 8-9) — Unique T, borrow convention, reuse analysis, unsafe/Ptr, @unboxed, fixed-width integers.
-7. **[Advanced type features](design/0g-advanced-types.md)** (weeks 9-11) — GADTs, HKTs, associated types, supertraits, deriving, full stdlib, error message investment.
+6. **[Runtime effects](design/0e-runtime-effects.md)** (weeks 6-8) — Handler compilation strategy (evidence passing vs CPS vs segmented stacks), tail-resumptive optimisation, IO runtime, Fail optimised path, arena allocation. Highest risk phase.
+7. **[Memory model](design/0f-memory-model.md)** (weeks 8-9) — Unique T, borrow convention, reuse analysis (pure optimisation, not load-bearing), unsafe/Ptr, @unboxed, fixed-width integers.
+8. **[Advanced type features](design/0g-advanced-types.md)** (weeks 9-11) — GADTs, HKTs, associated types, supertraits, deriving, full stdlib, error message investment.
 
 ### Other design work
 

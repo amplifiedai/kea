@@ -1,6 +1,6 @@
 # Brief: Lexer and Indentation-Sensitive Parser
 
-**Status:** ready
+**Status:** active
 **Priority:** v1-critical
 **Depends on:** bootstrap-infra
 **Blocks:** 0b-type-system-core, 0c-effect-handlers, everything downstream
@@ -55,8 +55,10 @@ This is the first crate with real code. Everything depends on it.
    Key decisions:
    - Tabs vs spaces: **spaces only** (tabs are a compile error).
      Mixing is too error-prone.
-   - Indent width: any consistent width within a block. The first
-     indented line sets the block's indent width.
+   - Indent width: **2 spaces, globally mandated.** The KERNEL
+     examples all use 2. Mandating a single width eliminates an
+     entire class of confusing edge cases (Python allows "any
+     consistent width" and it's a constant source of pain).
    - Continuation lines: `.method()` on a new line at deeper
      indent is a continuation, not a new statement. The parser
      handles this (if the line starts with `.`, it's a method
@@ -169,3 +171,7 @@ and other crates depend on it.)
 - How do we handle blank lines inside indented blocks? (Proposal:
   blank lines don't change indentation state. A blank line followed
   by a line at the original indent level emits DEDENT.)
+
+## Progress
+- 2026-02-25: Bootstrapped `kea-ast`, `kea-diag`, and `kea-syntax` from Rill; added `lex_layout` with INDENT/DEDENT emission, `--|` doc comments, and layout lexer tests. (commit `6456af5`)
+- **Next:** Parser layout migration for declaration/expr blocks (accept `INDENT/DEDENT` alongside `{ ... }`).

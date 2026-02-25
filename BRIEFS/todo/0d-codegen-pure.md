@@ -5,6 +5,14 @@
 **Depends on:** 0b-type-system-core, 0c-effect-handlers (at least Fail sugar)
 **Blocks:** 0e-runtime-effects
 
+**Note on 0c dependency:** This brief needs Fail sugar (`?`, `fail`,
+`catch`) to work at the type level, but does NOT need the general
+handler compilation machinery from 0e. `Fail` is special: because
+its handler never resumes, it compiles to Result-passing (return
+`Err`, branch on error). This is just control flow — no evidence
+parameters, no continuations, no handler frames. Whoever implements
+0d should compile Fail as Result-passing and not wait for 0e.
+
 ## Motivation
 
 Compile and run pure Kea programs natively. This is the first time

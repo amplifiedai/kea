@@ -155,6 +155,32 @@ The IO handler is installed by the runtime around `Main.main()`.
 Any unhandled effects at the main boundary (other than IO) are
 a compile error (already enforced by 0c).
 
+### Step 2.5: Tail-resumptive handler optimisation
+
+Most handlers call `resume` as the last thing in the handler
+body: `Log.log` logs and resumes, `State.get` reads state and
+resumes, `State.put` writes state and resumes. These are
+**tail-resumptive** handlers.
+
+A tail-resumptive handler doesn't need continuation capture. It
+can compile as a direct call: perform the handler body, then
+return the resume value — no stack manipulation, no closure
+allocation, no evidence lookup on the hot path.
+
+Classify each handler clause at compile time:
+- **Tail-resumptive:** `resume` is the last expression. Compile
+  as a direct function call. This is the common case (~80%+ of
+  handlers in practice).
+- **Non-tail-resumptive:** `resume` appears in non-tail position
+  (e.g., `let x = resume(); process(x)`). Needs the full handler
+  compilation machinery.
+- **Zero-resumption:** no `resume` at all (Fail). Compile as
+  early return / Result-passing (see Step 3).
+
+Koka optimises tail-resumptive handlers aggressively and this
+is the single most important performance optimisation for
+making effects cheap. Prioritise getting this right.
+
 ### Step 3: Fail compilation (optimised path)
 
 `Fail` is the most common effect. It deserves an optimised
