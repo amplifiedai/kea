@@ -1,0 +1,27 @@
+# Build
+/target/
+/crates/*/target/
+
+# Cargo
+Cargo.lock
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+
+# Agent target dirs
+/tmp/kea-agent-targets/
+
+# sccache
+.sccache/
