@@ -2050,7 +2050,7 @@ impl Parser {
                         interp_parts.push(StringInterpPart::Literal(s));
                     }
                     crate::token::StringPart::Expr(src) => {
-                        let tokens = match crate::lexer::lex(&src, self.file) {
+                        let tokens = match crate::lexer::lex_layout(&src, self.file) {
                             Ok((t, _warnings)) => t,
                             Err(diags) => {
                                 self.errors.extend(diags);
@@ -5313,7 +5313,7 @@ fn parse_block_parts(
                                 );
                             }
                         } else {
-                            match crate::lexer::lex(raw, file)
+                            match crate::lexer::lex_layout(raw, file)
                                 .map(|(t, _)| t)
                                 .and_then(|t| parse_expr(t, file))
                             {
@@ -5393,6 +5393,18 @@ mod tests {
     fn parse_string() {
         let expr = parse(r#""hello""#);
         assert_eq!(expr.node, ExprKind::Lit(Lit::String("hello".into())));
+    }
+
+    #[test]
+    fn parse_string_interp_multiline_expr() {
+        let expr = parse("\"sum = ${1 +\n 2}\"");
+        match &expr.node {
+            ExprKind::StringInterp(parts) => {
+                assert!(matches!(parts[0], StringInterpPart::Literal(_)));
+                assert!(matches!(parts[1], StringInterpPart::Expr(_)));
+            }
+            other => panic!("expected StringInterp, got {other:?}"),
+        }
     }
 
     #[test]
