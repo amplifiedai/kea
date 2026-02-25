@@ -34,12 +34,6 @@ Designed and approved. Ready to pick up. Ordered by execution sequence per ROADM
 
 4. **[Codegen — pure subset](todo/0d-codegen-pure.md)** — Cranelift backend (JIT + AOT), struct/enum layout, pattern matching compilation, refcounting, CoW, basic stdlib, CLI. kea-hir, kea-mir, kea-codegen, kea crates. Cannibalises rill-codegen, rill-mir.
 
-### Phase 0e-0g: Not yet briefed
-
-- **0e: Runtime effects** (weeks 6-8) — Handler compilation strategy (evidence passing vs CPS vs segmented stacks), IO runtime, arena allocation. Highest risk.
-- **0f: Memory model** (weeks 8-9) — Unique T, borrow convention, reuse analysis, unsafe/Ptr.
-- **0g: Advanced type features** (weeks 9-11) — GADTs, HKTs, associated types, supertraits, deriving, full stdlib.
-
 ### Phase 1-3: Not yet briefed
 
 See ROADMAP.md for details. Briefs will be written as earlier phases complete.
@@ -48,10 +42,18 @@ See ROADMAP.md for details. Briefs will be written as earlier phases complete.
 
 ## Design
 
-Needs more design work before briefing.
+Needs more design work. Briefs exist but aren't implementation-ready.
+
+### Phase 0e-0g
+
+5. **[Runtime effects](design/0e-runtime-effects.md)** (weeks 6-8) — Handler compilation strategy (evidence passing vs CPS vs segmented stacks), IO runtime, Fail optimised path, arena allocation. Highest risk phase.
+6. **[Memory model](design/0f-memory-model.md)** (weeks 8-9) — Unique T, borrow convention, reuse analysis, unsafe/Ptr, @unboxed, fixed-width integers.
+7. **[Advanced type features](design/0g-advanced-types.md)** (weeks 9-11) — GADTs, HKTs, associated types, supertraits, deriving, full stdlib, error message investment.
+
+### Other design work
 
 - **Supervision trait API** — How exactly does the `Supervisor` trait work? KERNEL §19.5 sketches it loosely. Needs concrete trait definition for kea-actors. Depends on Actor trait (§19.3) being implemented.
-- **Arena allocation semantics** — `Alloc` effect, deep-copy at boundary, interaction with Unique. KERNEL §12.7 specifies behavior; implementation strategy is the open question.
+- **Arena allocation semantics** — `Alloc` effect, deep-copy at boundary, interaction with Unique. KERNEL §12.7 specifies behavior; implementation strategy is the open question. Partially covered in 0e and 0f briefs.
 - **Lean formalization** — Transfer rill's formal methods to Kea. Priority order in ROADMAP.md "Formal Methods Strategy." Depends on type system being stable enough to formalize.
 
 ---
