@@ -358,6 +358,7 @@ Precision notes:
 - 2026-02-26: Added CLI regression coverage in `crates/kea` tests: compile + execute a tiny Kea `main` function and assert exit-code propagation through the current run pipeline.
 - 2026-02-26: Extended CLI regression coverage with bool-`case` execution path and direct-JIT run-path assertions for deterministic exit-code behavior.
 - 2026-02-26: HIR `case` canonicalization extended: bool arms and literal (`Int`/`Bool`) arm chains with wildcard fallback lower to nested `if`; unsupported pattern classes still stay on the explicit non-lowered path until dedicated MIR case lowering lands.
+- 2026-02-26: Benchmark lane advanced: `kea-bench` now includes string-transform-shaped and allocation-heavy workloads in addition to numeric baselines; repeated-run variance tooling (`bench:variance`) and CI artifact publication are in place for Stage B threshold calibration.
 - 2026-02-26: Cranelift predicate normalization fixed for equality-driven control flow (`i8` vs `b1` predicate widths), with new codegen regression coverage for int equality branch conditions.
 - 2026-02-26: Pure expression coverage expanded: unary operators (`-x`, `not x`) now lower HIR→MIR (`MirUnaryOp`) and compile through Cranelift, with targeted crate tests.
 - 2026-02-26: HIR lowering now canonicalizes basic bool `case` expressions (`true/false/_` arms, no guards) into `if` expressions, allowing existing MIR/codegen control-flow lowering to compile that subset.

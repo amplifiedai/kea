@@ -259,4 +259,6 @@ run = "hyperfine --warmup 3 'kea run benchmarks/programs/*.kea'"
 - 2026-02-26: First local baselines recorded from `mise run bench` (medians): lex+parse `26.65µs` (32), `98.31µs` (128), `386.4µs` (512); HIR→MIR `437.6ns` (16), `1.854µs` (64), `6.984µs` (256); HIR→JIT compile `41.38µs` (8), `94.28µs` (32), `153.1µs` (64).
 - 2026-02-26: Stable artifact export landed via `scripts/bench-export.sh`: each run now emits `divan.raw.txt`, `divan.summary.csv`, `divan.summary.json`, and `meta.json` (git SHA + machine/context), with `mise run bench:export` support.
 - 2026-02-26: CI Stage A landed in `.github/workflows/bench-stage-a.yml`: benchmarks run on PR/push/workflow_dispatch and artifacts are uploaded; no regression fail gates yet.
-- **Next:** Characterize variance/noise across repeated CI runs, then introduce Stage B threshold gates (initially wide, then tighten).
+- 2026-02-26: Benchmark corpus expanded to cover additional 0d workload classes in `kea-bench`: string-transform-shaped source lex/parse benchmark plus allocation-heavy HIR lowering and compile paths.
+- 2026-02-26: Variance characterization automation landed: `scripts/bench-variance.sh` runs repeated exports and writes `variance.summary.csv`/`variance.summary.md`; `mise run bench:variance` and `.github/workflows/bench-variance.yml` publish non-gating CI variance artifacts on `main`.
+- **Next:** Use CI variance artifacts to set initial Stage B regression thresholds (wide bands first), then enable threshold checks in non-blocking mode before switching to blocking gates.
