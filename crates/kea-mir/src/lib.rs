@@ -637,6 +637,28 @@ impl FunctionLoweringCtx {
                 });
                 Some(dest)
             }
+            HirExprKind::SumConstructor {
+                sum_type,
+                variant,
+                tag,
+                fields,
+            } => {
+                let mut lowered_fields = Vec::with_capacity(fields.len());
+                for field_expr in fields {
+                    lowered_fields.push(self.lower_expr(field_expr)?);
+                }
+                let tag = u32::try_from(*tag).ok()?;
+                let dest = self.new_value();
+                self.emit_inst(MirInst::SumInit {
+                    dest: dest.clone(),
+                    sum_type: sum_type.clone(),
+                    variant: variant.clone(),
+                    tag,
+                    fields: lowered_fields,
+                });
+                self.sum_value_types.insert(dest.clone(), sum_type.clone());
+                Some(dest)
+            }
             HirExprKind::FieldAccess { expr: base, field } => {
                 let record = self.lower_expr(base)?;
                 let record_type = match &base.ty {
@@ -835,6 +857,7 @@ impl FunctionLoweringCtx {
             operand_expr.kind,
             HirExprKind::Var(_)
                 | HirExprKind::Call { .. }
+                | HirExprKind::SumConstructor { .. }
                 | HirExprKind::Raw(AstExprKind::Constructor { .. })
                 | HirExprKind::Let { .. }
                 | HirExprKind::Block(_)
@@ -1493,6 +1516,73 @@ mod tests {
                 ..
             } if sum_type == "Option" && variant == "Some" && fields.len() == 1
         ));
+    }
+
+    #[test]
+    fn lower_hir_module_lowers_payload_constructor_with_expression_field() {
+        let option_ty = Type::Sum(kea_types::SumType {
+            name: "Option".to_string(),
+            type_args: vec![Type::Int],
+            variants: vec![
+                ("Some".to_string(), vec![Type::Int]),
+                ("None".to_string(), vec![]),
+            ],
+        });
+        let function_decl = HirDecl::Function(HirFunction {
+            name: "make_some".to_string(),
+            params: vec![],
+            body: HirExpr {
+                kind: HirExprKind::SumConstructor {
+                    sum_type: "Option".to_string(),
+                    variant: "Some".to_string(),
+                    tag: 0,
+                    fields: vec![HirExpr {
+                        kind: HirExprKind::Binary {
+                            op: BinOp::Add,
+                            left: Box::new(HirExpr {
+                                kind: HirExprKind::Lit(kea_ast::Lit::Int(3)),
+                                ty: Type::Int,
+                                span: kea_ast::Span::synthetic(),
+                            }),
+                            right: Box::new(HirExpr {
+                                kind: HirExprKind::Lit(kea_ast::Lit::Int(4)),
+                                ty: Type::Int,
+                                span: kea_ast::Span::synthetic(),
+                            }),
+                        },
+                        ty: Type::Int,
+                        span: kea_ast::Span::synthetic(),
+                    }],
+                },
+                ty: option_ty.clone(),
+                span: kea_ast::Span::synthetic(),
+            },
+            ty: Type::Function(FunctionType::pure(vec![], option_ty)),
+            effects: EffectRow::pure(),
+            span: kea_ast::Span::synthetic(),
+        });
+
+        let mir = lower_hir_module(&HirModule {
+            declarations: vec![function_decl],
+        });
+        let function = &mir.functions[0];
+        assert!(function.blocks[0]
+            .instructions
+            .iter()
+            .any(|inst| matches!(inst, MirInst::Binary { op: MirBinaryOp::Add, .. })));
+        assert!(function.blocks[0]
+            .instructions
+            .iter()
+            .any(|inst| matches!(
+                inst,
+                MirInst::SumInit {
+                    sum_type,
+                    variant,
+                    tag: 0,
+                    fields,
+                    ..
+                } if sum_type == "Option" && variant == "Some" && fields.len() == 1
+            )));
     }
 
     #[test]
