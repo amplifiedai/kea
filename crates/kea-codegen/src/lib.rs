@@ -576,26 +576,18 @@ fn execute_mir_main_jit(module: &MirModule, config: &BackendConfig) -> Result<i3
             function: "main".to_string(),
         })?;
     let main_runtime_sig = runtime_function_signature(main);
-    if main_runtime_sig.fail_result_abi {
-        return Err(CodegenError::UnsupportedMir {
-            function: "main".to_string(),
-            detail:
-                "JIT entrypoint does not support Fail-only `main`; handle Fail before returning from main"
-                    .to_string(),
-        });
-    }
     if !main.signature.params.is_empty() {
         return Err(CodegenError::UnsupportedMir {
             function: "main".to_string(),
             detail: "JIT entrypoint requires zero-argument `main`".to_string(),
         });
     }
-    if !matches!(main.signature.ret, Type::Int | Type::Unit) {
+    if !matches!(main_runtime_sig.logical_return, Type::Int | Type::Unit) {
         return Err(CodegenError::UnsupportedMir {
             function: "main".to_string(),
             detail: format!(
                 "JIT entrypoint only supports `main` returning Int or Unit (got `{}`)",
-                main.signature.ret
+                main_runtime_sig.logical_return
             ),
         });
     }
@@ -620,17 +612,45 @@ fn execute_mir_main_jit(module: &MirModule, config: &BackendConfig) -> Result<i3
 
     // SAFETY: `main` signature is validated above before transmuting and calling.
     let exit_code = unsafe {
-        match main.signature.ret {
-            Type::Int => {
-                let main_fn = std::mem::transmute::<*const u8, extern "C" fn() -> i64>(entrypoint);
-                main_fn() as i32
+        if main_runtime_sig.fail_result_abi {
+            let main_fn = std::mem::transmute::<*const u8, extern "C" fn() -> usize>(entrypoint);
+            let result_ptr = main_fn();
+            if result_ptr == 0 {
+                return Err(CodegenError::UnsupportedMir {
+                    function: "main".to_string(),
+                    detail: "Fail-only main returned null Result pointer".to_string(),
+                });
             }
-            Type::Unit => {
-                let main_fn = std::mem::transmute::<*const u8, extern "C" fn()>(entrypoint);
-                main_fn();
-                0
+            let tag = *(result_ptr as *const i32);
+            if tag == 0 {
+                match main_runtime_sig.logical_return {
+                    Type::Int => {
+                        let payload = *((result_ptr as *const u8).add(8) as *const i64);
+                        payload as i32
+                    }
+                    Type::Unit => 0,
+                    _ => unreachable!("validated logical main return type above"),
+                }
+            } else {
+                return Err(CodegenError::UnsupportedMir {
+                    function: "main".to_string(),
+                    detail: "main failed with unhandled Fail effect".to_string(),
+                });
             }
-            _ => unreachable!("validated return type before JIT entrypoint dispatch"),
+        } else {
+            match main_runtime_sig.logical_return {
+                Type::Int => {
+                    let main_fn =
+                        std::mem::transmute::<*const u8, extern "C" fn() -> i64>(entrypoint);
+                    main_fn() as i32
+                }
+                Type::Unit => {
+                    let main_fn = std::mem::transmute::<*const u8, extern "C" fn()>(entrypoint);
+                    main_fn();
+                    0
+                }
+                _ => unreachable!("validated return type before JIT entrypoint dispatch"),
+            }
         }
     };
     Ok(exit_code)
@@ -3884,5 +3904,72 @@ mod tests {
         let err = execute_hir_main_jit(&hir, &BackendConfig::default())
             .expect_err("parameterized main should be rejected");
         assert!(matches!(err, CodegenError::UnsupportedMir { .. }));
+    }
+
+    #[test]
+    fn execute_hir_main_jit_supports_fail_only_main_ok_path() {
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "main".to_string(),
+                params: vec![],
+                body: HirExpr {
+                    kind: HirExprKind::Lit(kea_ast::Lit::Int(11)),
+                    ty: Type::Int,
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::with_effects(
+                    vec![],
+                    Type::Int,
+                    EffectRow::closed(vec![(Label::new("Fail"), Type::Int)]),
+                )),
+                effects: EffectRow::closed(vec![(Label::new("Fail"), Type::Int)]),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let exit_code = execute_hir_main_jit(&hir, &BackendConfig::default())
+            .expect("fail-only main ok path should execute");
+        assert_eq!(exit_code, 11);
+    }
+
+    #[test]
+    fn execute_hir_main_jit_reports_fail_only_main_err_path() {
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "main".to_string(),
+                params: vec![],
+                body: HirExpr {
+                    kind: HirExprKind::Call {
+                        func: Box::new(HirExpr {
+                            kind: HirExprKind::Var("Fail::fail".to_string()),
+                            ty: Type::Dynamic,
+                            span: kea_ast::Span::synthetic(),
+                        }),
+                        args: vec![HirExpr {
+                            kind: HirExprKind::Lit(kea_ast::Lit::Int(9)),
+                            ty: Type::Int,
+                            span: kea_ast::Span::synthetic(),
+                        }],
+                    },
+                    ty: Type::Never,
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::with_effects(
+                    vec![],
+                    Type::Int,
+                    EffectRow::closed(vec![(Label::new("Fail"), Type::Int)]),
+                )),
+                effects: EffectRow::closed(vec![(Label::new("Fail"), Type::Int)]),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let err = execute_hir_main_jit(&hir, &BackendConfig::default())
+            .expect_err("fail-only main err path should report unhandled fail");
+        assert!(matches!(
+            err,
+            CodegenError::UnsupportedMir { function, ref detail }
+                if function == "main" && detail.contains("unhandled Fail")
+        ));
     }
 }
