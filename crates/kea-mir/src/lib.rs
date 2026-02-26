@@ -308,6 +308,14 @@ pub fn lower_hir_module(module: &HirModule) -> MirModule {
             HirDecl::Raw(_) => None,
         })
         .collect::<BTreeSet<_>>();
+    let known_function_types = module
+        .declarations
+        .iter()
+        .filter_map(|decl| match decl {
+            HirDecl::Function(function) => Some((function.name.clone(), function.ty.clone())),
+            HirDecl::Raw(_) => None,
+        })
+        .collect::<BTreeMap<_, _>>();
     let mut layouts = MirLayoutCatalog::default();
     for decl in &module.declarations {
         if let HirDecl::Raw(raw_decl) = decl {
@@ -315,16 +323,17 @@ pub fn lower_hir_module(module: &HirModule) -> MirModule {
         }
     }
     seed_builtin_sum_layouts(&mut layouts);
-    let functions = module
-        .declarations
-        .iter()
-        .filter_map(|decl| match decl {
-            HirDecl::Function(function) => {
-                Some(lower_hir_function(function, &layouts, &known_functions))
-            }
-            HirDecl::Raw(_) => None,
-        })
-        .collect();
+    let mut functions = Vec::new();
+    for decl in &module.declarations {
+        if let HirDecl::Function(function) = decl {
+            functions.extend(lower_hir_function(
+                function,
+                &layouts,
+                &known_functions,
+                &known_function_types,
+            ));
+        }
+    }
 
     MirModule { functions, layouts }
 }
@@ -436,7 +445,8 @@ fn lower_hir_function(
     function: &HirFunction,
     layouts: &MirLayoutCatalog,
     known_functions: &BTreeSet<String>,
-) -> MirFunction {
+    known_function_types: &BTreeMap<String, Type>,
+) -> Vec<MirFunction> {
     let (params, ret) = match &function.ty {
         Type::Function(ft) => (ft.params.clone(), ft.ret.as_ref().clone()),
         _ => (
@@ -445,7 +455,13 @@ fn lower_hir_function(
         ),
     };
 
-    let mut ctx = FunctionLoweringCtx::new(&function.name, params.len(), layouts, known_functions);
+    let mut ctx = FunctionLoweringCtx::new(
+        &function.name,
+        params.len(),
+        layouts,
+        known_functions,
+        known_function_types,
+    );
     for (index, param) in function.params.iter().enumerate() {
         if let Some(name) = &param.name {
             ctx.vars.insert(name.clone(), MirValueId(index as u32));
@@ -463,9 +479,10 @@ fn lower_hir_function(
         }
     }
     let return_value = ctx.lower_expr(&function.body);
+    let lifted_functions = ctx.lifted_functions.clone();
     let blocks = ctx.finish(return_value, &ret);
 
-    MirFunction {
+    let mut functions = vec![MirFunction {
         name: function.name.clone(),
         signature: MirFunctionSignature {
             params,
@@ -474,7 +491,9 @@ fn lower_hir_function(
         },
         entry: MirBlockId(0),
         blocks,
-    }
+    }];
+    functions.extend(lifted_functions);
+    functions
 }
 
 #[derive(Debug, Clone)]
@@ -486,15 +505,20 @@ struct PendingBlock {
 }
 
 struct FunctionLoweringCtx {
+    function_name: String,
+    layouts: MirLayoutCatalog,
     blocks: Vec<PendingBlock>,
     current_block: MirBlockId,
     vars: BTreeMap<String, MirValueId>,
     var_types: BTreeMap<String, Type>,
     local_lambdas: BTreeMap<String, LocalLambda>,
     known_functions: BTreeSet<String>,
+    known_function_types: BTreeMap<String, Type>,
     var_record_types: BTreeMap<String, String>,
     sum_value_types: BTreeMap<MirValueId, String>,
     sum_ctor_candidates: BTreeMap<String, Vec<SumCtorCandidate>>,
+    lifted_functions: Vec<MirFunction>,
+    next_lifted_lambda_id: u32,
     next_value_id: u32,
 }
 
@@ -521,10 +545,11 @@ struct VarScope {
 
 impl FunctionLoweringCtx {
     fn new(
-        _function_name: &str,
+        function_name: &str,
         param_count: usize,
         layouts: &MirLayoutCatalog,
         known_functions: &BTreeSet<String>,
+        known_function_types: &BTreeMap<String, Type>,
     ) -> Self {
         let mut sum_ctor_candidates: BTreeMap<String, Vec<SumCtorCandidate>> = BTreeMap::new();
         for sum in &layouts.sums {
@@ -541,6 +566,8 @@ impl FunctionLoweringCtx {
         }
 
         Self {
+            function_name: function_name.to_string(),
+            layouts: layouts.clone(),
             blocks: vec![PendingBlock {
                 id: MirBlockId(0),
                 params: Vec::new(),
@@ -552,11 +579,54 @@ impl FunctionLoweringCtx {
             var_types: BTreeMap::new(),
             local_lambdas: BTreeMap::new(),
             known_functions: known_functions.clone(),
+            known_function_types: known_function_types.clone(),
             var_record_types: BTreeMap::new(),
             sum_value_types: BTreeMap::new(),
             sum_ctor_candidates,
+            lifted_functions: Vec::new(),
+            next_lifted_lambda_id: 0,
             next_value_id: param_count as u32,
         }
+    }
+
+    fn lower_lambda_to_function_ref(
+        &mut self,
+        expr: &HirExpr,
+        params: &[kea_hir::HirParam],
+        body: &HirExpr,
+        expected_ty: Option<&Type>,
+    ) -> Option<MirValueId> {
+        let resolved_fn_ty = match (&expr.ty, expected_ty) {
+            (Type::Function(ft), _) => Some(ft.clone()),
+            (_, Some(Type::Function(ft))) => Some(ft.clone()),
+            _ => None,
+        }?;
+        let lambda_name = format!("{}::lambda${}", self.function_name, self.next_lifted_lambda_id);
+        self.next_lifted_lambda_id = self.next_lifted_lambda_id.saturating_add(1);
+        let lifted = HirFunction {
+            name: lambda_name.clone(),
+            params: params.to_vec(),
+            body: body.clone(),
+            ty: Type::Function(resolved_fn_ty.clone()),
+            effects: resolved_fn_ty.effects,
+            span: expr.span,
+        };
+        let mut known = self.known_functions.clone();
+        known.insert(lambda_name.clone());
+        let mut known_types = self.known_function_types.clone();
+        known_types.insert(lambda_name.clone(), lifted.ty.clone());
+        let lowered = lower_hir_function(&lifted, &self.layouts, &known, &known_types);
+        self.lifted_functions.extend(lowered);
+        self.known_functions.insert(lambda_name.clone());
+        self.known_function_types
+            .insert(lambda_name.clone(), lifted.ty.clone());
+
+        let dest = self.new_value();
+        self.emit_inst(MirInst::FunctionRef {
+            dest: dest.clone(),
+            function: lambda_name,
+        });
+        Some(dest)
     }
 
     fn finish(mut self, return_value: Option<MirValueId>, ret_ty: &Type) -> Vec<MirBlock> {
@@ -878,12 +948,13 @@ impl FunctionLoweringCtx {
                 then_branch,
                 else_branch,
             } => self.lower_if(expr, condition, then_branch, else_branch.as_deref()),
-            HirExprKind::Tuple(_) | HirExprKind::Lambda { .. } | HirExprKind::Raw(_) => {
-                match &expr.kind {
-                    HirExprKind::Raw(raw_expr) => self.lower_raw_ast_expr(raw_expr),
-                    _ => None,
-                }
+            HirExprKind::Lambda { params, body } => {
+                self.lower_lambda_to_function_ref(expr, params, body, None)
             }
+            HirExprKind::Tuple(_) | HirExprKind::Raw(_) => match &expr.kind {
+                HirExprKind::Raw(raw_expr) => self.lower_raw_ast_expr(raw_expr),
+                _ => None,
+            },
         }
     }
 
@@ -977,7 +1048,26 @@ impl FunctionLoweringCtx {
 
         let mut lowered_args = Vec::with_capacity(args.len());
         let mut arg_types = Vec::with_capacity(args.len());
-        for arg in args {
+        let expected_param_types: Option<Vec<Type>> = match (&func.ty, &func.kind) {
+            (Type::Function(ft), _) => Some(ft.params.clone()),
+            (_, HirExprKind::Var(name)) => self.known_function_types.get(name).and_then(|ty| {
+                if let Type::Function(ft) = ty {
+                    Some(ft.params.clone())
+                } else {
+                    None
+                }
+            }),
+            _ => None,
+        };
+        for (idx, arg) in args.iter().enumerate() {
+            let expected = expected_param_types.as_ref().and_then(|tys| tys.get(idx));
+            if let HirExprKind::Lambda { params, body } = &arg.kind {
+                let value =
+                    self.lower_lambda_to_function_ref(arg, params, body.as_ref(), expected)?;
+                arg_types.push(expected.cloned().unwrap_or_else(|| arg.ty.clone()));
+                lowered_args.push(value);
+                continue;
+            }
             arg_types.push(arg.ty.clone());
             lowered_args.push(self.lower_expr(arg)?);
         }
