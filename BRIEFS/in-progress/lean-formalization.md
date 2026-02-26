@@ -258,6 +258,8 @@ Mitigation:
 - 2026-02-26: `cd formal && lake build` passes in Kea after namespace-portability proof repairs in `SubstBridge`, `UnifyReflexive`, `PrecisionLeafParity`, and `ShapeConstructorParity` (warning-only simp lint remains).
 - 2026-02-26: Repository guardrail check passes after formalization bootstrap (`mise run check`).
 - 2026-02-26: Aligned core formal typing surface with `kea-types` effect rows (`Ty.functionEff`, `EffectRow`, `Kind`) and propagated constructor coverage through `Substitution`, `FreeVars`, `OccursCheck`, `Unify`, `Generalize`, `Typing`, plus proof repair in `SubstCompose`/`SubstBridge`/`SubstIdempotent`/`UnifyReflexive`.
+- 2026-02-26: Added phase-1 WF scaffold modules (`WellFormed`, `WfSubstitution`, `WfRename`, `WfGeneralize`) and integrated them into `formal/Kea.lean`.
+- 2026-02-26: Added `WfUnify` unifier-update WF lemmas (`bindTypeVar_ok_preserves_wf_range`, row bind variants) and centralized `Subst.WellFormedRange` + bind-preservation lemmas in `WfSubstitution` for shared reuse across follow-on unifier proofs.
 - 2026-02-26: `cd formal && lake build` passes after full `functionEff` exhaustiveness repair in remaining Phase-1 core proofs.
 - 2026-02-26: Added explicit WF effect-row bridge lemmas in `SubstBridge` (`applySubstEffectRowWF_noop`, `applySubstEffectRowWF_empty`) so effect rows have the same no-domain-vars/empty-substitution identity surface as rows.
 - 2026-02-26: Added fuel-vs-WF effect-row bridge lemmas in `SubstBridge` (`applySubstEffectRowCompat_eq_applySubstEffectRowWF_of_no_domain_vars`, `applySubstEffectRow_empty_eq_applySubstEffectRowWF_empty`) and introduced `Substitution.applySubstEffectRow` helper to make the effect-row substitution boundary explicit.
