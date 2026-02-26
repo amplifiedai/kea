@@ -5982,3 +5982,55 @@ new contract surface.
 **Outcome**:
 - Runtime behavior for this valid nested same-target shape aligns with the
   nested composition formal contract boundary.
+
+### 2026-02-26: handled-absent closed-row no-op closure (phantom IO fix)
+
+**Context**: Re-probed handled-absent mismatch cases after phantom-IO fix
+(`746a4cb`, `9812380`) and MCP restart.
+
+**MCP tools used**: direct `kea-mcp` stdio (`initialize`,
+`notifications/initialized`, `tools/call` with `reset_session`, `type_check`,
+`get_type`, `diagnose`).
+
+**Probe**:
+1. Body `Log`, handler targets absent `Trace`:
+   - `body_log : () -[Log]> ()`
+   - `probe_log` handles `body_log` with `Trace.trace(x) -> resume ()`
+   - `type_check` binds `probe_log : () -[Log]> ()`
+   - `get_type "probe_log"` => `() -[Log]> ()`
+   - diagnostics clean.
+2. Symmetric direction (body `Trace`, handler targets absent `Log`):
+   - `body_trace : () -[Trace]> ()`
+   - `probe_trace` handles `body_trace` with `Log.log(x) -> resume ()`
+   - `type_check` binds `probe_trace : () -[Trace]> ()`
+   - `get_type "probe_trace"` => `() -[Trace]> ()`
+   - diagnostics clean.
+
+**Classify**: Agreement.
+
+**Outcome**:
+- Handled-absent closed-row behavior now matches no-op semantics on effect rows;
+  prior phantom-IO mismatch is closed.
+
+### 2026-02-26: handler-absent no-op module (proof-only)
+
+**Context**: Added explicit formal contract surfaces for handled-absent no-op
+behavior on closed effect rows.
+
+**MCP tools used**: none (proof-only theorem-surface extension; runtime
+alignment established in preceding closure probe).
+
+**Lean side**:
+- Added `Kea/Properties/HandlerAbsentEffectNoop.lean` with:
+  - `handleComposeClosedAware`
+  - `handle_absent_effect_noop`
+  - field/rest projections
+  - `handleComposeClosedAware_eq_normalized_of_present_or_open`
+- Imported module in `formal/Kea.lean`.
+- Verified with `cd formal && lake build` (pass).
+
+**Classify**: N/A (proof-only step).
+
+**Outcome**:
+- Formal layer now has a direct, runtime-aligned theorem surface for
+  absent-effect no-op semantics in the closed-row case.
