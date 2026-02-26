@@ -143,7 +143,7 @@ fn parser_snapshot_corpus() {
         ParseCase {
             name: "expr_lambda",
             mode: ParseMode::Expr,
-            source: "x -> x + 1",
+            source: "|x| -> x + 1",
         },
         ParseCase {
             name: "expr_anon_record_spread",

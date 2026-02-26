@@ -6590,6 +6590,21 @@ fn infer_fn_decl_effects_propagate_from_called_function() {
 }
 
 #[test]
+fn infer_fn_decl_effect_row_does_not_inject_io_for_unknown_callback_call() {
+    let env = TypeEnv::new();
+    let fn_decl = make_fn_decl("apply", vec!["f", "x"], call(var("f"), vec![var("x")]));
+    let row = infer_fn_decl_effect_row(&fn_decl, &env);
+    assert!(
+        !row.row.has(&Label::new("IO")),
+        "expected no phantom IO in inferred callback effect row, got {row:?}"
+    );
+    assert!(
+        row.row.rest.is_some(),
+        "unknown callback effects should stay open, got {row:?}"
+    );
+}
+
+#[test]
 fn infer_fn_decl_effects_uses_pure_callback_param_annotation() {
     let env = TypeEnv::new();
     let fn_decl = FnDecl {

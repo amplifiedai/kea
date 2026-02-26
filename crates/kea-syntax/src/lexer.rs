@@ -1470,9 +1470,11 @@ mod tests {
     #[test]
     fn lambda_tokens() {
         assert_eq!(
-            lex_kinds("x -> x + 1"),
+            lex_kinds("|x| -> x + 1"),
             vec![
+                TokenKind::Pipe,
                 TokenKind::Ident("x".into()),
+                TokenKind::Pipe,
                 TokenKind::Arrow,
                 TokenKind::Ident("x".into()),
                 TokenKind::Plus,

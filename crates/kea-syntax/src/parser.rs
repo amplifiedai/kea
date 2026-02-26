@@ -590,12 +590,13 @@ impl Parser {
         let name = self.expect_upper_ident("expected type name")?;
         self.skip_newlines();
 
-        // Optional type parameters: type Option(T) = ...
-        // Type params are uppercase idents (T, E, K, V, etc.)
+        // Optional type parameters:
+        // - Parenthesized legacy form: `type Option(T) = ...`
+        // - Canonical bare form: `type Option t = ...`
         let mut params = Vec::new();
         if self.match_token(&TokenKind::LParen) {
             loop {
-                let p = self.expect_upper_ident("expected type parameter")?;
+                let p = self.expect_type_param_name("expected type parameter")?;
                 params.push(p.node);
                 if !self.match_token(&TokenKind::Comma) {
                     break;
@@ -603,6 +604,15 @@ impl Parser {
             }
             self.expect(&TokenKind::RParen, "expected ')' after type parameters")?;
             self.skip_newlines();
+        } else {
+            while matches!(
+                self.peek_kind(),
+                Some(TokenKind::Ident(_) | TokenKind::UpperIdent(_))
+            ) {
+                let p = self.expect_type_param_name("expected type parameter")?;
+                params.push(p.node);
+                self.skip_newlines();
+            }
         }
 
         if self.check(&TokenKind::Deriving) {
@@ -627,7 +637,21 @@ impl Parser {
             self.skip_newlines();
             let variant_annotations = self.parse_annotations()?;
             self.skip_newlines();
-            let variant_name = self.expect_upper_ident("expected variant name")?;
+            let variant_name = match self.peek_kind() {
+                Some(TokenKind::UpperIdent(name)) => {
+                    let name = name.clone();
+                    let tok = self.advance();
+                    Spanned::new(name, tok.span)
+                }
+                Some(TokenKind::NoneKw) => {
+                    let tok = self.advance();
+                    Spanned::new("None".to_string(), tok.span)
+                }
+                _ => {
+                    self.error_at_current("expected variant name");
+                    return None;
+                }
+            };
             let mut fields = Vec::new();
             if self.match_token(&TokenKind::LParen) {
                 self.skip_newlines();
@@ -854,6 +878,19 @@ impl Parser {
                 &TokenKind::RParen,
                 "expected ')' after trait type parameters",
             )?;
+        } else {
+            while matches!(
+                self.peek_kind(),
+                Some(TokenKind::Ident(_) | TokenKind::UpperIdent(_))
+            ) {
+                let param_name =
+                    self.expect_type_param_name("expected trait type parameter name")?;
+                type_params.push(TraitTypeParam {
+                    name: param_name,
+                    kind: KindAnnotation::Star,
+                });
+                self.skip_newlines();
+            }
         }
         let mut supertraits = Vec::new();
         if self.match_token(&TokenKind::Colon) {
@@ -2060,6 +2097,57 @@ impl Parser {
                 TypeAnnotation::Tuple(elems),
                 start.merge(end_span),
             ))
+        } else if self.match_token(&TokenKind::LBrace) {
+            // Row type annotation: `{ name: String, age: Int | r }`
+            let mut fields = Vec::new();
+            let mut rest = None;
+            self.skip_newlines();
+            if !self.check(&TokenKind::RBrace) {
+                loop {
+                    self.skip_newlines();
+                    if self.match_token(&TokenKind::Pipe) {
+                        self.skip_newlines();
+                        rest = Some(self.parse_effect_row_name(
+                            "expected row tail variable after '|' in row type annotation",
+                        )?);
+                        self.skip_newlines();
+                        break;
+                    }
+
+                    let field_name =
+                        self.expect_ident("expected field name in row type annotation")?;
+                    self.skip_newlines();
+                    self.expect(&TokenKind::Colon, "expected ':' after row field name")?;
+                    self.skip_newlines();
+                    let field_ty = self.type_annotation()?.node;
+                    fields.push((field_name.node, field_ty));
+                    self.skip_newlines();
+
+                    if self.match_token(&TokenKind::Comma) {
+                        self.skip_newlines();
+                        if self.check(&TokenKind::RBrace) {
+                            break;
+                        }
+                        continue;
+                    }
+
+                    if self.match_token(&TokenKind::Pipe) {
+                        self.skip_newlines();
+                        rest = Some(self.parse_effect_row_name(
+                            "expected row tail variable after '|' in row type annotation",
+                        )?);
+                        self.skip_newlines();
+                    }
+                    break;
+                }
+            }
+
+            let end_span = self.current_span();
+            self.expect(&TokenKind::RBrace, "expected '}' in row type annotation")?;
+            Some(Spanned::new(
+                TypeAnnotation::Row { fields, rest },
+                start.merge(end_span),
+            ))
         } else {
             self.error_at_current("expected type annotation");
             None
@@ -2080,16 +2168,19 @@ impl Parser {
     // -- Expression parsing --
 
     fn expression(&mut self) -> Option<Expr> {
-        // Bare lambda: ident -> expr
-        // Must be checked here (not in primary) so it doesn't fire inside
-        // binary-op RHS parsing — e.g. `cond { x > hi -> hi }` would
-        // otherwise parse `hi -> hi` as a lambda.
-        if let Some(TokenKind::Ident(name)) = self.peek_kind() {
-            let name = name.clone();
-            if self.peek_at(1).is_some_and(|t| t.kind == TokenKind::Arrow) {
-                let start = self.current_span();
-                return self.lambda_bare(name, start);
-            }
+        if self.check(&TokenKind::Pipe) {
+            return self.lambda_pipe();
+        }
+
+        if self
+            .peek_at(1)
+            .is_some_and(|token| token.kind == TokenKind::Arrow)
+            && matches!(self.peek_kind(), Some(TokenKind::Ident(_)))
+        {
+            self.error_at_current(
+                "bare lambda syntax is not supported; use `|x| -> expr`",
+            );
+            return None;
         }
         self.pratt_expr(0)
     }
@@ -2409,10 +2500,13 @@ impl Parser {
             return self.list_expr();
         }
 
-        // Parenthesized expression, unit literal, or lambda: () -> expr, (params) -> expr
+        // Parenthesized expression or unit literal
         if self.check(&TokenKind::LParen) {
             if self.is_paren_lambda_start() {
-                return self.lambda_paren(start);
+                self.error_at_current(
+                    "parenthesized lambda syntax is not supported; use `|x| -> expr`",
+                );
+                return None;
             }
             self.advance();
             self.skip_newlines();
@@ -2604,7 +2698,35 @@ impl Parser {
                 }
                 self.advance(); // consume `then`
                 self.skip_newlines();
-                let then_expr = if self.check(&TokenKind::Indent) {
+                let then_expr = if self
+                    .peek_at(1)
+                    .is_some_and(|token| token.kind == TokenKind::Arrow)
+                    && matches!(self.peek_kind(), Some(TokenKind::Ident(_)))
+                {
+                    // `then value -> body` is handler syntax (not general lambda syntax).
+                    let pattern = self.pattern()?;
+                    self.expect(&TokenKind::Arrow, "expected '->' in `then` clause")?;
+                    self.skip_newlines();
+                    let body = if self.check(&TokenKind::Indent) {
+                        self.parse_block_expr("expected `then` body expression")?
+                    } else {
+                        self.expression()?
+                    };
+                    let span = pattern.span.merge(body.span);
+                    Spanned::new(
+                        ExprKind::Lambda {
+                            params: vec![Param {
+                                label: ParamLabel::Implicit,
+                                pattern,
+                                annotation: None,
+                                default: None,
+                            }],
+                            body: Box::new(body),
+                            return_annotation: None,
+                        },
+                        span,
+                    )
+                } else if self.check(&TokenKind::Indent) {
                     self.parse_block_expr("expected `then` body expression")?
                 } else {
                     self.expression()?
@@ -2848,6 +2970,36 @@ impl Parser {
         self.advance(); // consume 'if'
 
         let condition = self.expression()?;
+        self.skip_newlines();
+
+        if self.check_ident("then") {
+            self.advance(); // consume `then`
+            self.skip_newlines();
+            let then_branch = self.expression()?;
+            self.skip_newlines();
+            if !self.match_token(&TokenKind::Else) {
+                self.error_at_current("`if` requires an `else` branch");
+                return None;
+            }
+            self.skip_newlines();
+            let else_branch = if self.check(&TokenKind::If) {
+                // else if
+                Box::new(self.if_expr()?)
+            } else {
+                Box::new(self.expression()?)
+            };
+            let end = else_branch.span;
+
+            return Some(Spanned::new(
+                ExprKind::If {
+                    condition: Box::new(condition),
+                    then_branch: Box::new(then_branch),
+                    else_branch: Some(else_branch),
+                },
+                start.merge(end),
+            ));
+        }
+
         let then_branch = self.parse_block_expr("expected block after if condition")?;
 
         self.skip_newlines();
@@ -3492,39 +3644,17 @@ impl Parser {
         None
     }
 
-    /// Parse bare single-param lambda: `x -> expr`
-    fn lambda_bare(&mut self, name: String, start: Span) -> Option<Expr> {
-        self.advance(); // consume ident
-        self.expect(&TokenKind::Arrow, "expected '->' in lambda")?;
-        self.skip_newlines();
-        let body = self.lambda_body()?;
-        let pattern = Spanned::new(PatternKind::Var(name), start);
-        let span = start.merge(body.span);
-        Some(Spanned::new(
-            ExprKind::Lambda {
-                params: vec![Param {
-                    label: ParamLabel::Implicit,
-                    pattern,
-                    annotation: None,
-                    default: None,
-                }],
-                body: Box::new(body),
-                return_annotation: None,
-            },
-            span,
-        ))
-    }
-
-    /// Parse parenthesized lambda: `() -> expr` or `(params) -> expr`
-    fn lambda_paren(&mut self, start: Span) -> Option<Expr> {
-        self.advance(); // consume (
+    /// Parse pipe-delimited lambda: `|x| -> expr`, `|x, y| -> expr`, `|| -> expr`.
+    fn lambda_pipe(&mut self) -> Option<Expr> {
+        let start = self.current_span();
+        self.expect(&TokenKind::Pipe, "expected '|' to start lambda parameter list")?;
         self.skip_newlines();
 
         let mut params = Vec::new();
-        if !self.check(&TokenKind::RParen) {
+        if !self.check(&TokenKind::Pipe) {
             loop {
                 self.skip_newlines();
-                let pattern = self.pattern()?;
+                let pattern = self.lambda_param_pattern()?;
                 let annotation = if self.match_token(&TokenKind::Colon) {
                     Some(self.type_annotation()?)
                 } else {
@@ -3543,8 +3673,14 @@ impl Parser {
             }
         }
         self.skip_newlines();
-        self.expect(&TokenKind::RParen, "expected ')' after lambda params")?;
-        self.expect(&TokenKind::Arrow, "expected '->' after lambda params")?;
+        self.expect(
+            &TokenKind::Pipe,
+            "expected '|' after lambda parameters",
+        )?;
+        self.expect(
+            &TokenKind::Arrow,
+            "expected '->' after lambda parameter list",
+        )?;
         self.skip_newlines();
         let body = self.lambda_body()?;
 
@@ -3557,6 +3693,24 @@ impl Parser {
             },
             span,
         ))
+    }
+
+    fn lambda_param_pattern(&mut self) -> Option<Pattern> {
+        let mut pat = self.pattern_atom()?;
+        if self.check_ident("as") {
+            self.advance();
+            let name =
+                self.expect_ident("expected variable name after 'as' in lambda parameter")?;
+            let span = pat.span.merge(name.span);
+            pat = Spanned::new(
+                PatternKind::As {
+                    pattern: Box::new(pat),
+                    name,
+                },
+                span,
+            );
+        }
+        Some(pat)
     }
 
     /// Parse a lambda body: either a block `{ ... }` or a single expression.
@@ -4208,7 +4362,7 @@ impl Parser {
 
     // -- Lambda detection --
 
-    /// Lookahead to detect `( ... ) ->` lambda syntax (including `() ->`).
+    /// Lookahead to detect legacy `( ... ) ->` lambda syntax (including `() ->`).
     ///
     /// Heuristic: starting at `(`, check if the content looks like a param list
     /// rather than a parenthesized expression. Signals:
@@ -4973,6 +5127,26 @@ mod tests {
     }
 
     #[test]
+    fn parse_inline_if_then_else() {
+        let expr = parse("if x >= 0 then x else -x");
+        match &expr.node {
+            ExprKind::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                assert!(matches!(condition.node, ExprKind::BinaryOp { .. }));
+                assert!(matches!(then_branch.node, ExprKind::Var(ref name) if name == "x"));
+                assert!(matches!(
+                    else_branch.as_deref().map(|e| &e.node),
+                    Some(ExprKind::UnaryOp { .. })
+                ));
+            }
+            other => panic!("expected inline If, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn parse_if_no_else() {
         let errors = parse_err("if x\n  42");
         assert!(!errors.is_empty());
@@ -5030,7 +5204,7 @@ mod tests {
 
     #[test]
     fn parse_lambda() {
-        let expr = parse("x -> x + 1");
+        let expr = parse("|x| -> x + 1");
         match &expr.node {
             ExprKind::Lambda { params, body, .. } => {
                 assert_eq!(params.len(), 1);
@@ -5046,7 +5220,7 @@ mod tests {
 
     #[test]
     fn parse_multi_param_lambda() {
-        let expr = parse("(x, y) -> x + y");
+        let expr = parse("|x, y| -> x + y");
         match &expr.node {
             ExprKind::Lambda { params, .. } => {
                 assert_eq!(params.len(), 2);
@@ -5059,7 +5233,7 @@ mod tests {
 
     #[test]
     fn parse_lambda_with_existential_annotation() {
-        let expr = parse("(x: any (Show, Eq) where Item = Int) -> x");
+        let expr = parse("|x: any (Show, Eq) where Item = Int| -> x");
         match &expr.node {
             ExprKind::Lambda { params, .. } => {
                 assert_eq!(params.len(), 1);
@@ -5082,13 +5256,47 @@ mod tests {
 
     #[test]
     fn parse_lambda_with_indented_block_body() {
-        let expr = parse("x ->\n  let y = x + 1\n  y");
+        let expr = parse("|x| ->\n  let y = x + 1\n  y");
         match &expr.node {
             ExprKind::Lambda { body, .. } => {
                 assert!(matches!(body.node, ExprKind::Block(_)));
             }
             other => panic!("expected Lambda, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn parse_zero_param_lambda() {
+        let expr = parse("|| -> 42");
+        match &expr.node {
+            ExprKind::Lambda { params, body, .. } => {
+                assert!(params.is_empty());
+                assert!(matches!(body.node, ExprKind::Lit(Lit::Int(42))));
+            }
+            other => panic!("expected Lambda, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_legacy_bare_lambda_is_error() {
+        let errors = parse_err("x -> x + 1");
+        assert!(
+            errors
+                .iter()
+                .any(|d| d.message.contains("bare lambda syntax is not supported")),
+            "expected legacy bare lambda diagnostic, got {errors:?}"
+        );
+    }
+
+    #[test]
+    fn parse_legacy_parenthesized_lambda_is_error() {
+        let errors = parse_err("(x) -> x + 1");
+        assert!(
+            errors
+                .iter()
+                .any(|d| d.message.contains("parenthesized lambda syntax is not supported")),
+            "expected legacy parenthesized lambda diagnostic, got {errors:?}"
+        );
     }
 
     // -- Tuple, list, anon record --
@@ -6149,6 +6357,20 @@ mod tests {
     }
 
     #[test]
+    fn parse_trait_with_bare_type_param() {
+        let m = parse_mod("trait Show a\n  fn show(x: a) -> String");
+        match &m.declarations[0].node {
+            DeclKind::TraitDef(td) => {
+                assert_eq!(td.name.node, "Show");
+                assert_eq!(td.type_params.len(), 1);
+                assert_eq!(td.type_params[0].name.node, "a");
+                assert_eq!(td.methods.len(), 1);
+            }
+            other => panic!("expected TraitDef, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn parse_trait_with_methods_indented() {
         let m = parse_mod("trait Additive\n  fn zero() -> Self\n  fn add(self, other: Self) -> Self");
         match &m.declarations[0].node {
@@ -6487,6 +6709,29 @@ mod tests {
                         }
                     }
                     other => panic!("expected function type annotation, got {other:?}"),
+                }
+            }
+            _ => panic!("expected Function"),
+        }
+    }
+
+    #[test]
+    fn parse_fn_param_with_row_type_annotation() {
+        let m = parse_mod("fn greet(person: { name: String | r }) -> String\n  person.name");
+        match &m.declarations[0].node {
+            DeclKind::Function(fd) => {
+                let ann = fd.params[0]
+                    .annotation
+                    .as_ref()
+                    .expect("param should have annotation");
+                match &ann.node {
+                    TypeAnnotation::Row { fields, rest } => {
+                        assert_eq!(fields.len(), 1);
+                        assert_eq!(fields[0].0, "name");
+                        assert!(matches!(fields[0].1, TypeAnnotation::Named(ref n) if n == "String"));
+                        assert_eq!(rest.as_deref(), Some("r"));
+                    }
+                    other => panic!("expected row type annotation, got {other:?}"),
                 }
             }
             _ => panic!("expected Function"),
@@ -8244,6 +8489,22 @@ mod tests {
                 assert!(def.variants[1].fields.is_empty());
             }
             _ => panic!("expected TypeDef"),
+        }
+    }
+
+    #[test]
+    fn parse_type_def_with_bare_params() {
+        let module = parse_mod("type Option a = Some(a) | None");
+        match &module.declarations[0].node {
+            DeclKind::TypeDef(def) => {
+                assert_eq!(def.name.node, "Option");
+                assert_eq!(def.params, vec!["a"]);
+                assert_eq!(def.variants.len(), 2);
+                assert_eq!(def.variants[0].name.node, "Some");
+                assert_eq!(def.variants[0].fields.len(), 1);
+                assert_eq!(def.variants[1].name.node, "None");
+            }
+            other => panic!("expected TypeDef, got {other:?}"),
         }
     }
 
