@@ -287,7 +287,9 @@ fn compile_into_module<M: Module>(
     mir: &MirModule,
 ) -> Result<BTreeMap<String, FuncId>, CodegenError> {
     let mut func_ids: BTreeMap<String, FuncId> = BTreeMap::new();
+    let mut external_func_ids: BTreeMap<String, FuncId> = BTreeMap::new();
     let mut signatures: BTreeMap<String, cranelift_codegen::ir::Signature> = BTreeMap::new();
+    let external_signatures = collect_external_call_signatures(module, mir)?;
 
     for function in &mir.functions {
         let signature = build_signature(module, function)?;
@@ -304,6 +306,15 @@ fn compile_into_module<M: Module>(
             })?;
         func_ids.insert(function.name.clone(), func_id);
         signatures.insert(function.name.clone(), signature);
+    }
+
+    for (name, signature) in external_signatures {
+        let func_id = module
+            .declare_function(&name, Linkage::Import, &signature)
+            .map_err(|detail| CodegenError::Module {
+                detail: detail.to_string(),
+            })?;
+        external_func_ids.insert(name, func_id);
     }
 
     let mut builder_context = FunctionBuilderContext::new();
@@ -398,6 +409,7 @@ fn compile_into_module<M: Module>(
                         inst,
                         &mut values,
                         &func_ids,
+                        &external_func_ids,
                     )? {
                         block_terminated = true;
                         break;
@@ -520,6 +532,71 @@ fn build_signature<M: Module>(
     Ok(signature)
 }
 
+fn collect_external_call_signatures<M: Module>(
+    module: &M,
+    mir: &MirModule,
+) -> Result<BTreeMap<String, cranelift_codegen::ir::Signature>, CodegenError> {
+    let mut signatures: BTreeMap<String, (Vec<Type>, Type)> = BTreeMap::new();
+
+    for function in &mir.functions {
+        for block in &function.blocks {
+            for inst in &block.instructions {
+                let MirInst::Call {
+                    callee: MirCallee::External(name),
+                    args,
+                    arg_types,
+                    ret_type,
+                    ..
+                } = inst
+                else {
+                    continue;
+                };
+
+                if arg_types.len() != args.len() {
+                    return Err(CodegenError::UnsupportedMir {
+                        function: function.name.clone(),
+                        detail: format!(
+                            "external call `{name}` has {} args but {} arg types",
+                            args.len(),
+                            arg_types.len()
+                        ),
+                    });
+                }
+
+                match signatures.get(name) {
+                    Some((existing_params, existing_ret))
+                        if existing_params != arg_types || existing_ret != ret_type =>
+                    {
+                        return Err(CodegenError::UnsupportedMir {
+                            function: function.name.clone(),
+                            detail: format!(
+                                "external call `{name}` used with conflicting signatures"
+                            ),
+                        });
+                    }
+                    Some(_) => {}
+                    None => {
+                        signatures.insert(name.clone(), (arg_types.clone(), ret_type.clone()));
+                    }
+                }
+            }
+        }
+    }
+
+    let mut clif_signatures = BTreeMap::new();
+    for (name, (params, ret)) in signatures {
+        let mut signature = module.make_signature();
+        for param in params {
+            signature.params.push(AbiParam::new(clif_type(&param)?));
+        }
+        if ret != Type::Unit {
+            signature.returns.push(AbiParam::new(clif_type(&ret)?));
+        }
+        clif_signatures.insert(name, signature);
+    }
+    Ok(clif_signatures)
+}
+
 fn clif_type(ty: &Type) -> Result<cranelift::prelude::Type, CodegenError> {
     match ty {
         Type::Int => Ok(types::I64),
@@ -547,6 +624,7 @@ fn lower_instruction<M: Module>(
     inst: &MirInst,
     values: &mut BTreeMap<MirValueId, Value>,
     func_ids: &BTreeMap<String, FuncId>,
+    external_func_ids: &BTreeMap<String, FuncId>,
 ) -> Result<bool, CodegenError> {
     match inst {
         MirInst::Const { dest, literal } => {
@@ -575,7 +653,9 @@ fn lower_instruction<M: Module>(
         MirInst::Call {
             callee,
             args,
+            arg_types,
             result,
+            ret_type,
             ..
         } => {
             let mut lowered_args = Vec::with_capacity(args.len());
@@ -593,10 +673,29 @@ fn lower_instruction<M: Module>(
                     builder.inst_results(call).first().copied()
                 }
                 MirCallee::External(name) => {
-                    return Err(CodegenError::UnsupportedMir {
-                        function: function_name.to_string(),
-                        detail: format!("external call `{name}` is not implemented in 0d"),
-                    });
+                    if arg_types.len() != args.len() {
+                        return Err(CodegenError::UnsupportedMir {
+                            function: function_name.to_string(),
+                            detail: format!(
+                                "external call `{name}` has {} args but {} arg types",
+                                args.len(),
+                                arg_types.len()
+                            ),
+                        });
+                    }
+                    let callee_id = *external_func_ids
+                        .get(name)
+                        .ok_or_else(|| CodegenError::UnknownFunction {
+                            function: name.clone(),
+                        })?;
+                    let external_ref = module.declare_func_in_func(callee_id, builder.func);
+                    let call = builder.ins().call(external_ref, &lowered_args);
+                    let call_result = builder.inst_results(call).first().copied();
+                    if *ret_type == Type::Unit {
+                        None
+                    } else {
+                        call_result
+                    }
                 }
                 MirCallee::Value(_) => {
                     return Err(CodegenError::UnsupportedMir {
@@ -1428,7 +1527,9 @@ mod tests {
                     instructions: vec![MirInst::Call {
                         callee: MirCallee::Local("countdown".to_string()),
                         args: vec![MirValueId(0)],
+                        arg_types: vec![Type::Int],
                         result: Some(MirValueId(1)),
+                        ret_type: Type::Int,
                         cc_manifest_id: "default".to_string(),
                     }],
                     terminator: MirTerminator::Return {
@@ -1460,7 +1561,9 @@ mod tests {
                         MirInst::Call {
                             callee: MirCallee::Local("drop_and_recurse".to_string()),
                             args: vec![MirValueId(0)],
+                            arg_types: vec![Type::Int],
                             result: Some(MirValueId(1)),
+                            ret_type: Type::Int,
                             cc_manifest_id: "default".to_string(),
                         },
                     ],
@@ -1469,6 +1572,110 @@ mod tests {
                     },
                 }],
             }],
+            layouts: MirLayoutCatalog::default(),
+        }
+    }
+
+    fn sample_external_call_module() -> MirModule {
+        MirModule {
+            functions: vec![MirFunction {
+                name: "call_ext".to_string(),
+                signature: MirFunctionSignature {
+                    params: vec![],
+                    ret: Type::Int,
+                    effects: EffectRow::pure(),
+                },
+                entry: MirBlockId(0),
+                blocks: vec![MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: MirValueId(0),
+                            literal: MirLiteral::Int(7),
+                        },
+                        MirInst::Call {
+                            callee: MirCallee::External("List::len".to_string()),
+                            args: vec![MirValueId(0)],
+                            arg_types: vec![Type::Int],
+                            result: Some(MirValueId(1)),
+                            ret_type: Type::Int,
+                            cc_manifest_id: "default".to_string(),
+                        },
+                    ],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirValueId(1)),
+                    },
+                }],
+            }],
+            layouts: MirLayoutCatalog::default(),
+        }
+    }
+
+    fn sample_external_conflicting_signature_module() -> MirModule {
+        MirModule {
+            functions: vec![
+                MirFunction {
+                    name: "call_ext_int".to_string(),
+                    signature: MirFunctionSignature {
+                        params: vec![],
+                        ret: Type::Int,
+                        effects: EffectRow::pure(),
+                    },
+                    entry: MirBlockId(0),
+                    blocks: vec![MirBlock {
+                        id: MirBlockId(0),
+                        params: vec![],
+                        instructions: vec![
+                            MirInst::Const {
+                                dest: MirValueId(0),
+                                literal: MirLiteral::Int(7),
+                            },
+                            MirInst::Call {
+                                callee: MirCallee::External("List::len".to_string()),
+                                args: vec![MirValueId(0)],
+                                arg_types: vec![Type::Int],
+                                result: Some(MirValueId(1)),
+                                ret_type: Type::Int,
+                                cc_manifest_id: "default".to_string(),
+                            },
+                        ],
+                        terminator: MirTerminator::Return {
+                            value: Some(MirValueId(1)),
+                        },
+                    }],
+                },
+                MirFunction {
+                    name: "call_ext_float".to_string(),
+                    signature: MirFunctionSignature {
+                        params: vec![],
+                        ret: Type::Int,
+                        effects: EffectRow::pure(),
+                    },
+                    entry: MirBlockId(0),
+                    blocks: vec![MirBlock {
+                        id: MirBlockId(0),
+                        params: vec![],
+                        instructions: vec![
+                            MirInst::Const {
+                                dest: MirValueId(0),
+                                literal: MirLiteral::Float(7.0),
+                            },
+                            MirInst::Call {
+                                callee: MirCallee::External("List::len".to_string()),
+                                args: vec![MirValueId(0)],
+                                arg_types: vec![Type::Float],
+                                result: Some(MirValueId(1)),
+                                ret_type: Type::Int,
+                                cc_manifest_id: "default".to_string(),
+                            },
+                        ],
+                        terminator: MirTerminator::Return {
+                            value: Some(MirValueId(1)),
+                        },
+                    }],
+                },
+            ],
             layouts: MirLayoutCatalog::default(),
         }
     }
@@ -1846,6 +2053,42 @@ mod tests {
             .expect("AOT compilation should succeed");
 
         assert!(!artifact.object.is_empty(), "AOT mode should emit object bytes");
+    }
+
+    #[test]
+    fn cranelift_backend_supports_external_namespaced_calls_in_aot_mode() {
+        let module = sample_external_call_module();
+        let manifest = default_abi_manifest(&module);
+        let backend = CraneliftBackend;
+        let config = BackendConfig {
+            mode: CodegenMode::Aot,
+            ..BackendConfig::default()
+        };
+
+        let artifact = backend
+            .compile_module(&module, &manifest, &config)
+            .expect("external namespaced call should compile in AOT mode");
+        assert!(!artifact.object.is_empty());
+    }
+
+    #[test]
+    fn cranelift_backend_rejects_conflicting_external_call_signatures() {
+        let module = sample_external_conflicting_signature_module();
+        let manifest = default_abi_manifest(&module);
+        let backend = CraneliftBackend;
+        let config = BackendConfig {
+            mode: CodegenMode::Aot,
+            ..BackendConfig::default()
+        };
+
+        let err = backend
+            .compile_module(&module, &manifest, &config)
+            .expect_err("conflicting external signatures should fail");
+        assert!(matches!(
+            err,
+            CodegenError::UnsupportedMir { ref detail, .. }
+                if detail.contains("conflicting signatures")
+        ));
     }
 
     #[test]
