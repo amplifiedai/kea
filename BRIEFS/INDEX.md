@@ -9,7 +9,7 @@ See `AGENTS.md` > "Briefs and Workboard" for how to manage this file.
 ## Active
 
 Work in progress right now. Each entry should have a `## Progress` section in its brief.
-- *(none)*
+- **[Effect handlers](in-progress/0c-effect-handlers.md)** — `effect` declarations, `handle`/`resume` expressions, handler typing, at-most-once resumption, and `Fail` sugar (`fail`, `?`, `catch`).
 
 ---
 
@@ -25,7 +25,7 @@ Designed and approved. Ready to pick up. Ordered by execution sequence per ROADM
 
 ### Phase 0c: Effect Handlers (weeks 3-4)
 
-4. **[Effect handlers](todo/0c-effect-handlers.md)** — `effect` declarations, `handle`/`resume` expressions, handler typing, at-most-once resumption, `Fail` sugar (`?`, `fail`, `catch`). Genuinely new — no rill code to cannibalise.
+*(active — see Active section)*
 
 ### Phase 0d: Code Generation — Pure Subset (weeks 4-6)
 

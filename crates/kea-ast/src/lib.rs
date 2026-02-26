@@ -585,6 +585,9 @@ pub enum DeclKind {
     /// Trait definition: `trait Additive { fn zero() -> Self  fn add(self, other: Self) -> Self }`.
     TraitDef(TraitDef),
 
+    /// Effect declaration: `effect Log  fn log(msg: String) -> ()`.
+    EffectDecl(EffectDecl),
+
     /// Implementation block: `impl Additive for Int { ... }` or `impl Counter { ... }`.
     ImplBlock(ImplBlock),
 
@@ -810,6 +813,26 @@ pub struct TraitMethod {
     pub effect_annotation: Option<Spanned<EffectAnnotation>>,
     pub where_clause: Vec<TraitBound>,
     pub default_body: Option<Expr>,
+    pub doc: Option<String>,
+    pub span: Span,
+}
+
+/// An effect declaration.
+#[derive(Debug, Clone, PartialEq)]
+pub struct EffectDecl {
+    pub public: bool,
+    pub name: Spanned<String>,
+    pub doc: Option<String>,
+    pub type_params: Vec<String>,
+    pub operations: Vec<EffectOperation>,
+}
+
+/// An operation signature inside an effect declaration.
+#[derive(Debug, Clone, PartialEq)]
+pub struct EffectOperation {
+    pub name: Spanned<String>,
+    pub params: Vec<Param>,
+    pub return_annotation: Spanned<TypeAnnotation>,
     pub doc: Option<String>,
     pub span: Span,
 }

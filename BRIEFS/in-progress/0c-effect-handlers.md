@@ -1,6 +1,6 @@
 # Brief: Effect Handlers
 
-**Status:** ready
+**Status:** active
 **Priority:** v1-critical
 **Depends on:** 0b-type-system-core (needs effect rows, trait system)
 **Blocks:** 0d-codegen-pure (Fail sugar needed for practical programs), 0e-runtime-effects
@@ -229,3 +229,23 @@ the runtime-handled effect. `Fail` has sugar.
   would need a way to express "E minus operation X" in the type,
   which is possible with row polymorphism but adds complexity.
   Defer to post-v0 if there's demand.)
+
+## Progress
+- 2026-02-26: Brief moved to `in-progress/`; workboard updated.
+- **Next:** Slice 1 (tests first): add `effect` declarations to AST/parser/type-check registration so effect operations are callable via `EffectName.operation(...)` and contribute row-native effects.
+
+### Test Matrix (0c)
+- effect declaration parsing
+- effect operation call type/effect inference
+- handler effect removal
+- nested handler shadowing
+- `resume` legality + at-most-once rejection
+- `fail` / `?` / `catch` desugar + type checking
+
+### Scope Guardrails
+- 0c is AST/parser/typeck/desugar only.
+- No runtime handler implementation strategy work here (belongs to 0e).
+- Handler typing remains row-native only; no legacy fallbacks.
+- Every slice commit must pass:
+  - `mise run check`
+  - `PKG=kea-syntax mise run test-pkg` and/or `PKG=kea-infer mise run test-pkg` based on touched crates

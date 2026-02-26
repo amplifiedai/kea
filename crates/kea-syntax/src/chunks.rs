@@ -89,6 +89,7 @@ pub fn classify_as_declaration(tokens: &[crate::Token]) -> bool {
         || matches!(first, Some(TokenKind::Alias))
         || matches!(first, Some(TokenKind::Opaque))
         || matches!(first, Some(TokenKind::Trait))
+        || matches!(first, Some(TokenKind::Effect))
         || matches!(first, Some(TokenKind::Impl))
         || matches!(first, Some(TokenKind::TestKw))
         || matches!(first, Some(TokenKind::Fn))
@@ -104,6 +105,7 @@ pub fn classify_as_declaration(tokens: &[crate::Token]) -> bool {
                         | TokenKind::Alias
                         | TokenKind::Opaque
                         | TokenKind::Trait
+                        | TokenKind::Effect
                 )
             ))
 }
@@ -379,6 +381,14 @@ mod tests {
     #[test]
     fn classify_test_as_declaration() {
         let tokens = crate::lex(r#"test "smoke" { assert true }"#, FileId(0))
+            .unwrap()
+            .0;
+        assert!(classify_as_declaration(&tokens));
+    }
+
+    #[test]
+    fn classify_effect_as_declaration() {
+        let tokens = crate::lex("effect Log\n  fn log(msg: String) -> Unit", FileId(0))
             .unwrap()
             .0;
         assert!(classify_as_declaration(&tokens));

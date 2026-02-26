@@ -677,6 +677,7 @@ impl<'src> Lexer<'src> {
             "opaque" => TokenKind::Opaque,
             "impl" => TokenKind::Impl,
             "trait" => TokenKind::Trait,
+            "effect" => TokenKind::Effect,
             "forall" => TokenKind::Forall,
             "where" => TokenKind::Where,
             "import" => TokenKind::Import,
@@ -1168,7 +1169,7 @@ mod tests {
     fn keywords() {
         assert_eq!(
             lex_kinds(
-                "let fn expr test property pub if when else case cond alias opaque deriving testing use forall"
+                "let fn expr test property pub if when else case cond alias opaque deriving testing use effect forall"
             ),
             vec![
                 TokenKind::Let,
@@ -1187,6 +1188,7 @@ mod tests {
                 TokenKind::Deriving,
                 TokenKind::Testing,
                 TokenKind::Use,
+                TokenKind::Effect,
                 TokenKind::Forall,
             ]
         );

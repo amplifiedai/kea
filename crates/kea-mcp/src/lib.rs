@@ -12,7 +12,7 @@ use kea_diag::{Diagnostic, Severity};
 use kea_infer::typeck::{
     RecordRegistry, SumTypeRegistry, TraitRegistry, TypeEnv, apply_where_clause,
     infer_and_resolve_in_context, infer_fn_decl_effects, register_fn_effect_signature,
-    register_fn_signature, seed_fn_where_type_params_in_context, validate_declared_fn_effect_with_env_and_records,
+    register_fn_signature, register_effect_decl, seed_fn_where_type_params_in_context, validate_declared_fn_effect_with_env_and_records,
     validate_module_annotations, validate_module_fn_annotations, validate_where_clause_traits,
 };
 use kea_infer::InferenceContext;
@@ -445,6 +445,14 @@ fn process_module(
                     diagnostics.push(diag);
                     return Err(diagnostics);
                 }
+            }
+            DeclKind::EffectDecl(effect_decl) => {
+                let effect_diags = register_effect_decl(effect_decl, records, Some(sum_types), env);
+                if has_error(&effect_diags) {
+                    diagnostics.extend(effect_diags);
+                    return Err(diagnostics);
+                }
+                diagnostics.extend(effect_diags);
             }
             DeclKind::Import(import) => {
                 diagnostics.push(
