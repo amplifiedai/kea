@@ -1,6 +1,7 @@
 import Kea.Generalize
 import Kea.WellFormed
 import Kea.Properties.SubstIdempotent
+import Kea.Properties.WfRename
 
 /-
   Kea.Properties.WfGeneralize — WF lemmas for generalize/instantiate.
@@ -45,3 +46,52 @@ theorem instantiate_mono_preserves_wf
     Ty.WellFormed kctx rctx (instantiate scheme st).1 := by
   rw [instantiate_mono_eq scheme st h_mono]
   simpa using h_wf
+
+theorem instantiate_preserves_wf_of_mapping_respects_ctx
+    (scheme : TypeScheme) (st : UnifyState) (kctx : KindCtx) (rctx : RowCtx)
+    (h_wf : Ty.WellFormed kctx rctx scheme.ty)
+    (h_respects :
+      let typeMapping :=
+        (scheme.typeVars.foldl
+          (fun (acc, st) tv =>
+            let (fresh, st') := st.freshTypeVar
+            ((tv, fresh) :: acc, st'))
+          ([], st)).1
+      let stAfterType :=
+        (scheme.typeVars.foldl
+          (fun (acc, st) tv =>
+            let (fresh, st') := st.freshTypeVar
+            ((tv, fresh) :: acc, st'))
+          ([], st)).2
+      let rowMapping :=
+        (scheme.rowVars.foldl
+          (fun (acc, st) rv =>
+            let (fresh, st') := st.freshRowVar
+            ((rv, fresh) :: acc, st'))
+          ([], stAfterType)).1
+      ({ typeMap := typeMapping, rowMap := rowMapping } : VarMapping).RespectsCtx kctx rctx) :
+    Ty.WellFormed kctx rctx (instantiate scheme st).1 := by
+  unfold instantiate
+  by_cases h_mono : scheme.isMono
+  · simp [h_mono] at *
+    simpa using h_wf
+  · simp [h_mono]
+    exact renameType_preserves_wf
+      ({ typeMap :=
+          (scheme.typeVars.foldl
+            (fun (acc, st) tv =>
+              let (fresh, st') := st.freshTypeVar
+              ((tv, fresh) :: acc, st'))
+            ([], st)).1,
+         rowMap :=
+          (scheme.rowVars.foldl
+            (fun (acc, st) rv =>
+              let (fresh, st') := st.freshRowVar
+              ((rv, fresh) :: acc, st'))
+            ([],
+              (scheme.typeVars.foldl
+                (fun (acc, st) tv =>
+                  let (fresh, st') := st.freshTypeVar
+                  ((tv, fresh) :: acc, st'))
+                ([], st)).2)).1 })
+      kctx rctx h_respects scheme.ty h_wf
