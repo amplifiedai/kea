@@ -26,6 +26,7 @@ Thumbs.db
 
 # Lean/Lake build artifacts
 /formal/.lake/
+/formal/lake-manifest.json
 
 # sccache
 .sccache/
