@@ -2189,10 +2189,6 @@ pub fn derive_dispatch_semantics(type_name: &str, return_type: &Type) -> Dispatc
 fn ast_kind_to_kind(kind: &kea_ast::KindAnnotation) -> Kind {
     match kind {
         kea_ast::KindAnnotation::Star => Kind::Star,
-        kea_ast::KindAnnotation::Arrow(lhs, rhs) => Kind::Arrow(
-            Box::new(ast_kind_to_kind(lhs)),
-            Box::new(ast_kind_to_kind(rhs)),
-        ),
     }
 }
 
@@ -2542,18 +2538,9 @@ fn resolve_assoc_annotation_for_impl(
 }
 
 fn infer_impl_target_kind(type_name: &str, type_params: &[String]) -> Kind {
-    let arity = builtin_type_constructor_arity(type_name).unwrap_or(0);
-
-    if type_params.is_empty() {
-        return Kind::from_arity(arity);
-    }
-
-    let filled = type_params.iter().filter(|p| p.as_str() != "_").count();
-    if filled >= arity {
-        Kind::Star
-    } else {
-        Kind::from_arity(arity - filled)
-    }
+    let _ = builtin_type_constructor_arity(type_name);
+    let _ = type_params;
+    Kind::Star
 }
 
 /// Registry of trait definitions and implementations.

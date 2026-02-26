@@ -774,7 +774,6 @@ pub struct EffectRowItem {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum KindAnnotation {
     Star,
-    Arrow(Box<KindAnnotation>, Box<KindAnnotation>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -94,21 +94,6 @@ impl std::fmt::Display for Label {
 pub enum Kind {
     Star,
     Eff,
-    Arrow(Box<Kind>, Box<Kind>),
-}
-
-impl Kind {
-    /// Build `* -> * -> ... -> *` with `arity` arguments.
-    pub fn from_arity(arity: usize) -> Self {
-        if arity == 0 {
-            return Kind::Star;
-        }
-        let mut kind = Kind::Star;
-        for _ in 0..arity {
-            kind = Kind::Arrow(Box::new(Kind::Star), Box::new(kind));
-        }
-        kind
-    }
 }
 
 impl fmt::Display for Kind {
@@ -116,14 +101,6 @@ impl fmt::Display for Kind {
         match self {
             Kind::Star => write!(f, "*"),
             Kind::Eff => write!(f, "Eff"),
-            Kind::Arrow(lhs, rhs) => {
-                let needs_paren = matches!(**lhs, Kind::Arrow(_, _));
-                if needs_paren {
-                    write!(f, "({lhs}) -> {rhs}")
-                } else {
-                    write!(f, "{lhs} -> {rhs}")
-                }
-            }
         }
     }
 }
@@ -2893,10 +2870,7 @@ mod tests {
     #[test]
     fn display_kind_eff() {
         assert_eq!(Kind::Eff.to_string(), "Eff");
-        assert_eq!(
-            Kind::Arrow(Box::new(Kind::Eff), Box::new(Kind::Star)).to_string(),
-            "Eff -> *"
-        );
+        assert_eq!(Kind::Star.to_string(), "*");
     }
 
     #[test]

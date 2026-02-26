@@ -182,13 +182,6 @@ fn test_prov() -> Provenance {
     }
 }
 
-fn count_kind_arrows(kind: &Kind) -> usize {
-    match kind {
-        Kind::Star | Kind::Eff => 0,
-        Kind::Arrow(_, rhs) => 1 + count_kind_arrows(rhs),
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Property: Substitution idempotence
 // ---------------------------------------------------------------------------
@@ -268,9 +261,9 @@ proptest! {
 
 proptest! {
     #[test]
-    fn kind_from_arity_has_expected_arrow_depth(arity in 0usize..8) {
-        let kind = Kind::from_arity(arity);
-        prop_assert_eq!(count_kind_arrows(&kind), arity);
+    fn kind_domain_is_star_or_eff(use_eff in any::<bool>()) {
+        let kind = if use_eff { Kind::Eff } else { Kind::Star };
+        prop_assert!(matches!(kind, Kind::Star | Kind::Eff));
     }
 }
 

@@ -979,15 +979,15 @@ impl Parser {
     }
 
     fn kind_annotation(&mut self) -> Option<KindAnnotation> {
-        let lhs = self.kind_atom()?;
+        let kind = self.kind_atom()?;
         self.skip_newlines();
-        if self.match_token(&TokenKind::Arrow) {
-            self.skip_newlines();
-            let rhs = self.kind_annotation()?;
-            Some(KindAnnotation::Arrow(Box::new(lhs), Box::new(rhs)))
-        } else {
-            Some(lhs)
+        if self.check(&TokenKind::Arrow) {
+            self.error_at_current(
+                "higher-kinded kind arrows are not supported in Kea v0; use `*`",
+            );
+            return None;
         }
+        Some(kind)
     }
 
     fn kind_atom(&mut self) -> Option<KindAnnotation> {
@@ -6844,7 +6844,7 @@ mod tests {
     #[test]
     fn parse_trait_method_with_where_clause() {
         let m = parse_mod(
-            "trait Traversable(T: * -> *)\n  fn traverse(value: T(a), f: fn(a) -> F(b)) -> F(T(b)) where F: Applicative",
+            "trait Traversable(T: *)\n  fn traverse(value: T, f: fn(a) -> F(b)) -> F(T) where F: Applicative",
         );
         match &m.declarations[0].node {
             DeclKind::TraitDef(td) => {
@@ -6943,23 +6943,15 @@ mod tests {
     }
 
     #[test]
-    fn parse_trait_with_kinded_type_param() {
-        let m = parse_mod("trait Bind(F: * -> *)\n  fn bind(value: Int) -> Int");
-        match &m.declarations[0].node {
-            DeclKind::TraitDef(td) => {
-                assert_eq!(td.name.node, "Bind");
-                assert_eq!(td.type_params.len(), 1);
-                assert_eq!(td.type_params[0].name.node, "F");
-                match &td.type_params[0].kind {
-                    KindAnnotation::Arrow(left, right) => {
-                        assert!(matches!(**left, KindAnnotation::Star));
-                        assert!(matches!(**right, KindAnnotation::Star));
-                    }
-                    other => panic!("expected arrow kind, got {other:?}"),
-                }
-            }
-            other => panic!("expected TraitDef, got {other:?}"),
-        }
+    fn parse_trait_with_hkt_kind_param_is_error() {
+        let errors = parse_mod_err("trait Bind(F: * -> *)\n  fn bind(value: Int) -> Int");
+        assert!(
+            errors.iter().any(|d| {
+                d.message
+                    .contains("higher-kinded kind arrows are not supported in Kea v0")
+            }),
+            "expected HKT-kind diagnostic, got {errors:?}"
+        );
     }
 
     #[test]
