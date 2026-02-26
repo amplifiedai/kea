@@ -150,3 +150,17 @@ theorem instantiate_preserves_wf
   · exact instantiate_mono_preserves_wf scheme st kctx rctx h_mono h_wf
   · exact instantiate_preserves_wf_of_instantiateVarMapping_respects_ctx
       scheme st kctx rctx h_wf h_respects
+
+theorem instantiate_functionEff_preserves_wf
+    (scheme : TypeScheme) (st : UnifyState) (kctx : KindCtx) (rctx : RowCtx)
+    (params : TyList) (effects : EffectRow) (ret : Ty)
+    (h_scheme : scheme.ty = .functionEff params effects ret)
+    (h_wf_params : TyList.WellFormed kctx rctx params)
+    (h_wf_effects : EffectRow.WellFormed kctx rctx effects)
+    (h_wf_ret : Ty.WellFormed kctx rctx ret)
+    (h_assume : scheme.isMono = true ∨ (instantiateVarMapping scheme st).RespectsCtx kctx rctx) :
+    Ty.WellFormed kctx rctx (instantiate scheme st).1 := by
+  have h_wf_ty : Ty.WellFormed kctx rctx scheme.ty := by
+    simpa [h_scheme] using (show Ty.WellFormed kctx rctx (.functionEff params effects ret) from
+      ⟨h_wf_params, h_wf_effects, h_wf_ret⟩)
+  exact instantiate_preserves_wf scheme st kctx rctx h_wf_ty h_assume
