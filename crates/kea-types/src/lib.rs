@@ -2294,6 +2294,7 @@ pub struct Effects {
 pub struct EffectVarId(pub u32);
 
 /// User-visible effect lattice levels.
+// TODO(0b-exit): delete when row-based effect solver is complete.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum EffectLevel {
     Pure,
@@ -2320,6 +2321,7 @@ impl EffectLevel {
 }
 
 /// Effect term for effect-polymorphic type annotations.
+// TODO(0b-exit): delete when row-based effect solver is complete.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum EffectTerm {
     Known(EffectLevel),
@@ -2327,6 +2329,7 @@ pub enum EffectTerm {
 }
 
 /// Effect constraints emitted by the type/effect checker.
+// TODO(0b-exit): delete when row-based effect solver is complete.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum EffectConstraint {
     Eq {

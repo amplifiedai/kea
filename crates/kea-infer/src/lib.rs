@@ -471,6 +471,7 @@ impl DerefMut for InferenceContext {
 // Effect constraints
 // ---------------------------------------------------------------------------
 
+// TODO(0b-exit): delete when row-based effect solver is complete.
 fn effect_rank(level: EffectLevel) -> u8 {
     match level {
         EffectLevel::Pure => 0,
@@ -479,6 +480,7 @@ fn effect_rank(level: EffectLevel) -> u8 {
     }
 }
 
+// TODO(0b-exit): delete when row-based effect solver is complete.
 fn effect_join(left: EffectLevel, right: EffectLevel) -> EffectLevel {
     if effect_rank(left) >= effect_rank(right) {
         left
@@ -487,6 +489,7 @@ fn effect_join(left: EffectLevel, right: EffectLevel) -> EffectLevel {
     }
 }
 
+// TODO(0b-exit): delete when row-based effect solver is complete.
 fn resolve_effect_term(
     term: EffectTerm,
     solved: &std::collections::BTreeMap<EffectVarId, EffectLevel>,
@@ -497,6 +500,7 @@ fn resolve_effect_term(
     }
 }
 
+// TODO(0b-exit): delete when row-based effect solver is complete.
 fn bind_effect_var(
     var: EffectVarId,
     level: EffectLevel,
@@ -515,6 +519,7 @@ fn bind_effect_var(
     Ok(true)
 }
 
+// TODO(0b-exit): delete when row-based effect solver is complete.
 fn all_effect_vars(constraints: &[EffectConstraint]) -> std::collections::BTreeSet<EffectVarId> {
     let mut vars = std::collections::BTreeSet::new();
     let mut insert_term = |term: EffectTerm| {
@@ -542,6 +547,7 @@ fn all_effect_vars(constraints: &[EffectConstraint]) -> std::collections::BTreeS
 ///
 /// Unknown variables default to `Impure`, which is the conservative top element
 /// in the current effect lattice (`pure < volatile < impure`).
+// TODO(0b-exit): delete when row-based effect solver is complete.
 pub fn solve_effect_constraints(
     constraints: &[EffectConstraint],
 ) -> Result<std::collections::BTreeMap<EffectVarId, EffectLevel>, String> {
