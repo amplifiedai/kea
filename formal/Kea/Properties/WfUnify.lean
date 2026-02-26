@@ -171,6 +171,21 @@ theorem bindClosedRow_update_preserves_substWellFormedRange
       { st with subst := st.subst.bindRow rv (Row.closed fields) } kctx rctx := by
   exact bindClosedRow_update_preserves_wf_range st kctx rctx rv fields h_range h_fields
 
+theorem bindClosedRow_update_with_lacks_preserves_substWellFormedRange
+    (st : UnifyState) (kctx : KindCtx) (rctx : RowCtx)
+    (rv : RowVarId) (fields : RowFields) (lacks' : Lacks)
+    (h_range : UnifyState.SubstWellFormedRange st kctx rctx)
+    (h_fields : RowFields.WellFormed kctx rctx fields) :
+    UnifyState.SubstWellFormedRange
+      { st with
+          subst := st.subst.bindRow rv (Row.closed fields),
+          lacks := lacks' } kctx rctx := by
+  let stBound : UnifyState := { st with subst := st.subst.bindRow rv (Row.closed fields) }
+  have h_bound : UnifyState.SubstWellFormedRange stBound kctx rctx :=
+    bindClosedRow_update_preserves_substWellFormedRange st kctx rctx rv fields h_range h_fields
+  have h_lacks := UnifyState.substWellFormedRange_with_lacks stBound kctx rctx lacks' h_bound
+  simpa [stBound] using h_lacks
+
 theorem bindOpenRows_update_preserves_wf_range
     (st : UnifyState) (kctx : KindCtx) (rctx : RowCtx)
     (rv1 rv2 r3 : RowVarId) (onlyLeft onlyRight : RowFields)
@@ -203,3 +218,50 @@ theorem bindOpenRows_update_preserves_substWellFormedRange
               rv2 (Row.mkOpen onlyLeft r3) } kctx rctx := by
   exact bindOpenRows_update_preserves_wf_range
     st kctx rctx rv1 rv2 r3 onlyLeft onlyRight h_range h_left h_right h_r3
+
+theorem bindOpenRows_update_with_lacks_preserves_substWellFormedRange
+    (st : UnifyState) (kctx : KindCtx) (rctx : RowCtx)
+    (rv1 rv2 r3 : RowVarId) (onlyLeft onlyRight : RowFields) (lacks' : Lacks)
+    (h_range : UnifyState.SubstWellFormedRange st kctx rctx)
+    (h_left : RowFields.WellFormed kctx rctx onlyLeft)
+    (h_right : RowFields.WellFormed kctx rctx onlyRight)
+    (h_r3 : r3 ∈ rctx) :
+    UnifyState.SubstWellFormedRange
+      { st with
+          subst :=
+            Subst.bindRow
+              (Subst.bindRow st.subst rv1 (Row.mkOpen onlyRight r3))
+              rv2 (Row.mkOpen onlyLeft r3),
+          lacks := lacks' } kctx rctx := by
+  let stBound : UnifyState := {
+    st with
+      subst :=
+        Subst.bindRow
+          (Subst.bindRow st.subst rv1 (Row.mkOpen onlyRight r3))
+          rv2 (Row.mkOpen onlyLeft r3)
+  }
+  have h_bound : UnifyState.SubstWellFormedRange stBound kctx rctx :=
+    bindOpenRows_update_preserves_substWellFormedRange
+      st kctx rctx rv1 rv2 r3 onlyLeft onlyRight h_range h_left h_right h_r3
+  have h_lacks := UnifyState.substWellFormedRange_with_lacks stBound kctx rctx lacks' h_bound
+  simpa [stBound] using h_lacks
+
+theorem freshOpenRows_update_with_lacks_preserves_substWellFormedRange
+    (st : UnifyState) (kctx : KindCtx) (rctx : RowCtx)
+    (rv1 rv2 : RowVarId) (onlyLeft onlyRight : RowFields) (lacks' : Lacks)
+    (h_range : UnifyState.SubstWellFormedRange st kctx rctx)
+    (h_left : RowFields.WellFormed kctx rctx onlyLeft)
+    (h_right : RowFields.WellFormed kctx rctx onlyRight)
+    (h_fresh_in_ctx : (st.freshRowVar).1 ∈ rctx) :
+    UnifyState.SubstWellFormedRange
+      { (st.freshRowVar).2 with
+          subst :=
+            Subst.bindRow
+              (Subst.bindRow (st.freshRowVar).2.subst rv1 (Row.mkOpen onlyRight (st.freshRowVar).1))
+              rv2 (Row.mkOpen onlyLeft (st.freshRowVar).1),
+          lacks := lacks' } kctx rctx := by
+  have h_fresh : UnifyState.SubstWellFormedRange (st.freshRowVar).2 kctx rctx :=
+    UnifyState.substWellFormedRange_freshRowVar st kctx rctx h_range
+  exact bindOpenRows_update_with_lacks_preserves_substWellFormedRange
+    (st.freshRowVar).2 kctx rctx rv1 rv2 (st.freshRowVar).1 onlyLeft onlyRight lacks'
+    h_fresh h_left h_right h_fresh_in_ctx
