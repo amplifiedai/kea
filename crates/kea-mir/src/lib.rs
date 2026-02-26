@@ -346,6 +346,10 @@ fn lower_hir_function(function: &HirFunction, layouts: &MirLayoutCatalog) -> Mir
     for (index, param) in function.params.iter().enumerate() {
         if let Some(name) = &param.name {
             ctx.vars.insert(name.clone(), MirValueId(index as u32));
+            if let Some(Type::Record(record_ty)) = params.get(index) {
+                ctx.var_record_types
+                    .insert(name.clone(), record_ty.name.clone());
+            }
         }
     }
     let return_value = ctx.lower_expr(&function.body);
@@ -375,6 +379,7 @@ struct FunctionLoweringCtx {
     blocks: Vec<PendingBlock>,
     current_block: MirBlockId,
     vars: BTreeMap<String, MirValueId>,
+    var_record_types: BTreeMap<String, String>,
     sum_ctor_candidates: BTreeMap<String, Vec<SumCtorCandidate>>,
     next_value_id: u32,
 }
@@ -411,6 +416,7 @@ impl FunctionLoweringCtx {
             }],
             current_block: MirBlockId(0),
             vars: BTreeMap::new(),
+            var_record_types: BTreeMap::new(),
             sum_ctor_candidates,
             next_value_id: param_count as u32,
         }
@@ -549,14 +555,18 @@ impl FunctionLoweringCtx {
             }
             HirExprKind::FieldAccess { expr: base, field } => {
                 let record = self.lower_expr(base)?;
-                let Type::Record(record_ty) = &base.ty else {
-                    return None;
-                };
+                let record_type = match &base.ty {
+                    Type::Record(record_ty) => Some(record_ty.name.clone()),
+                    _ => match &base.kind {
+                        HirExprKind::Var(name) => self.var_record_types.get(name).cloned(),
+                        _ => None,
+                    },
+                }?;
                 let dest = self.new_value();
                 self.emit_inst(MirInst::RecordFieldLoad {
                     dest: dest.clone(),
                     record,
-                    record_type: record_ty.name.clone(),
+                    record_type,
                     field: field.clone(),
                     field_ty: expr.ty.clone(),
                 });
@@ -617,7 +627,7 @@ impl FunctionLoweringCtx {
             }
             HirExprKind::Let { pattern, value } => {
                 let value_id = self.lower_expr(value)?;
-                self.bind_pattern(pattern, value_id.clone());
+                self.bind_pattern(pattern, value_id.clone(), &value.ty);
                 Some(value_id)
             }
             HirExprKind::Block(exprs) => {
@@ -743,9 +753,13 @@ impl FunctionLoweringCtx {
         result_value
     }
 
-    fn bind_pattern(&mut self, pattern: &HirPattern, value_id: MirValueId) {
+    fn bind_pattern(&mut self, pattern: &HirPattern, value_id: MirValueId, value_ty: &Type) {
         if let HirPattern::Var(name) = pattern {
             self.vars.insert(name.clone(), value_id);
+            if let Type::Record(record_ty) = value_ty {
+                self.var_record_types
+                    .insert(name.clone(), record_ty.name.clone());
+            }
         }
     }
 
@@ -1266,6 +1280,71 @@ mod tests {
                 ..
             } if sum_type == "Option" && variant == "Some" && fields.len() == 1
         ));
+    }
+
+    #[test]
+    fn lower_hir_module_resolves_record_field_load_for_let_bound_record_var() {
+        let user_ty = Type::Record(RecordType {
+            name: "User".to_string(),
+            params: vec![],
+            row: RowType::closed(vec![(Label::new("age"), Type::Int)]),
+        });
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "get_age".to_string(),
+                params: vec![],
+                body: HirExpr {
+                    kind: HirExprKind::Block(vec![
+                        HirExpr {
+                            kind: HirExprKind::Let {
+                                pattern: HirPattern::Var("user".to_string()),
+                                value: Box::new(HirExpr {
+                                    kind: HirExprKind::RecordLit {
+                                        record_type: "User".to_string(),
+                                        fields: vec![(
+                                            "age".to_string(),
+                                            HirExpr {
+                                                kind: HirExprKind::Lit(kea_ast::Lit::Int(9)),
+                                                ty: Type::Int,
+                                                span: kea_ast::Span::synthetic(),
+                                            },
+                                        )],
+                                    },
+                                    ty: user_ty.clone(),
+                                    span: kea_ast::Span::synthetic(),
+                                }),
+                            },
+                            ty: user_ty.clone(),
+                            span: kea_ast::Span::synthetic(),
+                        },
+                        HirExpr {
+                            kind: HirExprKind::FieldAccess {
+                                expr: Box::new(HirExpr {
+                                    kind: HirExprKind::Var("user".to_string()),
+                                    ty: Type::Dynamic,
+                                    span: kea_ast::Span::synthetic(),
+                                }),
+                                field: "age".to_string(),
+                            },
+                            ty: Type::Int,
+                            span: kea_ast::Span::synthetic(),
+                        },
+                    ]),
+                    ty: Type::Int,
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
+                effects: EffectRow::pure(),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let mir = lower_hir_module(&hir);
+        let function = &mir.functions[0];
+        assert!(function.blocks[0]
+            .instructions
+            .iter()
+            .any(|inst| matches!(inst, MirInst::RecordFieldLoad { .. })));
     }
 
     #[test]
