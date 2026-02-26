@@ -353,4 +353,5 @@ Precision notes:
 - 2026-02-26: Step 3 backend progressed from stub to real Cranelift lowering for current pure MIR subset (`const`, `binary`, `call`, `return`) with host JIT compilation and AOT object emission paths covered by crate tests.
 - 2026-02-26: Step 3 control-flow extension landed: Cranelift lowering now compiles multi-block MIR control flow with `Jump`/`Branch` terminators (no block params yet), unlocking incremental `if`/match lowering work.
 - 2026-02-26: Step 2 control-flow extension landed: MIR lowering now emits block-graph control flow for Unit-typed `if` expressions (`Branch` + branch-local blocks + join), and the end-to-end `compile_hir_module` pipeline compiles this path.
-- **Next:** Add value-producing control flow (block params/phi or equivalent) for non-Unit `if`/match, then expand structs/enums/pattern matching and Fail-only Result lowering fast path.
+- 2026-02-26: Step 2/3 control-flow value path landed: MIR blocks now carry typed block params and `Jump` arguments; non-Unit `if` lowers to join-block params; Cranelift lowering maps block params/args and compiles value-producing `if` end-to-end.
+- **Next:** Expand lowering/codegen coverage for structs/enums/pattern matching and Fail-only Result lowering fast path.
