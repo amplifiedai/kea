@@ -6668,7 +6668,7 @@ fn infer_fn_decl_effects_uses_volatile_callback_param_annotation() {
             pattern: sp(PatternKind::Var("f".to_string())),
             annotation: Some(sp(TypeAnnotation::FunctionWithEffect(
                 vec![TypeAnnotation::Named("Int".to_string())],
-                sp(EffectAnnotation::Volatile),
+                sp(effect_row_annotation(vec![("Volatile", None)], None)),
                 Box::new(TypeAnnotation::Named("Int".to_string())),
             ))),
             default: None,
@@ -6970,8 +6970,8 @@ fn infer_expr_effects_shared_effect_var_across_multiple_callback_params() {
 
     env.set_function_effect_row("pure_cb".to_string(), EffectRow::pure());
     env.set_function_effect_row(
-        "volatile_cb".to_string(),
-        EffectRow::closed(vec![(Label::new("Volatile"), Type::Unit)]),
+        "send_cb".to_string(),
+        EffectRow::closed(vec![(Label::new("Send"), Type::Unit)]),
     );
     env.set_function_effect_row(
         "impure_cb".to_string(),
@@ -6984,11 +6984,11 @@ fn infer_expr_effects_shared_effect_var_across_multiple_callback_params() {
         Effects::pure_deterministic()
     );
 
-    let volatile_call = call(var("zip_apply"), vec![var("pure_cb"), var("volatile_cb")]);
+    let send_call = call(var("zip_apply"), vec![var("pure_cb"), var("send_cb")]);
     // Shared `-[e]>` means both callback args must agree on the same effect
-    // variable. `pure` + `volatile` is unsatisfiable under equality and
+    // variable. `pure` + `Send` is unsatisfiable under equality and
     // conservatively falls back to impure.
-    assert_eq!(infer_expr_effects(&volatile_call, &env), Effects::impure());
+    assert_eq!(infer_expr_effects(&send_call, &env), Effects::impure());
 
     let impure_left = call(var("zip_apply"), vec![var("impure_cb"), var("pure_cb")]);
     assert_eq!(infer_expr_effects(&impure_left, &env), Effects::impure());
@@ -7106,7 +7106,7 @@ fn infer_expr_effects_let_alias_lambda_preserves_callback_effect_constraints() {
 #[test]
 fn validate_declared_fn_effect_accepts_weaker_or_equal_inferred_effect() {
     let mut fn_decl = make_fn_decl("f", vec![], lit_int(1));
-    fn_decl.effect_annotation = Some(sp(EffectAnnotation::Impure));
+    fn_decl.effect_annotation = Some(sp(effect_row_annotation(vec![("IO", None)], None)));
     let inferred = Effects::pure_deterministic();
     assert!(validate_declared_fn_effect(&fn_decl, inferred).is_ok());
 }
@@ -7164,7 +7164,7 @@ fn effect_row_subsumption_allows_declared_superset() {
     let declared = EffectRow::closed(vec![
         (Label::new("IO"), Type::Unit),
         (Label::new("Fail"), Type::String),
-        (Label::new("Impure"), Type::Unit),
+        (Label::new("Send"), Type::Unit),
     ]);
     assert!(unify_effect_row_subsumption(&actual, &declared, s()).is_ok());
 }
@@ -7174,11 +7174,11 @@ fn effect_row_subsumption_rejects_inferred_extra_effects() {
     let actual = EffectRow::closed(vec![
         (Label::new("IO"), Type::Unit),
         (Label::new("Fail"), Type::String),
-        (Label::new("Impure"), Type::Unit),
+        (Label::new("Send"), Type::Unit),
     ]);
     let declared = EffectRow::closed(vec![
         (Label::new("IO"), Type::Unit),
-        (Label::new("Impure"), Type::Unit),
+        (Label::new("Send"), Type::Unit),
     ]);
     let err = unify_effect_row_subsumption(&actual, &declared, s())
         .expect_err("closed declared row should reject inferred extra effects");
@@ -7195,12 +7195,12 @@ fn effect_row_subsumption_accepts_open_declared_tail() {
     let actual = EffectRow::closed(vec![
         (Label::new("IO"), Type::Unit),
         (Label::new("Send"), Type::Unit),
-        (Label::new("Impure"), Type::Unit),
+        (Label::new("Spawn"), Type::Unit),
     ]);
     let declared = EffectRow::open(
         vec![
             (Label::new("IO"), Type::Unit),
-            (Label::new("Impure"), Type::Unit),
+            (Label::new("Send"), Type::Unit),
         ],
         RowVarId(99),
     );
@@ -8134,7 +8134,7 @@ fn ownership_scope_package_vs_project() {
 }
 
 #[test]
-fn ownership_scope_rill_builtin() {
+fn ownership_scope_kea_builtin() {
     assert!(same_ownership_scope("kea:", "kea:"));
 }
 
