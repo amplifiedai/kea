@@ -110,12 +110,12 @@ fn with_stdout_logger(f: () -[Log, e]> T) -[IO, e]> T
   handle f()
     Log.log(level, msg) ->
       IO.stdout("[{level}] {msg}")
-      resume()
+      resume ()
 ```
 
 This handler intercepts `Log` and implements it using `IO.stdout`.
 The type tells the full story: `Log` goes in, `IO` comes out,
-everything else (`e`) passes through. `resume()` returns control
+everything else (`e`) passes through. `resume ()` returns control
 to where `Log.log` was called.
 
 This separation — declaring what you need vs deciding how it's
@@ -130,11 +130,11 @@ Handlers compose by nesting:
 fn run_pipeline(order: Order) -[IO]> Receipt
   handle
     handle process_order(order)
-      State.get() -> resume(Stats.empty())
-      State.put(s) -> resume()
+      State.get() -> resume Stats.empty()
+      State.put(s) -> resume ()
     Log.log(level, msg) ->
       IO.stdout("[{level}] {msg}")
-      resume()
+      resume ()
 ```
 
 Each handler peels off one effect. The final signature is `-[IO]>` —
@@ -217,8 +217,7 @@ test "config loading"
       IO.read_file(path) ->
         resume(fake_files.get(path).unwrap_or(""))
 
-  let config = result.unwrap()
-  assert config.db.url == "..."
+  assert result == Ok(Config { db: DbConfig { url: "..." } })
 ```
 
 The production code calls `IO.read_file` and can fail with
@@ -252,8 +251,8 @@ annotate it at call sites:
 -- pure: List(Int) -> List(Int)
 numbers.map(|n| -> n * 2)
 
--- effectful: List(String) -[IO, Fail ReadError]> List(Bytes)
-paths.map(|p| -> IO.read_file(p)?)
+-- effectful: List(String) -[IO]> List(Bytes)
+paths.map(|p| -> IO.read_file(p))
 ```
 
 This matters because higher-order functions are everywhere.
