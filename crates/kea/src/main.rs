@@ -547,6 +547,37 @@ mod tests {
     }
 
     #[test]
+    fn compile_and_execute_fail_only_main_ok_path_exit_code() {
+        let source_path = write_temp_source(
+            "effect Fail\n  fn fail(err: Int) -> Never\n\nfn main() -[Fail]> Int\n  12\n",
+            "kea-cli-fail-main-ok",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 12);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_fail_only_main_err_path_reports_unhandled_fail() {
+        let source_path = write_temp_source(
+            "effect Fail\n  fn fail(err: Int) -> Never\n\nfn main() -[Fail]> Int\n  fail 9\n",
+            "kea-cli-fail-main-err",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should report unhandled fail");
+        assert!(
+            err.contains("unhandled Fail"),
+            "expected unhandled Fail error, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_bool_case_exit_code() {
         let source_path = write_temp_source(
             "fn main() -> Int\n  case true\n    true -> 3\n    false -> 8\n",
