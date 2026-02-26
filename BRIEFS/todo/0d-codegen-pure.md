@@ -91,9 +91,40 @@ Create `crates/kea-mir/`. Use rill-mir as structural reference:
 - Explicit memory operations (alloc, deref, copy)
 - Refcounting annotations
 
-### Step 3: kea-codegen crate — JIT path
+**Backend-neutrality constraint:** MIR must be defined independently
+of Cranelift's builder API. MIR ops should represent Kea semantics
+(retain, release, try_claim, freeze, effect_op, cow_branch) as
+first-class operations — not as Cranelift function calls. The
+Cranelift backend lowers MIR ops to Cranelift IR; a future backend
+lowers the same MIR to its own representation. See
+[performance-backend-strategy](../design/performance-backend-strategy.md)
+for the full MIR contract requirements.
 
-Copy rill-codegen. Then:
+Minimum stable MIR op set (0d delivers these; 0e extends):
+- Memory: `retain`, `release`, `move`, `borrow`, `try_claim`, `freeze`
+- Mutation: `cow_update { unique_path, copy_path }`
+- Effects: `effect_op { class: direct | dispatch | zero_resume }`
+  (0d only needs `zero_resume` for Fail; 0e adds the rest)
+- Handlers: `handler_enter`, `handler_exit`, `resume`
+  (0d stubs these; 0e implements)
+- Calls: `call { cc_manifest_id }` — references the ABI manifest
+
+Key MIR design requirements for backend portability:
+- Explicit value categories (unboxed value, heap-managed aggregate)
+- Effect operations classified as MIR metadata, not encoded in
+  the lowering
+- Layout metadata as queryable side tables, not baked into IR nodes
+- Calling convention expressed as an ABI manifest artifact (a
+  concrete type/file consumed by codegen, not a comment)
+
+### Step 3: Backend interface trait + Cranelift backend
+
+Define a narrow backend interface trait:
+- Input: validated MIR + layout tables + target config
+- Output: object code / executable image + diagnostics + stats
+
+Then implement the Cranelift backend as the first (and initially
+only) implementation. Start from rill-codegen:
 - Rename rill → kea
 - Keep Cranelift builder/ISA/module setup
 - Extend expression compilation for Kea's operations
@@ -102,6 +133,20 @@ Copy rill-codegen. Then:
 - Add function compilation (multi-expression bodies, not just
   scalar expressions)
 - Add pattern matching → branch sequences
+
+The backend interface is the stable contract. Cranelift is the
+first implementation. Future backends (LLVM, Kea-native) implement
+the same trait.
+
+Step 3 deliverables:
+- Backend interface trait defined and documented
+- Cranelift backend implements the trait
+- ABI manifest artifact: a concrete data type describing parameter
+  classes (value/ref/evidence), return style, effect evidence
+  placement. Codegen consumes this — it's not implicit knowledge
+  baked into the Cranelift lowering
+- Pass stats emitted: retain/release counts, allocation counts,
+  handler classifications — machine-readable, per-function
 
 ### Step 4: AOT binary emission
 
@@ -179,6 +224,13 @@ Create `crates/kea/` (the binary crate):
   closures, and row polymorphism compile and run correctly
 - Both JIT and AOT paths work
 - Refcounting keeps memory bounded (no leaks on simple programs)
+- Backend interface trait exists with Cranelift as sole implementor
+- ABI manifest is a concrete artifact consumed by codegen
+- Pass stats (retain/release/alloc counts) emitted per function
+- Benchmark baseline harness in-tree: at least pure numeric loop,
+  string/collection transform, and allocation-heavy workload.
+  Measured and recorded — no regression gates yet (baselines only),
+  but the harness must exist so 0e can add gates
 - `mise run check` passes
 
 ## Decisions

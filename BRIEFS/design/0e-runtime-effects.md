@@ -248,6 +248,10 @@ allocation behavior.
 - Handler nesting works
 - Performance: State effect overhead < 10x compared to passing
   state as a parameter (stretch goal: < 3x)
+- Benchmark suite extended: effect-heavy pipeline added to 0d's
+  baseline harness. CI regression gates enabled on 0d baselines
+  (no >N% regression on existing benchmarks). Thresholds start
+  permissive and tighten as measurements stabilize.
 - `mise run check` passes
 
 ## Decisions
@@ -310,6 +314,19 @@ allocation behavior.
   for testing. Backpressure, rate limiting, and circuit breaking
   remain runtime/mailbox/library concerns, not handler
   composition.
+
+## Backend Portability Constraint
+
+Effect operations should be represented as classified MIR ops,
+not as backend-specific lowering decisions. The MIR should encode:
+- Operation class: capability-direct, handler-dispatch, zero-resume
+- Handler classification: tail-resumptive, non-tail-resumptive
+- Evidence placement: abstract parameter slots, not Cranelift ABI
+
+The chosen compilation strategy (evidence passing, CPS, etc.)
+determines how the *backend* lowers these MIR ops. A future
+Kea-native backend could use a different strategy for the same
+MIR. See [performance-backend-strategy](performance-backend-strategy.md).
 
 ## Open Questions
 
