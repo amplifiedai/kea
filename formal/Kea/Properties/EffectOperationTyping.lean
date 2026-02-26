@@ -116,6 +116,47 @@ theorem performOperation_preserves_row_tail
       EffectRow.rest effects := by
   simp [rest_performOperationEffects]
 
+theorem performOperationEffects_preserves_wellFormed
+    (kctx : KindCtx) (rctx : RowCtx)
+    (effects : EffectRow)
+    (effectLabel : Label)
+    (h_wf : EffectRow.WellFormed kctx rctx effects) :
+    EffectRow.WellFormed kctx rctx (performOperationEffects effects effectLabel) := by
+  cases effects with
+  | mk row =>
+      cases row with
+      | mk fs rv =>
+          cases rv with
+          | none =>
+              have h_fields : RowFields.WellFormed kctx rctx fs := by
+                simpa [EffectRow.WellFormed, Row.WellFormed] using h_wf
+              have h_insert :
+                  RowFields.WellFormed kctx rctx
+                    (RowFields.insertIfAbsent fs effectLabel Ty.unit) :=
+                RowFields.wellFormed_insertIfAbsent
+                  kctx
+                  rctx
+                  fs
+                  effectLabel
+                  Ty.unit
+                  h_fields
+                  (by simp [Ty.WellFormed])
+              simpa [performOperationEffects, EffectRow.WellFormed, Row.WellFormed] using h_insert
+          | some restVar =>
+              rcases h_wf with ⟨h_fields, h_rest⟩
+              have h_insert :
+                  RowFields.WellFormed kctx rctx
+                    (RowFields.insertIfAbsent fs effectLabel Ty.unit) :=
+                RowFields.wellFormed_insertIfAbsent
+                  kctx
+                  rctx
+                  fs
+                  effectLabel
+                  Ty.unit
+                  h_fields
+                  (by simp [Ty.WellFormed])
+              exact ⟨h_insert, h_rest⟩
+
 theorem operationCallTyping_adds_declared_effect
     (decl : EffectDecl)
     (effects : EffectRow)
