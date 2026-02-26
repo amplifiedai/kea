@@ -269,6 +269,10 @@ fn lower_bool_case(scrutinee: &Expr, arms: &[CaseArm], ty_hint: Option<Type>) ->
         return None;
     }
 
+    if let Some(kind) = lower_literal_case(scrutinee, arms, ty_hint.clone()) {
+        return Some(kind);
+    }
+
     if arms.len() == 1
         && matches!(arms[0].pattern.node, PatternKind::Wildcard)
     {
@@ -307,6 +311,90 @@ fn lower_bool_case(scrutinee: &Expr, arms: &[CaseArm], ty_hint: Option<Type>) ->
         }),
         _ => None,
     }
+}
+
+fn lower_literal_case(scrutinee: &Expr, arms: &[CaseArm], ty_hint: Option<Type>) -> Option<HirExprKind> {
+    let safe_scrutinee = matches!(scrutinee.node, ExprKind::Var(_) | ExprKind::Lit(_));
+    if !safe_scrutinee {
+        return None;
+    }
+
+    if arms.iter().any(|arm| arm.guard.is_some()) {
+        return None;
+    }
+
+    let mut literal_arms: Vec<(&Lit, &Expr)> = Vec::new();
+    let mut wildcard_body: Option<&Expr> = None;
+    for arm in arms {
+        match &arm.pattern.node {
+            PatternKind::Lit(lit @ Lit::Int(_)) | PatternKind::Lit(lit @ Lit::Bool(_)) => {
+                literal_arms.push((lit, &arm.body));
+            }
+            PatternKind::Wildcard => wildcard_body = Some(&arm.body),
+            _ => return None,
+        }
+    }
+
+    if literal_arms.is_empty() {
+        return wildcard_body.map(|body| lower_expr(body, ty_hint).kind);
+    }
+
+    let has_true = literal_arms
+        .iter()
+        .any(|(lit, _)| matches!(lit, Lit::Bool(true)));
+    let has_false = literal_arms
+        .iter()
+        .any(|(lit, _)| matches!(lit, Lit::Bool(false)));
+    if wildcard_body.is_none() && (has_true || has_false) {
+        // Let the dedicated bool-case lowering path handle exhaustive bool cases
+        // without introducing synthetic non-exhaustive branches.
+        return None;
+    }
+
+    // Non-exhaustive literal chains without a fallback would introduce
+    // missing-value paths for non-Unit expressions.
+    let _ = wildcard_body.as_ref()?;
+
+    if literal_arms.len() > 1 {
+        // Multi-arm literal case lowering needs a dedicated lowering path that
+        // preserves value flow across nested joins. Keep this conservative until
+        // MIR case lowering lands.
+        return None;
+    }
+
+    let mut else_expr = wildcard_body.map(|body| lower_expr(body, ty_hint.clone()));
+    for (lit, body) in literal_arms.into_iter().rev() {
+        let condition = HirExpr {
+            kind: HirExprKind::Binary {
+                op: BinOp::Eq,
+                left: Box::new(lower_expr(scrutinee, None)),
+                right: Box::new(HirExpr {
+                    kind: HirExprKind::Lit(lit.clone()),
+                    ty: match lit {
+                        Lit::Int(_) => Type::Int,
+                        Lit::Bool(_) => Type::Bool,
+                        _ => Type::Dynamic,
+                    },
+                    span: scrutinee.span,
+                }),
+            },
+            ty: Type::Bool,
+            span: scrutinee.span,
+        };
+
+        let next = HirExpr {
+            kind: HirExprKind::If {
+                condition: Box::new(condition),
+                then_branch: Box::new(lower_expr(body, ty_hint.clone())),
+                else_branch: else_expr.as_ref().map(|expr| Box::new(expr.clone())),
+            },
+            ty: ty_hint.clone().unwrap_or(Type::Dynamic),
+            span: scrutinee.span,
+        };
+        else_expr = Some(next);
+    }
+
+    else_expr.map(|expr| expr.kind)
 }
 
 #[cfg(test)]
@@ -419,5 +507,30 @@ mod tests {
         };
 
         assert!(matches!(function.body.kind, HirExprKind::If { .. }));
+    }
+
+    #[test]
+    fn lower_function_int_case_desugars_to_if_chain() {
+        let module = parse_module_from_text(
+            "fn classify(x: Int) -> Int\n  case x\n    0 -> 10\n    _ -> 20",
+        );
+        let mut env = TypeEnv::new();
+        env.bind(
+            "classify".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::pure(vec![Type::Int], Type::Int))),
+        );
+
+        let lowered = lower_module(&module, &env);
+        let HirDecl::Function(function) = &lowered.declarations[0] else {
+            panic!("expected lowered function declaration");
+        };
+
+        let HirExprKind::If { condition, .. } = &function.body.kind else {
+            panic!("expected int case to lower to if expression");
+        };
+        assert!(matches!(
+            condition.kind,
+            HirExprKind::Binary { op: BinOp::Eq, .. }
+        ));
     }
 }

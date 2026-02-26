@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use kea_ast::{DeclKind, ExprDecl, FileId, FnDecl, Module, TypeDef};
@@ -19,6 +20,8 @@ use kea_infer::typeck::{
 };
 use kea_mir::lower_hir_module;
 use kea_syntax::{lex_layout, parse_module};
+
+static TEMP_NONCE: AtomicU64 = AtomicU64::new(0);
 
 fn main() {
     if let Err(message) = run() {
@@ -434,10 +437,13 @@ fn link_object_bytes(object: &[u8], output: &Path) -> Result<(), String> {
 
 fn execute_object_bytes(object: &[u8]) -> Result<std::process::ExitStatus, String> {
     let temp_dir = std::env::temp_dir();
-    let nonce = SystemTime::now()
+    let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|err| format!("system clock error while preparing temp executable paths: {err}"))?
-        .as_nanos();
+        .as_nanos()
+        .to_string();
+    let counter = TEMP_NONCE.fetch_add(1, Ordering::Relaxed);
+    let nonce = format!("{timestamp}-{counter}");
     let object_path = temp_dir.join(format!("kea-run-{}-{nonce}.o", std::process::id()));
     let binary_path = temp_dir.join(format!("kea-run-{}-{nonce}", std::process::id()));
 
@@ -537,12 +543,32 @@ mod tests {
         let _ = std::fs::remove_file(source_path);
     }
 
+    #[test]
+    fn compile_and_execute_int_case_exit_code() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  case 2\n    2 -> 6\n    _ -> 9\n",
+            "kea-cli-int-case",
+            "kea",
+        );
+
+        let compiled = compile_file(&source_path, CodegenMode::Aot).expect("compile should succeed");
+        assert!(!compiled.object.is_empty());
+
+        let status = execute_object_bytes(&compiled.object).expect("execution should succeed");
+        assert_eq!(status.code(), Some(6));
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
     fn write_temp_source(contents: &str, prefix: &str, extension: &str) -> PathBuf {
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("time should move forward")
-            .as_nanos();
-        let path = std::env::temp_dir().join(format!("{prefix}-{timestamp}.{extension}"));
+            .as_nanos()
+            .to_string();
+        let counter = TEMP_NONCE.fetch_add(1, Ordering::Relaxed);
+        let path =
+            std::env::temp_dir().join(format!("{prefix}-{timestamp}-{counter}.{extension}"));
         std::fs::write(&path, contents).expect("temp source write should succeed");
         path
     }
