@@ -65,6 +65,7 @@ This work starts by cannibalizing the existing Rill formal corpus and then exten
 - **Phase 2 (active):** Added `Kea/Properties/CatchTypingBridge.lean`, a judgment-shaped bridge (`CatchTypingJudgment`) from typing-style catch premises into admissible effect-polymorphism capstones (`catchTypingJudgment_sound`, row-tail/non-Fail projections, admissibility branch).
 - **Phase 2 (active):** `CatchTypingBridge` now includes judgment-level named bundles/projections (`CatchTypingBundle`, `catchTypingJudgment_bundle_*`) for one-name consumption of clause-removal and lowered-effect guarantees.
 - **Phase 2 (active):** Added direct premise adapters in `CatchTypingBridge` (`mkCatchTypingJudgment`, `catchTypingJudgment_sound_of_premises`, noncomputable `catchTypingJudgment_bundle_of_premises`) for judgment-free entry into the bridge surface.
+- **Phase 2 (active):** `CatchTypingBridge` now includes one-hop `of_premises` projections for row-tail/non-Fail preservation and bundle facets, so raw-premise call sites can consume specific guarantees without intermediate destructuring.
 
 The formal workspace lives at [`formal/`](formal/).
 
