@@ -5,6 +5,7 @@ edition.workspace = true
 version.workspace = true
 
 [dependencies]
+kea-ast.workspace = true
 kea-types.workspace = true
 kea-hir.workspace = true
 
