@@ -305,6 +305,22 @@ fn ann_arg(value: Expr) -> Argument {
     Argument { label: None, value }
 }
 
+fn effect_row_annotation(
+    effects: Vec<(&str, Option<&str>)>,
+    rest: Option<&str>,
+) -> EffectAnnotation {
+    EffectAnnotation::Row(EffectRowAnnotation {
+        effects: effects
+            .into_iter()
+            .map(|(name, payload)| EffectRowItem {
+                name: name.to_string(),
+                payload: payload.map(str::to_string),
+            })
+            .collect(),
+        rest: rest.map(str::to_string),
+    })
+}
+
 fn register_hkt_for_use_for_traits(traits: &mut TraitRegistry, records: &RecordRegistry) {
     let bind_trait = TraitDef {
         public: false,
@@ -7058,6 +7074,46 @@ fn validate_declared_fn_effect_rejects_unconstrained_effect_variable() {
         "unexpected message: {}",
         err.message
     );
+}
+
+#[test]
+fn validate_declared_fn_effect_accepts_closed_row_annotation() {
+    let mut fn_decl = make_fn_decl("f", vec![], lit_int(1));
+    fn_decl.effect_annotation = Some(sp(effect_row_annotation(vec![("IO", None)], None)));
+    let inferred = Effects::impure();
+    assert!(validate_declared_fn_effect(&fn_decl, inferred).is_ok());
+}
+
+#[test]
+fn validate_declared_fn_effect_rejects_open_row_with_concrete_entries() {
+    let mut fn_decl = make_fn_decl("f", vec![], lit_int(1));
+    fn_decl.effect_annotation = Some(sp(effect_row_annotation(
+        vec![("IO", None)],
+        Some("e"),
+    )));
+    let inferred = Effects::impure();
+    let err = validate_declared_fn_effect(&fn_decl, inferred)
+        .expect_err("open concrete rows should be rejected in compatibility contract checks");
+    assert!(
+        err.message
+            .contains("open effect rows with concrete entries are not supported in contracts yet"),
+        "unexpected message: {}",
+        err.message
+    );
+}
+
+#[test]
+fn validate_declared_fn_effect_allows_tail_only_row_effect_variable() {
+    let env = TypeEnv::new();
+    let mut fn_decl = make_fn_decl("f", vec!["g"], call(var("g"), vec![lit_int(1)]));
+    fn_decl.params[0].annotation = Some(sp(TypeAnnotation::FunctionWithEffect(
+        vec![TypeAnnotation::Named("Int".to_string())],
+        sp(effect_row_annotation(vec![], Some("e"))),
+        Box::new(TypeAnnotation::Named("Int".to_string())),
+    )));
+    fn_decl.effect_annotation = Some(sp(effect_row_annotation(vec![], Some("e"))));
+    let inferred = infer_fn_decl_effects(&fn_decl, &env);
+    assert!(validate_declared_fn_effect_with_env(&fn_decl, inferred, &env).is_ok());
 }
 
 #[test]
