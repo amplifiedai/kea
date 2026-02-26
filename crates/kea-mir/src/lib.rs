@@ -397,6 +397,9 @@ fn lower_hir_function(
     for (index, param) in function.params.iter().enumerate() {
         if let Some(name) = &param.name {
             ctx.vars.insert(name.clone(), MirValueId(index as u32));
+            if let Some(param_ty) = params.get(index) {
+                ctx.var_types.insert(name.clone(), param_ty.clone());
+            }
             if let Some(Type::Record(record_ty)) = params.get(index) {
                 ctx.var_record_types
                     .insert(name.clone(), record_ty.name.clone());
@@ -434,6 +437,7 @@ struct FunctionLoweringCtx {
     blocks: Vec<PendingBlock>,
     current_block: MirBlockId,
     vars: BTreeMap<String, MirValueId>,
+    var_types: BTreeMap<String, Type>,
     known_functions: BTreeSet<String>,
     var_record_types: BTreeMap<String, String>,
     sum_value_types: BTreeMap<MirValueId, String>,
@@ -478,6 +482,7 @@ impl FunctionLoweringCtx {
             }],
             current_block: MirBlockId(0),
             vars: BTreeMap::new(),
+            var_types: BTreeMap::new(),
             known_functions: known_functions.clone(),
             var_record_types: BTreeMap::new(),
             sum_value_types: BTreeMap::new(),
@@ -687,7 +692,13 @@ impl FunctionLoweringCtx {
                     self.set_terminator(MirTerminator::Unreachable);
                     return None;
                 }
-                let callee_fail_result_abi = uses_fail_result_abi_from_type(&func.ty);
+                let callee_fail_result_abi = match &func.kind {
+                    HirExprKind::Var(name) => self
+                        .var_types
+                        .get(name)
+                        .map_or_else(|| uses_fail_result_abi_from_type(&func.ty), uses_fail_result_abi_from_type),
+                    _ => uses_fail_result_abi_from_type(&func.ty),
+                };
 
                 let callee = match &func.kind {
                     HirExprKind::Var(name) if name.contains("::") => {
@@ -902,6 +913,7 @@ impl FunctionLoweringCtx {
     fn bind_pattern(&mut self, pattern: &HirPattern, value_id: MirValueId, value_ty: &Type) {
         if let HirPattern::Var(name) = pattern {
             self.vars.insert(name.clone(), value_id);
+            self.var_types.insert(name.clone(), value_ty.clone());
             if let Type::Record(record_ty) = value_ty {
                 self.var_record_types
                     .insert(name.clone(), record_ty.name.clone());
@@ -1988,6 +2000,64 @@ mod tests {
                         func: Box::new(HirExpr {
                             kind: HirExprKind::Var("f".to_string()),
                             ty: fn_ty.clone(),
+                            span: kea_ast::Span::synthetic(),
+                        }),
+                        args: vec![HirExpr {
+                            kind: HirExprKind::Var("x".to_string()),
+                            ty: Type::Int,
+                            span: kea_ast::Span::synthetic(),
+                        }],
+                    },
+                    ty: Type::Int,
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::with_effects(
+                    vec![fn_ty.clone(), Type::Int],
+                    Type::Int,
+                    EffectRow::closed(vec![(Label::new("Fail"), Type::Int)]),
+                )),
+                effects: EffectRow::closed(vec![(Label::new("Fail"), Type::Int)]),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let mir = lower_hir_module(&hir);
+        let function = &mir.functions[0];
+        assert!(matches!(
+            &function.blocks[0].instructions[0],
+            MirInst::Call {
+                callee: MirCallee::Value(MirValueId(0)),
+                callee_fail_result_abi: true,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn lower_hir_module_marks_failful_param_callee_when_var_expr_type_is_dynamic() {
+        let fn_ty = Type::Function(FunctionType::with_effects(
+            vec![Type::Int],
+            Type::Int,
+            EffectRow::closed(vec![(Label::new("Fail"), Type::Int)]),
+        ));
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "apply_fail".to_string(),
+                params: vec![
+                    kea_hir::HirParam {
+                        name: Some("f".to_string()),
+                        span: kea_ast::Span::synthetic(),
+                    },
+                    kea_hir::HirParam {
+                        name: Some("x".to_string()),
+                        span: kea_ast::Span::synthetic(),
+                    },
+                ],
+                body: HirExpr {
+                    kind: HirExprKind::Call {
+                        func: Box::new(HirExpr {
+                            kind: HirExprKind::Var("f".to_string()),
+                            ty: Type::Dynamic,
                             span: kea_ast::Span::synthetic(),
                         }),
                         args: vec![HirExpr {
