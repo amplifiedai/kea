@@ -13,6 +13,7 @@ kea-mir.workspace = true
 kea-codegen.workspace = true
 kea-types.workspace = true
 kea-syntax.workspace = true
+kea-infer.workspace = true
 
 [dev-dependencies]
 divan = { package = "codspeed-divan-compat", version = "4.3.0" }
