@@ -4567,3 +4567,37 @@ cases to validate Lean preconditions against the live implementation.
 - Confirms no Lean↔MCP divergence for the latest Phase-1 WF contract wrappers.
 - Keeps Phase-1 progression on track toward full-language WF coverage before
   Phase-2 handler/effect theorems.
+
+### 2026-02-26: effect-row annotation re-probe on restarted MCP binary
+
+**Context**: After restarting `kea-mcp` and extending
+`WfEffectRowLadder` with full-state bundle + projection helpers, re-ran the
+effect-row boundary probes to confirm runtime behavior still matches the
+Phase-1 WF ladder assumptions.
+
+**MCP tools used**: `reset_session`, `type_check`, `get_type`, `diagnose`
+
+**Probe**:
+1. Declared effect row is preserved (updated parser surface):
+   - `type_check` on
+     `effect Log; fn log(msg: String) -> Unit; fn emit(msg: String) -[Log]> Unit; Log.log(msg)`
+     returns `ok` with `(String) -[Log]> ()`.
+   - `get_type` on the same declarations returns `(String) -[Log]> ()`.
+2. Pure control remains pure:
+   - `type_check "fn id(x: Int) -> Int\n  x"` returns `ok` with `(Int) -> Int`.
+3. Too-weak declared effect row is rejected:
+   - `type_check` on
+     `effect Log; fn log(msg: String) -> Unit; fn wrong(msg: String) -[IO]> Unit; Log.log(msg)`
+     returns `error` with
+     `declared effect '[IO]' is too weak; body requires '[Log]'`.
+   - `diagnose` on the same snippet reports structured `type_mismatch`
+     diagnostics with the same message.
+
+**Classify**: Agreement (with a precondition update).
+
+**Outcome**:
+- Runtime behavior remains aligned with the Lean-side `functionEff` WF ladder
+  assumptions.
+- Probe snippets needed parser-surface refresh (`effect` op signature uses
+  `fn ... -> Unit`), but this is syntax precondition drift, not a semantic
+  Lean↔MCP divergence.
