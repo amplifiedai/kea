@@ -11,6 +11,7 @@ use std::sync::Arc;
 use cranelift::prelude::{
     AbiParam, Configurable, FunctionBuilder, FunctionBuilderContext, InstBuilder, Value, types,
 };
+use cranelift_codegen::ir::TrapCode;
 use cranelift_codegen::ir::condcodes::{FloatCC, IntCC};
 use cranelift_codegen::{isa, settings};
 use cranelift_codegen::isa::CallConv;
@@ -388,24 +389,30 @@ fn compile_into_module<M: Module>(
                     block.instructions.len()
                 };
 
+                let mut block_terminated = false;
                 for inst in block.instructions.iter().take(instruction_count) {
-                    lower_instruction(
+                    if lower_instruction(
                         module,
                         &mut builder,
                         &function.name,
                         inst,
                         &mut values,
                         &func_ids,
-                    )?;
+                    )? {
+                        block_terminated = true;
+                        break;
+                    }
                 }
-                let terminator_ctx = LowerTerminatorCtx {
-                    function_name: &function.name,
-                    return_ty: &function.signature.ret,
-                    values: &values,
-                    block_map: &block_map,
-                    func_ids: &func_ids,
-                };
-                lower_terminator(module, &mut builder, block, &terminator_ctx)?;
+                if !block_terminated {
+                    let terminator_ctx = LowerTerminatorCtx {
+                        function_name: &function.name,
+                        return_ty: &function.signature.ret,
+                        values: &values,
+                        block_map: &block_map,
+                        func_ids: &func_ids,
+                    };
+                    lower_terminator(module, &mut builder, block, &terminator_ctx)?;
+                }
             }
             builder.seal_all_blocks();
             builder.finalize();
@@ -540,12 +547,12 @@ fn lower_instruction<M: Module>(
     inst: &MirInst,
     values: &mut BTreeMap<MirValueId, Value>,
     func_ids: &BTreeMap<String, FuncId>,
-) -> Result<(), CodegenError> {
+) -> Result<bool, CodegenError> {
     match inst {
         MirInst::Const { dest, literal } => {
             let value = lower_literal(builder, literal, function_name)?;
             values.insert(dest.clone(), value);
-            Ok(())
+            Ok(false)
         }
         MirInst::Binary {
             dest,
@@ -557,13 +564,13 @@ fn lower_instruction<M: Module>(
             let rhs = get_value(values, function_name, right)?;
             let result = lower_binary(builder, function_name, *op, lhs, rhs)?;
             values.insert(dest.clone(), result);
-            Ok(())
+            Ok(false)
         }
         MirInst::Unary { dest, op, operand } => {
             let value = get_value(values, function_name, operand)?;
             let result = lower_unary(builder, function_name, *op, value)?;
             values.insert(dest.clone(), result);
-            Ok(())
+            Ok(false)
         }
         MirInst::Call {
             callee,
@@ -607,9 +614,34 @@ fn lower_instruction<M: Module>(
                 values.insert(dest.clone(), value);
             }
 
-            Ok(())
+            Ok(false)
         }
-        MirInst::Nop => Ok(()),
+        MirInst::EffectOp {
+            class,
+            effect,
+            operation,
+            result,
+            ..
+        } => {
+            if *class == MirEffectOpClass::ZeroResume && effect == "Fail" && operation == "fail" {
+                if result.is_some() {
+                    return Err(CodegenError::UnsupportedMir {
+                        function: function_name.to_string(),
+                        detail:
+                            "Fail.zero-resume operation must not produce a value in 0d lowering"
+                                .to_string(),
+                    });
+                }
+                builder.ins().trap(TrapCode::unwrap_user(1));
+                Ok(true)
+            } else {
+                Err(CodegenError::UnsupportedMir {
+                    function: function_name.to_string(),
+                    detail: format!("instruction `{inst:?}` not implemented in 0d pure lowering"),
+                })
+            }
+        }
+        MirInst::Nop => Ok(false),
         MirInst::Retain { .. }
         | MirInst::Release { .. }
         | MirInst::Move { .. }
@@ -617,7 +649,6 @@ fn lower_instruction<M: Module>(
         | MirInst::TryClaim { .. }
         | MirInst::Freeze { .. }
         | MirInst::CowUpdate { .. }
-        | MirInst::EffectOp { .. }
         | MirInst::HandlerEnter { .. }
         | MirInst::HandlerExit { .. }
         | MirInst::Resume { .. } => Err(CodegenError::UnsupportedMir {
@@ -792,6 +823,12 @@ fn lower_terminator(
     block: &kea_mir::MirBlock,
     ctx: &LowerTerminatorCtx<'_>,
 ) -> Result<(), CodegenError> {
+    if builder.is_unreachable() {
+        // Instructions like `trap` terminate the block immediately.
+        // Skip MIR terminator lowering for blocks that are already closed.
+        return Ok(());
+    }
+
     if let Some(tail_call) = detect_tail_self_call(ctx.function_name, block) {
         let callee_id = *ctx
             .func_ids
@@ -1099,6 +1136,7 @@ fn validate_fail_only_invariants(module: &MirModule) -> Result<(), CodegenError>
                         class,
                         effect,
                         operation,
+                        result,
                         ..
                     } => {
                         if effect != "Fail" {
@@ -1116,6 +1154,15 @@ fn validate_fail_only_invariants(module: &MirModule) -> Result<(), CodegenError>
                                 function: function.name.clone(),
                                 detail: format!(
                                     "block {} lowers `Fail.{operation}` as {class:?}; expected ZeroResume Result path",
+                                    block.id.0
+                                ),
+                            });
+                        }
+                        if result.is_some() {
+                            return Err(CodegenError::FailOnlyInvariantViolation {
+                                function: function.name.clone(),
+                                detail: format!(
+                                    "block {} lowers `Fail.{operation}` with a result value; zero-resume Fail must not return",
                                     block.id.0
                                 ),
                             });
@@ -1686,12 +1733,30 @@ mod tests {
             class: MirEffectOpClass::ZeroResume,
             effect: "Fail".to_string(),
             operation: "fail".to_string(),
-            args: vec![MirValueId(0)],
-            result: Some(MirValueId(1)),
+            args: vec![],
+            result: None,
         });
 
         validate_fail_only_invariants(&module)
             .expect("ZeroResume Fail operation should satisfy Fail-only invariant");
+    }
+
+    #[test]
+    fn validate_fail_only_invariants_rejects_zero_resume_fail_result_value() {
+        let module = sample_fail_only_module_with_inst(MirInst::EffectOp {
+            class: MirEffectOpClass::ZeroResume,
+            effect: "Fail".to_string(),
+            operation: "fail".to_string(),
+            args: vec![],
+            result: Some(MirValueId(0)),
+        });
+
+        let err = validate_fail_only_invariants(&module)
+            .expect_err("zero-resume Fail with result value should be rejected");
+        assert!(matches!(
+            err,
+            CodegenError::FailOnlyInvariantViolation { function, .. } if function == "fail_only"
+        ));
     }
 
     #[test]
@@ -1747,6 +1812,23 @@ mod tests {
 
         assert_eq!(artifact.stats.per_function.len(), 1);
         assert!(artifact.object.is_empty(), "JIT mode should not emit object bytes");
+    }
+
+    #[test]
+    fn cranelift_backend_accepts_zero_resume_fail_effect_op() {
+        let module = sample_fail_only_module_with_inst(MirInst::EffectOp {
+            class: MirEffectOpClass::ZeroResume,
+            effect: "Fail".to_string(),
+            operation: "fail".to_string(),
+            args: vec![],
+            result: None,
+        });
+        let manifest = default_abi_manifest(&module);
+        let backend = CraneliftBackend;
+
+        backend
+            .compile_module(&module, &manifest, &BackendConfig::default())
+            .expect("zero-resume Fail effect op should lower in 0d");
     }
 
     #[test]
