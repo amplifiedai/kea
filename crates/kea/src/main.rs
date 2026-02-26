@@ -996,6 +996,20 @@ mod tests {
     }
 
     #[test]
+    fn compile_and_execute_row_polymorphic_record_field_access_exit_code() {
+        let source_path = write_temp_source(
+            "record User\n  age: Int\n  score: Int\n\nfn get_age(u: { age: Int | r }) -> Int\n  u.age\n\nfn main() -> Int\n  let user = User { age: 41, score: 1 }\n  get_age(user)\n",
+            "kea-cli-row-poly-record-field",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 41);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_record_update_with_spread_exit_code() {
         let source_path = write_temp_source(
             "record User\n  age: Int\n  score: Int\n\nfn main() -> Int\n  let user = User { age: 4, score: 9 }\n  let updated = User { ..user, age: user.age + 3 }\n  updated.age + updated.score\n",

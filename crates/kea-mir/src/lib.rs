@@ -467,10 +467,18 @@ fn lower_hir_function(
             ctx.vars.insert(name.clone(), MirValueId(index as u32));
             if let Some(param_ty) = params.get(index) {
                 ctx.var_types.insert(name.clone(), param_ty.clone());
-            }
-            if let Some(Type::Record(record_ty)) = params.get(index) {
-                ctx.var_record_types
-                    .insert(name.clone(), record_ty.name.clone());
+                match param_ty {
+                    Type::Record(record_ty) => {
+                        ctx.var_record_types
+                            .insert(name.clone(), record_ty.name.clone());
+                    }
+                    Type::AnonRecord(row) => {
+                        if let Some(record_type) = ctx.infer_unique_record_type_for_row(row) {
+                            ctx.var_record_types.insert(name.clone(), record_type);
+                        }
+                    }
+                    _ => {}
+                }
             }
         }
         if let Some(Type::Sum(sum_ty)) = params.get(index) {
@@ -873,6 +881,7 @@ impl FunctionLoweringCtx {
                 let record = self.lower_expr(base)?;
                 let record_type = match &base.ty {
                     Type::Record(record_ty) => Some(record_ty.name.clone()),
+                    Type::AnonRecord(row) => self.infer_unique_record_type_for_row(row),
                     _ => match &base.kind {
                         HirExprKind::Var(name) => self.var_record_types.get(name).cloned(),
                         _ => None,
@@ -1266,10 +1275,46 @@ impl FunctionLoweringCtx {
         if let HirPattern::Var(name) = pattern {
             self.vars.insert(name.clone(), value_id);
             self.var_types.insert(name.clone(), value_ty.clone());
-            if let Type::Record(record_ty) = value_ty {
-                self.var_record_types
-                    .insert(name.clone(), record_ty.name.clone());
+            match value_ty {
+                Type::Record(record_ty) => {
+                    self.var_record_types
+                        .insert(name.clone(), record_ty.name.clone());
+                }
+                Type::AnonRecord(row) => {
+                    if let Some(record_type) = self.infer_unique_record_type_for_row(row) {
+                        self.var_record_types.insert(name.clone(), record_type);
+                    }
+                }
+                _ => {}
             }
+        }
+    }
+
+    fn infer_unique_record_type_for_row(&self, row: &kea_types::RowType) -> Option<String> {
+        let required = row
+            .fields
+            .iter()
+            .map(|(label, _)| label.as_str().to_string())
+            .collect::<BTreeSet<_>>();
+        self.infer_unique_record_type_for_fields(&required)
+    }
+
+    fn infer_unique_record_type_for_fields(&self, required: &BTreeSet<String>) -> Option<String> {
+        let mut candidates = self
+            .layouts
+            .records
+            .iter()
+            .filter(|record| {
+                required
+                    .iter()
+                    .all(|field| record.fields.iter().any(|f| f.name == *field))
+            })
+            .map(|record| record.name.clone());
+        let first = candidates.next()?;
+        if candidates.next().is_some() {
+            None
+        } else {
+            Some(first)
         }
     }
 
@@ -1389,7 +1434,7 @@ mod tests {
         VariantField,
     };
     use kea_hir::{HirExpr, HirExprKind, HirFunction, HirParam};
-    use kea_types::{FunctionType, Label, RecordType, RowType, SumType};
+    use kea_types::{FunctionType, Label, RecordType, RowType, RowVarId, SumType};
 
     fn sp<T>(node: T) -> Spanned<T> {
         Spanned::new(node, kea_ast::Span::synthetic())
@@ -2249,6 +2294,75 @@ mod tests {
                 .iter()
                 .any(|inst| matches!(inst, MirInst::RecordFieldLoad { .. }))
         );
+    }
+
+    #[test]
+    fn lower_hir_module_resolves_record_field_load_for_anon_record_param() {
+        let anon_row = RowType::open(vec![(Label::new("age"), Type::Int)], RowVarId(7));
+        let hir = HirModule {
+            declarations: vec![
+                HirDecl::Raw(DeclKind::RecordDef(RecordDef {
+                    public: true,
+                    name: sp("User".to_string()),
+                    doc: None,
+                    annotations: vec![],
+                    params: vec![],
+                    fields: vec![
+                        (
+                            sp("age".to_string()),
+                            TypeAnnotation::Named("Int".to_string()),
+                        ),
+                        (
+                            sp("score".to_string()),
+                            TypeAnnotation::Named("Int".to_string()),
+                        ),
+                    ],
+                    field_annotations: vec![],
+                    derives: vec![],
+                })),
+                HirDecl::Function(HirFunction {
+                    name: "get_age".to_string(),
+                    params: vec![HirParam {
+                        name: Some("u".to_string()),
+                        span: kea_ast::Span::synthetic(),
+                    }],
+                    body: HirExpr {
+                        kind: HirExprKind::FieldAccess {
+                            expr: Box::new(HirExpr {
+                                kind: HirExprKind::Var("u".to_string()),
+                                ty: Type::AnonRecord(anon_row.clone()),
+                                span: kea_ast::Span::synthetic(),
+                            }),
+                            field: "age".to_string(),
+                        },
+                        ty: Type::Int,
+                        span: kea_ast::Span::synthetic(),
+                    },
+                    ty: Type::Function(FunctionType::pure(
+                        vec![Type::AnonRecord(anon_row)],
+                        Type::Int,
+                    )),
+                    effects: EffectRow::pure(),
+                    span: kea_ast::Span::synthetic(),
+                }),
+            ],
+        };
+
+        let mir = lower_hir_module(&hir);
+        let function = mir
+            .functions
+            .iter()
+            .find(|f| f.name == "get_age")
+            .expect("get_age function");
+        assert!(matches!(
+            function.blocks[0].instructions[0],
+            MirInst::RecordFieldLoad {
+                ref record_type,
+                ref field,
+                field_ty: Type::Int,
+                ..
+            } if record_type == "User" && field == "age"
+        ));
     }
 
     #[test]
