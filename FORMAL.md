@@ -55,7 +55,7 @@ This work starts by cannibalizing the existing Rill formal corpus and then exten
 - **Phase 2 (active):** Extended `FailResultContracts` with explicit lowering/equivalence slices (`lowerFailEffects`, `lowerFailFunctionType`, `failResultFunctionEquivalent`) plus preservation/removal lemmas to bridge from contract-level Fail handling into function-type `Result` lowering.
 - **Phase 2 (active):** Added `Kea/Properties/EffectPolymorphismSoundness.lean` with reusable soundness contracts for Fail lowering over polymorphic effect rows (`rowTailStable`, `labelsPreservedExcept`, `effectPolyFailLowering_sound`, no-op-if-absent), proving Fail removal while preserving non-Fail labels and row tails.
 - **Phase 2 (active):** `EffectPolymorphismSoundness` now includes concrete handler-schema bridges (`EffectPolyHandlerSchema`, `effectPolyHandlerSchema_sound`, `effectPolyHandlerSchema_noop_if_fail_absent`) linking `wellTypedSlice` + Fail-zero-resume premises to polymorphic function-type lowering guarantees.
-- **Phase 2 (active):** MCP probe sweep found a divergence on Fail-absent `catch` paths: implementation currently infers `IO` (and can drop residual `Log`) instead of no-op effect preservation; no-op-if-absent theorems remain spec-side until this is fixed.
+- **Phase 2 (active):** Divergence on Fail-absent `catch` is now closed (runtime now rejects with `E0012`: `expression cannot fail; catch is unnecessary`), so no-op-if-absent theorem claims are aligned as vacuous runtime cases rather than pending implementation fix.
 
 The formal workspace lives at [`formal/`](formal/).
 
