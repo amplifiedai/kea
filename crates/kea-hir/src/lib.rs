@@ -355,13 +355,6 @@ fn lower_literal_case(scrutinee: &Expr, arms: &[CaseArm], ty_hint: Option<Type>)
     // missing-value paths for non-Unit expressions.
     let _ = wildcard_body.as_ref()?;
 
-    if literal_arms.len() > 1 {
-        // Multi-arm literal case lowering needs a dedicated lowering path that
-        // preserves value flow across nested joins. Keep this conservative until
-        // MIR case lowering lands.
-        return None;
-    }
-
     let mut else_expr = wildcard_body.map(|body| lower_expr(body, ty_hint.clone()));
     for (lit, body) in literal_arms.into_iter().rev() {
         let condition = HirExpr {
@@ -512,7 +505,7 @@ mod tests {
     #[test]
     fn lower_function_int_case_desugars_to_if_chain() {
         let module = parse_module_from_text(
-            "fn classify(x: Int) -> Int\n  case x\n    0 -> 10\n    _ -> 20",
+            "fn classify(x: Int) -> Int\n  case x\n    0 -> 10\n    1 -> 11\n    _ -> 20",
         );
         let mut env = TypeEnv::new();
         env.bind(
@@ -532,5 +525,14 @@ mod tests {
             condition.kind,
             HirExprKind::Binary { op: BinOp::Eq, .. }
         ));
+
+        let HirExprKind::If {
+            else_branch: Some(else_branch),
+            ..
+        } = &function.body.kind
+        else {
+            panic!("expected chained int case lowering");
+        };
+        assert!(matches!(else_branch.kind, HirExprKind::If { .. }));
     }
 }
