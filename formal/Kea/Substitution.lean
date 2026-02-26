@@ -166,6 +166,14 @@ abbrev applySubstCompat (s : Subst) (fuel : Nat) (ty : Ty) : Ty :=
 abbrev applySubstRowCompat (s : Subst) (fuel : Nat) (r : Row) : Row :=
   applySubstRow s fuel r
 
+/-- Compatibility wrapper for type-list substitution (see `applySubstCompat`). -/
+abbrev applySubstTyListCompat (s : Subst) (fuel : Nat) (tl : TyList) : TyList :=
+  applySubstTyList s fuel tl
+
+/-- Compatibility wrapper for row-field substitution (see `applySubstCompat`). -/
+abbrev applySubstRowFieldsCompat (s : Subst) (fuel : Nat) (rf : RowFields) : RowFields :=
+  applySubstRowFields s fuel rf
+
 /-- Compatibility wrapper for effect-row substitution (see `applySubstCompat`). -/
 abbrev applySubstEffectRowCompat (s : Subst) (fuel : Nat) (effects : EffectRow) : EffectRow :=
   applySubstEffectRow s fuel effects
@@ -175,6 +183,12 @@ abbrev applySubstEffectRowCompat (s : Subst) (fuel : Nat) (effects : EffectRow) 
 
 @[simp] theorem applySubstRowCompat_eq (s : Subst) (fuel : Nat) (r : Row) :
     applySubstRowCompat s fuel r = applySubstRow s fuel r := rfl
+
+@[simp] theorem applySubstTyListCompat_eq (s : Subst) (fuel : Nat) (tl : TyList) :
+    applySubstTyListCompat s fuel tl = applySubstTyList s fuel tl := rfl
+
+@[simp] theorem applySubstRowFieldsCompat_eq (s : Subst) (fuel : Nat) (rf : RowFields) :
+    applySubstRowFieldsCompat s fuel rf = applySubstRowFields s fuel rf := rfl
 
 @[simp] theorem applySubstEffectRowCompat_eq (s : Subst) (fuel : Nat) (effects : EffectRow) :
     applySubstEffectRowCompat s fuel effects = applySubstEffectRow s fuel effects := rfl

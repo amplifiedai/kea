@@ -347,6 +347,24 @@ theorem applySubstRowCompat_preserves_wf_of_no_domain_vars
   simpa [applySubstRowCompat] using
     applySubstRow_preserves_wf_of_no_domain_vars s kctx rctx fuel r h_wf htv hrv
 
+theorem applySubstTyListCompat_preserves_wf_of_no_domain_vars
+    (s : Subst) (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat) (tl : TyList)
+    (h_wf : TyList.WellFormed kctx rctx tl)
+    (htv : ∀ v ∈ freeTypeVarsTyList tl, s.typeMap v = none)
+    (hrv : ∀ v ∈ freeRowVarsTyList tl, s.rowMap v = none) :
+    TyList.WellFormed kctx rctx (applySubstTyListCompat s fuel tl) := by
+  simpa [applySubstTyListCompat] using
+    applySubstTyList_preserves_wf_of_no_domain_vars s kctx rctx fuel tl h_wf htv hrv
+
+theorem applySubstRowFieldsCompat_preserves_wf_of_no_domain_vars
+    (s : Subst) (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat) (rf : RowFields)
+    (h_wf : RowFields.WellFormed kctx rctx rf)
+    (htv : ∀ v ∈ freeTypeVarsRowFields rf, s.typeMap v = none)
+    (hrv : ∀ v ∈ freeRowVarsRowFields rf, s.rowMap v = none) :
+    RowFields.WellFormed kctx rctx (applySubstRowFieldsCompat s fuel rf) := by
+  simpa [applySubstRowFieldsCompat] using
+    applySubstRowFields_preserves_wf_of_no_domain_vars s kctx rctx fuel rf h_wf htv hrv
+
 theorem applySubstEffectRow_empty_preserves_wf
     (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat) (effects : EffectRow)
     (h_wf : EffectRow.WellFormed kctx rctx effects) :
@@ -355,6 +373,20 @@ theorem applySubstEffectRow_empty_preserves_wf
   | mk row =>
     simpa [applySubstEffectRow, EffectRow.WellFormed] using
       applySubstRow_empty_preserves_wf kctx rctx fuel row h_wf
+
+theorem applySubstTyListCompat_empty_preserves_wf
+    (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat) (tl : TyList)
+    (h_wf : TyList.WellFormed kctx rctx tl) :
+    TyList.WellFormed kctx rctx (applySubstTyListCompat Subst.empty fuel tl) := by
+  simpa [applySubstTyListCompat] using
+    applySubstTyList_empty_preserves_wf kctx rctx fuel tl h_wf
+
+theorem applySubstRowFieldsCompat_empty_preserves_wf
+    (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat) (rf : RowFields)
+    (h_wf : RowFields.WellFormed kctx rctx rf) :
+    RowFields.WellFormed kctx rctx (applySubstRowFieldsCompat Subst.empty fuel rf) := by
+  simpa [applySubstRowFieldsCompat] using
+    applySubstRowFields_empty_preserves_wf kctx rctx fuel rf h_wf
 
 theorem applySubstEffectRowCompat_preserves_wf_of_no_domain_vars
     (s : Subst) (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat) (effects : EffectRow)
