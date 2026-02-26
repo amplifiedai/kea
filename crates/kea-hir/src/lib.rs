@@ -555,24 +555,32 @@ fn lower_literal_case(
     unit_variant_tags: &UnitVariantTags,
     qualified_variant_tags: &QualifiedUnitVariantTags,
 ) -> Option<HirExprKind> {
+    enum LiteralFallbackArm<'a> {
+        Wild {
+            body: &'a Expr,
+            guard: Option<&'a Expr>,
+        },
+        Var {
+            name: String,
+            body: &'a Expr,
+            guard: Option<&'a Expr>,
+        },
+    }
+
     let mut literal_arms: Vec<(LiteralCaseValue, &Expr, Option<String>, Option<&Expr>)> =
         Vec::new();
-    let mut wildcard_body: Option<&Expr> = None;
-    let mut var_fallback: Option<(String, &Expr)> = None;
+    let mut fallback_arms: Vec<LiteralFallbackArm<'_>> = Vec::new();
     for arm in arms {
         match &arm.pattern.node {
-            PatternKind::Wildcard => {
-                if arm.guard.is_some() {
-                    return None;
-                }
-                wildcard_body = Some(&arm.body);
-            }
-            PatternKind::Var(name) => {
-                if arm.guard.is_some() {
-                    return None;
-                }
-                var_fallback = Some((name.clone(), &arm.body));
-            }
+            PatternKind::Wildcard => fallback_arms.push(LiteralFallbackArm::Wild {
+                body: &arm.body,
+                guard: arm.guard.as_deref(),
+            }),
+            PatternKind::Var(name) => fallback_arms.push(LiteralFallbackArm::Var {
+                name: name.clone(),
+                body: &arm.body,
+                guard: arm.guard.as_deref(),
+            }),
             pattern => {
                 let (values, bind_name) = literal_case_values_from_pattern(
                     pattern,
@@ -586,17 +594,13 @@ fn lower_literal_case(
         }
     }
 
-    if wildcard_body.is_some() && var_fallback.is_some() {
-        return None;
-    }
-
     let has_true = literal_arms
         .iter()
         .any(|(lit, _, _, _)| matches!(lit, LiteralCaseValue::Bool(true)));
     let has_false = literal_arms
         .iter()
         .any(|(lit, _, _, _)| matches!(lit, LiteralCaseValue::Bool(false)));
-    if wildcard_body.is_none()
+    if fallback_arms.is_empty()
         && (has_true || has_false)
         && arms.iter().all(|arm| arm.guard.is_none())
         && arms
@@ -643,38 +647,108 @@ fn lower_literal_case(
         (temp_var, Some(setup))
     };
 
-    let mut else_expr = if let Some(body) = wildcard_body {
-        Some(lower_expr(
-            body,
-            ty_hint.clone(),
-            unit_variant_tags,
-            qualified_variant_tags,
-        ))
-    } else if let Some((name, body)) = var_fallback {
-        let fallback_bind = HirExpr {
-            kind: HirExprKind::Let {
-                pattern: HirPattern::Var(name),
-                value: Box::new(scrutinee_expr.clone()),
-            },
-            ty: scrutinee_expr.ty.clone(),
-            span: scrutinee.span,
-        };
-        Some(HirExpr {
-            kind: HirExprKind::Block(vec![
-                fallback_bind,
-                lower_expr(
+    let unit_else = HirExpr {
+        kind: HirExprKind::Lit(Lit::Unit),
+        ty: Type::Unit,
+        span: scrutinee.span,
+    };
+    let mut else_expr: Option<HirExpr> = None;
+    for fallback in fallback_arms.into_iter().rev() {
+        match fallback {
+            LiteralFallbackArm::Wild { body, guard } => {
+                let then_branch = lower_expr(
                     body,
                     ty_hint.clone(),
                     unit_variant_tags,
                     qualified_variant_tags,
-                ),
-            ]),
-            ty: return_ty.clone(),
-            span: scrutinee.span,
-        })
-    } else {
-        None
-    };
+                );
+                let Some(guard_expr) = guard else {
+                    // Unconditional fallback shadows any later fallback arm.
+                    else_expr = Some(then_branch);
+                    continue;
+                };
+                let condition = lower_expr(
+                    guard_expr,
+                    None,
+                    unit_variant_tags,
+                    qualified_variant_tags,
+                );
+                let next_else = else_expr.clone().or_else(|| {
+                    if return_ty == Type::Unit {
+                        Some(unit_else.clone())
+                    } else {
+                        None
+                    }
+                })?;
+                else_expr = Some(HirExpr {
+                    kind: HirExprKind::If {
+                        condition: Box::new(condition),
+                        then_branch: Box::new(then_branch),
+                        else_branch: Some(Box::new(next_else)),
+                    },
+                    ty: return_ty.clone(),
+                    span: scrutinee.span,
+                });
+            }
+            LiteralFallbackArm::Var { name, body, guard } => {
+                let bind_expr = HirExpr {
+                    kind: HirExprKind::Let {
+                        pattern: HirPattern::Var(name.clone()),
+                        value: Box::new(scrutinee_expr.clone()),
+                    },
+                    ty: scrutinee_expr.ty.clone(),
+                    span: scrutinee.span,
+                };
+                let then_branch = HirExpr {
+                    kind: HirExprKind::Block(vec![
+                        bind_expr.clone(),
+                        lower_expr(
+                            body,
+                            ty_hint.clone(),
+                            unit_variant_tags,
+                            qualified_variant_tags,
+                        ),
+                    ]),
+                    ty: return_ty.clone(),
+                    span: scrutinee.span,
+                };
+                let Some(guard_expr) = guard else {
+                    // Unconditional fallback shadows any later fallback arm.
+                    else_expr = Some(then_branch);
+                    continue;
+                };
+                let condition = HirExpr {
+                    kind: HirExprKind::Block(vec![
+                        bind_expr,
+                        lower_expr(
+                            guard_expr,
+                            None,
+                            unit_variant_tags,
+                            qualified_variant_tags,
+                        ),
+                    ]),
+                    ty: Type::Bool,
+                    span: scrutinee.span,
+                };
+                let next_else = else_expr.clone().or_else(|| {
+                    if return_ty == Type::Unit {
+                        Some(unit_else.clone())
+                    } else {
+                        None
+                    }
+                })?;
+                else_expr = Some(HirExpr {
+                    kind: HirExprKind::If {
+                        condition: Box::new(condition),
+                        then_branch: Box::new(then_branch),
+                        else_branch: Some(Box::new(next_else)),
+                    },
+                    ty: return_ty.clone(),
+                    span: scrutinee.span,
+                });
+            }
+        }
+    }
 
     if else_expr.is_none() && !literal_arms.is_empty() {
         // Type checking enforces exhaustiveness before lowering. For exhaustive literal
@@ -1565,6 +1639,48 @@ mod tests {
             condition.kind,
             HirExprKind::Binary { op: BinOp::And, .. }
         ));
+    }
+
+    #[test]
+    fn lower_function_literal_guarded_var_fallback_stays_lowered() {
+        let module = parse_module_from_text(
+            "fn classify(x: Int) -> Int\n  case x\n    0 -> 1\n    n when n == 1 -> n\n    _ -> 2",
+        );
+        let mut env = TypeEnv::new();
+        env.bind(
+            "classify".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::pure(vec![Type::Int], Type::Int))),
+        );
+
+        let lowered = lower_module(&module, &env);
+        let HirDecl::Function(function) = &lowered.declarations[0] else {
+            panic!("expected lowered function declaration");
+        };
+        assert!(
+            !matches!(function.body.kind, HirExprKind::Raw(_)),
+            "expected guarded var fallback case to stay on lowered path"
+        );
+    }
+
+    #[test]
+    fn lower_function_literal_guarded_wildcard_fallback_stays_lowered() {
+        let module = parse_module_from_text(
+            "fn classify(x: Int) -> Int\n  case x\n    0 -> 1\n    _ when x == 1 -> 2\n    _ -> 3",
+        );
+        let mut env = TypeEnv::new();
+        env.bind(
+            "classify".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::pure(vec![Type::Int], Type::Int))),
+        );
+
+        let lowered = lower_module(&module, &env);
+        let HirDecl::Function(function) = &lowered.declarations[0] else {
+            panic!("expected lowered function declaration");
+        };
+        assert!(
+            !matches!(function.body.kind, HirExprKind::Raw(_)),
+            "expected guarded wildcard fallback case to stay on lowered path"
+        );
     }
 
     fn count_if_nodes(expr: &HirExpr) -> usize {
