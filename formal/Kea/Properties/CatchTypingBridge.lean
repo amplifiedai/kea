@@ -33,6 +33,28 @@ structure CatchTypingJudgment where
     loweredTy =
       FailResultContracts.lowerFailFunctionType params clause.exprEffects okTy errTy
 
+def mkCatchTypingJudgment
+    (clause : HandleClauseContract)
+    (params : TyList)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_admissible : FailResultContracts.catchAdmissible clause.exprEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType params clause.exprEffects okTy errTy) :
+    CatchTypingJudgment := {
+  clause := clause
+  params := params
+  okTy := okTy
+  errTy := errTy
+  loweredTy := loweredTy
+  h_wellTyped := h_wellTyped
+  h_failZero := h_failZero
+  h_admissible := h_admissible
+  h_lowered := h_lowered
+}
+
 def toAdmissibleEffectPolyHandlerSchema
     (j : CatchTypingJudgment) :
     EffectPolymorphismSoundness.AdmissibleEffectPolyHandlerSchema := {
@@ -85,6 +107,29 @@ theorem catchTypingJudgment_admissibility_branch
   exact EffectPolymorphismSoundness.admissibleEffectPolyHandlerSchema_admissibility_branch
     (toAdmissibleEffectPolyHandlerSchema j)
 
+theorem catchTypingJudgment_sound_of_premises
+    (clause : HandleClauseContract)
+    (params : TyList)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_admissible : FailResultContracts.catchAdmissible clause.exprEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType params clause.exprEffects okTy errTy) :
+    RowFields.has
+      (EffectRow.fields (HandleClauseContract.resultEffects clause))
+      FailResultContracts.failLabel = false ∧
+      ∃ loweredEffects,
+        loweredTy = .functionEff params loweredEffects (.result okTy errTy) ∧
+        EffectPolymorphismSoundness.rowTailStable clause.exprEffects loweredEffects ∧
+        EffectPolymorphismSoundness.labelsPreservedExcept
+          clause.exprEffects loweredEffects FailResultContracts.failLabel ∧
+        RowFields.has (EffectRow.fields loweredEffects) FailResultContracts.failLabel = false := by
+  let j := mkCatchTypingJudgment
+    clause params okTy errTy loweredTy h_wellTyped h_failZero h_admissible h_lowered
+  exact catchTypingJudgment_sound j
+
 abbrev CatchTypingBundle (j : CatchTypingJudgment) :=
   EffectPolymorphismSoundness.AdmissibleEffectPolyHandlerBundle
     (toAdmissibleEffectPolyHandlerSchema j)
@@ -94,6 +139,23 @@ noncomputable def catchTypingJudgment_bundle
     CatchTypingBundle j :=
   EffectPolymorphismSoundness.admissibleEffectPolyHandler_bundle
     (toAdmissibleEffectPolyHandlerSchema j)
+
+noncomputable def catchTypingJudgment_bundle_of_premises
+    (clause : HandleClauseContract)
+    (params : TyList)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_admissible : FailResultContracts.catchAdmissible clause.exprEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType params clause.exprEffects okTy errTy) :
+    CatchTypingBundle
+      (mkCatchTypingJudgment
+        clause params okTy errTy loweredTy h_wellTyped h_failZero h_admissible h_lowered) := by
+  let j := mkCatchTypingJudgment
+    clause params okTy errTy loweredTy h_wellTyped h_failZero h_admissible h_lowered
+  exact catchTypingJudgment_bundle j
 
 theorem catchTypingJudgment_bundle_clauseFailRemoved
     (j : CatchTypingJudgment) :
