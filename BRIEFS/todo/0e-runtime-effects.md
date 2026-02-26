@@ -2,8 +2,8 @@
 
 **Status:** ready
 **Priority:** v1-critical
-**Depends on:** 0d-codegen-pure (needs working codegen pipeline)
-**Blocks:** 0f-memory-model, 0g-advanced-types, Phase 1
+**Depends on:** 0d1-module-system (needs module system for stdlib imports)
+**Blocks:** 0f-memory-model (step 7), Phase 1
 **Also read before implementing:**
 - [performance-backend-strategy](../design/performance-backend-strategy.md) — Effect ops must be classified MIR ops (capability-direct, handler-dispatch, zero-resume). Handler inlining benchmark gate (within 2x of parameter-passing). Actor benchmark targets.
 - [testing](testing.md) — Effect-heavy pipeline benchmark is a 0e deliverable. CI regression gates on 0d baselines.
@@ -503,6 +503,25 @@ Effect operations are already represented as classified MIR ops
 The Cranelift backend lowers these classified ops. A future backend
 could use a different strategy for the same MIR.
 See [performance-backend-strategy](performance-backend-strategy.md).
+
+## Stdlib Tier 1: Effects
+
+When 0e lands, the stdlib grows with effect-using modules. These are
+written in Kea and compiled by the bootstrap compiler — see
+[stdlib-bootstrap](stdlib-bootstrap.md) for the full plan.
+
+```
+stdlib/
+  io.kea           -- IO effect: stdout, stderr, read_file, write_file
+  state.kea        -- State effect + with_state handler
+  log.kea          -- Log effect + stdout/collect handlers
+  reader.kea       -- Reader effect + with_reader handler
+  test.kea         -- assert (Fail-based), basic test utilities
+```
+
+**~300-500 lines.** IO wraps `@intrinsic` runtime functions. State,
+Log, and Reader handlers are pure Kea — the first real validation
+that handler compilation works end-to-end.
 
 ## Open Questions
 

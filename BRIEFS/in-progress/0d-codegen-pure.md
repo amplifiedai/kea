@@ -3,7 +3,7 @@
 **Status:** active
 **Priority:** v1-critical
 **Depends on:** 0b-type-system-core, 0c-effect-handlers (at least Fail sugar)
-**Blocks:** 0e-runtime-effects
+**Blocks:** 0d1-module-system, 0e-runtime-effects
 **Also read before implementing:**
 - [performance-backend-strategy](../design/performance-backend-strategy.md) — MIR must be backend-neutral, backend interface trait, ABI manifest, pass stats, layout stability rules, benchmark targets.
 - [testing](testing.md) — Benchmark harness is a 0d Definition of Done item. Test runner design informs `kea test` infrastructure.
@@ -84,8 +84,12 @@ pure subset and add AOT binary emission.
 5. **Copy-on-write for functional update (~).** Runtime refcount
    check → in-place or copy path.
 
-6. **Basic stdlib runtime.** Int, Float, String, Bool, List,
-   Option, Result — enough to write real programs.
+6. **Primitive operations as Cranelift-native ops.** Int arithmetic,
+   Float arithmetic, Bool logic, comparisons — these are direct
+   Cranelift instructions. The Kea-visible API surfaces for these
+   primitives come from stdlib `.kea` files (see stdlib-bootstrap
+   brief), but the operations themselves are Cranelift-native.
+   String operations require `@intrinsic` runtime functions.
 
 ## Implementation Plan
 
@@ -735,5 +739,6 @@ expressions). Reconcile: update KERNEL §4.2.1 to use `when`.
 - 2026-02-26: End-to-end Fail Result-passing now propagates across local call boundaries in codegen: Fail-only functions use a runtime `Result` ABI, callers unwrap `Ok` payloads to continue computation, and `Err` short-circuits propagate to the current Fail-only frame; added JIT regressions for both Err propagation and Ok unwrap/re-wrap paths.
 - 2026-02-26: Higher-order pure call path advanced on compiled backend: MIR now materializes top-level function references (`FunctionRef`) as first-class values, variable callees lower to `MirCallee::Value` for param calls, and Cranelift now lowers indirect `call_indirect` sites for function-pointer signatures (`Type::Function` as pointer ABI); added MIR regressions plus JIT end-to-end test (`run(41) == 43` through `apply_twice(inc, x)`).
 - 2026-02-26: CLI end-to-end coverage now includes higher-order function-pointer execution from Kea source (`apply_twice(inc, 41) == 43`), closing the direct source-path regression gap for compiled pure HOF calls.
+- 2026-02-26: Fail-only propagation now also works through indirect function-pointer calls: MIR call metadata marks fail-result ABI callees, Cranelift indirect calls reuse Result short-circuit plumbing, and new JIT regression asserts `Err(payload)` preservation through `FunctionRef` -> `call_indirect` -> failful target.
 - 2026-02-26: Pipe-language cleanup in inference diagnostics/tests: user-facing guidance now uses explicit call syntax (`Option.ok_or(opt, err)`), and infer property/test naming moved to neutral left-arg application terminology to keep no-pipe surface alignment.
 - **Next:** Continue the remaining 0d runtime/codegen delta by expanding struct/enum runtime lowering beyond handle-only carriers and tightening remaining compiled-path coverage for effects/handlers without regressing current pure + Fail-only fast paths.

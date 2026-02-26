@@ -294,6 +294,13 @@ Rust with internal IR types. When Kea self-hosts:
 4. Backends implement the Grammar trait over MIR
 5. LSP, MCP, REPL become handler configurations
 
+The stdlib is written in Kea from Phase 0, compiled by the Rust
+bootstrap compiler. By Phase 1, the compiler's first user — its own
+stdlib — has been exercising the language for months. Every stdlib
+tier validates the compilation phase that enables it: Tier 0 tests
+the module system and pure codegen, Tier 1 tests handler compilation,
+Tier 2 tests the memory model, Tier 3 tests the full type system.
+
 The bootstrap compiler is the prototype. The self-hosted compiler
 is the product. And the language features that make the self-hosted
 compiler possible — effects, handlers, row polymorphism, typed

@@ -3,7 +3,7 @@
 **Status:** ready
 **Priority:** v1-critical
 **Depends on:** 0d-codegen-pure (needs working codegen), 0c-effect-handlers (needs effect rows for Eff kind)
-**Blocks:** 0h-stdlib-errors, Phase 1 (self-hosting requires full type system)
+**Blocks:** Phase 1 (self-hosting requires full type system + stdlib tier 3)
 **Also read before implementing:**
 - [effects-platform-vision](../design/effects-platform-vision.md) — Eff kind is load-bearing for effect-parameterised types (Server E, Step E A). GADTs enable typed actor protocols.
 - [lean-formalization](lean-formalization.md) — GADT refinement soundness and Eff kind consistency are formalization targets.
@@ -153,8 +153,21 @@ Implementation:
 
 ### 5. Deriving (KERNEL §6.9)
 
-Moved to 0h-stdlib-errors brief. Deriving is implementation
-machinery that depends on the type features above being stable.
+```kea
+@derive(Show, Eq)
+struct Point
+  x: Float
+  y: Float
+```
+
+Compiler-generated trait implementations. Tightly coupled to the
+trait system and associated types — must land in the same phase.
+
+Implementation:
+- For each derivable trait, a codegen recipe that produces an
+  impl block from the struct/enum definition
+- Start with: Show, Eq, Ord, Encode, Decode
+- Each derived impl must type-check (it's generated code, not magic)
 
 ## Implementation Plan
 
@@ -183,10 +196,36 @@ machinery that depends on the type features above being stable.
 - Both should be partially available from rill — check what
   transfers and extend
 
-### Step 4: Deriving, stdlib, error messages
+### Step 4: Deriving
 
-See 0h-stdlib-errors brief. Can begin in parallel once GADTs
-and the Eff kind are stable.
+Implement @derive for Show, Eq, Ord, Encode, Decode on structs and
+enums. This is implementation machinery that depends on steps 1-3
+(GADTs, Eff kind, associated types, supertraits) being stable.
+
+### Step 5: Stdlib Tier 3 — Abstractions
+
+When 0g lands, the stdlib gains trait hierarchies, @derive recipes,
+and the abstractions that make the stdlib ergonomic. See
+[stdlib-bootstrap](../todo/stdlib-bootstrap.md).
+
+```
+stdlib/
+  foldable.kea     -- Foldable trait + associated Item type
+  iterator.kea     -- Iterator trait + lazy iteration
+  derive/show.kea  -- @derive(Show) recipe
+  derive/eq.kea    -- @derive(Eq) recipe
+  derive/ord.kea   -- @derive(Ord) recipe
+  codec.kea        -- Encode/Decode traits
+  json.kea         -- JSON via Encode/Decode
+  sorted_map.kea   -- SortedMap (Ord supertrait constraint)
+  sorted_set.kea   -- SortedSet
+  format.kea       -- String formatting, pretty-printing
+```
+
+**~800-1000 lines.** Supertraits enable `Ord : Eq`. @derive(Show,
+Eq, Ord) works on structs and enums. This tier completes the
+self-hosting stdlib — the compiler has collections, IO, error
+handling, traits, serialization, and formatting.
 
 ## Testing
 
@@ -198,7 +237,8 @@ and the Eff kind are stable.
   polymorphic types
 - Supertraits: supertrait methods available, missing supertrait
   impl is clear error
-- Deriving, stdlib, error messages: see 0h-stdlib-errors brief
+- Deriving: @derive(Show, Eq, Ord) works on structs and enums
+- Stdlib Tier 3: Foldable/Iterator enable collection abstractions
 
 ## Definition of Done
 
@@ -206,8 +246,9 @@ and the Eff kind are stable.
 - Kind system supports `Eff` kind for effect-parameterised types
 - Associated types resolve correctly
 - Supertraits checked and available
-- The type system supports the abstractions needed for
-  self-hosting (0h handles the rest)
+- @derive works for Show, Eq, Ord, Encode, Decode
+- Stdlib Tier 3 complete (Foldable, Iterator, JSON, sorted collections)
+- Stdlib sufficient for compiler self-hosting
 - `mise run check` passes
 
 ## Open Questions
@@ -217,5 +258,7 @@ and the Eff kind are stable.
   effect row? Probably not — effect variables (`Eff` kind)
   and type variables (`*` kind) are independent. But needs
   verification.)
-- Which traits should be derivable in v0? (Moved to 0h.)
-- Should Map/Set use HAMT from the start? (Moved to 0h.)
+- Which traits should be derivable in v0? (Proposal: Show, Eq,
+  Ord, Encode, Decode. Everything else requires manual implementation.)
+- Should Map/Set use HAMT from the start? (Proposal: HAMT. It's
+  the specified representation in KERNEL §1.2.)

@@ -2,7 +2,7 @@
 
 **Status:** design
 **Priority:** Phase 1-2 (FFI in Phase 1, packaging in Phase 2, comptime in Phase 1+)
-**Depends on:** 0d-codegen-pure (Cranelift backend), 0g-advanced-types (associated types for traits), 0h-stdlib-errors (@derive infrastructure)
+**Depends on:** 0d-codegen-pure (Cranelift backend), 0g-advanced-types (associated types for traits, @derive infrastructure)
 **Blocks:** ecosystem growth, third-party packages, Arrow integration
 
 ## Motivation

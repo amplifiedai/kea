@@ -408,6 +408,25 @@ safe: pure means no observable side effects. Requires: standard
 dead code elimination extended with effect-awareness (only safe
 for pure or fail-only functions).
 
+## Stdlib Tier 2: Performance
+
+When 0f lands, the stdlib gains data structures that need Ptr, @unsafe,
+Unique, and fixed-width integers. These replace the Tier 0 linked-list
+implementations. See [stdlib-bootstrap](stdlib-bootstrap.md).
+
+```
+stdlib/
+  vector.kea       -- Contiguous-memory array (Unique + Ptr)
+  map.kea          -- HAMT Map (Ptr-based nodes, @unsafe internals)
+  set.kea          -- HAMT Set
+  bytes.kea        -- Bytes (Ptr UInt8 + length)
+  buffer.kea       -- Mutable buffer (Unique Buffer)
+```
+
+**~800-1200 lines.** Writing these IS the test for 0f. If HAMT can't
+be written with Ptr + @unsafe, the memory model has a gap. Benchmark
+gate: HAMT Map within 5x of Rust HashMap for 10K-entry lookup.
+
 ## Open Questions
 
 - How precise should the move checker be in the first pass?

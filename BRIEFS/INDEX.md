@@ -50,21 +50,26 @@ Designed and approved. Ready to pick up. Ordered by execution sequence per ROADM
 
 *(active — see Active section)*
 
-### Phase 0e: Runtime Effects (weeks 6-8)
+### Phase 0d1: Module System + Stdlib Tier 0 (after 0d)
 
-6. **[Runtime effects](todo/0e-runtime-effects.md)** — Handler compilation strategy (evidence passing vs CPS vs segmented stacks), tail-resumptive optimisation, handler inlining/devirtualization, IO runtime, Fail optimised path, arena allocation. Highest risk phase. **Also read:** [performance-backend-strategy](design/performance-backend-strategy.md) (effect ops as classified MIR ops, handler benchmark gates).
+6. **[Module system](todo/0d1-module-system.md)** — `use` imports, one file = one module, prelude loading, stdlib directory resolution, DAG enforcement, `@intrinsic` support. Enables multi-file compilation and stdlib loading.
+7. **[Stdlib bootstrap](todo/stdlib-bootstrap.md)** — Incremental stdlib written in Kea from day one. Tier 0 (pure: Option, Result, List, String, Eq, Ord, Show) lands with 0d1. Each subsequent phase delivers its stdlib tier.
 
-### Phase 0f: Memory Model (parallel with 0e, steps 1-6 only need 0d)
+### Phase 0e: Runtime Effects + Stdlib Tier 1 (after 0d1)
 
-9. **[Memory model](todo/0f-memory-model.md)** — Unique T (move semantics), borrow convention, reuse analysis (pure optimisation), unsafe/Ptr, @unboxed, fixed-width integers. Steps 1-6 only need 0d codegen. Step 7 (Unique + effects) needs 0e. Type-driven optimisation: Unique gives guaranteed single ownership → unconditional in-place mutation. Reuse analysis uses type info to prove refcount==1.
+8. **[Runtime effects](todo/0e-runtime-effects.md)** — Handler compilation strategy (evidence passing), tail-resumptive optimisation, handler inlining/devirtualization, IO runtime, Fail optimised path. Stdlib Tier 1: IO, State, Log, Reader handlers written in Kea. **Also read:** [performance-backend-strategy](design/performance-backend-strategy.md).
 
-### Phase 0g: Advanced Types (parallel with 0f, only needs 0d + 0c)
+### Phase 0f: Memory Model + Stdlib Tier 2 (steps 1-6 need 0d, step 7 needs 0e)
 
-10. **[Advanced type features](todo/0g-advanced-types.md)** — GADTs (typed actor protocols), Eff kind (effect-parameterised types), associated types, supertraits. Pure type theory — no dependency on memory model. GADTs enable `CounterMsg T` typed protocols. Eff kind enables `Server E` effect-polymorphic types.
+9. **[Memory model](todo/0f-memory-model.md)** — Unique T (move semantics), borrow convention, reuse analysis, unsafe/Ptr, @unboxed, fixed-width integers. Stdlib Tier 2: Vector, HAMT Map/Set using Ptr/@unsafe — writing them IS the test for 0f.
 
-### Phase 0h: Stdlib, Deriving, Error Messages (needs 0g)
+### Phase 0g: Advanced Types + @derive + Stdlib Tier 3 (needs 0d + 0c)
 
-11. **[Stdlib, deriving, and error messages](todo/0h-stdlib-errors.md)** — @derive, effects-first stdlib (stdlib IS the effect vocabulary), row-diff error messages (structural missing/extra for records and effects), effect provenance in diagnostics. The most exciting phase: where effects stop being a language feature and become the API design principle.
+10. **[Advanced type features](todo/0g-advanced-types.md)** — GADTs, Eff kind, associated types, supertraits, @derive(Show, Eq, Ord). Stdlib Tier 3: Foldable, Iterator, JSON, sorted collections. **0g completion = stdlib sufficient for self-hosting.**
+
+### Phase 0h: Error Message Quality (parallel, not blocking)
+
+11. **[Error message quality](todo/0h-stdlib-errors.md)** — Row-diff error messages, effect provenance in diagnostics, stable error codes, snapshot tests. Not on critical path — runs in parallel with 0g.
 
 ### Parallel tracks
 
@@ -129,32 +134,39 @@ Completed briefs. Kept for reference and design rationale.
            │
            └── 0d: codegen pure ◄─── ACTIVE
                 │
-                ├── 0e: runtime effects (handler compilation, IO)
+                ├── 0d1: module system + STDLIB TIER 0 (pure)
+                │    │   (use/import, prelude, Option/Result/List/String as .kea)
                 │    │
-                │    └── 0f step 7: Unique + effects interaction
-                │
-                ├── 0f steps 1-6: Unique, borrow, reuse, unsafe, unboxed, fixed-width
-                │    (only needs 0d — NOT blocked on 0e)
-                │
-                ├── 0g: GADTs, Eff kind, assoc types, supertraits
-                │    (only needs 0d + 0c — NOT blocked on 0f)
+                │    ├── 0e: runtime effects + STDLIB TIER 1 (effects)
+                │    │    │   (IO/State/Log as .kea, handler tests in Kea)
+                │    │    │
+                │    │    └── 0f step 7: Unique + effects
                 │    │
-                │    └── 0h: stdlib, deriving, error messages
+                │    ├── 0f steps 1-6 + STDLIB TIER 2 (performance)
+                │    │    (Vector/HAMT Map/Set as .kea using Ptr/@unsafe)
+                │    │
+                │    └── 0g + @derive + STDLIB TIER 3 (abstractions)
+                │         (Foldable/Iterator/JSON/sorted collections as .kea)
                 │         │
                 │         └── Phase 1: self-hosting
+                │              (stdlib sufficient, compiler rewritten in Kea)
+                │
+                ├── 0h: error message quality (parallel, not blocking)
                 │
                 ├── lean formalization phase 2 (parallel)
                 ├── testing: benchmark harness + test runner (parallel)
                 └── semantic introspection platform (cross-cutting)
 
-Parallelism after 0d lands:
+Parallelism after 0d1 lands:
   0e ──────────┐
-  0f steps 1-5 ├── can all run concurrently
+  0f steps 1-6 ├── can all run concurrently
   0g ──────────┘
+  0h ── parallel track (not blocking self-hosting)
   lean, testing ── parallel tracks throughout
 
-Critical path to "hello world compiles":  0d → 0e (IO handler)
-Critical path to self-hosting:            0d → 0g → 0h → Phase 1
+Critical path to "hello world compiles":  0d → 0d1 → 0e (IO handler)
+Critical path to self-hosting:            0d → 0d1 → 0g → Phase 1
+(0h removed from critical path)
 
 Cross-cutting (read before implementing any phase):
   performance-backend-strategy.md  → 0d, 0e, 0f
