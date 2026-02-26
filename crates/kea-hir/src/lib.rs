@@ -876,18 +876,23 @@ fn literal_case_values_from_pattern(
         }
         PatternKind::Or(patterns) => {
             let mut values = Vec::new();
+            let mut shared_bind_name: Option<String> = None;
             for branch in patterns {
                 let (branch_values, branch_bind_name) = literal_case_values_from_pattern(
                     &branch.node,
                     unit_variant_tags,
                     qualified_variant_tags,
                 )?;
-                if branch_bind_name.is_some() {
-                    return None;
+                match (&shared_bind_name, branch_bind_name) {
+                    (None, None) => {}
+                    (None, Some(name)) => shared_bind_name = Some(name),
+                    (Some(existing), Some(name)) if existing == &name => {}
+                    // Mixed bind/no-bind or mismatched bind names are ambiguous.
+                    _ => return None,
                 }
                 values.extend(branch_values);
             }
-            Some((values, None))
+            Some((values, shared_bind_name))
         }
         PatternKind::As { pattern, name } => {
             let (values, inner_bind_name) = literal_case_values_from_pattern(
@@ -1639,6 +1644,27 @@ mod tests {
             condition.kind,
             HirExprKind::Binary { op: BinOp::And, .. }
         ));
+    }
+
+    #[test]
+    fn lower_function_literal_or_as_pattern_binds_shared_name() {
+        let module = parse_module_from_text(
+            "fn classify(x: Int) -> Int\n  case x\n    0 as n | 1 as n -> n + 5\n    _ -> 2",
+        );
+        let mut env = TypeEnv::new();
+        env.bind(
+            "classify".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::pure(vec![Type::Int], Type::Int))),
+        );
+
+        let lowered = lower_module(&module, &env);
+        let HirDecl::Function(function) = &lowered.declarations[0] else {
+            panic!("expected lowered function declaration");
+        };
+        assert!(
+            !matches!(function.body.kind, HirExprKind::Raw(_)),
+            "expected OR as-pattern with shared name to stay on lowered path"
+        );
     }
 
     #[test]
