@@ -85,5 +85,44 @@ theorem catchTypingJudgment_admissibility_branch
   exact EffectPolymorphismSoundness.admissibleEffectPolyHandlerSchema_admissibility_branch
     (toAdmissibleEffectPolyHandlerSchema j)
 
+abbrev CatchTypingBundle (j : CatchTypingJudgment) :=
+  EffectPolymorphismSoundness.AdmissibleEffectPolyHandlerBundle
+    (toAdmissibleEffectPolyHandlerSchema j)
+
+noncomputable def catchTypingJudgment_bundle
+    (j : CatchTypingJudgment) :
+    CatchTypingBundle j :=
+  EffectPolymorphismSoundness.admissibleEffectPolyHandler_bundle
+    (toAdmissibleEffectPolyHandlerSchema j)
+
+theorem catchTypingJudgment_bundle_clauseFailRemoved
+    (j : CatchTypingJudgment) :
+    RowFields.has
+      (EffectRow.fields (HandleClauseContract.resultEffects j.clause))
+      FailResultContracts.failLabel = false :=
+  EffectPolymorphismSoundness.admissibleEffectPolyHandler_bundle_clauseFailRemoved
+    (toAdmissibleEffectPolyHandlerSchema j)
+
+theorem catchTypingJudgment_bundle_rowTailStable
+    (j : CatchTypingJudgment) :
+    EffectPolymorphismSoundness.rowTailStable j.clause.exprEffects
+      (catchTypingJudgment_bundle j).lowering.loweredEffects :=
+  (catchTypingJudgment_bundle j).lowering.rowTailStable
+
+theorem catchTypingJudgment_bundle_preserves_nonFail
+    (j : CatchTypingJudgment) :
+    EffectPolymorphismSoundness.labelsPreservedExcept
+      j.clause.exprEffects
+      (catchTypingJudgment_bundle j).lowering.loweredEffects
+      FailResultContracts.failLabel :=
+  (catchTypingJudgment_bundle j).lowering.preservesNonFail
+
+theorem catchTypingJudgment_bundle_failRemoved_in_lowered
+    (j : CatchTypingJudgment) :
+    RowFields.has
+      (EffectRow.fields (catchTypingJudgment_bundle j).lowering.loweredEffects)
+      FailResultContracts.failLabel = false :=
+  (catchTypingJudgment_bundle j).lowering.failRemoved
+
 end CatchTypingBridge
 end Kea

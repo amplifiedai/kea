@@ -5338,3 +5338,26 @@ validated runtime behavior).
 **Outcome**:
 - Phase-2 now has a judgment-surface bridge from typing-style premises to the
 admissible catch capstones, ready for future concrete typing-rule integration.
+
+### 2026-02-26: catch bridge bundle ergonomics (proof-only)
+
+**Context**: Added judgment-level bundle/projection ergonomics in
+`CatchTypingBridge` to match the existing schema-side bundle style.
+
+**MCP tools used**: none (proof-only API shaping).
+
+**Lean side**:
+- Extended `Kea/Properties/CatchTypingBridge.lean` with:
+  - `CatchTypingBundle`
+  - `catchTypingJudgment_bundle`
+  - `catchTypingJudgment_bundle_clauseFailRemoved`
+  - `catchTypingJudgment_bundle_rowTailStable`
+  - `catchTypingJudgment_bundle_preserves_nonFail`
+  - `catchTypingJudgment_bundle_failRemoved_in_lowered`
+- Verified with `cd formal && lake build` (pass).
+
+**Classify**: N/A (proof-only step).
+
+**Outcome**:
+- Judgment-level consumers now have one-name bundle outputs and one-hop
+projections, consistent with the rest of the Phase-2 capstone surface.
