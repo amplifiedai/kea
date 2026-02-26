@@ -1,6 +1,6 @@
 # Brief: MCP Server (Day One)
 
-**Status:** ready
+**Status:** done
 **Priority:** v1-critical
 **Depends on:** 0b-type-system-core (needs working type checker)
 **Blocks:** all agent-assisted development from 0c onward
@@ -114,3 +114,8 @@ enormously valuable for agent development.
 Folding this into 0b is acceptable if it stays small. But if 0b
 is already large (it is), a separate brief keeps it visible as
 a deliverable that must not slip.
+
+## Progress
+- 2026-02-26: Implemented `crates/kea-mcp` with MCP stdio server, `type_check`/`diagnose`/`get_type` (+ `reset_session`) tools, and session-scoped type-checking state.
+- 2026-02-26: Added structured diagnostic serialization in `kea-diag` (`Diagnostic`, `Category`, `Severity`, `SourceLocation`, `DiagLabel` derive `Serialize`).
+- 2026-02-26: Added crate tests for type-check success/failure shape and `get_type` no-mutation behavior; `mise run check` passed.

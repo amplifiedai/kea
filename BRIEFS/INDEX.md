@@ -24,7 +24,6 @@ Designed and approved. Ready to pick up. Ordered by execution sequence per ROADM
 ### Phase 0b: Type System Core (weeks 1-3)
 
 2. **[Post-0b Rill surface cleanup](todo/0b-rill-surface-cleanup.md)** — Remove remaining inherited pipe/DataFrame/HKT-era and other unbriefed parser/typechecker substrate from core crates so 0a/0b completion matches locked Kea v0 surface.
-3. **[MCP server](todo/0b-mcp-server.md)** — Compiler-as-MCP-server for agent feedback loop. Lands immediately after type checker works. Cannibalises rill-mcp (371 LOC).
 
 ### Phase 0c: Effect Handlers (weeks 3-4)
 
@@ -78,6 +77,7 @@ Completed briefs. Kept for reference and design rationale.
 
 | Brief | Summary |
 |-------|---------|
+| [0b-mcp-server](done/0b-mcp-server.md) | `kea-mcp` now exposes `type_check`, `diagnose`, and `get_type` over MCP stdio with structured JSON diagnostics from serializable `kea-diag` types. |
 | [0b-type-system-core](done/0b-type-system-core.md) | Type checker migrated to row-native effect contracts/unification with lattice model deleted, legacy effect syntax deprecation-only, fail-row constraints enforced, and stable module namespace resolution scaffolding for builtin/source transitions. |
 | [0a-lexer-parser](done/0a-lexer-parser.md) | Indentation-sensitive lexer/parser landed with indentation-only block parsing, snapshot corpora, and property tests for layout/error coherence. |
 | [bootstrap-infra](done/bootstrap-infra.md) | Cargo workspace, mise tasks, scripts, BRIEFS system, docs, .claude setup. Cannibalised from rill. |
