@@ -6718,7 +6718,7 @@ fn infer_fn_decl_effects_defaults_effect_var_callback_to_impure() {
 #[test]
 fn infer_fn_decl_effects_defaults_unsolved_called_term_to_impure() {
     let mut env = TypeEnv::new();
-    env.set_function_effect_term("poly_fn".to_string(), EffectTerm::Var(EffectVarId(77)));
+    env.set_function_effect_row("poly_fn".to_string(), EffectRow::open(vec![], RowVarId(77)));
     let fn_decl = make_fn_decl("wrapper", vec![], call(var("poly_fn"), vec![]));
     let effects = infer_fn_decl_effects(&fn_decl, &env);
     assert_eq!(effects, Effects::impure());
@@ -6814,16 +6814,16 @@ fn infer_expr_effects_uses_registered_function_effect_signature_for_callback_pol
     apply.effect_annotation = Some(sp(EffectAnnotation::Var("e".to_string())));
     register_fn_effect_signature(&apply, &mut env);
 
-    env.set_function_effect_term("pure_cb".to_string(), EffectTerm::Known(EffectLevel::Pure));
+    env.set_function_effect_row("pure_cb".to_string(), EffectRow::pure());
     let pure_call = call(var("apply"), vec![var("pure_cb")]);
     assert_eq!(
         infer_expr_effects(&pure_call, &env),
         Effects::pure_deterministic()
     );
 
-    env.set_function_effect_term(
+    env.set_function_effect_row(
         "impure_cb".to_string(),
-        EffectTerm::Known(EffectLevel::Impure),
+        EffectRow::closed(vec![(Label::new("IO"), Type::Unit)]),
     );
     let impure_call = call(var("apply"), vec![var("impure_cb")]);
     assert_eq!(infer_expr_effects(&impure_call, &env), Effects::impure());
@@ -6842,16 +6842,16 @@ fn infer_expr_effects_uses_registered_signature_for_qualified_calls() {
     apply.effect_annotation = Some(sp(EffectAnnotation::Var("e".to_string())));
     register_fn_effect_signature(&apply, &mut env);
 
-    env.set_function_effect_term("pure_cb".to_string(), EffectTerm::Known(EffectLevel::Pure));
+    env.set_function_effect_row("pure_cb".to_string(), EffectRow::pure());
     let pure_call = call(field_access(var("List"), "apply"), vec![var("pure_cb")]);
     assert_eq!(
         infer_expr_effects(&pure_call, &env),
         Effects::pure_deterministic()
     );
 
-    env.set_function_effect_term(
+    env.set_function_effect_row(
         "impure_cb".to_string(),
-        EffectTerm::Known(EffectLevel::Impure),
+        EffectRow::closed(vec![(Label::new("IO"), Type::Unit)]),
     );
     let impure_call = call(field_access(var("List"), "apply"), vec![var("impure_cb")]);
     assert_eq!(infer_expr_effects(&impure_call, &env), Effects::impure());
@@ -6894,7 +6894,7 @@ fn infer_expr_effects_pipe_call_propagates_callback_effect_signature() {
     map.effect_annotation = Some(sp(EffectAnnotation::Var("e".to_string())));
     register_fn_effect_signature(&map, &mut env);
 
-    env.set_function_effect_term("pure_cb".to_string(), EffectTerm::Known(EffectLevel::Pure));
+    env.set_function_effect_row("pure_cb".to_string(), EffectRow::pure());
     let pure_pipe = pipe(
         list(vec![lit_int(1)]),
         call(var("map"), vec![var("pure_cb")]),
@@ -6904,9 +6904,9 @@ fn infer_expr_effects_pipe_call_propagates_callback_effect_signature() {
         Effects::pure_deterministic()
     );
 
-    env.set_function_effect_term(
+    env.set_function_effect_row(
         "impure_cb".to_string(),
-        EffectTerm::Known(EffectLevel::Impure),
+        EffectRow::closed(vec![(Label::new("IO"), Type::Unit)]),
     );
     let impure_pipe = pipe(
         list(vec![lit_int(1)]),
@@ -6932,7 +6932,7 @@ fn infer_expr_effects_pipe_qualified_call_propagates_callback_effect_signature()
     map.effect_annotation = Some(sp(EffectAnnotation::Var("e".to_string())));
     register_fn_effect_signature(&map, &mut env);
 
-    env.set_function_effect_term("pure_cb".to_string(), EffectTerm::Known(EffectLevel::Pure));
+    env.set_function_effect_row("pure_cb".to_string(), EffectRow::pure());
     let pure_pipe = pipe(
         list(vec![lit_int(1)]),
         call(field_access(var("List"), "map"), vec![var("pure_cb")]),
@@ -6942,9 +6942,9 @@ fn infer_expr_effects_pipe_qualified_call_propagates_callback_effect_signature()
         Effects::pure_deterministic()
     );
 
-    env.set_function_effect_term(
+    env.set_function_effect_row(
         "impure_cb".to_string(),
-        EffectTerm::Known(EffectLevel::Impure),
+        EffectRow::closed(vec![(Label::new("IO"), Type::Unit)]),
     );
     let impure_pipe = pipe(
         list(vec![lit_int(1)]),
@@ -6968,14 +6968,14 @@ fn infer_expr_effects_shared_effect_var_across_multiple_callback_params() {
     zip_apply.effect_annotation = Some(sp(EffectAnnotation::Var("e".to_string())));
     register_fn_effect_signature(&zip_apply, &mut env);
 
-    env.set_function_effect_term("pure_cb".to_string(), EffectTerm::Known(EffectLevel::Pure));
-    env.set_function_effect_term(
+    env.set_function_effect_row("pure_cb".to_string(), EffectRow::pure());
+    env.set_function_effect_row(
         "volatile_cb".to_string(),
-        EffectTerm::Known(EffectLevel::Volatile),
+        EffectRow::closed(vec![(Label::new("Volatile"), Type::Unit)]),
     );
-    env.set_function_effect_term(
+    env.set_function_effect_row(
         "impure_cb".to_string(),
-        EffectTerm::Known(EffectLevel::Impure),
+        EffectRow::closed(vec![(Label::new("IO"), Type::Unit)]),
     );
 
     let pure_call = call(var("zip_apply"), vec![var("pure_cb"), var("pure_cb")]);
@@ -7009,7 +7009,7 @@ fn infer_expr_effects_let_alias_preserves_function_signature_for_callbacks() {
     apply.effect_annotation = Some(sp(EffectAnnotation::Var("e".to_string())));
     register_fn_effect_signature(&apply, &mut env);
 
-    env.set_function_effect_term("pure_cb".to_string(), EffectTerm::Known(EffectLevel::Pure));
+    env.set_function_effect_row("pure_cb".to_string(), EffectRow::pure());
     let pure_expr = block(vec![
         let_bind("g", var("apply")),
         call(var("g"), vec![var("pure_cb")]),
@@ -7019,9 +7019,9 @@ fn infer_expr_effects_let_alias_preserves_function_signature_for_callbacks() {
         Effects::pure_deterministic()
     );
 
-    env.set_function_effect_term(
+    env.set_function_effect_row(
         "impure_cb".to_string(),
-        EffectTerm::Known(EffectLevel::Impure),
+        EffectRow::closed(vec![(Label::new("IO"), Type::Unit)]),
     );
     let impure_expr = block(vec![
         let_bind("g", var("apply")),
@@ -7043,7 +7043,7 @@ fn infer_expr_effects_let_alias_preserves_qualified_function_signature() {
     apply.effect_annotation = Some(sp(EffectAnnotation::Var("e".to_string())));
     register_fn_effect_signature(&apply, &mut env);
 
-    env.set_function_effect_term("pure_cb".to_string(), EffectTerm::Known(EffectLevel::Pure));
+    env.set_function_effect_row("pure_cb".to_string(), EffectRow::pure());
     let expr = block(vec![
         let_bind("g", field_access(var("List"), "apply")),
         call(var("g"), vec![var("pure_cb")]),
@@ -7082,7 +7082,7 @@ fn infer_expr_effects_let_alias_lambda_preserves_callback_effect_constraints() {
         return_annotation: None,
     });
 
-    env.set_function_effect_term("pure_cb".to_string(), EffectTerm::Known(EffectLevel::Pure));
+    env.set_function_effect_row("pure_cb".to_string(), EffectRow::pure());
     let pure_expr = block(vec![
         let_bind("apply", apply_lambda.clone()),
         call(var("apply"), vec![var("pure_cb")]),
@@ -7092,9 +7092,9 @@ fn infer_expr_effects_let_alias_lambda_preserves_callback_effect_constraints() {
         Effects::pure_deterministic()
     );
 
-    env.set_function_effect_term(
+    env.set_function_effect_row(
         "impure_cb".to_string(),
-        EffectTerm::Known(EffectLevel::Impure),
+        EffectRow::closed(vec![(Label::new("IO"), Type::Unit)]),
     );
     let impure_expr = block(vec![
         let_bind("apply", apply_lambda),
@@ -7273,7 +7273,7 @@ fn validate_declared_fn_effect_rejects_non_propagating_effect_variable_contract(
         .expect_err("effect variable contract should fail when body is always impure");
     assert!(
         err.message
-            .contains("declared effect `-[e]>` does not match body effect behavior"),
+            .contains("declared effect `-[e]>` on `f` does not match body effect propagation"),
         "unexpected message: {}",
         err.message
     );
@@ -7290,7 +7290,7 @@ fn validate_trait_method_impl_effect_rejects_stronger_impl_effect() {
     )
     .expect_err("impure impl should violate pure trait contract");
     assert!(
-        err.message.contains("trait `Runner` requires `pure`"),
+        err.message.contains("trait `Runner` requires `[]`"),
         "unexpected message: {}",
         err.message
     );
@@ -7394,7 +7394,7 @@ fn validate_trait_method_impl_contract_with_env_rejects_non_propagating_polymorp
     .expect_err("non-propagating polymorphic impl should be rejected");
     assert!(
         err.message
-            .contains("declared effect `-[impl_e]>` does not match body effect behavior"),
+            .contains("declared effect `-[impl_e]>` on `run` does not match body effect propagation"),
         "unexpected message: {}",
         err.message
     );

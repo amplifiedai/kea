@@ -15,8 +15,8 @@ pub mod typeck;
 
 use kea_ast::Span;
 use kea_types::{
-    Dim, DimVarId, EffectConstraint, EffectLevel, EffectTerm, EffectVarId, Kind, Label,
-    LacksConstraints, RowType, RowVarId, Substitution, Type, TypeVarId, free_type_vars,
+    Dim, DimVarId, Kind, Label, LacksConstraints, RowType, RowVarId, Substitution, Type,
+    TypeVarId, free_type_vars,
     type_constructor_for_trait,
 };
 use std::ops::{Deref, DerefMut};
@@ -465,179 +465,6 @@ impl DerefMut for InferenceContext {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.unifier
     }
-}
-
-// ---------------------------------------------------------------------------
-// Effect constraints
-// ---------------------------------------------------------------------------
-
-// TODO(0b-exit): delete when row-based effect solver is complete.
-fn effect_rank(level: EffectLevel) -> u8 {
-    match level {
-        EffectLevel::Pure => 0,
-        EffectLevel::Volatile => 1,
-        EffectLevel::Impure => 2,
-    }
-}
-
-// TODO(0b-exit): delete when row-based effect solver is complete.
-fn effect_join(left: EffectLevel, right: EffectLevel) -> EffectLevel {
-    if effect_rank(left) >= effect_rank(right) {
-        left
-    } else {
-        right
-    }
-}
-
-// TODO(0b-exit): delete when row-based effect solver is complete.
-fn resolve_effect_term(
-    term: EffectTerm,
-    solved: &std::collections::BTreeMap<EffectVarId, EffectLevel>,
-) -> Option<EffectLevel> {
-    match term {
-        EffectTerm::Known(level) => Some(level),
-        EffectTerm::Var(var) => solved.get(&var).copied(),
-    }
-}
-
-// TODO(0b-exit): delete when row-based effect solver is complete.
-fn bind_effect_var(
-    var: EffectVarId,
-    level: EffectLevel,
-    solved: &mut std::collections::BTreeMap<EffectVarId, EffectLevel>,
-) -> Result<bool, String> {
-    if let Some(existing) = solved.get(&var).copied() {
-        if existing != level {
-            return Err(format!(
-                "effect variable e{} has incompatible assignments: {:?} vs {:?}",
-                var.0, existing, level
-            ));
-        }
-        return Ok(false);
-    }
-    solved.insert(var, level);
-    Ok(true)
-}
-
-// TODO(0b-exit): delete when row-based effect solver is complete.
-fn all_effect_vars(constraints: &[EffectConstraint]) -> std::collections::BTreeSet<EffectVarId> {
-    let mut vars = std::collections::BTreeSet::new();
-    let mut insert_term = |term: EffectTerm| {
-        if let EffectTerm::Var(v) = term {
-            vars.insert(v);
-        }
-    };
-    for constraint in constraints {
-        match *constraint {
-            EffectConstraint::Eq { left, right } | EffectConstraint::Leq { left, right } => {
-                insert_term(left);
-                insert_term(right);
-            }
-            EffectConstraint::Join { out, left, right } => {
-                insert_term(out);
-                insert_term(left);
-                insert_term(right);
-            }
-        }
-    }
-    vars
-}
-
-/// Solve effect constraints and return concrete effect levels for each variable.
-///
-/// Unknown variables default to `Impure`, which is the conservative top element
-/// in the current effect lattice (`pure < volatile < impure`).
-// TODO(0b-exit): delete when row-based effect solver is complete.
-pub fn solve_effect_constraints(
-    constraints: &[EffectConstraint],
-) -> Result<std::collections::BTreeMap<EffectVarId, EffectLevel>, String> {
-    let vars = all_effect_vars(constraints);
-    let mut solved = std::collections::BTreeMap::<EffectVarId, EffectLevel>::new();
-    let mut converged = false;
-
-    for _ in 0..64 {
-        let mut changed = false;
-        for constraint in constraints {
-            match *constraint {
-                EffectConstraint::Eq { left, right } => {
-                    let left_level = resolve_effect_term(left, &solved);
-                    let right_level = resolve_effect_term(right, &solved);
-                    match (left, right, left_level, right_level) {
-                        (_, _, Some(a), Some(b)) if a != b => {
-                            return Err(format!("effect equality violated: {:?} != {:?}", a, b));
-                        }
-                        (EffectTerm::Var(v), _, None, Some(level))
-                        | (_, EffectTerm::Var(v), Some(level), None) => {
-                            changed |= bind_effect_var(v, level, &mut solved)?;
-                        }
-                        _ => {}
-                    }
-                }
-                EffectConstraint::Leq { left, right } => {
-                    let left_level = resolve_effect_term(left, &solved);
-                    let right_level = resolve_effect_term(right, &solved);
-                    if let (Some(a), Some(b)) = (left_level, right_level)
-                        && effect_rank(a) > effect_rank(b)
-                    {
-                        return Err(format!(
-                            "effect ordering violated: {:?} <= {:?} is false",
-                            a, b
-                        ));
-                    }
-                    if let (EffectTerm::Var(v), Some(upper)) = (left, right_level) {
-                        if let Some(existing) = solved.get(&v).copied() {
-                            if effect_rank(existing) > effect_rank(upper) {
-                                return Err(format!(
-                                    "effect ordering violated: {:?} <= {:?} is false",
-                                    existing, upper
-                                ));
-                            }
-                        } else {
-                            changed |= bind_effect_var(v, upper, &mut solved)?;
-                        }
-                    }
-                    if let (Some(level), EffectTerm::Var(v), None) =
-                        (left_level, right, right_level)
-                    {
-                        changed |= bind_effect_var(v, level, &mut solved)?;
-                    }
-                }
-                EffectConstraint::Join { out, left, right } => {
-                    let left_level = resolve_effect_term(left, &solved);
-                    let right_level = resolve_effect_term(right, &solved);
-                    if let (Some(a), Some(b)) = (left_level, right_level) {
-                        let joined = effect_join(a, b);
-                        match out {
-                            EffectTerm::Known(level) => {
-                                if level != joined {
-                                    return Err(format!(
-                                        "effect join violated: {:?} != join({:?}, {:?})",
-                                        level, a, b
-                                    ));
-                                }
-                            }
-                            EffectTerm::Var(v) => {
-                                changed |= bind_effect_var(v, joined, &mut solved)?;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        if !changed {
-            converged = true;
-            break;
-        }
-    }
-    if !converged {
-        return Err("effect constraint solver did not converge within 64 iterations".to_string());
-    }
-
-    for var in vars {
-        solved.entry(var).or_insert(EffectLevel::Impure);
-    }
-
-    Ok(solved)
 }
 
 fn canonicalize_type_scheme_for_alpha_eq(scheme: &TypeScheme) -> TypeScheme {
@@ -2931,7 +2758,7 @@ mod tests {
 
     use super::*;
     use kea_ast::FileId;
-    use kea_types::{EffectConstraint, EffectLevel, EffectTerm, FunctionType, Kind};
+    use kea_types::{FunctionType, Kind};
 
     fn test_span() -> Span {
         Span::new(FileId(0), 0, 1)
@@ -3979,96 +3806,6 @@ mod tests {
         assert!(
             u.has_errors(),
             "missing projection obligation should produce an error"
-        );
-    }
-
-    #[test]
-    fn effect_constraints_solve_eq_and_join() {
-        let e0 = EffectVarId(0);
-        let e1 = EffectVarId(1);
-        let constraints = vec![
-            EffectConstraint::Eq {
-                left: EffectTerm::Var(e0),
-                right: EffectTerm::Known(EffectLevel::Pure),
-            },
-            EffectConstraint::Join {
-                out: EffectTerm::Var(e1),
-                left: EffectTerm::Var(e0),
-                right: EffectTerm::Known(EffectLevel::Volatile),
-            },
-        ];
-
-        let solved = solve_effect_constraints(&constraints).expect("constraints should solve");
-        assert_eq!(solved.get(&e0), Some(&EffectLevel::Pure));
-        assert_eq!(solved.get(&e1), Some(&EffectLevel::Volatile));
-    }
-
-    #[test]
-    fn effect_constraints_detect_conflicting_eq() {
-        let e0 = EffectVarId(0);
-        let constraints = vec![
-            EffectConstraint::Eq {
-                left: EffectTerm::Var(e0),
-                right: EffectTerm::Known(EffectLevel::Pure),
-            },
-            EffectConstraint::Eq {
-                left: EffectTerm::Var(e0),
-                right: EffectTerm::Known(EffectLevel::Impure),
-            },
-        ];
-
-        let err = solve_effect_constraints(&constraints).expect_err("conflict must be reported");
-        assert!(
-            err.contains("incompatible assignments") || err.contains("effect equality violated"),
-            "unexpected error: {err}"
-        );
-    }
-
-    #[test]
-    fn effect_constraints_default_unknown_to_impure() {
-        let e0 = EffectVarId(0);
-        let constraints = vec![EffectConstraint::Leq {
-            left: EffectTerm::Var(e0),
-            right: EffectTerm::Known(EffectLevel::Impure),
-        }];
-
-        let solved = solve_effect_constraints(&constraints).expect("constraints should solve");
-        assert_eq!(solved.get(&e0), Some(&EffectLevel::Impure));
-    }
-
-    #[test]
-    fn effect_constraints_leq_binds_left_var_from_known_upper_bound() {
-        let e0 = EffectVarId(0);
-        let constraints = vec![EffectConstraint::Leq {
-            left: EffectTerm::Var(e0),
-            right: EffectTerm::Known(EffectLevel::Pure),
-        }];
-
-        let solved = solve_effect_constraints(&constraints).expect("constraints should solve");
-        assert_eq!(solved.get(&e0), Some(&EffectLevel::Pure));
-    }
-
-    #[test]
-    fn effect_constraints_report_non_convergence_at_iteration_cap() {
-        // Chain constraints in an order that forces one new binding per pass.
-        // This needs >64 passes, so the fixed cap must report non-convergence.
-        let mut constraints = Vec::new();
-        for i in 0..70u32 {
-            constraints.push(EffectConstraint::Leq {
-                left: EffectTerm::Var(EffectVarId(i)),
-                right: EffectTerm::Var(EffectVarId(i + 1)),
-            });
-        }
-        constraints.push(EffectConstraint::Eq {
-            left: EffectTerm::Var(EffectVarId(70)),
-            right: EffectTerm::Known(EffectLevel::Pure),
-        });
-
-        let err =
-            solve_effect_constraints(&constraints).expect_err("long chain should exceed cap");
-        assert!(
-            err.contains("did not converge within 64 iterations"),
-            "unexpected error: {err}"
         );
     }
 
