@@ -1,4 +1,4 @@
-# Kea
+# -[kea]>
 
 A statically-typed functional programming language with algebraic effects, handlers, and row polymorphism.
 
