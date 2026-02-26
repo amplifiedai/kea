@@ -438,6 +438,293 @@ what they DO, not what they're named or where they live.
 pattern. Agents can find relevant code by capability, not by guessing
 file names.
 
+#### Automatic memoisation
+
+A pure function (`->`) is referentially transparent. A tool can
+automatically wrap it with a cache — and more importantly, it can
+tell you exactly why memoisation is UNSAFE for effectful functions:
+"can't memoise `load_config` because it performs IO (result may differ
+between calls)."
+
+For `-[Fail E]>` functions, memoisation of the success path is still
+valid (fail is deterministic for a given input). The tool can offer
+conditional memoisation: cache `Ok` results, re-execute on `Err`.
+
+**LSP:** code action "Memoise this pure function" on `->` functions.
+Warning on effectful functions explaining why not.
+**MCP:** `suggest_memoisation` tool identifies hot pure functions in a
+call graph and proposes caching with zero false positives.
+
+#### Incremental computation
+
+If you know which functions are pure and which inputs changed, you know
+exactly what to recompute. This is build-system-level incrementality
+applied to arbitrary computation.
+
+For the compiler itself this is wild: the compilation pipeline is a chain
+of typed, effect-annotated functions. When a source file changes, the
+effect/type system tells you which downstream passes are invalidated and
+which cached results are still valid. Incremental recompilation falls out
+of the same analysis that works for user programs.
+
+More generally: any pure function that hasn't had its inputs change
+doesn't need re-execution. The effect system tells you which functions
+are pure. A reactive runtime (or build system, or CI pipeline) uses this
+to compute the minimal re-execution set.
+
+**LSP:** incremental type-checking already benefits (pure helper functions
+don't need rechecking when unrelated code changes).
+**MCP:** `minimal_recomputation_set` tool returns exactly which functions
+need re-execution given a set of changed inputs. Agents can build
+incremental pipelines with compiler-proven correctness.
+
+#### Formal verification targeting
+
+Pure functions are the easiest to formally verify. A tool can rank
+functions by "verification difficulty" based on their effect rows:
+
+| Effect signature | Verification difficulty | Why |
+|-----------------|------------------------|-----|
+| `->` | Low | Referentially transparent, no state |
+| `-[Fail E]>` | Low | Equivalent to Result, total with catch |
+| `-[State S]>` | Medium | Stateful but scoped, handler bounds it |
+| `-[IO]>` | High | External world, non-deterministic |
+| `-[Send, Spawn]>` | Very high | Concurrent, interleaving |
+
+Agents doing formal verification can automatically prioritise the
+low-hanging fruit and build verification coverage bottom-up from the
+pure core outward.
+
+**MCP:** `rank_verification_targets` tool returns functions sorted by
+verification tractability, with the effect-based justification.
+
+#### Effect-based cloud cost estimation
+
+The effect row approximates the cost model for serverless/cloud:
+
+- `-[Net]>` → network egress costs
+- `-[IO]>` → disk IOPS
+- `-[Clock]>` → timer/scheduler costs
+- `->` → pure compute only
+
+A tool can estimate relative cost profiles per function without runtime
+instrumentation. "This Lambda's signature is `-[Net, IO, Clock]>` —
+expect network, disk, and timer costs." Useful for capacity planning
+and cost allocation.
+
+**MCP:** `estimate_cost_profile` tool returns per-function cost
+classification based on effect signatures.
+
+#### Effect-aware debugger
+
+This deserves deep treatment — see dedicated section below.
+
+### The Debugger
+
+Kea's effect system gives the debugger information that no other
+debugger has: the complete capability context at every point in
+execution. This isn't about adding effect awareness to a traditional
+debugger. It's about building a fundamentally different kind of
+debugger where effects are the primary navigation primitive.
+
+#### Effect context at every frame
+
+When you hit a breakpoint, the debugger knows:
+
+- **Which handlers are installed.** "You're inside a `with_mock_fs`
+  handler — `IO.read_file` will return mock data, not real files."
+- **The full effect stack.** Which handlers are nested, in what order,
+  what each one intercepts.
+- **What the current function CAN do.** The effect row is the
+  capability set. If the function is `->`, you know there are no side
+  effects anywhere in this frame. If it's `-[State Int]>`, you know
+  there's mutable state but it's scoped to this handler.
+- **What it CANNOT do.** Equally important. If `Net` isn't in the
+  effect row, this function provably can't touch the network. No need
+  to worry about network-related bugs here.
+
+This is the debugger equivalent of Kea's type signatures: you can
+look at a stack frame and know what it does, not just where it is.
+
+```
+Breakpoint at src/orders.kea:42  process_order()
+
+  Effects: [Log, State Stats, Fail OrderError]
+  Handlers:
+    Log       → with_stdout_logger (src/main.kea:15)
+    State     → with_stats (src/main.kea:14)  current: Stats { count: 7 }
+    Fail      → catch (src/main.kea:18)
+
+  This function CANNOT: IO, Net, Send, Spawn, Rand, Clock
+  This function CAN: log messages, read/write Stats, fail with OrderError
+```
+
+#### Handler-aware stepping
+
+Traditional debuggers step through call stacks. Kea's debugger steps
+through effect operations and their handlers:
+
+- **Step into effect:** when execution hits `Log.log(Info, msg)`,
+  "step into" takes you to the handler clause that intercepts it
+  (e.g., `with_stdout_logger`'s Log handler), not into the `Log`
+  module (which has no implementation — effects are abstract).
+- **Step to resume:** from inside a handler body, "step to resume"
+  jumps to where control returns to the handled code after `resume`.
+- **Step over handler:** when an effect is performed, "step over"
+  executes the handler body and resumes in one step, showing you
+  the resume value without entering the handler.
+- **Break on effect:** "break when `IO.read_file` is performed"
+  triggers regardless of where in the code the call happens. Effect
+  breakpoints are structural, not location-based.
+
+This means you can debug at the ARCHITECTURE level. "Break on any
+network access" is `break Net.*`. "Break on any state mutation" is
+`break State.put`. "Break on any error" is `break Fail.fail`. You're
+debugging capabilities, not code locations.
+
+#### Handler scope visualisation
+
+The debugger can render the handler stack as a visual scope tree:
+
+```
+main()
+ └─ handle IO (runtime)
+     └─ handle Log (with_stdout_logger)
+         └─ handle State Stats (with_stats, current: { count: 7 })
+             └─ handle Fail OrderError (catch)
+                 └─ process_order()        ← YOU ARE HERE
+                     └─ validate_order()   ← stepping into
+```
+
+Each handler frame shows:
+- Which effect it handles
+- The handler's current state (for stateful handlers like State)
+- Whether the handler is tail-resumptive (inlined — no actual frame)
+  or non-tail (real continuation capture)
+
+#### Low-level debugging for systems work
+
+For Kea to be systems-adjacent and a compiler-writing language, the
+debugger needs to go deep. This is where the COMPILER-AS-DATA vision
+and Grammar blocks make things interesting.
+
+**Memory layout inspection:**
+```
+(kea-debug) inspect value orders
+  Type: List(Order)
+  Representation: Cons cell (refcount: 1, UNIQUE — safe to mutate)
+  Layout: [tag: u8 | ptr: *Cons { head: Order, tail: List(Order) }]
+  Head:
+    Order { id: 42, total: 199.99 }
+    Layout: [field 0 (id): i64 @ offset 0 | field 1 (total): f64 @ offset 8]
+    Size: 16 bytes, align: 8
+  Refcount: 1 (non-atomic, no Send in scope)
+```
+
+The debugger knows the memory layout because the compiler computed it.
+It knows the refcount atomicity because the effect row determined it.
+It knows uniqueness because the type system tracks it. This is
+information that C/C++ debuggers guess at via DWARF metadata — Kea's
+debugger knows structurally.
+
+**Ptr and @unsafe debugging:**
+```
+(kea-debug) inspect ptr buf.data
+  Ptr(UInt8) @ 0x7fff4a002000
+  Backing: malloc (foreign allocation, not refcounted)
+  Unsafe context: yes (inside @unsafe fn Buffer.push)
+  WARNING: Ptr into non-managed memory — debugger cannot track liveness
+```
+
+For @unsafe code, the debugger surfaces what it can prove (allocation
+source, unsafe context) and explicitly flags what it can't (liveness
+of raw pointers). Honest about its limits.
+
+**Cranelift IR correlation:**
+When debugging compiler internals (or any Grammar-based language
+implementation), the debugger can show the correspondence between
+Kea source, HIR, MIR, and Cranelift IR:
+
+```
+(kea-debug) show-ir
+  Source:  let x = a + b
+  HIR:     HirExpr::BinaryOp { op: Add, left: HirExpr::Var("a"), right: HirExpr::Var("b") }
+  MIR:     %3 = binary add %1, %2
+  CLIF:    v3 = iadd v1, v2
+```
+
+This is the debugger for compiler writers. When a Grammar block
+lowers a DSL to MIR, you can see each layer of the translation. When
+an optimization pass transforms MIR, you can see before/after with
+the pass name and its effect signature (which tells you what kind
+of transformation it is).
+
+**Reuse analysis debugging:**
+```
+(kea-debug) inspect reuse xs
+  List(Int), refcount: 1
+  Reuse analysis: ELIGIBLE (refcount proven == 1, Perceus drop-before-last-use)
+  Next mutation: xs.map(|x| -> x + 1)
+    → will execute IN-PLACE (no allocation)
+
+(kea-debug) inspect reuse shared_xs
+  List(Int), refcount: 3
+  Reuse analysis: NOT ELIGIBLE (refcount > 1)
+  Next mutation: shared_xs.map(|x| -> x + 1)
+    → will COPY (new allocation, 24 bytes)
+```
+
+The programmer can see exactly when reuse analysis fires and when it
+doesn't. This is the "why is my program allocating?" debugger — and
+it's not a profiler heuristic, it's the compiler telling you its
+actual decision and why.
+
+**Effect handler compilation inspection:**
+```
+(kea-debug) show-handler State
+  Handler: with_stats (src/main.kea:14)
+  Classification: tail-resumptive
+  Compilation: INLINED (no evidence struct, no indirect call)
+  State.get() → read local var `stats` @ rbp-16
+  State.put(s) → write local var `stats` @ rbp-16
+  Overhead vs parameter-passing: 0% (identical codegen)
+```
+
+For performance-sensitive code, the debugger shows HOW effects are
+compiled. Is this handler inlined or going through evidence dispatch?
+Is the evidence struct heap-allocated or stack-allocated? What's the
+actual machine code for an effect operation? This answers "are effects
+zero-cost here?" with concrete evidence.
+
+#### DAP integration
+
+The debugger exposes all of the above through the Debug Adapter
+Protocol (DAP) so it works in VS Code, Neovim, and any DAP client.
+Custom DAP extensions for Kea-specific features:
+
+- Effect context in stack frame metadata
+- Handler-aware step commands
+- Effect breakpoints
+- Memory layout inspection
+- IR correlation views
+
+#### MCP debugger interface
+
+Agents get the same debugger capabilities through MCP:
+
+- `debug_effect_context` — handler stack and capability set at a point
+- `debug_break_on_effect` — set effect-based breakpoints
+- `debug_inspect_layout` — memory layout for a value
+- `debug_show_ir` — multi-level IR correlation
+- `debug_reuse_analysis` — allocation decisions for a value
+- `debug_handler_compilation` — how an effect handler was compiled
+
+An agent debugging a performance issue can: query the effect context,
+check handler compilation classification, inspect reuse analysis
+decisions, and identify whether the bottleneck is handler dispatch,
+allocation, or pure computation — all through structured MCP tools
+without reading source code heuristically.
+
 #### The meta-insight
 
 Every analysis above is LOCAL. Read the function signature, know the
