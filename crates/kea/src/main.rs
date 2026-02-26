@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use kea_ast::{DeclKind, ExprDecl, FileId, FnDecl, Module, TypeDef};
 use kea_codegen::{
@@ -433,8 +434,12 @@ fn link_object_bytes(object: &[u8], output: &Path) -> Result<(), String> {
 
 fn execute_object_bytes(object: &[u8]) -> Result<std::process::ExitStatus, String> {
     let temp_dir = std::env::temp_dir();
-    let object_path = temp_dir.join(format!("kea-run-{}.o", std::process::id()));
-    let binary_path = temp_dir.join(format!("kea-run-{}", std::process::id()));
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|err| format!("system clock error while preparing temp executable paths: {err}"))?
+        .as_nanos();
+    let object_path = temp_dir.join(format!("kea-run-{}-{nonce}.o", std::process::id()));
+    let binary_path = temp_dir.join(format!("kea-run-{}-{nonce}", std::process::id()));
 
     fs::write(&object_path, object).map_err(|err| {
         format!(
@@ -469,7 +474,6 @@ fn execute_object_bytes(object: &[u8]) -> Result<std::process::ExitStatus, Strin
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn parse_build_with_output() {
@@ -512,6 +516,23 @@ mod tests {
 
         let status = execute_object_bytes(&compiled.object).expect("execution should succeed");
         assert_eq!(status.code(), Some(9));
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_bool_case_exit_code() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  case true\n    true -> 3\n    false -> 8\n",
+            "kea-cli-case",
+            "kea",
+        );
+
+        let compiled = compile_file(&source_path, CodegenMode::Aot).expect("compile should succeed");
+        assert!(!compiled.object.is_empty());
+
+        let status = execute_object_bytes(&compiled.object).expect("execution should succeed");
+        assert_eq!(status.code(), Some(3));
 
         let _ = std::fs::remove_file(source_path);
     }
