@@ -104,6 +104,11 @@ pub enum MirInst {
         op: MirUnaryOp,
         operand: MirValueId,
     },
+    RecordInit {
+        dest: MirValueId,
+        record_type: String,
+        fields: Vec<(String, MirValueId)>,
+    },
     RecordFieldLoad {
         dest: MirValueId,
         record: MirValueId,
@@ -250,6 +255,7 @@ impl MirInst {
                 | MirInst::Borrow { .. }
                 | MirInst::TryClaim { .. }
                 | MirInst::Freeze { .. }
+                | MirInst::RecordInit { .. }
                 | MirInst::RecordFieldLoad { .. }
                 | MirInst::CowUpdate { .. }
         )
@@ -488,6 +494,23 @@ impl FunctionLoweringCtx {
                     dest: dest.clone(),
                     op: lower_unaryop(*op),
                     operand: operand_value,
+                });
+                Some(dest)
+            }
+            HirExprKind::RecordLit {
+                record_type,
+                fields,
+            } => {
+                let mut lowered_fields = Vec::with_capacity(fields.len());
+                for (field_name, field_expr) in fields {
+                    let field_value = self.lower_expr(field_expr)?;
+                    lowered_fields.push((field_name.clone(), field_value));
+                }
+                let dest = self.new_value();
+                self.emit_inst(MirInst::RecordInit {
+                    dest: dest.clone(),
+                    record_type: record_type.clone(),
+                    fields: lowered_fields,
                 });
                 Some(dest)
             }
@@ -1034,6 +1057,65 @@ mod tests {
                 field_ty: Type::Int,
                 ..
             } if record_type == "User" && field == "age"
+        ));
+    }
+
+    #[test]
+    fn lower_hir_module_lowers_record_literal_expression() {
+        let user_ty = Type::Record(RecordType {
+            name: "User".to_string(),
+            params: vec![],
+            row: RowType::closed(vec![
+                (Label::new("age"), Type::Int),
+                (Label::new("name"), Type::String),
+            ]),
+        });
+
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "make_user".to_string(),
+                params: vec![],
+                body: HirExpr {
+                    kind: HirExprKind::RecordLit {
+                        record_type: "User".to_string(),
+                        fields: vec![
+                            (
+                                "age".to_string(),
+                                HirExpr {
+                                    kind: HirExprKind::Lit(kea_ast::Lit::Int(42)),
+                                    ty: Type::Int,
+                                    span: kea_ast::Span::synthetic(),
+                                },
+                            ),
+                            (
+                                "name".to_string(),
+                                HirExpr {
+                                    kind: HirExprKind::Lit(kea_ast::Lit::String("a".to_string())),
+                                    ty: Type::String,
+                                    span: kea_ast::Span::synthetic(),
+                                },
+                            ),
+                        ],
+                    },
+                    ty: user_ty.clone(),
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::pure(vec![], user_ty)),
+                effects: EffectRow::pure(),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let mir = lower_hir_module(&hir);
+        let function = &mir.functions[0];
+        assert_eq!(function.blocks[0].instructions.len(), 3);
+        assert!(matches!(
+            function.blocks[0].instructions[2],
+            MirInst::RecordInit {
+                ref record_type,
+                ref fields,
+                ..
+            } if record_type == "User" && fields.len() == 2
         ));
     }
 
