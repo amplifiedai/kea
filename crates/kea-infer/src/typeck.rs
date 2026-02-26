@@ -8651,18 +8651,30 @@ pub fn validate_trait_method_impl_contract_with_env(
 /// This tracks evaluation effects (purity/volatility) bottom-up so function
 /// declarations can be classified without manual annotation.
 pub fn infer_expr_effects(expr: &Expr, env: &TypeEnv) -> Effects {
+    infer_resolved_expr_effect_row(expr, env)
+        .map(|row| classify_effect_row(&row))
+        .unwrap_or_else(Effects::impure)
+}
+
+fn infer_resolved_expr_effect_row(expr: &Expr, env: &TypeEnv) -> Option<EffectRow> {
     let mut constraints = Vec::new();
     let mut next_effect_var = 0u32;
     let root = infer_expr_effect_row(expr, env, &mut constraints, &mut next_effect_var);
     let mut unifier = Unifier::new();
     if unifier.solve(constraints).is_err() {
-        Effects::impure()
+        None
     } else {
-        let resolved = EffectRow {
+        Some(normalize_effect_row_idempotent(EffectRow {
             row: unifier.substitution.apply_row(&root.row),
-        };
-        classify_effect_row(&resolved)
+        }))
     }
+}
+
+fn is_catch_desugar_shape(clauses: &[kea_ast::HandleClause], then_clause: Option<&Expr>) -> bool {
+    clauses.len() == 1
+        && then_clause.is_some()
+        && clauses[0].effect.node == "Fail"
+        && clauses[0].operation.node == "fail"
 }
 
 fn infer_expr_effect_row(
@@ -8742,9 +8754,26 @@ fn infer_expr_effect_row(
             };
 
             let handled_label = Label::new(first_clause.effect.node.clone());
+            if is_catch_desugar_shape(clauses, then_clause.as_deref())
+                && handled_label == Label::new("Fail")
+                && !handled_effects.row.has(&handled_label)
+                && handled_effects.row.rest.is_none()
+            {
+                // `catch` on a body that cannot fail should not poison effect
+                // inference with unsatisfiable constraints.
+                return join_effect_rows(handled_effects, body_effects, constraints, next_effect_var);
+            }
+
+            let handled_payload = handled_effects
+                .row
+                .fields
+                .iter()
+                .find(|(label, _)| label == &handled_label)
+                .map(|(_, payload)| payload.clone())
+                .unwrap_or(Type::Unit);
             let rest = fresh_effect_var(next_effect_var);
             constraints.push(Constraint::RowEqual {
-                expected: RowType::open(vec![(handled_label, Type::Unit)], rest),
+                expected: RowType::open(vec![(handled_label, handled_payload)], rest),
                 actual: handled_effects.row,
                 provenance: Provenance {
                     span: expr.span,
@@ -11950,6 +11979,21 @@ fn infer_handle_expr_type(
     };
 
     let target_effect = first_clause.effect.node.clone();
+    if is_catch_desugar_shape(clauses, then_clause)
+        && target_effect == "Fail"
+        && let Some(resolved_handled_row) = infer_resolved_expr_effect_row(handled, env)
+        && !resolved_handled_row.row.has(&Label::new("Fail"))
+    {
+        unifier.push_error(
+            Diagnostic::error(
+                Category::TypeError,
+                "expression cannot fail; catch is unnecessary".to_string(),
+            )
+            .at(span_to_loc(expr_span)),
+        );
+        return unifier.fresh_type();
+    }
+
     let module_path = env
         .module_aliases
         .get(&target_effect)

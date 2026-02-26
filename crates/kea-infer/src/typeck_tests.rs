@@ -7307,6 +7307,154 @@ fn catch_style_handle_typechecks_to_result_and_removes_fail() {
 }
 
 #[test]
+fn catch_reports_error_when_body_cannot_fail() {
+    let mut env = TypeEnv::new();
+    let records = RecordRegistry::new();
+    let sums = SumTypeRegistry::new();
+    let mut traits = TraitRegistry::new();
+    register_hkt_for_use_for_traits(&mut traits, &records);
+
+    let clause = handle_clause(
+        "Fail",
+        "fail",
+        vec![sp(PatternKind::Var("error".to_string()))],
+        constructor("Err", vec![var("error")]),
+    );
+    let then_clause = lambda(&["value"], constructor("Ok", vec![var("value")]));
+    let expr = handle_expr(lit_int(42), vec![clause], Some(then_clause));
+
+    let mut unifier = Unifier::new();
+    let _ = infer_and_resolve(&expr, &mut env, &mut unifier, &records, &traits, &sums);
+    assert!(
+        unifier
+            .errors()
+            .iter()
+            .any(|d| d.message.contains("expression cannot fail; catch is unnecessary")),
+        "expected catch precondition diagnostic, got {:?}",
+        unifier.errors()
+    );
+    assert!(
+        !unifier
+            .errors()
+            .iter()
+            .any(|d| d.message.contains("has no operation `fail`")),
+        "catch precondition should short-circuit missing-operation fallback, got {:?}",
+        unifier.errors()
+    );
+}
+
+#[test]
+fn catch_reports_error_when_body_has_non_fail_effects_only() {
+    let mut env = TypeEnv::new();
+    let records = RecordRegistry::new();
+    let sums = SumTypeRegistry::new();
+    let mut traits = TraitRegistry::new();
+    register_hkt_for_use_for_traits(&mut traits, &records);
+
+    let log_row = EffectRow::closed(vec![(Label::new("Log"), Type::Unit)]);
+    env.bind(
+        "pureish".to_string(),
+        TypeScheme::mono(Type::Function(FunctionType {
+            params: vec![],
+            ret: Box::new(Type::Int),
+            effects: log_row.clone(),
+        })),
+    );
+    env.set_function_effect_row("pureish".to_string(), log_row);
+
+    let clause = handle_clause(
+        "Fail",
+        "fail",
+        vec![sp(PatternKind::Var("error".to_string()))],
+        constructor("Err", vec![var("error")]),
+    );
+    let then_clause = lambda(&["value"], constructor("Ok", vec![var("value")]));
+    let expr = handle_expr(call(var("pureish"), vec![]), vec![clause], Some(then_clause));
+
+    let mut unifier = Unifier::new();
+    let _ = infer_and_resolve(&expr, &mut env, &mut unifier, &records, &traits, &sums);
+    assert!(
+        unifier
+            .errors()
+            .iter()
+            .any(|d| d.message.contains("expression cannot fail; catch is unnecessary")),
+        "expected catch precondition diagnostic, got {:?}",
+        unifier.errors()
+    );
+}
+
+#[test]
+fn catch_with_log_and_fail_preserves_log_and_removes_fail() {
+    let mut env = TypeEnv::new();
+    let records = RecordRegistry::new();
+    let sums = SumTypeRegistry::new();
+    let mut traits = TraitRegistry::new();
+    register_hkt_for_use_for_traits(&mut traits, &records);
+
+    let fail_effect = make_effect_decl(
+        "Fail",
+        vec!["E"],
+        vec![make_effect_operation(
+            "fail",
+            vec![annotated_param("error", TypeAnnotation::Named("E".to_string()))],
+            TypeAnnotation::Named("Never".to_string()),
+        )],
+    );
+    let diags = register_effect_decl(&fail_effect, &records, Some(&sums), &mut env);
+    assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+
+    let with_fail_effects = EffectRow::closed(vec![
+        (Label::new("Log"), Type::Unit),
+        (Label::new("Fail"), Type::String),
+    ]);
+    env.bind(
+        "with_fail".to_string(),
+        TypeScheme::mono(Type::Function(FunctionType {
+            params: vec![],
+            ret: Box::new(Type::Int),
+            effects: with_fail_effects.clone(),
+        })),
+    );
+    env.set_function_effect_row("with_fail".to_string(), with_fail_effects);
+    env.set_function_effect_signature(
+        "with_fail".to_string(),
+        FunctionEffectSignature {
+            param_effect_rows: vec![],
+            effect_row: EffectRow::closed(vec![
+                (Label::new("Log"), Type::Unit),
+                (Label::new("Fail"), Type::String),
+            ]),
+            instantiate_on_call: false,
+        },
+    );
+
+    let clause = handle_clause(
+        "Fail",
+        "fail",
+        vec![sp(PatternKind::Var("error".to_string()))],
+        constructor("Err", vec![var("error")]),
+    );
+    let then_clause = lambda(&["value"], constructor("Ok", vec![var("value")]));
+    let expr = handle_expr(call(var("with_fail"), vec![]), vec![clause], Some(then_clause));
+
+    let mut unifier = Unifier::new();
+    let ty = infer_and_resolve(&expr, &mut env, &mut unifier, &records, &traits, &sums);
+    assert!(
+        matches!(ty, Type::Result(ref ok, _) if **ok == Type::Int),
+        "expected catch to return Result(Int, _), got {ty:?}"
+    );
+    assert!(!unifier.has_errors(), "type errors: {:?}", unifier.errors());
+
+    let wrapper = make_fn_decl("wrapper", vec![], expr);
+    let row = infer_fn_decl_effect_row(&wrapper, &env);
+    assert!(row.row.has(&Label::new("Log")), "expected Log to remain, got {row:?}");
+    assert!(
+        !row.row.has(&Label::new("Fail")),
+        "expected Fail to be removed, got {row:?}"
+    );
+}
+
+#[test]
 fn fail_operation_with_never_return_type_acts_as_bottom_in_branches() {
     let mut env = TypeEnv::new();
     let records = RecordRegistry::new();
