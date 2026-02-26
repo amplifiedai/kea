@@ -7585,6 +7585,47 @@ fn infer_expr_effects_let_call_result_preserves_returned_callable_effect_row() {
 }
 
 #[test]
+fn infer_expr_effects_direct_curried_call_preserves_returned_callable_effect_row() {
+    let mut env = TypeEnv::new();
+    let emit_fn = Type::Function(FunctionType {
+        params: vec![Type::Int],
+        ret: Box::new(Type::Unit),
+        effects: EffectRow::closed(vec![(Label::new("Emit"), Type::Unit)]),
+    });
+    env.bind("logger".to_string(), TypeScheme::mono(emit_fn.clone()));
+    env.bind(
+        "apply".to_string(),
+        TypeScheme::mono(Type::Function(FunctionType {
+            params: vec![emit_fn],
+            ret: Box::new(Type::Function(FunctionType {
+                params: vec![Type::Int],
+                ret: Box::new(Type::Unit),
+                effects: EffectRow::closed(vec![(Label::new("Emit"), Type::Unit)]),
+            })),
+            effects: EffectRow::pure(),
+        })),
+    );
+
+    let trap = make_fn_decl(
+        "trap",
+        vec![],
+        call(
+            call(var("apply"), vec![var("logger")]),
+            vec![lit_int(42)],
+        ),
+    );
+    let row = infer_fn_decl_effect_row(&trap, &env);
+    assert!(
+        row.row.has(&Label::new("Emit")),
+        "expected direct curried call to preserve Emit, got {row:?}"
+    );
+    assert!(
+        !row.row.has(&Label::new("IO")),
+        "expected no phantom IO from direct curried call, got {row:?}"
+    );
+}
+
+#[test]
 fn validate_declared_fn_effect_accepts_weaker_or_equal_inferred_effect() {
     let mut fn_decl = make_fn_decl("f", vec![], lit_int(1));
     fn_decl.effect_annotation = Some(sp(effect_row_annotation(vec![("IO", None)], None)));

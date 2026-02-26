@@ -7548,6 +7548,9 @@ fn callable_effect_metadata_from_call(
                 (None, None)
             }
         }
+        ExprKind::Call { func, .. } => {
+            callable_effect_metadata_from_call(func, env, next_effect_var)
+        }
         _ => (None, None),
     }
 }
@@ -7578,13 +7581,18 @@ fn infer_call_effect_row(
     next_effect_var: &mut u32,
 ) -> EffectRow {
     let effect_signature = match &func.node {
-        ExprKind::Var(name) => env.function_effect_signature(name),
+        ExprKind::Var(name) => env.function_effect_signature(name).cloned(),
         ExprKind::FieldAccess { expr, field } => {
             if let ExprKind::Var(module) = &expr.node {
                 env.resolve_qualified_effect_signature(module, &field.node)
+                    .cloned()
             } else {
                 None
             }
+        }
+        ExprKind::Call { func, .. } => {
+            let (_, signature) = callable_effect_metadata_from_call(func, env, next_effect_var);
+            signature
         }
         _ => None,
     };
@@ -7601,7 +7609,7 @@ fn infer_call_effect_row(
             fallback
         };
 
-        let instantiated = resolve_effect_call_signature(effect_signature, next_effect_var);
+        let instantiated = resolve_effect_call_signature(&effect_signature, next_effect_var);
         for (idx, maybe_param_effect) in instantiated.param_effect_rows.iter().enumerate() {
             let Some(param_effect) = maybe_param_effect else {
                 continue;
@@ -7637,6 +7645,10 @@ fn infer_call_effect_row(
             } else {
                 unknown_effect_row(next_effect_var)
             }
+        }
+        ExprKind::Call { func, .. } => {
+            let (effect_row, _) = callable_effect_metadata_from_call(func, env, next_effect_var);
+            effect_row.unwrap_or_else(|| unknown_effect_row(next_effect_var))
         }
         _ => unknown_effect_row(next_effect_var),
     }
