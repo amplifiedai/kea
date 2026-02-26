@@ -5289,3 +5289,27 @@ mirroring the earlier Phase-1 bundle ergonomics pattern.
 **Outcome**:
 - Downstream formal work can now reference one stable bundle name instead of
   repeatedly reconstructing conjunction/exists shapes from raw capstones.
+
+### 2026-02-26: admissibility partition refinement (proof-only)
+
+**Context**: Added explicit branch-partition lemmas so theorem consumers can
+reason about admissible vs unnecessary `catch` paths without re-deriving
+boolean case splits.
+
+**MCP tools used**: none (proof-only refinement over already logged `E0012`
+runtime behavior).
+
+**Lean side**:
+- Extended `Kea/Properties/FailResultContracts.lean` with:
+  - `catchAdmissible_implies_not_unnecessary`
+  - `catchAdmissible_xor_unnecessary`
+- Extended `Kea/Properties/EffectPolymorphismSoundness.lean` with:
+  - `admissibleEffectPolyFailLowering_admissibility_branch`
+  - `admissibleEffectPolyHandlerSchema_admissibility_branch`
+- Verified with `cd formal && lake build` (pass).
+
+**Classify**: N/A (proof-only step).
+
+**Outcome**:
+- Admissibility branch classification is now first-class and one-hop, aligned
+  with the runtime “catch required vs catch unnecessary (E0012)” split.
