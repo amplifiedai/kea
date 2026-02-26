@@ -11,6 +11,7 @@ This work starts by cannibalizing the existing Rill formal corpus and then exten
 - **Phase 1 (active):** Unification-side WF contracts are now staged (`Kea/WellFormed`, `Kea/Properties/WfSubstitution`, `Kea/Properties/WfRename`, `Kea/Properties/WfGeneralize`, `Kea/Properties/WfUnify`), including branch-shaped row-update lemmas for `unifyRows`.
 - **Phase 1 (active):** Combined row-branch contracts now include extension + WF range + compat/WF swap packaging via `Kea/Properties/WfUnifyExtends` (`unifyRows_contract_full_wf`).
 - **Phase 1 (active):** `WfUnifyExtends` now has branch-complete wrappers (no-update, single-bind, open-open fresh) for direct full-contract discharge at common `unifyRows` success shapes.
+- **Phase 1 (active):** `WfUnifyExtends` now includes `bindTypeVar` combined contracts (`bindTypeVar_ok_extendsAndWfRange`, `bindTypeVar_ok_contract_full_wf`) so type-var bind success paths share the same extension + WF range + acyclic compat/WF packaging surface.
 - **Phase 2 (next):** Kea-specific effect typing and handler theorems.
 
 The formal workspace lives at [`formal/`](formal/).

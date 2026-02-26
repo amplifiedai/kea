@@ -129,6 +129,56 @@ theorem noUpdate_contract_full_wf
   exact compatWFAgreeOnDomainLookupsAcyclic_of_idempotent
     st' fuel h_idemp h_agree_idemp
 
+theorem bindTypeVar_ok_extendsAndWfRange
+    (st st' : UnifyState) (kctx : KindCtx) (rctx : RowCtx)
+    (v : TypeVarId) (ty : Ty) (fuel : Nat)
+    (h_ok : bindTypeVar st v ty fuel = .ok st')
+    (h_wf : UnifyState.SubstWellFormedRange st kctx rctx)
+    (h_ty : Ty.WellFormed kctx rctx ty) :
+    ExtendsAndWfRange st st' kctx rctx := by
+  constructor
+  · exact bindTypeVar_extends st v ty fuel st' h_ok
+  · exact bindTypeVar_ok_preserves_substWellFormedRange
+      st st' v ty fuel kctx rctx h_ok h_wf h_ty
+
+theorem bindTypeVar_ok_with_non_subst_fields_extendsAndWfRange
+    (st st' : UnifyState) (kctx : KindCtx) (rctx : RowCtx)
+    (v : TypeVarId) (ty : Ty) (fuel : Nat)
+    (lacks' : Lacks) (bounds' : TraitBounds) (nextType' nextRow' : Nat)
+    (h_ok : bindTypeVar st v ty fuel = .ok st')
+    (h_wf : UnifyState.SubstWellFormedRange st kctx rctx)
+    (h_ty : Ty.WellFormed kctx rctx ty) :
+    ExtendsAndWfRange st
+      { st' with
+          lacks := lacks',
+          traitBounds := bounds',
+          nextTypeVar := nextType',
+          nextRowVar := nextRow' }
+      kctx rctx := by
+  have h_base :
+      ExtendsAndWfRange st st' kctx rctx :=
+    bindTypeVar_ok_extendsAndWfRange st st' kctx rctx v ty fuel h_ok h_wf h_ty
+  constructor
+  · exact ExtendsRowBindings.with_non_subst_fields h_base.1 lacks' bounds' nextType' nextRow'
+  · exact UnifyState.substWellFormedRange_with_non_subst_fields
+      st' kctx rctx lacks' bounds' nextType' nextRow' h_base.2
+
+theorem bindTypeVar_ok_contract_full_wf
+    (st st' : UnifyState) (kctx : KindCtx) (rctx : RowCtx)
+    (v : TypeVarId) (ty : Ty) (fuel : Nat)
+    (h_ok : bindTypeVar st v ty fuel = .ok st')
+    (h_wf : UnifyState.SubstWellFormedRange st kctx rctx)
+    (h_ty : Ty.WellFormed kctx rctx ty)
+    (h_idemp_next : st'.subst.Idempotent) :
+    ExtendsAndWfRange st st' kctx rctx
+    ∧ (let h_ac := Subst.acyclicOfIdempotent h_idemp_next
+       CompatWFAgreeOnDomainLookupsAcyclic st' fuel h_ac) := by
+  refine ⟨bindTypeVar_ok_extendsAndWfRange st st' kctx rctx v ty fuel h_ok h_wf h_ty, ?_⟩
+  have h_agree_idemp : CompatWFAgreeOnDomainLookups st' fuel h_idemp_next :=
+    unifyRows_no_update_domain_lookup_compat_wf_agree st' fuel h_idemp_next
+  exact compatWFAgreeOnDomainLookupsAcyclic_of_idempotent
+    st' fuel h_idemp_next h_agree_idemp
+
 theorem closedBind_extendsAndWfRange
     (st st' : UnifyState) (kctx : KindCtx) (rctx : RowCtx)
     (rv : RowVarId) (fields : RowFields)
