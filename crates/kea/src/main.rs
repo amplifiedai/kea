@@ -519,6 +519,28 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn compile_build_and_execute_aot_payload_constructor_case_exit_code() {
+        let source_path = write_temp_source(
+            "type Flag = Yep(Int) | Nope\n\nfn main() -> Int\n  case Yep(1 + 6)\n    Yep(n) -> n\n    Nope -> 0\n",
+            "kea-cli-aot-sum-case",
+            "kea",
+        );
+        let output_path = temp_artifact_path("kea-cli-aot-sum-case", "bin");
+
+        let compiled = compile_file(&source_path, CodegenMode::Aot).expect("aot compile should work");
+        link_object_bytes(&compiled.object, &output_path).expect("link should work");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("aot executable should run");
+        assert_eq!(status.code(), Some(7));
+
+        let _ = std::fs::remove_file(source_path);
+        let _ = std::fs::remove_file(output_path);
+    }
+
+    #[test]
     fn compile_and_execute_higher_order_function_pointer_exit_code() {
         let source_path = write_temp_source(
             "fn inc(n: Int) -> Int\n  n + 1\n\nfn apply_twice(f: fn(Int) -> Int, x: Int) -> Int\n  f(f(x))\n\nfn main() -> Int\n  apply_twice(inc, 41)\n",
@@ -1040,14 +1062,18 @@ mod tests {
     }
 
     fn write_temp_source(contents: &str, prefix: &str, extension: &str) -> PathBuf {
+        let path = temp_artifact_path(prefix, extension);
+        std::fs::write(&path, contents).expect("temp source write should succeed");
+        path
+    }
+
+    fn temp_artifact_path(prefix: &str, extension: &str) -> PathBuf {
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("time should move forward")
             .as_nanos()
             .to_string();
         let counter = TEMP_NONCE.fetch_add(1, Ordering::Relaxed);
-        let path = std::env::temp_dir().join(format!("{prefix}-{timestamp}-{counter}.{extension}"));
-        std::fs::write(&path, contents).expect("temp source write should succeed");
-        path
+        std::env::temp_dir().join(format!("{prefix}-{timestamp}-{counter}.{extension}"))
     }
 }
