@@ -294,12 +294,27 @@ fn compile_into_module<M: Module>(
     let mut signatures: BTreeMap<String, cranelift_codegen::ir::Signature> = BTreeMap::new();
     let external_signatures = collect_external_call_signatures(module, mir)?;
     let requires_record_alloc = mir.functions.iter().any(|function| {
-        function.blocks.iter().any(|block| {
+        let needs_aggregate_alloc = function.blocks.iter().any(|block| {
             block
                 .instructions
                 .iter()
                 .any(|inst| matches!(inst, MirInst::RecordInit { .. } | MirInst::SumInit { .. }))
-        })
+        });
+        let needs_fail_result_alloc = matches!(function.signature.ret, Type::Result(_, _))
+            && function.blocks.iter().any(|block| {
+                block.instructions.iter().any(|inst| {
+                    matches!(
+                        inst,
+                        MirInst::EffectOp {
+                            class: MirEffectOpClass::ZeroResume,
+                            effect,
+                            operation,
+                            ..
+                        } if effect == "Fail" && operation == "fail"
+                    )
+                })
+            });
+        needs_aggregate_alloc || needs_fail_result_alloc
     });
 
     for function in &mir.functions {
@@ -433,6 +448,7 @@ fn compile_into_module<M: Module>(
                     external_func_ids: &external_func_ids,
                     layout_plan,
                     malloc_func_id,
+                    return_ty: &function.signature.ret,
                 };
                 for inst in block.instructions.iter().take(instruction_count) {
                     if lower_instruction(
@@ -655,6 +671,7 @@ struct LowerInstCtx<'a> {
     external_func_ids: &'a BTreeMap<String, FuncId>,
     layout_plan: &'a BackendLayoutPlan,
     malloc_func_id: Option<FuncId>,
+    return_ty: &'a Type,
 }
 
 fn lower_instruction<M: Module>(
@@ -1015,6 +1032,51 @@ fn lower_instruction<M: Module>(
                             "Fail.zero-resume operation must not produce a value in 0d lowering"
                                 .to_string(),
                     });
+                }
+                if let Type::Result(_, err_ty) = ctx.return_ty {
+                    let payload_value_id = if let MirInst::EffectOp { args, .. } = inst {
+                        args.first().ok_or_else(|| CodegenError::UnsupportedMir {
+                            function: function_name.to_string(),
+                            detail:
+                                "Fail.zero-resume operation in Result-returning function requires one payload argument"
+                                    .to_string(),
+                        })?
+                    } else {
+                        unreachable!("matched EffectOp above")
+                    };
+                    let payload = get_value(values, function_name, payload_value_id)?;
+                    let malloc_func_id = ctx.malloc_func_id.ok_or_else(|| CodegenError::UnsupportedMir {
+                        function: function_name.to_string(),
+                        detail:
+                            "Fail.zero-resume Result lowering requires malloc import"
+                                .to_string(),
+                    })?;
+                    let malloc_ref = module.declare_func_in_func(malloc_func_id, builder.func);
+                    let ptr_ty = module.target_config().pointer_type();
+                    let alloc_size = builder.ins().iconst(ptr_ty, 16);
+                    let alloc_call = builder.ins().call(malloc_ref, &[alloc_size]);
+                    let result_ptr = builder
+                        .inst_results(alloc_call)
+                        .first()
+                        .copied()
+                        .ok_or_else(|| CodegenError::UnsupportedMir {
+                            function: function_name.to_string(),
+                            detail: "malloc call returned no pointer value".to_string(),
+                        })?;
+                    let err_tag = builder.ins().iconst(types::I32, 1);
+                    builder.ins().store(MemFlags::new(), err_tag, result_ptr, 0);
+                    let payload_ty = clif_type(err_ty)?;
+                    let payload = match (builder.func.dfg.value_type(payload), payload_ty) {
+                        (lhs, rhs) if lhs == rhs => payload,
+                        (types::I8, types::I64) => builder.ins().uextend(types::I64, payload),
+                        (types::I64, types::I8) => builder.ins().ireduce(types::I8, payload),
+                        _ => payload,
+                    };
+                    builder
+                        .ins()
+                        .store(MemFlags::new(), payload, result_ptr, 8);
+                    builder.ins().return_(&[result_ptr]);
+                    return Ok(true);
                 }
                 builder.ins().trap(TrapCode::unwrap_user(1));
                 Ok(true)
@@ -2354,6 +2416,27 @@ mod tests {
         }
     }
 
+    fn sample_fail_only_result_module_with_insts(instructions: Vec<MirInst>) -> MirModule {
+        MirModule {
+            functions: vec![MirFunction {
+                name: "fail_only".to_string(),
+                signature: MirFunctionSignature {
+                    params: vec![],
+                    ret: Type::Result(Box::new(Type::Int), Box::new(Type::Int)),
+                    effects: EffectRow::closed(vec![(Label::new("Fail"), Type::Int)]),
+                },
+                entry: MirBlockId(0),
+                blocks: vec![MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions,
+                    terminator: MirTerminator::Return { value: None },
+                }],
+            }],
+            layouts: MirLayoutCatalog::default(),
+        }
+    }
+
     #[test]
     fn validate_abi_manifest_reports_missing_function() {
         let module = sample_stats_module();
@@ -2629,6 +2712,42 @@ mod tests {
         backend
             .compile_module(&module, &manifest, &BackendConfig::default())
             .expect("zero-resume Fail effect op should lower in 0d");
+    }
+
+    #[test]
+    fn cranelift_backend_zero_resume_fail_returns_err_for_result_signature() {
+        let module = sample_fail_only_result_module_with_insts(vec![
+            MirInst::Const {
+                dest: MirValueId(0),
+                literal: MirLiteral::Int(42),
+            },
+            MirInst::EffectOp {
+                class: MirEffectOpClass::ZeroResume,
+                effect: "Fail".to_string(),
+                operation: "fail".to_string(),
+                args: vec![MirValueId(0)],
+                result: None,
+            },
+        ]);
+        let layout_plan = plan_layout_catalog(&module).expect("layout planning should succeed");
+        let isa = build_isa(&BackendConfig::default()).expect("host ISA should build");
+        let builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
+        let mut jit_module = JITModule::new(builder);
+        let func_ids = compile_into_module(&mut jit_module, &module, &layout_plan)
+            .expect("fail-only result module should compile");
+        jit_module
+            .finalize_definitions()
+            .expect("finalize definitions should succeed");
+
+        let fail_only_id = *func_ids.get("fail_only").expect("fail_only function id");
+        let fail_only_ptr = jit_module.get_finalized_function(fail_only_id);
+        let fail_only: unsafe extern "C" fn() -> usize = unsafe { std::mem::transmute(fail_only_ptr) };
+        let result_ptr = unsafe { fail_only() };
+        assert_ne!(result_ptr, 0, "Fail result pointer should not be null");
+        let tag = unsafe { *(result_ptr as *const i32) };
+        assert_eq!(tag, 1, "Fail lowering should return Err tag");
+        let payload = unsafe { *((result_ptr as *const u8).add(8) as *const i64) };
+        assert_eq!(payload, 42, "Fail payload should be preserved in Err");
     }
 
     #[test]
