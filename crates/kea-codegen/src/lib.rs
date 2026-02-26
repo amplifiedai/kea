@@ -754,6 +754,7 @@ fn clif_type(ty: &Type) -> Result<cranelift::prelude::Type, CodegenError> {
         Type::Int => Ok(types::I64),
         Type::Float => Ok(types::F64),
         Type::Bool => Ok(types::I8),
+        Type::Unit => Ok(types::I8),
         Type::Dynamic => Ok(types::I64),
         // 0d bootstrap aggregate/runtime representation:
         // nominal records/sums and Result-like carriers flow through ABI as
