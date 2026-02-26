@@ -19,6 +19,7 @@ import Kea.Properties.WfRename
 import Kea.Properties.WfGeneralize
 import Kea.Properties.WfEffectRowLadder
 import Kea.Properties.HandlerEffectRemoval
+import Kea.Properties.ResumeLinearity
 import Kea.Properties.WfUnify
 import Kea.Properties.WfUnifyExtends
 import Kea.Properties.UnifyReflexive

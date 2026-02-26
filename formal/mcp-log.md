@@ -4827,3 +4827,24 @@ preconditioned agreement).
 **Outcome**:
 - Nested same-target behavior now has explicit theorem surfaces in the formal
   model without coupling to current implementation duplicate-label behavior.
+
+### 2026-02-26: resume linearity scaffold (proof-layer, no new runtime probes)
+
+**Context**: Began the `resume_at_most_once` theorem track with an abstract
+compositional summary model (`ResumeUse`) in
+`Kea/Properties/ResumeLinearity.lean`.
+
+**MCP tools used**: none (proof-layer scaffold; no direct runtime-facing claim
+changes yet).
+
+**Lean side**:
+- Added `ResumeUse` (`zero | one | many`) and `ResumeUse.atMostOnce`.
+- Added saturating composition `ResumeUse.combine`.
+- Proved exclusivity/zero-side preservation lemmas and named
+  `resume_at_most_once`/`resume_at_most_once_sound` surfaces.
+
+**Classify**: N/A (no new probe required at this abstraction layer).
+
+**Outcome**:
+- Resume-linearity theorem work can now proceed incrementally by connecting
+  concrete handler typing constraints to this summary algebra.
