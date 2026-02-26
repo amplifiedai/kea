@@ -278,3 +278,26 @@ theorem unifyRows_extends_rowMap_preconditioned_of_contract_extendsAndWf
     ExtendsRowBindings st stNext := by
   exact (unifyRows_contract_extendsAndWf
     st st' stNext kctx rctx fuel h_ext h_idemp h_wf h_shape).1
+
+/--
+Combined canonical contract: extension + WF-range preservation from
+`WfUnifyExtends`, paired with compat/WF swap-invariance from `UnifyExtends`.
+-/
+theorem unifyRows_contract_full_wf
+    (st st' stNext : UnifyState) (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat)
+    (h_ext : ExtendsRowBindings st st')
+    (h_idemp : st'.subst.Idempotent)
+    (h_wf : UnifyState.SubstWellFormedRange st' kctx rctx)
+    (h_shape_wf : UnifyRowsSuccessUpdateShapeWf st' stNext fuel kctx rctx)
+    (h_idemp_next : stNext.subst.Idempotent) :
+    ExtendsAndWfRange st stNext kctx rctx
+    ∧ (let h_ac := Subst.acyclicOfIdempotent h_idemp_next
+       CompatWFAgreeOnDomainLookupsAcyclic stNext fuel h_ac) := by
+  refine ⟨?_, ?_⟩
+  · exact unifyRows_contract_extendsAndWf
+      st st' stNext kctx rctx fuel h_ext h_idemp h_wf h_shape_wf
+  ·
+    have h_shape : UnifyRowsSuccessUpdateShape st' stNext fuel :=
+      unifyRowsSuccessUpdateShapeWf_implies_shape st' stNext fuel kctx rctx h_shape_wf
+    exact (unifyRows_contract_wf
+      st st' stNext fuel h_ext h_idemp h_shape h_idemp_next).2
