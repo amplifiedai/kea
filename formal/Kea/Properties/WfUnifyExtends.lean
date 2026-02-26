@@ -38,6 +38,19 @@ def UnifyRowsSuccessUpdateShapeWf
             (Row.mkOpen onlyLeft r3)
         stNext = { st'' with subst := subst' })
 
+theorem unifyRowsSuccessUpdateShapeWf_implies_shape
+    (st' stNext : UnifyState) (fuel : Nat) (kctx : KindCtx) (rctx : RowCtx)
+    (h_shape : UnifyRowsSuccessUpdateShapeWf st' stNext fuel kctx rctx) :
+    UnifyRowsSuccessUpdateShape st' stNext fuel := by
+  rcases h_shape with h_no_update | h_single_bind | h_open_open
+  · exact Or.inl h_no_update
+  · rcases h_single_bind with ⟨rOpen, rv, fields, h_rest, _h_fields, h_next⟩
+    exact Or.inr (Or.inl ⟨rOpen, rv, fields, h_rest, h_next⟩)
+  · rcases h_open_open with
+      ⟨r1, r2, rv1, rv2, onlyLeft, onlyRight, h_ne, h_rest1, h_rest2,
+       _h_left, _h_right, _h_fresh_in_ctx, h_next⟩
+    exact Or.inr (Or.inr ⟨r1, r2, rv1, rv2, onlyLeft, onlyRight, h_ne, h_rest1, h_rest2, h_next⟩)
+
 theorem closedBind_extendsAndWfRange
     (st st' : UnifyState) (kctx : KindCtx) (rctx : RowCtx)
     (rv : RowVarId) (fields : RowFields)
@@ -240,3 +253,28 @@ theorem unifyRows_success_update_extendsAndWf_idempotent
       exact bindOpenRows_update_preserves_substWellFormedRange
         (st'.freshRowVar).2 kctx rctx rv1 rv2 (st'.freshRowVar).1 onlyLeft onlyRight
         h_fresh h_left h_right h_fresh_in_ctx
+
+/--
+Canonical downstream contract name for the preconditioned row-update branch
+surface that packages extension and WF-range preservation together.
+-/
+theorem unifyRows_contract_extendsAndWf
+    (st st' stNext : UnifyState) (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat)
+    (h_ext : ExtendsRowBindings st st')
+    (h_idemp : st'.subst.Idempotent)
+    (h_wf : UnifyState.SubstWellFormedRange st' kctx rctx)
+    (h_shape : UnifyRowsSuccessUpdateShapeWf st' stNext fuel kctx rctx) :
+    ExtendsAndWfRange st stNext kctx rctx := by
+  exact unifyRows_success_update_extendsAndWf_idempotent
+    st st' stNext kctx rctx fuel h_ext h_idemp h_wf h_shape
+
+/-- Compatibility projection: recover extension-only guarantee from contract. -/
+theorem unifyRows_extends_rowMap_preconditioned_of_contract_extendsAndWf
+    (st st' stNext : UnifyState) (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat)
+    (h_ext : ExtendsRowBindings st st')
+    (h_idemp : st'.subst.Idempotent)
+    (h_wf : UnifyState.SubstWellFormedRange st' kctx rctx)
+    (h_shape : UnifyRowsSuccessUpdateShapeWf st' stNext fuel kctx rctx) :
+    ExtendsRowBindings st stNext := by
+  exact (unifyRows_contract_extendsAndWf
+    st st' stNext kctx rctx fuel h_ext h_idemp h_wf h_shape).1
