@@ -5440,3 +5440,31 @@ new higher-order behavior mismatch on the current MCP binary.
 - Runtime alignment remains valid for first-order catch slices, but higher-order
   admissible catch with typed Fail rows is currently divergent and should be
   fixed before claiming full higher-order alignment.
+
+### 2026-02-26: higher-order catch admissibility divergence closure
+
+**Context**: Re-probed after restart on the latest MCP binary following the
+reported higher-order catch fix.
+
+**MCP tools used**: direct `kea-mcp` stdio (`initialize`,
+`notifications/initialized`, `tools/call` with `reset_session`, `get_type`,
+`diagnose`).
+
+**Probe**:
+1. Higher-order typed Fail row (previous divergence case):
+   - `wrap_poly(f: fn() -[Log, Fail String]> Int) -[Log]> Result(Int, String)`
+   - body `catch f()`
+   - result: `ok`, inferred
+     `(() -[Fail(String), Log]> Int) -[Log]> Result(Int, String)`, no diagnostics.
+2. First-order typed Fail row control:
+   - `body : () -[Log, Fail String]> Int`, `catch body()`
+   - result: `ok`, inferred `() -[Log]> Result(Int, String)`, no diagnostics.
+3. Fail-absent control:
+   - `catch pureish()` with `pureish : () -[Log]> Int`
+   - rejected with `E0012` (`expression cannot fail; catch is unnecessary`).
+
+**Classify**: Agreement (divergence closed).
+
+**Outcome**:
+- Higher-order typed-Fail catch behavior now aligns with the formal
+  effect-polymorphism/catch-admissibility model.
