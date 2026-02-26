@@ -1109,6 +1109,38 @@ mod tests {
     }
 
     #[test]
+    fn lower_function_unqualified_unit_enum_case_desugars_through_literal_path() {
+        let module = parse_module_from_text(
+            "type Color = Red | Green\nfn pick() -> Int\n  case Red\n    Red -> 1\n    Green -> 2",
+        );
+        let mut env = TypeEnv::new();
+        env.bind(
+            "pick".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::pure(vec![], Type::Int))),
+        );
+
+        let lowered = lower_module(&module, &env);
+        let function = lowered
+            .declarations
+            .iter()
+            .find_map(|decl| match decl {
+                HirDecl::Function(function) if function.name == "pick" => Some(function),
+                _ => None,
+            })
+            .expect("expected lowered pick function");
+
+        match &function.body.kind {
+            HirExprKind::If { .. } => {}
+            HirExprKind::Block(exprs) => {
+                assert!(matches!(exprs.last().map(|expr| &expr.kind), Some(HirExprKind::If { .. })));
+            }
+            other => panic!(
+                "expected unqualified enum case to lower through literal-case path, got {other:?}"
+            ),
+        }
+    }
+
+    #[test]
     fn lower_function_literal_or_pattern_desugars_to_if_chain() {
         let module = parse_module_from_text(
             "fn classify(x: Int) -> Int\n  case x\n    0 | 1 -> 10\n    2 -> 20\n    _ -> 30",
