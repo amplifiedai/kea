@@ -5535,3 +5535,25 @@ surfaces, matching the established Phase-2 pattern used in other modules.
 - Higher-order theorem consumers now have a stable one-name bundle surface and
 one-hop projections for clause-removal, row-tail, non-Fail preservation, and
 Fail-removal consequences.
+
+### 2026-02-26: higher-order bundle one-hop `of_premises` projections (proof-only)
+
+**Context**: Extended higher-order bundle ergonomics with one-hop premise
+projection helpers so raw-premise theorem call sites can extract individual
+bundle consequences directly.
+
+**MCP tools used**: none (proof-only API refinement; no runtime-facing semantic
+change).
+
+**Lean side**:
+- Extended `Kea/Properties/HigherOrderCatchContracts.lean` with:
+  - `higherOrderCatchTypingJudgment_bundle_clauseFailRemoved_of_premises`
+  - `higherOrderCatchTypingJudgment_bundle_rowTailStable_of_premises`
+  - `higherOrderCatchTypingJudgment_bundle_preserves_nonFail_of_premises`
+- Verified with `cd formal && lake build` (pass).
+
+**Classify**: N/A (proof-only step).
+
+**Outcome**:
+- Raw-premise higher-order call sites now have direct one-hop access to selected
+  bundle guarantees without intermediate record construction/destructuring.
