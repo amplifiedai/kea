@@ -2235,22 +2235,26 @@ impl Parser {
             return self.use_expr();
         }
 
-        // Frame literal: frame { col: [vals], ... }
+        // Kea v0 does not include DataFrame literals.
         if self.check(&TokenKind::Frame) {
-            return self.frame_literal();
+            self.error_at_current("`frame` literals are not supported in Kea v0");
+            return None;
         }
 
-        // SQL block: sql { SELECT ... }
+        // Kea v0 does not include embedded SQL blocks.
         if self.check(&TokenKind::Sql) {
-            return self.sql_block();
+            self.error_at_current("`sql { ... }` blocks are not supported in Kea v0");
+            return None;
         }
 
-        // Template blocks: html { ... } / markdown { ... }
+        // Kea v0 does not include embedded html/markdown template blocks.
         if self.check(&TokenKind::Html) {
-            return self.template_block(BlockKind::Html);
+            self.error_at_current("`html { ... }` blocks are not supported in Kea v0");
+            return None;
         }
         if self.check(&TokenKind::Markdown) {
-            return self.template_block(BlockKind::Markdown);
+            self.error_at_current("`markdown { ... }` blocks are not supported in Kea v0");
+            return None;
         }
 
         // Spawn expression: spawn <expr>
@@ -3963,128 +3967,6 @@ impl Parser {
         ))
     }
 
-    fn frame_literal(&mut self) -> Option<Expr> {
-        let start = self.current_span();
-        self.advance(); // consume `frame`
-        self.skip_newlines();
-        self.expect(&TokenKind::LBrace, "expected '{' after `frame`")?;
-        let mut columns = Vec::new();
-        self.skip_newlines();
-        if !self.check(&TokenKind::RBrace) {
-            loop {
-                self.skip_newlines();
-                // Allow trailing comma before closing brace
-                if self.check(&TokenKind::RBrace) {
-                    break;
-                }
-                let col_name = self.expect_ident("expected column name")?;
-                self.expect(&TokenKind::Colon, "expected ':' after column name")?;
-                self.skip_newlines();
-                // Column values must be a list literal: [expr, expr, ...]
-                self.expect(&TokenKind::LBracket, "expected '[' for column values")?;
-                let values = self.expr_list(&TokenKind::RBracket)?;
-                self.expect(&TokenKind::RBracket, "expected ']' to close column values")?;
-                columns.push((col_name, values));
-                self.skip_newlines();
-                if !self.match_token(&TokenKind::Comma) {
-                    break;
-                }
-            }
-        }
-        self.skip_newlines();
-        let end = self.current_span();
-        self.expect(&TokenKind::RBrace, "expected '}' to close frame")?;
-        Some(Spanned::new(ExprKind::Frame { columns }, start.merge(end)))
-    }
-
-    /// Parse a `sql { ... }` block.
-    ///
-    /// The lexer has already collected the raw SQL body as a `SqlBody(text)` token.
-    /// We consume `Sql` + `SqlBody`, parse `${expr}` interpolations from the body,
-    /// and return `ExprKind::EmbeddedBlock { kind: BlockKind::Sql, ... }`.
-    ///
-    /// Bare `$var` references (without braces) are a parse error — use `${var}`.
-    fn sql_block(&mut self) -> Option<Expr> {
-        let start = self.current_span();
-        self.advance(); // consume `sql`
-
-        // The lexer should have produced SqlBody next (the `{` was consumed by scan_sql_body)
-        let body = match self.peek_kind() {
-            Some(TokenKind::SqlBody(text)) => text.clone(),
-            _ => {
-                self.error_at_current("expected '{' after `sql`");
-                return None;
-            }
-        };
-        self.advance(); // consume SqlBody
-        let mut end = self.current_span();
-
-        let (parts, atom_fields) = parse_block_parts(&body, start, self.file, &mut self.errors);
-        let config = if self.check_ident("with") {
-            self.advance(); // consume `with`
-            let delimiter = self.expect_block_start("expected config block after `with`")?;
-            let cfg = self.parse_embedded_block_config(delimiter)?;
-            self.expect_block_end(delimiter, "expected end of block config")?;
-            end = self.current_span();
-            Some(cfg)
-        } else {
-            None
-        };
-
-        Some(Spanned::new(
-            ExprKind::EmbeddedBlock {
-                kind: BlockKind::Sql,
-                parts,
-                atom_fields,
-                config,
-            },
-            start.merge(end),
-        ))
-    }
-
-    /// Parse `html { ... }` / `markdown { ... }` block arguments.
-    fn template_block(&mut self, kind: BlockKind) -> Option<Expr> {
-        let start = self.current_span();
-        self.advance(); // consume `html` / `markdown`
-
-        let body = match (kind, self.peek_kind()) {
-            (BlockKind::Html, Some(TokenKind::HtmlBody(text))) => text.clone(),
-            (BlockKind::Markdown, Some(TokenKind::MarkdownBody(text))) => text.clone(),
-            (BlockKind::Html, _) => {
-                self.error_at_current("expected '{' after `html`");
-                return None;
-            }
-            (BlockKind::Markdown, _) => {
-                self.error_at_current("expected '{' after `markdown`");
-                return None;
-            }
-            (BlockKind::Sql, _) => unreachable!("sql blocks use sql_block()"),
-        };
-        self.advance(); // consume raw body token
-        let mut end = self.current_span();
-
-        let (parts, atom_fields) = parse_block_parts(&body, start, self.file, &mut self.errors);
-        let config = if self.check_ident("with") {
-            self.advance(); // consume `with`
-            let delimiter = self.expect_block_start("expected config block after `with`")?;
-            let cfg = self.parse_embedded_block_config(delimiter)?;
-            self.expect_block_end(delimiter, "expected end of block config")?;
-            end = self.current_span();
-            Some(cfg)
-        } else {
-            None
-        };
-        Some(Spanned::new(
-            ExprKind::EmbeddedBlock {
-                kind,
-                parts,
-                atom_fields,
-                config,
-            },
-            start.merge(end),
-        ))
-    }
-
     /// Parse `spawn <expr>` or `spawn <expr> with { key: val, ... }`.
     fn spawn_expr(&mut self) -> Option<Expr> {
         let start = self.current_span();
@@ -4254,28 +4136,6 @@ impl Parser {
             self.skip_newlines();
         }
         Some(config)
-    }
-
-    /// Parse generic embedded-block config inside `... with { ... }`.
-    ///
-    /// Keys are validated by type checking based on block kind.
-    fn parse_embedded_block_config(
-        &mut self,
-        delimiter: BlockDelimiter,
-    ) -> Option<Vec<(Spanned<String>, Expr)>> {
-        let mut entries = Vec::new();
-        self.skip_newlines();
-        while !self.at_block_end(delimiter) && !self.at_eof() {
-            let key = self.expect_ident("expected config key")?;
-            self.expect(&TokenKind::Colon, "expected `:` after config key")?;
-            self.skip_newlines();
-            let value = self.expression()?;
-            entries.push((key, value));
-            self.skip_newlines();
-            let _ = self.match_token(&TokenKind::Comma);
-            self.skip_newlines();
-        }
-        Some(entries)
     }
 
     /// Parse actor send/call (and legacy try_send alias).
@@ -5079,179 +4939,6 @@ fn verb_kind(name: &str) -> Option<DfVerbKind> {
         "map" => Some(DfVerbKind::Map),
         _ => None,
     }
-}
-
-fn is_atom_name(s: &str) -> bool {
-    let mut chars = s.chars();
-    match chars.next() {
-        Some(c) if c.is_ascii_lowercase() || c == '_' => {}
-        _ => return false,
-    }
-    chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
-}
-
-/// Parse `${expr}` interpolations from a block body (sql, html, markdown).
-///
-/// Scans for `${...}` sequences, handles brace-depth tracking, parses interior
-/// expressions, and collects `:atom` field references for row-polymorphic templates.
-///
-/// Bare `$identifier` (without braces) is a parse error — use `${identifier}`.
-fn parse_block_parts(
-    body: &str,
-    block_span: Span,
-    file: FileId,
-    errors: &mut Vec<Diagnostic>,
-) -> (Vec<StringInterpPart>, Vec<Spanned<String>>) {
-    let mut parts = Vec::new();
-    let mut atoms = Vec::new();
-    let bytes = body.as_bytes();
-    let mut i = 0usize;
-    let mut literal_start = 0usize;
-
-    while i < bytes.len() {
-        if bytes[i] == b'$' && i + 1 < bytes.len() {
-            if bytes[i + 1] == b'{' {
-                // valid ${expr} — fall through to processing below
-            } else if bytes[i + 1].is_ascii_lowercase() || bytes[i + 1] == b'_' {
-                // bare $identifier — parse error
-                let name_start = i + 1;
-                let mut j = name_start + 1;
-                while j < bytes.len() && (bytes[j].is_ascii_alphanumeric() || bytes[j] == b'_') {
-                    j += 1;
-                }
-                let name = std::str::from_utf8(&bytes[name_start..j]).unwrap();
-                errors.push(
-                    Diagnostic::error(
-                        Category::Syntax,
-                        format!("use ${{{}}} instead of ${} in block arguments", name, name),
-                    )
-                    .at(SourceLocation {
-                        file_id: file.0,
-                        start: block_span.start,
-                        end: block_span.end,
-                    }),
-                );
-                i = j;
-                continue;
-            } else {
-                i += 1;
-                continue;
-            }
-        } else {
-            i += 1;
-            continue;
-        }
-
-        if literal_start < i {
-            parts.push(StringInterpPart::Literal(
-                body[literal_start..i].to_string(),
-            ));
-        }
-
-        i += 2; // consume opening '${'
-        let mut depth = 1u32;
-        let expr_start = i;
-        let mut in_quote: Option<u8> = None;
-        while i < bytes.len() {
-            let b = bytes[i];
-            if let Some(q) = in_quote {
-                if b == b'\\' {
-                    i += 2;
-                    continue;
-                }
-                if b == q {
-                    in_quote = None;
-                }
-                i += 1;
-                continue;
-            }
-
-            match b {
-                b'\'' | b'"' => {
-                    in_quote = Some(b);
-                    i += 1;
-                }
-                b'{' => {
-                    depth += 1;
-                    i += 1;
-                }
-                b'}' => {
-                    depth -= 1;
-                    if depth == 0 {
-                        let raw = body[expr_start..i].trim();
-                        if raw.is_empty() {
-                            errors.push(
-                                Diagnostic::error(Category::Syntax, "empty template interpolation")
-                                    .at(SourceLocation {
-                                        file_id: file.0,
-                                        start: block_span.start,
-                                        end: block_span.end,
-                                    }),
-                            );
-                        } else if let Some(name) = raw.strip_prefix(':') {
-                            if is_atom_name(name) {
-                                atoms.push(Spanned::new(name.to_string(), block_span));
-                                let row_var =
-                                    Spanned::new(ExprKind::Var("__row".to_string()), block_span);
-                                let atom_expr = Spanned::new(
-                                    ExprKind::FieldAccess {
-                                        expr: Box::new(row_var),
-                                        field: Spanned::new(name.to_string(), block_span),
-                                    },
-                                    block_span,
-                                );
-                                parts.push(StringInterpPart::Expr(Box::new(atom_expr)));
-                            } else {
-                                errors.push(
-                                    Diagnostic::error(
-                                        Category::Syntax,
-                                        format!("invalid atom interpolation `:{name}`"),
-                                    )
-                                    .at(SourceLocation {
-                                        file_id: file.0,
-                                        start: block_span.start,
-                                        end: block_span.end,
-                                    }),
-                                );
-                            }
-                        } else {
-                            match crate::lexer::lex_layout(raw, file)
-                                .map(|(t, _)| t)
-                                .and_then(|t| parse_expr(t, file))
-                            {
-                                Ok(expr) => parts.push(StringInterpPart::Expr(Box::new(expr))),
-                                Err(mut diags) => errors.append(&mut diags),
-                            }
-                        }
-                        i += 1; // consume closing '}'
-                        literal_start = i;
-                        break;
-                    }
-                    i += 1;
-                }
-                _ => i += 1,
-            }
-        }
-
-        if depth != 0 {
-            errors.push(
-                Diagnostic::error(Category::Syntax, "unterminated template interpolation").at(
-                    SourceLocation {
-                        file_id: file.0,
-                        start: block_span.start,
-                        end: block_span.end,
-                    },
-                ),
-            );
-            break;
-        }
-    }
-
-    if literal_start < body.len() {
-        parts.push(StringInterpPart::Literal(body[literal_start..].to_string()));
-    }
-
-    (parts, atoms)
 }
 
 #[cfg(test)]
@@ -7948,55 +7635,47 @@ mod tests {
     // -- Frame literal --
 
     #[test]
-    fn parse_frame_literal_single_column() {
-        let expr = parse("frame { x: [1, 2, 3] }");
-        match &expr.node {
-            ExprKind::Frame { columns } => {
-                assert_eq!(columns.len(), 1);
-                assert_eq!(columns[0].0.node, "x");
-                assert_eq!(columns[0].1.len(), 3);
-            }
-            _ => panic!("expected Frame, got {:?}", expr.node),
-        }
+    fn parse_frame_literal_is_error() {
+        let errors = parse_err("frame { x: [1, 2, 3] }");
+        assert!(
+            errors
+                .iter()
+                .any(|d| d.message.contains("`frame` literals are not supported in Kea v0")),
+            "expected unsupported frame diagnostic, got {errors:?}"
+        );
     }
 
     #[test]
-    fn parse_frame_literal_multi_column() {
-        let expr = parse("frame { name: [\"a\", \"b\"], age: [30, 25] }");
-        match &expr.node {
-            ExprKind::Frame { columns } => {
-                assert_eq!(columns.len(), 2);
-                assert_eq!(columns[0].0.node, "name");
-                assert_eq!(columns[0].1.len(), 2);
-                assert_eq!(columns[1].0.node, "age");
-                assert_eq!(columns[1].1.len(), 2);
-            }
-            _ => panic!("expected Frame, got {:?}", expr.node),
-        }
+    fn parse_frame_literal_multi_column_is_error() {
+        let errors = parse_err("frame { name: [\"a\", \"b\"], age: [30, 25] }");
+        assert!(
+            errors
+                .iter()
+                .any(|d| d.message.contains("`frame` literals are not supported in Kea v0")),
+            "expected unsupported frame diagnostic, got {errors:?}"
+        );
     }
 
     #[test]
-    fn parse_frame_literal_empty() {
-        let expr = parse("frame { }");
-        match &expr.node {
-            ExprKind::Frame { columns } => {
-                assert!(columns.is_empty());
-            }
-            _ => panic!("expected Frame, got {:?}", expr.node),
-        }
+    fn parse_frame_literal_empty_is_error() {
+        let errors = parse_err("frame { }");
+        assert!(
+            errors
+                .iter()
+                .any(|d| d.message.contains("`frame` literals are not supported in Kea v0")),
+            "expected unsupported frame diagnostic, got {errors:?}"
+        );
     }
 
     #[test]
-    fn parse_frame_literal_trailing_comma() {
-        let expr = parse("frame { x: [1, 2], y: [3, 4], }");
-        match &expr.node {
-            ExprKind::Frame { columns } => {
-                assert_eq!(columns.len(), 2);
-                assert_eq!(columns[0].0.node, "x");
-                assert_eq!(columns[1].0.node, "y");
-            }
-            _ => panic!("expected Frame, got {:?}", expr.node),
-        }
+    fn parse_frame_literal_trailing_comma_is_error() {
+        let errors = parse_err("frame { x: [1, 2], y: [3, 4], }");
+        assert!(
+            errors
+                .iter()
+                .any(|d| d.message.contains("`frame` literals are not supported in Kea v0")),
+            "expected unsupported frame diagnostic, got {errors:?}"
+        );
     }
 
     // -- DataFrame verb parsing --
@@ -8592,88 +8271,58 @@ mod tests {
     // -- Block arguments (sql, html, markdown) --
 
     #[test]
-    fn parse_sql_block_no_interpolations() {
-        let expr = parse("sql { SELECT 1 AS x }");
-        match &expr.node {
-            ExprKind::EmbeddedBlock {
-                kind,
-                parts,
-                atom_fields,
-                config,
-            } => {
-                assert_eq!(*kind, BlockKind::Sql);
-                assert!(atom_fields.is_empty());
-                assert!(config.is_none());
-                // Single literal part
-                assert_eq!(parts.len(), 1);
-                match &parts[0] {
-                    StringInterpPart::Literal(text) => assert_eq!(text, "SELECT 1 AS x"),
-                    _ => panic!("expected Literal"),
-                }
-            }
-            _ => panic!("expected Block"),
-        }
-    }
-
-    #[test]
-    fn parse_sql_block_with_interpolations() {
-        let expr = parse("sql { SELECT * FROM t WHERE x > ${min} AND y < ${max} }");
-        match &expr.node {
-            ExprKind::EmbeddedBlock { kind, parts, .. } => {
-                assert_eq!(*kind, BlockKind::Sql);
-                // Should have literal-expr-literal-expr-literal pattern
-                let expr_count = parts
-                    .iter()
-                    .filter(|p| matches!(p, StringInterpPart::Expr(_)))
-                    .count();
-                assert_eq!(expr_count, 2);
-            }
-            _ => panic!("expected Block"),
-        }
-    }
-
-    #[test]
-    fn parse_sql_block_bare_dollar_is_error() {
-        // bare $var is a parse error — must use ${var}
-        let errors = parse_err("sql { SELECT $x FROM t }");
+    fn parse_sql_block_is_error() {
+        let errors = parse_err("sql { SELECT 1 AS x }");
         assert!(
             errors
                 .iter()
-                .any(|e| e.message.contains("use ${x} instead of $x")),
-            "expected bare $var error, got: {errors:?}",
+                .any(|d| d.message.contains("`sql { ... }` blocks are not supported in Kea v0")),
+            "expected unsupported sql diagnostic, got {errors:?}"
         );
     }
 
     #[test]
-    fn parse_sql_block_expression_interpolation() {
-        // The whole point: actual expressions inside ${}
-        let expr = parse("sql { SELECT * FROM t WHERE age >= ${min_age + 1} }");
-        match &expr.node {
-            ExprKind::EmbeddedBlock { kind, parts, .. } => {
-                assert_eq!(*kind, BlockKind::Sql);
-                let expr_count = parts
-                    .iter()
-                    .filter(|p| matches!(p, StringInterpPart::Expr(_)))
-                    .count();
-                assert_eq!(expr_count, 1);
-            }
-            _ => panic!("expected Block"),
-        }
+    fn parse_sql_block_with_interpolations_is_error() {
+        let errors = parse_err("sql { SELECT * FROM t WHERE x > ${min} AND y < ${max} }");
+        assert!(
+            errors
+                .iter()
+                .any(|d| d.message.contains("`sql { ... }` blocks are not supported in Kea v0")),
+            "expected unsupported sql diagnostic, got {errors:?}"
+        );
     }
 
     #[test]
-    fn parse_sql_block_with_config() {
-        let expr = parse("sql { SELECT * FROM t } with\n  source: conn, timeout: 30");
-        match &expr.node {
-            ExprKind::EmbeddedBlock { kind, config, .. } => {
-                assert_eq!(*kind, BlockKind::Sql);
-                let cfg = config.as_ref().expect("expected block config");
-                assert_eq!(cfg.len(), 2);
-                assert_eq!(cfg[0].0.node, "source");
-                assert_eq!(cfg[1].0.node, "timeout");
-            }
-            _ => panic!("expected Block"),
-        }
+    fn parse_sql_block_bare_dollar_is_error() {
+        let errors = parse_err("sql { SELECT $x FROM t }");
+        assert!(
+            errors
+                .iter()
+                .any(|d| d.message.contains("`sql { ... }` blocks are not supported in Kea v0")),
+            "expected unsupported sql diagnostic, got: {errors:?}",
+        );
+    }
+
+    #[test]
+    fn parse_sql_block_expression_interpolation_is_error() {
+        let errors = parse_err("sql { SELECT * FROM t WHERE age >= ${min_age + 1} }");
+        assert!(
+            errors
+                .iter()
+                .any(|d| d.message.contains("`sql { ... }` blocks are not supported in Kea v0")),
+            "expected unsupported sql diagnostic, got: {errors:?}",
+        );
+    }
+
+    #[test]
+    fn parse_sql_block_with_config_is_error() {
+        let errors = parse_err("sql { SELECT * FROM t } with\n  source: conn, timeout: 30");
+        assert!(
+            errors
+                .iter()
+                .any(|d| d.message.contains("`sql { ... }` blocks are not supported in Kea v0")),
+            "expected unsupported sql diagnostic, got: {errors:?}",
+        );
     }
 
     #[test]
@@ -8689,51 +8338,35 @@ mod tests {
 
     #[test]
     fn parse_html_block() {
-        let expr = parse("html { <h1>${:name}</h1><p>${1 + 2}</p> }");
-        match &expr.node {
-            ExprKind::EmbeddedBlock {
-                kind,
-                parts,
-                atom_fields,
-                config,
-            } => {
-                assert_eq!(*kind, BlockKind::Html);
-                assert_eq!(atom_fields.len(), 1);
-                assert_eq!(atom_fields[0].node, "name");
-                assert!(config.is_none());
-                assert!(parts.iter().any(|p| matches!(p, StringInterpPart::Expr(_))));
-            }
-            _ => panic!("expected Block"),
-        }
+        let errors = parse_err("html { <h1>${:name}</h1><p>${1 + 2}</p> }");
+        assert!(
+            errors
+                .iter()
+                .any(|d| d.message.contains("`html { ... }` blocks are not supported in Kea v0")),
+            "expected unsupported html diagnostic, got {errors:?}"
+        );
     }
 
     #[test]
     fn parse_markdown_block() {
-        let expr = parse("markdown { # ${:title}\\n\\nCount: ${1} }");
-        match &expr.node {
-            ExprKind::EmbeddedBlock {
-                kind, atom_fields, ..
-            } => {
-                assert_eq!(*kind, BlockKind::Markdown);
-                assert_eq!(atom_fields.len(), 1);
-                assert_eq!(atom_fields[0].node, "title");
-            }
-            _ => panic!("expected Block"),
-        }
+        let errors = parse_err("markdown { # ${:title}\\n\\nCount: ${1} }");
+        assert!(
+            errors.iter().any(|d| d
+                .message
+                .contains("`markdown { ... }` blocks are not supported in Kea v0")),
+            "expected unsupported markdown diagnostic, got {errors:?}"
+        );
     }
 
     #[test]
     fn parse_html_block_with_config() {
-        let expr = parse("html { <h1>${:name}</h1> } with\n  lang: \"en\"");
-        match &expr.node {
-            ExprKind::EmbeddedBlock { kind, config, .. } => {
-                assert_eq!(*kind, BlockKind::Html);
-                let cfg = config.as_ref().expect("expected block config");
-                assert_eq!(cfg.len(), 1);
-                assert_eq!(cfg[0].0.node, "lang");
-            }
-            _ => panic!("expected Block"),
-        }
+        let errors = parse_err("html { <h1>${:name}</h1> } with\n  lang: \"en\"");
+        assert!(
+            errors
+                .iter()
+                .any(|d| d.message.contains("`html { ... }` blocks are not supported in Kea v0")),
+            "expected unsupported html diagnostic, got {errors:?}"
+        );
     }
 
     #[test]
