@@ -361,6 +361,7 @@ Precision notes:
 - 2026-02-26: Benchmark lane advanced: `kea-bench` now includes string-transform-shaped and allocation-heavy workloads in addition to numeric baselines; repeated-run variance tooling (`bench:variance`) and CI artifact publication are in place for Stage B threshold calibration.
 - 2026-02-26: Benchmark CI progressed to Step 2: `kea-bench` now builds through `codspeed-divan-compat`, and CodSpeed workflow wiring is in place for PR/main regression reporting once token configuration is enabled.
 - 2026-02-26: Whole-program benchmark lane bootstrapped: added `benchmarks/programs/` corpus (`fib`, `case_chain`, `alloc_chain`) and `bench:programs` runner script (hyperfine + fallback path) to start collecting end-to-end `kea run` timing baselines.
+- 2026-02-26: Microbenchmark matrix now includes type inference directly (`infer_numeric_module`) using the row-native inference pipeline, so Tier-1 benchmarks cover lex+parse+infer+lower+codegen for 0d.
 - 2026-02-26: Cranelift predicate normalization fixed for equality-driven control flow (`i8` vs `b1` predicate widths), with new codegen regression coverage for int equality branch conditions.
 - 2026-02-26: Pure expression coverage expanded: unary operators (`-x`, `not x`) now lower HIR→MIR (`MirUnaryOp`) and compile through Cranelift, with targeted crate tests.
 - 2026-02-26: HIR lowering now canonicalizes basic bool `case` expressions (`true/false/_` arms, no guards) into `if` expressions, allowing existing MIR/codegen control-flow lowering to compile that subset.

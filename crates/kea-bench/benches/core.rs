@@ -1,9 +1,14 @@
 use std::hint::black_box;
 
 use divan::{AllocProfiler, Bencher};
-use kea_ast::{BinOp, FileId, Lit, Span};
+use kea_ast::{BinOp, DeclKind, FileId, Lit, Module, Span};
 use kea_codegen::{BackendConfig, CraneliftBackend, compile_hir_module};
 use kea_hir::{HirDecl, HirExpr, HirExprKind, HirFunction, HirModule, HirPattern};
+use kea_infer::InferenceContext;
+use kea_infer::typeck::{
+    RecordRegistry, SumTypeRegistry, TraitRegistry, TypeEnv, infer_and_resolve_in_context,
+    infer_fn_decl_effect_row, register_fn_effect_signature, register_fn_signature,
+};
 use kea_mir::lower_hir_module;
 use kea_syntax::{lex_layout, parse_module};
 use kea_types::{EffectRow, FunctionType, Type};
@@ -47,6 +52,50 @@ fn lower_hir_to_mir(bencher: Bencher, terms: usize) {
     bencher.bench(|| {
         let mir = lower_hir_module(black_box(&hir));
         black_box(mir.functions.len())
+    });
+}
+
+#[divan::bench(args = [16, 64, 256])]
+fn infer_numeric_module(bencher: Bencher, line_count: usize) {
+    let module = build_numeric_module_ast(line_count);
+    bencher.bench(|| {
+        let mut env = TypeEnv::new();
+        let records = RecordRegistry::new();
+        let traits = TraitRegistry::new();
+        let sum_types = SumTypeRegistry::new();
+
+        let mut inferred_fns = 0usize;
+        for decl in &module.declarations {
+            let DeclKind::Function(fn_decl) = &decl.node else {
+                continue;
+            };
+
+            let mut ctx = InferenceContext::new();
+            let expr = fn_decl.to_let_expr();
+            let _ = infer_and_resolve_in_context(
+                &expr,
+                &mut env,
+                &mut ctx,
+                &records,
+                &traits,
+                &sum_types,
+            );
+
+            if ctx.has_errors() {
+                panic!(
+                    "type inference failed in benchmark setup: {:?}",
+                    ctx.errors()
+                );
+            }
+
+            let effect_row = infer_fn_decl_effect_row(fn_decl, &env);
+            env.set_function_effect_row(fn_decl.name.node.clone(), effect_row);
+            register_fn_signature(fn_decl, &mut env);
+            register_fn_effect_signature(fn_decl, &mut env);
+            inferred_fns += 1;
+        }
+
+        black_box(inferred_fns)
     });
 }
 
@@ -110,6 +159,15 @@ fn build_string_transform_source(line_count: usize) -> String {
     }
     source.push_str(&format!("  s{}\n", line_count - 1));
     source
+}
+
+fn build_numeric_module_ast(line_count: usize) -> Module {
+    let source = build_numeric_source(line_count);
+    let (tokens, warnings) = lex_layout(&source, FileId(0))
+        .unwrap_or_else(|diags| panic!("lexing failed in benchmark setup: {diags:?}"));
+    assert!(warnings.is_empty(), "unexpected lexer warnings: {warnings:?}");
+    parse_module(tokens, FileId(0))
+        .unwrap_or_else(|diags| panic!("parsing failed in benchmark setup: {diags:?}"))
 }
 
 fn build_numeric_hir_module(terms: usize) -> HirModule {
