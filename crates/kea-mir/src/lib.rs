@@ -965,6 +965,30 @@ impl FunctionLoweringCtx {
         args: &[HirExpr],
         capture_fail_result: bool,
     ) -> Option<MirValueId> {
+        if let HirExprKind::Lambda { params, body } = &func.kind
+            && !capture_fail_result
+        {
+            if params.len() != args.len() {
+                return None;
+            }
+            let incoming_scope = self.snapshot_var_scope();
+            for (param, arg_expr) in params.iter().zip(args) {
+                let Some(param_name) = &param.name else {
+                    continue;
+                };
+                let arg_value = self.lower_expr(arg_expr)?;
+                self.vars.insert(param_name.clone(), arg_value.clone());
+                self.var_types
+                    .insert(param_name.clone(), arg_expr.ty.clone());
+                if let Type::Record(record_ty) = &arg_expr.ty {
+                    self.var_record_types
+                        .insert(param_name.clone(), record_ty.name.clone());
+                }
+            }
+            let result = self.lower_expr(body);
+            self.restore_var_scope(&incoming_scope);
+            return result;
+        }
         if let HirExprKind::Var(name) = &func.kind
             && let Some(local_lambda) = self.local_lambdas.get(name).cloned()
             && !capture_fail_result
@@ -2735,6 +2759,74 @@ mod tests {
                 .iter()
                 .any(|inst| matches!(inst, MirInst::Binary { op: MirBinaryOp::Add, .. })),
             "inlined lambda body should produce add instruction"
+        );
+    }
+
+    #[test]
+    fn lower_hir_module_inlines_direct_lambda_call() {
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "main".to_string(),
+                params: vec![],
+                body: HirExpr {
+                    kind: HirExprKind::Call {
+                        func: Box::new(HirExpr {
+                            kind: HirExprKind::Lambda {
+                                params: vec![kea_hir::HirParam {
+                                    name: Some("x".to_string()),
+                                    span: kea_ast::Span::synthetic(),
+                                }],
+                                body: Box::new(HirExpr {
+                                    kind: HirExprKind::Binary {
+                                        op: BinOp::Add,
+                                        left: Box::new(HirExpr {
+                                            kind: HirExprKind::Var("x".to_string()),
+                                            ty: Type::Int,
+                                            span: kea_ast::Span::synthetic(),
+                                        }),
+                                        right: Box::new(HirExpr {
+                                            kind: HirExprKind::Lit(kea_ast::Lit::Int(1)),
+                                            ty: Type::Int,
+                                            span: kea_ast::Span::synthetic(),
+                                        }),
+                                    },
+                                    ty: Type::Int,
+                                    span: kea_ast::Span::synthetic(),
+                                }),
+                            },
+                            ty: Type::Function(FunctionType::pure(vec![Type::Int], Type::Int)),
+                            span: kea_ast::Span::synthetic(),
+                        }),
+                        args: vec![HirExpr {
+                            kind: HirExprKind::Lit(kea_ast::Lit::Int(41)),
+                            ty: Type::Int,
+                            span: kea_ast::Span::synthetic(),
+                        }],
+                    },
+                    ty: Type::Int,
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
+                effects: EffectRow::pure(),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let mir = lower_hir_module(&hir);
+        let function = &mir.functions[0];
+        assert!(
+            function.blocks[0]
+                .instructions
+                .iter()
+                .all(|inst| !matches!(inst, MirInst::Call { .. })),
+            "direct lambda call should inline without emitting a call instruction"
+        );
+        assert!(
+            function.blocks[0]
+                .instructions
+                .iter()
+                .any(|inst| matches!(inst, MirInst::Binary { op: MirBinaryOp::Add, .. })),
+            "inlined direct lambda body should produce add instruction"
         );
     }
 
