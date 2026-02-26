@@ -230,9 +230,48 @@ the runtime-handled effect. `Fail` has sugar.
   which is possible with row polymorphism but adds complexity.
   Defer to post-v0 if there's demand.)
 
+## Downstream Notes
+
+Things the 0c implementor should know about what comes after:
+
+1. **0d needs Fail to compile as Result-passing.** The 0d brief explicitly
+   says: compile `Fail.fail(e)` as `return Err(e)`, `?` as branch-on-error,
+   `catch` as match-on-Result. This is just control flow — no handler
+   machinery needed. Make sure Fail sugar desugaring is clean enough that
+   0d can pattern-match on it in HIR/MIR lowering.
+
+2. **Effect rows must be stable for the formal agent.** The Lean
+   formalization migration ([lean-formalization](../todo/lean-formalization.md))
+   starts as soon as 0c lands. The formal agent will model the `Ty`
+   inductive with effect rows and prove properties. If effect row
+   representation changes after 0c, it means rework in Lean. Get the
+   representation right.
+
+3. **Handler typing rule is the critical contract.** The exact rule from
+   KERNEL §5.13 — handle removes the handled effect, adds handler body
+   effects, other effects pass through — is what 0e will compile and
+   what the formal agent will prove. Don't deviate from this without
+   updating both briefs.
+
+4. **kea-mcp must stay working.** The formal agent and other agents use
+   `type_check`, `diagnose`, and `get_type` via MCP to validate behavior.
+   When adding effect declarations and handlers, make sure MCP queries
+   return effect information in inferred types.
+
+5. **Effect operation classification matters for 0e.** When you implement
+   effect operation calls, note whether the operation is:
+   - zero-resume (Fail) — never calls `resume`
+   - tail-resumptive — `resume` is last expression in handler
+   - non-tail-resumptive — `resume` in non-tail position
+   This classification drives 0e's compilation strategy. If you can
+   surface it during type-checking (even as metadata), 0e benefits.
+
 ## Progress
 - 2026-02-26: Brief moved to `in-progress/`; workboard updated.
-- **Next:** Slice 1 (tests first): add `effect` declarations to AST/parser/type-check registration so effect operations are callable via `EffectName.operation(...)` and contribute row-native effects.
+- 2026-02-26: Slice 1 landed — effect declaration registration + qualified operation typing (`dad49e5`).
+- 2026-02-26: Slice 2 landed — `handle`/`resume` AST+parser+typeck, `fail`/`?`/`catch` desugaring, and core matrix tests (`01f9e12`).
+- 2026-02-26: Slice 3 in progress — matrix tightening tests for resume legality detail (`lambda`, loop), resume type matching, handler operation coverage, plus parser coverage for `resume` and empty-handler rejection.
+- **Next:** Final 0c closeout pass (`mise run check-full`), then move brief to `done/` if no remaining DoD deltas.
 
 ### Test Matrix (0c)
 - effect declaration parsing
