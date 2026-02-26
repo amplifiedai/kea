@@ -212,10 +212,9 @@ handler:
 test "config loading"
   let fake_files = Map.from([("/etc/app.toml", "[db]\nurl = ...")])
 
-  let result = catch
-    handle Config.load("/etc/app.toml")
-      IO.read_file(path) ->
-        resume(fake_files.get(path).unwrap_or(""))
+  let result = catch handle Config.load("/etc/app.toml")
+    IO.read_file(path) ->
+      resume(fake_files.get(path).unwrap_or(""))
 
   assert result == Ok(Config { db: DbConfig { url: "..." } })
 ```
