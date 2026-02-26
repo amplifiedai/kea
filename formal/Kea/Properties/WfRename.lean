@@ -13,6 +13,22 @@ def VarMapping.RespectsCtx (m : VarMapping) (kctx : KindCtx) (rctx : RowCtx) : P
   (∀ v newV, m.lookupType v = some newV → ∃ k, (newV, k) ∈ kctx) ∧
   (∀ rv newRv, m.lookupRow rv = some newRv → newRv ∈ rctx)
 
+namespace VarMapping
+
+/-- Identity renaming map. -/
+def id : VarMapping := { typeMap := [], rowMap := [] }
+
+@[simp] theorem lookupType_id (v : TypeVarId) : id.lookupType v = none := by
+  simp [id, VarMapping.lookupType]
+
+@[simp] theorem lookupRow_id (rv : RowVarId) : id.lookupRow rv = none := by
+  simp [id, VarMapping.lookupRow]
+
+theorem respectsCtx_id (kctx : KindCtx) (rctx : RowCtx) : id.RespectsCtx kctx rctx := by
+  constructor <;> intro _ _ h_lookup <;> simp [lookupType_id, lookupRow_id] at h_lookup
+
+end VarMapping
+
 mutual
   theorem renameType_preserves_wf
       (m : VarMapping) (kctx : KindCtx) (rctx : RowCtx)
@@ -134,3 +150,38 @@ mutual
       simpa [EffectRow.WellFormed, renameEffectRow] using
         renameRow_preserves_wf m kctx rctx h_respects row h_wf
 end
+
+theorem renameType_preserves_wf_id
+    (kctx : KindCtx) (rctx : RowCtx) (ty : Ty)
+    (h_wf : Ty.WellFormed kctx rctx ty) :
+    Ty.WellFormed kctx rctx (renameType ty VarMapping.id) := by
+  exact renameType_preserves_wf VarMapping.id kctx rctx
+    (VarMapping.respectsCtx_id kctx rctx) ty h_wf
+
+theorem renameRow_preserves_wf_id
+    (kctx : KindCtx) (rctx : RowCtx) (r : Row)
+    (h_wf : Row.WellFormed kctx rctx r) :
+    Row.WellFormed kctx rctx (renameRow r VarMapping.id) := by
+  exact renameRow_preserves_wf VarMapping.id kctx rctx
+    (VarMapping.respectsCtx_id kctx rctx) r h_wf
+
+theorem renameTyList_preserves_wf_id
+    (kctx : KindCtx) (rctx : RowCtx) (tl : TyList)
+    (h_wf : TyList.WellFormed kctx rctx tl) :
+    TyList.WellFormed kctx rctx (renameTyList tl VarMapping.id) := by
+  exact renameTyList_preserves_wf VarMapping.id kctx rctx
+    (VarMapping.respectsCtx_id kctx rctx) tl h_wf
+
+theorem renameRowFields_preserves_wf_id
+    (kctx : KindCtx) (rctx : RowCtx) (rf : RowFields)
+    (h_wf : RowFields.WellFormed kctx rctx rf) :
+    RowFields.WellFormed kctx rctx (renameRowFields rf VarMapping.id) := by
+  exact renameRowFields_preserves_wf VarMapping.id kctx rctx
+    (VarMapping.respectsCtx_id kctx rctx) rf h_wf
+
+theorem renameEffectRow_preserves_wf_id
+    (kctx : KindCtx) (rctx : RowCtx) (effects : EffectRow)
+    (h_wf : EffectRow.WellFormed kctx rctx effects) :
+    EffectRow.WellFormed kctx rctx (renameEffectRow effects VarMapping.id) := by
+  exact renameEffectRow_preserves_wf VarMapping.id kctx rctx
+    (VarMapping.respectsCtx_id kctx rctx) effects h_wf
