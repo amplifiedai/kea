@@ -226,6 +226,7 @@ fn previous_line_continues_expression(tokens: &[Token], newline_idx: usize) -> b
             | TokenKind::LeftArrow
             | TokenKind::Comma
             | TokenKind::Colon
+            | TokenKind::ColonColon
             | TokenKind::Dot
             | TokenKind::Pipe
     )
@@ -374,7 +375,13 @@ impl<'src> Lexer<'src> {
             b'}' => self.emit(TokenKind::RBrace, start, self.pos),
             b'[' => self.emit(TokenKind::LBracket, start, self.pos),
             b']' => self.emit(TokenKind::RBracket, start, self.pos),
-            b':' => self.emit(TokenKind::Colon, start, self.pos),
+            b':' => {
+                if self.match_char(b':') {
+                    self.emit(TokenKind::ColonColon, start, self.pos);
+                } else {
+                    self.emit(TokenKind::Colon, start, self.pos);
+                }
+            }
             b',' => self.emit(TokenKind::Comma, start, self.pos),
             b'?' => self.emit(TokenKind::Question, start, self.pos),
             b'@' => self.emit(TokenKind::At, start, self.pos),
@@ -1272,7 +1279,7 @@ mod tests {
     #[test]
     fn delimiters_and_punctuation() {
         assert_eq!(
-            lex_kinds("( ) { } [ ] #[ #( #{ : , . | @ -> <- => .. ..= ="),
+            lex_kinds("( ) { } [ ] #[ #( #{ : :: , . | @ -> <- => .. ..= ="),
             vec![
                 TokenKind::LParen,
                 TokenKind::RParen,
@@ -1284,6 +1291,7 @@ mod tests {
                 TokenKind::HashParen,
                 TokenKind::HashBrace,
                 TokenKind::Colon,
+                TokenKind::ColonColon,
                 TokenKind::Comma,
                 TokenKind::Dot,
                 TokenKind::Pipe,

@@ -169,12 +169,13 @@ pub enum TokenKind {
     PercentBrace, // %{
 
     // -- Punctuation --
-    Colon,  // :
-    Comma,  // ,
-    Dot,    // .
-    Pipe,   // |
-    Dollar, // $
-    At,     // @
+    Colon,      // :
+    ColonColon, // ::
+    Comma,      // ,
+    Dot,        // .
+    Pipe,       // |
+    Dollar,     // $
+    At,         // @
 
     // -- SQL --
     /// Raw SQL body text collected between `sql {` and matching `}`.

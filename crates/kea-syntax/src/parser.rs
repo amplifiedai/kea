@@ -2762,7 +2762,10 @@ impl Parser {
     fn handle_clause(&mut self) -> Option<HandleClause> {
         let start = self.current_span();
         let effect = self.expect_upper_ident("expected effect name in handler clause")?;
-        self.expect(&TokenKind::Dot, "expected '.' after effect name")?;
+        if !self.match_token(&TokenKind::Dot) && !self.match_token(&TokenKind::ColonColon) {
+            self.error_at_current("expected '.' or '::' after effect name");
+            return None;
+        }
         let operation = self.expect_ident("expected operation name in handler clause")?;
         self.expect(&TokenKind::LParen, "expected '(' after operation name")?;
 
@@ -4272,11 +4275,11 @@ impl Parser {
     // -- Postfix operations --
 
     fn parse_postfix(&mut self, lhs: Expr) -> Option<Expr> {
-        if self.check(&TokenKind::Dot) {
+        if self.check(&TokenKind::Dot) || self.check(&TokenKind::ColonColon) {
             self.advance();
-            let member = self.expect_any_ident("expected field name after '.'")?;
+            let member = self.expect_any_ident("expected field name after '.' or '::'")?;
             let receiver = match lhs.node {
-                // Allow namespaced module-style access like `List.map` even though
+                // Allow namespaced module-style access like `List::map` even though
                 // bare `List` parses as a nullary constructor elsewhere.
                 ExprKind::Constructor { name, args } if args.is_empty() => {
                     Spanned::new(ExprKind::Var(name.node), lhs.span)
@@ -4354,7 +4357,9 @@ impl Parser {
 
     fn postfix_bp(&self) -> Option<u8> {
         match self.peek_kind()? {
-            TokenKind::Dot | TokenKind::LParen | TokenKind::Question => Some(19),
+            TokenKind::Dot | TokenKind::ColonColon | TokenKind::LParen | TokenKind::Question => {
+                Some(19)
+            }
             TokenKind::Ident(s) if s == "as" => Some(2),
             _ => None,
         }
@@ -4978,6 +4983,36 @@ mod tests {
     #[test]
     fn parse_namespaced_upper_ident_dot_call() {
         let expr = parse("List.map(xs, f)");
+        match &expr.node {
+            ExprKind::Call { func, args } => {
+                assert_eq!(args.len(), 2);
+                match &func.node {
+                    ExprKind::FieldAccess { expr, field } => {
+                        assert_eq!(expr.node, ExprKind::Var("List".into()));
+                        assert_eq!(field.node, "map");
+                    }
+                    other => panic!("expected FieldAccess callee, got {other:?}"),
+                }
+            }
+            other => panic!("expected Call, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_namespaced_upper_ident_turbofish_field_access() {
+        let expr = parse("List::map");
+        match &expr.node {
+            ExprKind::FieldAccess { expr, field } => {
+                assert_eq!(expr.node, ExprKind::Var("List".into()));
+                assert_eq!(field.node, "map");
+            }
+            _ => panic!("expected FieldAccess"),
+        }
+    }
+
+    #[test]
+    fn parse_namespaced_upper_ident_turbofish_call() {
+        let expr = parse("List::map(xs, f)");
         match &expr.node {
             ExprKind::Call { func, args } => {
                 assert_eq!(args.len(), 2);
@@ -7959,6 +7994,21 @@ mod tests {
                     matches!(&clauses[0].body.node, ExprKind::Resume { value } if matches!(&value.node, ExprKind::Lit(Lit::Unit)))
                 );
                 assert!(then_clause.is_some(), "expected then clause");
+            }
+            other => panic!("expected Handle expression, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_handle_expression_with_turbofish_clause_head() {
+        let expr = parse(
+            "handle run()\n  Log::log(level, msg) ->\n    resume ()\n  then value -> value",
+        );
+        match &expr.node {
+            ExprKind::Handle { clauses, .. } => {
+                assert_eq!(clauses.len(), 1);
+                assert_eq!(clauses[0].effect.node, "Log");
+                assert_eq!(clauses[0].operation.node, "log");
             }
             other => panic!("expected Handle expression, got {other:?}"),
         }
