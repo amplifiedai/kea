@@ -5787,3 +5787,33 @@ consumers can depend on one theorem surface instead of multiple projections.
 **Outcome**:
 - Runtime behavior matches the tail-resumptive contract slice in this surface:
   no-`then` and identity-`then` variants preserve the same pure function type.
+
+### 2026-02-26: operation-call effect-row runtime alignment probe
+
+**Context**: Validated operation-call effect-row behavior against
+`EffectOperationTyping` expectations.
+
+**MCP tools used**: direct `kea-mcp` stdio (`initialize`,
+`notifications/initialized`, `tools/call` with `reset_session`, `type_check`,
+`get_type`, `diagnose`).
+
+**Probe**:
+1. Declared operation call (positive):
+   - `effect Log { fn log(msg: Int) -> Unit }`
+   - `fn call_log() -[Log]> Unit = Log.log(1)` (surface syntax equivalent)
+   - `type_check` binds `call_log : () -[Log]> ()`
+   - `get_type "call_log"` returns `() -[Log]> ()`
+   - `diagnose "call_log"` returns no diagnostics.
+2. Explicit too-weak effect annotation (negative):
+   - `effect Log`, `effect Trace`
+   - `fn bad() -[Trace]> Unit` with body `Log.log(1)`
+   - `type_check` rejects with `E0001`:
+     `declared effect [Trace] is too weak; body requires [Log]`.
+   - `diagnose` reports the same error payload.
+
+**Classify**: Agreement.
+
+**Outcome**:
+- Runtime checks align with operation-call contract claims:
+  operation calls require/preserve the corresponding effect label, and explicit
+  under-approximation of declared effect rows is rejected.
