@@ -771,4 +771,24 @@ mod tests {
 
         assert_eq!(ty, "(Int) -> Int");
     }
+
+    #[test]
+    fn type_check_let_bound_call_result_preserves_returned_callable_effect_row() {
+        let server = KeaMcpServer::new();
+        let code = "effect Emit\n  fn emit(val: Int) -> Unit\n\nfn make_emitter() -> fn(Int) -[Emit]> Unit\n  |x: Int| -> Emit.emit(x)\n\nfn trap() -> Unit\n  let f = make_emitter()\n  f(42)";
+        let value = parse_json(&server.handle_type_check(code));
+        assert_eq!(value["status"], "ok", "type_check response: {value}");
+
+        let bindings = value["bindings"].as_array().expect("bindings array");
+        let trap_ty = bindings
+            .iter()
+            .find(|b| b["name"] == "trap")
+            .and_then(|b| b["type"].as_str())
+            .expect("trap binding type");
+
+        assert!(
+            trap_ty.contains("-[Emit]>") && !trap_ty.contains("[IO]"),
+            "expected trap to preserve Emit and avoid phantom IO, got {trap_ty}"
+        );
+    }
 }

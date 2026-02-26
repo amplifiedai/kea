@@ -7487,6 +7487,71 @@ fn infer_callable_value_effect_row(
     }
 }
 
+fn function_effect_signature_from_type(ty: &Type) -> Option<FunctionEffectSignature> {
+    match ty {
+        Type::Function(ft) => Some(FunctionEffectSignature {
+            param_effect_rows: ft
+                .params
+                .iter()
+                .map(TypeEnv::effect_row_from_type)
+                .collect(),
+            effect_row: ft.effects.clone(),
+            instantiate_on_call: false,
+        }),
+        Type::Forall(inner) => function_effect_signature_from_type(&inner.ty),
+        _ => None,
+    }
+}
+
+fn callable_effect_metadata_from_call_return_type(
+    callee_ty: &Type,
+    next_effect_var: &mut u32,
+) -> (Option<EffectRow>, Option<FunctionEffectSignature>) {
+    match callee_ty {
+        Type::Function(ft) => {
+            let signature = function_effect_signature_from_type(&ft.ret).map(|sig| {
+                instantiate_function_effect_signature(&sig, next_effect_var)
+            });
+            let term = signature.as_ref().map(|sig| sig.effect_row.clone());
+            (term, signature)
+        }
+        Type::Forall(inner) => {
+            callable_effect_metadata_from_call_return_type(&inner.ty, next_effect_var)
+        }
+        _ => (None, None),
+    }
+}
+
+fn callable_effect_metadata_from_call(
+    func: &Expr,
+    env: &TypeEnv,
+    next_effect_var: &mut u32,
+) -> (Option<EffectRow>, Option<FunctionEffectSignature>) {
+    match &func.node {
+        ExprKind::Var(name) => env
+            .lookup(name)
+            .map(|scheme| {
+                callable_effect_metadata_from_call_return_type(&scheme.ty, next_effect_var)
+            })
+            .unwrap_or((None, None)),
+        ExprKind::FieldAccess { expr, field } => {
+            if let ExprKind::Var(module) = &expr.node {
+                env.resolve_qualified(module, &field.node)
+                    .map(|scheme| {
+                        callable_effect_metadata_from_call_return_type(
+                            &scheme.ty,
+                            next_effect_var,
+                        )
+                    })
+                    .unwrap_or((None, None))
+            } else {
+                (None, None)
+            }
+        }
+        _ => (None, None),
+    }
+}
+
 fn bind_let_pattern_effect_metadata(
     pattern: &Pattern,
     callable_term: Option<EffectRow>,
@@ -8782,6 +8847,9 @@ fn infer_expr_effect_row(
                                 next_effect_var,
                             );
                             (Some(signature.effect_row.clone()), Some(signature))
+                        }
+                        ExprKind::Call { func, .. } => {
+                            callable_effect_metadata_from_call(func, &block_env, next_effect_var)
                         }
                         _ => (None, None),
                     };
