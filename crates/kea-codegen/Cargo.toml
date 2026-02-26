@@ -1,0 +1,10 @@
+[package]
+name = "kea-codegen"
+description = "Backend interface and Cranelift backend scaffold for Kea MIR"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+kea-mir.workspace = true
+kea-types.workspace = true
+thiserror.workspace = true
