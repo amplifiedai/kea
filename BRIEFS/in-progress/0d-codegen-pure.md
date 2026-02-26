@@ -261,6 +261,8 @@ Create `crates/kea/` (the binary crate):
 - CoW: functional update is in-place when refcount is 1
 - AOT: `kea build` produces a working binary
 - JIT: `kea run` executes correctly
+- Tail calls: self-recursive function doesn't overflow on large input
+- Lambda syntax: `|x| -> x * 2` parses, `(x) -> x * 2` is rejected
 - Snapshot tests: compiled output matches evaluator output for
   the same programs
 
@@ -280,6 +282,9 @@ Create `crates/kea/` (the binary crate):
   string/collection transform, and allocation-heavy workload.
   Measured and recorded — no regression gates yet (baselines only),
   but the harness must exist so 0e can add gates
+- Tail call optimization: self-recursive tail calls use `return_call`,
+  no stack overflow on `factorial(100000)`
+- Lambda syntax matches KERNEL §10.3: `|x| -> expr`, not `(x) -> expr`
 - `mise run check` passes
 
 ## Decisions
@@ -328,6 +333,46 @@ Precision notes:
 2. Fail-only near-zero overhead is only true when lowered to Result
    branch form. This is a codegen invariant — Fail must never enter
    generic handler dispatch.
+
+## Tail Call Optimization
+
+Self-recursive tail calls must be optimized. Kea is a functional
+language — recursive style is idiomatic. Without TCO, `factorial(100000)`
+blows the stack.
+
+Cranelift supports `return_call` (tail call instruction), stabilized
+in 2024. Implementation:
+
+1. **Detect tail position in MIR.** A call is in tail position when
+   its result is the function's return value with no intervening work.
+   For self-recursion this is straightforward — match `return call(self, args)`.
+2. **Emit `return_call` in Cranelift.** Replace `call` + `return` with
+   `return_call`. Cranelift handles the stack frame reuse.
+3. **Scope: self-recursion first.** This covers `factorial`, `fold`,
+   `traverse`, and most recursive patterns. Mutual tail calls (A calls
+   B in tail position, B calls A in tail position) can be added later
+   if needed — same mechanism, broader detection.
+
+Refcounting interaction: release calls on out-of-scope values must be
+inserted BEFORE the tail call, not after. The MIR pass that inserts
+retain/release needs to be aware of tail position.
+
+**This is a v0 deliverable.** A functional language without TCO is
+broken for idiomatic use.
+
+## Lambda Syntax Fix
+
+**Current parser:** `(x) -> expr` and `(x, y) -> expr`
+**KERNEL §10.3:** `|x| -> expr` and `|a, b| -> a + b`
+
+The parser must be updated to match the spec. The `|...|` delimiter
+syntax is better:
+- Unambiguous — parens are overloaded with grouping, tuples, calls
+- Visually distinct — lambdas are instantly recognizable
+- Consistent with Rust/Ruby convention for closures
+
+The `(x) -> expr` form should become a parse error (or at minimum a
+deprecation warning) once `|x| -> expr` is implemented.
 
 ## Open Questions
 
