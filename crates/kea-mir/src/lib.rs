@@ -1957,8 +1957,67 @@ mod tests {
                 args,
                 result: Some(MirValueId(2)),
                 ret_type: Type::Int,
+                callee_fail_result_abi: false,
                 ..
             } if args == &vec![MirValueId(1)]
+        ));
+    }
+
+    #[test]
+    fn lower_hir_module_marks_failful_param_callee_with_fail_result_abi() {
+        let fn_ty = Type::Function(FunctionType::with_effects(
+            vec![Type::Int],
+            Type::Int,
+            EffectRow::closed(vec![(Label::new("Fail"), Type::Int)]),
+        ));
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "apply_fail".to_string(),
+                params: vec![
+                    kea_hir::HirParam {
+                        name: Some("f".to_string()),
+                        span: kea_ast::Span::synthetic(),
+                    },
+                    kea_hir::HirParam {
+                        name: Some("x".to_string()),
+                        span: kea_ast::Span::synthetic(),
+                    },
+                ],
+                body: HirExpr {
+                    kind: HirExprKind::Call {
+                        func: Box::new(HirExpr {
+                            kind: HirExprKind::Var("f".to_string()),
+                            ty: fn_ty.clone(),
+                            span: kea_ast::Span::synthetic(),
+                        }),
+                        args: vec![HirExpr {
+                            kind: HirExprKind::Var("x".to_string()),
+                            ty: Type::Int,
+                            span: kea_ast::Span::synthetic(),
+                        }],
+                    },
+                    ty: Type::Int,
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::with_effects(
+                    vec![fn_ty.clone(), Type::Int],
+                    Type::Int,
+                    EffectRow::closed(vec![(Label::new("Fail"), Type::Int)]),
+                )),
+                effects: EffectRow::closed(vec![(Label::new("Fail"), Type::Int)]),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let mir = lower_hir_module(&hir);
+        let function = &mir.functions[0];
+        assert!(matches!(
+            &function.blocks[0].instructions[0],
+            MirInst::Call {
+                callee: MirCallee::Value(MirValueId(0)),
+                callee_fail_result_abi: true,
+                ..
+            }
         ));
     }
 
