@@ -147,3 +147,39 @@ theorem functionEff_bindTypeVar_contract_slice
   exact bindTypeVar_ok_contract_full_wf
     st stNext kctx rctx v (.functionEff params effects ret) fuel
     h_bind h_wf_state ⟨h_wf_params, h_wf_effects, h_wf_ret⟩ h_idemp_next
+
+theorem functionEff_bindTypeVar_contract_slice_of_success
+    (st stNext : UnifyState) (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat)
+    (v : TypeVarId) (params : TyList) (effects : EffectRow) (ret : Ty)
+    (h_bind : bindTypeVar st v (.functionEff params effects ret) fuel = .ok stNext)
+    (h_wf_state : UnifyState.SubstWellFormedRange st kctx rctx)
+    (h_wf_params : TyList.WellFormed kctx rctx params)
+    (h_wf_effects : EffectRow.WellFormed kctx rctx effects)
+    (h_wf_ret : Ty.WellFormed kctx rctx ret)
+    (h_idemp_next : stNext.subst.Idempotent) :
+    FunctionEffBindTypeVarContractSlice st stNext kctx rctx fuel h_idemp_next := by
+  exact functionEff_bindTypeVar_contract_slice
+    st stNext kctx rctx fuel v params effects ret
+    h_bind h_wf_state h_wf_params h_wf_effects h_wf_ret h_idemp_next
+
+theorem functionEff_bindTypeVar_extends_of_contract_slice
+    (st stNext : UnifyState) (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat)
+    (h_idemp_next : stNext.subst.Idempotent)
+    (h_slice : FunctionEffBindTypeVarContractSlice st stNext kctx rctx fuel h_idemp_next) :
+    ExtendsRowBindings st stNext := by
+  exact h_slice.1.1
+
+theorem functionEff_bindTypeVar_substWellFormedRange_of_contract_slice
+    (st stNext : UnifyState) (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat)
+    (h_idemp_next : stNext.subst.Idempotent)
+    (h_slice : FunctionEffBindTypeVarContractSlice st stNext kctx rctx fuel h_idemp_next) :
+    UnifyState.SubstWellFormedRange stNext kctx rctx := by
+  exact h_slice.1.2
+
+theorem functionEff_bindTypeVar_compatWFAgreeOnDomainLookupsAcyclic_of_contract_slice
+    (st stNext : UnifyState) (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat)
+    (h_idemp_next : stNext.subst.Idempotent)
+    (h_slice : FunctionEffBindTypeVarContractSlice st stNext kctx rctx fuel h_idemp_next) :
+    let h_ac := Subst.acyclicOfIdempotent h_idemp_next
+    CompatWFAgreeOnDomainLookupsAcyclic stNext fuel h_ac := by
+  exact h_slice.2
