@@ -320,6 +320,60 @@ theorem unifyRows_open_open_update_extendsAndWf_idempotent_fresh
       st' kctx rctx rv1 rv2 onlyLeft onlyRight lacks''
       h_wf h_onlyLeft h_onlyRight h_fresh_in_ctx
 
+theorem unifyRows_open_open_contract_full_wf_idempotent_fresh
+    (st st' : UnifyState) (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat)
+    (r1 r2 : Row) (rv1 rv2 : RowVarId) (onlyLeft onlyRight : RowFields)
+    (h_ext : ExtendsRowBindings st st')
+    (h_ne : rv2 ≠ rv1)
+    (h_idemp : st'.subst.Idempotent)
+    (h_rest1 : (applySubstRow st'.subst (fuel + 1) r1).rest = some rv1)
+    (h_rest2 : (applySubstRow st'.subst (fuel + 1) r2).rest = some rv2)
+    (h_wf : UnifyState.SubstWellFormedRange st' kctx rctx)
+    (h_onlyLeft : RowFields.WellFormed kctx rctx onlyLeft)
+    (h_onlyRight : RowFields.WellFormed kctx rctx onlyRight)
+    (h_fresh_in_ctx : (st'.freshRowVar).1 ∈ rctx)
+    (h_idemp_next :
+      ({ (st'.freshRowVar).2 with
+          subst :=
+            Subst.bindRow
+              (Subst.bindRow (st'.freshRowVar).2.subst rv1 (Row.mkOpen onlyRight (st'.freshRowVar).1))
+              rv2
+              (Row.mkOpen onlyLeft (st'.freshRowVar).1) }).subst.Idempotent) :
+    let fr := st'.freshRowVar
+    let r3 := fr.1
+    let st'' := fr.2
+    let subst' :=
+      Subst.bindRow
+        (Subst.bindRow st''.subst rv1 (Row.mkOpen onlyRight r3))
+        rv2
+        (Row.mkOpen onlyLeft r3)
+    ExtendsAndWfRange st { st'' with subst := subst' } kctx rctx
+    ∧ (let h_ac := Subst.acyclicOfIdempotent h_idemp_next
+       CompatWFAgreeOnDomainLookupsAcyclic { st'' with subst := subst' } fuel h_ac) := by
+  dsimp
+  let stNext : UnifyState := {
+    (st'.freshRowVar).2 with
+      subst :=
+        Subst.bindRow
+          (Subst.bindRow (st'.freshRowVar).2.subst rv1 (Row.mkOpen onlyRight (st'.freshRowVar).1))
+          rv2
+          (Row.mkOpen onlyLeft (st'.freshRowVar).1)
+  }
+  have h_shape : UnifyRowsSuccessUpdateShape st' stNext fuel :=
+    Or.inr (Or.inr ⟨r1, r2, rv1, rv2, onlyLeft, onlyRight, h_ne, h_rest1, h_rest2, rfl⟩)
+  refine ⟨?_, ?_⟩
+  ·
+    simpa [stNext] using
+      unifyRows_open_open_update_extendsAndWf_idempotent_fresh
+        st st' kctx rctx fuel r1 r2 rv1 rv2 onlyLeft onlyRight (st'.freshRowVar).2.lacks
+        h_ext h_ne h_idemp h_rest1 h_rest2 h_wf h_onlyLeft h_onlyRight h_fresh_in_ctx
+  ·
+    have h_agree_idemp :
+        CompatWFAgreeOnDomainLookups stNext fuel h_idemp_next :=
+      unifyRows_success_update_compat_wf_swap_invariant st' stNext fuel h_shape h_idemp_next
+    exact compatWFAgreeOnDomainLookupsAcyclic_of_idempotent
+      stNext fuel h_idemp_next h_agree_idemp
+
 /-- Full-state open-open combined contract (including non-`subst` updates). -/
 theorem unifyRows_open_open_update_extendsAndWf_idempotent_full_state_fresh
     (st st' : UnifyState) (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat)
