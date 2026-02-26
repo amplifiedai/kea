@@ -399,3 +399,190 @@ theorem functionEff_wf_ladder_bundle_of_bind_success_full_state
       st st' kctx rctx fuel v params effects ret
       lacks' bounds' nextType' nextRow'
       h_bind h_wf_state h_wf_params h_wf_effects h_wf_ret h_idemp_next
+
+theorem functionEff_subst_wf_slice_of_wf_ladder_bundle
+    (scheme : TypeScheme) (env : TypeEnv)
+    (st stNext stInst : UnifyState)
+    (s : Subst) (h_ac : Subst.Acyclic s)
+    (lc : Lacks) (traitBounds : TraitBounds)
+    (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat)
+    (params : TyList) (effects : EffectRow) (ret : Ty)
+    (h_idemp_next : stNext.subst.Idempotent)
+    (h_bundle :
+      FunctionEffSubstWfSlice s h_ac kctx rctx fuel params effects ret
+      ∧ FunctionEffGenInstWfSlice
+          scheme env stInst s lc traitBounds kctx rctx fuel params effects ret
+      ∧ FunctionEffBindTypeVarContractSlice st stNext kctx rctx fuel h_idemp_next) :
+    FunctionEffSubstWfSlice s h_ac kctx rctx fuel params effects ret := by
+  exact h_bundle.1
+
+theorem functionEff_gen_inst_wf_slice_of_wf_ladder_bundle
+    (scheme : TypeScheme) (env : TypeEnv)
+    (st stNext stInst : UnifyState)
+    (s : Subst) (h_ac : Subst.Acyclic s)
+    (lc : Lacks) (traitBounds : TraitBounds)
+    (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat)
+    (params : TyList) (effects : EffectRow) (ret : Ty)
+    (h_idemp_next : stNext.subst.Idempotent)
+    (h_bundle :
+      FunctionEffSubstWfSlice s h_ac kctx rctx fuel params effects ret
+      ∧ FunctionEffGenInstWfSlice
+          scheme env stInst s lc traitBounds kctx rctx fuel params effects ret
+      ∧ FunctionEffBindTypeVarContractSlice st stNext kctx rctx fuel h_idemp_next) :
+    FunctionEffGenInstWfSlice
+      scheme env stInst s lc traitBounds kctx rctx fuel params effects ret := by
+  exact h_bundle.2.1
+
+theorem functionEff_bindTypeVar_contract_slice_of_wf_ladder_bundle
+    (scheme : TypeScheme) (env : TypeEnv)
+    (st stNext stInst : UnifyState)
+    (s : Subst) (h_ac : Subst.Acyclic s)
+    (lc : Lacks) (traitBounds : TraitBounds)
+    (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat)
+    (params : TyList) (effects : EffectRow) (ret : Ty)
+    (h_idemp_next : stNext.subst.Idempotent)
+    (h_bundle :
+      FunctionEffSubstWfSlice s h_ac kctx rctx fuel params effects ret
+      ∧ FunctionEffGenInstWfSlice
+          scheme env stInst s lc traitBounds kctx rctx fuel params effects ret
+      ∧ FunctionEffBindTypeVarContractSlice st stNext kctx rctx fuel h_idemp_next) :
+    FunctionEffBindTypeVarContractSlice st stNext kctx rctx fuel h_idemp_next := by
+  exact h_bundle.2.2
+
+theorem functionEff_bindTypeVar_extends_of_wf_ladder_bundle
+    (scheme : TypeScheme) (env : TypeEnv)
+    (st stNext stInst : UnifyState)
+    (s : Subst) (h_ac : Subst.Acyclic s)
+    (lc : Lacks) (traitBounds : TraitBounds)
+    (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat)
+    (params : TyList) (effects : EffectRow) (ret : Ty)
+    (h_idemp_next : stNext.subst.Idempotent)
+    (h_bundle :
+      FunctionEffSubstWfSlice s h_ac kctx rctx fuel params effects ret
+      ∧ FunctionEffGenInstWfSlice
+          scheme env stInst s lc traitBounds kctx rctx fuel params effects ret
+      ∧ FunctionEffBindTypeVarContractSlice st stNext kctx rctx fuel h_idemp_next) :
+    ExtendsRowBindings st stNext := by
+  exact functionEff_bindTypeVar_extends_of_contract_slice
+    st stNext kctx rctx fuel h_idemp_next
+    (functionEff_bindTypeVar_contract_slice_of_wf_ladder_bundle
+      scheme env st stNext stInst s h_ac lc traitBounds
+      kctx rctx fuel params effects ret h_idemp_next h_bundle)
+
+theorem functionEff_bindTypeVar_substWellFormedRange_of_wf_ladder_bundle
+    (scheme : TypeScheme) (env : TypeEnv)
+    (st stNext stInst : UnifyState)
+    (s : Subst) (h_ac : Subst.Acyclic s)
+    (lc : Lacks) (traitBounds : TraitBounds)
+    (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat)
+    (params : TyList) (effects : EffectRow) (ret : Ty)
+    (h_idemp_next : stNext.subst.Idempotent)
+    (h_bundle :
+      FunctionEffSubstWfSlice s h_ac kctx rctx fuel params effects ret
+      ∧ FunctionEffGenInstWfSlice
+          scheme env stInst s lc traitBounds kctx rctx fuel params effects ret
+      ∧ FunctionEffBindTypeVarContractSlice st stNext kctx rctx fuel h_idemp_next) :
+    UnifyState.SubstWellFormedRange stNext kctx rctx := by
+  exact functionEff_bindTypeVar_substWellFormedRange_of_contract_slice
+    st stNext kctx rctx fuel h_idemp_next
+    (functionEff_bindTypeVar_contract_slice_of_wf_ladder_bundle
+      scheme env st stNext stInst s h_ac lc traitBounds
+      kctx rctx fuel params effects ret h_idemp_next h_bundle)
+
+theorem functionEff_bindTypeVar_compatWFAgreeOnDomainLookupsAcyclic_of_wf_ladder_bundle
+    (scheme : TypeScheme) (env : TypeEnv)
+    (st stNext stInst : UnifyState)
+    (s : Subst) (h_ac : Subst.Acyclic s)
+    (lc : Lacks) (traitBounds : TraitBounds)
+    (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat)
+    (params : TyList) (effects : EffectRow) (ret : Ty)
+    (h_idemp_next : stNext.subst.Idempotent)
+    (h_bundle :
+      FunctionEffSubstWfSlice s h_ac kctx rctx fuel params effects ret
+      ∧ FunctionEffGenInstWfSlice
+          scheme env stInst s lc traitBounds kctx rctx fuel params effects ret
+      ∧ FunctionEffBindTypeVarContractSlice st stNext kctx rctx fuel h_idemp_next) :
+    let h_ac' := Subst.acyclicOfIdempotent h_idemp_next
+    CompatWFAgreeOnDomainLookupsAcyclic stNext fuel h_ac' := by
+  exact functionEff_bindTypeVar_compatWFAgreeOnDomainLookupsAcyclic_of_contract_slice
+    st stNext kctx rctx fuel h_idemp_next
+    (functionEff_bindTypeVar_contract_slice_of_wf_ladder_bundle
+      scheme env st stNext stInst s h_ac lc traitBounds
+      kctx rctx fuel params effects ret h_idemp_next h_bundle)
+
+theorem functionEff_bindTypeVar_full_state_contract_slice_of_wf_ladder_bundle
+    (scheme : TypeScheme) (env : TypeEnv)
+    (st stNext stInst : UnifyState)
+    (s : Subst) (h_ac : Subst.Acyclic s)
+    (lc : Lacks) (traitBounds : TraitBounds)
+    (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat)
+    (params : TyList) (effects : EffectRow) (ret : Ty)
+    (h_idemp_next : stNext.subst.Idempotent)
+    (h_bundle :
+      FunctionEffSubstWfSlice s h_ac kctx rctx fuel params effects ret
+      ∧ FunctionEffGenInstWfSlice
+          scheme env stInst s lc traitBounds kctx rctx fuel params effects ret
+      ∧ FunctionEffBindTypeVarFullStateContractSlice st stNext kctx rctx fuel h_idemp_next) :
+    FunctionEffBindTypeVarFullStateContractSlice st stNext kctx rctx fuel h_idemp_next := by
+  exact h_bundle.2.2
+
+theorem functionEff_bindTypeVar_full_state_extends_of_wf_ladder_bundle
+    (scheme : TypeScheme) (env : TypeEnv)
+    (st stNext stInst : UnifyState)
+    (s : Subst) (h_ac : Subst.Acyclic s)
+    (lc : Lacks) (traitBounds : TraitBounds)
+    (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat)
+    (params : TyList) (effects : EffectRow) (ret : Ty)
+    (h_idemp_next : stNext.subst.Idempotent)
+    (h_bundle :
+      FunctionEffSubstWfSlice s h_ac kctx rctx fuel params effects ret
+      ∧ FunctionEffGenInstWfSlice
+          scheme env stInst s lc traitBounds kctx rctx fuel params effects ret
+      ∧ FunctionEffBindTypeVarFullStateContractSlice st stNext kctx rctx fuel h_idemp_next) :
+    ExtendsRowBindings st stNext := by
+  exact functionEff_bindTypeVar_full_state_extends_of_contract_slice
+    st stNext kctx rctx fuel h_idemp_next
+    (functionEff_bindTypeVar_full_state_contract_slice_of_wf_ladder_bundle
+      scheme env st stNext stInst s h_ac lc traitBounds
+      kctx rctx fuel params effects ret h_idemp_next h_bundle)
+
+theorem functionEff_bindTypeVar_full_state_substWellFormedRange_of_wf_ladder_bundle
+    (scheme : TypeScheme) (env : TypeEnv)
+    (st stNext stInst : UnifyState)
+    (s : Subst) (h_ac : Subst.Acyclic s)
+    (lc : Lacks) (traitBounds : TraitBounds)
+    (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat)
+    (params : TyList) (effects : EffectRow) (ret : Ty)
+    (h_idemp_next : stNext.subst.Idempotent)
+    (h_bundle :
+      FunctionEffSubstWfSlice s h_ac kctx rctx fuel params effects ret
+      ∧ FunctionEffGenInstWfSlice
+          scheme env stInst s lc traitBounds kctx rctx fuel params effects ret
+      ∧ FunctionEffBindTypeVarFullStateContractSlice st stNext kctx rctx fuel h_idemp_next) :
+    UnifyState.SubstWellFormedRange stNext kctx rctx := by
+  exact functionEff_bindTypeVar_full_state_substWellFormedRange_of_contract_slice
+    st stNext kctx rctx fuel h_idemp_next
+    (functionEff_bindTypeVar_full_state_contract_slice_of_wf_ladder_bundle
+      scheme env st stNext stInst s h_ac lc traitBounds
+      kctx rctx fuel params effects ret h_idemp_next h_bundle)
+
+theorem functionEff_bindTypeVar_full_state_compatWFAgreeOnDomainLookupsAcyclic_of_wf_ladder_bundle
+    (scheme : TypeScheme) (env : TypeEnv)
+    (st stNext stInst : UnifyState)
+    (s : Subst) (h_ac : Subst.Acyclic s)
+    (lc : Lacks) (traitBounds : TraitBounds)
+    (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat)
+    (params : TyList) (effects : EffectRow) (ret : Ty)
+    (h_idemp_next : stNext.subst.Idempotent)
+    (h_bundle :
+      FunctionEffSubstWfSlice s h_ac kctx rctx fuel params effects ret
+      ∧ FunctionEffGenInstWfSlice
+          scheme env stInst s lc traitBounds kctx rctx fuel params effects ret
+      ∧ FunctionEffBindTypeVarFullStateContractSlice st stNext kctx rctx fuel h_idemp_next) :
+    let h_ac' := Subst.acyclicOfIdempotent h_idemp_next
+    CompatWFAgreeOnDomainLookupsAcyclic stNext fuel h_ac' := by
+  exact functionEff_bindTypeVar_full_state_compatWFAgreeOnDomainLookupsAcyclic_of_contract_slice
+    st stNext kctx rctx fuel h_idemp_next
+    (functionEff_bindTypeVar_full_state_contract_slice_of_wf_ladder_bundle
+      scheme env st stNext stInst s h_ac lc traitBounds
+      kctx rctx fuel params effects ret h_idemp_next h_bundle)
