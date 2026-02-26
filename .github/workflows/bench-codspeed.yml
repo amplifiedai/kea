@@ -1,0 +1,31 @@
+name: benchmark-codspeed
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  codspeed:
+    name: CodSpeed Benchmarks
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    if: ${{ secrets.CODSPEED_TOKEN != '' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run CodSpeed benchmark suite
+        uses: CodSpeedHQ/action@v3
+        with:
+          token: ${{ secrets.CODSPEED_TOKEN }}
+          run: ./scripts/cargo-agent.sh bench -p kea-bench --bench core
