@@ -4494,6 +4494,42 @@ and equivalence slice in `NominalAdtTypingBridge`
 - Runtime nominal `as` behavior remains aligned after adding the algorithmic
   nominal ascription checker/equivalence slice.
 
+### 2026-02-26: effect-row annotation boundary re-probe for WF ladder packaging
+
+**Context**: After extending the Phase-1 effect-row WF surface
+(`WfSubstitution`/`WfGeneralize` wrappers and `WfEffectRowLadder` packaging),
+re-probed `kea-mcp` for declared effect-row preservation and mismatch
+rejection to keep Lean-side assumptions grounded in live behavior.
+
+**MCP tools used**: `reset_session`, `type_check`, `get_type`, `diagnose`
+
+**Probe**:
+1. Declared effect row is preserved:
+   - `type_check` on
+     `effect Log ...; fn write(msg: String) -[Log]> Unit; Log.log(msg)`
+     returns `ok` with binding type `(String) -[Log]> ()`.
+   - `get_type` on the same declarations returns `(String) -[Log]> ()`.
+2. Pure control remains pure:
+   - `type_check "fn id(x: Int) -> Int\n  x"` returns `ok` with `(Int) -> Int`.
+3. Too-weak declared effect row is rejected:
+   - `type_check` on
+     `effect Log ...; fn wrong(msg: String) -[IO]> Unit; Log.log(msg)`
+     returns `error` with
+     `declared effect '[IO]' is too weak; body requires '[Log]'`.
+   - `diagnose` on the same snippet reports structured `type_mismatch`
+     diagnostics with the same message.
+
+**Classify**: Agreement.
+
+**Outcome**:
+- Runtime effect-row annotation behavior matches the Lean-side WF ladder
+  assumptions used by `functionEff` substitution/generalize/instantiate
+  packaging.
+
+**Impact**:
+- Confirms no Lean↔MCP divergence for current Phase-1 effect-row WF theorem
+  surfaces before moving further toward Phase-2 handler-specific theorems.
+
 ### 2026-02-26: WfUnifyExtends branch-contract re-probe after MCP refresh
 
 **Context**: After adding branch-complete full-contract wrappers in
