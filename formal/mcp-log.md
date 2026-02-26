@@ -4772,3 +4772,39 @@ share labels.
 - Logged as a Lean↔MCP semantic divergence for Phase-2 handler composition.
 - `Kea/Properties/HandlerEffectRemoval.lean` stays scoped to the elimination
   slice while overlap normalization is resolved.
+
+### 2026-02-26: phase-2 continuation under spec-normalized union precondition
+
+**Context**: Follow-through after the overlap divergence above. The formal track
+continues by adopting the spec's idempotent-union semantics at the row level,
+instead of mirroring current duplicate-label runtime behavior.
+
+**MCP tools used**: none (uses immediately prior probe evidence in this log).
+
+**Lean side**:
+- Added row-level idempotent union primitives:
+  - `RowFields.insertIfAbsent`
+  - `RowFields.unionIdem`
+- Added normalized handler composition:
+  - `EffectRow.handleComposeNormalized`
+- Proved composition surfaces:
+  - `handle_adds_handler_effects`
+  - `handle_preserves_other_effects_normalized`
+  - `handle_removes_effect_normalized_of_handler_absent`
+  - `handleComposeNormalized_preserves_wellFormed`
+
+**Rust side (from prior probe context)**:
+- Non-overlap removal/preservation behavior aligns with spec-normalized model.
+- Overlap still yields duplicate inferred labels (`[IO, IO]`) in runtime typing.
+
+**Classify**: Preconditioned agreement.
+
+**Outcome**:
+- Formal proofs proceed under normalized/idempotent union semantics (the spec).
+- Implementation divergence remains explicitly documented as a normalization
+  gap rather than encoded into theorem statements.
+
+**Impact**:
+- Proofs remain stable and reusable when implementation-side dedup lands.
+- The overlap normalization fix in implementation should make the current
+  preconditions trivially satisfied.

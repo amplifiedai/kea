@@ -71,6 +71,121 @@ theorem wellFormed_removeLabel :
       · simp [removeLabel, h_hit, removeLabel_idempotent rest target]
       · simp [removeLabel, h_hit, removeLabel_idempotent rest target]
 
+/--
+Insert a field only when its label is not already present.
+This is the row-level idempotent-union primitive used by handler composition.
+-/
+def insertIfAbsent (base : RowFields) (label : Label) (ty : Ty) : RowFields :=
+  if RowFields.has base label then base else .cons label ty base
+
+/-- Idempotent union on row fields (label-level set semantics, type payload kept). -/
+def unionIdem : RowFields → RowFields → RowFields
+  | base, .nil => base
+  | base, .cons l ty rest =>
+      unionIdem (insertIfAbsent base l ty) rest
+
+@[simp] theorem has_insertIfAbsent_self_true
+    (base : RowFields) (label : Label) (ty : Ty) :
+    RowFields.has (insertIfAbsent base label ty) label = true := by
+  unfold insertIfAbsent
+  by_cases h_has : RowFields.has base label
+  · simp [h_has]
+  · simp [h_has, RowFields.has]
+
+@[simp] theorem has_insertIfAbsent_of_ne
+    (base : RowFields) (label other : Label) (ty : Ty)
+    (h_ne : other ≠ label) :
+    RowFields.has (insertIfAbsent base label ty) other = RowFields.has base other := by
+  unfold insertIfAbsent
+  by_cases h_has : RowFields.has base label
+  · simp [h_has]
+  · have h_label_ne_other : label ≠ other := by
+      intro h_eq
+      apply h_ne
+      exact h_eq.symm
+    simp [h_has, RowFields.has, h_label_ne_other]
+
+theorem has_unionIdem_of_has_left_true :
+    ∀ (base extra : RowFields) (label : Label),
+      RowFields.has base label = true →
+      RowFields.has (unionIdem base extra) label = true
+  | base, .nil, label, h_has => by simpa [unionIdem] using h_has
+  | base, .cons l ty rest, label, h_has => by
+      have h_step :
+          RowFields.has (insertIfAbsent base l ty) label = true := by
+        by_cases h_eq : label = l
+        · subst h_eq
+          exact has_insertIfAbsent_self_true base label ty
+        · have h_same :
+              RowFields.has (insertIfAbsent base l ty) label =
+                RowFields.has base label :=
+            has_insertIfAbsent_of_ne base l label ty h_eq
+          rw [h_same]
+          exact h_has
+      exact has_unionIdem_of_has_left_true (insertIfAbsent base l ty) rest label h_step
+
+theorem has_unionIdem_of_has_right_true :
+    ∀ (base extra : RowFields) (label : Label),
+      RowFields.has extra label = true →
+      RowFields.has (unionIdem base extra) label = true
+  | base, .nil, label, h_has => by simp [RowFields.has] at h_has
+  | base, .cons l ty rest, label, h_has => by
+      by_cases h_eq : l = label
+      · subst h_eq
+        exact has_unionIdem_of_has_left_true (insertIfAbsent base l ty) rest l
+          (has_insertIfAbsent_self_true base l ty)
+      · have h_head_false : (l == label) = false := by simp [h_eq]
+        have h_rest_true : RowFields.has rest label = true := by
+          simpa [RowFields.has, h_head_false] using h_has
+        exact has_unionIdem_of_has_right_true (insertIfAbsent base l ty) rest label h_rest_true
+
+theorem has_unionIdem_false_of_false_false :
+    ∀ (base extra : RowFields) (label : Label),
+      RowFields.has base label = false →
+      RowFields.has extra label = false →
+      RowFields.has (unionIdem base extra) label = false
+  | base, .nil, label, h_base, _ => by simpa [unionIdem] using h_base
+  | base, .cons l ty rest, label, h_base, h_extra => by
+      by_cases h_eq : l = label
+      · subst h_eq
+        have : RowFields.has (.cons l ty rest) l = true := by
+          simp [RowFields.has]
+        simp [this] at h_extra
+      · have h_head_false : (l == label) = false := by simp [h_eq]
+        have h_rest_false : RowFields.has rest label = false := by
+          simpa [RowFields.has, h_head_false] using h_extra
+        have h_base_step : RowFields.has (insertIfAbsent base l ty) label = false := by
+          have h_ne : label ≠ l := by
+            intro h_rev
+            exact h_eq h_rev.symm
+          simpa [has_insertIfAbsent_of_ne base l label ty h_ne] using h_base
+        exact has_unionIdem_false_of_false_false (insertIfAbsent base l ty) rest label
+          h_base_step h_rest_false
+
+theorem wellFormed_insertIfAbsent
+    (kctx : KindCtx) (rctx : RowCtx)
+    (base : RowFields) (label : Label) (ty : Ty)
+    (h_base : RowFields.WellFormed kctx rctx base)
+    (h_ty : Ty.WellFormed kctx rctx ty) :
+    RowFields.WellFormed kctx rctx (insertIfAbsent base label ty) := by
+  unfold insertIfAbsent
+  by_cases h_has : RowFields.has base label
+  · simp [h_has, h_base]
+  · simp [h_has]
+    exact ⟨h_ty, h_base⟩
+
+theorem wellFormed_unionIdem :
+    ∀ (kctx : KindCtx) (rctx : RowCtx) (base extra : RowFields),
+      RowFields.WellFormed kctx rctx base →
+      RowFields.WellFormed kctx rctx extra →
+      RowFields.WellFormed kctx rctx (unionIdem base extra)
+  | kctx, rctx, base, .nil, h_base, _ => by simpa [unionIdem] using h_base
+  | kctx, rctx, base, .cons l ty rest, h_base, h_extra => by
+      rcases h_extra with ⟨h_ty, h_rest⟩
+      have h_step : RowFields.WellFormed kctx rctx (insertIfAbsent base l ty) :=
+        wellFormed_insertIfAbsent kctx rctx base l ty h_base h_ty
+      exact wellFormed_unionIdem kctx rctx (insertIfAbsent base l ty) rest h_step h_rest
+
 end RowFields
 
 namespace EffectRow
@@ -92,6 +207,21 @@ def handleRemove (effects : EffectRow) (target : Label) : EffectRow :=
   | .mk (.mk fs rv) =>
       .mk (.mk (RowFields.removeLabel fs target) rv)
 
+/--
+Spec-level normalized handler composition:
+remove handled effect from the expression row, then idempotently union
+handler-body effects (label-set semantics).
+
+Note: this models spec normalization even if implementation currently emits
+duplicate labels on overlap.
+-/
+def handleComposeNormalized
+    (effects handlerEffects : EffectRow) (target : Label) : EffectRow :=
+  let removed := handleRemove effects target
+  .mk (.mk
+    (RowFields.unionIdem (fields removed) (fields handlerEffects))
+    (rest removed))
+
 @[simp] theorem fields_handleRemove (effects : EffectRow) (target : Label) :
     fields (handleRemove effects target) = RowFields.removeLabel (fields effects) target := by
   cases effects with
@@ -103,6 +233,36 @@ def handleRemove (effects : EffectRow) (target : Label) : EffectRow :=
   cases effects with
   | mk row =>
       cases row <;> rfl
+
+@[simp] theorem fields_handleComposeNormalized
+    (effects handlerEffects : EffectRow) (target : Label) :
+    fields (handleComposeNormalized effects handlerEffects target) =
+      RowFields.unionIdem
+        (fields (handleRemove effects target))
+        (fields handlerEffects) := by
+  cases effects with
+  | mk row =>
+      cases row with
+      | mk fs rv =>
+          cases handlerEffects with
+          | mk hrow =>
+              cases hrow with
+              | mk hfs hrv =>
+                  simp [handleComposeNormalized, fields, handleRemove]
+
+@[simp] theorem rest_handleComposeNormalized
+    (effects handlerEffects : EffectRow) (target : Label) :
+    rest (handleComposeNormalized effects handlerEffects target) =
+      rest (handleRemove effects target) := by
+  cases effects with
+  | mk row =>
+      cases row with
+      | mk fs rv =>
+          cases handlerEffects with
+          | mk hrow =>
+              cases hrow with
+              | mk hfs hrv =>
+                  simp [handleComposeNormalized, rest, handleRemove]
 
 /-- Phase-2 capstone core theorem: handling an effect removes that effect. -/
 theorem handle_removes_effect (effects : EffectRow) (target : Label) :
@@ -146,5 +306,115 @@ theorem handleRemove_preserves_wellFormed
           | some restVar =>
               rcases h_wf with ⟨h_fields, h_rest⟩
               exact ⟨RowFields.wellFormed_removeLabel kctx rctx fs target h_fields, h_rest⟩
+
+/--
+Phase-2 composition theorem (spec-normalized):
+all handler-body effects are present in the composed result.
+-/
+theorem handle_adds_handler_effects
+    (effects handlerEffects : EffectRow) (target added : Label)
+    (h_added : RowFields.has (fields handlerEffects) added = true) :
+    RowFields.has (fields (handleComposeNormalized effects handlerEffects target)) added = true := by
+  have h_union :
+      RowFields.has
+        (RowFields.unionIdem (fields (handleRemove effects target)) (fields handlerEffects))
+        added = true :=
+    RowFields.has_unionIdem_of_has_right_true
+    (fields (handleRemove effects target))
+    (fields handlerEffects)
+    added
+    h_added
+  simpa [fields_handleComposeNormalized] using h_union
+
+/--
+Phase-2 composition theorem (spec-normalized):
+unhandled effects from the original expression remain present after handling.
+-/
+theorem handle_preserves_other_effects_normalized
+    (effects handlerEffects : EffectRow) (target other : Label)
+    (h_ne : other ≠ target)
+    (h_other : RowFields.has (fields effects) other = true) :
+    RowFields.has (fields (handleComposeNormalized effects handlerEffects target)) other = true := by
+  have h_removed : RowFields.has (fields (handleRemove effects target)) other = true := by
+    rw [handle_preserves_other_effects effects target other h_ne]
+    exact h_other
+  have h_union :
+      RowFields.has
+        (RowFields.unionIdem (fields (handleRemove effects target)) (fields handlerEffects))
+        other = true :=
+    RowFields.has_unionIdem_of_has_left_true
+    (fields (handleRemove effects target))
+    (fields handlerEffects)
+    other
+    h_removed
+  simpa [fields_handleComposeNormalized] using h_union
+
+/--
+Phase-2 composition theorem (spec-normalized):
+handled effect remains removed if handler-body effects do not re-introduce it.
+-/
+theorem handle_removes_effect_normalized_of_handler_absent
+    (effects handlerEffects : EffectRow) (target : Label)
+    (h_handler_absent : RowFields.has (fields handlerEffects) target = false) :
+    RowFields.has (fields (handleComposeNormalized effects handlerEffects target)) target = false := by
+  have h_removed_absent :
+      RowFields.has (fields (handleRemove effects target)) target = false :=
+    handle_removes_effect effects target
+  have h_union :
+      RowFields.has
+        (RowFields.unionIdem (fields (handleRemove effects target)) (fields handlerEffects))
+        target = false :=
+    RowFields.has_unionIdem_false_of_false_false
+    (fields (handleRemove effects target))
+    (fields handlerEffects)
+    target
+    h_removed_absent
+    h_handler_absent
+  simpa [fields_handleComposeNormalized] using h_union
+
+theorem handleComposeNormalized_preserves_wellFormed
+    (kctx : KindCtx) (rctx : RowCtx)
+    (effects handlerEffects : EffectRow) (target : Label)
+    (h_wf_effects : EffectRow.WellFormed kctx rctx effects)
+    (h_wf_handler : EffectRow.WellFormed kctx rctx handlerEffects) :
+    EffectRow.WellFormed kctx rctx (handleComposeNormalized effects handlerEffects target) := by
+  cases effects with
+  | mk erow =>
+      cases erow with
+      | mk efs erv =>
+          cases handlerEffects with
+          | mk hrow =>
+              cases hrow with
+              | mk hfs hrv =>
+                  have h_efs_wf : RowFields.WellFormed kctx rctx efs := by
+                    cases erv with
+                    | none =>
+                        simpa [EffectRow.WellFormed, Row.WellFormed] using h_wf_effects
+                    | some rv =>
+                        rcases h_wf_effects with ⟨h_fields, _h_rest⟩
+                        exact h_fields
+                  have h_hfs_wf : RowFields.WellFormed kctx rctx hfs := by
+                    cases hrv with
+                    | none =>
+                        simpa [EffectRow.WellFormed, Row.WellFormed] using h_wf_handler
+                    | some rv =>
+                        rcases h_wf_handler with ⟨h_fields, _h_rest⟩
+                        exact h_fields
+                  have h_removed_fields_wf :
+                      RowFields.WellFormed kctx rctx (RowFields.removeLabel efs target) :=
+                    RowFields.wellFormed_removeLabel kctx rctx efs target h_efs_wf
+                  have h_union_wf :
+                      RowFields.WellFormed kctx rctx
+                        (RowFields.unionIdem (RowFields.removeLabel efs target) hfs) :=
+                    RowFields.wellFormed_unionIdem kctx rctx
+                      (RowFields.removeLabel efs target) hfs
+                      h_removed_fields_wf h_hfs_wf
+                  cases erv with
+                  | none =>
+                      simpa [handleComposeNormalized, handleRemove, EffectRow.WellFormed, Row.WellFormed]
+                        using h_union_wf
+                  | some rv =>
+                      rcases h_wf_effects with ⟨_h_fields, h_rest⟩
+                      exact ⟨h_union_wf, h_rest⟩
 
 end EffectRow
