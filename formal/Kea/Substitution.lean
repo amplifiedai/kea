@@ -139,6 +139,11 @@ mutual
 
 end
 
+/-- Apply a substitution to an effect row. -/
+def applySubstEffectRow (s : Subst) (fuel : Nat) (effects : EffectRow) : EffectRow :=
+  match effects with
+  | .mk row => .mk (applySubstRow s fuel row)
+
 -- Convenience wrappers with default fuel.
 
 /-- Apply substitution with default fuel. -/
