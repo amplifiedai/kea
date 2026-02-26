@@ -118,3 +118,66 @@ theorem unifyRows_open_open_update_extendsAndWf_idempotent_fresh
   · exact freshOpenRows_update_with_lacks_preserves_substWellFormedRange
       st' kctx rctx rv1 rv2 onlyLeft onlyRight lacks''
       h_wf h_onlyLeft h_onlyRight h_fresh_in_ctx
+
+/-- Full-state open-open combined contract (including non-`subst` updates). -/
+theorem unifyRows_open_open_update_extendsAndWf_idempotent_full_state_fresh
+    (st st' : UnifyState) (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat)
+    (r1 r2 : Row) (rv1 rv2 : RowVarId) (onlyLeft onlyRight : RowFields)
+    (lacks'' : Lacks) (bounds'' : TraitBounds) (nextType'' nextRow'' : Nat)
+    (h_ext : ExtendsRowBindings st st')
+    (h_ne : rv2 ≠ rv1)
+    (h_idemp : st'.subst.Idempotent)
+    (h_rest1 : (applySubstRow st'.subst (fuel + 1) r1).rest = some rv1)
+    (h_rest2 : (applySubstRow st'.subst (fuel + 1) r2).rest = some rv2)
+    (h_wf : UnifyState.SubstWellFormedRange st' kctx rctx)
+    (h_onlyLeft : RowFields.WellFormed kctx rctx onlyLeft)
+    (h_onlyRight : RowFields.WellFormed kctx rctx onlyRight)
+    (h_fresh_in_ctx : (st'.freshRowVar).1 ∈ rctx) :
+    let fr := st'.freshRowVar
+    let r3 := fr.1
+    let st'' := fr.2
+    let subst' :=
+      Subst.bindRow
+        (Subst.bindRow st''.subst rv1 (Row.mkOpen onlyRight r3))
+        rv2
+        (Row.mkOpen onlyLeft r3)
+    ExtendsAndWfRange st
+      { st'' with
+          subst := subst',
+          lacks := lacks'',
+          traitBounds := bounds'',
+          nextTypeVar := nextType'',
+          nextRowVar := nextRow'' }
+      kctx rctx := by
+  dsimp
+  constructor
+  · exact unifyRows_open_open_update_extends_idempotent_full_state_fresh
+      st st' fuel r1 r2 rv1 rv2 onlyLeft onlyRight
+      lacks'' bounds'' nextType'' nextRow''
+      h_ext h_ne h_idemp h_rest1 h_rest2
+  ·
+    let stBase : UnifyState :=
+      { (st'.freshRowVar).2 with
+          subst :=
+            Subst.bindRow
+              (Subst.bindRow (st'.freshRowVar).2.subst rv1 (Row.mkOpen onlyRight (st'.freshRowVar).1))
+              rv2
+              (Row.mkOpen onlyLeft (st'.freshRowVar).1),
+          lacks := lacks'' }
+    have h_base : UnifyState.SubstWellFormedRange stBase kctx rctx :=
+      freshOpenRows_update_with_lacks_preserves_substWellFormedRange
+        st' kctx rctx rv1 rv2 onlyLeft onlyRight lacks''
+        h_wf h_onlyLeft h_onlyRight h_fresh_in_ctx
+    exact UnifyState.substWellFormedRange_of_subst_eq
+      stBase
+      { (st'.freshRowVar).2 with
+          subst :=
+            Subst.bindRow
+              (Subst.bindRow (st'.freshRowVar).2.subst rv1 (Row.mkOpen onlyRight (st'.freshRowVar).1))
+              rv2
+              (Row.mkOpen onlyLeft (st'.freshRowVar).1),
+          lacks := lacks'',
+          traitBounds := bounds'',
+          nextTypeVar := nextType'',
+          nextRowVar := nextRow'' }
+      kctx rctx rfl h_base
