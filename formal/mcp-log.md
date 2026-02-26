@@ -4848,3 +4848,21 @@ changes yet).
 **Outcome**:
 - Resume-linearity theorem work can now proceed incrementally by connecting
   concrete handler typing constraints to this summary algebra.
+
+### 2026-02-26: resume combine characterization (proof-layer refinement)
+
+**Context**: Refined the resume scaffold with a complete condition for when
+composed summaries stay at-most-once.
+
+**MCP tools used**: none (proof-layer refinement; no new runtime probes).
+
+**Lean side**:
+- Added `resume_combine_atMostOnce_iff`.
+- Added `resume_combine_atMostOnce_implies_one_side_zero`.
+- Added `resume_combine_one_one_not_atMostOnce`.
+
+**Classify**: N/A (no direct runtime-facing claim delta at this layer).
+
+**Outcome**:
+- The scaffold now has a direct theorem hook for enforcing branch exclusivity
+  in future concrete resume-typing proofs.
