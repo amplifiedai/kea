@@ -742,6 +742,7 @@ fn clif_type(ty: &Type) -> Result<cranelift::prelude::Type, CodegenError> {
         | Type::Sum(_)
         | Type::Option(_)
         | Type::Result(_, _)
+        | Type::Function(_)
         | Type::Opaque { .. } => Ok(types::I64),
         unsupported => Err(CodegenError::UnsupportedType {
             ty: unsupported.to_string(),
@@ -1091,6 +1092,19 @@ fn lower_instruction<M: Module>(
             values.insert(dest.clone(), value);
             Ok(false)
         }
+        MirInst::FunctionRef { dest, function } => {
+            let func_id =
+                *ctx.func_ids
+                    .get(function)
+                    .ok_or_else(|| CodegenError::UnknownFunction {
+                        function: function.clone(),
+                    })?;
+            let func_ref = module.declare_func_in_func(func_id, builder.func);
+            let ptr_ty = module.target_config().pointer_type();
+            let addr = builder.ins().func_addr(ptr_ty, func_ref);
+            values.insert(dest.clone(), addr);
+            Ok(false)
+        }
         MirInst::Call {
             callee,
             args,
@@ -1150,10 +1164,40 @@ fn lower_instruction<M: Module>(
                     }
                 }
                 MirCallee::Value(_) => {
-                    return Err(CodegenError::UnsupportedMir {
-                        function: function_name.to_string(),
-                        detail: "indirect function calls are not implemented in 0d".to_string(),
-                    });
+                    if arg_types.len() != args.len() {
+                        return Err(CodegenError::UnsupportedMir {
+                            function: function_name.to_string(),
+                            detail: format!(
+                                "indirect call has {} args but {} arg types",
+                                args.len(),
+                                arg_types.len()
+                            ),
+                        });
+                    }
+                    let callee_value = if let MirCallee::Value(callee_value) = callee {
+                        get_value(values, function_name, callee_value)?
+                    } else {
+                        unreachable!("matched Value callee above")
+                    };
+                    let ptr_ty = module.target_config().pointer_type();
+                    let callee_ptr = coerce_value_to_clif_type(builder, callee_value, ptr_ty);
+                    let mut signature = module.make_signature();
+                    for arg_ty in arg_types {
+                        signature.params.push(AbiParam::new(clif_type(arg_ty)?));
+                    }
+                    if *ret_type != Type::Unit {
+                        signature.returns.push(AbiParam::new(clif_type(ret_type)?));
+                    }
+                    let sig_ref = builder.import_signature(signature);
+                    let call = builder
+                        .ins()
+                        .call_indirect(sig_ref, callee_ptr, &lowered_args);
+                    let call_result = builder.inst_results(call).first().copied();
+                    if *ret_type == Type::Unit {
+                        None
+                    } else {
+                        call_result
+                    }
                 }
             };
 
@@ -1904,6 +1948,7 @@ fn collect_function_stats(function: &MirFunction) -> FunctionPassStats {
                 | MirInst::SumTagLoad { .. }
                 | MirInst::SumPayloadLoad { .. }
                 | MirInst::RecordFieldLoad { .. }
+                | MirInst::FunctionRef { .. }
                 | MirInst::Move { .. }
                 | MirInst::Borrow { .. }
                 | MirInst::TryClaim { .. }
@@ -2758,6 +2803,107 @@ mod tests {
         }
     }
 
+    fn sample_indirect_function_call_module() -> MirModule {
+        let unary_fn_ty = Type::Function(FunctionType::pure(vec![Type::Int], Type::Int));
+        MirModule {
+            functions: vec![
+                MirFunction {
+                    name: "inc".to_string(),
+                    signature: MirFunctionSignature {
+                        params: vec![Type::Int],
+                        ret: Type::Int,
+                        effects: EffectRow::pure(),
+                    },
+                    entry: MirBlockId(0),
+                    blocks: vec![MirBlock {
+                        id: MirBlockId(0),
+                        params: vec![],
+                        instructions: vec![
+                            MirInst::Const {
+                                dest: MirValueId(1),
+                                literal: MirLiteral::Int(1),
+                            },
+                            MirInst::Binary {
+                                dest: MirValueId(2),
+                                op: MirBinaryOp::Add,
+                                left: MirValueId(0),
+                                right: MirValueId(1),
+                            },
+                        ],
+                        terminator: MirTerminator::Return {
+                            value: Some(MirValueId(2)),
+                        },
+                    }],
+                },
+                MirFunction {
+                    name: "apply_twice".to_string(),
+                    signature: MirFunctionSignature {
+                        params: vec![unary_fn_ty.clone(), Type::Int],
+                        ret: Type::Int,
+                        effects: EffectRow::pure(),
+                    },
+                    entry: MirBlockId(0),
+                    blocks: vec![MirBlock {
+                        id: MirBlockId(0),
+                        params: vec![],
+                        instructions: vec![
+                            MirInst::Call {
+                                callee: MirCallee::Value(MirValueId(0)),
+                                args: vec![MirValueId(1)],
+                                arg_types: vec![Type::Int],
+                                result: Some(MirValueId(2)),
+                                ret_type: Type::Int,
+                                cc_manifest_id: "default".to_string(),
+                            },
+                            MirInst::Call {
+                                callee: MirCallee::Value(MirValueId(0)),
+                                args: vec![MirValueId(2)],
+                                arg_types: vec![Type::Int],
+                                result: Some(MirValueId(3)),
+                                ret_type: Type::Int,
+                                cc_manifest_id: "default".to_string(),
+                            },
+                        ],
+                        terminator: MirTerminator::Return {
+                            value: Some(MirValueId(3)),
+                        },
+                    }],
+                },
+                MirFunction {
+                    name: "run".to_string(),
+                    signature: MirFunctionSignature {
+                        params: vec![Type::Int],
+                        ret: Type::Int,
+                        effects: EffectRow::pure(),
+                    },
+                    entry: MirBlockId(0),
+                    blocks: vec![MirBlock {
+                        id: MirBlockId(0),
+                        params: vec![],
+                        instructions: vec![
+                            MirInst::FunctionRef {
+                                dest: MirValueId(1),
+                                function: "inc".to_string(),
+                            },
+                            MirInst::Call {
+                                callee: MirCallee::Local("apply_twice".to_string()),
+                                args: vec![MirValueId(1), MirValueId(0)],
+                                arg_types: vec![unary_fn_ty, Type::Int],
+                                result: Some(MirValueId(2)),
+                                ret_type: Type::Int,
+                                cc_manifest_id: "default".to_string(),
+                            },
+                        ],
+                        terminator: MirTerminator::Return {
+                            value: Some(MirValueId(2)),
+                        },
+                    }],
+                },
+            ],
+            layouts: MirLayoutCatalog::default(),
+        }
+    }
+
     #[test]
     fn validate_abi_manifest_reports_missing_function() {
         let module = sample_stats_module();
@@ -3136,6 +3282,26 @@ mod tests {
             payload, 8,
             "caller should unwrap Ok payload, continue computation, and re-wrap"
         );
+    }
+
+    #[test]
+    fn cranelift_backend_compiles_indirect_function_pointer_calls() {
+        let module = sample_indirect_function_call_module();
+        let layout_plan = plan_layout_catalog(&module).expect("layout planning should succeed");
+        let isa = build_isa(&BackendConfig::default()).expect("host ISA should build");
+        let builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
+        let mut jit_module = JITModule::new(builder);
+        let func_ids = compile_into_module(&mut jit_module, &module, &layout_plan)
+            .expect("indirect call module should compile");
+        jit_module
+            .finalize_definitions()
+            .expect("finalize definitions should succeed");
+
+        let run_id = *func_ids.get("run").expect("run function id");
+        let run_ptr = jit_module.get_finalized_function(run_id);
+        let run: unsafe extern "C" fn(i64) -> i64 = unsafe { std::mem::transmute(run_ptr) };
+        let out = unsafe { run(41) };
+        assert_eq!(out, 43, "run should apply inc twice via function pointer");
     }
 
     #[test]
