@@ -378,33 +378,51 @@ The OTP mapping we're targeting:
 | `application` | `Main` struct (proposed) |
 | Fault tolerance | Runtime isolation + effect scoping (see below) |
 
-### On fault boundaries
+### On fault boundaries — what Kea does and does not guarantee
 
-In Erlang, crash isolation comes from the BEAM's process model:
-separate heaps, separate stacks, no shared mutable state. A
-process crash cannot corrupt another process.
+**What Erlang gives you:** physical crash isolation. Separate heaps,
+separate stacks, no shared mutable state. A segfault, OOM, or panic
+in one BEAM process cannot corrupt or take down another. The VM
+itself survives individual process failures. This is Erlang's
+superpower and Kea does not replicate it.
 
-In Kea, the picture is layered:
+**What Kea does NOT give you:** physical crash isolation. Kea
+compiles to a single native binary via Cranelift. A segfault in an
+FFI call, a stack overflow, or a panic in a third-party native
+library crashes the OS process. All actors share one address space.
+This is a fundamental tradeoff: native performance in exchange for
+weaker crash boundaries.
 
-- **Effect scoping provides logical isolation.** Each actor's
-  `State S` effect is scoped to its handler. One actor's state
-  cannot leak into another's. When a supervisor restarts an actor,
-  it calls `init` with fresh state. The type system verifies that
-  `handle` returns `(Self, T)` — the actor always produces its
-  next state explicitly.
+**What Kea gives you instead:** static guarantees that Erlang cannot.
 
-- **The runtime provides physical isolation.** Crash recovery
-  (catching panics, restarting actors) is a runtime concern, not
-  something the type system proves. Effects scope state and
-  behavior; the runtime provides the safety net when things go
-  wrong despite the types.
+- **Effect-scoped state isolation.** Each actor's `State S` effect
+  is scoped to its handler. One actor's state cannot leak into
+  another's — this is a compile-time guarantee, not a runtime check.
+  When a supervisor restarts an actor, it calls `init` with fresh
+  state. The type system verifies that `handle` returns `(Self, T)`
+  — the actor always produces its next state explicitly.
 
-This is weaker than Erlang's guarantee (separate heaps) but
-stronger than most typed actor systems (which don't track effects
-at all). The honest claim: effects make actor state management
-*correct by construction*, and the runtime makes crash recovery
-*possible*. Together, they approximate OTP's reliability model
-in a statically typed language.
+- **Typed message protocols.** GADT-typed actor messages mean the
+  compiler checks that senders and receivers agree on types. Erlang
+  discovers protocol mismatches at runtime (or doesn't).
+
+- **Capability-checked effects.** The compiler proves which actors
+  can do IO, network, spawn children. In Erlang, any process can do
+  anything — capability restriction is convention, not enforcement.
+
+- **Runtime crash recovery.** Catching panics and restarting actors
+  is a runtime concern, not something the type system proves. The
+  runtime provides the safety net when things go wrong despite the
+  types. This recovers from Kea-level panics but NOT from native
+  crashes (segfaults, OOM kills).
+
+**The honest comparison:** Kea trades physical crash isolation for
+static correctness guarantees and native performance. If your
+failure mode is "actor sent the wrong message type" or "actor
+accessed state it shouldn't have," Kea catches it at compile time
+where Erlang catches it at runtime (or not at all). If your failure
+mode is "FFI library segfaulted," Erlang survives and Kea doesn't.
+Both are real failure modes. Know which ones matter for your system.
 
 ---
 
@@ -496,11 +514,13 @@ motivation for `* -> *` disappears. The indentation-sensitive
 syntax is closer to Haskell than to anything else.
 
 **Erlang/OTP** gave us the actor model, supervision trees, and
-"let it crash." Kea's contribution is bringing those ideas into
-a statically typed world where message protocols are checked at
-compile time. Whether we actually achieve OTP's reliability
-properties depends on the runtime, not just the types — that's
-ongoing work.
+"let it crash." Kea brings typed message protocols and
+capability-checked effects to that model. What Kea does NOT bring
+is Erlang's physical crash isolation — a shared-memory native
+binary cannot match the BEAM's per-process heap model. The
+tradeoff is explicit: static guarantees and native performance
+in exchange for weaker fault boundaries. See "On fault
+boundaries" above.
 
 **Koka** pioneered practical algebraic effects with row-based
 effect typing. Kea extends the idea with GADTs (for typed actor
