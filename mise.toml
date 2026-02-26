@@ -135,3 +135,7 @@ fi
 [tasks.bench]
 description = "Run compiler microbenchmarks"
 run = "./scripts/cargo-agent.sh bench -p kea-bench --bench core"
+
+[tasks."bench:export"]
+description = "Run benchmarks and export stable artifacts (raw + csv + json + meta)"
+run = "./scripts/bench-export.sh benchmark-results/latest"
