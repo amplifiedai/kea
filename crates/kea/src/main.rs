@@ -1,12 +1,15 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
+#[cfg(test)]
 use std::sync::atomic::{AtomicU64, Ordering};
+#[cfg(test)]
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use kea_ast::{DeclKind, ExprDecl, FileId, FnDecl, Module, TypeDef};
 use kea_codegen::{
     Backend, BackendConfig, CodegenMode, CraneliftBackend, default_abi_manifest,
+    execute_hir_main_jit,
 };
 use kea_diag::{Diagnostic, Severity};
 use kea_hir::lower_module;
@@ -21,6 +24,7 @@ use kea_infer::typeck::{
 use kea_mir::lower_hir_module;
 use kea_syntax::{lex_layout, parse_module};
 
+#[cfg(test)]
 static TEMP_NONCE: AtomicU64 = AtomicU64::new(0);
 
 fn main() {
@@ -36,18 +40,10 @@ fn run() -> Result<(), String> {
 
     match command {
         Command::Run { input } => {
-            let result = compile_file(&input, CodegenMode::Aot)?;
+            let result = run_file(&input)?;
             emit_diagnostics(&result.diagnostics);
-            if result.object.is_empty() {
-                return Err("run backend produced no object bytes".to_string());
-            }
-            let status = execute_object_bytes(&result.object)?;
-            if let Some(code) = status.code() {
-                if code != 0 {
-                    std::process::exit(code);
-                }
-            } else if !status.success() {
-                return Err("program terminated without an exit code".to_string());
+            if result.exit_code != 0 {
+                std::process::exit(result.exit_code);
             }
             Ok(())
         }
@@ -87,6 +83,12 @@ struct CompileResult {
     diagnostics: Vec<Diagnostic>,
 }
 
+#[derive(Debug)]
+struct RunResult {
+    exit_code: i32,
+    diagnostics: Vec<Diagnostic>,
+}
+
 fn compile_file(input: &Path, mode: CodegenMode) -> Result<CompileResult, String> {
     let source = fs::read_to_string(input)
         .map_err(|err| format!("failed to read `{}`: {err}", input.display()))?;
@@ -110,6 +112,21 @@ fn compile_file(input: &Path, mode: CodegenMode) -> Result<CompileResult, String
 
     Ok(CompileResult {
         object: artifact.object,
+        diagnostics: pipeline.diagnostics,
+    })
+}
+
+fn run_file(input: &Path) -> Result<RunResult, String> {
+    let source = fs::read_to_string(input)
+        .map_err(|err| format!("failed to read `{}`: {err}", input.display()))?;
+
+    let pipeline = parse_and_typecheck_module(&source, FileId(0))?;
+    let hir = lower_module(&pipeline.module, &pipeline.type_env);
+    let exit_code = execute_hir_main_jit(&hir, &BackendConfig::default())
+        .map_err(|err| format!("codegen failed: {err}"))?;
+
+    Ok(RunResult {
+        exit_code,
         diagnostics: pipeline.diagnostics,
     })
 }
@@ -435,48 +452,6 @@ fn link_object_bytes(object: &[u8], output: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn execute_object_bytes(object: &[u8]) -> Result<std::process::ExitStatus, String> {
-    let temp_dir = std::env::temp_dir();
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|err| format!("system clock error while preparing temp executable paths: {err}"))?
-        .as_nanos()
-        .to_string();
-    let counter = TEMP_NONCE.fetch_add(1, Ordering::Relaxed);
-    let nonce = format!("{timestamp}-{counter}");
-    let object_path = temp_dir.join(format!("kea-run-{}-{nonce}.o", std::process::id()));
-    let binary_path = temp_dir.join(format!("kea-run-{}-{nonce}", std::process::id()));
-
-    fs::write(&object_path, object).map_err(|err| {
-        format!(
-            "failed to write temporary object `{}`: {err}",
-            object_path.display()
-        )
-    })?;
-
-    let link_status = ProcessCommand::new("cc")
-        .arg(&object_path)
-        .arg("-o")
-        .arg(&binary_path)
-        .status()
-        .map_err(|err| format!("failed to invoke linker `cc`: {err}"))?;
-    let _ = fs::remove_file(&object_path);
-
-    if !link_status.success() {
-        let _ = fs::remove_file(&binary_path);
-        return Err(format!(
-            "linker failed for temporary executable `{}`",
-            binary_path.display()
-        ));
-    }
-
-    let run_status = ProcessCommand::new(&binary_path)
-        .status()
-        .map_err(|err| format!("failed to execute `{}`: {err}", binary_path.display()))?;
-    let _ = fs::remove_file(&binary_path);
-    Ok(run_status)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -517,11 +492,8 @@ mod tests {
             "kea",
         );
 
-        let compiled = compile_file(&source_path, CodegenMode::Aot).expect("compile should succeed");
-        assert!(!compiled.object.is_empty());
-
-        let status = execute_object_bytes(&compiled.object).expect("execution should succeed");
-        assert_eq!(status.code(), Some(9));
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 9);
 
         let _ = std::fs::remove_file(source_path);
     }
@@ -534,11 +506,8 @@ mod tests {
             "kea",
         );
 
-        let compiled = compile_file(&source_path, CodegenMode::Aot).expect("compile should succeed");
-        assert!(!compiled.object.is_empty());
-
-        let status = execute_object_bytes(&compiled.object).expect("execution should succeed");
-        assert_eq!(status.code(), Some(3));
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 3);
 
         let _ = std::fs::remove_file(source_path);
     }
@@ -551,11 +520,8 @@ mod tests {
             "kea",
         );
 
-        let compiled = compile_file(&source_path, CodegenMode::Aot).expect("compile should succeed");
-        assert!(!compiled.object.is_empty());
-
-        let status = execute_object_bytes(&compiled.object).expect("execution should succeed");
-        assert_eq!(status.code(), Some(6));
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 6);
 
         let _ = std::fs::remove_file(source_path);
     }
