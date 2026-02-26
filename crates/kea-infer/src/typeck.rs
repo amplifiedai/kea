@@ -118,6 +118,12 @@ pub struct FnParamSignature {
     pub default: Option<Expr>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ResumeContext {
+    operation_return: Type,
+    clause_result: Type,
+}
+
 impl FnSignature {
     /// Build an all-positional signature with no defaults.
     pub fn all_positional(arity: usize) -> Self {
@@ -276,6 +282,8 @@ pub struct TypeEnv {
     /// Used for warnings about operations that can block an actor mailbox
     /// (for example `await` inside an actor impl method body).
     actor_context_depth: usize,
+    /// Active resume contexts for nested handler clauses.
+    resume_contexts: Vec<ResumeContext>,
 }
 
 impl TypeEnv {
@@ -300,6 +308,7 @@ impl TypeEnv {
             module_aliases: BTreeMap::new(),
             stream_contexts: Vec::new(),
             actor_context_depth: 0,
+            resume_contexts: Vec::new(),
         }
     }
 
@@ -689,6 +698,17 @@ impl TypeEnv {
     /// True when currently inferring inside an actor method body.
     pub fn in_actor_context(&self) -> bool {
         self.actor_context_depth > 0
+    }
+
+    fn push_resume_context(&mut self, operation_return: Type, clause_result: Type) {
+        self.resume_contexts.push(ResumeContext {
+            operation_return,
+            clause_result,
+        });
+    }
+
+    fn current_resume_context(&self) -> Option<&ResumeContext> {
+        self.resume_contexts.last()
     }
 
     /// Return all visible names with their type representations.
@@ -8249,6 +8269,61 @@ fn infer_expr_effect_row(
             infer_expr_effect_row(value, env, constraints, next_effect_var)
         }
 
+        ExprKind::Handle {
+            expr: handled,
+            clauses,
+            then_clause,
+        } => {
+            let handled_effects = infer_expr_effect_row(handled, env, constraints, next_effect_var);
+            let mut clause_terms = Vec::with_capacity(clauses.len());
+            for clause in clauses {
+                clause_terms.push(infer_expr_effect_row(
+                    &clause.body,
+                    env,
+                    constraints,
+                    next_effect_var,
+                ));
+            }
+            let clause_effects = join_effect_rows_many(clause_terms, constraints, next_effect_var);
+
+            let then_effects = then_clause.as_ref().map(|then_expr| {
+                join_effect_rows(
+                    infer_expr_effect_row(then_expr, env, constraints, next_effect_var),
+                    infer_callable_value_effect_row(then_expr, env, constraints, next_effect_var),
+                    constraints,
+                    next_effect_var,
+                )
+            });
+
+            let body_effects = if let Some(then_effects) = then_effects {
+                join_effect_rows(clause_effects, then_effects, constraints, next_effect_var)
+            } else {
+                clause_effects
+            };
+
+            let Some(first_clause) = clauses.first() else {
+                return join_effect_rows(handled_effects, body_effects, constraints, next_effect_var);
+            };
+
+            let handled_label = Label::new(first_clause.effect.node.clone());
+            let rest = fresh_effect_var(next_effect_var);
+            constraints.push(Constraint::RowEqual {
+                expected: RowType::open(vec![(handled_label, Type::Unit)], rest),
+                actual: handled_effects.row,
+                provenance: Provenance {
+                    span: expr.span,
+                    reason: Reason::TypeAscription,
+                },
+            });
+
+            let passthrough = EffectRow::open(vec![], rest);
+            join_effect_rows(passthrough, body_effects, constraints, next_effect_var)
+        }
+
+        ExprKind::Resume { value } => {
+            infer_expr_effect_row(value, env, constraints, next_effect_var)
+        }
+
         ExprKind::Call { func, args } => {
             let mut terms = Vec::with_capacity(args.len() + 2);
             let mut arg_eval_terms = Vec::with_capacity(args.len());
@@ -11081,6 +11156,510 @@ fn check_condition_and_collect_narrowings(
     }
 }
 
+fn collect_resume_usage(
+    expr: &Expr,
+    inside_loop: bool,
+    inside_lambda: bool,
+    resume_count: &mut usize,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    match &expr.node {
+        ExprKind::Resume { value } => {
+            *resume_count += 1;
+            if inside_loop {
+                diagnostics.push(
+                    Diagnostic::error(
+                        Category::TypeError,
+                        "`resume` is not allowed inside loops in handler clauses",
+                    )
+                    .at(span_to_loc(expr.span)),
+                );
+            }
+            if inside_lambda {
+                diagnostics.push(
+                    Diagnostic::error(
+                        Category::TypeError,
+                        "`resume` cannot be captured in a lambda",
+                    )
+                    .at(span_to_loc(expr.span)),
+                );
+            }
+            collect_resume_usage(value, inside_loop, inside_lambda, resume_count, diagnostics);
+        }
+        ExprKind::Lit(_) | ExprKind::Var(_) | ExprKind::None | ExprKind::Atom(_) | ExprKind::Wildcard => {}
+        ExprKind::Let { value, .. } => {
+            collect_resume_usage(value, inside_loop, inside_lambda, resume_count, diagnostics);
+        }
+        ExprKind::Lambda { body, .. } => {
+            collect_resume_usage(body, inside_loop, true, resume_count, diagnostics);
+        }
+        ExprKind::Call { func, args } => {
+            collect_resume_usage(func, inside_loop, inside_lambda, resume_count, diagnostics);
+            for arg in args {
+                collect_resume_usage(
+                    &arg.value,
+                    inside_loop,
+                    inside_lambda,
+                    resume_count,
+                    diagnostics,
+                );
+            }
+        }
+        ExprKind::If {
+            condition,
+            then_branch,
+            else_branch,
+        } => {
+            collect_resume_usage(
+                condition,
+                inside_loop,
+                inside_lambda,
+                resume_count,
+                diagnostics,
+            );
+            collect_resume_usage(
+                then_branch,
+                inside_loop,
+                inside_lambda,
+                resume_count,
+                diagnostics,
+            );
+            if let Some(otherwise) = else_branch {
+                collect_resume_usage(
+                    otherwise,
+                    inside_loop,
+                    inside_lambda,
+                    resume_count,
+                    diagnostics,
+                );
+            }
+        }
+        ExprKind::Case { scrutinee, arms } => {
+            collect_resume_usage(
+                scrutinee,
+                inside_loop,
+                inside_lambda,
+                resume_count,
+                diagnostics,
+            );
+            for arm in arms {
+                if let Some(guard) = &arm.guard {
+                    collect_resume_usage(
+                        guard,
+                        inside_loop,
+                        inside_lambda,
+                        resume_count,
+                        diagnostics,
+                    );
+                }
+                collect_resume_usage(
+                    &arm.body,
+                    inside_loop,
+                    inside_lambda,
+                    resume_count,
+                    diagnostics,
+                );
+            }
+        }
+        ExprKind::Cond { arms } => {
+            for arm in arms {
+                collect_resume_usage(
+                    &arm.condition,
+                    inside_loop,
+                    inside_lambda,
+                    resume_count,
+                    diagnostics,
+                );
+                collect_resume_usage(
+                    &arm.body,
+                    inside_loop,
+                    inside_lambda,
+                    resume_count,
+                    diagnostics,
+                );
+            }
+        }
+        ExprKind::For(for_expr) => {
+            for clause in &for_expr.clauses {
+                match clause {
+                    ForClause::Generator { source, .. } => collect_resume_usage(
+                        source,
+                        true,
+                        inside_lambda,
+                        resume_count,
+                        diagnostics,
+                    ),
+                    ForClause::Guard(guard) => collect_resume_usage(
+                        guard,
+                        true,
+                        inside_lambda,
+                        resume_count,
+                        diagnostics,
+                    ),
+                }
+            }
+            collect_resume_usage(
+                &for_expr.body,
+                true,
+                inside_lambda,
+                resume_count,
+                diagnostics,
+            );
+        }
+        ExprKind::Use(use_expr) => {
+            collect_resume_usage(
+                &use_expr.rhs,
+                inside_loop,
+                inside_lambda,
+                resume_count,
+                diagnostics,
+            );
+        }
+        ExprKind::BinaryOp { left, right, .. } => {
+            collect_resume_usage(left, inside_loop, inside_lambda, resume_count, diagnostics);
+            collect_resume_usage(right, inside_loop, inside_lambda, resume_count, diagnostics);
+        }
+        ExprKind::UnaryOp { operand, .. } | ExprKind::As { expr: operand, .. } => {
+            collect_resume_usage(
+                operand,
+                inside_loop,
+                inside_lambda,
+                resume_count,
+                diagnostics,
+            );
+        }
+        ExprKind::WhenGuard { body, condition } => {
+            collect_resume_usage(body, inside_loop, inside_lambda, resume_count, diagnostics);
+            collect_resume_usage(
+                condition,
+                inside_loop,
+                inside_lambda,
+                resume_count,
+                diagnostics,
+            );
+        }
+        ExprKind::Range { start, end, .. } => {
+            collect_resume_usage(start, inside_loop, inside_lambda, resume_count, diagnostics);
+            collect_resume_usage(end, inside_loop, inside_lambda, resume_count, diagnostics);
+        }
+        ExprKind::Tuple(items) | ExprKind::List(items) | ExprKind::Block(items) => {
+            for item in items {
+                collect_resume_usage(item, inside_loop, inside_lambda, resume_count, diagnostics);
+            }
+        }
+        ExprKind::Record { fields, spread, .. } | ExprKind::AnonRecord { fields, spread } => {
+            for (_, value) in fields {
+                collect_resume_usage(value, inside_loop, inside_lambda, resume_count, diagnostics);
+            }
+            if let Some(spread_expr) = spread {
+                collect_resume_usage(
+                    spread_expr,
+                    inside_loop,
+                    inside_lambda,
+                    resume_count,
+                    diagnostics,
+                );
+            }
+        }
+        ExprKind::FieldAccess { expr, .. } => {
+            collect_resume_usage(expr, inside_loop, inside_lambda, resume_count, diagnostics);
+        }
+        ExprKind::Constructor { args, .. } => {
+            for arg in args {
+                collect_resume_usage(
+                    &arg.value,
+                    inside_loop,
+                    inside_lambda,
+                    resume_count,
+                    diagnostics,
+                );
+            }
+        }
+        ExprKind::StringInterp(parts) => {
+            for part in parts {
+                if let kea_ast::StringInterpPart::Expr(inner) = part {
+                    collect_resume_usage(
+                        inner,
+                        inside_loop,
+                        inside_lambda,
+                        resume_count,
+                        diagnostics,
+                    );
+                }
+            }
+        }
+        ExprKind::MapLiteral(entries) => {
+            for (k, v) in entries {
+                collect_resume_usage(k, inside_loop, inside_lambda, resume_count, diagnostics);
+                collect_resume_usage(v, inside_loop, inside_lambda, resume_count, diagnostics);
+            }
+        }
+        ExprKind::Handle {
+            expr: handled,
+            clauses: _,
+            then_clause,
+        } => {
+            // Nested handler clauses have their own resume context.
+            collect_resume_usage(
+                handled,
+                inside_loop,
+                inside_lambda,
+                resume_count,
+                diagnostics,
+            );
+            if let Some(then_expr) = then_clause {
+                collect_resume_usage(
+                    then_expr,
+                    inside_loop,
+                    inside_lambda,
+                    resume_count,
+                    diagnostics,
+                );
+            }
+        }
+        ExprKind::Spawn { value, config } => {
+            collect_resume_usage(value, inside_loop, inside_lambda, resume_count, diagnostics);
+            if let Some(cfg) = config {
+                for entry in [
+                    cfg.mailbox_size.as_ref(),
+                    cfg.supervision.as_ref(),
+                    cfg.max_restarts.as_ref(),
+                    cfg.call_timeout.as_ref(),
+                ]
+                .into_iter()
+                .flatten()
+                {
+                    collect_resume_usage(
+                        entry,
+                        inside_loop,
+                        inside_lambda,
+                        resume_count,
+                        diagnostics,
+                    );
+                }
+            }
+        }
+        ExprKind::Await { expr, .. } => {
+            collect_resume_usage(expr, inside_loop, inside_lambda, resume_count, diagnostics);
+        }
+        ExprKind::StreamBlock { body, .. } => {
+            collect_resume_usage(body, inside_loop, inside_lambda, resume_count, diagnostics);
+        }
+        ExprKind::Yield { value } => {
+            collect_resume_usage(value, inside_loop, inside_lambda, resume_count, diagnostics);
+        }
+        ExprKind::YieldFrom { source } => {
+            collect_resume_usage(source, inside_loop, inside_lambda, resume_count, diagnostics);
+        }
+        ExprKind::ActorSend { actor, args, .. } | ExprKind::ActorCall { actor, args, .. } => {
+            collect_resume_usage(actor, inside_loop, inside_lambda, resume_count, diagnostics);
+            for arg in args {
+                collect_resume_usage(arg, inside_loop, inside_lambda, resume_count, diagnostics);
+            }
+        }
+        ExprKind::ControlSend { actor, signal } => {
+            collect_resume_usage(actor, inside_loop, inside_lambda, resume_count, diagnostics);
+            collect_resume_usage(signal, inside_loop, inside_lambda, resume_count, diagnostics);
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn infer_handle_expr_type(
+    expr_span: Span,
+    handled: &Expr,
+    clauses: &[kea_ast::HandleClause],
+    then_clause: Option<&Expr>,
+    env: &mut TypeEnv,
+    unifier: &mut Unifier,
+    records: &RecordRegistry,
+    traits: &TraitRegistry,
+    sum_types: &SumTypeRegistry,
+) -> Type {
+    let handled_ty = infer_expr_bidir(handled, env, unifier, records, traits, sum_types);
+    let mut result_ty = handled_ty.clone();
+
+    if let Some(then_expr) = then_clause {
+        let then_ty = infer_expr_bidir(then_expr, env, unifier, records, traits, sum_types);
+        let out_ty = unifier.fresh_type();
+        let expected = Type::Function(FunctionType {
+            params: vec![handled_ty.clone()],
+            ret: Box::new(out_ty.clone()),
+        });
+        constrain_type_eq(
+            unifier,
+            &then_ty,
+            &expected,
+            &Provenance {
+                span: then_expr.span,
+                reason: Reason::TypeAscription,
+            },
+        );
+        result_ty = out_ty;
+    }
+
+    let Some(first_clause) = clauses.first() else {
+        unifier.push_error(
+            Diagnostic::error(
+                Category::TypeError,
+                "handle expression requires at least one operation clause",
+            )
+            .at(span_to_loc(expr_span)),
+        );
+        return unifier.fresh_type();
+    };
+
+    let target_effect = first_clause.effect.node.clone();
+    let module_path = env
+        .module_aliases
+        .get(&target_effect)
+        .cloned()
+        .unwrap_or_else(|| format!("Kea.{target_effect}"));
+    let mut seen_ops = BTreeSet::new();
+
+    for clause in clauses {
+        if clause.effect.node != target_effect {
+            unifier.push_error(
+                Diagnostic::error(
+                    Category::TypeError,
+                    format!(
+                        "all clauses in a handle expression must target `{target_effect}`; found `{}`",
+                        clause.effect.node
+                    ),
+                )
+                .at(span_to_loc(clause.effect.span)),
+            );
+            continue;
+        }
+        if !seen_ops.insert(clause.operation.node.clone()) {
+            unifier.push_error(
+                Diagnostic::error(
+                    Category::TypeError,
+                    format!(
+                        "duplicate handler clause for `{target_effect}.{}(...)`",
+                        clause.operation.node
+                    ),
+                )
+                .at(span_to_loc(clause.operation.span)),
+            );
+        }
+
+        let Some(op_scheme) = env.lookup_module_type_scheme(&module_path, &clause.operation.node)
+        else {
+            unifier.push_error(
+                Diagnostic::error(
+                    Category::UndefinedName,
+                    format!(
+                        "effect `{target_effect}` has no operation `{}`",
+                        clause.operation.node
+                    ),
+                )
+                .at(span_to_loc(clause.operation.span)),
+            );
+            continue;
+        };
+        let op_ty = instantiate_with_span(&op_scheme, unifier, clause.span);
+        let resolved_op_ty = unifier.substitution.apply(&op_ty);
+        let Type::Function(op_fn) = resolved_op_ty else {
+            unifier.push_error(
+                Diagnostic::error(
+                    Category::TypeError,
+                    format!(
+                        "effect operation `{target_effect}.{}(...)` is not callable",
+                        clause.operation.node
+                    ),
+                )
+                .at(span_to_loc(clause.operation.span)),
+            );
+            continue;
+        };
+
+        if clause.args.len() != op_fn.params.len() {
+            unifier.push_error(
+                Diagnostic::error(
+                    Category::ArityMismatch,
+                    format!(
+                        "handler clause `{target_effect}.{}(...)` expects {} argument(s), got {}",
+                        clause.operation.node,
+                        op_fn.params.len(),
+                        clause.args.len(),
+                    ),
+                )
+                .at(span_to_loc(clause.span)),
+            );
+        }
+
+        let mut clause_env = env.clone();
+        clause_env.push_scope();
+        for (pattern, param_ty) in clause.args.iter().zip(op_fn.params.iter()) {
+            infer_pattern(pattern, param_ty, &mut clause_env, unifier, records, sum_types);
+        }
+
+        let mut resume_count = 0usize;
+        let mut usage_diags = Vec::new();
+        collect_resume_usage(
+            &clause.body,
+            false,
+            false,
+            &mut resume_count,
+            &mut usage_diags,
+        );
+        if resume_count > 1 {
+            usage_diags.push(
+                Diagnostic::error(
+                    Category::TypeError,
+                    "handler clause may resume at most once",
+                )
+                .at(span_to_loc(clause.span)),
+            );
+        }
+        for diag in usage_diags {
+            unifier.push_error(diag);
+        }
+
+        clause_env.push_resume_context((*op_fn.ret).clone(), result_ty.clone());
+        let clause_ty = infer_expr_bidir(
+            &clause.body,
+            &mut clause_env,
+            unifier,
+            records,
+            traits,
+            sum_types,
+        );
+        constrain_type_eq(
+            unifier,
+            &clause_ty,
+            &result_ty,
+            &Provenance {
+                span: clause.body.span,
+                reason: Reason::TypeAscription,
+            },
+        );
+        clause_env.pop_scope();
+    }
+
+    if let Some(all_ops) = env.module_function_names(&module_path) {
+        let missing = all_ops
+            .into_iter()
+            .filter(|op| !seen_ops.contains(op))
+            .collect::<Vec<_>>();
+        if !missing.is_empty() {
+            unifier.push_error(
+                Diagnostic::error(
+                    Category::TypeError,
+                    format!(
+                        "handler for `{target_effect}` is missing clause(s): {}",
+                        missing.join(", ")
+                    ),
+                )
+                .at(span_to_loc(expr_span)),
+            );
+        }
+    }
+
+    result_ty
+}
+
 /// Infer the type of an expression.
 ///
 /// Uses eager unification: types are unified as the AST is walked, so
@@ -12244,6 +12823,47 @@ fn infer_expr_bidir(
                 .at(span_to_loc(expr.span)),
             );
             unifier.fresh_type()
+        }
+
+        ExprKind::Handle {
+            expr: handled,
+            clauses,
+            then_clause,
+        } => infer_handle_expr_type(
+            expr.span,
+            handled,
+            clauses,
+            then_clause.as_deref(),
+            env,
+            unifier,
+            records,
+            traits,
+            sum_types,
+        ),
+
+        ExprKind::Resume { value } => {
+            let value_ty = infer_expr_bidir(value, env, unifier, records, traits, sum_types);
+            let Some(ctx) = env.current_resume_context() else {
+                unifier.push_error(
+                    Diagnostic::error(
+                        Category::TypeError,
+                        "`resume` is only valid inside a matching handler clause",
+                    )
+                    .at(span_to_loc(expr.span)),
+                );
+                return unifier.fresh_type();
+            };
+
+            constrain_type_eq(
+                unifier,
+                &value_ty,
+                &ctx.operation_return,
+                &Provenance {
+                    span: value.span,
+                    reason: Reason::TypeAscription,
+                },
+            );
+            ctx.clause_result.clone()
         }
 
         // -- Case expression --

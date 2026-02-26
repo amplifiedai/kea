@@ -2295,6 +2295,26 @@ impl Parser {
             return self.let_binding();
         }
 
+        // Handle expression: handle expr ...
+        if self.check_ident("handle") {
+            return self.handle_expr();
+        }
+
+        // Resume expression (validity checked in type checker).
+        if self.check_ident("resume") {
+            return self.resume_expr();
+        }
+
+        // Fail sugar: fail expr -> Fail.fail(expr)
+        if self.check_ident("fail") {
+            return self.fail_expr();
+        }
+
+        // Catch sugar: catch expr
+        if self.check_ident("catch") {
+            return self.catch_expr();
+        }
+
         // If expression
         if self.check(&TokenKind::If) {
             return self.if_expr();
@@ -2561,6 +2581,266 @@ impl Parser {
             },
             span,
         ))
+    }
+
+    fn handle_expr(&mut self) -> Option<Expr> {
+        let start = self.current_span();
+        self.advance(); // consume `handle`
+        self.skip_newlines();
+
+        let handled = self.expression()?;
+        self.skip_newlines();
+        let delimiter = self.expect_block_start("expected handler block after `handle` expression")?;
+
+        let mut clauses = Vec::new();
+        let mut then_clause = None;
+
+        self.skip_newlines();
+        while !self.at_block_end(delimiter) && !self.at_eof() {
+            if self.check_ident("then") {
+                if then_clause.is_some() {
+                    self.error_at_current("duplicate `then` clause in handle expression");
+                    return None;
+                }
+                self.advance(); // consume `then`
+                self.skip_newlines();
+                let then_expr = if self.check(&TokenKind::Indent) {
+                    self.parse_block_expr("expected `then` body expression")?
+                } else {
+                    self.expression()?
+                };
+                then_clause = Some(Box::new(then_expr));
+            } else {
+                clauses.push(self.handle_clause()?);
+            }
+
+            self.skip_newlines();
+            let _ = self.match_token(&TokenKind::Comma);
+            self.skip_newlines();
+        }
+
+        let end = self.current_span();
+        self.expect_block_end(delimiter, "expected end of handle block")?;
+
+        if clauses.is_empty() {
+            self.error_at_current("handle expression requires at least one operation clause");
+            return None;
+        }
+
+        Some(Spanned::new(
+            ExprKind::Handle {
+                expr: Box::new(handled),
+                clauses,
+                then_clause,
+            },
+            start.merge(end),
+        ))
+    }
+
+    fn handle_clause(&mut self) -> Option<HandleClause> {
+        let start = self.current_span();
+        let effect = self.expect_upper_ident("expected effect name in handler clause")?;
+        self.expect(&TokenKind::Dot, "expected '.' after effect name")?;
+        let operation = self.expect_ident("expected operation name in handler clause")?;
+        self.expect(&TokenKind::LParen, "expected '(' after operation name")?;
+
+        let mut args = Vec::new();
+        self.skip_newlines();
+        if !self.check(&TokenKind::RParen) {
+            loop {
+                self.skip_newlines();
+                args.push(self.pattern()?);
+                self.skip_newlines();
+                if !self.match_token(&TokenKind::Comma) {
+                    break;
+                }
+            }
+        }
+        self.skip_newlines();
+        self.expect(&TokenKind::RParen, "expected ')' after handler clause arguments")?;
+        self.expect(&TokenKind::Arrow, "expected '->' after handler clause head")?;
+        self.skip_newlines();
+        let body = if self.check(&TokenKind::Indent) {
+            self.parse_block_expr("expected handler clause body block or expression")?
+        } else {
+            self.expression()?
+        };
+        let span = start.merge(body.span);
+        Some(HandleClause {
+            effect,
+            operation,
+            args,
+            body,
+            span,
+        })
+    }
+
+    fn resume_expr(&mut self) -> Option<Expr> {
+        let start = self.current_span();
+        self.advance(); // consume `resume`
+        self.skip_newlines();
+        let value = self.expression()?;
+        let span = start.merge(value.span);
+        Some(Spanned::new(
+            ExprKind::Resume {
+                value: Box::new(value),
+            },
+            span,
+        ))
+    }
+
+    fn fail_expr(&mut self) -> Option<Expr> {
+        let start = self.current_span();
+        self.advance(); // consume `fail`
+        self.skip_newlines();
+        let value = self.expression()?;
+        let end = value.span;
+        Some(self.desugar_fail_call(value, start.merge(end)))
+    }
+
+    fn catch_expr(&mut self) -> Option<Expr> {
+        let start = self.current_span();
+        self.advance(); // consume `catch`
+        self.skip_newlines();
+        let target = self.expression()?;
+        let target_span = target.span;
+
+        let error_span = target_span;
+        let error_pat = Spanned::new(PatternKind::Var("error".to_string()), error_span);
+        let err_body = Spanned::new(
+            ExprKind::Constructor {
+                name: Spanned::new("Err".to_string(), error_span),
+                args: vec![Argument {
+                    label: None,
+                    value: Spanned::new(ExprKind::Var("error".to_string()), error_span),
+                }],
+            },
+            error_span,
+        );
+        let clause = HandleClause {
+            effect: Spanned::new("Fail".to_string(), start),
+            operation: Spanned::new("fail".to_string(), start),
+            args: vec![error_pat],
+            body: err_body,
+            span: start.merge(target_span),
+        };
+
+        let value_span = target_span;
+        let value_pat = Spanned::new(PatternKind::Var("value".to_string()), value_span);
+        let then_body = Spanned::new(
+            ExprKind::Constructor {
+                name: Spanned::new("Ok".to_string(), value_span),
+                args: vec![Argument {
+                    label: None,
+                    value: Spanned::new(ExprKind::Var("value".to_string()), value_span),
+                }],
+            },
+            value_span,
+        );
+        let then_expr = Spanned::new(
+            ExprKind::Lambda {
+                params: vec![Param {
+                    label: ParamLabel::Implicit,
+                    pattern: value_pat,
+                    annotation: None,
+                    default: None,
+                }],
+                body: Box::new(then_body),
+                return_annotation: None,
+            },
+            value_span,
+        );
+
+        Some(Spanned::new(
+            ExprKind::Handle {
+                expr: Box::new(target),
+                clauses: vec![clause],
+                then_clause: Some(Box::new(then_expr)),
+            },
+            start.merge(target_span),
+        ))
+    }
+
+    fn desugar_fail_call(&self, value: Expr, span: Span) -> Expr {
+        let fail_span = value.span;
+        let func = Spanned::new(
+            ExprKind::FieldAccess {
+                expr: Box::new(Spanned::new(ExprKind::Var("Fail".to_string()), fail_span)),
+                field: Spanned::new("fail".to_string(), fail_span),
+            },
+            fail_span,
+        );
+        Spanned::new(
+            ExprKind::Call {
+                func: Box::new(func),
+                args: vec![Argument { label: None, value }],
+            },
+            span,
+        )
+    }
+
+    fn desugar_try_expr(&self, target: Expr, question_span: Span) -> Expr {
+        let start = target.span;
+        let v_pat = Spanned::new(PatternKind::Var("v".to_string()), start);
+        let e_pat = Spanned::new(PatternKind::Var("e".to_string()), start);
+        let ok_arm = CaseArm {
+            pattern: Spanned::new(
+                PatternKind::Constructor {
+                    name: "Ok".to_string(),
+                    qualifier: None,
+                    args: vec![ConstructorFieldPattern {
+                        name: None,
+                        pattern: v_pat.clone(),
+                    }],
+                    rest: false,
+                },
+                start,
+            ),
+            guard: None,
+            body: Spanned::new(ExprKind::Var("v".to_string()), start),
+        };
+
+        let from_call = Spanned::new(
+            ExprKind::Call {
+                func: Box::new(Spanned::new(
+                    ExprKind::FieldAccess {
+                        expr: Box::new(Spanned::new(ExprKind::Var("From".to_string()), start)),
+                        field: Spanned::new("from".to_string(), start),
+                    },
+                    start,
+                )),
+                args: vec![Argument {
+                    label: None,
+                    value: Spanned::new(ExprKind::Var("e".to_string()), start),
+                }],
+            },
+            start,
+        );
+        let err_body = self.desugar_fail_call(from_call, start);
+        let err_arm = CaseArm {
+            pattern: Spanned::new(
+                PatternKind::Constructor {
+                    name: "Err".to_string(),
+                    qualifier: None,
+                    args: vec![ConstructorFieldPattern {
+                        name: None,
+                        pattern: e_pat,
+                    }],
+                    rest: false,
+                },
+                start,
+            ),
+            guard: None,
+            body: err_body,
+        };
+
+        Spanned::new(
+            ExprKind::Case {
+                scrutinee: Box::new(target),
+                arms: vec![ok_arm, err_arm],
+            },
+            start.merge(question_span),
+        )
     }
 
     fn if_expr(&mut self) -> Option<Expr> {
@@ -3873,6 +4153,10 @@ impl Parser {
                 lhs_span.merge(end),
             ));
         }
+        if self.check(&TokenKind::Question) {
+            let question = self.advance();
+            return Some(self.desugar_try_expr(lhs, question.span));
+        }
         if self.check_ident("as") {
             self.advance();
             self.skip_newlines();
@@ -3916,7 +4200,7 @@ impl Parser {
 
     fn postfix_bp(&self) -> Option<u8> {
         match self.peek_kind()? {
-            TokenKind::Dot | TokenKind::LParen => Some(19),
+            TokenKind::Dot | TokenKind::LParen | TokenKind::Question => Some(19),
             TokenKind::Ident(s) if s == "as" => Some(2),
             _ => None,
         }
@@ -4556,9 +4840,9 @@ mod tests {
     }
 
     #[test]
-    fn parse_try_operator_is_error() {
-        let errs = parse_err("x?");
-        assert!(!errs.is_empty());
+    fn parse_try_operator_basic_desugars_to_case() {
+        let expr = parse("x?");
+        assert!(matches!(expr.node, ExprKind::Case { .. }));
     }
 
     #[test]
@@ -7409,6 +7693,88 @@ mod tests {
         let errors = parse_err("use value = lock()");
         let msg = format!("{errors:?}");
         assert!(msg.contains("expected '<-' in use expression"), "got {msg}");
+    }
+
+    #[test]
+    fn parse_handle_expression_with_then_clause() {
+        let expr =
+            parse("handle run()\n  Log.log(level, msg) ->\n    resume ()\n  then value -> value");
+        match &expr.node {
+            ExprKind::Handle {
+                expr,
+                clauses,
+                then_clause,
+            } => {
+                assert!(matches!(&expr.node, ExprKind::Call { .. }));
+                assert_eq!(clauses.len(), 1);
+                assert_eq!(clauses[0].effect.node, "Log");
+                assert_eq!(clauses[0].operation.node, "log");
+                assert_eq!(clauses[0].args.len(), 2);
+                assert!(
+                    matches!(&clauses[0].body.node, ExprKind::Resume { value } if matches!(&value.node, ExprKind::Lit(Lit::Unit)))
+                );
+                assert!(then_clause.is_some(), "expected then clause");
+            }
+            other => panic!("expected Handle expression, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_fail_desugars_to_fail_operation_call() {
+        let expr = parse("fail err");
+        match &expr.node {
+            ExprKind::Call { func, args } => {
+                assert_eq!(args.len(), 1);
+                assert!(matches!(&args[0].value.node, ExprKind::Var(name) if name == "err"));
+                match &func.node {
+                    ExprKind::FieldAccess { expr, field } => {
+                        assert_eq!(field.node, "fail");
+                        assert!(matches!(&expr.node, ExprKind::Var(name) if name == "Fail"));
+                    }
+                    other => panic!("expected field access for fail desugar, got {other:?}"),
+                }
+            }
+            other => panic!("expected desugared fail call, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_try_operator_desugars_to_case() {
+        let expr = parse("read()?");
+        match &expr.node {
+            ExprKind::Case { scrutinee, arms } => {
+                assert!(matches!(&scrutinee.node, ExprKind::Call { .. }));
+                assert_eq!(arms.len(), 2);
+                assert!(matches!(
+                    &arms[0].pattern.node,
+                    PatternKind::Constructor { name, .. } if name == "Ok"
+                ));
+                assert!(matches!(
+                    &arms[1].pattern.node,
+                    PatternKind::Constructor { name, .. } if name == "Err"
+                ));
+            }
+            other => panic!("expected desugared case expression, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_catch_desugars_to_handle_fail() {
+        let expr = parse("catch run()");
+        match &expr.node {
+            ExprKind::Handle {
+                expr: handled,
+                clauses,
+                then_clause,
+            } => {
+                assert!(matches!(&handled.node, ExprKind::Call { .. }));
+                assert_eq!(clauses.len(), 1);
+                assert_eq!(clauses[0].effect.node, "Fail");
+                assert_eq!(clauses[0].operation.node, "fail");
+                assert!(then_clause.is_some(), "catch desugar should install then clause");
+            }
+            other => panic!("expected handle desugar for catch, got {other:?}"),
+        }
     }
 
     #[test]
