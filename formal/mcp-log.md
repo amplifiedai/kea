@@ -5089,3 +5089,43 @@ introduced).
 **Outcome**:
 - Concrete handler typing premises now map directly to polymorphic Fail-lowered
   function guarantees without manual theorem composition at call sites.
+
+### 2026-02-26: effect-polymorphism probe sweep (Fail-absent divergence)
+
+**Context**: Ran targeted MCP probes for the new polymorphic Fail-lowering
+theorem slice.
+
+**MCP tools used**: direct `kea-mcp` stdio (`initialize`,
+`notifications/initialized`, `tools/call` with `reset_session`, `get_type`,
+`diagnose`).
+
+**Probe**:
+1. Residual-effect preservation with present `Fail`:
+   - `body : () -[Log, Fail]> Int`
+   - `wrapped : () -[Log]> Result(Int, String)` via `catch body()`
+   - result: `ok`, inferred `() -[Log]> Result(Int, String)`, no diagnostics.
+2. Higher-order polymorphic shape:
+   - `wrap_poly : (fn() -[Log, Fail]> Int) -[Log]> Result(Int, String)`
+     via `catch f()`
+   - result: `ok`, inferred `(() -[Fail, Log]> Int) -[Log]> Result(Int, String)`,
+     no diagnostics.
+3. Fail-absent case (`pureish : () -[Log]> Int`) via `catch pureish()`:
+   - declared `wrapped_no_fail : () -[Log]> Result(Int, String)` ->
+     rejected (`E0001`): declared `[Log]` too weak, body requires `[IO]`.
+   - declared `wrapped_no_fail : () -[IO, Log]> Result(Int, String)` ->
+     accepted, but inferred type normalizes to `() -[IO]> Result(Int, String)`
+     (residual `Log` not preserved).
+
+**Classify**: Divergence (Lean model vs MCP behavior).
+
+**Lean side impacted**:
+- `FailResultContracts.lowerFailFunctionType_noop_effect_of_absent`
+- `EffectPolymorphismSoundness.effectPolyFailLowering_noop_if_fail_absent`
+- `EffectPolymorphismSoundness.effectPolyHandlerSchema_noop_if_fail_absent`
+
+These remain valid as spec/model theorems for idempotent/no-op Fail-removal, but
+do not currently match observed MCP behavior on Fail-absent `catch` paths.
+
+**Outcome**:
+- Marked a concrete divergence to resolve before claiming runtime alignment for
+  Fail-absent no-op polymorphism properties.
