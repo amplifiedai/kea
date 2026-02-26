@@ -7,8 +7,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use kea_ast::{
-    BinOp, CaseArm, DeclKind, Expr, ExprDecl, ExprKind, FnDecl, Lit, Module, Param, Pattern,
-    PatternKind, Span, TypeAnnotation, UnaryOp,
+    BinOp, CaseArm, DeclKind, Expr, ExprDecl, ExprKind, FnDecl, HandleClause, Lit, Module,
+    Param, Pattern, PatternKind, Span, TypeAnnotation, UnaryOp,
 };
 use kea_infer::typeck::TypeEnv;
 use kea_types::{EffectRow, FunctionType, Type};
@@ -92,6 +92,9 @@ pub enum HirExprKind {
     Lambda {
         params: Vec<HirParam>,
         body: Box<HirExpr>,
+    },
+    Catch {
+        expr: Box<HirExpr>,
     },
     Let {
         pattern: HirPattern,
@@ -437,6 +440,13 @@ fn lower_pattern(pattern: &Pattern) -> HirPattern {
     }
 }
 
+fn is_catch_desugar_shape(clauses: &[HandleClause], then_clause: Option<&Expr>) -> bool {
+    clauses.len() == 1
+        && then_clause.is_some()
+        && clauses[0].effect.node == "Fail"
+        && clauses[0].operation.node == "fail"
+}
+
 fn lower_expr(
     expr: &Expr,
     ty_hint: Option<Type>,
@@ -735,6 +745,21 @@ fn lower_expr(
                 }
             }
         }
+        ExprKind::Handle {
+            expr: handled,
+            clauses,
+            then_clause,
+        } if is_catch_desugar_shape(clauses, then_clause.as_deref()) => HirExprKind::Catch {
+            expr: Box::new(lower_expr(
+                handled,
+                None,
+                unit_variant_tags,
+                qualified_variant_tags,
+                pattern_variant_tags,
+                pattern_qualified_tags,
+                known_record_defs,
+            )),
+        },
         other => HirExprKind::Raw(other.clone()),
     };
 
@@ -2817,6 +2842,41 @@ mod tests {
     }
 
     #[test]
+    fn lower_function_catch_desugar_stays_structured_hir() {
+        let module = parse_module_from_text("fn main() -> Int\n  let r = catch f()\n  0");
+        let mut env = TypeEnv::new();
+        env.bind(
+            "main".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::pure(vec![], Type::Int))),
+        );
+
+        let lowered = lower_module(&module, &env);
+        let function = lowered
+            .declarations
+            .iter()
+            .find_map(|decl| match decl {
+                HirDecl::Function(function) if function.name == "main" => Some(function),
+                _ => None,
+            })
+            .expect("expected lowered function declaration");
+
+        let HirExprKind::Block(exprs) = &function.body.kind else {
+            panic!("expected block body");
+        };
+        let Some(HirExpr {
+            kind: HirExprKind::Let { value, .. },
+            ..
+        }) = exprs.first()
+        else {
+            panic!("expected leading let binding");
+        };
+        assert!(
+            matches!(value.kind, HirExprKind::Catch { .. }),
+            "expected catch desugar to stay structured in HIR"
+        );
+    }
+
+    #[test]
     fn lower_function_literal_or_pattern_desugars_to_if_chain() {
         let module = parse_module_from_text(
             "fn classify(x: Int) -> Int\n  case x\n    0 | 1 -> 10\n    2 -> 20\n    _ -> 30",
@@ -3224,6 +3284,7 @@ mod tests {
             HirExprKind::SumPayloadAccess { expr, .. } => count_if_nodes(expr),
             HirExprKind::FieldAccess { expr, .. } => count_if_nodes(expr),
             HirExprKind::Lambda { body, .. } => count_if_nodes(body),
+            HirExprKind::Catch { expr } => count_if_nodes(expr),
             HirExprKind::Let { value, .. } => count_if_nodes(value),
             HirExprKind::Lit(_) | HirExprKind::Var(_) | HirExprKind::Raw(_) => 0,
         }

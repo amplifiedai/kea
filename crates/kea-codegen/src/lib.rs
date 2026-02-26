@@ -1150,6 +1150,7 @@ fn lower_instruction<M: Module>(
             result,
             ret_type,
             callee_fail_result_abi,
+            capture_fail_result,
             ..
         } => {
             let mut lowered_args = Vec::with_capacity(args.len());
@@ -1246,6 +1247,16 @@ fn lower_instruction<M: Module>(
                     function: function_name.to_string(),
                     detail: "Fail-only callee must return Result handle in runtime ABI".to_string(),
                 })?;
+                if *capture_fail_result {
+                    let dest = result.as_ref().ok_or_else(|| CodegenError::UnsupportedMir {
+                        function: function_name.to_string(),
+                        detail: "captured Fail-only call must produce a value".to_string(),
+                    })?;
+                    let ptr_ty = module.target_config().pointer_type();
+                    let result_ptr = coerce_value_to_clif_type(builder, result_ptr, ptr_ty);
+                    values.insert(dest.clone(), result_ptr);
+                    return Ok(false);
+                }
                 let tag = builder
                     .ins()
                     .load(types::I32, MemFlags::new(), result_ptr, 0);
@@ -2302,6 +2313,7 @@ mod tests {
                         result: Some(MirValueId(1)),
                         ret_type: Type::Int,
                         callee_fail_result_abi: false,
+                        capture_fail_result: false,
                         cc_manifest_id: "default".to_string(),
                     }],
                     terminator: MirTerminator::Return {
@@ -2337,6 +2349,7 @@ mod tests {
                             result: Some(MirValueId(1)),
                             ret_type: Type::Int,
                             callee_fail_result_abi: false,
+                            capture_fail_result: false,
                             cc_manifest_id: "default".to_string(),
                         },
                     ],
@@ -2374,6 +2387,7 @@ mod tests {
                             result: Some(MirValueId(1)),
                             ret_type: Type::Int,
                             callee_fail_result_abi: false,
+                            capture_fail_result: false,
                             cc_manifest_id: "default".to_string(),
                         },
                     ],
@@ -2412,6 +2426,7 @@ mod tests {
                                 result: Some(MirValueId(1)),
                                 ret_type: Type::Int,
                                 callee_fail_result_abi: false,
+                                capture_fail_result: false,
                                 cc_manifest_id: "default".to_string(),
                             },
                         ],
@@ -2443,6 +2458,7 @@ mod tests {
                                 result: Some(MirValueId(1)),
                                 ret_type: Type::Int,
                                 callee_fail_result_abi: false,
+                                capture_fail_result: false,
                                 cc_manifest_id: "default".to_string(),
                             },
                         ],
@@ -2893,6 +2909,7 @@ mod tests {
                             result: Some(MirValueId(0)),
                             ret_type: Type::Int,
                             callee_fail_result_abi: false,
+                            capture_fail_result: false,
                             cc_manifest_id: "default".to_string(),
                         }],
                         terminator: MirTerminator::Return {
@@ -2947,6 +2964,7 @@ mod tests {
                                 result: Some(MirValueId(0)),
                                 ret_type: Type::Int,
                                 callee_fail_result_abi: false,
+                                capture_fail_result: false,
                                 cc_manifest_id: "default".to_string(),
                             },
                             MirInst::Const {
@@ -3021,6 +3039,7 @@ mod tests {
                                 result: Some(MirValueId(2)),
                                 ret_type: Type::Int,
                                 callee_fail_result_abi: false,
+                                capture_fail_result: false,
                                 cc_manifest_id: "default".to_string(),
                             },
                             MirInst::Call {
@@ -3030,6 +3049,7 @@ mod tests {
                                 result: Some(MirValueId(3)),
                                 ret_type: Type::Int,
                                 callee_fail_result_abi: false,
+                                capture_fail_result: false,
                                 cc_manifest_id: "default".to_string(),
                             },
                         ],
@@ -3061,6 +3081,7 @@ mod tests {
                                 result: Some(MirValueId(2)),
                                 ret_type: Type::Int,
                                 callee_fail_result_abi: false,
+                                capture_fail_result: false,
                                 cc_manifest_id: "default".to_string(),
                             },
                         ],
@@ -3121,6 +3142,7 @@ mod tests {
                             result: Some(MirValueId(2)),
                             ret_type: Type::Int,
                             callee_fail_result_abi: true,
+                            capture_fail_result: false,
                             cc_manifest_id: "default".to_string(),
                         }],
                         terminator: MirTerminator::Return {
@@ -3151,6 +3173,7 @@ mod tests {
                                 result: Some(MirValueId(2)),
                                 ret_type: Type::Int,
                                 callee_fail_result_abi: false,
+                                capture_fail_result: false,
                                 cc_manifest_id: "default".to_string(),
                             },
                         ],

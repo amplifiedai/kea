@@ -193,6 +193,7 @@ pub enum MirInst {
         result: Option<MirValueId>,
         ret_type: Type,
         callee_fail_result_abi: bool,
+        capture_fail_result: bool,
         cc_manifest_id: String,
     },
     Nop,
@@ -824,74 +825,15 @@ impl FunctionLoweringCtx {
                 });
                 Some(dest)
             }
-            HirExprKind::Call { func, args } => {
-                if let HirExprKind::Var(name) = &func.kind
-                    && name == "Fail::fail"
-                {
-                    let mut lowered_args = Vec::with_capacity(args.len());
-                    for arg in args {
-                        lowered_args.push(self.lower_expr(arg)?);
-                    }
-                    self.emit_inst(MirInst::EffectOp {
-                        class: MirEffectOpClass::ZeroResume,
-                        effect: "Fail".to_string(),
-                        operation: "fail".to_string(),
-                        args: lowered_args,
-                        result: None,
-                    });
-                    self.set_terminator(MirTerminator::Unreachable);
+            HirExprKind::Call { func, args } => self.lower_call_expr(expr, func, args, false),
+            HirExprKind::Catch { expr: caught } => {
+                let HirExprKind::Call { func, args } = &caught.kind else {
                     return None;
-                }
-                let callee_fail_result_abi = match &func.kind {
-                    HirExprKind::Var(name) => self
-                        .var_types
-                        .get(name)
-                        .map_or_else(|| uses_fail_result_abi_from_type(&func.ty), uses_fail_result_abi_from_type),
-                    _ => uses_fail_result_abi_from_type(&func.ty),
                 };
-
-                let callee = match &func.kind {
-                    HirExprKind::Var(name) if name.contains("::") => {
-                        MirCallee::External(name.clone())
-                    }
-                    HirExprKind::Var(name) if self.vars.contains_key(name) => {
-                        let callee_value = self.lower_expr(func)?;
-                        MirCallee::Value(callee_value)
-                    }
-                    HirExprKind::Var(name) => MirCallee::Local(name.clone()),
-                    _ => {
-                        let callee_value = self.lower_expr(func)?;
-                        MirCallee::Value(callee_value)
-                    }
-                };
-
-                let mut lowered_args = Vec::with_capacity(args.len());
-                let mut arg_types = Vec::with_capacity(args.len());
-                for arg in args {
-                    arg_types.push(arg.ty.clone());
-                    lowered_args.push(self.lower_expr(arg)?);
-                }
-
-                let result = if expr.ty == Type::Unit {
-                    None
-                } else {
-                    Some(self.new_value())
-                };
-
-                self.emit_inst(MirInst::Call {
-                    callee,
-                    args: lowered_args,
-                    arg_types,
-                    result: result.clone(),
-                    ret_type: expr.ty.clone(),
-                    callee_fail_result_abi,
-                    cc_manifest_id: "default".to_string(),
-                });
-                if let (Some(dest), Type::Sum(sum_ty)) = (&result, &expr.ty) {
-                    self.sum_value_types
-                        .insert(dest.clone(), sum_ty.name.clone());
-                }
-                result
+                let result = self.lower_call_expr(caught, func, args, true)?;
+                self.sum_value_types
+                    .insert(result.clone(), "Result".to_string());
+                Some(result)
             }
             HirExprKind::Let { pattern, value } => {
                 let value_id = self.lower_expr(value)?;
@@ -920,6 +862,81 @@ impl FunctionLoweringCtx {
                 }
             }
         }
+    }
+
+    fn lower_call_expr(
+        &mut self,
+        expr: &HirExpr,
+        func: &HirExpr,
+        args: &[HirExpr],
+        capture_fail_result: bool,
+    ) -> Option<MirValueId> {
+        if let HirExprKind::Var(name) = &func.kind
+            && name == "Fail::fail"
+            && !capture_fail_result
+        {
+            let mut lowered_args = Vec::with_capacity(args.len());
+            for arg in args {
+                lowered_args.push(self.lower_expr(arg)?);
+            }
+            self.emit_inst(MirInst::EffectOp {
+                class: MirEffectOpClass::ZeroResume,
+                effect: "Fail".to_string(),
+                operation: "fail".to_string(),
+                args: lowered_args,
+                result: None,
+            });
+            self.set_terminator(MirTerminator::Unreachable);
+            return None;
+        }
+        let callee_fail_result_abi = match &func.kind {
+            HirExprKind::Var(name) => self.var_types.get(name).map_or_else(
+                || uses_fail_result_abi_from_type(&func.ty),
+                uses_fail_result_abi_from_type,
+            ),
+            _ => uses_fail_result_abi_from_type(&func.ty),
+        };
+
+        let callee = match &func.kind {
+            HirExprKind::Var(name) if name.contains("::") => MirCallee::External(name.clone()),
+            HirExprKind::Var(name) if self.vars.contains_key(name) => {
+                let callee_value = self.lower_expr(func)?;
+                MirCallee::Value(callee_value)
+            }
+            HirExprKind::Var(name) => MirCallee::Local(name.clone()),
+            _ => {
+                let callee_value = self.lower_expr(func)?;
+                MirCallee::Value(callee_value)
+            }
+        };
+
+        let mut lowered_args = Vec::with_capacity(args.len());
+        let mut arg_types = Vec::with_capacity(args.len());
+        for arg in args {
+            arg_types.push(arg.ty.clone());
+            lowered_args.push(self.lower_expr(arg)?);
+        }
+
+        let result = if expr.ty == Type::Unit {
+            None
+        } else {
+            Some(self.new_value())
+        };
+
+        self.emit_inst(MirInst::Call {
+            callee,
+            args: lowered_args,
+            arg_types,
+            result: result.clone(),
+            ret_type: expr.ty.clone(),
+            callee_fail_result_abi,
+            capture_fail_result,
+            cc_manifest_id: "default".to_string(),
+        });
+        if let (Some(dest), Type::Sum(sum_ty)) = (&result, &expr.ty) {
+            self.sum_value_types.insert(dest.clone(), sum_ty.name.clone());
+        }
+        result
     }
 
     fn lower_raw_ast_expr(&mut self, raw_expr: &AstExprKind) -> Option<MirValueId> {
@@ -2528,6 +2545,80 @@ mod tests {
                 callee_fail_result_abi: true,
                 ..
             }
+        ));
+    }
+
+    #[test]
+    fn lower_hir_module_lowers_catch_call_to_capture_fail_result_call() {
+        let fail_fn_ty = Type::Function(FunctionType::with_effects(
+            vec![],
+            Type::Int,
+            EffectRow::closed(vec![(Label::new("Fail"), Type::Int)]),
+        ));
+        let result_ty = Type::Sum(kea_types::SumType {
+            name: "Result".to_string(),
+            type_args: vec![Type::Int, Type::Int],
+            variants: vec![
+                ("Ok".to_string(), vec![Type::Int]),
+                ("Err".to_string(), vec![Type::Int]),
+            ],
+        });
+        let hir = HirModule {
+            declarations: vec![
+                HirDecl::Function(HirFunction {
+                    name: "f".to_string(),
+                    params: vec![],
+                    body: HirExpr {
+                        kind: HirExprKind::Lit(kea_ast::Lit::Int(0)),
+                        ty: Type::Int,
+                        span: kea_ast::Span::synthetic(),
+                    },
+                    ty: fail_fn_ty.clone(),
+                    effects: EffectRow::closed(vec![(Label::new("Fail"), Type::Int)]),
+                    span: kea_ast::Span::synthetic(),
+                }),
+                HirDecl::Function(HirFunction {
+                    name: "main".to_string(),
+                    params: vec![],
+                    body: HirExpr {
+                        kind: HirExprKind::Catch {
+                            expr: Box::new(HirExpr {
+                                kind: HirExprKind::Call {
+                                    func: Box::new(HirExpr {
+                                        kind: HirExprKind::Var("f".to_string()),
+                                        ty: fail_fn_ty,
+                                        span: kea_ast::Span::synthetic(),
+                                    }),
+                                    args: vec![],
+                                },
+                                ty: Type::Int,
+                                span: kea_ast::Span::synthetic(),
+                            }),
+                        },
+                        ty: result_ty.clone(),
+                        span: kea_ast::Span::synthetic(),
+                    },
+                    ty: Type::Function(FunctionType::pure(vec![], result_ty)),
+                    effects: EffectRow::pure(),
+                    span: kea_ast::Span::synthetic(),
+                }),
+            ],
+        };
+
+        let mir = lower_hir_module(&hir);
+        let main = mir
+            .functions
+            .iter()
+            .find(|function| function.name == "main")
+            .expect("expected lowered main function");
+        assert!(matches!(
+            main.blocks[0].instructions.first(),
+            Some(MirInst::Call {
+                callee: MirCallee::Local(name),
+                callee_fail_result_abi: true,
+                capture_fail_result: true,
+                ..
+            }) if name == "f"
         ));
     }
 
