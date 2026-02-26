@@ -601,6 +601,20 @@ mod tests {
     }
 
     #[test]
+    fn compile_and_execute_tail_recursive_countdown_exit_code() {
+        let source_path = write_temp_source(
+            "fn count(n: Int, acc: Int) -> Int\n  if n == 0\n    acc\n  else\n    count(n - 1, acc + 1)\n\nfn main() -> Int\n  count(100000, 0)\n",
+            "kea-cli-tail-recursive-countdown",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 100000);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_local_function_alias_call_exit_code() {
         let source_path = write_temp_source(
             "fn inc(n: Int) -> Int\n  n + 1\n\nfn main() -> Int\n  let g = inc\n  g(41)\n",
