@@ -116,6 +116,39 @@ theorem admissibleEffectPolyFailLowering_sound
       RowFields.has (EffectRow.fields loweredEffects) FailResultContracts.failLabel = false := by
   exact effectPolyFailLowering_sound_of_catchAdmissible c.toEffectPolyFailLoweringContract c.h_admissible
 
+def mkAdmissibleEffectPolyFailLoweringContract
+    (params : TyList)
+    (effects : EffectRow)
+    (okTy errTy lowered : Ty)
+    (h_lowered :
+      lowered = FailResultContracts.lowerFailFunctionType params effects okTy errTy)
+    (h_admissible : FailResultContracts.catchAdmissible effects) :
+    AdmissibleEffectPolyFailLoweringContract := {
+  params := params
+  effects := effects
+  okTy := okTy
+  errTy := errTy
+  lowered := lowered
+  h_lowered := h_lowered
+  h_admissible := h_admissible
+}
+
+theorem admissibleEffectPolyFailLowering_sound_of_premises
+    (params : TyList)
+    (effects : EffectRow)
+    (okTy errTy lowered : Ty)
+    (h_lowered :
+      lowered = FailResultContracts.lowerFailFunctionType params effects okTy errTy)
+    (h_admissible : FailResultContracts.catchAdmissible effects) :
+    ∃ loweredEffects,
+      lowered = .functionEff params loweredEffects (.result okTy errTy) ∧
+      rowTailStable effects loweredEffects ∧
+      labelsPreservedExcept effects loweredEffects FailResultContracts.failLabel ∧
+      RowFields.has (EffectRow.fields loweredEffects) FailResultContracts.failLabel = false := by
+  let c := mkAdmissibleEffectPolyFailLoweringContract
+    params effects okTy errTy lowered h_lowered h_admissible
+  exact admissibleEffectPolyFailLowering_sound c
+
 theorem effectPolyFailLowering_noop_if_fail_absent
     (c : EffectPolyFailLoweringContract)
     (h_abs :
@@ -242,6 +275,50 @@ theorem admissibleEffectPolyHandlerSchema_not_unnecessary
     FailResultContracts.catchUnnecessary_implies_not_admissible
       s.clause.exprEffects h_unnecessary
   exact h_not_adm s.h_admissible
+
+def mkAdmissibleEffectPolyHandlerSchema
+    (clause : HandleClauseContract)
+    (params : TyList)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType params clause.exprEffects okTy errTy)
+    (h_admissible : FailResultContracts.catchAdmissible clause.exprEffects) :
+    AdmissibleEffectPolyHandlerSchema := {
+  clause := clause
+  params := params
+  okTy := okTy
+  errTy := errTy
+  loweredTy := loweredTy
+  h_wellTyped := h_wellTyped
+  h_failZero := h_failZero
+  h_lowered := h_lowered
+  h_admissible := h_admissible
+}
+
+theorem admissibleEffectPolyHandlerSchema_sound_of_premises
+    (clause : HandleClauseContract)
+    (params : TyList)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType params clause.exprEffects okTy errTy)
+    (h_admissible : FailResultContracts.catchAdmissible clause.exprEffects) :
+    RowFields.has
+      (EffectRow.fields (HandleClauseContract.resultEffects clause))
+      FailResultContracts.failLabel = false ∧
+      ∃ loweredEffects,
+        loweredTy = .functionEff params loweredEffects (.result okTy errTy) ∧
+        rowTailStable clause.exprEffects loweredEffects ∧
+        labelsPreservedExcept clause.exprEffects loweredEffects FailResultContracts.failLabel ∧
+        RowFields.has (EffectRow.fields loweredEffects) FailResultContracts.failLabel = false := by
+  let s := mkAdmissibleEffectPolyHandlerSchema
+    clause params okTy errTy loweredTy h_wellTyped h_failZero h_lowered h_admissible
+  exact admissibleEffectPolyHandlerSchema_sound s
 
 end EffectPolymorphismSoundness
 end Kea

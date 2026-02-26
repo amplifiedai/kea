@@ -58,6 +58,7 @@ This work starts by cannibalizing the existing Rill formal corpus and then exten
 - **Phase 2 (active):** Divergence on Fail-absent `catch` is now closed (runtime now rejects with `E0012`: `expression cannot fail; catch is unnecessary`), so no-op-if-absent theorem claims are aligned as vacuous runtime cases rather than pending implementation fix.
 - **Phase 2 (active):** Added explicit catch-admissibility contracts (`catchAdmissible`, `catchUnnecessary`) and precondition-gated effect-polymorphism wrappers (`effectPolyFailLowering_sound_of_catchAdmissible`, `catchUnnecessary_implies_no_admissible_*`), making the `E0012` fail-absent runtime behavior first-class in the formal theorem surface.
 - **Phase 2 (active):** Added runtime-aligned admissible contract/schema wrappers (`AdmissibleEffectPolyFailLoweringContract`, `AdmissibleEffectPolyHandlerSchema`) and capstone entrypoints (`admissibleEffectPolyFailLowering_sound`, `admissibleEffectPolyHandlerSchema_sound`) so downstream proofs can consume only `catch`-admissible (`Fail`-present) cases.
+- **Phase 2 (active):** Added premise-to-capstone adapters in `EffectPolymorphismSoundness` (`mkAdmissibleEffectPoly*`, `*_sound_of_premises`) to eliminate manual structure assembly and expose direct theorem entrypoints from handler typing assumptions.
 
 The formal workspace lives at [`formal/`](formal/).
 
