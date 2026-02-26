@@ -5839,11 +5839,11 @@ capability preservation and tail-resumptive equivalence.
 - Phase-2 now has a citable theorem surface that composes capability and
   tail-resumptive contracts under explicit assumptions.
 
-### 2026-02-26: handled-absent resumptive composition probe (precondition gap)
+### 2026-02-26: handled-absent resumptive composition probe (well-typed boundary)
 
 **Context**: Tested a direct runtime shape corresponding to a handled-absent
-resumptive clause to determine whether the new composition surface is
-unconditionally runtime-aligned.
+resumptive clause to confirm the intended well-typed precondition boundary on
+the composition surface.
 
 **MCP tools used**: direct `kea-mcp` stdio (`initialize`,
 `notifications/initialized`, `tools/call` with `reset_session`, `type_check`,
@@ -5858,10 +5858,11 @@ unconditionally runtime-aligned.
   - `declared effect [Log] is too weak; body requires [IO]`
 - `diagnose` reports the same error.
 
-**Classify**: Precondition gap.
+**Classify**: Agreement (with well-typedness precondition boundary).
 
 **Outcome**:
-- This handled-absent resumptive shape is not currently runtime-accepted under
-  the tested declaration, so composition claims are tracked as
-  **well-typed-clause preconditioned** rather than unconditional runtime
-  alignment.
+- Rejection is expected for this non-well-typed declaration: handling `Trace`
+  does not eliminate required `Log` effects from the body. Composition claims
+  remain intentionally **well-typed-clause preconditioned**. The diagnostic text
+  currently references `[IO]` in this path, but the acceptance/rejection
+  boundary matches the formal precondition.
