@@ -996,4 +996,42 @@ mod tests {
         assert_eq!(artifact.stats.per_function.len(), 1);
         assert_eq!(artifact.stats.per_function[0].function, "id");
     }
+
+    #[test]
+    fn compile_hir_module_lowers_unit_if_control_flow() {
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "gate".to_string(),
+                params: vec![],
+                body: HirExpr {
+                    kind: HirExprKind::If {
+                        condition: Box::new(HirExpr {
+                            kind: HirExprKind::Lit(kea_ast::Lit::Bool(true)),
+                            ty: Type::Bool,
+                            span: kea_ast::Span::synthetic(),
+                        }),
+                        then_branch: Box::new(HirExpr {
+                            kind: HirExprKind::Lit(kea_ast::Lit::Unit),
+                            ty: Type::Unit,
+                            span: kea_ast::Span::synthetic(),
+                        }),
+                        else_branch: Some(Box::new(HirExpr {
+                            kind: HirExprKind::Lit(kea_ast::Lit::Unit),
+                            ty: Type::Unit,
+                            span: kea_ast::Span::synthetic(),
+                        })),
+                    },
+                    ty: Type::Unit,
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::pure(vec![], Type::Unit)),
+                effects: EffectRow::pure(),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let artifact = compile_hir_module(&CraneliftBackend, &hir, &BackendConfig::default())
+            .expect("unit if pipeline should compile");
+        assert_eq!(artifact.stats.per_function.len(), 1);
+    }
 }
