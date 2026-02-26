@@ -8,13 +8,15 @@
 //! rendered here for display.
 
 use std::fmt;
+use serde::Serialize;
 
 // ---------------------------------------------------------------------------
 // Diagnostic severity and categories
 // ---------------------------------------------------------------------------
 
 /// How severe a diagnostic is.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Severity {
     Error,
     Warning,
@@ -22,7 +24,8 @@ pub enum Severity {
 }
 
 /// Broad category for diagnostics. Used for filtering and grouping.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Category {
     /// Type mismatch: expected X, got Y.
     TypeMismatch,
@@ -167,7 +170,7 @@ impl Category {
 /// A source location for diagnostics.
 ///
 /// Uses byte offsets. Callers convert from `kea-ast` spans to this type.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
 pub struct SourceLocation {
     pub file_id: u32,
     pub start: u32,
@@ -182,7 +185,7 @@ pub struct SourceLocation {
 ///
 /// Every diagnostic carries enough context to produce an actionable error
 /// message without exposing internal compiler state (KERNEL §17).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Diagnostic {
     /// Stable diagnostic code (e.g. E0001).
     pub code: Option<String>,
@@ -199,7 +202,7 @@ pub struct Diagnostic {
 }
 
 /// A labeled source span within a diagnostic.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct DiagLabel {
     pub location: SourceLocation,
     pub message: String,
