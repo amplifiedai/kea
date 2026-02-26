@@ -1733,6 +1733,19 @@ impl Unifier {
         });
     }
 
+    /// Test-only convenience shim for effect-row unification.
+    ///
+    /// Effect rows are unified by delegating to the same Rémy row solver.
+    #[cfg(test)]
+    pub fn unify_effect_rows(
+        &mut self,
+        expected: &kea_types::EffectRow,
+        actual: &kea_types::EffectRow,
+        provenance: &Provenance,
+    ) {
+        self.unify_rows(expected.as_row(), actual.as_row(), provenance);
+    }
+
     /// Add a lacks constraint through the centralized constraint executor.
     ///
     /// Test-only convenience shim. Production inference code should emit
@@ -3566,6 +3579,47 @@ mod tests {
         let resolved = u.substitution.lookup_row(r_var).unwrap();
         assert!(resolved.is_closed());
         assert!(resolved.has(&Label::new("age")));
+    }
+
+    #[test]
+    fn unify_effect_rows_same_effects() {
+        let mut u = Unifier::new();
+        let e1 = kea_types::EffectRow::closed(vec![
+            (Label::new("Fail"), Type::String),
+            (Label::new("IO"), Type::Unit),
+        ]);
+        let e2 = kea_types::EffectRow::closed(vec![
+            (Label::new("IO"), Type::Unit),
+            (Label::new("Fail"), Type::String),
+        ]);
+        u.unify_effect_rows(&e1, &e2, &test_prov());
+        assert!(!u.has_errors());
+    }
+
+    #[test]
+    fn unify_effect_rows_payload_mismatch_errors() {
+        let mut u = Unifier::new();
+        let expected = kea_types::EffectRow::closed(vec![(Label::new("Fail"), Type::String)]);
+        let actual = kea_types::EffectRow::closed(vec![(Label::new("Fail"), Type::Int)]);
+        u.unify_effect_rows(&expected, &actual, &test_prov());
+        assert!(u.has_errors());
+    }
+
+    #[test]
+    fn unify_open_effect_row_binds_tail() {
+        let mut u = Unifier::new();
+        let tail = RowVarId(33);
+        let open = kea_types::EffectRow::open(vec![(Label::new("IO"), Type::Unit)], tail);
+        let closed = kea_types::EffectRow::closed(vec![
+            (Label::new("IO"), Type::Unit),
+            (Label::new("Fail"), Type::String),
+        ]);
+        u.unify_effect_rows(&open, &closed, &test_prov());
+        assert!(!u.has_errors());
+
+        let resolved = u.substitution.lookup_row(tail).unwrap();
+        assert!(resolved.is_closed());
+        assert!(resolved.has(&Label::new("Fail")));
     }
 
     #[test]

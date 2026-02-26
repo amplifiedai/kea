@@ -200,7 +200,7 @@ fn test_prov() -> Provenance {
 
 fn count_kind_arrows(kind: &Kind) -> usize {
     match kind {
-        Kind::Star => 0,
+        Kind::Star | Kind::Eff => 0,
         Kind::Arrow(_, rhs) => 1 + count_kind_arrows(rhs),
     }
 }
@@ -664,6 +664,39 @@ proptest! {
             );
         }
     }
+
+    /// Effect-row unification follows the same row-unification invariants:
+    /// after solving, both rows resolve to the same effect labels.
+    #[test]
+    fn unify_effect_rows_consistent(
+        effects_a in prop::collection::hash_set(arb_label(), 1..=3),
+        effects_b in prop::collection::hash_set(arb_label(), 1..=3),
+    ) {
+        let r1 = RowVarId(210);
+        let r2 = RowVarId(211);
+        let eff_a = EffectRow::open(
+            effects_a.into_iter().map(|l| (l, Type::Unit)).collect(),
+            r1,
+        );
+        let eff_b = EffectRow::open(
+            effects_b.into_iter().map(|l| (l, Type::Unit)).collect(),
+            r2,
+        );
+
+        let mut u = Unifier::new();
+        u.unify_effect_rows(&eff_a, &eff_b, &test_prov());
+
+        if !u.has_errors() {
+            let resolved_a = u.substitution.apply_row(eff_a.as_row());
+            let resolved_b = u.substitution.apply_row(eff_b.as_row());
+            let labels_a: Vec<&Label> = resolved_a.labels().collect();
+            let labels_b: Vec<&Label> = resolved_b.labels().collect();
+            prop_assert_eq!(
+                labels_a, labels_b,
+                "After effect-row unification, resolved labels should match"
+            );
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -909,6 +942,25 @@ proptest! {
         prop_assert!(
             u.has_errors(),
             "Should fail: row variable lacks {:?} but was unified with a row containing it",
+            label
+        );
+    }
+
+    /// Lacks constraints apply equally to effect-row tails.
+    #[test]
+    fn effect_lacks_constraint_blocks_duplicate(label in arb_label()) {
+        let r = RowVarId(99);
+
+        let mut u = Unifier::new();
+        u.lacks.add(r, label.clone());
+
+        let open = EffectRow::open(vec![], r);
+        let closed = EffectRow::closed(vec![(label.clone(), Type::Unit)]);
+        u.unify_effect_rows(&open, &closed, &test_prov());
+
+        prop_assert!(
+            u.has_errors(),
+            "Should fail: effect tail lacks {:?} but was unified with a row containing it",
             label
         );
     }

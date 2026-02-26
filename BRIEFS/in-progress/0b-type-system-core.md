@@ -216,4 +216,5 @@ the trait infrastructure from 0b must be extensible for them.
 - 2026-02-26: Moved brief to `in-progress`; starting rill-types/rill-infer cannibalisation for `kea-types` + `kea-infer`.
 - 2026-02-26: Bootstrapped `kea-types` + `kea-infer` from Rill into workspace with kea crate naming/dependencies and namespace renames. Verified with `mise run check`, `PKG=kea-types mise run test-pkg` (49/49), and `PKG=kea-infer mise run test-pkg` (721/721).
 - 2026-02-26: Added Kea-native effect representation in `kea-types`: `Kind::Eff`, `EffectRow`, and `HandlerType` with display/behavior unit tests. Verified with `PKG=kea-types mise run test-pkg` (54/54) and `mise run check`.
-- **Next:** Wire `EffectRow` through `kea-infer` function/effect checking and add row-unification properties for effect rows (record/effect algorithm parity).
+- 2026-02-26: Added `Unifier::unify_effect_rows` and effect-row parity tests/properties in `kea-infer` (`lib.rs` + `prop_tests.rs`) to prove effect rows are solved by the same Rémy row engine and lacks constraints. Verified with `PKG=kea-infer mise run test-pkg` (726/726) and `mise run check`.
+- **Next:** Thread `EffectRow` into function signature verification in `typeck.rs` (declared vs inferred effect rows) and start effect-row alias expansion tests.
