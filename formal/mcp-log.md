@@ -5007,3 +5007,28 @@ introduced beyond previously logged handler/resume alignment probes).
 **Outcome**:
 - Phase-2 now has an explicit Fail/Result contract surface to extend into
   stronger typing-equivalence theorems.
+
+### 2026-02-26: fail/result typing-equivalence slice extension (proof-only)
+
+**Context**: Extended the new Fail/Result contract module from clause-level
+contract consequences to explicit function-type lowering/equivalence surfaces.
+
+**MCP tools used**: none (proof-only extension; no new runtime-facing claim
+delta).
+
+**Lean side**:
+- Added effect-row lowering surface `lowerFailEffects` with:
+  - `lowerFailEffects_removes_fail`
+  - `lowerFailEffects_preserves_other`
+  - `lowerFailEffects_noop_of_absent`
+- Added function-type lowering surface `lowerFailFunctionType` with
+  no-op-when-absent theorem `lowerFailFunctionType_noop_effect_of_absent`.
+- Added equivalence relation `failResultFunctionEquivalent` and projection
+  theorem `failResultFunctionEquivalent_implies_result_return`.
+- Verified with `cd formal && lake build` (pass).
+
+**Classify**: N/A (proof-only step).
+
+**Outcome**:
+- The Fail/Result track now has an explicit typing-equivalence slice suitable
+  for reuse in the next effect-polymorphism soundness contract layer.
