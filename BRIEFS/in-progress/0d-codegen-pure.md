@@ -367,4 +367,5 @@ Precision notes:
 - 2026-02-26: Benchmark harness scaffold landed: new `kea-bench` crate with divan-based microbenchmarks (`lex+parse`, `HIR→MIR`, `HIR→JIT compile`) plus `mise run bench` task and recorded first local baseline output.
 - 2026-02-26: Boolean `and`/`or` now lower as short-circuit control flow in MIR (branch + join block), rather than eager bitwise-style evaluation, with MIR+codegen regression tests.
 - 2026-02-26: HIR block lowering now propagates expected type hints to the block tail expression, allowing case/if tail desugaring to stay on the lowered path in typed contexts instead of falling back to raw nodes.
+- 2026-02-26: Unit-enum constructor lowering landed for the pure path: zero-field constructors and qualified unit-constructor case patterns now lower through literal-tag comparisons (with exhaustive-case defensive else closure), enabling end-to-end execution of basic enum case programs.
 - **Next:** Expand lowering/codegen coverage for structs/enums/pattern matching and Fail-only Result lowering fast path.
