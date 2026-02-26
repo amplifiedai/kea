@@ -951,6 +951,16 @@ impl Unifier {
                 self.bind_type_var(*v, &expected, provenance);
             }
 
+            // Bottom type unifies with any type.
+            (Type::Never, _) | (_, Type::Never) => {
+                self.push_unify_step(
+                    crate::trace::UnifyAction::Identity,
+                    &expected,
+                    &actual,
+                    "Never is bottom and unifies with any type".into(),
+                );
+            }
+
             // Dynamic widening: concrete → Dynamic is always safe (losing type info).
             (Type::Dynamic, _) => {
                 self.push_unify_step(

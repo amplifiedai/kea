@@ -129,6 +129,7 @@ pub enum Type {
     Html,
     Markdown,
     Unit,
+    Never,
     /// Atom: a compile-time symbol (e.g., `:restart`, `:one_for_one`).
     Atom,
     /// Calendar date (days since Unix epoch, Arrow Date32).
@@ -543,6 +544,7 @@ impl fmt::Display for Type {
             Type::Html => write!(f, "Html"),
             Type::Markdown => write!(f, "Markdown"),
             Type::Unit => write!(f, "()"),
+            Type::Never => write!(f, "Never"),
             Type::Atom => write!(f, "Atom"),
             Type::Date => write!(f, "Date"),
             Type::DateTime => write!(f, "DateTime"),
@@ -939,6 +941,7 @@ fn collect_free_type_vars(ty: &Type, vars: &mut BTreeSet<TypeVarId>) {
         | Type::Html
         | Type::Markdown
         | Type::Unit
+        | Type::Never
         | Type::Atom
         | Type::Date
         | Type::DateTime
@@ -1050,6 +1053,7 @@ fn collect_free_row_vars(ty: &Type, vars: &mut BTreeSet<RowVarId>) {
         | Type::Html
         | Type::Markdown
         | Type::Unit
+        | Type::Never
         | Type::Atom
         | Type::Date
         | Type::DateTime
@@ -1182,6 +1186,7 @@ fn collect_free_dim_vars(ty: &Type, vars: &mut BTreeSet<DimVarId>) {
         | Type::Html
         | Type::Markdown
         | Type::Unit
+        | Type::Never
         | Type::Atom
         | Type::Date
         | Type::DateTime
@@ -1416,6 +1421,7 @@ pub fn type_constructor_for_trait(ty: &Type) -> Option<(String, Vec<Type>)> {
         Type::Html => Some(("Html".into(), vec![])),
         Type::Markdown => Some(("Markdown".into(), vec![])),
         Type::Unit => Some(("Unit".into(), vec![])),
+        Type::Never => Some(("Never".into(), vec![])),
         Type::Atom => Some(("Atom".into(), vec![])),
         Type::Date => Some(("Date".into(), vec![])),
         Type::DateTime => Some(("DateTime".into(), vec![])),
@@ -1542,6 +1548,7 @@ pub fn rebuild_type(constructor: &str, args: &[Type]) -> Option<Type> {
         "Html" if args.is_empty() => Type::Html,
         "Markdown" if args.is_empty() => Type::Markdown,
         "Unit" if args.is_empty() => Type::Unit,
+        "Never" if args.is_empty() => Type::Never,
         "Atom" if args.is_empty() => Type::Atom,
         "Date" if args.is_empty() => Type::Date,
         "DateTime" if args.is_empty() => Type::DateTime,
@@ -1584,6 +1591,7 @@ pub fn is_sendable(ty: &Type) -> bool {
         | Type::Html
         | Type::Markdown
         | Type::Unit
+        | Type::Never
         | Type::Atom
         | Type::Date
         | Type::DateTime => true,
@@ -1809,6 +1817,7 @@ fn sendable_violation_inner(ty: &Type, path: &str) -> Option<SendableViolation> 
         | Type::Html
         | Type::Markdown
         | Type::Unit
+        | Type::Never
         | Type::Atom
         | Type::Date
         | Type::DateTime
@@ -2024,7 +2033,7 @@ impl Type {
     pub fn is_arrow_scalar(&self) -> bool {
         matches!(
             self,
-            Type::Bool | Type::String | Type::Unit | Type::Date | Type::DateTime
+            Type::Bool | Type::String | Type::Unit | Type::Never | Type::Date | Type::DateTime
         ) || matches!(self, Type::Option(inner) if inner.is_arrow_scalar())
             || self.is_numeric()
     }
@@ -2213,6 +2222,7 @@ impl Substitution {
             | Type::Html
             | Type::Markdown
             | Type::Unit
+            | Type::Never
             | Type::Atom
             | Type::Date
             | Type::DateTime
@@ -2470,6 +2480,7 @@ mod tests {
         assert_eq!(Type::Bool.to_string(), "Bool");
         assert_eq!(Type::String.to_string(), "String");
         assert_eq!(Type::Unit.to_string(), "()");
+        assert_eq!(Type::Never.to_string(), "Never");
     }
 
     #[test]

@@ -7307,6 +7307,41 @@ fn catch_style_handle_typechecks_to_result_and_removes_fail() {
 }
 
 #[test]
+fn fail_operation_with_never_return_type_acts_as_bottom_in_branches() {
+    let mut env = TypeEnv::new();
+    let records = RecordRegistry::new();
+    let sums = SumTypeRegistry::new();
+    let mut traits = TraitRegistry::new();
+    register_hkt_for_use_for_traits(&mut traits, &records);
+
+    let fail_effect = make_effect_decl(
+        "Fail",
+        vec!["E"],
+        vec![make_effect_operation(
+            "fail",
+            vec![annotated_param("error", TypeAnnotation::Named("E".to_string()))],
+            TypeAnnotation::Named("Never".to_string()),
+        )],
+    );
+    let diags = register_effect_decl(&fail_effect, &records, Some(&sums), &mut env);
+    assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+
+    let expr = if_expr(
+        lit_bool(true),
+        lit_int(7),
+        Some(call(field_access(var("Fail"), "fail"), vec![lit_str("boom")])),
+    );
+    let mut unifier = Unifier::new();
+    let ty = infer_and_resolve(&expr, &mut env, &mut unifier, &records, &traits, &sums);
+    assert_eq!(ty, Type::Int);
+    assert!(
+        !unifier.has_errors(),
+        "never-return fail branch should typecheck as bottom, got {:?}",
+        unifier.errors()
+    );
+}
+
+#[test]
 fn infer_fn_decl_effects_uses_volatile_callback_param_annotation() {
     let env = TypeEnv::new();
     let fn_decl = FnDecl {
