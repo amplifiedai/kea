@@ -6971,6 +6971,73 @@ fn nested_handlers_shadow_same_effect() {
 }
 
 #[test]
+fn handler_effect_union_is_idempotent_for_residual_trace() {
+    let mut env = TypeEnv::new();
+    let records = RecordRegistry::new();
+    let sums = SumTypeRegistry::new();
+    let mut traits = TraitRegistry::new();
+    register_hkt_for_use_for_traits(&mut traits, &records);
+
+    let log = make_effect_decl(
+        "Log",
+        vec![],
+        vec![make_effect_operation(
+            "log",
+            vec![annotated_param(
+                "msg",
+                TypeAnnotation::Named("String".to_string()),
+            )],
+            TypeAnnotation::Named("Unit".to_string()),
+        )],
+    );
+    let trace = make_effect_decl(
+        "Trace",
+        vec![],
+        vec![make_effect_operation(
+            "emit",
+            vec![annotated_param("value", TypeAnnotation::Named("Int".to_string()))],
+            TypeAnnotation::Named("Unit".to_string()),
+        )],
+    );
+    let log_diags = register_effect_decl(&log, &records, Some(&sums), &mut env);
+    assert!(log_diags.is_empty(), "unexpected diagnostics: {log_diags:?}");
+    let trace_diags = register_effect_decl(&trace, &records, Some(&sums), &mut env);
+    assert!(
+        trace_diags.is_empty(),
+        "unexpected diagnostics: {trace_diags:?}"
+    );
+
+    let handled = block(vec![
+        call(field_access(var("Trace"), "emit"), vec![lit_int(0)]),
+        call(field_access(var("Log"), "log"), vec![lit_str("hello")]),
+    ]);
+    let clause = handle_clause(
+        "Log",
+        "log",
+        vec![sp(PatternKind::Var("msg".to_string()))],
+        call(field_access(var("Trace"), "emit"), vec![lit_int(1)]),
+    );
+    let wrapper = make_fn_decl("wrapper", vec![], handle_expr(handled, vec![clause], None));
+
+    let row = infer_fn_decl_effect_row(&wrapper, &env);
+    let trace_label = Label::new("Trace");
+    let trace_count = row
+        .row
+        .fields
+        .iter()
+        .filter(|(label, _)| label == &trace_label)
+        .count();
+    assert_eq!(
+        trace_count, 1,
+        "expected idempotent Trace union in handler effect row, got {row:?}"
+    );
+    assert!(
+        !row.row.has(&Label::new("Log")),
+        "expected handled Log effect to be removed, got {row:?}"
+    );
+}
+
+#[test]
 fn resume_outside_handler_is_type_error() {
     let mut env = TypeEnv::new();
     let records = RecordRegistry::new();

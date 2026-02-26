@@ -6969,6 +6969,27 @@ fn join_effect_rows_many(
         })
 }
 
+fn normalize_effect_row_idempotent(row: EffectRow) -> EffectRow {
+    let mut fields: Vec<(Label, Type)> = Vec::with_capacity(row.row.fields.len());
+    for (label, payload) in row.row.fields {
+        if fields
+            .iter()
+            .any(|(existing_label, existing_payload)| {
+                existing_label == &label && existing_payload == &payload
+            })
+        {
+            continue;
+        }
+        fields.push((label, payload));
+    }
+    EffectRow {
+        row: RowType {
+            fields,
+            rest: row.row.rest,
+        },
+    }
+}
+
 fn effect_row_from_annotation(
     ann: &kea_ast::EffectAnnotation,
     effect_var_bindings: &mut BTreeMap<String, RowVarId>,
@@ -7748,9 +7769,9 @@ pub fn infer_fn_decl_effect_row(fn_decl: &FnDecl, env: &TypeEnv) -> EffectRow {
             if unifier.solve(constraints).is_err() {
                 impure_effect_row()
             } else {
-                EffectRow {
+                normalize_effect_row_idempotent(EffectRow {
                     row: unifier.substitution.apply_row(&root.row),
-                }
+                })
             }
         };
         if next == current {
