@@ -215,7 +215,7 @@ interaction.
 
 Cannibalise: Rill's trait system (substantial).
 - GADTs: type refinement in pattern matching
-- HKTs: higher-kinded type parameters (Functor, Monad)
+- Eff kind: effect-parameterised types kind-check correctly
 - Associated types
 - Supertraits
 - Deriving (@derive)
@@ -422,7 +422,7 @@ Learned from Rill:
 | 0d    | 4-6    | Cranelift codegen, pure programs run natively |
 | 0e    | 6-8    | Runtime effects (IO, Fail, handlers, arenas) |
 | 0f    | 8-9    | Memory model (Unique, borrow, unsafe) |
-| 0g    | 9-11   | GADTs, HKTs, full stdlib, error messages |
+| 0g    | 9-11   | GADTs, Eff kind, full stdlib, error messages |
 | 1a    | 11-16  | Compiler ported to Kea |
 | 1b    | 16-17  | Three-stage bootstrap proven |
 | 1c    | 17-20  | Compiler improvements in Kea |

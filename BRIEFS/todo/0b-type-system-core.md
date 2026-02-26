@@ -19,7 +19,7 @@ extensive property tests.
 **rill-types** (3,310 LOC):
 - `Type` enum, `RowType`, `TypeVarId`, `RowVarId` — direct transfer
 - `Substitution` type and operations — direct transfer
-- `Kind` system — direct transfer, extend with `* -> *` for HKTs
+- `Kind` system — direct transfer, extend with `Eff` kind
 - Remove: `DataFrameType`, `ColumnType`, `SqlType`, `ActorType`,
   `DimensionType`, `AggregateType`
 - Add: `EffectRow` (new row kind using same `RowType` machinery),

@@ -2,7 +2,7 @@
 
 **Status:** design
 **Priority:** v1-critical
-**Depends on:** 0g-advanced-types (needs GADTs, HKTs stable)
+**Depends on:** 0g-advanced-types (needs GADTs, Eff kind stable)
 **Blocks:** Phase 1 (self-hosting requires full stdlib)
 
 ## Motivation
@@ -29,23 +29,20 @@ is a parallelizable surface area.
 
 ## Decisions
 
-- **Stdlib uses inherent methods, not HKT trait dispatch.**
-  `List.map`, `Option.map`, `Result.map` are inherent methods on
-  their respective types — direct calls, monomorphized once per
-  concrete callback type. The HKT traits (`Functor`, `Applicative`,
-  `Monad`) exist for library authors who need generic programming,
-  and each stdlib type implements them, but the stdlib doesn't
-  route its own internals through HKT dispatch.
+- **Collection traits on concrete types. No HKT traits.**
+  `Foldable`, `Enumerable`, `Filterable`, `Iterator` are regular
+  traits (kind `*`) on concrete types — `List Int as Foldable`,
+  not `List as Functor`. This is Elixir's Enum protocol: any type
+  implementing `Foldable` gets `fold`, `sum`, `find` via trait
+  dispatch.
 
-  This minimizes monomorphization pressure. Most application code
-  calls `list.map(f)` which resolves to the inherent method (§9.1
-  prefers inherent over trait methods). Only code that explicitly
-  quantifies over `F: Functor` pays the HKT abstraction cost.
+  `map` is an inherent method (`List.map`, `Option.map`) because
+  it returns the same container type — that's a container-specific
+  operation, not a generic fold.
 
-  Rill's approach: the evaluator routes through trait evidence
-  (HKT dispatch). Kea's compiled stdlib should NOT do this — use
-  inherent methods for concrete types, HKT traits as an opt-in
-  abstraction layer on top.
+  There are no `Functor`/`Applicative`/`Monad`/`Traversable`
+  traits. Effects replace the monadic composition that motivates
+  HKTs in Haskell.
 
 ## Implementation Plan
 
@@ -92,7 +89,7 @@ heavily:
 - Effect errors must explain which effect is unhandled and
   suggest adding a handler
 - GADT errors must explain refinement failures
-- HKT errors must explain kind mismatches in plain language
+- Kind errors must explain `*` vs `Eff` mismatches in plain language
 - Ambiguous dispatch errors must suggest qualified syntax
   (CALL-SYNTAX.md diagnostic section)
 

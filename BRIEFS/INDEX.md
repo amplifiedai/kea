@@ -49,11 +49,12 @@ Needs more design work. Briefs exist but aren't implementation-ready.
 
 6. **[Runtime effects](design/0e-runtime-effects.md)** (weeks 6-8) — Handler compilation strategy (evidence passing vs CPS vs segmented stacks), tail-resumptive optimisation, IO runtime, Fail optimised path, arena allocation. Highest risk phase.
 7. **[Memory model](design/0f-memory-model.md)** (weeks 8-9) — Unique T, borrow convention, reuse analysis (pure optimisation, not load-bearing), unsafe/Ptr, @unboxed, fixed-width integers.
-8. **[Advanced type features](design/0g-advanced-types.md)** (weeks 9-11) — GADTs, HKTs, associated types, supertraits. Type theory pieces.
+8. **[Advanced type features](design/0g-advanced-types.md)** (weeks 9-11) — GADTs, Eff kind, associated types, supertraits. Type theory pieces.
 9. **[Stdlib, deriving, and error messages](design/0h-stdlib-errors.md)** (weeks 10-11) — @derive, full stdlib (Map, Set, String, IO, JSON), error message investment. Engineering work, parallelizable. Can start once 0g type features are stable.
 
 ### Other design work
 
+- **[Serialization](design/serialization.md)** (Phase 2) — Type-driven Encode/Decode with Validated error accumulation, row-polymorphic partial deserialization, format-agnostic FormatWriter/FormatReader traits. Adapted from Rill's Format brief.
 - **Supervision trait API** — How exactly does the `Supervisor` trait work? KERNEL §19.5 sketches it loosely. Needs concrete trait definition for kea-actors. Depends on Actor trait (§19.3) being implemented.
 - **Arena allocation semantics** — `Alloc` effect, deep-copy at boundary, interaction with Unique. KERNEL §12.7 specifies behavior; implementation strategy is the open question. Partially covered in 0e and 0f briefs.
 - **Lean formalization** — Transfer rill's formal methods to Kea. Priority order in ROADMAP.md "Formal Methods Strategy." Depends on type system being stable enough to formalize.
@@ -85,7 +86,7 @@ Completed briefs. Kept for reference and design rationale.
  │    │         │    │
  │    │         │    └── 0f: memory model (Unique, borrow, unsafe)
  │    │         │         │
- │    │         │         └── 0g: advanced types (GADTs, HKTs)
+ │    │         │         └── 0g: advanced types (GADTs, Eff kind)
  │    │         │              │
  │    │         │              ├── 0h: stdlib, deriving, errors (parallelizable)
  │    │         │              │

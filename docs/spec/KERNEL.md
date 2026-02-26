@@ -15,10 +15,9 @@ whole-module.
 ## 0. Notation
 
 - `T`, `A`, `B` denote arbitrary types.
-- `F` denotes a type constructor (kind `* -> *`).
 - `r` denotes a row variable.
 - `E` denotes an error type.
-- `e` denotes an effect variable.
+- `e` denotes an effect row variable (kind `Eff`).
 - `{ f1: T1, f2: T2 | r }` denotes an open row with known fields and
   row variable `r`.
 - `{ f1: T1, f2: T2 }` denotes a closed row (no row variable).
@@ -1145,28 +1144,32 @@ trait Iterator
   fn next(_ self: Self) -> Option (Self.Item, Self)
 ```
 
-### 6.6 Higher-Kinded Types
+### 6.6 Kind System
 
-Type parameters may have higher kinds:
+Kea has two kinds:
 
-```kea
-trait Functor F
-  fn map(_ self: F A, _ f: A -> B) -> F B
-```
-
-`F` here has kind `* -> *`. Kind inference is performed by the
-compiler. Explicit kind annotations are not part of v0.
-
-**Kind system.** The kinds in Kea are:
-
-- `*` — ordinary types (Int, String, List Int)
-- `* -> *` — type constructors (List, Option, Ref)
-- `* -> * -> *` — binary type constructors (Map, Result)
+- `*` — ordinary types (Int, String, List Int, Map String Int)
 - `Eff` — effect rows ([IO, Fail E], [Send, Spawn])
 
-Effect row parameters have kind `Eff`. The compiler infers
-kinds from usage — a type parameter used in effect position
-(`-[E]>`) is inferred to have kind `Eff`:
+There are no higher-kinded types (`* -> *`). Type constructors
+like `List`, `Option`, and `Map` are not first-class — you cannot
+abstract over "any type constructor." Effects replace the primary
+motivation for HKTs: IO, State, Error, Reader are effects, not
+monadic types. Handler composition replaces monadic composition.
+Collection traits (`Foldable`, `Enumerable`, `Filterable`) work
+on concrete types — `Self` is `List Int`, not `List`. This is
+Elixir's Enum protocol: any type implementing `Foldable` gets
+`fold`, `sum`, `find` via trait dispatch. What you can't write
+is `fn summarize(c: F Int) where F: Foldable` — abstracting
+over the container. You write `fn summarize(c: impl Foldable)`
+where the concrete type carries both container and element info.
+Container-specific operations like `map` are inherent methods
+(`List.map`, `Option.map`).
+
+**Kind inference.** The compiler infers kinds from usage. A type
+parameter used in effect position (`-[E]>`) is inferred to have
+kind `Eff`. All other type parameters have kind `*`. Explicit kind
+annotations are not part of the language.
 
 ```kea
 struct Server E        -- E : Eff (inferred from usage below)
@@ -1174,6 +1177,8 @@ struct Server E        -- E : Eff (inferred from usage below)
 
 trait Runnable E       -- E : Eff
   fn run(_ self: Self) -[E]> ()
+
+fn transform(_ x: A) -> A    -- A : * (default)
 ```
 
 Kind errors are reported when a type parameter is used
@@ -2432,7 +2437,7 @@ explicitly discard: `let _ = Send.ask(ref, msg)`.
 
 ```kea
 trait Actor
-  type Msg: * -> *       -- GADT message protocol
+  type Msg _             -- GADT message protocol (takes one type parameter)
   type Config
   fn init(_ config: Self.Config) -> Self
   fn handle(_ self: Self, _ msg: Self.Msg T, _ reply: T -> ()) -[Send]> Self
@@ -2576,9 +2581,6 @@ Concatenable  Monoid
 
 -- Collections
 Enumerable  Iterator  Foldable  Filterable
-
--- Higher-order
-Functor  Applicative  Monad  Traversable
 ```
 
 These traits are available for unqualified method dispatch (§9.1)
@@ -2605,10 +2607,9 @@ Iterator          -- next
 Foldable          -- fold, sum, any, all, find
 Filterable        -- filter
 
-Functor F         -- map
-Applicative F : Functor  -- pure, apply
-Monad F : Applicative    -- bind
-Traversable F : Functor, Foldable  -- traverse
+-- No HKT traits (Functor, Monad, etc.) — effects replace monadic
+-- composition. Collection traits above work on concrete types
+-- (Self = List Int, not List). map is an inherent method.
 ```
 
 ---

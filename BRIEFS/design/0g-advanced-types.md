@@ -7,14 +7,28 @@
 
 ## Motivation
 
-GADTs (for typed actor protocols), HKTs (for Functor/Monad/Traversable),
-associated types, and supertraits are the type system features that make
-Kea's abstractions work. GADTs enable typed actor message protocols where
-the response type is encoded in the message constructor. HKTs enable
-Functor/Monad/Traversable across container types. These are the type
-theory pieces — the stdlib, deriving, and error messages are split into
-a separate brief (0h) since they're engineering work that can be
-parallelized.
+GADTs (for typed actor protocols), associated types, supertraits,
+and the `Eff` kind are the type system features that make Kea's
+abstractions work. GADTs enable typed actor message protocols where
+the response type is encoded in the message constructor. The `Eff`
+kind enables effect-parameterised types (KERNEL §5.14, §6.6).
+These are the type theory pieces — the stdlib, deriving, and error
+messages are split into a separate brief (0h) since they're
+engineering work that can be parallelized.
+
+**No HKTs.** Kea's kind system has `*` and `Eff`, not `* -> *`.
+Effects replace the primary motivation for HKTs — IO, State, Error,
+Reader are all effects, not monadic types. Handler composition
+replaces monadic composition. The remaining use case (generic
+programming over containers: `Functor`, `Traversable`) is served
+by concrete inherent methods (`List.map`, `Option.map`), which is
+what Rust does. The stdlib doesn't need `Functor` to self-host,
+and Kea doesn't need `* -> *` to express anything in its core
+abstractions. GADTs, effect rows, and associated types are all
+kind `*` or `Eff`. HKTs are an additive feature — if a library
+author makes a compelling case, they can be added later without
+breaking anything. rill-infer's HKT machinery remains available
+as reference.
 
 ## What transfers from Rill
 
@@ -23,16 +37,15 @@ parallelized.
   coherence checking (orphan rule), and basic supertraits.
   This transfers and extends.
 - Type variable handling: rill's unifier handles polymorphic
-  type variables. Extend for higher-kinded variables.
+  type variables. Extends to GADT refinement variables.
 - Property tests: rill's 4,554 LOC of property tests cover
-  row unification and inference invariants. Extend for GADTs
-  and HKTs.
+  row unification and inference invariants. Extend for GADTs.
 - Test infrastructure: rill's 18,068 LOC of typeck tests
   provide patterns for testing complex type features.
 
 **rill-types** (3,310 LOC, already cannibalised in 0b):
-- Kind system exists but only for `*`. Extend for `* -> *`
-  (HKTs) and GADT return type indices.
+- Kind system exists but only for `*`. Extend for `Eff` kind
+  and GADT return type indices.
 
 **rill-eval** (structural reference):
 - Trait evidence system (2,860 LOC): how rill resolves trait
@@ -75,30 +88,23 @@ Implementation:
 the mechanism for typed ask/tell. Getting GADT refinement right
 is essential for the actor story.
 
-### 2. HKTs (KERNEL §6.6)
+### 2. Eff Kind (KERNEL §6.6)
 
-Type parameters with higher kinds:
+The kind system has two kinds: `*` (types) and `Eff` (effect rows).
+No `* -> *`. No higher-kinded type parameters.
 
 ```kea
-trait Functor F
-  fn map(_ self: F A, _ f: A -> B) -> F B
+struct Server E        -- E : Eff (inferred from effect position)
+  handler: Request -[E]> Response
 ```
 
-`F` has kind `* -> *`. Kind inference determines this from usage.
-
 Implementation:
-- Extend the kind system from `*` to `* -> *`, `* -> * -> *`,
-  etc. (or use kind variables with inference)
-- Kind checking: verify type applications are well-kinded
-- Kind inference: infer kinds from trait definitions and
-  implementations
-- Cranelift: HKTs are erased at runtime. They affect dispatch
-  (which Functor impl to use) but not representation.
-
-**No explicit kind annotations in v0** (KERNEL §6.6). Kinds
-are inferred. This is simpler to implement and friendlier to
-use, but may produce confusing errors when kind inference fails.
-Invest in error messages.
+- Extend the kind system from `*` to `*` + `Eff`
+- Kind inference: parameters used in effect position (`-[E]>`)
+  are inferred to have kind `Eff`
+- Kind checking: verify type parameters are used consistently
+  (can't use a `*` parameter in effect position or vice versa)
+- Report clear errors on kind mismatches
 
 ### 3. Associated Types (KERNEL §6.5)
 
@@ -107,6 +113,20 @@ trait Iterator
   type Item
   fn next(_ self: Self) -> Option (Self.Item, Self)
 ```
+
+Associated types are critical for the collection trait story.
+Without HKTs, `Foldable` uses an associated type for the element:
+
+```kea
+trait Foldable
+  type Item
+  fn fold(_ self: Self, _ init: B, _ f: (B, Self.Item) -> B) -> B
+```
+
+`List Int` implements `Foldable` with `type Item = Int`. Default
+methods (`sum`, `any`, `all`, `find`) call `fold`. This is
+Elixir's Enum protocol — traits on concrete types, associated
+types for the element, no HKTs needed.
 
 Implementation:
 - Type checker: associated types are resolved when the
@@ -143,14 +163,15 @@ machinery that depends on the type features above being stable.
 - Test: Expr GADT from KERNEL §3.3 works. CounterMsg from §19.4
   works. Refinement is correctly scoped.
 
-### Step 2: HKTs
+### Step 2: Eff kind
 
-- Extend kind system (`*`, `* -> *`, kind variables)
-- Kind inference on trait definitions
-- Kind checking on trait implementations and type applications
-- Prelude traits: Functor, Applicative, Monad, Traversable
-- Test: `List as Functor` works. `Option as Monad` works.
-  Kind errors are comprehensible.
+- Extend kind system: `*` + `Eff` (no `* -> *`)
+- Kind inference: parameters in effect position infer `Eff`
+- Kind checking: consistent usage of type vs effect parameters
+- Verify: effect-parameterised types (`Server E`, `Step E A`)
+  kind-check correctly with `E : Eff`
+- Test: Actor trait with associated types works. Kind errors
+  are comprehensible. Effect row params infer `Eff` kind.
 
 ### Step 3: Associated types and supertraits
 
@@ -162,13 +183,14 @@ machinery that depends on the type features above being stable.
 ### Step 4: Deriving, stdlib, error messages
 
 See 0h-stdlib-errors brief. Can begin in parallel once GADTs
-and HKTs are stable.
+and the Eff kind are stable.
 
 ## Testing
 
 - GADTs: refinement works, is branch-local, complex nested
   patterns work
-- HKTs: Functor/Monad/Traversable work, kind errors are clear
+- Kind system: `Eff` kind inferred, effect-parameterised types
+  kind-check, kind errors are clear
 - Associated types: resolve correctly for concrete and
   polymorphic types
 - Supertraits: supertrait methods available, missing supertrait
@@ -178,7 +200,7 @@ and HKTs are stable.
 ## Definition of Done
 
 - GADTs work (including typed actor protocols with CounterMsg)
-- HKTs work (Functor, Applicative, Monad, Traversable)
+- Kind system supports `Eff` kind for effect-parameterised types
 - Associated types resolve correctly
 - Supertraits checked and available
 - The type system supports the abstractions needed for
@@ -187,13 +209,10 @@ and HKTs are stable.
 
 ## Open Questions
 
-- Should kind annotations be available even if not required?
-  (KERNEL says no for v0. But they could help with error
-  messages. Proposal: no syntax for them, but show inferred
-  kinds in error messages and `:type` output.)
 - How do we handle GADT + effect interaction? (A GADT match
   arm that refines a type variable — does this affect the
-  effect row? Probably not — effect variables and type
-  variables are independent. But needs verification.)
+  effect row? Probably not — effect variables (`Eff` kind)
+  and type variables (`*` kind) are independent. But needs
+  verification.)
 - Which traits should be derivable in v0? (Moved to 0h.)
 - Should Map/Set use HAMT from the start? (Moved to 0h.)

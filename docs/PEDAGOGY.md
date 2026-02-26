@@ -4,7 +4,7 @@
 
 ## Core Thesis
 
-Kea's type system is powerful — algebraic effects, row polymorphism, HKTs, opaque types, typed actors. The documentation must never lead with that power. Instead, every feature is introduced through the problem it solves, not the theory it implements.
+Kea's type system is powerful — algebraic effects, row polymorphism, GADTs, opaque types, typed actors. The documentation must never lead with that power. Instead, every feature is introduced through the problem it solves, not the theory it implements.
 
 The governing metaphor: **the compiler is your collaborator.** You write Kea code to build things. The compiler reads your code and tells you what it knows: which functions are pure, where errors can occur, what messages an actor can receive, which operations might touch the network. It's not a gatekeeper — it's a second pair of eyes that never gets tired and never misses a case.
 
@@ -22,13 +22,13 @@ Good: "The compiler knows which functions can touch the file system and which ca
 Bad: "The `?` operator desugars `Fail E` via an implicit `Result` return."
 Good: "`?` handles errors automatically. Each step either succeeds and continues, or short-circuits with the error. The compiler tracks which errors are possible and makes sure you've handled them all."
 
-### 2. The word "monad" does not appear in user-facing documentation
+### 2. Category theory terms do not appear in user-facing documentation
 
-Not in tutorials. Not in guides. Not in error messages. Not in API docs. It can appear in a clearly-labelled "Theory Deep Dive" appendix for the curious.
+Not in tutorials. Not in guides. Not in error messages. Not in API docs. They can appear in a clearly-labelled "Theory Deep Dive" appendix for the curious.
 
-Kea has `Monad` in the prelude — it's a real trait that library authors implement. But the trait name is for the type system, not for the tutorials. The concepts that `Monad` describes are taught through their concrete manifestations: error chaining with `?`, collection transformation with `.map`, optional handling with `match`. Users understand these by using them, not by learning category theory.
+Kea has no `Monad` trait — effects replace monadic composition. But the concepts that monads describe in other languages are taught through their concrete Kea manifestations: error chaining with `?`, collection transformation with `.map`, optional handling with `match`. Users understand these by using them, not by learning category theory.
 
-Similarly absent from user-facing docs: functor, applicative, endofunctor, morphism, catamorphism, natural transformation, Kleisli arrow. These words are for the appendix.
+Absent from user-facing docs: monad, functor, applicative, endofunctor, morphism, catamorphism, natural transformation, Kleisli arrow. These words are for the appendix.
 
 ### 3. Terminology mapping
 
@@ -36,9 +36,7 @@ Similarly absent from user-facing docs: functor, applicative, endofunctor, morph
 |---|---|---|
 | Algebraic effects | "effect tracking" / "the compiler knows" | "the compiler knows this function talks to the network" |
 | Row polymorphism | "flexible records" / "partial requirements" | "your function only requires the fields it uses" |
-| Higher-kinded types | (invisible — never named) | the mechanism that makes `.map` work on any container |
-| Monad / Bind | "chainable operations" / "automatic error handling" | "`?` handles the unwrapping for you" |
-| Applicative | "independent operations" | (invisible until library-author level) |
+| Monad (other languages) | "effect handling" / "`?` for errors" | "effects replace monads — `?` handles errors, handlers handle effects" |
 | Opaque type | "domain type" / "branded type" | "Revenue and Float are different things" |
 | Effect polymorphism | "effect transparency" | "if your callback is pure, the whole pipeline is pure" |
 | Kind | (invisible — never named) | (compiler internal) |
@@ -370,18 +368,17 @@ The type system enforces:
 
 A clearly-labelled separate document for the curious. Not linked from tutorials or getting-started guides. Contains:
 
-- The formal names: algebraic effects, row polymorphism, higher-kinded types
+- The formal names: algebraic effects, row polymorphism, GADTs
 - How they relate to Haskell, OCaml, Scala, Rust equivalents
-- The prelude trait hierarchy: Functor, Applicative, Monad, Foldable, Traversable
 - How `?` desugars through `Fail` and `Result`
 - Effect set algebra and join rules
-- Kind system and constructor variables
+- Why Kea doesn't need HKTs (effects replace monadic composition)
 - Category theory connections (for those who want them)
 - Academic references
 
 This appendix exists for library authors, language contributors, and the theoretically curious. It is never required reading.
 
-Trait documentation (e.g., `kea doc Monad`) should include a brief note at the bottom for those who know what they're looking for: "Equivalent to Haskell's Monad type class. See deep-dive/type-theory.md for the formal connection." This line is invisible to application developers — it's at the bottom of the doc — but findable by someone who already knows the concept.
+Trait documentation should include brief notes at the bottom for those who know what they're looking for. For example, the `Fail` effect doc could note: "If you're coming from Haskell, `Fail` replaces the `MonadError` pattern. See deep-dive/type-theory.md." This line is invisible to application developers — it's at the bottom of the doc — but findable by someone who already knows the concept.
 
 ## Documentation structure
 
@@ -441,21 +438,19 @@ Good: "`Toml.parse` can fail with ParseError, but this function's signature does
 
 ### Exception: library authors
 
-When writing code that defines traits or implements them for custom types, users may encounter kind errors or trait resolution failures. These messages can use slightly more technical language, but should still lead with the problem:
+When writing code that defines traits or uses effect-parameterised types, users may encounter kind errors or trait resolution failures. These messages can use slightly more technical language, but should still lead with the problem:
 
 ```
-error: `impl Functor for MyType` requires MyType to accept
-       a type parameter
+error: `Server Int` uses Int as an effect set, but Int is a type
   --> src/lib.kea:10:1
    |
-10 | impl Functor for MyType
-   |                  ^^^^^^ MyType has no type parameters
+10 | let s: Server Int = ...
+   |               ^^^ Int is a type, not an effect set
    |
-   = help: Functor works with container types like List T,
-           Option T, or Result T E — types that hold values.
-           MyType doesn't hold a value of a variable type.
-   = note: (for library authors) Functor requires kind * -> *.
-           MyType has kind *.
+   = help: Server expects an effect set like [IO, Fail AppError].
+           Try: Server [IO, Fail AppError]
+   = note: (for library authors) Server's parameter has kind Eff.
+           Int has kind *.
 ```
 
 The `note:` line provides the technical detail for those who want it. The main message is understandable without it.

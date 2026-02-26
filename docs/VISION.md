@@ -266,24 +266,10 @@ struct Main
 - The dot works the same everywhere — modules, actors, data
   values. One dispatch mechanism.
 
-### 5. Higher-Kinded Types and GADTs
+### 5. GADTs
 
-HKTs let you abstract over type constructors. GADTs encode
-invariants in types. They complete the picture.
-
-**HKTs make the standard library coherent:**
-
-```kea
-trait Functor F
-  fn map(_ self: F A, _ f: A -> B) -> F B
-
-trait Traversable F where F: Functor, F: Foldable
-  fn traverse(_ self: F A, _ f: A -[e]> B) -[e]> F B
-```
-
-`Traversable.traverse` maps over a structure, collecting effects.
-Effect polymorphism via `e` means the same function handles pure
-transforms, IO operations, and everything between.
+GADTs encode invariants in types. They make the actor story
+type-safe.
 
 **GADTs type actor protocols:**
 
@@ -466,12 +452,13 @@ checker for simpler code and relies on effects to track what
 Rust tracks with lifetimes. Kea is an application language;
 Rust is where you write the runtime underneath it.
 
-**Haskell** gave us HKTs, GADTs, type inference, and the
-understanding that tracking effects in the type system matters.
-Kea replaces monad transformers with row-polymorphic effects,
-which compose better and require less expertise to use. The
-indentation-sensitive syntax is closer to Haskell than to
-anything else.
+**Haskell** gave us GADTs, type inference, and the understanding
+that tracking effects in the type system matters. Kea replaces
+monad transformers with row-polymorphic effects, which compose
+better and require less expertise to use. Kea doesn't need HKTs
+because effects replace monadic composition — the primary
+motivation for `* -> *` disappears. The indentation-sensitive
+syntax is closer to Haskell than to anything else.
 
 **Erlang/OTP** gave us the actor model, supervision trees, and
 "let it crash." Kea's contribution is bringing those ideas into
@@ -482,9 +469,9 @@ ongoing work.
 
 **Koka** pioneered practical algebraic effects with row-based
 effect typing. Kea extends the idea with GADTs (for typed actor
-protocols), HKTs (for abstracting over effectful computations),
-and the struct-everything organization. Koka showed it could
-work; Kea is trying to build a full language around it.
+protocols) and the struct-everything organization. Koka showed
+effects could work; Kea is trying to build a full language
+around them.
 
 **OCaml 5** added algebraic effects to a mature ecosystem. OCaml's
 effects are untyped at the language level (the effect type is not
@@ -493,12 +480,59 @@ and use row polymorphism. Different tradeoff: OCaml gets ecosystem
 compatibility; Kea gets static effect tracking.
 
 The unique position, as far as we can tell: no existing language
-combines row-polymorphic effects, GADTs, HKTs, typed actors, and
+combines row-polymorphic effects, GADTs, typed actors, and
 struct-everything modules where all of these share the same
 polymorphism substrate. Koka comes closest for effects. Haskell
 comes closest for the type system. Erlang comes closest for
 actors. We're trying to make them work as one thing rather than
 five separate features.
+
+---
+
+## What the Design Enables
+
+The combination of typed effects, row polymorphism, and actors
+opens compilation strategies that aren't available to languages
+where these features are bolted on.
+
+**JS codegen and automatic client/server partitioning.** A second
+codegen backend (alongside Cranelift) can target JavaScript. The
+effect system determines the partition: `->` functions are pure
+and can run anywhere. `-[DB, IO]>` functions can only run on the
+server. `-[DOM, State S]>` functions can only run on the client.
+A `Server` effect marks the RPC boundary — `Server.fetch(get_users)`
+compiles to an HTTP endpoint on the server and a fetch call on the
+client, with the serialisation boundary type-checked end-to-end.
+
+This is the architecture of Next.js server actions and Leptos
+server functions, but the compiler determines the split from
+effect signatures rather than manual string directives or macro
+annotations. The type system guarantees the serialisation boundary
+is sound.
+
+**Effect-driven reactive compilation.** Row polymorphism gives
+the compiler field-level dependency information. Effect arrows
+give it purity proofs. Together, the compiler can generate
+Svelte-style fine-grained DOM updates without special reactive
+syntax — the information Svelte extracts from `$state` rune
+analysis, Kea already has from the type and effect system. Pure
+components (`->`) never re-render when inputs haven't changed,
+proven by the compiler rather than manually memoized by the
+developer.
+
+**Row-polymorphic templates.** `html {}` blocks where field
+references are type-checked against the input row type. A
+template using `{person.name}` and `{person.age}` accepts any
+record with those fields — structural subtyping on props. No
+`interface Props` declarations. Misspelled fields are compile
+errors.
+
+These are Phase 2+ targets, not v0 work. But the language
+design decisions being made now — effects as the organizing
+principle, row polymorphism on both records and effects, no
+HKTs — are what make them possible. The web framework isn't a
+library sitting on top of the language. It's what falls out when
+you point the language at the browser.
 
 ---
 
