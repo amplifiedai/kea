@@ -178,7 +178,7 @@ You can combine them, and the compiler tracks the union automatically:
 ```kea
 struct App
 
-  fn run(_ config: Config) -[IO, Fail AppError]> ()
+  fn run(_ config: Config) -[IO, Fail AppError]> Unit
     let db = Database.connect(config.db_url)?     -- IO + Fail DbError
     let users = db.query("SELECT * FROM users")?  -- IO + Fail QueryError
     for user in users

@@ -69,7 +69,7 @@ Effects are user-defined, first-class, and tracked in the type:
 
 ```kea
 effect Log
-  fn log(_ level: Level, _ msg: String) -> ()
+  fn log(_ level: Level, _ msg: String) -> Unit
 
 effect Tx
   fn query(_ sql: String) -> Rows
@@ -337,7 +337,7 @@ The actor library defines two effects:
 
 ```kea
 effect Send
-  fn tell(_ ref: Ref M, _ msg: M ()) -> ()
+  fn tell(_ ref: Ref M, _ msg: M Unit) -> Unit
   fn ask(_ ref: Ref M, _ msg: M T) -> T
 
 effect Spawn

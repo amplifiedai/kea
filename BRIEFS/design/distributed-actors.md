@@ -73,11 +73,11 @@ When a `Ref` could be remote, the message type must satisfy
 
 ```kea
 -- Local-only actor: no Encode required
-fn send_local(_ ref: Ref Msg, _ msg: Msg) -[Send]> ()
+fn send_local(_ ref: Ref Msg, _ msg: Msg) -[Send]> Unit
   ref <- msg
 
 -- Remote-capable actor: Encode required
-fn send_remote(_ ref: RemoteRef Msg, _ msg: Msg) -[Send]> ()
+fn send_remote(_ ref: RemoteRef Msg, _ msg: Msg) -[Send]> Unit
   where Msg: Encode, Msg: Decode
   ref <- msg  -- runtime serializes if needed
 ```

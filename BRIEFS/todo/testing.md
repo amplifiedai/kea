@@ -27,7 +27,7 @@ no other runner has.
 `assert` is not a test framework function. It's just `Fail`:
 
 ```kea
-fn assert(_ cond: Bool) -[Fail AssertionError]> ()
+fn assert(_ cond: Bool) -[Fail AssertionError]> Unit
   if !cond
     fail AssertionError(...)
 ```
@@ -40,7 +40,7 @@ Standard `Fail` semantics — `catch` can recover, `?` can propagate.
 
 ```kea
 effect Test
-  fn check(_ result: Assertion) -> ()
+  fn check(_ result: Assertion) -> Unit
 ```
 
 When a `check` fails, the test **continues**. The handler
@@ -157,11 +157,11 @@ parallelism strategy:
 
 | Effect signature | Parallelism | Rationale |
 |-----------------|-------------|-----------|
-| `-> ()` (pure) | Always parallel | No side effects, no contention |
-| `-[Fail E]> ()` | Always parallel | Only fails, no shared state |
-| `-[Gen]> ()` | Parallel per seed | Each run is independent |
-| `-[IO]> ()` | Partitioned | May touch filesystem/network |
-| `-[Send, Spawn]> ()` | Sequenced | Shared actor runtime |
+| `-> Unit` (pure) | Always parallel | No side effects, no contention |
+| `-[Fail E]> Unit` | Always parallel | Only fails, no shared state |
+| `-[Gen]> Unit` | Parallel per seed | Each run is independent |
+| `-[IO]> Unit` | Partitioned | May touch filesystem/network |
+| `-[Send, Spawn]> Unit` | Sequenced | Shared actor runtime |
 
 **Conservative default:** Pure + Fail-only tests run in parallel
 out of the box. Tests with IO or concurrency effects are sequenced

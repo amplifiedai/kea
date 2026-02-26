@@ -51,7 +51,7 @@ JobQueue as Actor
   fn init(_ config: Int) -> JobQueue
     JobQueue.empty(config)
 
-  fn handle(_ self: JobQueue, _ msg: QueueMsg T, _ reply: T -> ()) -[Send]> JobQueue
+  fn handle(_ self: JobQueue, _ msg: QueueMsg T, _ reply: T -> Unit) -[Send]> JobQueue
     match msg
       Submit(job) ->
         if self.pending.length() + self.running.size() >= self.capacity
@@ -109,7 +109,7 @@ maps to OTP's `noreply` + `gen_server:reply(From, Value)`:
 -- A pool actor that parks callers when no connections are available
 struct ConnPool
   available: List Connection
-  waiting: List (Connection -> ())  -- parked reply callbacks
+  waiting: List (Connection -> Unit)  -- parked reply callbacks
 
 ConnPool as Actor
   type Msg = PoolMsg
@@ -120,7 +120,7 @@ ConnPool as Actor
       available: config.connections
       waiting: []
 
-  fn handle(_ self: ConnPool, _ msg: PoolMsg T, _ reply: T -> ()) -[Send]> ConnPool
+  fn handle(_ self: ConnPool, _ msg: PoolMsg T, _ reply: T -> Unit) -[Send]> ConnPool
     match msg
       Acquire ->
         match self.available
@@ -282,7 +282,7 @@ use Json
 struct App
   port: Int
 
-  fn run(_ self: App) -[IO, Fail AppError]> ()
+  fn run(_ self: App) -[IO, Fail AppError]> Unit
     let router = Router.new()
       .get("/health", App.health)
       .get("/users/:id", App.get_user)
@@ -338,10 +338,10 @@ AppError as From Json.Error
 
 -- The top-level entry point
 struct Main
-  fn main() -[IO]> ()
+  fn main() -[IO]> Unit
     let result = catch App { port: 8080 }.run()
     match result
-      Ok(()) -> ()
+      Ok(()) -> ()   -- () is the unit value
       Err(e) -> IO.stdout("Server error: {e.show()}")
 ```
 
@@ -406,19 +406,19 @@ logging, database transactions, rate limiting, caching.
 
 ```kea
 effect Log
-  fn log(_ level: Level, _ msg: String) -> ()
+  fn log(_ level: Level, _ msg: String) -> Unit
 
 effect Tx
   fn query(_ sql: String, _ params: List Value) -> List Row
   fn execute(_ sql: String, _ params: List Value) -> Int
 
 effect RateLimit
-  fn check_rate(_ key: String, _ limit: Int) -> ()
+  fn check_rate(_ key: String, _ limit: Int) -> Unit
   -- performs Fail RateLimited if over limit
 
 effect Cache K V
   fn cache_get(_ key: K) -> Option V
-  fn cache_set(_ key: K, _ value: V) -> ()
+  fn cache_set(_ key: K, _ value: V) -> Unit
 
 enum Level
   Debug
@@ -527,7 +527,7 @@ struct OrderService
 -- Wire it all up
 struct Main
 
-  fn main() -[IO]> ()
+  fn main() -[IO]> Unit
     let conn = Db.connect("postgres://localhost/orders")?
     let cache_ref = Spawn.spawn(CacheActor, CacheActor.Config {})
 
@@ -573,7 +573,7 @@ only remaining effect is `IO` (plus `Fail` which we `catch`).
 
 ```kea
 @test
-fn test_order_processing() -> ()
+fn test_order_processing() -> Unit
   with with_test_logger
   with with_mock_db(test_fixtures())
   with with_state(Map.empty())
@@ -738,7 +738,7 @@ explicitly deferred. But the `Wrap E_in E_out T` pattern from
    effect-parameterised types (`Server E`, `Wrap E_in E_out T`).
    §11.5 adds effect row aliases (`type DbEffects = [IO, Fail DbError]`).
 2. ~~Actor trait forces immediate response~~ — KERNEL §19.3 now
-   uses `reply: T -> ()` callback, enabling deferred reply (see
+   uses `reply: T -> Unit` callback, enabling deferred reply (see
    ConnPool example above).
 3. ~~Should there be sugar for composing handlers?~~ Yes — `with`
    (KERNEL §10.6) with `@with` opt-in annotation.

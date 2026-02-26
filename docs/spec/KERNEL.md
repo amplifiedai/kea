@@ -45,7 +45,7 @@ values (§10). Examples are shorthand for the enclosing struct context.
 | `String` | Immutable UTF-8         | Text values              |
 | `Char`   | Unicode scalar value    | Single character         |
 | `Bytes`  | Immutable byte sequence | Raw bytes                |
-| `()`     | Zero-size               | Unit type                |
+| `Unit`   | Zero-size               | Unit type                |
 
 ### 1.1.1 Fixed-Width Numeric Types
 
@@ -129,7 +129,7 @@ the `Fail E` effect annotation (§5). There are no exceptions.
 | `true`, `false`     | `Bool`        |                             |
 | `"hello"`           | `String`      | Interpolation: `"{expr}"`   |
 | `'a'`               | `Char`        |                             |
-| `()`                | `()`          | Unit                        |
+| `()`                | `Unit`        | Unit                        |
 | `(a, b)`            | `(A, B)`      | Tuple (2+ elements)         |
 | `[]`                | `List A`      | Empty list                  |
 | `[1, 2, 3]`         | `List Int`    | List literal                |
@@ -543,8 +543,8 @@ An effect declaration introduces a set of operations:
 ```kea
 effect IO
   fn read_file(_ path: String) -> Bytes
-  fn write_file(_ path: String, _ data: Bytes) -> ()
-  fn stdout(_ msg: String) -> ()
+  fn write_file(_ path: String, _ data: Bytes) -> Unit
+  fn stdout(_ msg: String) -> Unit
   fn clock_now() -> Timestamp
   fn net_connect(_ addr: String, _ port: Int) -> Connection
 ```
@@ -561,7 +561,7 @@ effect Fail E
 
 effect State S
   fn get() -> S
-  fn put(_ new_state: S) -> ()
+  fn put(_ new_state: S) -> Unit
 ```
 
 `Fail E` is parameterised by the error type. `State S` is
@@ -577,7 +577,7 @@ Calling an effect operation performs the effect. The effect is
 added to the current function's effect set:
 
 ```kea
-fn greet(_ name: String) -[IO]> ()
+fn greet(_ name: String) -[IO]> Unit
   IO.stdout("Hello, {name}!")        -- performs IO
 
 fn load(_ path: String) -[IO, Fail FileError]> Config
@@ -666,7 +666,7 @@ from there.
 
 ```kea
 effect Log
-  fn log(_ level: Level, _ msg: String) -> ()
+  fn log(_ level: Level, _ msg: String) -> Unit
 
 fn with_stdout_logger(_ f: () -[Log, e]> T) -[IO, e]> T
   handle f()
@@ -687,7 +687,7 @@ replaced by the handler's effects.
 ```kea
 effect State S
   fn get() -> S
-  fn put(_ new_state: S) -> ()
+  fn put(_ new_state: S) -> Unit
 
 fn with_state(_ initial: S, _ f: () -[State S, e]> T) -[e]> (T, S)
   let state = Unique initial
@@ -883,7 +883,7 @@ For testing, `IO` can be handled by mock handlers (§5.6). This
 is the primary mechanism for testing effectful code without real
 side effects.
 
-`fn main() -[IO]> ()` is the entry point. The runtime handles
+`fn main() -[IO]> Unit` is the entry point. The runtime handles
 `IO` operations in `main`. Any unhandled effects at the `main`
 boundary (other than `IO`) are a compile error.
 
@@ -1179,7 +1179,7 @@ struct Server E        -- E : Eff (inferred from usage below)
   handler: Request -[E]> Response
 
 trait Runnable E       -- E : Eff
-  fn run(_ self: Self) -[E]> ()
+  fn run(_ self: Self) -[E]> Unit
 
 fn transform(_ x: A) -> A    -- A : * (default)
 ```
@@ -1552,7 +1552,7 @@ let abs = if x >= 0 then x else -x
 ```
 
 When used as an expression (value is consumed), `else` is required.
-When used as a statement (value is `()`), `else` may be omitted:
+When used as a statement (value is `Unit`), `else` may be omitted:
 
 ```kea
 if should_log
@@ -1571,8 +1571,8 @@ for x in xs
 ```
 
 `for x in xs` desugars to `Enumerable.to_seq(xs)` followed by
-sequential consumption. The body has type `()`. `for` is a statement,
-not an expression — it always returns `()`.
+sequential consumption. The body has type `Unit`. `for` is a statement,
+not an expression — it always returns `Unit`.
 
 For collecting results, use `.map()` or `.fold()` instead of `for`.
 
@@ -2019,7 +2019,7 @@ combination:
 ```kea
 fn pure_transform(_ b: Unique Buffer) -> Unique Buffer
 fn io_write(_ b: Unique Buffer) -[IO]> Unique Buffer
-fn send_buffer(_ b: Unique Buffer) -[Send]> ()
+fn send_buffer(_ b: Unique Buffer) -[Send]> Unit
 ```
 
 The effect signature describes what the function does. The
@@ -2291,7 +2291,7 @@ marshalled at the boundary.
 | `Float32`   | `float`                  |
 | `Bool`      | `_Bool` / `uint8_t`      |
 | `Ptr T`     | `T*`                     |
-| `()`        | `void` (return only)     |
+| `Unit`      | `void` (return only)     |
 
 `String`, `Bytes`, `List`, and other managed Kea types cannot
 be passed directly to FFI. They must be converted to `Ptr UInt8`
@@ -2350,13 +2350,13 @@ dereferenced, offset, or cast outside of unsafe context.
 | Operation | Signature | Description |
 |---|---|---|
 | `Ptr.read` | `(_ p: Ptr T) -> T` | Dereference: read value at pointer |
-| `Ptr.write` | `(_ p: Ptr T, _ val: T) -> ()` | Write value at pointer |
+| `Ptr.write` | `(_ p: Ptr T, _ val: T) -> Unit` | Write value at pointer |
 | `Ptr.offset` | `(_ p: Ptr T, _ n: Int) -> Ptr T` | Advance pointer by `n * size_of(T)` bytes |
 | `Ptr.cast` | `(_ p: Ptr A) -> Ptr B` | Reinterpret pointer type |
 | `Ptr.null` | `() -> Ptr T` | Null pointer |
 | `Ptr.is_null` | `(_ p: Ptr T) -> Bool` | Null check (safe) |
 | `Ptr.alloc` | `(_ count: Int) -> Ptr T` | Allocate raw memory |
-| `Ptr.free` | `(_ p: Ptr T) -> ()` | Free raw memory |
+| `Ptr.free` | `(_ p: Ptr T) -> Unit` | Free raw memory |
 
 **`Ptr.is_null` is the only safe operation on `Ptr T`.** All
 others require unsafe context.
@@ -2401,7 +2401,7 @@ The actor library defines two effects:
 
 ```kea
 effect Send
-  fn tell(_ ref: Ref M, _ msg: M ()) -> ()
+  fn tell(_ ref: Ref M, _ msg: M Unit) -> Unit
   fn ask(_ ref: Ref M, _ msg: M T) -> T
 
 effect Spawn
@@ -2409,7 +2409,7 @@ effect Spawn
 ```
 
 `Send.tell` sends a fire-and-forget message (the GADT return type
-must be `()`). `Send.ask` sends a message and suspends until the
+must be `Unit`). `Send.ask` sends a message and suspends until the
 response arrives, returning the response type `T` from the GADT.
 `Spawn.spawn` creates a new actor and returns a typed ref.
 
@@ -2425,14 +2425,14 @@ types. `Ref` is parameterised by the message protocol, not by the
 actor's internal state.
 
 ```kea
-fn notify(_ counter: Ref CounterMsg) -[Send]> ()
+fn notify(_ counter: Ref CounterMsg) -[Send]> Unit
   Send.tell(counter, Increment)
   Send.tell(counter, Increment)
   let count = Send.ask(counter, Get)
   IO.stdout("Count is {count}")
 ```
 
-`Send.tell` only accepts messages whose GADT return type is `()`.
+`Send.tell` only accepts messages whose GADT return type is `Unit`.
 Silently discarding a response is a type error. To send and
 explicitly discard: `let _ = Send.ask(ref, msg)`.
 
@@ -2443,7 +2443,7 @@ trait Actor
   type Msg _             -- GADT message protocol (takes one type parameter)
   type Config
   fn init(_ config: Self.Config) -> Self
-  fn handle(_ self: Self, _ msg: Self.Msg T, _ reply: T -> ()) -[Send]> Self
+  fn handle(_ self: Self, _ msg: Self.Msg T, _ reply: T -> Unit) -[Send]> Self
 ```
 
 `handle` receives the message and a `reply` callback. The actor
@@ -2453,7 +2453,7 @@ This decouples *when* the reply happens from message processing.
 **Immediate reply** — the common case:
 
 ```kea
-fn handle(_ self: Self, _ msg: CounterMsg T, _ reply: T -> ()) -[Send]> Self
+fn handle(_ self: Self, _ msg: CounterMsg T, _ reply: T -> Unit) -[Send]> Self
   match msg
     Increment ->
       reply(())
@@ -2466,7 +2466,7 @@ fn handle(_ self: Self, _ msg: CounterMsg T, _ reply: T -> ()) -[Send]> Self
 **Deferred reply** — store the callback, reply later:
 
 ```kea
-fn handle(_ self: Self, _ msg: PoolMsg T, _ reply: T -> ()) -[Send]> Self
+fn handle(_ self: Self, _ msg: PoolMsg T, _ reply: T -> Unit) -[Send]> Self
   match msg
     Acquire ->
       match self.available
@@ -2510,9 +2510,9 @@ enum CounterMsg T
 
 The GADT parameter `T` encodes the response type. The type system
 ensures:
-- `tell` only works with `M ()` messages
+- `tell` only works with `M Unit` messages
 - `ask` returns the exact type `T` for the specific message
-- The `reply` callback in `handle` has type `T -> ()`, matching
+- The `reply` callback in `handle` has type `T -> Unit`, matching
   the message's `T` — calling `reply` with the wrong type is
   a compile error
 

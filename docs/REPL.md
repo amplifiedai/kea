@@ -131,9 +131,9 @@ The `-- inferred:` line explains *where each effect came from*. This is teaching
 
 ```
 kea> effect Log
-....   fn log(_ level: Level, _ msg: String) -> ()
+....   fn log(_ level: Level, _ msg: String) -> Unit
 effect Log
-  log : (Level, String) -> ()
+  log : (Level, String) -> Unit
 ```
 
 ### 3.5 Type Definitions
@@ -184,7 +184,7 @@ The same computation can be run under different handlers. The REPL shows the eff
 
 ```
 kea> let program = || -> Log.log(Info, "hello") ; IO.stdout("world")
-program : () -[Log, IO]> ()
+program : () -[Log, IO]> Unit
 
 kea> -- Try handler 1: silent logging
 kea> handle program()
@@ -402,7 +402,7 @@ The REPL is the laboratory for understanding how handlers compose. This is where
 ### 6.1 Layered Handlers
 
 ```
-kea> fn app() -[Log, State Int, IO]> ()
+kea> fn app() -[Log, State Int, IO]> Unit
 ....   Log.log(Info, "starting")
 ....   State.put(State.get() + 1)
 ....   IO.stdout("count: {State.get()}")
@@ -674,7 +674,7 @@ kea> fn test_load_config()
 ....     Ok(config) -> assert_eq(config.port, 8080)
 ....     Err(e) -> assert false "unexpected error: {e}"
 
-test_load_config : () -> ()
+test_load_config : () -> Unit
 -- pure! All effects handled by mocks.
 
 kea> test_load_config()

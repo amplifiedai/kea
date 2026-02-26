@@ -82,7 +82,7 @@ its signatures, the REPL shows it.
 @install("http 1.2", "json 0.5")
 
 struct Main
-  fn main() -[IO]> ()
+  fn main() -[IO]> Unit
     let resp = Http.get("https://api.example.com/data")
     let users = Json.decode(resp.body, List User).unwrap()
     IO.stdout(users.map(|u| -> u.name).join(", "))

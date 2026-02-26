@@ -244,13 +244,13 @@ effect Compile
   fn impls(_ trait_name: String, _ ty: TypeInfo) -> Option ImplInfo
 
   -- Code emission
-  fn emit_fn(_ decl: FnDecl) -> ()
-  fn emit_impl(_ impl_decl: ImplDecl) -> ()
-  fn emit_type(_ ty_decl: TypeDecl) -> ()
+  fn emit_fn(_ decl: FnDecl) -> Unit
+  fn emit_impl(_ impl_decl: ImplDecl) -> Unit
+  fn emit_type(_ ty_decl: TypeDecl) -> Unit
 
   -- Diagnostics (comptime can report errors/warnings)
-  fn error(_ msg: String, _ loc: SourceLoc) -> ()
-  fn warning(_ msg: String, _ loc: SourceLoc) -> ()
+  fn error(_ msg: String, _ loc: SourceLoc) -> Unit
+  fn warning(_ msg: String, _ loc: SourceLoc) -> Unit
 ```
 
 ### @derive as a Compile Function
@@ -258,7 +258,7 @@ effect Compile
 ```kea
 -- @derive(Encode) desugars to a comptime call:
 struct Encode
-  fn derive(_ ty: TypeInfo) -[Compile]> ()
+  fn derive(_ ty: TypeInfo) -[Compile]> Unit
     let fields = Compile.fields(ty)
     let encode_body = fields.map(|f| ->
       FnCall("write_key", [StringLit(f.name)]),

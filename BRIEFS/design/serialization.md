@@ -113,10 +113,10 @@ trait FormatReader
   fn read_string(_ self: Self) -[Fail FormatError]> String
   fn begin_list(_ self: Self) -[Fail FormatError]> Option Int
   fn has_next(_ self: Self) -> Bool
-  fn end_list(_ self: Self) -[Fail FormatError]> ()
+  fn end_list(_ self: Self) -[Fail FormatError]> Unit
   fn begin_map(_ self: Self) -[Fail FormatError]> Option Int
   fn read_key(_ self: Self) -[Fail FormatError]> String
-  fn end_map(_ self: Self) -[Fail FormatError]> ()
+  fn end_map(_ self: Self) -[Fail FormatError]> Unit
 ```
 
 ### Compiler-Generated Impls

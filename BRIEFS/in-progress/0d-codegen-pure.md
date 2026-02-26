@@ -616,6 +616,42 @@ in Result. Parsing and codegen not yet wired. Low priority for 0d
 (Fail compiles as Result-passing directly), but needed for
 ergonomic error handling.
 
+### 9.1. `catch` on Fail-absent body crashes — SOUNDNESS
+
+**Reported by formal agent (c748717).** `catch expr` where `expr`
+does not have `Fail` in its effect set produces "effect `Fail` has
+no operation `fail`" error. Even `catch 42` fails. The desugaring
+unconditionally references `Fail.fail` for the error handler clause
+without checking whether `Fail` is in the body's effect set.
+
+**Reproduction (confirmed on MCP 2026-02-27):**
+
+```kea
+effect Log
+  fn log(msg: Int) -> Unit
+
+fn pureish() -[Log]> Int
+  Log.log(1)
+  42
+
+fn catch_absent() -[Log]> Int
+  catch pureish()
+-- ERROR: effect `Fail` has no operation `fail`
+```
+
+Even simpler: `catch 42` produces the same error.
+
+**Expected:** `catch` on a Fail-absent expression should be a
+compile error: "expression cannot fail; `catch` is unnecessary."
+KERNEL §5.8 only defines `catch` for `{Fail E, R...}` — Fail
+must be present. The implementation should check for Fail in the
+body's effect set before desugaring.
+
+**Secondary symptom:** The formal agent also observed that when
+the error is worked around with permissive annotations, phantom
+IO appears and Log gets dropped — likely downstream error recovery
+injecting IO after the failed `Fail.fail` lookup.
+
 ### 10. Guard keyword: `when` vs KERNEL `if`
 
 Implementation uses `when` for case guards; KERNEL §4.2.1 specifies

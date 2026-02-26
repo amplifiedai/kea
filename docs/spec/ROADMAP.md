@@ -217,7 +217,7 @@ Then:
 - Handler compilation for user-defined effects
 - `with_arena` handler: arena allocation backend
 - Alloc effect: bump allocation, deep-copy at boundary
-- `fn main() -[IO]> ()` as entry point
+- `fn main() -[IO]> Unit` as entry point
 
 Deliverable: Effectful Kea programs compile and run. IO, error
 handling, arena allocation, and user-defined effects work.

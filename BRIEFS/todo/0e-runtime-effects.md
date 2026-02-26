@@ -223,7 +223,7 @@ user-defined effects, starting with the State effect:
 ```kea
 effect State S
   fn get() -> S
-  fn put(_ new_state: S) -> ()
+  fn put(_ new_state: S) -> Unit
 
 fn count_to(_ n: Int) -[State Int]> Int
   let i = State.get()
@@ -325,7 +325,7 @@ Split `IO` into fine-grained capability effects:
 
 Each is a separate capability effect with `Direct` compilation.
 Programs declare exactly the capabilities they need:
-`fn main() -[IO, Net]> ()`.
+`fn main() -[IO, Net]> Unit`.
 
 ### Step 7: Non-tail-resumptive handlers (Tier 4) — DEFERRABLE
 
