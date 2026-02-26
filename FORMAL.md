@@ -48,6 +48,7 @@ This work starts by cannibalizing the existing Rill formal corpus and then exten
 - **Phase 2 (active):** Added nested same-target handler consequences on the normalized model (`nested_same_target_outer_removal_noop_of_inner_absent`, `nested_same_target_remains_absent_of_outer_absent`) and row-tail preservation for composed handlers.
 - **Phase 2 (active):** Added `Kea/Properties/ResumeLinearity.lean` as a no-`sorry` scaffold for `resume_at_most_once` reasoning (`ResumeUse`, saturating composition, exclusivity-preserving lemmas, and named `resume_at_most_once` contract surface).
 - **Phase 2 (active):** `ResumeLinearity` now includes exact composition characterization (`resume_combine_atMostOnce_iff`) and exclusivity corollaries (`resume_combine_atMostOnce_implies_one_side_zero`, `resume_combine_one_one_not_atMostOnce`) for branch-level linearity reasoning.
+- **Phase 2 (active):** MCP re-probes confirm runtime `E0012` enforcement aligns with the resume summary model: zero-resume clauses typecheck; sequential and both-branch double-resume cases are rejected.
 
 The formal workspace lives at [`formal/`](formal/).
 

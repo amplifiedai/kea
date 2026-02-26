@@ -31,6 +31,23 @@ def ResumeUse.combine : ResumeUse → ResumeUse → ResumeUse
   | .many, .one => .many
   | .many, .many => .many
 
+/--
+Loop lifting for resume usage.
+Any non-zero use in a potentially repeating context is treated as `many`.
+-/
+def ResumeUse.loopLift : ResumeUse → ResumeUse
+  | .zero => .zero
+  | .one => .many
+  | .many => .many
+
+/-- Conditional legality summary predicate. -/
+def ResumeUse.conditionalLegal (a b : ResumeUse) : Prop :=
+  ResumeUse.atMostOnce (ResumeUse.combine a b)
+
+/-- Loop legality summary predicate. -/
+def ResumeUse.loopLegal (body : ResumeUse) : Prop :=
+  ResumeUse.atMostOnce (ResumeUse.loopLift body)
+
 @[simp] theorem resume_atMostOnce_zero : ResumeUse.atMostOnce .zero := trivial
 @[simp] theorem resume_atMostOnce_one : ResumeUse.atMostOnce .one := trivial
 @[simp] theorem resume_not_atMostOnce_many : ¬ ResumeUse.atMostOnce .many := by
@@ -102,6 +119,13 @@ theorem resume_combine_atMostOnce_iff
       (b = .zero ∧ ResumeUse.atMostOnce a) := by
   cases a <;> cases b <;> simp [ResumeUse.combine, ResumeUse.atMostOnce]
 
+theorem resume_conditionalLegal_iff
+    (a b : ResumeUse) :
+    ResumeUse.conditionalLegal a b ↔
+      (a = .zero ∧ ResumeUse.atMostOnce b) ∨
+      (b = .zero ∧ ResumeUse.atMostOnce a) := by
+  exact resume_combine_atMostOnce_iff a b
+
 /--
 Corollary: if a composed summary is at-most-once, at least one side is zero.
 This is the abstract branch-exclusivity signal used by resume-linearity checks.
@@ -119,6 +143,30 @@ theorem resume_combine_atMostOnce_implies_one_side_zero
 theorem resume_combine_one_one_not_atMostOnce :
     ¬ ResumeUse.atMostOnce (ResumeUse.combine .one .one) := by
   simp [ResumeUse.combine, ResumeUse.atMostOnce]
+
+theorem resume_conditional_forbids_two_resuming_branches :
+    ¬ ResumeUse.conditionalLegal .one .one := by
+  exact resume_combine_one_one_not_atMostOnce
+
+theorem resume_loopLift_atMostOnce_iff
+    (u : ResumeUse) :
+    ResumeUse.atMostOnce (ResumeUse.loopLift u) ↔ u = .zero := by
+  cases u <;> simp [ResumeUse.loopLift, ResumeUse.atMostOnce]
+
+theorem resume_loopLegal_iff_zero
+    (u : ResumeUse) :
+    ResumeUse.loopLegal u ↔ u = .zero := by
+  exact resume_loopLift_atMostOnce_iff u
+
+theorem resume_loop_forbids_resuming_body
+    (u : ResumeUse)
+    (h_loop : ResumeUse.loopLegal u) :
+    u = .zero := by
+  exact (resume_loopLegal_iff_zero u).mp h_loop
+
+theorem resume_loop_zero_body_is_legal :
+    ResumeUse.loopLegal .zero := by
+  simp [ResumeUse.loopLegal, ResumeUse.loopLift, ResumeUse.atMostOnce]
 
 /--
 Phase-2 named contract surface for the resume linearity theorem family.
