@@ -9,8 +9,7 @@ See `AGENTS.md` > "Briefs and Workboard" for how to manage this file.
 ## Active
 
 Work in progress right now. Each entry should have a `## Progress` section in its brief.
-
-1. **[Type system core](in-progress/0b-type-system-core.md)** — HM inference, Rémy row unification (records + effects), trait system, UMS resolution, effect annotations. kea-types, kea-infer crates. Cannibalises rill-types, rill-infer.
+- *(none currently)*
 
 ---
 
@@ -77,6 +76,7 @@ Completed briefs. Kept for reference and design rationale.
 
 | Brief | Summary |
 |-------|---------|
+| [0b-type-system-core](done/0b-type-system-core.md) | Type checker migrated to row-native effect contracts/unification with lattice model deleted, legacy effect syntax deprecation-only, fail-row constraints enforced, and stable module namespace resolution scaffolding for builtin/source transitions. |
 | [0a-lexer-parser](done/0a-lexer-parser.md) | Indentation-sensitive lexer/parser landed with indentation-only block parsing, snapshot corpora, and property tests for layout/error coherence. |
 | [bootstrap-infra](done/bootstrap-infra.md) | Cargo workspace, mise tasks, scripts, BRIEFS system, docs, .claude setup. Cannibalised from rill. |
 

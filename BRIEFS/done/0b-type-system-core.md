@@ -1,6 +1,6 @@
 # Brief: Type System Core
 
-**Status:** active
+**Status:** done
 **Priority:** v1-critical
 **Depends on:** 0a-lexer-parser (needs AST definitions)
 **Blocks:** 0c-effect-handlers, 0d-codegen-pure, everything downstream
@@ -287,4 +287,5 @@ impure) as part of the exit criterion.
 - 2026-02-26: Added deprecation warnings for legacy `volatile`/`impure` effect annotations in `validate_module_fn_annotations` and added gate tests for row-subsumption behavior, legacy syntax warnings, and duplicate `Fail` diagnostics. Verified with `mise run check` and `PKG=kea-infer mise run test-pkg` (736/736).
 - 2026-02-26: Deleted lattice effect model from `kea-types`/`kea-infer` (`EffectLevel`, `EffectTerm`, `EffectConstraint`, `solve_effect_constraints`, and bridge helpers) and migrated checker pipelines/tests to row-native `EffectRow` flow. Verified with `mise run check`, `PKG=kea-infer mise run test-pkg` (727/727), `mise run check-full`, and symbol gate `rg` returning no hits for deleted lattice identifiers. (commits `b39c750`, `886f02d`)
 - 2026-02-26: Removed `|>/$>/!>` parsing from `kea-syntax` token/lexer/parser paths, updated syntax/property snapshot coverage, and cleaned pipe-specific chunk continuation logic. Verified with `mise run check` and `PKG=kea-syntax mise run test-pkg` (371/371). (commit `4bec9ee`)
-- **Next:** Close remaining 0b exit debt by removing legacy `Volatile`/`Impure` checker semantics (keep parse-only + deprecation), migrate residual tests to row syntax, then move this brief to `done/` with INDEX update.
+- 2026-02-26: Removed legacy `EffectAnnotation::Volatile`/`EffectAnnotation::Impure` checker semantics (parse-only + deprecation warning path retained), added regression coverage that legacy annotations do not produce effect signatures/contracts, and removed `pure/volatile/impure` name coercions from row-item parsing. Added stable module namespace wiring by auto-registering short aliases from module paths at registration time, with tests for both fallback (`Kea.List`) and alias-mapped (`Pkg.List`) resolution. Verified with `PKG=kea-infer mise run test-pkg` (731/731), `mise run check`, and `mise run check-full`. (commit `a19af8e`)
+- 2026-02-26: 0b exit checklist satisfied; brief moved to `done/` and workboard updated.
