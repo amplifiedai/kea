@@ -363,6 +363,7 @@ Precision notes:
 - 2026-02-26: Whole-program benchmark lane bootstrapped: added `benchmarks/programs/` corpus (`fib`, `case_chain`, `alloc_chain`) and `bench:programs` runner script (hyperfine + fallback path) to start collecting end-to-end `kea run` timing baselines.
 - 2026-02-26: Microbenchmark matrix now includes type inference directly (`infer_numeric_module`) using the row-native inference pipeline, so Tier-1 benchmarks cover lex+parse+infer+lower+codegen for 0d.
 - 2026-02-26: Stage B benchmark regression scaffold landed: seeded microbench baseline threshold file and non-blocking CI regression-check workflow with artifact publication (`bench:regression`) for threshold calibration before blocking gates.
+- 2026-02-26: Whole-program regression scaffold landed: `bench:programs:regression` compares hyperfine means against seeded baseline thresholds, and non-blocking CI publishes program-regression summaries/artifacts for threshold calibration.
 - 2026-02-26: Cranelift predicate normalization fixed for equality-driven control flow (`i8` vs `b1` predicate widths), with new codegen regression coverage for int equality branch conditions.
 - 2026-02-26: Pure expression coverage expanded: unary operators (`-x`, `not x`) now lower HIR→MIR (`MirUnaryOp`) and compile through Cranelift, with targeted crate tests.
 - 2026-02-26: HIR lowering now canonicalizes basic bool `case` expressions (`true/false/_` arms, no guards) into `if` expressions, allowing existing MIR/codegen control-flow lowering to compile that subset.
