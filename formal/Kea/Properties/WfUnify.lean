@@ -170,6 +170,37 @@ theorem bindTypeVar_ok_preserves_substWellFormedRange
     UnifyState.SubstWellFormedRange st' kctx rctx := by
   exact bindTypeVar_ok_preserves_wf_range st st' v ty fuel kctx rctx h_ok h_range h_ty
 
+theorem bindTypeVar_ok_with_lacks_preserves_substWellFormedRange
+    (st st' : UnifyState) (v : TypeVarId) (ty : Ty) (fuel : Nat)
+    (kctx : KindCtx) (rctx : RowCtx) (lacks' : Lacks)
+    (h_ok : bindTypeVar st v ty fuel = .ok st')
+    (h_range : UnifyState.SubstWellFormedRange st kctx rctx)
+    (h_ty : Ty.WellFormed kctx rctx ty) :
+    UnifyState.SubstWellFormedRange { st' with lacks := lacks' } kctx rctx := by
+  have h_base : UnifyState.SubstWellFormedRange st' kctx rctx :=
+    bindTypeVar_ok_preserves_substWellFormedRange
+      st st' v ty fuel kctx rctx h_ok h_range h_ty
+  exact UnifyState.substWellFormedRange_with_lacks st' kctx rctx lacks' h_base
+
+theorem bindTypeVar_ok_with_non_subst_fields_preserves_substWellFormedRange
+    (st st' : UnifyState) (v : TypeVarId) (ty : Ty) (fuel : Nat)
+    (kctx : KindCtx) (rctx : RowCtx)
+    (lacks' : Lacks) (bounds' : TraitBounds) (nextType' nextRow' : Nat)
+    (h_ok : bindTypeVar st v ty fuel = .ok st')
+    (h_range : UnifyState.SubstWellFormedRange st kctx rctx)
+    (h_ty : Ty.WellFormed kctx rctx ty) :
+    UnifyState.SubstWellFormedRange
+      { st' with
+          lacks := lacks',
+          traitBounds := bounds',
+          nextTypeVar := nextType',
+          nextRowVar := nextRow' } kctx rctx := by
+  have h_base : UnifyState.SubstWellFormedRange st' kctx rctx :=
+    bindTypeVar_ok_preserves_substWellFormedRange
+      st st' v ty fuel kctx rctx h_ok h_range h_ty
+  exact UnifyState.substWellFormedRange_with_non_subst_fields
+    st' kctx rctx lacks' bounds' nextType' nextRow' h_base
+
 theorem bindClosedRow_update_preserves_wf_range
     (st : UnifyState) (kctx : KindCtx) (rctx : RowCtx)
     (rv : RowVarId) (fields : RowFields)
