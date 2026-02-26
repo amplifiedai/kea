@@ -233,6 +233,30 @@ fn use_expr(pattern: Option<Pattern>, rhs: Expr) -> Expr {
     }))
 }
 
+fn handle_clause(effect: &str, operation: &str, args: Vec<Pattern>, body: Expr) -> HandleClause {
+    HandleClause {
+        effect: sp(effect.to_string()),
+        operation: sp(operation.to_string()),
+        args,
+        body,
+        span: s(),
+    }
+}
+
+fn handle_expr(handled: Expr, clauses: Vec<HandleClause>, then_clause: Option<Expr>) -> Expr {
+    sp(ExprKind::Handle {
+        expr: Box::new(handled),
+        clauses,
+        then_clause: then_clause.map(Box::new),
+    })
+}
+
+fn resume(value: Expr) -> Expr {
+    sp(ExprKind::Resume {
+        value: Box::new(value),
+    })
+}
+
 fn spawn_expr(value: Expr) -> Expr {
     sp(ExprKind::Spawn {
         value: Box::new(value),
@@ -6674,6 +6698,209 @@ fn effect_operation_call_infers_declared_effect_label() {
     let ty = infer_and_resolve(&wrapper.body, &mut env, &mut unifier, &records, &traits, &sums);
     assert_eq!(ty, Type::Unit);
     assert!(!unifier.has_errors(), "type errors: {:?}", unifier.errors());
+}
+
+#[test]
+fn handle_expression_removes_handled_effect_from_row() {
+    let mut env = TypeEnv::new();
+    let records = RecordRegistry::new();
+    let sums = SumTypeRegistry::new();
+    let mut traits = TraitRegistry::new();
+    register_hkt_for_use_for_traits(&mut traits, &records);
+    let log = make_effect_decl(
+        "Log",
+        vec![],
+        vec![make_effect_operation(
+            "log",
+            vec![annotated_param(
+                "msg",
+                TypeAnnotation::Named("String".to_string()),
+            )],
+            TypeAnnotation::Named("Unit".to_string()),
+        )],
+    );
+    let diags = register_effect_decl(&log, &records, Some(&sums), &mut env);
+    assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+
+    let handled = call(field_access(var("Log"), "log"), vec![lit_str("hello")]);
+    let clause = handle_clause(
+        "Log",
+        "log",
+        vec![sp(PatternKind::Var("msg".to_string()))],
+        resume(lit_unit()),
+    );
+    let wrapper = make_fn_decl("wrapper", vec![], handle_expr(handled, vec![clause], None));
+
+    let row = infer_fn_decl_effect_row(&wrapper, &env);
+    assert!(
+        !row.row.has(&Label::new("Log")),
+        "expected handled Log effect to be removed, got {row:?}"
+    );
+
+    let mut unifier = Unifier::new();
+    let ty = infer_and_resolve(&wrapper.body, &mut env, &mut unifier, &records, &traits, &sums);
+    assert_eq!(ty, Type::Unit);
+    assert!(!unifier.has_errors(), "type errors: {:?}", unifier.errors());
+}
+
+#[test]
+fn nested_handlers_shadow_same_effect() {
+    let mut env = TypeEnv::new();
+    let records = RecordRegistry::new();
+    let sums = SumTypeRegistry::new();
+    let mut traits = TraitRegistry::new();
+    register_hkt_for_use_for_traits(&mut traits, &records);
+    let log = make_effect_decl(
+        "Log",
+        vec![],
+        vec![make_effect_operation(
+            "log",
+            vec![annotated_param(
+                "msg",
+                TypeAnnotation::Named("String".to_string()),
+            )],
+            TypeAnnotation::Named("Unit".to_string()),
+        )],
+    );
+    let diags = register_effect_decl(&log, &records, Some(&sums), &mut env);
+    assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+
+    let inner = handle_expr(
+        call(field_access(var("Log"), "log"), vec![lit_str("inner")]),
+        vec![handle_clause(
+            "Log",
+            "log",
+            vec![sp(PatternKind::Var("msg".to_string()))],
+            call(field_access(var("Log"), "log"), vec![lit_str("nested")]),
+        )],
+        None,
+    );
+    let outer = handle_expr(
+        inner,
+        vec![handle_clause(
+            "Log",
+            "log",
+            vec![sp(PatternKind::Var("msg".to_string()))],
+            resume(lit_unit()),
+        )],
+        None,
+    );
+    let wrapper = make_fn_decl("wrapper", vec![], outer);
+
+    let row = infer_fn_decl_effect_row(&wrapper, &env);
+    assert!(
+        !row.row.has(&Label::new("Log")),
+        "expected outer handler to remove Log after inner shadowing, got {row:?}"
+    );
+}
+
+#[test]
+fn resume_outside_handler_is_type_error() {
+    let mut env = TypeEnv::new();
+    let records = RecordRegistry::new();
+    let sums = SumTypeRegistry::new();
+    let mut traits = TraitRegistry::new();
+    register_hkt_for_use_for_traits(&mut traits, &records);
+
+    let expr = resume(lit_unit());
+    let mut unifier = Unifier::new();
+    let _ = infer_and_resolve(&expr, &mut env, &mut unifier, &records, &traits, &sums);
+    assert!(
+        unifier
+            .errors()
+            .iter()
+            .any(|d| d.message.contains("only valid inside a matching handler clause")),
+        "expected resume-outside-handler diagnostic, got {:?}",
+        unifier.errors()
+    );
+}
+
+#[test]
+fn handler_clause_rejects_multiple_resumes() {
+    let mut env = TypeEnv::new();
+    let records = RecordRegistry::new();
+    let sums = SumTypeRegistry::new();
+    let mut traits = TraitRegistry::new();
+    register_hkt_for_use_for_traits(&mut traits, &records);
+    let log = make_effect_decl(
+        "Log",
+        vec![],
+        vec![make_effect_operation(
+            "log",
+            vec![annotated_param(
+                "msg",
+                TypeAnnotation::Named("String".to_string()),
+            )],
+            TypeAnnotation::Named("Unit".to_string()),
+        )],
+    );
+    let diags = register_effect_decl(&log, &records, Some(&sums), &mut env);
+    assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+
+    let handled = call(field_access(var("Log"), "log"), vec![lit_str("hello")]);
+    let clause = handle_clause(
+        "Log",
+        "log",
+        vec![sp(PatternKind::Var("msg".to_string()))],
+        block(vec![resume(lit_unit()), resume(lit_unit())]),
+    );
+    let expr = handle_expr(handled, vec![clause], None);
+
+    let mut unifier = Unifier::new();
+    let _ = infer_and_resolve(&expr, &mut env, &mut unifier, &records, &traits, &sums);
+    assert!(
+        unifier
+            .errors()
+            .iter()
+            .any(|d| d.message.contains("may resume at most once")),
+        "expected at-most-once resume diagnostic, got {:?}",
+        unifier.errors()
+    );
+}
+
+#[test]
+fn catch_style_handle_typechecks_to_result_and_removes_fail() {
+    let mut env = TypeEnv::new();
+    let records = RecordRegistry::new();
+    let sums = SumTypeRegistry::new();
+    let mut traits = TraitRegistry::new();
+    register_hkt_for_use_for_traits(&mut traits, &records);
+    let fail_effect = make_effect_decl(
+        "Fail",
+        vec!["E"],
+        vec![make_effect_operation(
+            "fail",
+            vec![annotated_param("error", TypeAnnotation::Named("E".to_string()))],
+            TypeAnnotation::Named("Int".to_string()),
+        )],
+    );
+    let diags = register_effect_decl(&fail_effect, &records, Some(&sums), &mut env);
+    assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+
+    let handled = call(field_access(var("Fail"), "fail"), vec![lit_str("boom")]);
+    let clause = handle_clause(
+        "Fail",
+        "fail",
+        vec![sp(PatternKind::Var("error".to_string()))],
+        constructor("Err", vec![var("error")]),
+    );
+    let then_clause = lambda(&["value"], constructor("Ok", vec![var("value")]));
+    let expr = handle_expr(handled, vec![clause], Some(then_clause));
+
+    let mut unifier = Unifier::new();
+    let ty = infer_and_resolve(&expr, &mut env, &mut unifier, &records, &traits, &sums);
+    match ty {
+        Type::Result(ok, _) => assert_eq!(*ok, Type::Int, "expected Ok payload to stay Int"),
+        other => panic!("expected Result type from catch-style handler, got {other:?}"),
+    }
+    assert!(!unifier.has_errors(), "type errors: {:?}", unifier.errors());
+
+    let fn_decl = make_fn_decl("wrapper", vec![], expr.clone());
+    let row = infer_fn_decl_effect_row(&fn_decl, &env);
+    assert!(
+        !row.row.has(&Label::new("Fail")),
+        "expected handled Fail effect to be removed, got {row:?}"
+    );
 }
 
 #[test]

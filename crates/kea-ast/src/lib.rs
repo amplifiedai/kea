@@ -132,6 +132,16 @@ pub enum ExprKind {
     /// Use expression: `use pattern <- expr` or `use <- expr`.
     Use(UseExpr),
 
+    /// Handle expression: `handle expr ...` with operation clauses and optional `then`.
+    Handle {
+        expr: Box<Expr>,
+        clauses: Vec<HandleClause>,
+        then_clause: Option<Box<Expr>>,
+    },
+
+    /// Resume from inside a handler clause: `resume value`.
+    Resume { value: Box<Expr> },
+
     /// Binary operator: `left op right`.
     BinaryOp {
         op: Spanned<BinOp>,
@@ -384,6 +394,15 @@ pub struct ForExpr {
 pub struct UseExpr {
     pub pattern: Option<Pattern>,
     pub rhs: Box<Expr>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct HandleClause {
+    pub effect: Spanned<String>,
+    pub operation: Spanned<String>,
+    pub args: Vec<Pattern>,
+    pub body: Expr,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -994,6 +1013,26 @@ fn collect_free_vars(
         }
         ExprKind::Use(use_expr) => {
             collect_free_vars(&use_expr.rhs.node, free, bound);
+        }
+        ExprKind::Handle {
+            expr,
+            clauses,
+            then_clause,
+        } => {
+            collect_free_vars(&expr.node, free, bound);
+            for clause in clauses {
+                let mut clause_bound = bound.clone();
+                for arg in &clause.args {
+                    collect_pattern_bindings(&arg.node, &mut clause_bound);
+                }
+                collect_free_vars(&clause.body.node, free, &mut clause_bound);
+            }
+            if let Some(then_expr) = then_clause {
+                collect_free_vars(&then_expr.node, free, bound);
+            }
+        }
+        ExprKind::Resume { value } => {
+            collect_free_vars(&value.node, free, bound);
         }
         ExprKind::BinaryOp { left, right, .. } => {
             collect_free_vars(&left.node, free, bound);
