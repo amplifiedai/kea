@@ -6739,6 +6739,144 @@ fn effect_operation_call_infers_declared_effect_label() {
 }
 
 #[test]
+fn curried_annotated_callback_param_uses_effect_row_unification_not_pure_function_unification() {
+    let mut env = TypeEnv::new();
+    let records = RecordRegistry::new();
+    let sums = SumTypeRegistry::new();
+    let mut traits = TraitRegistry::new();
+    register_hkt_for_use_for_traits(&mut traits, &records);
+    let log = make_effect_decl(
+        "Log",
+        vec![],
+        vec![make_effect_operation(
+            "log",
+            vec![annotated_param(
+                "msg",
+                TypeAnnotation::Named("Int".to_string()),
+            )],
+            TypeAnnotation::Named("Unit".to_string()),
+        )],
+    );
+    let diags = register_effect_decl(&log, &records, Some(&sums), &mut env);
+    assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+
+    let apply = sp(ExprKind::Lambda {
+        params: vec![annotated_param(
+            "f",
+            TypeAnnotation::FunctionWithEffect(
+                vec![TypeAnnotation::Named("Int".to_string())],
+                sp(effect_row_annotation(vec![("Log", None)], None)),
+                Box::new(TypeAnnotation::Named("Unit".to_string())),
+            ),
+        )],
+        body: Box::new(sp(ExprKind::Lambda {
+            params: vec![annotated_param("x", TypeAnnotation::Named("Int".to_string()))],
+            body: Box::new(call(var("f"), vec![var("x")])),
+            return_annotation: Some(sp(TypeAnnotation::Named("Unit".to_string()))),
+        })),
+        return_annotation: None,
+    });
+    let logger = sp(ExprKind::Lambda {
+        params: vec![annotated_param("y", TypeAnnotation::Named("Int".to_string()))],
+        body: Box::new(call(field_access(var("Log"), "log"), vec![var("y")])),
+        return_annotation: Some(sp(TypeAnnotation::Named("Unit".to_string()))),
+    });
+
+    let trap = make_fn_decl(
+        "trap",
+        vec![],
+        block(vec![
+            let_bind("apply", apply),
+            let_bind("logger", logger),
+            call(
+                call(var("apply"), vec![var("logger")]),
+                vec![lit_int(42)],
+            ),
+        ]),
+    );
+
+    let row = infer_fn_decl_effect_row(&trap, &env);
+    assert!(
+        row.row.has(&Label::new("Log")),
+        "expected curried annotated callback to preserve Log, got {row:?}"
+    );
+    assert!(
+        !row.row.has(&Label::new("IO")),
+        "expected no phantom IO from annotated curried callback, got {row:?}"
+    );
+
+    let mut unifier = Unifier::new();
+    let ty = infer_and_resolve(&trap.body, &mut env, &mut unifier, &records, &traits, &sums);
+    assert_eq!(ty, Type::Unit);
+    assert!(
+        !unifier.has_errors(),
+        "expected annotated curried callback to typecheck without row-mismatch diagnostics, got {:?}",
+        unifier.errors()
+    );
+}
+
+#[test]
+fn curried_unannotated_callback_application_propagates_effect_row_from_argument() {
+    let mut env = TypeEnv::new();
+    let records = RecordRegistry::new();
+    let sums = SumTypeRegistry::new();
+    let mut traits = TraitRegistry::new();
+    register_hkt_for_use_for_traits(&mut traits, &records);
+    let log = make_effect_decl(
+        "Log",
+        vec![],
+        vec![make_effect_operation(
+            "log",
+            vec![annotated_param(
+                "msg",
+                TypeAnnotation::Named("Int".to_string()),
+            )],
+            TypeAnnotation::Named("Unit".to_string()),
+        )],
+    );
+    let diags = register_effect_decl(&log, &records, Some(&sums), &mut env);
+    assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+
+    let apply = lambda(&["f"], lambda(&["x"], call(var("f"), vec![var("x")])));
+    let logger = sp(ExprKind::Lambda {
+        params: vec![annotated_param("y", TypeAnnotation::Named("Int".to_string()))],
+        body: Box::new(call(field_access(var("Log"), "log"), vec![var("y")])),
+        return_annotation: Some(sp(TypeAnnotation::Named("Unit".to_string()))),
+    });
+    let trap = make_fn_decl(
+        "trap",
+        vec![],
+        block(vec![
+            let_bind("apply", apply),
+            let_bind("logger", logger),
+            call(
+                call(var("apply"), vec![var("logger")]),
+                vec![lit_int(42)],
+            ),
+        ]),
+    );
+
+    let row = infer_fn_decl_effect_row(&trap, &env);
+    assert!(
+        row.row.has(&Label::new("Log")),
+        "expected unannotated curried callback to preserve Log, got {row:?}"
+    );
+    assert!(
+        !row.row.has(&Label::new("IO")),
+        "expected no phantom IO from unannotated curried callback, got {row:?}"
+    );
+
+    let mut unifier = Unifier::new();
+    let ty = infer_and_resolve(&trap.body, &mut env, &mut unifier, &records, &traits, &sums);
+    assert_eq!(ty, Type::Unit);
+    assert!(
+        !unifier.has_errors(),
+        "expected unannotated curried callback to typecheck, got {:?}",
+        unifier.errors()
+    );
+}
+
+#[test]
 fn handle_expression_removes_handled_effect_from_row() {
     let mut env = TypeEnv::new();
     let records = RecordRegistry::new();
