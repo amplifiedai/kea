@@ -682,7 +682,7 @@ struct Middlewares
     |next| -> |req| ->
       let token = req.headers.get("Authorization")
         .ok_or(Unauthorized { reason: "missing token" })?
-      if !Token.verify(token, secret)
+      if not Token.verify(token, secret)
         fail Unauthorized { reason: "invalid token" }
       next(req)
 ```

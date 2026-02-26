@@ -2132,8 +2132,9 @@ Operators desugar to trait method calls:
 - `a ++ b` → `Concatenable.concat(a, b)`
 - `a <> b` → `Monoid.combine(a, b)`
 
-`&&`, `||`, and `!` are short-circuit/built-in for `Bool` only
-and do NOT desugar to trait calls.
+`and`, `or`, and `not` are short-circuit/built-in for `Bool` only
+and do NOT desugar to trait calls. `&&`, `||`, and `!` are rejected
+by the parser with messages directing to the keyword forms.
 
 ### 13.3 Three-Operator Algebra for Combining Values
 
