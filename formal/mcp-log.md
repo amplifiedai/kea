@@ -4601,3 +4601,37 @@ Phase-1 WF ladder assumptions.
 - Probe snippets needed parser-surface refresh (`effect` op signature uses
   `fn ... -> Unit`), but this is syntax precondition drift, not a semantic
   Lean↔MCP divergence.
+
+### 2026-02-26: higher-order effect propagation probe (possible divergence)
+
+**Context**: After adding symmetric var-left/var-right `unify` bridge wrappers
+in `WfUnifyExtends` and corresponding `WfEffectRowLadder` bundle surfaces,
+probed higher-order `functionEff` call paths to sanity-check runtime effect
+propagation against the formal intent.
+
+**MCP tools used**: `reset_session`, `type_check`, `diagnose`
+
+**Probe**:
+1. Syntax/typing precondition updates on restarted MCP surface:
+   - Named `fn` declarations require parameter annotations (`E0801`).
+   - Bare lambdas (`x -> ...`) are rejected; parser requires `|x| -> ...`.
+2. Higher-order call path:
+   - `type_check` on
+     `effect Log; fn log(msg: String) -> Unit; fn run() -[Log]> Unit { let apply = |f| -> |x| -> f(x); let logger = |y| -> Log.log(y); apply(logger)(\"x\") }`
+     returns `ok` with `run : () -[e0]> ()`.
+   - Same shape with `fn pure_run() -> Unit` also returns `ok` with
+     `pure_run : () -[e0]> ()`.
+3. Direct control:
+   - `type_check` on
+     `fn pure_bad() -> Unit { let logger = |y| -> Log.log(y); logger(\"x\") }`
+     returns `ok` with `pure_bad : () -[Log]> ()`.
+
+**Classify**: Possible divergence (effect propagation through higher-order
+application appears under-constrained in this probe shape).
+
+**Outcome**:
+- Direct local invocation of the effectful closure propagates `Log` as expected.
+- Through the higher-order `apply` combinator, the outer function effect
+  remains polymorphic (`e0`) instead of concretely reflecting `Log`.
+- This looks like an implementation-side effect-constraint propagation gap
+  in higher-order unification/inference paths, not a parser-only issue.
