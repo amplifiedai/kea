@@ -4635,3 +4635,34 @@ application appears under-constrained in this probe shape).
   remains polymorphic (`e0`) instead of concretely reflecting `Log`.
 - This looks like an implementation-side effect-constraint propagation gap
   in higher-order unification/inference paths, not a parser-only issue.
+
+### 2026-02-26: higher-order effect propagation re-probe after binary restart
+
+**Context**: Re-ran the same higher-order `functionEff` propagation probes
+after user-provided `kea-mcp` restart with the latest binary, to verify
+whether the previous divergence report was resolved.
+
+**MCP tools used**: `reset_session`, `type_check`, `diagnose`
+
+**Probe**:
+1. Higher-order wrapper path (declared effectful outer fn):
+   - `type_check` on
+     `effect Log; fn log(msg: String) -> Unit; fn run() -[Log]> Unit { let apply = |f| -> |x| -> f(x); let logger = |y| -> Log.log(y); apply(logger)(\"x\") }`
+     returns `ok` with binding `run : () -[e0]> ()`.
+2. Same higher-order wrapper path (declared pure outer fn):
+   - `type_check` on
+     `effect Log; fn log(msg: String) -> Unit; fn pure_run() -> Unit { let apply = |f| -> |x| -> f(x); let logger = |y| -> Log.log(y); apply(logger)(\"x\") }`
+     returns `ok` with binding `pure_run : () -[e0]> ()`.
+   - `diagnose` on the same snippet reports no diagnostics.
+3. Direct control:
+   - `type_check` on
+     `effect Log; fn log(msg: String) -> Unit; fn pure_bad() -> Unit { let logger = |y| -> Log.log(y); logger(\"x\") }`
+     returns `ok` with binding `pure_bad : () -[Log]> ()`.
+
+**Classify**: Divergence persists.
+
+**Outcome**:
+- Restarted binary behavior matches the prior divergence report.
+- Direct local calls propagate `Log`; higher-order wrapper calls remain
+  under-constrained (`e0`) and do not enforce/reflect `Log` at the outer
+  function boundary in this probe shape.
