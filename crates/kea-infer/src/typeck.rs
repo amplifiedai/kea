@@ -10028,7 +10028,7 @@ fn infer_use_chain_expr(
                             "cannot use `use` with Option in a Result context",
                         )
                         .at(span_to_loc(step.source.span))
-                        .with_help("convert Option explicitly, e.g. `opt |> Option.ok_or(MyError.NotFound)`"),
+                        .with_help("convert Option explicitly, e.g. `Option.ok_or(opt, MyError.NotFound)`"),
                     );
                 } else {
                     unifier.push_error(

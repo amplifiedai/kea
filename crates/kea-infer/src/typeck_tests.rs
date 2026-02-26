@@ -337,7 +337,7 @@ fn traits_with_actor() -> TraitRegistry {
 }
 
 
-fn pipe(left: Expr, right: Expr) -> Expr {
+fn apply_first_arg(left: Expr, right: Expr) -> Expr {
     match right.node {
         ExprKind::Call { func, args } => {
             let mut combined_args = vec![Argument { label: None, value: left }];
@@ -847,9 +847,9 @@ fn check_expr_context_pushes_expected_precision_into_call_arguments() {
 }
 
 #[test]
-fn check_expr_context_pushes_expected_precision_into_pipe_arguments() {
+fn check_expr_context_pushes_expected_precision_into_left_arg_application_arguments() {
     let expected = Type::IntN(IntWidth::I8, Signedness::Signed);
-    let expr = pipe(lit_int(200), var("narrow"));
+    let expr = apply_first_arg(lit_int(200), var("narrow"));
     let mut env = TypeEnv::new();
     env.bind(
         "narrow".to_string(),
@@ -880,7 +880,7 @@ fn check_expr_context_pushes_expected_precision_into_pipe_arguments() {
         ctx.errors()
             .iter()
             .any(|d| d.message.contains("does not fit in")),
-        "expected precision-range diagnostic from checked pipe arg, got {:?}",
+        "expected precision-range diagnostic from checked left-arg application arg, got {:?}",
         ctx.errors()
     );
 }
@@ -2970,21 +2970,21 @@ fn infer_if_not_option_is_some_narrows_else_branch() {
 }
 
 #[test]
-fn infer_if_pipe_guard_narrows_true_branch() {
+fn infer_if_left_arg_application_guard_narrows_true_branch() {
     let mut env = TypeEnv::new();
     env.bind(
         "x".into(),
         TypeScheme::mono(Type::Option(Box::new(Type::Int))),
     );
     let expr = if_expr(
-        pipe(var("x"), field_access(var("Option"), "is_some")),
+        apply_first_arg(var("x"), field_access(var("Option"), "is_some")),
         binop(BinOp::Add, var("x"), lit_int(1)),
         Some(lit_int(0)),
     );
     let (ty, u) = infer_with_env(&expr, &mut env);
     assert!(
         !u.has_errors(),
-        "pipe guard should narrow true branch: {:?}",
+        "left-arg application guard should narrow true branch: {:?}",
         u.errors()
     );
     assert_eq!(ty, Type::Int);
@@ -3237,7 +3237,7 @@ fn infer_if_sum_variant_predicate_constrains_unknown_binding() {
 }
 
 #[test]
-fn infer_if_pipe_sum_variant_guard_narrows_branch() {
+fn infer_if_left_arg_application_sum_variant_guard_narrows_branch() {
     let records = RecordRegistry::new();
     let mut sums = SumTypeRegistry::new();
     sums.register(
@@ -3262,7 +3262,7 @@ fn infer_if_pipe_sum_variant_guard_narrows_branch() {
     env.bind("s".into(), TypeScheme::mono(unknown));
 
     let expr = if_expr(
-        pipe(var("s"), field_access(var("Shape"), "is_circle")),
+        apply_first_arg(var("s"), field_access(var("Shape"), "is_circle")),
         binop(BinOp::Eq, var("s"), lit_int(1)),
         Some(binop(BinOp::Eq, var("s"), lit_str("rect"))),
     );
@@ -3271,7 +3271,7 @@ fn infer_if_pipe_sum_variant_guard_narrows_branch() {
 
     assert!(
         !unifier.has_errors(),
-        "pipe sum guard should narrow branches: {:?}",
+        "left-arg application sum guard should narrow branches: {:?}",
         unifier.errors()
     );
     assert_eq!(ty, Type::Bool);
@@ -3792,18 +3792,18 @@ fn infer_row_polymorphic_multiple_uses() {
 }
 
 // ===========================================================================
-// Pipe operator
+// Left-arg application helper
 // ===========================================================================
 
 #[test]
-fn infer_pipe() {
-    // { let double = |x| x + x; 21 |> double }  →  Int
+fn infer_left_arg_application() {
+    // { let double = |x| x + x; double(21) }  -> Int
     let expr = block(vec![
         let_bind(
             "double",
             lambda(&["x"], binop(BinOp::Add, var("x"), var("x"))),
         ),
-        pipe(lit_int(21), var("double")),
+        apply_first_arg(lit_int(21), var("double")),
     ]);
     let (ty, u) = infer(&expr);
     assert!(!u.has_errors(), "Errors: {:?}", u.errors());
@@ -3811,11 +3811,11 @@ fn infer_pipe() {
 }
 
 #[test]
-fn infer_pipe_call_prepends_left_arg() {
-    // { let pick_first = |a, b| a; 1 |> pick_first(2) }  -> Int
+fn infer_left_arg_application_call_prepends_left_arg() {
+    // { let pick_first = |a, b| a; pick_first(1, 2) } -> Int
     let expr = block(vec![
         let_bind("pick_first", lambda(&["a", "b"], var("a"))),
-        pipe(lit_int(1), call(var("pick_first"), vec![lit_int(2)])),
+        apply_first_arg(lit_int(1), call(var("pick_first"), vec![lit_int(2)])),
     ]);
     let (ty, u) = infer(&expr);
     assert!(!u.has_errors(), "Errors: {:?}", u.errors());
@@ -3996,9 +3996,9 @@ fn infer_call_pushes_expected_precision_into_arguments() {
 }
 
 #[test]
-fn infer_pipe_pushes_expected_precision_into_arguments() {
+fn infer_left_arg_application_pushes_expected_precision_into_arguments() {
     let expected = Type::IntN(IntWidth::I8, Signedness::Signed);
-    let expr = pipe(lit_int(200), var("narrow"));
+    let expr = apply_first_arg(lit_int(200), var("narrow"));
     let mut env = TypeEnv::new();
     env.bind(
         "narrow".to_string(),
@@ -4012,7 +4012,7 @@ fn infer_pipe_pushes_expected_precision_into_arguments() {
     let (_ty, u) = infer_with_env(&expr, &mut env);
     assert!(
         u.has_errors(),
-        "expected out-of-range literal error in infer-mode pipe"
+        "expected out-of-range literal error in infer-mode left-arg application"
     );
     let msg = u
         .errors()
@@ -4022,7 +4022,7 @@ fn infer_pipe_pushes_expected_precision_into_arguments() {
         .join(" | ");
     assert!(
         msg.contains("does not fit in"),
-        "expected precision-range diagnostic from infer-mode pipe arg, got: {msg}"
+        "expected precision-range diagnostic from infer-mode left-arg application arg, got: {msg}"
     );
 }
 
@@ -4148,7 +4148,7 @@ fn infer_rank2_forall_parameter_rejects_monomorphic_callback() {
 }
 
 #[test]
-fn infer_pipe_rejects_monomorphic_callback_for_rank2_parameter() {
+fn infer_left_arg_application_rejects_monomorphic_callback_for_rank2_parameter() {
     let forall_id = TypeAnnotation::Forall {
         type_vars: vec!["a".to_string()],
         ty: Box::new(TypeAnnotation::Function(
@@ -4174,7 +4174,7 @@ fn infer_pipe_rejects_monomorphic_callback_for_rank2_parameter() {
             lambda(&["n"], binop(BinOp::Add, var("n"), lit_int(1))),
         ),
         let_bind("use_poly", use_poly),
-        pipe(var("mono"), var("use_poly")),
+        apply_first_arg(var("mono"), var("use_poly")),
     ]);
 
     let (_ty, u) = infer(&expr);
@@ -4192,7 +4192,7 @@ fn infer_pipe_rejects_monomorphic_callback_for_rank2_parameter() {
 }
 
 #[test]
-fn infer_pipe_accepts_polymorphic_callback_for_rank2_parameter() {
+fn infer_left_arg_application_accepts_polymorphic_callback_for_rank2_parameter() {
     let forall_id = TypeAnnotation::Forall {
         type_vars: vec!["a".to_string()],
         ty: Box::new(TypeAnnotation::Function(
@@ -4215,19 +4215,19 @@ fn infer_pipe_accepts_polymorphic_callback_for_rank2_parameter() {
     let expr = block(vec![
         let_bind("id", lambda(&["v"], var("v"))),
         let_bind("use_poly", use_poly),
-        pipe(var("id"), var("use_poly")),
+        apply_first_arg(var("id"), var("use_poly")),
     ]);
 
     let (_ty, u) = infer(&expr);
     assert!(
         !u.has_errors(),
-        "expected polymorphic callback to satisfy rank-2 pipe contract: {:?}",
+        "expected polymorphic callback to satisfy rank-2 left-arg application contract: {:?}",
         u.errors()
     );
 }
 
 #[test]
-fn infer_pipe_call_rejects_monomorphic_callback_for_rank2_parameter() {
+fn infer_left_arg_application_call_rejects_monomorphic_callback_for_rank2_parameter() {
     let forall_id = TypeAnnotation::Forall {
         type_vars: vec!["a".to_string()],
         ty: Box::new(TypeAnnotation::Function(
@@ -4261,7 +4261,7 @@ fn infer_pipe_call_rejects_monomorphic_callback_for_rank2_parameter() {
             lambda(&["n"], binop(BinOp::Add, var("n"), lit_int(1))),
         ),
         let_bind("use_poly_with", use_poly_with),
-        pipe(var("mono"), call(var("use_poly_with"), vec![lit_int(7)])),
+        apply_first_arg(var("mono"), call(var("use_poly_with"), vec![lit_int(7)])),
     ]);
 
     let (_ty, u) = infer(&expr);
@@ -4279,7 +4279,7 @@ fn infer_pipe_call_rejects_monomorphic_callback_for_rank2_parameter() {
 }
 
 #[test]
-fn infer_pipe_call_accepts_polymorphic_callback_for_rank2_parameter() {
+fn infer_left_arg_application_call_accepts_polymorphic_callback_for_rank2_parameter() {
     let forall_id = TypeAnnotation::Forall {
         type_vars: vec!["a".to_string()],
         ty: Box::new(TypeAnnotation::Function(
@@ -4310,13 +4310,13 @@ fn infer_pipe_call_accepts_polymorphic_callback_for_rank2_parameter() {
     let expr = block(vec![
         let_bind("id", lambda(&["v"], var("v"))),
         let_bind("use_poly_with", use_poly_with),
-        pipe(var("id"), call(var("use_poly_with"), vec![lit_int(7)])),
+        apply_first_arg(var("id"), call(var("use_poly_with"), vec![lit_int(7)])),
     ]);
 
     let (_ty, u) = infer(&expr);
     assert!(
         !u.has_errors(),
-        "expected polymorphic callback to satisfy rank-2 pipe-call contract: {:?}",
+        "expected polymorphic callback to satisfy rank-2 left-arg application call contract: {:?}",
         u.errors()
     );
 }
@@ -7717,7 +7717,7 @@ fn infer_expr_effects_uses_registered_signature_for_qualified_callback_arguments
 }
 
 #[test]
-fn infer_expr_effects_pipe_call_propagates_callback_effect_signature() {
+fn infer_expr_effects_left_arg_application_call_propagates_callback_effect_signature() {
     let mut env = TypeEnv::new();
     let mut map = make_fn_decl("map", vec!["xs", "f"], call(var("f"), vec![lit_int(1)]));
     map.params[1].annotation = Some(sp(TypeAnnotation::FunctionWithEffect(
@@ -7729,12 +7729,12 @@ fn infer_expr_effects_pipe_call_propagates_callback_effect_signature() {
     register_fn_effect_signature(&map, &mut env);
 
     env.set_function_effect_row("pure_cb".to_string(), EffectRow::pure());
-    let pure_pipe = pipe(
+    let pure_apply = apply_first_arg(
         list(vec![lit_int(1)]),
         call(var("map"), vec![var("pure_cb")]),
     );
     assert_eq!(
-        infer_expr_effects(&pure_pipe, &env),
+        infer_expr_effects(&pure_apply, &env),
         Effects::pure_deterministic()
     );
 
@@ -7742,15 +7742,15 @@ fn infer_expr_effects_pipe_call_propagates_callback_effect_signature() {
         "impure_cb".to_string(),
         EffectRow::closed(vec![(Label::new("IO"), Type::Unit)]),
     );
-    let impure_pipe = pipe(
+    let impure_apply = apply_first_arg(
         list(vec![lit_int(1)]),
         call(var("map"), vec![var("impure_cb")]),
     );
-    assert_eq!(infer_expr_effects(&impure_pipe, &env), Effects::impure());
+    assert_eq!(infer_expr_effects(&impure_apply, &env), Effects::impure());
 }
 
 #[test]
-fn infer_expr_effects_pipe_qualified_call_propagates_callback_effect_signature() {
+fn infer_expr_effects_left_arg_application_qualified_call_propagates_callback_effect_signature() {
     let mut env = TypeEnv::new();
     env.register_module_function("Kea.List", "map");
     let mut map = make_fn_decl(
@@ -7767,12 +7767,12 @@ fn infer_expr_effects_pipe_qualified_call_propagates_callback_effect_signature()
     register_fn_effect_signature(&map, &mut env);
 
     env.set_function_effect_row("pure_cb".to_string(), EffectRow::pure());
-    let pure_pipe = pipe(
+    let pure_apply = apply_first_arg(
         list(vec![lit_int(1)]),
         call(field_access(var("List"), "map"), vec![var("pure_cb")]),
     );
     assert_eq!(
-        infer_expr_effects(&pure_pipe, &env),
+        infer_expr_effects(&pure_apply, &env),
         Effects::pure_deterministic()
     );
 
@@ -7780,11 +7780,11 @@ fn infer_expr_effects_pipe_qualified_call_propagates_callback_effect_signature()
         "impure_cb".to_string(),
         EffectRow::closed(vec![(Label::new("IO"), Type::Unit)]),
     );
-    let impure_pipe = pipe(
+    let impure_apply = apply_first_arg(
         list(vec![lit_int(1)]),
         call(field_access(var("List"), "map"), vec![var("impure_cb")]),
     );
-    assert_eq!(infer_expr_effects(&impure_pipe, &env), Effects::impure());
+    assert_eq!(infer_expr_effects(&impure_apply, &env), Effects::impure());
 }
 
 #[test]
