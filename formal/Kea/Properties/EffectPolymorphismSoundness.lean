@@ -245,6 +245,16 @@ theorem catchUnnecessary_implies_no_admissible_poly_lowering
     ¬ FailResultContracts.catchAdmissible c.effects := by
   exact FailResultContracts.catchUnnecessary_implies_not_admissible c.effects h_unnecessary
 
+theorem admissibleEffectPolyFailLowering_admissibility_branch
+    (c : AdmissibleEffectPolyFailLoweringContract) :
+    FailResultContracts.catchAdmissible c.effects ∧
+      ¬ FailResultContracts.catchUnnecessary c.effects := by
+  exact ⟨
+    c.h_admissible,
+    FailResultContracts.catchAdmissible_implies_not_unnecessary
+      c.effects c.h_admissible
+  ⟩
+
 /-- Concrete handler-typing premises for polymorphic Fail-lowered function schemas. -/
 structure EffectPolyHandlerSchema where
   clause : HandleClauseContract
@@ -433,6 +443,12 @@ theorem admissibleEffectPolyHandlerSchema_not_unnecessary
     FailResultContracts.catchUnnecessary_implies_not_admissible
       s.clause.exprEffects h_unnecessary
   exact h_not_adm s.h_admissible
+
+theorem admissibleEffectPolyHandlerSchema_admissibility_branch
+    (s : AdmissibleEffectPolyHandlerSchema) :
+    FailResultContracts.catchAdmissible s.clause.exprEffects ∧
+      ¬ FailResultContracts.catchUnnecessary s.clause.exprEffects := by
+  exact ⟨s.h_admissible, admissibleEffectPolyHandlerSchema_not_unnecessary s⟩
 
 def mkAdmissibleEffectPolyHandlerSchema
     (clause : HandleClauseContract)

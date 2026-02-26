@@ -64,6 +64,21 @@ theorem catchUnnecessary_implies_not_admissible
   rw [h_unnecessary] at h_adm
   cases h_adm
 
+theorem catchAdmissible_implies_not_unnecessary
+    (effects : EffectRow)
+    (h_adm : catchAdmissible effects) :
+    ¬ catchUnnecessary effects := by
+  intro h_unnecessary
+  exact (catchUnnecessary_implies_not_admissible effects h_unnecessary) h_adm
+
+theorem catchAdmissible_xor_unnecessary
+    (effects : EffectRow) :
+    (catchAdmissible effects ∧ ¬ catchUnnecessary effects) ∨
+      (catchUnnecessary effects ∧ ¬ catchAdmissible effects) := by
+  rcases catchAdmissible_or_unnecessary effects with h | h
+  · exact Or.inl ⟨h, catchAdmissible_implies_not_unnecessary effects h⟩
+  · exact Or.inr ⟨h, catchUnnecessary_implies_not_admissible effects h⟩
+
 theorem failAsZeroResume_implies_linearityOk
     (c : HandleClauseContract)
     (h : failAsZeroResume c) :
