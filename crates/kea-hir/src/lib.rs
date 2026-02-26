@@ -327,7 +327,9 @@ fn lower_literal_case(scrutinee: &Expr, arms: &[CaseArm], ty_hint: Option<Type>)
     let mut wildcard_body: Option<&Expr> = None;
     for arm in arms {
         match &arm.pattern.node {
-            PatternKind::Lit(lit @ Lit::Int(_)) | PatternKind::Lit(lit @ Lit::Bool(_)) => {
+            PatternKind::Lit(lit @ Lit::Int(_))
+            | PatternKind::Lit(lit @ Lit::Float(_))
+            | PatternKind::Lit(lit @ Lit::Bool(_)) => {
                 literal_arms.push((lit, &arm.body));
             }
             PatternKind::Wildcard => wildcard_body = Some(&arm.body),
@@ -365,6 +367,7 @@ fn lower_literal_case(scrutinee: &Expr, arms: &[CaseArm], ty_hint: Option<Type>)
                     kind: HirExprKind::Lit(lit.clone()),
                     ty: match lit {
                         Lit::Int(_) => Type::Int,
+                        Lit::Float(_) => Type::Float,
                         Lit::Bool(_) => Type::Bool,
                         _ => Type::Dynamic,
                     },
@@ -532,6 +535,40 @@ mod tests {
         } = &function.body.kind
         else {
             panic!("expected chained int case lowering");
+        };
+        assert!(matches!(else_branch.kind, HirExprKind::If { .. }));
+    }
+
+    #[test]
+    fn lower_function_float_case_desugars_to_if_chain() {
+        let module = parse_module_from_text(
+            "fn classify(x: Float) -> Int\n  case x\n    1.5 -> 10\n    2.5 -> 11\n    _ -> 20",
+        );
+        let mut env = TypeEnv::new();
+        env.bind(
+            "classify".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::pure(vec![Type::Float], Type::Int))),
+        );
+
+        let lowered = lower_module(&module, &env);
+        let HirDecl::Function(function) = &lowered.declarations[0] else {
+            panic!("expected lowered function declaration");
+        };
+
+        let HirExprKind::If { condition, .. } = &function.body.kind else {
+            panic!("expected float case to lower to if expression");
+        };
+        assert!(matches!(
+            condition.kind,
+            HirExprKind::Binary { op: BinOp::Eq, .. }
+        ));
+
+        let HirExprKind::If {
+            else_branch: Some(else_branch),
+            ..
+        } = &function.body.kind
+        else {
+            panic!("expected chained float case lowering");
         };
         assert!(matches!(else_branch.kind, HirExprKind::If { .. }));
     }
