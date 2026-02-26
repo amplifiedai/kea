@@ -5,6 +5,7 @@ PROGRAM_DIR="${1:-benchmarks/programs}"
 OUT_DIR="${2:-benchmark-results/programs/latest}"
 RUNS="${BENCH_PROGRAM_RUNS:-10}"
 WARMUP="${BENCH_PROGRAM_WARMUP:-2}"
+INNER_ITERS="${BENCH_PROGRAM_INNER_ITERS:-10}"
 
 mkdir -p "${OUT_DIR}"
 
@@ -38,9 +39,13 @@ if command -v hyperfine >/dev/null 2>&1; then
   args=()
   for program in "${programs[@]}"; do
     name="$(basename "${program}" .kea)"
-    args+=("--command-name" "${name}" "${KEA_BIN} run ${program}")
+    args+=(
+      "--command-name" "${name}"
+      "./scripts/run-program-bench.sh ${KEA_BIN} ${program} ${INNER_ITERS}"
+    )
   done
   hyperfine \
+    --shell=none \
     --warmup "${WARMUP}" \
     --runs "${RUNS}" \
     --export-json "${OUT_DIR}/hyperfine.json" \
@@ -52,13 +57,13 @@ if command -v hyperfine >/dev/null 2>&1; then
   exit 0
 fi
 
-echo "hyperfine not found; running fallback loop (${RUNS} runs/program, no statistical summary)."
+echo "hyperfine not found; running fallback loop (${RUNS} measured runs/program, ${INNER_ITERS} inner iters/run)."
 echo "program,runs,elapsed_seconds" > "${OUT_DIR}/fallback.csv"
 for program in "${programs[@]}"; do
   name="$(basename "${program}" .kea)"
   start="$(date +%s)"
   for _ in $(seq 1 "${RUNS}"); do
-    "${KEA_BIN}" run "${program}" >/dev/null
+    ./scripts/run-program-bench.sh "${KEA_BIN}" "${program}" "${INNER_ITERS}"
   done
   end="$(date +%s)"
   elapsed="$((end - start))"
