@@ -71,6 +71,21 @@ theorem wellFormed_removeLabel :
       · simp [removeLabel, h_hit, removeLabel_idempotent rest target]
       · simp [removeLabel, h_hit, removeLabel_idempotent rest target]
 
+theorem removeLabel_noop_of_absent :
+    ∀ (rf : RowFields) (target : Label),
+      RowFields.has rf target = false →
+      removeLabel rf target = rf
+  | .nil, _, _ => by simp [removeLabel]
+  | .cons l ty rest, target, h_abs => by
+      by_cases h_hit : l = target
+      · subst h_hit
+        have h_impossible : RowFields.has (.cons l ty rest) l = false := h_abs
+        simp [RowFields.has] at h_impossible
+      · have h_head_false : (l == target) = false := by simp [h_hit]
+        have h_rest_abs : RowFields.has rest target = false := by
+          simpa [RowFields.has, h_head_false] using h_abs
+        simp [removeLabel, h_hit, removeLabel_noop_of_absent rest target h_rest_abs]
+
 /--
 Insert a field only when its label is not already present.
 This is the row-level idempotent-union primitive used by handler composition.
@@ -307,6 +322,17 @@ theorem handleRemove_preserves_wellFormed
               rcases h_wf with ⟨h_fields, h_rest⟩
               exact ⟨RowFields.wellFormed_removeLabel kctx rctx fs target h_fields, h_rest⟩
 
+theorem handleRemove_noop_of_absent
+    (effects : EffectRow) (target : Label)
+    (h_abs : RowFields.has (fields effects) target = false) :
+    handleRemove effects target = effects := by
+  cases effects with
+  | mk row =>
+      cases row with
+      | mk fs rv =>
+          simp [handleRemove, fields] at h_abs ⊢
+          simpa [h_abs] using RowFields.removeLabel_noop_of_absent fs target h_abs
+
 /--
 Phase-2 composition theorem (spec-normalized):
 all handler-body effects are present in the composed result.
@@ -416,5 +442,68 @@ theorem handleComposeNormalized_preserves_wellFormed
                   | some rv =>
                       rcases h_wf_effects with ⟨_h_fields, h_rest⟩
                       exact ⟨h_union_wf, h_rest⟩
+
+theorem handleComposeNormalized_preserves_row_tail
+    (effects handlerEffects : EffectRow) (target : Label) :
+    rest (handleComposeNormalized effects handlerEffects target) = rest effects := by
+  simp [rest_handleComposeNormalized, rest_handleRemove]
+
+/--
+Nested same-target handling: if the inner handled result already lacks `target`,
+the outer same-target handling step performs no additional removal before
+adding outer handler-body effects.
+-/
+theorem nested_same_target_outer_removal_noop_of_inner_absent
+    (effects innerHandler outerHandler : EffectRow) (target : Label)
+    (h_inner_abs :
+      RowFields.has (fields (handleComposeNormalized effects innerHandler target)) target = false) :
+    handleComposeNormalized (handleComposeNormalized effects innerHandler target) outerHandler target =
+      .mk (.mk
+        (RowFields.unionIdem
+          (fields (handleComposeNormalized effects innerHandler target))
+          (fields outerHandler))
+        (rest (handleComposeNormalized effects innerHandler target))) := by
+  have h_fields_noop :
+      RowFields.removeLabel
+          (fields (handleComposeNormalized effects innerHandler target))
+          target =
+        fields (handleComposeNormalized effects innerHandler target) :=
+    RowFields.removeLabel_noop_of_absent
+      (fields (handleComposeNormalized effects innerHandler target))
+      target
+      h_inner_abs
+  have h_union_eq :
+      RowFields.unionIdem
+          (RowFields.removeLabel
+            (fields (handleComposeNormalized effects innerHandler target))
+            target)
+          (fields outerHandler) =
+        RowFields.unionIdem
+          (fields (handleComposeNormalized effects innerHandler target))
+          (fields outerHandler) := by
+    exact congrArg
+      (fun fs => RowFields.unionIdem fs (fields outerHandler))
+      h_fields_noop
+  simpa [handleComposeNormalized] using h_union_eq
+
+/--
+Nested same-target handling corollary:
+if the outer handler-body does not emit `target`, final effects still lack
+`target` (spec-normalized semantics).
+-/
+theorem nested_same_target_remains_absent_of_outer_absent
+    (effects innerHandler outerHandler : EffectRow) (target : Label)
+    (h_outer_abs : RowFields.has (fields outerHandler) target = false) :
+    RowFields.has
+      (fields (handleComposeNormalized
+        (handleComposeNormalized effects innerHandler target)
+        outerHandler
+        target))
+      target = false := by
+  exact handle_removes_effect_normalized_of_handler_absent
+    (handleComposeNormalized effects innerHandler target)
+    outerHandler
+    target
+    h_outer_abs
 
 end EffectRow

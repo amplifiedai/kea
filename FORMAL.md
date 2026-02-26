@@ -45,6 +45,7 @@ This work starts by cannibalizing the existing Rill formal corpus and then exten
 - **Phase 2 (active):** Added `Kea/Properties/HandlerEffectRemoval.lean` with a first handler-elimination core model (`EffectRow.handleRemove`) and capstone theorem surfaces (`handle_removes_effect`, `handle_preserves_other_effects`, row-tail/WF preservation, idempotence).
 - **Phase 2 (active):** MCP probe sweep confirms non-overlap handler removal (`[IO, Log] --handle Log--> [IO]`) and pure removal (`[Log] --handle Log--> []`) but reveals an overlap divergence: when handler bodies re-emit an existing residual effect, inference currently duplicates labels (`-[IO, IO]>`) instead of normalizing the row.
 - **Phase 2 (active):** Formal handler-composition proofs now proceed under spec-normalized idempotent union via `EffectRow.handleComposeNormalized` (remove handled effect, then idempotent union with handler-body effects). This keeps proofs stable while implementation-side dedup normalization is pending.
+- **Phase 2 (active):** Added nested same-target handler consequences on the normalized model (`nested_same_target_outer_removal_noop_of_inner_absent`, `nested_same_target_remains_absent_of_outer_absent`) and row-tail preservation for composed handlers.
 
 The formal workspace lives at [`formal/`](formal/).
 
