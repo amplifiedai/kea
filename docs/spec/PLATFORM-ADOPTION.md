@@ -9,7 +9,7 @@ It is the "so what" layer across:
 - [EFFECTS-ORIENTED guide](../EFFECTS-ORIENTED.md)
 - [UNIVERSAL-DOT guide](../UNIVERSAL-DOT.md)
 - [Runtime introspection brief](../../BRIEFS/design/runtime-introspection-mcp.md)
-- [Testing brief](../../BRIEFS/design/testing.md)
+- [Testing brief](../../BRIEFS/todo/testing.md)
 - [Distributed actors brief](../../BRIEFS/design/distributed-actors.md)
 - [Performance/backend brief](../../BRIEFS/design/performance-backend-strategy.md)
 
@@ -102,7 +102,75 @@ Be explicit about non-goals:
 - no distributed refcounting,
 - no unbounded runtime introspection surfaces.
 
-## 4. Consumer Matrix (Authoritative)
+### 3.6 Policy as compile-time enforcement
+
+Treat policy violations as type/effect errors, not review checklists:
+
+- no network/disk/tooling capabilities in restricted modules,
+- deterministic-mode enforcement (no ambient clock/rand/IO),
+- capability-scoped agent/tool execution.
+
+### 3.7 Deterministic simulation and replay
+
+Handlers should make deterministic replay a standard workflow:
+
+- capture effect inputs/outputs,
+- replay by swapping handlers,
+- support audit/debug traces for agent decisions.
+
+This is core to reliability, not an optional observability add-on.
+
+### 3.8 Safe plugin and extension ecosystems
+
+Plugins/extensions should be statically capability-scoped:
+
+- explicit effect grants,
+- no ambient power,
+- compile-time and runtime policy hooks for multi-tenant safety.
+
+### 3.9 Portable execution via validated lowering
+
+Kea should support execution substrate portability through validated
+sublanguages:
+
+- local/runtime handlers,
+- sandboxed handlers,
+- distributed lowering,
+- target-specific lowering (UDF/GPU/wasm/serverless) when constraints hold.
+
+The invariant is compile-time validation of subset eligibility.
+
+### 3.10 Effect-native observability and context
+
+Treat tracing/metrics/log/context as effect surfaces:
+
+- same code under prod handlers (OTel/etc.) and test handlers (capture/assert),
+- ambient context without globals/thread-local leakage,
+- structured runtime summaries available to tooling/agents.
+
+## 4. Strategic Bets (Top 3)
+
+1. **Policy-checked agent orchestration:** safe tool use, sandboxing, auditability.
+2. **Deterministic simulation/testing modes:** replayable workflows via handler swaps.
+3. **Validated lowering to other substrates:** portable execution with static guarantees.
+
+These are differentiated, hard to replicate in incumbent stacks, and
+should be used as prioritization filters for roadmap decisions.
+
+## 5. Early Effect Surfaces To Standardize
+
+Stabilize these first-class surfaces early because many platform
+capabilities depend on them:
+
+- `IO`, `Net`, `Clock`, `Rand`,
+- `Log`, `Trace`, `Metric`,
+- `Send`, `Spawn`,
+- `Introspect`,
+- `Compile`.
+
+Keep niche/domain effects as library experiments until proven.
+
+## 6. Consumer Matrix (Authoritative)
 
 | Consumer | Needs | Source of Truth | Constraints |
 |---|---|---|---|
@@ -114,7 +182,7 @@ Be explicit about non-goals:
 | Runtime introspection | bounded operational summaries | `Introspect` effect handler | policy-gated, audited, capped |
 | Agents (external/internal) | safe semantic affordances | same contracts as above | no privileged backdoor APIs |
 
-## 5. Required Platform Invariants
+## 7. Required Platform Invariants
 
 1. Same source, same semantic answer across compiler/LSP/REPL/MCP.
 2. Stable schema versions for machine consumers.
@@ -124,7 +192,7 @@ Be explicit about non-goals:
 6. No raw HIR/MIR exposure in runtime introspection.
 7. Test result format is stable and machine-consumable.
 
-## 6. Roadmap Slotting
+## 8. Roadmap Slotting
 
 ### Phase 0b-0d
 
@@ -148,14 +216,14 @@ Be explicit about non-goals:
 - Extend to distributed actor operational summaries.
 - Evaluate backend options by benchmark data, not narrative.
 
-## 7. Immediate Documentation Work
+## 9. Immediate Documentation Work
 
 1. Keep [EFFECTS-ORIENTED.md](../EFFECTS-ORIENTED.md) focused on migration outcomes.
 2. Keep [UNIVERSAL-DOT.md](../UNIVERSAL-DOT.md) focused on readability, dispatch clarity, and refactoring ergonomics.
 3. Tie both guides to this platform page and to `kea test`.
 4. Keep claims about OTP/performance bounded and benchmark-coupled.
 
-## 8. Definition Of Success (v1)
+## 10. Definition Of Success (v1)
 
 Kea is perceived as:
 
