@@ -5667,3 +5667,33 @@ connected it to the normalized handler model for direct-call soundness.
 - Phase-2 now has explicit formal coverage for effect declaration/operation
   typing scaffolding and a citable direct-call soundness theorem for
   unintercepted capabilities.
+
+### 2026-02-26: capability direct-call runtime alignment probe
+
+**Context**: Validated the new `capability_direct_call_sound` theorem surface
+against the latest restarted MCP binary.
+
+**MCP tools used**: direct `kea-mcp` stdio (`initialize`,
+`notifications/initialized`, `tools/call` with `reset_session`, `type_check`,
+`get_type`, `diagnose`).
+
+**Probe**:
+1. Handle `Trace` while body performs `Log` and `Trace`:
+   - declarations:
+     - `body : () -[Log, Trace]> ()`
+     - `run` handles `Trace.trace` with `resume ()`
+   - `type_check` bindings include:
+     - `run : () -[Log]> ()`
+   - `get_type "run"` returns `() -[Log]> ()`
+   - `diagnose "run"` returns no diagnostics.
+2. Symmetric control (handle `Log` while body performs `Log` and `Trace`):
+   - `type_check` bindings include:
+     - `run2 : () -[Trace]> ()`
+   - `get_type "run2"` returns `() -[Trace]> ()`
+   - `diagnose "run2"` returns no diagnostics.
+
+**Classify**: Agreement.
+
+**Outcome**:
+- Runtime behavior matches the formal direct-call model: when handling one
+  effect, the other capability effect remains in the residual row.
