@@ -5493,3 +5493,23 @@ preceding higher-order divergence-closure probes).
 **Outcome**:
 - The higher-order catch shape now has dedicated, citable theorem surfaces
 instead of relying only on generic bridge instantiation.
+
+### 2026-02-26: higher-order raw-premise adapters (proof-only)
+
+**Context**: Added direct `of_premises` theorem adapters for higher-order catch
+surfaces to match the ergonomics of the generic bridge layers.
+
+**MCP tools used**: none (proof-only API refinement; runtime behavior already
+validated in preceding higher-order closure probes).
+
+**Lean side**:
+- Extended `Kea/Properties/HigherOrderCatchContracts.lean` with:
+  - `higherOrderCatchTypingJudgment_sound_of_premises`
+  - `higherOrderCatchTypingJudgment_admissibility_branch_of_premises`
+- Verified with `cd formal && lake build` (pass).
+
+**Classify**: N/A (proof-only step).
+
+**Outcome**:
+- Higher-order theorem consumers can now start from raw premise sets directly,
+  without constructing intermediate judgment records manually.
