@@ -5557,3 +5557,24 @@ change).
 **Outcome**:
 - Raw-premise higher-order call sites now have direct one-hop access to selected
   bundle guarantees without intermediate record construction/destructuring.
+
+### 2026-02-26: higher-order combined raw-premise capstone (proof-only)
+
+**Context**: Added a single higher-order capstone theorem that combines lowered
+effect guarantees and admissibility branch facts from raw premises.
+
+**MCP tools used**: none (proof-only packaging; runtime alignment already
+validated in prior higher-order closure probes).
+
+**Lean side**:
+- Extended `Kea/Properties/HigherOrderCatchContracts.lean` with:
+  - `higherOrderCatchTypingJudgment_bundle_failRemoved_of_premises`
+  - `higherOrderCatchTypingJudgment_capstone_of_premises`
+- Verified with `cd formal && lake build` (pass).
+
+**Classify**: N/A (proof-only step).
+
+**Outcome**:
+- Higher-order catch now has a single raw-premise theorem surface that packages
+  clause Fail removal, lowered-row tail/non-Fail preservation, lowered Fail
+  removal, and admissible-vs-unnecessary branch consequences.
