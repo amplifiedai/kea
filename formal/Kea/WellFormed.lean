@@ -98,3 +98,50 @@ theorem wellFormed_append
   wellFormedAppend kctx rctx a b ha hb
 
 end RowFields
+
+namespace Row
+
+@[simp] theorem wellFormed_closed_iff
+    (kctx : KindCtx) (rctx : RowCtx) (fields : RowFields) :
+    Row.WellFormed kctx rctx (Row.closed fields) ↔
+      RowFields.WellFormed kctx rctx fields := by
+  simp [Row.closed, Row.WellFormed]
+
+@[simp] theorem wellFormed_mkOpen_iff
+    (kctx : KindCtx) (rctx : RowCtx) (fields : RowFields) (rv : RowVarId) :
+    Row.WellFormed kctx rctx (Row.mkOpen fields rv) ↔
+      RowFields.WellFormed kctx rctx fields ∧ rv ∈ rctx := by
+  simp [Row.mkOpen, Row.WellFormed]
+
+@[simp] theorem wellFormed_emptyClosed
+    (kctx : KindCtx) (rctx : RowCtx) :
+    Row.WellFormed kctx rctx Row.emptyClosed := by
+  simp [Row.emptyClosed, Row.WellFormed, RowFields.WellFormed]
+
+@[simp] theorem wellFormed_emptyOpen_iff
+    (kctx : KindCtx) (rctx : RowCtx) (rv : RowVarId) :
+    Row.WellFormed kctx rctx (Row.emptyOpen rv) ↔ rv ∈ rctx := by
+  simp [Row.emptyOpen, Row.WellFormed, RowFields.WellFormed]
+
+end Row
+
+namespace EffectRow
+
+@[simp] theorem wellFormed_closed_iff
+    (kctx : KindCtx) (rctx : RowCtx) (fields : RowFields) :
+    EffectRow.WellFormed kctx rctx (EffectRow.closed fields) ↔
+      RowFields.WellFormed kctx rctx fields := by
+  simp [EffectRow.closed, EffectRow.WellFormed, Row.WellFormed]
+
+@[simp] theorem wellFormed_mkOpen_iff
+    (kctx : KindCtx) (rctx : RowCtx) (fields : RowFields) (rv : RowVarId) :
+    EffectRow.WellFormed kctx rctx (EffectRow.mkOpen fields rv) ↔
+      RowFields.WellFormed kctx rctx fields ∧ rv ∈ rctx := by
+  simp [EffectRow.mkOpen, EffectRow.WellFormed, Row.WellFormed]
+
+@[simp] theorem wellFormed_pure
+    (kctx : KindCtx) (rctx : RowCtx) :
+    EffectRow.WellFormed kctx rctx EffectRow.pure := by
+  simp [EffectRow.pure, EffectRow.WellFormed, Row.WellFormed, RowFields.WellFormed]
+
+end EffectRow
