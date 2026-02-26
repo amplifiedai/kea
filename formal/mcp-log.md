@@ -5129,3 +5129,34 @@ do not currently match observed MCP behavior on Fail-absent `catch` paths.
 **Outcome**:
 - Marked a concrete divergence to resolve before claiming runtime alignment for
   Fail-absent no-op polymorphism properties.
+
+### 2026-02-26: fail-absent catch divergence closure (post-fix re-probe)
+
+**Context**: Re-checked the previously logged Fail-absent `catch` divergence
+after implementation fix `cbb70b3` (`fix: reject catch on fail-absent bodies`).
+
+**MCP tools used**: direct `kea-mcp` stdio (`initialize`,
+`notifications/initialized`, `tools/call` with `reset_session`, `get_type`,
+`diagnose`).
+
+**Probe**:
+1. Fail-absent case:
+   - `pureish : () -[Log]> Int`
+   - `wrapped_no_fail : () -[Log]> Result(Int, String)` via `catch pureish()`
+   - result: rejected with `E0012`, message
+     `expression cannot fail; catch is unnecessary`.
+2. Fail-present control:
+   - `body : () -[Log, Fail]> Int`
+   - `wrapped : () -[Log]> Result(Int, String)` via `catch body()`
+   - result: `ok`, inferred `() -[Log]> Result(Int, String)`, no diagnostics.
+
+**Classify**: Agreement (divergence closed).
+
+**Lean side impact**:
+- `lowerFailFunctionType_noop_effect_of_absent` and downstream no-op-if-absent
+  theorems now align as vacuous runtime cases (the fail-absent `catch` program
+  class is rejected), rather than a runtime counterexample surface.
+
+**Outcome**:
+- Restores runtime alignment for the Phase-2 Fail/Result + effect-polymorphism
+  slice and removes the prior "wait for fix" caveat.
