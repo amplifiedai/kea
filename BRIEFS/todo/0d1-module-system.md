@@ -230,6 +230,37 @@ interpreted).
 - Circular import detection with clear diagnostic
 - `mise run check-full` passes
 
+## Compilation API extraction
+
+The `kea` CLI crate currently has no `lib.rs` — all pipeline
+orchestration (parse, typecheck session setup, compilation) lives
+in `main.rs`. The MCP server already duplicates the type-checking
+setup independently.
+
+**As part of 0d1, extract a public compilation API** from `main.rs`
+into `crates/kea/src/lib.rs` (or a new `kea-compiler` crate):
+
+```rust
+pub struct CompilationContext {
+    pub modules: Vec<TypedModule>,
+    pub type_env: TypeEnv,
+    pub diagnostics: Vec<Diagnostic>,
+}
+
+pub fn compile_module(source: &str, file_id: FileId) -> Result<CompilationContext, ...>
+pub fn compile_project(entry: &Path) -> Result<CompilationContext, ...>
+pub fn execute_jit(ctx: &CompilationContext) -> Result<i32, ...>
+pub fn emit_object(ctx: &CompilationContext) -> Result<BackendArtifact, ...>
+```
+
+This matters because multi-module compilation adds real orchestration
+complexity (dependency graph, prelude loading, merged TypeEnv). If
+this logic stays in `main.rs`, every consumer (LSP, REPL, MCP, test
+runner) must duplicate it. Extract once, import everywhere.
+
+`main.rs` becomes a thin CLI wrapper. `kea-mcp` imports the same API
+instead of duplicating session setup.
+
 ## Not in scope (deferred)
 
 - Package manifest (`kea.toml`)
