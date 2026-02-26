@@ -13,7 +13,7 @@ that apply across multiple implementation phases. Ignoring them means rework.
 
 | Brief | Applies to | Key constraints |
 |-------|-----------|-----------------|
-| [Performance and backend strategy](design/performance-backend-strategy.md) | **0d, 0e, 0f** | MIR must be backend-neutral (not shaped around Cranelift). Backend interface trait. ABI manifest artifact. Pass stats. Layout stability (declaration order = memory order). Actor benchmark targets. |
+| [Performance and backend strategy](design/performance-backend-strategy.md) | **0d, 0e, 0f** | MIR must be backend-neutral (not shaped around Cranelift). Backend interface trait. ABI manifest artifact. Pass stats. Layout stability (declaration order = memory order). Actor benchmark targets. Reuse analysis is a MIR pass (0f). |
 | [Testing](todo/testing.md) | **0d+** | Benchmark harness is a 0d Definition of Done item. Test runner design (assert/check model) informs how test infrastructure is built. |
 | [Semantic introspection platform](design/runtime-introspection-mcp.md) | **0b-0d** | Compiler MCP contracts must be maintained as new phases land. kea-mcp already exists — new type/effect features must be queryable. |
 | [Lean formalization](todo/lean-formalization.md) | **0c, 0d, 0e** | Formal agent runs in parallel. Core type system migration starts after 0c. Effect typing proofs run alongside 0d/0e. Don't break the MCP interface the formal agent uses. |
@@ -52,6 +52,18 @@ Designed and approved. Ready to pick up. Ordered by execution sequence per ROADM
 
 6. **[Runtime effects](todo/0e-runtime-effects.md)** — Handler compilation strategy (evidence passing vs CPS vs segmented stacks), tail-resumptive optimisation, handler inlining/devirtualization, IO runtime, Fail optimised path, arena allocation. Highest risk phase. **Also read:** [performance-backend-strategy](design/performance-backend-strategy.md) (effect ops as classified MIR ops, handler benchmark gates).
 
+### Phase 0f: Memory Model (parallel with 0e, steps 1-5 only need 0d)
+
+9. **[Memory model](todo/0f-memory-model.md)** — Unique T (move semantics), borrow convention, reuse analysis (pure optimisation), unsafe/Ptr, @unboxed, fixed-width integers. Steps 1-5 only need 0d codegen. Step 6 (Unique + effects) needs 0e. Type-driven optimisation: Unique gives guaranteed single ownership → unconditional in-place mutation. Reuse analysis uses type info to prove refcount==1.
+
+### Phase 0g: Advanced Types (parallel with 0f, only needs 0d + 0c)
+
+10. **[Advanced type features](todo/0g-advanced-types.md)** — GADTs (typed actor protocols), Eff kind (effect-parameterised types), associated types, supertraits. Pure type theory — no dependency on memory model. GADTs enable `CounterMsg T` typed protocols. Eff kind enables `Server E` effect-polymorphic types.
+
+### Phase 0h: Stdlib, Deriving, Error Messages (needs 0g)
+
+11. **[Stdlib, deriving, and error messages](todo/0h-stdlib-errors.md)** — @derive, effects-first stdlib (stdlib IS the effect vocabulary), row-diff error messages (structural missing/extra for records and effects), effect provenance in diagnostics. The most exciting phase: where effects stop being a language feature and become the API design principle.
+
 ### Parallel tracks
 
 7. **[Testing](todo/testing.md)** (Phase 0d through Phase 1) — `assert` (Fail) + `check` (Test effect) dual assertion model. Compiler-level expression capture, structural diff, effect-driven parallelism, property testing via `Gen` effect. Test runner portion starts with 0d. Benchmark harness is a 0d deliverable.
@@ -66,12 +78,6 @@ See ROADMAP.md for details. Briefs will be written as earlier phases complete.
 ## Design
 
 Needs more design work. Briefs exist but aren't implementation-ready.
-
-### Phase 0f-0h
-
-6. **[Memory model](design/0f-memory-model.md)** (weeks 8-9) — Unique T, borrow convention, reuse analysis (pure optimisation, not load-bearing), unsafe/Ptr, @unboxed, fixed-width integers.
-7. **[Advanced type features](design/0g-advanced-types.md)** (weeks 9-11) — GADTs, Eff kind, associated types, supertraits. Type theory pieces.
-8. **[Stdlib, deriving, and error messages](design/0h-stdlib-errors.md)** (weeks 10-11) — @derive, full stdlib (Map, Set, String, IO, JSON), error message investment. Engineering work, parallelizable. Can start once 0g type features are stable.
 
 ### Early tooling (parallel track, weeks 2-6)
 
@@ -114,45 +120,43 @@ Completed briefs. Kept for reference and design rationale.
 ## Dependency Graph
 
 ```
-0a: lexer + parser (kea-ast, kea-syntax, kea-diag)          ← DONE
- │
- ├── 0b: type system core (kea-types, kea-infer)            ← DONE
- │    │
- │    ├── 0b cleanup: remove inherited non-Kea core surface ← DONE
- │    │
- │    ├── 0c: effect handlers (extends kea-infer)            ← DONE
- │    │    │
- │    │    ├── lean formalization phase 1 (parallel track)
- │    │    │
- │    │    └── 0d: codegen pure (kea-hir, kea-mir, kea-codegen, kea)
- │    │         │
- │    │         ├── lean formalization phase 2 (parallel track)
- │    │         │
- │    │         ├── testing: benchmark harness + test runner
- │    │         │
- │    │         ├── semantic introspection platform (cross-cutting):
- │    │         │    compiler MCP contracts in 0b-0d, runtime-safe
- │    │         │    introspection in Phase 2a
- │    │         │
- │    │         ├── 0e: runtime effects
- │    │         │    │
- │    │         │    └── 0f: memory model (Unique, borrow, unsafe)
- │    │         │         │
- │    │         │         └── 0g: advanced types (GADTs, Eff kind)
- │    │         │              │
- │    │         │              ├── 0h: stdlib, deriving, errors (parallelizable)
- │    │         │              │
- │    │         │              └── Phase 1: self-hosting (needs both 0g + 0h)
- │    │         │
- │    │         └── (0d unblocks practical programs even without runtime effects)
- │    │
- │    └── (0b unblocks 0c and partially unblocks 0d for pure subset)
- │
- └── (0a is the critical path — everything starts here)
+0a: lexer + parser                                           ← DONE
+ └── 0b: type system core                                    ← DONE
+      └── 0c: effect handlers                                ← DONE
+           │
+           └── 0d: codegen pure ◄─── ACTIVE
+                │
+                ├── 0e: runtime effects (handler compilation, IO)
+                │    │
+                │    └── 0f step 6: Unique + effects interaction
+                │
+                ├── 0f steps 1-5: Unique, borrow, reuse, unsafe, unboxed
+                │    (only needs 0d — NOT blocked on 0e)
+                │
+                ├── 0g: GADTs, Eff kind, assoc types, supertraits
+                │    (only needs 0d + 0c — NOT blocked on 0f)
+                │    │
+                │    └── 0h: stdlib, deriving, error messages
+                │         │
+                │         └── Phase 1: self-hosting
+                │
+                ├── lean formalization phase 2 (parallel)
+                ├── testing: benchmark harness + test runner (parallel)
+                └── semantic introspection platform (cross-cutting)
+
+Parallelism after 0d lands:
+  0e ──────────┐
+  0f steps 1-5 ├── can all run concurrently
+  0g ──────────┘
+  lean, testing ── parallel tracks throughout
+
+Critical path to "hello world compiles":  0d → 0e (IO handler)
+Critical path to self-hosting:            0d → 0g → 0h → Phase 1
 
 Cross-cutting (read before implementing any phase):
   performance-backend-strategy.md  → 0d, 0e, 0f
   testing.md                       → 0d+
   runtime-introspection-mcp.md     → 0b-0d
   lean-formalization.md            → 0c, 0d, 0e (parallel)
+  tooling-dx.md                    → 0a through Phase 2
 ```

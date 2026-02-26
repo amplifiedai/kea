@@ -1,9 +1,13 @@
 # Brief: Memory Model
 
-**Status:** design
+**Status:** ready
 **Priority:** v1-critical
-**Depends on:** 0e-runtime-effects (needs working effect compilation)
-**Blocks:** 0g-advanced-types, Phase 1
+**Depends on:** 0d-codegen-pure (steps 1-5), 0e-runtime-effects (step 6 only: Unique + effects)
+**Blocks:** Phase 1
+**Also read before implementing:**
+- [performance-backend-strategy](../design/performance-backend-strategy.md) — Reuse analysis is a MIR pass. Layout stability (declaration order = memory order) governs @unboxed. ABI manifest must include Unique/borrow metadata.
+- [testing](testing.md) — Allocation counters for reuse analysis verification. Benchmark harness gates.
+- [effects-platform-vision](../design/effects-platform-vision.md) — Unique + Alloc effect = zero-overhead arena path. Unique + Send = safe actor message passing.
 
 ## Motivation
 

@@ -1,9 +1,12 @@
 # Brief: Advanced Type Features
 
-**Status:** design
+**Status:** ready
 **Priority:** v1-critical
-**Depends on:** 0f-memory-model (Unique/borrow must be settled)
+**Depends on:** 0d-codegen-pure (needs working codegen), 0c-effect-handlers (needs effect rows for Eff kind)
 **Blocks:** 0h-stdlib-errors, Phase 1 (self-hosting requires full type system)
+**Also read before implementing:**
+- [effects-platform-vision](../design/effects-platform-vision.md) — Eff kind is load-bearing for effect-parameterised types (Server E, Step E A). GADTs enable typed actor protocols.
+- [lean-formalization](lean-formalization.md) — GADT refinement soundness and Eff kind consistency are formalization targets.
 
 ## Motivation
 
