@@ -81,6 +81,30 @@ theorem closedBind_extendsAndWfRange_if_unbound
   · exact bindClosedRow_update_preserves_substWellFormedRange
       st kctx rctx rv fields h_wf h_fields
 
+theorem openOpenBind_extendsAndWfRange_if_unbound_twice
+    (st : UnifyState) (kctx : KindCtx) (rctx : RowCtx)
+    (rv1 rv2 r3 : RowVarId) (onlyLeft onlyRight : RowFields)
+    (h_ne : rv2 ≠ rv1)
+    (h_unbound1 : st.subst.rowMap rv1 = none)
+    (h_unbound2 : st.subst.rowMap rv2 = none)
+    (h_wf : UnifyState.SubstWellFormedRange st kctx rctx)
+    (h_left : RowFields.WellFormed kctx rctx onlyLeft)
+    (h_right : RowFields.WellFormed kctx rctx onlyRight)
+    (h_r3 : r3 ∈ rctx) :
+    ExtendsAndWfRange st
+      { st with
+          subst :=
+            Subst.bindRow
+              (Subst.bindRow st.subst rv1 (Row.mkOpen onlyRight r3))
+              rv2 (Row.mkOpen onlyLeft r3) }
+      kctx rctx := by
+  constructor
+  · exact bindTwoRows_extends_of_unbound st rv1 rv2
+      (Row.mkOpen onlyRight r3) (Row.mkOpen onlyLeft r3)
+      h_ne h_unbound1 h_unbound2
+  · exact bindOpenRows_update_preserves_substWellFormedRange
+      st kctx rctx rv1 rv2 r3 onlyLeft onlyRight h_wf h_left h_right h_r3
+
 theorem closedBindWithLacks_extendsAndWfRange
     (st st' : UnifyState) (kctx : KindCtx) (rctx : RowCtx)
     (rv : RowVarId) (fields : RowFields) (lacks' : Lacks)
