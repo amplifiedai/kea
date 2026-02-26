@@ -4953,7 +4953,7 @@ surfaces).
 
 **Outcome**:
 - Phase-2 now has an explicit integration layer to attach future concrete
-  handler typing judgments without re-deriving effect/remume bridges.
+  handler typing judgments without re-deriving effect/resume bridges.
 
 ### 2026-02-26: handler-typing contract refinement (proof-only)
 
@@ -4982,3 +4982,28 @@ formal workspace build.
 - The handler typing integration layer now mirrors concrete typing premises
   closely enough to start Fail-as-zero-resume and Fail/Result equivalence
   proofs without reworking the contract shape.
+
+### 2026-02-26: fail/result contract kickoff (proof-only)
+
+**Context**: Added the first Fail-specialized contract layer on top of the
+refined handler-typing slice, targeting Fail-as-zero-resume and Result-lowering
+surfaces.
+
+**MCP tools used**: none (proof-only contract composition; no new runtime claim
+introduced beyond previously logged handler/resume alignment probes).
+
+**Lean side**:
+- Added `Kea/Properties/FailResultContracts.lean`.
+- Defined `failAsZeroResume` and `resultLowering`.
+- Added `FailResultContract` with capstone consequences:
+  - `failResultContract_sound` (Fail removed from result effects, resume
+    provenance available, lowered return type is `Result`)
+  - `failResultContract_loopLegal` (zero-resume loop legality bridge).
+- Imported the module in `formal/Kea.lean`.
+- Verified with `cd formal && lake build` (pass).
+
+**Classify**: N/A (proof-only step).
+
+**Outcome**:
+- Phase-2 now has an explicit Fail/Result contract surface to extend into
+  stronger typing-equivalence theorems.
