@@ -1314,7 +1314,7 @@ fn effect_row_alias_expands_in_declared_effect_contract_validation() {
 }
 
 #[test]
-fn open_effect_row_alias_is_rejected_in_contract_validation_compat_mode() {
+fn open_effect_row_alias_is_supported_in_contract_validation() {
     let mut records = RecordRegistry::new();
     records
         .register_alias(&make_alias_def(
@@ -1333,18 +1333,14 @@ fn open_effect_row_alias_is_rejected_in_contract_validation_compat_mode() {
     let mut fn_decl = make_fn_decl("f", vec![], lit_int(1));
     fn_decl.effect_annotation = Some(sp(effect_row_annotation(vec![("WithDb", None)], None)));
     let env = TypeEnv::new();
-    let err = validate_declared_fn_effect_with_env_and_records(
-        &fn_decl,
-        Effects::impure(),
-        &env,
-        &records,
-    )
-    .expect_err("open effect row aliases should be rejected in compatibility contracts");
     assert!(
-        err.message
-            .contains("open effect rows with concrete entries are not supported in contracts yet"),
-        "unexpected message: {}",
-        err.message
+        validate_declared_fn_effect_with_env_and_records(
+            &fn_decl,
+            Effects::impure(),
+            &env,
+            &records
+        )
+        .is_ok()
     );
 }
 
@@ -7152,18 +7148,78 @@ fn validate_declared_fn_effect_accepts_closed_row_annotation() {
 }
 
 #[test]
-fn validate_declared_fn_effect_rejects_open_row_with_concrete_entries() {
+fn validate_declared_fn_effect_accepts_open_row_with_concrete_entries() {
     let mut fn_decl = make_fn_decl("f", vec![], lit_int(1));
     fn_decl.effect_annotation = Some(sp(effect_row_annotation(
         vec![("IO", None)],
         Some("e"),
     )));
     let inferred = Effects::impure();
-    let err = validate_declared_fn_effect(&fn_decl, inferred)
-        .expect_err("open concrete rows should be rejected in compatibility contract checks");
+    assert!(validate_declared_fn_effect(&fn_decl, inferred).is_ok());
+}
+
+#[test]
+fn effect_row_subsumption_allows_declared_superset() {
+    let actual = EffectRow::closed(vec![(Label::new("IO"), Type::Unit)]);
+    let declared = EffectRow::closed(vec![
+        (Label::new("IO"), Type::Unit),
+        (Label::new("Fail"), Type::String),
+        (Label::new("Impure"), Type::Unit),
+    ]);
+    assert!(unify_effect_row_subsumption(&actual, &declared, s()).is_ok());
+}
+
+#[test]
+fn effect_row_subsumption_rejects_inferred_extra_effects() {
+    let actual = EffectRow::closed(vec![
+        (Label::new("IO"), Type::Unit),
+        (Label::new("Fail"), Type::String),
+        (Label::new("Impure"), Type::Unit),
+    ]);
+    let declared = EffectRow::closed(vec![
+        (Label::new("IO"), Type::Unit),
+        (Label::new("Impure"), Type::Unit),
+    ]);
+    let err = unify_effect_row_subsumption(&actual, &declared, s())
+        .expect_err("closed declared row should reject inferred extra effects");
     assert!(
         err.message
-            .contains("open effect rows with concrete entries are not supported in contracts yet"),
+            .contains("declared effect row is too weak"),
+        "unexpected message: {}",
+        err.message
+    );
+}
+
+#[test]
+fn effect_row_subsumption_accepts_open_declared_tail() {
+    let actual = EffectRow::closed(vec![
+        (Label::new("IO"), Type::Unit),
+        (Label::new("Send"), Type::Unit),
+        (Label::new("Impure"), Type::Unit),
+    ]);
+    let declared = EffectRow::open(
+        vec![
+            (Label::new("IO"), Type::Unit),
+            (Label::new("Impure"), Type::Unit),
+        ],
+        RowVarId(99),
+    );
+    assert!(unify_effect_row_subsumption(&actual, &declared, s()).is_ok());
+}
+
+#[test]
+fn validate_declared_fn_effect_rejects_multiple_incompatible_fail_payloads() {
+    let mut fn_decl = make_fn_decl("f", vec![], lit_int(1));
+    fn_decl.effect_annotation = Some(sp(effect_row_annotation(
+        vec![("Fail", Some("String")), ("Fail", Some("Int"))],
+        None,
+    )));
+    let inferred = Effects::impure();
+    let err = validate_declared_fn_effect(&fn_decl, inferred)
+        .expect_err("multiple incompatible Fail payloads should be rejected");
+    assert!(
+        err.message
+            .contains("multiple incompatible `Fail` entries"),
         "unexpected message: {}",
         err.message
     );
@@ -17965,6 +18021,41 @@ fn validate_module_fn_annotations_checks_trait_and_impl_methods() {
     assert_eq!(diags[0].message, "missing type annotation on parameter");
     assert_eq!(diags[1].message, "trait method missing return type");
     assert_eq!(diags[2].message, "missing type annotation on parameter");
+}
+
+#[test]
+fn validate_module_fn_annotations_warns_on_legacy_effect_syntax() {
+    let mut impure_fn = make_fn_decl("legacy_impure", vec![], lit_int(1));
+    impure_fn.return_annotation = Some(sp(TypeAnnotation::Named("Int".to_string())));
+    impure_fn.effect_annotation = Some(sp(EffectAnnotation::Impure));
+    let mut volatile_fn = make_fn_decl("legacy_volatile", vec![], lit_int(1));
+    volatile_fn.return_annotation = Some(sp(TypeAnnotation::Named("Int".to_string())));
+    volatile_fn.effect_annotation = Some(sp(EffectAnnotation::Volatile));
+    let module = Module {
+        declarations: vec![
+            sp(DeclKind::Function(impure_fn)),
+            sp(DeclKind::Function(volatile_fn)),
+        ],
+        span: s(),
+    };
+
+    let diags = validate_module_fn_annotations(&module);
+    assert!(
+        diags.iter().any(|d| {
+            matches!(d.severity, kea_diag::Severity::Warning)
+                && d.message
+                    .contains("legacy `impure` effect syntax is deprecated")
+        }),
+        "expected legacy effect deprecation warning, got {diags:?}"
+    );
+    assert!(
+        diags.iter().any(|d| {
+            matches!(d.severity, kea_diag::Severity::Warning)
+                && d.message
+                    .contains("legacy `volatile` effect syntax is deprecated")
+        }),
+        "expected volatile deprecation warning, got {diags:?}"
+    );
 }
 
 #[test]

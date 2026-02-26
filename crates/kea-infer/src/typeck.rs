@@ -4971,6 +4971,29 @@ pub fn validate_impl_method_annotations(method: &kea_ast::FnDecl) -> Vec<Diagnos
     diagnostics
 }
 
+fn legacy_effect_annotation_diagnostic(
+    effect_ann: &kea_ast::Spanned<kea_ast::EffectAnnotation>,
+    context: &str,
+) -> Option<Diagnostic> {
+    let (legacy, replacement) = match effect_ann.node {
+        kea_ast::EffectAnnotation::Volatile => ("volatile", "-[Volatile]>"),
+        kea_ast::EffectAnnotation::Impure => ("impure", "-[IO]>"),
+        _ => return None,
+    };
+    Some(
+        Diagnostic::warning(
+            Category::TypeError,
+            format!(
+                "legacy `{legacy}` effect syntax is deprecated on {context}; use row syntax"
+            ),
+        )
+        .at(span_to_loc(effect_ann.span))
+        .with_help(format!(
+            "replace with `{replacement}` (or another explicit row) and use `->` for pure functions"
+        )),
+    )
+}
+
 /// Validate declaration-level function annotations in a parsed module.
 ///
 /// Covers:
@@ -4983,18 +5006,42 @@ pub fn validate_module_fn_annotations(module: &kea_ast::Module) -> Vec<Diagnosti
         match &decl.node {
             kea_ast::DeclKind::Function(fn_decl) => {
                 diagnostics.extend(validate_fn_decl_annotations(fn_decl));
+                if let Some(effect_ann) = &fn_decl.effect_annotation
+                    && let Some(diag) =
+                        legacy_effect_annotation_diagnostic(effect_ann, "function declaration")
+                {
+                    diagnostics.push(diag);
+                }
             }
             kea_ast::DeclKind::ExprFn(expr_decl) => {
                 diagnostics.extend(validate_expr_decl_annotations(expr_decl));
+                if let Some(effect_ann) = &expr_decl.effect_annotation
+                    && let Some(diag) =
+                        legacy_effect_annotation_diagnostic(effect_ann, "expr declaration")
+                {
+                    diagnostics.push(diag);
+                }
             }
             kea_ast::DeclKind::TraitDef(def) => {
                 for method in &def.methods {
                     diagnostics.extend(validate_trait_method_annotations(&def.name.node, method));
+                    if let Some(effect_ann) = &method.effect_annotation
+                        && let Some(diag) =
+                            legacy_effect_annotation_diagnostic(effect_ann, "trait method")
+                    {
+                        diagnostics.push(diag);
+                    }
                 }
             }
             kea_ast::DeclKind::ImplBlock(ib) => {
                 for method in &ib.methods {
                     diagnostics.extend(validate_impl_method_annotations(method));
+                    if let Some(effect_ann) = &method.effect_annotation
+                        && let Some(diag) =
+                            legacy_effect_annotation_diagnostic(effect_ann, "impl method")
+                    {
+                        diagnostics.push(diag);
+                    }
                 }
             }
             _ => {}
@@ -9047,6 +9094,7 @@ fn resolve_annotation_or_bare_df(
 // Expression type inference
 // ---------------------------------------------------------------------------
 
+// TODO(0b-exit): delete when row-based effect solver is complete.
 fn combine_effect_levels(a: EffectLevel, b: EffectLevel) -> EffectLevel {
     match (a, b) {
         (EffectLevel::Impure, _) | (_, EffectLevel::Impure) => EffectLevel::Impure,
@@ -9055,6 +9103,7 @@ fn combine_effect_levels(a: EffectLevel, b: EffectLevel) -> EffectLevel {
     }
 }
 
+// TODO(0b-exit): delete when row-based effect solver is complete.
 fn effect_level_from_term(
     term: EffectTerm,
     solved: &BTreeMap<EffectVarId, EffectLevel>,
@@ -9065,6 +9114,7 @@ fn effect_level_from_term(
     }
 }
 
+// TODO(0b-exit): delete when row-based effect solver is complete.
 fn solve_effect_term(term: EffectTerm, constraints: &[EffectConstraint]) -> Effects {
     match solve_effect_constraints(constraints) {
         Ok(solved) => effect_level_from_term(term, &solved).as_effects(),
@@ -9079,6 +9129,7 @@ fn fresh_effect_var(next_effect_var: &mut u32) -> EffectVarId {
     var
 }
 
+// TODO(0b-exit): delete when row-based effect solver is complete.
 fn join_effect_terms(
     left: EffectTerm,
     right: EffectTerm,
@@ -9103,6 +9154,7 @@ fn join_effect_terms(
     }
 }
 
+// TODO(0b-exit): delete when row-based effect solver is complete.
 fn join_effect_terms_many(
     terms: impl IntoIterator<Item = EffectTerm>,
     constraints: &mut Vec<EffectConstraint>,
@@ -9115,6 +9167,7 @@ fn join_effect_terms_many(
         })
 }
 
+// TODO(0b-exit): delete when row-based effect solver is complete.
 fn effect_term_from_annotation(
     ann: &kea_ast::EffectAnnotation,
     effect_var_bindings: &mut BTreeMap<String, EffectVarId>,
@@ -9131,15 +9184,16 @@ fn effect_term_from_annotation(
             EffectTerm::Var(var)
         }
         kea_ast::EffectAnnotation::Row(row) => {
-            if let Some(effects) = effect_row_annotation_to_effects(row) {
-                return EffectTerm::Known(effects.level());
-            }
-
             if row.effects.is_empty() && let Some(rest) = &row.rest {
                 let var = *effect_var_bindings
                     .entry(rest.clone())
                     .or_insert_with(|| fresh_effect_var(next_effect_var));
                 return EffectTerm::Var(var);
+            }
+
+            if let Some(row) = effect_row_annotation_to_compat_row(row) {
+                let effects = compat_row_to_effects(&row);
+                return EffectTerm::Known(effects.level());
             }
 
             // Open rows with concrete entries (e.g. `[IO | e]`) are not fully
@@ -9568,6 +9622,7 @@ fn infer_call_effect_term_with_pipe_arg(
 ///
 /// Uses a small fixed-point iteration so recursive functions can reference
 /// their own inferred effects.
+// TODO(0b-exit): delete when row-based effect solver is complete.
 pub fn infer_fn_decl_effects(fn_decl: &FnDecl, env: &TypeEnv) -> Effects {
     let name = fn_decl.name.node.clone();
     let mut trial_env = env.clone();
@@ -9603,6 +9658,7 @@ pub fn infer_fn_decl_effects(fn_decl: &FnDecl, env: &TypeEnv) -> Effects {
     current
 }
 
+// TODO(0b-exit): delete when row-based effect solver is complete.
 fn effect_label(effects: Effects) -> &'static str {
     match (effects.purity, effects.volatility) {
         (Purity::Pure, Volatility::Deterministic) => "pure",
@@ -9611,6 +9667,7 @@ fn effect_label(effects: Effects) -> &'static str {
     }
 }
 
+// TODO(0b-exit): delete when row-based effect solver is complete.
 fn effects_as_row(effects: Effects) -> EffectRow {
     match (effects.purity, effects.volatility) {
         (Purity::Pure, Volatility::Deterministic) => EffectRow::pure(),
@@ -9622,6 +9679,7 @@ fn effects_as_row(effects: Effects) -> EffectRow {
 }
 
 /// Check whether `actual` is weaker-or-equal to `declared` in the effect lattice.
+// TODO(0b-exit): delete when row-based effect solver is complete.
 pub fn effects_leq(actual: Effects, declared: Effects) -> bool {
     actual.leq(declared)
 }
@@ -9658,80 +9716,208 @@ fn effect_row_annotation_label(row: &kea_ast::EffectRowAnnotation) -> String {
     format!("[{body}]")
 }
 
-fn effect_item_name_to_effects(name: &str) -> Effects {
+fn effect_item_name_to_compat_row(name: &str) -> EffectRow {
     match name {
-        "pure" | "Pure" => Effects::pure_deterministic(),
-        "volatile" | "Volatile" => Effects::pure_volatile(),
-        "impure" | "Impure" => Effects::impure(),
-        // Any concrete effect entry beyond the lattice names is impure in
-        // the current compatibility model.
-        _ => Effects::impure(),
+        "pure" | "Pure" => EffectRow::pure(),
+        "volatile" | "Volatile" => {
+            EffectRow::closed(vec![(Label::new("Volatile"), Type::Unit)])
+        }
+        "impure" | "Impure" => EffectRow::closed(vec![(Label::new("Impure"), Type::Unit)]),
+        "Fail" => EffectRow::closed(vec![(Label::new("Fail"), Type::Unit)]),
+        _ => EffectRow::closed(vec![(Label::new(name), Type::Unit)]),
     }
 }
 
-fn effect_alias_target_to_effects(
+fn resolve_effect_payload_type(payload: &str, records: Option<&RecordRegistry>) -> Option<Type> {
+    let payload_ann = TypeAnnotation::Named(payload.to_string());
+    if let Some(records) = records {
+        return resolve_annotation(&payload_ann, records, None);
+    }
+    let empty_records = RecordRegistry::new();
+    resolve_annotation(&payload_ann, &empty_records, None)
+}
+
+fn row_var_from_name(
+    name: &str,
+    row_var_bindings: &mut BTreeMap<String, RowVarId>,
+    next_row_var: &mut u32,
+) -> RowVarId {
+    *row_var_bindings.entry(name.to_string()).or_insert_with(|| {
+        let id = RowVarId(*next_row_var);
+        *next_row_var = next_row_var.saturating_add(1);
+        id
+    })
+}
+
+fn effect_alias_target_to_compat_row(
     target: &TypeAnnotation,
     records: &RecordRegistry,
     visited_aliases: &mut BTreeSet<String>,
-) -> Option<Effects> {
+    row_var_bindings: &mut BTreeMap<String, RowVarId>,
+    next_row_var: &mut u32,
+) -> Option<EffectRow> {
     match target {
-        TypeAnnotation::EffectRow(row) => {
-            effect_row_annotation_to_effects_with_aliases(row, Some(records), visited_aliases)
-        }
+        TypeAnnotation::EffectRow(row) => effect_row_annotation_to_compat_row_with_aliases(
+            row,
+            Some(records),
+            visited_aliases,
+            row_var_bindings,
+            next_row_var,
+        ),
         TypeAnnotation::Named(name) => {
             if let Some(alias) = records.lookup_alias(name)
                 && alias.params.is_empty()
                 && visited_aliases.insert(name.clone())
             {
-                let expanded =
-                    effect_alias_target_to_effects(&alias.target, records, visited_aliases);
+                let expanded = effect_alias_target_to_compat_row(
+                    &alias.target,
+                    records,
+                    visited_aliases,
+                    row_var_bindings,
+                    next_row_var,
+                );
                 visited_aliases.remove(name);
-                return expanded.or_else(|| Some(effect_item_name_to_effects(name)));
+                return expanded.or_else(|| Some(effect_item_name_to_compat_row(name)));
             }
-            Some(effect_item_name_to_effects(name))
+            Some(effect_item_name_to_compat_row(name))
         }
         _ => None,
     }
 }
 
-fn effect_row_item_to_effects(
+fn effect_row_item_to_compat_row(
     item: &kea_ast::EffectRowItem,
     records: Option<&RecordRegistry>,
     visited_aliases: &mut BTreeSet<String>,
-) -> Option<Effects> {
+    row_var_bindings: &mut BTreeMap<String, RowVarId>,
+    next_row_var: &mut u32,
+) -> Option<EffectRow> {
+    if item.name == "Fail" {
+        let payload = match &item.payload {
+            Some(name) => resolve_effect_payload_type(name, records)?,
+            None => Type::Unit,
+        };
+        return Some(EffectRow::closed(vec![(Label::new("Fail"), payload)]));
+    }
+
     if item.payload.is_none()
         && let Some(records) = records
         && let Some(alias) = records.lookup_alias(&item.name)
         && alias.params.is_empty()
         && visited_aliases.insert(item.name.clone())
     {
-        let expanded = effect_alias_target_to_effects(&alias.target, records, visited_aliases);
+        let expanded = effect_alias_target_to_compat_row(
+            &alias.target,
+            records,
+            visited_aliases,
+            row_var_bindings,
+            next_row_var,
+        );
         visited_aliases.remove(&item.name);
         return expanded;
     }
 
-    Some(effect_item_name_to_effects(&item.name))
+    Some(effect_item_name_to_compat_row(&item.name))
 }
 
-fn effect_row_annotation_to_effects_with_aliases(
+fn append_effect_row_fields_unique(
+    out: &mut Vec<(Label, Type)>,
+    row: &EffectRow,
+) -> Result<(), String> {
+    let fail_label = Label::new("Fail");
+    for (label, payload) in &row.row.fields {
+        if let Some((_, existing_payload)) = out.iter().find(|(existing, _)| existing == label) {
+            if label == &fail_label {
+                if existing_payload == payload {
+                    continue;
+                }
+                // Keep mismatched duplicate Fail payloads so dedicated
+                // validation can surface a conversion-oriented diagnostic.
+                out.push((label.clone(), payload.clone()));
+                continue;
+            }
+            return Err(label.to_string());
+        }
+        out.push((label.clone(), payload.clone()));
+    }
+    Ok(())
+}
+
+fn effect_row_annotation_to_compat_row_with_aliases(
     row: &kea_ast::EffectRowAnnotation,
     records: Option<&RecordRegistry>,
     visited_aliases: &mut BTreeSet<String>,
-) -> Option<Effects> {
-    if row.rest.is_some() {
-        return None;
-    }
+    row_var_bindings: &mut BTreeMap<String, RowVarId>,
+    next_row_var: &mut u32,
+) -> Option<EffectRow> {
+    let mut fields = Vec::new();
+    let mut alias_rest = None;
 
-    let mut combined = Effects::pure_deterministic();
     for item in &row.effects {
-        combined = combined.join(effect_row_item_to_effects(item, records, visited_aliases)?);
+        let item_row = effect_row_item_to_compat_row(
+            item,
+            records,
+            visited_aliases,
+            row_var_bindings,
+            next_row_var,
+        )?;
+        if append_effect_row_fields_unique(&mut fields, &item_row).is_err() {
+            return None;
+        }
+        if let Some(rest) = item_row.row.rest {
+            if alias_rest.is_some() {
+                return None;
+            }
+            alias_rest = Some(rest);
+        }
     }
 
-    Some(combined)
+    let merged_rest = match (row.rest.clone(), alias_rest) {
+        (Some(_), Some(_)) => return None,
+        (Some(rest), None) => Some(row_var_from_name(&rest, row_var_bindings, next_row_var)),
+        (None, rest) => rest,
+    };
+
+    let volatile_label = Label::new("Volatile");
+    let impure_label = Label::new("Impure");
+    if fields
+        .iter()
+        .any(|(label, _)| label != &volatile_label)
+        && !fields.iter().any(|(label, _)| label == &impure_label)
+    {
+        fields.push((impure_label, Type::Unit));
+    }
+
+    if let Some(rest) = merged_rest {
+        Some(EffectRow {
+            row: RowType::open(fields, rest),
+        })
+    } else {
+        Some(EffectRow::closed(fields))
+    }
 }
 
-fn effect_row_annotation_to_effects(row: &kea_ast::EffectRowAnnotation) -> Option<Effects> {
-    effect_row_annotation_to_effects_with_aliases(row, None, &mut BTreeSet::new())
+fn effect_row_annotation_to_compat_row(row: &kea_ast::EffectRowAnnotation) -> Option<EffectRow> {
+    let mut visited = BTreeSet::new();
+    let mut row_var_bindings = BTreeMap::new();
+    let mut next_row_var = 0u32;
+    effect_row_annotation_to_compat_row_with_aliases(
+        row,
+        None,
+        &mut visited,
+        &mut row_var_bindings,
+        &mut next_row_var,
+    )
+}
+
+fn compat_row_to_effects(row: &EffectRow) -> Effects {
+    if row.is_pure() {
+        Effects::pure_deterministic()
+    } else if row.row.has(&Label::new("Volatile")) {
+        Effects::pure_volatile()
+    } else {
+        Effects::impure()
+    }
 }
 
 fn effect_annotation_var_name(effect: &kea_ast::EffectAnnotation) -> Option<&str> {
@@ -9743,6 +9929,7 @@ fn effect_annotation_var_name(effect: &kea_ast::EffectAnnotation) -> Option<&str
     }
 }
 
+// TODO(0b-exit): delete when row-based effect solver is complete.
 fn effect_annotation_to_effects(
     effect: &kea_ast::EffectAnnotation,
     records: Option<&RecordRegistry>,
@@ -9753,7 +9940,17 @@ fn effect_annotation_to_effects(
         kea_ast::EffectAnnotation::Impure => Some(Effects::impure()),
         kea_ast::EffectAnnotation::Var(_) => None,
         kea_ast::EffectAnnotation::Row(row) => {
-            effect_row_annotation_to_effects_with_aliases(row, records, &mut BTreeSet::new())
+            let mut visited = BTreeSet::new();
+            let mut row_var_bindings = BTreeMap::new();
+            let mut next_row_var = 0u32;
+            effect_row_annotation_to_compat_row_with_aliases(
+                row,
+                records,
+                &mut visited,
+                &mut row_var_bindings,
+                &mut next_row_var,
+            )
+            .map(|row| compat_row_to_effects(&row))
         }
     }
 }
@@ -9766,6 +9963,189 @@ fn effect_annotation_label(effect: &kea_ast::EffectAnnotation) -> String {
         kea_ast::EffectAnnotation::Var(name) => name.clone(),
         kea_ast::EffectAnnotation::Row(row) => effect_row_annotation_label(row),
     }
+}
+
+fn effect_annotation_to_compat_row(
+    effect: &kea_ast::EffectAnnotation,
+    records: Option<&RecordRegistry>,
+) -> Option<EffectRow> {
+    match effect {
+        kea_ast::EffectAnnotation::Pure
+        | kea_ast::EffectAnnotation::Volatile
+        | kea_ast::EffectAnnotation::Impure => {
+            effect_annotation_to_effects(effect, records).map(effects_as_row)
+        }
+        kea_ast::EffectAnnotation::Var(_) => None,
+        kea_ast::EffectAnnotation::Row(row) => {
+            if let Some(records) = records {
+                let mut visited = BTreeSet::new();
+                let mut row_var_bindings = BTreeMap::new();
+                let mut next_row_var = 0u32;
+                effect_row_annotation_to_compat_row_with_aliases(
+                    row,
+                    Some(records),
+                    &mut visited,
+                    &mut row_var_bindings,
+                    &mut next_row_var,
+                )
+            } else {
+                effect_row_annotation_to_compat_row(row)
+            }
+        }
+    }
+}
+
+fn validate_effect_row_fail_cardinality(
+    row: &EffectRow,
+    span: Span,
+    context: &str,
+) -> Result<(), Diagnostic> {
+    let fail_label = Label::new("Fail");
+    let fail_payloads = row
+        .row
+        .fields
+        .iter()
+        .filter_map(|(label, payload)| (label == &fail_label).then_some(payload))
+        .collect::<Vec<_>>();
+    if fail_payloads.len() <= 1 {
+        return Ok(());
+    }
+
+    let first = fail_payloads[0].clone();
+    if fail_payloads
+        .iter()
+        .skip(1)
+        .all(|payload| payload == &&first)
+    {
+        return Ok(());
+    }
+
+    Err(
+        Diagnostic::error(
+            Category::TypeMismatch,
+            format!("effect row `{context}` contains multiple incompatible `Fail` entries"),
+        )
+        .at(span_to_loc(span))
+        .with_help(
+            "effect rows allow at most one `Fail` payload type; unify them or convert with `From`",
+        ),
+    )
+}
+
+fn effect_row_fail_payload(row: &EffectRow) -> Option<&Type> {
+    row.row
+        .fields
+        .iter()
+        .find(|(label, _)| label == &Label::new("Fail"))
+        .map(|(_, payload)| payload)
+}
+
+fn instantiate_effect_row_for_unifier(row: &EffectRow, unifier: &mut Unifier) -> EffectRow {
+    let mut row_map = BTreeMap::new();
+    if let Some(rest) = row.row.rest {
+        row_map
+            .entry(rest)
+            .or_insert_with(|| unifier.fresh_row_var());
+    }
+    let type_map = BTreeMap::new();
+    let dim_map = BTreeMap::new();
+    let fields = row
+        .row
+        .fields
+        .iter()
+        .map(|(label, payload)| {
+            (
+                label.clone(),
+                rename_type(payload, &type_map, &row_map, &dim_map),
+            )
+        })
+        .collect();
+    let rest = row
+        .row
+        .rest
+        .and_then(|rv| row_map.get(&rv).copied());
+    EffectRow {
+        row: RowType { fields, rest },
+    }
+}
+
+pub(crate) fn unify_effect_row_subsumption(
+    actual: &EffectRow,
+    declared: &EffectRow,
+    span: Span,
+) -> Result<(), Diagnostic> {
+    if let (Some(actual_fail), Some(declared_fail)) = (
+        effect_row_fail_payload(actual),
+        effect_row_fail_payload(declared),
+    ) && actual_fail != declared_fail
+    {
+        return Err(
+            Diagnostic::error(
+                Category::TypeMismatch,
+                format!(
+                    "effect rows use incompatible `Fail` payloads: inferred `{actual_fail}`, declared `{declared_fail}`"
+                ),
+            )
+            .at(span_to_loc(span))
+            .with_help(format!(
+                "implement `From<{actual_fail}> for {declared_fail}` or use `catch` to handle `{actual_fail}` explicitly"
+            )),
+        );
+    }
+
+    let mut unifier = Unifier::new();
+    let declared = instantiate_effect_row_for_unifier(declared, &mut unifier);
+    let actual_tail = unifier.fresh_row_var();
+    let widened_actual = RowType::open(actual.row.fields.clone(), actual_tail);
+    let mut constraints = vec![Constraint::RowEqual {
+        expected: declared.row.clone(),
+        actual: widened_actual,
+        provenance: Provenance {
+            span,
+            reason: Reason::TypeAscription,
+        },
+    }];
+
+    let fail_label = Label::new("Fail");
+    if actual.row.has(&fail_label) {
+        constraints.push(Constraint::Lacks {
+            var: actual_tail,
+            label: fail_label.clone(),
+            provenance: Provenance {
+                span,
+                reason: Reason::RowExtension {
+                    label: fail_label.clone(),
+                },
+            },
+        });
+    }
+    if declared.row.has(&fail_label)
+        && let Some(rest) = declared.row.rest
+    {
+        constraints.push(Constraint::Lacks {
+            var: rest,
+            label: fail_label,
+            provenance: Provenance {
+                span,
+                reason: Reason::RowExtension {
+                    label: Label::new("Fail"),
+                },
+            },
+        });
+    }
+
+    unifier.solve(constraints).map_err(|solve_err| {
+        let mut diag = Diagnostic::error(
+            Category::TypeMismatch,
+            "declared effect row is too weak for the inferred body effects",
+        )
+        .at(span_to_loc(span));
+        if let Some(first) = solve_err.diagnostics().first() {
+            diag = diag.with_help(first.message.clone());
+        }
+        diag
+    })?;
+    Ok(())
 }
 
 fn type_annotation_has_effect_var(ann: &TypeAnnotation, target: &str) -> bool {
@@ -9876,37 +10256,45 @@ pub fn validate_declared_fn_effect_with_env_and_records(
         validate_declared_fn_effect_variable_contract(fn_decl, env, &fn_decl.name.node, name)?;
         return Ok(());
     }
-    let Some(declared) = effect_annotation_to_effects(&declared, Some(records)) else {
+    let Some(declared_row) = effect_annotation_to_compat_row(&declared, Some(records)) else {
         return Err(Diagnostic::error(
             Category::TypeMismatch,
-            "open effect rows with concrete entries are not supported in contracts yet; use `-[e]>` or a closed row",
+            "invalid effect-row contract; expected row syntax like `-[IO, Fail AppError | e]>`",
         )
         .at(span_to_loc(ann.span)));
     };
-    if effects_leq(inferred, declared) {
-        return Ok(());
+    validate_effect_row_fail_cardinality(&declared_row, ann.span, "declaration")?;
+
+    let inferred_row = effects_as_row(inferred);
+    if let Err(row_err) = unify_effect_row_subsumption(&inferred_row, &declared_row, ann.span) {
+        let mut diag = Diagnostic::error(
+            Category::TypeMismatch,
+            format!(
+                "declared effect `{}` is too weak; body requires `{}` (declared {}, inferred {})",
+                effect_annotation_label(&parse_declared_effect(ann)),
+                effect_label(inferred),
+                declared_row,
+                inferred_row,
+            ),
+        )
+        .at(span_to_loc(ann.span))
+        .with_label(
+            span_to_loc(ann.span),
+            format!(
+                "declared effect `{}` ({})",
+                effect_annotation_label(&parse_declared_effect(ann)),
+                declared_row,
+            ),
+        );
+        if let Some(help) = row_err.help {
+            diag = diag.with_help(help);
+        }
+        return Err(diag);
     }
-    Err(Diagnostic::error(
-        Category::TypeMismatch,
-        format!(
-            "declared effect `{}` is too weak; body requires `{}` (declared {}, inferred {})",
-            effect_annotation_label(&parse_declared_effect(ann)),
-            effect_label(inferred),
-            effects_as_row(declared),
-            effects_as_row(inferred),
-        ),
-    )
-    .at(span_to_loc(ann.span))
-    .with_label(
-        span_to_loc(ann.span),
-        format!(
-            "declared effect `{}` ({})",
-            effect_annotation_label(&parse_declared_effect(ann)),
-            effects_as_row(declared),
-        ),
-    ))
+    Ok(())
 }
 
+// TODO(0b-exit): delete when row-based effect solver is complete.
 fn validate_declared_fn_effect_variable_contract(
     fn_decl: &FnDecl,
     env: &TypeEnv,
@@ -10013,6 +10401,7 @@ declaration requires exact propagation",
     Ok(())
 }
 
+// TODO(0b-exit): delete when row-based effect solver is complete.
 fn level_name(level: EffectLevel) -> &'static str {
     match level {
         EffectLevel::Pure => "pure",
@@ -10022,6 +10411,7 @@ fn level_name(level: EffectLevel) -> &'static str {
 }
 
 /// Validate that an impl method's inferred effect satisfies a trait method contract.
+// TODO(0b-exit): delete when row-based effect solver is complete.
 pub fn validate_trait_method_impl_effect(
     trait_name: &str,
     method_name: &str,
@@ -10051,6 +10441,35 @@ pub fn validate_trait_method_impl_effect(
     ))
 }
 
+fn validate_trait_method_impl_effect_row(
+    trait_name: &str,
+    method_name: &str,
+    method_span: Span,
+    inferred: Effects,
+    required: &EffectRow,
+) -> Result<(), Diagnostic> {
+    validate_effect_row_fail_cardinality(required, method_span, "trait contract")?;
+    let inferred_row = effects_as_row(inferred);
+    if let Err(row_err) = unify_effect_row_subsumption(&inferred_row, required, method_span) {
+        let mut diag = Diagnostic::error(
+            Category::TypeMismatch,
+            format!(
+                "impl method `{method_name}` has effect `{inferred_row}`, but trait `{trait_name}` requires `{required}`"
+            ),
+        )
+        .at(span_to_loc(method_span))
+        .with_label(
+            span_to_loc(method_span),
+            format!("method effect `{inferred_row}` exceeds trait contract `{required}`"),
+        );
+        if let Some(help) = row_err.help {
+            diag = diag.with_help(help);
+        }
+        return Err(diag);
+    }
+    Ok(())
+}
+
 /// Validate that an impl method satisfies a trait method effect contract.
 ///
 /// Concrete trait contracts (`pure|volatile|impure`) are enforced against the
@@ -10069,13 +10488,13 @@ pub fn validate_trait_method_impl_contract(
         return Ok(());
     };
 
-    if let Some(required) = effect_annotation_to_effects(required, None) {
-        return validate_trait_method_impl_effect(
+    if let Some(required_row) = effect_annotation_to_compat_row(required, None) {
+        return validate_trait_method_impl_effect_row(
             trait_name,
             method_name,
             method_span,
             inferred,
-            required,
+            &required_row,
         );
     }
 
@@ -10129,13 +10548,13 @@ pub fn validate_trait_method_impl_contract_with_env(
         return Ok(());
     };
 
-    if let Some(required) = effect_annotation_to_effects(required, None) {
-        return validate_trait_method_impl_effect(
+    if let Some(required_row) = effect_annotation_to_compat_row(required, None) {
+        return validate_trait_method_impl_effect_row(
             trait_name,
             &method.name.node,
             method.name.span,
             inferred,
-            required,
+            &required_row,
         );
     }
 
