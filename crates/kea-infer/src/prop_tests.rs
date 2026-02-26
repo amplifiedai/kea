@@ -75,22 +75,6 @@ fn arb_tags() -> impl Strategy<Value = BTreeMap<String, i64>> {
     )
 }
 
-fn arb_effects() -> impl Strategy<Value = Effects> {
-    prop_oneof![
-        Just(Effects::pure_deterministic()),
-        Just(Effects::pure_volatile()),
-        Just(Effects::impure()),
-    ]
-}
-
-fn arb_effect_level() -> impl Strategy<Value = EffectLevel> {
-    prop_oneof![
-        Just(EffectLevel::Pure),
-        Just(EffectLevel::Volatile),
-        Just(EffectLevel::Impure),
-    ]
-}
-
 /// Generate ground types (no type variables). Used where we need types
 /// that won't interact with unification variables.
 fn arb_ground_type() -> impl Strategy<Value = Type> {
@@ -279,102 +263,6 @@ proptest! {
         let once = subst.apply_row(&row);
         let twice = subst.apply_row(&once);
         prop_assert_eq!(once, twice);
-    }
-}
-
-proptest! {
-    /// Effect ordering must remain transitive across the exposed lattice.
-    #[test]
-    fn effects_leq_is_transitive(a in arb_effects(), b in arb_effects(), c in arb_effects()) {
-        prop_assume!(a.leq(b));
-        prop_assume!(b.leq(c));
-        prop_assert!(a.leq(c));
-    }
-
-    /// Join must be commutative, idempotent, and monotone.
-    #[test]
-    fn effects_join_laws(a in arb_effects(), b in arb_effects(), c in arb_effects()) {
-        prop_assert_eq!(a.join(b), b.join(a));
-        prop_assert_eq!(a.join(a), a);
-        if a.leq(b) {
-            prop_assert!(a.join(c).leq(b.join(c)));
-        }
-    }
-
-    /// Effect-constraint solving should be independent of constraint order.
-    #[test]
-    fn effect_constraint_solver_order_invariant(
-        base in arb_effect_level(),
-        upper in arb_effect_level(),
-    ) {
-        let e0 = EffectVarId(0);
-        let e1 = EffectVarId(1);
-        let e2 = EffectVarId(2);
-        let constraints = vec![
-            EffectConstraint::Eq {
-                left: EffectTerm::Var(e0),
-                right: EffectTerm::Known(base),
-            },
-            EffectConstraint::Leq {
-                left: EffectTerm::Var(e0),
-                right: EffectTerm::Var(e1),
-            },
-            EffectConstraint::Join {
-                out: EffectTerm::Var(e2),
-                left: EffectTerm::Var(e1),
-                right: EffectTerm::Known(upper),
-            },
-        ];
-        let mut reversed = constraints.clone();
-        reversed.reverse();
-
-        let forward = crate::solve_effect_constraints(&constraints)
-            .expect("forward effect constraints should solve");
-        let backward = crate::solve_effect_constraints(&reversed)
-            .expect("reversed effect constraints should solve");
-        prop_assert_eq!(forward, backward);
-    }
-
-    /// Re-solving after pinning each solved variable to its solved level should
-    /// remain stable (idempotence under explicit solution constraints).
-    #[test]
-    fn effect_constraint_solver_idempotent_under_solution_replay(
-        left in arb_effect_level(),
-        right in arb_effect_level(),
-    ) {
-        let e0 = EffectVarId(10);
-        let e1 = EffectVarId(11);
-        let e2 = EffectVarId(12);
-        let constraints = vec![
-            EffectConstraint::Eq {
-                left: EffectTerm::Var(e0),
-                right: EffectTerm::Known(left),
-            },
-            EffectConstraint::Join {
-                out: EffectTerm::Var(e1),
-                left: EffectTerm::Var(e0),
-                right: EffectTerm::Known(right),
-            },
-            EffectConstraint::Leq {
-                left: EffectTerm::Var(e1),
-                right: EffectTerm::Var(e2),
-            },
-        ];
-
-        let first = crate::solve_effect_constraints(&constraints)
-            .expect("baseline effect constraints should solve");
-
-        let mut replay = constraints.clone();
-        for (var, level) in &first {
-            replay.push(EffectConstraint::Eq {
-                left: EffectTerm::Var(*var),
-                right: EffectTerm::Known(*level),
-            });
-        }
-
-        let second = crate::solve_effect_constraints(&replay)
-            .expect("solution replay constraints should solve");
-        prop_assert_eq!(first, second);
     }
 }
 
@@ -3219,26 +3107,32 @@ proptest! {
 
 proptest! {
     /// End-to-end callback effect polymorphism: function signatures carrying an
-    /// effect variable should propagate the callback's concrete effect level.
+    /// effect row variable should propagate the callback's concrete effect row.
     #[test]
     fn prop_callback_effect_polymorphism_propagates_callback_level(
-        callback_level in arb_effect_level(),
+        callback_is_volatile in any::<bool>(),
+        callback_is_impure in any::<bool>(),
     ) {
         use kea_ast::{Expr, ExprKind, Lit};
+
+        let callback_row = if callback_is_impure {
+            EffectRow::closed(vec![(Label::new("IO"), Type::Unit)])
+        } else if callback_is_volatile {
+            EffectRow::closed(vec![(Label::new("Volatile"), Type::Unit)])
+        } else {
+            EffectRow::pure()
+        };
 
         let mut env = TypeEnv::new();
         env.set_function_effect_signature(
             "map_like".to_string(),
             crate::typeck::FunctionEffectSignature {
-                param_effect_terms: vec![None, Some(EffectTerm::Var(EffectVarId(0)))],
-                effect_term: EffectTerm::Var(EffectVarId(0)),
+                param_effect_rows: vec![None, Some(EffectRow::open(vec![], RowVarId(0)))],
+                effect_row: EffectRow::open(vec![], RowVarId(0)),
                 instantiate_on_call: true,
             },
         );
-        env.set_function_effect_term(
-            "cb".to_string(),
-            EffectTerm::Known(callback_level),
-        );
+        env.set_function_effect_row("cb".to_string(), callback_row.clone());
 
         let expr: Expr = sp_ast(ExprKind::Call {
             func: Box::new(sp_ast(ExprKind::Var("map_like".to_string()))),
@@ -3255,7 +3149,14 @@ proptest! {
         });
 
         let inferred = crate::typeck::infer_expr_effects(&expr, &env);
-        prop_assert_eq!(inferred, callback_level.as_effects());
+        let expected = if callback_row.is_pure() {
+            Effects::pure_deterministic()
+        } else if callback_row.row.has(&Label::new("Volatile")) {
+            Effects::pure_volatile()
+        } else {
+            Effects::impure()
+        };
+        prop_assert_eq!(inferred, expected);
     }
 }
 

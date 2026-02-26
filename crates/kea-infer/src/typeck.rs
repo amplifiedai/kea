@@ -19,16 +19,16 @@ use kea_ast::{
     StringInterpPart, TypeAnnotation, free_vars,
 };
 use kea_types::{
-    Dim, DimVarId, EffectConstraint, EffectLevel, EffectRow, EffectTerm, EffectVarId, Effects,
-    FloatWidth, FunctionType, IntWidth, Kind, Label, Purity, RecordType, RowType, RowVarId,
-    Signedness, Substitution, SumType, Type, TypeScheme, TypeVarId, Volatility,
+    Dim, DimVarId, EffectRow, Effects, FloatWidth, FunctionType, IntWidth, Kind, Label, Purity,
+    RecordType, RowType, RowVarId, Signedness, Substitution, SumType, Type, TypeScheme, TypeVarId,
+    Volatility,
     builtin_type_constructor_arity, free_dim_vars, free_row_vars, free_type_vars, is_sendable,
     rebuild_type, sanitize_type_display, sendable_violation, type_constructor_for_trait,
 };
 
 use crate::{
     Category, Constraint, Diagnostic, InferenceContext, Provenance, Reason, SourceLocation,
-    Unifier, solve_effect_constraints,
+    Unifier,
 };
 use sqlparser::ast::{
     Expr as SqlExpr, ObjectName, SelectItem, SelectItemQualifiedWildcardKind, SetExpr, Statement,
@@ -97,8 +97,8 @@ pub struct ExistentialPackSite {
 /// effect variables at each call site.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionEffectSignature {
-    pub param_effect_terms: Vec<Option<EffectTerm>>,
-    pub effect_term: EffectTerm,
+    pub param_effect_rows: Vec<Option<EffectRow>>,
+    pub effect_row: EffectRow,
     /// Whether this signature is a polymorphic template that should be
     /// instantiated with fresh effect vars at each call site.
     ///
@@ -261,7 +261,7 @@ pub fn bind_args(
 pub struct TypeEnv {
     bindings: Vec<BTreeMap<String, TypeScheme>>,
     function_effects: BTreeMap<String, Effects>,
-    function_effect_terms: BTreeMap<String, EffectTerm>,
+    function_effect_rows: BTreeMap<String, EffectRow>,
     function_effect_signatures: BTreeMap<String, FunctionEffectSignature>,
     function_signatures: BTreeMap<String, FnSignature>,
     module_functions: BTreeMap<String, Vec<String>>,
@@ -288,7 +288,7 @@ impl TypeEnv {
         Self {
             bindings: vec![BTreeMap::new()],
             function_effects: BTreeMap::new(),
-            function_effect_terms: BTreeMap::new(),
+            function_effect_rows: BTreeMap::new(),
             function_effect_signatures: BTreeMap::new(),
             function_signatures: BTreeMap::new(),
             module_functions: BTreeMap::new(),
@@ -315,18 +315,16 @@ impl TypeEnv {
 
     /// Record the inferred/declared effects for a function binding.
     pub fn set_function_effect(&mut self, name: String, effects: Effects) {
-        self.function_effect_terms
-            .insert(name.clone(), EffectTerm::Known(effects.level()));
+        self.function_effect_rows
+            .insert(name.clone(), effect_row_from_effects(effects));
         self.function_effects.insert(name, effects);
     }
 
-    /// Record an effect term for a function binding (for effect-polymorphic callbacks).
-    pub fn set_function_effect_term(&mut self, name: String, term: EffectTerm) {
-        if let EffectTerm::Known(level) = term {
-            self.function_effects
-                .insert(name.clone(), level.as_effects());
-        }
-        self.function_effect_terms.insert(name, term);
+    /// Record an effect row for a function binding (for effect-polymorphic callbacks).
+    pub fn set_function_effect_row(&mut self, name: String, row: EffectRow) {
+        self.function_effects
+            .insert(name.clone(), classify_effect_row(&row));
+        self.function_effect_rows.insert(name, row);
     }
 
     /// Register a function effect-signature template for call-site instantiation.
@@ -348,9 +346,9 @@ impl TypeEnv {
         self.function_effects.get(name).copied()
     }
 
-    /// Get effect term for a function binding, if known.
-    pub fn function_effect_term(&self, name: &str) -> Option<EffectTerm> {
-        self.function_effect_terms.get(name).copied()
+    /// Get effect row for a function binding, if known.
+    pub fn function_effect_row(&self, name: &str) -> Option<EffectRow> {
+        self.function_effect_rows.get(name).cloned()
     }
 
     /// Get effect-signature template for a function binding, if present.
@@ -438,11 +436,11 @@ impl TypeEnv {
     }
 
     /// Resolve effect term for a qualified function reference.
-    pub fn resolve_qualified_effect_term(
+    pub fn resolve_qualified_effect_row(
         &self,
         module_short: &str,
         field: &str,
-    ) -> Option<EffectTerm> {
+    ) -> Option<EffectRow> {
         let module_path = self
             .module_aliases
             .get(module_short)
@@ -451,11 +449,11 @@ impl TypeEnv {
 
         if let Some(module) = self.module_type_schemes.get(&module_path) {
             if let Some((_, effects)) = module.get(field) {
-                return Some(EffectTerm::Known(effects.level()));
+                return Some(effect_row_from_effects(*effects));
             }
             let prefixed = format!("{}_{}", module_short.to_lowercase(), field);
             if let Some((_, effects)) = module.get(&prefixed) {
-                return Some(EffectTerm::Known(effects.level()));
+                return Some(effect_row_from_effects(*effects));
             }
         }
         None
@@ -9094,128 +9092,157 @@ fn resolve_annotation_or_bare_df(
 // Expression type inference
 // ---------------------------------------------------------------------------
 
-// TODO(0b-exit): delete when row-based effect solver is complete.
-fn combine_effect_levels(a: EffectLevel, b: EffectLevel) -> EffectLevel {
-    match (a, b) {
-        (EffectLevel::Impure, _) | (_, EffectLevel::Impure) => EffectLevel::Impure,
-        (EffectLevel::Volatile, _) | (_, EffectLevel::Volatile) => EffectLevel::Volatile,
-        _ => EffectLevel::Pure,
+fn pure_effect_row() -> EffectRow {
+    EffectRow::pure()
+}
+
+fn volatile_effect_row() -> EffectRow {
+    EffectRow::closed(vec![(Label::new("Volatile"), Type::Unit)])
+}
+
+fn impure_effect_row() -> EffectRow {
+    EffectRow::closed(vec![(Label::new("IO"), Type::Unit)])
+}
+
+fn effect_row_from_effects(effects: Effects) -> EffectRow {
+    match (effects.purity, effects.volatility) {
+        (Purity::Pure, Volatility::Deterministic) => pure_effect_row(),
+        (Purity::Pure, Volatility::Volatile) => volatile_effect_row(),
+        (Purity::Impure, _) => impure_effect_row(),
     }
 }
 
-// TODO(0b-exit): delete when row-based effect solver is complete.
-fn effect_level_from_term(
-    term: EffectTerm,
-    solved: &BTreeMap<EffectVarId, EffectLevel>,
-) -> EffectLevel {
-    match term {
-        EffectTerm::Known(level) => level,
-        EffectTerm::Var(var) => solved.get(&var).copied().unwrap_or(EffectLevel::Impure),
+fn classify_effect_row(row: &EffectRow) -> Effects {
+    if row.is_pure() {
+        return Effects::pure_deterministic();
+    }
+    let volatile = Label::new("Volatile");
+    let has_volatile = row.row.has(&volatile);
+    let has_non_volatile = row.row.fields.iter().any(|(label, _)| label != &volatile);
+    if has_non_volatile || row.row.rest.is_some() {
+        Effects::impure()
+    } else if has_volatile {
+        Effects::pure_volatile()
+    } else {
+        Effects::pure_deterministic()
     }
 }
 
-// TODO(0b-exit): delete when row-based effect solver is complete.
-fn solve_effect_term(term: EffectTerm, constraints: &[EffectConstraint]) -> Effects {
-    match solve_effect_constraints(constraints) {
-        Ok(solved) => effect_level_from_term(term, &solved).as_effects(),
-        // Conservative fallback when effect constraints cannot be solved.
-        Err(_) => Effects::impure(),
-    }
-}
-
-fn fresh_effect_var(next_effect_var: &mut u32) -> EffectVarId {
-    let var = EffectVarId(*next_effect_var);
+fn fresh_effect_var(next_effect_var: &mut u32) -> RowVarId {
+    let var = RowVarId(*next_effect_var);
     *next_effect_var = next_effect_var.saturating_add(1);
     var
 }
 
-// TODO(0b-exit): delete when row-based effect solver is complete.
-fn join_effect_terms(
-    left: EffectTerm,
-    right: EffectTerm,
-    constraints: &mut Vec<EffectConstraint>,
+fn join_effect_rows(
+    left: EffectRow,
+    right: EffectRow,
+    _constraints: &mut Vec<Constraint>,
     next_effect_var: &mut u32,
-) -> EffectTerm {
-    match (left, right) {
-        (EffectTerm::Known(EffectLevel::Pure), other)
-        | (other, EffectTerm::Known(EffectLevel::Pure)) => other,
-        (EffectTerm::Known(a), EffectTerm::Known(b)) => {
-            EffectTerm::Known(combine_effect_levels(a, b))
+) -> EffectRow {
+    if left.is_pure() {
+        return right;
+    }
+    if right.is_pure() {
+        return left;
+    }
+
+    let mut merged = BTreeMap::<Label, Type>::new();
+    for (label, payload) in &left.row.fields {
+        merged.insert(label.clone(), payload.clone());
+    }
+    for (label, payload) in &right.row.fields {
+        if let Some(existing) = merged.get(label) {
+            if existing == payload {
+                continue;
+            }
+            continue;
         }
-        (a, b) => {
-            let out = EffectTerm::Var(fresh_effect_var(next_effect_var));
-            constraints.push(EffectConstraint::Join {
-                out,
-                left: a,
-                right: b,
-            });
-            out
-        }
+        merged.insert(label.clone(), payload.clone());
+    }
+
+    let rest = match (left.row.rest, right.row.rest) {
+        (None, None) => None,
+        (Some(r), None) | (None, Some(r)) => Some(r),
+        (Some(a), Some(b)) if a == b => Some(a),
+        (Some(_), Some(_)) => Some(fresh_effect_var(next_effect_var)),
+    };
+
+    EffectRow {
+        row: RowType {
+            fields: merged.into_iter().collect(),
+            rest,
+        },
     }
 }
 
-// TODO(0b-exit): delete when row-based effect solver is complete.
-fn join_effect_terms_many(
-    terms: impl IntoIterator<Item = EffectTerm>,
-    constraints: &mut Vec<EffectConstraint>,
+fn join_effect_rows_many(
+    terms: impl IntoIterator<Item = EffectRow>,
+    constraints: &mut Vec<Constraint>,
     next_effect_var: &mut u32,
-) -> EffectTerm {
+) -> EffectRow {
     terms
         .into_iter()
-        .fold(EffectTerm::Known(EffectLevel::Pure), |acc, term| {
-            join_effect_terms(acc, term, constraints, next_effect_var)
+        .fold(pure_effect_row(), |acc, term| {
+            join_effect_rows(acc, term, constraints, next_effect_var)
         })
 }
 
-// TODO(0b-exit): delete when row-based effect solver is complete.
-fn effect_term_from_annotation(
+fn effect_row_from_annotation(
     ann: &kea_ast::EffectAnnotation,
-    effect_var_bindings: &mut BTreeMap<String, EffectVarId>,
+    effect_var_bindings: &mut BTreeMap<String, RowVarId>,
     next_effect_var: &mut u32,
-) -> EffectTerm {
+) -> EffectRow {
     match ann {
-        kea_ast::EffectAnnotation::Pure => EffectTerm::Known(EffectLevel::Pure),
-        kea_ast::EffectAnnotation::Volatile => EffectTerm::Known(EffectLevel::Volatile),
-        kea_ast::EffectAnnotation::Impure => EffectTerm::Known(EffectLevel::Impure),
+        kea_ast::EffectAnnotation::Pure => pure_effect_row(),
+        kea_ast::EffectAnnotation::Volatile => volatile_effect_row(),
+        kea_ast::EffectAnnotation::Impure => impure_effect_row(),
         kea_ast::EffectAnnotation::Var(name) => {
-            let var = *effect_var_bindings
-                .entry(name.clone())
-                .or_insert_with(|| fresh_effect_var(next_effect_var));
-            EffectTerm::Var(var)
+            let var = row_var_from_name(name, effect_var_bindings, next_effect_var);
+            EffectRow::open(vec![], var)
         }
         kea_ast::EffectAnnotation::Row(row) => {
-            if row.effects.is_empty() && let Some(rest) = &row.rest {
-                let var = *effect_var_bindings
-                    .entry(rest.clone())
-                    .or_insert_with(|| fresh_effect_var(next_effect_var));
-                return EffectTerm::Var(var);
-            }
-
-            if let Some(row) = effect_row_annotation_to_compat_row(row) {
-                let effects = compat_row_to_effects(&row);
-                return EffectTerm::Known(effects.level());
-            }
-
-            // Open rows with concrete entries (e.g. `[IO | e]`) are not fully
-            // represented in the legacy lattice model yet; be conservative.
-            EffectTerm::Known(EffectLevel::Impure)
+            let mut visited = BTreeSet::new();
+            effect_row_annotation_to_compat_row_with_aliases(
+                row,
+                None,
+                &mut visited,
+                effect_var_bindings,
+                next_effect_var,
+            )
+            .unwrap_or_else(impure_effect_row)
         }
     }
 }
 
-fn instantiate_effect_term(
-    term: EffectTerm,
-    fresh_vars: &mut BTreeMap<EffectVarId, EffectVarId>,
+fn instantiate_effect_row(
+    row: &EffectRow,
+    fresh_vars: &mut BTreeMap<RowVarId, RowVarId>,
     next_effect_var: &mut u32,
-) -> EffectTerm {
-    match term {
-        EffectTerm::Known(level) => EffectTerm::Known(level),
-        EffectTerm::Var(v) => {
-            let mapped = *fresh_vars
-                .entry(v)
-                .or_insert_with(|| fresh_effect_var(next_effect_var));
-            EffectTerm::Var(mapped)
-        }
+) -> EffectRow {
+    let mut row_map = BTreeMap::new();
+    if let Some(rest) = row.row.rest {
+        let mapped = *fresh_vars
+            .entry(rest)
+            .or_insert_with(|| fresh_effect_var(next_effect_var));
+        row_map.insert(rest, mapped);
+    }
+    let type_map = BTreeMap::new();
+    let dim_map = BTreeMap::new();
+    let fields = row
+        .row
+        .fields
+        .iter()
+        .map(|(label, payload)| {
+            (
+                label.clone(),
+                rename_type(payload, &type_map, &row_map, &dim_map),
+            )
+        })
+        .collect::<Vec<_>>();
+    let rest = row.row.rest.map(|rv| row_map[&rv]);
+    EffectRow {
+        row: RowType { fields, rest },
     }
 }
 
@@ -9224,16 +9251,18 @@ fn instantiate_function_effect_signature(
     next_effect_var: &mut u32,
 ) -> FunctionEffectSignature {
     let mut fresh_vars = BTreeMap::new();
-    let param_effect_terms = signature
-        .param_effect_terms
+    let param_effect_rows = signature
+        .param_effect_rows
         .iter()
-        .map(|term| term.map(|t| instantiate_effect_term(t, &mut fresh_vars, next_effect_var)))
+        .map(|row| {
+            row.as_ref()
+                .map(|r| instantiate_effect_row(r, &mut fresh_vars, next_effect_var))
+        })
         .collect();
-    let effect_term =
-        instantiate_effect_term(signature.effect_term, &mut fresh_vars, next_effect_var);
+    let effect_row = instantiate_effect_row(&signature.effect_row, &mut fresh_vars, next_effect_var);
     FunctionEffectSignature {
-        param_effect_terms,
-        effect_term,
+        param_effect_rows,
+        effect_row,
         instantiate_on_call: signature.instantiate_on_call,
     }
 }
@@ -9249,18 +9278,18 @@ fn resolve_effect_call_signature(
     }
 }
 
-fn function_param_effect_term_from_type_annotation(
+fn function_param_effect_row_from_type_annotation(
     ann: &TypeAnnotation,
-    effect_var_bindings: &mut BTreeMap<String, EffectVarId>,
+    effect_var_bindings: &mut BTreeMap<String, RowVarId>,
     next_effect_var: &mut u32,
-) -> Option<EffectTerm> {
+) -> Option<EffectRow> {
     match ann {
-        TypeAnnotation::FunctionWithEffect(_, effect, _) => Some(effect_term_from_annotation(
+        TypeAnnotation::FunctionWithEffect(_, effect, _) => Some(effect_row_from_annotation(
             &effect.node,
             effect_var_bindings,
             next_effect_var,
         )),
-        TypeAnnotation::Forall { ty, .. } => function_param_effect_term_from_type_annotation(
+        TypeAnnotation::Forall { ty, .. } => function_param_effect_row_from_type_annotation(
             ty,
             effect_var_bindings,
             next_effect_var,
@@ -9271,26 +9300,26 @@ fn function_param_effect_term_from_type_annotation(
 
 fn function_effect_signature_from_type_annotation(
     ann: &TypeAnnotation,
-    effect_var_bindings: &mut BTreeMap<String, EffectVarId>,
+    effect_var_bindings: &mut BTreeMap<String, RowVarId>,
     next_effect_var: &mut u32,
 ) -> Option<FunctionEffectSignature> {
     match ann {
         TypeAnnotation::FunctionWithEffect(params, effect, _ret) => {
-            let param_effect_terms = params
+            let param_effect_rows = params
                 .iter()
                 .map(|param_ann| {
-                    function_param_effect_term_from_type_annotation(
+                    function_param_effect_row_from_type_annotation(
                         param_ann,
                         effect_var_bindings,
                         next_effect_var,
                     )
                 })
                 .collect();
-            let effect_term =
-                effect_term_from_annotation(&effect.node, effect_var_bindings, next_effect_var);
+            let effect_row =
+                effect_row_from_annotation(&effect.node, effect_var_bindings, next_effect_var);
             Some(FunctionEffectSignature {
-                param_effect_terms,
-                effect_term,
+                param_effect_rows,
+                effect_row,
                 instantiate_on_call: false,
             })
         }
@@ -9309,12 +9338,12 @@ pub fn function_effect_signature_from_decl(fn_decl: &FnDecl) -> Option<FunctionE
     let effect_ann = fn_decl.effect_annotation.as_ref()?;
     let mut effect_var_bindings = BTreeMap::new();
     let mut next_effect_var = 0u32;
-    let param_effect_terms = fn_decl
+    let param_effect_rows = fn_decl
         .params
         .iter()
         .map(|param| {
             param.annotation.as_ref().and_then(|ann| {
-                function_param_effect_term_from_type_annotation(
+                function_param_effect_row_from_type_annotation(
                     &ann.node,
                     &mut effect_var_bindings,
                     &mut next_effect_var,
@@ -9322,14 +9351,14 @@ pub fn function_effect_signature_from_decl(fn_decl: &FnDecl) -> Option<FunctionE
             })
         })
         .collect();
-    let effect_term = effect_term_from_annotation(
+    let effect_row = effect_row_from_annotation(
         &effect_ann.node,
         &mut effect_var_bindings,
         &mut next_effect_var,
     );
     Some(FunctionEffectSignature {
-        param_effect_terms,
-        effect_term,
+        param_effect_rows,
+        effect_row,
         instantiate_on_call: true,
     })
 }
@@ -9344,12 +9373,12 @@ pub fn function_effect_signature_from_trait_method(
     let effect_ann = method.declared_effect.as_ref()?;
     let mut effect_var_bindings = BTreeMap::new();
     let mut next_effect_var = 0u32;
-    let param_effect_terms = method
+    let param_effect_rows = method
         .params
         .iter()
         .map(|param| {
             param.annotation.as_ref().and_then(|ann| {
-                function_param_effect_term_from_type_annotation(
+                function_param_effect_row_from_type_annotation(
                     &ann.node,
                     &mut effect_var_bindings,
                     &mut next_effect_var,
@@ -9357,14 +9386,14 @@ pub fn function_effect_signature_from_trait_method(
             })
         })
         .collect();
-    let effect_term = effect_term_from_annotation(
+    let effect_row = effect_row_from_annotation(
         effect_ann,
         &mut effect_var_bindings,
         &mut next_effect_var,
     );
     Some(FunctionEffectSignature {
-        param_effect_terms,
-        effect_term,
+        param_effect_rows,
+        effect_row,
         instantiate_on_call: true,
     })
 }
@@ -9403,10 +9432,10 @@ pub fn register_fn_effect_signature(fn_decl: &FnDecl, env: &mut TypeEnv) {
     }
 }
 
-fn seed_function_param_effect_terms(
+fn seed_function_param_effect_rows(
     params: &[Param],
     env: &mut TypeEnv,
-    effect_var_bindings: &mut BTreeMap<String, EffectVarId>,
+    effect_var_bindings: &mut BTreeMap<String, RowVarId>,
     next_effect_var: &mut u32,
 ) {
     for param in params {
@@ -9422,49 +9451,49 @@ fn seed_function_param_effect_terms(
             next_effect_var,
         ) {
             env.set_function_effect_signature(param_name.to_string(), signature.clone());
-            env.set_function_effect_term(param_name.to_string(), signature.effect_term);
+            env.set_function_effect_row(param_name.to_string(), signature.effect_row);
         }
     }
 }
 
-fn infer_lambda_effect_term(
+fn infer_lambda_effect_row(
     params: &[Param],
     body: &Expr,
     env: &TypeEnv,
-    constraints: &mut Vec<EffectConstraint>,
+    constraints: &mut Vec<Constraint>,
     next_effect_var: &mut u32,
-) -> EffectTerm {
+) -> EffectRow {
     let mut lambda_env = env.clone();
     let mut lambda_effect_vars = BTreeMap::new();
-    seed_function_param_effect_terms(
+    seed_function_param_effect_rows(
         params,
         &mut lambda_env,
         &mut lambda_effect_vars,
         next_effect_var,
     );
-    infer_expr_effect_term(body, &lambda_env, constraints, next_effect_var)
+    infer_expr_effect_row(body, &lambda_env, constraints, next_effect_var)
 }
 
 fn infer_lambda_effect_signature(
     params: &[Param],
     body: &Expr,
     env: &TypeEnv,
-    constraints: &mut Vec<EffectConstraint>,
+    constraints: &mut Vec<Constraint>,
     next_effect_var: &mut u32,
 ) -> FunctionEffectSignature {
     let mut lambda_env = env.clone();
     let mut lambda_effect_vars = BTreeMap::new();
-    seed_function_param_effect_terms(
+    seed_function_param_effect_rows(
         params,
         &mut lambda_env,
         &mut lambda_effect_vars,
         next_effect_var,
     );
-    let param_effect_terms = params
+    let param_effect_rows = params
         .iter()
         .map(|param| {
             param.annotation.as_ref().and_then(|ann| {
-                function_param_effect_term_from_type_annotation(
+                function_param_effect_row_from_type_annotation(
                     &ann.node,
                     &mut lambda_effect_vars,
                     next_effect_var,
@@ -9472,52 +9501,52 @@ fn infer_lambda_effect_signature(
             })
         })
         .collect();
-    let effect_term = infer_expr_effect_term(body, &lambda_env, constraints, next_effect_var);
+    let effect_row = infer_expr_effect_row(body, &lambda_env, constraints, next_effect_var);
     FunctionEffectSignature {
-        param_effect_terms,
-        effect_term,
+        param_effect_rows,
+        effect_row,
         instantiate_on_call: false,
     }
 }
 
-fn infer_callable_value_effect_term(
+fn infer_callable_value_effect_row(
     expr: &Expr,
     env: &TypeEnv,
-    constraints: &mut Vec<EffectConstraint>,
+    constraints: &mut Vec<Constraint>,
     next_effect_var: &mut u32,
-) -> EffectTerm {
+) -> EffectRow {
     match &expr.node {
         ExprKind::Var(name) => {
             if let Some(signature) = env.function_effect_signature(name) {
-                resolve_effect_call_signature(signature, next_effect_var).effect_term
+                resolve_effect_call_signature(signature, next_effect_var).effect_row
             } else {
-                env.function_effect_term(name)
-                    .unwrap_or(EffectTerm::Known(EffectLevel::Impure))
+                env.function_effect_row(name)
+                    .unwrap_or_else(impure_effect_row)
             }
         }
         ExprKind::Lambda { params, body, .. } => {
-            infer_lambda_effect_term(params, body, env, constraints, next_effect_var)
+            infer_lambda_effect_row(params, body, env, constraints, next_effect_var)
         }
         ExprKind::FieldAccess { expr, field } => {
             if let ExprKind::Var(module) = &expr.node {
                 if let Some(signature) = env.resolve_qualified_effect_signature(module, &field.node)
                 {
-                    resolve_effect_call_signature(signature, next_effect_var).effect_term
+                    resolve_effect_call_signature(signature, next_effect_var).effect_row
                 } else {
-                    env.resolve_qualified_effect_term(module, &field.node)
-                        .unwrap_or(EffectTerm::Known(EffectLevel::Impure))
+                    env.resolve_qualified_effect_row(module, &field.node)
+                        .unwrap_or_else(impure_effect_row)
                 }
             } else {
-                EffectTerm::Known(EffectLevel::Impure)
+                impure_effect_row()
             }
         }
-        _ => infer_expr_effect_term(expr, env, constraints, next_effect_var),
+        _ => infer_expr_effect_row(expr, env, constraints, next_effect_var),
     }
 }
 
 fn bind_let_pattern_effect_metadata(
     pattern: &Pattern,
-    callable_term: Option<EffectTerm>,
+    callable_term: Option<EffectRow>,
     callable_signature: Option<FunctionEffectSignature>,
     env: &mut TypeEnv,
 ) {
@@ -9529,17 +9558,17 @@ fn bind_let_pattern_effect_metadata(
         env.set_function_effect_signature(bound_name.clone(), signature);
     }
     if let Some(term) = callable_term {
-        env.set_function_effect_term(bound_name.clone(), term);
+        env.set_function_effect_row(bound_name.clone(), term);
     }
 }
 
-fn infer_call_effect_term(
+fn infer_call_effect_row(
     func: &Expr,
     args: &[Argument],
     env: &TypeEnv,
-    constraints: &mut Vec<EffectConstraint>,
+    constraints: &mut Vec<Constraint>,
     next_effect_var: &mut u32,
-) -> EffectTerm {
+) -> EffectRow {
     let effect_signature = match &func.node {
         ExprKind::Var(name) => env.function_effect_signature(name),
         ExprKind::FieldAccess { expr, field } => {
@@ -9565,7 +9594,7 @@ fn infer_call_effect_term(
         };
 
         let instantiated = resolve_effect_call_signature(effect_signature, next_effect_var);
-        for (idx, maybe_param_effect) in instantiated.param_effect_terms.iter().enumerate() {
+        for (idx, maybe_param_effect) in instantiated.param_effect_rows.iter().enumerate() {
             let Some(param_effect) = maybe_param_effect else {
                 continue;
             };
@@ -9573,82 +9602,94 @@ fn infer_call_effect_term(
                 continue;
             };
             let arg_callable_effect =
-                infer_callable_value_effect_term(arg_expr, env, constraints, next_effect_var);
-            constraints.push(EffectConstraint::Eq {
-                left: *param_effect,
-                right: arg_callable_effect,
+                infer_callable_value_effect_row(arg_expr, env, constraints, next_effect_var);
+            constraints.push(Constraint::RowEqual {
+                expected: param_effect.row.clone(),
+                actual: arg_callable_effect.row,
+                provenance: Provenance {
+                    span: arg_expr.span,
+                    reason: Reason::TypeAscription,
+                },
             });
         }
-        return instantiated.effect_term;
+        return instantiated.effect_row;
     }
 
     match &func.node {
         ExprKind::Var(name) => env
-            .function_effect_term(name)
-            .unwrap_or(EffectTerm::Known(EffectLevel::Impure)),
+            .function_effect_row(name)
+            .unwrap_or_else(impure_effect_row),
         ExprKind::Lambda { params, body, .. } => {
-            infer_lambda_effect_term(params, body, env, constraints, next_effect_var)
+            infer_lambda_effect_row(params, body, env, constraints, next_effect_var)
         }
         ExprKind::FieldAccess { expr, field } => {
             if let ExprKind::Var(module) = &expr.node {
-                env.resolve_qualified_effect_term(module, &field.node)
-                    .unwrap_or(EffectTerm::Known(EffectLevel::Impure))
+                env.resolve_qualified_effect_row(module, &field.node)
+                    .unwrap_or_else(impure_effect_row)
             } else {
-                EffectTerm::Known(EffectLevel::Impure)
+                impure_effect_row()
             }
         }
-        _ => EffectTerm::Known(EffectLevel::Impure),
+        _ => impure_effect_row(),
     }
 }
 
-fn infer_call_effect_term_with_pipe_arg(
+fn infer_call_effect_row_with_pipe_arg(
     func: &Expr,
     pipe_arg: &Expr,
     args: &[Argument],
     env: &TypeEnv,
-    constraints: &mut Vec<EffectConstraint>,
+    constraints: &mut Vec<Constraint>,
     next_effect_var: &mut u32,
-) -> EffectTerm {
+) -> EffectRow {
     let mut combined = Vec::with_capacity(args.len() + 1);
     combined.push(Argument {
         label: None,
         value: pipe_arg.clone(),
     });
     combined.extend(args.iter().cloned());
-    infer_call_effect_term(func, &combined, env, constraints, next_effect_var)
+    infer_call_effect_row(func, &combined, env, constraints, next_effect_var)
 }
 
 /// Infer effects bottom-up for a function declaration's bodies.
 ///
 /// Uses a small fixed-point iteration so recursive functions can reference
 /// their own inferred effects.
-// TODO(0b-exit): delete when row-based effect solver is complete.
-pub fn infer_fn_decl_effects(fn_decl: &FnDecl, env: &TypeEnv) -> Effects {
+pub fn infer_fn_decl_effect_row(fn_decl: &FnDecl, env: &TypeEnv) -> EffectRow {
     let name = fn_decl.name.node.clone();
     let mut trial_env = env.clone();
     let mut current = trial_env
-        .function_effect(&name)
-        .unwrap_or_else(Effects::pure_deterministic);
+        .function_effect_row(&name)
+        .unwrap_or_else(pure_effect_row);
 
     // Small fixed-point loop for recursion.
     for _ in 0..4 {
-        trial_env.set_function_effect_term(name.clone(), EffectTerm::Known(current.level()));
+        trial_env.set_function_effect_row(name.clone(), current.clone());
         let mut effect_var_bindings = BTreeMap::new();
         let mut next_effect_var = 0u32;
-        seed_function_param_effect_terms(
+        seed_function_param_effect_rows(
             &fn_decl.params,
             &mut trial_env,
             &mut effect_var_bindings,
             &mut next_effect_var,
         );
         let mut constraints = Vec::new();
-        let root = infer_expr_effect_term(
+        let root = infer_expr_effect_row(
             &fn_decl.body,
             &trial_env,
             &mut constraints,
             &mut next_effect_var,
         );
-        let next = solve_effect_term(root, &constraints);
+        let next = {
+            let mut unifier = Unifier::new();
+            if unifier.solve(constraints).is_err() {
+                impure_effect_row()
+            } else {
+                EffectRow {
+                    row: unifier.substitution.apply_row(&root.row),
+                }
+            }
+        };
         if next == current {
             break;
         }
@@ -9658,30 +9699,8 @@ pub fn infer_fn_decl_effects(fn_decl: &FnDecl, env: &TypeEnv) -> Effects {
     current
 }
 
-// TODO(0b-exit): delete when row-based effect solver is complete.
-fn effect_label(effects: Effects) -> &'static str {
-    match (effects.purity, effects.volatility) {
-        (Purity::Pure, Volatility::Deterministic) => "pure",
-        (Purity::Pure, Volatility::Volatile) => "volatile",
-        (Purity::Impure, _) => "impure",
-    }
-}
-
-// TODO(0b-exit): delete when row-based effect solver is complete.
-fn effects_as_row(effects: Effects) -> EffectRow {
-    match (effects.purity, effects.volatility) {
-        (Purity::Pure, Volatility::Deterministic) => EffectRow::pure(),
-        (Purity::Pure, Volatility::Volatile) => {
-            EffectRow::closed(vec![(Label::new("Volatile"), Type::Unit)])
-        }
-        (Purity::Impure, _) => EffectRow::closed(vec![(Label::new("Impure"), Type::Unit)]),
-    }
-}
-
-/// Check whether `actual` is weaker-or-equal to `declared` in the effect lattice.
-// TODO(0b-exit): delete when row-based effect solver is complete.
-pub fn effects_leq(actual: Effects, declared: Effects) -> bool {
-    actual.leq(declared)
+pub fn infer_fn_decl_effects(fn_decl: &FnDecl, env: &TypeEnv) -> Effects {
+    classify_effect_row(&infer_fn_decl_effect_row(fn_decl, env))
 }
 
 fn parse_declared_effect(
@@ -9722,7 +9741,7 @@ fn effect_item_name_to_compat_row(name: &str) -> EffectRow {
         "volatile" | "Volatile" => {
             EffectRow::closed(vec![(Label::new("Volatile"), Type::Unit)])
         }
-        "impure" | "Impure" => EffectRow::closed(vec![(Label::new("Impure"), Type::Unit)]),
+        "impure" | "Impure" => EffectRow::closed(vec![(Label::new("IO"), Type::Unit)]),
         "Fail" => EffectRow::closed(vec![(Label::new("Fail"), Type::Unit)]),
         _ => EffectRow::closed(vec![(Label::new(name), Type::Unit)]),
     }
@@ -9878,16 +9897,6 @@ fn effect_row_annotation_to_compat_row_with_aliases(
         (None, rest) => rest,
     };
 
-    let volatile_label = Label::new("Volatile");
-    let impure_label = Label::new("Impure");
-    if fields
-        .iter()
-        .any(|(label, _)| label != &volatile_label)
-        && !fields.iter().any(|(label, _)| label == &impure_label)
-    {
-        fields.push((impure_label, Type::Unit));
-    }
-
     if let Some(rest) = merged_rest {
         Some(EffectRow {
             row: RowType::open(fields, rest),
@@ -9910,48 +9919,12 @@ fn effect_row_annotation_to_compat_row(row: &kea_ast::EffectRowAnnotation) -> Op
     )
 }
 
-fn compat_row_to_effects(row: &EffectRow) -> Effects {
-    if row.is_pure() {
-        Effects::pure_deterministic()
-    } else if row.row.has(&Label::new("Volatile")) {
-        Effects::pure_volatile()
-    } else {
-        Effects::impure()
-    }
-}
-
 fn effect_annotation_var_name(effect: &kea_ast::EffectAnnotation) -> Option<&str> {
     match effect {
         kea_ast::EffectAnnotation::Var(name) => Some(name.as_str()),
         // Compatibility: treat `-[e]>` and `-[| e]>` equivalently.
         kea_ast::EffectAnnotation::Row(row) if row.effects.is_empty() => row.rest.as_deref(),
         _ => None,
-    }
-}
-
-// TODO(0b-exit): delete when row-based effect solver is complete.
-fn effect_annotation_to_effects(
-    effect: &kea_ast::EffectAnnotation,
-    records: Option<&RecordRegistry>,
-) -> Option<Effects> {
-    match effect {
-        kea_ast::EffectAnnotation::Pure => Some(Effects::pure_deterministic()),
-        kea_ast::EffectAnnotation::Volatile => Some(Effects::pure_volatile()),
-        kea_ast::EffectAnnotation::Impure => Some(Effects::impure()),
-        kea_ast::EffectAnnotation::Var(_) => None,
-        kea_ast::EffectAnnotation::Row(row) => {
-            let mut visited = BTreeSet::new();
-            let mut row_var_bindings = BTreeMap::new();
-            let mut next_row_var = 0u32;
-            effect_row_annotation_to_compat_row_with_aliases(
-                row,
-                records,
-                &mut visited,
-                &mut row_var_bindings,
-                &mut next_row_var,
-            )
-            .map(|row| compat_row_to_effects(&row))
-        }
     }
 }
 
@@ -9970,11 +9943,9 @@ fn effect_annotation_to_compat_row(
     records: Option<&RecordRegistry>,
 ) -> Option<EffectRow> {
     match effect {
-        kea_ast::EffectAnnotation::Pure
-        | kea_ast::EffectAnnotation::Volatile
-        | kea_ast::EffectAnnotation::Impure => {
-            effect_annotation_to_effects(effect, records).map(effects_as_row)
-        }
+        kea_ast::EffectAnnotation::Pure => Some(pure_effect_row()),
+        kea_ast::EffectAnnotation::Volatile => Some(volatile_effect_row()),
+        kea_ast::EffectAnnotation::Impure => Some(impure_effect_row()),
         kea_ast::EffectAnnotation::Var(_) => None,
         kea_ast::EffectAnnotation::Row(row) => {
             if let Some(records) = records {
@@ -10265,15 +10236,13 @@ pub fn validate_declared_fn_effect_with_env_and_records(
     };
     validate_effect_row_fail_cardinality(&declared_row, ann.span, "declaration")?;
 
-    let inferred_row = effects_as_row(inferred);
+    let inferred_row = effect_row_from_effects(inferred);
     if let Err(row_err) = unify_effect_row_subsumption(&inferred_row, &declared_row, ann.span) {
         let mut diag = Diagnostic::error(
             Category::TypeMismatch,
             format!(
-                "declared effect `{}` is too weak; body requires `{}` (declared {}, inferred {})",
+                "declared effect `{}` is too weak; body requires `{}`",
                 effect_annotation_label(&parse_declared_effect(ann)),
-                effect_label(inferred),
-                declared_row,
                 inferred_row,
             ),
         )
@@ -10294,7 +10263,6 @@ pub fn validate_declared_fn_effect_with_env_and_records(
     Ok(())
 }
 
-// TODO(0b-exit): delete when row-based effect solver is complete.
 fn validate_declared_fn_effect_variable_contract(
     fn_decl: &FnDecl,
     env: &TypeEnv,
@@ -10302,14 +10270,12 @@ fn validate_declared_fn_effect_variable_contract(
     effect_var_name: &str,
 ) -> Result<(), Diagnostic> {
     let mut trial_env = env.clone();
-    // Recursive/self references use a conservative placeholder during
-    // validation. Contract satisfaction is checked by probing all lattice
-    // levels for the declared effect variable below.
-    trial_env.set_function_effect_term(fn_name.to_string(), EffectTerm::Known(EffectLevel::Impure));
+    // Recursive/self references use a conservative placeholder during validation.
+    trial_env.set_function_effect_row(fn_name.to_string(), impure_effect_row());
 
     let mut effect_var_bindings = BTreeMap::new();
     let mut next_effect_var = 0u32;
-    seed_function_param_effect_terms(
+    seed_function_param_effect_rows(
         &fn_decl.params,
         &mut trial_env,
         &mut effect_var_bindings,
@@ -10333,66 +10299,59 @@ fn validate_declared_fn_effect_variable_contract(
     })?;
 
     let mut constraints = Vec::new();
-    let root = infer_expr_effect_term(
+    let root = infer_expr_effect_row(
         &fn_decl.body,
         &trial_env,
         &mut constraints,
         &mut next_effect_var,
     );
 
-    for level in [
-        EffectLevel::Pure,
-        EffectLevel::Volatile,
-        EffectLevel::Impure,
-    ] {
+    let ann_span = fn_decl
+        .effect_annotation
+        .as_ref()
+        .map(|a| a.span)
+        .unwrap_or(fn_decl.span);
+    for candidate in [pure_effect_row(), volatile_effect_row(), impure_effect_row()] {
         let mut scoped = constraints.clone();
-        scoped.push(EffectConstraint::Eq {
-            left: EffectTerm::Var(declared_var),
-            right: EffectTerm::Known(level),
+        scoped.push(Constraint::RowEqual {
+            expected: RowType::open(vec![], declared_var),
+            actual: candidate.row.clone(),
+            provenance: Provenance {
+                span: ann_span,
+                reason: Reason::TypeAscription,
+            },
         });
 
-        let solved = solve_effect_constraints(&scoped).map_err(|solve_err| {
-            Diagnostic::error(
-                Category::TypeMismatch,
-                format!(
-                    "declared effect variable `{effect_var_name}` on `{fn_name}` is not satisfiable for `{}`",
-                    level_name(level),
-                ),
-            )
-            .at(span_to_loc(
-                fn_decl
-                    .effect_annotation
-                    .as_ref()
-                    .map(|a| a.span)
-                    .unwrap_or(fn_decl.span),
-            ))
-            .with_help(format!(
-                "tie the declaration effect variable to callback effects consumed by the body; solver detail: {solve_err}"
-            ))
-        })?;
-
-        let actual_root = effect_level_from_term(root, &solved);
-        if actual_root != level {
+        let mut unifier = Unifier::new();
+        if let Err(err) = unifier.solve(scoped) {
             return Err(
                 Diagnostic::error(
                     Category::TypeMismatch,
                     format!(
-                        "declared effect `-[{effect_var_name}]>` does not match body effect behavior under `{}`",
-                        level_name(level),
+                        "declared effect `-[{effect_var_name}]>` on `{fn_name}` does not propagate through the body"
                     ),
                 )
-                .at(span_to_loc(
-                    fn_decl
-                        .effect_annotation
-                        .as_ref()
-                        .map(|a| a.span)
-                        .unwrap_or(fn_decl.span),
-                ))
+                .at(span_to_loc(ann_span))
                 .with_help(format!(
-                    "when `{effect_var_name}` is `{}`, the body effect resolves to `{}`; \
-declaration requires exact propagation",
-                    level_name(level),
-                    level_name(actual_root),
+                    "when `{effect_var_name}` is `{candidate}`, the body constraints are unsatisfiable; solver detail: {err}"
+                )),
+            );
+        }
+
+        let resolved_root = EffectRow {
+            row: unifier.substitution.apply_row(&root.row),
+        };
+        if resolved_root != candidate {
+            return Err(
+                Diagnostic::error(
+                    Category::TypeMismatch,
+                    format!(
+                        "declared effect `-[{effect_var_name}]>` on `{fn_name}` does not match body effect propagation"
+                    ),
+                )
+                .at(span_to_loc(ann_span))
+                .with_help(format!(
+                    "when `{effect_var_name}` is `{candidate}`, the body resolves to `{resolved_root}` instead"
                 )),
             );
         }
@@ -10401,17 +10360,7 @@ declaration requires exact propagation",
     Ok(())
 }
 
-// TODO(0b-exit): delete when row-based effect solver is complete.
-fn level_name(level: EffectLevel) -> &'static str {
-    match level {
-        EffectLevel::Pure => "pure",
-        EffectLevel::Volatile => "volatile",
-        EffectLevel::Impure => "impure",
-    }
-}
-
 /// Validate that an impl method's inferred effect satisfies a trait method contract.
-// TODO(0b-exit): delete when row-based effect solver is complete.
 pub fn validate_trait_method_impl_effect(
     trait_name: &str,
     method_name: &str,
@@ -10419,26 +10368,13 @@ pub fn validate_trait_method_impl_effect(
     inferred: Effects,
     required: Effects,
 ) -> Result<(), Diagnostic> {
-    if effects_leq(inferred, required) {
-        return Ok(());
-    }
-    Err(Diagnostic::error(
-        Category::TypeMismatch,
-        format!(
-            "impl method `{method_name}` has effect `{}`, but trait `{trait_name}` requires `{}`",
-            effect_label(inferred),
-            effect_label(required)
-        ),
+    validate_trait_method_impl_effect_row(
+        trait_name,
+        method_name,
+        method_span,
+        inferred,
+        &effect_row_from_effects(required),
     )
-    .at(span_to_loc(method_span))
-    .with_label(
-        span_to_loc(method_span),
-        format!(
-            "method effect `{}` exceeds trait contract `{}`",
-            effect_label(inferred),
-            effect_label(required)
-        ),
-    ))
 }
 
 fn validate_trait_method_impl_effect_row(
@@ -10449,7 +10385,7 @@ fn validate_trait_method_impl_effect_row(
     required: &EffectRow,
 ) -> Result<(), Diagnostic> {
     validate_effect_row_fail_cardinality(required, method_span, "trait contract")?;
-    let inferred_row = effects_as_row(inferred);
+    let inferred_row = effect_row_from_effects(inferred);
     if let Err(row_err) = unify_effect_row_subsumption(&inferred_row, required, method_span) {
         let mut diag = Diagnostic::error(
             Category::TypeMismatch,
@@ -10603,41 +10539,49 @@ pub fn validate_trait_method_impl_contract_with_env(
 pub fn infer_expr_effects(expr: &Expr, env: &TypeEnv) -> Effects {
     let mut constraints = Vec::new();
     let mut next_effect_var = 0u32;
-    let term = infer_expr_effect_term(expr, env, &mut constraints, &mut next_effect_var);
-    solve_effect_term(term, &constraints)
+    let root = infer_expr_effect_row(expr, env, &mut constraints, &mut next_effect_var);
+    let mut unifier = Unifier::new();
+    if unifier.solve(constraints).is_err() {
+        Effects::impure()
+    } else {
+        let resolved = EffectRow {
+            row: unifier.substitution.apply_row(&root.row),
+        };
+        classify_effect_row(&resolved)
+    }
 }
 
-fn infer_expr_effect_term(
+fn infer_expr_effect_row(
     expr: &Expr,
     env: &TypeEnv,
-    constraints: &mut Vec<EffectConstraint>,
+    constraints: &mut Vec<Constraint>,
     next_effect_var: &mut u32,
-) -> EffectTerm {
+) -> EffectRow {
     match &expr.node {
         ExprKind::Lit(_)
         | ExprKind::Var(_)
         | ExprKind::Lambda { .. }
         | ExprKind::None
         | ExprKind::Atom(_)
-        | ExprKind::Wildcard => EffectTerm::Known(EffectLevel::Pure),
+        | ExprKind::Wildcard => pure_effect_row(),
 
         ExprKind::Tuple(elems) | ExprKind::List(elems) => {
             let mut terms = Vec::with_capacity(elems.len());
             for elem in elems {
-                terms.push(infer_expr_effect_term(
+                terms.push(infer_expr_effect_row(
                     elem,
                     env,
                     constraints,
                     next_effect_var,
                 ));
             }
-            join_effect_terms_many(terms, constraints, next_effect_var)
+            join_effect_rows_many(terms, constraints, next_effect_var)
         }
 
-        ExprKind::Range { start, end, .. } => join_effect_terms_many(
+        ExprKind::Range { start, end, .. } => join_effect_rows_many(
             vec![
-                infer_expr_effect_term(start, env, constraints, next_effect_var),
-                infer_expr_effect_term(end, env, constraints, next_effect_var),
+                infer_expr_effect_row(start, env, constraints, next_effect_var),
+                infer_expr_effect_row(end, env, constraints, next_effect_var),
             ],
             constraints,
             next_effect_var,
@@ -10647,7 +10591,7 @@ fn infer_expr_effect_term(
             let mut terms = Vec::new();
             for (_, values) in columns {
                 for value in values {
-                    terms.push(infer_expr_effect_term(
+                    terms.push(infer_expr_effect_row(
                         value,
                         env,
                         constraints,
@@ -10655,34 +10599,34 @@ fn infer_expr_effect_term(
                     ));
                 }
             }
-            join_effect_terms_many(terms, constraints, next_effect_var)
+            join_effect_rows_many(terms, constraints, next_effect_var)
         }
 
         ExprKind::Let { value, .. } => {
-            infer_expr_effect_term(value, env, constraints, next_effect_var)
+            infer_expr_effect_row(value, env, constraints, next_effect_var)
         }
 
         ExprKind::Call { func, args } => {
             let mut terms = Vec::with_capacity(args.len() + 2);
             let mut arg_eval_terms = Vec::with_capacity(args.len());
             for arg in args {
-                arg_eval_terms.push(infer_expr_effect_term(
+                arg_eval_terms.push(infer_expr_effect_row(
                     &arg.value,
                     env,
                     constraints,
                     next_effect_var,
                 ));
             }
-            terms.extend(arg_eval_terms.iter().copied());
-            terms.push(infer_expr_effect_term(
+            terms.extend(arg_eval_terms.iter().cloned());
+            terms.push(infer_expr_effect_row(
                 func,
                 env,
                 constraints,
                 next_effect_var,
             ));
-            let call_effect = infer_call_effect_term(func, args, env, constraints, next_effect_var);
+            let call_effect = infer_call_effect_row(func, args, env, constraints, next_effect_var);
             terms.push(call_effect);
-            join_effect_terms_many(terms, constraints, next_effect_var)
+            join_effect_rows_many(terms, constraints, next_effect_var)
         }
 
         ExprKind::If {
@@ -10691,22 +10635,22 @@ fn infer_expr_effect_term(
             else_branch,
         } => {
             let mut terms = vec![
-                infer_expr_effect_term(condition, env, constraints, next_effect_var),
-                infer_expr_effect_term(then_branch, env, constraints, next_effect_var),
+                infer_expr_effect_row(condition, env, constraints, next_effect_var),
+                infer_expr_effect_row(then_branch, env, constraints, next_effect_var),
             ];
             if let Some(otherwise) = else_branch {
-                terms.push(infer_expr_effect_term(
+                terms.push(infer_expr_effect_row(
                     otherwise,
                     env,
                     constraints,
                     next_effect_var,
                 ));
             }
-            join_effect_terms_many(terms, constraints, next_effect_var)
+            join_effect_rows_many(terms, constraints, next_effect_var)
         }
 
         ExprKind::Case { scrutinee, arms } => {
-            let mut terms = vec![infer_expr_effect_term(
+            let mut terms = vec![infer_expr_effect_row(
                 scrutinee,
                 env,
                 constraints,
@@ -10714,55 +10658,55 @@ fn infer_expr_effect_term(
             )];
             for arm in arms {
                 if let Some(guard) = &arm.guard {
-                    terms.push(infer_expr_effect_term(
+                    terms.push(infer_expr_effect_row(
                         guard,
                         env,
                         constraints,
                         next_effect_var,
                     ));
                 }
-                terms.push(infer_expr_effect_term(
+                terms.push(infer_expr_effect_row(
                     &arm.body,
                     env,
                     constraints,
                     next_effect_var,
                 ));
             }
-            join_effect_terms_many(terms, constraints, next_effect_var)
+            join_effect_rows_many(terms, constraints, next_effect_var)
         }
 
         ExprKind::Cond { arms } => {
             let mut terms = Vec::with_capacity(arms.len() * 2);
             for arm in arms {
-                terms.push(infer_expr_effect_term(
+                terms.push(infer_expr_effect_row(
                     &arm.condition,
                     env,
                     constraints,
                     next_effect_var,
                 ));
-                terms.push(infer_expr_effect_term(
+                terms.push(infer_expr_effect_row(
                     &arm.body,
                     env,
                     constraints,
                     next_effect_var,
                 ));
             }
-            join_effect_terms_many(terms, constraints, next_effect_var)
+            join_effect_rows_many(terms, constraints, next_effect_var)
         }
 
         ExprKind::BinaryOp { left, right, .. } => {
-            let left_term = infer_expr_effect_term(left, env, constraints, next_effect_var);
-            let right_term = infer_expr_effect_term(right, env, constraints, next_effect_var);
-            join_effect_terms(left_term, right_term, constraints, next_effect_var)
+            let left_term = infer_expr_effect_row(left, env, constraints, next_effect_var);
+            let right_term = infer_expr_effect_row(right, env, constraints, next_effect_var);
+            join_effect_rows(left_term, right_term, constraints, next_effect_var)
         }
 
         ExprKind::Pipe {
             left, right, guard, ..
         } => {
-            let left_term = infer_expr_effect_term(left, env, constraints, next_effect_var);
+            let left_term = infer_expr_effect_row(left, env, constraints, next_effect_var);
             let guard_term = guard
                 .as_ref()
-                .map(|g| infer_expr_effect_term(g, env, constraints, next_effect_var));
+                .map(|g| infer_expr_effect_row(g, env, constraints, next_effect_var));
             match &right.node {
                 ExprKind::Call { func, args } => {
                     let mut terms = Vec::with_capacity(args.len() + 3);
@@ -10770,21 +10714,21 @@ fn infer_expr_effect_term(
                     if let Some(term) = guard_term {
                         terms.push(term);
                     }
-                    terms.push(infer_expr_effect_term(
+                    terms.push(infer_expr_effect_row(
                         func,
                         env,
                         constraints,
                         next_effect_var,
                     ));
                     for arg in args {
-                        terms.push(infer_expr_effect_term(
+                        terms.push(infer_expr_effect_row(
                             &arg.value,
                             env,
                             constraints,
                             next_effect_var,
                         ));
                     }
-                    let call_effect = infer_call_effect_term_with_pipe_arg(
+                    let call_effect = infer_call_effect_row_with_pipe_arg(
                         func,
                         left,
                         args,
@@ -10793,12 +10737,12 @@ fn infer_expr_effect_term(
                         next_effect_var,
                     );
                     terms.push(call_effect);
-                    join_effect_terms_many(terms, constraints, next_effect_var)
+                    join_effect_rows_many(terms, constraints, next_effect_var)
                 }
                 ExprKind::Var(_) | ExprKind::FieldAccess { .. } | ExprKind::Lambda { .. } => {
                     let right_eval =
-                        infer_expr_effect_term(right, env, constraints, next_effect_var);
-                    let call_effect = infer_call_effect_term_with_pipe_arg(
+                        infer_expr_effect_row(right, env, constraints, next_effect_var);
+                    let call_effect = infer_call_effect_row_with_pipe_arg(
                         right,
                         left,
                         &[],
@@ -10811,50 +10755,50 @@ fn infer_expr_effect_term(
                         terms.push(term);
                     }
                     terms.extend([right_eval, call_effect]);
-                    join_effect_terms_many(terms, constraints, next_effect_var)
+                    join_effect_rows_many(terms, constraints, next_effect_var)
                 }
                 ExprKind::DfVerb { .. } => {
                     let right_term =
-                        infer_expr_effect_term(right, env, constraints, next_effect_var);
+                        infer_expr_effect_row(right, env, constraints, next_effect_var);
                     if let Some(term) = guard_term {
-                        join_effect_terms_many(
+                        join_effect_rows_many(
                             [left_term, term, right_term],
                             constraints,
                             next_effect_var,
                         )
                     } else {
-                        join_effect_terms(left_term, right_term, constraints, next_effect_var)
+                        join_effect_rows(left_term, right_term, constraints, next_effect_var)
                     }
                 }
                 _ => {
                     let right_term =
-                        infer_expr_effect_term(right, env, constraints, next_effect_var);
+                        infer_expr_effect_row(right, env, constraints, next_effect_var);
                     let mut terms = vec![left_term];
                     if let Some(term) = guard_term {
                         terms.push(term);
                     }
-                    terms.extend([right_term, EffectTerm::Known(EffectLevel::Impure)]);
-                    join_effect_terms_many(terms, constraints, next_effect_var)
+                    terms.extend([right_term, impure_effect_row()]);
+                    join_effect_rows_many(terms, constraints, next_effect_var)
                 }
             }
         }
 
         ExprKind::WhenGuard { body, condition } => {
-            let cond_term = infer_expr_effect_term(condition, env, constraints, next_effect_var);
-            let body_term = infer_expr_effect_term(body, env, constraints, next_effect_var);
-            join_effect_terms(cond_term, body_term, constraints, next_effect_var)
+            let cond_term = infer_expr_effect_row(condition, env, constraints, next_effect_var);
+            let body_term = infer_expr_effect_row(body, env, constraints, next_effect_var);
+            join_effect_rows(cond_term, body_term, constraints, next_effect_var)
         }
 
-        ExprKind::PipePlaceholder => EffectTerm::Known(EffectLevel::Pure),
+        ExprKind::PipePlaceholder => pure_effect_row(),
 
         ExprKind::UnaryOp { operand, .. } | ExprKind::As { expr: operand, .. } => {
-            infer_expr_effect_term(operand, env, constraints, next_effect_var)
+            infer_expr_effect_row(operand, env, constraints, next_effect_var)
         }
 
         ExprKind::Record { fields, spread, .. } | ExprKind::AnonRecord { fields, spread } => {
             let mut terms = Vec::with_capacity(fields.len() + usize::from(spread.is_some()));
             for (_, value) in fields {
-                terms.push(infer_expr_effect_term(
+                terms.push(infer_expr_effect_row(
                     value,
                     env,
                     constraints,
@@ -10862,18 +10806,18 @@ fn infer_expr_effect_term(
                 ));
             }
             if let Some(spread_expr) = spread {
-                terms.push(infer_expr_effect_term(
+                terms.push(infer_expr_effect_row(
                     spread_expr,
                     env,
                     constraints,
                     next_effect_var,
                 ));
             }
-            join_effect_terms_many(terms, constraints, next_effect_var)
+            join_effect_rows_many(terms, constraints, next_effect_var)
         }
 
         ExprKind::FieldAccess { expr, .. } => {
-            infer_expr_effect_term(expr, env, constraints, next_effect_var)
+            infer_expr_effect_row(expr, env, constraints, next_effect_var)
         }
 
         ExprKind::Block(exprs) => {
@@ -10884,14 +10828,14 @@ fn infer_expr_effect_term(
                 let current = &exprs[idx];
                 if let ExprKind::Use(use_expr) = &current.node {
                     if let Ok(lowered) = lower_use_chain_to_bind(exprs, idx) {
-                        terms.push(infer_expr_effect_term(
+                        terms.push(infer_expr_effect_row(
                             &lowered,
                             &block_env,
                             constraints,
                             next_effect_var,
                         ));
                     } else {
-                        terms.push(infer_expr_effect_term(
+                        terms.push(infer_expr_effect_row(
                             &use_expr.rhs,
                             &block_env,
                             constraints,
@@ -10902,17 +10846,17 @@ fn infer_expr_effect_term(
                 }
                 if let ExprKind::Let { pattern, value, .. } = &current.node {
                     let value_term =
-                        infer_expr_effect_term(value, &block_env, constraints, next_effect_var);
+                        infer_expr_effect_row(value, &block_env, constraints, next_effect_var);
                     terms.push(value_term);
                     let (callable_term, callable_signature) = match &value.node {
                         ExprKind::Var(source_name) => (
-                            block_env.function_effect_term(source_name),
+                            block_env.function_effect_row(source_name),
                             block_env.function_effect_signature(source_name).cloned(),
                         ),
                         ExprKind::FieldAccess { expr, field } => {
                             if let ExprKind::Var(module) = &expr.node {
                                 (
-                                    block_env.resolve_qualified_effect_term(module, &field.node),
+                                    block_env.resolve_qualified_effect_row(module, &field.node),
                                     block_env
                                         .resolve_qualified_effect_signature(module, &field.node)
                                         .cloned(),
@@ -10929,7 +10873,7 @@ fn infer_expr_effect_term(
                                 constraints,
                                 next_effect_var,
                             );
-                            (Some(signature.effect_term), Some(signature))
+                            (Some(signature.effect_row.clone()), Some(signature))
                         }
                         _ => (None, None),
                     };
@@ -10942,7 +10886,7 @@ fn infer_expr_effect_term(
                     idx += 1;
                     continue;
                 }
-                terms.push(infer_expr_effect_term(
+                terms.push(infer_expr_effect_row(
                     current,
                     &block_env,
                     constraints,
@@ -10950,31 +10894,31 @@ fn infer_expr_effect_term(
                 ));
                 idx += 1;
             }
-            join_effect_terms_many(terms, constraints, next_effect_var)
+            join_effect_rows_many(terms, constraints, next_effect_var)
         }
 
         ExprKind::Use(use_expr) => {
-            infer_expr_effect_term(&use_expr.rhs, env, constraints, next_effect_var)
+            infer_expr_effect_row(&use_expr.rhs, env, constraints, next_effect_var)
         }
 
         ExprKind::Constructor { args, .. } => {
             let mut terms = Vec::with_capacity(args.len());
             for arg in args {
-                terms.push(infer_expr_effect_term(
+                terms.push(infer_expr_effect_row(
                     &arg.value,
                     env,
                     constraints,
                     next_effect_var,
                 ));
             }
-            join_effect_terms_many(terms, constraints, next_effect_var)
+            join_effect_rows_many(terms, constraints, next_effect_var)
         }
 
         ExprKind::StringInterp(parts) => {
             let mut terms = Vec::new();
             for part in parts {
                 if let kea_ast::StringInterpPart::Expr(inner) = part {
-                    terms.push(infer_expr_effect_term(
+                    terms.push(infer_expr_effect_row(
                         inner,
                         env,
                         constraints,
@@ -10982,13 +10926,13 @@ fn infer_expr_effect_term(
                     ));
                 }
             }
-            join_effect_terms_many(terms, constraints, next_effect_var)
+            join_effect_rows_many(terms, constraints, next_effect_var)
         }
         ExprKind::EmbeddedBlock { parts, config, .. } => {
             let mut terms = Vec::new();
             for part in parts {
                 if let kea_ast::StringInterpPart::Expr(inner) = part {
-                    terms.push(infer_expr_effect_term(
+                    terms.push(infer_expr_effect_row(
                         inner,
                         env,
                         constraints,
@@ -10998,7 +10942,7 @@ fn infer_expr_effect_term(
             }
             if let Some(entries) = config {
                 for (_, value) in entries {
-                    terms.push(infer_expr_effect_term(
+                    terms.push(infer_expr_effect_row(
                         value,
                         env,
                         constraints,
@@ -11006,16 +10950,16 @@ fn infer_expr_effect_term(
                     ));
                 }
             }
-            join_effect_terms_many(terms, constraints, next_effect_var)
+            join_effect_rows_many(terms, constraints, next_effect_var)
         }
 
         ExprKind::MapLiteral(pairs) => {
             let mut terms = Vec::with_capacity(pairs.len() * 2);
             for (k, v) in pairs {
-                terms.push(infer_expr_effect_term(k, env, constraints, next_effect_var));
-                terms.push(infer_expr_effect_term(v, env, constraints, next_effect_var));
+                terms.push(infer_expr_effect_row(k, env, constraints, next_effect_var));
+                terms.push(infer_expr_effect_row(v, env, constraints, next_effect_var));
             }
-            join_effect_terms_many(terms, constraints, next_effect_var)
+            join_effect_rows_many(terms, constraints, next_effect_var)
         }
 
         ExprKind::For(for_expr) => {
@@ -11023,31 +10967,31 @@ fn infer_expr_effect_term(
             for clause in &for_expr.clauses {
                 let term = match clause {
                     ForClause::Generator { source, .. } => {
-                        infer_expr_effect_term(source, env, constraints, next_effect_var)
+                        infer_expr_effect_row(source, env, constraints, next_effect_var)
                     }
                     ForClause::Guard(guard) => {
-                        infer_expr_effect_term(guard, env, constraints, next_effect_var)
+                        infer_expr_effect_row(guard, env, constraints, next_effect_var)
                     }
                 };
                 terms.push(term);
             }
-            terms.push(infer_expr_effect_term(
+            terms.push(infer_expr_effect_row(
                 &for_expr.body,
                 env,
                 constraints,
                 next_effect_var,
             ));
-            join_effect_terms_many(terms, constraints, next_effect_var)
+            join_effect_rows_many(terms, constraints, next_effect_var)
         }
 
         ExprKind::DfVerb { args, .. } => match args {
             DfVerbArgs::Head(n_expr) | DfVerbArgs::Tail(n_expr) | DfVerbArgs::Slice(n_expr) => {
-                infer_expr_effect_term(n_expr, env, constraints, next_effect_var)
+                infer_expr_effect_row(n_expr, env, constraints, next_effect_var)
             }
             DfVerbArgs::Sample { n, frac } => {
-                let mut terms = vec![EffectTerm::Known(EffectLevel::Volatile)];
+                let mut terms = vec![volatile_effect_row()];
                 if let Some(expr) = n {
-                    terms.push(infer_expr_effect_term(
+                    terms.push(infer_expr_effect_row(
                         expr,
                         env,
                         constraints,
@@ -11055,41 +10999,41 @@ fn infer_expr_effect_term(
                     ));
                 }
                 if let Some(expr) = frac {
-                    terms.push(infer_expr_effect_term(
+                    terms.push(infer_expr_effect_row(
                         expr,
                         env,
                         constraints,
                         next_effect_var,
                     ));
                 }
-                join_effect_terms_many(terms, constraints, next_effect_var)
+                join_effect_rows_many(terms, constraints, next_effect_var)
             }
             DfVerbArgs::BindRows(exprs) => {
                 let terms: Vec<_> = exprs
                     .iter()
-                    .map(|expr| infer_expr_effect_term(expr, env, constraints, next_effect_var))
+                    .map(|expr| infer_expr_effect_row(expr, env, constraints, next_effect_var))
                     .collect();
-                join_effect_terms_many(terms, constraints, next_effect_var)
+                join_effect_rows_many(terms, constraints, next_effect_var)
             }
             DfVerbArgs::BindCols(expr) => {
-                infer_expr_effect_term(expr, env, constraints, next_effect_var)
+                infer_expr_effect_row(expr, env, constraints, next_effect_var)
             }
             DfVerbArgs::Join { right, .. } => {
-                infer_expr_effect_term(right, env, constraints, next_effect_var)
+                infer_expr_effect_row(right, env, constraints, next_effect_var)
             }
             DfVerbArgs::Map(fn_expr) => {
-                infer_expr_effect_term(fn_expr, env, constraints, next_effect_var)
+                infer_expr_effect_row(fn_expr, env, constraints, next_effect_var)
             }
             DfVerbArgs::Pull(_) | DfVerbArgs::Compute | DfVerbArgs::Collect => {
-                EffectTerm::Known(EffectLevel::Impure)
+                impure_effect_row()
             }
-            _ => EffectTerm::Known(EffectLevel::Pure),
+            _ => pure_effect_row(),
         },
 
         ExprKind::Spawn { value, config } => {
             let mut terms = vec![
-                EffectTerm::Known(EffectLevel::Impure),
-                infer_expr_effect_term(value, env, constraints, next_effect_var),
+                impure_effect_row(),
+                infer_expr_effect_row(value, env, constraints, next_effect_var),
             ];
             if let Some(cfg) = config {
                 for entry in [
@@ -11101,7 +11045,7 @@ fn infer_expr_effect_term(
                 .into_iter()
                 .flatten()
                 {
-                    terms.push(infer_expr_effect_term(
+                    terms.push(infer_expr_effect_row(
                         entry,
                         env,
                         constraints,
@@ -11109,75 +11053,75 @@ fn infer_expr_effect_term(
                     ));
                 }
             }
-            join_effect_terms_many(terms, constraints, next_effect_var)
+            join_effect_rows_many(terms, constraints, next_effect_var)
         }
-        ExprKind::Await { expr, .. } => join_effect_terms(
-            EffectTerm::Known(EffectLevel::Impure),
-            infer_expr_effect_term(expr, env, constraints, next_effect_var),
+        ExprKind::Await { expr, .. } => join_effect_rows(
+            impure_effect_row(),
+            infer_expr_effect_row(expr, env, constraints, next_effect_var),
             constraints,
             next_effect_var,
         ),
-        ExprKind::StreamBlock { body, .. } => join_effect_terms(
-            EffectTerm::Known(EffectLevel::Impure),
-            infer_expr_effect_term(body, env, constraints, next_effect_var),
+        ExprKind::StreamBlock { body, .. } => join_effect_rows(
+            impure_effect_row(),
+            infer_expr_effect_row(body, env, constraints, next_effect_var),
             constraints,
             next_effect_var,
         ),
-        ExprKind::Yield { value } => join_effect_terms(
-            EffectTerm::Known(EffectLevel::Impure),
-            infer_expr_effect_term(value, env, constraints, next_effect_var),
+        ExprKind::Yield { value } => join_effect_rows(
+            impure_effect_row(),
+            infer_expr_effect_row(value, env, constraints, next_effect_var),
             constraints,
             next_effect_var,
         ),
-        ExprKind::YieldFrom { source } => join_effect_terms(
-            EffectTerm::Known(EffectLevel::Impure),
-            infer_expr_effect_term(source, env, constraints, next_effect_var),
+        ExprKind::YieldFrom { source } => join_effect_rows(
+            impure_effect_row(),
+            infer_expr_effect_row(source, env, constraints, next_effect_var),
             constraints,
             next_effect_var,
         ),
         ExprKind::ActorSend { actor, args, .. } => {
             let mut terms = Vec::with_capacity(args.len() + 2);
-            terms.push(EffectTerm::Known(EffectLevel::Impure));
-            terms.push(infer_expr_effect_term(
+            terms.push(impure_effect_row());
+            terms.push(infer_expr_effect_row(
                 actor,
                 env,
                 constraints,
                 next_effect_var,
             ));
             for arg in args {
-                terms.push(infer_expr_effect_term(
+                terms.push(infer_expr_effect_row(
                     arg,
                     env,
                     constraints,
                     next_effect_var,
                 ));
             }
-            join_effect_terms_many(terms, constraints, next_effect_var)
+            join_effect_rows_many(terms, constraints, next_effect_var)
         }
         ExprKind::ActorCall { actor, args, .. } => {
             let mut terms = Vec::with_capacity(args.len() + 2);
-            terms.push(EffectTerm::Known(EffectLevel::Impure));
-            terms.push(infer_expr_effect_term(
+            terms.push(impure_effect_row());
+            terms.push(infer_expr_effect_row(
                 actor,
                 env,
                 constraints,
                 next_effect_var,
             ));
             for arg in args {
-                terms.push(infer_expr_effect_term(
+                terms.push(infer_expr_effect_row(
                     arg,
                     env,
                     constraints,
                     next_effect_var,
                 ));
             }
-            join_effect_terms_many(terms, constraints, next_effect_var)
+            join_effect_rows_many(terms, constraints, next_effect_var)
         }
-        ExprKind::ControlSend { actor, signal } => join_effect_terms_many(
+        ExprKind::ControlSend { actor, signal } => join_effect_rows_many(
             [
-                EffectTerm::Known(EffectLevel::Impure),
-                infer_expr_effect_term(actor, env, constraints, next_effect_var),
-                infer_expr_effect_term(signal, env, constraints, next_effect_var),
+                impure_effect_row(),
+                infer_expr_effect_row(actor, env, constraints, next_effect_var),
+                infer_expr_effect_row(signal, env, constraints, next_effect_var),
             ],
             constraints,
             next_effect_var,

@@ -2293,60 +2293,6 @@ pub struct Effects {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct EffectVarId(pub u32);
 
-/// User-visible effect lattice levels.
-// TODO(0b-exit): delete when row-based effect solver is complete.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum EffectLevel {
-    Pure,
-    Volatile,
-    Impure,
-}
-
-impl EffectLevel {
-    pub fn as_effects(self) -> Effects {
-        match self {
-            Self::Pure => Effects::pure_deterministic(),
-            Self::Volatile => Effects::pure_volatile(),
-            Self::Impure => Effects::impure(),
-        }
-    }
-
-    pub fn from_effects(effects: Effects) -> Self {
-        match (effects.purity, effects.volatility) {
-            (Purity::Pure, Volatility::Deterministic) => Self::Pure,
-            (Purity::Pure, Volatility::Volatile) => Self::Volatile,
-            (Purity::Impure, _) => Self::Impure,
-        }
-    }
-}
-
-/// Effect term for effect-polymorphic type annotations.
-// TODO(0b-exit): delete when row-based effect solver is complete.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum EffectTerm {
-    Known(EffectLevel),
-    Var(EffectVarId),
-}
-
-/// Effect constraints emitted by the type/effect checker.
-// TODO(0b-exit): delete when row-based effect solver is complete.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum EffectConstraint {
-    Eq {
-        left: EffectTerm,
-        right: EffectTerm,
-    },
-    Leq {
-        left: EffectTerm,
-        right: EffectTerm,
-    },
-    Join {
-        out: EffectTerm,
-        left: EffectTerm,
-        right: EffectTerm,
-    },
-}
-
 impl Effects {
     pub fn pure_deterministic() -> Self {
         Self {
@@ -2378,28 +2324,6 @@ impl Effects {
     /// Can results of this function be memoized? (KERNEL §2.4)
     pub fn is_memoizable(&self) -> bool {
         self.purity == Purity::Pure && self.volatility == Volatility::Deterministic
-    }
-
-    /// Effect-lattice level for comparison/join operations.
-    pub fn level(&self) -> EffectLevel {
-        EffectLevel::from_effects(*self)
-    }
-
-    /// Lattice partial-order check (`self <= other`).
-    pub fn leq(&self, other: Effects) -> bool {
-        let rank = |effects: Effects| -> u8 {
-            match effects.level() {
-                EffectLevel::Pure => 0,
-                EffectLevel::Volatile => 1,
-                EffectLevel::Impure => 2,
-            }
-        };
-        rank(*self) <= rank(other)
-    }
-
-    /// Lattice join (`max`) of two effects.
-    pub fn join(&self, other: Effects) -> Effects {
-        if self.leq(other) { other } else { *self }
     }
 }
 
@@ -2858,39 +2782,18 @@ mod tests {
     }
 
     #[test]
-    fn effect_level_round_trip() {
-        for effects in [
-            Effects::pure_deterministic(),
-            Effects::pure_volatile(),
-            Effects::impure(),
-        ] {
-            assert_eq!(EffectLevel::from_effects(effects).as_effects(), effects);
-        }
-    }
-
-    #[test]
-    fn effects_lattice_ordering() {
+    fn effects_classification_helpers() {
         let pure = Effects::pure_deterministic();
         let volatile = Effects::pure_volatile();
         let impure = Effects::impure();
 
-        assert!(pure.leq(volatile));
-        assert!(volatile.leq(impure));
-        assert!(pure.leq(impure));
-        assert!(!impure.leq(volatile));
-    }
+        assert!(pure.is_column_expr_eligible());
+        assert!(volatile.is_column_expr_eligible());
+        assert!(!impure.is_column_expr_eligible());
 
-    #[test]
-    fn effects_join_returns_lattice_max() {
-        let pure = Effects::pure_deterministic();
-        let volatile = Effects::pure_volatile();
-        let impure = Effects::impure();
-
-        assert_eq!(pure.join(pure), pure);
-        assert_eq!(pure.join(volatile), volatile);
-        assert_eq!(volatile.join(pure), volatile);
-        assert_eq!(volatile.join(impure), impure);
-        assert_eq!(impure.join(pure), impure);
+        assert!(pure.is_memoizable());
+        assert!(!volatile.is_memoizable());
+        assert!(!impure.is_memoizable());
     }
 
     #[test]
