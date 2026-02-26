@@ -11,6 +11,8 @@ jobs:
     name: Program Benchmark Variance
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    env:
+      KEA_AGENT_TARGET_DIR: target/ci-bench-programs-variance
 
     steps:
       - name: Checkout

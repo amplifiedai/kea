@@ -12,6 +12,8 @@ jobs:
     name: Run And Publish Benchmarks
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      KEA_AGENT_TARGET_DIR: target/ci-bench-stage-a
 
     steps:
       - name: Checkout

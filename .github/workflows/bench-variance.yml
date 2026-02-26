@@ -11,6 +11,8 @@ jobs:
     name: Characterize Benchmark Variance
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    env:
+      KEA_AGENT_TARGET_DIR: target/ci-bench-variance
 
     steps:
       - name: Checkout
