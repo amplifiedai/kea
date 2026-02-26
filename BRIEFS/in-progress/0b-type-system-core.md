@@ -1,6 +1,6 @@
 # Brief: Type System Core
 
-**Status:** ready
+**Status:** active
 **Priority:** v1-critical
 **Depends on:** 0a-lexer-parser (needs AST definitions)
 **Blocks:** 0c-effect-handlers, 0d-codegen-pure, everything downstream
@@ -211,3 +211,7 @@ the trait infrastructure from 0b must be extensible for them.
   one Fail in an effect set")? (Proposal: a special lacks-like
   constraint on the effect row variable. Or: defer this to 0c
   and allow multiple Fail effects initially.)
+
+## Progress
+- 2026-02-26: Moved brief to `in-progress`; starting rill-types/rill-infer cannibalisation for `kea-types` + `kea-infer`.
+- **Next:** Bootstrap `kea-types` and `kea-infer` crates from Rill with kea renames, workspace wiring, and first green compile/test checkpoint.
