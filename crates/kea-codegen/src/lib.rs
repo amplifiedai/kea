@@ -308,11 +308,24 @@ fn compile_into_module<M: Module>(module: &mut M, mir: &MirModule) -> Result<(),
                 })?;
 
             builder.append_block_params_for_function_params(entry_block);
+            for block in &function.blocks {
+                if block.id == function.entry {
+                    continue;
+                }
+                let clif_block =
+                    *block_map
+                        .get(&block.id)
+                        .ok_or_else(|| CodegenError::UnsupportedMir {
+                            function: function.name.clone(),
+                            detail: format!("missing Cranelift block for MIR block {:?}", block.id),
+                        })?;
+                for param in &block.params {
+                    let ty = clif_type(&param.ty)?;
+                    builder.append_block_param(clif_block, ty);
+                }
+            }
 
             let mut values: BTreeMap<MirValueId, Value> = BTreeMap::new();
-            for (index, value) in builder.block_params(entry_block).iter().copied().enumerate() {
-                values.insert(MirValueId(index as u32), value);
-            }
 
             for block in &function.blocks {
                 let clif_block =
@@ -323,6 +336,27 @@ fn compile_into_module<M: Module>(module: &mut M, mir: &MirModule) -> Result<(),
                             detail: format!("missing Cranelift block for MIR block {:?}", block.id),
                         })?;
                 builder.switch_to_block(clif_block);
+                if block.id == function.entry {
+                    for (index, value) in builder.block_params(clif_block).iter().copied().enumerate() {
+                        values.insert(MirValueId(index as u32), value);
+                    }
+                } else {
+                    let block_params = builder.block_params(clif_block);
+                    if block_params.len() != block.params.len() {
+                        return Err(CodegenError::UnsupportedMir {
+                            function: function.name.clone(),
+                            detail: format!(
+                                "block {:?} parameter arity mismatch: expected {}, got {}",
+                                block.id,
+                                block.params.len(),
+                                block_params.len()
+                            ),
+                        });
+                    }
+                    for (param, value) in block.params.iter().zip(block_params.iter().copied()) {
+                        values.insert(param.id.clone(), value);
+                    }
+                }
 
                 for inst in &block.instructions {
                     lower_instruction(
@@ -618,7 +652,7 @@ fn lower_terminator(
             builder.ins().return_(&[value]);
             Ok(())
         }
-        MirTerminator::Jump { target } => {
+        MirTerminator::Jump { target, args } => {
             let target_block =
                 *block_map
                     .get(target)
@@ -626,7 +660,11 @@ fn lower_terminator(
                         function: function_name.to_string(),
                         detail: format!("jump target block {:?} not found", target),
                     })?;
-            builder.ins().jump(target_block, &[]);
+            let mut lowered_args = Vec::with_capacity(args.len());
+            for arg in args {
+                lowered_args.push(get_value(values, function_name, arg)?);
+            }
+            builder.ins().jump(target_block, &lowered_args);
             Ok(())
         }
         MirTerminator::Branch {
@@ -792,6 +830,7 @@ mod tests {
                 entry: MirBlockId(0),
                 blocks: vec![MirBlock {
                     id: MirBlockId(0),
+                    params: vec![],
                     instructions: vec![
                         MirInst::Retain {
                             value: MirValueId(0),
@@ -825,6 +864,7 @@ mod tests {
                 entry: MirBlockId(0),
                 blocks: vec![MirBlock {
                     id: MirBlockId(0),
+                    params: vec![],
                     instructions: vec![
                         MirInst::Const {
                             dest: MirValueId(0),
@@ -862,6 +902,7 @@ mod tests {
                 blocks: vec![
                     MirBlock {
                         id: MirBlockId(0),
+                        params: vec![],
                         instructions: vec![MirInst::Const {
                             dest: MirValueId(0),
                             literal: MirLiteral::Bool(true),
@@ -874,6 +915,7 @@ mod tests {
                     },
                     MirBlock {
                         id: MirBlockId(1),
+                        params: vec![],
                         instructions: vec![MirInst::Const {
                             dest: MirValueId(1),
                             literal: MirLiteral::Int(1),
@@ -884,6 +926,7 @@ mod tests {
                     },
                     MirBlock {
                         id: MirBlockId(2),
+                        params: vec![],
                         instructions: vec![MirInst::Const {
                             dest: MirValueId(2),
                             literal: MirLiteral::Int(0),
@@ -1032,6 +1075,44 @@ mod tests {
 
         let artifact = compile_hir_module(&CraneliftBackend, &hir, &BackendConfig::default())
             .expect("unit if pipeline should compile");
+        assert_eq!(artifact.stats.per_function.len(), 1);
+    }
+
+    #[test]
+    fn compile_hir_module_lowers_value_if_control_flow() {
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "pick".to_string(),
+                params: vec![],
+                body: HirExpr {
+                    kind: HirExprKind::If {
+                        condition: Box::new(HirExpr {
+                            kind: HirExprKind::Lit(kea_ast::Lit::Bool(true)),
+                            ty: Type::Bool,
+                            span: kea_ast::Span::synthetic(),
+                        }),
+                        then_branch: Box::new(HirExpr {
+                            kind: HirExprKind::Lit(kea_ast::Lit::Int(1)),
+                            ty: Type::Int,
+                            span: kea_ast::Span::synthetic(),
+                        }),
+                        else_branch: Some(Box::new(HirExpr {
+                            kind: HirExprKind::Lit(kea_ast::Lit::Int(2)),
+                            ty: Type::Int,
+                            span: kea_ast::Span::synthetic(),
+                        })),
+                    },
+                    ty: Type::Int,
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
+                effects: EffectRow::pure(),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let artifact = compile_hir_module(&CraneliftBackend, &hir, &BackendConfig::default())
+            .expect("value if pipeline should compile");
         assert_eq!(artifact.stats.per_function.len(), 1);
     }
 }

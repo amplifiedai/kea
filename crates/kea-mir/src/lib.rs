@@ -38,8 +38,15 @@ pub struct MirFunctionSignature {
 #[derive(Debug, Clone, PartialEq)]
 pub struct MirBlock {
     pub id: MirBlockId,
+    pub params: Vec<MirBlockParam>,
     pub instructions: Vec<MirInst>,
     pub terminator: MirTerminator,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MirBlockParam {
+    pub id: MirValueId,
+    pub ty: Type,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -162,6 +169,7 @@ pub enum MirEffectOpClass {
 pub enum MirTerminator {
     Jump {
         target: MirBlockId,
+        args: Vec<MirValueId>,
     },
     Branch {
         condition: MirValueId,
@@ -242,6 +250,7 @@ fn lower_hir_function(function: &HirFunction) -> MirFunction {
 #[derive(Debug, Clone)]
 struct PendingBlock {
     id: MirBlockId,
+    params: Vec<MirBlockParam>,
     instructions: Vec<MirInst>,
     terminator: Option<MirTerminator>,
 }
@@ -258,6 +267,7 @@ impl FunctionLoweringCtx {
         Self {
             blocks: vec![PendingBlock {
                 id: MirBlockId(0),
+                params: Vec::new(),
                 instructions: Vec::new(),
                 terminator: None,
             }],
@@ -285,6 +295,7 @@ impl FunctionLoweringCtx {
                 }
                 MirBlock {
                     id: block.id,
+                    params: block.params,
                     instructions: block.instructions,
                     terminator: block.terminator.unwrap_or(MirTerminator::Unreachable),
                 }
@@ -299,9 +310,14 @@ impl FunctionLoweringCtx {
     }
 
     fn new_block(&mut self) -> MirBlockId {
+        self.new_block_with_params(Vec::new())
+    }
+
+    fn new_block_with_params(&mut self, params: Vec<MirBlockParam>) -> MirBlockId {
         let block_id = MirBlockId(self.blocks.len() as u32);
         self.blocks.push(PendingBlock {
             id: block_id.clone(),
+            params,
             instructions: Vec::new(),
             terminator: None,
         });
@@ -333,9 +349,9 @@ impl FunctionLoweringCtx {
         self.current_block_mut().terminator = Some(terminator);
     }
 
-    fn ensure_jump_to(&mut self, target: MirBlockId) {
+    fn ensure_jump_to(&mut self, target: MirBlockId, args: Vec<MirValueId>) {
         if self.current_block().terminator.is_none() {
-            self.set_terminator(MirTerminator::Jump { target });
+            self.set_terminator(MirTerminator::Jump { target, args });
         }
     }
 
@@ -420,17 +436,22 @@ impl FunctionLoweringCtx {
         then_branch: &HirExpr,
         else_branch: Option<&HirExpr>,
     ) -> Option<MirValueId> {
-        // Without block params/phi nodes, v0 0d lowering supports `if` only in
-        // Unit contexts (statement-style control flow). Non-Unit `if` remains
-        // unsupported in MIR for now.
-        if expr.ty != Type::Unit {
-            return None;
-        }
-
         let condition_value = self.lower_expr(condition)?;
         let then_block = self.new_block();
         let else_block = self.new_block();
-        let join_block = self.new_block();
+        let mut join_params = Vec::new();
+        let result_value = if expr.ty == Type::Unit {
+            None
+        } else {
+            Some(self.new_value())
+        };
+        if let Some(value) = &result_value {
+            join_params.push(MirBlockParam {
+                id: value.clone(),
+                ty: expr.ty.clone(),
+            });
+        }
+        let join_block = self.new_block_with_params(join_params);
 
         self.set_terminator(MirTerminator::Branch {
             condition: condition_value,
@@ -439,17 +460,23 @@ impl FunctionLoweringCtx {
         });
 
         self.switch_to(then_block);
-        self.lower_expr(then_branch);
-        self.ensure_jump_to(join_block.clone());
+        let then_value = self.lower_expr(then_branch);
+        let then_args = match &result_value {
+            Some(_) => vec![then_value?],
+            None => vec![],
+        };
+        self.ensure_jump_to(join_block.clone(), then_args);
 
         self.switch_to(else_block);
-        if let Some(else_branch) = else_branch {
-            self.lower_expr(else_branch);
-        }
-        self.ensure_jump_to(join_block.clone());
+        let else_value = else_branch.and_then(|branch| self.lower_expr(branch));
+        let else_args = match &result_value {
+            Some(_) => vec![else_value?],
+            None => vec![],
+        };
+        self.ensure_jump_to(join_block.clone(), else_args);
 
         self.switch_to(join_block);
-        None
+        result_value
     }
 
     fn bind_pattern(&mut self, pattern: &HirPattern, value_id: MirValueId) {
@@ -667,6 +694,69 @@ mod tests {
         assert!(matches!(
             function.blocks[3].terminator,
             MirTerminator::Return { value: None }
+        ));
+    }
+
+    #[test]
+    fn lower_hir_module_lowers_value_if_with_join_param() {
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "pick".to_string(),
+                params: vec![],
+                body: HirExpr {
+                    kind: HirExprKind::If {
+                        condition: Box::new(HirExpr {
+                            kind: HirExprKind::Lit(kea_ast::Lit::Bool(true)),
+                            ty: Type::Bool,
+                            span: kea_ast::Span::synthetic(),
+                        }),
+                        then_branch: Box::new(HirExpr {
+                            kind: HirExprKind::Lit(kea_ast::Lit::Int(1)),
+                            ty: Type::Int,
+                            span: kea_ast::Span::synthetic(),
+                        }),
+                        else_branch: Some(Box::new(HirExpr {
+                            kind: HirExprKind::Lit(kea_ast::Lit::Int(2)),
+                            ty: Type::Int,
+                            span: kea_ast::Span::synthetic(),
+                        })),
+                    },
+                    ty: Type::Int,
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
+                effects: EffectRow::pure(),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let mir = lower_hir_module(&hir);
+        let function = &mir.functions[0];
+        assert_eq!(function.blocks.len(), 4);
+        assert_eq!(function.blocks[3].params.len(), 1);
+        assert_eq!(function.blocks[3].params[0].ty, Type::Int);
+        let join_value = function.blocks[3].params[0].id.clone();
+
+        let MirTerminator::Jump {
+            args: then_args, ..
+        } = &function.blocks[1].terminator
+        else {
+            panic!("then block should jump to join");
+        };
+        let MirTerminator::Jump {
+            args: else_args, ..
+        } = &function.blocks[2].terminator
+        else {
+            panic!("else block should jump to join");
+        };
+        assert_eq!(then_args.len(), 1);
+        assert_eq!(else_args.len(), 1);
+
+        assert!(matches!(
+            function.blocks[3].terminator,
+            MirTerminator::Return {
+                value: Some(ref value)
+            } if value == &join_value
         ));
     }
 }
