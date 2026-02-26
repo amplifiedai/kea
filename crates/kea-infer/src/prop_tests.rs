@@ -14,7 +14,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use proptest::prelude::*;
-use kea_ast::{FileId, ParamLabel, PipeOp, Span};
+use kea_ast::{FileId, ParamLabel, Span};
 use kea_types::*;
 
 use crate::{Provenance, Reason, Unifier};
@@ -3611,11 +3611,12 @@ proptest! {
         use kea_ast::{Expr, ExprKind, Lit};
 
         let expected = Type::IntN(IntWidth::I8, Signedness::Signed);
-        let expr: Expr = sp_ast(ExprKind::Pipe {
-            left: Box::new(sp_ast(ExprKind::Lit(Lit::Int(value)))),
-            op: sp_ast(PipeOp::Standard),
-            right: Box::new(sp_ast(ExprKind::Var("narrow".to_string()))),
-            guard: None,
+        let expr: Expr = sp_ast(ExprKind::Call {
+            func: Box::new(sp_ast(ExprKind::Var("narrow".to_string()))),
+            args: vec![kea_ast::Argument {
+                label: None,
+                value: sp_ast(ExprKind::Lit(Lit::Int(value))),
+            }],
         });
         let mut env = crate::typeck::TypeEnv::new();
         env.bind(
@@ -3716,11 +3717,12 @@ proptest! {
         use kea_ast::{Expr, ExprKind, Lit};
 
         let expected = Type::IntN(IntWidth::I8, Signedness::Signed);
-        let expr: Expr = sp_ast(ExprKind::Pipe {
-            left: Box::new(sp_ast(ExprKind::Lit(Lit::Int(value)))),
-            op: sp_ast(PipeOp::Standard),
-            right: Box::new(sp_ast(ExprKind::Var("narrow".to_string()))),
-            guard: None,
+        let expr: Expr = sp_ast(ExprKind::Call {
+            func: Box::new(sp_ast(ExprKind::Var("narrow".to_string()))),
+            args: vec![kea_ast::Argument {
+                label: None,
+                value: sp_ast(ExprKind::Lit(Lit::Int(value))),
+            }],
         });
         let mut env = crate::typeck::TypeEnv::new();
         env.bind(

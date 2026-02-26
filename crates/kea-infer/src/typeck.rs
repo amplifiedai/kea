@@ -15,8 +15,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use kea_ast::{
     AliasDecl, Argument, BinOp, ColCondArm, ColExpr, ColExprKind, DfAcrossSelector,
     DfColAssignment, DfVerbArgs, DfVerbKind, Expr, ExprKind, FnDecl, ForClause, ForExpr, Lit,
-    OpaqueTypeDef, Param, ParamLabel, Pattern, PatternKind, PipeOp, RecordDef, Span, Spanned,
-    StringInterpPart, TypeAnnotation, free_vars,
+    OpaqueTypeDef, Param, ParamLabel, Pattern, PatternKind, RecordDef, Span, Spanned,
+    TypeAnnotation, free_vars,
 };
 use kea_types::{
     Dim, DimVarId, EffectRow, Effects, FloatWidth, FunctionType, IntWidth, Kind, Label, Purity,
@@ -5157,7 +5157,6 @@ fn is_option_is_none_reference(expr: &Expr) -> bool {
 fn is_annotation_expr_pure(expr: &Expr) -> bool {
     match &expr.node {
         ExprKind::Lit(_) | ExprKind::None | ExprKind::Atom(_) | ExprKind::Var(_) => true,
-        ExprKind::PipePlaceholder => true,
         ExprKind::Tuple(items) | ExprKind::List(items) | ExprKind::Block(items) => {
             items.iter().all(is_annotation_expr_pure)
         }
@@ -9642,23 +9641,6 @@ fn infer_call_effect_row(
     }
 }
 
-fn infer_call_effect_row_with_pipe_arg(
-    func: &Expr,
-    pipe_arg: &Expr,
-    args: &[Argument],
-    env: &TypeEnv,
-    constraints: &mut Vec<Constraint>,
-    next_effect_var: &mut u32,
-) -> EffectRow {
-    let mut combined = Vec::with_capacity(args.len() + 1);
-    combined.push(Argument {
-        label: None,
-        value: pipe_arg.clone(),
-    });
-    combined.extend(args.iter().cloned());
-    infer_call_effect_row(func, &combined, env, constraints, next_effect_var)
-}
-
 /// Infer effects bottom-up for a function declaration's bodies.
 ///
 /// Uses a small fixed-point iteration so recursive functions can reference
@@ -10607,6 +10589,25 @@ fn infer_expr_effect_row(
         }
 
         ExprKind::Call { func, args } => {
+            if matches!(func.node, ExprKind::DfVerb { .. }) {
+                let mut terms = Vec::with_capacity(args.len() + 1);
+                for arg in args {
+                    terms.push(infer_expr_effect_row(
+                        &arg.value,
+                        env,
+                        constraints,
+                        next_effect_var,
+                    ));
+                }
+                terms.push(infer_expr_effect_row(
+                    func,
+                    env,
+                    constraints,
+                    next_effect_var,
+                ));
+                return join_effect_rows_many(terms, constraints, next_effect_var);
+            }
+
             let mut terms = Vec::with_capacity(args.len() + 2);
             let mut arg_eval_terms = Vec::with_capacity(args.len());
             for arg in args {
@@ -10700,96 +10701,11 @@ fn infer_expr_effect_row(
             join_effect_rows(left_term, right_term, constraints, next_effect_var)
         }
 
-        ExprKind::Pipe {
-            left, right, guard, ..
-        } => {
-            let left_term = infer_expr_effect_row(left, env, constraints, next_effect_var);
-            let guard_term = guard
-                .as_ref()
-                .map(|g| infer_expr_effect_row(g, env, constraints, next_effect_var));
-            match &right.node {
-                ExprKind::Call { func, args } => {
-                    let mut terms = Vec::with_capacity(args.len() + 3);
-                    terms.push(left_term);
-                    if let Some(term) = guard_term {
-                        terms.push(term);
-                    }
-                    terms.push(infer_expr_effect_row(
-                        func,
-                        env,
-                        constraints,
-                        next_effect_var,
-                    ));
-                    for arg in args {
-                        terms.push(infer_expr_effect_row(
-                            &arg.value,
-                            env,
-                            constraints,
-                            next_effect_var,
-                        ));
-                    }
-                    let call_effect = infer_call_effect_row_with_pipe_arg(
-                        func,
-                        left,
-                        args,
-                        env,
-                        constraints,
-                        next_effect_var,
-                    );
-                    terms.push(call_effect);
-                    join_effect_rows_many(terms, constraints, next_effect_var)
-                }
-                ExprKind::Var(_) | ExprKind::FieldAccess { .. } | ExprKind::Lambda { .. } => {
-                    let right_eval =
-                        infer_expr_effect_row(right, env, constraints, next_effect_var);
-                    let call_effect = infer_call_effect_row_with_pipe_arg(
-                        right,
-                        left,
-                        &[],
-                        env,
-                        constraints,
-                        next_effect_var,
-                    );
-                    let mut terms = vec![left_term];
-                    if let Some(term) = guard_term {
-                        terms.push(term);
-                    }
-                    terms.extend([right_eval, call_effect]);
-                    join_effect_rows_many(terms, constraints, next_effect_var)
-                }
-                ExprKind::DfVerb { .. } => {
-                    let right_term =
-                        infer_expr_effect_row(right, env, constraints, next_effect_var);
-                    if let Some(term) = guard_term {
-                        join_effect_rows_many(
-                            [left_term, term, right_term],
-                            constraints,
-                            next_effect_var,
-                        )
-                    } else {
-                        join_effect_rows(left_term, right_term, constraints, next_effect_var)
-                    }
-                }
-                _ => {
-                    let right_term =
-                        infer_expr_effect_row(right, env, constraints, next_effect_var);
-                    let mut terms = vec![left_term];
-                    if let Some(term) = guard_term {
-                        terms.push(term);
-                    }
-                    terms.extend([right_term, impure_effect_row()]);
-                    join_effect_rows_many(terms, constraints, next_effect_var)
-                }
-            }
-        }
-
         ExprKind::WhenGuard { body, condition } => {
             let cond_term = infer_expr_effect_row(condition, env, constraints, next_effect_var);
             let body_term = infer_expr_effect_row(body, env, constraints, next_effect_var);
             join_effect_rows(cond_term, body_term, constraints, next_effect_var)
         }
-
-        ExprKind::PipePlaceholder => pure_effect_row(),
 
         ExprKind::UnaryOp { operand, .. } | ExprKind::As { expr: operand, .. } => {
             infer_expr_effect_row(operand, env, constraints, next_effect_var)
@@ -13668,7 +13584,6 @@ fn match_narrowing_guard(expr: &Expr) -> Option<NarrowingGuard> {
         ExprKind::Call { func, args } if args.len() == 1 => {
             parse_narrowing_guard(func, &args[0].value)
         }
-        ExprKind::Pipe { left, right, .. } => parse_narrowing_guard(right, left),
         _ => None,
     }
 }
@@ -13940,272 +13855,6 @@ fn check_condition_and_collect_narrowings(
     }
 }
 
-fn expr_contains_pipe_placeholder(expr: &Expr) -> bool {
-    match &expr.node {
-        ExprKind::PipePlaceholder => true,
-        ExprKind::Let { value, .. } => expr_contains_pipe_placeholder(value),
-        ExprKind::Lambda { body, .. } => expr_contains_pipe_placeholder(body),
-        ExprKind::Call { func, args } => {
-            expr_contains_pipe_placeholder(func)
-                || args
-                    .iter()
-                    .any(|arg| expr_contains_pipe_placeholder(&arg.value))
-        }
-        ExprKind::If {
-            condition,
-            then_branch,
-            else_branch,
-        } => {
-            expr_contains_pipe_placeholder(condition)
-                || expr_contains_pipe_placeholder(then_branch)
-                || else_branch
-                    .as_ref()
-                    .is_some_and(|expr| expr_contains_pipe_placeholder(expr))
-        }
-        ExprKind::Case { scrutinee, arms } => {
-            expr_contains_pipe_placeholder(scrutinee)
-                || arms.iter().any(|arm| {
-                    arm.guard
-                        .as_ref()
-                        .is_some_and(|guard| expr_contains_pipe_placeholder(guard))
-                        || expr_contains_pipe_placeholder(&arm.body)
-                })
-        }
-        ExprKind::Cond { arms } => arms.iter().any(|arm| {
-            expr_contains_pipe_placeholder(&arm.condition)
-                || expr_contains_pipe_placeholder(&arm.body)
-        }),
-        ExprKind::For(for_expr) => {
-            for_expr.clauses.iter().any(|clause| match clause {
-                ForClause::Generator { source, .. } => expr_contains_pipe_placeholder(source),
-                ForClause::Guard(guard) => expr_contains_pipe_placeholder(guard),
-            }) || expr_contains_pipe_placeholder(&for_expr.body)
-        }
-        ExprKind::Use(use_expr) => expr_contains_pipe_placeholder(&use_expr.rhs),
-        ExprKind::BinaryOp { left, right, .. } => {
-            expr_contains_pipe_placeholder(left) || expr_contains_pipe_placeholder(right)
-        }
-        ExprKind::UnaryOp { operand, .. } => expr_contains_pipe_placeholder(operand),
-        ExprKind::Pipe {
-            left, right, guard, ..
-        } => {
-            expr_contains_pipe_placeholder(left)
-                || expr_contains_pipe_placeholder(right)
-                || guard
-                    .as_ref()
-                    .is_some_and(|guard_expr| expr_contains_pipe_placeholder(guard_expr))
-        }
-        ExprKind::WhenGuard { body, condition } => {
-            expr_contains_pipe_placeholder(body) || expr_contains_pipe_placeholder(condition)
-        }
-        ExprKind::Range { start, end, .. } => {
-            expr_contains_pipe_placeholder(start) || expr_contains_pipe_placeholder(end)
-        }
-        ExprKind::As { expr, .. } => expr_contains_pipe_placeholder(expr),
-        ExprKind::Tuple(exprs) | ExprKind::List(exprs) => {
-            exprs.iter().any(expr_contains_pipe_placeholder)
-        }
-        ExprKind::Record { fields, spread, .. } | ExprKind::AnonRecord { fields, spread } => {
-            fields
-                .iter()
-                .any(|(_, expr)| expr_contains_pipe_placeholder(expr))
-                || spread
-                    .as_ref()
-                    .is_some_and(|expr| expr_contains_pipe_placeholder(expr))
-        }
-        ExprKind::FieldAccess { expr, .. } => expr_contains_pipe_placeholder(expr),
-        ExprKind::Block(exprs) => exprs.iter().any(expr_contains_pipe_placeholder),
-        ExprKind::Constructor { args, .. } => args
-            .iter()
-            .any(|arg| expr_contains_pipe_placeholder(&arg.value)),
-        ExprKind::StringInterp(parts) => parts.iter().any(|part| match part {
-            StringInterpPart::Literal(_) => false,
-            StringInterpPart::Expr(expr) => expr_contains_pipe_placeholder(expr),
-        }),
-        ExprKind::MapLiteral(pairs) => pairs
-            .iter()
-            .any(|(k, v)| expr_contains_pipe_placeholder(k) || expr_contains_pipe_placeholder(v)),
-        ExprKind::Frame { columns } => columns
-            .iter()
-            .any(|(_, values)| values.iter().any(expr_contains_pipe_placeholder)),
-        ExprKind::DfVerb { .. }
-        | ExprKind::EmbeddedBlock { .. }
-        | ExprKind::Spawn { .. }
-        | ExprKind::Await { .. }
-        | ExprKind::StreamBlock { .. }
-        | ExprKind::Yield { .. }
-        | ExprKind::YieldFrom { .. }
-        | ExprKind::ActorSend { .. }
-        | ExprKind::ActorCall { .. }
-        | ExprKind::ControlSend { .. }
-        | ExprKind::Wildcard
-        | ExprKind::Lit(_)
-        | ExprKind::Var(_)
-        | ExprKind::None
-        | ExprKind::Atom(_) => false,
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn infer_standard_pipe_step(
-    left: &Expr,
-    right: &Expr,
-    pipe_span: Span,
-    env: &mut TypeEnv,
-    unifier: &mut Unifier,
-    records: &RecordRegistry,
-    traits: &TraitRegistry,
-    sum_types: &SumTypeRegistry,
-) -> Type {
-    let prov = |reason: Reason| -> Provenance {
-        Provenance {
-            span: pipe_span,
-            reason,
-        }
-    };
-
-    if let ExprKind::DfVerb { verb, args } = &right.node {
-        let df_ty = infer_expr_bidir(left, env, unifier, records, traits, sum_types);
-        return infer_df_verb(
-            &df_ty, verb, args, env, unifier, pipe_span, records, traits, sum_types,
-        );
-    }
-
-    if let ExprKind::Call { func, args } = &right.node {
-        let mut call_args = Vec::with_capacity(args.len() + 1);
-        call_args.push(Argument {
-            label: None,
-            value: left.clone(),
-        });
-        call_args.extend(args.clone());
-        let (call_signature, bound_args) =
-            resolve_bound_call_args(func, &call_args, pipe_span, env, unifier);
-
-        let mut param_types = infer_bound_args_with_param_contracts(
-            &bound_args,
-            call_signature.as_ref(),
-            None,
-            env,
-            unifier,
-            records,
-            traits,
-            sum_types,
-        );
-
-        let func_ty = infer_expr_bidir(func, env, unifier, records, traits, sum_types);
-        let resolved_func_pre = unifier.substitution.apply(&func_ty);
-        let ret_ty = unifier.fresh_type();
-
-        if let Type::Function(ft) = &resolved_func_pre
-            && ft.params.len() == bound_args.len()
-        {
-            let mut default_env = env.clone();
-            default_env.push_scope();
-            for (i, bound_arg) in bound_args.iter().enumerate() {
-                let Some(param_ty) = ft.params.get(i) else {
-                    continue;
-                };
-                let known_arg_ty = param_types[i].clone();
-                param_types[i] = match bound_arg {
-                    BoundArg::Provided(arg_expr) => enforce_param_contract_with_known_arg(
-                        arg_expr,
-                        &known_arg_ty,
-                        param_ty,
-                        i,
-                        env,
-                        unifier,
-                        records,
-                        traits,
-                        sum_types,
-                    ),
-                    BoundArg::Default(arg_expr) => enforce_param_contract_with_known_arg(
-                        arg_expr,
-                        &known_arg_ty,
-                        param_ty,
-                        i,
-                        &mut default_env,
-                        unifier,
-                        records,
-                        traits,
-                        sum_types,
-                    ),
-                };
-                if let Some(param_name) = call_signature
-                    .as_ref()
-                    .and_then(|sig| sig.params.get(i))
-                    .and_then(|param| param.name.as_ref())
-                {
-                    default_env.bind(param_name.clone(), TypeScheme::mono(param_types[i].clone()));
-                }
-            }
-            constrain_type_eq(
-                unifier,
-                &ret_ty,
-                &ft.ret,
-                &prov(Reason::FunctionArg { param_index: 0 }),
-            );
-            unifier.note_evidence_site(pipe_span, &func_ty);
-            note_existential_pack_sites(unifier, pipe_span, &func_ty, &param_types);
-        } else {
-            let expected_params = params_for_call_unification(&resolved_func_pre, &param_types);
-            let expected_func = Type::Function(FunctionType {
-                params: expected_params,
-                ret: Box::new(ret_ty.clone()),
-            });
-            constrain_type_eq(
-                unifier,
-                &expected_func,
-                &func_ty,
-                &prov(Reason::FunctionArg { param_index: 0 }),
-            );
-            unifier.note_evidence_site(pipe_span, &func_ty);
-            note_existential_pack_sites(unifier, pipe_span, &func_ty, &param_types);
-        }
-        return ret_ty;
-    }
-
-    let arg_ty = infer_expr_bidir(left, env, unifier, records, traits, sum_types);
-    let func_ty = infer_expr_bidir(right, env, unifier, records, traits, sum_types);
-    let resolved_func_pre = unifier.substitution.apply(&func_ty);
-    let ret_ty = unifier.fresh_type();
-
-    if let Type::Function(ft) = &resolved_func_pre
-        && ft.params.len() == 1
-        && let Some(param0) = ft.params.first()
-    {
-        let _checked = enforce_param_contract_with_known_arg(
-            left, &arg_ty, param0, 0, env, unifier, records, traits, sum_types,
-        );
-        constrain_type_eq(
-            unifier,
-            &ret_ty,
-            &ft.ret,
-            &prov(Reason::FunctionArg { param_index: 0 }),
-        );
-        unifier.note_evidence_site(pipe_span, &func_ty);
-        note_existential_pack_sites(unifier, pipe_span, &func_ty, std::slice::from_ref(&arg_ty));
-    } else {
-        let expected_params =
-            params_for_call_unification(&resolved_func_pre, std::slice::from_ref(&arg_ty));
-
-        let expected_func = Type::Function(FunctionType {
-            params: expected_params,
-            ret: Box::new(ret_ty.clone()),
-        });
-
-        constrain_type_eq(
-            unifier,
-            &expected_func,
-            &func_ty,
-            &prov(Reason::FunctionArg { param_index: 0 }),
-        );
-        unifier.note_evidence_site(pipe_span, &func_ty);
-        note_existential_pack_sites(unifier, pipe_span, &func_ty, std::slice::from_ref(&arg_ty));
-    }
-
-    ret_ty
-}
-
 /// Infer the type of an expression.
 ///
 /// Uses eager unification: types are unified as the AST is walked, so
@@ -14438,6 +14087,42 @@ fn infer_expr_bidir(
 
         // -- Function application --
         ExprKind::Call { func, args } => {
+            if let ExprKind::DfVerb { verb, args: verb_args } = &func.node {
+                if args.len() != 1 {
+                    unifier.push_error(
+                        Diagnostic::error(
+                            Category::ArityMismatch,
+                            format!(
+                                "dataframe verb `{}` expects exactly 1 input dataframe argument, got {}",
+                                verb_kind_name(&verb.node),
+                                args.len()
+                            ),
+                        )
+                        .at(span_to_loc(expr.span)),
+                    );
+                    return unifier.fresh_type();
+                }
+                let input_ty = infer_expr_bidir(
+                    &args[0].value,
+                    env,
+                    unifier,
+                    records,
+                    traits,
+                    sum_types,
+                );
+                return infer_df_verb(
+                    &input_ty,
+                    verb,
+                    verb_args,
+                    env,
+                    unifier,
+                    expr.span,
+                    records,
+                    traits,
+                    sum_types,
+                );
+            }
+
             let (call_signature, bound_args) =
                 resolve_bound_call_args(func, args, expr.span, env, unifier);
             if let Some(expect_type_ty) = infer_expect_type_call(
@@ -15101,59 +14786,6 @@ fn infer_expr_bidir(
             last_ty
         }
 
-        // -- Pipe operators: `|>`, `$>`, `!>` --
-        ExprKind::Pipe {
-            left,
-            op,
-            right,
-            guard,
-        } => {
-            let left_ty = infer_expr_bidir(left, env, unifier, records, traits, sum_types);
-
-            let step_ty = match op.node {
-                PipeOp::Standard => infer_standard_pipe_step(
-                    left, right, expr.span, env, unifier, records, traits, sum_types,
-                ),
-                PipeOp::Place => {
-                    env.push_scope();
-                    env.bind("$".to_string(), TypeScheme::mono(left_ty.clone()));
-                    let ty = infer_expr_bidir(right, env, unifier, records, traits, sum_types);
-                    env.pop_scope();
-                    ty
-                }
-                PipeOp::Tap => {
-                    if expr_contains_pipe_placeholder(right) {
-                        env.push_scope();
-                        env.bind("$".to_string(), TypeScheme::mono(left_ty.clone()));
-                        let _ = infer_expr_bidir(right, env, unifier, records, traits, sum_types);
-                        env.pop_scope();
-                    } else {
-                        let _ = infer_standard_pipe_step(
-                            left, right, expr.span, env, unifier, records, traits, sum_types,
-                        );
-                    }
-                    left_ty.clone()
-                }
-            };
-
-            if let Some(condition) = guard {
-                check_expr_bidir(
-                    condition,
-                    &Type::Bool,
-                    Reason::IfBranches,
-                    env,
-                    unifier,
-                    records,
-                    traits,
-                    sum_types,
-                );
-                constrain_type_eq(unifier, &left_ty, &step_ty, &prov(Reason::IfBranches));
-                left_ty
-            } else {
-                step_ty
-            }
-        }
-
         ExprKind::WhenGuard { body, condition } => {
             check_expr_bidir(
                 condition,
@@ -15169,20 +14801,6 @@ fn infer_expr_bidir(
             constrain_type_eq(unifier, &body_ty, &Type::Unit, &prov(Reason::IfBranches));
             Type::Unit
         }
-
-        ExprKind::PipePlaceholder => match env.lookup("$") {
-            Some(scheme) => instantiate_with_span(scheme, unifier, expr.span),
-            None => {
-                unifier.push_error(
-                    Diagnostic::error(
-                        Category::Syntax,
-                        "`$` is only valid in `$>`/`!>` expressions".to_string(),
-                    )
-                    .at(span_to_loc(expr.span)),
-                );
-                unifier.fresh_type()
-            }
-        },
 
         // -- Constructor (Some, Ok, Err) --
         ExprKind::Constructor { name, args } => {
@@ -17589,6 +17207,52 @@ fn check_expr_bidir(
             }
         }
         (ExprKind::Call { func, args }, _) => {
+            if let ExprKind::DfVerb { verb, args: verb_args } = &func.node {
+                if args.len() != 1 {
+                    unifier.push_error(
+                        Diagnostic::error(
+                            Category::ArityMismatch,
+                            format!(
+                                "dataframe verb `{}` expects exactly 1 input dataframe argument, got {}",
+                                verb_kind_name(&verb.node),
+                                args.len()
+                            ),
+                        )
+                        .at(span_to_loc(expr.span)),
+                    );
+                    return unifier.fresh_type();
+                }
+                let df_ty = infer_expr_bidir(
+                    &args[0].value,
+                    env,
+                    unifier,
+                    records,
+                    traits,
+                    sum_types,
+                );
+                let actual = infer_df_verb(
+                    &df_ty,
+                    verb,
+                    verb_args,
+                    env,
+                    unifier,
+                    expr.span,
+                    records,
+                    traits,
+                    sum_types,
+                );
+                constrain_type_eq_with_nominal_boundary(
+                    unifier,
+                    expected,
+                    &actual,
+                    &Provenance {
+                        span: expr.span,
+                        reason: reason.clone(),
+                    },
+                );
+                return actual;
+            }
+
             let (call_signature, bound_args) =
                 resolve_bound_call_args(func, args, expr.span, env, unifier);
             // Intercept expect_type before general Call handling
@@ -17642,98 +17306,6 @@ fn check_expr_bidir(
                 );
                 unifier.note_evidence_site(expr.span, &callable_ty);
                 note_existential_pack_sites(unifier, expr.span, &callable_ty, &arg_types);
-                return expected.clone();
-            }
-        }
-        (ExprKind::Pipe { left, right, .. }, _) => {
-            if let ExprKind::DfVerb { verb, args } = &right.node {
-                let df_ty = infer_expr_bidir(left, env, unifier, records, traits, sum_types);
-                let actual = infer_df_verb(
-                    &df_ty, verb, args, env, unifier, expr.span, records, traits, sum_types,
-                );
-                constrain_type_eq_with_nominal_boundary(
-                    unifier,
-                    expected,
-                    &actual,
-                    &Provenance {
-                        span: expr.span,
-                        reason: reason.clone(),
-                    },
-                );
-                return actual;
-            }
-
-            if let ExprKind::Call { func, args } = &right.node {
-                let mut call_args = Vec::with_capacity(args.len() + 1);
-                call_args.push(Argument {
-                    label: None,
-                    value: left.as_ref().clone(),
-                });
-                call_args.extend(args.clone());
-                let (call_signature, bound_args) =
-                    resolve_bound_call_args(func, &call_args, expr.span, env, unifier);
-                let func_ty = infer_expr_bidir(func, env, unifier, records, traits, sum_types);
-                let callable_ty = instantiate_callable_type_for_call(&func_ty, unifier, expr.span);
-                let resolved_callable = unifier.substitution.apply(&callable_ty);
-                if let Type::Function(ft) = &resolved_callable
-                    && ft.params.len() == bound_args.len()
-                {
-                    let param_types = infer_bound_args_with_param_contracts(
-                        &bound_args,
-                        call_signature.as_ref(),
-                        Some(&ft.params),
-                        env,
-                        unifier,
-                        records,
-                        traits,
-                        sum_types,
-                    );
-
-                    constrain_type_eq_with_nominal_boundary(
-                        unifier,
-                        expected,
-                        &ft.ret,
-                        &Provenance {
-                            span: expr.span,
-                            reason: Reason::FunctionArg { param_index: 0 },
-                        },
-                    );
-                    unifier.note_evidence_site(expr.span, &callable_ty);
-                    note_existential_pack_sites(unifier, expr.span, &callable_ty, &param_types);
-                    return expected.clone();
-                }
-            }
-
-            let func_ty = infer_expr_bidir(right, env, unifier, records, traits, sum_types);
-            let callable_ty = instantiate_callable_type_for_call(&func_ty, unifier, expr.span);
-            let resolved_callable = unifier.substitution.apply(&callable_ty);
-            if let Type::Function(ft) = &resolved_callable
-                && ft.params.len() == 1
-            {
-                let mut param_types = Vec::with_capacity(1);
-                let arg_ty = infer_and_enforce_param_contract(
-                    left,
-                    &ft.params[0],
-                    0,
-                    env,
-                    unifier,
-                    records,
-                    traits,
-                    sum_types,
-                );
-                param_types.push(arg_ty);
-
-                constrain_type_eq_with_nominal_boundary(
-                    unifier,
-                    expected,
-                    &ft.ret,
-                    &Provenance {
-                        span: expr.span,
-                        reason: Reason::FunctionArg { param_index: 0 },
-                    },
-                );
-                unifier.note_evidence_site(expr.span, &callable_ty);
-                note_existential_pack_sites(unifier, expr.span, &callable_ty, &param_types);
                 return expected.clone();
             }
         }
