@@ -1,0 +1,255 @@
+# Brief: Benchmark Infrastructure
+
+**Status:** design
+**Priority:** v1-critical (0d prerequisite for performance-backend-strategy)
+**Depends on:** 0d-codegen-pure (needs compilable programs to benchmark)
+**Blocks:** performance-backend-strategy (benchmark gates require harness), 0e regression gates
+
+## Motivation
+
+The performance-backend-strategy brief defines *what* to measure and
+*what thresholds to enforce*. This brief defines *how* — the concrete
+tooling, harness design, CI integration, and benchmark corpus that
+makes performance work rigorous instead of anecdotal.
+
+Without this, performance claims are stories. With it, they're numbers.
+
+## Framework Selection
+
+### Primary: Divan
+
+[divan](https://github.com/nvzqz/divan) is the right primary framework:
+
+- **AllocProfiler**: built-in allocation counting per benchmark.
+  Critical for a refcounted language — we need to know when a
+  change increases allocations.
+- **Parameterised benchmarks**: `#[divan::bench(args = [1, 4, 16, 64])]`
+  maps directly to "effect dispatch at depth N" and "type inference
+  on M-node expression trees."
+- **Adaptive sample scaling**: auto-tunes for CI without hand-config.
+- **Stable Rust**: no nightly required.
+- **CodSpeed compatible**: same benchmarks run as wall-time locally,
+  instruction-count in CI.
+
+### CI Regression: CodSpeed
+
+[CodSpeed](https://codspeed.io) — free for open source:
+
+- Drop-in via `codspeed-divan-compat` crate. Zero code changes.
+- Uses Valgrind-based instruction counting (same philosophy as
+  rustc-perf: instruction count is stable, wall time is not).
+- Posts regression reports directly to PRs.
+- Hardware-agnostic: results comparable across CI machines.
+
+### Sensitive Passes: iai-callgrind
+
+[iai-callgrind](https://github.com/iai-callgrind/iai-callgrind) for
+the most critical hot paths (unifier, row solver, codegen lowering):
+
+- Instruction count, cache misses, branch mispredictions.
+- One instruction change = one number change. Zero noise.
+- Linux CI only (Valgrind requirement).
+- Same metric philosophy as rustc's primary benchmark signal.
+
+### End-to-End Compile Time: hyperfine
+
+[hyperfine](https://github.com/sharkdp/hyperfine) wrapping `kea build`
+and `kea run` for real-world compile-time measurement.
+
+## Benchmark Corpus
+
+### Tier 1: Microbenchmarks (divan)
+
+Located in `crates/kea-bench/benches/` or per-crate `benches/` dirs.
+
+| Benchmark | What it measures | Phase |
+|-----------|-----------------|-------|
+| `lexer.rs` | Tokenisation throughput, parameterised on input size | 0d |
+| `parser.rs` | Parse time, AST node count | 0d |
+| `infer.rs` | Unification iterations, effect row solving | 0d |
+| `codegen.rs` | Compile time per function, MIR lowering | 0d |
+| `refcount.rs` | Retain/release overhead, allocation count | 0d |
+| `update_fusion.rs` | Chained `~` vs single `~` | 0d |
+| `effects.rs` | Direct call vs evidence passing vs CPS, parameterised by handler depth | 0e |
+| `handler_inline.rs` | Statically-known handler vs dynamic dispatch | 0e |
+| `fail_path.rs` | Fail-only (Result branch) vs generic handler dispatch | 0e |
+| `reuse.rs` | Allocation count with/without reuse analysis | 0f |
+| `unique.rs` | Unique T mutation vs refcounted mutation | 0f |
+| `unboxed.rs` | @unboxed flat layout vs heap-allocated | 0f |
+
+Each benchmark uses `AllocProfiler` to track allocation count
+alongside wall time.
+
+### Tier 2: Whole-Program Benchmarks (hyperfine + custom)
+
+Programs in `benchmarks/programs/`:
+
+| Program | What it exercises | Phase |
+|---------|------------------|-------|
+| `fib.kea` | Pure numeric recursion baseline | 0d |
+| `sort.kea` | Collection transform, allocation pattern | 0d |
+| `json_parse.kea` | String processing, Fail effect, real-world pattern | 0e |
+| `state_counter.kea` | State effect tight loop (10^6 iterations) | 0e |
+| `actor_pingpong.kea` | Message throughput, 2 actors | 0e+ |
+| `compiler_subset.kea` | AST/type-inference-style workload | Phase 1 |
+
+Measured with hyperfine: `hyperfine 'kea run benchmarks/programs/fib.kea'`
+
+### Tier 3: Compiler Self-Benchmarks
+
+When self-hosting: how fast does kea compile itself?
+- `kea build` time on the kea codebase
+- Incremental rebuild time (one file changed)
+- Memory high-water mark during compilation
+
+## CI Integration
+
+### Per-PR Gates (CodSpeed)
+
+```yaml
+# .github/workflows/bench.yml
+- uses: CodSpeedHQ/action@v3
+  with:
+    run: cargo codspeed build && cargo codspeed run
+```
+
+CodSpeed posts a comment on each PR with:
+- Regression/improvement percentages per benchmark
+- Flagged regressions above threshold
+- Historical trend links
+
+### Threshold Policy
+
+Start permissive, tighten as measurements stabilise:
+
+| Phase | Regression threshold | Action |
+|-------|---------------------|--------|
+| 0d (establishing baselines) | No gates, record only | Baselines stored |
+| 0e (handler compilation) | >15% regression flags PR | Review required |
+| 0f+ (stable) | >5% regression blocks PR | Must fix or justify |
+
+### Optimization Contract Verification
+
+The benchmark suite must verify the optimization contracts from
+0d and 0f briefs:
+
+| Contract | Benchmark | Gate |
+|----------|-----------|------|
+| Pure = C-competitive tight loops | `fib.kea` vs C equivalent | Within 2x |
+| Fail-only ≈ pure (non-error path) | `fail_path.rs` | Within 5% of pure |
+| Tail-resumptive within 2x of direct call | `effects.rs` at depth=1 | Within 2x |
+| Unique = zero overhead vs raw mutation | `unique.rs` | Within 5% |
+| Reuse-hit within 10% of Unique | `reuse.rs` linear patterns | Within 10% |
+| @unboxed = C struct by-value | `unboxed.rs` | Within 5% |
+
+## Cargo Integration
+
+```toml
+# Cargo.toml (workspace)
+[workspace.dependencies]
+divan = "0.1"
+
+# crates/kea-bench/Cargo.toml
+[dev-dependencies]
+divan = { workspace = true }
+
+[[bench]]
+name = "lexer"
+harness = false
+
+[[bench]]
+name = "parser"
+harness = false
+```
+
+Example benchmark:
+
+```rust
+use divan::AllocProfiler;
+
+#[global_allocator]
+static ALLOC: AllocProfiler = AllocProfiler::system();
+
+fn main() {
+    divan::main();
+}
+
+#[divan::bench(args = [100, 1000, 10_000])]
+fn lex_tokens(bencher: divan::Bencher, n: usize) {
+    let src = generate_kea_source(n);
+    bencher.bench(|| kea_syntax::lex(&src));
+}
+```
+
+## mise Tasks
+
+```toml
+[tasks.bench]
+description = "Run microbenchmarks"
+run = "cargo bench -p kea-bench"
+
+[tasks.bench-ci]
+description = "Run benchmarks under CodSpeed"
+run = "cargo codspeed build -p kea-bench && cargo codspeed run"
+
+[tasks.bench-iai]
+description = "Run instruction-count benchmarks (Linux only)"
+run = "cargo bench -p kea-bench-iai"
+
+[tasks.bench-programs]
+description = "Run whole-program benchmarks"
+run = "hyperfine --warmup 3 'kea run benchmarks/programs/*.kea'"
+```
+
+## Implementation Plan
+
+### Step 1: Harness setup (0d deliverable)
+
+1. Add `divan` to workspace dependencies
+2. Create initial benchmark files (lexer, parser, infer)
+3. Set up `AllocProfiler`
+4. Add `mise run bench` task
+5. Record initial baselines
+
+### Step 2: CI integration
+
+1. Set up CodSpeed GitHub Action
+2. Configure `codspeed-divan-compat`
+3. Record-only mode (no gates yet)
+4. Verify stable measurements across CI runs
+
+### Step 3: Whole-program benchmarks (post-0d)
+
+1. Create `benchmarks/programs/` corpus
+2. Set up hyperfine automation
+3. Add `mise run bench-programs` task
+
+### Step 4: Regression gates (0e+)
+
+1. Configure CodSpeed thresholds
+2. Add optimization contract verification benchmarks
+3. Enable PR blocking on regression
+
+## Definition of Done
+
+- divan benchmarks exist for lexer, parser, infer, codegen
+- AllocProfiler tracks allocation count per benchmark
+- CodSpeed CI integration posts regression reports on PRs
+- `mise run bench` works locally
+- Baselines recorded for all Tier 1 benchmarks
+- Optimization contract benchmarks exist (even if gates aren't active yet)
+
+## Open Questions
+
+- Should iai-callgrind benchmarks live in the same crate or a
+  separate `kea-bench-iai` crate? (Proposal: separate crate,
+  since iai-callgrind has different harness requirements and
+  only runs on Linux.)
+- When should we add the actor benchmarks from performance-backend-strategy?
+  (Proposal: when the actor runtime exists in 0e+. Placeholder
+  benchmark files can exist earlier.)
+- Should we track compile-time benchmarks (how fast kea compiles
+  programs) separately from runtime benchmarks (how fast compiled
+  programs run)? (Proposal: yes. Compile-time is hyperfine on
+  `kea build`. Runtime is divan on compiled functions. Different
+  regression profiles.)

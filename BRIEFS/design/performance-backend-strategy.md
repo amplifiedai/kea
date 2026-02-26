@@ -2,7 +2,7 @@
 
 **Status:** design
 **Priority:** v1-critical
-**Depends on:** 0d-codegen-pure, 0e-runtime-effects, 0f-memory-model
+**Depends on:** 0d-codegen-pure, 0e-runtime-effects, 0f-memory-model, [benchmark-infrastructure](benchmark-infrastructure.md) (harness must exist before gates can be enforced)
 **Blocks:** credible performance claims, backend roadmap decisions, self-hosting compiler UX targets
 
 ## Motivation
