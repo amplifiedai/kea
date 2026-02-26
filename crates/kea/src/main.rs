@@ -469,6 +469,7 @@ fn execute_object_bytes(object: &[u8]) -> Result<std::process::ExitStatus, Strin
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn parse_build_with_output() {
@@ -496,5 +497,32 @@ mod tests {
             default_build_output_path(Path::new("examples/hello.kea")),
             PathBuf::from("examples/hello")
         );
+    }
+
+    #[test]
+    fn compile_and_execute_main_exit_code() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  9\n",
+            "kea-cli-exec",
+            "kea",
+        );
+
+        let compiled = compile_file(&source_path, CodegenMode::Aot).expect("compile should succeed");
+        assert!(!compiled.object.is_empty());
+
+        let status = execute_object_bytes(&compiled.object).expect("execution should succeed");
+        assert_eq!(status.code(), Some(9));
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    fn write_temp_source(contents: &str, prefix: &str, extension: &str) -> PathBuf {
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time should move forward")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("{prefix}-{timestamp}.{extension}"));
+        std::fs::write(&path, contents).expect("temp source write should succeed");
+        path
     }
 }
