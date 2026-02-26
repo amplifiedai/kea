@@ -139,6 +139,24 @@ theorem applySubstRow_preserves_wf_of_no_domain_vars
   rw [(applySubst_noop s fuel).2.1 r htv hrv]
   exact h_wf
 
+theorem applySubstTyList_preserves_wf_of_no_domain_vars
+    (s : Subst) (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat) (tl : TyList)
+    (h_wf : TyList.WellFormed kctx rctx tl)
+    (htv : ∀ v ∈ freeTypeVarsTyList tl, s.typeMap v = none)
+    (hrv : ∀ v ∈ freeRowVarsTyList tl, s.rowMap v = none) :
+    TyList.WellFormed kctx rctx (applySubstTyList s fuel tl) := by
+  rw [(applySubst_noop s fuel).2.2.1 tl htv hrv]
+  exact h_wf
+
+theorem applySubstRowFields_preserves_wf_of_no_domain_vars
+    (s : Subst) (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat) (rf : RowFields)
+    (h_wf : RowFields.WellFormed kctx rctx rf)
+    (htv : ∀ v ∈ freeTypeVarsRowFields rf, s.typeMap v = none)
+    (hrv : ∀ v ∈ freeRowVarsRowFields rf, s.rowMap v = none) :
+    RowFields.WellFormed kctx rctx (applySubstRowFields s fuel rf) := by
+  rw [(applySubst_noop s fuel).2.2.2 rf htv hrv]
+  exact h_wf
+
 theorem applySubstEffectRow_preserves_wf_of_no_domain_vars
     (s : Subst) (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat) (effects : EffectRow)
     (h_wf : EffectRow.WellFormed kctx rctx effects)
@@ -248,6 +266,20 @@ theorem applySubstRow_empty_preserves_wf
     (h_wf : Row.WellFormed kctx rctx r) :
     Row.WellFormed kctx rctx (applySubstRow Subst.empty fuel r) := by
   rw [(applySubst_noop Subst.empty fuel).2.1 r (fun _ _ => rfl) (fun _ _ => rfl)]
+  exact h_wf
+
+theorem applySubstTyList_empty_preserves_wf
+    (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat) (tl : TyList)
+    (h_wf : TyList.WellFormed kctx rctx tl) :
+    TyList.WellFormed kctx rctx (applySubstTyList Subst.empty fuel tl) := by
+  rw [(applySubst_noop Subst.empty fuel).2.2.1 tl (fun _ _ => rfl) (fun _ _ => rfl)]
+  exact h_wf
+
+theorem applySubstRowFields_empty_preserves_wf
+    (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat) (rf : RowFields)
+    (h_wf : RowFields.WellFormed kctx rctx rf) :
+    RowFields.WellFormed kctx rctx (applySubstRowFields Subst.empty fuel rf) := by
+  rw [(applySubst_noop Subst.empty fuel).2.2.2 rf (fun _ _ => rfl) (fun _ _ => rfl)]
   exact h_wf
 
 theorem applySubstRowCompat_preserves_wf_of_no_domain_vars
