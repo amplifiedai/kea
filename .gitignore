@@ -24,5 +24,8 @@ Thumbs.db
 /tmp/kea-agent-targets/
 /benchmark-results/
 
+# Lean/Lake build artifacts
+/formal/.lake/
+
 # sccache
 .sccache/
