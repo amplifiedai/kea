@@ -416,16 +416,59 @@ define parametric traits.
 
 Test: `trait Show a` with `fn show(x: a) -> String` should parse.
 
-### 5. Phantom IO leak on higher-order calls
+### 5. Phantom IO leak on higher-order calls — SOUNDNESS
 
 Calling a function value (`f(x)` where `f: Fun(a, b)`) injects
 phantom `IO` into the effect row. Every higher-order function
-appears effectful: `map_maybe(m, f)` infers `-[IO]>` instead of
-`->`. Root cause is likely the legacy Effects lattice collapsing
-function application to Impure.
+appears effectful. **This is a soundness issue, not just a display
+bug** — it masks real effects with phantom IO.
 
-This isn't a parser issue but it makes the type system output wrong
-for every HOF. Important to fix before the effect system is trusted.
+**Root cause diagnosed.** The effect tracking side-table doesn't
+read effect rows from the structural function type. Precise location:
+
+- `typeck.rs:7490` — `bind_let_pattern_effect_metadata`: when a
+  let-binding's RHS returns a function type (e.g. `let f = make_emitter()`
+  where `make_emitter() -> fn(Int) -[Emit]> Unit`), the effect row
+  from the returned function type is NOT stored as `f`'s callable
+  effect metadata.
+
+- `typeck.rs:7462-7467` — `infer_callable_value_effect_row`: when
+  `f(42)` is called, `f` has no stored effect metadata, so the
+  function falls back to `unknown_effect_row(next_effect_var)`.
+  This fresh variable gets collapsed to IO by the legacy lattice.
+
+- Same issue at `typeck.rs:7483` for field-access callable paths.
+
+**The evil test case (escaping effectful closure):**
+
+```kea
+effect Emit
+  fn emit(val: Int) -> Unit
+
+fn make_emitter() -> fn(Int) -[Emit]> Unit
+  (x: Int) -> Emit.emit(x)
+
+fn trap() -> Unit        -- should ERROR: unhandled Emit
+  let f = make_emitter() -- f's type is fn(Int) -[Emit]> Unit
+  f(42)                  -- should require [Emit], gets [IO] instead
+```
+
+`make_emitter` correctly infers `() -> (Int) -[Emit]> ()`. But
+`trap` infers `() -[IO]> ()` instead of `() -[Emit]> ()`. The
+`Emit` effect is present in the structural type but invisible to
+the effect tracker.
+
+**Fix:** In `bind_let_pattern_effect_metadata`, when the RHS has
+a function return type with an effect row, extract and store that
+row as the bound name's callable effect signature. Ensure this
+works through let-chains (`let f = make(); let g = f`). Add
+property tests verifying effects survive let-binding propagation.
+
+**Note on `Fun(a, b)` vs `fn(a) -> b`:** The `Fun(a, b)` type
+constructor doesn't carry effects. `fn(a) -[E]> b` does (the
+parser already handles this via `FunctionWithEffect`). Users must
+use the `fn` type syntax to express effectful function types.
+Consider deprecating `Fun` in favor of `fn` type syntax.
 
 ### 6. Inline if/then/else (KERNEL §10.4)
 
