@@ -5,6 +5,20 @@ when each should be used.
 
 ---
 
+## Operators
+
+Two operators for function calls:
+
+- **`.` (dot)** — method dispatch on a value. Always means "I
+  have a value, call something on it."
+- **`::` (turbofish)** — explicit namespace qualification. Always
+  means "look up this name in this module/type/trait."
+
+These are consistent everywhere. `.` never means namespace lookup.
+`::` never means method dispatch on a value.
+
+---
+
 ## Call Forms
 
 There are exactly four syntactic forms for calling functions.
@@ -28,27 +42,32 @@ Resolution:
 5. If multiple matches: compile error with fix suggestions showing
    qualified forms.
 
-This is the canonical style. 95% of code uses this form.
+This is the canonical style. 90% of code uses this form.
 
 ```kea
 users.filter(|u| -> u.active).map(|u| -> u.name).sort().take(10)
 ```
 
-**2. Prefix call (qualified)**
+**2. Qualified call (static/module)**
 
 ```
-Module.function(args)
+Module::function(args)
 ```
 
 No desugaring. Direct call to a specific function on a specific
-type/module. Used for constructors, static methods, and when the
+type/module. Used for constructors, static functions, and when the
 receiver-as-first-argument pattern doesn't apply.
 
 ```kea
-let n = Int.parse("42")
-let total = Enum.sum(scores)
-let p = Point.origin()
+let n = Int::parse("42")
+let total = Enum::sum(scores)
+let p = Point::origin()
+let users = List::new()
 ```
+
+`::` is the namespace operator. `Int::parse` means "the function
+`parse` in the `Int` module." This is always explicit qualification
+— no resolution search, no trait lookup.
 
 ### Special Forms
 
@@ -58,7 +77,7 @@ let p = Point.origin()
 expr.Qualifier::method(args)
 ```
 
-Desugars to: `Qualifier.method(expr, args)`
+Desugars to: `Qualifier::method(expr, args)`
 
 `Qualifier` is a trait name or module name. Used only when
 unqualified dispatch (Form 1) is ambiguous.
@@ -72,8 +91,9 @@ value.Debug::show()
 users.Enum::filter(|u| -> u.active)
 ```
 
-**Style rule:** Never use `::` when unqualified dispatch works.
-Linters should warn on unnecessary qualification.
+**Style rule:** Never use `::` qualification in dot position when
+unqualified dispatch works. Linters should warn on unnecessary
+qualification.
 
 **4. Receiver placement ($)**
 
@@ -82,17 +102,17 @@ expr.method(a, $, b)
 expr.Qualifier::method(a, $, b)
 ```
 
-Desugars to: `method(a, expr, b)` or `Qualifier.method(a, expr, b)`
+Desugars to: `method(a, expr, b)` or `Qualifier::method(a, expr, b)`
 
 `$` marks where the receiver goes when it's NOT the first positional
 parameter. Exactly one `$` per call. If `$` is absent, receiver
 fills the first `_` positional parameter.
 
 ```kea
--- String.replace(target, input, replacement) — input is 2nd param
+-- String::replace(target, input, replacement) — input is 2nd param
 text.String::replace("old", $, "new")
 
--- Json.decode(input, schema) — input is 1st param, no $ needed
+-- Json::decode(input, schema) — input is 1st param, no $ needed
 body.Json::decode($, User)
 ```
 
@@ -171,10 +191,10 @@ or on a trait in scope.
 ```
 1. Check Qual is a trait name or struct/module name in scope.
 2. If trait: verify typeof(expr) implements Qual.
-   If module: verify Qual.method exists and typeof(expr) matches
+   If module: verify Qual::method exists and typeof(expr) matches
    the receiver slot (first _ param, or $ position).
-3. Desugar to Qual.method(expr, args).
-   (Or Qual.method(a, expr, b) if $ is present.)
+3. Desugar to Qual::method(expr, args).
+   (Or Qual::method(a, expr, b) if $ is present.)
 ```
 
 ### Receiver Placement Rules
@@ -202,7 +222,7 @@ or on a trait in scope.
 - **No implicit search beyond scope.** `.` does not search all
   installed packages for matching functions. Only inherent methods
   and in-scope traits are considered. Module functions require
-  either prefix form (`Module.f(x)`) or qualified dot
+  either prefix form (`Module::f(x)`) or qualified dot
   (`x.Module::f()`).
 
 - **No multiple `$` in one call.** `a.f($, $)` is a compile error.
@@ -262,7 +282,7 @@ error: multiple methods named `render` for type `Widget`
 
 **Inherent shadows trait (no error, but info available):**
 ```
-info: inherent method `Widget.render` shadows `Component::render`
+info: inherent method `Widget::render` shadows `Component::render`
   --> src/app.kea:42:8
    |
    = help: to call the trait method instead:
@@ -281,6 +301,18 @@ warning: unnecessary qualification on `Show::show`
    = help: simplify to: value.show()
 ```
 
+**Dot used for module call (common mistake):**
+```
+error: `Point.origin()` uses dot syntax, but `Point` is a type, not a value
+  --> src/app.kea:10:3
+   |
+10 |   let p = Point.origin()
+   |           ^^^^^ `Point` is a type
+   |
+   = help: use `::` for module/type function calls:
+     let p = Point::origin()
+```
+
 ---
 
 ## Summary Table
@@ -288,7 +320,7 @@ warning: unnecessary qualification on `Show::show`
 | Form                        | When to use                    | Frequency |
 |-----------------------------|--------------------------------|-----------|
 | `x.method(args)`            | Default. Method chaining.      | ~90%      |
-| `Module.function(args)`     | Constructors, static methods.  | ~8%       |
+| `Module::function(args)`    | Constructors, static functions.| ~8%       |
 | `x.Trait::method(args)`     | Disambiguation only.           | ~1%       |
 | `x.method(a, $, b)`        | Non-first receiver position.   | ~1%       |
-| `Effect.operation(args)`    | Effect operations.             | Varies    |
+| `Effect::operation(args)`   | Effect operations.             | Varies    |
