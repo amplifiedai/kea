@@ -123,13 +123,32 @@ MIR pass that inserts retain/release:
 
 ### Step 6: Basic stdlib
 
-Runtime implementations for core types:
+Runtime implementations for core types. In Phase 0, these are
+Rust builtins compiled into the `kea` binary (like rill's
+`BuiltinFn` pattern). In Phase 1+, they transition to Kea source
+using the same module paths — the import interface stays stable.
+
+**Layer 1 — core (pure, no effects):**
 - `Int`, `Float`, `Bool`: unboxed, direct Cranelift types
 - `String`: heap-allocated, refcounted, UTF-8
-- `List`: persistent (immutable), refcounted nodes
 - `Option`, `Result`: tagged unions
-- `IO.stdout`: actual print (needed for hello world)
+- `Char`, `Bytes`, `()`: primitives
 - Basic arithmetic, comparison, string operations
+
+**Layer 2 — collections (pure, depends on core):**
+- `List`: persistent (immutable), refcounted nodes
+- `Map`, `Set`: placeholder stubs (real impls in 0h)
+
+**Layer 3 — IO (requires `-[IO]>`):**
+- `IO.stdout`: actual print (needed for hello world)
+- `IO.read_file`, `IO.write_file`: basic file IO
+
+The module namespace (`List.map`, `String.length`, `IO.stdout`)
+is designed to be stable across the Rust-builtin → Kea-source
+transition. User code that imports `List` works the same whether
+`List` is a Rust builtin (Phase 0) or a Kea source module
+(Phase 1+). See 0b brief item 3 on forward-looking module
+resolution.
 
 ### Step 7: CLI
 

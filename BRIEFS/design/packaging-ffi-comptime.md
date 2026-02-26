@@ -178,6 +178,46 @@ maximal (npm/cargo's model). This means builds are reproducible
 without a lockfile — the lockfile adds an extra layer of assurance
 but isn't strictly required.
 
+## Stdlib: Not a Package, But Uses Package Structure
+
+Stdlib is not distributed via the package registry. It ships
+with the `kea` binary. But it uses the same module conventions
+as user packages — the import path for `List.map` works whether
+the implementation is a Rust builtin (Phase 0) or Kea source
+(Phase 1+).
+
+### Stdlib Layers
+
+```
+kea-core        -- Int, Float, Bool, String, Option, Result, Char, Bytes
+                -- pure (->), compiler intrinsics for primitive ops
+
+kea-collections -- List, Map, Set, Iterator, Foldable, Enumerable
+                -- pure (->), depends on kea-core
+
+kea-io          -- File, Net, Process, Env, Clock
+                -- requires -[IO]>, depends on kea-core
+
+kea-serial      -- Json, Toml, MsgPack, Csv, Encode/Decode
+                -- requires -[Fail DecodeError]>, depends on kea-core
+
+kea-test        -- test runner, assertions, effect-aware mocking
+                -- depends on kea-core, kea-io
+```
+
+### Phase Transition
+
+| Phase | Stdlib is... | Module resolution |
+|-------|-------------|-------------------|
+| 0 (bootstrap) | Rust `BuiltinFn` in compiler binary | Compiler knows builtin names |
+| 1 (self-hosting) | Kea source, compiled into `kea` binary | Same import paths, backed by `.kea` files |
+| 2+ (ecosystem) | Kea source, same structure as user packages | Same module system as third-party code |
+
+The module namespace is the stable interface. User code that
+writes `import List` or calls `List.map(xs, f)` works identically
+across all phases. The 0b brief (item 3) and 0d brief (Step 6)
+both capture this forward-looking constraint.
+
 ## Part 3: Comptime — Compiler Layer Interface as Code Generation
 
 ### The Insight

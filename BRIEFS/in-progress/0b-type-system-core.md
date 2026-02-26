@@ -67,12 +67,19 @@ extensive property tests.
    declaration. This is the opposite of "infer then compare" —
    the signature is the source of truth.
 
-3. **Struct-everything scoping.** Name resolution must handle:
+3. **Struct-everything scoping and module resolution.** Name
+   resolution must handle:
    - Inherent methods (defined inside struct block)
    - Singleton module functions (struct with no fields)
    - Nested types (`Parent.Child`)
    - `Type as Trait` implementation blocks
    - Prelude traits (Appendix C) always in scope
+   - `import` declarations — resolve module names to files/crates
+   - **Forward-looking:** module resolution should anticipate
+     stdlib becoming Kea source (Phase 1+). The import path for
+     `List`, `Map`, `IO` should work whether the implementation
+     is a Rust builtin (Phase 0) or a Kea source file (Phase 1+).
+     Design the module namespace now; swap the backend later.
 
 4. **UMS resolution** (CALL-SYNTAX.md):
    - `expr.method(args)` → inherent first, then trait search
