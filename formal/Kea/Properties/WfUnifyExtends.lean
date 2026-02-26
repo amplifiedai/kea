@@ -13,6 +13,31 @@ def ExtendsAndWfRange
     (st st' : UnifyState) (kctx : KindCtx) (rctx : RowCtx) : Prop :=
   ExtendsRowBindings st st' ∧ UnifyState.SubstWellFormedRange st' kctx rctx
 
+/-- Recognized successful `unifyRows` update shapes with WF side conditions. -/
+def UnifyRowsSuccessUpdateShapeWf
+    (st' stNext : UnifyState) (fuel : Nat) (kctx : KindCtx) (rctx : RowCtx) : Prop :=
+  stNext = st'
+  ∨ (∃ rOpen rv fields,
+      (applySubstRow st'.subst (fuel + 1) rOpen).rest = some rv
+      ∧ RowFields.WellFormed kctx rctx fields
+      ∧ stNext = { st' with subst := st'.subst.bindRow rv (Row.closed fields) })
+  ∨ (∃ r1 r2 rv1 rv2 onlyLeft onlyRight,
+      rv2 ≠ rv1
+      ∧ (applySubstRow st'.subst (fuel + 1) r1).rest = some rv1
+      ∧ (applySubstRow st'.subst (fuel + 1) r2).rest = some rv2
+      ∧ RowFields.WellFormed kctx rctx onlyLeft
+      ∧ RowFields.WellFormed kctx rctx onlyRight
+      ∧ (st'.freshRowVar).1 ∈ rctx
+      ∧ let fr := st'.freshRowVar
+        let r3 := fr.1
+        let st'' := fr.2
+        let subst' :=
+          Subst.bindRow
+            (Subst.bindRow st''.subst rv1 (Row.mkOpen onlyRight r3))
+            rv2
+            (Row.mkOpen onlyLeft r3)
+        stNext = { st'' with subst := subst' })
+
 theorem closedBind_extendsAndWfRange
     (st st' : UnifyState) (kctx : KindCtx) (rctx : RowCtx)
     (rv : RowVarId) (fields : RowFields)
@@ -181,3 +206,37 @@ theorem unifyRows_open_open_update_extendsAndWf_idempotent_full_state_fresh
           nextTypeVar := nextType'',
           nextRowVar := nextRow'' }
       kctx rctx rfl h_base
+
+/-- Preconditioned dispatcher combining extension and WF-range preservation. -/
+theorem unifyRows_success_update_extendsAndWf_idempotent
+    (st st' stNext : UnifyState) (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat)
+    (h_ext : ExtendsRowBindings st st')
+    (h_idemp : st'.subst.Idempotent)
+    (h_wf : UnifyState.SubstWellFormedRange st' kctx rctx)
+    (h_shape : UnifyRowsSuccessUpdateShapeWf st' stNext fuel kctx rctx) :
+    ExtendsAndWfRange st stNext kctx rctx := by
+  rcases h_shape with h_no_update | h_single_bind | h_open_open
+  · rw [h_no_update]
+    exact ⟨h_ext, h_wf⟩
+  · rcases h_single_bind with ⟨rOpen, rv, fields, h_rest, h_fields, h_next⟩
+    rw [h_next]
+    constructor
+    · exact unifyRows_single_bind_update_extends_idempotent
+        st st' fuel rOpen rv fields h_ext h_idemp h_rest
+    · exact bindClosedRow_update_preserves_substWellFormedRange
+        st' kctx rctx rv fields h_wf h_fields
+  · rcases h_open_open with
+      ⟨r1, r2, rv1, rv2, onlyLeft, onlyRight, h_ne, h_rest1, h_rest2,
+       h_left, h_right, h_fresh_in_ctx, h_next⟩
+    rw [h_next]
+    constructor
+    ·
+      simpa using unifyRows_open_open_update_extends_idempotent_fresh_no_lacks_update
+        st st' fuel r1 r2 rv1 rv2 onlyLeft onlyRight h_ext h_ne h_idemp h_rest1 h_rest2
+    ·
+      have h_fresh :
+          UnifyState.SubstWellFormedRange (st'.freshRowVar).2 kctx rctx :=
+        UnifyState.substWellFormedRange_freshRowVar st' kctx rctx h_wf
+      exact bindOpenRows_update_preserves_substWellFormedRange
+        (st'.freshRowVar).2 kctx rctx rv1 rv2 (st'.freshRowVar).1 onlyLeft onlyRight
+        h_fresh h_left h_right h_fresh_in_ctx
