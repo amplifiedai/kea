@@ -1,0 +1,49 @@
+fn compute(seed: Int) -> Int
+  let a0 = seed + 1
+  let a1 = a0 + 2
+  let a2 = a1 + 3
+  let a3 = a2 + 4
+  let a4 = a3 + 5
+  let a5 = a4 + 6
+  let a6 = a5 + 7
+  let a7 = a6 + 8
+  let a8 = a7 + 9
+  let a9 = a8 + 10
+  let a10 = a9 + 11
+  let a11 = a10 + 12
+  let a12 = a11 + 13
+  let a13 = a12 + 14
+  let a14 = a13 + 15
+  let a15 = a14 + 16
+  let a16 = a15 + 17
+  let a17 = a16 + 18
+  let a18 = a17 + 19
+  let a19 = a18 + 20
+  let a20 = a19 + 21
+  let a21 = a20 + 22
+  let a22 = a21 + 23
+  let a23 = a22 + 24
+  let a24 = a23 + 25
+  let a25 = a24 + 26
+  let a26 = a25 + 27
+  let a27 = a26 + 28
+  let a28 = a27 + 29
+  let a29 = a28 + 30
+  let a30 = a29 + 31
+  let a31 = a30 + 32
+  let a32 = a31 + 33
+  let a33 = a32 + 34
+  let a34 = a33 + 35
+  let a35 = a34 + 36
+  let a36 = a35 + 37
+  let a37 = a36 + 38
+  let a38 = a37 + 39
+  let a39 = a38 + 40
+  a39
+
+fn main() -> Int
+  let value = compute(1)
+  if value == 821
+    0
+  else
+    1
