@@ -52,6 +52,7 @@ This work starts by cannibalizing the existing Rill formal corpus and then exten
 - **Phase 2 (active):** Added `Kea/Properties/HandlerTypingContracts.lean` to integrate effect-removal and resume-linearity tracks through a clause-level contract surface (`wellTypedSlice`) with bridge theorems for handled-effect removal, branch exclusivity, and loop legality.
 - **Phase 2 (active):** Refined `HandlerTypingContracts` from abstract summaries to concrete contract premises (`thenEffects`, `clauseCoverageComplete`) with explicit result-effect assembly (`resultEffectsCore`/`applyThenEffects`/`resultEffects`), non-reintroduction guarantees, and resume-provenance extraction from linearity assumptions.
 - **Phase 2 (active):** Added `Kea/Properties/FailResultContracts.lean`, specializing handler contracts to Fail-as-zero-resume and Result-lowering (`resultLowering`, `FailResultContract`, `failResultContract_sound`, `failResultContract_loopLegal`) to start the Fail/Result equivalence track.
+- **Phase 2 (active):** Extended `FailResultContracts` with explicit lowering/equivalence slices (`lowerFailEffects`, `lowerFailFunctionType`, `failResultFunctionEquivalent`) plus preservation/removal lemmas to bridge from contract-level Fail handling into function-type `Result` lowering.
 
 The formal workspace lives at [`formal/`](formal/).
 

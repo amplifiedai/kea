@@ -47,6 +47,73 @@ theorem resultLowering_iff
     (okTy errTy loweredTy : Ty) :
     resultLowering okTy errTy loweredTy ↔ loweredTy = .result okTy errTy := Iff.rfl
 
+/-- Fail-effect lowering on effect rows. -/
+def lowerFailEffects (effects : EffectRow) : EffectRow :=
+  EffectRow.handleRemove effects failLabel
+
+theorem lowerFailEffects_removes_fail
+    (effects : EffectRow) :
+    RowFields.has (EffectRow.fields (lowerFailEffects effects)) failLabel = false := by
+  unfold lowerFailEffects
+  exact EffectRow.handle_removes_effect effects failLabel
+
+theorem lowerFailEffects_preserves_other
+    (effects : EffectRow)
+    (other : Label)
+    (h_ne : other ≠ failLabel) :
+    RowFields.has (EffectRow.fields (lowerFailEffects effects)) other =
+      RowFields.has (EffectRow.fields effects) other := by
+  simpa [lowerFailEffects, failLabel] using
+    (EffectRow.handle_preserves_other_effects effects failLabel other h_ne)
+
+theorem lowerFailEffects_noop_of_absent
+    (effects : EffectRow)
+    (h_abs : RowFields.has (EffectRow.fields effects) failLabel = false) :
+    lowerFailEffects effects = effects := by
+  simpa [lowerFailEffects, failLabel] using
+    (EffectRow.handleRemove_noop_of_absent effects failLabel h_abs)
+
+/-- Type-level lowering of a function that handles `Fail` into `Result`. -/
+def lowerFailFunctionType
+    (params : TyList)
+    (effects : EffectRow)
+    (okTy errTy : Ty) : Ty :=
+  .functionEff params (lowerFailEffects effects) (.result okTy errTy)
+
+theorem lowerFailFunctionType_return_is_result
+    (params : TyList)
+    (effects : EffectRow)
+    (okTy errTy : Ty) :
+    lowerFailFunctionType params effects okTy errTy =
+      .functionEff params (lowerFailEffects effects) (.result okTy errTy) := rfl
+
+theorem lowerFailFunctionType_noop_effect_of_absent
+    (params : TyList)
+    (effects : EffectRow)
+    (okTy errTy : Ty)
+    (h_abs : RowFields.has (EffectRow.fields effects) failLabel = false) :
+    lowerFailFunctionType params effects okTy errTy =
+      .functionEff params effects (.result okTy errTy) := by
+  simp [lowerFailFunctionType, lowerFailEffects_noop_of_absent, h_abs]
+
+/--
+Function-type equivalence slice:
+`lowered` is the Fail-to-Result lowering of `original`.
+-/
+def failResultFunctionEquivalent (original lowered : Ty) : Prop :=
+  ∃ params effects okTy errTy,
+    original = .functionEff params effects okTy ∧
+    lowered = lowerFailFunctionType params effects okTy errTy
+
+theorem failResultFunctionEquivalent_implies_result_return
+    (original lowered : Ty)
+    (h_eqv : failResultFunctionEquivalent original lowered) :
+    ∃ params eff okTy errTy,
+      lowered = .functionEff params eff (.result okTy errTy) := by
+  rcases h_eqv with ⟨params, effects, okTy, errTy, _h_orig, h_lowered⟩
+  refine ⟨params, lowerFailEffects effects, okTy, errTy, ?_⟩
+  simpa [lowerFailFunctionType] using h_lowered
+
 /-- Combined contract for Fail-handler lowering to `Result`. -/
 structure FailResultContract where
   clause : HandleClauseContract
