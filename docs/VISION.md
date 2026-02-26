@@ -683,6 +683,13 @@ polymorphism, and zero-cost. It's also what makes the self-hosting
 compiler a natural expression of the language rather than a
 separate privileged program.
 
+Each piece of this design has prior art: Turnstile for typed macros,
+Trees that Grow for extensible ASTs, Koka for row-polymorphic effects,
+CompCert for verified multi-IR pipelines. What's new is the synthesis:
+one row-polymorphic type mechanism unifying user DSLs, compiler passes,
+and backend lowering under a shared capability-bounded contract with
+explicit IR stability tiers. Novel synthesis, not first-ever claims.
+
 These are Phase 1-2 capabilities. 0d remains Rust HIR/MIR bootstrap.
 See [typed-grammar-interface](../BRIEFS/design/typed-grammar-interface.md)
 for the normative contract and

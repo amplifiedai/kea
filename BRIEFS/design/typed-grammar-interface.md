@@ -383,6 +383,27 @@ a grammar. The typed grammar interface is the universal extension point.
 See [ir-recipes-grammar-convergence](ir-recipes-grammar-convergence.md)
 for the full design brief connecting these mechanisms.
 
+## Prior Art and Novelty Claim
+
+Each piece of this design exists in the literature. Kea's contribution
+is the **novel synthesis** — one mechanism (row-polymorphic types under
+capability-bounded Compile effect) unifying all of them.
+
+| Piece | Prior art | What Kea adds |
+|-------|-----------|---------------|
+| Typed macro/elaboration | Turnstile ("Type Systems as Macros", Chang+ POPL 2017) | Row-polymorphic extensibility + effect-bounded safety |
+| Staged typed metaprogramming | MetaOCaml, Typed Template Haskell (Pickering+ 2021) | Grammar outputs lower to typed IR, not spliced code |
+| Extensible ASTs | "Trees that Grow" (Najd & Peyton Jones 2017), "Data types à la carte" (Swierstra 2008) | Row polymorphism instead of type families; same mechanism as data rows and effect rows |
+| Row-polymorphic effects | Koka (Leijen 2014, 2017) | Applied to grammar ASTs, not just effect rows |
+| Typed multi-IR pipelines | CompCert, FLINT | One parse/check/lower contract across DSLs + passes + backends, with stability tiers |
+| Extensible attribute grammars | Silver (Van Wyk+ 2010) | Integrated into the language's type system, not a separate metalanguage |
+| Capability-bounded compilation | (no direct precedent) | Compile effect with no ambient IO, structurally enforced by effect system |
+
+**The defensible claim:** no existing system uses one row-polymorphic
+type mechanism to unify user DSL grammars, compiler IR passes, and
+backend lowering under a shared capability-bounded compile-time
+contract with explicit IR stability tiers.
+
 ## Non-Goals (initial)
 
 - Arbitrary runtime code execution inside embedded grammar blocks.
