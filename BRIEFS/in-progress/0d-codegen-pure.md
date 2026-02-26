@@ -386,4 +386,5 @@ Precision notes:
 - 2026-02-26: Unit-enum guard coverage expanded on the lowered path (qualified constructor `when` and `as + when` forms), including expression-scrutinee block shape handling in HIR assertions and end-to-end CLI execution regressions.
 - 2026-02-26: Case-lowering scrutinee setup optimized: if the lowered scrutinee is already a literal/var (including unit-enum constructor tags), avoid synthetic temp-binding blocks and emit direct `if` chains; added regression coverage for unit-enum scrutinee shape.
 - 2026-02-26: Added explicit OR+guard regression coverage for both literal and unit-enum constructor arms (`0 | 1 when ...`, `Color.Red | Color.Green when ...`) in HIR and CLI tests to lock in combined condition lowering semantics.
+- 2026-02-26: Guarded fallback arms now stay on the lowered literal-case path when an eventual fallback exists: supports `n when ...` and `_ when ...` fallback arms with correct ordering against later unconditional fallbacks, plus HIR/CLI regressions.
 - **Next:** Expand lowering/codegen coverage for structs/enums/pattern matching and Fail-only Result lowering fast path.
