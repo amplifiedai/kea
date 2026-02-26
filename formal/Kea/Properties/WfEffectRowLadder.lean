@@ -81,6 +81,15 @@ def FunctionEffBindTypeVarContractSlice
   ∧ (let h_ac := Subst.acyclicOfIdempotent h_idemp_next
      CompatWFAgreeOnDomainLookupsAcyclic stNext fuel h_ac)
 
+/-- Full-state packaged `bindTypeVar` contract obligations for `Ty.functionEff`
+    with arbitrary non-`subst` field updates. -/
+def FunctionEffBindTypeVarFullStateContractSlice
+    (st stNext : UnifyState) (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat)
+    (h_idemp_next : stNext.subst.Idempotent) : Prop :=
+  ExtendsAndWfRange st stNext kctx rctx
+  ∧ (let h_ac := Subst.acyclicOfIdempotent h_idemp_next
+     CompatWFAgreeOnDomainLookupsAcyclic stNext fuel h_ac)
+
 theorem functionEff_gen_inst_wf_slice
     (scheme : TypeScheme) (env : TypeEnv) (st : UnifyState)
     (s : Subst) (lc : Lacks) (traitBounds : TraitBounds)
@@ -180,6 +189,85 @@ theorem functionEff_bindTypeVar_compatWFAgreeOnDomainLookupsAcyclic_of_contract_
     (st stNext : UnifyState) (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat)
     (h_idemp_next : stNext.subst.Idempotent)
     (h_slice : FunctionEffBindTypeVarContractSlice st stNext kctx rctx fuel h_idemp_next) :
+    let h_ac := Subst.acyclicOfIdempotent h_idemp_next
+    CompatWFAgreeOnDomainLookupsAcyclic stNext fuel h_ac := by
+  exact h_slice.2
+
+theorem functionEff_bindTypeVar_full_state_contract_slice
+    (st st' : UnifyState) (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat)
+    (v : TypeVarId) (params : TyList) (effects : EffectRow) (ret : Ty)
+    (lacks' : Lacks) (bounds' : TraitBounds) (nextType' nextRow' : Nat)
+    (h_bind : bindTypeVar st v (.functionEff params effects ret) fuel = .ok st')
+    (h_wf_state : UnifyState.SubstWellFormedRange st kctx rctx)
+    (h_wf_params : TyList.WellFormed kctx rctx params)
+    (h_wf_effects : EffectRow.WellFormed kctx rctx effects)
+    (h_wf_ret : Ty.WellFormed kctx rctx ret)
+    (h_idemp_next :
+      ({ st' with
+          lacks := lacks',
+          traitBounds := bounds',
+          nextTypeVar := nextType',
+          nextRowVar := nextRow' }).subst.Idempotent) :
+    let stNext : UnifyState :=
+      { st' with
+          lacks := lacks',
+          traitBounds := bounds',
+          nextTypeVar := nextType',
+          nextRowVar := nextRow' }
+    ExtendsAndWfRange st stNext kctx rctx
+    ∧ (let h_ac := Subst.acyclicOfIdempotent h_idemp_next
+       CompatWFAgreeOnDomainLookupsAcyclic stNext fuel h_ac) := by
+  simpa using bindTypeVar_ok_with_non_subst_fields_contract_full_wf
+    st st' kctx rctx v (.functionEff params effects ret) fuel
+    lacks' bounds' nextType' nextRow'
+    h_bind h_wf_state ⟨h_wf_params, h_wf_effects, h_wf_ret⟩ h_idemp_next
+
+theorem functionEff_bindTypeVar_full_state_contract_slice_of_success
+    (st st' : UnifyState) (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat)
+    (v : TypeVarId) (params : TyList) (effects : EffectRow) (ret : Ty)
+    (lacks' : Lacks) (bounds' : TraitBounds) (nextType' nextRow' : Nat)
+    (h_bind : bindTypeVar st v (.functionEff params effects ret) fuel = .ok st')
+    (h_wf_state : UnifyState.SubstWellFormedRange st kctx rctx)
+    (h_wf_params : TyList.WellFormed kctx rctx params)
+    (h_wf_effects : EffectRow.WellFormed kctx rctx effects)
+    (h_wf_ret : Ty.WellFormed kctx rctx ret)
+    (h_idemp_next :
+      ({ st' with
+          lacks := lacks',
+          traitBounds := bounds',
+          nextTypeVar := nextType',
+          nextRowVar := nextRow' }).subst.Idempotent) :
+    let stNext : UnifyState :=
+      { st' with
+          lacks := lacks',
+          traitBounds := bounds',
+          nextTypeVar := nextType',
+          nextRowVar := nextRow' }
+    FunctionEffBindTypeVarFullStateContractSlice st stNext kctx rctx fuel h_idemp_next := by
+  dsimp [FunctionEffBindTypeVarFullStateContractSlice]
+  exact functionEff_bindTypeVar_full_state_contract_slice
+    st st' kctx rctx fuel v params effects ret
+    lacks' bounds' nextType' nextRow'
+    h_bind h_wf_state h_wf_params h_wf_effects h_wf_ret h_idemp_next
+
+theorem functionEff_bindTypeVar_full_state_extends_of_contract_slice
+    (st stNext : UnifyState) (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat)
+    (h_idemp_next : stNext.subst.Idempotent)
+    (h_slice : FunctionEffBindTypeVarFullStateContractSlice st stNext kctx rctx fuel h_idemp_next) :
+    ExtendsRowBindings st stNext := by
+  exact h_slice.1.1
+
+theorem functionEff_bindTypeVar_full_state_substWellFormedRange_of_contract_slice
+    (st stNext : UnifyState) (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat)
+    (h_idemp_next : stNext.subst.Idempotent)
+    (h_slice : FunctionEffBindTypeVarFullStateContractSlice st stNext kctx rctx fuel h_idemp_next) :
+    UnifyState.SubstWellFormedRange stNext kctx rctx := by
+  exact h_slice.1.2
+
+theorem functionEff_bindTypeVar_full_state_compatWFAgreeOnDomainLookupsAcyclic_of_contract_slice
+    (st stNext : UnifyState) (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat)
+    (h_idemp_next : stNext.subst.Idempotent)
+    (h_slice : FunctionEffBindTypeVarFullStateContractSlice st stNext kctx rctx fuel h_idemp_next) :
     let h_ac := Subst.acyclicOfIdempotent h_idemp_next
     CompatWFAgreeOnDomainLookupsAcyclic stNext fuel h_ac := by
   exact h_slice.2
