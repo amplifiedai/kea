@@ -75,8 +75,6 @@ struct Parser {
     /// When true, `UpperIdent {` is NOT parsed as a named record literal.
     /// Used in case scrutinee position (same as Rust's struct-literal restriction).
     restrict_struct_literals: bool,
-    /// When true, `$` is accepted as `ExprKind::PipePlaceholder`.
-    allow_pipe_placeholder: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -92,7 +90,6 @@ impl Parser {
             file,
             errors: Vec::new(),
             restrict_struct_literals: false,
-            allow_pipe_placeholder: false,
         }
     }
 
@@ -2048,11 +2045,7 @@ impl Parser {
             };
 
             self.skip_newlines();
-            let rhs = if let Some(pipe_op) = pipe_op_from_token(&op_token.kind) {
-                self.parse_pipe_rhs(r_bp, pipe_op, op_token.span)?
-            } else {
-                self.pratt_expr(r_bp)?
-            };
+            let rhs = self.pratt_expr(r_bp)?;
 
             let span = lhs.span.merge(rhs.span);
             lhs = if is_not_in {
@@ -2091,23 +2084,6 @@ impl Parser {
                         },
                         span,
                     ),
-                    None if pipe_op_from_token(&op_token.kind).is_some() => {
-                        let pipe_op = pipe_op_from_token(&op_token.kind)
-                            .expect("pipe operator checked in guard");
-                        let (right, guard) = match rhs.node {
-                            ExprKind::WhenGuard { body, condition } => (body, Some(condition)),
-                            _ => (Box::new(rhs), None),
-                        };
-                        Spanned::new(
-                            ExprKind::Pipe {
-                                left: Box::new(lhs),
-                                op: Spanned::new(pipe_op, op_token.span),
-                                right,
-                                guard,
-                            },
-                            span,
-                        )
-                    }
                     _ => unreachable!(),
                 }
             };
@@ -2425,13 +2401,10 @@ impl Parser {
 
         if self.check(&TokenKind::Dollar) {
             let tok = self.advance();
-            if self.allow_pipe_placeholder {
-                return Some(Spanned::new(ExprKind::PipePlaceholder, tok.span));
-            }
             self.errors.push(
                 Diagnostic::error(
                     Category::Syntax,
-                    "`$` is only valid in `$>`/`!>` right-hand expressions",
+                    "`$` placeholder expressions are not supported",
                 )
                 .at(SourceLocation {
                     file_id: self.file.0,
@@ -2453,54 +2426,10 @@ impl Parser {
         None
     }
 
-    /// Parse the right-hand side of a pipe.
-    ///
-    /// We only treat DataFrame verbs as special syntax in pipe position. If a
-    /// verb parse fails, we roll back and parse a normal expression so names
-    /// like `filter`/`group_by` remain usable as regular functions.
-    fn parse_pipe_rhs(&mut self, r_bp: u8, op: PipeOp, op_span: Span) -> Option<Expr> {
-        let prev_allow_placeholder = self.allow_pipe_placeholder;
-        self.allow_pipe_placeholder = matches!(op, PipeOp::Place | PipeOp::Tap);
-
-        if let Some(TokenKind::Ident(name)) = self.peek_kind()
-            && is_df_verb(name)
-            && self.peek_is(|k| matches!(k, TokenKind::LParen))
-        {
-            let saved_pos = self.pos;
-            let saved_errors = self.errors.len();
-            if let Some(verb_expr) = self.df_verb() {
-                self.allow_pipe_placeholder = prev_allow_placeholder;
-                return Some(verb_expr);
-            }
-            self.pos = saved_pos;
-            self.errors.truncate(saved_errors);
-        }
-
-        let rhs = self.pratt_expr(r_bp);
-        self.allow_pipe_placeholder = prev_allow_placeholder;
-
-        let rhs = rhs?;
-        if matches!(op, PipeOp::Place) && !expr_contains_pipe_placeholder(&rhs.node) {
-            self.errors.push(
-                Diagnostic::error(
-                    Category::Syntax,
-                    "`$>` requires `$` in the right-hand expression; did you mean `|>`?",
-                )
-                .at(SourceLocation {
-                    file_id: self.file.0,
-                    start: op_span.start,
-                    end: op_span.end,
-                }),
-            );
-            return None;
-        }
-
-        Some(rhs)
-    }
-
     // -- DataFrame verb parsing --
 
     /// Parse a DataFrame verb: `filter(:age > 28)`, `select(:name, :age)`, etc.
+    #[cfg(test)]
     fn df_verb(&mut self) -> Option<Expr> {
         let start = self.current_span();
         let name_tok = self.advance(); // consume verb name
@@ -2788,6 +2717,7 @@ impl Parser {
     }
 
     /// Parse a comma-separated list of atoms: `:name, :age`
+    #[cfg(test)]
     fn atom_list(&mut self) -> Option<Vec<Spanned<String>>> {
         let mut atoms = Vec::new();
         if self.check(&TokenKind::RParen) {
@@ -2825,6 +2755,7 @@ impl Parser {
     /// - `name: col_expr`
     /// - `across([:a, :b], col_expr_with_:col)`
     /// - `across(Numeric, col_expr_with_:col)`
+    #[cfg(test)]
     fn named_col_expr_list(&mut self) -> Option<Vec<DfColAssignment>> {
         let mut items = Vec::new();
         if self.check(&TokenKind::RParen) {
@@ -2852,6 +2783,7 @@ impl Parser {
         Some(items)
     }
 
+    #[cfg(test)]
     fn across_spec(&mut self) -> Option<DfColAssignment> {
         self.expect_ident("expected `across`")?;
         self.expect(&TokenKind::LParen, "expected '(' after across")?;
@@ -2871,6 +2803,7 @@ impl Parser {
     }
 
     /// Parse `[:a, :b, ...]` used by `across` column selectors.
+    #[cfg(test)]
     fn atom_bracket_list(&mut self) -> Option<Vec<Spanned<String>>> {
         self.expect(&TokenKind::LBracket, "expected '[' to start atom list")?;
         let mut atoms = Vec::new();
@@ -2891,6 +2824,7 @@ impl Parser {
     }
 
     /// Parse rename pairs: `new_name: :old_name, ...`
+    #[cfg(test)]
     fn rename_pairs(&mut self) -> Option<Vec<(Spanned<String>, Spanned<String>)>> {
         let mut pairs = Vec::new();
         if self.check(&TokenKind::RParen) {
@@ -2914,10 +2848,12 @@ impl Parser {
     // -- ColumnExpr Pratt parser --
 
     /// Parse a column expression with Pratt precedence climbing.
+    #[cfg(test)]
     fn column_expr(&mut self) -> Option<ColExpr> {
         self.col_expr_pratt(0)
     }
 
+    #[cfg(test)]
     fn col_expr_pratt(&mut self, min_bp: u8) -> Option<ColExpr> {
         let mut lhs = self.col_expr_unary_or_primary()?;
 
@@ -2983,6 +2919,7 @@ impl Parser {
         Some(lhs)
     }
 
+    #[cfg(test)]
     fn col_expr_unary_or_primary(&mut self) -> Option<ColExpr> {
         let start = self.current_span();
 
@@ -3017,6 +2954,7 @@ impl Parser {
         self.col_expr_primary()
     }
 
+    #[cfg(test)]
     fn col_expr_primary(&mut self) -> Option<ColExpr> {
         let start = self.current_span();
 
@@ -3159,6 +3097,7 @@ impl Parser {
     }
 
     /// Infix binding power for ColumnExpr operators — mirrors main expression precedence.
+    #[cfg(test)]
     fn col_expr_infix_bp(&self) -> Option<(u8, u8)> {
         match self.peek_kind()? {
             TokenKind::Or => Some((3, 4)),
@@ -3470,6 +3409,7 @@ impl Parser {
         })
     }
 
+    #[cfg(test)]
     fn col_cond_expr(&mut self) -> Option<ColExpr> {
         let start = self.current_span();
         self.advance(); // consume 'cond'
@@ -3489,6 +3429,7 @@ impl Parser {
         Some(Spanned::new(ColExprKind::Cond { arms }, start.merge(end)))
     }
 
+    #[cfg(test)]
     fn col_cond_arm(&mut self) -> Option<ColCondArm> {
         let start = self.current_span();
         let condition = if let Some(TokenKind::Ident(name)) = self.peek_kind() {
@@ -4723,7 +4664,6 @@ impl Parser {
 
     fn infix_bp(&self) -> Option<(u8, u8)> {
         match self.peek_kind()? {
-            TokenKind::PipeGt | TokenKind::DollarGt | TokenKind::BangGt => Some((1, 2)),
             TokenKind::When => Some((2, 3)),
             TokenKind::Or => Some((3, 4)),
             TokenKind::And => Some((5, 6)),
@@ -4902,6 +4842,7 @@ impl Parser {
     }
 
     /// Parse `true` or `false` literal, returning the boolean value.
+    #[cfg(test)]
     fn expect_bool_literal(&mut self, msg: &str) -> Option<bool> {
         match self.peek_kind() {
             Some(TokenKind::True) => {
@@ -5093,124 +5034,6 @@ fn token_to_binop(kind: &TokenKind) -> Option<BinOp> {
     }
 }
 
-fn pipe_op_from_token(kind: &TokenKind) -> Option<PipeOp> {
-    match kind {
-        TokenKind::PipeGt => Some(PipeOp::Standard),
-        TokenKind::DollarGt => Some(PipeOp::Place),
-        TokenKind::BangGt => Some(PipeOp::Tap),
-        _ => None,
-    }
-}
-
-fn expr_contains_pipe_placeholder(kind: &ExprKind) -> bool {
-    match kind {
-        ExprKind::PipePlaceholder => true,
-        ExprKind::Lit(_) | ExprKind::Var(_) | ExprKind::None | ExprKind::Atom(_) => false,
-        ExprKind::Let { value, .. } => expr_contains_pipe_placeholder(&value.node),
-        ExprKind::Lambda { body, .. } => expr_contains_pipe_placeholder(&body.node),
-        ExprKind::Call { func, args } => {
-            expr_contains_pipe_placeholder(&func.node)
-                || args
-                    .iter()
-                    .any(|arg| expr_contains_pipe_placeholder(&arg.value.node))
-        }
-        ExprKind::If {
-            condition,
-            then_branch,
-            else_branch,
-        } => {
-            expr_contains_pipe_placeholder(&condition.node)
-                || expr_contains_pipe_placeholder(&then_branch.node)
-                || else_branch
-                    .as_ref()
-                    .is_some_and(|expr| expr_contains_pipe_placeholder(&expr.node))
-        }
-        ExprKind::Case { scrutinee, arms } => {
-            expr_contains_pipe_placeholder(&scrutinee.node)
-                || arms.iter().any(|arm| {
-                    arm.guard
-                        .as_ref()
-                        .is_some_and(|g| expr_contains_pipe_placeholder(&g.node))
-                        || expr_contains_pipe_placeholder(&arm.body.node)
-                })
-        }
-        ExprKind::Cond { arms } => arms.iter().any(|arm| {
-            expr_contains_pipe_placeholder(&arm.condition.node)
-                || expr_contains_pipe_placeholder(&arm.body.node)
-        }),
-        ExprKind::For(for_expr) => {
-            for_expr.clauses.iter().any(|clause| match clause {
-                ForClause::Generator { source, .. } => expr_contains_pipe_placeholder(&source.node),
-                ForClause::Guard(guard) => expr_contains_pipe_placeholder(&guard.node),
-            }) || expr_contains_pipe_placeholder(&for_expr.body.node)
-        }
-        ExprKind::Use(use_expr) => expr_contains_pipe_placeholder(&use_expr.rhs.node),
-        ExprKind::BinaryOp { left, right, .. } => {
-            expr_contains_pipe_placeholder(&left.node)
-                || expr_contains_pipe_placeholder(&right.node)
-        }
-        ExprKind::UnaryOp { operand, .. } => expr_contains_pipe_placeholder(&operand.node),
-        ExprKind::Pipe {
-            left, right, guard, ..
-        } => {
-            expr_contains_pipe_placeholder(&left.node)
-                || expr_contains_pipe_placeholder(&right.node)
-                || guard
-                    .as_ref()
-                    .is_some_and(|g| expr_contains_pipe_placeholder(&g.node))
-        }
-        ExprKind::WhenGuard { body, condition } => {
-            expr_contains_pipe_placeholder(&body.node)
-                || expr_contains_pipe_placeholder(&condition.node)
-        }
-        ExprKind::Range { start, end, .. } => {
-            expr_contains_pipe_placeholder(&start.node) || expr_contains_pipe_placeholder(&end.node)
-        }
-        ExprKind::As { expr, .. } => expr_contains_pipe_placeholder(&expr.node),
-        ExprKind::Tuple(exprs) | ExprKind::List(exprs) => exprs
-            .iter()
-            .any(|expr| expr_contains_pipe_placeholder(&expr.node)),
-        ExprKind::Record { fields, spread, .. } | ExprKind::AnonRecord { fields, spread } => {
-            fields
-                .iter()
-                .any(|(_, expr)| expr_contains_pipe_placeholder(&expr.node))
-                || spread
-                    .as_ref()
-                    .is_some_and(|expr| expr_contains_pipe_placeholder(&expr.node))
-        }
-        ExprKind::FieldAccess { expr, .. } => expr_contains_pipe_placeholder(&expr.node),
-        ExprKind::Block(exprs) => exprs
-            .iter()
-            .any(|expr| expr_contains_pipe_placeholder(&expr.node)),
-        ExprKind::Constructor { args, .. } => args
-            .iter()
-            .any(|arg| expr_contains_pipe_placeholder(&arg.value.node)),
-        ExprKind::StringInterp(parts) => parts.iter().any(|part| match part {
-            StringInterpPart::Literal(_) => false,
-            StringInterpPart::Expr(expr) => expr_contains_pipe_placeholder(&expr.node),
-        }),
-        ExprKind::MapLiteral(pairs) => pairs.iter().any(|(k, v)| {
-            expr_contains_pipe_placeholder(&k.node) || expr_contains_pipe_placeholder(&v.node)
-        }),
-        ExprKind::Frame { columns } => columns.iter().any(|(_, values)| {
-            values
-                .iter()
-                .any(|value| expr_contains_pipe_placeholder(&value.node))
-        }),
-        ExprKind::DfVerb { .. }
-        | ExprKind::EmbeddedBlock { .. }
-        | ExprKind::Spawn { .. }
-        | ExprKind::Await { .. }
-        | ExprKind::StreamBlock { .. }
-        | ExprKind::Yield { .. }
-        | ExprKind::YieldFrom { .. }
-        | ExprKind::ActorSend { .. }
-        | ExprKind::ActorCall { .. }
-        | ExprKind::ControlSend { .. }
-        | ExprKind::Wildcard => false,
-    }
-}
-
 fn split_for_generator_when_guard(clause: ForClause) -> (ForClause, Option<Expr>) {
     match clause {
         ForClause::Generator { pattern, source } => match source.node {
@@ -5227,37 +5050,8 @@ fn split_for_generator_when_guard(clause: ForClause) -> (ForClause, Option<Expr>
     }
 }
 
-/// Check whether a name is a known DataFrame verb.
-fn is_df_verb(name: &str) -> bool {
-    matches!(
-        name,
-        "filter"
-            | "select"
-            | "mutate"
-            | "update"
-            | "group_by"
-            | "summarize"
-            | "sort"
-            | "distinct"
-            | "drop"
-            | "rename"
-            | "cast"
-            | "head"
-            | "tail"
-            | "slice"
-            | "count"
-            | "pull"
-            | "compute"
-            | "collect"
-            | "sample"
-            | "bind_rows"
-            | "bind_cols"
-            | "join"
-            | "map"
-    )
-}
-
 /// Map a verb name string to its DfVerbKind.
+#[cfg(test)]
 fn verb_kind(name: &str) -> Option<DfVerbKind> {
     match name {
         "filter" => Some(DfVerbKind::Filter),
@@ -5471,11 +5265,24 @@ mod tests {
     }
 
     fn parse_df_verb(source: &str) -> Expr {
-        let piped = parse(&format!("df |> {source}"));
-        match piped.node {
-            ExprKind::Pipe { right, .. } => *right,
-            other => panic!("expected pipe expression, got {other:?}"),
-        }
+        let tokens = lex_layout(source, FileId(0)).expect("lex failed").0;
+        let mut parser = Parser::new(tokens, FileId(0));
+        let expr = parser.df_verb().expect("df verb parse failed");
+        parser.skip_newlines();
+        assert!(parser.at_eof(), "unexpected tokens after df verb");
+        assert!(
+            parser.errors.is_empty(),
+            "unexpected parser errors: {:?}",
+            parser.errors
+        );
+        expr
+    }
+
+    fn parse_df_verb_err(source: &str) -> Vec<Diagnostic> {
+        let tokens = lex_layout(source, FileId(0)).expect("lex failed").0;
+        let mut parser = Parser::new(tokens, FileId(0));
+        let _ = parser.df_verb();
+        parser.errors
     }
 
     fn parse_err(source: &str) -> Vec<Diagnostic> {
@@ -5774,64 +5581,17 @@ mod tests {
         assert!(matches!(expr.node, ExprKind::Call { .. }));
     }
 
-    // -- Pipe operator --
+    // -- Pipe operator removal --
 
     #[test]
-    fn parse_pipe() {
-        let expr = parse("x |> f");
-        match &expr.node {
-            ExprKind::Pipe { left, right, .. } => {
-                assert_eq!(left.node, ExprKind::Var("x".into()));
-                assert_eq!(right.node, ExprKind::Var("f".into()));
-            }
-            _ => panic!("expected Pipe"),
-        }
-    }
-
-    #[test]
-    fn parse_place_pipe_requires_placeholder() {
-        let errors = parse_err("x $> f()");
+    fn parse_pipe_operator_is_error() {
+        let errors = parse_err("x |> f");
         assert!(
-            errors.iter().any(|d| d
-                .message
-                .contains("`$>` requires `$` in the right-hand expression")),
-            "expected `$>` placeholder diagnostic, got {errors:?}"
+            errors
+                .iter()
+                .any(|d| d.message.contains("unexpected token after expression")),
+            "expected pipe parse failure, got {errors:?}"
         );
-    }
-
-    #[test]
-    fn parse_place_and_tap_pipe_with_when_guard() {
-        let expr = parse("x $> f($) !> g() when ok");
-        match &expr.node {
-            ExprKind::Pipe {
-                left,
-                op,
-                right,
-                guard,
-            } => {
-                assert_eq!(op.node, PipeOp::Tap);
-                assert!(guard.is_some());
-                assert!(matches!(right.node, ExprKind::Call { .. }));
-                match &left.node {
-                    ExprKind::Pipe { op, .. } => assert_eq!(op.node, PipeOp::Place),
-                    other => panic!("expected nested place pipe on lhs, got {other:?}"),
-                }
-            }
-            other => panic!("expected Pipe, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn pipe_lowest_precedence() {
-        // 1 + 2 |> f should parse as (1 + 2) |> f
-        let expr = parse("1 + 2 |> f");
-        match &expr.node {
-            ExprKind::Pipe { left, .. } => match &left.node {
-                ExprKind::BinaryOp { op, .. } => assert_eq!(op.node, BinOp::Add),
-                _ => panic!("expected BinaryOp on left of pipe"),
-            },
-            _ => panic!("expected Pipe"),
-        }
     }
 
     #[test]
@@ -5862,14 +5622,14 @@ mod tests {
     }
 
     #[test]
-    fn ascription_binds_tighter_than_pipe() {
-        let expr = parse("x |> f as Int");
-        match &expr.node {
-            ExprKind::Pipe { right, .. } => {
-                assert!(matches!(right.node, ExprKind::As { .. }));
-            }
-            other => panic!("expected Pipe, got {other:?}"),
-        }
+    fn ascription_with_pipe_operator_is_error() {
+        let errors = parse_err("x |> f as Int");
+        assert!(
+            errors
+                .iter()
+                .any(|d| d.message.contains("unexpected token after expression")),
+            "expected pipe parse failure, got {errors:?}"
+        );
     }
 
     // -- Let bindings --
@@ -8660,54 +8420,6 @@ mod tests {
     }
 
     #[test]
-    fn parse_verb_in_pipe() {
-        // The full pipe: df |> filter(:age > 28)
-        let expr = parse("df |> filter(:age > 28)");
-        match &expr.node {
-            ExprKind::Pipe { left, right, .. } => {
-                assert_eq!(left.node, ExprKind::Var("df".into()));
-                match &right.node {
-                    ExprKind::DfVerb { verb, .. } => {
-                        assert_eq!(verb.node, DfVerbKind::Filter);
-                    }
-                    _ => panic!("expected DfVerb as pipe RHS"),
-                }
-            }
-            _ => panic!("expected Pipe, got {:?}", expr.node),
-        }
-    }
-
-    #[test]
-    fn parse_regular_call_in_pipe_with_df_verb_name() {
-        let expr = parse("xs |> group_by(key_fn)");
-        match &expr.node {
-            ExprKind::Pipe { right, .. } => match &right.node {
-                ExprKind::Call { func, args } => {
-                    assert_eq!(func.node, ExprKind::Var("group_by".into()));
-                    assert_eq!(args.len(), 1);
-                }
-                _ => panic!("expected Call on pipe RHS"),
-            },
-            _ => panic!("expected Pipe"),
-        }
-    }
-
-    #[test]
-    fn parse_map_with_lambda_backtracks_to_call() {
-        let expr = parse("xs |> map(x -> x + 1)");
-        match &expr.node {
-            ExprKind::Pipe { right, .. } => match &right.node {
-                ExprKind::Call { func, args } => {
-                    assert_eq!(func.node, ExprKind::Var("map".into()));
-                    assert_eq!(args.len(), 1);
-                }
-                other => panic!("expected Call on pipe RHS, got {:?}", other),
-            },
-            _ => panic!("expected Pipe"),
-        }
-    }
-
-    #[test]
     fn parse_col_expr_precedence() {
         // :a + :b * :c should parse as :a + (:b * :c)
         let expr = parse_df_verb("filter(:a + :b * :c > 100)");
@@ -8816,34 +8528,6 @@ mod tests {
                 }
             }
             _ => panic!("expected DfVerb"),
-        }
-    }
-
-    #[test]
-    fn parse_chained_pipe_verbs() {
-        // df |> filter(:age > 28) |> select(:name)
-        let expr = parse("df |> filter(:age > 28) |> select(:name)");
-        match &expr.node {
-            ExprKind::Pipe { left, right, .. } => {
-                // RHS is select(:name)
-                match &right.node {
-                    ExprKind::DfVerb { verb, .. } => {
-                        assert_eq!(verb.node, DfVerbKind::Select);
-                    }
-                    _ => panic!("expected DfVerb"),
-                }
-                // LHS is df |> filter(:age > 28)
-                match &left.node {
-                    ExprKind::Pipe { right, .. } => match &right.node {
-                        ExprKind::DfVerb { verb, .. } => {
-                            assert_eq!(verb.node, DfVerbKind::Filter);
-                        }
-                        _ => panic!("expected DfVerb"),
-                    },
-                    _ => panic!("expected inner Pipe"),
-                }
-            }
-            _ => panic!("expected Pipe"),
         }
     }
 
@@ -9001,31 +8685,14 @@ mod tests {
     }
 
     #[test]
-    fn parse_sql_block_then_pipe() {
-        let expr = parse("sql { SELECT 1 AS x } |> filter(:x > 0)");
-        match &expr.node {
-            ExprKind::Pipe { left, right, .. } => {
-                match &left.node {
-                    ExprKind::EmbeddedBlock { kind, parts, .. } => {
-                        assert_eq!(*kind, BlockKind::Sql);
-                        match &parts[0] {
-                            StringInterpPart::Literal(text) => {
-                                assert_eq!(text, "SELECT 1 AS x");
-                            }
-                            _ => panic!("expected Literal"),
-                        }
-                    }
-                    _ => panic!("expected Block on left of pipe"),
-                }
-                match &right.node {
-                    ExprKind::DfVerb { verb, .. } => {
-                        assert_eq!(verb.node, DfVerbKind::Filter);
-                    }
-                    _ => panic!("expected DfVerb on right of pipe"),
-                }
-            }
-            _ => panic!("expected Pipe"),
-        }
+    fn parse_sql_block_pipe_is_error() {
+        let errors = parse_err("sql { SELECT 1 AS x } |> filter(:x > 0)");
+        assert!(
+            errors
+                .iter()
+                .any(|d| d.message.contains("unexpected token after expression")),
+            "expected pipe parse failure, got {errors:?}"
+        );
     }
 
     #[test]
@@ -9080,33 +8747,30 @@ mod tests {
     #[test]
     fn parse_none_in_column_expr() {
         // coalesce(:x, None) — None is a valid literal in ColumnExpr
-        let expr = parse("frame { x: [1] } |> mutate(y: coalesce(:x, None))");
+        let expr = parse_df_verb("mutate(y: coalesce(:x, None))");
         match &expr.node {
-            ExprKind::Pipe { right, .. } => match &right.node {
-                ExprKind::DfVerb {
-                    args: DfVerbArgs::Mutate(items),
-                    ..
-                } => match &items[0] {
-                    DfColAssignment::Named(_, col_expr) => {
-                        if let ColExprKind::Call { args, .. } = &col_expr.node {
-                            assert_eq!(args.len(), 2);
-                            assert_eq!(args[1].node, ColExprKind::None);
-                        } else {
-                            panic!("expected Call");
-                        }
+            ExprKind::DfVerb {
+                args: DfVerbArgs::Mutate(items),
+                ..
+            } => match &items[0] {
+                DfColAssignment::Named(_, col_expr) => {
+                    if let ColExprKind::Call { args, .. } = &col_expr.node {
+                        assert_eq!(args.len(), 2);
+                        assert_eq!(args[1].node, ColExprKind::None);
+                    } else {
+                        panic!("expected Call");
                     }
-                    other => panic!("expected named mutate assignment, got {other:?}"),
-                },
-                _ => panic!("expected DfVerb"),
+                }
+                other => panic!("expected named mutate assignment, got {other:?}"),
             },
-            _ => panic!("expected Pipe"),
+            _ => panic!("expected DfVerb"),
         }
     }
 
     #[test]
     fn parse_cond_in_column_expr() {
-        let errors = parse_err(
-            "frame { score: [95] } |> mutate(\n  grade: cond\n    :score > 90 -> \"A\"\n    _ -> \"B\"\n)",
+        let errors = parse_df_verb_err(
+            "mutate(\n  grade: cond\n    :score > 90 -> \"A\"\n    _ -> \"B\"\n)",
         );
         assert!(
             errors
@@ -9118,20 +8782,17 @@ mod tests {
 
     #[test]
     fn parse_cast_verb() {
-        let expr = parse("frame { x: [1] } |> cast(:x, Float)");
+        let expr = parse_df_verb("cast(:x, Float)");
         match &expr.node {
-            ExprKind::Pipe { right, .. } => match &right.node {
-                ExprKind::DfVerb {
-                    verb,
-                    args: DfVerbArgs::Cast(col, target_type),
-                } => {
-                    assert_eq!(verb.node, DfVerbKind::Cast);
-                    assert_eq!(col.node, "x");
-                    assert_eq!(target_type.node, "Float");
-                }
-                _ => panic!("expected DfVerb::Cast"),
-            },
-            _ => panic!("expected Pipe"),
+            ExprKind::DfVerb {
+                verb,
+                args: DfVerbArgs::Cast(col, target_type),
+            } => {
+                assert_eq!(verb.node, DfVerbKind::Cast);
+                assert_eq!(col.node, "x");
+                assert_eq!(target_type.node, "Float");
+            }
+            _ => panic!("expected DfVerb::Cast"),
         }
     }
 

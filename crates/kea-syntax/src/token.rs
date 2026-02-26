@@ -146,9 +146,6 @@ pub enum TokenKind {
     Gt,        // >
     GtEq,      // >=
     DiamondOp, // <>
-    PipeGt,    // |>
-    DollarGt,  // $>
-    BangGt,    // !>
     Question,  // ?
 
     // -- Assignment / arrows --

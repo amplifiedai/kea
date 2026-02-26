@@ -111,8 +111,7 @@ pub fn classify_as_declaration(tokens: &[crate::Token]) -> bool {
 fn line_starts_with_continuation(trimmed: &str) -> bool {
     matches!(
         trimmed,
-        s if s.starts_with("|>")
-            || s.starts_with("&&")
+        s if s.starts_with("&&")
             || s.starts_with("||")
             || s.starts_with("==")
             || s.starts_with("!=")
@@ -130,8 +129,7 @@ fn line_starts_with_continuation(trimmed: &str) -> bool {
 }
 
 fn line_ends_with_continuation(trimmed: &str) -> bool {
-    trimmed.ends_with("|>")
-        || trimmed.ends_with('=')
+    trimmed.ends_with('=')
         || trimmed.ends_with(',')
         || trimmed.ends_with('|')
         || trimmed.ends_with("->")
@@ -324,12 +322,12 @@ mod tests {
     }
 
     #[test]
-    fn pipeline_continuation_line_not_split() {
-        let source = "let pipeline = employees\n  |> filter(:active == true)\npipeline\n";
+    fn operator_continuation_line_not_split() {
+        let source = "let total = 1\n  + 2\nnext\n";
         let chunks = split_chunks(source);
         assert_eq!(chunks.len(), 2);
-        assert!(chunks[0].text.contains("|> filter"));
-        assert_eq!(chunks[1].text.trim(), "pipeline");
+        assert!(chunks[0].text.contains("+ 2"));
+        assert_eq!(chunks[1].text.trim(), "next");
     }
 
     #[test]
