@@ -55,7 +55,7 @@ Needs more design work. Briefs exist but aren't implementation-ready.
 ### Other design work
 
 - **[Serialization](design/serialization.md)** (Phase 2) — Type-driven Encode/Decode with Validated error accumulation, row-polymorphic partial deserialization, format-agnostic FormatWriter/FormatReader traits. Adapted from Rill's Format brief.
-- **Supervision trait API** — How exactly does the `Supervisor` trait work? KERNEL §19.5 sketches it loosely. Needs concrete trait definition for kea-actors. Depends on Actor trait (§19.3) being implemented.
+- **Supervision trait API + mailbox configuration** — How exactly does the `Supervisor` trait work? KERNEL §19.5 sketches it loosely. Needs concrete trait definition for kea-actors. Also: mailbox config at spawn time — `Spawn.spawn(actor, config: { mailbox: Bounded 1000 })`. Backpressure is a mailbox property (receiver-side), not an effect handler (sender-side). `Send.tell` stays a direct runtime call per §5.15; the mailbox type determines full-queue behavior (block/error/drop). Depends on Actor trait (§19.3) being implemented.
 - **Arena allocation semantics** — `Alloc` effect, deep-copy at boundary, interaction with Unique. KERNEL §12.7 specifies behavior; implementation strategy is the open question. Partially covered in 0e and 0f briefs.
 - **Lean formalization** — Transfer rill's formal methods to Kea. Priority order in ROADMAP.md "Formal Methods Strategy." Depends on type system being stable enough to formalize.
 

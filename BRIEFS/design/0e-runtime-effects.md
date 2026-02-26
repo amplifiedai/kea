@@ -285,6 +285,25 @@ allocation behavior.
   Distinct from Enum.concurrent_map which uses actors for
   IO-bound work. Based on Rill's Par design.
 
+- **Backpressure is a mailbox property, not an effect handler.**
+  `Send.tell` is a direct runtime call (§5.15 capability effect).
+  Backpressure is configured at spawn time via mailbox type:
+  `Bounded N` (block/error when full), `Unbounded`, `Dropping N`
+  (drop oldest). The receiver owns its mailbox policy — the sender
+  doesn't know or care. This keeps `Send` as a cheap direct call
+  and avoids compositionality problems where backpressure behavior
+  depends on handler scope rather than target actor. Full mailbox
+  surfaces as a `Fail` to the sender via normal error handling.
+
+- **Capability effects (Send, IO, Spawn) are not interceptable
+  by user handlers.** They compile to direct runtime calls per
+  §5.15. User handlers compose around user-defined effects (Log,
+  State, Tx, etc.), not around capability effects. This preserves
+  the performance guarantee and avoids the "middleware changes
+  Send semantics" problem. Backpressure, rate limiting, and
+  circuit breaking are runtime/mailbox/library concerns, not
+  handler composition.
+
 ## Open Questions
 
 - Should we support tail-resumptive handlers specially? (A handler
