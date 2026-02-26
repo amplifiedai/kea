@@ -6,5 +6,9 @@ version.workspace = true
 
 [dependencies]
 kea-mir.workspace = true
+kea-hir.workspace = true
 kea-types.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+kea-ast.workspace = true
