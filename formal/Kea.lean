@@ -23,6 +23,7 @@ import Kea.Properties.ResumeLinearity
 import Kea.Properties.HandlerTypingContracts
 import Kea.Properties.FailResultContracts
 import Kea.Properties.EffectPolymorphismSoundness
+import Kea.Properties.CatchTypingBridge
 import Kea.Properties.WfUnify
 import Kea.Properties.WfUnifyExtends
 import Kea.Properties.UnifyReflexive
