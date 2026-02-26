@@ -4954,3 +4954,31 @@ surfaces).
 **Outcome**:
 - Phase-2 now has an explicit integration layer to attach future concrete
   handler typing judgments without re-deriving effect/remume bridges.
+
+### 2026-02-26: handler-typing contract refinement (proof-only)
+
+**Context**: Refined `HandlerTypingContracts` from abstract summaries to
+concrete clause-level premises and result-effect assembly, then revalidated the
+formal workspace build.
+
+**MCP tools used**: none (proof-only refinement; no new runtime-facing claim).
+
+**Lean side**:
+- Extended `HandleClauseContract` with `thenEffects` and
+  `clauseCoverageComplete`.
+- Added explicit assembly path
+  (`resultEffectsCore` -> `applyThenEffects` -> `resultEffects`).
+- Added `coverageOk`/`linearityOk`, no-reintroduction checks
+  (`noHandledReintroHandler`, `noHandledReintroThen`), and updated
+  `wellTypedSlice` accordingly.
+- Added resume provenance extraction
+  (`linearityOk_implies_resumeProvenance`,
+  `wellTypedSlice_implies_resumeProvenance`).
+- Verified with `cd formal && lake build` (pass).
+
+**Classify**: N/A (no runtime probe delta).
+
+**Outcome**:
+- The handler typing integration layer now mirrors concrete typing premises
+  closely enough to start Fail-as-zero-resume and Fail/Result equivalence
+  proofs without reworking the contract shape.
