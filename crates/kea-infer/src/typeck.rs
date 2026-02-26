@@ -7385,17 +7385,25 @@ fn seed_function_param_effect_rows(
         let Some(param_name) = param.name() else {
             continue;
         };
-        let Some(ann) = &param.annotation else {
-            continue;
-        };
-        if let Some(signature) = function_effect_signature_from_type_annotation(
-            &ann.node,
-            effect_var_bindings,
-            next_effect_var,
-        ) {
+        if let Some(ann) = &param.annotation
+            && let Some(signature) = function_effect_signature_from_type_annotation(
+                &ann.node,
+                effect_var_bindings,
+                next_effect_var,
+            )
+        {
             env.set_function_effect_signature(param_name.to_string(), signature.clone());
             env.set_function_effect_row(param_name.to_string(), signature.effect_row);
+            continue;
         }
+
+        // Unannotated parameters still participate in callback-effect flow:
+        // give them a shared open row so `f(x)`-style higher-order lambdas can
+        // relate argument callable effects to returned callable effects.
+        env.set_function_effect_row(
+            param_name.to_string(),
+            unknown_effect_row(next_effect_var),
+        );
     }
 }
 
@@ -7434,17 +7442,14 @@ fn infer_lambda_effect_signature(
     );
     let param_effect_rows = params
         .iter()
-        .map(|param| {
-            param.annotation.as_ref().and_then(|ann| {
-                function_param_effect_row_from_type_annotation(
-                    &ann.node,
-                    &mut lambda_effect_vars,
-                    next_effect_var,
-                )
-            })
-        })
+        .map(|param| param.name().and_then(|name| lambda_env.function_effect_row(name)))
         .collect();
-    let effect_row = infer_expr_effect_row(body, &lambda_env, constraints, next_effect_var);
+    let effect_row = join_effect_rows(
+        infer_expr_effect_row(body, &lambda_env, constraints, next_effect_var),
+        infer_callable_value_effect_row(body, &lambda_env, constraints, next_effect_var),
+        constraints,
+        next_effect_var,
+    );
     FunctionEffectSignature {
         param_effect_rows,
         effect_row,
@@ -7500,6 +7505,44 @@ fn function_effect_signature_from_type(ty: &Type) -> Option<FunctionEffectSignat
         }),
         Type::Forall(inner) => function_effect_signature_from_type(&inner.ty),
         _ => None,
+    }
+}
+
+fn infer_lambda_type_effect_row(
+    params: &[Param],
+    param_types: &[Type],
+    body: &Expr,
+    env: &TypeEnv,
+    unifier: &Unifier,
+) -> EffectRow {
+    let mut lambda_env = env.clone();
+    for (param, param_ty) in params.iter().zip(param_types.iter()) {
+        let Some(name) = param.name() else {
+            continue;
+        };
+        let resolved = unifier.substitution.apply(param_ty);
+        if let Some(signature) = function_effect_signature_from_type(&resolved) {
+            lambda_env.set_function_effect_signature(name.to_string(), signature.clone());
+            lambda_env.set_function_effect_row(name.to_string(), signature.effect_row);
+        }
+    }
+
+    let mut constraints = Vec::new();
+    let mut next_effect_var = 0u32;
+    let root = join_effect_rows(
+        infer_expr_effect_row(body, &lambda_env, &mut constraints, &mut next_effect_var),
+        infer_callable_value_effect_row(body, &lambda_env, &mut constraints, &mut next_effect_var),
+        &mut constraints,
+        &mut next_effect_var,
+    );
+
+    let mut effect_unifier = Unifier::new();
+    if effect_unifier.solve(constraints).is_err() {
+        return unknown_effect_row(&mut next_effect_var);
+    }
+
+    EffectRow {
+        row: effect_unifier.substitution.apply_row(&root.row),
     }
 }
 
@@ -7580,6 +7623,7 @@ fn infer_call_effect_row(
     constraints: &mut Vec<Constraint>,
     next_effect_var: &mut u32,
 ) -> EffectRow {
+    let mut call_expr_effect = None;
     let effect_signature = match &func.node {
         ExprKind::Var(name) => env.function_effect_signature(name).cloned(),
         ExprKind::FieldAccess { expr, field } => {
@@ -7590,9 +7634,23 @@ fn infer_call_effect_row(
                 None
             }
         }
-        ExprKind::Call { func, .. } => {
-            let (_, signature) = callable_effect_metadata_from_call(func, env, next_effect_var);
-            signature
+        ExprKind::Call {
+            func: inner_func,
+            args: inner_args,
+        } => {
+            let nested_effect =
+                infer_call_effect_row(inner_func, inner_args, env, constraints, next_effect_var);
+            call_expr_effect = Some(nested_effect.clone());
+            let (_, signature) = callable_effect_metadata_from_call(inner_func, env, next_effect_var);
+            signature.map(|mut sig| {
+                sig.effect_row = join_effect_rows(
+                    sig.effect_row,
+                    nested_effect.clone(),
+                    constraints,
+                    next_effect_var,
+                );
+                sig
+            })
         }
         _ => None,
     };
@@ -7646,10 +7704,12 @@ fn infer_call_effect_row(
                 unknown_effect_row(next_effect_var)
             }
         }
-        ExprKind::Call { func, .. } => {
-            let (effect_row, _) = callable_effect_metadata_from_call(func, env, next_effect_var);
-            effect_row.unwrap_or_else(|| unknown_effect_row(next_effect_var))
-        }
+        ExprKind::Call {
+            func: inner_func,
+            args: inner_args,
+        } => call_expr_effect.unwrap_or_else(|| {
+            infer_call_effect_row(inner_func, inner_args, env, constraints, next_effect_var)
+        }),
         _ => unknown_effect_row(next_effect_var),
     }
 }
@@ -12237,13 +12297,15 @@ fn infer_expr_bidir(
                     push_annotation_arity_mismatch(unifier, ann.span, &name, expected, got);
                 }
             }
+            let lambda_effects =
+                infer_lambda_type_effect_row(params, &param_types, body, env, unifier);
             env.pop_scope();
             unifier.exit_lambda();
 
             Type::Function(FunctionType {
                 params: param_types,
                 ret: Box::new(body_ty),
-                effects: EffectRow::pure(),
+                effects: lambda_effects,
             })
         }
 
@@ -12322,7 +12384,10 @@ fn infer_expr_bidir(
                 let expected_func_ty = Type::Function(FunctionType {
                     params: expected_params,
                     ret: Box::new(ret_ty.clone()),
-                    effects: EffectRow::pure(),
+                    // Call-site type unification must not force unknown callees to pure.
+                    // Keep the effect row open here so function-value effects flow from
+                    // annotations/arguments instead of being collapsed to `pure`.
+                    effects: EffectRow::open(vec![], unifier.fresh_row_var()),
                 });
 
                 constrain_type_eq(
