@@ -378,6 +378,9 @@ impl FunctionLoweringCtx {
             }
             HirExprKind::Var(name) => self.vars.get(name).cloned(),
             HirExprKind::Binary { op, left, right } => {
+                if expr.ty == Type::Bool && matches!(op, BinOp::And | BinOp::Or) {
+                    return self.lower_short_circuit_binary(*op, left, right);
+                }
                 let left_value = self.lower_expr(left)?;
                 let right_value = self.lower_expr(right)?;
                 let dest = self.new_value();
@@ -504,6 +507,48 @@ impl FunctionLoweringCtx {
         if let HirPattern::Var(name) = pattern {
             self.vars.insert(name.clone(), value_id);
         }
+    }
+
+    fn lower_short_circuit_binary(
+        &mut self,
+        op: BinOp,
+        left: &HirExpr,
+        right: &HirExpr,
+    ) -> Option<MirValueId> {
+        let left_value = self.lower_expr(left)?;
+        let rhs_block = self.new_block();
+        let short_block = self.new_block();
+        let result = self.new_value();
+        let join_block = self.new_block_with_params(vec![MirBlockParam {
+            id: result.clone(),
+            ty: Type::Bool,
+        }]);
+
+        let (then_block, else_block, short_value) = match op {
+            BinOp::And => (rhs_block.clone(), short_block.clone(), false),
+            BinOp::Or => (short_block.clone(), rhs_block.clone(), true),
+            _ => return None,
+        };
+        self.set_terminator(MirTerminator::Branch {
+            condition: left_value,
+            then_block,
+            else_block,
+        });
+
+        self.switch_to(rhs_block);
+        let rhs_value = self.lower_expr(right)?;
+        self.ensure_jump_to(join_block.clone(), vec![rhs_value]);
+
+        self.switch_to(short_block);
+        let short_const = self.new_value();
+        self.emit_inst(MirInst::Const {
+            dest: short_const.clone(),
+            literal: MirLiteral::Bool(short_value),
+        });
+        self.ensure_jump_to(join_block.clone(), vec![short_const]);
+
+        self.switch_to(join_block);
+        Some(result)
     }
 }
 
@@ -822,5 +867,137 @@ mod tests {
                 value: Some(ref value)
             } if value == &join_value
         ));
+    }
+
+    #[test]
+    fn lower_hir_module_lowers_short_circuit_and_control_flow() {
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "both".to_string(),
+                params: vec![
+                    HirParam {
+                        name: Some("x".to_string()),
+                        span: kea_ast::Span::synthetic(),
+                    },
+                    HirParam {
+                        name: Some("y".to_string()),
+                        span: kea_ast::Span::synthetic(),
+                    },
+                ],
+                body: HirExpr {
+                    kind: HirExprKind::Binary {
+                        op: BinOp::And,
+                        left: Box::new(HirExpr {
+                            kind: HirExprKind::Var("x".to_string()),
+                            ty: Type::Bool,
+                            span: kea_ast::Span::synthetic(),
+                        }),
+                        right: Box::new(HirExpr {
+                            kind: HirExprKind::Var("y".to_string()),
+                            ty: Type::Bool,
+                            span: kea_ast::Span::synthetic(),
+                        }),
+                    },
+                    ty: Type::Bool,
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::pure(vec![Type::Bool, Type::Bool], Type::Bool)),
+                effects: EffectRow::pure(),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let mir = lower_hir_module(&hir);
+        let function = &mir.functions[0];
+        assert_eq!(function.blocks.len(), 4);
+        assert!(matches!(
+            function.blocks[0].terminator,
+            MirTerminator::Branch { .. }
+        ));
+
+        let MirTerminator::Jump {
+            args: rhs_args, ..
+        } = &function.blocks[1].terminator
+        else {
+            panic!("rhs branch should jump to join");
+        };
+        assert_eq!(rhs_args.len(), 1);
+        assert_eq!(rhs_args[0], MirValueId(1));
+
+        assert!(matches!(
+            function.blocks[2].instructions.first(),
+            Some(MirInst::Const {
+                literal: MirLiteral::Bool(false),
+                ..
+            })
+        ));
+        assert_eq!(function.blocks[3].params.len(), 1);
+        assert!(matches!(
+            function.blocks[3].terminator,
+            MirTerminator::Return { value: Some(_) }
+        ));
+    }
+
+    #[test]
+    fn lower_hir_module_lowers_short_circuit_or_control_flow() {
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "either".to_string(),
+                params: vec![
+                    HirParam {
+                        name: Some("x".to_string()),
+                        span: kea_ast::Span::synthetic(),
+                    },
+                    HirParam {
+                        name: Some("y".to_string()),
+                        span: kea_ast::Span::synthetic(),
+                    },
+                ],
+                body: HirExpr {
+                    kind: HirExprKind::Binary {
+                        op: BinOp::Or,
+                        left: Box::new(HirExpr {
+                            kind: HirExprKind::Var("x".to_string()),
+                            ty: Type::Bool,
+                            span: kea_ast::Span::synthetic(),
+                        }),
+                        right: Box::new(HirExpr {
+                            kind: HirExprKind::Var("y".to_string()),
+                            ty: Type::Bool,
+                            span: kea_ast::Span::synthetic(),
+                        }),
+                    },
+                    ty: Type::Bool,
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::pure(vec![Type::Bool, Type::Bool], Type::Bool)),
+                effects: EffectRow::pure(),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let mir = lower_hir_module(&hir);
+        let function = &mir.functions[0];
+        assert_eq!(function.blocks.len(), 4);
+        assert!(matches!(
+            function.blocks[0].terminator,
+            MirTerminator::Branch { .. }
+        ));
+        assert!(matches!(
+            function.blocks[2].instructions.first(),
+            Some(MirInst::Const {
+                literal: MirLiteral::Bool(true),
+                ..
+            })
+        ));
+
+        let MirTerminator::Jump {
+            args: rhs_args, ..
+        } = &function.blocks[1].terminator
+        else {
+            panic!("rhs branch should jump to join");
+        };
+        assert_eq!(rhs_args.len(), 1);
+        assert_eq!(rhs_args[0], MirValueId(1));
     }
 }

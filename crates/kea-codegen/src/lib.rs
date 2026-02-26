@@ -1307,6 +1307,49 @@ mod tests {
     }
 
     #[test]
+    fn compile_hir_module_lowers_short_circuit_boolean_ops() {
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "both".to_string(),
+                params: vec![
+                    HirParam {
+                        name: Some("x".to_string()),
+                        span: kea_ast::Span::synthetic(),
+                    },
+                    HirParam {
+                        name: Some("y".to_string()),
+                        span: kea_ast::Span::synthetic(),
+                    },
+                ],
+                body: HirExpr {
+                    kind: HirExprKind::Binary {
+                        op: kea_ast::BinOp::And,
+                        left: Box::new(HirExpr {
+                            kind: HirExprKind::Var("x".to_string()),
+                            ty: Type::Bool,
+                            span: kea_ast::Span::synthetic(),
+                        }),
+                        right: Box::new(HirExpr {
+                            kind: HirExprKind::Var("y".to_string()),
+                            ty: Type::Bool,
+                            span: kea_ast::Span::synthetic(),
+                        }),
+                    },
+                    ty: Type::Bool,
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::pure(vec![Type::Bool, Type::Bool], Type::Bool)),
+                effects: EffectRow::pure(),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let artifact = compile_hir_module(&CraneliftBackend, &hir, &BackendConfig::default())
+            .expect("short-circuit boolean lowering should compile");
+        assert_eq!(artifact.stats.per_function.len(), 1);
+    }
+
+    #[test]
     fn execute_hir_main_jit_returns_exit_code() {
         let hir = HirModule {
             declarations: vec![HirDecl::Function(HirFunction {
