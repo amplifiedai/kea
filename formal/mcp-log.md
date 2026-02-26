@@ -5513,3 +5513,25 @@ validated in preceding higher-order closure probes).
 **Outcome**:
 - Higher-order theorem consumers can now start from raw premise sets directly,
   without constructing intermediate judgment records manually.
+
+### 2026-02-26: higher-order named bundles (proof-only)
+
+**Context**: Added named bundle/projection ergonomics for higher-order catch
+surfaces, matching the established Phase-2 pattern used in other modules.
+
+**MCP tools used**: none (proof-only packaging refinement).
+
+**Lean side**:
+- Extended `Kea/Properties/HigherOrderCatchContracts.lean` with:
+  - `HigherOrderCatchBundle`
+  - `higherOrderCatchTypingJudgment_bundle`
+  - `higherOrderCatchTypingJudgment_bundle_*` projections
+  - noncomputable `higherOrderCatchTypingJudgment_bundle_of_premises`
+- Verified with `cd formal && lake build` (pass).
+
+**Classify**: N/A (proof-only step).
+
+**Outcome**:
+- Higher-order theorem consumers now have a stable one-name bundle surface and
+one-hop projections for clause-removal, row-tail, non-Fail preservation, and
+Fail-removal consequences.

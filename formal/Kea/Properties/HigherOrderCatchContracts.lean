@@ -184,5 +184,121 @@ theorem higherOrderCatchTypingJudgment_admissibility_branch_of_premises
   }
   exact higherOrderCatchTypingJudgment_admissibility_branch hj
 
+structure HigherOrderCatchBundle (j : HigherOrderCatchTypingJudgment) where
+  clauseFailRemoved :
+    RowFields.has
+      (EffectRow.fields (HandleClauseContract.resultEffects j.judgment.clause))
+      FailResultContracts.failLabel = false
+  loweredEffects : EffectRow
+  loweredEq :
+    j.judgment.loweredTy =
+      .functionEff
+        (.cons (higherOrderParamType j.innerEffects j.judgment.okTy) .nil)
+        loweredEffects
+        (.result j.judgment.okTy j.judgment.errTy)
+  rowTailStable :
+    EffectPolymorphismSoundness.rowTailStable j.innerEffects loweredEffects
+  preservesNonFail :
+    EffectPolymorphismSoundness.labelsPreservedExcept
+      j.innerEffects loweredEffects FailResultContracts.failLabel
+  failRemoved :
+    RowFields.has (EffectRow.fields loweredEffects) FailResultContracts.failLabel = false
+
+noncomputable def higherOrderCatchTypingJudgment_bundle
+    (j : HigherOrderCatchTypingJudgment) :
+    HigherOrderCatchBundle j :=
+  let h := higherOrderCatchTypingJudgment_sound j
+  let h_clause_removed := h.1
+  let h_lowering := h.2
+  let loweredEffects := Classical.choose h_lowering
+  let hspec := Classical.choose_spec h_lowering
+  {
+    clauseFailRemoved := h_clause_removed
+    loweredEffects := loweredEffects
+    loweredEq := hspec.1
+    rowTailStable := hspec.2.1
+    preservesNonFail := hspec.2.2.1
+    failRemoved := hspec.2.2.2
+  }
+
+theorem higherOrderCatchTypingJudgment_bundle_clauseFailRemoved
+    (j : HigherOrderCatchTypingJudgment) :
+    RowFields.has
+      (EffectRow.fields (HandleClauseContract.resultEffects j.judgment.clause))
+      FailResultContracts.failLabel = false :=
+  (higherOrderCatchTypingJudgment_bundle j).clauseFailRemoved
+
+theorem higherOrderCatchTypingJudgment_bundle_rowTailStable
+    (j : HigherOrderCatchTypingJudgment) :
+    EffectPolymorphismSoundness.rowTailStable
+      j.innerEffects
+      (higherOrderCatchTypingJudgment_bundle j).loweredEffects :=
+  (higherOrderCatchTypingJudgment_bundle j).rowTailStable
+
+theorem higherOrderCatchTypingJudgment_bundle_preserves_nonFail
+    (j : HigherOrderCatchTypingJudgment) :
+    EffectPolymorphismSoundness.labelsPreservedExcept
+      j.innerEffects
+      (higherOrderCatchTypingJudgment_bundle j).loweredEffects
+      FailResultContracts.failLabel :=
+  (higherOrderCatchTypingJudgment_bundle j).preservesNonFail
+
+theorem higherOrderCatchTypingJudgment_bundle_failRemoved
+    (j : HigherOrderCatchTypingJudgment) :
+    RowFields.has
+      (EffectRow.fields (higherOrderCatchTypingJudgment_bundle j).loweredEffects)
+      FailResultContracts.failLabel = false :=
+  (higherOrderCatchTypingJudgment_bundle j).failRemoved
+
+noncomputable def higherOrderCatchTypingJudgment_bundle_of_premises
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_admissible : FailResultContracts.catchAdmissible clause.exprEffects)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (.cons (higherOrderParamType innerEffects okTy) .nil)
+          clause.exprEffects
+          okTy
+          errTy) :
+    HigherOrderCatchBundle
+      {
+        judgment := CatchTypingBridge.mkCatchTypingJudgment
+          clause
+          (.cons (higherOrderParamType innerEffects okTy) .nil)
+          okTy
+          errTy
+          loweredTy
+          h_wellTyped
+          h_failZero
+          h_admissible
+          h_lowered
+        innerEffects := innerEffects
+        h_params := rfl
+        h_clauseEffects := h_clauseEffects
+      } := by
+  let cj : CatchTypingBridge.CatchTypingJudgment :=
+    CatchTypingBridge.mkCatchTypingJudgment
+      clause
+      (.cons (higherOrderParamType innerEffects okTy) .nil)
+      okTy
+      errTy
+      loweredTy
+      h_wellTyped
+      h_failZero
+      h_admissible
+      h_lowered
+  let hj : HigherOrderCatchTypingJudgment := {
+    judgment := cj
+    innerEffects := innerEffects
+    h_params := rfl
+    h_clauseEffects := h_clauseEffects
+  }
+  exact higherOrderCatchTypingJudgment_bundle hj
+
 end HigherOrderCatchContracts
 end Kea

@@ -69,6 +69,7 @@ This work starts by cannibalizing the existing Rill formal corpus and then exten
 - **Phase 2 (active):** Higher-order typed-Fail catch regression is now closed on latest MCP probes: `catch` over `fn() -[Log, Fail String]> Int` is accepted with residual `Log`, while fail-absent paths still correctly reject with `E0012`.
 - **Phase 2 (active):** Added `Kea/Properties/HigherOrderCatchContracts.lean` to specialize higher-order catch theorem surfaces (`higherOrderCatchType`, `HigherOrderCatchTypingJudgment`, soundness/admissibility theorems) and align formal APIs with the now-fixed higher-order MCP behavior.
 - **Phase 2 (active):** `HigherOrderCatchContracts` now includes direct raw-premise adapters (`higherOrderCatchTypingJudgment_sound_of_premises`, `higherOrderCatchTypingJudgment_admissibility_branch_of_premises`) for judgment-free entry into higher-order theorem surfaces.
+- **Phase 2 (active):** `HigherOrderCatchContracts` now also includes named bundle contracts/projections (`HigherOrderCatchBundle`, `higherOrderCatchTypingJudgment_bundle*`) for stable one-name consumption of higher-order capstone consequences.
 
 The formal workspace lives at [`formal/`](formal/).
 
