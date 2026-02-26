@@ -103,6 +103,7 @@ pub enum TokenKind {
     Opaque,
     Impl,
     Trait,
+    Effect,
     Forall,
     Where,
     Import,

@@ -13,8 +13,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use kea_ast::{
-    AliasDecl, Argument, BinOp, Expr, ExprKind, FnDecl, ForClause, ForExpr, Lit, OpaqueTypeDef,
-    Param, ParamLabel, Pattern, PatternKind, RecordDef, Span, TypeAnnotation, free_vars,
+    AliasDecl, Argument, BinOp, EffectDecl, Expr, ExprKind, FnDecl, ForClause, ForExpr, Lit,
+    OpaqueTypeDef, Param, ParamLabel, Pattern, PatternKind, RecordDef, Span, TypeAnnotation,
+    free_vars,
 };
 use kea_types::{
     Dim, DimVarId, EffectRow, Effects, FunctionType, Kind, Label, Purity, RecordType, RowType,
@@ -6948,6 +6949,170 @@ pub fn register_fn_effect_signature(fn_decl: &FnDecl, env: &mut TypeEnv) {
     if let Some(signature) = function_effect_signature_from_decl(fn_decl) {
         env.set_function_effect_signature(fn_decl.name.node.clone(), signature);
     }
+}
+
+/// Register an effect declaration's operations as qualified call targets.
+///
+/// Effect operation calls are always effectful with the declared effect label,
+/// so each registered operation gets an effect-signature template whose row is
+/// `[EffectName]`.
+pub fn register_effect_decl(
+    effect_decl: &EffectDecl,
+    records: &RecordRegistry,
+    sum_types: Option<&SumTypeRegistry>,
+    env: &mut TypeEnv,
+) -> Vec<Diagnostic> {
+    let mut diagnostics = Vec::new();
+    let module_short = effect_decl.name.node.clone();
+    let module_path = format!("Kea.{module_short}");
+    env.register_module_alias(&module_short, &module_path);
+
+    let mut type_param_scope = BTreeMap::new();
+    let mut type_vars = Vec::new();
+    let mut kinds = BTreeMap::new();
+    let mut seen_params = BTreeSet::new();
+    let mut next_placeholder = u32::MAX;
+    for type_param in &effect_decl.type_params {
+        if !seen_params.insert(type_param.clone()) {
+            diagnostics.push(
+                Diagnostic::error(
+                    Category::TypeError,
+                    format!(
+                        "duplicate effect type parameter `{type_param}` in effect `{module_short}`"
+                    ),
+                )
+                .at(span_to_loc(effect_decl.name.span)),
+            );
+            continue;
+        }
+        let tv = TypeVarId(next_placeholder);
+        next_placeholder = next_placeholder.wrapping_sub(1);
+        type_param_scope.insert(type_param.clone(), Type::Var(tv));
+        type_vars.push(tv);
+        kinds.insert(tv, Kind::Star);
+    }
+
+    for op in &effect_decl.operations {
+        let mut param_tys = Vec::with_capacity(op.params.len());
+        let mut missing_param_annotations = Vec::new();
+        for (idx, param) in op.params.iter().enumerate() {
+            let Some(annotation) = &param.annotation else {
+                missing_param_annotations.push(idx + 1);
+                continue;
+            };
+            let Some(param_ty) = resolve_annotation_with_type_params(
+                &annotation.node,
+                &type_param_scope,
+                records,
+                sum_types,
+            ) else {
+                diagnostics.push(
+                    Diagnostic::error(
+                        Category::TypeError,
+                        format!(
+                            "unknown type in parameter {} of effect operation `{}`",
+                            idx + 1,
+                            op.name.node
+                        ),
+                    )
+                    .at(span_to_loc(annotation.span)),
+                );
+                continue;
+            };
+            param_tys.push(param_ty);
+        }
+        if !missing_param_annotations.is_empty() {
+            diagnostics.push(
+                Diagnostic::error(
+                    Category::TypeError,
+                    format!(
+                        "effect operation `{}` is missing type annotations for parameter(s) {}",
+                        op.name.node,
+                        missing_param_annotations
+                            .iter()
+                            .map(|idx| idx.to_string())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ),
+                )
+                .at(span_to_loc(op.span)),
+            );
+            continue;
+        }
+        if param_tys.len() != op.params.len() {
+            continue;
+        }
+
+        let Some(ret_ty) = resolve_annotation_with_type_params(
+            &op.return_annotation.node,
+            &type_param_scope,
+            records,
+            sum_types,
+        ) else {
+            diagnostics.push(
+                Diagnostic::error(
+                    Category::TypeError,
+                    format!(
+                        "unknown return type in effect operation `{}`",
+                        op.name.node
+                    ),
+                )
+                .at(span_to_loc(op.return_annotation.span)),
+            );
+            continue;
+        };
+
+        let op_ty = Type::Function(FunctionType {
+            params: param_tys,
+            ret: Box::new(ret_ty),
+        });
+        let op_scheme = TypeScheme {
+            type_vars: type_vars.clone(),
+            row_vars: Vec::new(),
+            dim_vars: vec![],
+            lacks: BTreeMap::new(),
+            bounds: BTreeMap::new(),
+            kinds: kinds.clone(),
+            ty: op_ty,
+        };
+
+        env.register_module_function(&module_path, &op.name.node);
+        env.register_module_type_scheme(
+            &module_path,
+            &op.name.node,
+            op_scheme,
+            Effects::impure(),
+        );
+
+        let qualified_name = format!("{module_path}::{}", op.name.node);
+        env.set_function_signature(qualified_name.clone(), function_signature_from_params(&op.params));
+
+        let mut effect_var_bindings = BTreeMap::new();
+        let mut next_effect_var = 0u32;
+        let param_effect_rows = op
+            .params
+            .iter()
+            .map(|param| {
+                param.annotation.as_ref().and_then(|ann| {
+                    function_param_effect_row_from_type_annotation(
+                        &ann.node,
+                        &mut effect_var_bindings,
+                        &mut next_effect_var,
+                    )
+                })
+            })
+            .collect();
+        env.set_function_effect_signature(
+            qualified_name,
+            FunctionEffectSignature {
+                param_effect_rows,
+                effect_row: EffectRow::closed(vec![(Label::new(module_short.clone()), Type::Unit)]),
+                instantiate_on_call: true,
+            },
+        );
+    }
+
+    diagnostics
 }
 
 fn seed_function_param_effect_rows(

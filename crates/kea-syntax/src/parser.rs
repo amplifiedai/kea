@@ -124,7 +124,7 @@ impl Parser {
         if self.check(&TokenKind::Import) {
             if doc.is_some() {
                 self.error_at_current(
-                    "doc comments can only be attached to fn, type, alias, opaque, record, or trait declarations",
+                    "doc comments can only be attached to fn, type, alias, opaque, record, trait, or effect declarations",
                 );
             }
             if !annotations.is_empty() {
@@ -193,12 +193,25 @@ impl Parser {
             return self.trait_def(public, start, doc);
         }
 
+        // effect Name [type_params...] { fn op(...) -> Type }
+        // pub effect Name [type_params...] { ... }
+        if self.check(&TokenKind::Effect)
+            || (self.check(&TokenKind::Pub) && self.peek_is(|k| matches!(k, TokenKind::Effect)))
+        {
+            let public = self.match_token(&TokenKind::Pub);
+            if !annotations.is_empty() {
+                self.error_at_current("annotations are not supported on effect declarations");
+            }
+            self.advance(); // consume 'effect'
+            return self.effect_decl(public, start, doc);
+        }
+
         // impl Trait for Type { methods }
         // impl Type { methods }
         if self.check(&TokenKind::Impl) {
             if doc.is_some() {
                 self.error_at_current(
-                    "doc comments can only be attached to fn, type, record, or trait declarations",
+                    "doc comments can only be attached to fn, type, record, trait, or effect declarations",
                 );
             }
             if !annotations.is_empty() {
@@ -237,18 +250,18 @@ impl Parser {
                 return self.fn_decl(public, start, doc, annotations);
             } else {
                 self.error_at_current(
-                    "expected 'fn', 'expr', 'type', 'alias', 'opaque', 'record', or 'trait' after 'pub'",
+                    "expected 'fn', 'expr', 'type', 'alias', 'opaque', 'record', 'trait', or 'effect' after 'pub'",
                 );
                 return None;
             }
         }
         if doc.is_some() {
             self.error_at_current(
-                "doc comments can only be attached to fn, type, alias, opaque, record, or trait declarations",
+                "doc comments can only be attached to fn, type, alias, opaque, record, trait, or effect declarations",
             );
         }
         self.error_at_current(
-            "expected declaration (fn, expr, test, pub fn, type, alias, opaque, record, trait, impl, or import)",
+            "expected declaration (fn, expr, test, pub fn, type, alias, opaque, record, trait, effect, impl, or import)",
         );
         // Skip to next newline to recover
         while !self.at_eof() && !self.check_newline() {
@@ -921,6 +934,78 @@ impl Parser {
                 fundeps,
                 associated_types,
                 methods,
+            }),
+            start.merge(end),
+        ))
+    }
+
+    fn effect_decl(&mut self, public: bool, start: Span, doc: Option<String>) -> Option<Decl> {
+        let name = self.expect_upper_ident("expected effect name")?;
+        let mut type_params = Vec::new();
+        while matches!(
+            self.peek_kind(),
+            Some(TokenKind::Ident(_) | TokenKind::UpperIdent(_))
+        ) {
+            let param = self.expect_type_param_name("expected effect type parameter")?;
+            type_params.push(param.node);
+            self.skip_newlines();
+        }
+
+        let delimiter = self.expect_block_start("expected effect body block after effect name")?;
+        let mut operations = Vec::new();
+        self.skip_newlines();
+
+        while !self.at_block_end(delimiter) && !self.at_eof() {
+            let op_start = self.current_span();
+            let op_doc = self.consume_doc_comment_block();
+            self.expect(&TokenKind::Fn, "expected 'fn' in effect declaration")?;
+            let op_name = self.expect_ident("expected effect operation name")?;
+            self.expect(&TokenKind::LParen, "expected '(' after effect operation name")?;
+            let params = self.param_list()?;
+            self.expect(
+                &TokenKind::RParen,
+                "expected ')' after effect operation parameters",
+            )?;
+            let effect_annotation = self.parse_required_return_arrow_effect(
+                "effect operations require a return type: add `-> Type` after the parameter list",
+            )?;
+            if let Some(effect_annotation) = effect_annotation {
+                let _ = effect_annotation;
+                self.error_at_current("effect operations cannot declare their own effect arrow");
+            }
+            let return_annotation = self.type_annotation()?;
+            let where_clause = self.where_clause()?;
+            if !where_clause.is_empty() {
+                self.error_at_current(
+                    "effect operations do not support where clauses in Kea v0",
+                );
+            }
+            if self.check(&TokenKind::Indent) {
+                self.error_at_current("effect operations are signatures only and cannot have a body");
+                let _ = self.parse_block_expr("expected effect operation body block");
+            }
+
+            let op_end = self.current_span();
+            operations.push(EffectOperation {
+                name: op_name,
+                params,
+                return_annotation,
+                doc: op_doc,
+                span: op_start.merge(op_end),
+            });
+            self.skip_newlines();
+        }
+
+        let end = self.current_span();
+        self.expect_block_end(delimiter, "expected end of effect declaration")?;
+
+        Some(Spanned::new(
+            DeclKind::EffectDecl(EffectDecl {
+                public,
+                name,
+                doc,
+                type_params,
+                operations,
             }),
             start.merge(end),
         ))
@@ -5692,6 +5777,54 @@ mod tests {
             }
             other => panic!("expected Cond, got {other:?}"),
         }
+    }
+
+    // -- Effect parsing --
+
+    #[test]
+    fn parse_effect_decl_basic() {
+        let m = parse_mod("effect Log\n  fn log(msg: String) -> Unit");
+        match &m.declarations[0].node {
+            DeclKind::EffectDecl(def) => {
+                assert_eq!(def.name.node, "Log");
+                assert!(def.type_params.is_empty());
+                assert_eq!(def.operations.len(), 1);
+                assert_eq!(def.operations[0].name.node, "log");
+                assert_eq!(def.operations[0].params.len(), 1);
+                match &def.operations[0].return_annotation.node {
+                    TypeAnnotation::Named(name) => assert_eq!(name, "Unit"),
+                    other => panic!("expected named return annotation, got {other:?}"),
+                }
+            }
+            other => panic!("expected EffectDecl, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_effect_decl_with_type_params() {
+        let m = parse_mod("effect State S\n  fn get() -> S\n  fn put(value: S) -> Unit");
+        match &m.declarations[0].node {
+            DeclKind::EffectDecl(def) => {
+                assert_eq!(def.name.node, "State");
+                assert_eq!(def.type_params, vec!["S".to_string()]);
+                assert_eq!(def.operations.len(), 2);
+                assert_eq!(def.operations[0].name.node, "get");
+                assert_eq!(def.operations[1].name.node, "put");
+                assert_eq!(def.operations[1].params.len(), 1);
+            }
+            other => panic!("expected EffectDecl, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_effect_operation_effect_arrow_is_error() {
+        let errors = parse_mod_err("effect Log\n  fn log(msg: String) -[IO]> Unit");
+        assert!(
+            errors
+                .iter()
+                .any(|d| d.message.contains("effect operations cannot declare their own effect arrow")),
+            "expected effect-operation-arrow diagnostic, got {errors:?}"
+        );
     }
 
     // -- Trait parsing --

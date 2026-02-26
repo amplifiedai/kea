@@ -6482,6 +6482,30 @@ fn make_fn_decl(name: &str, params: Vec<&str>, body: Expr) -> FnDecl {
     }
 }
 
+fn make_effect_decl(
+    name: &str,
+    type_params: Vec<&str>,
+    operations: Vec<EffectOperation>,
+) -> EffectDecl {
+    EffectDecl {
+        public: false,
+        name: sp(name.to_string()),
+        doc: None,
+        type_params: type_params.into_iter().map(|p| p.to_string()).collect(),
+        operations,
+    }
+}
+
+fn make_effect_operation(name: &str, params: Vec<Param>, ret: TypeAnnotation) -> EffectOperation {
+    EffectOperation {
+        name: sp(name.to_string()),
+        params,
+        return_annotation: sp(ret),
+        doc: None,
+        span: s(),
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Effect inference
 // ---------------------------------------------------------------------------
@@ -6588,6 +6612,68 @@ fn register_fn_effect_signature_skips_legacy_impure_annotation() {
     fn_decl.effect_annotation = Some(sp(EffectAnnotation::Impure));
     register_fn_effect_signature(&fn_decl, &mut env);
     assert!(env.function_effect_signature("legacy").is_none());
+}
+
+#[test]
+fn register_effect_decl_exposes_qualified_operation_scheme() {
+    let mut env = TypeEnv::new();
+    let records = RecordRegistry::new();
+    let sums = SumTypeRegistry::new();
+    let log = make_effect_decl(
+        "Log",
+        vec![],
+        vec![make_effect_operation(
+            "log",
+            vec![annotated_param(
+                "msg",
+                TypeAnnotation::Named("String".to_string()),
+            )],
+            TypeAnnotation::Named("Unit".to_string()),
+        )],
+    );
+
+    let diags = register_effect_decl(&log, &records, Some(&sums), &mut env);
+    assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+    assert!(env.resolve_qualified("Log", "log").is_some());
+}
+
+#[test]
+fn effect_operation_call_infers_declared_effect_label() {
+    let mut env = TypeEnv::new();
+    let records = RecordRegistry::new();
+    let sums = SumTypeRegistry::new();
+    let mut traits = TraitRegistry::new();
+    register_hkt_for_use_for_traits(&mut traits, &records);
+    let log = make_effect_decl(
+        "Log",
+        vec![],
+        vec![make_effect_operation(
+            "log",
+            vec![annotated_param(
+                "msg",
+                TypeAnnotation::Named("String".to_string()),
+            )],
+            TypeAnnotation::Named("Unit".to_string()),
+        )],
+    );
+    let diags = register_effect_decl(&log, &records, Some(&sums), &mut env);
+    assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+
+    let wrapper = make_fn_decl(
+        "wrapper",
+        vec![],
+        call(field_access(var("Log"), "log"), vec![lit_str("hello")]),
+    );
+    let row = infer_fn_decl_effect_row(&wrapper, &env);
+    assert!(
+        row.row.has(&Label::new("Log")),
+        "expected wrapper effects to include Log, got {row:?}"
+    );
+
+    let mut unifier = Unifier::new();
+    let ty = infer_and_resolve(&wrapper.body, &mut env, &mut unifier, &records, &traits, &sums);
+    assert_eq!(ty, Type::Unit);
+    assert!(!unifier.has_errors(), "type errors: {:?}", unifier.errors());
 }
 
 #[test]
