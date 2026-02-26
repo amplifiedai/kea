@@ -5219,3 +5219,26 @@ instantiate fail-absent `catch` paths.
 - Phase-2 proofs now have a clean admissible-only API surface, reducing
 call-site precondition threading and removing accidental dependence on
 inadmissible fail-absent paths.
+
+### 2026-02-26: admissible premise adapters (proof-only)
+
+**Context**: Added one-hop adapters from raw premises to admissible capstone
+theorems, so callers can start from existing handler-typing assumptions
+directly.
+
+**MCP tools used**: none (proof-only API ergonomics layer; no new runtime
+claim).
+
+**Lean side**:
+- Extended `Kea/Properties/EffectPolymorphismSoundness.lean` with:
+  - `mkAdmissibleEffectPolyFailLoweringContract`
+  - `admissibleEffectPolyFailLowering_sound_of_premises`
+  - `mkAdmissibleEffectPolyHandlerSchema`
+  - `admissibleEffectPolyHandlerSchema_sound_of_premises`
+- Verified with `cd formal && lake build` (pass).
+
+**Classify**: N/A (proof-only step).
+
+**Outcome**:
+- Downstream proofs can now discharge admissible Fail-lowering capstones from
+  premise bundles in a single theorem call, with no manual structure wiring.
