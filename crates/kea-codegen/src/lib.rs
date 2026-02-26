@@ -353,7 +353,7 @@ fn compile_into_module<M: Module>(
     let mut external_func_ids: BTreeMap<String, FuncId> = BTreeMap::new();
     let mut signatures: BTreeMap<String, cranelift_codegen::ir::Signature> = BTreeMap::new();
     let external_signatures = collect_external_call_signatures(module, mir)?;
-    let mut requires_record_alloc = false;
+    let mut requires_heap_alloc = false;
     for function in &mir.functions {
         let runtime_sig = runtime_signatures.get(&function.name).ok_or_else(|| {
             CodegenError::UnknownFunction {
@@ -361,10 +361,17 @@ fn compile_into_module<M: Module>(
             }
         })?;
         let needs_aggregate_alloc = function.blocks.iter().any(|block| {
-            block
-                .instructions
-                .iter()
-                .any(|inst| matches!(inst, MirInst::RecordInit { .. } | MirInst::SumInit { .. }))
+            block.instructions.iter().any(|inst| {
+                matches!(
+                    inst,
+                    MirInst::RecordInit { .. }
+                        | MirInst::SumInit { .. }
+                        | MirInst::Const {
+                            literal: MirLiteral::String(_),
+                            ..
+                        }
+                )
+            })
         });
         let needs_fail_result_alloc = runtime_sig.fail_result_abi
             || (matches!(runtime_sig.runtime_return, Type::Result(_, _))
@@ -382,7 +389,7 @@ fn compile_into_module<M: Module>(
                     })
                 }));
         if needs_aggregate_alloc || needs_fail_result_alloc {
-            requires_record_alloc = true;
+            requires_heap_alloc = true;
             break;
         }
     }
@@ -418,7 +425,7 @@ fn compile_into_module<M: Module>(
         external_func_ids.insert(name, func_id);
     }
 
-    let malloc_func_id = if requires_record_alloc {
+    let malloc_func_id = if requires_heap_alloc {
         let ptr_ty = module.target_config().pointer_type();
         let mut signature = module.make_signature();
         signature.params.push(AbiParam::new(ptr_ty));
@@ -767,6 +774,7 @@ fn clif_type(ty: &Type) -> Result<cranelift::prelude::Type, CodegenError> {
         Type::Float => Ok(types::F64),
         Type::Bool => Ok(types::I8),
         Type::Unit => Ok(types::I8),
+        Type::String => Ok(types::I64),
         Type::Dynamic => Ok(types::I64),
         // 0d bootstrap aggregate/runtime representation:
         // nominal records/sums and Result-like carriers flow through ABI as
@@ -831,6 +839,46 @@ fn lower_result_allocation(
     Ok(result_ptr)
 }
 
+fn lower_string_literal<M: Module>(
+    module: &mut M,
+    builder: &mut FunctionBuilder,
+    function_name: &str,
+    malloc_func_id: Option<FuncId>,
+    text: &str,
+) -> Result<Value, CodegenError> {
+    let bytes = text.as_bytes();
+    let alloc_size =
+        u32::try_from(bytes.len().saturating_add(1)).map_err(|_| CodegenError::UnsupportedMir {
+            function: function_name.to_string(),
+            detail: "string literal too large to lower".to_string(),
+        })?;
+    let out_ptr = allocate_heap_payload(
+        module,
+        builder,
+        function_name,
+        malloc_func_id,
+        alloc_size,
+        "string literal lowering requires malloc import",
+    )?;
+    for (idx, byte) in bytes.iter().enumerate() {
+        let offset = i32::try_from(idx).map_err(|_| CodegenError::UnsupportedMir {
+            function: function_name.to_string(),
+            detail: "string literal offset does not fit i32".to_string(),
+        })?;
+        let value = builder.ins().iconst(types::I8, i64::from(*byte));
+        builder.ins().store(MemFlags::new(), value, out_ptr, offset);
+    }
+    let term_offset = i32::try_from(bytes.len()).map_err(|_| CodegenError::UnsupportedMir {
+        function: function_name.to_string(),
+        detail: "string literal terminator offset does not fit i32".to_string(),
+    })?;
+    let term = builder.ins().iconst(types::I8, 0);
+    builder
+        .ins()
+        .store(MemFlags::new(), term, out_ptr, term_offset);
+    Ok(out_ptr)
+}
+
 fn allocate_heap_payload(
     module: &mut impl Module,
     builder: &mut FunctionBuilder,
@@ -880,7 +928,16 @@ fn lower_instruction<M: Module>(
 ) -> Result<bool, CodegenError> {
     match inst {
         MirInst::Const { dest, literal } => {
-            let value = lower_literal(builder, literal, function_name)?;
+            let value = match literal {
+                MirLiteral::String(text) => lower_string_literal(
+                    module,
+                    builder,
+                    function_name,
+                    ctx.malloc_func_id,
+                    text,
+                )?,
+                _ => lower_literal(builder, literal, function_name)?,
+            };
             values.insert(dest.clone(), value);
             Ok(false)
         }
@@ -2293,6 +2350,32 @@ mod tests {
         }
     }
 
+    fn sample_string_literal_module() -> MirModule {
+        MirModule {
+            functions: vec![MirFunction {
+                name: "string_literal".to_string(),
+                signature: MirFunctionSignature {
+                    params: vec![],
+                    ret: Type::String,
+                    effects: EffectRow::pure(),
+                },
+                entry: MirBlockId(0),
+                blocks: vec![MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions: vec![MirInst::Const {
+                        dest: MirValueId(0),
+                        literal: MirLiteral::String("hello".to_string()),
+                    }],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirValueId(0)),
+                    },
+                }],
+            }],
+            layouts: MirLayoutCatalog::default(),
+        }
+    }
+
     fn sample_tail_recursive_module() -> MirModule {
         MirModule {
             functions: vec![MirFunction {
@@ -3451,6 +3534,19 @@ mod tests {
             artifact.object.is_empty(),
             "JIT mode should not emit object bytes"
         );
+    }
+
+    #[test]
+    fn cranelift_backend_compiles_string_literal_module() {
+        let module = sample_string_literal_module();
+        let manifest = default_abi_manifest(&module);
+        let backend = CraneliftBackend;
+
+        let artifact = backend
+            .compile_module(&module, &manifest, &BackendConfig::default())
+            .expect("string literal lowering should compile");
+
+        assert_eq!(artifact.stats.per_function.len(), 1);
     }
 
     #[test]
