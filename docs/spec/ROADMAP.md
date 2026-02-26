@@ -147,6 +147,31 @@ handlers, Fail sugar, and effect-polymorphic functions.
 Lean formalization: handler typing rules, Fail desugaring
 correctness, effect row operations.
 
+**Early tooling (lands during 0b-0d, parallel track)**
+
+These don't block the compiler critical path but are essential
+for writing Kea code productively. Can be developed in parallel.
+
+- **Tree-sitter grammar** — standalone, no compiler dependency.
+  Enables syntax highlighting in every editor (Neovim, VS Code,
+  Helix, Zed, GitHub). Write after 0a when syntax is stable.
+  Estimated: ~1 week.
+- **Formatter** (`kea fmt`) — indentation-sensitive languages need
+  a formatter before anyone writes serious code. Reuse rill-fmt's
+  `doc.rs` algebra and comment infrastructure. Rewrite the printer
+  for indent-sensitive output and all formatting rules for Kea
+  syntax. Lands before 0g so stdlib code is auto-formatted.
+  Estimated: ~2 weeks. Adapted from rill-fmt (4,538 LOC).
+- **Neovim plugin** — tree-sitter for highlighting, LSP client
+  config, basic filetype detection. Thin wrapper. Lands after
+  tree-sitter grammar and basic LSP.
+  Estimated: ~2-3 days.
+- **Basic LSP** — hover types, go-to-definition, diagnostics.
+  Adapted from rill-lsp (205 KB). Protocol layer unchanged,
+  backend swapped to Kea type system. Lands by 0d-0e so there's
+  editor intelligence before self-hosting.
+  Estimated: ~1-2 weeks.
+
 **0d: Code generation — pure subset (week 4-6)**
 
 Cannibalise: rill-codegen (Cranelift pipeline).
@@ -269,16 +294,16 @@ Now iterate on the compiler using Kea itself:
 
 ### Phase 2: Tooling and Ecosystem
 
-**2a: Essential tooling (week 20-24)**
+**2a: Ecosystem tooling (week 20-24)**
 
-Cannibalise heavily from Rill:
+Core developer tools (formatter, LSP, MCP, tree-sitter) already
+landed during Phase 0. This phase is ecosystem infrastructure:
 - Package manager: kea.toml, lockfile, registry (new)
-- Formatter: adapted from rill-fmt (rewrite rules for
-  indentation syntax)
-- LSP server: adapted from rill-lsp (backend swapped to
-  Kea type system, protocol layer unchanged)
-- MCP server: adapted from rill-mcp (already running from
-  Phase 0, polish and document)
+- LSP polish: rename, references, code actions, workspace symbols
+  (basic LSP from Phase 0 gets full IDE features)
+- MCP server polish and documentation (running since 0b)
+- Formatter polish: `// kea-fmt: off/on` directives, editor
+  format-on-save integration
 - Test runner (new)
 - REPL (new, simpler than Rill's since Kea is compiled)
 
@@ -383,14 +408,16 @@ false theorems are hiding.
 |-------|----------|--------|-----------|
 | 0a    | Tight pairing | 1-2 | Parser needs coherent indentation design |
 | 0b    | Tight pairing | 1-2 | Type system core needs unified vision |
+| tooling | Parallel | 1-2 | Tree-sitter, formatter, Neovim plugin — independent of compiler |
 | 0c    | Tight pairing | 1-2 | Effect handlers need coherent design |
 | 0d    | Parallel | 3-5 | Codegen for different node types is independent |
+| LSP   | Single | 1 | Basic LSP adapted from rill-lsp, parallel with 0d-0e |
 | 0e    | Prototype + decide | 2-3 | Three handler strategies prototyped in parallel, then converge |
 | 0f    | Tight pairing | 1-2 | Memory model needs coherent design |
 | 0g    | Mixed | 2-4 | Traits are coherence-sensitive; stdlib is parallelisable |
 | 1a    | Tight pairing | 1-2 | Porting compiler is high-coherence |
 | 1b    | Single | 1 | Bootstrap verification is sequential |
-| 2a    | Parallel | 4-6 | Every tool is independent |
+| 2a    | Parallel | 4-6 | Ecosystem tools are independent |
 | 2b    | Parallel | 4-6 | Stdlib modules are independent |
 | 2c    | Parallel | 3-4 | Documentation is independent |
 
@@ -416,22 +443,32 @@ Learned from Rill:
 
 | Phase | Weeks  | Deliverable |
 |-------|--------|-------------|
+| Phase | Weeks  | Deliverable |
+|-------|--------|-------------|
 | 0a    | 1      | Parser (indentation-sensitive) |
-| 0b    | 1-3    | Type system core (records, effects, rows, traits) |
+| 0b    | 1-3    | Type system core (records, effects, rows, traits) + MCP server |
+| --    | 2-4    | Tree-sitter grammar, formatter, Neovim plugin (parallel track) |
 | 0c    | 3-4    | Effect handlers, Fail sugar |
 | 0d    | 4-6    | Cranelift codegen, pure programs run natively |
+| --    | 5-6    | Basic LSP (parallel track) |
 | 0e    | 6-8    | Runtime effects (IO, Fail, handlers, arenas) |
 | 0f    | 8-9    | Memory model (Unique, borrow, unsafe) |
 | 0g    | 9-11   | GADTs, Eff kind, full stdlib, error messages |
 | 1a    | 11-16  | Compiler ported to Kea |
 | 1b    | 16-17  | Three-stage bootstrap proven |
 | 1c    | 17-20  | Compiler improvements in Kea |
-| 2a    | 20-24  | Tooling (pkg mgr, LSP, formatter, MCP) |
+| 2a    | 20-24  | Ecosystem tooling (pkg mgr, LSP polish, test runner, REPL) |
 | 2b    | 24-28  | Standard library |
 | 2c    | 28-30  | Documentation |
 | 3     | 30+    | Domain libraries |
 
 Self-hosting at week 17. Usable by others at week 30.
+
+By end of Phase 0 (week 11), the developer experience includes:
+`kea build`, `kea run`, `kea fmt`, `kea check` (via MCP), syntax
+highlighting (tree-sitter), hover types + diagnostics (LSP), and
+a Neovim plugin. This is the full authoring loop before
+self-hosting begins.
 
 With Rill's codebase to cannibalise and aggressive agentic
 parallelism, this could compress to ~70% of estimates

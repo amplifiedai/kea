@@ -51,6 +51,13 @@ Needs more design work. Briefs exist but aren't implementation-ready.
 7. **[Advanced type features](design/0g-advanced-types.md)** (weeks 9-11) — GADTs, Eff kind, associated types, supertraits. Type theory pieces.
 8. **[Stdlib, deriving, and error messages](design/0h-stdlib-errors.md)** (weeks 10-11) — @derive, full stdlib (Map, Set, String, IO, JSON), error message investment. Engineering work, parallelizable. Can start once 0g type features are stable.
 
+### Early tooling (parallel track, weeks 2-6)
+
+- **Tree-sitter grammar** — standalone, no compiler dependency. Syntax highlighting in every editor. Can start now (0a is done, syntax is stable).
+- **Formatter** (`kea fmt`) — indentation-sensitive language needs a formatter before serious code is written. Reuse rill-fmt's doc algebra + comment infra (~440 LOC transfers). Rewrite printer + rules for indent-sensitive output. Lands before 0g.
+- **Neovim plugin** — tree-sitter highlighting + LSP client config. After tree-sitter grammar + basic LSP.
+- **Basic LSP** — hover types, go-to-def, diagnostics. Adapted from rill-lsp (protocol layer unchanged). Lands by 0d-0e.
+
 ### Other design work
 
 - **[Serialization](design/serialization.md)** (Phase 2) — Type-driven Encode/Decode with Validated error accumulation, row-polymorphic partial deserialization, format-agnostic FormatWriter/FormatReader traits. Adapted from Rill's Format brief.
