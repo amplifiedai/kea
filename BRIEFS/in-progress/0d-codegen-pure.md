@@ -289,6 +289,10 @@ Create `crates/kea/` (the binary crate):
 - Row type annotations parse: `fn f(x: { name: String | r }) -> String`
 - Trait type parameters parse: `trait Show a`
 - Higher-order function calls don't leak phantom IO
+- Curried higher-order application propagates effects (see §5.1 below)
+- Effect row union is idempotent: no duplicate labels (see §5.2 below)
+- Parametric type annotations in params: `fn f(opt: Maybe Int) -> Int`
+- `Never` bottom type for diverging operations (`Fail.fail`)
 - `mise run check` passes
 
 ## Decisions
@@ -470,12 +474,153 @@ parser already handles this via `FunctionWithEffect`). Users must
 use the `fn` type syntax to express effectful function types.
 Consider deprecating `Fun` in favor of `fn` type syntax.
 
+### 5.1. Curried higher-order effect propagation — SOUNDNESS
+
+**Reported by formal agent (720b4bd).** Related to §5 (phantom IO)
+but a different code path. Effects are lost when a lambda returns
+another lambda that calls its captured effectful argument.
+
+**Reproduction (confirmed on latest MCP binary 2026-02-26):**
+
+```kea
+effect Log
+  fn log(msg: Int) -> Unit
+
+fn curried_test() -[Log]> Unit
+  let apply = |f| -> |x| -> f(x)
+  let logger = |y: Int| -> Log.log(y)
+  apply(logger)(42)
+```
+
+- **Direct call:** `logger(42)` → `() -[Log]> ()` — correct
+- **Curried call:** `apply(logger)(42)` → `() -[e0]> ()` — **bug**,
+  effect variable `e0` not unified with `Log`
+
+**Root cause (hypothesis):** When `apply` is inferred, its type is
+roughly `(f: a -[e]> b) -> (x: a) -[e]> b`. The inner lambda
+`|x| -> f(x)` captures `f` and calls it — `f`'s effect row `e`
+should propagate to the inner lambda's effect row and then to the
+outer call site. But the effect variable `e` appears to remain
+unconstrained (`e0`) after `apply(logger)` is called, even though
+`logger`'s concrete effect row `[Log]` should unify with `e`.
+
+**Additional probes (2026-02-26, post-fix binary):**
+
+- Annotated variant `|f: fn(Int) -[Log]> Unit|` gives error
+  "the function is missing field `Log`" — the effect row in the
+  `fn` type annotation is being fed into **record** row unification
+  instead of **effect** row unification. This is a stronger signal
+  than pure inference failure.
+- Inline lambda application `(|f| -> |x| -> f(x))(logger)(42)`
+  doesn't parse (separate issue, low priority).
+
+**Likely location:** Two-part issue:
+
+1. **Effect row in `fn` annotations treated as record row.** When
+   a lambda parameter has an explicit `fn(a) -[E]> b` type
+   annotation, the `[E]` effect row should unify with the caller's
+   effect context. Instead it's being checked against the record
+   row unifier, producing "missing field" errors. Check how
+   `FunctionWithEffect` type annotations are lowered in
+   `typeck.rs` — the effect row may be accidentally merged into
+   the record row namespace.
+
+2. **Unannotated curried case loses effect variable binding.**
+   When `apply(logger)` is called, `logger`'s concrete `[Log]`
+   effect should unify with `apply`'s effect variable `e`. The
+   returned closure `|x| -> f(x)` should then carry `[Log]` as
+   its effect. But `e` remains unconstrained (`e0`) — the
+   unification of `logger`'s effect row with `apply`'s parameter
+   type may not be reaching the effect variable in the returned
+   closure's type.
+
+**Fix approach:** The §5 fix (let-bound callable effect extraction)
+is necessary but not sufficient. This also needs effect row
+unification to fire correctly on `fn` type annotations in lambda
+parameters, and for effect variables in curried return types to
+be properly instantiated through application.
+
+### 5.2. Effect row overlap not normalized — SOUNDNESS
+
+**Reported by formal agent (33c3daa).** When a handler body emits
+an effect that's already in the residual set, the effect row
+contains duplicate labels instead of being deduplicated.
+
+**Reproduction (confirmed on MCP 2026-02-26):**
+
+```kea
+effect Log
+  fn log(msg: Int) -> Unit
+
+effect Trace
+  fn trace(msg: Int) -> Unit
+
+fn body_fn() -[Log, Trace]> Unit
+  Log.log(1)
+  Trace.trace(2)
+
+fn overlap_case() -[Trace]> Unit
+  handle body_fn()
+    Log.log(x) ->
+      Trace.trace(x)
+      resume()
+```
+
+Error: `declared effect [Trace] is too weak; body requires [Trace, Trace]`
+
+**Expected:** Handler removes `Log` from `[Log, Trace]` → `[Trace]`.
+Handler body adds `[Trace]`. Union should be idempotent per KERNEL
+§5.4 ("commutative, idempotent set under union"): `[Trace] ∪ [Trace]`
+= `[Trace]`. Instead the rows are concatenated → `[Trace, Trace]`.
+
+**Root cause:** Effect row union in the handler typing rule
+concatenates label lists without deduplication. The Rémy row
+unification treats rows as ordered lists with a tail variable,
+which naturally allows duplicates. Need a normalization pass after
+handler effect removal + addition that merges duplicate labels.
+
+**Fix:** After computing the handler result effect row
+(`residual ∪ handler_body_effects`), normalize the closed portion
+by deduplicating labels. For open rows (with tail variable), ensure
+the "lacks" constraint prevents duplicates — a row variable `r`
+that already has `Trace` in its concrete prefix should have
+`lacks(r, Trace)` to prevent double-counting.
+
 ### 6. Inline if/then/else (KERNEL §10.4)
 
 Block-style `if`/`else` works (indented branches). Inline form
 `if x >= 0 then x else -x` does not parse. Low priority — block
 style is idiomatic Kea — but the spec defines it and it's useful
 for short expressions in `let` bindings.
+
+### 7. Parametric type annotations in function params
+
+Parametric ADT headers parse (`type Maybe a = Just(a) | Nothing`)
+but applying parametric types in function parameter annotations
+does not: `fn unwrap_or(opt: Maybe Int, default: Int) -> Int`
+fails with a parse error at `Int` after `Maybe`. The parser sees
+`Maybe` as the complete type and doesn't consume the type argument.
+
+### 8. `Never` bottom type
+
+KERNEL §5.2 specifies `fn fail(_ error: E) -> Never` but `Never`
+is not a recognized type. Currently `Fail.fail` must return `Unit`,
+which breaks control flow analysis — the type checker doesn't know
+that code after `Fail.fail(e)` is unreachable. Needed for Fail to
+work correctly as a diverging operation.
+
+### 9. `catch` syntax
+
+`catch expr` (KERNEL §5.8) desugars to a handler that wraps Fail
+in Result. Parsing and codegen not yet wired. Low priority for 0d
+(Fail compiles as Result-passing directly), but needed for
+ergonomic error handling.
+
+### 10. Guard keyword: `when` vs KERNEL `if`
+
+Implementation uses `when` for case guards; KERNEL §4.2.1 specifies
+`if`. `when` is arguably better (no ambiguity with `if`/`else`
+expressions). Reconcile: update KERNEL §4.2.1 to use `when`.
 
 ## Open Questions
 
@@ -540,6 +685,8 @@ for short expressions in `let` bindings.
 - 2026-02-26: Cranelift TCO slice landed for self-recursive tail calls: MIR tail-call detection now lowers to `return_call`, call-conv guarded for Apple AArch64 verifier constraints, and pass stats/regressions added for tail-self-call detection and release-prefix handling.
 - 2026-02-26: Phantom IO effect leak on higher-order calls fixed: unknown callable effects now infer as open rows (not forced `[IO]`), recursive lookup can read function effects through `forall` wrappers, and regression coverage added to block reintroduction.
 - 2026-02-26: Phantom IO closure-escape root cause fixed: let-bound call results now extract returned callable effect metadata from callee structural return types (`let f = make_emitter(); f(42)` preserves `Emit` instead of falling back to phantom `IO`), with new `kea-infer` and `kea-mcp` regression tests.
+- 2026-02-26: Curried higher-order effect propagation fixed for both reported failure modes: (1) annotated callback params no longer fail with spurious "missing field `Log`" from pure-only call unification, and (2) unannotated curried callback application now propagates concrete argument effect rows through `|f| -> |x| -> f(x)` chains; added paired `kea-infer` regressions and MCP integration regression coverage.
+- 2026-02-26: Parser call-syntax compatibility advanced for namespace qualification: lexer now tokenizes `::` (`ColonColon`), postfix parsing accepts `Module::fn(...)` alongside existing dot calls, and handler clause heads accept `Effect::op(...)`; added lexer + parser regressions (`List::map`, `Log::log(...)`) while preserving existing dot-form tests during transition.
 - 2026-02-26: Backend-neutral layout side-table slice landed in MIR: `lower_hir_module` now extracts record field-order metadata and sum variant-tag metadata from raw HIR declarations into `MirLayoutCatalog`, with regression tests proving declaration-order preservation for record fields and enum variant tags.
 - 2026-02-26: Codegen now validates MIR layout side-tables before backend lowering: duplicate type declarations, duplicate record fields, duplicate sum variants, and non-contiguous variant tags are rejected with explicit diagnostics, with targeted crate tests covering failure modes.
 - 2026-02-26: Fail-only codegen invariant enforcement landed: `kea-codegen` now validates that `-[Fail E]>` functions never use generic handler ops/dispatch (`HandlerEnter`/`HandlerExit`/`Resume` or non-`ZeroResume` `EffectOp`) and fails compilation with a dedicated invariant diagnostic; regression tests cover accept/reject paths.

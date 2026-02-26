@@ -438,13 +438,16 @@ match expr
 
 ```kea
 match msg
-  Withdraw(amount) if amount <= self.balance -> ...
+  Withdraw(amount) when amount <= self.balance -> ...
   Withdraw(_) -> fail InsufficientFunds
 ```
 
-`Pattern if condition -> body`. The guard condition is evaluated after
-the pattern matches and variable bindings are available. If the guard
-evaluates to `false`, matching continues to the next arm.
+`Pattern when condition -> body`. The guard condition is evaluated
+after the pattern matches and variable bindings are available. If
+the guard evaluates to `false`, matching continues to the next arm.
+
+The keyword is `when`, not `if`, to avoid ambiguity with `if`/`else`
+expressions inside case arms.
 
 Guards must be pure expressions — no semantic effects (IO, Send,
 Spawn) and no Fail. Guards may reference variables bound by the

@@ -24,101 +24,124 @@ cheap enough that people use them everywhere.
 
 ## The Core Decision: Handler Compilation Strategy
 
-Three options (ROADMAP §0e). Must prototype and benchmark before
-committing.
-
-### Option 1: Evidence Passing
-
-Handlers compiled as closures passed through the call stack.
-Each effect operation looks up its handler via an evidence
-parameter threaded through function calls.
-
-```
--- Conceptually: every effectful function gets an extra
--- "evidence" parameter containing handler implementations
-fn process(order, evidence_log, evidence_tx, evidence_fail) -> ...
-```
-
-**Pros:** Simple to implement. Low overhead for simple handlers.
-Well-understood (Koka uses this for many cases). Handlers are
-just function calls — no stack manipulation.
-
-**Cons:** Every effectful function call passes extra arguments.
-Polymorphic effect variables (`e`) become dynamically dispatched
-via vtable-like evidence records. Deep call stacks accumulate
-evidence parameters.
+**Decision: Evidence passing.** The three-way prototype (evidence
+vs CPS vs setjmp/longjmp) from the original brief was the right
+framing, but Koka's production experience and our MIR scaffolding
+both point to evidence passing as the clear winner. CPS causes
+code bloat and destroys natural stack structure. setjmp/longjmp
+is platform-specific and only wins for non-tail-resumptive handlers
+— which Kea's at-most-once resumption makes rare. Evidence passing
+is simple, composable, and optimisable.
 
 **Koka reference:** Leijen's "Type Directed Compilation of
-Row-Typed Algebraic Effects" (2017). Evidence is represented as
-a vector of handler frames.
+Row-Typed Algebraic Effects" (2017). Evidence is a vector of
+handler frames threaded through effectful calls.
 
-### Option 2: CPS Transform
+The key insight is that **most handlers don't need the full
+machinery**. The tiered strategy below exploits this:
 
-Effectful code is CPS-transformed at compile time. Handlers
-receive the continuation (the rest of the computation).
+### Tier 1: Zero-resume (Fail) — Result-passing
 
-```
--- Conceptually: effect operations pass a continuation
-fn process_cps(order, k_log, k_tx, k_fail) -> ...
-```
+`Fail.fail(e)` compiles to `return Err(e)`. `catch` compiles to
+match on Result. `?` compiles to branch-on-error. No continuations,
+no evidence, no stack manipulation. Just control flow.
 
-**Pros:** Clean semantics. Resume is just calling the
-continuation. Zero-resumption (Fail) is just not calling it.
-No runtime stack manipulation.
+Coverage: every program with error handling (~100% of real code).
 
-**Cons:** Code bloat — CPS transform can significantly increase
-code size. Loss of natural stack structure makes debugging harder.
-Every function boundary becomes a continuation allocation.
+### Tier 2: Tail-resumptive + statically known — inlined evidence
 
-### Option 3: Segmented Stacks / setjmp-longjmp
-
-Handlers install frames on the stack. Effect operations jump
-to the handler frame, optionally capturing the intervening
-stack for resumption.
+~80%+ of real handlers: State.get, State.put, Log.log, Reader.ask.
+The handler body runs, then `resume` is the last expression. These
+compile as direct function calls with the handler body inlined at
+each operation site. No closure allocation, no indirect call, no
+evidence lookup.
 
 ```
--- Conceptually: handlers save stack state, operations longjmp
-install_handler(Log, handler_fn)
-  ...body...
--- Log.log() longjmps to handler, handler can resume
+-- Source:
+handle computation()
+  State.get() -> resume current_state
+  State.put(s) ->
+    current_state = s
+    resume ()
+
+-- After inlining: State.get() → read local, State.put(s) → write local
+-- Identical codegen to manually threading state as a parameter
 ```
 
-**Pros:** Potentially fastest for the common case (handler
-is nearby on the stack). Natural stack structure preserved.
-Familiar to C programmers (setjmp/longjmp).
+Coverage: State, Log, Reader, Writer, Emit, and most user effects.
 
-**Cons:** Platform-specific. Harder to implement correctly.
-Capturing stack for resumption requires copying or segmenting.
-At-most-once resumption simplifies this (no need to copy for
-multi-shot), but it's still the most complex option.
+### Tier 3: Tail-resumptive + dynamically dispatched — evidence vtable
 
-### Recommendation
+When the handler is not statically known (effect-polymorphic code,
+handler passed through a function boundary), evidence is a vtable-like
+struct threaded as a hidden parameter. Each effect operation becomes
+an indirect call through the evidence struct.
 
-Prototype all three on a microbenchmark: a tight loop performing
-a `State` effect (get/put). Measure:
-- Handler installation cost
-- Effect operation cost (common path)
-- Evidence/continuation passing overhead on deep call stacks
-- Code size impact
+```
+-- Conceptually:
+fn computation(ev_state: &StateEvidence<Int>) -> Int
+  ev_state.get()           -- indirect call
+  ev_state.put(new_val)    -- indirect call
+```
 
-**Likely winner:** Evidence passing for the common case (simple
-effects, shallow stacks), with potential optimisation to inline
-handler bodies for known-static handlers. Koka's experience
-suggests this is practical. Start with evidence passing, measure,
-optimise.
+Coverage: higher-order effectful functions, library abstractions.
 
-## What transfers from Rill
+### Tier 4: Non-tail-resumptive — one-shot continuations
 
-**rill-codegen** (already cannibalised in 0d):
-- Cranelift function compilation extends to handle evidence
-  parameters or CPS-transformed code
-- No direct transfer for handler compilation (rill has no effects)
+The rare case where `resume` appears in non-tail position. Because
+Kea enforces at-most-once resumption (KERNEL §5.7), the continuation
+is a **one-shot closure** — no stack copying needed. The continuation
+captures the stack frame from the operation site to the handler.
 
-**rill-eval** (structural reference):
-- The evaluator's stdlib provides behavioral reference for IO
-  operations (file IO, stdout, clock, network)
-- Actor runtime patterns inform how Send/Spawn could work
-  (conceptual reference only — Kea actors are library-level)
+Implementation: `setjmp` at handler install, `longjmp` at perform,
+`resume` calls the saved continuation exactly once using the
+original stack.
+
+Coverage: exotic handlers (coroutine-style yield, backtracking with
+commit). Rare enough to defer until Tiers 1-3 are solid.
+
+### Coverage estimate
+
+| Tier | Mechanism | Real-world coverage |
+|------|-----------|-------------------|
+| 1 | Result-passing | ~100% (Fail) |
+| 2 | Inlined evidence | ~80% of remaining handlers |
+| 3 | Evidence vtable | ~15% of remaining handlers |
+| 4 | One-shot continuation | ~5% of remaining handlers |
+
+Tiers 1+2 cover ~95%+ of actual handler usage. Tier 3 covers
+the polymorphic case. Tier 4 can ship later without blocking
+real programs.
+
+## What transfers from Rill / what 0d built
+
+**rill-codegen** (cannibalised in 0d): Cranelift function
+compilation, ISA config, JIT + AOT pipelines. No direct handler
+transfer (rill has no effects).
+
+**rill-eval** (structural reference): The evaluator's stdlib
+provides behavioral reference for IO operations.
+
+**MIR scaffolding from 0d (already landed):**
+The MIR already has the effect IR nodes we need:
+- `MirInst::EffectOp { class, effect, operation, args, result }`
+  — classified as `Direct`, `Dispatch`, or `ZeroResume`
+- `MirInst::HandlerEnter { effect }` / `HandlerExit { effect }`
+  — handler scope markers
+- `MirInst::Resume { value }` — resume instruction
+- `MirEffectOpClass` enum with `is_handler_op()` helper
+- Codegen stats tracking: `effect_op_direct_count`,
+  `effect_op_dispatch_count`, `effect_op_zero_resume_count`,
+  `handler_enter_count`, `handler_exit_count`, `resume_count`
+- Fail/ZeroResume path partially wired (codegen validates
+  `ZeroResume` class on Fail operations)
+- Non-effect MIR ops (`EffectOp`, `HandlerEnter`, `HandlerExit`,
+  `Resume`) currently return `UnsupportedMir` in codegen — these
+  are the stubs 0e fills in.
+
+**This means 0e starts from a working MIR representation, not
+from scratch.** The job is wiring codegen for each tier, not
+designing the IR.
 
 ## Entry Gate: IO Granularity Decision
 
@@ -144,9 +167,58 @@ during implementation. Decide at 0e kickoff:
 
 ## Implementation Plan
 
-### Step 1: Prototype handler strategies
+Steps are ordered by tier — each tier is independently shippable
+and covers a wider slice of real programs. The agent implementing
+0e should ship each step end-to-end (MIR lowering → codegen →
+test) before moving to the next.
 
-Three minimal prototypes, each implementing the State effect:
+### Step 1: Fail / ZeroResume end-to-end (Tier 1)
+
+Complete the partially-wired Fail path in codegen. The MIR already
+classifies `Fail.fail(e)` as `EffectOp { class: ZeroResume }`.
+Wire it through to Cranelift:
+
+- `Fail.fail(e)` → early return with error tag (Result-passing)
+- `catch expr` → branch on return tag, extract Ok/Err
+- `?` → branch-on-error, propagate Err or unwrap Ok
+- `MirInst::HandlerEnter/Exit { effect: "Fail" }` → no-op
+  (Fail doesn't install runtime handler frames)
+
+**Milestone:** First Kea program with error handling compiles
+and runs natively. This is the "hello world with errors" moment.
+
+Test: `fn main() -> Result(Int, String) = catch(|| -> ...)`
+produces correct Ok/Err values.
+
+### Step 2: IO as built-in evidence (Tier 1 / capability-direct)
+
+The `IO` effect is special — its handler IS the runtime. No
+evidence passing, no dispatch. `MirEffectOpClass::Direct` maps
+to direct function calls into a thin runtime shim.
+
+Implement:
+- `IO.stdout(msg)` → `libc::write(1, ...)`
+- `IO.stderr(msg)` → `libc::write(2, ...)`
+- `IO.read_file(path)` → `libc::read` wrapper
+- `IO.write_file(path, data)` → `libc::write` wrapper
+
+The runtime installs the IO handler around `main()`. Unhandled
+effects at the main boundary (other than IO/Fail) are a compile
+error (already enforced by 0c).
+
+**Entry gate:** Decide IO granularity here (see Entry Gate
+section above). Recommendation: start with monolithic `IO` for
+Step 2, decompose into IO/Net/Clock/Rand in Step 6 after the
+handler machinery is proven. The decomposition is additive —
+splitting one effect into four is easy once handlers work.
+
+**Milestone:** `kea run hello.kea` prints "Hello, world!" to
+stdout. First effectful compiled program.
+
+### Step 3: Evidence passing for tail-resumptive handlers (Tier 2)
+
+The core handler compilation. Implement evidence passing for
+user-defined effects, starting with the State effect:
 
 ```kea
 effect State S
@@ -162,159 +234,183 @@ fn count_to(_ n: Int) -[State Int]> Int
     count_to(n)
 ```
 
-Benchmark: `with_state(0, || -> count_to(1_000_000))`
+Evidence representation:
+- Each effect gets an evidence struct (one closure per operation)
+- `HandlerEnter` creates the evidence struct from handler clauses
+- Effectful functions receive evidence as hidden parameters
+- `EffectOp { class: Dispatch }` calls through evidence
 
-Measure execution time, code size, and implementation complexity.
-Pick the winner.
+Handler clause classification (at MIR lowering time):
+- **Tail-resumptive:** `resume` is the last expression → compile
+  handler body as a direct function, `resume` = return value
+- **Zero-resume:** no `resume` → compile as early return (Step 1)
+- **Non-tail-resumptive:** `resume` in non-tail position → error
+  for now ("non-tail-resumptive handlers not yet supported"),
+  implement in Step 7
 
-### Step 2: IO runtime handler
+**Benchmark immediately:** `with_state(0, || -> count_to(1_000_000))`
+vs equivalent pure parameter-passing code. Target: < 10x overhead
+for the unoptimized evidence path.
 
-The `IO` effect is special — its handler is the runtime itself.
-Implement:
-- `IO.stdout(msg)` → write to stdout
-- `IO.read_file(path)` → read file bytes
-- `IO.write_file(path, data)` → write file
-- `IO.clock_now()` → system timestamp
+### Step 4: Handler inlining / devirtualization (Tier 2 optimized)
 
-The IO handler is installed by the runtime around `Main.main()`.
-Any unhandled effects at the main boundary (other than IO) are
-a compile error (already enforced by 0c).
-
-### Step 2.5: Tail-resumptive handler optimisation
-
-Most handlers call `resume` as the last thing in the handler
-body: `Log.log` logs and resumes, `State.get` reads state and
-resumes, `State.put` writes state and resumes. These are
-**tail-resumptive** handlers.
-
-A tail-resumptive handler doesn't need continuation capture. It
-can compile as a direct call: perform the handler body, then
-return the resume value — no stack manipulation, no closure
-allocation, no evidence lookup on the hot path.
-
-Classify each handler clause at compile time:
-- **Tail-resumptive:** `resume` is the last expression. Compile
-  as a direct function call. This is the common case (~80%+ of
-  handlers in practice).
-- **Non-tail-resumptive:** `resume` appears in non-tail position
-  (e.g., `let x = resume(); process(x)`). Needs the full handler
-  compilation machinery.
-- **Zero-resumption:** no `resume` at all (Fail). Compile as
-  early return / Result-passing (see Step 3).
-
-Koka optimises tail-resumptive handlers aggressively and this
-is the single most important performance optimisation for
-making effects cheap. Prioritise getting this right.
-
-### Step 2.75: Handler inlining / devirtualization
-
-When a handler is statically known (the `handle` block is
-visible at the call site), the compiler can inline the handler
-body at each effect operation site:
+When a handler is statically known and tail-resumptive, inline
+the handler body at each operation site:
 
 ```kea
 -- before inlining:
 handle computation()
   State.get() -> resume current_state
-  State.put(s) -> resume ()
+  State.put(s) ->
+    current_state = s
+    resume ()
 
--- after inlining: State.get() becomes "return current_state"
--- State.put(s) becomes "current_state = s; return ()"
--- no evidence lookup, no handler dispatch, no closure allocation
+-- after inlining: State.get() becomes "read local"
+-- State.put(s) becomes "write to local"
+-- no evidence struct, no indirect call, no closure allocation
 ```
 
-This is the optimization that makes effects zero-cost for the
-common case. When combined with tail-resumptive classification,
-a statically-known tail-resumptive handler compiles to a direct
-function call with the handler body inlined — identical codegen
-to manually passing the state as a parameter.
+This is a MIR optimization pass:
+1. Identify `HandlerEnter`/`HandlerExit` pairs where the handler
+   is visible (not passed through a function boundary)
+2. For each `EffectOp { class: Dispatch }` in the handler scope,
+   replace with the inlined handler body
+3. Eliminate the evidence struct entirely
 
-Requirements:
-- Must fire for all statically-known tail-resumptive handlers
-- Must preserve semantics exactly (handler body + resume value)
-- Benchmark gate: State effect tight loop with inlined handler
-  must be within 2x of equivalent parameter-passing code.
-  Stretch goal: within 1.2x (just the trampoline overhead).
-- Pass stats must report: handlers inlined vs dispatched, per
-  function
+**Benchmark gate:** State effect tight loop with inlined handler
+must be within 2x of equivalent parameter-passing code. Stretch
+goal: within 1.2x.
 
-This is an explicit 0e deliverable, not a stretch goal. Effects
-must be cheap enough that people use them everywhere. If handler
+**Pass stats:** report handlers inlined vs dispatched, per function.
+This is how we know the optimization is firing.
+
+This is an explicit 0e deliverable, not a stretch goal. If handler
 dispatch is measurably slower than function calls for the common
 case, the programming model doesn't work.
 
-### Step 3: Fail compilation (optimised path)
+### Step 5: Handler nesting and scoping
 
-`Fail` is the most common effect. It deserves an optimised
-compilation:
-- `Fail.fail(e)` can compile to Result-passing (return Err)
-  rather than going through the general handler mechanism
-- `catch` compiles to a simple match on the Result
-- `?` compiles to a branch-on-error
+Multiple handlers compose correctly:
 
-This is a special case: because Fail's handler never resumes,
-it's equivalent to Result propagation. We can recognise this
-statically and bypass the general handler machinery.
+```kea
+handle
+  handle computation()
+    State.get() -> resume current_state
+    State.put(s) -> ...
+  Log.log(level, msg) ->
+    IO.stdout("[{level}] {msg}")
+    resume ()
+```
 
-### Step 4: User-defined effect compilation
+Inner handler shadows outer for the same effect. Evidence passing
+handles this naturally — the innermost `HandlerEnter` for an
+effect provides the evidence, outer evidence is shadowed.
 
-General handler compilation for arbitrary effects using the
-chosen strategy from Step 1. This handles:
-- `Log`, `State S`, `Rand`, `Tx`, and any user-defined effect
-- Handler installation
-- Effect operation dispatch to installed handler
-- Resume mechanics (passing value back to operation call site)
-- Nested handlers (inner handler shadows outer for same effect)
+Test matrix:
+- Nested handlers for different effects
+- Inner handler shadows outer for same effect
+- Handler body performs a different effect (handler adds effects)
+- Handler body re-performs the handled effect (goes to outer handler)
 
-### Step 5: Arena allocation (Alloc effect)
+### Step 6: IO decomposition (if Option A chosen)
 
-The `Alloc` effect (KERNEL §5.9, §12.7):
-- `with_arena` handler creates a bump allocator
-- Inside the handler, all heap allocations go to the arena
-- On handler exit: deep-copy the return value to caller's
-  allocation context, then free the arena in bulk
+Split `IO` into fine-grained capability effects:
 
-This is the riskiest piece. Key concerns:
-- How does the compiler know which allocations to redirect?
-  (Via the Alloc effect — if Alloc is in the effect set,
-  allocations go through the arena)
-- Deep-copy at boundary: how do we copy a value that may
-  contain pointers into the arena? (Walk the value, copy
-  transitively, update pointers)
-- Nested arenas: inner arena allocations shouldn't escape to
-  outer arena
+| Effect | Operations |
+|--------|-----------|
+| `IO` | stdout, stderr, read_file, write_file |
+| `Net` | connect, listen, send, recv |
+| `Clock` | now, monotonic |
+| `Rand` | random_int, random_float, random_bytes |
 
-**Proposal:** Defer arena allocation to after 0f (memory model).
-The Unique type interactions need to be clear first. For now,
-make `Alloc` a no-op effect that's handled but doesn't change
+Each is a separate capability effect with `Direct` compilation.
+Programs declare exactly the capabilities they need:
+`fn main() -[IO, Net]> ()`.
+
+### Step 7: Non-tail-resumptive handlers (Tier 4) — DEFERRABLE
+
+One-shot continuations for the rare case where `resume` is in
+non-tail position. Because Kea enforces at-most-once resumption,
+the continuation is one-shot — no stack copying.
+
+Implementation: `setjmp` at handler install, `longjmp` at perform,
+`resume` calls the saved continuation using the original stack.
+
+**This step can ship after 0f.** Tiers 1-3 cover 95%+ of real
+handler usage. Non-tail-resumptive handlers are exotic (coroutine
+yield, backtracking with commit). Emit a clear error message
+("non-tail-resumptive handlers not yet supported") until this
+lands.
+
+### Step 8: Arena allocation (Alloc effect) — DEFERRED to post-0f
+
+The `Alloc` effect (KERNEL §5.9, §12.7). Deferred until the
+memory model (0f) clarifies Unique type interactions. For now,
+`Alloc` is a no-op effect that type-checks but doesn't change
 allocation behavior.
 
 ## Testing
 
-- Microbenchmarks: State effect tight loop, measure against
-  equivalent pure code
-- IO: hello world, file read/write, clock
-- Fail: error propagation, catch, `?` operator — verify
-  optimised path produces same results as general path
-- Handler nesting: multiple handlers compose correctly at runtime
-- Handler scoping: inner handler shadows outer for same effect
-- Resume: value correctly returned to operation call site
-- Zero-resumption: Fail handler doesn't resume, computation aborts
+**Per-tier tests (each step ships with tests):**
+
+Tier 1 (Fail/IO):
+- `Fail.fail(e)` produces correct Err value at runtime
+- `catch` converts effectful code to Result
+- `?` propagates errors, unwraps Ok
+- Nested `catch` blocks compose correctly
+- `IO.stdout("hello")` produces output
+- `IO.read_file` / `IO.write_file` round-trip
+- Unhandled non-IO effect at main → compile error (0c, verify)
+
+Tier 2 (tail-resumptive handlers):
+- State get/put: counter accumulation produces correct value
+- Log handler: collects log entries into a list
+- Reader handler: provides read-only context
+- Handler body effects correctly added to outer scope
+- Resume value correctly returned to operation call site
+- Handler with multiple operations: all operations handled
+
+Tier 2 optimized (inlining):
+- Same behavioral tests as Tier 2 (inlining must be transparent)
+- Benchmark: State tight loop within 2x of parameter passing
+- Pass stats: verify inlining fires for statically-known handlers
+
+Handler composition:
+- Nested handlers for different effects
+- Inner handler shadows outer for same effect
+- Handler body re-performs handled effect (goes to outer handler)
+- Three-deep nesting: State inside Log inside IO
+
+**Microbenchmarks (added to kea-bench):**
+- `state_count_to_1M`: State effect tight loop
+- `state_count_to_1M_manual`: equivalent pure parameter-passing
+- `fail_propagation_depth_N`: Fail through N call frames
+- `io_stdout_throughput`: IO.stdout in tight loop
 
 ## Definition of Done
 
-- Effectful Kea programs compile and run
-- IO works (stdout, file read/write, clock)
-- Fail compiles efficiently (Result-passing optimisation)
-- User-defined effects work with the chosen compilation strategy
-- Handler nesting works
-- Performance: State effect overhead < 10x compared to passing
-  state as a parameter (stretch goal: < 3x)
+**Core (must ship):**
+- Fail/ZeroResume compiles end-to-end (Result-passing)
+- IO works (stdout, stderr, file read/write)
+- `kea run hello.kea` prints output — first effectful compiled program
+- User-defined tail-resumptive handlers compile via evidence passing
+- Handler inlining fires for statically-known tail-resumptive handlers
+- Handler nesting and scoping work correctly
+- Non-tail-resumptive handlers produce a clear "not yet supported" error
+
+**Performance gates:**
+- State effect tight loop with inlined handler: within 2x of
+  parameter-passing equivalent (stretch: 1.2x)
+- Fail/catch overhead: within 1.5x of hand-written Result code
+- IO.stdout: within 2x of direct libc write
+
+**Infrastructure:**
 - Benchmark suite extended: effect-heavy pipeline added to 0d's
-  baseline harness. CI regression gates enabled on 0d baselines
-  (no >N% regression on existing benchmarks). Thresholds start
-  permissive and tighten as measurements stabilize.
-- `mise run check` passes
+  baseline harness
+- CI regression gates enabled on 0d baselines (no >N% regression
+  on existing benchmarks, thresholds start permissive)
+- Pass stats report: handlers inlined vs dispatched, per function
+- `mise run check-full` passes
 
 ## Decisions
 
@@ -391,23 +487,26 @@ allocation behavior.
 
 ## Backend Portability Constraint
 
-Effect operations should be represented as classified MIR ops,
-not as backend-specific lowering decisions. The MIR should encode:
-- Operation class: capability-direct, handler-dispatch, zero-resume
-- Handler classification: tail-resumptive, non-tail-resumptive
-- Evidence placement: abstract parameter slots, not Cranelift ABI
+Effect operations are already represented as classified MIR ops
+(landed in 0d). The MIR encodes:
+- Operation class: `MirEffectOpClass::Direct` / `Dispatch` / `ZeroResume`
+- Handler scope: `HandlerEnter` / `HandlerExit` markers
+- Resume: `MirInst::Resume { value }`
+- Codegen stats tracking per class
 
-The chosen compilation strategy (evidence passing, CPS, etc.)
-determines how the *backend* lowers these MIR ops. A future
-Kea-native backend could use a different strategy for the same
-MIR. See [performance-backend-strategy](performance-backend-strategy.md).
+**Extend for 0e:** Add handler classification metadata to MIR:
+- `MirHandlerClass::TailResumptive` / `NonTailResumptive` / `ZeroResume`
+  (computed at MIR lowering from AST handler clause analysis)
+- Evidence parameter slots: abstract (not Cranelift ABI-specific)
+- Inlining eligibility flag: statically-known + tail-resumptive
+
+The Cranelift backend lowers these classified ops. A future backend
+could use a different strategy for the same MIR.
+See [performance-backend-strategy](performance-backend-strategy.md).
 
 ## Open Questions
 
-- How does the handler compilation interact with Cranelift's
-  calling convention? (Evidence passing adds parameters. CPS
-  changes return conventions. Need to verify Cranelift can
-  handle whichever strategy we pick.)
+*(None remaining — see Resolved Questions.)*
 
 ## Resolved Questions
 
@@ -426,3 +525,16 @@ MIR. See [performance-backend-strategy](performance-backend-strategy.md).
   Handlers for them type-check normally (enabling test mocks).
   Direct-call compilation is a codegen optimisation, not a type
   system restriction. See Decisions section above.
+
+- **Cranelift calling convention interaction:** Evidence passing
+  adds hidden parameters to effectful functions. Cranelift handles
+  this naturally — evidence structs are pointer-sized arguments in
+  the standard calling convention. No ABI changes needed. For the
+  inlined case, evidence parameters are eliminated entirely by
+  the MIR optimization pass before Cranelift sees the code.
+
+- **Handler compilation strategy:** Evidence passing (see "Core
+  Decision" section). The three-way prototype is unnecessary —
+  Koka's production experience validates evidence passing, and
+  Kea's at-most-once resumption makes CPS/setjmp advantages
+  negligible. Ship evidence passing, optimize with inlining.
