@@ -6034,3 +6034,29 @@ alignment established in preceding closure probe).
 **Outcome**:
 - Formal layer now has a direct, runtime-aligned theorem surface for
   absent-effect no-op semantics in the closed-row case.
+
+### 2026-02-26: fail/result equivalence capstone module (proof-only)
+
+**Context**: Added a dedicated theorem API for Fail/Result equivalence so
+downstream proofs can use named capstone/bundle surfaces.
+
+**MCP tools used**: none (proof-only API packaging; runtime-aligned catch/fail
+behavior already covered by preceding probes).
+
+**Lean side**:
+- Added `Kea/Properties/FailResultEquivalence.lean` with:
+  - `fail_result_equivalence`
+  - `FailResultEquivalenceBundle`
+  - bundle constructors/projections
+  - catch-premise adapters:
+    `catchTyping_fail_result_equivalence_of_premises`,
+    `catchTyping_fail_result_equivalence_bundle_of_premises`
+- Imported module in `formal/Kea.lean`.
+- Verified with `cd formal && lake build` (pass).
+
+**Classify**: N/A (proof-only step).
+
+**Outcome**:
+- Fail/Result equivalence now has direct named theorem surfaces and a stable
+  bundle contract, matching the Phase-2 capstone packaging style used across
+  other tracks.
