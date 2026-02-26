@@ -72,3 +72,25 @@ theorem applySubstWF_empty_preserves_wf
   rw [applySubstWF_empty ty]
   exact h_wf
 
+theorem applySubst_empty_preserves_wf
+    (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat) (ty : Ty)
+    (h_wf : Ty.WellFormed kctx rctx ty) :
+    Ty.WellFormed kctx rctx (applySubst Subst.empty fuel ty) := by
+  rw [(applySubst_noop Subst.empty fuel).1 ty (fun _ _ => rfl) (fun _ _ => rfl)]
+  exact h_wf
+
+theorem applySubstRow_empty_preserves_wf
+    (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat) (r : Row)
+    (h_wf : Row.WellFormed kctx rctx r) :
+    Row.WellFormed kctx rctx (applySubstRow Subst.empty fuel r) := by
+  rw [(applySubst_noop Subst.empty fuel).2.1 r (fun _ _ => rfl) (fun _ _ => rfl)]
+  exact h_wf
+
+theorem applySubstEffectRow_empty_preserves_wf
+    (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat) (effects : EffectRow)
+    (h_wf : EffectRow.WellFormed kctx rctx effects) :
+    EffectRow.WellFormed kctx rctx (applySubstEffectRow Subst.empty fuel effects) := by
+  cases effects with
+  | mk row =>
+    simpa [applySubstEffectRow, EffectRow.WellFormed] using
+      applySubstRow_empty_preserves_wf kctx rctx fuel row h_wf
