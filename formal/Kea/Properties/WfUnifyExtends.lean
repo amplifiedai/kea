@@ -329,3 +329,18 @@ theorem unifyRows_contract_wf_of_shape_wf
     unifyRowsSuccessUpdateShapeWf_implies_shape st' stNext fuel kctx rctx h_shape_wf
   exact unifyRows_contract_wf
     st st' stNext fuel h_ext h_idemp h_shape h_idemp_next
+
+/-- Projection: recover the legacy unsplit compat/WF contract directly from
+WF-annotated-shape assumptions. -/
+theorem unifyRows_extends_rowMap_preconditioned_wf_of_shape_wf
+    (st st' stNext : UnifyState) (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat)
+    (h_ext : ExtendsRowBindings st st')
+    (h_idemp : st'.subst.Idempotent)
+    (h_shape_wf : UnifyRowsSuccessUpdateShapeWf st' stNext fuel kctx rctx)
+    (h_idemp_next : stNext.subst.Idempotent) :
+    ExtendsRowBindings st stNext
+    ∧ CompatWFAgreeOnDomainLookups stNext fuel h_idemp_next := by
+  have h_shape : UnifyRowsSuccessUpdateShape st' stNext fuel :=
+    unifyRowsSuccessUpdateShapeWf_implies_shape st' stNext fuel kctx rctx h_shape_wf
+  exact unifyRows_extends_rowMap_preconditioned_wf_of_contract
+    st st' stNext fuel h_ext h_idemp h_shape h_idemp_next
