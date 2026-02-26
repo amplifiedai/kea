@@ -79,12 +79,30 @@ theorem applySubst_empty_preserves_wf
   rw [(applySubst_noop Subst.empty fuel).1 ty (fun _ _ => rfl) (fun _ _ => rfl)]
   exact h_wf
 
+theorem applySubstCompat_preserves_wf_of_no_domain_vars
+    (s : Subst) (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat) (ty : Ty)
+    (h_wf : Ty.WellFormed kctx rctx ty)
+    (htv : ∀ v ∈ freeTypeVars ty, s.typeMap v = none)
+    (hrv : ∀ v ∈ freeRowVars ty, s.rowMap v = none) :
+    Ty.WellFormed kctx rctx (applySubstCompat s fuel ty) := by
+  simpa [applySubstCompat] using
+    applySubst_preserves_wf_of_no_domain_vars s kctx rctx fuel ty h_wf htv hrv
+
 theorem applySubstRow_empty_preserves_wf
     (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat) (r : Row)
     (h_wf : Row.WellFormed kctx rctx r) :
     Row.WellFormed kctx rctx (applySubstRow Subst.empty fuel r) := by
   rw [(applySubst_noop Subst.empty fuel).2.1 r (fun _ _ => rfl) (fun _ _ => rfl)]
   exact h_wf
+
+theorem applySubstRowCompat_preserves_wf_of_no_domain_vars
+    (s : Subst) (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat) (r : Row)
+    (h_wf : Row.WellFormed kctx rctx r)
+    (htv : ∀ v ∈ freeTypeVarsRow r, s.typeMap v = none)
+    (hrv : ∀ v ∈ freeRowVarsRow r, s.rowMap v = none) :
+    Row.WellFormed kctx rctx (applySubstRowCompat s fuel r) := by
+  simpa [applySubstRowCompat] using
+    applySubstRow_preserves_wf_of_no_domain_vars s kctx rctx fuel r h_wf htv hrv
 
 theorem applySubstEffectRow_empty_preserves_wf
     (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat) (effects : EffectRow)
