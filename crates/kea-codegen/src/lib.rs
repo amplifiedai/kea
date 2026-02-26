@@ -7,7 +7,8 @@
 
 use std::collections::BTreeMap;
 
-use kea_mir::{MirEffectOpClass, MirFunction, MirInst, MirModule};
+use kea_hir::HirModule;
+use kea_mir::{MirEffectOpClass, MirFunction, MirInst, MirModule, lower_hir_module};
 use kea_types::EffectRow;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -126,6 +127,16 @@ pub trait Backend {
         abi: &AbiManifest,
         config: &BackendConfig,
     ) -> Result<BackendArtifact, CodegenError>;
+}
+
+pub fn compile_hir_module<B: Backend>(
+    backend: &B,
+    hir: &HirModule,
+    config: &BackendConfig,
+) -> Result<BackendArtifact, CodegenError> {
+    let mir = lower_hir_module(hir);
+    let abi = default_abi_manifest(&mir);
+    backend.compile_module(&mir, &abi, config)
 }
 
 #[derive(Debug, Default)]
@@ -254,6 +265,7 @@ pub fn default_abi_manifest(module: &MirModule) -> AbiManifest {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use kea_hir::{HirDecl, HirExpr, HirExprKind, HirFunction, HirParam};
     use kea_mir::{MirBlock, MirBlockId, MirFunctionSignature, MirTerminator, MirValueId};
     use kea_types::{Label, Type};
 
@@ -325,5 +337,31 @@ mod tests {
         assert_eq!(stats.retain_count, 1);
         assert_eq!(stats.release_count, 1);
         assert_eq!(stats.effect_op_direct_count, 1);
+    }
+
+    #[test]
+    fn compile_hir_module_runs_pipeline() {
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "id".to_string(),
+                params: vec![HirParam {
+                    name: Some("x".to_string()),
+                    span: kea_ast::Span::synthetic(),
+                }],
+                body: HirExpr {
+                    kind: HirExprKind::Var("x".to_string()),
+                    ty: Type::Int,
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(kea_types::FunctionType::pure(vec![Type::Int], Type::Int)),
+                effects: EffectRow::pure(),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let artifact = compile_hir_module(&CraneliftBackend, &hir, &BackendConfig::default())
+            .expect("pipeline should compile");
+        assert_eq!(artifact.stats.per_function.len(), 1);
+        assert_eq!(artifact.stats.per_function[0].function, "id");
     }
 }
