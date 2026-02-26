@@ -1,0 +1,121 @@
+import Kea.Properties.HandlerTypingContracts
+
+/-!
+  Kea.Properties.TailResumptiveClassification
+
+  Phase-2 classification surface for tail-resumptive handler clauses.
+
+  This module classifies clause-level resume summaries and exposes a contract
+  surface for the "tail-resumptive compiles like a direct call" slice.
+-/
+
+namespace Kea
+namespace TailResumptiveClassification
+
+/-- Resume-shape classification used by the tail-resumptive fast path. -/
+inductive TailResumptiveClass : Type where
+  | nonResumptive
+  | tailResumptive
+  | invalid
+  deriving DecidableEq, BEq
+
+/-- Classify abstract resume use into non/tail/invalid categories. -/
+def classifyResumeUse : ResumeUse → TailResumptiveClass
+  | .zero => .nonResumptive
+  | .one => .tailResumptive
+  | .many => .invalid
+
+/-- Clause-level classifier derived from `resumeUse`. -/
+def classifyClause (c : HandleClauseContract) : TailResumptiveClass :=
+  classifyResumeUse c.resumeUse
+
+/--
+Eligibility contract for tail-resumptive lowering:
+- exactly-one resume summary
+- no `then` post-processing effects
+-/
+def tailResumptiveEligible (c : HandleClauseContract) : Prop :=
+  classifyClause c = .tailResumptive ∧ c.thenEffects = none
+
+theorem classifyResumeUse_tailResumptive_iff
+    (u : ResumeUse) :
+    classifyResumeUse u = .tailResumptive ↔ u = .one := by
+  cases u <;> simp [classifyResumeUse]
+
+theorem classifyResumeUse_nonResumptive_iff
+    (u : ResumeUse) :
+    classifyResumeUse u = .nonResumptive ↔ u = .zero := by
+  cases u <;> simp [classifyResumeUse]
+
+theorem classifyResumeUse_invalid_iff
+    (u : ResumeUse) :
+    classifyResumeUse u = .invalid ↔ u = .many := by
+  cases u <;> simp [classifyResumeUse]
+
+theorem classifyResumeUse_not_invalid_of_atMostOnce
+    (u : ResumeUse)
+    (h_lin : ResumeUse.atMostOnce u) :
+    classifyResumeUse u ≠ .invalid := by
+  cases u with
+  | zero =>
+      simp [classifyResumeUse]
+  | one =>
+      simp [classifyResumeUse]
+  | many =>
+      simp [ResumeUse.atMostOnce] at h_lin
+
+/--
+Phase-2 target theorem surface:
+well-typed clauses classify as either non-resumptive or tail-resumptive
+(never invalid-many).
+-/
+theorem tail_resumptive_classification
+    (c : HandleClauseContract)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice c) :
+    classifyClause c = .nonResumptive ∨
+      classifyClause c = .tailResumptive := by
+  have h_prov := HandleClauseContract.wellTypedSlice_implies_resumeProvenance c h_wellTyped
+  cases h_prov with
+  | inl h_zero =>
+      left
+      simp [classifyClause, classifyResumeUse, h_zero]
+  | inr h_one =>
+      right
+      simp [classifyClause, classifyResumeUse, h_one]
+
+/-- Direct-call equivalence contract for the tail-resumptive lowering path. -/
+def directCallEquivalent (c : HandleClauseContract) : Prop :=
+  HandleClauseContract.resultEffects c =
+    HandleClauseContract.resultEffectsCore c
+
+/--
+Soundness of the tail-resumptive fast path:
+if a clause is tail-resumptive-eligible, result effects reduce to core
+handler effects (no extra `then` transformation).
+-/
+  theorem tail_resumptive_direct_call_sound
+    (c : HandleClauseContract)
+    (h_eligible : tailResumptiveEligible c) :
+    directCallEquivalent c := by
+  rcases h_eligible with ⟨_h_class, h_then_none⟩
+  unfold directCallEquivalent HandleClauseContract.resultEffects
+  simp [h_then_none]
+
+theorem tail_resumptive_eligible_implies_resume_one
+    (c : HandleClauseContract)
+    (h_eligible : tailResumptiveEligible c) :
+    c.resumeUse = .one := by
+  rcases h_eligible with ⟨h_class, _h_then⟩
+  exact (classifyResumeUse_tailResumptive_iff c.resumeUse).mp
+    (by simpa [classifyClause] using h_class)
+
+theorem tail_resumptive_eligible_implies_atMostOnce
+    (c : HandleClauseContract)
+    (h_eligible : tailResumptiveEligible c) :
+    ResumeUse.atMostOnce c.resumeUse := by
+  have h_one := tail_resumptive_eligible_implies_resume_one c h_eligible
+  rw [h_one]
+  exact resume_atMostOnce_one
+
+end TailResumptiveClassification
+end Kea

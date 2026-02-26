@@ -5697,3 +5697,26 @@ against the latest restarted MCP binary.
 **Outcome**:
 - Runtime behavior matches the formal direct-call model: when handling one
   effect, the other capability effect remains in the residual row.
+
+### 2026-02-26: tail-resumptive classification scaffold (proof-only)
+
+**Context**: Added a dedicated Phase-2 module for classifying resume shapes and
+exposing a tail-resumptive direct-call contract surface.
+
+**MCP tools used**: none (proof-only theorem-surface expansion).
+
+**Lean side**:
+- Added `Kea/Properties/TailResumptiveClassification.lean` with:
+  - `TailResumptiveClass`, `classifyResumeUse`, `classifyClause`
+  - `tailResumptiveEligible`
+  - `tail_resumptive_classification`
+  - `directCallEquivalent`, `tail_resumptive_direct_call_sound`
+  - eligibility projections (`tail_resumptive_eligible_implies_*`)
+- Imported the module in `formal/Kea.lean`.
+- Verified with `cd formal && lake build` (pass).
+
+**Classify**: N/A (proof-only step).
+
+**Outcome**:
+- Phase-2 now has an explicit, citable theorem surface for the
+  tail-resumptive fast-path classification and direct-call equivalence claim.
