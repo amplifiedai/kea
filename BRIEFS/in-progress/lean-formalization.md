@@ -1,6 +1,6 @@
 # Brief: Lean Formalization Migration
 
-**Status:** ready
+**Status:** active
 **Priority:** Phase 0c-0e (parallel track — formal agent works alongside implementation)
 **Depends on:** 0c-effect-handlers (effect rows must be in the type system before formalizing them)
 **Blocks:** nothing directly — formal proofs validate but don't gate implementation
@@ -250,3 +250,11 @@ Mitigation:
 - Formalizing memory model / ownership (depends on 0f stabilizing).
 - Blocking implementation on formal proofs (formal work validates,
   doesn't gate).
+
+## Progress
+
+- 2026-02-26: Brief moved from `todo/` to `in-progress/` to start Phase 1 migration in parallel with 0d codegen work.
+- 2026-02-26: Bootstrapped `formal/` in Kea by cannibalizing `/Users/chris/Projects/rill/formal`, renaming the Lean namespace target from `Rill` to `Kea`, and preserving the roadmap + MCP verification history baseline.
+- 2026-02-26: `cd formal && lake build` passes in Kea after namespace-portability proof repairs in `SubstBridge`, `UnifyReflexive`, `PrecisionLeafParity`, and `ShapeConstructorParity` (warning-only simp lint remains).
+- 2026-02-26: Repository guardrail check passes after formalization bootstrap (`mise run check`).
+- **Next:** prune Rill-only modules from the root target, align `Kea/Ty.lean` with `kea-types` effect-row shape, and log first Kea MCP-first verification entries.

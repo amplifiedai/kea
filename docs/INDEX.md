@@ -26,3 +26,4 @@
 
 - [../AGENTS.md](../AGENTS.md) — Guide for coding agents working on the codebase.
 - [../BRIEFS/](../BRIEFS/) — Implementation briefs (design decisions, in-progress work, completed work).
+- [../FORMAL.md](../FORMAL.md) — Kea Lean formalization scope, migration status, and MCP-first verification workflow.

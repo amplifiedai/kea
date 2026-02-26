@@ -1,0 +1,12 @@
+name = "kea-formal"
+version = "0.1.0"
+defaultTargets = ["Kea"]
+leanOptions = [["autoImplicit", false]]
+
+[[lean_lib]]
+name = "Kea"
+
+[[require]]
+name = "batteries"
+git = "https://github.com/leanprover-community/batteries"
+rev = "main"
