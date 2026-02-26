@@ -1374,6 +1374,106 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn lower_function_unit_enum_guard_desugars_to_and_condition() {
+        let module = parse_module_from_text(
+            "type Color = Red | Green\nfn pick() -> Int\n  case Color.Red\n    Color.Red when true -> 1\n    _ -> 2",
+        );
+        let mut env = TypeEnv::new();
+        env.bind(
+            "pick".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::pure(vec![], Type::Int))),
+        );
+
+        let lowered = lower_module(&module, &env);
+        let function = lowered
+            .declarations
+            .iter()
+            .find_map(|decl| match decl {
+                HirDecl::Function(function) if function.name == "pick" => Some(function),
+                _ => None,
+            })
+            .expect("expected lowered pick function");
+
+        let condition = match &function.body.kind {
+            HirExprKind::If { condition, .. } => condition,
+            HirExprKind::Block(exprs) => {
+                let Some(HirExpr {
+                    kind: HirExprKind::If { condition, .. },
+                    ..
+                }) = exprs.last()
+                else {
+                    panic!("expected trailing if in lowered unit-enum guarded block");
+                };
+                condition
+            }
+            other => panic!(
+                "expected unit-enum guarded case to lower to if/block, got {other:?}"
+            ),
+        };
+        assert!(matches!(
+            condition.kind,
+            HirExprKind::Binary { op: BinOp::And, .. }
+        ));
+    }
+
+    #[test]
+    fn lower_function_unit_enum_as_guard_binds_before_guard() {
+        let module = parse_module_from_text(
+            "type Color = Red | Green\nfn pick() -> Int\n  case Color.Red\n    Color.Red as c when true -> 1\n    _ -> 2",
+        );
+        let mut env = TypeEnv::new();
+        env.bind(
+            "pick".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::pure(vec![], Type::Int))),
+        );
+
+        let lowered = lower_module(&module, &env);
+        let function = lowered
+            .declarations
+            .iter()
+            .find_map(|decl| match decl {
+                HirDecl::Function(function) if function.name == "pick" => Some(function),
+                _ => None,
+            })
+            .expect("expected lowered pick function");
+
+        let condition = match &function.body.kind {
+            HirExprKind::If { condition, .. } => condition,
+            HirExprKind::Block(exprs) => {
+                let Some(HirExpr {
+                    kind: HirExprKind::If { condition, .. },
+                    ..
+                }) = exprs.last()
+                else {
+                    panic!("expected trailing if in lowered unit-enum as+guard block");
+                };
+                condition
+            }
+            other => panic!(
+                "expected unit-enum as+guard case to lower to if/block, got {other:?}"
+            ),
+        };
+        let HirExprKind::Binary {
+            op: BinOp::And,
+            right,
+            ..
+        } = &condition.kind
+        else {
+            panic!("expected guard lowering to use and-composed condition");
+        };
+        let HirExprKind::Block(exprs) = &right.kind else {
+            panic!("expected as-guard lowering to bind name before guard expression");
+        };
+        assert!(matches!(
+            exprs.first().map(|expr| &expr.kind),
+            Some(HirExprKind::Let {
+                pattern: HirPattern::Var(_),
+                ..
+            })
+        ));
+    }
+
     fn count_if_nodes(expr: &HirExpr) -> usize {
         match &expr.kind {
             HirExprKind::If {
