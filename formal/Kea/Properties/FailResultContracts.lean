@@ -24,6 +24,46 @@ def failAsZeroResume (c : HandleClauseContract) : Prop :=
 def resultLowering (okTy errTy loweredTy : Ty) : Prop :=
   loweredTy = .result okTy errTy
 
+/--
+`catch` admissibility precondition:
+the handled expression must carry `Fail`.
+-/
+def catchAdmissible (effects : EffectRow) : Prop :=
+  RowFields.has (EffectRow.fields effects) failLabel = true
+
+/--
+`catch` is unnecessary (runtime rejection shape):
+the handled expression has no `Fail`.
+-/
+def catchUnnecessary (effects : EffectRow) : Prop :=
+  RowFields.has (EffectRow.fields effects) failLabel = false
+
+theorem catchAdmissible_iff_fail_present
+    (effects : EffectRow) :
+    catchAdmissible effects ↔
+      RowFields.has (EffectRow.fields effects) failLabel = true := Iff.rfl
+
+theorem catchUnnecessary_iff_fail_absent
+    (effects : EffectRow) :
+    catchUnnecessary effects ↔
+      RowFields.has (EffectRow.fields effects) failLabel = false := Iff.rfl
+
+theorem catchAdmissible_or_unnecessary
+    (effects : EffectRow) :
+    catchAdmissible effects ∨ catchUnnecessary effects := by
+  unfold catchAdmissible catchUnnecessary
+  cases h : RowFields.has (EffectRow.fields effects) failLabel <;> simp
+
+theorem catchUnnecessary_implies_not_admissible
+    (effects : EffectRow)
+    (h_unnecessary : catchUnnecessary effects) :
+    ¬ catchAdmissible effects := by
+  intro h_adm
+  unfold catchUnnecessary at h_unnecessary
+  unfold catchAdmissible at h_adm
+  rw [h_unnecessary] at h_adm
+  cases h_adm
+
 theorem failAsZeroResume_implies_linearityOk
     (c : HandleClauseContract)
     (h : failAsZeroResume c) :
@@ -95,6 +135,16 @@ theorem lowerFailFunctionType_noop_effect_of_absent
     lowerFailFunctionType params effects okTy errTy =
       .functionEff params effects (.result okTy errTy) := by
   simp [lowerFailFunctionType, lowerFailEffects_noop_of_absent, h_abs]
+
+theorem lowerFailFunctionType_noop_if_catch_unnecessary
+    (params : TyList)
+    (effects : EffectRow)
+    (okTy errTy : Ty)
+    (h_unnecessary : catchUnnecessary effects) :
+    lowerFailFunctionType params effects okTy errTy =
+      .functionEff params effects (.result okTy errTy) := by
+  exact lowerFailFunctionType_noop_effect_of_absent
+    params effects okTy errTy h_unnecessary
 
 /--
 Function-type equivalence slice:

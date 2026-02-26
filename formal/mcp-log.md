@@ -5160,3 +5160,35 @@ after implementation fix `cbb70b3` (`fix: reject catch on fail-absent bodies`).
 **Outcome**:
 - Restores runtime alignment for the Phase-2 Fail/Result + effect-polymorphism
   slice and removes the prior "wait for fix" caveat.
+
+### 2026-02-26: catch-admissibility theorem packaging (proof-only)
+
+**Context**: After divergence closure, promoted fail-presence/fail-absence into
+explicit formal preconditions so runtime `E0012` behavior is represented in
+theorem surfaces (not only in prose/log notes).
+
+**MCP tools used**: none (proof-layer packaging that relies on the immediately
+preceding divergence-closure probes).
+
+**Lean side**:
+- Extended `Kea/Properties/FailResultContracts.lean` with:
+  - `catchAdmissible`
+  - `catchUnnecessary`
+  - `catchAdmissible_or_unnecessary`
+  - `catchUnnecessary_implies_not_admissible`
+  - `lowerFailFunctionType_noop_if_catch_unnecessary`
+- Extended `Kea/Properties/EffectPolymorphismSoundness.lean` with
+  admissibility-gated wrappers and exclusivity bridges:
+  - `effectPolyFailLowering_sound_of_catchAdmissible`
+  - `effectPolyFailLowering_noop_if_catch_unnecessary`
+  - `catchUnnecessary_implies_no_admissible_poly_lowering`
+  - `effectPolyHandlerSchema_noop_if_catch_unnecessary`
+  - `catchUnnecessary_implies_no_admissible_schema`
+- Verified with `cd formal && lake build` (pass).
+
+**Classify**: N/A (proof-only step on top of already verified runtime behavior).
+
+**Outcome**:
+- Phase-2 theorem entrypoints now carry the same admissibility boundary as the
+runtime (`catch` requires Fail presence), preventing future drift between model
+claims and executable behavior.

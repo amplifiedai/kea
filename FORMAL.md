@@ -56,6 +56,7 @@ This work starts by cannibalizing the existing Rill formal corpus and then exten
 - **Phase 2 (active):** Added `Kea/Properties/EffectPolymorphismSoundness.lean` with reusable soundness contracts for Fail lowering over polymorphic effect rows (`rowTailStable`, `labelsPreservedExcept`, `effectPolyFailLowering_sound`, no-op-if-absent), proving Fail removal while preserving non-Fail labels and row tails.
 - **Phase 2 (active):** `EffectPolymorphismSoundness` now includes concrete handler-schema bridges (`EffectPolyHandlerSchema`, `effectPolyHandlerSchema_sound`, `effectPolyHandlerSchema_noop_if_fail_absent`) linking `wellTypedSlice` + Fail-zero-resume premises to polymorphic function-type lowering guarantees.
 - **Phase 2 (active):** Divergence on Fail-absent `catch` is now closed (runtime now rejects with `E0012`: `expression cannot fail; catch is unnecessary`), so no-op-if-absent theorem claims are aligned as vacuous runtime cases rather than pending implementation fix.
+- **Phase 2 (active):** Added explicit catch-admissibility contracts (`catchAdmissible`, `catchUnnecessary`) and precondition-gated effect-polymorphism wrappers (`effectPolyFailLowering_sound_of_catchAdmissible`, `catchUnnecessary_implies_no_admissible_*`), making the `E0012` fail-absent runtime behavior first-class in the formal theorem surface.
 
 The formal workspace lives at [`formal/`](formal/).
 
