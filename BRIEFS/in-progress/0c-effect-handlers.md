@@ -270,8 +270,9 @@ Things the 0c implementor should know about what comes after:
 - 2026-02-26: Brief moved to `in-progress/`; workboard updated.
 - 2026-02-26: Slice 1 landed — effect declaration registration + qualified operation typing (`dad49e5`).
 - 2026-02-26: Slice 2 landed — `handle`/`resume` AST+parser+typeck, `fail`/`?`/`catch` desugaring, and core matrix tests (`01f9e12`).
-- 2026-02-26: Slice 3 in progress — matrix tightening tests for resume legality detail (`lambda`, loop), resume type matching, handler operation coverage, plus parser coverage for `resume` and empty-handler rejection.
-- **Next:** Final 0c closeout pass (`mise run check-full`), then move brief to `done/` if no remaining DoD deltas.
+- 2026-02-26: Slice 3 landed — matrix tightening tests for resume legality detail (`lambda`, loop), resume type matching, handler operation coverage, plus parser coverage for `resume` and empty-handler rejection (`4de4eab`).
+- 2026-02-26: Closeout verification complete — `mise run check-full` green (workspace lint/tests/doctests).
+- **Next:** No code delta remains in 0c scope; move brief to `done/` with synchronized `BRIEFS/INDEX.md` update.
 
 ### Test Matrix (0c)
 - effect declaration parsing
