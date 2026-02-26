@@ -214,4 +214,5 @@ the trait infrastructure from 0b must be extensible for them.
 
 ## Progress
 - 2026-02-26: Moved brief to `in-progress`; starting rill-types/rill-infer cannibalisation for `kea-types` + `kea-infer`.
-- **Next:** Bootstrap `kea-types` and `kea-infer` crates from Rill with kea renames, workspace wiring, and first green compile/test checkpoint.
+- 2026-02-26: Bootstrapped `kea-types` + `kea-infer` from Rill into workspace with kea crate naming/dependencies and namespace renames. Verified with `mise run check`, `PKG=kea-types mise run test-pkg` (49/49), and `PKG=kea-infer mise run test-pkg` (721/721).
+- **Next:** Start Kea-specific pruning in `kea-types` (remove DataFrame/SQL/Actor/Dimension/Aggregate surface from the type model) with matching test updates before effect-row-focused extensions.

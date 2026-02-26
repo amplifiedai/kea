@@ -1,0 +1,11 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc d5e62ad3f48fa38aa7fd6b0c2c9bfcd0494a6c90614f129b5e222c1b5a12c962 # shrinks to def = RecordDef { public: false, name: Spanned { node: "Proj", span: Span { file: FileId(0), start: 0, end: 1 } }, doc: None, params: [], fields: [(Spanned { node: "a", span: Span { file: FileId(0), start: 0, end: 1 } }, Named("Int"))], derives: [] }
+cc 48d5973be3e8db0b7b3f1bf049e079ed3e1685ed7b0c0ff69b72b41a7ddb8077 # shrinks to a = Int, b = Dynamic
+cc 05672d155b1c6488c58ad96c07f2c3e313d4d6aa703ea45e052abe363c8efa8f # shrinks to a = List(Int), b = List(Dynamic)
+cc 2cb14a29366d0de8a66d6fce4392da456c72cb3e126b0808e06fa62036c6898f # shrinks to a = Tagged { inner: Dynamic, tags: {} }, b = Tagged { inner: Int, tags: {} }
+cc 1cf10515c0a52cce46591fd7492a069ba1834685517c2bad056bff3358e60836 # shrinks to (expr, _) = (Spanned { node: BinaryOp { op: Spanned { node: Mul, span: Span { file: FileId(0), start: 0, end: 0 } }, left: Spanned { node: Lit(Int(0)), span: Span { file: FileId(0), start: 0, end: 0 } }, right: Spanned { node: BinaryOp { op: Spanned { node: Add, span: Span { file: FileId(0), start: 0, end: 0 } }, left: Spanned { node: BinaryOp { op: Spanned { node: Add, span: Span { file: FileId(0), start: 0, end: 0 } }, left: Spanned { node: Lit(Int(0)), span: Span { file: FileId(0), start: 0, end: 0 } }, right: Spanned { node: Lit(Int(-387250203367)), span: Span { file: FileId(0), start: 0, end: 0 } } }, span: Span { file: FileId(0), start: 0, end: 0 } }, right: Spanned { node: Lit(Int(4271344746726839769)), span: Span { file: FileId(0), start: 0, end: 0 } } }, span: Span { file: FileId(0), start: 0, end: 0 } } }, span: Span { file: FileId(0), start: 0, end: 0 } }, Int)

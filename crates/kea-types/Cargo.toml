@@ -1,0 +1,5 @@
+[package]
+name = "kea-types"
+description = "Type representations for Kea"
+edition.workspace = true
+version.workspace = true
