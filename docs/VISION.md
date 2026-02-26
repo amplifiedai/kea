@@ -288,6 +288,41 @@ response from a message that expects one.
 
 ---
 
+## Effects as Platform
+
+The five pillars combine into something larger than a type system:
+effects become a **platform** for capability-checked computation.
+
+**The core insight: policy violations become type errors.**
+
+"No network in this module" is not a lint rule — it's a compile error.
+A function with `->` is guaranteed deterministic. A function with
+`-[IO]>` can do IO but nothing else. The type system makes these
+distinctions structural, checkable, and composable. This enables:
+
+- **Policy-as-code**: agent capabilities, compliance rules, and
+  sandbox boundaries are effect signatures, checked at compile time.
+- **Deterministic simulation**: record every effect operation with
+  args + results, replay by swapping handlers. Same code, different
+  execution mode.
+- **Safe plugin ecosystems**: plugins get exactly the capabilities
+  their effect signature declares. No "capability leak" from a
+  plugin system that hands out god objects.
+- **Portable execution**: the effect boundary is the portability
+  boundary. Pure (`->`) code can be offloaded to GPU, WASM, or a
+  query engine. The compiler enforces what subset is portable.
+- **Structurally derived observability**: `Log`, `Trace`, and
+  `Metric` effects mean observability is composable and testable,
+  not a framework commitment.
+
+These capabilities require `IO` to be decomposed into granular
+effects (`IO`, `Net`, `Clock`, `Rand`) so that "no network" and
+"deterministic time" are expressible as type constraints. See
+[effects-platform-vision](../BRIEFS/design/effects-platform-vision.md)
+for the full analysis.
+
+---
+
 ## Typed Actors
 
 Erlang's OTP is the gold standard for reliable concurrent

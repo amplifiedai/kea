@@ -4,6 +4,9 @@
 **Priority:** v1-critical
 **Depends on:** 0b-type-system-core, 0c-effect-handlers (at least Fail sugar)
 **Blocks:** 0e-runtime-effects
+**Also read before implementing:**
+- [performance-backend-strategy](../design/performance-backend-strategy.md) — MIR must be backend-neutral, backend interface trait, ABI manifest, pass stats, layout stability rules, benchmark targets.
+- [testing](testing.md) — Benchmark harness is a 0d Definition of Done item. Test runner design informs `kea test` infrastructure.
 
 **Note on 0c dependency:** This brief needs Fail sugar (`?`, `fail`,
 `catch`) to work at the type level, but does NOT need the general

@@ -234,10 +234,10 @@ See `docs/spec/ROADMAP.md` for the full plan. See `BRIEFS/INDEX.md` for current 
 | Sub-phase | Status | What |
 |-----------|--------|------|
 | 0a: Lexer + Parser | **done** | Indentation-sensitive lexer/parser, snapshot corpora, property tests |
-| 0b: Type System Core | **active** | HM inference, Rémy row unification (records + effects), traits, UMS, kind system |
-| 0c: Effect Handlers | ready | `effect` declarations, `handle`/`resume`, handler typing, `Fail` sugar |
+| 0b: Type System Core | **done** | HM inference, Rémy row unification (records + effects), traits, UMS, kind system |
+| 0c: Effect Handlers | **active** | `effect` declarations, `handle`/`resume`, handler typing, `Fail` sugar |
 | 0d: Codegen — Pure Subset | ready | Cranelift backend, struct/enum layout, pattern matching, refcounting |
-| 0e: Runtime Effects | design | Handler compilation strategy, IO runtime, Fail optimised path |
+| 0e: Runtime Effects | ready | Handler compilation strategy, IO runtime, Fail optimised path |
 | 0f: Memory Model | design | Unique T, borrow convention, reuse analysis |
 | 0g: Advanced Types | design | GADTs, Eff kind, associated types, supertraits |
 | 0h: Stdlib + Errors | design | @derive, full stdlib, error message investment |
@@ -255,11 +255,12 @@ Not yet briefed. See ROADMAP.md.
 ### Before Starting
 
 1. Read `BRIEFS/INDEX.md` for project work status (what's active, ready, blocked)
-2. Read `docs/INDEX.md` for design context
-3. **Check `/Users/chris/Projects/rill` for existing code to cannibalise.** This is not optional. Before writing anything from scratch, look at the corresponding rill crate. The rill codebase has battle-tested implementations of most things Kea needs — row unification, type inference, Cranelift codegen, diagnostics, LSP, MCP, formatting. Copy first, then adapt. See "Cannibalising Rill" below for the process.
-4. Check the current phase (above)
-5. Look at existing tests to understand current capabilities
-6. Look for similar patterns in the existing kea codebase
+2. **Read the Cross-Cutting Requirements table at the top of INDEX.md.** Some briefs define constraints that apply across multiple phases. If you're implementing 0d or 0e, you must also read the performance/backend strategy and testing briefs. Ignoring cross-cutting requirements means rework.
+3. Read `docs/INDEX.md` for design context
+4. **Check `/Users/chris/Projects/rill` for existing code to cannibalise.** This is not optional. Before writing anything from scratch, look at the corresponding rill crate. The rill codebase has battle-tested implementations of most things Kea needs — row unification, type inference, Cranelift codegen, diagnostics, LSP, MCP, formatting. Copy first, then adapt. See "Cannibalising Rill" below for the process.
+5. Check the current phase (above)
+6. Look at existing tests to understand current capabilities
+7. Look for similar patterns in the existing kea codebase
 
 ### Work Ethic
 

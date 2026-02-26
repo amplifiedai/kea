@@ -1,6 +1,6 @@
 # Brief: Testing
 
-**Status:** design
+**Status:** ready
 **Priority:** Phase 0d (test runner), extends through Phase 1
 **Depends on:** 0d-codegen-pure (test compilation), 0c-effect-handlers (Fail, Test effect)
 **Blocks:** stdlib quality, public release confidence

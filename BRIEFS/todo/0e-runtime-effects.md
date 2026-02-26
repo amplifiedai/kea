@@ -1,9 +1,12 @@
 # Brief: Runtime Effects
 
-**Status:** design
+**Status:** ready
 **Priority:** v1-critical
 **Depends on:** 0d-codegen-pure (needs working codegen pipeline)
 **Blocks:** 0f-memory-model, 0g-advanced-types, Phase 1
+**Also read before implementing:**
+- [performance-backend-strategy](../design/performance-backend-strategy.md) — Effect ops must be classified MIR ops (capability-direct, handler-dispatch, zero-resume). Handler inlining benchmark gate (within 2x of parameter-passing). Actor benchmark targets.
+- [testing](testing.md) — Effect-heavy pipeline benchmark is a 0e deliverable. CI regression gates on 0d baselines.
 
 ## Motivation
 
