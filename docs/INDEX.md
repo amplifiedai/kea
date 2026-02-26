@@ -17,6 +17,8 @@
 ## Language
 
 - [PEDAGOGY.md](PEDAGOGY.md) — Documentation style guide: progressive disclosure, error message principles.
+- [EFFECTS-ORIENTED.md](EFFECTS-ORIENTED.md) — User guide for Python/TS/Elixir/Go developers: why effect tracking + types change day-to-day programming.
+- [UNIVERSAL-DOT.md](UNIVERSAL-DOT.md) — User guide for Kea's call style: dot dispatch, `::` qualification, and `$` receiver placement.
 
 ## Working Documents
 

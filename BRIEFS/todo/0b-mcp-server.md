@@ -61,11 +61,40 @@ Once 0c lands:
 Same predict/probe/classify/act protocol as Rill (ROADMAP §MCP-First
 Workflow). The MCP server is the oracle for the Lean formalization.
 
+### Step 4: Structured diagnostic output
+
+The MCP server returns `Diagnostic` structs serialized to JSON, not
+rendered strings. Agents get machine-readable fields:
+
+```json
+{
+  "code": "E0001",
+  "category": "type_mismatch",
+  "severity": "error",
+  "message": "argument 2 has type String but count_to expects Int",
+  "location": {"file_id": 0, "start": 142, "end": 155},
+  "labels": [
+    {"location": {"start": 142, "end": 155}, "message": "this is String"},
+    {"location": {"start": 38, "end": 44}, "message": "parameter declared as Int here"}
+  ],
+  "help": "Try Int.parse(value)? to convert"
+}
+```
+
+This requires `#[derive(Serialize)]` on `Diagnostic`, `Category`,
+`Severity`, `SourceLocation`, `DiagLabel` in kea-diag. Error codes
+are stable API — agents can pattern-match on them.
+
+The CLI renders the same `Diagnostic` via ariadne for human-readable
+output with colored source snippets and underlines. One structured
+type, two renderers.
+
 ## Testing
 
 - MCP server starts and responds to tool calls
 - `type_check` returns correct types for pure Kea programs
 - `type_check` returns correct diagnostics for ill-typed programs
+- `diagnose` returns structured JSON matching the Diagnostic schema
 - `get_type` returns inferred types including effects (after 0c)
 
 ## Definition of Done

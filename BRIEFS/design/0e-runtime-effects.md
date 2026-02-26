@@ -295,26 +295,43 @@ allocation behavior.
   depends on handler scope rather than target actor. Full mailbox
   surfaces as a `Fail` to the sender via normal error handling.
 
-- **Capability effects (Send, IO, Spawn) are not interceptable
-  by user handlers.** They compile to direct runtime calls per
-  §5.15. User handlers compose around user-defined effects (Log,
-  State, Tx, etc.), not around capability effects. This preserves
-  the performance guarantee and avoids the "middleware changes
-  Send semantics" problem. Backpressure, rate limiting, and
-  circuit breaking are runtime/mailbox/library concerns, not
-  handler composition.
+- **Capability effects (Send, IO, Spawn) compile to direct
+  runtime calls when not intercepted.** In production, these
+  compile per §5.15 — no continuation capture, no evidence
+  lookup, no closure allocation. User handlers for capability
+  effects are legal and type-check normally, enabling test
+  mocks (e.g., intercepting IO to test file operations without
+  touching the filesystem). The direct-call path is a codegen
+  optimisation: when no user handler is installed for a
+  capability effect, the compiler emits a direct runtime call.
+  When a handler is installed (testing), it goes through the
+  normal handler machinery. This preserves the zero-cost
+  production guarantee while keeping effects compositional
+  for testing. Backpressure, rate limiting, and circuit breaking
+  remain runtime/mailbox/library concerns, not handler
+  composition.
 
 ## Open Questions
 
-- Should we support tail-resumptive handlers specially? (A handler
-  that calls `resume` as the last thing in its body can avoid
-  capturing the continuation. This is a common pattern — Log,
-  State get, etc. Koka optimises this aggressively.)
-- Can we inline handlers when the handler is statically known?
-  (If `with_state(0, || -> body)` is visible, the compiler could
-  inline the State operations directly rather than going through
-  evidence dispatch.)
 - How does the handler compilation interact with Cranelift's
   calling convention? (Evidence passing adds parameters. CPS
   changes return conventions. Need to verify Cranelift can
   handle whichever strategy we pick.)
+
+## Resolved Questions
+
+- **Tail-resumptive handlers:** Yes, support specially (Step 2.5
+  above). This is the single most important performance
+  optimisation. ~80%+ of handlers are tail-resumptive in practice.
+
+- **Handler inlining for statically known handlers:** Yes, as a
+  follow-on optimisation after the basic handler compilation works.
+  When `with_state(0, || -> body)` is visible, inline the State
+  operations directly. This is a natural extension of evidence
+  passing — if the evidence is a compile-time constant, inline it.
+
+- **Capability effects interceptability:** Capability effects (IO,
+  Send, Spawn) are ordinary effect labels in the type system.
+  Handlers for them type-check normally (enabling test mocks).
+  Direct-call compilation is a codegen optimisation, not a type
+  system restriction. See Decisions section above.

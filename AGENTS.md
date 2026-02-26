@@ -8,9 +8,13 @@ Kea is a statically-typed functional programming language with algebraic effects
 
 ## Philosophy
 
-**This project operates at agentic-era pace.** The entire Rill codebase (16 Rust crates, full type system, DataFusion integration, actor model, MCP server, LSP, formatter, 2000+ tests) was built in ~2 weeks. Kea inherits that infrastructure and cannibalises it aggressively.
+**This project operates at agentic-era pace.** The entire Rill codebase — 16 Rust crates, full HM type inference with Rémy row unification, Cranelift codegen, MCP server, LSP, formatter, tree-walking evaluator, Lean proofs, 2000+ tests — was written from scratch in 17 days (1,088 commits, Feb 9–26 2026). Not adapted. Not forked. Written.
 
-The goal is always to focus on **what's right for the language**, not being conservative and stretching out deliverables into multiple phases that replicate work because of outdated notions of achievability. When in doubt, be ambitious. Ship the correct design, not a stopgap you know you'll rewrite.
+Kea cannibalises that infrastructure. Most of the hard work — the unifier, the row solver, the codegen pipeline, the diagnostic system — already exists in battle-tested form. Kea's job is to extend it with effects, handlers, and indentation-sensitive syntax. This is not a multi-month project. Phase 0 (lexer through codegen) can land in days, not weeks.
+
+**Do not create artificial phase boundaries.** If the work is ready and the dependencies are met, do it now. Don't defer to a later phase what can land today. Don't split a coherent feature into multiple PRs for the sake of "smaller changes." Ship the correct design, not a stopgap you know you'll rewrite.
+
+**Be aggressive about completion.** When you finish a step, immediately start the next one. When you finish a brief, move it to `done/` and pick up the next unblocked brief. The bottleneck is never "is this ready" — it's "are we moving fast enough." Check the dependency graph in INDEX.md and always be working on the critical path.
 
 ---
 
@@ -223,27 +227,26 @@ Use `proptest` for:
 
 ## Development Phases
 
-See `docs/spec/ROADMAP.md` for the full implementation plan. Summary:
+See `docs/spec/ROADMAP.md` for the full plan. See `BRIEFS/INDEX.md` for current status. Summary:
 
-### Phase 0: Bootstrap Infrastructure — IN PROGRESS
+### Phase 0: Bootstrap through Codegen — IN PROGRESS
 
-Cargo workspace, mise tasks, BRIEFS system, docs, .claude setup. Cannibalise rill build infrastructure.
+| Sub-phase | Status | What |
+|-----------|--------|------|
+| 0a: Lexer + Parser | **done** | Indentation-sensitive lexer/parser, snapshot corpora, property tests |
+| 0b: Type System Core | **active** | HM inference, Rémy row unification (records + effects), traits, UMS, kind system |
+| 0c: Effect Handlers | ready | `effect` declarations, `handle`/`resume`, handler typing, `Fail` sugar |
+| 0d: Codegen — Pure Subset | ready | Cranelift backend, struct/enum layout, pattern matching, refcounting |
+| 0e: Runtime Effects | design | Handler compilation strategy, IO runtime, Fail optimised path |
+| 0f: Memory Model | design | Unique T, borrow convention, reuse analysis |
+| 0g: Advanced Types | design | GADTs, Eff kind, associated types, supertraits |
+| 0h: Stdlib + Errors | design | @derive, full stdlib, error message investment |
 
-### Phase 1: Core Language
+**Parallel track (weeks 2-6):** Tree-sitter grammar, formatter, basic LSP, Neovim plugin.
 
-Lexer, indentation-sensitive parser, AST, type system (HM + rows + effects), tree-walking evaluator. Cannibalise rill-syntax, rill-ast, rill-types, rill-infer, rill-eval.
+### Phase 1-3: Self-hosting, Ecosystem, Production
 
-### Phase 2: Effects & Handlers
-
-Algebraic effect declarations, handler blocks, effect inference, at-most-once resumption. This is the novel core — get it right.
-
-### Phase 3: Compilation
-
-HIR lowering, MIR optimisation, Cranelift backend. Cannibalise rill-mir, rill-codegen.
-
-### Phase 4: Tooling & Polish
-
-LSP, MCP server, formatter, package manager. Cannibalise rill-lsp, rill-mcp, rill-fmt.
+Not yet briefed. See ROADMAP.md.
 
 ---
 
@@ -262,7 +265,7 @@ LSP, MCP server, formatter, package manager. Cannibalise rill-lsp, rill-mcp, ril
 
 When given a task, carry it through to completion. Don't stop to ask for permission to continue unless you genuinely need input or need to communicate something important. Aim for vertical movement — deep progress on the current workstream — rather than horizontal ruts of diminishing value. Make sure you have sufficient supporting work (tests, brief updates) but don't gold-plate. Check in your work as you go.
 
-**Be ambitious.** This project moves at agentic pace. If something can be done correctly now, do it now. Don't create artificial phase boundaries or defer work that's ready to land.
+**Be ambitious.** Rill was 1,088 commits in 17 days — from nothing to a working language with type inference, codegen, MCP, LSP, and formatter. Kea cannibalises most of that. If something can be done correctly now, do it now. Don't create artificial phase boundaries or defer work that's ready to land. When you finish one brief, pick up the next unblocked one. The pace is the point.
 
 ### Test-First Development
 

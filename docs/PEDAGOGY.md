@@ -410,6 +410,30 @@ docs/
   KERNEL.md                  # Language specification
 ```
 
+## Errors as first-class citizens
+
+Errors are a product, not a byproduct. Every error the compiler can produce has a stable code (E0001, E0002, ...), a structured `Diagnostic` type with machine-readable fields, and a human-readable rendering with source context. This is load-bearing for two reasons:
+
+1. **MCP agents consume diagnostics programmatically.** The MCP server returns structured JSON — category, code, location, labels, help. An agent can pattern-match on `E0001` (TypeMismatch) and know what to do. Error codes are stable API: they don't change between releases.
+
+2. **Humans see ariadne-rendered output.** The same `Diagnostic` struct renders to colored terminal output with source snippets, underlines, and fix suggestions. No information is lost — the human sees everything the machine sees, just rendered differently.
+
+The `Diagnostic` type is the single source of truth. Two consumers, two renderers, one structured type. This means:
+
+- **Every diagnostic is testable.** We can assert on category, code, labels, help text in unit tests.
+- **Every diagnostic is documentable.** Each error code gets a reference page: what it means, common causes, examples, fixes (see `reference/error-catalog.md` in the doc structure below).
+- **Agents improve with the compiler.** As we add better help text and fix suggestions, both humans and agents benefit simultaneously.
+
+### Context-aware messages
+
+The type checker's constraint system carries `Provenance` — where each type expectation came from (function argument, return position, if condition, match arm, let binding). This means error messages explain *why* in domain terms:
+
+- "argument 2 has type String but `count_to` expects Int" (not "cannot unify String with Int")
+- "if condition must be Bool, but this expression has type Int" (not "expected Bool, got Int")
+- "`Toml.parse` can fail with ParseError, but this function doesn't declare any errors" (not "Fail ParseError not in effect set")
+
+The `Reason` enum is the mechanism. Every constraint records *why* it was created, so when it fails, the error message tells the story.
+
 ## Error message guidelines
 
 ### Always include
