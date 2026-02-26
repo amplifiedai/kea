@@ -361,4 +361,5 @@ Precision notes:
 - 2026-02-26: Cranelift predicate normalization fixed for equality-driven control flow (`i8` vs `b1` predicate widths), with new codegen regression coverage for int equality branch conditions.
 - 2026-02-26: Pure expression coverage expanded: unary operators (`-x`, `not x`) now lower HIR→MIR (`MirUnaryOp`) and compile through Cranelift, with targeted crate tests.
 - 2026-02-26: HIR lowering now canonicalizes basic bool `case` expressions (`true/false/_` arms, no guards) into `if` expressions, allowing existing MIR/codegen control-flow lowering to compile that subset.
+- 2026-02-26: Literal `case` coverage extended to include Float arms (`Int`/`Bool`/`Float` + wildcard fallback) via HIR canonicalization, with CLI execution regression for float-case dispatch.
 - **Next:** Expand lowering/codegen coverage for structs/enums/pattern matching and Fail-only Result lowering fast path.
