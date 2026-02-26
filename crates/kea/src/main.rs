@@ -32,12 +32,19 @@ fn run() -> Result<(), String> {
 
     match command {
         Command::Run { input } => {
-            let result = compile_file(&input, CodegenMode::Jit)?;
+            let result = compile_file(&input, CodegenMode::Aot)?;
             emit_diagnostics(&result.diagnostics);
-            println!(
-                "compiled `{}` in JIT mode (execution wiring is pending)",
-                input.display()
-            );
+            if result.object.is_empty() {
+                return Err("run backend produced no object bytes".to_string());
+            }
+            let status = execute_object_bytes(&result.object)?;
+            if let Some(code) = status.code() {
+                if code != 0 {
+                    std::process::exit(code);
+                }
+            } else if !status.success() {
+                return Err("program terminated without an exit code".to_string());
+            }
             Ok(())
         }
         Command::Build { input, output } => {
@@ -422,6 +429,41 @@ fn link_object_bytes(object: &[u8], output: &Path) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+fn execute_object_bytes(object: &[u8]) -> Result<std::process::ExitStatus, String> {
+    let temp_dir = std::env::temp_dir();
+    let object_path = temp_dir.join(format!("kea-run-{}.o", std::process::id()));
+    let binary_path = temp_dir.join(format!("kea-run-{}", std::process::id()));
+
+    fs::write(&object_path, object).map_err(|err| {
+        format!(
+            "failed to write temporary object `{}`: {err}",
+            object_path.display()
+        )
+    })?;
+
+    let link_status = ProcessCommand::new("cc")
+        .arg(&object_path)
+        .arg("-o")
+        .arg(&binary_path)
+        .status()
+        .map_err(|err| format!("failed to invoke linker `cc`: {err}"))?;
+    let _ = fs::remove_file(&object_path);
+
+    if !link_status.success() {
+        let _ = fs::remove_file(&binary_path);
+        return Err(format!(
+            "linker failed for temporary executable `{}`",
+            binary_path.display()
+        ));
+    }
+
+    let run_status = ProcessCommand::new(&binary_path)
+        .status()
+        .map_err(|err| format!("failed to execute `{}`: {err}", binary_path.display()))?;
+    let _ = fs::remove_file(&binary_path);
+    Ok(run_status)
 }
 
 #[cfg(test)]
