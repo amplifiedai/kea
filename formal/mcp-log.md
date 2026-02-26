@@ -5890,3 +5890,23 @@ operation and tail-resumptive slices).
 - Capability-preservation composition now works directly through
   `HandleClauseContract.resultEffects`, including optional `then` unions, under
   the explicit well-typed-clause boundary.
+
+### 2026-02-26: tail-capability bundle packaging (proof-only)
+
+**Context**: Added a named bundle for tail-capability composition to reduce
+consumer-side theorem stitching.
+
+**MCP tools used**: none (proof-only packaging refinement).
+
+**Lean side**:
+- Extended `Kea/Properties/TailCapabilityComposition.lean` with:
+  - `TailCapabilityBundle`
+  - `tailCapabilityBundle_of_wellTyped`
+  - `tailCapabilityBundle_resultCapability_of_wellTyped`
+- Verified with `cd formal && lake build` (pass).
+
+**Classify**: N/A (proof-only step).
+
+**Outcome**:
+- Capability composition now has one-name bundle consumption for core/result
+  preservation plus non-invalid classification under the well-typed boundary.

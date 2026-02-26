@@ -133,5 +133,65 @@ theorem tail_resumptive_wellTyped_capability_direct_call_sound
   exact wellTyped_capability_direct_call_sound
     c baseEffects capability h_wellTyped h_expr h_ne
 
+structure TailCapabilityBundle
+    (c : HandleClauseContract)
+    (capability : Label) where
+  coreCapability :
+    RowFields.has
+      (EffectRow.fields (HandleClauseContract.resultEffectsCore c))
+      capability = true
+  resultCapability :
+    RowFields.has
+      (EffectRow.fields (HandleClauseContract.resultEffects c))
+      capability = true
+  notInvalid :
+    TailResumptiveClassification.classifyClause c ≠
+      TailResumptiveClassification.TailResumptiveClass.invalid
+
+theorem tailCapabilityBundle_of_wellTyped
+    (c : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice c)
+    (h_expr :
+      c.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_ne : capability ≠ c.handled) :
+    TailCapabilityBundle c capability := by
+  have h_core :
+      RowFields.has
+        (EffectRow.fields (HandleClauseContract.resultEffectsCore c))
+        capability = true :=
+    core_capability_direct_call_sound c baseEffects capability h_expr h_ne
+  have h_result :
+      RowFields.has
+        (EffectRow.fields (HandleClauseContract.resultEffects c))
+        capability = true :=
+    wellTyped_capability_direct_call_sound c baseEffects capability
+      h_wellTyped h_expr h_ne
+  have h_not_invalid :
+      TailResumptiveClassification.classifyClause c ≠
+        TailResumptiveClassification.TailResumptiveClass.invalid :=
+    TailResumptiveClassification.tail_resumptive_bundle_notInvalid c h_wellTyped
+  exact {
+    coreCapability := h_core
+    resultCapability := h_result
+    notInvalid := h_not_invalid
+  }
+
+theorem tailCapabilityBundle_resultCapability_of_wellTyped
+    (c : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice c)
+    (h_expr :
+      c.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_ne : capability ≠ c.handled) :
+    RowFields.has
+      (EffectRow.fields (HandleClauseContract.resultEffects c))
+      capability = true :=
+  (tailCapabilityBundle_of_wellTyped c baseEffects capability h_wellTyped h_expr h_ne).resultCapability
+
 end TailCapabilityComposition
 end Kea
