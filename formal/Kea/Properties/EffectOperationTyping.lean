@@ -170,6 +170,48 @@ theorem operationCallTyping_adds_declared_effect
     operationCallTyping_implies_declared decl opName argTy retTy h_call
   exact performOperation_adds_effect effects decl.label
 
+structure OperationCallBundle
+    (decl : EffectDecl)
+    (effects : EffectRow)
+    (opName : Label)
+    (argTy retTy : Ty) where
+  declared :
+    operationDeclared decl opName
+  callTyping :
+    operationCallTyping decl opName argTy retTy
+  effectAdded :
+    RowFields.has
+      (EffectRow.fields (performOperationEffects effects decl.label))
+      decl.label = true
+  rowTailStable :
+    EffectRow.rest (performOperationEffects effects decl.label) =
+      EffectRow.rest effects
+
+theorem operationCallBundle_of_typing
+    (decl : EffectDecl)
+    (effects : EffectRow)
+    (opName : Label)
+    (argTy retTy : Ty)
+    (h_call : operationCallTyping decl opName argTy retTy) :
+    OperationCallBundle decl effects opName argTy retTy := by
+  exact {
+    declared := operationCallTyping_implies_declared decl opName argTy retTy h_call
+    callTyping := h_call
+    effectAdded := operationCallTyping_adds_declared_effect decl effects opName argTy retTy h_call
+    rowTailStable := performOperation_preserves_row_tail effects decl.label
+  }
+
+theorem operationCallBundle_effectAdded_of_typing
+    (decl : EffectDecl)
+    (effects : EffectRow)
+    (opName : Label)
+    (argTy retTy : Ty)
+    (h_call : operationCallTyping decl opName argTy retTy) :
+    RowFields.has
+      (EffectRow.fields (performOperationEffects effects decl.label))
+      decl.label = true :=
+  (operationCallBundle_of_typing decl effects opName argTy retTy h_call).effectAdded
+
 /--
 Capability direct-call soundness:
 if a handler targets a different effect label, a performed capability effect

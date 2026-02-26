@@ -5910,3 +5910,24 @@ consumer-side theorem stitching.
 **Outcome**:
 - Capability composition now has one-name bundle consumption for core/result
   preservation plus non-invalid classification under the well-typed boundary.
+
+### 2026-02-26: operation-call bundle packaging (proof-only)
+
+**Context**: Added named bundle packaging for typed operation calls so callers
+can consume declaration/effect-update guarantees from one theorem.
+
+**MCP tools used**: none (proof-only packaging extension over already-probed
+operation-call behavior).
+
+**Lean side**:
+- Extended `Kea/Properties/EffectOperationTyping.lean` with:
+  - `OperationCallBundle`
+  - `operationCallBundle_of_typing`
+  - `operationCallBundle_effectAdded_of_typing`
+- Verified with `cd formal && lake build` (pass).
+
+**Classify**: N/A (proof-only step).
+
+**Outcome**:
+- Operation-call formal surfaces now have one-name bundle consumption for
+  declaration witness, effect-label addition, and row-tail stability.
