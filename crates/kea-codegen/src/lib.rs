@@ -517,6 +517,15 @@ fn clif_type(ty: &Type) -> Result<cranelift::prelude::Type, CodegenError> {
         Type::Int => Ok(types::I64),
         Type::Float => Ok(types::F64),
         Type::Bool => Ok(types::I8),
+        // 0d bootstrap aggregate/runtime representation:
+        // nominal records/sums and Result-like carriers flow through ABI as
+        // opaque machine-word handles until full aggregate lowering lands.
+        Type::Record(_)
+        | Type::AnonRecord(_)
+        | Type::Sum(_)
+        | Type::Option(_)
+        | Type::Result(_, _)
+        | Type::Opaque { .. } => Ok(types::I64),
         unsupported => Err(CodegenError::UnsupportedType {
             ty: unsupported.to_string(),
         }),
@@ -1142,7 +1151,7 @@ mod tests {
         MirBlock, MirBlockId, MirFunctionSignature, MirLayoutCatalog, MirRecordLayout,
         MirSumLayout, MirTerminator, MirVariantLayout,
     };
-    use kea_types::{FunctionType, Label};
+    use kea_types::{FunctionType, Label, RecordType, RowType, SumType};
 
     fn sample_stats_module() -> MirModule {
         MirModule {
@@ -1323,6 +1332,68 @@ mod tests {
                     ],
                     terminator: MirTerminator::Return {
                         value: Some(MirValueId(1)),
+                    },
+                }],
+            }],
+            layouts: MirLayoutCatalog::default(),
+        }
+    }
+
+    fn sample_record_handle_signature_module() -> MirModule {
+        let user_ty = Type::Record(RecordType {
+            name: "User".to_string(),
+            params: vec![],
+            row: RowType::closed(vec![
+                (Label::new("name"), Type::String),
+                (Label::new("age"), Type::Int),
+            ]),
+        });
+        MirModule {
+            functions: vec![MirFunction {
+                name: "id_user".to_string(),
+                signature: MirFunctionSignature {
+                    params: vec![user_ty.clone()],
+                    ret: user_ty,
+                    effects: EffectRow::pure(),
+                },
+                entry: MirBlockId(0),
+                blocks: vec![MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions: vec![MirInst::Nop],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirValueId(0)),
+                    },
+                }],
+            }],
+            layouts: MirLayoutCatalog::default(),
+        }
+    }
+
+    fn sample_sum_handle_signature_module() -> MirModule {
+        let option_ty = Type::Sum(SumType {
+            name: "Option".to_string(),
+            type_args: vec![Type::Int],
+            variants: vec![
+                ("Some".to_string(), vec![Type::Int]),
+                ("None".to_string(), vec![]),
+            ],
+        });
+        MirModule {
+            functions: vec![MirFunction {
+                name: "id_option".to_string(),
+                signature: MirFunctionSignature {
+                    params: vec![option_ty.clone()],
+                    ret: option_ty,
+                    effects: EffectRow::pure(),
+                },
+                entry: MirBlockId(0),
+                blocks: vec![MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions: vec![MirInst::Nop],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirValueId(0)),
                     },
                 }],
             }],
@@ -1533,6 +1604,28 @@ mod tests {
         backend
             .compile_module(&module, &manifest, &BackendConfig::default())
             .expect("branch lowering should compile");
+    }
+
+    #[test]
+    fn cranelift_backend_accepts_record_handle_signatures() {
+        let module = sample_record_handle_signature_module();
+        let manifest = default_abi_manifest(&module);
+        let backend = CraneliftBackend;
+
+        backend
+            .compile_module(&module, &manifest, &BackendConfig::default())
+            .expect("record handle signature should compile");
+    }
+
+    #[test]
+    fn cranelift_backend_accepts_sum_handle_signatures() {
+        let module = sample_sum_handle_signature_module();
+        let manifest = default_abi_manifest(&module);
+        let backend = CraneliftBackend;
+
+        backend
+            .compile_module(&module, &manifest, &BackendConfig::default())
+            .expect("sum handle signature should compile");
     }
 
     #[test]
