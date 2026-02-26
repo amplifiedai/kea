@@ -3655,6 +3655,47 @@ fn infer_namespaced_list_member_uses_unprefixed_binding() {
 }
 
 #[test]
+fn infer_namespaced_member_uses_registered_module_alias() {
+    let mut env = TypeEnv::new();
+    env.register_module_alias("List", "Pkg.List");
+    env.register_module_type_scheme(
+        "Pkg.List",
+        "map",
+        TypeScheme::mono(Type::Function(FunctionType {
+            params: vec![Type::Int],
+            ret: Box::new(Type::Int),
+        })),
+        Effects::pure_deterministic(),
+    );
+    let expr = field_access(var("List"), "map");
+    let (ty, u) = infer_with_env(&expr, &mut env);
+    assert!(!u.has_errors(), "Errors: {:?}", u.errors());
+    assert_eq!(
+        ty,
+        Type::Function(FunctionType {
+            params: vec![Type::Int],
+            ret: Box::new(Type::Int),
+        })
+    );
+}
+
+#[test]
+fn register_module_type_scheme_auto_registers_short_alias() {
+    let mut env = TypeEnv::new();
+    env.register_module_type_scheme(
+        "Pkg.List",
+        "map",
+        TypeScheme::mono(Type::Function(FunctionType {
+            params: vec![Type::Int],
+            ret: Box::new(Type::Int),
+        })),
+        Effects::pure_deterministic(),
+    );
+    assert!(env.has_qualified_module("List"));
+    assert!(env.resolve_qualified("List", "map").is_some());
+}
+
+#[test]
 fn infer_namespaced_map_member_prefers_exact_binding() {
     let mut env = TypeEnv::new();
     env.register_module_type_scheme(
@@ -6656,6 +6697,15 @@ fn infer_fn_decl_effects_uses_forall_wrapped_pure_callback_param_annotation() {
 }
 
 #[test]
+fn register_fn_effect_signature_skips_legacy_impure_annotation() {
+    let mut env = TypeEnv::new();
+    let mut fn_decl = make_fn_decl("legacy", vec![], lit_int(1));
+    fn_decl.effect_annotation = Some(sp(EffectAnnotation::Impure));
+    register_fn_effect_signature(&fn_decl, &mut env);
+    assert!(env.function_effect_signature("legacy").is_none());
+}
+
+#[test]
 fn infer_fn_decl_effects_uses_volatile_callback_param_annotation() {
     let env = TypeEnv::new();
     let fn_decl = FnDecl {
@@ -7145,6 +7195,20 @@ fn validate_declared_fn_effect_accepts_closed_row_annotation() {
     fn_decl.effect_annotation = Some(sp(effect_row_annotation(vec![("IO", None)], None)));
     let inferred = Effects::impure();
     assert!(validate_declared_fn_effect(&fn_decl, inferred).is_ok());
+}
+
+#[test]
+fn validate_declared_fn_effect_rejects_legacy_impure_contract_annotation() {
+    let mut fn_decl = make_fn_decl("f", vec![], lit_int(1));
+    fn_decl.effect_annotation = Some(sp(EffectAnnotation::Impure));
+    let inferred = Effects::impure();
+    let err = validate_declared_fn_effect(&fn_decl, inferred)
+        .expect_err("legacy impure annotation should not participate in row contracts");
+    assert!(
+        err.message.contains("invalid effect-row contract"),
+        "unexpected message: {}",
+        err.message
+    );
 }
 
 #[test]
