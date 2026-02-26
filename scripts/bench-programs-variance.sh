@@ -29,11 +29,11 @@ for idx in $(seq 1 "${RUNS}"); do
   run_dir="${RUNS_DIR}/run-${idx}"
   echo "  run ${idx}/${RUNS}: ${run_dir}"
   ./scripts/bench-programs.sh benchmarks/programs "${run_dir}"
-  jq -r '.results[] | [.command, (.mean|tostring)] | @csv' "${run_dir}/hyperfine.json" \
-    | sed 's/^"//;s/"$//' >> "${TMP_ROWS}"
+  jq -r '.results[] | [.command, (.mean|tostring)] | @tsv' "${run_dir}/hyperfine.json" \
+    >> "${TMP_ROWS}"
 done
 
-awk -F, '
+awk -F"\t" '
 {
   program = $1
   mean = $2 + 0

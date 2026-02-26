@@ -29,7 +29,7 @@ jobs:
       - name: Run program regression check (non-blocking)
         id: program-regression
         continue-on-error: true
-        run: mise run bench:programs:regression
+        run: ./scripts/bench-programs.sh benchmarks/programs benchmark-results/programs-regression/latest && ./scripts/bench-program-threshold-check.sh benchmark-results/programs-regression/latest/hyperfine.json benchmarks/baselines/program-bench-thresholds.csv benchmark-results/programs-regression/latest
 
       - name: Publish program regression summary
         if: always()

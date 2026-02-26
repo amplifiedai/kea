@@ -152,6 +152,10 @@ run = "./scripts/bench-programs.sh benchmarks/programs benchmark-results/program
 description = "Run whole-program benchmarks and compare means against configured baseline thresholds"
 run = "./scripts/bench-programs.sh benchmarks/programs benchmark-results/programs-regression/latest && ./scripts/bench-program-threshold-check.sh benchmark-results/programs-regression/latest/hyperfine.json benchmarks/baselines/program-bench-thresholds.csv benchmark-results/programs-regression/latest"
 
+[tasks."bench:programs:regression:stable"]
+description = "Run whole-program benchmarks and compare means against stable-class blocking thresholds"
+run = "./scripts/bench-programs.sh benchmarks/programs benchmark-results/programs-regression-stable/latest && ./scripts/bench-program-threshold-check.sh benchmark-results/programs-regression-stable/latest/hyperfine.json benchmarks/baselines/program-bench-thresholds-stable.csv benchmark-results/programs-regression-stable/latest"
+
 [tasks."bench:programs:variance"]
 description = "Run repeated whole-program benchmark runs and summarize mean-runtime variance"
 run = "./scripts/bench-programs-variance.sh 3 benchmark-results/programs-variance"
@@ -159,3 +163,7 @@ run = "./scripts/bench-programs-variance.sh 3 benchmark-results/programs-varianc
 [tasks."bench:regression"]
 description = "Run microbench export and compare medians against configured Stage B baseline thresholds"
 run = "./scripts/bench-export.sh benchmark-results/regression/latest && ./scripts/bench-threshold-check.sh benchmark-results/regression/latest/divan.summary.csv benchmarks/baselines/microbench-thresholds.csv benchmark-results/regression/latest"
+
+[tasks."bench:regression:stable"]
+description = "Run microbench export and compare medians against stable-class blocking thresholds"
+run = "./scripts/bench-export.sh benchmark-results/regression-stable/latest && ./scripts/bench-threshold-check.sh benchmark-results/regression-stable/latest/divan.summary.csv benchmarks/baselines/microbench-thresholds-stable.csv benchmark-results/regression-stable/latest"

@@ -28,7 +28,7 @@ jobs:
         continue-on-error: true
         env:
           DIVAN_SAMPLE_COUNT: "40"
-        run: mise run bench:regression
+        run: ./scripts/bench-export.sh benchmark-results/regression/latest && ./scripts/bench-threshold-check.sh benchmark-results/regression/latest/divan.summary.csv benchmarks/baselines/microbench-thresholds.csv benchmark-results/regression/latest
 
       - name: Publish regression summary
         if: always()
