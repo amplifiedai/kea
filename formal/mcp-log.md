@@ -4696,3 +4696,33 @@ and (b) unannotated inference path.
   (`e0`) through the curried application chain.
 - These are separate manifestations in the same higher-order/effect-unify
   family and should be tracked as distinct implementation defects.
+
+### 2026-02-26: higher-order effect divergence closure re-probe
+
+**Context**: Re-ran the exact split probes (annotated and unannotated
+higher-order application) against the latest restarted `kea-mcp` binary to
+verify whether the previously logged divergence family is fixed.
+
+**MCP tools used**: `reset_session`, `type_check`, `diagnose`
+
+**Probe**:
+1. Annotated path (previously `missing_field Log`):
+   - `type_check` on
+     `fn anno_run() -[Log]> Unit { let apply = |f: fn(String) -[Log]> Unit| -> |x| -> f(x); ...; apply(logger)(\"x\") }`
+     now returns `ok` with `anno_run : () -[Log]> ()`.
+   - `diagnose` on the same snippet reports no diagnostics.
+2. Unannotated path (previously `e0` leak):
+   - `type_check` on
+     `fn unanno_run() -[Log]> Unit { let apply = |f| -> |x| -> f(x); ...; apply(logger)(\"x\") }`
+     now returns `ok` with `unanno_run : () -[Log]> ()`.
+3. Additional check:
+   - `type_check` on `fn pure_run() -> Unit { ... apply(logger)(\"x\") }` returns
+     `pure_run : () -[Log]> ()`, matching direct control
+     `fn pure_bad() -> Unit { logger(\"x\") } -> () -[Log]> ()`.
+
+**Classify**: Agreement (divergence resolved).
+
+**Outcome**:
+- The annotated path no longer misroutes to row-field unification.
+- The unannotated higher-order chain no longer leaves effect variables
+  unconstrained (`e0`); `Log` is propagated as expected.
