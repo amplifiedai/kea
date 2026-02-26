@@ -676,6 +676,37 @@ expressions). Reconcile: update KERNEL §4.2.1 to use `when`.
   or simple heap allocation? (Proposal: simple heap allocation.
   SSO is an optimisation for later.)
 
+## Known Issues (pre-0d1)
+
+Parser and typechecker gaps found during doc validation. These must
+be fixed before 0d1 (module system) since stdlib `.kea` files will
+use these patterns.
+
+### Parser: function type annotations missing bare form
+
+KERNEL §5 uses `A -[e]> B` for function type annotations in
+parameters (e.g., `_ f: A -[e]> B`). The parser currently requires
+`fn(A) -[| e]> B` with an explicit `fn` prefix. The bare form
+should also parse, per spec.
+
+**Affected KERNEL signatures:**
+- `fn map(_ self: List A, _ f: A -[e]> B) -[e]> List B` (§5.6)
+- `fn retry(_ n: Int, _ f: () -[Fail E, e]> T) -[e]> Option T`
+- `fn with_state(_ initial: S, _ f: () -[State S, e]> T) -[e]> (T, S)`
+
+### Parser: effect row variable syntax
+
+KERNEL uses comma before row variable: `-[Log, e]>`. The parser
+requires pipe: `-[Log | e]>`. Both should parse — comma for
+consistency with named effects, pipe for explicit row-tail notation.
+
+### Typechecker: Fail effect parameter not inferred
+
+`Fail.fail("bad")` infers effect `Fail` (unparameterized) instead
+of `Fail String`. Declaring `-[Fail String]>` is then rejected as
+"too weak." `catch` correctly recovers the type parameter, so it's
+specifically effect-row inference that loses the parameter.
+
 ## Progress
 - 2026-02-26: Step 0 prerequisite slice landed in code: `FunctionType` now includes `effects: EffectRow` as structural type data; `Type` display/substitution/free-var traversal include function effects; infer/module env updates function type effects via `set_function_effect_row`; MCP now surfaces effectful function signatures via normal type display.
 - 2026-02-26: Regression covered: phantom `IO` leakage in MCP declaration mode fixed by row-native declaration validation + MCP row-native effect plumbing.
