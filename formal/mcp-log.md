@@ -4932,3 +4932,25 @@ clauses.
 **Outcome**:
 - Current runtime behavior aligns with the abstract at-most-once branch model
   used in `Kea/Properties/ResumeLinearity.lean`.
+
+### 2026-02-26: handler-typing integration contract layer (proof-only step)
+
+**Context**: Added a formal integration surface that combines effect-removal
+and resume-linearity assumptions into one clause-level contract.
+
+**MCP tools used**: none (proof-only composition of previously validated
+surfaces).
+
+**Lean side**:
+- Added `Kea/Properties/HandlerTypingContracts.lean`.
+- Introduced `HandleClauseContract` and `wellTypedSlice`.
+- Proved bridge theorems:
+  - `wellTypedSlice_implies_handled_removed`
+  - `branch_linearity_ok_of_exclusive`
+  - `loop_linearity_requires_zero`
+
+**Classify**: N/A (no new runtime-facing claim introduced).
+
+**Outcome**:
+- Phase-2 now has an explicit integration layer to attach future concrete
+  handler typing judgments without re-deriving effect/remume bridges.
