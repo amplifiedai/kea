@@ -997,7 +997,7 @@ pub fn default_abi_manifest(module: &MirModule) -> AbiManifest {
 mod tests {
     use super::*;
     use kea_hir::{HirDecl, HirExpr, HirExprKind, HirFunction, HirParam};
-    use kea_mir::{MirBlock, MirBlockId, MirFunctionSignature, MirTerminator};
+    use kea_mir::{MirBlock, MirBlockId, MirFunctionSignature, MirLayoutCatalog, MirTerminator};
     use kea_types::{FunctionType, Label};
 
     fn sample_stats_module() -> MirModule {
@@ -1031,6 +1031,7 @@ mod tests {
                     terminator: MirTerminator::Return { value: None },
                 }],
             }],
+            layouts: MirLayoutCatalog::default(),
         }
     }
 
@@ -1068,6 +1069,7 @@ mod tests {
                     },
                 }],
             }],
+            layouts: MirLayoutCatalog::default(),
         }
     }
 
@@ -1119,6 +1121,7 @@ mod tests {
                     },
                 ],
             }],
+            layouts: MirLayoutCatalog::default(),
         }
     }
 
@@ -1146,6 +1149,7 @@ mod tests {
                     },
                 }],
             }],
+            layouts: MirLayoutCatalog::default(),
         }
     }
 
@@ -1178,6 +1182,7 @@ mod tests {
                     },
                 }],
             }],
+            layouts: MirLayoutCatalog::default(),
         }
     }
 
