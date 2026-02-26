@@ -1243,6 +1243,25 @@ impl Parser {
         invalid_msg: &str,
     ) -> Option<Spanned<EffectAnnotation>> {
         let start = self.current_span();
+        if self.match_token(&TokenKind::Pipe) {
+            self.skip_newlines();
+            let rest = Some(self.parse_effect_row_name(
+                "expected tail effect variable after '|' in effect row",
+            )?);
+            self.skip_newlines();
+            if !matches!(self.peek_kind(), Some(TokenKind::RBracket)) {
+                self.error_at_current("expected ] in effect arrow");
+                return None;
+            }
+            let end = self.current_span();
+            return Some(Spanned::new(
+                EffectAnnotation::Row(EffectRowAnnotation {
+                    effects: Vec::new(),
+                    rest,
+                }),
+                start.merge(end),
+            ));
+        }
         let (first_name, first_is_ident) = match self.peek_kind() {
             Some(TokenKind::Ident(name)) => {
                 let name = name.clone();
@@ -6664,6 +6683,21 @@ mod tests {
         }
     }
 
+    #[test]
+    fn parse_fn_with_tail_only_effect_row_clause() {
+        let module = parse_mod("fn id(x: Int) -[| e]> Int\n  x");
+        match &module.declarations[0].node {
+            DeclKind::Function(f) => match f.effect_annotation.as_ref().map(|e| &e.node) {
+                Some(EffectAnnotation::Row(row)) => {
+                    assert!(row.effects.is_empty());
+                    assert_eq!(row.rest.as_deref(), Some("e"));
+                }
+                other => panic!("expected row effect annotation, got {other:?}"),
+            },
+            _ => panic!("expected Function"),
+        }
+    }
+
     // -- Error cases --
 
     #[test]
@@ -7449,6 +7483,30 @@ mod tests {
                             other => panic!("expected Option(Int) return, got {other:?}"),
                         }
                     }
+                    other => panic!("expected effectful function type annotation, got {other:?}"),
+                }
+            }
+            _ => panic!("expected Function"),
+        }
+    }
+
+    #[test]
+    fn parse_fn_type_annotation_with_tail_only_effect_row_in_param() {
+        let m = parse_mod("fn apply(f: fn(Int) -[| e]> Option(Int)) -> Int\n  0");
+        match &m.declarations[0].node {
+            DeclKind::Function(fd) => {
+                let ann = fd.params[0]
+                    .annotation
+                    .as_ref()
+                    .expect("param should have annotation");
+                match &ann.node {
+                    TypeAnnotation::FunctionWithEffect(_, effect, _) => match &effect.node {
+                        EffectAnnotation::Row(row) => {
+                            assert!(row.effects.is_empty());
+                            assert_eq!(row.rest.as_deref(), Some("e"));
+                        }
+                        other => panic!("expected row effect annotation, got {other:?}"),
+                    },
                     other => panic!("expected effectful function type annotation, got {other:?}"),
                 }
             }
