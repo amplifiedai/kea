@@ -173,6 +173,14 @@ theorem substCompose_all (s s' : Subst)
         simp only [applySubst]; congr 1
         · exact ih_tl params
         · exact ih_ty ret
+      | .functionEff params effects ret =>
+        cases effects with
+        | mk effectRow =>
+          simp only [applySubst]
+          congr 1
+          · exact ih_tl params
+          · exact congrArg EffectRow.mk (ih_row effectRow)
+          · exact ih_ty ret
       | .forall vars body =>
         simp only [applySubst]
         congr 1

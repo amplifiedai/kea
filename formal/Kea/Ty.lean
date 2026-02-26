@@ -19,7 +19,14 @@
 abbrev TypeVarId := Nat
 abbrev RowVarId := Nat
 abbrev DimVarId := Nat
+abbrev EffectVarId := Nat
 abbrev Label := String
+
+/-- Kind of a type variable. -/
+inductive Kind : Type where
+  | star
+  | eff
+  deriving DecidableEq, BEq
 
 /-- Dimension expressions used by precision/shape constructors. -/
 inductive Dim : Type where
@@ -124,6 +131,8 @@ mutual
     | arc : Ty → Ty
     -- Functions (lib.rs:93)
     | function : TyList → Ty → Ty
+    -- Effect-explicit function form aligned with `kea-types::FunctionType`.
+    | functionEff : TyList → EffectRow → Ty → Ty
     -- Explicit quantified type annotation (Rust `Type::Forall`)
     | forall : List String → Ty → Ty
     -- Internal constructor-application terms (lib.rs:244-252)
@@ -154,6 +163,10 @@ mutual
   inductive RowFields : Type where
     | nil  : RowFields
     | cons : Label → Ty → RowFields → RowFields
+
+  /-- Effect rows reuse row structure (record/effect rows share the same machinery). -/
+  inductive EffectRow : Type where
+    | mk : Row → EffectRow
 end
 
 -- =========================================================================
@@ -166,6 +179,9 @@ mutual
 
   instance : BEq Row where
     beq := beqRow
+
+  instance : BEq EffectRow where
+    beq := beqEffectRow
 
   instance : BEq TyList where
     beq := beqTyList
@@ -209,6 +225,8 @@ mutual
     | .actor a, .actor b => beqTy a b
     | .arc a, .arc b => beqTy a b
     | .function p1 r1, .function p2 r2 => beqTyList p1 p2 && beqTy r1 r2
+    | .functionEff p1 e1 r1, .functionEff p2 e2 r2 =>
+      beqTyList p1 p2 && beqEffectRow e1 e2 && beqTy r1 r2
     | .forall vars1 body1, .forall vars2 body2 => vars1 == vars2 && beqTy body1 body2
     | .app f1 args1, .app f2 args2 => beqTy f1 f2 && beqTyList args1 args2
     | .constructor n1 fixed1 arity1, .constructor n2 fixed2 arity2 =>
@@ -220,6 +238,9 @@ mutual
 
   def beqRow : Row → Row → Bool
     | .mk f1 r1, .mk f2 r2 => beqRowFields f1 f2 && r1 == r2
+
+  def beqEffectRow : EffectRow → EffectRow → Bool
+    | .mk r1, .mk r2 => beqRow r1 r2
 
   def beqTyList : TyList → TyList → Bool
     | .nil, .nil => true
@@ -271,6 +292,33 @@ def isOpen (r : Row) : Bool :=
   r.rest.isSome
 
 end Row
+
+-- =========================================================================
+-- Effect rows
+-- =========================================================================
+
+namespace EffectRow
+
+/-- Underlying row of an effect row. -/
+def row : EffectRow → Row
+  | .mk r => r
+
+/-- Closed empty effect row (`[]`). -/
+def pure : EffectRow := .mk (.mk .nil none)
+
+/-- Closed effect row with explicit fields. -/
+def closed (fields : RowFields) : EffectRow := .mk (.mk fields none)
+
+/-- Open effect row with explicit fields and tail variable. -/
+def mkOpen (fields : RowFields) (rest : RowVarId) : EffectRow := .mk (.mk fields (some rest))
+
+/-- Is this effect row pure? -/
+def isPure (e : EffectRow) : Bool :=
+  match e with
+  | .mk (.mk .nil none) => true
+  | _ => false
+
+end EffectRow
 
 -- =========================================================================
 -- RowFields operations
@@ -369,6 +417,8 @@ structure TypeScheme where
   /-- Trait bounds on quantified type vars (e.g., `T: Additive`).
       Maps to `bounds: BTreeMap<TypeVarId, BTreeSet<String>>` in Rust. -/
   bounds : List (TypeVarId × List String)
+  /-- Kind assignments for quantified type variables (defaults to `Kind.star`). -/
+  kinds : List (TypeVarId × Kind)
   /-- The underlying type. -/
   ty : Ty
 
@@ -376,7 +426,7 @@ namespace TypeScheme
 
 /-- A monomorphic scheme (no quantified variables). -/
 def mono (ty : Ty) : TypeScheme :=
-  { typeVars := [], rowVars := [], lacks := [], bounds := [], ty }
+  { typeVars := [], rowVars := [], lacks := [], bounds := [], kinds := [], ty }
 
 /-- Is the scheme monomorphic? -/
 def isMono (s : TypeScheme) : Bool :=

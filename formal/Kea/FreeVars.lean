@@ -25,6 +25,8 @@ mutual
     | .map k v | .result k v => freeTypeVars k ++ freeTypeVars v
     | .record _ r | .anonRecord r | .row r => freeTypeVarsRow r
     | .function params ret => freeTypeVarsTyList params ++ freeTypeVars ret
+    | .functionEff params effects ret =>
+      freeTypeVarsTyList params ++ freeTypeVarsEffectRow effects ++ freeTypeVars ret
     | .forall _ body => freeTypeVars body
     | .app ctor args => freeTypeVars ctor ++ freeTypeVarsTyList args
     | .constructor _ fixedArgs _ => freeTypeVarsTyList fixedArgs
@@ -46,6 +48,11 @@ mutual
     match rf with
     | .nil => []
     | .cons _ ty rest => freeTypeVars ty ++ freeTypeVarsRowFields rest
+
+  /-- Collect all free type variable IDs in an effect row. -/
+  def freeTypeVarsEffectRow (effects : EffectRow) : List TypeVarId :=
+    match effects with
+    | .mk row => freeTypeVarsRow row
 end
 
 -- =========================================================================
@@ -66,6 +73,8 @@ mutual
     | .map k v | .result k v => freeRowVars k ++ freeRowVars v
     | .record _ r | .anonRecord r | .row r => freeRowVarsRow r
     | .function params ret => freeRowVarsTyList params ++ freeRowVars ret
+    | .functionEff params effects ret =>
+      freeRowVarsTyList params ++ freeRowVarsEffectRow effects ++ freeRowVars ret
     | .forall _ body => freeRowVars body
     | .app ctor args => freeRowVars ctor ++ freeRowVarsTyList args
     | .constructor _ fixedArgs _ => freeRowVarsTyList fixedArgs
@@ -91,4 +100,9 @@ mutual
     match rf with
     | .nil => []
     | .cons _ ty rest => freeRowVars ty ++ freeRowVarsRowFields rest
+
+  /-- Collect all free row variable IDs in an effect row. -/
+  def freeRowVarsEffectRow (effects : EffectRow) : List RowVarId :=
+    match effects with
+    | .mk row => freeRowVarsRow row
 end

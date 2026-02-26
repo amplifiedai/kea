@@ -235,6 +235,21 @@ theorem applySubst_noop (s : Subst) :
         · exact ih_ty ret
             (fun w hw => htv w (by simp [freeTypeVars, List.mem_append]; right; exact hw))
             (fun w hw => hrv w (by simp [freeRowVars, List.mem_append]; right; exact hw))
+      | .functionEff params effects ret =>
+        cases effects with
+        | mk effectRow =>
+          simp only [applySubst]
+          congr 1
+          · exact ih_tl params
+              (fun w hw => htv w (by simp [freeTypeVars, freeTypeVarsEffectRow, List.mem_append, hw]))
+              (fun w hw => hrv w (by simp [freeRowVars, freeRowVarsEffectRow, List.mem_append, hw]))
+          · exact congrArg EffectRow.mk <|
+              ih_row effectRow
+                (fun w hw => htv w (by simp [freeTypeVars, freeTypeVarsEffectRow, List.mem_append, hw]))
+                (fun w hw => hrv w (by simp [freeRowVars, freeRowVarsEffectRow, List.mem_append, hw]))
+          · exact ih_ty ret
+              (fun w hw => htv w (by simp [freeTypeVars, freeTypeVarsEffectRow, List.mem_append, hw]))
+              (fun w hw => hrv w (by simp [freeRowVars, freeRowVarsEffectRow, List.mem_append, hw]))
       | .forall vars body =>
         simp only [applySubst]
         congr 1
@@ -469,6 +484,14 @@ private theorem substIdempotent_all (s : Subst) (h : s.Idempotent) :
         congr 1
         · exact ih_tl params
         · exact ih_ty ret
+      | .functionEff params effects ret =>
+        cases effects with
+        | mk effectRow =>
+          simp only [applySubst]
+          congr 1
+          · exact ih_tl params
+          · exact congrArg EffectRow.mk (ih_row effectRow)
+          · exact ih_ty ret
       | .forall vars body =>
         simp only [applySubst]
         congr 1

@@ -286,7 +286,7 @@ mutual
                 simp [h_fn, h_arg] at h
           | int | intN _ _ | float | floatN _ | decimal _ _ | bool | string | html | markdown | atom | date | dateTime | unit =>
             simp [h_fn, h_arg] at h
-          | list _ | map _ _ | set _ | option _ | result _ _ | existential _ _ | fixedSizeList _ _ | tensor _ _ | sum _ _ | «opaque» _ _
+          | list _ | map _ _ | set _ | option _ | result _ _ | existential _ _ | fixedSizeList _ _ | tensor _ _ | sum _ _ | «opaque» _ _ | functionEff _ _ _
             | record _ _ | anonRecord _ | dataframe _ | groupedFrame _ _ | tagged _ _ | dynamic | column _ | stream _ | task _ | actor _ | arc _
             | «forall» _ _ | app _ _ | constructor _ _ _ | var _ | row _ | tuple _ =>
             simp [h_fn, h_arg] at h
@@ -325,7 +325,7 @@ mutual
           simp [h_e] at h
         | list _ | map _ _ | set _ | option _ | result _ _ | existential _ _ | fixedSizeList _ _ | tensor _ _ | sum _ _ | «opaque» _ _
           | record _ _ | dataframe _ | groupedFrame _ _ | tagged _ _ | dynamic | column _ | stream _ | task _ | actor _ | arc _
-          | function _ _ | «forall» _ _ | app _ _ | constructor _ _ _ | var _ | row _ | tuple _ =>
+          | function _ _ | functionEff _ _ _ | «forall» _ _ | app _ _ | constructor _ _ _ | var _ | row _ | tuple _ =>
           simp [h_e] at h
         | anonRecord row =>
           cases row with
@@ -1779,7 +1779,7 @@ theorem app_function_beq_false_of_not_var
     exact h_not_var v rfl
   | int | intN _ _ | float | floatN _ | decimal _ _ | bool | string | html | markdown | atom | date | dateTime | unit | dynamic
     | list _ | map _ _ | set _ | option _ | result _ _ | existential _ _ | fixedSizeList _ _ | tensor _ _ | sum _ _ | «opaque» _ _
-    | function _ _ | «forall» _ _ | app _ _ | constructor _ _ _ | record _ _ | anonRecord _ | dataframe _ | groupedFrame _ _ | tagged _ _ | column _ | stream _ | task _ | actor _ | arc _
+    | function _ _ | functionEff _ _ _ | «forall» _ _ | app _ _ | constructor _ _ _ | record _ _ | anonRecord _ | dataframe _ | groupedFrame _ _ | tagged _ _ | column _ | stream _ | task _ | actor _ | arc _
     | row _ | tuple _ =>
       simp [BEq.beq, beqTy, h_params_refl]
 
@@ -1841,7 +1841,7 @@ theorem tail_unify_to_bindTypeVar_of_success_resolved_heads_nonbeq
     exact h_not_var v rfl
   | int | intN _ _ | float | floatN _ | decimal _ _ | bool | string | html | markdown | atom | date | dateTime | unit | dynamic
     | list _ | map _ _ | set _ | option _ | result _ _ | existential _ _ | fixedSizeList _ _ | tensor _ _ | sum _ _ | «opaque» _ _
-    | function _ _ | «forall» _ _ | app _ _ | constructor _ _ _ | record _ _ | anonRecord _ | dataframe _ | groupedFrame _ _ | tagged _ _ | column _ | stream _ | task _ | actor _ | arc _
+    | function _ _ | functionEff _ _ _ | «forall» _ _ | app _ _ | constructor _ _ _ | record _ _ | anonRecord _ | dataframe _ | groupedFrame _ _ | tagged _ _ | column _ | stream _ | task _ | actor _ | arc _
     | row _ | tuple _ =>
       simpa [unify, h_head_l, h_head_r, h_beq'] using h_unify
 
@@ -2787,7 +2787,7 @@ mutual
         | int | intN _ _ | float | floatN _ | decimal _ _ | bool | string | html | markdown | atom | date | dateTime | unit =>
           simp [h_fields_infer] at h
         | list _ | map _ _ | set _ | option _ | result _ _ | existential _ _ | fixedSizeList _ _ | tensor _ _ | sum _ _ | «opaque» _ _
-          | function _ _ | «forall» _ _ | app _ _ | constructor _ _ _ | record _ _ | anonRecord _ | dataframe _ | groupedFrame _ _ | tagged _ _ | dynamic | column _ | stream _ | task _ | actor _ | arc _
+          | function _ _ | functionEff _ _ _ | «forall» _ _ | app _ _ | constructor _ _ _ | record _ _ | anonRecord _ | dataframe _ | groupedFrame _ _ | tagged _ _ | dynamic | column _ | stream _ | task _ | actor _ | arc _
           | var _ | tuple _ =>
           simp [h_fields_infer] at h
 
@@ -2834,7 +2834,7 @@ mutual
           | int | intN _ _ | float | floatN _ | decimal _ _ | bool | string | html | markdown | atom | date | dateTime | unit =>
             simp [h_head_infer, h_rest_infer] at h
           | list _ | map _ _ | set _ | option _ | result _ _ | existential _ _ | fixedSizeList _ _ | tensor _ _ | sum _ _ | «opaque» _ _
-            | function _ _ | «forall» _ _ | app _ _ | constructor _ _ _ | record _ _ | anonRecord _ | dataframe _ | groupedFrame _ _ | tagged _ _ | dynamic | column _ | stream _ | task _ | actor _ | arc _
+            | function _ _ | functionEff _ _ _ | «forall» _ _ | app _ _ | constructor _ _ _ | record _ _ | anonRecord _ | dataframe _ | groupedFrame _ _ | tagged _ _ | dynamic | column _ | stream _ | task _ | actor _ | arc _
             | var _ | tuple _ =>
             simp [h_head_infer, h_rest_infer] at h
 end
@@ -2952,7 +2952,7 @@ mutual
         | int | intN _ _ | float | floatN _ | decimal _ _ | bool | string | html | markdown | atom | date | dateTime | unit =>
           simp [h_fields] at h
         | list _ | map _ _ | set _ | option _ | result _ _ | existential _ _ | fixedSizeList _ _ | tensor _ _ | sum _ _ | «opaque» _ _
-          | function _ _ | «forall» _ _ | app _ _ | constructor _ _ _ | record _ _ | anonRecord _ | dataframe _ | groupedFrame _ _ | tagged _ _ | dynamic | column _ | stream _ | task _ | actor _ | arc _
+          | function _ _ | functionEff _ _ _ | «forall» _ _ | app _ _ | constructor _ _ _ | record _ _ | anonRecord _ | dataframe _ | groupedFrame _ _ | tagged _ _ | dynamic | column _ | stream _ | task _ | actor _ | arc _
           | var _ | tuple _ =>
           simp [h_fields] at h
     | proj recv label =>
@@ -3023,7 +3023,7 @@ mutual
           | int | intN _ _ | float | floatN _ | decimal _ _ | bool | string | html | markdown | atom | date | dateTime | unit =>
             simp [h_head, h_rest] at h
           | list _ | map _ _ | set _ | option _ | result _ _ | existential _ _ | fixedSizeList _ _ | tensor _ _ | sum _ _ | «opaque» _ _
-            | function _ _ | «forall» _ _ | app _ _ | constructor _ _ _ | record _ _ | anonRecord _ | dataframe _ | groupedFrame _ _ | tagged _ _ | dynamic | column _ | stream _ | task _ | actor _ | arc _
+            | function _ _ | functionEff _ _ _ | «forall» _ _ | app _ _ | constructor _ _ _ | record _ _ | anonRecord _ | dataframe _ | groupedFrame _ _ | tagged _ _ | dynamic | column _ | stream _ | task _ | actor _ | arc _
             | var _ | tuple _ =>
             simp [h_head, h_rest] at h
 end
@@ -3142,7 +3142,7 @@ mutual
         | int | intN _ _ | float | floatN _ | decimal _ _ | bool | string | html | markdown | atom | date | dateTime | unit =>
           simp [h_fields] at h
         | list _ | map _ _ | set _ | option _ | result _ _ | existential _ _ | fixedSizeList _ _ | tensor _ _ | sum _ _ | «opaque» _ _
-          | function _ _ | «forall» _ _ | app _ _ | constructor _ _ _ | record _ _ | anonRecord _ | dataframe _ | groupedFrame _ _ | tagged _ _ | dynamic | column _ | stream _ | task _ | actor _ | arc _
+          | function _ _ | functionEff _ _ _ | «forall» _ _ | app _ _ | constructor _ _ _ | record _ _ | anonRecord _ | dataframe _ | groupedFrame _ _ | tagged _ _ | dynamic | column _ | stream _ | task _ | actor _ | arc _
           | var _ | tuple _ =>
           simp [h_fields] at h
     | proj recv label =>
@@ -3212,7 +3212,7 @@ mutual
           | int | intN _ _ | float | floatN _ | decimal _ _ | bool | string | html | markdown | atom | date | dateTime | unit =>
             simp [h_head, h_rest] at h
           | list _ | map _ _ | set _ | option _ | result _ _ | existential _ _ | fixedSizeList _ _ | tensor _ _ | sum _ _ | «opaque» _ _
-            | function _ _ | «forall» _ _ | app _ _ | constructor _ _ _ | record _ _ | anonRecord _ | dataframe _ | groupedFrame _ _ | tagged _ _ | dynamic | column _ | stream _ | task _ | actor _ | arc _
+            | function _ _ | functionEff _ _ _ | «forall» _ _ | app _ _ | constructor _ _ _ | record _ _ | anonRecord _ | dataframe _ | groupedFrame _ _ | tagged _ _ | dynamic | column _ | stream _ | task _ | actor _ | arc _
             | var _ | tuple _ =>
             simp [h_head, h_rest] at h
 end
