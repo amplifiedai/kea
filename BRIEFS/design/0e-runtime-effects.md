@@ -319,6 +319,18 @@ allocation behavior.
   program. The runtime exists but is dormant until concurrency
   effects are used. Specified in KERNEL §20 (pending).
 
+- **Effect signatures are scheduling hints, not policy truth.**
+  The effect row tells the scheduler a function's *capability
+  class* (CPU-bound pure, IO-bound, concurrent). The scheduler
+  may use this as a hint for thread pool assignment or priority.
+  But dynamic behavior can differ from static signatures — a
+  function with `-[IO]>` might do one syscall then spend 99%
+  of its time computing. The scheduler must observe actual
+  behavior (wall time, yield frequency) and adapt. Effect hints
+  bootstrap scheduling decisions; runtime telemetry corrects
+  them. Never treat the effect signature as ground truth for
+  scheduling policy.
+
 - **Par effect for data parallelism.** Separate from actor
   concurrency. Par.map requires a pure callback (`-> B`). The
   compiler verifies safety via the effect signature, codegen

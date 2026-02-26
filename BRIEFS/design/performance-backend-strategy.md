@@ -96,6 +96,24 @@ Maintain explicit, queryable layout tables for structs/enums/tuples:
 
 Future backends consume the same layout metadata.
 
+**Layout stability rule:** Field reordering for alignment/cache
+optimization is opt-in only (`@packed`, `@reorder`, or similar).
+Default struct layout preserves declaration order. Rationale:
+
+- FFI interop (`extern "C"` structs) requires stable, predictable
+  layout. Global reordering would break C ABI compatibility.
+- `@unboxed` types used in FFI must have deterministic field
+  offsets that match C struct layout.
+- Serialization/deserialization assumes stable field order unless
+  the format is self-describing.
+- Debug tooling needs predictable layout for memory inspection.
+
+The compiler MAY reorder fields internally for non-FFI, non-
+`@unboxed` structs when an explicit annotation opts in. But the
+default is: declaration order = memory order. This is the same
+rule Rust uses (`repr(Rust)` is unspecified but `repr(C)` is
+stable) — except Kea defaults to the stable side.
+
 ### 5) Pass pipeline observability
 
 Each pass should emit machine-readable stats:
@@ -130,6 +148,31 @@ Track:
 - latency percentiles,
 - allocation and retain/release counts,
 - compile-time.
+
+### Actor Benchmark Targets (0e+)
+
+Actor performance must be benchmarked against Go and Erlang
+baselines, not claimed narratively. Targets are directional —
+exact thresholds set after initial measurement.
+
+| Metric | Measure | Compare against |
+|--------|---------|-----------------|
+| Message throughput | msgs/sec, 2 actors ping-pong | Go channels, Erlang `!` |
+| Message latency | p50/p99 single message RTT | Go channels, Erlang `!` |
+| Actor spawn cost | time + memory per actor creation | Go goroutine, Erlang spawn |
+| Memory per actor | bytes, idle actor with minimal state | Go goroutine (~2KB), Erlang (~300B) |
+| Actor count ceiling | max actors before OOM/degradation | Go (~100K), Erlang (~1M) |
+| Throughput scaling | msgs/sec vs core count | Linear is target |
+
+Expected positioning: Kea actors will be heavier than Erlang
+processes (~KB range, not ~300B) but faster per-message (native
+code, zero-copy immutable sharing, non-atomic RC for single-
+threaded actors). Closer to Go goroutines in weight, closer to
+Erlang in programming model.
+
+These benchmarks land in 0e when the actor runtime exists. They
+feed into the benchmark regression suite alongside the 0d pure
+baselines.
 
 ## Roadmap Placement
 
