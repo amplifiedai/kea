@@ -1,264 +1,292 @@
-# Kea for Python, TypeScript, Elixir, and Go Developers
+# Effects-Oriented Programming
 
-Kea is a statically typed language with effect tracking.
+## The problem
 
-That means the compiler tracks two things:
-- What your values are (`String`, `User`, `List Int`, ...)
-- What your functions do (`IO`, `Fail AppError`, `Send`, ...)
-
-Most languages only enforce the first one.
-Kea enforces both.
-
----
-
-## Why This Exists
-
-If you ship production systems, you already know these problems:
-
-- A helper function quietly starts doing I/O.
-- A "pure" transformation begins reading env vars.
-- Error handling is inconsistent across call sites.
-- Tests need mocks everywhere because side effects are hidden.
-- Refactors accidentally change behavior, not just types.
-
-Kea makes these visible in function signatures and checks them at compile time.
-
-```kea
-struct Config
-  fn parse(_ text: String) -[Fail ConfigError]> Config
-  fn load(_ path: String) -[IO, Fail ConfigError]> Config
-```
-
-`load` does I/O and can fail.
-`parse` can fail, but does not do I/O.
-That contract is enforced by the compiler.
-
----
-
-## The Core Mental Model
-
-Read function signatures as executable contracts:
-
-- `->` means pure
-- `-[IO]>` means touches the outside world
-- `-[Fail E]>` means may fail with `E`
-- `-[IO, Fail E]>` means both
-
-```kea
-fn format_user(_ user: User) -> String
-fn fetch_user(_ id: UserId) -[IO, Fail HttpError]> User
-```
-
-If `format_user` starts calling `IO.read_file`, the compiler rejects it until the signature is updated.
-
----
-
-## What This Feels Like by Background
-
-### Python / TypeScript
-
-You keep dynamic speed of expression, but with compile-time guarantees:
-- No accidental `None`/shape bugs in core flows
-- No hidden side effects inside "utility" functions
-- Better refactors because contracts are explicit and checked
-
-Think of Kea as moving common production bugs from runtime to compile time.
-
-### Go
-
-You already value explicitness and simple control flow.
-Kea keeps explicit error modeling, but removes repetitive plumbing:
-- `?` short-circuits tracked failures
-- The compiler tracks effect usage automatically across call chains
-- Pure functions are guaranteed pure
-
-### Elixir
-
-You already think in message passing and process boundaries.
-Kea keeps typed actor protocols and explicit side effects:
-- `Send`/`Spawn` can be tracked in signatures
-- Message protocols are statically checked
-- Effect handlers give you clean testing seams
-
----
-
-## Before/After: What Changes in Practice
-
-### Python/TypeScript style (hidden side effects)
-
-Before:
+In most languages, a function signature tells you what goes in
+and what comes out. It doesn't tell you what happens along the way.
 
 ```text
-function parseConfig(path) {
-  const text = fs.readFileSync(path, "utf8")   // hidden IO
-  return JSON.parse(text)                      // may throw
-}
+def fetch_user(id: int) -> User
 ```
 
-After (Kea):
+Does this hit the network? Read a file? Mutate a cache? You can't
+tell without reading the implementation. And the implementation can
+change without the signature changing. A function that was pure last
+week quietly starts doing I/O this week, and nothing in the type
+system notices.
+
+This matters because:
+
+- **You can't trust function boundaries.** A "pure helper" that
+  starts reading env vars breaks your test isolation, and you find
+  out at runtime.
+- **Refactoring is risky.** You rename a function, move some logic,
+  and accidentally change what side effects happen where. The types
+  still check. The tests still pass. The bug ships.
+- **Testing requires ceremony.** You need mocks, DI containers, or
+  monkeypatching to test code that does I/O — not because the test
+  is complicated, but because the side effect is invisible.
+- **Error handling is inconsistent.** Some functions throw, some
+  return null, some return Result. Nothing enforces a policy across
+  a codebase.
+- **Concurrency is a minefield.** Nothing in a type signature tells
+  you whether a function touches shared state, sends messages, or
+  spawns threads.
+
+Every production codebase eventually builds conventions around these
+problems: "pure functions go in this module," "I/O only at the
+boundary," "always return Result." But conventions are enforced by
+code review. They erode.
+
+## What if the compiler enforced them?
+
+Kea tracks what functions *do*, not just what they return.
 
 ```kea
-fn parse_config(_ path: String) -[IO, Fail ConfigError]> Config
-  let text = IO.read_file(path)?
-  Config.parse(text)?
+fn parse(_ text: String) -[Fail ConfigError]> Config
+fn load(_ path: String) -[IO, Fail ConfigError]> Config
 ```
 
-The contract is explicit and checked.
+`parse` can fail but does nothing else. `load` reads the filesystem
+and can fail. These aren't comments or conventions — they're checked
+by the compiler. If `parse` starts reading files, it won't compile
+until its signature says so.
 
-### Go style (explicit but repetitive error plumbing)
+The arrow tells you everything:
 
-Before:
+- `->` — pure. No side effects. Safe to memoise, reorder, parallelise.
+- `-[IO]>` — performs I/O.
+- `-[Fail E]>` — can fail with error type `E`.
+- `-[IO, Fail E]>` — both.
 
-```text
-cfg, err := readConfig(path)
-if err != nil { return err }
-db, err := connect(cfg.URL)
-if err != nil { return err }
-```
-
-After (Kea):
-
-```kea
-fn start(_ path: String) -[IO, Fail AppError]> App
-  let cfg = Config.load(path)?
-  let db = Database.connect(cfg.db_url)?
-  App.new(cfg, db)
-```
-
-Same explicit error model, less mechanical code.
-
-### Elixir style (dynamic message/data contracts)
-
-Before:
-
-```text
-GenServer.call(pid, {:get_user, id})
-# runtime conventions define expected reply shape
-```
-
-After (Kea):
-
-```kea
-enum UserMsg T
-  Get(id: UserId) : UserMsg (Result User NotFound)
-
-let user = Send.ask(user_ref, Get(id))
-```
-
-Reply type is encoded in the message protocol and checked statically.
+The rest of this document explains the machinery that makes this
+practical. But the core value is already here: you can read a
+function signature and know what it does, and the compiler won't
+let that contract drift.
 
 ---
 
-## Opinionated Migration Strategy
+## Effects are declared, not built in
 
-Use this order. Do not start with advanced features first.
-
-1. Mark pure core transforms with `->` and keep I/O out.
-2. Move failures to `Fail E` plus `?` instead of ad-hoc exceptions.
-3. Make I/O boundaries explicit with `-[IO, ...]>`.
-4. Add handlers for tests where you currently monkeypatch or mock globals.
-5. Introduce actor protocols only where process boundaries already exist.
-
-If a function does three jobs (parse + fetch + mutate), split it.
-Kea pays off most when signatures are narrow and honest.
-
----
-
-## Do This, Not That
-
-- Do: keep effects explicit in signatures.
-- Not that: hide side effects behind "utility" functions.
-
-- Do: use `Fail` for internal composition and convert to `Result` at boundaries.
-- Not that: return `Result` everywhere by default.
-
-- Do: use `Option` for expected absence (`None` is normal).
-- Not that: use `Option` when callers need an error reason.
-
-- Do: keep pure business logic separate from I/O orchestration.
-- Not that: mix DB/network calls deep inside domain transforms.
-
----
-
-## Error Handling: `Fail` and `?`
-
-Kea keeps errors explicit without boilerplate-heavy propagation.
+An effect is a set of operations that a function might perform
+but doesn't implement itself:
 
 ```kea
-fn read_settings(_ path: String) -[IO, Fail SettingsError]> Settings
-  let text = IO.read_file(path)?
-  Settings.parse(text)?
+effect Log
+  fn log(_ level: Level, _ msg: String) -> Unit
+
+effect State S
+  fn get() -> S
+  fn put(_ new_state: S) -> Unit
 ```
 
-`?` means:
-- If `Ok`, continue.
-- If `Err`, return early through `Fail`.
+Calling an effect operation adds that effect to the function's
+signature. The compiler checks that the declared effects match
+the body — you annotate them, and the compiler verifies:
 
-The compiler tracks that this function may fail with `SettingsError`.
-Callers must handle or propagate it.
+```kea
+fn process_order(order: Order) -[Log, State Stats]> Receipt
+  Log.log(Info, "Processing order {order.id}")
+  let stats = State.get()
+  State.put(stats.with_order(order))
+  order.to_receipt()
+```
+
+The programmer wrote `-[Log, State Stats]>` and the compiler
+verified that the body performs exactly those effects — no more,
+no less. And because effects are user-defined,
+your domain gets its own vocabulary: `Audit`, `Metric`, `Cache`,
+`Notify` — whatever your system actually does.
 
 ---
 
-## Testing Without Global Mocking
+## Handlers give effects meaning
 
-Effects are handled explicitly, so you can swap implementations by scope.
+Declaring an effect says *what* a function does. A handler says
+*how* it's done:
 
 ```kea
-fn with_mock_fs(_ files: Map String String, _ f: () -[IO, e]> T) -[e]> T
+fn with_stdout_logger(f: () -[Log, e]> T) -[IO, e]> T
   handle f()
-    IO.read_file(path) ->
-      resume files.get(path).unwrap_or("")
+    Log.log(level, msg) ->
+      IO.stdout("[{level}] {msg}")
+      resume()
 ```
 
-Production code uses real `IO`.
-Tests can run the same code with a local handler.
-No global monkeypatching, no fragile DI container setup.
+This handler intercepts `Log` and implements it using `IO.stdout`.
+The type tells the full story: `Log` goes in, `IO` comes out,
+everything else (`e`) passes through. `resume()` returns control
+to where `Log.log` was called.
+
+This separation — declaring what you need vs deciding how it's
+provided — is what makes effects useful in practice. The business
+logic says "I need logging." The infrastructure decides whether
+that means stdout, a file, a network service, or nothing at all.
+And the decision is explicit, scoped, and type-checked.
+
+Handlers compose by nesting:
+
+```kea
+fn run_pipeline(order: Order) -[IO]> Receipt
+  handle
+    handle process_order(order)
+      State.get() -> resume(Stats.empty())
+      State.put(s) -> resume()
+    Log.log(level, msg) ->
+      IO.stdout("[{level}] {msg}")
+      resume()
+```
+
+Each handler peels off one effect. The final signature is `-[IO]>` —
+the only thing left is the I/O the log handler introduces.
 
 ---
 
-## Type System Value (Without Theory First)
+## Errors are an effect
 
-Kea's type system gives practical guarantees:
-
-- Exhaustive pattern matching: no forgotten cases
-- Flexible records: require only fields you actually use
-- Trait-based capabilities: generic code without losing safety
-- Effect transparency: higher-order functions preserve caller effects
-
-Example of flexible records:
+Most languages treat errors as a special case — exceptions,
+Result types, error codes — each with different propagation rules.
+In Kea, failure is just another effect:
 
 ```kea
-fn greet(_ x: { name: String | r }) -> String
+effect Fail E
+  fn fail(_ error: E) -> Never
+
+fn parse_port(s: String) -[Fail ConfigError]> Int
+  let n = Int.parse(s)?
+  if n < 1 or n > 65535
+    Fail.fail(PortOutOfRange(n))
+  else
+    n
+```
+
+`?` propagates failures. `catch` converts a failure into a `Result`:
+
+```kea
+let result = catch parse_port("not_a_number")
+-- result : Result(Int, ConfigError)
+```
+
+Because `Fail` is a regular effect, you get consistency for free.
+Every function that can fail says so in its signature. Every error
+type is tracked. You can't forget to handle an error — the
+compiler knows whether `Fail` has been handled or is still
+propagating.
+
+---
+
+## Pure functions are guaranteed pure
+
+A function with `->` cannot perform effects. This isn't a
+convention — it's a compiler guarantee:
+
+```kea
+fn total(items: List Item) -> Int
+  items.map(|i| -> i.price * i.quantity).sum()
+```
+
+If someone adds a logging call inside `total`, the compiler
+rejects it. This is the foundation everything else builds on:
+
+- Pure functions can be tested with no setup — just call them.
+- The compiler can safely reorder, memoise, or parallelise them.
+- When you read `->` you *know* there's no hidden behaviour.
+  Not because of a convention, but because it's checked.
+
+In practice, this means your core business logic — the transforms,
+validations, computations — stays pure. I/O and effects live at
+the edges, in the functions that orchestrate the pure core. This
+isn't a novel architecture pattern. What's novel is that the
+compiler enforces it.
+
+---
+
+## Testing without mocks
+
+The hardest part of testing in most languages is dealing with
+side effects. You need mocks, stubs, DI containers, or
+monkeypatching to intercept I/O. In Kea, you provide a different
+handler:
+
+```kea
+test "config loading"
+  let fake_files = Map.from([("/etc/app.toml", "[db]\nurl = ...")])
+
+  let result = catch
+    handle Config.load("/etc/app.toml")
+      IO.read_file(path) ->
+        resume(fake_files.get(path).unwrap_or(""))
+
+  let config = result.unwrap()
+  assert config.db.url == "..."
+```
+
+The production code calls `IO.read_file` and can fail with
+`Fail ConfigError`. The test intercepts `IO` with an in-memory
+map and converts the `Fail` into a `Result` with `catch`. Same
+code, same code path, different handler. No framework, no global
+state, no cleanup. The handler is lexically scoped — it can't
+leak into other tests.
+
+This works because effects separate *what* from *how* at the
+language level. The code under test declares that it needs
+`IO.read_file`. It doesn't decide where the bytes come from.
+That's the handler's job.
+
+---
+
+## Higher-order functions propagate effects
+
+When a function takes a callback, the callback's effects flow
+through automatically:
+
+```kea
+fn map(self: List A, f: A -[e]> B) -[e]> List B
+```
+
+If `f` is pure, `map` is pure. If `f` performs `IO`, `map`
+performs `IO`. The effect variable `e` is inferred — you don't
+annotate it at call sites:
+
+```kea
+-- pure: List(Int) -> List(Int)
+numbers.map(|n| -> n * 2)
+
+-- effectful: List(String) -[IO, Fail ReadError]> List(Bytes)
+paths.map(|p| -> IO.read_file(p)?)
+```
+
+This matters because higher-order functions are everywhere.
+Without effect propagation, wrapping a side-effecting function
+in `map` would hide the effect. In Kea, it can't hide — the
+type system carries it through.
+
+---
+
+## Records are structurally typed
+
+Functions can require specific fields without requiring a
+specific type:
+
+```kea
+fn greet(x: { name: String | r }) -> String
   "Hello, {x.name}"
 ```
 
-Works with any value that has a `name` field.
-No inheritance hierarchy required.
+This works with any record that has a `name: String` field.
+No interface declaration, no inheritance. The `| r` means
+"and whatever other fields you have."
 
 ---
 
-## What Kea Is Not Trying to Be
+## Where to start
 
-- It is not "dynamic language ergonomics with optional checks."
-- It is not "exceptions everywhere and hope tests catch it."
-- It is not "a giant effect framework hidden in libraries."
+Write pure functions with `->`. Move I/O to the edges.
+Use `Fail` and `?` for errors. That's enough to get most
+of the value.
 
-The language itself tracks behavior contracts.
-
----
-
-## A Practical Migration Path
-
-1. Start with pure data transforms and explicit types at boundaries.
-2. Add `Fail` tracking for error-heavy workflows.
-3. Move I/O-heavy paths to explicit `-[IO, ...]>` signatures.
-4. Introduce handlers for test isolation.
-5. Gradually use trait capabilities and actor protocols where needed.
-
-You do not need to learn every advanced feature on day one.
-
----
-
-## One-Line Summary
-
-Kea lets the compiler verify what your code does, not just what your values are.
+Handlers, custom effects, and actor protocols are there when
+you need them — but the first thing Kea gives you is the
+ability to look at any function in your codebase and know
+exactly what it does. Not what it might do. Not what it's
+supposed to do. What the compiler has verified it does.

@@ -19,7 +19,7 @@
 
 - [PEDAGOGY.md](PEDAGOGY.md) — Documentation style guide: progressive disclosure, error message principles.
 - [VALUES-AND-COMPOSITION.md](VALUES-AND-COMPOSITION.md) — Why values beat mutable objects: combinators, copy-on-write, effect-driven testing, and what Kea gets from the model.
-- [EFFECTS-ORIENTED.md](EFFECTS-ORIENTED.md) — User guide for Python/TS/Elixir/Go developers: why effect tracking + types change day-to-day programming.
+- [EFFECTS-ORIENTED.md](EFFECTS-ORIENTED.md) — Effects-oriented programming: the problems effects solve, how Kea's effect system works, and why it matters for testing, refactoring, and correctness.
 - [UNIVERSAL-DOT.md](UNIVERSAL-DOT.md) — User guide for Kea's call style: dot dispatch, `::` qualification, and `$` receiver placement.
 
 ## Working Documents
