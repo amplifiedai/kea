@@ -1,0 +1,13 @@
+[package]
+name = "kea-hir"
+description = "Typed high-level IR for Kea"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+kea-ast.workspace = true
+kea-types.workspace = true
+kea-infer.workspace = true
+
+[dev-dependencies]
+kea-syntax.workspace = true
