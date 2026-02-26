@@ -284,6 +284,15 @@ pub struct TypeEnv {
 }
 
 impl TypeEnv {
+    fn ensure_module_alias_for_path(&mut self, module_path: &str) {
+        let Some((_prefix, short)) = module_path.rsplit_once('.') else {
+            return;
+        };
+        self.module_aliases
+            .entry(short.to_string())
+            .or_insert_with(|| module_path.to_string());
+    }
+
     pub fn new() -> Self {
         Self {
             bindings: vec![BTreeMap::new()],
@@ -367,6 +376,7 @@ impl TypeEnv {
             .entry(module.to_string())
             .or_default()
             .push(name.to_string());
+        self.ensure_module_alias_for_path(module);
     }
 
     /// Register a type scheme in the module-scoped map for qualified access.
@@ -381,6 +391,7 @@ impl TypeEnv {
             .entry(module_path.to_string())
             .or_default()
             .insert(name.to_string(), (scheme, effects));
+        self.ensure_module_alias_for_path(module_path);
     }
 
     /// Register a short module alias (e.g. "Math" → "Kea.Math").
@@ -9192,14 +9203,14 @@ fn effect_row_from_annotation(
     ann: &kea_ast::EffectAnnotation,
     effect_var_bindings: &mut BTreeMap<String, RowVarId>,
     next_effect_var: &mut u32,
-) -> EffectRow {
+) -> Option<EffectRow> {
     match ann {
-        kea_ast::EffectAnnotation::Pure => pure_effect_row(),
-        kea_ast::EffectAnnotation::Volatile => volatile_effect_row(),
-        kea_ast::EffectAnnotation::Impure => impure_effect_row(),
+        kea_ast::EffectAnnotation::Pure => Some(pure_effect_row()),
+        // Legacy parse-only forms: checker semantics are row-only.
+        kea_ast::EffectAnnotation::Volatile | kea_ast::EffectAnnotation::Impure => None,
         kea_ast::EffectAnnotation::Var(name) => {
             let var = row_var_from_name(name, effect_var_bindings, next_effect_var);
-            EffectRow::open(vec![], var)
+            Some(EffectRow::open(vec![], var))
         }
         kea_ast::EffectAnnotation::Row(row) => {
             let mut visited = BTreeSet::new();
@@ -9210,7 +9221,6 @@ fn effect_row_from_annotation(
                 effect_var_bindings,
                 next_effect_var,
             )
-            .unwrap_or_else(impure_effect_row)
         }
     }
 }
@@ -9284,11 +9294,9 @@ fn function_param_effect_row_from_type_annotation(
     next_effect_var: &mut u32,
 ) -> Option<EffectRow> {
     match ann {
-        TypeAnnotation::FunctionWithEffect(_, effect, _) => Some(effect_row_from_annotation(
-            &effect.node,
-            effect_var_bindings,
-            next_effect_var,
-        )),
+        TypeAnnotation::FunctionWithEffect(_, effect, _) => {
+            effect_row_from_annotation(&effect.node, effect_var_bindings, next_effect_var)
+        }
         TypeAnnotation::Forall { ty, .. } => function_param_effect_row_from_type_annotation(
             ty,
             effect_var_bindings,
@@ -9316,7 +9324,7 @@ fn function_effect_signature_from_type_annotation(
                 })
                 .collect();
             let effect_row =
-                effect_row_from_annotation(&effect.node, effect_var_bindings, next_effect_var);
+                effect_row_from_annotation(&effect.node, effect_var_bindings, next_effect_var)?;
             Some(FunctionEffectSignature {
                 param_effect_rows,
                 effect_row,
@@ -9355,7 +9363,7 @@ pub fn function_effect_signature_from_decl(fn_decl: &FnDecl) -> Option<FunctionE
         &effect_ann.node,
         &mut effect_var_bindings,
         &mut next_effect_var,
-    );
+    )?;
     Some(FunctionEffectSignature {
         param_effect_rows,
         effect_row,
@@ -9390,7 +9398,7 @@ pub fn function_effect_signature_from_trait_method(
         effect_ann,
         &mut effect_var_bindings,
         &mut next_effect_var,
-    );
+    )?;
     Some(FunctionEffectSignature {
         param_effect_rows,
         effect_row,
@@ -9736,15 +9744,7 @@ fn effect_row_annotation_label(row: &kea_ast::EffectRowAnnotation) -> String {
 }
 
 fn effect_item_name_to_compat_row(name: &str) -> EffectRow {
-    match name {
-        "pure" | "Pure" => EffectRow::pure(),
-        "volatile" | "Volatile" => {
-            EffectRow::closed(vec![(Label::new("Volatile"), Type::Unit)])
-        }
-        "impure" | "Impure" => EffectRow::closed(vec![(Label::new("IO"), Type::Unit)]),
-        "Fail" => EffectRow::closed(vec![(Label::new("Fail"), Type::Unit)]),
-        _ => EffectRow::closed(vec![(Label::new(name), Type::Unit)]),
-    }
+    EffectRow::closed(vec![(Label::new(name), Type::Unit)])
 }
 
 fn resolve_effect_payload_type(payload: &str, records: Option<&RecordRegistry>) -> Option<Type> {
@@ -9944,8 +9944,8 @@ fn effect_annotation_to_compat_row(
 ) -> Option<EffectRow> {
     match effect {
         kea_ast::EffectAnnotation::Pure => Some(pure_effect_row()),
-        kea_ast::EffectAnnotation::Volatile => Some(volatile_effect_row()),
-        kea_ast::EffectAnnotation::Impure => Some(impure_effect_row()),
+        // Legacy parse-only forms: checker semantics are row-only.
+        kea_ast::EffectAnnotation::Volatile | kea_ast::EffectAnnotation::Impure => None,
         kea_ast::EffectAnnotation::Var(_) => None,
         kea_ast::EffectAnnotation::Row(row) => {
             if let Some(records) = records {
