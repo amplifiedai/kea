@@ -11,10 +11,10 @@ use std::sync::Arc;
 use cranelift::prelude::{
     AbiParam, Configurable, FunctionBuilder, FunctionBuilderContext, InstBuilder, Value, types,
 };
-use cranelift_codegen::ir::{MemFlags, TrapCode};
 use cranelift_codegen::ir::condcodes::{FloatCC, IntCC};
-use cranelift_codegen::{isa, settings};
+use cranelift_codegen::ir::{MemFlags, TrapCode};
 use cranelift_codegen::isa::CallConv;
+use cranelift_codegen::{isa, settings};
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{FuncId, Linkage, Module};
 use cranelift_object::{ObjectBuilder, ObjectModule};
@@ -123,7 +123,9 @@ pub struct FunctionPassStats {
 pub enum CodegenError {
     #[error("ABI manifest missing function `{function}`")]
     MissingAbiEntry { function: String },
-    #[error("ABI manifest parameter class count mismatch for `{function}`: expected {expected}, got {actual}")]
+    #[error(
+        "ABI manifest parameter class count mismatch for `{function}`: expected {expected}, got {actual}"
+    )]
     AbiParamCountMismatch {
         function: String,
         expected: usize,
@@ -243,6 +245,51 @@ fn opt_level_setting(level: OptimizationLevel) -> &'static str {
     }
 }
 
+#[derive(Debug, Clone)]
+struct RuntimeFunctionSig {
+    logical_return: Type,
+    runtime_return: Type,
+    fail_result_abi: bool,
+}
+
+fn fail_payload_type(row: &EffectRow) -> Option<Type> {
+    row.row
+        .fields
+        .iter()
+        .find(|(label, _)| label.as_str() == "Fail")
+        .map(|(_, payload)| payload.clone())
+}
+
+fn runtime_function_signature(function: &MirFunction) -> RuntimeFunctionSig {
+    if is_fail_only_effect_row(&function.signature.effects)
+        && !matches!(function.signature.ret, Type::Result(_, _))
+        && let Some(err_ty) = fail_payload_type(&function.signature.effects)
+    {
+        return RuntimeFunctionSig {
+            logical_return: function.signature.ret.clone(),
+            runtime_return: Type::Result(
+                Box::new(function.signature.ret.clone()),
+                Box::new(err_ty),
+            ),
+            fail_result_abi: true,
+        };
+    }
+
+    RuntimeFunctionSig {
+        logical_return: function.signature.ret.clone(),
+        runtime_return: function.signature.ret.clone(),
+        fail_result_abi: false,
+    }
+}
+
+fn runtime_signature_map(module: &MirModule) -> BTreeMap<String, RuntimeFunctionSig> {
+    module
+        .functions
+        .iter()
+        .map(|function| (function.name.clone(), runtime_function_signature(function)))
+        .collect()
+}
+
 fn compile_with_jit(
     module: &MirModule,
     layout_plan: &BackendLayoutPlan,
@@ -289,36 +336,52 @@ fn compile_into_module<M: Module>(
     mir: &MirModule,
     layout_plan: &BackendLayoutPlan,
 ) -> Result<BTreeMap<String, FuncId>, CodegenError> {
+    let runtime_signatures = runtime_signature_map(mir);
     let mut func_ids: BTreeMap<String, FuncId> = BTreeMap::new();
     let mut external_func_ids: BTreeMap<String, FuncId> = BTreeMap::new();
     let mut signatures: BTreeMap<String, cranelift_codegen::ir::Signature> = BTreeMap::new();
     let external_signatures = collect_external_call_signatures(module, mir)?;
-    let requires_record_alloc = mir.functions.iter().any(|function| {
+    let mut requires_record_alloc = false;
+    for function in &mir.functions {
+        let runtime_sig = runtime_signatures.get(&function.name).ok_or_else(|| {
+            CodegenError::UnknownFunction {
+                function: function.name.clone(),
+            }
+        })?;
         let needs_aggregate_alloc = function.blocks.iter().any(|block| {
             block
                 .instructions
                 .iter()
                 .any(|inst| matches!(inst, MirInst::RecordInit { .. } | MirInst::SumInit { .. }))
         });
-        let needs_fail_result_alloc = matches!(function.signature.ret, Type::Result(_, _))
-            && function.blocks.iter().any(|block| {
-                block.instructions.iter().any(|inst| {
-                    matches!(
-                        inst,
-                        MirInst::EffectOp {
-                            class: MirEffectOpClass::ZeroResume,
-                            effect,
-                            operation,
-                            ..
-                        } if effect == "Fail" && operation == "fail"
-                    )
-                })
-            });
-        needs_aggregate_alloc || needs_fail_result_alloc
-    });
+        let needs_fail_result_alloc = runtime_sig.fail_result_abi
+            || (matches!(runtime_sig.runtime_return, Type::Result(_, _))
+                && function.blocks.iter().any(|block| {
+                    block.instructions.iter().any(|inst| {
+                        matches!(
+                            inst,
+                            MirInst::EffectOp {
+                                class: MirEffectOpClass::ZeroResume,
+                                effect,
+                                operation,
+                                ..
+                            } if effect == "Fail" && operation == "fail"
+                        )
+                    })
+                }));
+        if needs_aggregate_alloc || needs_fail_result_alloc {
+            requires_record_alloc = true;
+            break;
+        }
+    }
 
     for function in &mir.functions {
-        let signature = build_signature(module, function)?;
+        let runtime_sig = runtime_signatures.get(&function.name).ok_or_else(|| {
+            CodegenError::UnknownFunction {
+                function: function.name.clone(),
+            }
+        })?;
+        let signature = build_signature(module, function, runtime_sig)?;
         let linkage = if function.name == "main" {
             Linkage::Export
         } else {
@@ -363,12 +426,11 @@ fn compile_into_module<M: Module>(
 
     for function in &mir.functions {
         let mut context = module.make_context();
-        context.func.signature = signatures
-            .get(&function.name)
-            .cloned()
-            .ok_or_else(|| CodegenError::UnknownFunction {
+        context.func.signature = signatures.get(&function.name).cloned().ok_or_else(|| {
+            CodegenError::UnknownFunction {
                 function: function.name.clone(),
-            })?;
+            }
+        })?;
 
         {
             let mut builder = FunctionBuilder::new(&mut context.func, &mut builder_context);
@@ -377,12 +439,13 @@ fn compile_into_module<M: Module>(
                 block_map.insert(block.id.clone(), builder.create_block());
             }
 
-            let entry_block = *block_map
-                .get(&function.entry)
-                .ok_or_else(|| CodegenError::UnsupportedMir {
-                    function: function.name.clone(),
-                    detail: "entry block missing".to_string(),
-                })?;
+            let entry_block =
+                *block_map
+                    .get(&function.entry)
+                    .ok_or_else(|| CodegenError::UnsupportedMir {
+                        function: function.name.clone(),
+                        detail: "entry block missing".to_string(),
+                    })?;
 
             builder.append_block_params_for_function_params(entry_block);
             for block in &function.blocks {
@@ -403,6 +466,11 @@ fn compile_into_module<M: Module>(
             }
 
             let mut values: BTreeMap<MirValueId, Value> = BTreeMap::new();
+            let current_runtime_sig = runtime_signatures.get(&function.name).ok_or_else(|| {
+                CodegenError::UnknownFunction {
+                    function: function.name.clone(),
+                }
+            })?;
 
             for block in &function.blocks {
                 let clif_block =
@@ -414,7 +482,9 @@ fn compile_into_module<M: Module>(
                         })?;
                 builder.switch_to_block(clif_block);
                 if block.id == function.entry {
-                    for (index, value) in builder.block_params(clif_block).iter().copied().enumerate() {
+                    for (index, value) in
+                        builder.block_params(clif_block).iter().copied().enumerate()
+                    {
                         values.insert(MirValueId(index as u32), value);
                     }
                 } else {
@@ -448,7 +518,8 @@ fn compile_into_module<M: Module>(
                     external_func_ids: &external_func_ids,
                     layout_plan,
                     malloc_func_id,
-                    return_ty: &function.signature.ret,
+                    runtime_signatures: &runtime_signatures,
+                    current_runtime_sig,
                 };
                 for inst in block.instructions.iter().take(instruction_count) {
                     if lower_instruction(
@@ -466,7 +537,8 @@ fn compile_into_module<M: Module>(
                 if !block_terminated {
                     let terminator_ctx = LowerTerminatorCtx {
                         function_name: &function.name,
-                        return_ty: &function.signature.ret,
+                        current_runtime_sig,
+                        malloc_func_id,
                         values: &values,
                         block_map: &block_map,
                         func_ids: &func_ids,
@@ -478,11 +550,12 @@ fn compile_into_module<M: Module>(
             builder.finalize();
         }
 
-        let func_id = *func_ids
-            .get(&function.name)
-            .ok_or_else(|| CodegenError::UnknownFunction {
-                function: function.name.clone(),
-            })?;
+        let func_id =
+            *func_ids
+                .get(&function.name)
+                .ok_or_else(|| CodegenError::UnknownFunction {
+                    function: function.name.clone(),
+                })?;
         module
             .define_function(func_id, &mut context)
             .map_err(|detail| CodegenError::Module {
@@ -502,6 +575,15 @@ fn execute_mir_main_jit(module: &MirModule, config: &BackendConfig) -> Result<i3
         .ok_or_else(|| CodegenError::UnknownFunction {
             function: "main".to_string(),
         })?;
+    let main_runtime_sig = runtime_function_signature(main);
+    if main_runtime_sig.fail_result_abi {
+        return Err(CodegenError::UnsupportedMir {
+            function: "main".to_string(),
+            detail:
+                "JIT entrypoint does not support Fail-only `main`; handle Fail before returning from main"
+                    .to_string(),
+        });
+    }
     if !main.signature.params.is_empty() {
         return Err(CodegenError::UnsupportedMir {
             function: "main".to_string(),
@@ -557,6 +639,7 @@ fn execute_mir_main_jit(module: &MirModule, config: &BackendConfig) -> Result<i3
 fn build_signature<M: Module>(
     module: &M,
     function: &MirFunction,
+    runtime_sig: &RuntimeFunctionSig,
 ) -> Result<cranelift_codegen::ir::Signature, CodegenError> {
     let mut signature = module.make_signature();
     if function.name != "main"
@@ -573,8 +656,8 @@ fn build_signature<M: Module>(
         signature.params.push(AbiParam::new(ty));
     }
 
-    if function.signature.ret != Type::Unit {
-        let ret_type = clif_type(&function.signature.ret)?;
+    if runtime_sig.runtime_return != Type::Unit {
+        let ret_type = clif_type(&runtime_sig.runtime_return)?;
         signature.returns.push(AbiParam::new(ret_type));
     }
 
@@ -666,12 +749,68 @@ fn clif_type(ty: &Type) -> Result<cranelift::prelude::Type, CodegenError> {
     }
 }
 
+fn coerce_value_to_clif_type(
+    builder: &mut FunctionBuilder,
+    value: Value,
+    expected_ty: cranelift::prelude::Type,
+) -> Value {
+    let actual_ty = builder.func.dfg.value_type(value);
+    if actual_ty == expected_ty {
+        return value;
+    }
+    if actual_ty.is_int() && expected_ty.is_int() {
+        if actual_ty.bits() < expected_ty.bits() {
+            return builder.ins().uextend(expected_ty, value);
+        }
+        if actual_ty.bits() > expected_ty.bits() {
+            return builder.ins().ireduce(expected_ty, value);
+        }
+    }
+    value
+}
+
+fn lower_result_allocation(
+    module: &mut impl Module,
+    builder: &mut FunctionBuilder,
+    function_name: &str,
+    malloc_func_id: Option<FuncId>,
+    tag: i32,
+    payload: Value,
+    payload_ty: &Type,
+) -> Result<Value, CodegenError> {
+    let malloc_func_id = malloc_func_id.ok_or_else(|| CodegenError::UnsupportedMir {
+        function: function_name.to_string(),
+        detail: "Result lowering requires malloc import".to_string(),
+    })?;
+    let malloc_ref = module.declare_func_in_func(malloc_func_id, builder.func);
+    let ptr_ty = module.target_config().pointer_type();
+    let alloc_size = builder.ins().iconst(ptr_ty, 16);
+    let alloc_call = builder.ins().call(malloc_ref, &[alloc_size]);
+    let result_ptr = builder
+        .inst_results(alloc_call)
+        .first()
+        .copied()
+        .ok_or_else(|| CodegenError::UnsupportedMir {
+            function: function_name.to_string(),
+            detail: "malloc call returned no pointer value".to_string(),
+        })?;
+    let tag_value = builder.ins().iconst(types::I32, i64::from(tag));
+    builder
+        .ins()
+        .store(MemFlags::new(), tag_value, result_ptr, 0);
+    let payload_clif_ty = clif_type(payload_ty)?;
+    let payload = coerce_value_to_clif_type(builder, payload, payload_clif_ty);
+    builder.ins().store(MemFlags::new(), payload, result_ptr, 8);
+    Ok(result_ptr)
+}
+
 struct LowerInstCtx<'a> {
     func_ids: &'a BTreeMap<String, FuncId>,
     external_func_ids: &'a BTreeMap<String, FuncId>,
     layout_plan: &'a BackendLayoutPlan,
     malloc_func_id: Option<FuncId>,
-    return_ty: &'a Type,
+    runtime_signatures: &'a BTreeMap<String, RuntimeFunctionSig>,
+    current_runtime_sig: &'a RuntimeFunctionSig,
 }
 
 fn lower_instruction<M: Module>(
@@ -711,14 +850,12 @@ fn lower_instruction<M: Module>(
             record_type,
             fields,
         } => {
-            let layout = ctx
-                .layout_plan
-                .records
-                .get(record_type)
-                .ok_or_else(|| CodegenError::UnsupportedMir {
+            let layout = ctx.layout_plan.records.get(record_type).ok_or_else(|| {
+                CodegenError::UnsupportedMir {
                     function: function_name.to_string(),
                     detail: format!("record layout `{record_type}` not found"),
-                })?;
+                }
+            })?;
             let malloc_func_id = ctx.malloc_func_id.ok_or_else(|| CodegenError::UnsupportedMir {
                 function: function_name.to_string(),
                 detail: format!(
@@ -768,14 +905,14 @@ fn lower_instruction<M: Module>(
             tag,
             fields,
         } => {
-            let layout = ctx
-                .layout_plan
-                .sums
-                .get(sum_type)
-                .ok_or_else(|| CodegenError::UnsupportedMir {
-                    function: function_name.to_string(),
-                    detail: format!("sum layout `{sum_type}` not found"),
-                })?;
+            let layout =
+                ctx.layout_plan
+                    .sums
+                    .get(sum_type)
+                    .ok_or_else(|| CodegenError::UnsupportedMir {
+                        function: function_name.to_string(),
+                        detail: format!("sum layout `{sum_type}` not found"),
+                    })?;
             let expected_fields = *layout.variant_field_counts.get(variant).ok_or_else(|| {
                 CodegenError::UnsupportedMir {
                     function: function_name.to_string(),
@@ -814,12 +951,11 @@ fn lower_instruction<M: Module>(
                     detail: "malloc call returned no pointer value".to_string(),
                 })?;
 
-            let tag_offset = i32::try_from(layout.tag_offset).map_err(|_| {
-                CodegenError::UnsupportedMir {
+            let tag_offset =
+                i32::try_from(layout.tag_offset).map_err(|_| CodegenError::UnsupportedMir {
                     function: function_name.to_string(),
                     detail: format!("sum tag offset for `{sum_type}` does not fit i32"),
-                }
-            })?;
+                })?;
             let tag_value = builder.ins().iconst(types::I32, i64::from(*tag));
             builder
                 .ins()
@@ -828,14 +964,13 @@ fn lower_instruction<M: Module>(
             for (idx, field_value_id) in fields.iter().enumerate() {
                 let field_value = get_value(values, function_name, field_value_id)?;
                 let field_offset = layout.payload_offset + (idx as u32 * 8);
-                let field_offset = i32::try_from(field_offset).map_err(|_| {
-                    CodegenError::UnsupportedMir {
+                let field_offset =
+                    i32::try_from(field_offset).map_err(|_| CodegenError::UnsupportedMir {
                         function: function_name.to_string(),
                         detail: format!(
                             "sum payload offset `{sum_type}.{variant}[{idx}]` does not fit i32"
                         ),
-                    }
-                })?;
+                    })?;
                 builder
                     .ins()
                     .store(MemFlags::new(), field_value, base_ptr, field_offset);
@@ -843,23 +978,28 @@ fn lower_instruction<M: Module>(
             values.insert(dest.clone(), base_ptr);
             Ok(false)
         }
-        MirInst::SumTagLoad { dest, sum, sum_type } => {
+        MirInst::SumTagLoad {
+            dest,
+            sum,
+            sum_type,
+        } => {
             let base = get_value(values, function_name, sum)?;
-            let layout = ctx
-                .layout_plan
-                .sums
-                .get(sum_type)
-                .ok_or_else(|| CodegenError::UnsupportedMir {
-                    function: function_name.to_string(),
-                    detail: format!("sum layout `{sum_type}` not found"),
-                })?;
-            let tag_offset = i32::try_from(layout.tag_offset).map_err(|_| {
-                CodegenError::UnsupportedMir {
+            let layout =
+                ctx.layout_plan
+                    .sums
+                    .get(sum_type)
+                    .ok_or_else(|| CodegenError::UnsupportedMir {
+                        function: function_name.to_string(),
+                        detail: format!("sum layout `{sum_type}` not found"),
+                    })?;
+            let tag_offset =
+                i32::try_from(layout.tag_offset).map_err(|_| CodegenError::UnsupportedMir {
                     function: function_name.to_string(),
                     detail: format!("sum tag offset for `{sum_type}` does not fit i32"),
-                }
-            })?;
-            let tag_i32 = builder.ins().load(types::I32, MemFlags::new(), base, tag_offset);
+                })?;
+            let tag_i32 = builder
+                .ins()
+                .load(types::I32, MemFlags::new(), base, tag_offset);
             let tag_i64 = builder.ins().uextend(types::I64, tag_i32);
             values.insert(dest.clone(), tag_i64);
             Ok(false)
@@ -873,14 +1013,14 @@ fn lower_instruction<M: Module>(
             field_ty,
         } => {
             let base = get_value(values, function_name, sum)?;
-            let layout = ctx
-                .layout_plan
-                .sums
-                .get(sum_type)
-                .ok_or_else(|| CodegenError::UnsupportedMir {
-                    function: function_name.to_string(),
-                    detail: format!("sum layout `{sum_type}` not found"),
-                })?;
+            let layout =
+                ctx.layout_plan
+                    .sums
+                    .get(sum_type)
+                    .ok_or_else(|| CodegenError::UnsupportedMir {
+                        function: function_name.to_string(),
+                        detail: format!("sum layout `{sum_type}` not found"),
+                    })?;
             let expected_fields = *layout.variant_field_counts.get(variant).ok_or_else(|| {
                 CodegenError::UnsupportedMir {
                     function: function_name.to_string(),
@@ -920,26 +1060,29 @@ fn lower_instruction<M: Module>(
             field_ty,
         } => {
             let base = get_value(values, function_name, record)?;
-            let layout = ctx
-                .layout_plan
-                .records
-                .get(record_type)
-                .ok_or_else(|| CodegenError::UnsupportedMir {
+            let layout = ctx.layout_plan.records.get(record_type).ok_or_else(|| {
+                CodegenError::UnsupportedMir {
                     function: function_name.to_string(),
                     detail: format!("record layout `{record_type}` not found"),
-                })?;
-            let offset = *layout
-                .field_offsets
-                .get(field)
-                .ok_or_else(|| CodegenError::UnsupportedMir {
-                    function: function_name.to_string(),
-                    detail: format!(
-                        "record layout `{record_type}` missing field `{field}` during lowering"
-                    ),
-                })?;
+                }
+            })?;
+            let offset =
+                *layout
+                    .field_offsets
+                    .get(field)
+                    .ok_or_else(|| CodegenError::UnsupportedMir {
+                        function: function_name.to_string(),
+                        detail: format!(
+                            "record layout `{record_type}` missing field `{field}` during lowering"
+                        ),
+                    })?;
             let addr = builder.ins().iadd_imm(base, i64::from(offset));
             let resolved_field_ty = if *field_ty == Type::Dynamic {
-                layout.field_types.get(field).cloned().unwrap_or(Type::Dynamic)
+                layout
+                    .field_types
+                    .get(field)
+                    .cloned()
+                    .unwrap_or(Type::Dynamic)
             } else {
                 field_ty.clone()
             };
@@ -961,14 +1104,22 @@ fn lower_instruction<M: Module>(
                 lowered_args.push(get_value(values, function_name, arg)?);
             }
 
+            let mut callee_uses_fail_result_abi = false;
             let call_result = match callee {
                 MirCallee::Local(name) => {
-                    let callee_id = *ctx
-                        .func_ids
+                    callee_uses_fail_result_abi = ctx
+                        .runtime_signatures
                         .get(name)
                         .ok_or_else(|| CodegenError::UnknownFunction {
                             function: name.clone(),
-                        })?;
+                        })?
+                        .fail_result_abi;
+                    let callee_id =
+                        *ctx.func_ids
+                            .get(name)
+                            .ok_or_else(|| CodegenError::UnknownFunction {
+                                function: name.clone(),
+                            })?;
                     let local_ref = module.declare_func_in_func(callee_id, builder.func);
                     let call = builder.ins().call(local_ref, &lowered_args);
                     builder.inst_results(call).first().copied()
@@ -984,12 +1135,11 @@ fn lower_instruction<M: Module>(
                             ),
                         });
                     }
-                    let callee_id = *ctx
-                        .external_func_ids
-                        .get(name)
-                        .ok_or_else(|| CodegenError::UnknownFunction {
+                    let callee_id = *ctx.external_func_ids.get(name).ok_or_else(|| {
+                        CodegenError::UnknownFunction {
                             function: name.clone(),
-                        })?;
+                        }
+                    })?;
                     let external_ref = module.declare_func_in_func(callee_id, builder.func);
                     let call = builder.ins().call(external_ref, &lowered_args);
                     let call_result = builder.inst_results(call).first().copied();
@@ -1006,6 +1156,45 @@ fn lower_instruction<M: Module>(
                     });
                 }
             };
+
+            if callee_uses_fail_result_abi {
+                let result_ptr = call_result.ok_or_else(|| CodegenError::UnsupportedMir {
+                    function: function_name.to_string(),
+                    detail: "Fail-only callee must return Result handle in runtime ABI".to_string(),
+                })?;
+                let tag = builder
+                    .ins()
+                    .load(types::I32, MemFlags::new(), result_ptr, 0);
+                let is_ok = builder.ins().icmp_imm(IntCC::Equal, tag, 0);
+                let ok_block = builder.create_block();
+                let err_block = builder.create_block();
+                let continue_block = builder.create_block();
+                builder.ins().brif(is_ok, ok_block, &[], err_block, &[]);
+
+                builder.switch_to_block(err_block);
+                if ctx.current_runtime_sig.fail_result_abi {
+                    builder.ins().return_(&[result_ptr]);
+                } else {
+                    builder.ins().trap(TrapCode::unwrap_user(1));
+                }
+
+                builder.switch_to_block(ok_block);
+                if let Some(dest) = result {
+                    if *ret_type == Type::Unit {
+                        values.insert(dest.clone(), builder.ins().iconst(types::I8, 0));
+                    } else {
+                        let payload_ty = clif_type(ret_type)?;
+                        let payload =
+                            builder
+                                .ins()
+                                .load(payload_ty, MemFlags::new(), result_ptr, 8);
+                        values.insert(dest.clone(), payload);
+                    }
+                }
+                builder.ins().jump(continue_block, &[]);
+                builder.switch_to_block(continue_block);
+                return Ok(false);
+            }
 
             if let Some(dest) = result {
                 let value = call_result.ok_or_else(|| CodegenError::UnsupportedMir {
@@ -1033,7 +1222,7 @@ fn lower_instruction<M: Module>(
                                 .to_string(),
                     });
                 }
-                if let Type::Result(_, err_ty) = ctx.return_ty {
+                if let Type::Result(_, err_ty) = &ctx.current_runtime_sig.runtime_return {
                     let payload_value_id = if let MirInst::EffectOp { args, .. } = inst {
                         args.first().ok_or_else(|| CodegenError::UnsupportedMir {
                             function: function_name.to_string(),
@@ -1045,36 +1234,15 @@ fn lower_instruction<M: Module>(
                         unreachable!("matched EffectOp above")
                     };
                     let payload = get_value(values, function_name, payload_value_id)?;
-                    let malloc_func_id = ctx.malloc_func_id.ok_or_else(|| CodegenError::UnsupportedMir {
-                        function: function_name.to_string(),
-                        detail:
-                            "Fail.zero-resume Result lowering requires malloc import"
-                                .to_string(),
-                    })?;
-                    let malloc_ref = module.declare_func_in_func(malloc_func_id, builder.func);
-                    let ptr_ty = module.target_config().pointer_type();
-                    let alloc_size = builder.ins().iconst(ptr_ty, 16);
-                    let alloc_call = builder.ins().call(malloc_ref, &[alloc_size]);
-                    let result_ptr = builder
-                        .inst_results(alloc_call)
-                        .first()
-                        .copied()
-                        .ok_or_else(|| CodegenError::UnsupportedMir {
-                            function: function_name.to_string(),
-                            detail: "malloc call returned no pointer value".to_string(),
-                        })?;
-                    let err_tag = builder.ins().iconst(types::I32, 1);
-                    builder.ins().store(MemFlags::new(), err_tag, result_ptr, 0);
-                    let payload_ty = clif_type(err_ty)?;
-                    let payload = match (builder.func.dfg.value_type(payload), payload_ty) {
-                        (lhs, rhs) if lhs == rhs => payload,
-                        (types::I8, types::I64) => builder.ins().uextend(types::I64, payload),
-                        (types::I64, types::I8) => builder.ins().ireduce(types::I8, payload),
-                        _ => payload,
-                    };
-                    builder
-                        .ins()
-                        .store(MemFlags::new(), payload, result_ptr, 8);
+                    let result_ptr = lower_result_allocation(
+                        module,
+                        builder,
+                        function_name,
+                        ctx.malloc_func_id,
+                        1,
+                        payload,
+                        err_ty,
+                    )?;
                     builder.ins().return_(&[result_ptr]);
                     return Ok(true);
                 }
@@ -1171,7 +1339,9 @@ fn lower_binary(
             b1_to_i8(builder, pred)
         }
         MirBinaryOp::Gte if lhs_ty.is_int() => {
-            let pred = builder.ins().icmp(IntCC::SignedGreaterThanOrEqual, lhs, rhs);
+            let pred = builder
+                .ins()
+                .icmp(IntCC::SignedGreaterThanOrEqual, lhs, rhs);
             b1_to_i8(builder, pred)
         }
 
@@ -1206,7 +1376,9 @@ fn lower_binary(
         _ => {
             return Err(CodegenError::UnsupportedMir {
                 function: function_name.to_string(),
-                detail: format!("binary operation `{op:?}` unsupported for Cranelift type `{lhs_ty}`"),
+                detail: format!(
+                    "binary operation `{op:?}` unsupported for Cranelift type `{lhs_ty}`"
+                ),
             });
         }
     };
@@ -1257,7 +1429,8 @@ fn b1_to_i8(builder: &mut FunctionBuilder, predicate: Value) -> Value {
 
 struct LowerTerminatorCtx<'a> {
     function_name: &'a str,
-    return_ty: &'a Type,
+    current_runtime_sig: &'a RuntimeFunctionSig,
+    malloc_func_id: Option<FuncId>,
     values: &'a BTreeMap<MirValueId, Value>,
     block_map: &'a BTreeMap<kea_mir::MirBlockId, cranelift::prelude::Block>,
     func_ids: &'a BTreeMap<String, FuncId>,
@@ -1276,12 +1449,12 @@ fn lower_terminator(
     }
 
     if let Some(tail_call) = detect_tail_self_call(ctx.function_name, block) {
-        let callee_id = *ctx
-            .func_ids
-            .get(ctx.function_name)
-            .ok_or_else(|| CodegenError::UnknownFunction {
-                function: ctx.function_name.to_string(),
-            })?;
+        let callee_id =
+            *ctx.func_ids
+                .get(ctx.function_name)
+                .ok_or_else(|| CodegenError::UnknownFunction {
+                    function: ctx.function_name.to_string(),
+                })?;
         let callee_ref = module.declare_func_in_func(callee_id, builder.func);
         let mut lowered_args = Vec::with_capacity(tail_call.args.len());
         for arg in &tail_call.args {
@@ -1293,7 +1466,30 @@ fn lower_terminator(
 
     match &block.terminator {
         MirTerminator::Return { value } => {
-            if *ctx.return_ty == Type::Unit {
+            if ctx.current_runtime_sig.fail_result_abi {
+                let payload = if ctx.current_runtime_sig.logical_return == Type::Unit {
+                    builder.ins().iconst(types::I8, 0)
+                } else {
+                    let value_id = value.as_ref().ok_or_else(|| CodegenError::UnsupportedMir {
+                        function: ctx.function_name.to_string(),
+                        detail: "non-unit function returned without value".to_string(),
+                    })?;
+                    get_value(ctx.values, ctx.function_name, value_id)?
+                };
+                let result_ptr = lower_result_allocation(
+                    module,
+                    builder,
+                    ctx.function_name,
+                    ctx.malloc_func_id,
+                    0,
+                    payload,
+                    &ctx.current_runtime_sig.logical_return,
+                )?;
+                builder.ins().return_(&[result_ptr]);
+                return Ok(());
+            }
+
+            if ctx.current_runtime_sig.runtime_return == Type::Unit {
                 builder.ins().return_(&[]);
                 return Ok(());
             }
@@ -1348,7 +1544,9 @@ fn lower_terminator(
             } else {
                 builder.ins().icmp_imm(IntCC::NotEqual, cond, 0)
             };
-            builder.ins().brif(bool_pred, then_clif, &[], else_clif, &[]);
+            builder
+                .ins()
+                .brif(bool_pred, then_clif, &[], else_clif, &[]);
             Ok(())
         }
         MirTerminator::Unreachable => {
@@ -2437,6 +2635,129 @@ mod tests {
         }
     }
 
+    fn sample_fail_only_call_propagation_err_module() -> MirModule {
+        MirModule {
+            functions: vec![
+                MirFunction {
+                    name: "leaf".to_string(),
+                    signature: MirFunctionSignature {
+                        params: vec![],
+                        ret: Type::Int,
+                        effects: EffectRow::closed(vec![(Label::new("Fail"), Type::Int)]),
+                    },
+                    entry: MirBlockId(0),
+                    blocks: vec![MirBlock {
+                        id: MirBlockId(0),
+                        params: vec![],
+                        instructions: vec![
+                            MirInst::Const {
+                                dest: MirValueId(0),
+                                literal: MirLiteral::Int(42),
+                            },
+                            MirInst::EffectOp {
+                                class: MirEffectOpClass::ZeroResume,
+                                effect: "Fail".to_string(),
+                                operation: "fail".to_string(),
+                                args: vec![MirValueId(0)],
+                                result: None,
+                            },
+                        ],
+                        terminator: MirTerminator::Unreachable,
+                    }],
+                },
+                MirFunction {
+                    name: "caller".to_string(),
+                    signature: MirFunctionSignature {
+                        params: vec![],
+                        ret: Type::Int,
+                        effects: EffectRow::closed(vec![(Label::new("Fail"), Type::Int)]),
+                    },
+                    entry: MirBlockId(0),
+                    blocks: vec![MirBlock {
+                        id: MirBlockId(0),
+                        params: vec![],
+                        instructions: vec![MirInst::Call {
+                            callee: MirCallee::Local("leaf".to_string()),
+                            args: vec![],
+                            arg_types: vec![],
+                            result: Some(MirValueId(0)),
+                            ret_type: Type::Int,
+                            cc_manifest_id: "default".to_string(),
+                        }],
+                        terminator: MirTerminator::Return {
+                            value: Some(MirValueId(0)),
+                        },
+                    }],
+                },
+            ],
+            layouts: MirLayoutCatalog::default(),
+        }
+    }
+
+    fn sample_fail_only_call_propagation_ok_module() -> MirModule {
+        MirModule {
+            functions: vec![
+                MirFunction {
+                    name: "leaf".to_string(),
+                    signature: MirFunctionSignature {
+                        params: vec![],
+                        ret: Type::Int,
+                        effects: EffectRow::closed(vec![(Label::new("Fail"), Type::Int)]),
+                    },
+                    entry: MirBlockId(0),
+                    blocks: vec![MirBlock {
+                        id: MirBlockId(0),
+                        params: vec![],
+                        instructions: vec![MirInst::Const {
+                            dest: MirValueId(0),
+                            literal: MirLiteral::Int(7),
+                        }],
+                        terminator: MirTerminator::Return {
+                            value: Some(MirValueId(0)),
+                        },
+                    }],
+                },
+                MirFunction {
+                    name: "caller".to_string(),
+                    signature: MirFunctionSignature {
+                        params: vec![],
+                        ret: Type::Int,
+                        effects: EffectRow::closed(vec![(Label::new("Fail"), Type::Int)]),
+                    },
+                    entry: MirBlockId(0),
+                    blocks: vec![MirBlock {
+                        id: MirBlockId(0),
+                        params: vec![],
+                        instructions: vec![
+                            MirInst::Call {
+                                callee: MirCallee::Local("leaf".to_string()),
+                                args: vec![],
+                                arg_types: vec![],
+                                result: Some(MirValueId(0)),
+                                ret_type: Type::Int,
+                                cc_manifest_id: "default".to_string(),
+                            },
+                            MirInst::Const {
+                                dest: MirValueId(1),
+                                literal: MirLiteral::Int(1),
+                            },
+                            MirInst::Binary {
+                                dest: MirValueId(2),
+                                op: MirBinaryOp::Add,
+                                left: MirValueId(0),
+                                right: MirValueId(1),
+                            },
+                        ],
+                        terminator: MirTerminator::Return {
+                            value: Some(MirValueId(2)),
+                        },
+                    }],
+                },
+            ],
+            layouts: MirLayoutCatalog::default(),
+        }
+    }
+
     #[test]
     fn validate_abi_manifest_reports_missing_function() {
         let module = sample_stats_module();
@@ -2588,8 +2909,8 @@ mod tests {
             result: Some(MirValueId(1)),
         });
 
-        let err =
-            validate_fail_only_invariants(&module).expect_err("should reject dispatch in Fail-only");
+        let err = validate_fail_only_invariants(&module)
+            .expect_err("should reject dispatch in Fail-only");
         assert!(matches!(
             err,
             CodegenError::FailOnlyInvariantViolation { function, .. } if function == "fail_only"
@@ -2602,8 +2923,8 @@ mod tests {
             effect: "Fail".to_string(),
         });
 
-        let err =
-            validate_fail_only_invariants(&module).expect_err("should reject handler ops in Fail-only");
+        let err = validate_fail_only_invariants(&module)
+            .expect_err("should reject handler ops in Fail-only");
         assert!(matches!(
             err,
             CodegenError::FailOnlyInvariantViolation { function, .. } if function == "fail_only"
@@ -2648,7 +2969,10 @@ mod tests {
         let manifest = default_abi_manifest(&module);
 
         let sig = manifest.get("stats_only").expect("stats_only signature");
-        assert_eq!(sig.effect_evidence, AbiEffectEvidencePlacement::TrailingParam);
+        assert_eq!(
+            sig.effect_evidence,
+            AbiEffectEvidencePlacement::TrailingParam
+        );
     }
 
     #[test]
@@ -2694,18 +3018,27 @@ mod tests {
             .expect("compilation should succeed");
 
         assert_eq!(artifact.stats.per_function.len(), 1);
-        assert!(artifact.object.is_empty(), "JIT mode should not emit object bytes");
+        assert!(
+            artifact.object.is_empty(),
+            "JIT mode should not emit object bytes"
+        );
     }
 
     #[test]
     fn cranelift_backend_accepts_zero_resume_fail_effect_op() {
-        let module = sample_fail_only_module_with_inst(MirInst::EffectOp {
-            class: MirEffectOpClass::ZeroResume,
-            effect: "Fail".to_string(),
-            operation: "fail".to_string(),
-            args: vec![],
-            result: None,
-        });
+        let module = sample_fail_only_result_module_with_insts(vec![
+            MirInst::Const {
+                dest: MirValueId(0),
+                literal: MirLiteral::Int(7),
+            },
+            MirInst::EffectOp {
+                class: MirEffectOpClass::ZeroResume,
+                effect: "Fail".to_string(),
+                operation: "fail".to_string(),
+                args: vec![MirValueId(0)],
+                result: None,
+            },
+        ]);
         let manifest = default_abi_manifest(&module);
         let backend = CraneliftBackend;
 
@@ -2741,13 +3074,68 @@ mod tests {
 
         let fail_only_id = *func_ids.get("fail_only").expect("fail_only function id");
         let fail_only_ptr = jit_module.get_finalized_function(fail_only_id);
-        let fail_only: unsafe extern "C" fn() -> usize = unsafe { std::mem::transmute(fail_only_ptr) };
+        let fail_only: unsafe extern "C" fn() -> usize =
+            unsafe { std::mem::transmute(fail_only_ptr) };
         let result_ptr = unsafe { fail_only() };
         assert_ne!(result_ptr, 0, "Fail result pointer should not be null");
         let tag = unsafe { *(result_ptr as *const i32) };
         assert_eq!(tag, 1, "Fail lowering should return Err tag");
         let payload = unsafe { *((result_ptr as *const u8).add(8) as *const i64) };
         assert_eq!(payload, 42, "Fail payload should be preserved in Err");
+    }
+
+    #[test]
+    fn cranelift_backend_fail_only_local_call_propagates_err_result() {
+        let module = sample_fail_only_call_propagation_err_module();
+        let layout_plan = plan_layout_catalog(&module).expect("layout planning should succeed");
+        let isa = build_isa(&BackendConfig::default()).expect("host ISA should build");
+        let builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
+        let mut jit_module = JITModule::new(builder);
+        let func_ids = compile_into_module(&mut jit_module, &module, &layout_plan)
+            .expect("fail-only call propagation module should compile");
+        jit_module
+            .finalize_definitions()
+            .expect("finalize definitions should succeed");
+
+        let caller_id = *func_ids.get("caller").expect("caller function id");
+        let caller_ptr = jit_module.get_finalized_function(caller_id);
+        let caller: unsafe extern "C" fn() -> usize = unsafe { std::mem::transmute(caller_ptr) };
+        let result_ptr = unsafe { caller() };
+        assert_ne!(result_ptr, 0, "caller result pointer should not be null");
+        let tag = unsafe { *(result_ptr as *const i32) };
+        assert_eq!(tag, 1, "Fail-only local call should propagate Err tag");
+        let payload = unsafe { *((result_ptr as *const u8).add(8) as *const i64) };
+        assert_eq!(
+            payload, 42,
+            "Fail-only local call should preserve Err payload"
+        );
+    }
+
+    #[test]
+    fn cranelift_backend_fail_only_local_call_unwraps_ok_payload() {
+        let module = sample_fail_only_call_propagation_ok_module();
+        let layout_plan = plan_layout_catalog(&module).expect("layout planning should succeed");
+        let isa = build_isa(&BackendConfig::default()).expect("host ISA should build");
+        let builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
+        let mut jit_module = JITModule::new(builder);
+        let func_ids = compile_into_module(&mut jit_module, &module, &layout_plan)
+            .expect("fail-only call propagation module should compile");
+        jit_module
+            .finalize_definitions()
+            .expect("finalize definitions should succeed");
+
+        let caller_id = *func_ids.get("caller").expect("caller function id");
+        let caller_ptr = jit_module.get_finalized_function(caller_id);
+        let caller: unsafe extern "C" fn() -> usize = unsafe { std::mem::transmute(caller_ptr) };
+        let result_ptr = unsafe { caller() };
+        assert_ne!(result_ptr, 0, "caller result pointer should not be null");
+        let tag = unsafe { *(result_ptr as *const i32) };
+        assert_eq!(tag, 0, "successful local call should return Ok tag");
+        let payload = unsafe { *((result_ptr as *const u8).add(8) as *const i64) };
+        assert_eq!(
+            payload, 8,
+            "caller should unwrap Ok payload, continue computation, and re-wrap"
+        );
     }
 
     #[test]
@@ -2764,7 +3152,10 @@ mod tests {
             .compile_module(&module, &manifest, &config)
             .expect("AOT compilation should succeed");
 
-        assert!(!artifact.object.is_empty(), "AOT mode should emit object bytes");
+        assert!(
+            !artifact.object.is_empty(),
+            "AOT mode should emit object bytes"
+        );
     }
 
     #[test]
