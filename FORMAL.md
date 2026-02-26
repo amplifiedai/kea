@@ -9,6 +9,7 @@ This work starts by cannibalizing the existing Rill formal corpus and then exten
 - **Phase 1 (active):** Core migration from Rill `formal/` into `kea/formal/`, with effect-row surface aligned to Kea (`Ty.functionEff` + `EffectRow`) and current Lean build green.
 - **Phase 1 (active):** Core migration now includes explicit WF judgments and substitution-preservation lemmas for the effect-row-extended core surface.
 - **Phase 1 (active):** Unification-side WF contracts are now staged (`Kea/WellFormed`, `Kea/Properties/WfSubstitution`, `Kea/Properties/WfRename`, `Kea/Properties/WfGeneralize`, `Kea/Properties/WfUnify`), including branch-shaped row-update lemmas for `unifyRows`.
+- **Phase 1 (active):** Combined row-branch contracts now include extension + WF range + compat/WF swap packaging via `Kea/Properties/WfUnifyExtends` (`unifyRows_contract_full_wf`).
 - **Phase 2 (next):** Kea-specific effect typing and handler theorems.
 
 The formal workspace lives at [`formal/`](formal/).
