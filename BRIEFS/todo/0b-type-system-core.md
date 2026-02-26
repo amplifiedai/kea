@@ -58,10 +58,14 @@ extensive property tests.
    unification algorithm, we need to apply the existing one to
    a new domain.
 
-2. **Effect annotations in function types.** `->` is the pure
-   arrow (empty effect row). `-[e]>` is the effectful arrow.
-   Function types carry an effect row alongside parameter and
-   return types.
+2. **Explicit signatures on all `fn` (KERNEL §5.1).** All `fn`
+   definitions require full signatures — parameter types, return
+   type, and effect annotation. `->` is pure (empty effect row).
+   `-[e]>` is effectful. Closures remain fully inferred. For `fn`,
+   inference is verification: check the body against the declared
+   signature and error if the body performs effects not in the
+   declaration. This is the opposite of "infer then compare" —
+   the signature is the source of truth.
 
 3. **Struct-everything scoping.** Name resolution must handle:
    - Inherent methods (defined inside struct block)
@@ -80,6 +84,17 @@ extensive property tests.
    - `_` prefix marks positional params
    - Labeled params are passed by name at call site
    - Receiver fills first `_` param (or `$` position)
+
+6. **Kind system: `*` + `Eff` only (KERNEL §6.6).** No `* -> *`.
+   No higher-kinded type parameters. A type parameter used in
+   effect position (`-[E]>`) is inferred to have kind `Eff`. All
+   other type parameters have kind `*`. Kind errors when a
+   parameter is used inconsistently (as both type and effect row).
+
+7. **Effect row aliases (KERNEL §11.5).** `type DbEffects =
+   [IO, Fail DbError]` — type aliases that expand to effect rows.
+   The type checker must handle alias expansion in effect position.
+   Parameterised aliases: `type WithDb e = [IO, Fail DbError, e]`.
 
 ## Implementation Plan
 
@@ -124,22 +139,29 @@ adaptation:
   - Handle `expr.method()` dot calls (UMS)
   - Handle `expr.Qual::method()` qualified dispatch
 - **Rewrite:** Method resolution per CALL-SYNTAX.md
-- **New:** Effect inference — bottom-up union of effect sets
-- **New:** Effect annotation checking — explicit annotation must
-  be at least as broad as inferred
+- **New:** Effect checking — for `fn`, check body against declared
+  effect signature (signature is source of truth). For closures,
+  infer effects bottom-up from body.
+- **New:** Kind checking — `*` vs `Eff` consistency. Parameters
+  in effect position get kind `Eff`, all others `*`.
+- **New:** Effect row alias expansion in type positions
 - **New:** Labeled parameter matching at call sites
 
 ### Step 4: Tests
 
 - Port rill-infer's property tests, extend for effects
-- Write snapshot tests for type inference on Kea source:
-  - Pure functions: inferred as `->`
-  - Functions calling IO operations: inferred as `-[IO]>`
+- Write snapshot tests for type checking on Kea source:
+  - Pure functions: `->` verified against body
+  - Effectful functions: `-[IO]>` verified, error if body
+    performs undeclared effects
+  - Closures: effects inferred bottom-up
   - Effect-polymorphic higher-order functions: `e` variable flows
   - Row-polymorphic record functions: `{ name: String | r }`
+  - Kind checking: `Eff` vs `*` consistency, error on mismatch
+  - Effect row aliases: expansion in type positions
   - UMS resolution: dot calls desugar correctly
   - Error cases: ambiguous dispatch, missing method, missing
-    trait implementation
+    trait implementation, undeclared effect in fn body
 - Diagnostic snapshot tests: error messages for type errors must
   be human-readable, reference source locations, and never show
   raw type variable IDs
@@ -158,11 +180,25 @@ adaptation:
 
 - Can type-check pure Kea programs with structs, enums, pattern
   matching, row-polymorphic records, traits, and UMS
-- Effect annotations parse and are checked against inferred effects
+- All `fn` require explicit signatures; closures fully inferred
+- Effect signatures verified against body (undeclared effect = error)
 - Effect rows unify using the same algorithm as record rows
+- Kind system: `*` + `Eff`, no `* -> *`, kind errors are clear
+- Effect row aliases expand correctly
 - Property tests cover row unification invariants for both kinds
 - Error messages are human-readable with source locations
 - `mise run check` passes
+
+## Scope Boundary
+
+**In scope for 0b:** HM inference, Rémy row unification (records
++ effects), trait system (definitions, impls, coherence), UMS
+resolution, kind checking (`*` + `Eff`), effect row aliases,
+explicit signature verification for `fn`, closure effect inference.
+
+**Deferred to 0g:** Associated types (`type Item` in traits),
+supertraits (`where Self: Eq`), GADTs. These are 0g work, though
+the trait infrastructure from 0b must be extensible for them.
 
 ## Open Questions
 
