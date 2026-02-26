@@ -1112,6 +1112,7 @@ fn lower_instruction<M: Module>(
             arg_types,
             result,
             ret_type,
+            callee_fail_result_abi,
             ..
         } => {
             let mut lowered_args = Vec::with_capacity(args.len());
@@ -1165,6 +1166,7 @@ fn lower_instruction<M: Module>(
                     }
                 }
                 MirCallee::Value(_) => {
+                    callee_uses_fail_result_abi = *callee_fail_result_abi;
                     if arg_types.len() != args.len() {
                         return Err(CodegenError::UnsupportedMir {
                             function: function_name.to_string(),
@@ -2142,6 +2144,7 @@ mod tests {
                         arg_types: vec![Type::Int],
                         result: Some(MirValueId(1)),
                         ret_type: Type::Int,
+                        callee_fail_result_abi: false,
                         cc_manifest_id: "default".to_string(),
                     }],
                     terminator: MirTerminator::Return {
@@ -2176,6 +2179,7 @@ mod tests {
                             arg_types: vec![Type::Int],
                             result: Some(MirValueId(1)),
                             ret_type: Type::Int,
+                            callee_fail_result_abi: false,
                             cc_manifest_id: "default".to_string(),
                         },
                     ],
@@ -2212,6 +2216,7 @@ mod tests {
                             arg_types: vec![Type::Int],
                             result: Some(MirValueId(1)),
                             ret_type: Type::Int,
+                            callee_fail_result_abi: false,
                             cc_manifest_id: "default".to_string(),
                         },
                     ],
@@ -2249,6 +2254,7 @@ mod tests {
                                 arg_types: vec![Type::Int],
                                 result: Some(MirValueId(1)),
                                 ret_type: Type::Int,
+                                callee_fail_result_abi: false,
                                 cc_manifest_id: "default".to_string(),
                             },
                         ],
@@ -2279,6 +2285,7 @@ mod tests {
                                 arg_types: vec![Type::Float],
                                 result: Some(MirValueId(1)),
                                 ret_type: Type::Int,
+                                callee_fail_result_abi: false,
                                 cc_manifest_id: "default".to_string(),
                             },
                         ],
@@ -2728,6 +2735,7 @@ mod tests {
                             arg_types: vec![],
                             result: Some(MirValueId(0)),
                             ret_type: Type::Int,
+                            callee_fail_result_abi: false,
                             cc_manifest_id: "default".to_string(),
                         }],
                         terminator: MirTerminator::Return {
@@ -2781,6 +2789,7 @@ mod tests {
                                 arg_types: vec![],
                                 result: Some(MirValueId(0)),
                                 ret_type: Type::Int,
+                                callee_fail_result_abi: false,
                                 cc_manifest_id: "default".to_string(),
                             },
                             MirInst::Const {
@@ -2854,6 +2863,7 @@ mod tests {
                                 arg_types: vec![Type::Int],
                                 result: Some(MirValueId(2)),
                                 ret_type: Type::Int,
+                                callee_fail_result_abi: false,
                                 cc_manifest_id: "default".to_string(),
                             },
                             MirInst::Call {
@@ -2862,6 +2872,7 @@ mod tests {
                                 arg_types: vec![Type::Int],
                                 result: Some(MirValueId(3)),
                                 ret_type: Type::Int,
+                                callee_fail_result_abi: false,
                                 cc_manifest_id: "default".to_string(),
                             },
                         ],
@@ -2892,6 +2903,97 @@ mod tests {
                                 arg_types: vec![unary_fn_ty, Type::Int],
                                 result: Some(MirValueId(2)),
                                 ret_type: Type::Int,
+                                callee_fail_result_abi: false,
+                                cc_manifest_id: "default".to_string(),
+                            },
+                        ],
+                        terminator: MirTerminator::Return {
+                            value: Some(MirValueId(2)),
+                        },
+                    }],
+                },
+            ],
+            layouts: MirLayoutCatalog::default(),
+        }
+    }
+
+    fn sample_fail_indirect_function_call_module() -> MirModule {
+        let fail_fn_ty = Type::Function(FunctionType::with_effects(
+            vec![Type::Int],
+            Type::Int,
+            EffectRow::closed(vec![(Label::new("Fail"), Type::Int)]),
+        ));
+        MirModule {
+            functions: vec![
+                MirFunction {
+                    name: "failer".to_string(),
+                    signature: MirFunctionSignature {
+                        params: vec![Type::Int],
+                        ret: Type::Int,
+                        effects: EffectRow::closed(vec![(Label::new("Fail"), Type::Int)]),
+                    },
+                    entry: MirBlockId(0),
+                    blocks: vec![MirBlock {
+                        id: MirBlockId(0),
+                        params: vec![],
+                        instructions: vec![MirInst::EffectOp {
+                            class: MirEffectOpClass::ZeroResume,
+                            effect: "Fail".to_string(),
+                            operation: "fail".to_string(),
+                            args: vec![MirValueId(0)],
+                            result: None,
+                        }],
+                        terminator: MirTerminator::Unreachable,
+                    }],
+                },
+                MirFunction {
+                    name: "apply_once".to_string(),
+                    signature: MirFunctionSignature {
+                        params: vec![fail_fn_ty.clone(), Type::Int],
+                        ret: Type::Int,
+                        effects: EffectRow::closed(vec![(Label::new("Fail"), Type::Int)]),
+                    },
+                    entry: MirBlockId(0),
+                    blocks: vec![MirBlock {
+                        id: MirBlockId(0),
+                        params: vec![],
+                        instructions: vec![MirInst::Call {
+                            callee: MirCallee::Value(MirValueId(0)),
+                            args: vec![MirValueId(1)],
+                            arg_types: vec![Type::Int],
+                            result: Some(MirValueId(2)),
+                            ret_type: Type::Int,
+                            callee_fail_result_abi: true,
+                            cc_manifest_id: "default".to_string(),
+                        }],
+                        terminator: MirTerminator::Return {
+                            value: Some(MirValueId(2)),
+                        },
+                    }],
+                },
+                MirFunction {
+                    name: "driver".to_string(),
+                    signature: MirFunctionSignature {
+                        params: vec![Type::Int],
+                        ret: Type::Int,
+                        effects: EffectRow::closed(vec![(Label::new("Fail"), Type::Int)]),
+                    },
+                    entry: MirBlockId(0),
+                    blocks: vec![MirBlock {
+                        id: MirBlockId(0),
+                        params: vec![],
+                        instructions: vec![
+                            MirInst::FunctionRef {
+                                dest: MirValueId(1),
+                                function: "failer".to_string(),
+                            },
+                            MirInst::Call {
+                                callee: MirCallee::Local("apply_once".to_string()),
+                                args: vec![MirValueId(1), MirValueId(0)],
+                                arg_types: vec![fail_fn_ty, Type::Int],
+                                result: Some(MirValueId(2)),
+                                ret_type: Type::Int,
+                                callee_fail_result_abi: false,
                                 cc_manifest_id: "default".to_string(),
                             },
                         ],
@@ -3303,6 +3405,33 @@ mod tests {
         let run: unsafe extern "C" fn(i64) -> i64 = unsafe { std::mem::transmute(run_ptr) };
         let out = unsafe { run(41) };
         assert_eq!(out, 43, "run should apply inc twice via function pointer");
+    }
+
+    #[test]
+    fn cranelift_backend_propagates_fail_through_indirect_function_pointer_call() {
+        let module = sample_fail_indirect_function_call_module();
+        let layout_plan = plan_layout_catalog(&module).expect("layout planning should succeed");
+        let isa = build_isa(&BackendConfig::default()).expect("host ISA should build");
+        let builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
+        let mut jit_module = JITModule::new(builder);
+        let func_ids = compile_into_module(&mut jit_module, &module, &layout_plan)
+            .expect("fail-indirect module should compile");
+        jit_module
+            .finalize_definitions()
+            .expect("finalize definitions should succeed");
+
+        let driver_id = *func_ids.get("driver").expect("driver function id");
+        let driver_ptr = jit_module.get_finalized_function(driver_id);
+        let driver: unsafe extern "C" fn(i64) -> usize = unsafe { std::mem::transmute(driver_ptr) };
+        let result_ptr = unsafe { driver(55) };
+        assert_ne!(result_ptr, 0, "driver result pointer should not be null");
+        let tag = unsafe { *(result_ptr as *const i32) };
+        assert_eq!(tag, 1, "indirect fail call should propagate Err tag");
+        let payload = unsafe { *((result_ptr as *const u8).add(8) as *const i64) };
+        assert_eq!(
+            payload, 55,
+            "indirect fail call should preserve Err payload"
+        );
     }
 
     #[test]
