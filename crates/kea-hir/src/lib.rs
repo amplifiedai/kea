@@ -676,12 +676,29 @@ struct ConstructorPayloadBind {
     field_ty: Type,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+struct ConstructorPayloadCheck {
+    sum_type: String,
+    variant: String,
+    field_index: usize,
+    field_ty: Type,
+    expected: LiteralCaseValue,
+}
+
 type LiteralArm<'a> = (
     LiteralCaseValue,
     &'a Expr,
     Option<String>,
     Vec<ConstructorPayloadBind>,
+    Vec<ConstructorPayloadCheck>,
     Option<&'a Expr>,
+);
+
+type LiteralCasePatternInfo = (
+    Vec<LiteralCaseValue>,
+    Option<String>,
+    Vec<ConstructorPayloadBind>,
+    Vec<ConstructorPayloadCheck>,
 );
 
 #[allow(clippy::too_many_arguments)]
@@ -899,7 +916,8 @@ fn lower_literal_case(
                 guard: arm.guard.as_deref(),
             }),
             pattern => {
-                let (values, bind_name, payload_binds) = literal_case_values_from_pattern(
+                let (values, bind_name, payload_binds, payload_checks) =
+                    literal_case_values_from_pattern(
                     pattern,
                     pattern_variant_tags,
                     pattern_qualified_tags,
@@ -910,6 +928,7 @@ fn lower_literal_case(
                         &arm.body,
                         bind_name.clone(),
                         payload_binds.clone(),
+                        payload_checks.clone(),
                         arm.guard.as_deref(),
                     ));
                 }
@@ -919,10 +938,10 @@ fn lower_literal_case(
 
     let has_true = literal_arms
         .iter()
-        .any(|(lit, _, _, _, _)| matches!(lit, LiteralCaseValue::Bool(true)));
+        .any(|(lit, _, _, _, _, _)| matches!(lit, LiteralCaseValue::Bool(true)));
     let has_false = literal_arms
         .iter()
-        .any(|(lit, _, _, _, _)| matches!(lit, LiteralCaseValue::Bool(false)));
+        .any(|(lit, _, _, _, _, _)| matches!(lit, LiteralCaseValue::Bool(false)));
     if fallback_arms.is_empty()
         && (has_true || has_false)
         && arms.iter().all(|arm| arm.guard.is_none())
@@ -1092,7 +1111,7 @@ fn lower_literal_case(
         // Type checking enforces exhaustiveness before lowering. For exhaustive literal
         // chains without an explicit fallback (for example unit-enum constructor cases),
         // provide a defensive synthetic else so non-unit MIR value paths stay closed.
-        let (_, fallback_body, _, _, _) = literal_arms
+        let (_, fallback_body, _, _, _, _) = literal_arms
             .last()
             .expect("checked literal_arms is non-empty");
         else_expr = Some(lower_expr(
@@ -1114,7 +1133,9 @@ fn lower_literal_case(
         return Some(lowered.kind);
     }
 
-    for (lit, body, bind_name, payload_binds, guard) in literal_arms.into_iter().rev() {
+    for (lit, body, bind_name, payload_binds, payload_checks, guard) in
+        literal_arms.into_iter().rev()
+    {
         let mut condition = HirExpr {
             kind: HirExprKind::Binary {
                 op: BinOp::Eq,
@@ -1128,6 +1149,40 @@ fn lower_literal_case(
             ty: Type::Bool,
             span: scrutinee.span,
         };
+        for payload_check in payload_checks {
+            let payload_expr = HirExpr {
+                kind: HirExprKind::SumPayloadAccess {
+                    expr: Box::new(scrutinee_expr.clone()),
+                    sum_type: payload_check.sum_type,
+                    variant: payload_check.variant,
+                    field_index: payload_check.field_index,
+                },
+                ty: payload_check.field_ty,
+                span: scrutinee.span,
+            };
+            let payload_eq = HirExpr {
+                kind: HirExprKind::Binary {
+                    op: BinOp::Eq,
+                    left: Box::new(payload_expr),
+                    right: Box::new(HirExpr {
+                        kind: HirExprKind::Lit(literal_case_lit(payload_check.expected)),
+                        ty: literal_case_type(payload_check.expected),
+                        span: scrutinee.span,
+                    }),
+                },
+                ty: Type::Bool,
+                span: scrutinee.span,
+            };
+            condition = HirExpr {
+                kind: HirExprKind::Binary {
+                    op: BinOp::And,
+                    left: Box::new(condition),
+                    right: Box::new(payload_eq),
+                },
+                ty: Type::Bool,
+                span: scrutinee.span,
+            };
+        }
         if let Some(guard_expr) = guard {
             let guard_expr = lower_expr(
                 guard_expr,
@@ -1199,16 +1254,17 @@ fn literal_case_values_from_pattern(
     pattern: &PatternKind,
     pattern_variant_tags: &PatternVariantTags,
     pattern_qualified_tags: &QualifiedPatternVariantTags,
-) -> Option<(
-    Vec<LiteralCaseValue>,
-    Option<String>,
-    Vec<ConstructorPayloadBind>,
-)> {
+) -> Option<LiteralCasePatternInfo> {
     match pattern {
         PatternKind::Lit(lit @ Lit::Int(_))
         | PatternKind::Lit(lit @ Lit::Float(_))
         | PatternKind::Lit(lit @ Lit::Bool(_)) => {
-            Some((vec![literal_case_value_from_lit(lit)?], None, Vec::new()))
+            Some((
+                vec![literal_case_value_from_lit(lit)?],
+                None,
+                Vec::new(),
+                Vec::new(),
+            ))
         }
         PatternKind::Constructor {
             name,
@@ -1226,6 +1282,7 @@ fn literal_case_values_from_pattern(
                 return None;
             }
             let mut payload_binds = Vec::new();
+            let mut payload_checks = Vec::new();
             for (idx, arg) in args.iter().enumerate() {
                 if arg.name.is_some() {
                     return None;
@@ -1244,17 +1301,43 @@ fn literal_case_values_from_pattern(
                             field_ty: meta.field_types.get(idx).cloned().unwrap_or(Type::Dynamic),
                         });
                     }
+                    PatternKind::Lit(lit @ Lit::Int(_))
+                    | PatternKind::Lit(lit @ Lit::Float(_))
+                    | PatternKind::Lit(lit @ Lit::Bool(_)) => {
+                        payload_checks.push(ConstructorPayloadCheck {
+                            sum_type: meta.sum_type.clone(),
+                            variant: name.clone(),
+                            field_index: idx,
+                            field_ty: meta
+                                .field_types
+                                .get(idx)
+                                .cloned()
+                                .unwrap_or(Type::Dynamic),
+                            expected: literal_case_value_from_lit(lit)?,
+                        });
+                    }
                     _ => return None,
                 }
             }
-            Some((vec![LiteralCaseValue::Int(meta.tag)], None, payload_binds))
+            Some((
+                vec![LiteralCaseValue::Int(meta.tag)],
+                None,
+                payload_binds,
+                payload_checks,
+            ))
         }
         PatternKind::Or(patterns) => {
             let mut values = Vec::new();
             let mut shared_bind_name: Option<String> = None;
             let mut shared_payload_binds: Option<Vec<ConstructorPayloadBind>> = None;
+            let mut shared_payload_checks: Option<Vec<ConstructorPayloadCheck>> = None;
             for branch in patterns {
-                let (branch_values, branch_bind_name, branch_payload_binds) =
+                let (
+                    branch_values,
+                    branch_bind_name,
+                    branch_payload_binds,
+                    branch_payload_checks,
+                ) =
                     literal_case_values_from_pattern(
                     &branch.node,
                     pattern_variant_tags,
@@ -1266,6 +1349,14 @@ fn literal_case_values_from_pattern(
                         if payload_binds_or_compatible(existing, &branch_payload_binds) => {}
                     // OR payload patterns are only supported when all branches
                     // agree on the same payload bind sites.
+                    _ => return None,
+                }
+                match &shared_payload_checks {
+                    None => shared_payload_checks = Some(branch_payload_checks.clone()),
+                    Some(existing)
+                        if payload_checks_or_compatible(existing, &branch_payload_checks) => {}
+                    // OR literal payload checks are only supported when all
+                    // branches agree on payload check sites/values.
                     _ => return None,
                 }
                 match (&shared_bind_name, branch_bind_name) {
@@ -1281,14 +1372,16 @@ fn literal_case_values_from_pattern(
                 values,
                 shared_bind_name,
                 shared_payload_binds.unwrap_or_default(),
+                shared_payload_checks.unwrap_or_default(),
             ))
         }
         PatternKind::As { pattern, name } => {
-            let (values, inner_bind_name, inner_payload_binds) = literal_case_values_from_pattern(
-                &pattern.node,
-                pattern_variant_tags,
-                pattern_qualified_tags,
-            )?;
+            let (values, inner_bind_name, inner_payload_binds, inner_payload_checks) =
+                literal_case_values_from_pattern(
+                    &pattern.node,
+                    pattern_variant_tags,
+                    pattern_qualified_tags,
+                )?;
             if inner_bind_name.is_some() {
                 return None;
             }
@@ -1299,7 +1392,12 @@ fn literal_case_values_from_pattern(
                 // Avoid duplicate bindings in a single lowered arm.
                 return None;
             }
-            Some((values, Some(name.node.clone()), inner_payload_binds))
+            Some((
+                values,
+                Some(name.node.clone()),
+                inner_payload_binds,
+                inner_payload_checks,
+            ))
         }
         _ => None,
     }
@@ -1393,6 +1491,19 @@ fn payload_binds_or_compatible(
                 && left.sum_type == right.sum_type
                 && left.field_index == right.field_index
                 && left.field_ty == right.field_ty
+        })
+}
+
+fn payload_checks_or_compatible(
+    existing: &[ConstructorPayloadCheck],
+    candidate: &[ConstructorPayloadCheck],
+) -> bool {
+    existing.len() == candidate.len()
+        && existing.iter().zip(candidate.iter()).all(|(left, right)| {
+            left.sum_type == right.sum_type
+                && left.field_index == right.field_index
+                && left.field_ty == right.field_ty
+                && left.expected == right.expected
         })
 }
 
@@ -2103,6 +2214,49 @@ mod tests {
                 }) if name == "b"
             ),
             "expected second payload binding for `b`"
+        );
+    }
+
+    #[test]
+    fn lower_function_payload_constructor_literal_arg_case_uses_payload_condition() {
+        let module = parse_module_from_text(
+            "type Flag = Yep(Int) | Nope\nfn pick(x: Flag) -> Int\n  case x\n    Yep(7) -> 1\n    Nope -> 0",
+        );
+        let mut env = TypeEnv::new();
+        env.bind(
+            "pick".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::pure(
+                vec![Type::Sum(kea_types::SumType {
+                    name: "Flag".to_string(),
+                    type_args: vec![],
+                    variants: vec![
+                        ("Yep".to_string(), vec![Type::Int]),
+                        ("Nope".to_string(), vec![]),
+                    ],
+                })],
+                Type::Int,
+            ))),
+        );
+
+        let lowered = lower_module(&module, &env);
+        let function = lowered
+            .declarations
+            .iter()
+            .find_map(|decl| match decl {
+                HirDecl::Function(function) if function.name == "pick" => Some(function),
+                _ => None,
+            })
+            .expect("expected lowered pick function");
+
+        let HirExprKind::If { condition, .. } = &function.body.kind else {
+            panic!("expected literal payload constructor case to lower to if");
+        };
+        assert!(
+            matches!(
+                condition.kind,
+                HirExprKind::Binary { op: BinOp::And, .. }
+            ),
+            "expected constructor literal payload check to compose tag and payload predicates"
         );
     }
 

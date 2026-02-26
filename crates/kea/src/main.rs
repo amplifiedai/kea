@@ -891,6 +891,34 @@ mod tests {
     }
 
     #[test]
+    fn compile_and_execute_payload_constructor_literal_check_case_exit_code() {
+        let source_path = write_temp_source(
+            "type Flag = Yep(Int) | Nope\n\nfn main() -> Int\n  case Yep(7)\n    Yep(7) -> 14\n    Nope -> 0\n",
+            "kea-cli-sum-case-literal-check",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 14);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_payload_constructor_mixed_literal_bind_case_exit_code() {
+        let source_path = write_temp_source(
+            "type Pair = Pair(Int, Int) | Nope\n\nfn main() -> Int\n  case Pair(1, 6)\n    Pair(1, b) -> b + 1\n    Nope -> 0\n",
+            "kea-cli-sum-case-mixed-literal-bind",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 7);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_payload_constructor_as_guard_case_exit_code() {
         let source_path = write_temp_source(
             "type Flag = Yep(Int) | Nope\n\nfn main() -> Int\n  case Yep(7)\n    Yep(n) as whole when n == 7 -> n + 5\n    Yep(_) -> 1\n    Nope -> 0\n",
