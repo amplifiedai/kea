@@ -366,4 +366,5 @@ Precision notes:
 - 2026-02-26: Literal `case` lowering now supports variable fallback arms (`n -> ...`) in addition to wildcard fallback, preserving single-evaluation scrutinee semantics and binding the fallback name explicitly in lowered HIR.
 - 2026-02-26: Benchmark harness scaffold landed: new `kea-bench` crate with divan-based microbenchmarks (`lex+parse`, `HIR→MIR`, `HIR→JIT compile`) plus `mise run bench` task and recorded first local baseline output.
 - 2026-02-26: Boolean `and`/`or` now lower as short-circuit control flow in MIR (branch + join block), rather than eager bitwise-style evaluation, with MIR+codegen regression tests.
+- 2026-02-26: HIR block lowering now propagates expected type hints to the block tail expression, allowing case/if tail desugaring to stay on the lowered path in typed contexts instead of falling back to raw nodes.
 - **Next:** Expand lowering/codegen coverage for structs/enums/pattern matching and Fail-only Result lowering fast path.

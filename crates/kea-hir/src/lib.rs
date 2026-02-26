@@ -201,12 +201,19 @@ fn lower_expr(expr: &Expr, ty_hint: Option<Type>) -> HirExpr {
                 HirExprKind::Raw(expr.node.clone())
             }
         }
-        ExprKind::Block(exprs) => HirExprKind::Block(
-            exprs
-                .iter()
-                .map(|inner| lower_expr(inner, None))
-                .collect(),
-        ),
+        ExprKind::Block(exprs) => {
+            let last_idx = exprs.len().saturating_sub(1);
+            HirExprKind::Block(
+                exprs
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, inner)| {
+                        let hint = if idx == last_idx { ty_hint.clone() } else { None };
+                        lower_expr(inner, hint)
+                    })
+                    .collect(),
+            )
+        }
         ExprKind::Tuple(exprs) => HirExprKind::Tuple(
             exprs
                 .iter()
@@ -352,9 +359,6 @@ fn lower_literal_case(scrutinee: &Expr, arms: &[CaseArm], ty_hint: Option<Type>)
 
     // Non-exhaustive literal chains without a fallback would introduce
     // missing-value paths for non-Unit expressions.
-    if wildcard_body.is_none() && var_fallback.is_none() {
-        return None;
-    }
     let return_ty = ty_hint.clone().unwrap_or(Type::Dynamic);
 
     let lowered_scrutinee = lower_expr(scrutinee, None);
@@ -693,5 +697,28 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn lower_function_block_tail_propagates_type_hint_for_case() {
+        let module = parse_module_from_text(
+            "fn mark() -> Unit\n  let x = 1\n  case x\n    0 -> ()",
+        );
+        let mut env = TypeEnv::new();
+        env.bind(
+            "mark".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::pure(vec![], Type::Unit))),
+        );
+
+        let lowered = lower_module(&module, &env);
+        let HirDecl::Function(function) = &lowered.declarations[0] else {
+            panic!("expected lowered function declaration");
+        };
+
+        let HirExprKind::Block(exprs) = &function.body.kind else {
+            panic!("expected function body block");
+        };
+        assert_eq!(exprs.len(), 2);
+        assert!(matches!(exprs[1].kind, HirExprKind::If { .. }));
     }
 }
