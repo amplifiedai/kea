@@ -4,6 +4,8 @@
 //! This initial slice provides a stable typed representation for function declarations
 //! and expression trees, with a conservative fallback for unsupported syntax.
 
+use std::collections::{BTreeMap, BTreeSet};
+
 use kea_ast::{
     BinOp, CaseArm, DeclKind, Expr, ExprDecl, ExprKind, FnDecl, Lit, Module, Param, Pattern,
     PatternKind, Span, UnaryOp,
@@ -86,6 +88,9 @@ pub enum HirPattern {
     Raw(PatternKind),
 }
 
+type UnitVariantTags = BTreeMap<String, i64>;
+type QualifiedUnitVariantTags = BTreeMap<(String, String), i64>;
+
 fn expr_decl_to_fn_decl(expr: &ExprDecl) -> FnDecl {
     FnDecl {
         public: expr.public,
@@ -103,15 +108,58 @@ fn expr_decl_to_fn_decl(expr: &ExprDecl) -> FnDecl {
     }
 }
 
+fn collect_unit_variant_tags(module: &Module) -> (UnitVariantTags, QualifiedUnitVariantTags) {
+    let mut unqualified = UnitVariantTags::new();
+    let mut qualified = QualifiedUnitVariantTags::new();
+    let mut duplicates = BTreeSet::new();
+
+    for decl in &module.declarations {
+        let DeclKind::TypeDef(def) = &decl.node else {
+            continue;
+        };
+
+        for (idx, variant) in def.variants.iter().enumerate() {
+            if !variant.fields.is_empty() {
+                continue;
+            }
+
+            let tag = idx as i64;
+            qualified.insert((def.name.node.clone(), variant.name.node.clone()), tag);
+
+            if unqualified
+                .insert(variant.name.node.clone(), tag)
+                .is_some()
+            {
+                duplicates.insert(variant.name.node.clone());
+            }
+        }
+    }
+
+    for name in duplicates {
+        unqualified.remove(&name);
+    }
+
+    (unqualified, qualified)
+}
+
 pub fn lower_module(module: &Module, env: &TypeEnv) -> HirModule {
+    let (unit_variant_tags, qualified_variant_tags) = collect_unit_variant_tags(module);
     let declarations = module
         .declarations
         .iter()
         .map(|decl| match &decl.node {
-            DeclKind::Function(fn_decl) => HirDecl::Function(lower_function(fn_decl, env)),
-            DeclKind::ExprFn(expr_decl) => {
-                HirDecl::Function(lower_function(&expr_decl_to_fn_decl(expr_decl), env))
-            }
+            DeclKind::Function(fn_decl) => HirDecl::Function(lower_function_with_variants(
+                fn_decl,
+                env,
+                &unit_variant_tags,
+                &qualified_variant_tags,
+            )),
+            DeclKind::ExprFn(expr_decl) => HirDecl::Function(lower_function_with_variants(
+                &expr_decl_to_fn_decl(expr_decl),
+                env,
+                &unit_variant_tags,
+                &qualified_variant_tags,
+            )),
             other => HirDecl::Raw(other.clone()),
         })
         .collect();
@@ -119,6 +167,20 @@ pub fn lower_module(module: &Module, env: &TypeEnv) -> HirModule {
 }
 
 pub fn lower_function(fn_decl: &FnDecl, env: &TypeEnv) -> HirFunction {
+    lower_function_with_variants(
+        fn_decl,
+        env,
+        &UnitVariantTags::new(),
+        &QualifiedUnitVariantTags::new(),
+    )
+}
+
+fn lower_function_with_variants(
+    fn_decl: &FnDecl,
+    env: &TypeEnv,
+    unit_variant_tags: &UnitVariantTags,
+    qualified_variant_tags: &QualifiedUnitVariantTags,
+) -> HirFunction {
     let fn_ty = env
         .lookup(&fn_decl.name.node)
         .map(|scheme| scheme.ty.clone())
@@ -132,7 +194,12 @@ pub fn lower_function(fn_decl: &FnDecl, env: &TypeEnv) -> HirFunction {
     HirFunction {
         name: fn_decl.name.node.clone(),
         params: fn_decl.params.iter().map(lower_param).collect(),
-        body: lower_expr(&fn_decl.body, Some(ret_ty)),
+        body: lower_expr(
+            &fn_decl.body,
+            Some(ret_ty),
+            unit_variant_tags,
+            qualified_variant_tags,
+        ),
         ty: fn_ty,
         effects,
         span: fn_decl.span,
@@ -153,7 +220,12 @@ fn lower_pattern(pattern: &Pattern) -> HirPattern {
     }
 }
 
-fn lower_expr(expr: &Expr, ty_hint: Option<Type>) -> HirExpr {
+fn lower_expr(
+    expr: &Expr,
+    ty_hint: Option<Type>,
+    unit_variant_tags: &UnitVariantTags,
+    qualified_variant_tags: &QualifiedUnitVariantTags,
+) -> HirExpr {
     let default_ty = ty_hint.clone().unwrap_or(Type::Dynamic);
 
     let kind = match &expr.node {
@@ -161,41 +233,96 @@ fn lower_expr(expr: &Expr, ty_hint: Option<Type>) -> HirExpr {
         ExprKind::Var(name) => HirExprKind::Var(name.clone()),
         ExprKind::BinaryOp { op, left, right } => HirExprKind::Binary {
             op: op.node,
-            left: Box::new(lower_expr(left, None)),
-            right: Box::new(lower_expr(right, None)),
+            left: Box::new(lower_expr(
+                left,
+                None,
+                unit_variant_tags,
+                qualified_variant_tags,
+            )),
+            right: Box::new(lower_expr(
+                right,
+                None,
+                unit_variant_tags,
+                qualified_variant_tags,
+            )),
         },
         ExprKind::UnaryOp { op, operand } => HirExprKind::Unary {
             op: op.node,
-            operand: Box::new(lower_expr(operand, None)),
+            operand: Box::new(lower_expr(
+                operand,
+                None,
+                unit_variant_tags,
+                qualified_variant_tags,
+            )),
         },
         ExprKind::Call { func, args } => HirExprKind::Call {
-            func: Box::new(lower_expr(func, None)),
+            func: Box::new(lower_expr(
+                func,
+                None,
+                unit_variant_tags,
+                qualified_variant_tags,
+            )),
             args: args
                 .iter()
-                .map(|arg| lower_expr(&arg.value, None))
+                .map(|arg| {
+                    lower_expr(&arg.value, None, unit_variant_tags, qualified_variant_tags)
+                })
                 .collect(),
         },
         ExprKind::Lambda { params, body, .. } => HirExprKind::Lambda {
             params: params.iter().map(lower_param).collect(),
-            body: Box::new(lower_expr(body, None)),
+            body: Box::new(lower_expr(
+                body,
+                None,
+                unit_variant_tags,
+                qualified_variant_tags,
+            )),
         },
         ExprKind::Let { pattern, value, .. } => HirExprKind::Let {
             pattern: lower_pattern(pattern),
-            value: Box::new(lower_expr(value, None)),
+            value: Box::new(lower_expr(
+                value,
+                None,
+                unit_variant_tags,
+                qualified_variant_tags,
+            )),
         },
         ExprKind::If {
             condition,
             then_branch,
             else_branch,
         } => HirExprKind::If {
-            condition: Box::new(lower_expr(condition, None)),
-            then_branch: Box::new(lower_expr(then_branch, ty_hint.clone())),
+            condition: Box::new(lower_expr(
+                condition,
+                None,
+                unit_variant_tags,
+                qualified_variant_tags,
+            )),
+            then_branch: Box::new(lower_expr(
+                then_branch,
+                ty_hint.clone(),
+                unit_variant_tags,
+                qualified_variant_tags,
+            )),
             else_branch: else_branch
                 .as_ref()
-                .map(|expr| Box::new(lower_expr(expr, ty_hint.clone()))),
+                .map(|expr| {
+                    Box::new(lower_expr(
+                        expr,
+                        ty_hint.clone(),
+                        unit_variant_tags,
+                        qualified_variant_tags,
+                    ))
+                }),
         },
         ExprKind::Case { scrutinee, arms } => {
-            if let Some(case_kind) = lower_bool_case(scrutinee, arms, ty_hint.clone()) {
+            if let Some(case_kind) = lower_bool_case(
+                scrutinee,
+                arms,
+                ty_hint.clone(),
+                unit_variant_tags,
+                qualified_variant_tags,
+            ) {
                 case_kind
             } else {
                 HirExprKind::Raw(expr.node.clone())
@@ -209,7 +336,7 @@ fn lower_expr(expr: &Expr, ty_hint: Option<Type>) -> HirExpr {
                     .enumerate()
                     .map(|(idx, inner)| {
                         let hint = if idx == last_idx { ty_hint.clone() } else { None };
-                        lower_expr(inner, hint)
+                        lower_expr(inner, hint, unit_variant_tags, qualified_variant_tags)
                     })
                     .collect(),
             )
@@ -217,9 +344,32 @@ fn lower_expr(expr: &Expr, ty_hint: Option<Type>) -> HirExpr {
         ExprKind::Tuple(exprs) => HirExprKind::Tuple(
             exprs
                 .iter()
-                .map(|inner| lower_expr(inner, None))
+                .map(|inner| lower_expr(inner, None, unit_variant_tags, qualified_variant_tags))
                 .collect(),
         ),
+        ExprKind::Constructor { name, args } => {
+            if args.is_empty() {
+                if let Some(tag) = unit_variant_tags.get(&name.node) {
+                    HirExprKind::Lit(Lit::Int(*tag))
+                } else {
+                    HirExprKind::Raw(expr.node.clone())
+                }
+            } else {
+                HirExprKind::Raw(expr.node.clone())
+            }
+        }
+        ExprKind::FieldAccess { expr: qualifier, field } => {
+            if let ExprKind::Var(type_name) = &qualifier.node {
+                if let Some(tag) = qualified_variant_tags.get(&(type_name.clone(), field.node.clone()))
+                {
+                    HirExprKind::Lit(Lit::Int(*tag))
+                } else {
+                    HirExprKind::Raw(expr.node.clone())
+                }
+            } else {
+                HirExprKind::Raw(expr.node.clone())
+            }
+        }
         other => HirExprKind::Raw(other.clone()),
     };
 
@@ -261,6 +411,24 @@ fn lower_expr(expr: &Expr, ty_hint: Option<Type>) -> HirExpr {
             },
             UnaryOp::Not => Type::Bool,
         },
+        ExprKind::Constructor { name, args } => {
+            if args.is_empty() && unit_variant_tags.contains_key(&name.node) {
+                Type::Int
+            } else {
+                default_ty
+            }
+        }
+        ExprKind::FieldAccess { expr: qualifier, field } => {
+            if let ExprKind::Var(type_name) = &qualifier.node {
+                if qualified_variant_tags.contains_key(&(type_name.clone(), field.node.clone())) {
+                    Type::Int
+                } else {
+                    default_ty
+                }
+            } else {
+                default_ty
+            }
+        }
         _ => default_ty,
     };
 
@@ -271,19 +439,44 @@ fn lower_expr(expr: &Expr, ty_hint: Option<Type>) -> HirExpr {
     }
 }
 
-fn lower_bool_case(scrutinee: &Expr, arms: &[CaseArm], ty_hint: Option<Type>) -> Option<HirExprKind> {
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum LiteralCaseValue {
+    Int(i64),
+    Float(f64),
+    Bool(bool),
+}
+
+fn lower_bool_case(
+    scrutinee: &Expr,
+    arms: &[CaseArm],
+    ty_hint: Option<Type>,
+    unit_variant_tags: &UnitVariantTags,
+    qualified_variant_tags: &QualifiedUnitVariantTags,
+) -> Option<HirExprKind> {
     if arms.iter().any(|arm| arm.guard.is_some()) {
         return None;
     }
 
-    if let Some(kind) = lower_literal_case(scrutinee, arms, ty_hint.clone()) {
+    if let Some(kind) = lower_literal_case(
+        scrutinee,
+        arms,
+        ty_hint.clone(),
+        unit_variant_tags,
+        qualified_variant_tags,
+    ) {
         return Some(kind);
     }
 
-    if arms.len() == 1
-        && matches!(arms[0].pattern.node, PatternKind::Wildcard)
-    {
-        return Some(lower_expr(&arms[0].body, ty_hint).kind);
+    if arms.len() == 1 && matches!(arms[0].pattern.node, PatternKind::Wildcard) {
+        return Some(
+            lower_expr(
+                &arms[0].body,
+                ty_hint,
+                unit_variant_tags,
+                qualified_variant_tags,
+            )
+            .kind,
+        );
     }
 
     let mut true_body: Option<&Expr> = None;
@@ -299,33 +492,74 @@ fn lower_bool_case(scrutinee: &Expr, arms: &[CaseArm], ty_hint: Option<Type>) ->
         }
     }
 
-    let condition = Box::new(lower_expr(scrutinee, None));
+    let condition = Box::new(lower_expr(
+        scrutinee,
+        None,
+        unit_variant_tags,
+        qualified_variant_tags,
+    ));
     match (true_body, false_body, wildcard_body) {
         (Some(then_body), Some(else_body), None) if arms.len() == 2 => Some(HirExprKind::If {
             condition,
-            then_branch: Box::new(lower_expr(then_body, ty_hint.clone())),
-            else_branch: Some(Box::new(lower_expr(else_body, ty_hint))),
+            then_branch: Box::new(lower_expr(
+                then_body,
+                ty_hint.clone(),
+                unit_variant_tags,
+                qualified_variant_tags,
+            )),
+            else_branch: Some(Box::new(lower_expr(
+                else_body,
+                ty_hint,
+                unit_variant_tags,
+                qualified_variant_tags,
+            ))),
         }),
         (Some(then_body), None, Some(default_body)) if arms.len() == 2 => Some(HirExprKind::If {
             condition,
-            then_branch: Box::new(lower_expr(then_body, ty_hint.clone())),
-            else_branch: Some(Box::new(lower_expr(default_body, ty_hint))),
+            then_branch: Box::new(lower_expr(
+                then_body,
+                ty_hint.clone(),
+                unit_variant_tags,
+                qualified_variant_tags,
+            )),
+            else_branch: Some(Box::new(lower_expr(
+                default_body,
+                ty_hint,
+                unit_variant_tags,
+                qualified_variant_tags,
+            ))),
         }),
         (None, Some(else_body), Some(default_body)) if arms.len() == 2 => Some(HirExprKind::If {
             condition,
-            then_branch: Box::new(lower_expr(default_body, ty_hint.clone())),
-            else_branch: Some(Box::new(lower_expr(else_body, ty_hint))),
+            then_branch: Box::new(lower_expr(
+                default_body,
+                ty_hint.clone(),
+                unit_variant_tags,
+                qualified_variant_tags,
+            )),
+            else_branch: Some(Box::new(lower_expr(
+                else_body,
+                ty_hint,
+                unit_variant_tags,
+                qualified_variant_tags,
+            ))),
         }),
         _ => None,
     }
 }
 
-fn lower_literal_case(scrutinee: &Expr, arms: &[CaseArm], ty_hint: Option<Type>) -> Option<HirExprKind> {
+fn lower_literal_case(
+    scrutinee: &Expr,
+    arms: &[CaseArm],
+    ty_hint: Option<Type>,
+    unit_variant_tags: &UnitVariantTags,
+    qualified_variant_tags: &QualifiedUnitVariantTags,
+) -> Option<HirExprKind> {
     if arms.iter().any(|arm| arm.guard.is_some()) {
         return None;
     }
 
-    let mut literal_arms: Vec<(&Lit, &Expr)> = Vec::new();
+    let mut literal_arms: Vec<(LiteralCaseValue, &Expr)> = Vec::new();
     let mut wildcard_body: Option<&Expr> = None;
     let mut var_fallback: Option<(String, &Expr)> = None;
     for arm in arms {
@@ -333,7 +567,21 @@ fn lower_literal_case(scrutinee: &Expr, arms: &[CaseArm], ty_hint: Option<Type>)
             PatternKind::Lit(lit @ Lit::Int(_))
             | PatternKind::Lit(lit @ Lit::Float(_))
             | PatternKind::Lit(lit @ Lit::Bool(_)) => {
-                literal_arms.push((lit, &arm.body));
+                literal_arms.push((literal_case_value_from_lit(lit)?, &arm.body));
+            }
+            PatternKind::Constructor {
+                name,
+                qualifier,
+                args,
+                rest,
+            } if args.is_empty() && !*rest => {
+                let tag = resolve_unit_variant_tag(
+                    name,
+                    qualifier.as_ref(),
+                    unit_variant_tags,
+                    qualified_variant_tags,
+                )?;
+                literal_arms.push((LiteralCaseValue::Int(tag), &arm.body));
             }
             PatternKind::Wildcard => wildcard_body = Some(&arm.body),
             PatternKind::Var(name) => var_fallback = Some((name.clone(), &arm.body)),
@@ -347,10 +595,10 @@ fn lower_literal_case(scrutinee: &Expr, arms: &[CaseArm], ty_hint: Option<Type>)
 
     let has_true = literal_arms
         .iter()
-        .any(|(lit, _)| matches!(lit, Lit::Bool(true)));
+        .any(|(lit, _)| matches!(lit, LiteralCaseValue::Bool(true)));
     let has_false = literal_arms
         .iter()
-        .any(|(lit, _)| matches!(lit, Lit::Bool(false)));
+        .any(|(lit, _)| matches!(lit, LiteralCaseValue::Bool(false)));
     if wildcard_body.is_none() && (has_true || has_false) {
         // Let the dedicated bool-case lowering path handle exhaustive bool cases
         // without introducing synthetic non-exhaustive branches.
@@ -361,7 +609,12 @@ fn lower_literal_case(scrutinee: &Expr, arms: &[CaseArm], ty_hint: Option<Type>)
     // missing-value paths for non-Unit expressions.
     let return_ty = ty_hint.clone().unwrap_or(Type::Dynamic);
 
-    let lowered_scrutinee = lower_expr(scrutinee, None);
+    let lowered_scrutinee = lower_expr(
+        scrutinee,
+        None,
+        unit_variant_tags,
+        qualified_variant_tags,
+    );
     let safe_scrutinee = matches!(scrutinee.node, ExprKind::Var(_) | ExprKind::Lit(_));
     let (scrutinee_expr, setup_expr) = if safe_scrutinee {
         (lowered_scrutinee.clone(), None)
@@ -388,7 +641,12 @@ fn lower_literal_case(scrutinee: &Expr, arms: &[CaseArm], ty_hint: Option<Type>)
     };
 
     let mut else_expr = if let Some(body) = wildcard_body {
-        Some(lower_expr(body, ty_hint.clone()))
+        Some(lower_expr(
+            body,
+            ty_hint.clone(),
+            unit_variant_tags,
+            qualified_variant_tags,
+        ))
     } else if let Some((name, body)) = var_fallback {
         let fallback_bind = HirExpr {
             kind: HirExprKind::Let {
@@ -399,13 +657,37 @@ fn lower_literal_case(scrutinee: &Expr, arms: &[CaseArm], ty_hint: Option<Type>)
             span: scrutinee.span,
         };
         Some(HirExpr {
-            kind: HirExprKind::Block(vec![fallback_bind, lower_expr(body, ty_hint.clone())]),
+            kind: HirExprKind::Block(vec![
+                fallback_bind,
+                lower_expr(
+                    body,
+                    ty_hint.clone(),
+                    unit_variant_tags,
+                    qualified_variant_tags,
+                ),
+            ]),
             ty: return_ty.clone(),
             span: scrutinee.span,
         })
     } else {
         None
     };
+
+    if else_expr.is_none() && !literal_arms.is_empty() {
+        // Type checking enforces exhaustiveness before lowering. For exhaustive literal
+        // chains without an explicit fallback (for example unit-enum constructor cases),
+        // provide a defensive synthetic else so non-unit MIR value paths stay closed.
+        let (_, fallback_body) = literal_arms
+            .last()
+            .copied()
+            .expect("checked literal_arms is non-empty");
+        else_expr = Some(lower_expr(
+            fallback_body,
+            ty_hint.clone(),
+            unit_variant_tags,
+            qualified_variant_tags,
+        ));
+    }
 
     if literal_arms.is_empty() {
         let lowered = else_expr?;
@@ -421,8 +703,8 @@ fn lower_literal_case(scrutinee: &Expr, arms: &[CaseArm], ty_hint: Option<Type>)
                 op: BinOp::Eq,
                 left: Box::new(scrutinee_expr.clone()),
                 right: Box::new(HirExpr {
-                    kind: HirExprKind::Lit(lit.clone()),
-                    ty: literal_type(lit),
+                    kind: HirExprKind::Lit(literal_case_lit(lit)),
+                    ty: literal_case_type(lit),
                     span: scrutinee.span,
                 }),
             },
@@ -433,7 +715,12 @@ fn lower_literal_case(scrutinee: &Expr, arms: &[CaseArm], ty_hint: Option<Type>)
         let next = HirExpr {
             kind: HirExprKind::If {
                 condition: Box::new(condition),
-                then_branch: Box::new(lower_expr(body, ty_hint.clone())),
+                then_branch: Box::new(lower_expr(
+                    body,
+                    ty_hint.clone(),
+                    unit_variant_tags,
+                    qualified_variant_tags,
+                )),
                 else_branch: else_expr.as_ref().map(|expr| Box::new(expr.clone())),
             },
             ty: return_ty.clone(),
@@ -450,13 +737,43 @@ fn lower_literal_case(scrutinee: &Expr, arms: &[CaseArm], ty_hint: Option<Type>)
     }
 }
 
-fn literal_type(lit: &Lit) -> Type {
+fn literal_case_value_from_lit(lit: &Lit) -> Option<LiteralCaseValue> {
     match lit {
-        Lit::Int(_) => Type::Int,
-        Lit::Float(_) => Type::Float,
-        Lit::Bool(_) => Type::Bool,
-        _ => Type::Dynamic,
+        Lit::Int(value) => Some(LiteralCaseValue::Int(*value)),
+        Lit::Float(value) => Some(LiteralCaseValue::Float(*value)),
+        Lit::Bool(value) => Some(LiteralCaseValue::Bool(*value)),
+        _ => None,
     }
+}
+
+fn literal_case_lit(lit: LiteralCaseValue) -> Lit {
+    match lit {
+        LiteralCaseValue::Int(value) => Lit::Int(value),
+        LiteralCaseValue::Float(value) => Lit::Float(value),
+        LiteralCaseValue::Bool(value) => Lit::Bool(value),
+    }
+}
+
+fn literal_case_type(lit: LiteralCaseValue) -> Type {
+    match lit {
+        LiteralCaseValue::Int(_) => Type::Int,
+        LiteralCaseValue::Float(_) => Type::Float,
+        LiteralCaseValue::Bool(_) => Type::Bool,
+    }
+}
+
+fn resolve_unit_variant_tag(
+    name: &str,
+    qualifier: Option<&String>,
+    unit_variant_tags: &UnitVariantTags,
+    qualified_variant_tags: &QualifiedUnitVariantTags,
+) -> Option<i64> {
+    if let Some(type_name) = qualifier {
+        return qualified_variant_tags
+            .get(&(type_name.clone(), name.to_string()))
+            .copied();
+    }
+    unit_variant_tags.get(name).copied()
 }
 
 #[cfg(test)]
@@ -720,5 +1037,35 @@ mod tests {
         };
         assert_eq!(exprs.len(), 2);
         assert!(matches!(exprs[1].kind, HirExprKind::If { .. }));
+    }
+
+    #[test]
+    fn lower_function_unit_enum_case_desugars_through_literal_path() {
+        let module = parse_module_from_text(
+            "type Color = Red | Green\nfn pick() -> Int\n  case Color.Red\n    Color.Red -> 1\n    Color.Green -> 2",
+        );
+        let mut env = TypeEnv::new();
+        env.bind(
+            "pick".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::pure(vec![], Type::Int))),
+        );
+
+        let lowered = lower_module(&module, &env);
+        let function = lowered
+            .declarations
+            .iter()
+            .find_map(|decl| match decl {
+                HirDecl::Function(function) if function.name == "pick" => Some(function),
+                _ => None,
+            })
+            .expect("expected lowered pick function");
+
+        match &function.body.kind {
+            HirExprKind::If { .. } => {}
+            HirExprKind::Block(exprs) => {
+                assert!(matches!(exprs.last().map(|expr| &expr.kind), Some(HirExprKind::If { .. })));
+            }
+            other => panic!("expected enum case to lower through literal-case path, got {other:?}"),
+        }
     }
 }
