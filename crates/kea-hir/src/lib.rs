@@ -564,28 +564,18 @@ fn lower_literal_case(
     let mut var_fallback: Option<(String, &Expr)> = None;
     for arm in arms {
         match &arm.pattern.node {
-            PatternKind::Lit(lit @ Lit::Int(_))
-            | PatternKind::Lit(lit @ Lit::Float(_))
-            | PatternKind::Lit(lit @ Lit::Bool(_)) => {
-                literal_arms.push((literal_case_value_from_lit(lit)?, &arm.body));
-            }
-            PatternKind::Constructor {
-                name,
-                qualifier,
-                args,
-                rest,
-            } if args.is_empty() && !*rest => {
-                let tag = resolve_unit_variant_tag(
-                    name,
-                    qualifier.as_ref(),
+            PatternKind::Wildcard => wildcard_body = Some(&arm.body),
+            PatternKind::Var(name) => var_fallback = Some((name.clone(), &arm.body)),
+            pattern => {
+                let values = literal_case_values_from_pattern(
+                    pattern,
                     unit_variant_tags,
                     qualified_variant_tags,
                 )?;
-                literal_arms.push((LiteralCaseValue::Int(tag), &arm.body));
+                for value in values {
+                    literal_arms.push((value, &arm.body));
+                }
             }
-            PatternKind::Wildcard => wildcard_body = Some(&arm.body),
-            PatternKind::Var(name) => var_fallback = Some((name.clone(), &arm.body)),
-            _ => return None,
         }
     }
 
@@ -599,7 +589,12 @@ fn lower_literal_case(
     let has_false = literal_arms
         .iter()
         .any(|(lit, _)| matches!(lit, LiteralCaseValue::Bool(false)));
-    if wildcard_body.is_none() && (has_true || has_false) {
+    if wildcard_body.is_none()
+        && (has_true || has_false)
+        && arms
+            .iter()
+            .all(|arm| bool_case_fallback_compatible(&arm.pattern.node))
+    {
         // Let the dedicated bool-case lowering path handle exhaustive bool cases
         // without introducing synthetic non-exhaustive branches.
         return None;
@@ -735,6 +730,50 @@ fn lower_literal_case(
     } else {
         Some(lowered.kind)
     }
+}
+
+fn literal_case_values_from_pattern(
+    pattern: &PatternKind,
+    unit_variant_tags: &UnitVariantTags,
+    qualified_variant_tags: &QualifiedUnitVariantTags,
+) -> Option<Vec<LiteralCaseValue>> {
+    match pattern {
+        PatternKind::Lit(lit @ Lit::Int(_))
+        | PatternKind::Lit(lit @ Lit::Float(_))
+        | PatternKind::Lit(lit @ Lit::Bool(_)) => {
+            Some(vec![literal_case_value_from_lit(lit)?])
+        }
+        PatternKind::Constructor {
+            name,
+            qualifier,
+            args,
+            rest,
+        } if args.is_empty() && !*rest => {
+            let tag = resolve_unit_variant_tag(
+                name,
+                qualifier.as_ref(),
+                unit_variant_tags,
+                qualified_variant_tags,
+            )?;
+            Some(vec![LiteralCaseValue::Int(tag)])
+        }
+        PatternKind::Or(patterns) => {
+            let mut values = Vec::new();
+            for branch in patterns {
+                values.extend(literal_case_values_from_pattern(
+                    &branch.node,
+                    unit_variant_tags,
+                    qualified_variant_tags,
+                )?);
+            }
+            Some(values)
+        }
+        _ => None,
+    }
+}
+
+fn bool_case_fallback_compatible(pattern: &PatternKind) -> bool {
+    matches!(pattern, PatternKind::Lit(Lit::Bool(_)) | PatternKind::Wildcard)
 }
 
 fn literal_case_value_from_lit(lit: &Lit) -> Option<LiteralCaseValue> {
@@ -1066,6 +1105,88 @@ mod tests {
                 assert!(matches!(exprs.last().map(|expr| &expr.kind), Some(HirExprKind::If { .. })));
             }
             other => panic!("expected enum case to lower through literal-case path, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn lower_function_literal_or_pattern_desugars_to_if_chain() {
+        let module = parse_module_from_text(
+            "fn classify(x: Int) -> Int\n  case x\n    0 | 1 -> 10\n    2 -> 20\n    _ -> 30",
+        );
+        let mut env = TypeEnv::new();
+        env.bind(
+            "classify".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::pure(vec![Type::Int], Type::Int))),
+        );
+
+        let lowered = lower_module(&module, &env);
+        let HirDecl::Function(function) = &lowered.declarations[0] else {
+            panic!("expected lowered function declaration");
+        };
+
+        assert!(matches!(function.body.kind, HirExprKind::If { .. }));
+        let if_count = count_if_nodes(&function.body);
+        assert!(
+            if_count >= 3,
+            "expected OR pattern to expand into >= 3 if nodes, got {if_count}"
+        );
+    }
+
+    #[test]
+    fn lower_function_unit_enum_or_pattern_desugars_through_literal_path() {
+        let module = parse_module_from_text(
+            "type Color = Red | Green | Blue\nfn pick() -> Int\n  case Color.Green\n    Color.Red | Color.Green -> 7\n    _ -> 1",
+        );
+        let mut env = TypeEnv::new();
+        env.bind(
+            "pick".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::pure(vec![], Type::Int))),
+        );
+
+        let lowered = lower_module(&module, &env);
+        let function = lowered
+            .declarations
+            .iter()
+            .find_map(|decl| match decl {
+                HirDecl::Function(function) if function.name == "pick" => Some(function),
+                _ => None,
+            })
+            .expect("expected lowered pick function");
+
+        assert!(matches!(
+            function.body.kind,
+            HirExprKind::If { .. } | HirExprKind::Block(_)
+        ));
+        let if_count = count_if_nodes(&function.body);
+        assert!(
+            if_count >= 2,
+            "expected enum OR pattern to expand into >= 2 if nodes, got {if_count}"
+        );
+    }
+
+    fn count_if_nodes(expr: &HirExpr) -> usize {
+        match &expr.kind {
+            HirExprKind::If {
+                then_branch,
+                else_branch,
+                ..
+            } => 1
+                + count_if_nodes(then_branch)
+                + else_branch
+                    .as_ref()
+                    .map(|expr| count_if_nodes(expr))
+                    .unwrap_or(0),
+            HirExprKind::Block(exprs) | HirExprKind::Tuple(exprs) => {
+                exprs.iter().map(count_if_nodes).sum()
+            }
+            HirExprKind::Binary { left, right, .. } => count_if_nodes(left) + count_if_nodes(right),
+            HirExprKind::Unary { operand, .. } => count_if_nodes(operand),
+            HirExprKind::Call { func, args } => {
+                count_if_nodes(func) + args.iter().map(count_if_nodes).sum::<usize>()
+            }
+            HirExprKind::Lambda { body, .. } => count_if_nodes(body),
+            HirExprKind::Let { value, .. } => count_if_nodes(value),
+            HirExprKind::Lit(_) | HirExprKind::Var(_) | HirExprKind::Raw(_) => 0,
         }
     }
 }

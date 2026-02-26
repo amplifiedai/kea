@@ -582,6 +582,34 @@ mod tests {
         let _ = std::fs::remove_file(source_path);
     }
 
+    #[test]
+    fn compile_and_execute_int_or_pattern_case_exit_code() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  case 2\n    0 | 1 -> 4\n    2 | 3 -> 7\n    _ -> 9\n",
+            "kea-cli-int-or-case",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 7);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_unit_enum_or_pattern_case_exit_code() {
+        let source_path = write_temp_source(
+            "type Color = Red | Green | Blue\n\nfn main() -> Int\n  case Color.Green\n    Color.Red | Color.Green -> 3\n    _ -> 8\n",
+            "kea-cli-unit-enum-or-case",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 3);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
     fn write_temp_source(contents: &str, prefix: &str, extension: &str) -> PathBuf {
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
