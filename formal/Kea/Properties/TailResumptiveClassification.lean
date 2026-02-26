@@ -117,5 +117,36 @@ theorem tail_resumptive_eligible_implies_atMostOnce
   rw [h_one]
   exact resume_atMostOnce_one
 
+/-- Named bundle for clause-level tail-resumptive classification outcomes. -/
+structure TailResumptiveBundle (c : HandleClauseContract) where
+  classification :
+    classifyClause c = .nonResumptive ∨
+      classifyClause c = .tailResumptive
+  resumeProvenance : HandleClauseContract.resumeProvenance c
+  notInvalid : classifyClause c ≠ .invalid
+
+theorem tail_resumptive_bundle_of_wellTyped
+    (c : HandleClauseContract)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice c) :
+    TailResumptiveBundle c := by
+  have h_class := tail_resumptive_classification c h_wellTyped
+  have h_prov := HandleClauseContract.wellTypedSlice_implies_resumeProvenance c h_wellTyped
+  have h_lin : ResumeUse.atMostOnce c.resumeUse :=
+    HandleClauseContract.wellTypedSlice_linearity c h_wellTyped
+  have h_not_invalid : classifyClause c ≠ .invalid := by
+    simpa [classifyClause] using
+      (classifyResumeUse_not_invalid_of_atMostOnce c.resumeUse h_lin)
+  exact {
+    classification := h_class
+    resumeProvenance := h_prov
+    notInvalid := h_not_invalid
+  }
+
+theorem tail_resumptive_bundle_notInvalid
+    (c : HandleClauseContract)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice c) :
+    classifyClause c ≠ .invalid :=
+  (tail_resumptive_bundle_of_wellTyped c h_wellTyped).notInvalid
+
 end TailResumptiveClassification
 end Kea
