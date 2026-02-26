@@ -546,7 +546,11 @@ is a language designed around effects.
 **The struct is the universal unit.** No class hierarchy, no
 separate module system, no actor primitives. Structs with traits.
 The traits determine what a struct is — a module, an actor, a
-supervisor. One mechanism, many roles.
+supervisor. One mechanism, many roles. Methods are combinators
+that take values and return values — composition is safe,
+testable, and parallelisable. Copy-on-write makes it fast:
+immutable semantics, mutable performance. See
+[COMPOSITION.md](COMPOSITION.md) for the full argument.
 
 **The handler is the universal seam.** Where you configure
 behavior, where you test, where you sandbox, where you intercept.
