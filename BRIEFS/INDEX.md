@@ -24,7 +24,7 @@ that apply across multiple implementation phases. Ignoring them means rework.
 ## Active
 
 Work in progress right now. Each entry should have a `## Progress` section in its brief.
-- **[Codegen — pure subset](in-progress/0d-codegen-pure.md)** — Started. First gate is complete: `FunctionType` now carries structural effect rows so tooling surfaces effects directly from types.
+- **[Codegen — pure subset](in-progress/0d-codegen-pure.md)** — Active. Step 0 structural function-effect embedding is complete; Step 1 `kea-hir` scaffold is in-tree and tested.
 
 ---
 
