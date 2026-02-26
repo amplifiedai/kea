@@ -5,7 +5,7 @@
 //! MIR + ABI manifest + target config and return code artifacts,
 //! diagnostics, and machine-readable pass stats.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use cranelift::prelude::{
@@ -142,6 +142,14 @@ pub enum CodegenError {
     Module { detail: String },
     #[error("Cranelift object emission failed: {detail}")]
     ObjectEmit { detail: String },
+    #[error("duplicate type layout declaration `{name}`")]
+    DuplicateLayoutType { name: String },
+    #[error("duplicate field `{field}` in record layout `{type_name}`")]
+    DuplicateLayoutField { type_name: String, field: String },
+    #[error("duplicate variant `{variant}` in sum layout `{type_name}`")]
+    DuplicateLayoutVariant { type_name: String, variant: String },
+    #[error("sum layout `{type_name}` must use contiguous tags starting at 0")]
+    InvalidLayoutVariantTags { type_name: String },
 }
 
 pub trait Backend {
@@ -185,6 +193,7 @@ impl Backend for CraneliftBackend {
         config: &BackendConfig,
     ) -> Result<BackendArtifact, CodegenError> {
         validate_abi_manifest(module, abi)?;
+        validate_layout_catalog(module)?;
 
         let isa = build_isa(config)?;
         let stats = collect_pass_stats(module);
@@ -919,6 +928,55 @@ pub fn validate_abi_manifest(module: &MirModule, abi: &AbiManifest) -> Result<()
     Ok(())
 }
 
+fn validate_layout_catalog(module: &MirModule) -> Result<(), CodegenError> {
+    let mut type_names = BTreeSet::new();
+
+    for record in &module.layouts.records {
+        if !type_names.insert(record.name.clone()) {
+            return Err(CodegenError::DuplicateLayoutType {
+                name: record.name.clone(),
+            });
+        }
+        let mut seen_fields = BTreeSet::new();
+        for field in &record.fields {
+            if !seen_fields.insert(field.clone()) {
+                return Err(CodegenError::DuplicateLayoutField {
+                    type_name: record.name.clone(),
+                    field: field.clone(),
+                });
+            }
+        }
+    }
+
+    for sum in &module.layouts.sums {
+        if !type_names.insert(sum.name.clone()) {
+            return Err(CodegenError::DuplicateLayoutType {
+                name: sum.name.clone(),
+            });
+        }
+        let mut seen_variant_names = BTreeSet::new();
+        let mut seen_tags = BTreeSet::new();
+        for variant in &sum.variants {
+            if !seen_variant_names.insert(variant.name.clone()) {
+                return Err(CodegenError::DuplicateLayoutVariant {
+                    type_name: sum.name.clone(),
+                    variant: variant.name.clone(),
+                });
+            }
+            seen_tags.insert(variant.tag);
+        }
+
+        let expected_tags: BTreeSet<u32> = (0..sum.variants.len() as u32).collect();
+        if seen_tags != expected_tags {
+            return Err(CodegenError::InvalidLayoutVariantTags {
+                type_name: sum.name.clone(),
+            });
+        }
+    }
+
+    Ok(())
+}
+
 pub fn collect_pass_stats(module: &MirModule) -> PassStats {
     let per_function = module
         .functions
@@ -997,7 +1055,10 @@ pub fn default_abi_manifest(module: &MirModule) -> AbiManifest {
 mod tests {
     use super::*;
     use kea_hir::{HirDecl, HirExpr, HirExprKind, HirFunction, HirParam};
-    use kea_mir::{MirBlock, MirBlockId, MirFunctionSignature, MirLayoutCatalog, MirTerminator};
+    use kea_mir::{
+        MirBlock, MirBlockId, MirFunctionSignature, MirLayoutCatalog, MirRecordLayout,
+        MirSumLayout, MirTerminator, MirVariantLayout,
+    };
     use kea_types::{FunctionType, Label};
 
     fn sample_stats_module() -> MirModule {
@@ -1195,6 +1256,50 @@ mod tests {
 
         let err = validate_abi_manifest(&module, &empty_manifest).expect_err("should fail");
         assert!(matches!(err, CodegenError::MissingAbiEntry { .. }));
+    }
+
+    #[test]
+    fn validate_layout_catalog_rejects_duplicate_record_field() {
+        let mut module = sample_codegen_module();
+        module.layouts.records.push(MirRecordLayout {
+            name: "User".to_string(),
+            fields: vec!["name".to_string(), "name".to_string()],
+        });
+
+        let err = validate_layout_catalog(&module).expect_err("should reject duplicate field");
+        assert!(matches!(
+            err,
+            CodegenError::DuplicateLayoutField {
+                type_name,
+                field
+            } if type_name == "User" && field == "name"
+        ));
+    }
+
+    #[test]
+    fn validate_layout_catalog_rejects_non_contiguous_sum_tags() {
+        let mut module = sample_codegen_module();
+        module.layouts.sums.push(MirSumLayout {
+            name: "Option".to_string(),
+            variants: vec![
+                MirVariantLayout {
+                    name: "Some".to_string(),
+                    tag: 0,
+                    field_count: 1,
+                },
+                MirVariantLayout {
+                    name: "None".to_string(),
+                    tag: 2,
+                    field_count: 0,
+                },
+            ],
+        });
+
+        let err = validate_layout_catalog(&module).expect_err("should reject non-contiguous tags");
+        assert!(matches!(
+            err,
+            CodegenError::InvalidLayoutVariantTags { type_name } if type_name == "Option"
+        ));
     }
 
     #[test]
