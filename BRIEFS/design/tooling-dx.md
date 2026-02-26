@@ -293,6 +293,151 @@ and capability structure is visible at a glance.
 **MCP:** `module_effect_graph` tool returns the graph as structured data
 for agents to reason about architecture.
 
+#### Refactoring safety
+
+"Extract this block into a function" — the tool computes the extracted
+function's effect signature automatically from the types of the
+expressions being extracted. No guessing about what to thread through.
+The effect row of the extracted function is determined, not chosen.
+
+"Inline this function" — the tool knows whether inlining changes the
+effect surface of the call site. If the inlined function is pure, it's
+always safe. If it has effects, the tool verifies the call site's
+handler coverage still holds.
+
+**LSP:** extract-function code action auto-computes the effect signature.
+Inline-function action warns if it changes the enclosing function's
+effect row.
+**MCP:** `extract_function` and `inline_function` tools return the
+refactored code WITH the proven-correct effect signature, so agents
+can refactor with type-system-level confidence.
+
+#### Effect budget tracking (CI)
+
+Track the effect surface of your public API over time. Effects are part
+of the API contract — if a function gains `Net` where it was pure before,
+that's a breaking change.
+
+```
+CI: effect surface diff for v1.2.0 → v1.3.0
+
+  BREAKING: Config.parse gained [IO] (was pure)
+  BREAKING: Auth.validate gained [Net] (was [Fail AuthError])
+  compatible: Pipeline.run added [Log] (additive, not breaking)
+```
+
+Additive effects (gaining `Log` alongside existing `IO`) are compatible.
+Losing purity or gaining capability effects (`IO`, `Net`, `Send`) is
+breaking. The CI tool knows the difference structurally.
+
+**LSP:** warning when a public function's effect signature changes in a
+way that breaks callers.
+**MCP:** `diff_effect_surface` tool compares two versions of a module
+and classifies each change as breaking/compatible/additive. Agents can
+gate PRs on effect surface stability.
+
+#### Agent-driven architecture migration
+
+An agent reads the effect graph for a codebase, identifies functions that
+should be pure but aren't, and proposes refactorings to push effects to
+the boundary:
+
+```
+Agent analysis: src/orders.kea
+
+  process_order: -[IO, Log, Fail OrderError]>
+    └ validate_order: -[IO]>        ← WHY does validation need IO?
+      └ line 42: IO.read_file("rules.json")  ← config loading in validation
+
+  Recommendation: extract config loading to caller, make validate_order pure.
+  Confidence: proven safe (no other IO operations in validate_order body).
+```
+
+The agent doesn't guess that the refactoring is safe. It reads the effect
+row, identifies the single IO operation, and proves that extracting it
+makes the function pure. The type system verifies the result.
+
+**MCP:** `suggest_purity_refactorings` tool identifies functions that
+are "almost pure" (one or two effect operations that could be moved to
+the caller) and returns the refactoring with a proof of correctness.
+
+#### Supply chain auditing
+
+A dependency's effect surface IS its trust boundary. Audit package
+updates by diffing effect surfaces:
+
+```
+Package update: http-client 2.0.0 → 3.0.0
+
+  NEW capability: Rand (used in request ID generation)
+  NEW capability: Clock (used in retry backoff)
+  REMOVED capability: Spawn (connection pool now sync)
+  UNCHANGED: Net, IO, Fail
+
+  Risk assessment: Rand+Clock are low-risk additions.
+  Spawn removal reduces concurrency surface.
+```
+
+No source code review needed for capability assessment. The effect
+signatures are the complete capability manifest.
+
+**MCP:** `audit_dependency_effects` tool diffs effect surfaces between
+package versions and flags capability escalation. Agents can
+automatically approve low-risk updates and flag high-risk ones.
+
+#### Deterministic simulation and replay
+
+Functions whose effects are fully handled can be deterministically
+replayed. Record the handler responses (IO reads, network responses,
+random values, timestamps) and replay them. The effect system guarantees
+that the replay is faithful — same inputs to handlers, same program
+behavior.
+
+```kea
+-- record mode: wrap production handlers with recording
+let trace = record_effects
+  handle app.run()
+    IO.read_file(p) -> ...    -- record: (read_file, "config.toml") → "..."
+    Net.get(url) -> ...       -- record: (get, "https://...") → response
+    Clock.now() -> ...        -- record: (now) → 1709123456
+
+-- replay mode: use recorded responses as handler
+replay_effects(trace)
+  handle app.run()
+    IO.read_file(p) -> resume(trace.next_response())
+    Net.get(url) -> resume(trace.next_response())
+    Clock.now() -> resume(trace.next_response())
+```
+
+This is deterministic simulation for free. Every effectful program is
+implicitly record/replayable because effects separate what happens from
+how it happens.
+
+**MCP:** `generate_replay_harness` tool creates a replay handler from
+a recorded trace. Agents can reproduce production bugs deterministically
+without accessing production systems.
+
+#### Effect-aware code search
+
+"Find all functions that can access the network" is a type query, not
+a grep. "Find all pure functions that take a String" is a type query.
+"Find all functions that handle IO but don't perform Net" is a type query.
+
+```
+> kea query "fn(_ : String) -[Net]> _"
+  src/http.kea:42   fetch(url: String) -[Net, Fail HttpError]> Response
+  src/dns.kea:15    resolve(host: String) -[Net]> IpAddr
+  src/ws.kea:8      connect(url: String) -[Net, IO]> Socket
+```
+
+Effect-aware search is structural, not textual. It finds functions by
+what they DO, not what they're named or where they live.
+
+**LSP:** workspace symbol search with effect filters.
+**MCP:** `query_by_effects` tool returns functions matching an effect
+pattern. Agents can find relevant code by capability, not by guessing
+file names.
+
 #### The meta-insight
 
 Every analysis above is LOCAL. Read the function signature, know the
@@ -305,6 +450,11 @@ This is why the MCP story is as strong as the LSP story. Agents don't
 need to "understand" code heuristically. They read the types. The effect
 signatures are machine-readable analysis summaries that the compiler
 maintains and guarantees.
+
+All analyses consume the same semantic platform defined in the
+[semantic introspection brief](runtime-introspection-mcp.md). One
+engine, many consumers. The introspection brief defines the platform
+contract. This section defines what's built on top of it.
 
 ## Decisions
 
