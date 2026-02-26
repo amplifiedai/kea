@@ -10,7 +10,7 @@ See `AGENTS.md` > "Briefs and Workboard" for how to manage this file.
 
 Work in progress right now. Each entry should have a `## Progress` section in its brief.
 
-1. **[Lexer and indentation-sensitive parser](in-progress/0a-lexer-parser.md)** — Indentation-sensitive lexer (INDENT/DEDENT), recursive descent + Pratt parser, kea-ast, kea-syntax, kea-diag crates. Cannibalises rill-syntax, rill-ast, rill-diag.
+*(none)*
 
 ---
 
@@ -20,7 +20,7 @@ Designed and approved. Ready to pick up. Ordered by execution sequence per ROADM
 
 ### Phase 0a: Lexer + Parser (week 1)
 
-*(in progress)*
+*(done — see Done section)*
 
 ### Phase 0b: Type System Core (weeks 1-3)
 
@@ -67,6 +67,7 @@ Completed briefs. Kept for reference and design rationale.
 
 | Brief | Summary |
 |-------|---------|
+| [0a-lexer-parser](done/0a-lexer-parser.md) | Indentation-sensitive lexer/parser landed with indentation-only block parsing, snapshot corpora, and property tests for layout/error coherence. |
 | [bootstrap-infra](done/bootstrap-infra.md) | Cargo workspace, mise tasks, scripts, BRIEFS system, docs, .claude setup. Cannibalised from rill. |
 
 ---
