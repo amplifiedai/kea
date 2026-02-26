@@ -145,17 +145,6 @@ pub enum ExprKind {
         operand: Box<Expr>,
     },
 
-    /// Pipe: `left |> right`, `left $> right`, or `left !> right`.
-    Pipe {
-        left: Box<Expr>,
-        op: Spanned<PipeOp>,
-        right: Box<Expr>,
-        guard: Option<Box<Expr>>,
-    },
-
-    /// Placeholder used in `$>` and `!>` RHS expressions.
-    PipePlaceholder,
-
     /// Postfix guard: `expr when condition`.
     WhenGuard {
         body: Box<Expr>,
@@ -815,13 +804,6 @@ pub enum UnaryOp {
     Not,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PipeOp {
-    Standard,
-    Place,
-    Tap,
-}
-
 // ---------------------------------------------------------------------------
 // Top-level declarations
 // ---------------------------------------------------------------------------
@@ -1200,7 +1182,7 @@ fn collect_free_vars(
                 free.insert(name.clone());
             }
         }
-        ExprKind::Lit(_) | ExprKind::None | ExprKind::Atom(_) | ExprKind::PipePlaceholder => {}
+        ExprKind::Lit(_) | ExprKind::None | ExprKind::Atom(_) => {}
         ExprKind::Let { pattern, value, .. } => {
             collect_free_vars(&value.node, free, bound);
             collect_pattern_bindings(&pattern.node, bound);
@@ -1270,15 +1252,6 @@ fn collect_free_vars(
         }
         ExprKind::UnaryOp { operand, .. } => {
             collect_free_vars(&operand.node, free, bound);
-        }
-        ExprKind::Pipe {
-            left, right, guard, ..
-        } => {
-            collect_free_vars(&left.node, free, bound);
-            collect_free_vars(&right.node, free, bound);
-            if let Some(guard_expr) = guard {
-                collect_free_vars(&guard_expr.node, free, bound);
-            }
         }
         ExprKind::WhenGuard { body, condition } => {
             collect_free_vars(&body.node, free, bound);

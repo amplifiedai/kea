@@ -243,12 +243,14 @@ fn html_template(parts: Vec<StringInterpPart>, atoms: Vec<&str>) -> Expr {
 }
 
 fn pipe(left: Expr, right: Expr) -> Expr {
-    sp(ExprKind::Pipe {
-        left: Box::new(left),
-        op: sp(PipeOp::Standard),
-        right: Box::new(right),
-        guard: None,
-    })
+    match right.node {
+        ExprKind::Call { func, args } => {
+            let mut combined_args = vec![Argument { label: None, value: left }];
+            combined_args.extend(args);
+            sp(ExprKind::Call { func, args: combined_args })
+        }
+        _ => call(right, vec![left]),
+    }
 }
 
 fn ascribe(expr: Expr, annotation: TypeAnnotation) -> Expr {
@@ -11755,12 +11757,7 @@ fn df_verb(verb_kind: DfVerbKind, args: DfVerbArgs) -> Expr {
 }
 
 fn df_pipe(left: Expr, right: Expr) -> Expr {
-    sp(ExprKind::Pipe {
-        left: Box::new(left),
-        op: sp(PipeOp::Standard),
-        right: Box::new(right),
-        guard: None,
-    })
+    call(right, vec![left])
 }
 
 // ---------------------------------------------------------------------------
