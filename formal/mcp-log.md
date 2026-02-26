@@ -4493,3 +4493,41 @@ and equivalence slice in `NominalAdtTypingBridge`
 **Outcome**:
 - Runtime nominal `as` behavior remains aligned after adding the algorithmic
   nominal ascription checker/equivalence slice.
+
+### 2026-02-26: WfUnifyExtends branch-contract re-probe after MCP refresh
+
+**Context**: After adding branch-complete full-contract wrappers in
+`Kea/Properties/WfUnifyExtends` (`no-update`, `single-bind`, `open-open fresh`)
+and restarting `kea-mcp`, re-probed representative row-unification boundary
+cases to validate Lean preconditions against the live implementation.
+
+**MCP tools used**: `reset_session`, `get_type`, `type_check`, `diagnose`
+
+**Probe**:
+1. No-update shape (identity over closed row):
+   - `get_type "(r -> r)(#{ a: 1 })"` -> `#{ a: Int }`.
+2. Single-bind shape (required field projection with extras):
+   - `get_type "(r -> r.a)(#{ a: 1, b: true })"` -> `Int`.
+3. Open-open shape (independent projection composition):
+   - `get_type "((x -> y -> #(x.a, y.b))(#{ a: 1, c: true }))(#{ b: \"u\", d: 2 })"`
+     -> `#(Int, String)`.
+4. Missing-field boundary:
+   - `type_check "(r -> r.a)(#{ b: true })"` -> `error` (`missing_field`,
+     missing `a`).
+5. Type-mismatch boundary:
+   - `type_check "(r -> r.a + 1)(#{ a: \"x\" })"` -> `error` (`type_mismatch`,
+     field `a` expected `Int`, got `String`).
+6. Diagnostic shape sanity for mismatch:
+   - `diagnose "(r -> r.a + 1)(#{ a: \"x\" })"` -> structured
+     `type_mismatch` diagnostics for field `a`.
+
+**Classify**: Agreement.
+
+**Outcome**:
+- Runtime row behavior matches the current WF-contract theorem surface for the
+  branch shapes consumed by `unifyRows_contract_full_wf`.
+
+**Impact**:
+- Confirms no Lean↔MCP divergence for the latest Phase-1 WF contract wrappers.
+- Keeps Phase-1 progression on track toward full-language WF coverage before
+  Phase-2 handler/effect theorems.
