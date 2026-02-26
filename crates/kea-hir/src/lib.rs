@@ -91,6 +91,10 @@ pub enum HirPattern {
 type UnitVariantTags = BTreeMap<String, i64>;
 type QualifiedUnitVariantTags = BTreeMap<(String, String), i64>;
 
+fn is_namespace_qualifier(name: &str) -> bool {
+    name.chars().next().is_some_and(|ch| ch.is_ascii_uppercase())
+}
+
 fn expr_decl_to_fn_decl(expr: &ExprDecl) -> FnDecl {
     FnDecl {
         public: expr.public,
@@ -363,6 +367,8 @@ fn lower_expr(
                 if let Some(tag) = qualified_variant_tags.get(&(type_name.clone(), field.node.clone()))
                 {
                     HirExprKind::Lit(Lit::Int(*tag))
+                } else if is_namespace_qualifier(type_name) {
+                    HirExprKind::Var(format!("{type_name}::{}", field.node))
                 } else {
                     HirExprKind::Raw(expr.node.clone())
                 }
@@ -1099,6 +1105,30 @@ mod tests {
 
         assert_eq!(function.ty.to_string(), "(String) -[IO | e0]> ()");
         assert_eq!(function.effects.to_string(), "[IO | e0]");
+    }
+
+    #[test]
+    fn lower_function_namespaced_field_access_becomes_qualified_var_reference() {
+        let module = parse_module_from_text("fn boom() -> Unit\n  Fail.fail(1)");
+        let mut env = TypeEnv::new();
+        env.bind(
+            "boom".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::with_effects(
+                vec![],
+                Type::Unit,
+                EffectRow::closed(vec![(Label::new("Fail"), Type::Int)]),
+            ))),
+        );
+
+        let lowered = lower_module(&module, &env);
+        let HirDecl::Function(function) = &lowered.declarations[0] else {
+            panic!("expected lowered function declaration");
+        };
+
+        let HirExprKind::Call { func, .. } = &function.body.kind else {
+            panic!("expected call expression");
+        };
+        assert!(matches!(&func.kind, HirExprKind::Var(name) if name == "Fail::fail"));
     }
 
     #[test]
