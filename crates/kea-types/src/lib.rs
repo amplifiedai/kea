@@ -135,6 +135,8 @@ pub enum Type {
     Date,
     /// UTC timestamp (microseconds since Unix epoch, Arrow Timestamp(Microsecond, UTC)).
     DateTime,
+    /// Dynamically typed value placeholder.
+    Dynamic,
 
     // -- Compound types --
     List(Box<Type>),
@@ -175,20 +177,6 @@ pub enum Type {
         params: Vec<Type>,
     },
 
-    // -- DataFrame (Phase 2+, defined now for extensibility) --
-    /// `DataFrame(R)` parameterized by a row type.
-    DataFrame(Box<Type>),
-    /// Unknown schema — operations are restricted (KERNEL §7.2).
-    Dynamic,
-    /// ColumnExpr type boundary: wraps element types during column expression
-    /// type-checking. `Column(T)` does not unify with bare `T`, enforcing the
-    /// boundary between columnar and scalar computation (KERNEL §7.6).
-    Column(Box<Type>),
-    /// Intermediate type from `group_by` (KERNEL §7.5).
-    GroupedFrame {
-        row: Box<Type>,
-        keys: Vec<Label>,
-    },
     /// Type with compile-time metadata tags (e.g., future dimensional analysis).
     /// Tags are erased at runtime.
     Tagged {
@@ -652,18 +640,6 @@ impl fmt::Display for Type {
                 Ok(())
             }
 
-            Type::DataFrame(inner) => write!(f, "DataFrame({inner})"),
-            Type::Column(inner) => write!(f, "Column({inner})"),
-            Type::GroupedFrame { row, keys } => {
-                write!(f, "GroupedFrame({row}, keys: [")?;
-                for (i, k) in keys.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{k}")?;
-                }
-                write!(f, "])")
-            }
             Type::Tagged { inner, tags } => {
                 if tags.is_empty() {
                     write!(f, "Tagged({inner})")
@@ -926,17 +902,12 @@ fn collect_free_type_vars(ty: &Type, vars: &mut BTreeSet<TypeVarId>) {
                 }
             }
         }
-        Type::DataFrame(inner)
-        | Type::Column(inner)
-        | Type::Tagged { inner, .. }
+        Type::Tagged { inner, .. }
         | Type::Stream(inner)
         | Type::Task(inner)
         | Type::Actor(inner)
         | Type::Arc(inner) => {
             collect_free_type_vars(inner, vars);
-        }
-        Type::GroupedFrame { row, .. } => {
-            collect_free_type_vars(row, vars);
         }
         Type::Int
         | Type::IntN(_, _)
@@ -1029,17 +1000,12 @@ fn collect_free_row_vars(ty: &Type, vars: &mut BTreeSet<RowVarId>) {
             }
             vars.extend(inner);
         }
-        Type::DataFrame(inner)
-        | Type::Column(inner)
-        | Type::Tagged { inner, .. }
+        Type::Tagged { inner, .. }
         | Type::Stream(inner)
         | Type::Task(inner)
         | Type::Actor(inner)
         | Type::Arc(inner) => {
             collect_free_row_vars(inner, vars);
-        }
-        Type::GroupedFrame { row, .. } => {
-            collect_free_row_vars(row, vars);
         }
         Type::App(constructor, args) => {
             collect_free_row_vars(constructor, vars);
@@ -1158,17 +1124,12 @@ fn collect_free_dim_vars(ty: &Type, vars: &mut BTreeSet<DimVarId>) {
             }
             vars.extend(inner);
         }
-        Type::DataFrame(inner)
-        | Type::Column(inner)
-        | Type::Tagged { inner, .. }
+        Type::Tagged { inner, .. }
         | Type::Stream(inner)
         | Type::Task(inner)
         | Type::Actor(inner)
         | Type::Arc(inner) => {
             collect_free_dim_vars(inner, vars);
-        }
-        Type::GroupedFrame { row, .. } => {
-            collect_free_dim_vars(row, vars);
         }
         Type::Decimal { precision, scale } => {
             if let Dim::Var(v) = precision {
@@ -1401,10 +1362,9 @@ pub fn builtin_type_constructor_arity(name: &str) -> Option<usize> {
         "Int" | "Int8" | "Int16" | "Int32" | "Int64" | "UInt8" | "UInt16" | "UInt32" | "UInt64"
         | "Float" | "Float16" | "Float32" | "Float64" | "Decimal" | "Bool" | "String" | "Html"
         | "Markdown" | "Unit" | "Atom" | "Date" | "DateTime" | "Dynamic" => 0,
-        "List" | "Set" | "Option" | "DataFrame" | "Column" | "Stream" | "Task" | "Actor"
-        | "Arc" | "Step" | "Seq" => 1,
+        "List" | "Set" | "Option" | "Stream" | "Task" | "Actor" | "Arc" | "Step" | "Seq" => 1,
         "Map" | "Result" | "Validated" => 2,
-        "GroupedFrame" | "Tagged" | "Tuple" => return None,
+        "Tagged" | "Tuple" => return None,
         _ => return None,
     })
 }
@@ -1451,13 +1411,10 @@ pub fn type_constructor_for_trait(ty: &Type) -> Option<(String, Vec<Type>)> {
         Type::Record(rt) => Some((rt.name.clone(), rt.params.clone())),
         Type::Sum(st) => Some((st.name.clone(), st.type_args.clone())),
         Type::Opaque { name, params } => Some((name.clone(), params.clone())),
-        Type::DataFrame(inner) => Some(("DataFrame".into(), vec![(**inner).clone()])),
-        Type::Column(inner) => Some(("Column".into(), vec![(**inner).clone()])),
         Type::Stream(inner) => Some(("Stream".into(), vec![(**inner).clone()])),
         Type::Task(inner) => Some(("Task".into(), vec![(**inner).clone()])),
         Type::Actor(inner) => Some(("Actor".into(), vec![(**inner).clone()])),
         Type::Arc(inner) => Some(("Arc".into(), vec![(**inner).clone()])),
-        Type::GroupedFrame { row, .. } => Some(("GroupedFrame".into(), vec![(**row).clone()])),
         Type::Tagged { inner, .. } => type_constructor_for_trait(inner),
         Type::App(constructor, args) => {
             let normalized = normalize_constructor_application(constructor, args)?;
@@ -1575,8 +1532,6 @@ pub fn rebuild_type(constructor: &str, args: &[Type]) -> Option<Type> {
             Type::Result(Box::new(args[0].clone()), Box::new(args[1].clone()))
         }
         "Tuple" => Type::Tuple(args.to_vec()),
-        "DataFrame" if args.len() == 1 => Type::DataFrame(Box::new(args[0].clone())),
-        "Column" if args.len() == 1 => Type::Column(Box::new(args[0].clone())),
         "Stream" if args.len() == 1 => Type::Stream(Box::new(args[0].clone())),
         "Task" if args.len() == 1 => Type::Task(Box::new(args[0].clone())),
         "Actor" if args.len() == 1 => Type::Actor(Box::new(args[0].clone())),
@@ -1591,8 +1546,8 @@ pub fn rebuild_type(constructor: &str, args: &[Type]) -> Option<Type> {
 
 /// Check whether a type is Sendable (safe to transfer to an actor task).
 ///
-/// Sendable types: primitives, Actor(T), Task(T), DataFrame, Dynamic, Arc(T),
-/// error types, and compound types whose components are all Sendable.
+/// Sendable types: primitives, Actor(T), Task(T), Arc(T), error types, and
+/// compound types whose components are all Sendable.
 /// Functions/closures are NOT Sendable.
 pub fn is_sendable(ty: &Type) -> bool {
     match ty {
@@ -1610,17 +1565,12 @@ pub fn is_sendable(ty: &Type) -> bool {
         | Type::Atom
         | Type::Date
         | Type::DateTime => true,
-        // Actor handles, DataFrames, Dynamic are Sendable.
+        // Actor handles and dynamic values are Sendable.
         Type::Actor(_) | Type::Dynamic => true,
-        Type::DataFrame(_) => true,
         // Arc makes anything Sendable (that's its purpose).
         Type::Arc(_) => true,
-        // Column type follows inner.
-        Type::Column(inner) => is_sendable(inner),
         // Tagged type follows inner.
         Type::Tagged { inner, .. } => is_sendable(inner),
-        // GroupedFrame is Sendable if its row type is.
-        Type::GroupedFrame { row, .. } => is_sendable(row),
         // Stream is Sendable if its element type is.
         Type::Stream(inner) => is_sendable(inner),
         // Task is Sendable if its output type is.
@@ -1786,9 +1736,7 @@ fn sendable_violation_inner(ty: &Type, path: &str) -> Option<SendableViolation> 
             None
         }
         Type::Forall(scheme) => sendable_violation_inner(&scheme.ty, path),
-        Type::Column(inner) => sendable_violation_inner(inner, path),
         Type::Tagged { inner, .. } => sendable_violation_inner(inner, path),
-        Type::GroupedFrame { row, .. } => sendable_violation_inner(row, path),
         Type::Stream(inner) => sendable_violation_inner(inner, path),
         Type::Task(inner) => sendable_violation_inner(inner, path),
         Type::App(constructor, args) => {
@@ -1844,288 +1792,10 @@ fn sendable_violation_inner(ty: &Type, path: &str) -> Option<SendableViolation> 
         | Type::DateTime
         | Type::Dynamic
         | Type::Actor(_)
-        | Type::DataFrame(_)
         | Type::Arc(_)
         | Type::Var(_) => None,
     }
 }
-
-// ---------------------------------------------------------------------------
-// ColumnExpr type rules (declarative type rules for column expression functions)
-// ---------------------------------------------------------------------------
-
-/// Declarative type rules for functions usable in column expressions.
-///
-/// Replaces hardcoded match arms in typeck.rs with data-driven dispatch.
-/// Lives in `kea-types` (not `kea-infer`) because it only describes type
-/// behavior — no inference state or unification logic.
-#[derive(Debug, Clone)]
-pub enum ColumnExprArgConstraint {
-    /// No static constraint on this argument's element type.
-    Any,
-    /// Argument element type must match exactly.
-    Exact(Type),
-    /// Argument element type must satisfy the named trait bound.
-    Trait(String),
-}
-
-/// Output shape for constrained aggregate type rules.
-#[derive(Debug, Clone)]
-pub enum AggregateResultKind {
-    /// Return first argument element type as nullable (e.g. sum, min, max).
-    Input,
-    /// Return fixed element type as nullable (e.g. mean -> Float?).
-    Fixed(Type),
-    /// Return non-nullable Int (e.g. count, count_all, count_distinct).
-    Count,
-}
-
-#[derive(Debug, Clone)]
-pub enum ColumnExprTypeRule {
-    /// T → T: preserves type and nullability. (abs, round)
-    ScalarIdentity,
-    /// T → Fixed: output type is fixed, nullability propagated from input. (sqrt → Float)
-    ScalarFixed(Type),
-    /// Input must match type, output is fixed, nullability propagated. (lower: String → String)
-    ScalarChecked { input: Type, output: Type },
-    /// T → T?: aggregate, always nullable (empty group → null). (sum, min, max)
-    Aggregate,
-    /// T → Fixed?: aggregate returning fixed type, always nullable. (mean → Float)
-    AggregateFixed(Type),
-    /// count/count_all: always returns Int, non-nullable.
-    AggregateCount,
-    /// Aggregate with per-argument constraints and explicit result kind.
-    AggregateConstrained {
-        args: Vec<ColumnExprArgConstraint>,
-        result: AggregateResultKind,
-    },
-    /// T? → Bool: null check, non-nullable result. (is_none, is_some)
-    NullCheck,
-    /// (T?, T) → T: coalesce with nullability narrowing.
-    Coalesce,
-    /// (T, T) → T?: null-if semantics.
-    NullIf,
-    /// row_number() -> Int (no args).
-    WindowRowNumber,
-    /// rank(expr) / dense_rank(expr) -> Int, percent_rank(expr) -> Float.
-    /// Requires an orderable input expression.
-    WindowRankByArg { output: Type },
-    /// ntile(buckets: Int) -> Int.
-    WindowNtile,
-    /// lag/lead with optional offset/default:
-    /// (T), (T, Int), or (T, Int, T) -> T?
-    WindowOffset,
-}
-
-/// Default column expression type rules for the built-in functions.
-///
-/// This is the canonical source of truth for what ColumnExpr functions exist
-/// and their type semantics. Used by TypeEnv::new() and StdlibRegistry.
-pub fn default_column_expr_type_rules() -> std::collections::BTreeMap<String, ColumnExprTypeRule> {
-    use ColumnExprTypeRule::*;
-
-    let mut m = std::collections::BTreeMap::new();
-
-    // Aggregates
-    m.insert(
-        "sum".into(),
-        AggregateConstrained {
-            args: vec![ColumnExprArgConstraint::Trait("Additive".into())],
-            result: AggregateResultKind::Input,
-        },
-    );
-    m.insert(
-        "min".into(),
-        AggregateConstrained {
-            args: vec![ColumnExprArgConstraint::Trait("Orderable".into())],
-            result: AggregateResultKind::Input,
-        },
-    );
-    m.insert(
-        "max".into(),
-        AggregateConstrained {
-            args: vec![ColumnExprArgConstraint::Trait("Orderable".into())],
-            result: AggregateResultKind::Input,
-        },
-    );
-    m.insert(
-        "mean".into(),
-        AggregateConstrained {
-            args: vec![ColumnExprArgConstraint::Trait("Numeric".into())],
-            result: AggregateResultKind::Fixed(Type::Float),
-        },
-    );
-    m.insert(
-        "avg".into(),
-        AggregateConstrained {
-            args: vec![ColumnExprArgConstraint::Trait("Numeric".into())],
-            result: AggregateResultKind::Fixed(Type::Float),
-        },
-    );
-    m.insert(
-        "stddev".into(),
-        AggregateConstrained {
-            args: vec![ColumnExprArgConstraint::Trait("Numeric".into())],
-            result: AggregateResultKind::Fixed(Type::Float),
-        },
-    );
-    m.insert(
-        "variance".into(),
-        AggregateConstrained {
-            args: vec![ColumnExprArgConstraint::Trait("Numeric".into())],
-            result: AggregateResultKind::Fixed(Type::Float),
-        },
-    );
-    m.insert(
-        "median".into(),
-        AggregateConstrained {
-            args: vec![ColumnExprArgConstraint::Trait("Numeric".into())],
-            result: AggregateResultKind::Fixed(Type::Float),
-        },
-    );
-    m.insert(
-        "quantile".into(),
-        AggregateConstrained {
-            args: vec![
-                ColumnExprArgConstraint::Trait("Numeric".into()),
-                ColumnExprArgConstraint::Exact(Type::Float),
-            ],
-            result: AggregateResultKind::Fixed(Type::Float),
-        },
-    );
-    m.insert(
-        "correlation".into(),
-        AggregateConstrained {
-            args: vec![
-                ColumnExprArgConstraint::Trait("Numeric".into()),
-                ColumnExprArgConstraint::Trait("Numeric".into()),
-            ],
-            result: AggregateResultKind::Fixed(Type::Float),
-        },
-    );
-    m.insert(
-        "covariance".into(),
-        AggregateConstrained {
-            args: vec![
-                ColumnExprArgConstraint::Trait("Numeric".into()),
-                ColumnExprArgConstraint::Trait("Numeric".into()),
-            ],
-            result: AggregateResultKind::Fixed(Type::Float),
-        },
-    );
-    // count/count_all → Int (non-nullable)
-    m.insert("count".into(), AggregateCount);
-    m.insert("count_all".into(), AggregateCount);
-    m.insert(
-        "count_distinct".into(),
-        AggregateConstrained {
-            args: vec![ColumnExprArgConstraint::Any],
-            result: AggregateResultKind::Count,
-        },
-    );
-
-    // Math: abs, round → same type (ScalarIdentity)
-    m.insert("abs".into(), ScalarIdentity);
-    m.insert("round".into(), ScalarIdentity);
-    // sqrt, ceil, floor: Float → Float
-    m.insert(
-        "sqrt".into(),
-        ScalarChecked {
-            input: Type::Float,
-            output: Type::Float,
-        },
-    );
-    m.insert(
-        "ceil".into(),
-        ScalarChecked {
-            input: Type::Float,
-            output: Type::Float,
-        },
-    );
-    m.insert(
-        "floor".into(),
-        ScalarChecked {
-            input: Type::Float,
-            output: Type::Float,
-        },
-    );
-
-    // String: lower, upper → String (ScalarChecked)
-    m.insert(
-        "lower".into(),
-        ScalarChecked {
-            input: Type::String,
-            output: Type::String,
-        },
-    );
-    m.insert(
-        "upper".into(),
-        ScalarChecked {
-            input: Type::String,
-            output: Type::String,
-        },
-    );
-
-    // Null handling
-    m.insert("coalesce".into(), Coalesce);
-    m.insert("na_if".into(), NullIf);
-    m.insert("is_none".into(), NullCheck);
-    m.insert("is_some".into(), NullCheck);
-
-    // Window functions
-    m.insert("row_number".into(), WindowRowNumber);
-    m.insert("rank".into(), WindowRankByArg { output: Type::Int });
-    m.insert("dense_rank".into(), WindowRankByArg { output: Type::Int });
-    m.insert(
-        "percent_rank".into(),
-        WindowRankByArg {
-            output: Type::Float,
-        },
-    );
-    m.insert("ntile".into(), WindowNtile);
-    m.insert("lag".into(), WindowOffset);
-    m.insert("lead".into(), WindowOffset);
-
-    // Cumulative/windowed aggregate shorthands
-    m.insert(
-        "cumsum".into(),
-        AggregateConstrained {
-            args: vec![ColumnExprArgConstraint::Trait("Additive".into())],
-            result: AggregateResultKind::Input,
-        },
-    );
-    m.insert(
-        "cummax".into(),
-        AggregateConstrained {
-            args: vec![ColumnExprArgConstraint::Trait("Orderable".into())],
-            result: AggregateResultKind::Input,
-        },
-    );
-    m.insert(
-        "cummin".into(),
-        AggregateConstrained {
-            args: vec![ColumnExprArgConstraint::Trait("Orderable".into())],
-            result: AggregateResultKind::Input,
-        },
-    );
-    m.insert(
-        "cummean".into(),
-        AggregateConstrained {
-            args: vec![ColumnExprArgConstraint::Trait("Numeric".into())],
-            result: AggregateResultKind::Fixed(Type::Float),
-        },
-    );
-    m.insert(
-        "cumcount".into(),
-        AggregateConstrained {
-            args: vec![ColumnExprArgConstraint::Any],
-            result: AggregateResultKind::Count,
-        },
-    );
-
-    m
-}
-
 // ---------------------------------------------------------------------------
 // Module system (BuiltinModule trait, ModuleRegistry)
 // ---------------------------------------------------------------------------
@@ -2145,8 +1815,6 @@ pub struct BuiltinFunctionInfo {
     pub is_public: bool,
     /// Whether this function is part of the curated prelude (always available without import).
     pub is_prelude: bool,
-    /// ColumnExpr typing rule, if this function is valid in column expressions.
-    pub column_expr_type_rule: Option<ColumnExprTypeRule>,
 }
 
 /// Type-level description of a builtin module.
@@ -2291,11 +1959,6 @@ impl Effects {
             // Volatility is irrelevant for impure functions, but we need a value.
             volatility: Volatility::Deterministic,
         }
-    }
-
-    /// Can this function be used inside ColumnExpr? (KERNEL §12)
-    pub fn is_column_expr_eligible(&self) -> bool {
-        self.purity == Purity::Pure
     }
 
     /// Can results of this function be memoized? (KERNEL §2.4)
@@ -2505,12 +2168,6 @@ impl Substitution {
                     })
                     .collect(),
             }),
-            Type::DataFrame(inner) => Type::DataFrame(Box::new(self.apply(inner))),
-            Type::Column(inner) => Type::Column(Box::new(self.apply(inner))),
-            Type::GroupedFrame { row, keys } => Type::GroupedFrame {
-                row: Box::new(self.apply(row)),
-                keys: keys.clone(),
-            },
             Type::Tagged { inner, tags } => Type::Tagged {
                 inner: Box::new(self.apply(inner)),
                 tags: tags.clone(),
@@ -2764,10 +2421,6 @@ mod tests {
         let volatile = Effects::pure_volatile();
         let impure = Effects::impure();
 
-        assert!(pure.is_column_expr_eligible());
-        assert!(volatile.is_column_expr_eligible());
-        assert!(!impure.is_column_expr_eligible());
-
         assert!(pure.is_memoizable());
         assert!(!volatile.is_memoizable());
         assert!(!impure.is_memoizable());
@@ -2788,7 +2441,6 @@ mod tests {
         assert_eq!(Type::Bool.to_string(), "Bool");
         assert_eq!(Type::String.to_string(), "String");
         assert_eq!(Type::Unit.to_string(), "()");
-        assert_eq!(Type::Dynamic.to_string(), "Dynamic");
     }
 
     #[test]
@@ -3016,7 +2668,6 @@ mod tests {
                     doc: "Square root",
                     is_public: true,
                     is_prelude: false,
-                    column_expr_type_rule: None,
                 },
                 BuiltinFunctionInfo {
                     name: "abs",
@@ -3029,7 +2680,6 @@ mod tests {
                     doc: "Absolute value",
                     is_public: true,
                     is_prelude: false,
-                    column_expr_type_rule: None,
                 },
             ]
         }
@@ -3127,7 +2777,6 @@ mod tests {
             Type::Result(Box::new(Type::Int), Box::new(Type::String)),
             Type::Stream(Box::new(Type::Bool)),
             Type::Tuple(vec![Type::Int, Type::String]),
-            Type::DataFrame(Box::new(Type::Var(TypeVarId(0)))),
         ];
 
         for ty in samples {
@@ -3156,12 +2805,9 @@ mod tests {
     }
 
     #[test]
-    fn sendable_actor_and_dataframe() {
+    fn sendable_actor_and_task() {
         assert!(is_sendable(&Type::Actor(Box::new(Type::Int))));
-        assert!(is_sendable(&Type::DataFrame(Box::new(Type::Var(
-            TypeVarId(0)
-        )))));
-        assert!(is_sendable(&Type::Dynamic));
+        assert!(is_sendable(&Type::Task(Box::new(Type::Int))));
     }
 
     #[test]

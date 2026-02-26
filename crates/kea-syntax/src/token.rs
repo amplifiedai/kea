@@ -115,7 +115,6 @@ pub enum TokenKind {
     In,
 
     // -- Reserved words (KERNEL §16) --
-    Frame,
     Sql,
     Html,
     Markdown,

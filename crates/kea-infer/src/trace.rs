@@ -67,7 +67,6 @@ pub enum InferRule {
     VarLookup,
     Lambda,
     Call,
-    PipeApply,
     Let,
     LetGen,
     If,
@@ -79,8 +78,6 @@ pub enum InferRule {
     Tuple,
     FieldAccess,
     Try,
-    Frame,
-    EmbeddedBlock,
     Instantiate,
 }
 

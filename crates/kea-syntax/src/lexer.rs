@@ -691,7 +691,6 @@ impl<'src> Lexer<'src> {
                 self.error(start, "`nil` is not supported; use `None`");
                 return;
             }
-            "frame" => TokenKind::Frame,
             "sql" => TokenKind::Sql,
             "html" => TokenKind::Html,
             "markdown" => TokenKind::Markdown,
@@ -1197,10 +1196,9 @@ mod tests {
     fn reserved_words() {
         assert_eq!(
             lex_kinds(
-                "frame sql html markdown spawn await stream yield yield_from assert assert_eq assert_ne assert_frame_equal assert_snapshot assert_ok assert_error",
+                "sql html markdown spawn await stream yield yield_from assert assert_eq assert_ne assert_frame_equal assert_snapshot assert_ok assert_error",
             ),
             vec![
-                TokenKind::Frame,
                 TokenKind::Sql,
                 TokenKind::Html,
                 TokenKind::Markdown,

@@ -2235,8 +2235,12 @@ impl Parser {
             return self.use_expr();
         }
 
-        // Kea v0 does not include DataFrame literals.
-        if self.check(&TokenKind::Frame) {
+        // Kea v0 does not include frame literals.
+        if self.check_ident("frame")
+            && self
+                .peek_at(1)
+                .is_some_and(|t| matches!(t.kind, TokenKind::LBrace))
+        {
             self.error_at_current("`frame` literals are not supported in Kea v0");
             return None;
         }
@@ -6842,7 +6846,7 @@ mod tests {
         }
     }
 
-    // -- Frame literal --
+    // -- frame literal --
 
     #[test]
     fn parse_frame_literal_is_error() {

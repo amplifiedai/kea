@@ -92,30 +92,8 @@ pub enum Reason {
     PatternMatch,
     /// Trait bound not satisfied.
     TraitBound { trait_name: String },
-    /// DataFrame mutate: adding a column.
-    DataFrameMutate { column: Label },
-    /// DataFrame update: replacing a column's values.
-    DataFrameUpdate { column: Label },
-    /// DataFrame drop: removing a column.
-    DataFrameDrop { column: Label },
-    /// DataFrame expect_schema: narrowing Dynamic to typed.
-    DataFrameExpectSchema,
-    /// DataFrame join: key or column constraint.
-    DataFrameJoin,
-    /// Frame literal: all values in a column must have the same type.
-    FrameColumnValue { column: Label },
-    /// ColumnExpr type constraint (e.g., arithmetic operand types).
-    ColumnExpr,
-    /// Filter predicate must be Bool or Bool?.
-    FilterPredicate,
-    /// Null comparison banned in ColumnExpr — use is_none()/is_some().
-    NullComparison,
     /// Actor operation: spawn, send, or call requires Actor type.
     ActorOp,
-    /// Map verb: function argument type constraint.
-    MapFunction,
-    /// Map verb: function input must match DataFrame row type.
-    MapInput,
 }
 
 // ---------------------------------------------------------------------------
@@ -1270,45 +1248,6 @@ impl Unifier {
                     "Forall ~ Forall → alpha-equal quantified schemes".into(),
                 );
             }
-            (Type::DataFrame(a), Type::DataFrame(b)) => {
-                // Keep schema narrowing explicit: DataFrame(Dynamic) only
-                // unifies with DataFrame(Dynamic), not typed schemas.
-                let left = self.substitution.apply(a);
-                let right = self.substitution.apply(b);
-                if (left == Type::Dynamic) ^ (right == Type::Dynamic) {
-                    self.push_unify_step(
-                        crate::trace::UnifyAction::Error,
-                        &expected,
-                        &actual,
-                        "DataFrame(Dynamic) does not unify with typed DataFrame schemas".into(),
-                    );
-                    let (message, help) =
-                        type_mismatch_message(&expected, &actual, &provenance.reason);
-                    let mut diag = Diagnostic::error(Category::TypeMismatch, message)
-                        .at(span_to_location(provenance.span));
-                    if let Some(help_text) = help {
-                        diag = diag.with_help(help_text);
-                    }
-                    self.errors.push(diag);
-                    return;
-                }
-                self.push_unify_step(
-                    crate::trace::UnifyAction::Decompose,
-                    &expected,
-                    &actual,
-                    "DataFrame(A) ~ DataFrame(B) → unify A ~ B".into(),
-                );
-                self.unify_immediate(&left, &right, provenance);
-            }
-            (Type::Column(a), Type::Column(b)) => {
-                self.push_unify_step(
-                    crate::trace::UnifyAction::Decompose,
-                    &expected,
-                    &actual,
-                    "Column(A) ~ Column(B) → unify A ~ B".into(),
-                );
-                self.unify_immediate(a, b, provenance);
-            }
             (Type::Stream(a), Type::Stream(b)) => {
                 self.push_unify_step(
                     crate::trace::UnifyAction::Decompose,
@@ -1852,14 +1791,11 @@ impl Unifier {
             Type::AnonRecord(row) | Type::Row(row) => {
                 row.fields.iter().any(|(_, t)| self.occurs_in(var, t))
             }
-            Type::DataFrame(inner)
-            | Type::Column(inner)
-            | Type::Tagged { inner, .. }
+            Type::Tagged { inner, .. }
             | Type::Stream(inner)
             | Type::Task(inner)
             | Type::Actor(inner)
             | Type::Arc(inner) => self.occurs_in(var, inner),
-            Type::GroupedFrame { row, .. } => self.occurs_in(var, row),
             Type::App(constructor, args) => {
                 self.occurs_in(var, constructor) || args.iter().any(|a| self.occurs_in(var, a))
             }
@@ -2549,16 +2485,9 @@ fn constraint_trace_entry(constraint: &Constraint) -> (String, Option<Span>) {
 
 /// Determine the domain term for row error messages based on provenance.
 ///
-/// Returns (entity, "the entity") — e.g., ("record", "the record") or
-/// ("DataFrame", "the DataFrame"). This allows row errors to say
-/// "record is missing field" vs "DataFrame is missing field" depending on context.
+/// Returns (entity, "the entity") — for example ("field", "the record").
 fn row_domain(reason: &Reason) -> (&'static str, &'static str) {
     match reason {
-        Reason::DataFrameMutate { .. }
-        | Reason::DataFrameUpdate { .. }
-        | Reason::DataFrameDrop { .. }
-        | Reason::DataFrameExpectSchema
-        | Reason::DataFrameJoin => ("column", "the DataFrame"),
         Reason::FunctionArg { .. } | Reason::ReturnType => ("field", "the function"),
         _ => ("field", "the record"),
     }
@@ -2636,13 +2565,7 @@ fn lacks_violation_diag(label: &Label, reason: &Reason, span: Span) -> Diagnosti
     let msg = format!(
         "cannot add {field_term} `{label}` — {entity} already has a {field_term} named `{label}`"
     );
-    let diag = Diagnostic::error(Category::DuplicateField, msg).at(span_to_location(span));
-    match reason {
-        Reason::DataFrameMutate { .. } => {
-            diag.with_help("use `update` to change an existing column's values")
-        }
-        _ => diag,
-    }
+    Diagnostic::error(Category::DuplicateField, msg).at(span_to_location(span))
 }
 
 /// Produce a contextual type mismatch message using the Reason provenance.
@@ -2698,34 +2621,6 @@ fn type_mismatch_message(
             Some(format!(
                 "required because of a `where` bound: `{trait_name}`"
             )),
-        ),
-        Reason::DataFrameMutate { column } => (
-            format!("cannot add column `{column}` to DataFrame: {actual}"),
-            None,
-        ),
-        Reason::DataFrameUpdate { column } => (
-            format!("column `{column}` type mismatch: expected `{expected}`, got `{actual}`"),
-            None,
-        ),
-        Reason::DataFrameDrop { column } => (
-            format!("cannot drop column `{column}`: not found in DataFrame schema"),
-            None,
-        ),
-        Reason::DataFrameExpectSchema => (
-            format!("schema mismatch: expected `{expected}`, got `{actual}`"),
-            Some("use `expect_schema` to narrow a Dynamic DataFrame".into()),
-        ),
-        Reason::DataFrameJoin => (
-            format!("join type mismatch: `{expected}` vs `{actual}`"),
-            None,
-        ),
-        Reason::FrameColumnValue { column } => (
-            format!("column `{column}` has mixed types: expected `{expected}`, got `{actual}`"),
-            Some("all values in a frame column must have the same type".into()),
-        ),
-        Reason::ColumnExpr => (
-            format!("expected `{expected}` in column expression, got `{actual}`"),
-            None,
         ),
         _ => (
             format!("type mismatch: expected `{expected}`, got `{actual}`"),
@@ -3289,17 +3184,6 @@ mod tests {
         let mut same = Unifier::new();
         same.unify(&Type::Dynamic, &Type::Dynamic, &test_prov());
         assert!(!same.has_errors());
-    }
-
-    #[test]
-    fn dataframe_dynamic_does_not_unify_with_typed_schema() {
-        let mut u = Unifier::new();
-        let row = kea_types::RowType::closed(vec![(kea_types::Label::new("a"), Type::Int)]);
-        let typed = Type::DataFrame(Box::new(Type::AnonRecord(row)));
-        let dynamic = Type::DataFrame(Box::new(Type::Dynamic));
-
-        u.unify(&typed, &dynamic, &test_prov());
-        assert!(u.has_errors());
     }
 
     #[test]
