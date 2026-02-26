@@ -163,6 +163,11 @@ pub fn compile_hir_module<B: Backend>(
     backend.compile_module(&mir, &abi, config)
 }
 
+pub fn execute_hir_main_jit(hir: &HirModule, config: &BackendConfig) -> Result<i32, CodegenError> {
+    let mir = lower_hir_module(hir);
+    execute_mir_main_jit(&mir, config)
+}
+
 #[derive(Debug, Default)]
 pub struct CraneliftBackend;
 
@@ -229,7 +234,7 @@ fn compile_with_jit(
 ) -> Result<Vec<u8>, CodegenError> {
     let builder = JITBuilder::with_isa(isa.clone(), cranelift_module::default_libcall_names());
     let mut jit_module = JITModule::new(builder);
-    compile_into_module(&mut jit_module, module)?;
+    let _ = compile_into_module(&mut jit_module, module)?;
     jit_module
         .finalize_definitions()
         .map_err(|detail| CodegenError::Module {
@@ -254,14 +259,17 @@ fn compile_with_object(
         detail: detail.to_string(),
     })?;
     let mut object_module = ObjectModule::new(builder);
-    compile_into_module(&mut object_module, module)?;
+    let _ = compile_into_module(&mut object_module, module)?;
     let product = object_module.finish();
     product.emit().map_err(|detail| CodegenError::ObjectEmit {
         detail: detail.to_string(),
     })
 }
 
-fn compile_into_module<M: Module>(module: &mut M, mir: &MirModule) -> Result<(), CodegenError> {
+fn compile_into_module<M: Module>(
+    module: &mut M,
+    mir: &MirModule,
+) -> Result<BTreeMap<String, FuncId>, CodegenError> {
     let mut func_ids: BTreeMap<String, FuncId> = BTreeMap::new();
     let mut signatures: BTreeMap<String, cranelift_codegen::ir::Signature> = BTreeMap::new();
 
@@ -394,7 +402,66 @@ fn compile_into_module<M: Module>(module: &mut M, mir: &MirModule) -> Result<(),
         module.clear_context(&mut context);
     }
 
-    Ok(())
+    Ok(func_ids)
+}
+
+fn execute_mir_main_jit(module: &MirModule, config: &BackendConfig) -> Result<i32, CodegenError> {
+    let main = module
+        .functions
+        .iter()
+        .find(|function| function.name == "main")
+        .ok_or_else(|| CodegenError::UnknownFunction {
+            function: "main".to_string(),
+        })?;
+    if !main.signature.params.is_empty() {
+        return Err(CodegenError::UnsupportedMir {
+            function: "main".to_string(),
+            detail: "JIT entrypoint requires zero-argument `main`".to_string(),
+        });
+    }
+    if !matches!(main.signature.ret, Type::Int | Type::Unit) {
+        return Err(CodegenError::UnsupportedMir {
+            function: "main".to_string(),
+            detail: format!(
+                "JIT entrypoint only supports `main` returning Int or Unit (got `{}`)",
+                main.signature.ret
+            ),
+        });
+    }
+
+    let isa = build_isa(config)?;
+    let builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
+    let mut jit_module = JITModule::new(builder);
+    let func_ids = compile_into_module(&mut jit_module, module)?;
+    jit_module
+        .finalize_definitions()
+        .map_err(|detail| CodegenError::Module {
+            detail: detail.to_string(),
+        })?;
+
+    let main_id = *func_ids
+        .get("main")
+        .ok_or_else(|| CodegenError::UnknownFunction {
+            function: "main".to_string(),
+        })?;
+    let entrypoint = jit_module.get_finalized_function(main_id);
+
+    // SAFETY: `main` signature is validated above before transmuting and calling.
+    let exit_code = unsafe {
+        match main.signature.ret {
+            Type::Int => {
+                let main_fn = std::mem::transmute::<*const u8, extern "C" fn() -> i64>(entrypoint);
+                main_fn() as i32
+            }
+            Type::Unit => {
+                let main_fn = std::mem::transmute::<*const u8, extern "C" fn()>(entrypoint);
+                main_fn();
+                0
+            }
+            _ => unreachable!("validated return type before JIT entrypoint dispatch"),
+        }
+    };
+    Ok(exit_code)
 }
 
 fn build_signature<M: Module>(
@@ -1237,5 +1304,52 @@ mod tests {
         let artifact = compile_hir_module(&CraneliftBackend, &hir, &BackendConfig::default())
             .expect("int equality branch should compile");
         assert_eq!(artifact.stats.per_function.len(), 1);
+    }
+
+    #[test]
+    fn execute_hir_main_jit_returns_exit_code() {
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "main".to_string(),
+                params: vec![],
+                body: HirExpr {
+                    kind: HirExprKind::Lit(kea_ast::Lit::Int(7)),
+                    ty: Type::Int,
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
+                effects: EffectRow::pure(),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let exit_code =
+            execute_hir_main_jit(&hir, &BackendConfig::default()).expect("main should execute");
+        assert_eq!(exit_code, 7);
+    }
+
+    #[test]
+    fn execute_hir_main_jit_rejects_parameterized_main() {
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "main".to_string(),
+                params: vec![HirParam {
+                    name: Some("x".to_string()),
+                    span: kea_ast::Span::synthetic(),
+                }],
+                body: HirExpr {
+                    kind: HirExprKind::Var("x".to_string()),
+                    ty: Type::Int,
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::pure(vec![Type::Int], Type::Int)),
+                effects: EffectRow::pure(),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let err = execute_hir_main_jit(&hir, &BackendConfig::default())
+            .expect_err("parameterized main should be rejected");
+        assert!(matches!(err, CodegenError::UnsupportedMir { .. }));
     }
 }
