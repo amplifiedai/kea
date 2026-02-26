@@ -332,6 +332,11 @@ Informed by Rill's stdlib (rill-eval/src/stdlib/):
 - Effects: kea-state, kea-log (as library effects)
 - HTTP: client and server (actors + effects)
 - CLI: argument parsing, terminal output
+- Typed grammar packages on comptime substrate (phase-in):
+  - `kea-html` first (templating competitiveness target)
+  - `kea-sql` next (typed query blocks)
+  - all grammar packages share one `embed <Grammar> { ... }`
+    interface rather than bespoke compiler features
 
 **2c: Documentation (week 28-30)**
 
