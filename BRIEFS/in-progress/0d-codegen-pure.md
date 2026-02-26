@@ -427,6 +427,13 @@ function application to Impure.
 This isn't a parser issue but it makes the type system output wrong
 for every HOF. Important to fix before the effect system is trusted.
 
+### 6. Inline if/then/else (KERNEL §10.4)
+
+Block-style `if`/`else` works (indented branches). Inline form
+`if x >= 0 then x else -x` does not parse. Low priority — block
+style is idiomatic Kea — but the spec defines it and it's useful
+for short expressions in `let` bindings.
+
 ## Open Questions
 
 - Do we need an evaluator (kea-eval) for bootstrap, or can we
