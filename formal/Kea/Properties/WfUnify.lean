@@ -35,6 +35,35 @@ theorem subst_bindRow_bindRow_preserves_wf_range
   exact Subst.wellFormedRange_bindRow_bindRow
     s kctx rctx rv1 rv2 row1 row2 h_range h_row1 h_row2
 
+theorem subst_bindClosedRow_preserves_wf_range
+    (s : Subst) (kctx : KindCtx) (rctx : RowCtx)
+    (rv : RowVarId) (fields : RowFields)
+    (h_range : Subst.WellFormedRange s kctx rctx)
+    (h_fields : RowFields.WellFormed kctx rctx fields) :
+    Subst.WellFormedRange (s.bindRow rv (Row.closed fields)) kctx rctx := by
+  exact subst_bindRow_preserves_wf_range s kctx rctx rv (Row.closed fields)
+    h_range ((Row.wellFormed_closed_iff kctx rctx fields).2 h_fields)
+
+theorem subst_bindOpenRows_preserves_wf_range
+    (s : Subst) (kctx : KindCtx) (rctx : RowCtx)
+    (rv1 rv2 r3 : RowVarId) (onlyLeft onlyRight : RowFields)
+    (h_range : Subst.WellFormedRange s kctx rctx)
+    (h_left : RowFields.WellFormed kctx rctx onlyLeft)
+    (h_right : RowFields.WellFormed kctx rctx onlyRight)
+    (h_r3 : r3 ∈ rctx) :
+    Subst.WellFormedRange
+      (Subst.bindRow
+        (Subst.bindRow s rv1 (Row.mkOpen onlyRight r3))
+        rv2 (Row.mkOpen onlyLeft r3))
+      kctx rctx := by
+  have h_row_right : Row.WellFormed kctx rctx (Row.mkOpen onlyRight r3) :=
+    (Row.wellFormed_mkOpen_iff kctx rctx onlyRight r3).2 ⟨h_right, h_r3⟩
+  have h_row_left : Row.WellFormed kctx rctx (Row.mkOpen onlyLeft r3) :=
+    (Row.wellFormed_mkOpen_iff kctx rctx onlyLeft r3).2 ⟨h_left, h_r3⟩
+  exact subst_bindRow_bindRow_preserves_wf_range
+    s kctx rctx rv1 rv2 (Row.mkOpen onlyRight r3) (Row.mkOpen onlyLeft r3)
+    h_range h_row_right h_row_left
+
 theorem bindTypeVar_ok_preserves_wf_range
     (st st' : UnifyState) (v : TypeVarId) (ty : Ty) (fuel : Nat)
     (kctx : KindCtx) (rctx : RowCtx)
