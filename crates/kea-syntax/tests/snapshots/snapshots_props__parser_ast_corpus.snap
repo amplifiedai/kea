@@ -1,0 +1,1573 @@
+---
+source: crates/kea-syntax/tests/snapshots_props.rs
+expression: output
+---
+## module_fn_decl
+source:
+|fn·add(x,·y)·->·Int
+|··x·+·y
+status: ok
+Function(
+    FnDecl {
+        public: false,
+        name: Spanned {
+            node: "add",
+        },
+        doc: None,
+        annotations: [],
+        params: [
+            Param {
+                label: Implicit,
+                pattern: Spanned {
+                    node: Var(
+                        "x",
+                    ),
+                },
+                annotation: None,
+                default: None,
+            },
+            Param {
+                label: Implicit,
+                pattern: Spanned {
+                    node: Var(
+                        "y",
+                    ),
+                },
+                annotation: None,
+                default: None,
+            },
+        ],
+        return_annotation: Some(
+            Spanned {
+                node: Named(
+                    "Int",
+                ),
+            },
+        ),
+        effect_annotation: None,
+        body: Spanned {
+            node: BinaryOp {
+                op: Spanned {
+                    node: Add,
+                },
+                left: Spanned {
+                    node: Var(
+                        "x",
+                    ),
+                },
+                right: Spanned {
+                    node: Var(
+                        "y",
+                    ),
+                },
+            },
+        },
+        testing: None,
+        testing_tags: [],
+        where_clause: [],
+    },
+)
+
+## module_fn_effect
+source:
+|fn·read()·-[impure]>·String
+|··"ok"
+status: ok
+Function(
+    FnDecl {
+        public: false,
+        name: Spanned {
+            node: "read",
+        },
+        doc: None,
+        annotations: [],
+        params: [],
+        return_annotation: Some(
+            Spanned {
+                node: Named(
+                    "String",
+                ),
+            },
+        ),
+        effect_annotation: Some(
+            Spanned {
+                node: Impure,
+            },
+        ),
+        body: Spanned {
+            node: Lit(
+                String(
+                    "ok",
+                ),
+            ),
+        },
+        testing: None,
+        testing_tags: [],
+        where_clause: [],
+    },
+)
+
+## module_expr_decl_testing
+source:
+|expr·double(x:·Int)·->·Int
+|··x·+·x
+|testing
+|··assert_eq·double(3),·6
+status: ok
+ExprFn(
+    ExprDecl {
+        public: false,
+        name: Spanned {
+            node: "double",
+        },
+        doc: None,
+        annotations: [],
+        params: [
+            Param {
+                label: Implicit,
+                pattern: Spanned {
+                    node: Var(
+                        "x",
+                    ),
+                },
+                annotation: Some(
+                    Spanned {
+                        node: Named(
+                            "Int",
+                        ),
+                    },
+                ),
+                default: None,
+            },
+        ],
+        return_annotation: Some(
+            Spanned {
+                node: Named(
+                    "Int",
+                ),
+            },
+        ),
+        effect_annotation: None,
+        body: Spanned {
+            node: BinaryOp {
+                op: Spanned {
+                    node: Add,
+                },
+                left: Spanned {
+                    node: Var(
+                        "x",
+                    ),
+                },
+                right: Spanned {
+                    node: Var(
+                        "x",
+                    ),
+                },
+            },
+        },
+        testing: Some(
+            Spanned {
+                node: Call {
+                    func: Spanned {
+                        node: Var(
+                            "assert_eq",
+                        ),
+                    },
+                    args: [
+                        Argument {
+                            label: None,
+                            value: Spanned {
+                                node: Call {
+                                    func: Spanned {
+                                        node: Var(
+                                            "double",
+                                        ),
+                                    },
+                                    args: [
+                                        Argument {
+                                            label: None,
+                                            value: Spanned {
+                                                node: Lit(
+                                                    Int(
+                                                        3,
+                                                    ),
+                                                ),
+                                            },
+                                        },
+                                    ],
+                                },
+                            },
+                        },
+                        Argument {
+                            label: None,
+                            value: Spanned {
+                                node: Lit(
+                                    Int(
+                                        6,
+                                    ),
+                                ),
+                            },
+                        },
+                    ],
+                },
+            },
+        ),
+        testing_tags: [],
+        where_clause: [],
+    },
+)
+
+## module_test_decl
+source:
+|test·"basic"·tags·[:fast,·:unit]
+|··assert·true
+status: ok
+Test(
+    TestDecl {
+        name: Spanned {
+            node: "basic",
+        },
+        body: Spanned {
+            node: Call {
+                func: Spanned {
+                    node: Var(
+                        "assert",
+                    ),
+                },
+                args: [
+                    Argument {
+                        label: None,
+                        value: Spanned {
+                            node: Lit(
+                                Bool(
+                                    true,
+                                ),
+                            ),
+                        },
+                    },
+                ],
+            },
+        },
+        is_property: false,
+        iterations: None,
+        tags: [
+            Spanned {
+                node: "fast",
+            },
+            Spanned {
+                node: "unit",
+            },
+        ],
+    },
+)
+
+## module_record_deriving
+source:
+|record·Point
+|··x:·Int
+|··y:·Int
+|deriving·Eq,·Display
+status: ok
+RecordDef(
+    RecordDef {
+        public: false,
+        name: Spanned {
+            node: "Point",
+        },
+        doc: None,
+        annotations: [],
+        params: [],
+        fields: [
+            (
+                Spanned {
+                    node: "x",
+                },
+                Named(
+                    "Int",
+                ),
+            ),
+            (
+                Spanned {
+                    node: "y",
+                },
+                Named(
+                    "Int",
+                ),
+            ),
+        ],
+        field_annotations: [
+            [],
+            [],
+        ],
+        derives: [
+            Spanned {
+                node: "Eq",
+            },
+            Spanned {
+                node: "Display",
+            },
+        ],
+    },
+)
+
+## module_type_named_variant
+source:
+|type·Event·=·|·User(id:·Int,·name:·String)
+status: ok
+TypeDef(
+    TypeDef {
+        public: false,
+        name: Spanned {
+            node: "Event",
+        },
+        doc: None,
+        annotations: [],
+        params: [],
+        variants: [
+            TypeVariant {
+                annotations: [],
+                name: Spanned {
+                    node: "User",
+                },
+                fields: [
+                    VariantField {
+                        annotations: [],
+                        name: Some(
+                            Spanned {
+                                node: "id",
+                            },
+                        ),
+                        ty: Spanned {
+                            node: Named(
+                                "Int",
+                            ),
+                        },
+                    },
+                    VariantField {
+                        annotations: [],
+                        name: Some(
+                            Spanned {
+                                node: "name",
+                            },
+                        ),
+                        ty: Spanned {
+                            node: Named(
+                                "String",
+                            ),
+                        },
+                    },
+                ],
+                where_clause: [],
+            },
+        ],
+        derives: [],
+    },
+)
+
+## module_alias_parametric
+source:
+|alias·Handler(t)·=·fn(Request)·->·Result(t,·AppError)
+status: ok
+AliasDecl(
+    AliasDecl {
+        public: false,
+        name: Spanned {
+            node: "Handler",
+        },
+        doc: None,
+        params: [
+            "t",
+        ],
+        target: Spanned {
+            node: Function(
+                [
+                    Named(
+                        "Request",
+                    ),
+                ],
+                Applied(
+                    "Result",
+                    [
+                        Named(
+                            "t",
+                        ),
+                        Named(
+                            "AppError",
+                        ),
+                    ],
+                ),
+            ),
+        },
+    },
+)
+
+## module_opaque_deriving
+source:
+|opaque·UserId·=·Int·deriving·Eq,·Display
+status: ok
+OpaqueTypeDef(
+    OpaqueTypeDef {
+        public: false,
+        name: Spanned {
+            node: "UserId",
+        },
+        doc: None,
+        params: [],
+        target: Spanned {
+            node: Named(
+                "Int",
+            ),
+        },
+        derives: [
+            Spanned {
+                node: "Eq",
+            },
+            Spanned {
+                node: "Display",
+            },
+        ],
+    },
+)
+
+## module_trait_methods
+source:
+|trait·Additive
+|··fn·zero()·->·Self
+|··fn·add(self,·other:·Self)·->·Self
+status: ok
+TraitDef(
+    TraitDef {
+        public: false,
+        name: Spanned {
+            node: "Additive",
+        },
+        doc: None,
+        type_params: [],
+        supertraits: [],
+        fundeps: [],
+        associated_types: [],
+        methods: [
+            TraitMethod {
+                name: Spanned {
+                    node: "zero",
+                },
+                params: [],
+                return_annotation: Some(
+                    Spanned {
+                        node: Named(
+                            "Self",
+                        ),
+                    },
+                ),
+                effect_annotation: None,
+                where_clause: [],
+                default_body: None,
+                doc: None,
+            },
+            TraitMethod {
+                name: Spanned {
+                    node: "add",
+                },
+                params: [
+                    Param {
+                        label: Implicit,
+                        pattern: Spanned {
+                            node: Var(
+                                "self",
+                            ),
+                        },
+                        annotation: None,
+                        default: None,
+                    },
+                    Param {
+                        label: Implicit,
+                        pattern: Spanned {
+                            node: Var(
+                                "other",
+                            ),
+                        },
+                        annotation: Some(
+                            Spanned {
+                                node: Named(
+                                    "Self",
+                                ),
+                            },
+                        ),
+                        default: None,
+                    },
+                ],
+                return_annotation: Some(
+                    Spanned {
+                        node: Named(
+                            "Self",
+                        ),
+                    },
+                ),
+                effect_annotation: None,
+                where_clause: [],
+                default_body: None,
+                doc: None,
+            },
+        ],
+    },
+)
+
+## module_trait_associated_type
+source:
+|trait·From
+|··type·Source
+|··fn·from(value:·Self.Source)·->·Result(Self,·String)
+status: ok
+TraitDef(
+    TraitDef {
+        public: false,
+        name: Spanned {
+            node: "From",
+        },
+        doc: None,
+        type_params: [],
+        supertraits: [],
+        fundeps: [],
+        associated_types: [
+            AssociatedTypeDecl {
+                name: Spanned {
+                    node: "Source",
+                },
+                constraints: [],
+                default: None,
+            },
+        ],
+        methods: [
+            TraitMethod {
+                name: Spanned {
+                    node: "from",
+                },
+                params: [
+                    Param {
+                        label: Implicit,
+                        pattern: Spanned {
+                            node: Var(
+                                "value",
+                            ),
+                        },
+                        annotation: Some(
+                            Spanned {
+                                node: Projection {
+                                    base: "Self",
+                                    name: "Source",
+                                },
+                            },
+                        ),
+                        default: None,
+                    },
+                ],
+                return_annotation: Some(
+                    Spanned {
+                        node: Applied(
+                            "Result",
+                            [
+                                Named(
+                                    "Self",
+                                ),
+                                Named(
+                                    "String",
+                                ),
+                            ],
+                        ),
+                    },
+                ),
+                effect_annotation: None,
+                where_clause: [],
+                default_body: None,
+                doc: None,
+            },
+        ],
+    },
+)
+
+## module_impl_where
+source:
+|impl·From·for·Int·where·Source·=·String
+|··fn·from(value)·->·Int
+|····0
+status: ok
+ImplBlock(
+    ImplBlock {
+        trait_name: Spanned {
+            node: "From",
+        },
+        type_name: Spanned {
+            node: "Int",
+        },
+        type_params: [],
+        methods: [
+            FnDecl {
+                public: false,
+                name: Spanned {
+                    node: "from",
+                },
+                doc: None,
+                annotations: [],
+                params: [
+                    Param {
+                        label: Implicit,
+                        pattern: Spanned {
+                            node: Var(
+                                "value",
+                            ),
+                        },
+                        annotation: None,
+                        default: None,
+                    },
+                ],
+                return_annotation: Some(
+                    Spanned {
+                        node: Named(
+                            "Int",
+                        ),
+                    },
+                ),
+                effect_annotation: None,
+                body: Spanned {
+                    node: Lit(
+                        Int(
+                            0,
+                        ),
+                    ),
+                },
+                testing: None,
+                testing_tags: [],
+                where_clause: [],
+            },
+        ],
+        control_type: None,
+        where_clause: [
+            TypeAssignment {
+                name: Spanned {
+                    node: "Source",
+                },
+                ty: Spanned {
+                    node: Named(
+                        "String",
+                    ),
+                },
+            },
+        ],
+    },
+)
+
+## module_import_named_alias
+source:
+|import·Kea.Core.{read_csv}
+|import·Kea.Math·as·M
+status: ok
+Import(
+    ImportDecl {
+        module: Spanned {
+            node: "Kea.Core",
+        },
+        items: Named(
+            [
+                Spanned {
+                    node: "read_csv",
+                },
+            ],
+        ),
+        alias: None,
+    },
+)
+
+---
+Import(
+    ImportDecl {
+        module: Spanned {
+            node: "Kea.Math",
+        },
+        items: Module,
+        alias: Some(
+            Spanned {
+                node: "M",
+            },
+        ),
+    },
+)
+
+## module_mixed_decls
+source:
+|record·Point
+|··x:·Float
+|··y:·Float
+|trait·Additive
+|··fn·zero()·->·Self
+|impl·Additive·for·Point
+|··fn·zero()·->·Int
+|····0
+|fn·main()·->·Int
+|··1
+status: ok
+RecordDef(
+    RecordDef {
+        public: false,
+        name: Spanned {
+            node: "Point",
+        },
+        doc: None,
+        annotations: [],
+        params: [],
+        fields: [
+            (
+                Spanned {
+                    node: "x",
+                },
+                Named(
+                    "Float",
+                ),
+            ),
+            (
+                Spanned {
+                    node: "y",
+                },
+                Named(
+                    "Float",
+                ),
+            ),
+        ],
+        field_annotations: [
+            [],
+            [],
+        ],
+        derives: [],
+    },
+)
+
+---
+TraitDef(
+    TraitDef {
+        public: false,
+        name: Spanned {
+            node: "Additive",
+        },
+        doc: None,
+        type_params: [],
+        supertraits: [],
+        fundeps: [],
+        associated_types: [],
+        methods: [
+            TraitMethod {
+                name: Spanned {
+                    node: "zero",
+                },
+                params: [],
+                return_annotation: Some(
+                    Spanned {
+                        node: Named(
+                            "Self",
+                        ),
+                    },
+                ),
+                effect_annotation: None,
+                where_clause: [],
+                default_body: None,
+                doc: None,
+            },
+        ],
+    },
+)
+
+---
+ImplBlock(
+    ImplBlock {
+        trait_name: Spanned {
+            node: "Additive",
+        },
+        type_name: Spanned {
+            node: "Point",
+        },
+        type_params: [],
+        methods: [
+            FnDecl {
+                public: false,
+                name: Spanned {
+                    node: "zero",
+                },
+                doc: None,
+                annotations: [],
+                params: [],
+                return_annotation: Some(
+                    Spanned {
+                        node: Named(
+                            "Int",
+                        ),
+                    },
+                ),
+                effect_annotation: None,
+                body: Spanned {
+                    node: Lit(
+                        Int(
+                            0,
+                        ),
+                    ),
+                },
+                testing: None,
+                testing_tags: [],
+                where_clause: [],
+            },
+        ],
+        control_type: None,
+        where_clause: [],
+    },
+)
+
+---
+Function(
+    FnDecl {
+        public: false,
+        name: Spanned {
+            node: "main",
+        },
+        doc: None,
+        annotations: [],
+        params: [],
+        return_annotation: Some(
+            Spanned {
+                node: Named(
+                    "Int",
+                ),
+            },
+        ),
+        effect_annotation: None,
+        body: Spanned {
+            node: Lit(
+                Int(
+                    1,
+                ),
+            ),
+        },
+        testing: None,
+        testing_tags: [],
+        where_clause: [],
+    },
+)
+
+## expr_if_else
+source:
+|if·x·>·0
+|··x
+|else
+|··0
+status: ok
+If {
+    condition: Spanned {
+        node: BinaryOp {
+            op: Spanned {
+                node: Gt,
+            },
+            left: Spanned {
+                node: Var(
+                    "x",
+                ),
+            },
+            right: Spanned {
+                node: Lit(
+                    Int(
+                        0,
+                    ),
+                ),
+            },
+        },
+    },
+    then_branch: Spanned {
+        node: Var(
+            "x",
+        ),
+    },
+    else_branch: Some(
+        Spanned {
+            node: Lit(
+                Int(
+                    0,
+                ),
+            ),
+        },
+    ),
+}
+
+## expr_case_nested
+source:
+|case·x
+|··Some(#(a,·b))·->·a·+·b
+|··_·->·0
+status: ok
+Case {
+    scrutinee: Spanned {
+        node: Var(
+            "x",
+        ),
+    },
+    arms: [
+        CaseArm {
+            pattern: Spanned {
+                node: Constructor {
+                    name: "Some",
+                    qualifier: None,
+                    args: [
+                        ConstructorFieldPattern {
+                            name: None,
+                            pattern: Spanned {
+                                node: Tuple(
+                                    [
+                                        Spanned {
+                                            node: Var(
+                                                "a",
+                                            ),
+                                        },
+                                        Spanned {
+                                            node: Var(
+                                                "b",
+                                            ),
+                                        },
+                                    ],
+                                ),
+                            },
+                        },
+                    ],
+                    rest: false,
+                },
+            },
+            guard: None,
+            body: Spanned {
+                node: BinaryOp {
+                    op: Spanned {
+                        node: Add,
+                    },
+                    left: Spanned {
+                        node: Var(
+                            "a",
+                        ),
+                    },
+                    right: Spanned {
+                        node: Var(
+                            "b",
+                        ),
+                    },
+                },
+            },
+        },
+        CaseArm {
+            pattern: Spanned {
+                node: Wildcard,
+            },
+            guard: None,
+            body: Spanned {
+                node: Lit(
+                    Int(
+                        0,
+                    ),
+                ),
+            },
+        },
+    ],
+}
+
+## expr_cond
+source:
+|cond
+|··x·>·0·->·"pos"
+|··_·->·"neg"
+status: ok
+Cond {
+    arms: [
+        CondArm {
+            condition: Spanned {
+                node: BinaryOp {
+                    op: Spanned {
+                        node: Gt,
+                    },
+                    left: Spanned {
+                        node: Var(
+                            "x",
+                        ),
+                    },
+                    right: Spanned {
+                        node: Lit(
+                            Int(
+                                0,
+                            ),
+                        ),
+                    },
+                },
+            },
+            body: Spanned {
+                node: Lit(
+                    String(
+                        "pos",
+                    ),
+                ),
+            },
+        },
+        CondArm {
+            condition: Spanned {
+                node: Wildcard,
+            },
+            body: Spanned {
+                node: Lit(
+                    String(
+                        "neg",
+                    ),
+                ),
+            },
+        },
+    ],
+}
+
+## expr_lambda
+source:
+|x·->·x·+·1
+status: ok
+Lambda {
+    params: [
+        Param {
+            label: Implicit,
+            pattern: Spanned {
+                node: Var(
+                    "x",
+                ),
+            },
+            annotation: None,
+            default: None,
+        },
+    ],
+    body: Spanned {
+        node: BinaryOp {
+            op: Spanned {
+                node: Add,
+            },
+            left: Spanned {
+                node: Var(
+                    "x",
+                ),
+            },
+            right: Spanned {
+                node: Lit(
+                    Int(
+                        1,
+                    ),
+                ),
+            },
+        },
+    },
+    return_annotation: None,
+}
+
+## expr_anon_record_spread
+source:
+|#{·..base,·retries:·3·}
+status: ok
+AnonRecord {
+    fields: [
+        (
+            Spanned {
+                node: "retries",
+            },
+            Spanned {
+                node: Lit(
+                    Int(
+                        3,
+                    ),
+                ),
+            },
+        ),
+    ],
+    spread: Some(
+        Spanned {
+            node: Var(
+                "base",
+            ),
+        },
+    ),
+}
+
+## expr_named_record
+source:
+|User·{·name:·"alice",·age:·30·}
+status: ok
+Record {
+    name: Spanned {
+        node: "User",
+    },
+    fields: [
+        (
+            Spanned {
+                node: "name",
+            },
+            Spanned {
+                node: Lit(
+                    String(
+                        "alice",
+                    ),
+                ),
+            },
+        ),
+        (
+            Spanned {
+                node: "age",
+            },
+            Spanned {
+                node: Lit(
+                    Int(
+                        30,
+                    ),
+                ),
+            },
+        ),
+    ],
+    spread: None,
+}
+
+## expr_record_pattern
+source:
+|case·x
+|··User·{·name,·..·}·->·name
+status: ok
+Case {
+    scrutinee: Spanned {
+        node: Var(
+            "x",
+        ),
+    },
+    arms: [
+        CaseArm {
+            pattern: Spanned {
+                node: Record {
+                    name: "User",
+                    fields: [
+                        (
+                            "name",
+                            Spanned {
+                                node: Var(
+                                    "name",
+                                ),
+                            },
+                        ),
+                    ],
+                    rest: true,
+                },
+            },
+            guard: None,
+            body: Spanned {
+                node: Var(
+                    "name",
+                ),
+            },
+        },
+    ],
+}
+
+## expr_for_generators_guards_into
+source:
+|for·x·in·xs·when·x·>·0,·y·in·ys·when·y·!=·x
+|··#(x,·y)
+|into·Set
+status: ok
+For(
+    ForExpr {
+        clauses: [
+            Generator {
+                pattern: Spanned {
+                    node: Var(
+                        "x",
+                    ),
+                },
+                source: Spanned {
+                    node: Var(
+                        "xs",
+                    ),
+                },
+            },
+            Guard(
+                Spanned {
+                    node: BinaryOp {
+                        op: Spanned {
+                            node: Gt,
+                        },
+                        left: Spanned {
+                            node: Var(
+                                "x",
+                            ),
+                        },
+                        right: Spanned {
+                            node: Lit(
+                                Int(
+                                    0,
+                                ),
+                            ),
+                        },
+                    },
+                },
+            ),
+            Generator {
+                pattern: Spanned {
+                    node: Var(
+                        "y",
+                    ),
+                },
+                source: Spanned {
+                    node: Var(
+                        "ys",
+                    ),
+                },
+            },
+            Guard(
+                Spanned {
+                    node: BinaryOp {
+                        op: Spanned {
+                            node: Neq,
+                        },
+                        left: Spanned {
+                            node: Var(
+                                "y",
+                            ),
+                        },
+                        right: Spanned {
+                            node: Var(
+                                "x",
+                            ),
+                        },
+                    },
+                },
+            ),
+        ],
+        body: Spanned {
+            node: Tuple(
+                [
+                    Spanned {
+                        node: Var(
+                            "x",
+                        ),
+                    },
+                    Spanned {
+                        node: Var(
+                            "y",
+                        ),
+                    },
+                ],
+            ),
+        },
+        into_type: Some(
+            Spanned {
+                node: Named(
+                    "Set",
+                ),
+            },
+        ),
+    },
+)
+
+## expr_use_binding
+source:
+|use·value·<-·load()
+status: ok
+Use(
+    UseExpr {
+        pattern: Some(
+            Spanned {
+                node: Var(
+                    "value",
+                ),
+            },
+        ),
+        rhs: Spanned {
+            node: Call {
+                func: Spanned {
+                    node: Var(
+                        "load",
+                    ),
+                },
+                args: [],
+            },
+        },
+    },
+)
+
+## expr_df_pipe_mutate
+source:
+|frame·{·x:·[1],·y:·[2]·}·|>·mutate(total:·:x·+·:y)
+status: ok
+Pipe {
+    left: Spanned {
+        node: Frame {
+            columns: [
+                (
+                    Spanned {
+                        node: "x",
+                    },
+                    [
+                        Spanned {
+                            node: Lit(
+                                Int(
+                                    1,
+                                ),
+                            ),
+                        },
+                    ],
+                ),
+                (
+                    Spanned {
+                        node: "y",
+                    },
+                    [
+                        Spanned {
+                            node: Lit(
+                                Int(
+                                    2,
+                                ),
+                            ),
+                        },
+                    ],
+                ),
+            ],
+        },
+    },
+    op: Spanned {
+        node: Standard,
+    },
+    right: Spanned {
+        node: DfVerb {
+            verb: Spanned {
+                node: Mutate,
+            },
+            args: Mutate(
+                [
+                    Named(
+                        Spanned {
+                            node: "total",
+                        },
+                        Spanned {
+                            node: BinaryOp {
+                                op: Spanned {
+                                    node: Add,
+                                },
+                                left: Spanned {
+                                    node: Atom(
+                                        "x",
+                                    ),
+                                },
+                                right: Spanned {
+                                    node: Atom(
+                                        "y",
+                                    ),
+                                },
+                            },
+                        },
+                    ),
+                ],
+            ),
+        },
+    },
+    guard: None,
+}
+
+## expr_sql_with_config
+source:
+|sql·{·SELECT·*·FROM·t·WHERE·id·=·${id}·}·with
+|··source:·conn,·timeout:·30
+status: ok
+EmbeddedBlock {
+    kind: Sql,
+    parts: [
+        Literal(
+            "SELECT * FROM t WHERE id = ",
+        ),
+        Expr(
+            Spanned {
+                node: Var(
+                    "id",
+                ),
+            },
+        ),
+    ],
+    atom_fields: [],
+    config: Some(
+        [
+            (
+                Spanned {
+                    node: "source",
+                },
+                Spanned {
+                    node: Var(
+                        "conn",
+                    ),
+                },
+            ),
+            (
+                Spanned {
+                    node: "timeout",
+                },
+                Spanned {
+                    node: Lit(
+                        Int(
+                            30,
+                        ),
+                    ),
+                },
+            ),
+        ],
+    ),
+}
+
+## expr_spawn_with_config
+source:
+|spawn·Counter·{·count:·0·}·with
+|··mailbox_size:·100,·max_restarts:·5
+status: ok
+Spawn {
+    value: Spanned {
+        node: Record {
+            name: Spanned {
+                node: "Counter",
+            },
+            fields: [
+                (
+                    Spanned {
+                        node: "count",
+                    },
+                    Spanned {
+                        node: Lit(
+                            Int(
+                                0,
+                            ),
+                        ),
+                    },
+                ),
+            ],
+            spread: None,
+        },
+    },
+    config: Some(
+        SpawnConfig {
+            mailbox_size: Some(
+                Spanned {
+                    node: Lit(
+                        Int(
+                            100,
+                        ),
+                    ),
+                },
+            ),
+            supervision: None,
+            max_restarts: Some(
+                Spanned {
+                    node: Lit(
+                        Int(
+                            5,
+                        ),
+                    ),
+                },
+            ),
+            call_timeout: None,
+        },
+    ),
+}
+
+## expr_stream_with_buffer
+source:
+|stream
+|··yield·1
+|with
+|··buffer:·128
+status: ok
+StreamBlock {
+    body: Spanned {
+        node: Yield {
+            value: Spanned {
+                node: Lit(
+                    Int(
+                        1,
+                    ),
+                ),
+            },
+        },
+    },
+    buffer_size: 128,
+}
+
+## expr_actor_send_message_form
+source:
+|send(actor,·Inc)
+status: ok
+ActorSend {
+    actor: Spanned {
+        node: Var(
+            "actor",
+        ),
+    },
+    method: Spanned {
+        node: "handle",
+    },
+    args: [
+        Spanned {
+            node: Constructor {
+                name: Spanned {
+                    node: "Inc",
+                },
+                args: [],
+            },
+        },
+    ],
+    safe: false,
+}
+
+## expr_actor_call_safe
+source:
+|call?(actor,·Get)
+status: ok
+ActorCall {
+    actor: Spanned {
+        node: Var(
+            "actor",
+        ),
+    },
+    method: Spanned {
+        node: "handle",
+    },
+    args: [
+        Spanned {
+            node: Constructor {
+                name: Spanned {
+                    node: "Get",
+                },
+                args: [],
+            },
+        },
+    ],
+    safe: true,
+}
+
+## type_forall_effect_arrow
+source:
+|forall·a.·fn(a)·-[pure]>·a
+status: ok
+Forall {
+    type_vars: [
+        "a",
+    ],
+    ty: FunctionWithEffect(
+        [
+            Named(
+                "a",
+            ),
+        ],
+        Spanned {
+            node: Pure,
+        },
+        Named(
+            "a",
+        ),
+    ),
+}
+
+## module_parse_error_missing_fn_body
+source:
+|fn·broken(x)·->·Int
+status: err
+- Error E0006 @19..19: expected function body block
