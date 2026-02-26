@@ -5758,3 +5758,32 @@ consumers can depend on one theorem surface instead of multiple projections.
 **Outcome**:
 - Tail-resumptive classification now has one-name bundle consumption and direct
   non-invalid projection from well-typed clause premises.
+
+### 2026-02-26: tail-resumptive runtime alignment probe
+
+**Context**: Validated the tail-resumptive direct-call slice against current
+`kea-mcp` behavior with and without a `then` clause.
+
+**MCP tools used**: direct `kea-mcp` stdio (`initialize`,
+`notifications/initialized`, `tools/call` with `reset_session`, `type_check`,
+`get_type`, `diagnose`).
+
+**Probe**:
+1. Declarations:
+   - `body : () -[Log]> ()`
+   - `run_no_then` handles `Log.log` with `resume ()`
+   - `run_then` same clause plus `then value -> value`
+2. `type_check` bindings:
+   - `run_no_then : () -> ()`
+   - `run_then : () -> ()`
+3. `get_type`:
+   - `run_no_then` => `() -> ()`
+   - `run_then` => `() -> ()`
+4. `diagnose`:
+   - both names return empty diagnostics.
+
+**Classify**: Agreement.
+
+**Outcome**:
+- Runtime behavior matches the tail-resumptive contract slice in this surface:
+  no-`then` and identity-`then` variants preserve the same pure function type.
