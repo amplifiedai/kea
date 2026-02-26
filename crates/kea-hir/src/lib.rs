@@ -618,7 +618,7 @@ fn lower_literal_case(
         unit_variant_tags,
         qualified_variant_tags,
     );
-    let safe_scrutinee = matches!(scrutinee.node, ExprKind::Var(_) | ExprKind::Lit(_));
+    let safe_scrutinee = matches!(lowered_scrutinee.kind, HirExprKind::Var(_) | HirExprKind::Lit(_));
     let (scrutinee_expr, setup_expr) = if safe_scrutinee {
         (lowered_scrutinee.clone(), None)
     } else {
@@ -1191,6 +1191,33 @@ mod tests {
             }
             other => panic!("expected enum case to lower through literal-case path, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn lower_function_unit_enum_case_literalized_scrutinee_avoids_setup_block() {
+        let module = parse_module_from_text(
+            "type Color = Red | Green\nfn pick() -> Int\n  case Color.Red\n    Color.Red -> 1\n    _ -> 2",
+        );
+        let mut env = TypeEnv::new();
+        env.bind(
+            "pick".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::pure(vec![], Type::Int))),
+        );
+
+        let lowered = lower_module(&module, &env);
+        let function = lowered
+            .declarations
+            .iter()
+            .find_map(|decl| match decl {
+                HirDecl::Function(function) if function.name == "pick" => Some(function),
+                _ => None,
+            })
+            .expect("expected lowered pick function");
+
+        assert!(
+            matches!(function.body.kind, HirExprKind::If { .. }),
+            "expected literalized unit-enum scrutinee to lower directly to if without setup block"
+        );
     }
 
     #[test]
