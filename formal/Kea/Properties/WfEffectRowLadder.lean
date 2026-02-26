@@ -305,13 +305,15 @@ theorem functionEff_unify_var_left_contract_slice_of_success
     (h_fun :
       applySubstCompat st.subst fuel (.functionEff params effects ret)
         = .functionEff params effects ret)
-    (h_eq_false : (Ty.var v == Ty.functionEff params effects ret) = false)
     (h_wf_state : UnifyState.SubstWellFormedRange st kctx rctx)
     (h_wf_params : TyList.WellFormed kctx rctx params)
     (h_wf_effects : EffectRow.WellFormed kctx rctx effects)
     (h_wf_ret : Ty.WellFormed kctx rctx ret)
     (h_idemp_next : stNext.subst.Idempotent) :
     FunctionEffBindTypeVarContractSlice st stNext kctx rctx fuel h_idemp_next := by
+  have h_eq_false : (Ty.var v == Ty.functionEff params effects ret) = false := by
+    change beqTy (Ty.var v) (Ty.functionEff params effects ret) = false
+    simp [beqTy]
   dsimp [FunctionEffBindTypeVarContractSlice]
   exact unify_var_left_ok_contract_full_wf
     st stNext kctx rctx v (.functionEff params effects ret) fuel
@@ -328,7 +330,6 @@ theorem functionEff_unify_var_left_full_state_contract_slice_of_success
     (h_fun :
       applySubstCompat st.subst fuel (.functionEff params effects ret)
         = .functionEff params effects ret)
-    (h_eq_false : (Ty.var v == Ty.functionEff params effects ret) = false)
     (h_wf_state : UnifyState.SubstWellFormedRange st kctx rctx)
     (h_wf_params : TyList.WellFormed kctx rctx params)
     (h_wf_effects : EffectRow.WellFormed kctx rctx effects)
@@ -347,6 +348,9 @@ theorem functionEff_unify_var_left_full_state_contract_slice_of_success
           nextTypeVar := nextType',
           nextRowVar := nextRow' }
       kctx rctx fuel h_idemp_next := by
+  have h_eq_false : (Ty.var v == Ty.functionEff params effects ret) = false := by
+    change beqTy (Ty.var v) (Ty.functionEff params effects ret) = false
+    simp [beqTy]
   dsimp [FunctionEffBindTypeVarFullStateContractSlice]
   exact unify_var_left_ok_with_non_subst_fields_contract_full_wf
     st st' kctx rctx v (.functionEff params effects ret) fuel
@@ -368,7 +372,6 @@ theorem functionEff_wf_ladder_bundle_of_unify_var_left_success
     (h_unify_fun :
       applySubstCompat st.subst fuel (.functionEff params effects ret)
         = .functionEff params effects ret)
-    (h_eq_false : (Ty.var v == Ty.functionEff params effects ret) = false)
     (h_wf_state : UnifyState.SubstWellFormedRange st kctx rctx)
     (h_wf_params : TyList.WellFormed kctx rctx params)
     (h_wf_effects : EffectRow.WellFormed kctx rctx effects)
@@ -396,7 +399,7 @@ theorem functionEff_wf_ladder_bundle_of_unify_var_left_success
       htv_params hrv_params htv_effects hrv_effects htv_ret hrv_ret h_inst
   · exact functionEff_unify_var_left_contract_slice_of_success
       st stNext kctx rctx fuel v params effects ret
-      h_unify h_unify_var h_unify_fun h_eq_false
+      h_unify h_unify_var h_unify_fun
       h_wf_state h_wf_params h_wf_effects h_wf_ret h_idemp_next
 
 theorem functionEff_wf_ladder_bundle_of_unify_var_left_success_full_state
@@ -414,7 +417,6 @@ theorem functionEff_wf_ladder_bundle_of_unify_var_left_success_full_state
     (h_unify_fun :
       applySubstCompat st.subst fuel (.functionEff params effects ret)
         = .functionEff params effects ret)
-    (h_eq_false : (Ty.var v == Ty.functionEff params effects ret) = false)
     (h_wf_state : UnifyState.SubstWellFormedRange st kctx rctx)
     (h_wf_params : TyList.WellFormed kctx rctx params)
     (h_wf_effects : EffectRow.WellFormed kctx rctx effects)
@@ -454,7 +456,7 @@ theorem functionEff_wf_ladder_bundle_of_unify_var_left_success_full_state
   · exact functionEff_unify_var_left_full_state_contract_slice_of_success
       st st' kctx rctx fuel v params effects ret
       lacks' bounds' nextType' nextRow'
-      h_unify h_unify_var h_unify_fun h_eq_false
+      h_unify h_unify_var h_unify_fun
       h_wf_state h_wf_params h_wf_effects h_wf_ret h_idemp_next
 
 theorem functionEff_bindTypeVar_full_state_extends_of_contract_slice

@@ -38,6 +38,7 @@ This work starts by cannibalizing the existing Rill formal corpus and then exten
 - **Phase 1 (active):** `WfEffectRowLadder` now exposes named bundle contracts (`FunctionEffWfLadderBundle`, `FunctionEffWfLadderBundleFullState`) with constructor/projection helpers, so downstream proofs can depend on stable one-name theorem surfaces rather than raw conjunction shapes.
 - **Phase 1 (active):** Named bundle contracts now include direct extension/WF/acyclic projection lemmas (base + full-state), giving a complete one-hop API from a bundle assumption to each unifier contract facet.
 - **Phase 1 (active):** `WfEffectRowLadder` now also supports var-left `unify` entrypoints (`functionEff_unify_var_left_*`) and corresponding one-shot bundle constructors, so effect-row WF contracts can start from successful `unify` var-branches as well as direct `bindTypeVar`.
+- **Phase 1 (active):** Var-left `unify` entry wrappers in `WfEffectRowLadder` now discharge the constructor-mismatch BEq premise internally (`beqTy` reduction), keeping downstream theorem calls on semantic WF assumptions only.
 - **Phase 2 (next):** Kea-specific effect typing and handler theorems.
 
 The formal workspace lives at [`formal/`](formal/).
