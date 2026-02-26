@@ -197,6 +197,7 @@ impl Backend for CraneliftBackend {
         validate_abi_manifest(module, abi)?;
         validate_layout_catalog(module)?;
         validate_fail_only_invariants(module)?;
+        let _layout_plan = plan_layout_catalog(module)?;
 
         let isa = build_isa(config)?;
         let stats = collect_pass_stats(module);
@@ -989,6 +990,92 @@ fn validate_layout_catalog(module: &MirModule) -> Result<(), CodegenError> {
     Ok(())
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+struct BackendLayoutPlan {
+    records: BTreeMap<String, BackendRecordLayout>,
+    sums: BTreeMap<String, BackendSumLayout>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct BackendRecordLayout {
+    size_bytes: u32,
+    align_bytes: u32,
+    field_offsets: BTreeMap<String, u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct BackendSumLayout {
+    size_bytes: u32,
+    align_bytes: u32,
+    tag_offset: u32,
+    payload_offset: u32,
+    max_payload_fields: u32,
+    variant_tags: BTreeMap<String, u32>,
+}
+
+fn align_up(value: u32, align: u32) -> u32 {
+    if align == 0 {
+        return value;
+    }
+    let rem = value % align;
+    if rem == 0 {
+        value
+    } else {
+        value + (align - rem)
+    }
+}
+
+fn plan_layout_catalog(module: &MirModule) -> Result<BackendLayoutPlan, CodegenError> {
+    const WORD_BYTES: u32 = 8;
+    const TAG_BYTES: u32 = 4;
+
+    let mut plan = BackendLayoutPlan::default();
+
+    for record in &module.layouts.records {
+        let mut field_offsets = BTreeMap::new();
+        for (idx, field) in record.fields.iter().enumerate() {
+            field_offsets.insert(field.clone(), idx as u32 * WORD_BYTES);
+        }
+        let size_bytes = record.fields.len() as u32 * WORD_BYTES;
+        plan.records.insert(
+            record.name.clone(),
+            BackendRecordLayout {
+                size_bytes,
+                align_bytes: WORD_BYTES,
+                field_offsets,
+            },
+        );
+    }
+
+    for sum in &module.layouts.sums {
+        let mut variant_tags = BTreeMap::new();
+        let max_payload_fields = sum
+            .variants
+            .iter()
+            .map(|variant| variant.field_count as u32)
+            .max()
+            .unwrap_or(0);
+        for variant in &sum.variants {
+            variant_tags.insert(variant.name.clone(), variant.tag);
+        }
+        let payload_offset = align_up(TAG_BYTES, WORD_BYTES);
+        let size_bytes = payload_offset + max_payload_fields * WORD_BYTES;
+        plan.sums.insert(
+            sum.name.clone(),
+            BackendSumLayout {
+                size_bytes,
+                align_bytes: WORD_BYTES,
+                tag_offset: 0,
+                payload_offset,
+                max_payload_fields,
+                variant_tags,
+            },
+        );
+    }
+
+    Ok(plan)
+}
+
 fn is_fail_only_effect_row(row: &EffectRow) -> bool {
     row.row.rest.is_none()
         && !row.row.fields.is_empty()
@@ -1475,6 +1562,53 @@ mod tests {
             err,
             CodegenError::InvalidLayoutVariantTags { type_name } if type_name == "Option"
         ));
+    }
+
+    #[test]
+    fn plan_layout_catalog_computes_record_offsets_in_declaration_order() {
+        let mut module = sample_codegen_module();
+        module.layouts.records.push(MirRecordLayout {
+            name: "User".to_string(),
+            fields: vec!["name".to_string(), "age".to_string(), "active".to_string()],
+        });
+
+        let plan = plan_layout_catalog(&module).expect("layout planning should succeed");
+        let user = plan.records.get("User").expect("User record layout");
+        assert_eq!(user.align_bytes, 8);
+        assert_eq!(user.size_bytes, 24);
+        assert_eq!(user.field_offsets.get("name"), Some(&0));
+        assert_eq!(user.field_offsets.get("age"), Some(&8));
+        assert_eq!(user.field_offsets.get("active"), Some(&16));
+    }
+
+    #[test]
+    fn plan_layout_catalog_computes_sum_tag_and_payload_layout() {
+        let mut module = sample_codegen_module();
+        module.layouts.sums.push(MirSumLayout {
+            name: "Result".to_string(),
+            variants: vec![
+                MirVariantLayout {
+                    name: "Ok".to_string(),
+                    tag: 0,
+                    field_count: 1,
+                },
+                MirVariantLayout {
+                    name: "Err".to_string(),
+                    tag: 1,
+                    field_count: 2,
+                },
+            ],
+        });
+
+        let plan = plan_layout_catalog(&module).expect("layout planning should succeed");
+        let result = plan.sums.get("Result").expect("Result sum layout");
+        assert_eq!(result.align_bytes, 8);
+        assert_eq!(result.tag_offset, 0);
+        assert_eq!(result.payload_offset, 8);
+        assert_eq!(result.max_payload_fields, 2);
+        assert_eq!(result.size_bytes, 24);
+        assert_eq!(result.variant_tags.get("Ok"), Some(&0));
+        assert_eq!(result.variant_tags.get("Err"), Some(&1));
     }
 
     #[test]
