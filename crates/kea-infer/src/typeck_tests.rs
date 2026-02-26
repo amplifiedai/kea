@@ -15068,3 +15068,120 @@ fn dynamic_param_call_accepts_negative_literal_argument() {
         ctx.errors()
     );
 }
+
+#[test]
+fn handle_mismatched_effect_preserves_body_effects_without_phantom_io() {
+    // Regression: handling an effect NOT present in the body's effect row
+    // caused phantom IO from an unsatisfiable row decomposition constraint.
+    let mut env = TypeEnv::new();
+    let records = RecordRegistry::new();
+    let sums = SumTypeRegistry::new();
+    let mut traits = TraitRegistry::new();
+    register_hkt_for_use_for_traits(&mut traits, &records);
+
+    let log = make_effect_decl(
+        "Log",
+        vec![],
+        vec![make_effect_operation(
+            "log",
+            vec![annotated_param(
+                "msg",
+                TypeAnnotation::Named("String".to_string()),
+            )],
+            TypeAnnotation::Named("Unit".to_string()),
+        )],
+    );
+    let trace = make_effect_decl(
+        "Trace",
+        vec![],
+        vec![make_effect_operation(
+            "emit",
+            vec![annotated_param("value", TypeAnnotation::Named("Int".to_string()))],
+            TypeAnnotation::Named("Unit".to_string()),
+        )],
+    );
+    let log_diags = register_effect_decl(&log, &records, Some(&sums), &mut env);
+    assert!(log_diags.is_empty(), "unexpected diagnostics: {log_diags:?}");
+    let trace_diags = register_effect_decl(&trace, &records, Some(&sums), &mut env);
+    assert!(
+        trace_diags.is_empty(),
+        "unexpected diagnostics: {trace_diags:?}"
+    );
+
+    let handled = call(field_access(var("Log"), "log"), vec![lit_str("hello")]);
+    let clause = handle_clause(
+        "Trace",
+        "emit",
+        vec![sp(PatternKind::Var("value".to_string()))],
+        resume(lit_unit()),
+    );
+    let wrapper = make_fn_decl("wrapper", vec![], handle_expr(handled, vec![clause], None));
+
+    let row = infer_fn_decl_effect_row(&wrapper, &env);
+    assert!(
+        row.row.has(&Label::new("Log")),
+        "expected body Log effect to pass through mismatched handler, got {row:?}"
+    );
+    assert!(
+        !row.row.has(&Label::new("IO")),
+        "expected no phantom IO from mismatched handler, got {row:?}"
+    );
+}
+
+#[test]
+fn handle_mismatched_effect_preserves_reverse_direction_without_phantom_io() {
+    // Reverse direction: body performs Trace, handler handles Log (absent).
+    let mut env = TypeEnv::new();
+    let records = RecordRegistry::new();
+    let sums = SumTypeRegistry::new();
+    let mut traits = TraitRegistry::new();
+    register_hkt_for_use_for_traits(&mut traits, &records);
+
+    let log = make_effect_decl(
+        "Log",
+        vec![],
+        vec![make_effect_operation(
+            "log",
+            vec![annotated_param(
+                "msg",
+                TypeAnnotation::Named("String".to_string()),
+            )],
+            TypeAnnotation::Named("Unit".to_string()),
+        )],
+    );
+    let trace = make_effect_decl(
+        "Trace",
+        vec![],
+        vec![make_effect_operation(
+            "emit",
+            vec![annotated_param("value", TypeAnnotation::Named("Int".to_string()))],
+            TypeAnnotation::Named("Unit".to_string()),
+        )],
+    );
+    let log_diags = register_effect_decl(&log, &records, Some(&sums), &mut env);
+    assert!(log_diags.is_empty(), "unexpected diagnostics: {log_diags:?}");
+    let trace_diags = register_effect_decl(&trace, &records, Some(&sums), &mut env);
+    assert!(
+        trace_diags.is_empty(),
+        "unexpected diagnostics: {trace_diags:?}"
+    );
+
+    let handled = call(field_access(var("Trace"), "emit"), vec![lit_int(1)]);
+    let clause = handle_clause(
+        "Log",
+        "log",
+        vec![sp(PatternKind::Var("msg".to_string()))],
+        resume(lit_unit()),
+    );
+    let wrapper = make_fn_decl("wrapper", vec![], handle_expr(handled, vec![clause], None));
+
+    let row = infer_fn_decl_effect_row(&wrapper, &env);
+    assert!(
+        row.row.has(&Label::new("Trace")),
+        "expected body Trace effect to pass through mismatched handler, got {row:?}"
+    );
+    assert!(
+        !row.row.has(&Label::new("IO")),
+        "expected no phantom IO from mismatched handler, got {row:?}"
+    );
+}
