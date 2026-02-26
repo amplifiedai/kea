@@ -38,6 +38,45 @@ def UnifyRowsSuccessUpdateShapeWf
             (Row.mkOpen onlyLeft r3)
         stNext = { st'' with subst := subst' })
 
+theorem unifyRowsSuccessUpdateShapeWf_no_update
+    (st' : UnifyState) (fuel : Nat) (kctx : KindCtx) (rctx : RowCtx) :
+    UnifyRowsSuccessUpdateShapeWf st' st' fuel kctx rctx :=
+  Or.inl rfl
+
+theorem unifyRowsSuccessUpdateShapeWf_single_bind
+    (st' stNext : UnifyState) (fuel : Nat) (kctx : KindCtx) (rctx : RowCtx)
+    (rOpen : Row) (rv : RowVarId) (fields : RowFields)
+    (h_rest : (applySubstRow st'.subst (fuel + 1) rOpen).rest = some rv)
+    (h_fields : RowFields.WellFormed kctx rctx fields)
+    (h_next : stNext = { st' with subst := st'.subst.bindRow rv (Row.closed fields) }) :
+    UnifyRowsSuccessUpdateShapeWf st' stNext fuel kctx rctx :=
+  Or.inr (Or.inl ⟨rOpen, rv, fields, h_rest, h_fields, h_next⟩)
+
+theorem unifyRowsSuccessUpdateShapeWf_open_open
+    (st' stNext : UnifyState) (fuel : Nat) (kctx : KindCtx) (rctx : RowCtx)
+    (r1 r2 : Row) (rv1 rv2 : RowVarId) (onlyLeft onlyRight : RowFields)
+    (h_ne : rv2 ≠ rv1)
+    (h_rest1 : (applySubstRow st'.subst (fuel + 1) r1).rest = some rv1)
+    (h_rest2 : (applySubstRow st'.subst (fuel + 1) r2).rest = some rv2)
+    (h_left : RowFields.WellFormed kctx rctx onlyLeft)
+    (h_right : RowFields.WellFormed kctx rctx onlyRight)
+    (h_fresh_in_ctx : (st'.freshRowVar).1 ∈ rctx)
+    (h_next :
+      let fr := st'.freshRowVar
+      let r3 := fr.1
+      let st'' := fr.2
+      let subst' :=
+        Subst.bindRow
+          (Subst.bindRow st''.subst rv1 (Row.mkOpen onlyRight r3))
+          rv2
+          (Row.mkOpen onlyLeft r3)
+      stNext = { st'' with subst := subst' }) :
+    UnifyRowsSuccessUpdateShapeWf st' stNext fuel kctx rctx :=
+  Or.inr (Or.inr ⟨
+    r1, r2, rv1, rv2, onlyLeft, onlyRight,
+    h_ne, h_rest1, h_rest2, h_left, h_right, h_fresh_in_ctx, h_next
+  ⟩)
+
 theorem unifyRowsSuccessUpdateShapeWf_implies_shape
     (st' stNext : UnifyState) (fuel : Nat) (kctx : KindCtx) (rctx : RowCtx)
     (h_shape : UnifyRowsSuccessUpdateShapeWf st' stNext fuel kctx rctx) :
@@ -50,6 +89,30 @@ theorem unifyRowsSuccessUpdateShapeWf_implies_shape
       ⟨r1, r2, rv1, rv2, onlyLeft, onlyRight, h_ne, h_rest1, h_rest2,
        _h_left, _h_right, _h_fresh_in_ctx, h_next⟩
     exact Or.inr (Or.inr ⟨r1, r2, rv1, rv2, onlyLeft, onlyRight, h_ne, h_rest1, h_rest2, h_next⟩)
+
+theorem noUpdate_extendsAndWfRange
+    (st st' : UnifyState) (kctx : KindCtx) (rctx : RowCtx)
+    (h_ext : ExtendsRowBindings st st')
+    (h_wf : UnifyState.SubstWellFormedRange st' kctx rctx) :
+    ExtendsAndWfRange st st' kctx rctx := by
+  exact ⟨h_ext, h_wf⟩
+
+theorem noUpdate_with_non_subst_fields_extendsAndWfRange
+    (st st' : UnifyState) (kctx : KindCtx) (rctx : RowCtx)
+    (lacks' : Lacks) (bounds' : TraitBounds) (nextType' nextRow' : Nat)
+    (h_ext : ExtendsRowBindings st st')
+    (h_wf : UnifyState.SubstWellFormedRange st' kctx rctx) :
+    ExtendsAndWfRange st
+      { st' with
+          lacks := lacks',
+          traitBounds := bounds',
+          nextTypeVar := nextType',
+          nextRowVar := nextRow' }
+      kctx rctx := by
+  constructor
+  · exact ExtendsRowBindings.with_non_subst_fields h_ext lacks' bounds' nextType' nextRow'
+  · exact UnifyState.substWellFormedRange_with_non_subst_fields
+      st' kctx rctx lacks' bounds' nextType' nextRow' h_wf
 
 theorem closedBind_extendsAndWfRange
     (st st' : UnifyState) (kctx : KindCtx) (rctx : RowCtx)
