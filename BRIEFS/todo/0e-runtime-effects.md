@@ -158,12 +158,14 @@ argues IO must be decomposed into separate capability effects:
 
 This decision affects handler compilation, the runtime effect set,
 and every downstream brief. It must be explicit — not drift in
-during implementation. Decide at 0e kickoff:
-- **Option A:** Decomposed from day one (IO + Net + Clock + Rand)
-- **Option B:** Monolithic IO for 0e, decompose in 0h
-- **Recommendation:** Option A. The platform vision's policy-as-code
-  and deterministic simulation capabilities depend on this split.
-  Retrofitting is harder than building it in.
+during implementation.
+
+**Decision: Option A — decomposed from day one.** IO + Net + Clock +
+Rand are separate effects from Step 2 onward. The handler compilation
+machinery gets tested against multiple concrete effects from the start,
+and the platform vision's policy-as-code capabilities depend on this
+split. No "monolithic then decompose" path — that just means re-testing
+every handler path against 4 separate effects later.
 
 ## Implementation Plan
 
@@ -190,27 +192,43 @@ and runs natively. This is the "hello world with errors" moment.
 Test: `fn main() -> Result(Int, String) = catch(|| -> ...)`
 produces correct Ok/Err values.
 
-### Step 2: IO as built-in evidence (Tier 1 / capability-direct)
+### Step 2: Capability-direct effects (Tier 1)
 
-The `IO` effect is special — its handler IS the runtime. No
-evidence passing, no dispatch. `MirEffectOpClass::Direct` maps
-to direct function calls into a thin runtime shim.
+Capability-direct effects have no user-defined handlers — their
+handler IS the runtime. No evidence passing, no dispatch.
+`MirEffectOpClass::Direct` maps to direct function calls into
+thin runtime shims.
 
-Implement:
+Implement all four capability effects as separate `Direct` effects:
+
+**IO** (file/console):
 - `IO.stdout(msg)` → `libc::write(1, ...)`
 - `IO.stderr(msg)` → `libc::write(2, ...)`
 - `IO.read_file(path)` → `libc::read` wrapper
 - `IO.write_file(path, data)` → `libc::write` wrapper
 
-The runtime installs the IO handler around `main()`. Unhandled
-effects at the main boundary (other than IO/Fail) are a compile
-error (already enforced by 0c).
+**Net** (network):
+- `Net.connect(addr)` → socket connect wrapper
+- `Net.listen(addr)` → socket bind/listen wrapper
+- `Net.send(conn, data)` → socket send wrapper
+- `Net.recv(conn, size)` → socket recv wrapper
 
-**Entry gate:** Decide IO granularity here (see Entry Gate
-section above). Recommendation: start with monolithic `IO` for
-Step 2, decompose into IO/Net/Clock/Rand in Step 6 after the
-handler machinery is proven. The decomposition is additive —
-splitting one effect into four is easy once handlers work.
+**Clock** (time):
+- `Clock.now()` → `clock_gettime(CLOCK_REALTIME)`
+- `Clock.monotonic()` → `clock_gettime(CLOCK_MONOTONIC)`
+
+**Rand** (randomness):
+- `Rand.int(lo, hi)` → arc4random/getrandom wrapper
+- `Rand.float()` → [0,1) uniform via getrandom
+- `Rand.bytes(n)` → getrandom wrapper
+
+The runtime installs capability handlers around `main()`. Unhandled
+effects at the main boundary (other than capability effects and Fail)
+are a compile error (already enforced by 0c). Programs declare exactly
+the capabilities they need: `fn main() -[IO, Net]> Unit`.
+
+Stdlib layout: `io.kea`, `net.kea`, `clock.kea`, `rand.kea` — four
+files, each with their own effect declaration and `Direct` operations.
 
 **Milestone:** `kea run hello.kea` prints "Hello, world!" to
 stdout. First effectful compiled program.
@@ -312,20 +330,16 @@ Test matrix:
 - Handler body performs a different effect (handler adds effects)
 - Handler body re-performs the handled effect (goes to outer handler)
 
-### Step 6: IO decomposition (if Option A chosen)
+### Step 6: ~~IO decomposition~~ — ABSORBED INTO STEP 2
 
-Split `IO` into fine-grained capability effects:
-
-| Effect | Operations |
-|--------|-----------|
-| `IO` | stdout, stderr, read_file, write_file |
-| `Net` | connect, listen, send, recv |
-| `Clock` | now, monotonic |
-| `Rand` | random_int, random_float, random_bytes |
-
-Each is a separate capability effect with `Direct` compilation.
-Programs declare exactly the capabilities they need:
-`fn main() -[IO, Net]> Unit`.
+IO decomposition is no longer a separate step. IO/Net/Clock/Rand
+are separate effects from Step 2 onward (see Entry Gate decision).
+The stdlib layout is `io.kea`, `net.kea`, `clock.kea`, `rand.kea` —
+four files, each with their own effect declaration and Direct-compilation
+operations. The 0d1 intrinsic set needs `__kea_clock_now`,
+`__kea_clock_monotonic`, `__kea_rand_int`, `__kea_rand_float`,
+`__kea_rand_bytes`, `__kea_net_connect`, `__kea_net_listen`,
+`__kea_net_send`, `__kea_net_recv` alongside the existing IO intrinsics.
 
 ### Step 7: Non-tail-resumptive handlers (Tier 4) — DEFERRABLE
 
