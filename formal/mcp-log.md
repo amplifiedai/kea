@@ -5817,3 +5817,51 @@ consumers can depend on one theorem surface instead of multiple projections.
 - Runtime checks align with operation-call contract claims:
   operation calls require/preserve the corresponding effect label, and explicit
   under-approximation of declared effect rows is rejected.
+
+### 2026-02-26: tail-capability composition module (proof-only)
+
+**Context**: Added a cross-module composition layer between operation-call
+capability preservation and tail-resumptive equivalence.
+
+**MCP tools used**: none (proof-only composition surface).
+
+**Lean side**:
+- Added `Kea/Properties/TailCapabilityComposition.lean` with:
+  - `core_capability_direct_call_sound`
+  - `tail_resumptive_eligible_capability_direct_call_sound`
+  - `tail_resumptive_wellTyped_capability_direct_call_sound`
+- Imported module in `formal/Kea.lean`.
+- Verified with `cd formal && lake build` (pass).
+
+**Classify**: N/A (proof-only step).
+
+**Outcome**:
+- Phase-2 now has a citable theorem surface that composes capability and
+  tail-resumptive contracts under explicit assumptions.
+
+### 2026-02-26: handled-absent resumptive composition probe (precondition gap)
+
+**Context**: Tested a direct runtime shape corresponding to a handled-absent
+resumptive clause to determine whether the new composition surface is
+unconditionally runtime-aligned.
+
+**MCP tools used**: direct `kea-mcp` stdio (`initialize`,
+`notifications/initialized`, `tools/call` with `reset_session`, `type_check`,
+`get_type`, `diagnose`).
+
+**Probe**:
+- Snippet:
+  - `effect Log`, `effect Trace`
+  - `fn run_tail_cap() -[Log]> Unit`
+  - body: `handle Log.log(1)` with clause `Trace.trace(x) -> resume ()`
+- `type_check` rejects with `E0001`:
+  - `declared effect [Log] is too weak; body requires [IO]`
+- `diagnose` reports the same error.
+
+**Classify**: Precondition gap.
+
+**Outcome**:
+- This handled-absent resumptive shape is not currently runtime-accepted under
+  the tested declaration, so composition claims are tracked as
+  **well-typed-clause preconditioned** rather than unconditional runtime
+  alignment.
