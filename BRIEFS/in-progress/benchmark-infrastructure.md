@@ -270,4 +270,5 @@ run = "hyperfine --warmup 3 'kea run benchmarks/programs/*.kea'"
 - 2026-02-26: Program benchmark runner hardened for lower noise: hyperfine now runs with `--shell=none` via `scripts/run-program-bench.sh` and configurable inner iterations (`BENCH_PROGRAM_INNER_ITERS`, default `10`), removing sub-5ms warning paths and stabilizing baseline means.
 - 2026-02-26: Whole-program variance characterization automation landed: `scripts/bench-programs-variance.sh` + `mise run bench:programs:variance` compute per-program spread/CV across repeated runs, and `.github/workflows/bench-programs-variance.yml` publishes variance summaries/artifacts on `main`.
 - 2026-02-26: CodSpeed auth migrated to GitHub OIDC-recommended config in `.github/workflows/bench-codspeed.yml` (id-token permissions + no static `CODSPEED_TOKEN` input).
-- **Next:** Tighten threshold bands using CI variance history, then switch Stage B from non-blocking to blocking for stable benchmark classes.
+- 2026-02-26: Seed thresholds tightened from bootstrap-wide defaults to narrower non-blocking bands (microbench `50%→35%`, whole-program `60%→40%`) while CI variance history is still accumulating.
+- **Next:** Continue tightening thresholds using CI variance history, then switch Stage B from non-blocking to blocking for stable benchmark classes.

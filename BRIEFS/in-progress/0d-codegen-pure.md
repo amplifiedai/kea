@@ -366,6 +366,7 @@ Precision notes:
 - 2026-02-26: Whole-program regression scaffold landed: `bench:programs:regression` compares hyperfine means against seeded baseline thresholds, and non-blocking CI publishes program-regression summaries/artifacts for threshold calibration.
 - 2026-02-26: Whole-program benchmark runner now measures multi-iteration command bodies (`BENCH_PROGRAM_INNER_ITERS`, default 10) through a no-shell execution path, reducing shell overhead/noise for fast programs and improving threshold signal quality.
 - 2026-02-26: Whole-program variance tooling is now automated (`bench:programs:variance` + CI artifact workflow), giving threshold tuning an explicit spread/CV data source instead of one-off local runs.
+- 2026-02-26: Non-blocking Stage B thresholds were tightened from initial bootstrap bands (`micro: 50%→35%`, `program: 60%→40%`) to increase regression signal while preserving calibration safety.
 - 2026-02-26: Cranelift predicate normalization fixed for equality-driven control flow (`i8` vs `b1` predicate widths), with new codegen regression coverage for int equality branch conditions.
 - 2026-02-26: Pure expression coverage expanded: unary operators (`-x`, `not x`) now lower HIR→MIR (`MirUnaryOp`) and compile through Cranelift, with targeted crate tests.
 - 2026-02-26: HIR lowering now canonicalizes basic bool `case` expressions (`true/false/_` arms, no guards) into `if` expressions, allowing existing MIR/codegen control-flow lowering to compile that subset.
