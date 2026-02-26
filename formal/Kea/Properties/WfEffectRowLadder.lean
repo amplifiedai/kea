@@ -90,6 +90,22 @@ def FunctionEffBindTypeVarFullStateContractSlice
   ∧ (let h_ac := Subst.acyclicOfIdempotent h_idemp_next
      CompatWFAgreeOnDomainLookupsAcyclic stNext fuel h_ac)
 
+theorem functionEff_bindTypeVar_full_state_slice_to_base
+    (st stNext : UnifyState) (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat)
+    (h_idemp_next : stNext.subst.Idempotent)
+    (h_slice :
+      FunctionEffBindTypeVarFullStateContractSlice st stNext kctx rctx fuel h_idemp_next) :
+    FunctionEffBindTypeVarContractSlice st stNext kctx rctx fuel h_idemp_next := by
+  exact h_slice
+
+theorem functionEff_bindTypeVar_base_slice_to_full_state
+    (st stNext : UnifyState) (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat)
+    (h_idemp_next : stNext.subst.Idempotent)
+    (h_slice :
+      FunctionEffBindTypeVarContractSlice st stNext kctx rctx fuel h_idemp_next) :
+    FunctionEffBindTypeVarFullStateContractSlice st stNext kctx rctx fuel h_idemp_next := by
+  exact h_slice
+
 theorem functionEff_gen_inst_wf_slice
     (scheme : TypeScheme) (env : TypeEnv) (st : UnifyState)
     (s : Subst) (lc : Lacks) (traitBounds : TraitBounds)
@@ -255,14 +271,20 @@ theorem functionEff_bindTypeVar_full_state_extends_of_contract_slice
     (h_idemp_next : stNext.subst.Idempotent)
     (h_slice : FunctionEffBindTypeVarFullStateContractSlice st stNext kctx rctx fuel h_idemp_next) :
     ExtendsRowBindings st stNext := by
-  exact h_slice.1.1
+  exact functionEff_bindTypeVar_extends_of_contract_slice
+    st stNext kctx rctx fuel h_idemp_next
+    (functionEff_bindTypeVar_full_state_slice_to_base
+      st stNext kctx rctx fuel h_idemp_next h_slice)
 
 theorem functionEff_bindTypeVar_full_state_substWellFormedRange_of_contract_slice
     (st stNext : UnifyState) (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat)
     (h_idemp_next : stNext.subst.Idempotent)
     (h_slice : FunctionEffBindTypeVarFullStateContractSlice st stNext kctx rctx fuel h_idemp_next) :
     UnifyState.SubstWellFormedRange stNext kctx rctx := by
-  exact h_slice.1.2
+  exact functionEff_bindTypeVar_substWellFormedRange_of_contract_slice
+    st stNext kctx rctx fuel h_idemp_next
+    (functionEff_bindTypeVar_full_state_slice_to_base
+      st stNext kctx rctx fuel h_idemp_next h_slice)
 
 theorem functionEff_bindTypeVar_full_state_compatWFAgreeOnDomainLookupsAcyclic_of_contract_slice
     (st stNext : UnifyState) (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat)
@@ -270,4 +292,7 @@ theorem functionEff_bindTypeVar_full_state_compatWFAgreeOnDomainLookupsAcyclic_o
     (h_slice : FunctionEffBindTypeVarFullStateContractSlice st stNext kctx rctx fuel h_idemp_next) :
     let h_ac := Subst.acyclicOfIdempotent h_idemp_next
     CompatWFAgreeOnDomainLookupsAcyclic stNext fuel h_ac := by
-  exact h_slice.2
+  exact functionEff_bindTypeVar_compatWFAgreeOnDomainLookupsAcyclic_of_contract_slice
+    st stNext kctx rctx fuel h_idemp_next
+    (functionEff_bindTypeVar_full_state_slice_to_base
+      st stNext kctx rctx fuel h_idemp_next h_slice)
