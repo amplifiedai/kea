@@ -643,7 +643,14 @@ impl FunctionLoweringCtx {
                 base,
                 fields,
             } => {
-                let target = self.lower_expr(base)?;
+                let mut flattened_updates = Vec::new();
+                let flattened_base =
+                    Self::collect_record_update_chain(base, record_type, &mut flattened_updates);
+                for (field_name, field_expr) in fields {
+                    flattened_updates.push((field_name.clone(), field_expr));
+                }
+
+                let target = self.lower_expr(flattened_base)?;
                 self.emit_inst(MirInst::Retain {
                     value: target.clone(),
                 });
@@ -658,13 +665,20 @@ impl FunctionLoweringCtx {
                     src: claimed,
                 });
 
-                let mut updates = Vec::with_capacity(fields.len());
-                for (field_name, field_expr) in fields {
+                let mut updates: Vec<MirFieldUpdate> =
+                    Vec::with_capacity(flattened_updates.len());
+                for (field_name, field_expr) in flattened_updates {
                     let value = self.lower_expr(field_expr)?;
-                    updates.push(MirFieldUpdate {
-                        field: field_name.clone(),
-                        value,
-                    });
+                    if let Some(existing) =
+                        updates.iter_mut().find(|update| update.field == field_name)
+                    {
+                        existing.value = value;
+                    } else {
+                        updates.push(MirFieldUpdate {
+                            field: field_name,
+                            value,
+                        });
+                    }
                 }
 
                 let dest = self.new_value();
@@ -985,6 +999,27 @@ impl FunctionLoweringCtx {
                     .insert(name.clone(), record_ty.name.clone());
             }
         }
+    }
+
+    fn collect_record_update_chain<'a>(
+        expr: &'a HirExpr,
+        record_type: &str,
+        updates: &mut Vec<(String, &'a HirExpr)>,
+    ) -> &'a HirExpr {
+        if let HirExprKind::RecordUpdate {
+            record_type: inner_record_type,
+            base,
+            fields,
+        } = &expr.kind
+            && inner_record_type == record_type
+        {
+            let root = Self::collect_record_update_chain(base, record_type, updates);
+            for (field_name, field_expr) in fields {
+                updates.push((field_name.clone(), field_expr));
+            }
+            return root;
+        }
+        expr
     }
 
     fn lower_short_circuit_binary(
@@ -1560,6 +1595,88 @@ mod tests {
             .instructions
             .iter()
             .any(|inst| matches!(inst, MirInst::Release { .. })));
+    }
+
+    #[test]
+    fn lower_hir_module_fuses_nested_record_updates_into_single_cow_update() {
+        let user_ty = Type::Record(RecordType {
+            name: "User".to_string(),
+            params: vec![],
+            row: RowType::closed(vec![
+                (Label::new("age"), Type::Int),
+                (Label::new("score"), Type::Int),
+            ]),
+        });
+        let base_var = HirExpr {
+            kind: HirExprKind::Var("user".to_string()),
+            ty: user_ty.clone(),
+            span: kea_ast::Span::synthetic(),
+        };
+        let inner = HirExpr {
+            kind: HirExprKind::RecordUpdate {
+                record_type: "User".to_string(),
+                base: Box::new(base_var.clone()),
+                fields: vec![(
+                    "age".to_string(),
+                    HirExpr {
+                        kind: HirExprKind::Lit(kea_ast::Lit::Int(5)),
+                        ty: Type::Int,
+                        span: kea_ast::Span::synthetic(),
+                    },
+                )],
+            },
+            ty: user_ty.clone(),
+            span: kea_ast::Span::synthetic(),
+        };
+        let outer = HirExpr {
+            kind: HirExprKind::RecordUpdate {
+                record_type: "User".to_string(),
+                base: Box::new(inner),
+                fields: vec![(
+                    "score".to_string(),
+                    HirExpr {
+                        kind: HirExprKind::Lit(kea_ast::Lit::Int(8)),
+                        ty: Type::Int,
+                        span: kea_ast::Span::synthetic(),
+                    },
+                )],
+            },
+            ty: user_ty.clone(),
+            span: kea_ast::Span::synthetic(),
+        };
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "fuse_updates".to_string(),
+                params: vec![HirParam {
+                    name: Some("user".to_string()),
+                    span: kea_ast::Span::synthetic(),
+                }],
+                body: outer,
+                ty: Type::Function(FunctionType::pure(vec![user_ty.clone()], user_ty)),
+                effects: EffectRow::pure(),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let mir = lower_hir_module(&hir);
+        let function = &mir.functions[0];
+        let cow_updates = function.blocks[0]
+            .instructions
+            .iter()
+            .filter(|inst| matches!(inst, MirInst::CowUpdate { .. }))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            cow_updates.len(),
+            1,
+            "nested updates should fuse into one CowUpdate"
+        );
+        assert!(matches!(
+            cow_updates[0],
+            MirInst::CowUpdate { updates, .. }
+                if updates.len() == 2
+                    && updates.iter().any(|u| u.field == "age")
+                    && updates.iter().any(|u| u.field == "score")
+        ));
     }
 
     #[test]
