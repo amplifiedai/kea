@@ -5063,3 +5063,29 @@ claim delta).
 **Outcome**:
 - Effect-polymorphism soundness now has an explicit reusable theorem surface
   bridging Fail lowering with row-tail-preserving polymorphic effects.
+
+### 2026-02-26: effect-polymorphism concrete schema bridge (proof-only)
+
+**Context**: Connected the effect-polymorphism soundness surfaces to concrete
+handler-typing premises so downstream proofs can start from realistic schema
+assumptions (`wellTypedSlice` + Fail-zero-resume).
+
+**MCP tools used**: none (proof-only bridge; no new runtime-facing claim
+introduced).
+
+**Lean side**:
+- Extended `Kea/Properties/EffectPolymorphismSoundness.lean` with:
+  - `EffectPolyHandlerSchema`
+  - `effectPolyHandlerSchema_sound`
+  - `effectPolyHandlerSchema_noop_if_fail_absent`
+- The bridge theorem packages:
+  - clause-level handled-effect removal from `HandleClauseContract`
+  - polymorphic function-type Fail-lowering guarantees
+  into one reusable surface.
+- Verified with `cd formal && lake build` (pass).
+
+**Classify**: N/A (proof-only step).
+
+**Outcome**:
+- Concrete handler typing premises now map directly to polymorphic Fail-lowered
+  function guarantees without manual theorem composition at call sites.

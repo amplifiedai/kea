@@ -99,5 +99,69 @@ theorem effectPolyFailLowering_noop_if_fail_absent
     (FailResultContracts.lowerFailFunctionType_noop_effect_of_absent
       c.params c.effects c.okTy c.errTy h_abs)
 
+/-- Concrete handler-typing premises for polymorphic Fail-lowered function schemas. -/
+structure EffectPolyHandlerSchema where
+  clause : HandleClauseContract
+  params : TyList
+  okTy : Ty
+  errTy : Ty
+  loweredTy : Ty
+  h_wellTyped : HandleClauseContract.wellTypedSlice clause
+  h_failZero : FailResultContracts.failAsZeroResume clause
+  h_lowered :
+    loweredTy =
+      FailResultContracts.lowerFailFunctionType params clause.exprEffects okTy errTy
+
+/--
+Bridge theorem: concrete handler typing premises imply the polymorphic
+Fail-lowering soundness slice and handled-effect removal at the clause result.
+-/
+theorem effectPolyHandlerSchema_sound
+    (s : EffectPolyHandlerSchema) :
+    RowFields.has
+      (EffectRow.fields (HandleClauseContract.resultEffects s.clause))
+      FailResultContracts.failLabel = false ∧
+      ∃ loweredEffects,
+        s.loweredTy = .functionEff s.params loweredEffects (.result s.okTy s.errTy) ∧
+        rowTailStable s.clause.exprEffects loweredEffects ∧
+        labelsPreservedExcept s.clause.exprEffects loweredEffects FailResultContracts.failLabel ∧
+        RowFields.has (EffectRow.fields loweredEffects) FailResultContracts.failLabel = false := by
+  have h_removed_handled :
+      RowFields.has
+        (EffectRow.fields (HandleClauseContract.resultEffects s.clause))
+        s.clause.handled = false :=
+    HandleClauseContract.wellTypedSlice_implies_handled_removed s.clause s.h_wellTyped
+  have h_removed_fail :
+      RowFields.has
+        (EffectRow.fields (HandleClauseContract.resultEffects s.clause))
+        FailResultContracts.failLabel = false := by
+    simpa [FailResultContracts.failLabel, s.h_failZero.1] using h_removed_handled
+  let poly : EffectPolyFailLoweringContract := {
+    params := s.params
+    effects := s.clause.exprEffects
+    okTy := s.okTy
+    errTy := s.errTy
+    lowered := s.loweredTy
+    h_lowered := s.h_lowered
+  }
+  have h_poly := effectPolyFailLowering_sound poly
+  exact ⟨h_removed_fail, h_poly⟩
+
+theorem effectPolyHandlerSchema_noop_if_fail_absent
+    (s : EffectPolyHandlerSchema)
+    (h_abs :
+      RowFields.has (EffectRow.fields s.clause.exprEffects)
+        FailResultContracts.failLabel = false) :
+    s.loweredTy = .functionEff s.params s.clause.exprEffects (.result s.okTy s.errTy) := by
+  let poly : EffectPolyFailLoweringContract := {
+    params := s.params
+    effects := s.clause.exprEffects
+    okTy := s.okTy
+    errTy := s.errTy
+    lowered := s.loweredTy
+    h_lowered := s.h_lowered
+  }
+  exact effectPolyFailLowering_noop_if_fail_absent poly h_abs
+
 end EffectPolymorphismSoundness
 end Kea

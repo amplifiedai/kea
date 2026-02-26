@@ -54,6 +54,7 @@ This work starts by cannibalizing the existing Rill formal corpus and then exten
 - **Phase 2 (active):** Added `Kea/Properties/FailResultContracts.lean`, specializing handler contracts to Fail-as-zero-resume and Result-lowering (`resultLowering`, `FailResultContract`, `failResultContract_sound`, `failResultContract_loopLegal`) to start the Fail/Result equivalence track.
 - **Phase 2 (active):** Extended `FailResultContracts` with explicit lowering/equivalence slices (`lowerFailEffects`, `lowerFailFunctionType`, `failResultFunctionEquivalent`) plus preservation/removal lemmas to bridge from contract-level Fail handling into function-type `Result` lowering.
 - **Phase 2 (active):** Added `Kea/Properties/EffectPolymorphismSoundness.lean` with reusable soundness contracts for Fail lowering over polymorphic effect rows (`rowTailStable`, `labelsPreservedExcept`, `effectPolyFailLowering_sound`, no-op-if-absent), proving Fail removal while preserving non-Fail labels and row tails.
+- **Phase 2 (active):** `EffectPolymorphismSoundness` now includes concrete handler-schema bridges (`EffectPolyHandlerSchema`, `effectPolyHandlerSchema_sound`, `effectPolyHandlerSchema_noop_if_fail_absent`) linking `wellTypedSlice` + Fail-zero-resume premises to polymorphic function-type lowering guarantees.
 
 The formal workspace lives at [`formal/`](formal/).
 
