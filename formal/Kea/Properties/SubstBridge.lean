@@ -416,6 +416,19 @@ theorem applySubstRowWF_noop (s : Subst) (h : Subst.Acyclic s) (r : Row)
   unfold applySubstRowWF
   exact applySubstBounded_noop_row s h _ _ r htv hrv
 
+/-- WF effect-row substitution is no-op when the effect row has no vars in substitution domain. -/
+theorem applySubstEffectRowWF_noop (s : Subst) (h : Subst.Acyclic s) (effects : EffectRow)
+    (htv : ∀ v ∈ freeTypeVarsEffectRow effects, s.typeMap v = none)
+    (hrv : ∀ v ∈ freeRowVarsEffectRow effects, s.rowMap v = none) :
+    applySubstEffectRowWF s h effects = effects := by
+  cases effects with
+  | mk row =>
+    unfold applySubstEffectRowWF
+    simp
+    exact applySubstBounded_noop_row s h _ _ row
+      (fun v hv => htv v (by simpa [freeTypeVarsEffectRow] using hv))
+      (fun v hv => hrv v (by simpa [freeRowVarsEffectRow] using hv))
+
 /-- Idempotent range terms are WF fixed points (type side). -/
 theorem applySubstWF_range_noop_of_idempotent
     (s : Subst) (h_idemp : s.Idempotent) (v : TypeVarId) (ty : Ty)
@@ -544,6 +557,15 @@ theorem applySubstRowWF_empty (r : Row) :
     applySubstRowWF Subst.empty Subst.emptyAcyclic r = r := by
   unfold applySubstRowWF
   exact applySubstBounded_empty_row _ _ r
+
+/-- WF substitution is identity for `Subst.empty` (effect rows). -/
+theorem applySubstEffectRowWF_empty (effects : EffectRow) :
+    applySubstEffectRowWF Subst.empty Subst.emptyAcyclic effects = effects := by
+  apply applySubstEffectRowWF_noop Subst.empty Subst.emptyAcyclic effects
+  · intro v hv
+    simp [Subst.empty]
+  · intro v hv
+    simp [Subst.empty]
 
 /-- Fuel and WF substitution agree on `Subst.empty` (types). -/
 theorem applySubst_empty_eq_applySubstWF_empty (fuel : Nat) (ty : Ty) :

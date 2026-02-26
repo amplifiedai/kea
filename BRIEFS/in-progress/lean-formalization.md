@@ -259,4 +259,5 @@ Mitigation:
 - 2026-02-26: Repository guardrail check passes after formalization bootstrap (`mise run check`).
 - 2026-02-26: Aligned core formal typing surface with `kea-types` effect rows (`Ty.functionEff`, `EffectRow`, `Kind`) and propagated constructor coverage through `Substitution`, `FreeVars`, `OccursCheck`, `Unify`, `Generalize`, `Typing`, plus proof repair in `SubstCompose`/`SubstBridge`/`SubstIdempotent`/`UnifyReflexive`.
 - 2026-02-26: `cd formal && lake build` passes after full `functionEff` exhaustiveness repair in remaining Phase-1 core proofs.
+- 2026-02-26: Added explicit WF effect-row bridge lemmas in `SubstBridge` (`applySubstEffectRowWF_noop`, `applySubstEffectRowWF_empty`) so effect rows have the same no-domain-vars/empty-substitution identity surface as rows.
 - **Next:** start explicit WF theorem ladder for the effect-row surface (substitution preserves WF, unification preserves WF, generalize/instantiate preserves WF), then begin first Phase-2 handler/effect typing theorem stubs.
