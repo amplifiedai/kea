@@ -453,10 +453,6 @@ fn lower_bool_case(
     unit_variant_tags: &UnitVariantTags,
     qualified_variant_tags: &QualifiedUnitVariantTags,
 ) -> Option<HirExprKind> {
-    if arms.iter().any(|arm| arm.guard.is_some()) {
-        return None;
-    }
-
     if let Some(kind) = lower_literal_case(
         scrutinee,
         arms,
@@ -465,6 +461,10 @@ fn lower_bool_case(
         qualified_variant_tags,
     ) {
         return Some(kind);
+    }
+
+    if arms.iter().any(|arm| arm.guard.is_some()) {
+        return None;
     }
 
     if arms.len() == 1 && matches!(arms[0].pattern.node, PatternKind::Wildcard) {
@@ -555,17 +555,24 @@ fn lower_literal_case(
     unit_variant_tags: &UnitVariantTags,
     qualified_variant_tags: &QualifiedUnitVariantTags,
 ) -> Option<HirExprKind> {
-    if arms.iter().any(|arm| arm.guard.is_some()) {
-        return None;
-    }
-
-    let mut literal_arms: Vec<(LiteralCaseValue, &Expr, Option<String>)> = Vec::new();
+    let mut literal_arms: Vec<(LiteralCaseValue, &Expr, Option<String>, Option<&Expr>)> =
+        Vec::new();
     let mut wildcard_body: Option<&Expr> = None;
     let mut var_fallback: Option<(String, &Expr)> = None;
     for arm in arms {
         match &arm.pattern.node {
-            PatternKind::Wildcard => wildcard_body = Some(&arm.body),
-            PatternKind::Var(name) => var_fallback = Some((name.clone(), &arm.body)),
+            PatternKind::Wildcard => {
+                if arm.guard.is_some() {
+                    return None;
+                }
+                wildcard_body = Some(&arm.body);
+            }
+            PatternKind::Var(name) => {
+                if arm.guard.is_some() {
+                    return None;
+                }
+                var_fallback = Some((name.clone(), &arm.body));
+            }
             pattern => {
                 let (values, bind_name) = literal_case_values_from_pattern(
                     pattern,
@@ -573,7 +580,7 @@ fn lower_literal_case(
                     qualified_variant_tags,
                 )?;
                 for value in values {
-                    literal_arms.push((value, &arm.body, bind_name.clone()));
+                    literal_arms.push((value, &arm.body, bind_name.clone(), arm.guard.as_deref()));
                 }
             }
         }
@@ -585,12 +592,13 @@ fn lower_literal_case(
 
     let has_true = literal_arms
         .iter()
-        .any(|(lit, _, _)| matches!(lit, LiteralCaseValue::Bool(true)));
+        .any(|(lit, _, _, _)| matches!(lit, LiteralCaseValue::Bool(true)));
     let has_false = literal_arms
         .iter()
-        .any(|(lit, _, _)| matches!(lit, LiteralCaseValue::Bool(false)));
+        .any(|(lit, _, _, _)| matches!(lit, LiteralCaseValue::Bool(false)));
     if wildcard_body.is_none()
         && (has_true || has_false)
+        && arms.iter().all(|arm| arm.guard.is_none())
         && arms
             .iter()
             .all(|arm| bool_case_fallback_compatible(&arm.pattern.node))
@@ -672,7 +680,7 @@ fn lower_literal_case(
         // Type checking enforces exhaustiveness before lowering. For exhaustive literal
         // chains without an explicit fallback (for example unit-enum constructor cases),
         // provide a defensive synthetic else so non-unit MIR value paths stay closed.
-        let (_, fallback_body, _) = literal_arms
+        let (_, fallback_body, _, _) = literal_arms
             .last()
             .expect("checked literal_arms is non-empty");
         else_expr = Some(lower_expr(
@@ -691,8 +699,8 @@ fn lower_literal_case(
         return Some(lowered.kind);
     }
 
-    for (lit, body, bind_name) in literal_arms.into_iter().rev() {
-        let condition = HirExpr {
+    for (lit, body, bind_name, guard) in literal_arms.into_iter().rev() {
+        let mut condition = HirExpr {
             kind: HirExprKind::Binary {
                 op: BinOp::Eq,
                 left: Box::new(scrutinee_expr.clone()),
@@ -705,6 +713,25 @@ fn lower_literal_case(
             ty: Type::Bool,
             span: scrutinee.span,
         };
+        if let Some(guard_expr) = guard {
+            if bind_name.is_some() {
+                return None;
+            }
+            condition = HirExpr {
+                kind: HirExprKind::Binary {
+                    op: BinOp::And,
+                    left: Box::new(condition),
+                    right: Box::new(lower_expr(
+                        guard_expr,
+                        None,
+                        unit_variant_tags,
+                        qualified_variant_tags,
+                    )),
+                },
+                ty: Type::Bool,
+                span: scrutinee.span,
+            };
+        }
 
         let next = HirExpr {
             kind: HirExprKind::If {
@@ -1265,6 +1292,32 @@ mod tests {
                 pattern: HirPattern::Var(_),
                 ..
             })
+        ));
+    }
+
+    #[test]
+    fn lower_function_literal_case_guard_desugars_to_and_condition() {
+        let module =
+            parse_module_from_text("fn classify(x: Int) -> Int\n  case x\n    0 when x == 0 -> 1\n    _ -> 2");
+        let mut env = TypeEnv::new();
+        env.bind(
+            "classify".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::pure(vec![Type::Int], Type::Int))),
+        );
+
+        let lowered = lower_module(&module, &env);
+        let HirDecl::Function(function) = &lowered.declarations[0] else {
+            panic!("expected lowered function declaration");
+        };
+        let HirExprKind::If { condition, .. } = &function.body.kind else {
+            panic!(
+                "expected literal case with guard to lower to if expression, got {:?}",
+                function.body.kind
+            );
+        };
+        assert!(matches!(
+            condition.kind,
+            HirExprKind::Binary { op: BinOp::And, .. }
         ));
     }
 
