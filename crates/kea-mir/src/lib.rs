@@ -482,7 +482,28 @@ impl FunctionLoweringCtx {
                 Some(dest)
             }
             HirExprKind::Call { func, args } => {
+                if let HirExprKind::Var(name) = &func.kind
+                    && name == "Fail::fail"
+                {
+                    let mut lowered_args = Vec::with_capacity(args.len());
+                    for arg in args {
+                        lowered_args.push(self.lower_expr(arg)?);
+                    }
+                    self.emit_inst(MirInst::EffectOp {
+                        class: MirEffectOpClass::ZeroResume,
+                        effect: "Fail".to_string(),
+                        operation: "fail".to_string(),
+                        args: lowered_args,
+                        result: None,
+                    });
+                    self.set_terminator(MirTerminator::Unreachable);
+                    return None;
+                }
+
                 let callee = match &func.kind {
+                    HirExprKind::Var(name) if name.contains("::") => {
+                        MirCallee::External(name.clone())
+                    }
                     HirExprKind::Var(name) => MirCallee::Local(name.clone()),
                     _ => {
                         let callee_value = self.lower_expr(func)?;
@@ -518,6 +539,9 @@ impl FunctionLoweringCtx {
                 let mut last = None;
                 for expr in exprs {
                     last = self.lower_expr(expr);
+                    if self.current_block().terminator.is_some() {
+                        break;
+                    }
                 }
                 last
             }
@@ -564,21 +588,31 @@ impl FunctionLoweringCtx {
 
         self.switch_to(then_block);
         let then_value = self.lower_expr(then_branch);
-        let then_args = match &result_value {
-            Some(_) => vec![then_value?],
-            None => vec![],
-        };
-        self.ensure_jump_to(join_block.clone(), then_args);
+        let then_terminated = self.current_block().terminator.is_some();
+        if !then_terminated {
+            let then_args = match &result_value {
+                Some(_) => vec![then_value?],
+                None => vec![],
+            };
+            self.ensure_jump_to(join_block.clone(), then_args);
+        }
 
         self.switch_to(else_block);
         let else_value = else_branch.and_then(|branch| self.lower_expr(branch));
-        let else_args = match &result_value {
-            Some(_) => vec![else_value?],
-            None => vec![],
-        };
-        self.ensure_jump_to(join_block.clone(), else_args);
+        let else_terminated = self.current_block().terminator.is_some();
+        if !else_terminated {
+            let else_args = match &result_value {
+                Some(_) => vec![else_value?],
+                None => vec![],
+            };
+            self.ensure_jump_to(join_block.clone(), else_args);
+        }
 
         self.switch_to(join_block);
+        if then_terminated && else_terminated {
+            self.set_terminator(MirTerminator::Unreachable);
+            return None;
+        }
         result_value
     }
 
@@ -677,7 +711,7 @@ mod tests {
         DeclKind, RecordDef, Spanned, TypeAnnotation, TypeDef, TypeVariant, VariantField,
     };
     use kea_hir::{HirExpr, HirExprKind, HirFunction, HirParam};
-    use kea_types::FunctionType;
+    use kea_types::{FunctionType, Label};
 
     fn sp<T>(node: T) -> Spanned<T> {
         Spanned::new(node, kea_ast::Span::synthetic())
@@ -1170,5 +1204,64 @@ mod tests {
         };
         assert_eq!(rhs_args.len(), 1);
         assert_eq!(rhs_args[0], MirValueId(1));
+    }
+
+    #[test]
+    fn lower_hir_module_lowers_fail_qualified_call_to_zero_resume_effect_op() {
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "boom".to_string(),
+                params: vec![],
+                body: HirExpr {
+                    kind: HirExprKind::Call {
+                        func: Box::new(HirExpr {
+                            kind: HirExprKind::Var("Fail::fail".to_string()),
+                            ty: Type::Dynamic,
+                            span: kea_ast::Span::synthetic(),
+                        }),
+                        args: vec![HirExpr {
+                            kind: HirExprKind::Lit(kea_ast::Lit::Int(7)),
+                            ty: Type::Int,
+                            span: kea_ast::Span::synthetic(),
+                        }],
+                    },
+                    ty: Type::Unit,
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::with_effects(
+                    vec![],
+                    Type::Unit,
+                    EffectRow::closed(vec![(Label::new("Fail"), Type::Int)]),
+                )),
+                effects: EffectRow::closed(vec![(Label::new("Fail"), Type::Int)]),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let mir = lower_hir_module(&hir);
+        let function = &mir.functions[0];
+        assert_eq!(function.blocks.len(), 1);
+        assert_eq!(function.blocks[0].instructions.len(), 2);
+        assert!(matches!(
+            function.blocks[0].instructions[0],
+            MirInst::Const {
+                literal: MirLiteral::Int(7),
+                ..
+            }
+        ));
+        assert!(matches!(
+            function.blocks[0].instructions[1],
+            MirInst::EffectOp {
+                class: MirEffectOpClass::ZeroResume,
+                ref effect,
+                ref operation,
+                result: None,
+                ..
+            } if effect == "Fail" && operation == "fail"
+        ));
+        assert!(matches!(
+            function.blocks[0].terminator,
+            MirTerminator::Unreachable
+        ));
     }
 }
