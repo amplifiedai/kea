@@ -51,6 +51,10 @@ pub struct HirExpr {
 pub enum HirExprKind {
     Lit(Lit),
     Var(String),
+    RecordLit {
+        record_type: String,
+        fields: Vec<(String, HirExpr)>,
+    },
     FieldAccess {
         expr: Box<HirExpr>,
         field: String,
@@ -94,6 +98,7 @@ pub enum HirPattern {
 
 type UnitVariantTags = BTreeMap<String, i64>;
 type QualifiedUnitVariantTags = BTreeMap<(String, String), i64>;
+type KnownRecordDefs = BTreeSet<String>;
 
 fn is_namespace_qualifier(name: &str) -> bool {
     name.chars().next().is_some_and(|ch| ch.is_ascii_uppercase())
@@ -150,8 +155,20 @@ fn collect_unit_variant_tags(module: &Module) -> (UnitVariantTags, QualifiedUnit
     (unqualified, qualified)
 }
 
+fn collect_record_defs(module: &Module) -> KnownRecordDefs {
+    module
+        .declarations
+        .iter()
+        .filter_map(|decl| match &decl.node {
+            DeclKind::RecordDef(def) => Some(def.name.node.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
 pub fn lower_module(module: &Module, env: &TypeEnv) -> HirModule {
     let (unit_variant_tags, qualified_variant_tags) = collect_unit_variant_tags(module);
+    let known_record_defs = collect_record_defs(module);
     let declarations = module
         .declarations
         .iter()
@@ -161,12 +178,14 @@ pub fn lower_module(module: &Module, env: &TypeEnv) -> HirModule {
                 env,
                 &unit_variant_tags,
                 &qualified_variant_tags,
+                &known_record_defs,
             )),
             DeclKind::ExprFn(expr_decl) => HirDecl::Function(lower_function_with_variants(
                 &expr_decl_to_fn_decl(expr_decl),
                 env,
                 &unit_variant_tags,
                 &qualified_variant_tags,
+                &known_record_defs,
             )),
             other => HirDecl::Raw(other.clone()),
         })
@@ -175,11 +194,13 @@ pub fn lower_module(module: &Module, env: &TypeEnv) -> HirModule {
 }
 
 pub fn lower_function(fn_decl: &FnDecl, env: &TypeEnv) -> HirFunction {
+    let known_record_defs = BTreeSet::new();
     lower_function_with_variants(
         fn_decl,
         env,
         &UnitVariantTags::new(),
         &QualifiedUnitVariantTags::new(),
+        &known_record_defs,
     )
 }
 
@@ -188,6 +209,7 @@ fn lower_function_with_variants(
     env: &TypeEnv,
     unit_variant_tags: &UnitVariantTags,
     qualified_variant_tags: &QualifiedUnitVariantTags,
+    known_record_defs: &KnownRecordDefs,
 ) -> HirFunction {
     let fn_ty = env
         .lookup(&fn_decl.name.node)
@@ -207,6 +229,7 @@ fn lower_function_with_variants(
             Some(ret_ty),
             unit_variant_tags,
             qualified_variant_tags,
+            known_record_defs,
         ),
         ty: fn_ty,
         effects,
@@ -233,6 +256,7 @@ fn lower_expr(
     ty_hint: Option<Type>,
     unit_variant_tags: &UnitVariantTags,
     qualified_variant_tags: &QualifiedUnitVariantTags,
+    known_record_defs: &KnownRecordDefs,
 ) -> HirExpr {
     let default_ty = ty_hint.clone().unwrap_or(Type::Dynamic);
 
@@ -246,12 +270,14 @@ fn lower_expr(
                 None,
                 unit_variant_tags,
                 qualified_variant_tags,
+                known_record_defs,
             )),
             right: Box::new(lower_expr(
                 right,
                 None,
                 unit_variant_tags,
                 qualified_variant_tags,
+                known_record_defs,
             )),
         },
         ExprKind::UnaryOp { op, operand } => HirExprKind::Unary {
@@ -261,6 +287,7 @@ fn lower_expr(
                 None,
                 unit_variant_tags,
                 qualified_variant_tags,
+                known_record_defs,
             )),
         },
         ExprKind::Call { func, args } => HirExprKind::Call {
@@ -269,11 +296,18 @@ fn lower_expr(
                 None,
                 unit_variant_tags,
                 qualified_variant_tags,
+                known_record_defs,
             )),
             args: args
                 .iter()
                 .map(|arg| {
-                    lower_expr(&arg.value, None, unit_variant_tags, qualified_variant_tags)
+                    lower_expr(
+                        &arg.value,
+                        None,
+                        unit_variant_tags,
+                        qualified_variant_tags,
+                        known_record_defs,
+                    )
                 })
                 .collect(),
         },
@@ -284,6 +318,7 @@ fn lower_expr(
                 None,
                 unit_variant_tags,
                 qualified_variant_tags,
+                known_record_defs,
             )),
         },
         ExprKind::Let { pattern, value, .. } => HirExprKind::Let {
@@ -293,6 +328,7 @@ fn lower_expr(
                 None,
                 unit_variant_tags,
                 qualified_variant_tags,
+                known_record_defs,
             )),
         },
         ExprKind::If {
@@ -305,12 +341,14 @@ fn lower_expr(
                 None,
                 unit_variant_tags,
                 qualified_variant_tags,
+                known_record_defs,
             )),
             then_branch: Box::new(lower_expr(
                 then_branch,
                 ty_hint.clone(),
                 unit_variant_tags,
                 qualified_variant_tags,
+                known_record_defs,
             )),
             else_branch: else_branch
                 .as_ref()
@@ -320,6 +358,7 @@ fn lower_expr(
                         ty_hint.clone(),
                         unit_variant_tags,
                         qualified_variant_tags,
+                        known_record_defs,
                     ))
                 }),
         },
@@ -330,6 +369,7 @@ fn lower_expr(
                 ty_hint.clone(),
                 unit_variant_tags,
                 qualified_variant_tags,
+                known_record_defs,
             ) {
                 case_kind
             } else {
@@ -344,7 +384,13 @@ fn lower_expr(
                     .enumerate()
                     .map(|(idx, inner)| {
                         let hint = if idx == last_idx { ty_hint.clone() } else { None };
-                        lower_expr(inner, hint, unit_variant_tags, qualified_variant_tags)
+                        lower_expr(
+                            inner,
+                            hint,
+                            unit_variant_tags,
+                            qualified_variant_tags,
+                            known_record_defs,
+                        )
                     })
                     .collect(),
             )
@@ -352,9 +398,39 @@ fn lower_expr(
         ExprKind::Tuple(exprs) => HirExprKind::Tuple(
             exprs
                 .iter()
-                .map(|inner| lower_expr(inner, None, unit_variant_tags, qualified_variant_tags))
+                .map(|inner| {
+                    lower_expr(
+                        inner,
+                        None,
+                        unit_variant_tags,
+                        qualified_variant_tags,
+                        known_record_defs,
+                    )
+                })
                 .collect(),
         ),
+        ExprKind::Record {
+            name,
+            fields,
+            spread,
+        } if spread.is_none() && known_record_defs.contains(&name.node) => HirExprKind::RecordLit {
+            record_type: name.node.clone(),
+            fields: fields
+                .iter()
+                .map(|(field_name, field_value)| {
+                    (
+                        field_name.node.clone(),
+                        lower_expr(
+                            field_value,
+                            None,
+                            unit_variant_tags,
+                            qualified_variant_tags,
+                            known_record_defs,
+                        ),
+                    )
+                })
+                .collect(),
+        },
         ExprKind::Constructor { name, args } => {
             if args.is_empty() {
                 if let Some(tag) = unit_variant_tags.get(&name.node) {
@@ -380,6 +456,7 @@ fn lower_expr(
                             None,
                             unit_variant_tags,
                             qualified_variant_tags,
+                            known_record_defs,
                         )),
                         field: field.node.clone(),
                     }
@@ -391,6 +468,7 @@ fn lower_expr(
                         None,
                         unit_variant_tags,
                         qualified_variant_tags,
+                        known_record_defs,
                     )),
                     field: field.node.clone(),
                 }
@@ -455,6 +533,15 @@ fn lower_expr(
                 default_ty
             }
         }
+        ExprKind::Record { name, spread, .. }
+            if spread.is_none() && known_record_defs.contains(&name.node) =>
+        {
+            Type::Record(kea_types::RecordType {
+                name: name.node.clone(),
+                params: vec![],
+                row: kea_types::RowType::empty_closed(),
+            })
+        }
         _ => default_ty,
     };
 
@@ -478,6 +565,7 @@ fn lower_bool_case(
     ty_hint: Option<Type>,
     unit_variant_tags: &UnitVariantTags,
     qualified_variant_tags: &QualifiedUnitVariantTags,
+    known_record_defs: &KnownRecordDefs,
 ) -> Option<HirExprKind> {
     if let Some(kind) = lower_literal_case(
         scrutinee,
@@ -485,6 +573,7 @@ fn lower_bool_case(
         ty_hint.clone(),
         unit_variant_tags,
         qualified_variant_tags,
+        known_record_defs,
     ) {
         return Some(kind);
     }
@@ -499,6 +588,7 @@ fn lower_bool_case(
         None,
         unit_variant_tags,
         qualified_variant_tags,
+        known_record_defs,
     );
     let safe_scrutinee = matches!(lowered_scrutinee.kind, HirExprKind::Var(_) | HirExprKind::Lit(_));
     let (scrutinee_expr, setup_expr) = if safe_scrutinee {
@@ -530,6 +620,7 @@ fn lower_bool_case(
             ty_hint.clone(),
             unit_variant_tags,
             qualified_variant_tags,
+            known_record_defs,
         );
         match bind {
             Some(name) => HirExpr {
@@ -643,6 +734,7 @@ fn lower_literal_case(
     ty_hint: Option<Type>,
     unit_variant_tags: &UnitVariantTags,
     qualified_variant_tags: &QualifiedUnitVariantTags,
+    known_record_defs: &KnownRecordDefs,
 ) -> Option<HirExprKind> {
     enum LiteralFallbackArm<'a> {
         Wild {
@@ -710,6 +802,7 @@ fn lower_literal_case(
         None,
         unit_variant_tags,
         qualified_variant_tags,
+        known_record_defs,
     );
     let safe_scrutinee = matches!(lowered_scrutinee.kind, HirExprKind::Var(_) | HirExprKind::Lit(_));
     let (scrutinee_expr, setup_expr) = if safe_scrutinee {
@@ -750,6 +843,7 @@ fn lower_literal_case(
                     ty_hint.clone(),
                     unit_variant_tags,
                     qualified_variant_tags,
+                    known_record_defs,
                 );
                 let Some(guard_expr) = guard else {
                     // Unconditional fallback shadows any later fallback arm.
@@ -761,6 +855,7 @@ fn lower_literal_case(
                     None,
                     unit_variant_tags,
                     qualified_variant_tags,
+                    known_record_defs,
                 );
                 let next_else = else_expr.clone().or_else(|| {
                     if return_ty == Type::Unit {
@@ -796,6 +891,7 @@ fn lower_literal_case(
                             ty_hint.clone(),
                             unit_variant_tags,
                             qualified_variant_tags,
+                            known_record_defs,
                         ),
                     ]),
                     ty: return_ty.clone(),
@@ -814,6 +910,7 @@ fn lower_literal_case(
                             None,
                             unit_variant_tags,
                             qualified_variant_tags,
+                            known_record_defs,
                         ),
                     ]),
                     ty: Type::Bool,
@@ -851,6 +948,7 @@ fn lower_literal_case(
             ty_hint.clone(),
             unit_variant_tags,
             qualified_variant_tags,
+            known_record_defs,
         ));
     }
 
@@ -891,6 +989,7 @@ fn lower_literal_case(
                     None,
                     unit_variant_tags,
                     qualified_variant_tags,
+                    known_record_defs,
                 );
                 HirExpr {
                     kind: HirExprKind::Block(vec![bind_expr, guard_expr]),
@@ -898,7 +997,13 @@ fn lower_literal_case(
                     span: scrutinee.span,
                 }
             } else {
-                lower_expr(guard_expr, None, unit_variant_tags, qualified_variant_tags)
+                lower_expr(
+                    guard_expr,
+                    None,
+                    unit_variant_tags,
+                    qualified_variant_tags,
+                    known_record_defs,
+                )
             };
             condition = HirExpr {
                 kind: HirExprKind::Binary {
@@ -921,6 +1026,7 @@ fn lower_literal_case(
                     ty_hint.clone(),
                     unit_variant_tags,
                     qualified_variant_tags,
+                    known_record_defs,
                 )),
                 else_branch: else_expr.as_ref().map(|expr| Box::new(expr.clone())),
             },
@@ -1005,8 +1111,15 @@ fn lower_arm_body(
     ty_hint: Option<Type>,
     unit_variant_tags: &UnitVariantTags,
     qualified_variant_tags: &QualifiedUnitVariantTags,
+    known_record_defs: &KnownRecordDefs,
 ) -> HirExpr {
-    let lowered_body = lower_expr(body, ty_hint, unit_variant_tags, qualified_variant_tags);
+    let lowered_body = lower_expr(
+        body,
+        ty_hint,
+        unit_variant_tags,
+        qualified_variant_tags,
+        known_record_defs,
+    );
     let Some(name) = bind_name else {
         return lowered_body;
     };
@@ -1177,6 +1290,41 @@ mod tests {
         assert!(matches!(
             function.body.kind,
             HirExprKind::FieldAccess { ref field, .. } if field == "age"
+        ));
+    }
+
+    #[test]
+    fn lower_function_record_literal_stays_structured_hir() {
+        let module = parse_module_from_text("record User\n  age: Int\n\nfn make_user() -> User\n  User { age: 42 }");
+        let mut env = TypeEnv::new();
+        env.bind(
+            "make_user".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::pure(
+                vec![],
+                Type::Record(kea_types::RecordType {
+                    name: "User".to_string(),
+                    params: vec![],
+                    row: kea_types::RowType::closed(vec![(Label::new("age"), Type::Int)]),
+                }),
+            ))),
+        );
+
+        let lowered = lower_module(&module, &env);
+        let function = lowered
+            .declarations
+            .iter()
+            .find_map(|decl| match decl {
+                HirDecl::Function(function) if function.name == "make_user" => Some(function),
+                _ => None,
+            })
+            .expect("expected lowered make_user function");
+
+        assert!(matches!(
+            function.body.kind,
+            HirExprKind::RecordLit {
+                ref record_type,
+                ref fields
+            } if record_type == "User" && fields.len() == 1 && fields[0].0 == "age"
         ));
     }
 
@@ -1931,6 +2079,9 @@ mod tests {
             HirExprKind::Unary { operand, .. } => count_if_nodes(operand),
             HirExprKind::Call { func, args } => {
                 count_if_nodes(func) + args.iter().map(count_if_nodes).sum::<usize>()
+            }
+            HirExprKind::RecordLit { fields, .. } => {
+                fields.iter().map(|(_, value)| count_if_nodes(value)).sum()
             }
             HirExprKind::FieldAccess { expr, .. } => count_if_nodes(expr),
             HirExprKind::Lambda { body, .. } => count_if_nodes(body),

@@ -293,6 +293,14 @@ fn compile_into_module<M: Module>(
     let mut external_func_ids: BTreeMap<String, FuncId> = BTreeMap::new();
     let mut signatures: BTreeMap<String, cranelift_codegen::ir::Signature> = BTreeMap::new();
     let external_signatures = collect_external_call_signatures(module, mir)?;
+    let requires_record_alloc = mir.functions.iter().any(|function| {
+        function.blocks.iter().any(|block| {
+            block
+                .instructions
+                .iter()
+                .any(|inst| matches!(inst, MirInst::RecordInit { .. }))
+        })
+    });
 
     for function in &mir.functions {
         let signature = build_signature(module, function)?;
@@ -319,6 +327,22 @@ fn compile_into_module<M: Module>(
             })?;
         external_func_ids.insert(name, func_id);
     }
+
+    let malloc_func_id = if requires_record_alloc {
+        let ptr_ty = module.target_config().pointer_type();
+        let mut signature = module.make_signature();
+        signature.params.push(AbiParam::new(ptr_ty));
+        signature.returns.push(AbiParam::new(ptr_ty));
+        Some(
+            module
+                .declare_function("malloc", Linkage::Import, &signature)
+                .map_err(|detail| CodegenError::Module {
+                    detail: detail.to_string(),
+                })?,
+        )
+    } else {
+        None
+    };
 
     let mut builder_context = FunctionBuilderContext::new();
 
@@ -408,6 +432,7 @@ fn compile_into_module<M: Module>(
                     func_ids: &func_ids,
                     external_func_ids: &external_func_ids,
                     layout_plan,
+                    malloc_func_id,
                 };
                 for inst in block.instructions.iter().take(instruction_count) {
                     if lower_instruction(
@@ -629,6 +654,7 @@ struct LowerInstCtx<'a> {
     func_ids: &'a BTreeMap<String, FuncId>,
     external_func_ids: &'a BTreeMap<String, FuncId>,
     layout_plan: &'a BackendLayoutPlan,
+    malloc_func_id: Option<FuncId>,
 }
 
 fn lower_instruction<M: Module>(
@@ -661,6 +687,61 @@ fn lower_instruction<M: Module>(
             let value = get_value(values, function_name, operand)?;
             let result = lower_unary(builder, function_name, *op, value)?;
             values.insert(dest.clone(), result);
+            Ok(false)
+        }
+        MirInst::RecordInit {
+            dest,
+            record_type,
+            fields,
+        } => {
+            let layout = ctx
+                .layout_plan
+                .records
+                .get(record_type)
+                .ok_or_else(|| CodegenError::UnsupportedMir {
+                    function: function_name.to_string(),
+                    detail: format!("record layout `{record_type}` not found"),
+                })?;
+            let malloc_func_id = ctx.malloc_func_id.ok_or_else(|| CodegenError::UnsupportedMir {
+                function: function_name.to_string(),
+                detail: format!(
+                    "record allocation requested for `{record_type}` but malloc import was not declared"
+                ),
+            })?;
+            let malloc_ref = module.declare_func_in_func(malloc_func_id, builder.func);
+            let ptr_ty = module.target_config().pointer_type();
+            let alloc_size = i64::from(layout.size_bytes.max(1));
+            let size_value = builder.ins().iconst(ptr_ty, alloc_size);
+            let alloc_call = builder.ins().call(malloc_ref, &[size_value]);
+            let base_ptr = builder
+                .inst_results(alloc_call)
+                .first()
+                .copied()
+                .ok_or_else(|| CodegenError::UnsupportedMir {
+                    function: function_name.to_string(),
+                    detail: "malloc call returned no pointer value".to_string(),
+                })?;
+            for (field_name, field_value_id) in fields {
+                let field_value = get_value(values, function_name, field_value_id)?;
+                let offset = *layout.field_offsets.get(field_name).ok_or_else(|| {
+                    CodegenError::UnsupportedMir {
+                        function: function_name.to_string(),
+                        detail: format!(
+                            "record layout `{record_type}` missing field `{field_name}` during init"
+                        ),
+                    }
+                })?;
+                let offset = i32::try_from(offset).map_err(|_| CodegenError::UnsupportedMir {
+                    function: function_name.to_string(),
+                    detail: format!(
+                        "record field `{record_type}.{field_name}` offset does not fit i32"
+                    ),
+                })?;
+                builder
+                    .ins()
+                    .store(MemFlags::new(), field_value, base_ptr, offset);
+            }
+            values.insert(dest.clone(), base_ptr);
             Ok(false)
         }
         MirInst::RecordFieldLoad {
@@ -1382,7 +1463,7 @@ fn collect_function_stats(function: &MirFunction) -> FunctionPassStats {
                     MirEffectOpClass::Dispatch => stats.effect_op_dispatch_count += 1,
                     MirEffectOpClass::ZeroResume => stats.effect_op_zero_resume_count += 1,
                 },
-                MirInst::CowUpdate { .. } => stats.alloc_count += 1,
+                MirInst::CowUpdate { .. } | MirInst::RecordInit { .. } => stats.alloc_count += 1,
                 MirInst::Const { .. }
                 | MirInst::Binary { .. }
                 | MirInst::Unary { .. }
@@ -1774,6 +1855,55 @@ mod tests {
                             annotation: kea_ast::TypeAnnotation::Named("Int".to_string()),
                         },
                     ],
+                }],
+                sums: vec![],
+            },
+        }
+    }
+
+    fn sample_record_init_and_load_module() -> MirModule {
+        MirModule {
+            functions: vec![MirFunction {
+                name: "make_and_get_age".to_string(),
+                signature: MirFunctionSignature {
+                    params: vec![],
+                    ret: Type::Int,
+                    effects: EffectRow::pure(),
+                },
+                entry: MirBlockId(0),
+                blocks: vec![MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: MirValueId(0),
+                            literal: MirLiteral::Int(42),
+                        },
+                        MirInst::RecordInit {
+                            dest: MirValueId(1),
+                            record_type: "User".to_string(),
+                            fields: vec![("age".to_string(), MirValueId(0))],
+                        },
+                        MirInst::RecordFieldLoad {
+                            dest: MirValueId(2),
+                            record: MirValueId(1),
+                            record_type: "User".to_string(),
+                            field: "age".to_string(),
+                            field_ty: Type::Int,
+                        },
+                    ],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirValueId(2)),
+                    },
+                }],
+            }],
+            layouts: MirLayoutCatalog {
+                records: vec![MirRecordLayout {
+                    name: "User".to_string(),
+                    fields: vec![MirRecordFieldLayout {
+                        name: "age".to_string(),
+                        annotation: kea_ast::TypeAnnotation::Named("Int".to_string()),
+                    }],
                 }],
                 sums: vec![],
             },
@@ -2204,6 +2334,22 @@ mod tests {
         let artifact = backend
             .compile_module(&module, &manifest, &config)
             .expect("record field load lowering should compile");
+        assert!(!artifact.object.is_empty());
+    }
+
+    #[test]
+    fn cranelift_backend_lowers_record_init_and_field_load() {
+        let module = sample_record_init_and_load_module();
+        let manifest = default_abi_manifest(&module);
+        let backend = CraneliftBackend;
+        let config = BackendConfig {
+            mode: CodegenMode::Aot,
+            ..BackendConfig::default()
+        };
+
+        let artifact = backend
+            .compile_module(&module, &manifest, &config)
+            .expect("record init + field load lowering should compile");
         assert!(!artifact.object.is_empty());
     }
 
