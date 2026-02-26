@@ -8814,6 +8814,21 @@ fn infer_expr_effect_row(
                 return join_effect_rows(handled_effects, body_effects, constraints, next_effect_var);
             }
 
+            // If the handled effect is absent from the body's closed
+            // effect row, the handler is a no-op — pass through body
+            // effects unchanged.  This prevents a phantom IO leak from
+            // an unsatisfiable row decomposition constraint.
+            if !handled_effects.row.has(&handled_label)
+                && handled_effects.row.rest.is_none()
+            {
+                return join_effect_rows(
+                    handled_effects,
+                    body_effects,
+                    constraints,
+                    next_effect_var,
+                );
+            }
+
             let handled_payload = handled_effects
                 .row
                 .fields
