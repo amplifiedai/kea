@@ -217,9 +217,6 @@ fn previous_line_continues_expression(tokens: &[Token], newline_idx: usize) -> b
             | TokenKind::Gt
             | TokenKind::GtEq
             | TokenKind::DiamondOp
-            | TokenKind::PipeGt
-            | TokenKind::DollarGt
-            | TokenKind::BangGt
             | TokenKind::And
             | TokenKind::Or
             | TokenKind::In
@@ -382,11 +379,7 @@ impl<'src> Lexer<'src> {
             b'?' => self.emit(TokenKind::Question, start, self.pos),
             b'@' => self.emit(TokenKind::At, start, self.pos),
             b'$' => {
-                if self.match_char(b'>') {
-                    self.emit(TokenKind::DollarGt, start, self.pos);
-                } else {
-                    self.emit(TokenKind::Dollar, start, self.pos);
-                }
+                self.emit(TokenKind::Dollar, start, self.pos);
             }
 
             // Two-char possibilities
@@ -434,8 +427,6 @@ impl<'src> Lexer<'src> {
             b'!' => {
                 if self.match_char(b'=') {
                     self.emit(TokenKind::BangEq, start, self.pos);
-                } else if self.match_char(b'>') {
-                    self.emit(TokenKind::BangGt, start, self.pos);
                 } else {
                     self.error(start, "unexpected character '!'; use 'not' instead");
                 }
@@ -466,11 +457,7 @@ impl<'src> Lexer<'src> {
                 }
             }
             b'|' => {
-                if self.match_char(b'>') {
-                    self.emit(TokenKind::PipeGt, start, self.pos);
-                } else {
-                    self.emit(TokenKind::Pipe, start, self.pos);
-                }
+                self.emit(TokenKind::Pipe, start, self.pos);
             }
             b'.' => {
                 if self.match_char(b'.') {
@@ -1250,7 +1237,7 @@ mod tests {
     #[test]
     fn operators() {
         assert_eq!(
-            lex_kinds("+ - * / % == != < <= > >= |> ?"),
+            lex_kinds("+ - * / % == != < <= > >= ?"),
             vec![
                 TokenKind::Plus,
                 TokenKind::Minus,
@@ -1263,7 +1250,6 @@ mod tests {
                 TokenKind::LtEq,
                 TokenKind::Gt,
                 TokenKind::GtEq,
-                TokenKind::PipeGt,
                 TokenKind::Question,
             ]
         );
@@ -1451,15 +1437,10 @@ mod tests {
     }
 
     #[test]
-    fn pipe_vs_pipe_gt_vs_pipe_pipe() {
+    fn pipe_tokens() {
         assert_eq!(
-            lex_kinds("| |> ||"),
-            vec![
-                TokenKind::Pipe,
-                TokenKind::PipeGt,
-                TokenKind::Pipe,
-                TokenKind::Pipe
-            ]
+            lex_kinds("| ||"),
+            vec![TokenKind::Pipe, TokenKind::Pipe, TokenKind::Pipe]
         );
     }
 
@@ -1613,18 +1594,12 @@ mod tests {
     fn sql_body_tokens_after() {
         // Normal Kea tokens follow after sql block
         assert_eq!(
-            lex_kinds("sql { SELECT 1 } |> filter(:x > 0)"),
+            lex_kinds("sql { SELECT 1 } + 1"),
             vec![
                 TokenKind::Sql,
                 TokenKind::SqlBody("SELECT 1".into()),
-                TokenKind::PipeGt,
-                TokenKind::Ident("filter".into()),
-                TokenKind::LParen,
-                TokenKind::Colon,
-                TokenKind::Ident("x".into()),
-                TokenKind::Gt,
-                TokenKind::Int(0),
-                TokenKind::RParen,
+                TokenKind::Plus,
+                TokenKind::Int(1),
             ]
         );
     }

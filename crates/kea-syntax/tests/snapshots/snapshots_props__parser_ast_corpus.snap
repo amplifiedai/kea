@@ -1,5 +1,6 @@
 ---
 source: crates/kea-syntax/tests/snapshots_props.rs
+assertion_line: 225
 expression: output
 ---
 ## module_fn_decl
@@ -1292,80 +1293,8 @@ Use(
 ## expr_df_pipe_mutate
 source:
 |frame·{·x:·[1],·y:·[2]·}·|>·mutate(total:·:x·+·:y)
-status: ok
-Pipe {
-    left: Spanned {
-        node: Frame {
-            columns: [
-                (
-                    Spanned {
-                        node: "x",
-                    },
-                    [
-                        Spanned {
-                            node: Lit(
-                                Int(
-                                    1,
-                                ),
-                            ),
-                        },
-                    ],
-                ),
-                (
-                    Spanned {
-                        node: "y",
-                    },
-                    [
-                        Spanned {
-                            node: Lit(
-                                Int(
-                                    2,
-                                ),
-                            ),
-                        },
-                    ],
-                ),
-            ],
-        },
-    },
-    op: Spanned {
-        node: Standard,
-    },
-    right: Spanned {
-        node: DfVerb {
-            verb: Spanned {
-                node: Mutate,
-            },
-            args: Mutate(
-                [
-                    Named(
-                        Spanned {
-                            node: "total",
-                        },
-                        Spanned {
-                            node: BinaryOp {
-                                op: Spanned {
-                                    node: Add,
-                                },
-                                left: Spanned {
-                                    node: Atom(
-                                        "x",
-                                    ),
-                                },
-                                right: Spanned {
-                                    node: Atom(
-                                        "y",
-                                    ),
-                                },
-                            },
-                        },
-                    ),
-                ],
-            ),
-        },
-    },
-    guard: None,
-}
+status: err
+- Error E0006 @25..26: unexpected token after expression
 
 ## expr_sql_with_config
 source:
