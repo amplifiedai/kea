@@ -21,29 +21,41 @@ pub struct MirModule {
     pub layouts: MirLayoutCatalog,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct MirLayoutCatalog {
     pub records: Vec<MirRecordLayout>,
     pub sums: Vec<MirSumLayout>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MirRecordLayout {
     pub name: String,
-    pub fields: Vec<String>,
+    pub fields: Vec<MirRecordFieldLayout>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
+pub struct MirRecordFieldLayout {
+    pub name: String,
+    pub annotation: kea_ast::TypeAnnotation,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct MirSumLayout {
     pub name: String,
     pub variants: Vec<MirVariantLayout>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MirVariantLayout {
     pub name: String,
     pub tag: u32,
-    pub field_count: usize,
+    pub fields: Vec<MirVariantFieldLayout>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MirVariantFieldLayout {
+    pub name: Option<String>,
+    pub annotation: kea_ast::TypeAnnotation,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -265,7 +277,10 @@ fn collect_layout_metadata(raw_decl: &DeclKind, layouts: &mut MirLayoutCatalog) 
             fields: record
                 .fields
                 .iter()
-                .map(|(field, _)| field.node.clone())
+                .map(|(field, annotation)| MirRecordFieldLayout {
+                    name: field.node.clone(),
+                    annotation: annotation.clone(),
+                })
                 .collect(),
         }),
         DeclKind::TypeDef(sum) => layouts.sums.push(MirSumLayout {
@@ -277,7 +292,14 @@ fn collect_layout_metadata(raw_decl: &DeclKind, layouts: &mut MirLayoutCatalog) 
                 .map(|(tag, variant)| MirVariantLayout {
                     name: variant.name.node.clone(),
                     tag: tag as u32,
-                    field_count: variant.fields.len(),
+                    fields: variant
+                        .fields
+                        .iter()
+                        .map(|field| MirVariantFieldLayout {
+                            name: field.name.as_ref().map(|name| name.node.clone()),
+                            annotation: field.ty.node.clone(),
+                        })
+                        .collect(),
                 })
                 .collect(),
         }),
@@ -700,7 +722,17 @@ mod tests {
         assert!(mir.functions.is_empty());
         assert_eq!(mir.layouts.records.len(), 1);
         assert_eq!(mir.layouts.records[0].name, "User");
-        assert_eq!(mir.layouts.records[0].fields, vec!["name", "age"]);
+        assert_eq!(mir.layouts.records[0].fields.len(), 2);
+        assert_eq!(mir.layouts.records[0].fields[0].name, "name");
+        assert_eq!(
+            mir.layouts.records[0].fields[0].annotation,
+            TypeAnnotation::Named("String".to_string())
+        );
+        assert_eq!(mir.layouts.records[0].fields[1].name, "age");
+        assert_eq!(
+            mir.layouts.records[0].fields[1].annotation,
+            TypeAnnotation::Named("Int".to_string())
+        );
     }
 
     #[test]
@@ -743,10 +775,14 @@ mod tests {
         assert_eq!(option.variants.len(), 2);
         assert_eq!(option.variants[0].name, "Some");
         assert_eq!(option.variants[0].tag, 0);
-        assert_eq!(option.variants[0].field_count, 1);
+        assert_eq!(option.variants[0].fields.len(), 1);
+        assert_eq!(
+            option.variants[0].fields[0].annotation,
+            TypeAnnotation::Named("a".to_string())
+        );
         assert_eq!(option.variants[1].name, "None");
         assert_eq!(option.variants[1].tag, 1);
-        assert_eq!(option.variants[1].field_count, 0);
+        assert_eq!(option.variants[1].fields.len(), 0);
     }
 
     #[test]

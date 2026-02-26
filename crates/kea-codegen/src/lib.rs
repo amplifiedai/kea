@@ -952,10 +952,10 @@ fn validate_layout_catalog(module: &MirModule) -> Result<(), CodegenError> {
         }
         let mut seen_fields = BTreeSet::new();
         for field in &record.fields {
-            if !seen_fields.insert(field.clone()) {
+            if !seen_fields.insert(field.name.clone()) {
                 return Err(CodegenError::DuplicateLayoutField {
                     type_name: record.name.clone(),
-                    field: field.clone(),
+                    field: field.name.clone(),
                 });
             }
         }
@@ -1034,7 +1034,7 @@ fn plan_layout_catalog(module: &MirModule) -> Result<BackendLayoutPlan, CodegenE
     for record in &module.layouts.records {
         let mut field_offsets = BTreeMap::new();
         for (idx, field) in record.fields.iter().enumerate() {
-            field_offsets.insert(field.clone(), idx as u32 * WORD_BYTES);
+            field_offsets.insert(field.name.clone(), idx as u32 * WORD_BYTES);
         }
         let size_bytes = record.fields.len() as u32 * WORD_BYTES;
         plan.records.insert(
@@ -1052,7 +1052,7 @@ fn plan_layout_catalog(module: &MirModule) -> Result<BackendLayoutPlan, CodegenE
         let max_payload_fields = sum
             .variants
             .iter()
-            .map(|variant| variant.field_count as u32)
+            .map(|variant| variant.fields.len() as u32)
             .max()
             .unwrap_or(0);
         for variant in &sum.variants {
@@ -1235,8 +1235,8 @@ mod tests {
     use super::*;
     use kea_hir::{HirDecl, HirExpr, HirExprKind, HirFunction, HirParam};
     use kea_mir::{
-        MirBlock, MirBlockId, MirFunctionSignature, MirLayoutCatalog, MirRecordLayout,
-        MirSumLayout, MirTerminator, MirVariantLayout,
+        MirBlock, MirBlockId, MirFunctionSignature, MirLayoutCatalog, MirRecordFieldLayout,
+        MirRecordLayout, MirSumLayout, MirTerminator, MirVariantFieldLayout, MirVariantLayout,
     };
     use kea_types::{FunctionType, Label, RecordType, RowType, SumType};
 
@@ -1525,7 +1525,16 @@ mod tests {
         let mut module = sample_codegen_module();
         module.layouts.records.push(MirRecordLayout {
             name: "User".to_string(),
-            fields: vec!["name".to_string(), "name".to_string()],
+            fields: vec![
+                MirRecordFieldLayout {
+                    name: "name".to_string(),
+                    annotation: kea_ast::TypeAnnotation::Named("String".to_string()),
+                },
+                MirRecordFieldLayout {
+                    name: "name".to_string(),
+                    annotation: kea_ast::TypeAnnotation::Named("Int".to_string()),
+                },
+            ],
         });
 
         let err = validate_layout_catalog(&module).expect_err("should reject duplicate field");
@@ -1547,12 +1556,15 @@ mod tests {
                 MirVariantLayout {
                     name: "Some".to_string(),
                     tag: 0,
-                    field_count: 1,
+                    fields: vec![MirVariantFieldLayout {
+                        name: None,
+                        annotation: kea_ast::TypeAnnotation::Named("Int".to_string()),
+                    }],
                 },
                 MirVariantLayout {
                     name: "None".to_string(),
                     tag: 2,
-                    field_count: 0,
+                    fields: vec![],
                 },
             ],
         });
@@ -1569,7 +1581,20 @@ mod tests {
         let mut module = sample_codegen_module();
         module.layouts.records.push(MirRecordLayout {
             name: "User".to_string(),
-            fields: vec!["name".to_string(), "age".to_string(), "active".to_string()],
+            fields: vec![
+                MirRecordFieldLayout {
+                    name: "name".to_string(),
+                    annotation: kea_ast::TypeAnnotation::Named("String".to_string()),
+                },
+                MirRecordFieldLayout {
+                    name: "age".to_string(),
+                    annotation: kea_ast::TypeAnnotation::Named("Int".to_string()),
+                },
+                MirRecordFieldLayout {
+                    name: "active".to_string(),
+                    annotation: kea_ast::TypeAnnotation::Named("Bool".to_string()),
+                },
+            ],
         });
 
         let plan = plan_layout_catalog(&module).expect("layout planning should succeed");
@@ -1590,12 +1615,24 @@ mod tests {
                 MirVariantLayout {
                     name: "Ok".to_string(),
                     tag: 0,
-                    field_count: 1,
+                    fields: vec![MirVariantFieldLayout {
+                        name: None,
+                        annotation: kea_ast::TypeAnnotation::Named("Int".to_string()),
+                    }],
                 },
                 MirVariantLayout {
                     name: "Err".to_string(),
                     tag: 1,
-                    field_count: 2,
+                    fields: vec![
+                        MirVariantFieldLayout {
+                            name: None,
+                            annotation: kea_ast::TypeAnnotation::Named("Int".to_string()),
+                        },
+                        MirVariantFieldLayout {
+                            name: None,
+                            annotation: kea_ast::TypeAnnotation::Named("String".to_string()),
+                        },
+                    ],
                 },
             ],
         });
