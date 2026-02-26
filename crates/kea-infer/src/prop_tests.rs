@@ -2309,10 +2309,11 @@ proptest! {
 }
 
 proptest! {
-    /// Infer path for pipes should enforce callee parameter contracts on the
-    /// piped argument and surface precision-range diagnostics on literals.
+    /// Infer path for left-arg application helpers should enforce callee
+    /// parameter contracts on forwarded arguments and surface precision-range
+    /// diagnostics on literals.
     #[test]
-    fn prop_infer_expr_pipe_precision_argument_range_diagnostics(value in any::<i64>()) {
+    fn prop_infer_expr_left_arg_application_precision_argument_range_diagnostics(value in any::<i64>()) {
         use kea_ast::{Expr, ExprKind, Lit};
 
         let expected = Type::IntN(IntWidth::I8, Signedness::Signed);
@@ -2355,7 +2356,7 @@ proptest! {
         prop_assert_eq!(
             has_range_diag,
             should_range_error,
-            "infer-mode pipe diagnostics should match literal compatibility: {:?}",
+            "infer-mode left-arg application diagnostics should match literal compatibility: {:?}",
             ctx.errors()
         );
     }
@@ -2417,10 +2418,11 @@ proptest! {
 }
 
 proptest! {
-    /// Bidirectional check path for pipes pushes callee parameter types into
-    /// piped arguments, surfacing precision-range diagnostics at literals.
+    /// Bidirectional check path for left-arg application helpers pushes callee
+    /// parameter types into forwarded arguments, surfacing precision-range
+    /// diagnostics at literals.
     #[test]
-    fn prop_check_expr_pipe_precision_argument_range_diagnostics(value in any::<i64>()) {
+    fn prop_check_expr_left_arg_application_precision_argument_range_diagnostics(value in any::<i64>()) {
         use kea_ast::{Expr, ExprKind, Lit};
 
         let expected = Type::IntN(IntWidth::I8, Signedness::Signed);
@@ -2465,7 +2467,7 @@ proptest! {
         prop_assert_eq!(
             has_range_diag,
             should_range_error,
-            "pipe argument range diagnostics should match literal compatibility: {:?}",
+            "left-arg application argument range diagnostics should match literal compatibility: {:?}",
             ctx.errors()
         );
     }
