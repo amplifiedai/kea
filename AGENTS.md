@@ -268,6 +268,18 @@ When given a task, carry it through to completion. Don't stop to ask for permiss
 
 **Be ambitious.** Rill was 1,088 commits in 17 days — from nothing to a working language with type inference, codegen, MCP, LSP, and formatter. Kea cannibalises most of that. If something can be done correctly now, do it now. Don't create artificial phase boundaries or defer work that's ready to land. When you finish one brief, pick up the next unblocked one. The pace is the point.
 
+### Formal-Only Workstream Protocol
+
+When the active task is explicitly scoped to formalization files (`formal/`, `FORMAL.md`, formal briefs):
+
+1. Continue without interruption if unrelated non-formal files are dirty.
+2. Stage and commit only formalization files plus required formal tracking docs.
+3. Do not pause to ask about unrelated non-formal diffs unless they block formal work directly.
+4. Pause only for:
+   - a confirmed Lean↔MCP semantic divergence,
+   - a formal proof/build blocker that cannot be resolved locally,
+   - or an explicit user redirect.
+
 ### Test-First Development
 
 Write the test before the implementation. For the type system especially, define the expected behavior in tests, then make the tests pass. This prevents drift between spec and implementation.
