@@ -301,3 +301,31 @@ theorem unifyRows_contract_full_wf
       unifyRowsSuccessUpdateShapeWf_implies_shape st' stNext fuel kctx rctx h_shape_wf
     exact (unifyRows_contract_wf
       st st' stNext fuel h_ext h_idemp h_shape h_idemp_next).2
+
+/-- Projection: recover `stNext` WF-range from the full combined contract. -/
+theorem unifyRows_substWellFormedRange_of_contract_full_wf
+    (st st' stNext : UnifyState) (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat)
+    (h_ext : ExtendsRowBindings st st')
+    (h_idemp : st'.subst.Idempotent)
+    (h_wf : UnifyState.SubstWellFormedRange st' kctx rctx)
+    (h_shape_wf : UnifyRowsSuccessUpdateShapeWf st' stNext fuel kctx rctx)
+    (h_idemp_next : stNext.subst.Idempotent) :
+    UnifyState.SubstWellFormedRange stNext kctx rctx := by
+  exact (unifyRows_contract_full_wf
+    st st' stNext kctx rctx fuel h_ext h_idemp h_wf h_shape_wf h_idemp_next).1.2
+
+/-- Projection: recover the legacy `unifyRows_contract_wf` surface from the
+WF-annotated-shape contract. -/
+theorem unifyRows_contract_wf_of_shape_wf
+    (st st' stNext : UnifyState) (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat)
+    (h_ext : ExtendsRowBindings st st')
+    (h_idemp : st'.subst.Idempotent)
+    (h_shape_wf : UnifyRowsSuccessUpdateShapeWf st' stNext fuel kctx rctx)
+    (h_idemp_next : stNext.subst.Idempotent) :
+    ExtendsRowBindings st stNext
+    ∧ (let h_ac := Subst.acyclicOfIdempotent h_idemp_next
+       CompatWFAgreeOnDomainLookupsAcyclic stNext fuel h_ac) := by
+  have h_shape : UnifyRowsSuccessUpdateShape st' stNext fuel :=
+    unifyRowsSuccessUpdateShapeWf_implies_shape st' stNext fuel kctx rctx h_shape_wf
+  exact unifyRows_contract_wf
+    st st' stNext fuel h_ext h_idemp h_shape h_idemp_next
