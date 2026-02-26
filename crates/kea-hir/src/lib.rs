@@ -559,7 +559,7 @@ fn lower_literal_case(
         return None;
     }
 
-    let mut literal_arms: Vec<(LiteralCaseValue, &Expr)> = Vec::new();
+    let mut literal_arms: Vec<(LiteralCaseValue, &Expr, Option<String>)> = Vec::new();
     let mut wildcard_body: Option<&Expr> = None;
     let mut var_fallback: Option<(String, &Expr)> = None;
     for arm in arms {
@@ -567,13 +567,13 @@ fn lower_literal_case(
             PatternKind::Wildcard => wildcard_body = Some(&arm.body),
             PatternKind::Var(name) => var_fallback = Some((name.clone(), &arm.body)),
             pattern => {
-                let values = literal_case_values_from_pattern(
+                let (values, bind_name) = literal_case_values_from_pattern(
                     pattern,
                     unit_variant_tags,
                     qualified_variant_tags,
                 )?;
                 for value in values {
-                    literal_arms.push((value, &arm.body));
+                    literal_arms.push((value, &arm.body, bind_name.clone()));
                 }
             }
         }
@@ -585,10 +585,10 @@ fn lower_literal_case(
 
     let has_true = literal_arms
         .iter()
-        .any(|(lit, _)| matches!(lit, LiteralCaseValue::Bool(true)));
+        .any(|(lit, _, _)| matches!(lit, LiteralCaseValue::Bool(true)));
     let has_false = literal_arms
         .iter()
-        .any(|(lit, _)| matches!(lit, LiteralCaseValue::Bool(false)));
+        .any(|(lit, _, _)| matches!(lit, LiteralCaseValue::Bool(false)));
     if wildcard_body.is_none()
         && (has_true || has_false)
         && arms
@@ -672,9 +672,8 @@ fn lower_literal_case(
         // Type checking enforces exhaustiveness before lowering. For exhaustive literal
         // chains without an explicit fallback (for example unit-enum constructor cases),
         // provide a defensive synthetic else so non-unit MIR value paths stay closed.
-        let (_, fallback_body) = literal_arms
+        let (_, fallback_body, _) = literal_arms
             .last()
-            .copied()
             .expect("checked literal_arms is non-empty");
         else_expr = Some(lower_expr(
             fallback_body,
@@ -692,7 +691,7 @@ fn lower_literal_case(
         return Some(lowered.kind);
     }
 
-    for (lit, body) in literal_arms.into_iter().rev() {
+    for (lit, body, bind_name) in literal_arms.into_iter().rev() {
         let condition = HirExpr {
             kind: HirExprKind::Binary {
                 op: BinOp::Eq,
@@ -710,8 +709,10 @@ fn lower_literal_case(
         let next = HirExpr {
             kind: HirExprKind::If {
                 condition: Box::new(condition),
-                then_branch: Box::new(lower_expr(
+                then_branch: Box::new(lower_arm_body(
                     body,
+                    bind_name,
+                    &scrutinee_expr,
                     ty_hint.clone(),
                     unit_variant_tags,
                     qualified_variant_tags,
@@ -736,12 +737,12 @@ fn literal_case_values_from_pattern(
     pattern: &PatternKind,
     unit_variant_tags: &UnitVariantTags,
     qualified_variant_tags: &QualifiedUnitVariantTags,
-) -> Option<Vec<LiteralCaseValue>> {
+) -> Option<(Vec<LiteralCaseValue>, Option<String>)> {
     match pattern {
         PatternKind::Lit(lit @ Lit::Int(_))
         | PatternKind::Lit(lit @ Lit::Float(_))
         | PatternKind::Lit(lit @ Lit::Bool(_)) => {
-            Some(vec![literal_case_value_from_lit(lit)?])
+            Some((vec![literal_case_value_from_lit(lit)?], None))
         }
         PatternKind::Constructor {
             name,
@@ -755,20 +756,62 @@ fn literal_case_values_from_pattern(
                 unit_variant_tags,
                 qualified_variant_tags,
             )?;
-            Some(vec![LiteralCaseValue::Int(tag)])
+            Some((vec![LiteralCaseValue::Int(tag)], None))
         }
         PatternKind::Or(patterns) => {
             let mut values = Vec::new();
             for branch in patterns {
-                values.extend(literal_case_values_from_pattern(
+                let (branch_values, branch_bind_name) = literal_case_values_from_pattern(
                     &branch.node,
                     unit_variant_tags,
                     qualified_variant_tags,
-                )?);
+                )?;
+                if branch_bind_name.is_some() {
+                    return None;
+                }
+                values.extend(branch_values);
             }
-            Some(values)
+            Some((values, None))
+        }
+        PatternKind::As { pattern, name } => {
+            let (values, inner_bind_name) = literal_case_values_from_pattern(
+                &pattern.node,
+                unit_variant_tags,
+                qualified_variant_tags,
+            )?;
+            if inner_bind_name.is_some() {
+                return None;
+            }
+            Some((values, Some(name.node.clone())))
         }
         _ => None,
+    }
+}
+
+fn lower_arm_body(
+    body: &Expr,
+    bind_name: Option<String>,
+    scrutinee_expr: &HirExpr,
+    ty_hint: Option<Type>,
+    unit_variant_tags: &UnitVariantTags,
+    qualified_variant_tags: &QualifiedUnitVariantTags,
+) -> HirExpr {
+    let lowered_body = lower_expr(body, ty_hint, unit_variant_tags, qualified_variant_tags);
+    let Some(name) = bind_name else {
+        return lowered_body;
+    };
+    let bind_expr = HirExpr {
+        kind: HirExprKind::Let {
+            pattern: HirPattern::Var(name),
+            value: Box::new(scrutinee_expr.clone()),
+        },
+        ty: scrutinee_expr.ty.clone(),
+        span: scrutinee_expr.span,
+    };
+    HirExpr {
+        kind: HirExprKind::Block(vec![bind_expr, lowered_body.clone()]),
+        ty: lowered_body.ty,
+        span: lowered_body.span,
     }
 }
 
@@ -1194,6 +1237,35 @@ mod tests {
             if_count >= 2,
             "expected enum OR pattern to expand into >= 2 if nodes, got {if_count}"
         );
+    }
+
+    #[test]
+    fn lower_function_literal_case_as_pattern_binds_scrutinee() {
+        let module =
+            parse_module_from_text("fn classify(x: Int) -> Int\n  case x\n    0 as n -> n\n    _ -> 1");
+        let mut env = TypeEnv::new();
+        env.bind(
+            "classify".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::pure(vec![Type::Int], Type::Int))),
+        );
+
+        let lowered = lower_module(&module, &env);
+        let HirDecl::Function(function) = &lowered.declarations[0] else {
+            panic!("expected lowered function declaration");
+        };
+        let HirExprKind::If { then_branch, .. } = &function.body.kind else {
+            panic!("expected literal case to lower to if expression");
+        };
+        let HirExprKind::Block(exprs) = &then_branch.kind else {
+            panic!("expected as-pattern arm to bind scrutinee in a block");
+        };
+        assert!(matches!(
+            exprs.first().map(|expr| &expr.kind),
+            Some(HirExprKind::Let {
+                pattern: HirPattern::Var(_),
+                ..
+            })
+        ));
     }
 
     fn count_if_nodes(expr: &HirExpr) -> usize {
