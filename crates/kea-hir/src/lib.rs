@@ -55,6 +55,12 @@ pub enum HirExprKind {
         record_type: String,
         fields: Vec<(String, HirExpr)>,
     },
+    SumConstructor {
+        sum_type: String,
+        variant: String,
+        tag: i64,
+        fields: Vec<HirExpr>,
+    },
     SumPayloadAccess {
         expr: Box<HirExpr>,
         sum_type: String,
@@ -227,6 +233,17 @@ fn collect_record_defs(module: &Module) -> KnownRecordDefs {
             _ => None,
         })
         .collect()
+}
+
+fn resolve_unqualified_constructor_meta(
+    name: &str,
+    arity: usize,
+    pattern_variant_tags: &PatternVariantTags,
+) -> Option<PatternVariantMeta> {
+    pattern_variant_tags
+        .get(name)
+        .filter(|meta| meta.arity == arity)
+        .cloned()
 }
 
 pub fn lower_module(module: &Module, env: &TypeEnv) -> HirModule {
@@ -542,6 +559,28 @@ fn lower_expr(
                 } else {
                     HirExprKind::Raw(expr.node.clone())
                 }
+            } else if let Some(meta) =
+                resolve_unqualified_constructor_meta(&name.node, args.len(), pattern_variant_tags)
+            {
+                HirExprKind::SumConstructor {
+                    sum_type: meta.sum_type,
+                    variant: name.node.clone(),
+                    tag: meta.tag,
+                    fields: args
+                        .iter()
+                        .map(|arg| {
+                            lower_expr(
+                                &arg.value,
+                                None,
+                                unit_variant_tags,
+                                qualified_variant_tags,
+                                pattern_variant_tags,
+                                pattern_qualified_tags,
+                                known_record_defs,
+                            )
+                        })
+                        .collect(),
+                }
             } else {
                 HirExprKind::Raw(expr.node.clone())
             }
@@ -626,6 +665,16 @@ fn lower_expr(
         ExprKind::Constructor { name, args } => {
             if args.is_empty() && unit_variant_tags.contains_key(&name.node) {
                 Type::Int
+            } else if default_ty != Type::Dynamic {
+                default_ty
+            } else if let Some(meta) =
+                resolve_unqualified_constructor_meta(&name.node, args.len(), pattern_variant_tags)
+            {
+                Type::Sum(kea_types::SumType {
+                    name: meta.sum_type,
+                    type_args: vec![],
+                    variants: vec![(name.node.clone(), meta.field_types)],
+                })
             } else {
                 default_ty
             }
@@ -1694,6 +1743,49 @@ mod tests {
                 ref record_type,
                 ref fields
             } if record_type == "User" && fields.len() == 1 && fields[0].0 == "age"
+        ));
+    }
+
+    #[test]
+    fn lower_function_payload_constructor_stays_structured_hir() {
+        let module = parse_module_from_text(
+            "type Flag = Yep(Int) | Nope\n\nfn make_flag() -> Flag\n  Yep(1 + 2)",
+        );
+        let mut env = TypeEnv::new();
+        env.bind(
+            "make_flag".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::pure(
+                vec![],
+                Type::Sum(kea_types::SumType {
+                    name: "Flag".to_string(),
+                    type_args: vec![],
+                    variants: vec![
+                        ("Yep".to_string(), vec![Type::Int]),
+                        ("Nope".to_string(), vec![]),
+                    ],
+                }),
+            ))),
+        );
+
+        let lowered = lower_module(&module, &env);
+        let function = lowered
+            .declarations
+            .iter()
+            .find_map(|decl| match decl {
+                HirDecl::Function(function) if function.name == "make_flag" => Some(function),
+                _ => None,
+            })
+            .expect("expected lowered make_flag function");
+
+        assert!(matches!(
+            function.body.kind,
+            HirExprKind::SumConstructor {
+                ref sum_type,
+                ref variant,
+                tag: 0,
+                ref fields
+            } if sum_type == "Flag" && variant == "Yep" && fields.len() == 1
+                && matches!(fields[0].kind, HirExprKind::Binary { op: BinOp::Add, .. })
         ));
     }
 
@@ -2930,6 +3022,7 @@ mod tests {
             HirExprKind::RecordLit { fields, .. } => {
                 fields.iter().map(|(_, value)| count_if_nodes(value)).sum()
             }
+            HirExprKind::SumConstructor { fields, .. } => fields.iter().map(count_if_nodes).sum(),
             HirExprKind::SumPayloadAccess { expr, .. } => count_if_nodes(expr),
             HirExprKind::FieldAccess { expr, .. } => count_if_nodes(expr),
             HirExprKind::Lambda { body, .. } => count_if_nodes(body),
