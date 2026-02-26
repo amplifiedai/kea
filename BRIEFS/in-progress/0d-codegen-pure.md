@@ -356,4 +356,5 @@ Precision notes:
 - 2026-02-26: Step 2/3 control-flow value path landed: MIR blocks now carry typed block params and `Jump` arguments; non-Unit `if` lowers to join-block params; Cranelift lowering maps block params/args and compiles value-producing `if` end-to-end.
 - 2026-02-26: Step 7 scaffold landed: new `crates/kea` CLI binary with `kea run <file>` and `kea build <file> [-o output|output.o]`, wired through parse/typecheck → HIR → MIR → codegen. `build` links executables by default (or emits `.o` when requested); `run` now executes compiled output via temporary object+link path.
 - 2026-02-26: Pure expression coverage expanded: unary operators (`-x`, `not x`) now lower HIR→MIR (`MirUnaryOp`) and compile through Cranelift, with targeted crate tests.
+- 2026-02-26: HIR lowering now canonicalizes basic bool `case` expressions (`true/false/_` arms, no guards) into `if` expressions, allowing existing MIR/codegen control-flow lowering to compile that subset.
 - **Next:** Expand lowering/codegen coverage for structs/enums/pattern matching and Fail-only Result lowering fast path, then replace the temporary link-and-run path with direct JIT entrypoint execution.

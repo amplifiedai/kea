@@ -5,8 +5,8 @@
 //! and expression trees, with a conservative fallback for unsupported syntax.
 
 use kea_ast::{
-    BinOp, DeclKind, Expr, ExprDecl, ExprKind, FnDecl, Lit, Module, Param, Pattern, PatternKind,
-    Span, UnaryOp,
+    BinOp, CaseArm, DeclKind, Expr, ExprDecl, ExprKind, FnDecl, Lit, Module, Param, Pattern,
+    PatternKind, Span, UnaryOp,
 };
 use kea_infer::typeck::TypeEnv;
 use kea_types::{EffectRow, FunctionType, Type};
@@ -194,6 +194,13 @@ fn lower_expr(expr: &Expr, ty_hint: Option<Type>) -> HirExpr {
                 .as_ref()
                 .map(|expr| Box::new(lower_expr(expr, ty_hint.clone()))),
         },
+        ExprKind::Case { scrutinee, arms } => {
+            if let Some(case_kind) = lower_bool_case(scrutinee, arms, ty_hint.clone()) {
+                case_kind
+            } else {
+                HirExprKind::Raw(expr.node.clone())
+            }
+        }
         ExprKind::Block(exprs) => HirExprKind::Block(
             exprs
                 .iter()
@@ -254,6 +261,51 @@ fn lower_expr(expr: &Expr, ty_hint: Option<Type>) -> HirExpr {
         kind,
         ty,
         span: expr.span,
+    }
+}
+
+fn lower_bool_case(scrutinee: &Expr, arms: &[CaseArm], ty_hint: Option<Type>) -> Option<HirExprKind> {
+    if arms.iter().any(|arm| arm.guard.is_some()) {
+        return None;
+    }
+
+    if arms.len() == 1
+        && matches!(arms[0].pattern.node, PatternKind::Wildcard)
+    {
+        return Some(lower_expr(&arms[0].body, ty_hint).kind);
+    }
+
+    let mut true_body: Option<&Expr> = None;
+    let mut false_body: Option<&Expr> = None;
+    let mut wildcard_body: Option<&Expr> = None;
+
+    for arm in arms {
+        match &arm.pattern.node {
+            PatternKind::Lit(Lit::Bool(true)) => true_body = Some(&arm.body),
+            PatternKind::Lit(Lit::Bool(false)) => false_body = Some(&arm.body),
+            PatternKind::Wildcard => wildcard_body = Some(&arm.body),
+            _ => return None,
+        }
+    }
+
+    let condition = Box::new(lower_expr(scrutinee, None));
+    match (true_body, false_body, wildcard_body) {
+        (Some(then_body), Some(else_body), None) if arms.len() == 2 => Some(HirExprKind::If {
+            condition,
+            then_branch: Box::new(lower_expr(then_body, ty_hint.clone())),
+            else_branch: Some(Box::new(lower_expr(else_body, ty_hint))),
+        }),
+        (Some(then_body), None, Some(default_body)) if arms.len() == 2 => Some(HirExprKind::If {
+            condition,
+            then_branch: Box::new(lower_expr(then_body, ty_hint.clone())),
+            else_branch: Some(Box::new(lower_expr(default_body, ty_hint))),
+        }),
+        (None, Some(else_body), Some(default_body)) if arms.len() == 2 => Some(HirExprKind::If {
+            condition,
+            then_branch: Box::new(lower_expr(default_body, ty_hint.clone())),
+            else_branch: Some(Box::new(lower_expr(else_body, ty_hint))),
+        }),
+        _ => None,
     }
 }
 
@@ -348,5 +400,24 @@ mod tests {
         };
 
         assert!(matches!(function.body.kind, HirExprKind::Unary { .. }));
+    }
+
+    #[test]
+    fn lower_function_bool_case_desugars_to_if() {
+        let module = parse_module_from_text(
+            "fn pick(x: Bool) -> Int\n  case x\n    true -> 1\n    false -> 0",
+        );
+        let mut env = TypeEnv::new();
+        env.bind(
+            "pick".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::pure(vec![Type::Bool], Type::Int))),
+        );
+
+        let lowered = lower_module(&module, &env);
+        let HirDecl::Function(function) = &lowered.declarations[0] else {
+            panic!("expected lowered function declaration");
+        };
+
+        assert!(matches!(function.body.kind, HirExprKind::If { .. }));
     }
 }
