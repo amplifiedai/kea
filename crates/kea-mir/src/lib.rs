@@ -490,6 +490,7 @@ struct FunctionLoweringCtx {
     current_block: MirBlockId,
     vars: BTreeMap<String, MirValueId>,
     var_types: BTreeMap<String, Type>,
+    local_lambdas: BTreeMap<String, LocalLambda>,
     known_functions: BTreeSet<String>,
     var_record_types: BTreeMap<String, String>,
     sum_value_types: BTreeMap<MirValueId, String>,
@@ -505,9 +506,16 @@ struct SumCtorCandidate {
 }
 
 #[derive(Debug, Clone)]
+struct LocalLambda {
+    params: Vec<kea_hir::HirParam>,
+    body: HirExpr,
+}
+
+#[derive(Debug, Clone)]
 struct VarScope {
     vars: BTreeMap<String, MirValueId>,
     var_types: BTreeMap<String, Type>,
+    local_lambdas: BTreeMap<String, LocalLambda>,
     var_record_types: BTreeMap<String, String>,
 }
 
@@ -542,6 +550,7 @@ impl FunctionLoweringCtx {
             current_block: MirBlockId(0),
             vars: BTreeMap::new(),
             var_types: BTreeMap::new(),
+            local_lambdas: BTreeMap::new(),
             known_functions: known_functions.clone(),
             var_record_types: BTreeMap::new(),
             sum_value_types: BTreeMap::new(),
@@ -626,6 +635,7 @@ impl FunctionLoweringCtx {
         VarScope {
             vars: self.vars.clone(),
             var_types: self.var_types.clone(),
+            local_lambdas: self.local_lambdas.clone(),
             var_record_types: self.var_record_types.clone(),
         }
     }
@@ -633,6 +643,7 @@ impl FunctionLoweringCtx {
     fn restore_var_scope(&mut self, scope: &VarScope) {
         self.vars = scope.vars.clone();
         self.var_types = scope.var_types.clone();
+        self.local_lambdas = scope.local_lambdas.clone();
         self.var_record_types = scope.var_record_types.clone();
     }
 
@@ -836,6 +847,18 @@ impl FunctionLoweringCtx {
                 Some(result)
             }
             HirExprKind::Let { pattern, value } => {
+                if let (HirPattern::Var(name), HirExprKind::Lambda { params, body }) =
+                    (pattern, &value.kind)
+                {
+                    self.local_lambdas.insert(
+                        name.clone(),
+                        LocalLambda {
+                            params: params.clone(),
+                            body: body.as_ref().clone(),
+                        },
+                    );
+                    return None;
+                }
                 let value_id = self.lower_expr(value)?;
                 self.bind_pattern(pattern, value_id.clone(), &value.ty);
                 Some(value_id)
@@ -871,6 +894,31 @@ impl FunctionLoweringCtx {
         args: &[HirExpr],
         capture_fail_result: bool,
     ) -> Option<MirValueId> {
+        if let HirExprKind::Var(name) = &func.kind
+            && let Some(local_lambda) = self.local_lambdas.get(name).cloned()
+            && !capture_fail_result
+        {
+            if local_lambda.params.len() != args.len() {
+                return None;
+            }
+            let incoming_scope = self.snapshot_var_scope();
+            for (param, arg_expr) in local_lambda.params.iter().zip(args) {
+                let Some(param_name) = &param.name else {
+                    continue;
+                };
+                let arg_value = self.lower_expr(arg_expr)?;
+                self.vars.insert(param_name.clone(), arg_value.clone());
+                self.var_types
+                    .insert(param_name.clone(), arg_expr.ty.clone());
+                if let Type::Record(record_ty) = &arg_expr.ty {
+                    self.var_record_types
+                        .insert(param_name.clone(), record_ty.name.clone());
+                }
+            }
+            let result = self.lower_expr(&local_lambda.body);
+            self.restore_var_scope(&incoming_scope);
+            return result;
+        }
         if let HirExprKind::Var(name) = &func.kind
             && name == "IO::stdout"
             && !capture_fail_result
@@ -2506,6 +2554,98 @@ mod tests {
                 ..
             } if args == &vec![MirValueId(1)]
         ));
+    }
+
+    #[test]
+    fn lower_hir_module_inlines_let_bound_lambda_call() {
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "main".to_string(),
+                params: vec![],
+                body: HirExpr {
+                    kind: HirExprKind::Block(vec![
+                        HirExpr {
+                            kind: HirExprKind::Let {
+                                pattern: HirPattern::Var("f".to_string()),
+                                value: Box::new(HirExpr {
+                                    kind: HirExprKind::Lambda {
+                                        params: vec![kea_hir::HirParam {
+                                            name: Some("x".to_string()),
+                                            span: kea_ast::Span::synthetic(),
+                                        }],
+                                        body: Box::new(HirExpr {
+                                            kind: HirExprKind::Binary {
+                                                op: BinOp::Add,
+                                                left: Box::new(HirExpr {
+                                                    kind: HirExprKind::Var("x".to_string()),
+                                                    ty: Type::Int,
+                                                    span: kea_ast::Span::synthetic(),
+                                                }),
+                                                right: Box::new(HirExpr {
+                                                    kind: HirExprKind::Lit(kea_ast::Lit::Int(1)),
+                                                    ty: Type::Int,
+                                                    span: kea_ast::Span::synthetic(),
+                                                }),
+                                            },
+                                            ty: Type::Int,
+                                            span: kea_ast::Span::synthetic(),
+                                        }),
+                                    },
+                                    ty: Type::Function(FunctionType::pure(vec![Type::Int], Type::Int)),
+                                    span: kea_ast::Span::synthetic(),
+                                }),
+                            },
+                            ty: Type::Function(FunctionType::pure(vec![Type::Int], Type::Int)),
+                            span: kea_ast::Span::synthetic(),
+                        },
+                        HirExpr {
+                            kind: HirExprKind::Call {
+                                func: Box::new(HirExpr {
+                                    kind: HirExprKind::Var("f".to_string()),
+                                    ty: Type::Function(FunctionType::pure(vec![Type::Int], Type::Int)),
+                                    span: kea_ast::Span::synthetic(),
+                                }),
+                                args: vec![HirExpr {
+                                    kind: HirExprKind::Lit(kea_ast::Lit::Int(41)),
+                                    ty: Type::Int,
+                                    span: kea_ast::Span::synthetic(),
+                                }],
+                            },
+                            ty: Type::Int,
+                            span: kea_ast::Span::synthetic(),
+                        },
+                    ]),
+                    ty: Type::Int,
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
+                effects: EffectRow::pure(),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let mir = lower_hir_module(&hir);
+        let function = &mir.functions[0];
+        assert!(
+            function.blocks[0]
+                .instructions
+                .iter()
+                .all(|inst| !matches!(
+                    inst,
+                    MirInst::Call {
+                        callee: MirCallee::Local(name),
+                        ..
+                    } if name == "f"
+                )),
+            "let-bound lambda call should inline rather than lowering as unknown local call"
+        );
+        assert!(
+            function.blocks[0]
+                .instructions
+                .iter()
+                .any(|inst| matches!(inst, MirInst::Binary { op: MirBinaryOp::Add, .. })),
+            "inlined lambda body should produce add instruction"
+        );
     }
 
     #[test]
