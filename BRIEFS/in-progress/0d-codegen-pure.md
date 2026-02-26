@@ -285,6 +285,10 @@ Create `crates/kea/` (the binary crate):
 - Tail call optimization: self-recursive tail calls use `return_call`,
   no stack overflow on `factorial(100000)`
 - Lambda syntax matches KERNEL §10.3: `|x| -> expr`, not `(x) -> expr`
+- Parametric ADTs parse: `type Option a = Some(a) | None`
+- Row type annotations parse: `fn f(x: { name: String | r }) -> String`
+- Trait type parameters parse: `trait Show a`
+- Higher-order function calls don't leak phantom IO
 - `mise run check` passes
 
 ## Decisions
@@ -360,10 +364,15 @@ retain/release needs to be aware of tail position.
 **This is a v0 deliverable.** A functional language without TCO is
 broken for idiomatic use.
 
-## Lambda Syntax Fix
+## Parser Gaps (spec vs implementation)
+
+These are syntax features the inference engine already supports but
+the parser doesn't accept. They block writing real Kea programs.
+
+### 1. Lambda syntax (KERNEL §10.3)
 
 **Current parser:** `(x) -> expr` and `(x, y) -> expr`
-**KERNEL §10.3:** `|x| -> expr` and `|a, b| -> a + b`
+**Spec:** `|x| -> expr` and `|a, b| -> a + b`
 
 The parser must be updated to match the spec. The `|...|` delimiter
 syntax is better:
@@ -373,6 +382,50 @@ syntax is better:
 
 The `(x) -> expr` form should become a parse error (or at minimum a
 deprecation warning) once `|x| -> expr` is implemented.
+
+### 2. Parametric ADTs — CRITICAL
+
+`type Option a = Some(a) | None` fails to parse. Only monomorphic
+enums work (`type Color = Red | Green | Blue`). The type parameter
+after the type name isn't recognized.
+
+This is the #1 gap. Without parametric ADTs you can't write `Option`,
+`Result`, `List`, or any generic data structure. The inference engine
+already supports type parameters — this is purely a parser fix.
+
+Test: `type Option a = Some(a) | None` followed by
+`fn map(m: Option, f: Fun(Int, Int)) -> Option` should parse and
+type-check.
+
+### 3. Row type syntax in annotations — CRITICAL
+
+`fn greet(person: { name: String | r }) -> String` fails to parse.
+Row types in type annotations aren't recognized — the `{` is not
+accepted as a type start.
+
+Row polymorphism is Kea's core differentiator and you can't spell
+row types in function signatures. The inference engine has full row
+support (Rémy unification) — this is purely a parser gap.
+
+Test: `fn greet(p: { name: String | r }) -> String` should parse.
+
+### 4. Trait type parameters
+
+`trait Show a` fails. Only `trait Show` (no params) parses. Can't
+define parametric traits.
+
+Test: `trait Show a` with `fn show(x: a) -> String` should parse.
+
+### 5. Phantom IO leak on higher-order calls
+
+Calling a function value (`f(x)` where `f: Fun(a, b)`) injects
+phantom `IO` into the effect row. Every higher-order function
+appears effectful: `map_maybe(m, f)` infers `-[IO]>` instead of
+`->`. Root cause is likely the legacy Effects lattice collapsing
+function application to Impure.
+
+This isn't a parser issue but it makes the type system output wrong
+for every HOF. Important to fix before the effect system is trusted.
 
 ## Open Questions
 
