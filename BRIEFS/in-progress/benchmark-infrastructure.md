@@ -118,6 +118,13 @@ CodSpeed posts a comment on each PR with:
 - Flagged regressions above threshold
 - Historical trend links
 
+**OIDC setup note (current Kea config):**
+- `.github/workflows/bench-codspeed.yml` is configured for OIDC auth
+  (no static `CODSPEED_TOKEN` input).
+- Repo must be linked in CodSpeed with GitHub OIDC trust enabled for
+  this workflow to report metrics.
+- Workflow permissions must include `id-token: write` and `contents: read`.
+
 ### Threshold Policy
 
 Start permissive, tighten as measurements stabilise:
