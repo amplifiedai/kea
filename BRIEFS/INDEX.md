@@ -24,7 +24,7 @@ that apply across multiple implementation phases. Ignoring them means rework.
 ## Active
 
 Work in progress right now. Each entry should have a `## Progress` section in its brief.
-- **[Effect handlers](in-progress/0c-effect-handlers.md)** — `effect` declarations, `handle`/`resume` expressions, handler typing, at-most-once resumption, and `Fail` sugar (`fail`, `?`, `catch`).
+- *(none)*
 
 ---
 
@@ -42,7 +42,7 @@ Designed and approved. Ready to pick up. Ordered by execution sequence per ROADM
 
 ### Phase 0c: Effect Handlers (weeks 3-4)
 
-*(active — see Active section)*
+*(done — see Done section)*
 
 ### Phase 0d: Code Generation — Pure Subset (weeks 4-6)
 
@@ -105,6 +105,7 @@ Completed briefs. Kept for reference and design rationale.
 | [0b-rill-surface-cleanup](done/0b-rill-surface-cleanup.md) | Removed remaining inherited non-Kea parser/typechecker substrate from core crates (frame token path, stale infer trace variants, and `sqlparser`), with cleanup gates green across check/test/check-full. |
 | [0b-mcp-server](done/0b-mcp-server.md) | `kea-mcp` now exposes `type_check`, `diagnose`, and `get_type` over MCP stdio with structured JSON diagnostics from serializable `kea-diag` types. |
 | [0b-type-system-core](done/0b-type-system-core.md) | Type checker migrated to row-native effect contracts/unification with lattice model deleted, legacy effect syntax deprecation-only, fail-row constraints enforced, and stable module namespace resolution scaffolding for builtin/source transitions. |
+| [0c-effect-handlers](done/0c-effect-handlers.md) | Effect declarations, `handle`/`resume` typing, and `fail`/`?`/`catch` desugaring landed with row-native effect removal checks and at-most-once resume enforcement. Follow-up tooling debt: add explicit MCP regressions for effect/handler query flows. |
 | [0a-lexer-parser](done/0a-lexer-parser.md) | Indentation-sensitive lexer/parser landed with indentation-only block parsing, snapshot corpora, and property tests for layout/error coherence. |
 | [bootstrap-infra](done/bootstrap-infra.md) | Cargo workspace, mise tasks, scripts, BRIEFS system, docs, .claude setup. Cannibalised from rill. |
 
@@ -119,7 +120,7 @@ Completed briefs. Kept for reference and design rationale.
  │    │
  │    ├── 0b cleanup: remove inherited non-Kea core surface ← DONE
  │    │
- │    ├── 0c: effect handlers (extends kea-infer)            ← ACTIVE
+ │    ├── 0c: effect handlers (extends kea-infer)            ← DONE
  │    │    │
  │    │    ├── lean formalization phase 1 (parallel track)
  │    │    │

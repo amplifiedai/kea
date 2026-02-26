@@ -1,6 +1,6 @@
 # Brief: Effect Handlers
 
-**Status:** active
+**Status:** done
 **Priority:** v1-critical
 **Depends on:** 0b-type-system-core (needs effect rows, trait system)
 **Blocks:** 0d-codegen-pure (Fail sugar needed for practical programs), 0e-runtime-effects
@@ -272,7 +272,8 @@ Things the 0c implementor should know about what comes after:
 - 2026-02-26: Slice 2 landed — `handle`/`resume` AST+parser+typeck, `fail`/`?`/`catch` desugaring, and core matrix tests (`01f9e12`).
 - 2026-02-26: Slice 3 landed — matrix tightening tests for resume legality detail (`lambda`, loop), resume type matching, handler operation coverage, plus parser coverage for `resume` and empty-handler rejection (`4de4eab`).
 - 2026-02-26: Closeout verification complete — `mise run check-full` green (workspace lint/tests/doctests).
-- **Next:** No code delta remains in 0c scope; move brief to `done/` with synchronized `BRIEFS/INDEX.md` update.
+- 2026-02-26: Brief moved to `done/`; `BRIEFS/INDEX.md` synchronized.
+- **Follow-up (tooling/DX):** add explicit `kea-mcp` regression tests for effect declaration + handler/query flows so these features stay machine-queryable for formal/tooling agents.
 
 ### Test Matrix (0c)
 - effect declaration parsing
