@@ -389,7 +389,7 @@ fn compile_into_module<M: Module>(module: &mut M, mir: &MirModule) -> Result<(),
         module
             .define_function(func_id, &mut context)
             .map_err(|detail| CodegenError::Module {
-                detail: detail.to_string(),
+                detail: format!("{detail:?}"),
             })?;
         module.clear_context(&mut context);
     }
@@ -662,7 +662,14 @@ fn lower_unary(
 }
 
 fn b1_to_i8(builder: &mut FunctionBuilder, predicate: Value) -> Value {
-    builder.ins().uextend(types::I8, predicate)
+    let ty = builder.func.dfg.value_type(predicate);
+    if ty == types::I8 {
+        predicate
+    } else if ty.bits() == 1 {
+        builder.ins().uextend(types::I8, predicate)
+    } else {
+        predicate
+    }
 }
 
 fn lower_terminator(
@@ -1179,6 +1186,56 @@ mod tests {
 
         let artifact = compile_hir_module(&CraneliftBackend, &hir, &BackendConfig::default())
             .expect("unary lowering should compile");
+        assert_eq!(artifact.stats.per_function.len(), 1);
+    }
+
+    #[test]
+    fn compile_hir_module_lowers_int_equality_condition() {
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "main".to_string(),
+                params: vec![],
+                body: HirExpr {
+                    kind: HirExprKind::If {
+                        condition: Box::new(HirExpr {
+                            kind: HirExprKind::Binary {
+                                op: kea_ast::BinOp::Eq,
+                                left: Box::new(HirExpr {
+                                    kind: HirExprKind::Lit(kea_ast::Lit::Int(2)),
+                                    ty: Type::Int,
+                                    span: kea_ast::Span::synthetic(),
+                                }),
+                                right: Box::new(HirExpr {
+                                    kind: HirExprKind::Lit(kea_ast::Lit::Int(2)),
+                                    ty: Type::Int,
+                                    span: kea_ast::Span::synthetic(),
+                                }),
+                            },
+                            ty: Type::Bool,
+                            span: kea_ast::Span::synthetic(),
+                        }),
+                        then_branch: Box::new(HirExpr {
+                            kind: HirExprKind::Lit(kea_ast::Lit::Int(1)),
+                            ty: Type::Int,
+                            span: kea_ast::Span::synthetic(),
+                        }),
+                        else_branch: Some(Box::new(HirExpr {
+                            kind: HirExprKind::Lit(kea_ast::Lit::Int(0)),
+                            ty: Type::Int,
+                            span: kea_ast::Span::synthetic(),
+                        })),
+                    },
+                    ty: Type::Int,
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
+                effects: EffectRow::pure(),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let artifact = compile_hir_module(&CraneliftBackend, &hir, &BackendConfig::default())
+            .expect("int equality branch should compile");
         assert_eq!(artifact.stats.per_function.len(), 1);
     }
 }
