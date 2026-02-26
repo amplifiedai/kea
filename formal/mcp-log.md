@@ -5720,3 +5720,21 @@ exposing a tail-resumptive direct-call contract surface.
 **Outcome**:
 - Phase-2 now has an explicit, citable theorem surface for the
   tail-resumptive fast-path classification and direct-call equivalence claim.
+
+### 2026-02-26: operation-call WF transport (proof-only)
+
+**Context**: Extended effect operation typing with a WF-preservation bridge so
+operation-call row updates compose with the existing WF theorem ladder.
+
+**MCP tools used**: none (proof-only WF API extension).
+
+**Lean side**:
+- Extended `Kea/Properties/EffectOperationTyping.lean` with:
+  - `performOperationEffects_preserves_wellFormed`
+- Verified with `cd formal && lake build` (pass).
+
+**Classify**: N/A (proof-only step).
+
+**Outcome**:
+- Operation-call effect-row updates now have a direct WF-preservation theorem,
+  reducing glue work for downstream Phase-2 soundness composition.
