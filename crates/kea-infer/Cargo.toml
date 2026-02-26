@@ -1,0 +1,15 @@
+[package]
+name = "kea-infer"
+description = "HM type inference with Remy-style row unification for Kea"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+kea-ast.workspace = true
+kea-types.workspace = true
+kea-diag.workspace = true
+serde.workspace = true
+sqlparser = { version = "0.59", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+proptest.workspace = true
