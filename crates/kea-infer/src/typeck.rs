@@ -2417,6 +2417,7 @@ fn validate_self_projection_targets(
                 }
                 Ok(())
             }
+            TypeAnnotation::EffectRow(_) => Ok(()),
             TypeAnnotation::Tuple(elems) => {
                 for elem in elems {
                     walk(elem, declared_assoc_types, span, context)?;
@@ -4305,6 +4306,7 @@ fn resolve_annotation_with_type_params(
                 }),
             }
         }
+        TypeAnnotation::EffectRow(_) => None,
         TypeAnnotation::Tuple(elems) => {
             let types: Option<Vec<_>> = elems
                 .iter()
@@ -8494,6 +8496,17 @@ fn collect_annotation_named_types(ann: &TypeAnnotation, out: &mut BTreeSet<Strin
                 collect_annotation_named_types(arg, out);
             }
         }
+        TypeAnnotation::EffectRow(row) => {
+            for item in &row.effects {
+                out.insert(item.name.clone());
+                if let Some(payload) = &item.payload {
+                    out.insert(payload.clone());
+                }
+            }
+            if let Some(rest) = &row.rest {
+                out.insert(rest.clone());
+            }
+        }
         TypeAnnotation::Tuple(elems) => {
             for elem in elems {
                 collect_annotation_named_types(elem, out);
@@ -8773,6 +8786,7 @@ pub fn resolve_annotation(
                 }),
             }
         }
+        TypeAnnotation::EffectRow(_) => None,
         TypeAnnotation::Tuple(elems) => {
             let types: Option<Vec<_>> = elems
                 .iter()
@@ -8948,6 +8962,7 @@ fn resolve_annotation_or_bare_df(
                 }),
             }
         }
+        TypeAnnotation::EffectRow(_) => None,
         TypeAnnotation::Tuple(elems) => {
             let types: Option<Vec<_>> = elems
                 .iter()
@@ -9643,31 +9658,80 @@ fn effect_row_annotation_label(row: &kea_ast::EffectRowAnnotation) -> String {
     format!("[{body}]")
 }
 
-fn effect_row_annotation_to_effects(row: &kea_ast::EffectRowAnnotation) -> Option<Effects> {
+fn effect_item_name_to_effects(name: &str) -> Effects {
+    match name {
+        "pure" | "Pure" => Effects::pure_deterministic(),
+        "volatile" | "Volatile" => Effects::pure_volatile(),
+        "impure" | "Impure" => Effects::impure(),
+        // Any concrete effect entry beyond the lattice names is impure in
+        // the current compatibility model.
+        _ => Effects::impure(),
+    }
+}
+
+fn effect_alias_target_to_effects(
+    target: &TypeAnnotation,
+    records: &RecordRegistry,
+    visited_aliases: &mut BTreeSet<String>,
+) -> Option<Effects> {
+    match target {
+        TypeAnnotation::EffectRow(row) => {
+            effect_row_annotation_to_effects_with_aliases(row, Some(records), visited_aliases)
+        }
+        TypeAnnotation::Named(name) => {
+            if let Some(alias) = records.lookup_alias(name)
+                && alias.params.is_empty()
+                && visited_aliases.insert(name.clone())
+            {
+                let expanded =
+                    effect_alias_target_to_effects(&alias.target, records, visited_aliases);
+                visited_aliases.remove(name);
+                return expanded.or_else(|| Some(effect_item_name_to_effects(name)));
+            }
+            Some(effect_item_name_to_effects(name))
+        }
+        _ => None,
+    }
+}
+
+fn effect_row_item_to_effects(
+    item: &kea_ast::EffectRowItem,
+    records: Option<&RecordRegistry>,
+    visited_aliases: &mut BTreeSet<String>,
+) -> Option<Effects> {
+    if item.payload.is_none()
+        && let Some(records) = records
+        && let Some(alias) = records.lookup_alias(&item.name)
+        && alias.params.is_empty()
+        && visited_aliases.insert(item.name.clone())
+    {
+        let expanded = effect_alias_target_to_effects(&alias.target, records, visited_aliases);
+        visited_aliases.remove(&item.name);
+        return expanded;
+    }
+
+    Some(effect_item_name_to_effects(&item.name))
+}
+
+fn effect_row_annotation_to_effects_with_aliases(
+    row: &kea_ast::EffectRowAnnotation,
+    records: Option<&RecordRegistry>,
+    visited_aliases: &mut BTreeSet<String>,
+) -> Option<Effects> {
     if row.rest.is_some() {
         return None;
     }
 
-    let mut has_volatile = false;
-    let mut has_impure = false;
+    let mut combined = Effects::pure_deterministic();
     for item in &row.effects {
-        match item.name.as_str() {
-            "pure" | "Pure" => {}
-            "volatile" | "Volatile" => has_volatile = true,
-            "impure" | "Impure" => has_impure = true,
-            // Any concrete effect entry beyond the lattice names is impure in
-            // the current compatibility model.
-            _ => has_impure = true,
-        }
+        combined = combined.join(effect_row_item_to_effects(item, records, visited_aliases)?);
     }
 
-    if has_impure {
-        Some(Effects::impure())
-    } else if has_volatile {
-        Some(Effects::pure_volatile())
-    } else {
-        Some(Effects::pure_deterministic())
-    }
+    Some(combined)
+}
+
+fn effect_row_annotation_to_effects(row: &kea_ast::EffectRowAnnotation) -> Option<Effects> {
+    effect_row_annotation_to_effects_with_aliases(row, None, &mut BTreeSet::new())
 }
 
 fn effect_annotation_var_name(effect: &kea_ast::EffectAnnotation) -> Option<&str> {
@@ -9679,13 +9743,18 @@ fn effect_annotation_var_name(effect: &kea_ast::EffectAnnotation) -> Option<&str
     }
 }
 
-fn effect_annotation_to_effects(effect: &kea_ast::EffectAnnotation) -> Option<Effects> {
+fn effect_annotation_to_effects(
+    effect: &kea_ast::EffectAnnotation,
+    records: Option<&RecordRegistry>,
+) -> Option<Effects> {
     match effect {
         kea_ast::EffectAnnotation::Pure => Some(Effects::pure_deterministic()),
         kea_ast::EffectAnnotation::Volatile => Some(Effects::pure_volatile()),
         kea_ast::EffectAnnotation::Impure => Some(Effects::impure()),
         kea_ast::EffectAnnotation::Var(_) => None,
-        kea_ast::EffectAnnotation::Row(row) => effect_row_annotation_to_effects(row),
+        kea_ast::EffectAnnotation::Row(row) => {
+            effect_row_annotation_to_effects_with_aliases(row, records, &mut BTreeSet::new())
+        }
     }
 }
 
@@ -9719,6 +9788,12 @@ fn type_annotation_has_effect_var(ann: &TypeAnnotation, target: &str) -> bool {
         TypeAnnotation::Applied(_, args) | TypeAnnotation::Tuple(args) => args
             .iter()
             .any(|arg| type_annotation_has_effect_var(arg, target)),
+        TypeAnnotation::EffectRow(row) => {
+            row.rest.as_deref() == Some(target)
+                || row.effects.iter().any(|item| {
+                    item.name == target || item.payload.as_deref() == Some(target)
+                })
+        }
         TypeAnnotation::Optional(inner) => type_annotation_has_effect_var(inner, target),
         TypeAnnotation::Existential {
             associated_types, ..
@@ -9764,7 +9839,12 @@ fn ensure_effect_var_is_constrained(
 ///
 /// Returns `Ok(())` when there is no annotation or when inferred effects satisfy it.
 pub fn validate_declared_fn_effect(fn_decl: &FnDecl, inferred: Effects) -> Result<(), Diagnostic> {
-    validate_declared_fn_effect_with_env(fn_decl, inferred, &TypeEnv::new())
+    validate_declared_fn_effect_with_env_and_records(
+        fn_decl,
+        inferred,
+        &TypeEnv::new(),
+        &RecordRegistry::new(),
+    )
 }
 
 /// Validate a declaration-level effect annotation against inferred effects and
@@ -9777,6 +9857,16 @@ pub fn validate_declared_fn_effect_with_env(
     inferred: Effects,
     env: &TypeEnv,
 ) -> Result<(), Diagnostic> {
+    validate_declared_fn_effect_with_env_and_records(fn_decl, inferred, env, &RecordRegistry::new())
+}
+
+/// Record-aware variant of declared effect validation.
+pub fn validate_declared_fn_effect_with_env_and_records(
+    fn_decl: &FnDecl,
+    inferred: Effects,
+    env: &TypeEnv,
+    records: &RecordRegistry,
+) -> Result<(), Diagnostic> {
     let Some(ann) = &fn_decl.effect_annotation else {
         return Ok(());
     };
@@ -9786,7 +9876,7 @@ pub fn validate_declared_fn_effect_with_env(
         validate_declared_fn_effect_variable_contract(fn_decl, env, &fn_decl.name.node, name)?;
         return Ok(());
     }
-    let Some(declared) = effect_annotation_to_effects(&declared) else {
+    let Some(declared) = effect_annotation_to_effects(&declared, Some(records)) else {
         return Err(Diagnostic::error(
             Category::TypeMismatch,
             "open effect rows with concrete entries are not supported in contracts yet; use `-[e]>` or a closed row",
@@ -9979,7 +10069,7 @@ pub fn validate_trait_method_impl_contract(
         return Ok(());
     };
 
-    if let Some(required) = effect_annotation_to_effects(required) {
+    if let Some(required) = effect_annotation_to_effects(required, None) {
         return validate_trait_method_impl_effect(
             trait_name,
             method_name,
@@ -10039,7 +10129,7 @@ pub fn validate_trait_method_impl_contract_with_env(
         return Ok(());
     };
 
-    if let Some(required) = effect_annotation_to_effects(required) {
+    if let Some(required) = effect_annotation_to_effects(required, None) {
         return validate_trait_method_impl_effect(
             trait_name,
             &method.name.node,
@@ -18794,6 +18884,7 @@ fn resolve_annotation_with_self_assoc_and_params(
                 }),
             }
         }
+        TypeAnnotation::EffectRow(_) => None,
         TypeAnnotation::Tuple(elems) => {
             let resolved: Vec<Type> = elems
                 .iter()
@@ -19057,6 +19148,7 @@ fn annotation_display(ann: &TypeAnnotation) -> String {
             let args_str: Vec<String> = args.iter().map(annotation_display).collect();
             format!("{}({})", name, args_str.join(", "))
         }
+        TypeAnnotation::EffectRow(row) => effect_row_annotation_label(row),
         TypeAnnotation::Tuple(elems) => {
             let elems_str: Vec<String> = elems.iter().map(annotation_display).collect();
             format!("#({})", elems_str.join(", "))
