@@ -831,4 +831,24 @@ mod tests {
             "expected trap to preserve Log and avoid phantom IO, got {trap_ty}"
         );
     }
+
+    #[test]
+    fn type_check_curried_annotated_lambda_callback_uses_effect_row_contract() {
+        let server = KeaMcpServer::new();
+        let code = "effect Log\n  fn log(msg: Int) -> Unit\n\nfn trap() -[Log]> Unit\n  let apply = |f: fn(Int) -[Log]> Unit| -> |x: Int| -> f(x)\n  let logger = |y: Int| -> Log.log(y)\n  apply(logger)(42)";
+        let value = parse_json(&server.handle_type_check(code));
+        assert_eq!(value["status"], "ok", "type_check response: {value}");
+
+        let bindings = value["bindings"].as_array().expect("bindings array");
+        let trap_ty = bindings
+            .iter()
+            .find(|b| b["name"] == "trap")
+            .and_then(|b| b["type"].as_str())
+            .expect("trap binding type");
+
+        assert!(
+            trap_ty.contains("-[Log]>") && !trap_ty.contains("[IO]"),
+            "expected trap to preserve Log and avoid phantom IO, got {trap_ty}"
+        );
+    }
 }
