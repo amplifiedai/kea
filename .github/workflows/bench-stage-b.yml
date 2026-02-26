@@ -1,0 +1,48 @@
+name: benchmark-stage-b
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  benchmark-regression-check:
+    name: Benchmark Regression Check (Non-Blocking)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run stage B regression check (non-blocking)
+        id: regression
+        continue-on-error: true
+        env:
+          DIVAN_SAMPLE_COUNT: "40"
+        run: mise run bench:regression
+
+      - name: Publish regression summary
+        if: always()
+        run: |
+          if [ -f benchmark-results/regression/latest/regression.summary.md ]; then
+            cat benchmark-results/regression/latest/regression.summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No regression summary produced." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload regression artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-stage-b-${{ github.run_id }}
+          path: benchmark-results/regression/latest/
+          if-no-files-found: warn
