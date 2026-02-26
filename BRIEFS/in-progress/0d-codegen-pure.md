@@ -339,4 +339,5 @@ Precision notes:
 - 2026-02-26: Regression covered: phantom `IO` leakage in MCP declaration mode fixed by row-native declaration validation + MCP row-native effect plumbing.
 - 2026-02-26: Step 1 scaffold landed: new `kea-hir` crate added with typed `HirModule/HirDecl/HirExpr` surface, lowering entrypoints (`lower_module`, `lower_function`), conservative raw-node fallback for unsupported syntax, and tests asserting bound function type/effect preservation.
 - 2026-02-26: Step 2 scaffold landed: new `kea-mir` crate added with backend-neutral module/function/block model, explicit memory/effect/handler/call operation enums matching the 0d minimum MIR op contract, and a minimal HIR→MIR lowering stub with tests.
-- **Next:** Start Step 3 backend interface trait in `kea-codegen` and wire MIR consumption through that trait (Cranelift implementation first).
+- 2026-02-26: Step 3 scaffold landed: new `kea-codegen` crate added with backend interface trait (`Backend`), ABI manifest artifact types, per-function pass stats collection, and a `CraneliftBackend` implementation stub that validates ABI coverage and consumes MIR.
+- **Next:** Replace the Cranelift stub with real MIR→Cranelift lowering and emit executable/object artifacts for JIT/AOT paths.

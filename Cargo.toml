@@ -19,6 +19,7 @@ kea-types = { path = "crates/kea-types" }
 kea-infer = { path = "crates/kea-infer" }
 kea-hir = { path = "crates/kea-hir" }
 kea-mir = { path = "crates/kea-mir" }
+kea-codegen = { path = "crates/kea-codegen" }
 
 # Diagnostics
 miette = { version = "7", features = ["fancy"] }

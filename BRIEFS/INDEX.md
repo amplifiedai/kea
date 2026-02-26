@@ -24,7 +24,7 @@ that apply across multiple implementation phases. Ignoring them means rework.
 ## Active
 
 Work in progress right now. Each entry should have a `## Progress` section in its brief.
-- **[Codegen — pure subset](in-progress/0d-codegen-pure.md)** — Active. Step 0 structural function-effect embedding is complete; Step 1 `kea-hir` and Step 2 `kea-mir` scaffolds are in-tree and tested.
+- **[Codegen — pure subset](in-progress/0d-codegen-pure.md)** — Active. Step 0 structural function-effect embedding is complete; Step 1 (`kea-hir`), Step 2 (`kea-mir`), and Step 3 (`kea-codegen` backend interface + Cranelift stub) are in-tree and tested.
 - **[Lean formalization](in-progress/lean-formalization.md)** — Active. Phase 1 kickoff started from the Rill Lean baseline; next is Kea effect-row alignment in core modules/proofs.
 
 ---
