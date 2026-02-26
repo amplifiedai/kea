@@ -261,4 +261,5 @@ Mitigation:
 - 2026-02-26: `cd formal && lake build` passes after full `functionEff` exhaustiveness repair in remaining Phase-1 core proofs.
 - 2026-02-26: Added explicit WF effect-row bridge lemmas in `SubstBridge` (`applySubstEffectRowWF_noop`, `applySubstEffectRowWF_empty`) so effect rows have the same no-domain-vars/empty-substitution identity surface as rows.
 - 2026-02-26: Added fuel-vs-WF effect-row bridge lemmas in `SubstBridge` (`applySubstEffectRowCompat_eq_applySubstEffectRowWF_of_no_domain_vars`, `applySubstEffectRow_empty_eq_applySubstEffectRowWF_empty`) and introduced `Substitution.applySubstEffectRow` helper to make the effect-row substitution boundary explicit.
+- 2026-02-26: Added explicit `Ty.functionEff` compat-vs-WF constructor corollary (`applySubstCompat_functionEff_eq_applySubstWF_of_no_domain_vars`) to expose a named bridge surface for effectful function types.
 - **Next:** start explicit WF theorem ladder for the effect-row surface (substitution preserves WF, unification preserves WF, generalize/instantiate preserves WF), then begin first Phase-2 handler/effect typing theorem stubs.

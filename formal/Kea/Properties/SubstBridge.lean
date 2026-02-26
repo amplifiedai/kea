@@ -783,3 +783,14 @@ theorem applySubstCompat_tuple_eq_applySubstWF_of_no_domain_vars
     exact htv v (by simpa [freeTypeVars] using hv)
   · intro v hv
     exact hrv v (by simpa [freeRowVars] using hv)
+
+/-- Constructor corollary for `Ty.functionEff` under no-domain-vars assumptions. -/
+theorem applySubstCompat_functionEff_eq_applySubstWF_of_no_domain_vars
+    (s : Subst) (h : Subst.Acyclic s) (fuel : Nat)
+    (params : TyList) (effects : EffectRow) (ret : Ty)
+    (htv : ∀ v ∈ freeTypeVars (.functionEff params effects ret), s.typeMap v = none)
+    (hrv : ∀ v ∈ freeRowVars (.functionEff params effects ret), s.rowMap v = none) :
+    applySubstCompat s fuel (.functionEff params effects ret) =
+      applySubstWF s h (.functionEff params effects ret) := by
+  exact applySubstCompat_eq_applySubstWF_of_no_domain_vars
+    s h fuel (.functionEff params effects ret) htv hrv
