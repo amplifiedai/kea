@@ -101,5 +101,88 @@ theorem higherOrderCatchTypingJudgment_admissibility_branch
   have h_branch := CatchTypingBridge.catchTypingJudgment_admissibility_branch j.judgment
   simpa [j.h_clauseEffects] using h_branch
 
+theorem higherOrderCatchTypingJudgment_sound_of_premises
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_admissible : FailResultContracts.catchAdmissible clause.exprEffects)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (.cons (higherOrderParamType innerEffects okTy) .nil)
+          clause.exprEffects
+          okTy
+          errTy) :
+    RowFields.has
+      (EffectRow.fields (HandleClauseContract.resultEffects clause))
+      FailResultContracts.failLabel = false ∧
+      ∃ loweredEffects,
+        loweredTy =
+          .functionEff
+            (.cons (higherOrderParamType innerEffects okTy) .nil)
+            loweredEffects
+            (.result okTy errTy) ∧
+        EffectPolymorphismSoundness.rowTailStable innerEffects loweredEffects ∧
+        EffectPolymorphismSoundness.labelsPreservedExcept
+          innerEffects loweredEffects FailResultContracts.failLabel ∧
+        RowFields.has (EffectRow.fields loweredEffects) FailResultContracts.failLabel = false := by
+  let cj : CatchTypingBridge.CatchTypingJudgment :=
+    CatchTypingBridge.mkCatchTypingJudgment
+      clause
+      (.cons (higherOrderParamType innerEffects okTy) .nil)
+      okTy
+      errTy
+      loweredTy
+      h_wellTyped
+      h_failZero
+      h_admissible
+      h_lowered
+  let hj : HigherOrderCatchTypingJudgment := {
+    judgment := cj
+    innerEffects := innerEffects
+    h_params := rfl
+    h_clauseEffects := h_clauseEffects
+  }
+  exact higherOrderCatchTypingJudgment_sound hj
+
+theorem higherOrderCatchTypingJudgment_admissibility_branch_of_premises
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_admissible : FailResultContracts.catchAdmissible clause.exprEffects)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (.cons (higherOrderParamType innerEffects okTy) .nil)
+          clause.exprEffects
+          okTy
+          errTy) :
+    FailResultContracts.catchAdmissible innerEffects ∧
+      ¬ FailResultContracts.catchUnnecessary innerEffects := by
+  let cj : CatchTypingBridge.CatchTypingJudgment :=
+    CatchTypingBridge.mkCatchTypingJudgment
+      clause
+      (.cons (higherOrderParamType innerEffects okTy) .nil)
+      okTy
+      errTy
+      loweredTy
+      h_wellTyped
+      h_failZero
+      h_admissible
+      h_lowered
+  let hj : HigherOrderCatchTypingJudgment := {
+    judgment := cj
+    innerEffects := innerEffects
+    h_params := rfl
+    h_clauseEffects := h_clauseEffects
+  }
+  exact higherOrderCatchTypingJudgment_admissibility_branch hj
+
 end HigherOrderCatchContracts
 end Kea
