@@ -1,12 +1,12 @@
 benchmark,arg,baseline_median,max_regression_pct
-compile_allocation_heavy_hir_jit,128,323 µs,20
-compile_numeric_hir_jit,8,29.01 µs,20
-compile_numeric_hir_jit,32,77.47 µs,20
-compile_numeric_hir_jit,64,142.7 µs,20
-infer_numeric_module,16,26.46 µs,20
-infer_numeric_module,64,199.1 µs,20
-infer_numeric_module,256,2.613 ms,20
-lower_allocation_heavy_hir_to_mir,32,2.351 µs,25
-lower_allocation_heavy_hir_to_mir,128,12.5 µs,25
-lower_hir_to_mir,64,2.042 µs,25
-lower_hir_to_mir,256,6.56 µs,25
+compile_allocation_heavy_hir_jit,128,909.9 µs,20
+compile_numeric_hir_jit,8,98.64 µs,20
+compile_numeric_hir_jit,32,225.9 µs,20
+compile_numeric_hir_jit,64,403.2 µs,20
+infer_numeric_module,16,70.4 µs,20
+infer_numeric_module,64,524.8 µs,20
+infer_numeric_module,256,6.51 ms,20
+lower_allocation_heavy_hir_to_mir,32,11.24 µs,25
+lower_allocation_heavy_hir_to_mir,128,54.74 µs,25
+lower_hir_to_mir,64,7.673 µs,25
+lower_hir_to_mir,256,28.09 µs,25
