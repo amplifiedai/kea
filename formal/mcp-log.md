@@ -4899,3 +4899,36 @@ after user restart with the latest `kea-mcp` binary.
 **Impact**:
 - Phase-2 formalization can treat idempotent-union alignment as observed
   runtime behavior (not only a spec-side assumption) for these handler cases.
+
+### 2026-02-26: resume-linearity runtime alignment probes (E0012)
+
+**Context**: Validate the new `ResumeLinearity` branch legality surfaces against
+current `kea-mcp` behavior, especially "at most once" enforcement in handler
+clauses.
+
+**MCP tools used**: direct `kea-mcp` stdio (`initialize`,
+`notifications/initialized`, `tools/call` with `reset_session`, `type_check`,
+`diagnose`).
+
+**Probe**:
+1. Zero-resume clause:
+   - `fn zero_ok() -> Unit` with handler clause body `()`
+   - result: `ok`, `zero_ok : () -> ()`, no diagnostics.
+2. Sequential double-resume:
+   - clause body `resume(); resume()`
+   - result: `error`, `E0012`, message `handler clause may resume at most once`.
+3. Both-branches resume:
+   - clause body `if true ... else ...` with `resume()` in both branches
+   - result: `error`, `E0012`, same message.
+
+**Classify**: Agreement.
+
+**Lean side**:
+- Matches `ResumeUse` model:
+  - zero-resume is legal (`resume_atMostOnce_zero`)
+  - two-resume compositions are rejected (`resume_combine_one_one_not_atMostOnce`,
+    `resume_conditional_forbids_two_resuming_branches`).
+
+**Outcome**:
+- Current runtime behavior aligns with the abstract at-most-once branch model
+  used in `Kea/Properties/ResumeLinearity.lean`.
