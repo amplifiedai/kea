@@ -5384,3 +5384,25 @@ adapter pattern.
 **Outcome**:
 - Bridge entrypoints now support both judgment-structured and raw-premise usage
   with a consistent runtime-aligned admissibility boundary.
+
+### 2026-02-26: catch bridge one-hop `of_premises` projections (proof-only)
+
+**Context**: Extended the new raw-premise bridge adapters with one-hop
+projection helpers so theorem consumers can request only the facet they need.
+
+**MCP tools used**: none (proof-only API refinement).
+
+**Lean side**:
+- Extended `Kea/Properties/CatchTypingBridge.lean` with:
+  - `catchTypingJudgment_rowTailStable_of_premises`
+  - `catchTypingJudgment_preserves_nonFail_of_premises`
+  - `catchTypingJudgment_bundle_clauseFailRemoved_of_premises`
+  - `catchTypingJudgment_bundle_rowTailStable_of_premises`
+- Verified with `cd formal && lake build` (pass).
+
+**Classify**: N/A (proof-only step).
+
+**Outcome**:
+- Raw-premise call sites now have direct one-hop access to selected
+catch-lowering consequences without constructing or destructuring intermediate
+judgment/bundle values.

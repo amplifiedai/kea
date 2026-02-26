@@ -130,6 +130,41 @@ theorem catchTypingJudgment_sound_of_premises
     clause params okTy errTy loweredTy h_wellTyped h_failZero h_admissible h_lowered
   exact catchTypingJudgment_sound j
 
+theorem catchTypingJudgment_rowTailStable_of_premises
+    (clause : HandleClauseContract)
+    (params : TyList)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_admissible : FailResultContracts.catchAdmissible clause.exprEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType params clause.exprEffects okTy errTy) :
+    ∃ loweredEffects,
+      loweredTy = .functionEff params loweredEffects (.result okTy errTy) ∧
+      EffectPolymorphismSoundness.rowTailStable clause.exprEffects loweredEffects := by
+  let j := mkCatchTypingJudgment
+    clause params okTy errTy loweredTy h_wellTyped h_failZero h_admissible h_lowered
+  exact catchTypingJudgment_rowTailStable j
+
+theorem catchTypingJudgment_preserves_nonFail_of_premises
+    (clause : HandleClauseContract)
+    (params : TyList)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_admissible : FailResultContracts.catchAdmissible clause.exprEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType params clause.exprEffects okTy errTy) :
+    ∃ loweredEffects,
+      loweredTy = .functionEff params loweredEffects (.result okTy errTy) ∧
+      EffectPolymorphismSoundness.labelsPreservedExcept
+        clause.exprEffects loweredEffects FailResultContracts.failLabel := by
+  let j := mkCatchTypingJudgment
+    clause params okTy errTy loweredTy h_wellTyped h_failZero h_admissible h_lowered
+  exact catchTypingJudgment_preserves_nonFail j
+
 abbrev CatchTypingBundle (j : CatchTypingJudgment) :=
   EffectPolymorphismSoundness.AdmissibleEffectPolyHandlerBundle
     (toAdmissibleEffectPolyHandlerSchema j)
@@ -156,6 +191,42 @@ noncomputable def catchTypingJudgment_bundle_of_premises
   let j := mkCatchTypingJudgment
     clause params okTy errTy loweredTy h_wellTyped h_failZero h_admissible h_lowered
   exact catchTypingJudgment_bundle j
+
+theorem catchTypingJudgment_bundle_clauseFailRemoved_of_premises
+    (clause : HandleClauseContract)
+    (params : TyList)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_admissible : FailResultContracts.catchAdmissible clause.exprEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType params clause.exprEffects okTy errTy) :
+    RowFields.has
+      (EffectRow.fields (HandleClauseContract.resultEffects clause))
+      FailResultContracts.failLabel = false := by
+  let j := mkCatchTypingJudgment
+    clause params okTy errTy loweredTy h_wellTyped h_failZero h_admissible h_lowered
+  exact EffectPolymorphismSoundness.admissibleEffectPolyHandler_bundle_clauseFailRemoved
+    (toAdmissibleEffectPolyHandlerSchema j)
+
+theorem catchTypingJudgment_bundle_rowTailStable_of_premises
+    (clause : HandleClauseContract)
+    (params : TyList)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_admissible : FailResultContracts.catchAdmissible clause.exprEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType params clause.exprEffects okTy errTy) :
+    EffectPolymorphismSoundness.rowTailStable clause.exprEffects
+      (catchTypingJudgment_bundle_of_premises
+        clause params okTy errTy loweredTy h_wellTyped h_failZero h_admissible h_lowered).lowering.loweredEffects := by
+  let j := mkCatchTypingJudgment
+    clause params okTy errTy loweredTy h_wellTyped h_failZero h_admissible h_lowered
+  exact EffectPolymorphismSoundness.admissibleEffectPolyHandler_bundle_rowTailStable
+    (toAdmissibleEffectPolyHandlerSchema j)
 
 theorem catchTypingJudgment_bundle_clauseFailRemoved
     (j : CatchTypingJudgment) :
