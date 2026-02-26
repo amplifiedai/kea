@@ -1209,22 +1209,50 @@ impl Parser {
         Some(bounds)
     }
 
+    fn parse_effect_row_name(&mut self, msg: &str) -> Option<String> {
+        match self.peek_kind() {
+            Some(TokenKind::Ident(name)) | Some(TokenKind::UpperIdent(name)) => {
+                let name = name.clone();
+                self.advance();
+                Some(name)
+            }
+            _ => {
+                self.error_at_current(msg);
+                None
+            }
+        }
+    }
+
+    fn parse_effect_row_item(&mut self, msg: &str) -> Option<EffectRowItem> {
+        let name = self.parse_effect_row_name(msg)?;
+        self.skip_newlines();
+        let payload = match self.peek_kind() {
+            Some(TokenKind::Ident(payload)) | Some(TokenKind::UpperIdent(payload)) => {
+                let payload = payload.clone();
+                self.advance();
+                Some(payload)
+            }
+            _ => None,
+        };
+        Some(EffectRowItem { name, payload })
+    }
+
     fn parse_effect_term(
         &mut self,
         missing_msg: &str,
         invalid_msg: &str,
     ) -> Option<Spanned<EffectAnnotation>> {
-        let span = self.current_span();
-        let annotation = match self.peek_kind() {
+        let start = self.current_span();
+        let (first_name, first_is_ident) = match self.peek_kind() {
             Some(TokenKind::Ident(name)) => {
-                let ann = match name.as_str() {
-                    "pure" => EffectAnnotation::Pure,
-                    "volatile" => EffectAnnotation::Volatile,
-                    "impure" => EffectAnnotation::Impure,
-                    _ => EffectAnnotation::Var(name.clone()),
-                };
+                let name = name.clone();
                 self.advance();
-                ann
+                (name, true)
+            }
+            Some(TokenKind::UpperIdent(name)) => {
+                let name = name.clone();
+                self.advance();
+                (name, false)
             }
             Some(TokenKind::RBracket) => {
                 self.error_at_current(missing_msg);
@@ -1235,7 +1263,65 @@ impl Parser {
                 return None;
             }
         };
-        Some(Spanned::new(annotation, span))
+        let mut effects = Vec::new();
+        self.skip_newlines();
+        let mut legacy_candidate = true;
+        let first_payload = match self.peek_kind() {
+            Some(TokenKind::Ident(payload)) | Some(TokenKind::UpperIdent(payload)) => {
+                legacy_candidate = false;
+                let payload = payload.clone();
+                self.advance();
+                Some(payload)
+            }
+            _ => None,
+        };
+        effects.push(EffectRowItem {
+            name: first_name.clone(),
+            payload: first_payload,
+        });
+
+        self.skip_newlines();
+        while self.match_token(&TokenKind::Comma) {
+            legacy_candidate = false;
+            self.skip_newlines();
+            let item = self.parse_effect_row_item("expected effect name after ',' in effect row")?;
+            effects.push(item);
+            self.skip_newlines();
+        }
+
+        let rest = if self.match_token(&TokenKind::Pipe) {
+            legacy_candidate = false;
+            self.skip_newlines();
+            Some(self.parse_effect_row_name(
+                "expected tail effect variable after '|' in effect row",
+            )?)
+        } else {
+            None
+        };
+
+        self.skip_newlines();
+        if !matches!(self.peek_kind(), Some(TokenKind::RBracket)) {
+            if matches!(self.peek_kind(), Some(TokenKind::Gt)) {
+                self.error_at_current("expected ] in effect arrow");
+            } else {
+                self.error_at_current("expected ',' or '|' or ']' in effect row");
+            }
+            return None;
+        }
+
+        let annotation = if legacy_candidate && rest.is_none() && effects.len() == 1 {
+            match first_name.as_str() {
+                "pure" => EffectAnnotation::Pure,
+                "volatile" => EffectAnnotation::Volatile,
+                "impure" => EffectAnnotation::Impure,
+                _ if first_is_ident => EffectAnnotation::Var(first_name),
+                _ => EffectAnnotation::Row(EffectRowAnnotation { effects, rest }),
+            }
+        } else {
+            EffectAnnotation::Row(EffectRowAnnotation { effects, rest })
+        };
+        let end = self.current_span();
+        Some(Spanned::new(annotation, start.merge(end)))
     }
 
     /// Parse required return arrow syntax:
@@ -6500,6 +6586,25 @@ mod tests {
         }
     }
 
+    #[test]
+    fn parse_fn_with_effect_row_clause() {
+        let module = parse_mod("fn id(x: Int) -[IO, Fail DbError | e]> Int\n  x");
+        match &module.declarations[0].node {
+            DeclKind::Function(f) => match f.effect_annotation.as_ref().map(|e| &e.node) {
+                Some(EffectAnnotation::Row(row)) => {
+                    assert_eq!(row.effects.len(), 2);
+                    assert_eq!(row.effects[0].name, "IO");
+                    assert_eq!(row.effects[0].payload, None);
+                    assert_eq!(row.effects[1].name, "Fail");
+                    assert_eq!(row.effects[1].payload.as_deref(), Some("DbError"));
+                    assert_eq!(row.rest.as_deref(), Some("e"));
+                }
+                other => panic!("expected row effect annotation, got {other:?}"),
+            },
+            _ => panic!("expected Function"),
+        }
+    }
+
     // -- Error cases --
 
     #[test]
@@ -7239,6 +7344,44 @@ mod tests {
                         assert_eq!(params.len(), 1);
                         assert!(matches!(params[0], TypeAnnotation::Named(ref n) if n == "Int"));
                         assert!(matches!(effect.node, EffectAnnotation::Pure));
+                        match ret.as_ref() {
+                            TypeAnnotation::Applied(name, args) => {
+                                assert_eq!(name, "Option");
+                                assert_eq!(args.len(), 1);
+                            }
+                            other => panic!("expected Option(Int) return, got {other:?}"),
+                        }
+                    }
+                    other => panic!("expected effectful function type annotation, got {other:?}"),
+                }
+            }
+            _ => panic!("expected Function"),
+        }
+    }
+
+    #[test]
+    fn parse_fn_type_annotation_with_effect_row_in_param() {
+        let m = parse_mod("fn apply(f: fn(Int) -[IO, Fail E | e]> Option(Int)) -> Int\n  0");
+        match &m.declarations[0].node {
+            DeclKind::Function(fd) => {
+                let ann = fd.params[0]
+                    .annotation
+                    .as_ref()
+                    .expect("param should have annotation");
+                match &ann.node {
+                    TypeAnnotation::FunctionWithEffect(params, effect, ret) => {
+                        assert_eq!(params.len(), 1);
+                        assert!(matches!(params[0], TypeAnnotation::Named(ref n) if n == "Int"));
+                        match &effect.node {
+                            EffectAnnotation::Row(row) => {
+                                assert_eq!(row.effects.len(), 2);
+                                assert_eq!(row.effects[0].name, "IO");
+                                assert_eq!(row.effects[1].name, "Fail");
+                                assert_eq!(row.effects[1].payload.as_deref(), Some("E"));
+                                assert_eq!(row.rest.as_deref(), Some("e"));
+                            }
+                            other => panic!("expected row effect annotation, got {other:?}"),
+                        }
                         match ret.as_ref() {
                             TypeAnnotation::Applied(name, args) => {
                                 assert_eq!(name, "Option");

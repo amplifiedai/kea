@@ -9115,6 +9115,22 @@ fn effect_term_from_annotation(
                 .or_insert_with(|| fresh_effect_var(next_effect_var));
             EffectTerm::Var(var)
         }
+        kea_ast::EffectAnnotation::Row(row) => {
+            if let Some(effects) = effect_row_annotation_to_effects(row) {
+                return EffectTerm::Known(effects.level());
+            }
+
+            if row.effects.is_empty() && let Some(rest) = &row.rest {
+                let var = *effect_var_bindings
+                    .entry(rest.clone())
+                    .or_insert_with(|| fresh_effect_var(next_effect_var));
+                return EffectTerm::Var(var);
+            }
+
+            // Open rows with concrete entries (e.g. `[IO | e]`) are not fully
+            // represented in the legacy lattice model yet; be conservative.
+            EffectTerm::Known(EffectLevel::Impure)
+        }
     }
 }
 
@@ -9607,12 +9623,69 @@ fn parse_effect_annotation(
     ann.node.clone()
 }
 
+fn effect_row_annotation_label(row: &kea_ast::EffectRowAnnotation) -> String {
+    let mut body = row
+        .effects
+        .iter()
+        .map(|item| match &item.payload {
+            Some(payload) => format!("{} {}", item.name, payload),
+            None => item.name.clone(),
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    if let Some(rest) = &row.rest {
+        if body.is_empty() {
+            body = format!("| {}", rest);
+        } else {
+            body = format!("{body} | {rest}");
+        }
+    }
+    format!("[{body}]")
+}
+
+fn effect_row_annotation_to_effects(row: &kea_ast::EffectRowAnnotation) -> Option<Effects> {
+    if row.rest.is_some() {
+        return None;
+    }
+
+    let mut has_volatile = false;
+    let mut has_impure = false;
+    for item in &row.effects {
+        match item.name.as_str() {
+            "pure" | "Pure" => {}
+            "volatile" | "Volatile" => has_volatile = true,
+            "impure" | "Impure" => has_impure = true,
+            // Any concrete effect entry beyond the lattice names is impure in
+            // the current compatibility model.
+            _ => has_impure = true,
+        }
+    }
+
+    if has_impure {
+        Some(Effects::impure())
+    } else if has_volatile {
+        Some(Effects::pure_volatile())
+    } else {
+        Some(Effects::pure_deterministic())
+    }
+}
+
+fn effect_annotation_var_name(effect: &kea_ast::EffectAnnotation) -> Option<&str> {
+    match effect {
+        kea_ast::EffectAnnotation::Var(name) => Some(name.as_str()),
+        // Compatibility: treat `-[e]>` and `-[| e]>` equivalently.
+        kea_ast::EffectAnnotation::Row(row) if row.effects.is_empty() => row.rest.as_deref(),
+        _ => None,
+    }
+}
+
 fn effect_annotation_to_effects(effect: &kea_ast::EffectAnnotation) -> Option<Effects> {
     match effect {
         kea_ast::EffectAnnotation::Pure => Some(Effects::pure_deterministic()),
         kea_ast::EffectAnnotation::Volatile => Some(Effects::pure_volatile()),
         kea_ast::EffectAnnotation::Impure => Some(Effects::impure()),
         kea_ast::EffectAnnotation::Var(_) => None,
+        kea_ast::EffectAnnotation::Row(row) => effect_row_annotation_to_effects(row),
     }
 }
 
@@ -9622,14 +9695,14 @@ fn effect_annotation_label(effect: &kea_ast::EffectAnnotation) -> String {
         kea_ast::EffectAnnotation::Volatile => "volatile".to_string(),
         kea_ast::EffectAnnotation::Impure => "impure".to_string(),
         kea_ast::EffectAnnotation::Var(name) => name.clone(),
+        kea_ast::EffectAnnotation::Row(row) => effect_row_annotation_label(row),
     }
 }
 
 fn type_annotation_has_effect_var(ann: &TypeAnnotation, target: &str) -> bool {
     match ann {
         TypeAnnotation::FunctionWithEffect(params, effect, ret) => {
-            let current_matches =
-                matches!(&effect.node, kea_ast::EffectAnnotation::Var(name) if name == target);
+            let current_matches = effect_annotation_var_name(&effect.node) == Some(target);
             current_matches
                 || params
                     .iter()
@@ -9708,13 +9781,18 @@ pub fn validate_declared_fn_effect_with_env(
         return Ok(());
     };
     let declared = parse_declared_effect(ann);
-    if let kea_ast::EffectAnnotation::Var(name) = &declared {
+    if let Some(name) = effect_annotation_var_name(&declared) {
         ensure_effect_var_is_constrained(name, &fn_decl.params, ann.span)?;
         validate_declared_fn_effect_variable_contract(fn_decl, env, &fn_decl.name.node, name)?;
         return Ok(());
     }
-    let declared = effect_annotation_to_effects(&declared)
-        .expect("non-variable effect annotations always map to concrete effects");
+    let Some(declared) = effect_annotation_to_effects(&declared) else {
+        return Err(Diagnostic::error(
+            Category::TypeMismatch,
+            "open effect rows with concrete entries are not supported in contracts yet; use `-[e]>` or a closed row",
+        )
+        .at(span_to_loc(ann.span)));
+    };
     if effects_leq(inferred, declared) {
         return Ok(());
     }
@@ -9901,50 +9979,48 @@ pub fn validate_trait_method_impl_contract(
         return Ok(());
     };
 
-    match required {
-        kea_ast::EffectAnnotation::Pure
-        | kea_ast::EffectAnnotation::Volatile
-        | kea_ast::EffectAnnotation::Impure => {
-            let required = effect_annotation_to_effects(required)
-                .expect("concrete effect annotation should map to Effects");
-            validate_trait_method_impl_effect(
-                trait_name,
-                method_name,
-                method_span,
-                inferred,
-                required,
-            )
-        }
-        kea_ast::EffectAnnotation::Var(required_var) => {
-            let Some(impl_ann) = impl_declared_effect else {
-                return Err(
-                    Diagnostic::error(
-                        Category::TypeMismatch,
-                        format!(
-                            "impl method `{method_name}` must declare an effect variable (`-[e]>`) to satisfy polymorphic trait method contract `{required_var}` on trait `{trait_name}`"
-                        ),
-                    )
-                    .at(span_to_loc(method_span)),
-                );
-            };
-            match &impl_ann.node {
-                kea_ast::EffectAnnotation::Var(name) => {
-                    ensure_effect_var_is_constrained(name, impl_params, impl_ann.span)
-                }
-                kea_ast::EffectAnnotation::Pure
-                | kea_ast::EffectAnnotation::Volatile
-                | kea_ast::EffectAnnotation::Impure => Err(
-                    Diagnostic::error(
-                        Category::TypeMismatch,
-                        format!(
-                            "impl method `{method_name}` must declare an effect variable (`-[e]>`) to satisfy polymorphic trait method contract `{required_var}` on trait `{trait_name}`"
-                        ),
-                    )
-                    .at(span_to_loc(impl_ann.span)),
-                ),
-            }
-        }
+    if let Some(required) = effect_annotation_to_effects(required) {
+        return validate_trait_method_impl_effect(
+            trait_name,
+            method_name,
+            method_span,
+            inferred,
+            required,
+        );
     }
+
+    let Some(required_var) = effect_annotation_var_name(required) else {
+        return Err(Diagnostic::error(
+            Category::TypeMismatch,
+            format!(
+                "trait method contract `{}` is not yet supported for impl checking; use a concrete level or `-[e]>`",
+                effect_annotation_label(required)
+            ),
+        )
+        .at(span_to_loc(method_span)));
+    };
+
+    let Some(impl_ann) = impl_declared_effect else {
+        return Err(
+            Diagnostic::error(
+                Category::TypeMismatch,
+                format!(
+                    "impl method `{method_name}` must declare an effect variable (`-[e]>`) to satisfy polymorphic trait method contract `{required_var}` on trait `{trait_name}`"
+                ),
+            )
+            .at(span_to_loc(method_span)),
+        );
+    };
+    if let Some(name) = effect_annotation_var_name(&impl_ann.node) {
+        return ensure_effect_var_is_constrained(name, impl_params, impl_ann.span);
+    }
+    Err(Diagnostic::error(
+        Category::TypeMismatch,
+        format!(
+            "impl method `{method_name}` must declare an effect variable (`-[e]>`) to satisfy polymorphic trait method contract `{required_var}` on trait `{trait_name}`"
+        ),
+    )
+    .at(span_to_loc(impl_ann.span)))
 }
 
 /// Environment-aware trait method contract validation.
@@ -9963,59 +10039,52 @@ pub fn validate_trait_method_impl_contract_with_env(
         return Ok(());
     };
 
-    match required {
-        kea_ast::EffectAnnotation::Pure
-        | kea_ast::EffectAnnotation::Volatile
-        | kea_ast::EffectAnnotation::Impure => {
-            let required = effect_annotation_to_effects(required)
-                .expect("concrete effect annotation should map to Effects");
-            validate_trait_method_impl_effect(
-                trait_name,
-                &method.name.node,
-                method.name.span,
-                inferred,
-                required,
-            )
-        }
-        kea_ast::EffectAnnotation::Var(required_var) => {
-            let Some(impl_ann) = method.effect_annotation.as_ref() else {
-                return Err(
-                    Diagnostic::error(
-                        Category::TypeMismatch,
-                        format!(
-                            "impl method `{}` must declare an effect variable (`-[e]>`) to satisfy polymorphic trait method contract `{required_var}` on trait `{trait_name}`",
-                            method.name.node
-                        ),
-                    )
-                    .at(span_to_loc(method.name.span)),
-                );
-            };
-
-            match &impl_ann.node {
-                kea_ast::EffectAnnotation::Var(name) => {
-                    ensure_effect_var_is_constrained(name, &method.params, impl_ann.span)?;
-                    validate_declared_fn_effect_variable_contract(
-                        method,
-                        env,
-                        &method.name.node,
-                        name,
-                    )
-                }
-                kea_ast::EffectAnnotation::Pure
-                | kea_ast::EffectAnnotation::Volatile
-                | kea_ast::EffectAnnotation::Impure => Err(
-                    Diagnostic::error(
-                        Category::TypeMismatch,
-                        format!(
-                            "impl method `{}` must declare an effect variable (`-[e]>`) to satisfy polymorphic trait method contract `{required_var}` on trait `{trait_name}`",
-                            method.name.node
-                        ),
-                    )
-                    .at(span_to_loc(impl_ann.span)),
-                ),
-            }
-        }
+    if let Some(required) = effect_annotation_to_effects(required) {
+        return validate_trait_method_impl_effect(
+            trait_name,
+            &method.name.node,
+            method.name.span,
+            inferred,
+            required,
+        );
     }
+
+    let Some(required_var) = effect_annotation_var_name(required) else {
+        return Err(Diagnostic::error(
+            Category::TypeMismatch,
+            format!(
+                "trait method contract `{}` is not yet supported for impl checking; use a concrete level or `-[e]>`",
+                effect_annotation_label(required)
+            ),
+        )
+        .at(span_to_loc(method.name.span)));
+    };
+
+    let Some(impl_ann) = method.effect_annotation.as_ref() else {
+        return Err(
+            Diagnostic::error(
+                Category::TypeMismatch,
+                format!(
+                    "impl method `{}` must declare an effect variable (`-[e]>`) to satisfy polymorphic trait method contract `{required_var}` on trait `{trait_name}`",
+                    method.name.node
+                ),
+            )
+            .at(span_to_loc(method.name.span)),
+        );
+    };
+
+    if let Some(name) = effect_annotation_var_name(&impl_ann.node) {
+        ensure_effect_var_is_constrained(name, &method.params, impl_ann.span)?;
+        return validate_declared_fn_effect_variable_contract(method, env, &method.name.node, name);
+    }
+    Err(Diagnostic::error(
+        Category::TypeMismatch,
+        format!(
+            "impl method `{}` must declare an effect variable (`-[e]>`) to satisfy polymorphic trait method contract `{required_var}` on trait `{trait_name}`",
+            method.name.node
+        ),
+    )
+    .at(span_to_loc(impl_ann.span)))
 }
 
 /// Infer effects for an expression.

@@ -200,6 +200,21 @@ explicit signature verification for `fn`, closure effect inference.
 supertraits (`where Self: Eq`), GADTs. These are 0g work, though
 the trait infrastructure from 0b must be extensible for them.
 
+## Transition Scaffolding (Explicit)
+
+These are temporary compatibility paths during 0b and must be
+removed before 0b closes:
+
+- Legacy lattice effect terms (`pure`/`volatile`/`impure`) may
+  coexist with row-based effect annotations only while parser/AST
+  and contract checks migrate to rows end-to-end.
+- Any remaining non-Kea parser/type-system surface inherited from
+  rill (pipe parsing, DataFrame/column typing surface, HKT-era kind
+  arrows) is compatibility debt, not feature scope for 0b.
+
+Kill point for all of the above: before moving this brief to
+`done/`, with removal tracked in `## Progress`.
+
 ## Open Questions
 
 - Should effect inference be integrated into the main HM pass or
@@ -218,4 +233,5 @@ the trait infrastructure from 0b must be extensible for them.
 - 2026-02-26: Added Kea-native effect representation in `kea-types`: `Kind::Eff`, `EffectRow`, and `HandlerType` with display/behavior unit tests. Verified with `PKG=kea-types mise run test-pkg` (54/54) and `mise run check`.
 - 2026-02-26: Added `Unifier::unify_effect_rows` and effect-row parity tests/properties in `kea-infer` (`lib.rs` + `prop_tests.rs`) to prove effect rows are solved by the same Rémy row engine and lacks constraints. Verified with `PKG=kea-infer mise run test-pkg` (726/726) and `mise run check`.
 - 2026-02-26: Threaded `EffectRow` into function-effect verification diagnostics in `typeck.rs` (declared vs inferred mismatch now reports row-form context alongside lattice labels). Verified with `PKG=kea-infer mise run test-pkg` (726/726) and `mise run check`.
-- **Next:** Start effect-row alias expansion tests and replace remaining lattice-only effect checks with row-based comparisons in function/method contract validation.
+- 2026-02-26: Added AST/parser support for row-style effect annotations (`-[IO, Fail E | e]>`) and threaded compatibility handling through `kea-infer` contract/effect annotation paths. Verified with `PKG=kea-syntax mise run test-pkg` (375/375), `PKG=kea-infer mise run test-pkg` (726/726), and `mise run check`.
+- **Next:** Add effect-row alias expansion tests, then remove remaining lattice-only contract paths and explicitly delete temporary compatibility scaffolding noted above.

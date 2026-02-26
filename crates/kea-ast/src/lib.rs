@@ -759,6 +759,25 @@ pub enum EffectAnnotation {
     Volatile,
     Impure,
     Var(String),
+    Row(EffectRowAnnotation),
+}
+
+/// Row-style effect annotation: `-[IO, Fail DbError | e]>`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EffectRowAnnotation {
+    pub effects: Vec<EffectRowItem>,
+    pub rest: Option<String>,
+}
+
+/// One effect entry inside a row.
+///
+/// Examples:
+/// - `IO` -> `{ name: "IO", payload: None }`
+/// - `Fail DbError` -> `{ name: "Fail", payload: Some("DbError") }`
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EffectRowItem {
+    pub name: String,
+    pub payload: Option<String>,
 }
 
 /// A syntactic kind annotation used in trait type-constructor parameters.
