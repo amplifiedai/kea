@@ -1,0 +1,22 @@
+[package]
+name = "kea-bench"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+kea-ast.workspace = true
+kea-hir.workspace = true
+kea-mir.workspace = true
+kea-codegen.workspace = true
+kea-types.workspace = true
+kea-syntax.workspace = true
+
+[dev-dependencies]
+divan.workspace = true
+
+[[bench]]
+name = "core"
+harness = false

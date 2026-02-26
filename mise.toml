@@ -131,3 +131,7 @@ else
   cargo install cargo-nextest --locked
 fi
 """
+
+[tasks.bench]
+description = "Run compiler microbenchmarks"
+run = "./scripts/cargo-agent.sh bench -p kea-bench --bench core"

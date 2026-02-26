@@ -364,4 +364,5 @@ Precision notes:
 - 2026-02-26: Literal `case` coverage extended to include Float arms (`Int`/`Bool`/`Float` + wildcard fallback) via HIR canonicalization, with CLI execution regression for float-case dispatch.
 - 2026-02-26: Literal `case` lowering now supports non-trivial scrutinee expressions by introducing a single-evaluation binding before the generated `if` chain (prevents per-arm re-evaluation), with HIR and CLI regressions.
 - 2026-02-26: Literal `case` lowering now supports variable fallback arms (`n -> ...`) in addition to wildcard fallback, preserving single-evaluation scrutinee semantics and binding the fallback name explicitly in lowered HIR.
+- 2026-02-26: Benchmark harness scaffold landed: new `kea-bench` crate with divan-based microbenchmarks (`lex+parse`, `HIR→MIR`, `HIR→JIT compile`) plus `mise run bench` task and recorded first local baseline output.
 - **Next:** Expand lowering/codegen coverage for structs/enums/pattern matching and Fail-only Result lowering fast path.
