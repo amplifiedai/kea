@@ -11,8 +11,8 @@ use kea_ast::{DeclKind, ExprDecl, FileId, FnDecl};
 use kea_diag::{Diagnostic, Severity};
 use kea_infer::typeck::{
     RecordRegistry, SumTypeRegistry, TraitRegistry, TypeEnv, apply_where_clause,
-    infer_and_resolve_in_context, infer_fn_decl_effects, register_fn_effect_signature,
-    register_fn_signature, register_effect_decl, seed_fn_where_type_params_in_context, validate_declared_fn_effect_with_env_and_records,
+    infer_and_resolve_in_context, infer_fn_decl_effect_row, register_fn_effect_signature,
+    register_fn_signature, register_effect_decl, seed_fn_where_type_params_in_context, validate_declared_fn_effect_row_with_env_and_records,
     validate_module_annotations, validate_module_fn_annotations, validate_where_clause_traits,
 };
 use kea_infer::InferenceContext;
@@ -524,21 +524,21 @@ fn process_module(
             env.bind(fn_decl.name.node.clone(), scheme);
         }
 
-        let effects = infer_fn_decl_effects(&fn_decl, env);
+        let effect_row = infer_fn_decl_effect_row(&fn_decl, env);
         if let Err(diag) =
-            validate_declared_fn_effect_with_env_and_records(&fn_decl, effects, env, records)
+            validate_declared_fn_effect_row_with_env_and_records(&fn_decl, &effect_row, env, records)
         {
             diagnostics.push(diag);
             return Err(diagnostics);
         }
 
-        env.set_function_effect(fn_decl.name.node.clone(), effects);
+        env.set_function_effect_row(fn_decl.name.node.clone(), effect_row.clone());
         register_fn_signature(&fn_decl, env);
         register_fn_effect_signature(&fn_decl, env);
 
         let bound_ty = env
             .lookup(&fn_decl.name.node)
-            .map(|scheme| sanitize_type_display(&scheme.ty))
+            .map(|scheme| render_binding_type_with_effect(env, &fn_decl.name.node, &scheme.ty))
             .unwrap_or_else(|| "?".to_string());
 
         bindings.push(serde_json::json!({
@@ -554,6 +554,29 @@ fn process_module(
     })
 }
 
+
+fn render_binding_type_with_effect(env: &TypeEnv, name: &str, ty: &Type) -> String {
+    let base = sanitize_type_display(ty);
+    let Type::Function(fn_ty) = ty else {
+        return base;
+    };
+
+    let Some(effect_row) = env.function_effect_row(name) else {
+        return base;
+    };
+    if effect_row.is_pure() {
+        return base;
+    }
+
+    let params = fn_ty
+        .params
+        .iter()
+        .map(sanitize_type_display)
+        .collect::<Vec<_>>()
+        .join(", ");
+    let ret = sanitize_type_display(&fn_ty.ret);
+    format!("({params}) -{effect_row}> {ret}")
+}
 fn type_check_decls(
     session: &mut Session,
     tokens: Vec<kea_syntax::Token>,
@@ -728,5 +751,47 @@ mod tests {
 
         let after = parse_json(&server.handle_type_check("id(1)"));
         assert_eq!(after["status"], "error");
+    }
+
+    #[test]
+    fn type_check_effectful_function_keeps_declared_effect_row() {
+        let server = KeaMcpServer::new();
+        let code = "effect Log\n  fn log(msg: String) -> Unit\n\nfn write(msg: String) -[Log]> Unit\n  Log.log(msg)";
+        let value = parse_json(&server.handle_type_check(code));
+        assert_eq!(value["status"], "ok");
+
+        let bindings = value["bindings"].as_array().expect("bindings array");
+        let ty = bindings
+            .iter()
+            .find(|b| b["name"] == "write")
+            .and_then(|b| b["type"].as_str())
+            .expect("write binding type");
+
+        assert!(
+            ty.contains("-[Log]>") && !ty.contains("[IO]"),
+            "expected Log effect row without phantom IO, got {ty}"
+        );
+    }
+
+    #[test]
+    fn reset_session_does_not_leave_phantom_io_on_pure_functions() {
+        let server = KeaMcpServer::new();
+        let _ = server.handle_type_check(
+            "effect Log\n  fn log(msg: String) -> Unit\n\nfn write(msg: String) -[Log]> Unit\n  Log.log(msg)",
+        );
+
+        server.session.lock().unwrap().reset();
+
+        let value = parse_json(&server.handle_type_check("fn id(x: Int) -> Int\n  x"));
+        assert_eq!(value["status"], "ok");
+
+        let bindings = value["bindings"].as_array().expect("bindings array");
+        let ty = bindings
+            .iter()
+            .find(|b| b["name"] == "id")
+            .and_then(|b| b["type"].as_str())
+            .expect("id binding type");
+
+        assert_eq!(ty, "(Int) -> Int");
     }
 }
