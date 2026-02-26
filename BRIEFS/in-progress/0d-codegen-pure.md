@@ -338,4 +338,5 @@ Precision notes:
 - 2026-02-26: Step 0 prerequisite slice landed in code: `FunctionType` now includes `effects: EffectRow` as structural type data; `Type` display/substitution/free-var traversal include function effects; infer/module env updates function type effects via `set_function_effect_row`; MCP now surfaces effectful function signatures via normal type display.
 - 2026-02-26: Regression covered: phantom `IO` leakage in MCP declaration mode fixed by row-native declaration validation + MCP row-native effect plumbing.
 - 2026-02-26: Step 1 scaffold landed: new `kea-hir` crate added with typed `HirModule/HirDecl/HirExpr` surface, lowering entrypoints (`lower_module`, `lower_function`), conservative raw-node fallback for unsupported syntax, and tests asserting bound function type/effect preservation.
-- **Next:** Expand HIR lowering coverage (pattern/case/record forms) and start Step 2 `kea-mir` crate scaffold.
+- 2026-02-26: Step 2 scaffold landed: new `kea-mir` crate added with backend-neutral module/function/block model, explicit memory/effect/handler/call operation enums matching the 0d minimum MIR op contract, and a minimal HIR→MIR lowering stub with tests.
+- **Next:** Start Step 3 backend interface trait in `kea-codegen` and wire MIR consumption through that trait (Cranelift implementation first).
