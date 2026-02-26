@@ -7494,6 +7494,84 @@ fn catch_with_log_and_fail_preserves_log_and_removes_fail() {
 }
 
 #[test]
+fn catch_over_higher_order_fail_parameter_is_accepted() {
+    // Regression: `catch f()` where `f: fn() -[Fail String]> Int` was
+    // rejected with E0012 because the main type-checker env didn't seed
+    // function-typed parameter effect signatures.
+    let mut env = TypeEnv::new();
+    let records = RecordRegistry::new();
+    let sums = SumTypeRegistry::new();
+    let mut traits = TraitRegistry::new();
+    register_hkt_for_use_for_traits(&mut traits, &records);
+
+    let fail_effect = make_effect_decl(
+        "Fail",
+        vec!["E"],
+        vec![make_effect_operation(
+            "fail",
+            vec![annotated_param("error", TypeAnnotation::Named("E".to_string()))],
+            TypeAnnotation::Named("Never".to_string()),
+        )],
+    );
+    let diags = register_effect_decl(&fail_effect, &records, Some(&sums), &mut env);
+    assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+
+    // Build: fn wrap(f: fn() -[Fail String]> Int) -> Result(Int, String) = catch f()
+    let param = Param {
+        label: ParamLabel::Implicit,
+        pattern: sp(PatternKind::Var("f".to_string())),
+        annotation: Some(sp(TypeAnnotation::FunctionWithEffect(
+            vec![],
+            sp(EffectAnnotation::Row(EffectRowAnnotation {
+                effects: vec![kea_ast::EffectRowItem {
+                    name: "Fail".to_string(),
+                    payload: Some("String".to_string()),
+                }],
+                rest: None,
+            })),
+            Box::new(TypeAnnotation::Named("Int".to_string())),
+        ))),
+        default: None,
+    };
+
+    let clause = handle_clause(
+        "Fail",
+        "fail",
+        vec![sp(PatternKind::Var("error".to_string()))],
+        constructor("Err", vec![var("error")]),
+    );
+    let then_clause = lambda(&["value"], constructor("Ok", vec![var("value")]));
+    let body = handle_expr(call(var("f"), vec![]), vec![clause], Some(then_clause));
+    let outer = sp(ExprKind::Lambda {
+        params: vec![param],
+        body: Box::new(body),
+        return_annotation: None,
+    });
+
+    let mut unifier = Unifier::new();
+    let ty = infer_and_resolve(&outer, &mut env, &mut unifier, &records, &traits, &sums);
+    assert!(
+        !unifier
+            .errors()
+            .iter()
+            .any(|d| d.message.contains("expression cannot fail; catch is unnecessary")),
+        "catch over higher-order fail parameter should NOT be rejected, got: {:?}",
+        unifier.errors()
+    );
+    // The outer function should infer as fn(fn() -[Fail String]> Int) -> Result(Int, String)
+    match &ty {
+        Type::Function(ft) => {
+            assert!(
+                matches!(*ft.ret, Type::Result(_, _)),
+                "expected return type to be Result, got {:?}",
+                ft.ret
+            );
+        }
+        other => panic!("expected function type, got {other:?}"),
+    }
+}
+
+#[test]
 fn fail_operation_with_never_return_type_acts_as_bottom_in_branches() {
     let mut env = TypeEnv::new();
     let records = RecordRegistry::new();
