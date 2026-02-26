@@ -1252,6 +1252,7 @@ fn literal_case_values_from_pattern(
         PatternKind::Or(patterns) => {
             let mut values = Vec::new();
             let mut shared_bind_name: Option<String> = None;
+            let mut shared_payload_bind: Option<ConstructorPayloadBind> = None;
             for branch in patterns {
                 let (branch_values, branch_bind_name, branch_payload_bind) =
                     literal_case_values_from_pattern(
@@ -1259,8 +1260,13 @@ fn literal_case_values_from_pattern(
                     pattern_variant_tags,
                     pattern_qualified_tags,
                 )?;
-                if branch_payload_bind.is_some() {
-                    return None;
+                match (&shared_payload_bind, branch_payload_bind) {
+                    (None, None) => {}
+                    (None, Some(payload_bind)) => shared_payload_bind = Some(payload_bind),
+                    (Some(existing), Some(payload_bind)) if existing == &payload_bind => {}
+                    // OR payload patterns are only supported when all branches
+                    // agree on the same payload bind site.
+                    _ => return None,
                 }
                 match (&shared_bind_name, branch_bind_name) {
                     (None, None) => {}
@@ -1271,7 +1277,7 @@ fn literal_case_values_from_pattern(
                 }
                 values.extend(branch_values);
             }
-            Some((values, shared_bind_name, None))
+            Some((values, shared_bind_name, shared_payload_bind))
         }
         PatternKind::As { pattern, name } => {
             let (values, inner_bind_name, inner_payload_bind) = literal_case_values_from_pattern(
@@ -1282,10 +1288,14 @@ fn literal_case_values_from_pattern(
             if inner_bind_name.is_some() {
                 return None;
             }
-            if inner_payload_bind.is_some() {
+            if inner_payload_bind
+                .as_ref()
+                .is_some_and(|payload| payload.name == name.node)
+            {
+                // Avoid duplicate bindings in a single lowered arm.
                 return None;
             }
-            Some((values, Some(name.node.clone()), None))
+            Some((values, Some(name.node.clone()), inner_payload_bind))
         }
         _ => None,
     }
@@ -1951,6 +1961,122 @@ mod tests {
         assert_eq!(sum_type, "Flag");
         assert_eq!(variant, "Yep");
         assert_eq!(*field_index, 0);
+    }
+
+    #[test]
+    fn lower_function_payload_constructor_as_case_binds_scrutinee_and_payload() {
+        let module = parse_module_from_text(
+            "type Flag = Yep(Int) | Nope\nfn pick(x: Flag) -> Int\n  case x\n    Yep(n) as whole -> n\n    Nope -> 0",
+        );
+        let mut env = TypeEnv::new();
+        env.bind(
+            "pick".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::pure(
+                vec![Type::Sum(kea_types::SumType {
+                    name: "Flag".to_string(),
+                    type_args: vec![],
+                    variants: vec![
+                        ("Yep".to_string(), vec![Type::Int]),
+                        ("Nope".to_string(), vec![]),
+                    ],
+                })],
+                Type::Int,
+            ))),
+        );
+
+        let lowered = lower_module(&module, &env);
+        let function = lowered
+            .declarations
+            .iter()
+            .find_map(|decl| match decl {
+                HirDecl::Function(function) if function.name == "pick" => Some(function),
+                _ => None,
+            })
+            .expect("expected lowered pick function");
+
+        let then_branch = match &function.body.kind {
+            HirExprKind::If { then_branch, .. } => then_branch,
+            other => panic!("expected constructor case to lower to if, got {other:?}"),
+        };
+        let HirExprKind::Block(exprs) = &then_branch.kind else {
+            panic!("expected payload as-pattern branch to emit binding block");
+        };
+        assert_eq!(exprs.len(), 3);
+        let HirExprKind::Let {
+            pattern: HirPattern::Var(whole_name),
+            ..
+        } = &exprs[0].kind
+        else {
+            panic!("expected first binding to capture as-pattern scrutinee");
+        };
+        assert_eq!(whole_name, "whole");
+
+        let HirExprKind::Let { pattern, value } = &exprs[1].kind else {
+            panic!("expected second payload branch expr to be let binding");
+        };
+        assert_eq!(pattern, &HirPattern::Var("n".to_string()));
+        let HirExprKind::SumPayloadAccess {
+            sum_type,
+            variant,
+            field_index,
+            ..
+        } = &value.kind
+        else {
+            panic!("expected payload binding value to be SumPayloadAccess");
+        };
+        assert_eq!(sum_type, "Flag");
+        assert_eq!(variant, "Yep");
+        assert_eq!(*field_index, 0);
+    }
+
+    #[test]
+    fn lower_function_payload_constructor_or_case_keeps_shared_payload_binding() {
+        let module = parse_module_from_text(
+            "type Flag = Yep(Int) | Nope\nfn pick(x: Flag) -> Int\n  case x\n    Yep(n) | Yep(n) -> n + 1\n    Nope -> 0",
+        );
+        let mut env = TypeEnv::new();
+        env.bind(
+            "pick".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::pure(
+                vec![Type::Sum(kea_types::SumType {
+                    name: "Flag".to_string(),
+                    type_args: vec![],
+                    variants: vec![
+                        ("Yep".to_string(), vec![Type::Int]),
+                        ("Nope".to_string(), vec![]),
+                    ],
+                })],
+                Type::Int,
+            ))),
+        );
+
+        let lowered = lower_module(&module, &env);
+        let function = lowered
+            .declarations
+            .iter()
+            .find_map(|decl| match decl {
+                HirDecl::Function(function) if function.name == "pick" => Some(function),
+                _ => None,
+            })
+            .expect("expected lowered pick function");
+
+        let then_branch = match &function.body.kind {
+            HirExprKind::If { then_branch, .. } => then_branch,
+            other => panic!("expected constructor OR case to lower to if, got {other:?}"),
+        };
+        let HirExprKind::Block(exprs) = &then_branch.kind else {
+            panic!("expected payload OR branch to emit binding block");
+        };
+        assert!(
+            matches!(
+                exprs.first().map(|expr| &expr.kind),
+                Some(HirExprKind::Let {
+                    pattern: HirPattern::Var(name),
+                    ..
+                }) if name == "n"
+            ),
+            "expected payload OR branch to bind shared payload name"
+        );
     }
 
     #[test]
