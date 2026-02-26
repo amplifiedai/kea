@@ -3,7 +3,7 @@
 //! This crate defines explicit control-flow + memory/effect operations that are
 //! independent of any specific backend API (Cranelift, LLVM, etc.).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use kea_ast::{BinOp, DeclKind, ExprKind as AstExprKind, UnaryOp};
 use kea_hir::{HirDecl, HirExpr, HirExprKind, HirFunction, HirModule, HirPattern};
@@ -135,6 +135,10 @@ pub enum MirInst {
         record_type: String,
         field: String,
         field_ty: Type,
+    },
+    FunctionRef {
+        dest: MirValueId,
+        function: String,
     },
     Retain {
         value: MirValueId,
@@ -293,6 +297,14 @@ impl MirInst {
 }
 
 pub fn lower_hir_module(module: &HirModule) -> MirModule {
+    let known_functions = module
+        .declarations
+        .iter()
+        .filter_map(|decl| match decl {
+            HirDecl::Function(function) => Some(function.name.clone()),
+            HirDecl::Raw(_) => None,
+        })
+        .collect::<BTreeSet<_>>();
     let mut layouts = MirLayoutCatalog::default();
     for decl in &module.declarations {
         if let HirDecl::Raw(raw_decl) = decl {
@@ -303,7 +315,9 @@ pub fn lower_hir_module(module: &HirModule) -> MirModule {
         .declarations
         .iter()
         .filter_map(|decl| match decl {
-            HirDecl::Function(function) => Some(lower_hir_function(function, &layouts)),
+            HirDecl::Function(function) => {
+                Some(lower_hir_function(function, &layouts, &known_functions))
+            }
             HirDecl::Raw(_) => None,
         })
         .collect();
@@ -348,7 +362,11 @@ fn collect_layout_metadata(raw_decl: &DeclKind, layouts: &mut MirLayoutCatalog) 
     }
 }
 
-fn lower_hir_function(function: &HirFunction, layouts: &MirLayoutCatalog) -> MirFunction {
+fn lower_hir_function(
+    function: &HirFunction,
+    layouts: &MirLayoutCatalog,
+    known_functions: &BTreeSet<String>,
+) -> MirFunction {
     let (params, ret) = match &function.ty {
         Type::Function(ft) => (ft.params.clone(), ft.ret.as_ref().clone()),
         _ => (
@@ -357,7 +375,7 @@ fn lower_hir_function(function: &HirFunction, layouts: &MirLayoutCatalog) -> Mir
         ),
     };
 
-    let mut ctx = FunctionLoweringCtx::new(&function.name, params.len(), layouts);
+    let mut ctx = FunctionLoweringCtx::new(&function.name, params.len(), layouts, known_functions);
     for (index, param) in function.params.iter().enumerate() {
         if let Some(name) = &param.name {
             ctx.vars.insert(name.clone(), MirValueId(index as u32));
@@ -398,6 +416,7 @@ struct FunctionLoweringCtx {
     blocks: Vec<PendingBlock>,
     current_block: MirBlockId,
     vars: BTreeMap<String, MirValueId>,
+    known_functions: BTreeSet<String>,
     var_record_types: BTreeMap<String, String>,
     sum_value_types: BTreeMap<MirValueId, String>,
     sum_ctor_candidates: BTreeMap<String, Vec<SumCtorCandidate>>,
@@ -412,7 +431,12 @@ struct SumCtorCandidate {
 }
 
 impl FunctionLoweringCtx {
-    fn new(_function_name: &str, param_count: usize, layouts: &MirLayoutCatalog) -> Self {
+    fn new(
+        _function_name: &str,
+        param_count: usize,
+        layouts: &MirLayoutCatalog,
+        known_functions: &BTreeSet<String>,
+    ) -> Self {
         let mut sum_ctor_candidates: BTreeMap<String, Vec<SumCtorCandidate>> = BTreeMap::new();
         for sum in &layouts.sums {
             for variant in &sum.variants {
@@ -436,6 +460,7 @@ impl FunctionLoweringCtx {
             }],
             current_block: MirBlockId(0),
             vars: BTreeMap::new(),
+            known_functions: known_functions.clone(),
             var_record_types: BTreeMap::new(),
             sum_value_types: BTreeMap::new(),
             sum_ctor_candidates,
@@ -531,7 +556,20 @@ impl FunctionLoweringCtx {
                 });
                 Some(dest)
             }
-            HirExprKind::Var(name) => self.vars.get(name).cloned(),
+            HirExprKind::Var(name) => {
+                if let Some(value) = self.vars.get(name) {
+                    return Some(value.clone());
+                }
+                if self.known_functions.contains(name) {
+                    let dest = self.new_value();
+                    self.emit_inst(MirInst::FunctionRef {
+                        dest: dest.clone(),
+                        function: name.clone(),
+                    });
+                    return Some(dest);
+                }
+                None
+            }
             HirExprKind::Binary { op, left, right } => {
                 if expr.ty == Type::Bool && matches!(op, BinOp::And | BinOp::Or) {
                     return self.lower_short_circuit_binary(*op, left, right);
@@ -539,8 +577,7 @@ impl FunctionLoweringCtx {
                 let left_value = self.lower_expr(left)?;
                 let right_value = self.lower_expr(right)?;
                 let left_value = self.lower_maybe_sum_tag_operand(*op, left, left_value, right);
-                let right_value =
-                    self.lower_maybe_sum_tag_operand(*op, right, right_value, left);
+                let right_value = self.lower_maybe_sum_tag_operand(*op, right, right_value, left);
                 let dest = self.new_value();
                 self.emit_inst(MirInst::Binary {
                     dest: dest.clone(),
@@ -637,6 +674,10 @@ impl FunctionLoweringCtx {
                     HirExprKind::Var(name) if name.contains("::") => {
                         MirCallee::External(name.clone())
                     }
+                    HirExprKind::Var(name) if self.vars.contains_key(name) => {
+                        let callee_value = self.lower_expr(func)?;
+                        MirCallee::Value(callee_value)
+                    }
                     HirExprKind::Var(name) => MirCallee::Local(name.clone()),
                     _ => {
                         let callee_value = self.lower_expr(func)?;
@@ -666,7 +707,8 @@ impl FunctionLoweringCtx {
                     cc_manifest_id: "default".to_string(),
                 });
                 if let (Some(dest), Type::Sum(sum_ty)) = (&result, &expr.ty) {
-                    self.sum_value_types.insert(dest.clone(), sum_ty.name.clone());
+                    self.sum_value_types
+                        .insert(dest.clone(), sum_ty.name.clone());
                 }
                 result
             }
@@ -690,12 +732,12 @@ impl FunctionLoweringCtx {
                 then_branch,
                 else_branch,
             } => self.lower_if(expr, condition, then_branch, else_branch.as_deref()),
-            HirExprKind::Tuple(_)
-            | HirExprKind::Lambda { .. }
-            | HirExprKind::Raw(_) => match &expr.kind {
-                HirExprKind::Raw(raw_expr) => self.lower_raw_ast_expr(raw_expr),
-                _ => None,
-            },
+            HirExprKind::Tuple(_) | HirExprKind::Lambda { .. } | HirExprKind::Raw(_) => {
+                match &expr.kind {
+                    HirExprKind::Raw(raw_expr) => self.lower_raw_ast_expr(raw_expr),
+                    _ => None,
+                }
+            }
         }
     }
 
@@ -970,8 +1012,14 @@ mod tests {
                 annotations: vec![],
                 params: vec![],
                 fields: vec![
-                    (sp("name".to_string()), TypeAnnotation::Named("String".to_string())),
-                    (sp("age".to_string()), TypeAnnotation::Named("Int".to_string())),
+                    (
+                        sp("name".to_string()),
+                        TypeAnnotation::Named("String".to_string()),
+                    ),
+                    (
+                        sp("age".to_string()),
+                        TypeAnnotation::Named("Int".to_string()),
+                    ),
                 ],
                 field_annotations: vec![],
                 derives: vec![],
@@ -1188,10 +1236,12 @@ mod tests {
         };
         let mir = lower_hir_module(&hir);
         let function = &mir.functions[0];
-        assert!(function.blocks[0]
-            .instructions
-            .iter()
-            .any(|inst| matches!(inst, MirInst::SumTagLoad { .. })));
+        assert!(
+            function.blocks[0]
+                .instructions
+                .iter()
+                .any(|inst| matches!(inst, MirInst::SumTagLoad { .. }))
+        );
     }
 
     #[test]
@@ -1525,10 +1575,12 @@ mod tests {
 
         let mir = lower_hir_module(&hir);
         let function = &mir.functions[0];
-        assert!(function.blocks[0]
-            .instructions
-            .iter()
-            .any(|inst| matches!(inst, MirInst::RecordFieldLoad { .. })));
+        assert!(
+            function.blocks[0]
+                .instructions
+                .iter()
+                .any(|inst| matches!(inst, MirInst::RecordFieldLoad { .. }))
+        );
     }
 
     #[test]
@@ -1694,10 +1746,7 @@ mod tests {
             MirTerminator::Branch { .. }
         ));
 
-        let MirTerminator::Jump {
-            args: rhs_args, ..
-        } = &function.blocks[1].terminator
-        else {
+        let MirTerminator::Jump { args: rhs_args, .. } = &function.blocks[1].terminator else {
             panic!("rhs branch should jump to join");
         };
         assert_eq!(rhs_args.len(), 1);
@@ -1770,10 +1819,7 @@ mod tests {
             })
         ));
 
-        let MirTerminator::Jump {
-            args: rhs_args, ..
-        } = &function.blocks[1].terminator
-        else {
+        let MirTerminator::Jump { args: rhs_args, .. } = &function.blocks[1].terminator else {
             panic!("rhs branch should jump to join");
         };
         assert_eq!(rhs_args.len(), 1);
@@ -1836,6 +1882,176 @@ mod tests {
         assert!(matches!(
             function.blocks[0].terminator,
             MirTerminator::Unreachable
+        ));
+    }
+
+    #[test]
+    fn lower_hir_module_lowers_param_callee_to_indirect_call() {
+        let fn_ty = Type::Function(FunctionType::pure(vec![Type::Int], Type::Int));
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "apply".to_string(),
+                params: vec![
+                    kea_hir::HirParam {
+                        name: Some("f".to_string()),
+                        span: kea_ast::Span::synthetic(),
+                    },
+                    kea_hir::HirParam {
+                        name: Some("x".to_string()),
+                        span: kea_ast::Span::synthetic(),
+                    },
+                ],
+                body: HirExpr {
+                    kind: HirExprKind::Call {
+                        func: Box::new(HirExpr {
+                            kind: HirExprKind::Var("f".to_string()),
+                            ty: fn_ty.clone(),
+                            span: kea_ast::Span::synthetic(),
+                        }),
+                        args: vec![HirExpr {
+                            kind: HirExprKind::Var("x".to_string()),
+                            ty: Type::Int,
+                            span: kea_ast::Span::synthetic(),
+                        }],
+                    },
+                    ty: Type::Int,
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::pure(
+                    vec![fn_ty.clone(), Type::Int],
+                    Type::Int,
+                )),
+                effects: EffectRow::pure(),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let mir = lower_hir_module(&hir);
+        let function = &mir.functions[0];
+        assert_eq!(function.blocks.len(), 1);
+        assert_eq!(function.blocks[0].instructions.len(), 1);
+        assert!(matches!(
+            &function.blocks[0].instructions[0],
+            MirInst::Call {
+                callee: MirCallee::Value(MirValueId(0)),
+                args,
+                result: Some(MirValueId(2)),
+                ret_type: Type::Int,
+                ..
+            } if args == &vec![MirValueId(1)]
+        ));
+    }
+
+    #[test]
+    fn lower_hir_module_lowers_top_level_function_reference_value() {
+        let fn_ty = Type::Function(FunctionType::pure(vec![Type::Int], Type::Int));
+        let hir = HirModule {
+            declarations: vec![
+                HirDecl::Function(HirFunction {
+                    name: "inc".to_string(),
+                    params: vec![kea_hir::HirParam {
+                        name: Some("n".to_string()),
+                        span: kea_ast::Span::synthetic(),
+                    }],
+                    body: HirExpr {
+                        kind: HirExprKind::Var("n".to_string()),
+                        ty: Type::Int,
+                        span: kea_ast::Span::synthetic(),
+                    },
+                    ty: Type::Function(FunctionType::pure(vec![Type::Int], Type::Int)),
+                    effects: EffectRow::pure(),
+                    span: kea_ast::Span::synthetic(),
+                }),
+                HirDecl::Function(HirFunction {
+                    name: "apply".to_string(),
+                    params: vec![
+                        kea_hir::HirParam {
+                            name: Some("f".to_string()),
+                            span: kea_ast::Span::synthetic(),
+                        },
+                        kea_hir::HirParam {
+                            name: Some("x".to_string()),
+                            span: kea_ast::Span::synthetic(),
+                        },
+                    ],
+                    body: HirExpr {
+                        kind: HirExprKind::Call {
+                            func: Box::new(HirExpr {
+                                kind: HirExprKind::Var("f".to_string()),
+                                ty: fn_ty.clone(),
+                                span: kea_ast::Span::synthetic(),
+                            }),
+                            args: vec![HirExpr {
+                                kind: HirExprKind::Var("x".to_string()),
+                                ty: Type::Int,
+                                span: kea_ast::Span::synthetic(),
+                            }],
+                        },
+                        ty: Type::Int,
+                        span: kea_ast::Span::synthetic(),
+                    },
+                    ty: Type::Function(FunctionType::pure(
+                        vec![fn_ty.clone(), Type::Int],
+                        Type::Int,
+                    )),
+                    effects: EffectRow::pure(),
+                    span: kea_ast::Span::synthetic(),
+                }),
+                HirDecl::Function(HirFunction {
+                    name: "caller".to_string(),
+                    params: vec![kea_hir::HirParam {
+                        name: Some("y".to_string()),
+                        span: kea_ast::Span::synthetic(),
+                    }],
+                    body: HirExpr {
+                        kind: HirExprKind::Call {
+                            func: Box::new(HirExpr {
+                                kind: HirExprKind::Var("apply".to_string()),
+                                ty: Type::Function(FunctionType::pure(
+                                    vec![fn_ty.clone(), Type::Int],
+                                    Type::Int,
+                                )),
+                                span: kea_ast::Span::synthetic(),
+                            }),
+                            args: vec![
+                                HirExpr {
+                                    kind: HirExprKind::Var("inc".to_string()),
+                                    ty: fn_ty.clone(),
+                                    span: kea_ast::Span::synthetic(),
+                                },
+                                HirExpr {
+                                    kind: HirExprKind::Var("y".to_string()),
+                                    ty: Type::Int,
+                                    span: kea_ast::Span::synthetic(),
+                                },
+                            ],
+                        },
+                        ty: Type::Int,
+                        span: kea_ast::Span::synthetic(),
+                    },
+                    ty: Type::Function(FunctionType::pure(vec![Type::Int], Type::Int)),
+                    effects: EffectRow::pure(),
+                    span: kea_ast::Span::synthetic(),
+                }),
+            ],
+        };
+
+        let mir = lower_hir_module(&hir);
+        let caller = mir
+            .functions
+            .iter()
+            .find(|function| function.name == "caller")
+            .expect("caller function");
+        assert!(matches!(
+            caller.blocks[0].instructions.first(),
+            Some(MirInst::FunctionRef { function, .. }) if function == "inc"
+        ));
+        assert!(matches!(
+            caller.blocks[0].instructions.get(1),
+            Some(MirInst::Call {
+                callee: MirCallee::Local(name),
+                ..
+            }) if name == "apply"
         ));
     }
 }
