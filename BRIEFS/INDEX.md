@@ -24,7 +24,7 @@ that apply across multiple implementation phases. Ignoring them means rework.
 ## Active
 
 Work in progress right now. Each entry should have a `## Progress` section in its brief.
-- **[Codegen — pure subset](in-progress/0d-codegen-pure.md)** — Active. Step 0 structural function-effect embedding is complete; Step 1 (`kea-hir`) and Step 2 (`kea-mir`) include real pure-path lowering for literals/vars/binary/call/let/block; Step 3 performs real pure-subset MIR→Cranelift lowering with host JIT + AOT object emission and now compiles multi-block MIR `Jump`/`Branch` control flow.
+- **[Codegen — pure subset](in-progress/0d-codegen-pure.md)** — Active. Step 0 structural function-effect embedding is complete; Step 1 (`kea-hir`) and Step 2 (`kea-mir`) include real pure-path lowering for literals/vars/binary/call/let/block plus Unit-typed `if` control-flow graphs; Step 3 performs real pure-subset MIR→Cranelift lowering with host JIT + AOT object emission and compiles multi-block MIR `Jump`/`Branch` control flow.
 - **[Lean formalization](in-progress/lean-formalization.md)** — Active. Phase 1 kickoff started from the Rill Lean baseline; next is Kea effect-row alignment in core modules/proofs.
 
 ---
