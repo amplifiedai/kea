@@ -331,10 +331,10 @@ fn typecheck_functions(
             env.bind(fn_decl.name.node.clone(), scheme);
         }
 
-        let effect_row = infer_fn_decl_effect_row(&fn_decl, env);
+        let inferred_effect_row = infer_fn_decl_effect_row(&fn_decl, env);
         if let Err(diag) = validate_declared_fn_effect_row_with_env_and_records(
             &fn_decl,
-            &effect_row,
+            &inferred_effect_row,
             env,
             records,
         ) {
@@ -342,9 +342,13 @@ fn typecheck_functions(
             return Err(format_diagnostics("effect contract failed", diagnostics));
         }
 
-        env.set_function_effect_row(fn_decl.name.node.clone(), effect_row);
-        register_fn_signature(&fn_decl, env);
         register_fn_effect_signature(&fn_decl, env);
+        let runtime_effect_row = env
+            .function_effect_signature(&fn_decl.name.node)
+            .map(|sig| sig.effect_row.clone())
+            .unwrap_or(inferred_effect_row);
+        env.set_function_effect_row(fn_decl.name.node.clone(), runtime_effect_row);
+        register_fn_signature(&fn_decl, env);
     }
 
     Ok(())
@@ -595,6 +599,34 @@ mod tests {
             err.contains("unhandled Fail"),
             "expected unhandled Fail error, got: {err}"
         );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_catch_fail_result_case_exit_code() {
+        let source_path = write_temp_source(
+            "effect Fail\n  fn fail(err: Int) -> Never\n\nfn f() -[Fail Int]> Int\n  fail 7\n\nfn main() -> Int\n  let r = catch f()\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
+            "kea-cli-catch-fail-case",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 7);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_catch_ok_result_case_exit_code() {
+        let source_path = write_temp_source(
+            "effect Fail\n  fn fail(err: Int) -> Never\n\nfn f() -[Fail Int]> Int\n  5\n\nfn main() -> Int\n  let r = catch f()\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
+            "kea-cli-catch-ok-case",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 5);
 
         let _ = std::fs::remove_file(source_path);
     }
