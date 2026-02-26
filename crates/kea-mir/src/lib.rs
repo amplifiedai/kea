@@ -191,6 +191,7 @@ pub enum MirInst {
         arg_types: Vec<Type>,
         result: Option<MirValueId>,
         ret_type: Type,
+        callee_fail_result_abi: bool,
         cc_manifest_id: String,
     },
     Nop,
@@ -323,6 +324,23 @@ pub fn lower_hir_module(module: &HirModule) -> MirModule {
         .collect();
 
     MirModule { functions, layouts }
+}
+
+fn uses_fail_result_abi_from_type(ty: &Type) -> bool {
+    match ty {
+        Type::Function(ft) => {
+            ft.effects.row.rest.is_none()
+                && !ft.effects.row.fields.is_empty()
+                && ft
+                    .effects
+                    .row
+                    .fields
+                    .iter()
+                    .all(|(label, _)| label.as_str() == "Fail")
+                && !matches!(ft.ret.as_ref(), Type::Result(_, _))
+        }
+        _ => false,
+    }
 }
 
 fn collect_layout_metadata(raw_decl: &DeclKind, layouts: &mut MirLayoutCatalog) {
@@ -669,6 +687,7 @@ impl FunctionLoweringCtx {
                     self.set_terminator(MirTerminator::Unreachable);
                     return None;
                 }
+                let callee_fail_result_abi = uses_fail_result_abi_from_type(&func.ty);
 
                 let callee = match &func.kind {
                     HirExprKind::Var(name) if name.contains("::") => {
@@ -704,6 +723,7 @@ impl FunctionLoweringCtx {
                     arg_types,
                     result: result.clone(),
                     ret_type: expr.ty.clone(),
+                    callee_fail_result_abi,
                     cc_manifest_id: "default".to_string(),
                 });
                 if let (Some(dest), Type::Sum(sum_ty)) = (&result, &expr.ty) {
