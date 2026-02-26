@@ -1356,6 +1356,31 @@ impl Parser {
         Some(EffectRowItem { name, payload })
     }
 
+    fn maybe_promote_comma_tail_effect_var(
+        &self,
+        effects: &mut Vec<EffectRowItem>,
+        rest: &mut Option<String>,
+    ) {
+        if rest.is_some() || effects.len() < 2 {
+            return;
+        }
+        let Some(last) = effects.last() else {
+            return;
+        };
+        if last.payload.is_some() {
+            return;
+        }
+        if last
+            .name
+            .chars()
+            .next()
+            .is_some_and(|ch| ch.is_ascii_lowercase())
+        {
+            let tail = effects.pop().expect("checked non-empty effects");
+            *rest = Some(tail.name);
+        }
+    }
+
     fn parse_effect_term(
         &mut self,
         missing_msg: &str,
@@ -1427,7 +1452,7 @@ impl Parser {
             self.skip_newlines();
         }
 
-        let rest = if self.match_token(&TokenKind::Pipe) {
+        let mut rest = if self.match_token(&TokenKind::Pipe) {
             legacy_candidate = false;
             self.skip_newlines();
             Some(self.parse_effect_row_name(
@@ -1436,6 +1461,7 @@ impl Parser {
         } else {
             None
         };
+        self.maybe_promote_comma_tail_effect_var(&mut effects, &mut rest);
 
         self.skip_newlines();
         if !matches!(self.peek_kind(), Some(TokenKind::RBracket)) {
@@ -1938,6 +1964,7 @@ impl Parser {
                     self.skip_newlines();
                 }
             }
+            self.maybe_promote_comma_tail_effect_var(&mut effects, &mut rest);
 
             self.expect(&TokenKind::RBracket, "expected ']' in effect row annotation")?;
             let end = self.current_span();
@@ -1947,7 +1974,7 @@ impl Parser {
             ));
         }
         // Simple: Named or Applied
-        if let Some(name) = self.try_ident() {
+        let base = if let Some(name) = self.try_ident() {
             let name_str = name.node.clone();
             if name_str == "any" {
                 let mut bounds: Vec<String> = Vec::new();
@@ -2171,7 +2198,49 @@ impl Parser {
         } else {
             self.error_at_current("expected type annotation");
             None
+        }?;
+
+        self.skip_newlines();
+        if self.match_token(&TokenKind::Arrow) {
+            self.skip_newlines();
+            let ret = self.type_annotation()?.node;
+            let end = self.current_span();
+            return Some(Spanned::new(
+                TypeAnnotation::Function(vec![base.node], Box::new(ret)),
+                start.merge(end),
+            ));
         }
+
+        if self.match_token(&TokenKind::Minus) {
+            let effect_start = self.current_span();
+            self.expect(
+                &TokenKind::LBracket,
+                "expected '[' after '-' in effect arrow",
+            )?;
+            self.skip_newlines();
+            let effect = self.parse_effect_term(
+                "expected effect after -[",
+                "expected pure|volatile|impure or effect variable",
+            )?;
+            self.skip_newlines();
+            self.expect(&TokenKind::RBracket, "expected ] in effect arrow")?;
+            self.skip_newlines();
+            self.expect(&TokenKind::Gt, "expected > to complete effect arrow")?;
+            let effect_end = self.current_span();
+            self.skip_newlines();
+            let ret = self.type_annotation()?.node;
+            let end = self.current_span();
+            return Some(Spanned::new(
+                TypeAnnotation::FunctionWithEffect(
+                    vec![base.node],
+                    Spanned::new(effect.node, effect_start.merge(effect_end)),
+                    Box::new(ret),
+                ),
+                start.merge(end),
+            ));
+        }
+
+        Some(base)
     }
 
     fn type_application_arg_annotation(&mut self) -> Option<TypeAnnotation> {
@@ -6872,6 +6941,52 @@ mod tests {
                     other => panic!("expected effectful function type annotation, got {other:?}"),
                 }
             }
+            _ => panic!("expected Function"),
+        }
+    }
+
+    #[test]
+    fn parse_bare_effectful_function_type_annotation_in_param() {
+        let m = parse_mod("fn apply(f: Int -[IO, e]> Int) -> Int\n  0");
+        match &m.declarations[0].node {
+            DeclKind::Function(fd) => {
+                let ann = fd.params[0]
+                    .annotation
+                    .as_ref()
+                    .expect("param should have annotation");
+                match &ann.node {
+                    TypeAnnotation::FunctionWithEffect(params, effect, ret) => {
+                        assert_eq!(params.len(), 1);
+                        assert!(matches!(params[0], TypeAnnotation::Named(ref n) if n == "Int"));
+                        match &effect.node {
+                            EffectAnnotation::Row(row) => {
+                                assert_eq!(row.effects.len(), 1);
+                                assert_eq!(row.effects[0].name, "IO");
+                                assert_eq!(row.rest.as_deref(), Some("e"));
+                            }
+                            other => panic!("expected row effect annotation, got {other:?}"),
+                        }
+                        assert!(matches!(ret.as_ref(), TypeAnnotation::Named(name) if name == "Int"));
+                    }
+                    other => panic!("expected bare function type annotation, got {other:?}"),
+                }
+            }
+            _ => panic!("expected Function"),
+        }
+    }
+
+    #[test]
+    fn parse_fn_with_comma_tail_effect_row_clause() {
+        let m = parse_mod("fn id(x: Int) -[IO, e]> Int\n  x");
+        match &m.declarations[0].node {
+            DeclKind::Function(fd) => match fd.effect_annotation.as_ref().map(|eff| &eff.node) {
+                Some(EffectAnnotation::Row(row)) => {
+                    assert_eq!(row.effects.len(), 1);
+                    assert_eq!(row.effects[0].name, "IO");
+                    assert_eq!(row.rest.as_deref(), Some("e"));
+                }
+                other => panic!("expected row effect annotation, got {other:?}"),
+            },
             _ => panic!("expected Function"),
         }
     }

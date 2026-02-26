@@ -313,6 +313,7 @@ pub fn lower_hir_module(module: &HirModule) -> MirModule {
             collect_layout_metadata(raw_decl, &mut layouts);
         }
     }
+    seed_builtin_sum_layouts(&mut layouts);
     let functions = module
         .declarations
         .iter()
@@ -378,6 +379,55 @@ fn collect_layout_metadata(raw_decl: &DeclKind, layouts: &mut MirLayoutCatalog) 
                 .collect(),
         }),
         _ => {}
+    }
+}
+
+fn seed_builtin_sum_layouts(layouts: &mut MirLayoutCatalog) {
+    let has_option = layouts.sums.iter().any(|sum| sum.name == "Option");
+    if !has_option {
+        layouts.sums.push(MirSumLayout {
+            name: "Option".to_string(),
+            variants: vec![
+                MirVariantLayout {
+                    name: "Some".to_string(),
+                    tag: 0,
+                    fields: vec![MirVariantFieldLayout {
+                        name: None,
+                        annotation: kea_ast::TypeAnnotation::Named("Dynamic".to_string()),
+                    }],
+                },
+                MirVariantLayout {
+                    name: "None".to_string(),
+                    tag: 1,
+                    fields: vec![],
+                },
+            ],
+        });
+    }
+
+    let has_result = layouts.sums.iter().any(|sum| sum.name == "Result");
+    if !has_result {
+        layouts.sums.push(MirSumLayout {
+            name: "Result".to_string(),
+            variants: vec![
+                MirVariantLayout {
+                    name: "Ok".to_string(),
+                    tag: 0,
+                    fields: vec![MirVariantFieldLayout {
+                        name: None,
+                        annotation: kea_ast::TypeAnnotation::Named("Dynamic".to_string()),
+                    }],
+                },
+                MirVariantLayout {
+                    name: "Err".to_string(),
+                    tag: 1,
+                    fields: vec![MirVariantFieldLayout {
+                        name: None,
+                        annotation: kea_ast::TypeAnnotation::Named("Dynamic".to_string()),
+                    }],
+                },
+            ],
+        });
     }
 }
 
@@ -451,6 +501,13 @@ struct SumCtorCandidate {
     sum_type: String,
     tag: u32,
     arity: usize,
+}
+
+#[derive(Debug, Clone)]
+struct VarScope {
+    vars: BTreeMap<String, MirValueId>,
+    var_types: BTreeMap<String, Type>,
+    var_record_types: BTreeMap<String, String>,
 }
 
 impl FunctionLoweringCtx {
@@ -562,6 +619,20 @@ impl FunctionLoweringCtx {
 
     fn set_terminator(&mut self, terminator: MirTerminator) {
         self.current_block_mut().terminator = Some(terminator);
+    }
+
+    fn snapshot_var_scope(&self) -> VarScope {
+        VarScope {
+            vars: self.vars.clone(),
+            var_types: self.var_types.clone(),
+            var_record_types: self.var_record_types.clone(),
+        }
+    }
+
+    fn restore_var_scope(&mut self, scope: &VarScope) {
+        self.vars = scope.vars.clone();
+        self.var_types = scope.var_types.clone();
+        self.var_record_types = scope.var_record_types.clone();
     }
 
     fn ensure_jump_to(&mut self, target: MirBlockId, args: Vec<MirValueId>) {
@@ -937,7 +1008,9 @@ impl FunctionLoweringCtx {
         then_branch: &HirExpr,
         else_branch: Option<&HirExpr>,
     ) -> Option<MirValueId> {
+        let incoming_scope = self.snapshot_var_scope();
         let condition_value = self.lower_expr(condition)?;
+        self.restore_var_scope(&incoming_scope);
         let then_block = self.new_block();
         let else_block = self.new_block();
         let mut join_params = Vec::new();
@@ -961,6 +1034,7 @@ impl FunctionLoweringCtx {
         });
 
         self.switch_to(then_block);
+        self.restore_var_scope(&incoming_scope);
         let then_value = self.lower_expr(then_branch);
         let then_terminated = self.current_block().terminator.is_some();
         if !then_terminated {
@@ -972,6 +1046,7 @@ impl FunctionLoweringCtx {
         }
 
         self.switch_to(else_block);
+        self.restore_var_scope(&incoming_scope);
         let else_value = else_branch.and_then(|branch| self.lower_expr(branch));
         let else_terminated = self.current_block().terminator.is_some();
         if !else_terminated {
@@ -983,6 +1058,7 @@ impl FunctionLoweringCtx {
         }
 
         self.switch_to(join_block);
+        self.restore_var_scope(&incoming_scope);
         if then_terminated && else_terminated {
             self.set_terminator(MirTerminator::Unreachable);
             return None;
@@ -1028,7 +1104,9 @@ impl FunctionLoweringCtx {
         left: &HirExpr,
         right: &HirExpr,
     ) -> Option<MirValueId> {
+        let incoming_scope = self.snapshot_var_scope();
         let left_value = self.lower_expr(left)?;
+        self.restore_var_scope(&incoming_scope);
         let rhs_block = self.new_block();
         let short_block = self.new_block();
         let result = self.new_value();
@@ -1049,10 +1127,12 @@ impl FunctionLoweringCtx {
         });
 
         self.switch_to(rhs_block);
+        self.restore_var_scope(&incoming_scope);
         let rhs_value = self.lower_expr(right)?;
         self.ensure_jump_to(join_block.clone(), vec![rhs_value]);
 
         self.switch_to(short_block);
+        self.restore_var_scope(&incoming_scope);
         let short_const = self.new_value();
         self.emit_inst(MirInst::Const {
             dest: short_const.clone(),
@@ -1061,6 +1141,7 @@ impl FunctionLoweringCtx {
         self.ensure_jump_to(join_block.clone(), vec![short_const]);
 
         self.switch_to(join_block);
+        self.restore_var_scope(&incoming_scope);
         Some(result)
     }
 }
@@ -1210,8 +1291,12 @@ mod tests {
 
         let mir = lower_hir_module(&hir);
         assert!(mir.functions.is_empty());
-        assert_eq!(mir.layouts.sums.len(), 1);
-        let option = &mir.layouts.sums[0];
+        let option = mir
+            .layouts
+            .sums
+            .iter()
+            .find(|sum| sum.name == "Option")
+            .expect("expected Option layout");
         assert_eq!(option.name, "Option");
         assert_eq!(option.variants.len(), 2);
         assert_eq!(option.variants[0].name, "Some");
@@ -1224,6 +1309,37 @@ mod tests {
         assert_eq!(option.variants[1].name, "None");
         assert_eq!(option.variants[1].tag, 1);
         assert_eq!(option.variants[1].fields.len(), 0);
+    }
+
+    #[test]
+    fn lower_hir_module_seeds_builtin_option_and_result_layouts() {
+        let mir = lower_hir_module(&HirModule {
+            declarations: vec![],
+        });
+
+        let option = mir
+            .layouts
+            .sums
+            .iter()
+            .find(|sum| sum.name == "Option")
+            .expect("expected built-in Option layout");
+        assert_eq!(option.variants.len(), 2);
+        assert_eq!(option.variants[0].name, "Some");
+        assert_eq!(option.variants[0].tag, 0);
+        assert_eq!(option.variants[1].name, "None");
+        assert_eq!(option.variants[1].tag, 1);
+
+        let result = mir
+            .layouts
+            .sums
+            .iter()
+            .find(|sum| sum.name == "Result")
+            .expect("expected built-in Result layout");
+        assert_eq!(result.variants.len(), 2);
+        assert_eq!(result.variants[0].name, "Ok");
+        assert_eq!(result.variants[0].tag, 0);
+        assert_eq!(result.variants[1].name, "Err");
+        assert_eq!(result.variants[1].tag, 1);
     }
 
     #[test]

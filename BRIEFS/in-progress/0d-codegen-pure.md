@@ -678,16 +678,17 @@ expressions). Reconcile: update KERNEL §4.2.1 to use `when`.
 
 ## Known Issues (pre-0d1)
 
-Parser and typechecker gaps found during doc validation. These must
-be fixed before 0d1 (module system) since stdlib `.kea` files will
-use these patterns.
+Parser/typechecker/codegen gaps found during doc validation. These
+were blockers for 0d1 stdlib ergonomics and compiled-path soundness;
+all items below are now resolved (2026-02-26) and retained here as a
+closeout record.
 
 ### Parser: function type annotations missing bare form
 
 KERNEL §5 uses `A -[e]> B` for function type annotations in
-parameters (e.g., `_ f: A -[e]> B`). The parser currently requires
-`fn(A) -[| e]> B` with an explicit `fn` prefix. The bare form
-should also parse, per spec.
+parameters (e.g., `_ f: A -[e]> B`). This now parses directly on
+type atoms (no mandatory `fn(...)` prefix), including both pure and
+effectful arrow forms.
 
 **Affected KERNEL signatures:**
 - `fn map(_ self: List A, _ f: A -[e]> B) -[e]> List B` (§5.6)
@@ -696,16 +697,29 @@ should also parse, per spec.
 
 ### Parser: effect row variable syntax
 
-KERNEL uses comma before row variable: `-[Log, e]>`. The parser
-requires pipe: `-[Log | e]>`. Both should parse — comma for
-consistency with named effects, pipe for explicit row-tail notation.
+KERNEL uses comma before row variable: `-[Log, e]>`. Parser now
+accepts both comma-tail (`-[Log, e]>`) and explicit pipe-tail
+(`-[Log | e]>`) forms.
 
 ### Typechecker: Fail effect parameter not inferred
 
-`Fail.fail("bad")` infers effect `Fail` (unparameterized) instead
-of `Fail String`. Declaring `-[Fail String]>` is then rejected as
-"too weak." `catch` correctly recovers the type parameter, so it's
-specifically effect-row inference that loses the parameter.
+`Fail.fail("bad")` now infers `Fail String` (not bare `Fail`) in
+effect rows by specializing Fail payload from call arguments in
+effect-row inference.
+
+### Codegen: direct constructor scrutinee dominance bug
+
+`case Err(7)` previously failed codegen with a Cranelift verifier
+dominance error (`uses value ... from non-dominating inst ...`) and
+could also hit missing-value paths when defensive literal-case fallback
+lowering dropped payload bindings.
+
+Resolved by:
+- restoring variable scope snapshots across MIR branch lowering
+  (`if` and short-circuit control flow), preventing branch-local
+  bindings from leaking into sibling blocks;
+- lowering defensive literal-chain fallback through full arm binding
+  logic (including constructor payload binds), not bare arm body.
 
 ## Progress
 - 2026-02-26: Step 0 prerequisite slice landed in code: `FunctionType` now includes `effects: EffectRow` as structural type data; `Type` display/substitution/free-var traversal include function effects; infer/module env updates function type effects via `set_function_effect_row`; MCP now surfaces effectful function signatures via normal type display.
@@ -782,4 +796,6 @@ specifically effect-row inference that loses the parameter.
 - 2026-02-26: Functional update compiled-path slice landed for record spread updates (`Record { ..base, field: value }`): HIR now lowers to `RecordUpdate`, MIR emits explicit memory-op sequence (`Retain`/`TryClaim`/`Freeze`/`CowUpdate`/`Release`), and codegen lowers `CowUpdate` by cloning unchanged fields + applying updated fields with layout metadata. Added HIR/MIR and end-to-end CLI regressions (`compile_and_execute_record_update_with_spread_exit_code`).
 - 2026-02-26: CoW runtime path tightened: `CowUpdate` now performs a runtime uniqueness check (`refcount == 1`) and takes in-place mutation when unique, copy-allocate path otherwise. Aggregate allocations now include a refcount header, and `Result` allocation was migrated to the same heap-header layout so fail/result runtime handles remain consistent.
 - 2026-02-26: Update-fusion slice landed for nested record-update chains: MIR lowering now flattens nested `RecordUpdate` bases into a single `CowUpdate` (preserving inner-to-outer evaluation order and last-write-wins per field), with dedicated MIR regression and end-to-end CLI regression for chained spread updates.
+- 2026-02-26: Closed pre-0d1 parser/typeck blockers from doc validation: parser now accepts bare function type arrows in annotations (`A -> B`, `A -[e]> B`), parser accepts comma-tail effect row variables (`-[Log, e]>`), and effect inference now specializes `Fail` payload from call arguments (`Fail.fail("bad")` infers `Fail String`) with regression coverage in `kea-syntax` and `kea-infer`.
+- 2026-02-26: Closed direct constructor-scrutinee compiled-path bug family: MIR branch lowering now snapshots/restores lexical var scope across branch paths (fixing non-dominating-value SSA leaks), and literal-case defensive fallback lowering now preserves payload bindings (`Err(e)` fallback no longer drops `e`), with HIR/MIR/CLI regressions including `case Err(7)` end-to-end.
 - **Next:** Continue the remaining 0d runtime/codegen delta by expanding struct/enum runtime lowering beyond handle-only carriers and tightening remaining compiled-path coverage for effects/handlers without regressing current pure + Fail-only fast paths.

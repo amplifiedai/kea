@@ -6739,6 +6739,45 @@ fn effect_operation_call_infers_declared_effect_label() {
 }
 
 #[test]
+fn fail_operation_call_infers_fail_payload_type_from_argument() {
+    let mut env = TypeEnv::new();
+    let records = RecordRegistry::new();
+    let sums = SumTypeRegistry::new();
+    let fail = make_effect_decl(
+        "Fail",
+        vec!["E"],
+        vec![make_effect_operation(
+            "fail",
+            vec![annotated_param(
+                "error",
+                TypeAnnotation::Named("E".to_string()),
+            )],
+            TypeAnnotation::Named("Never".to_string()),
+        )],
+    );
+    let diags = register_effect_decl(&fail, &records, Some(&sums), &mut env);
+    assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+
+    let wrapper = make_fn_decl(
+        "wrapper",
+        vec![],
+        call(field_access(var("Fail"), "fail"), vec![lit_str("bad")]),
+    );
+    let row = infer_fn_decl_effect_row(&wrapper, &env);
+    let fail_payload = row
+        .row
+        .fields
+        .iter()
+        .find(|(label, _)| label == &Label::new("Fail"))
+        .map(|(_, payload)| payload.clone());
+    assert_eq!(
+        fail_payload,
+        Some(Type::String),
+        "expected Fail.fail(\"bad\") to infer `Fail String`, got {row:?}"
+    );
+}
+
+#[test]
 fn curried_annotated_callback_param_uses_effect_row_unification_not_pure_function_unification() {
     let mut env = TypeEnv::new();
     let records = RecordRegistry::new();
