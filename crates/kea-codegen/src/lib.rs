@@ -220,6 +220,18 @@ fn build_isa(config: &BackendConfig) -> Result<Arc<dyn isa::TargetIsa>, CodegenE
         .map_err(|detail| CodegenError::Module {
             detail: detail.to_string(),
         })?;
+    if matches!(config.mode, CodegenMode::Aot) {
+        flag_builder
+            .set("is_pic", "true")
+            .map_err(|detail| CodegenError::Module {
+                detail: detail.to_string(),
+            })?;
+        flag_builder
+            .set("use_colocated_libcalls", "false")
+            .map_err(|detail| CodegenError::Module {
+                detail: detail.to_string(),
+            })?;
+    }
 
     if config.target_triple == "host" {
         let isa_builder = cranelift_native::builder().map_err(|detail| CodegenError::Module {
