@@ -195,6 +195,62 @@ theorem applySubstEffectRowWF_preserves_wf_of_no_domain_vars
   rw [applySubstEffectRowWF_noop s h effects htv hrv]
   exact h_wf
 
+theorem applySubst_functionEff_preserves_wf_of_component_no_domain_vars
+    (s : Subst) (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat)
+    (params : TyList) (effects : EffectRow) (ret : Ty)
+    (h_wf_params : TyList.WellFormed kctx rctx params)
+    (h_wf_effects : EffectRow.WellFormed kctx rctx effects)
+    (h_wf_ret : Ty.WellFormed kctx rctx ret)
+    (htv_params : ∀ v ∈ freeTypeVarsTyList params, s.typeMap v = none)
+    (hrv_params : ∀ v ∈ freeRowVarsTyList params, s.rowMap v = none)
+    (htv_effects : ∀ v ∈ freeTypeVarsEffectRow effects, s.typeMap v = none)
+    (hrv_effects : ∀ v ∈ freeRowVarsEffectRow effects, s.rowMap v = none)
+    (htv_ret : ∀ v ∈ freeTypeVars ret, s.typeMap v = none)
+    (hrv_ret : ∀ v ∈ freeRowVars ret, s.rowMap v = none) :
+    Ty.WellFormed kctx rctx (applySubst s fuel (.functionEff params effects ret)) := by
+  exact applySubst_preserves_wf_of_no_domain_vars s kctx rctx fuel (.functionEff params effects ret)
+    ⟨h_wf_params, h_wf_effects, h_wf_ret⟩
+    (fun v hv => by
+      rcases (by simpa [freeTypeVars, List.mem_append] using hv) with h_params | h_rest
+      · exact htv_params v h_params
+      · rcases (by simpa [List.mem_append] using h_rest) with h_eff | h_r
+        · exact htv_effects v h_eff
+        · exact htv_ret v h_r)
+    (fun v hv => by
+      rcases (by simpa [freeRowVars, List.mem_append] using hv) with h_params | h_rest
+      · exact hrv_params v h_params
+      · rcases (by simpa [List.mem_append] using h_rest) with h_eff | h_r
+        · exact hrv_effects v h_eff
+        · exact hrv_ret v h_r)
+
+theorem applySubstWF_functionEff_preserves_wf_of_component_no_domain_vars
+    (s : Subst) (h : Subst.Acyclic s) (kctx : KindCtx) (rctx : RowCtx)
+    (params : TyList) (effects : EffectRow) (ret : Ty)
+    (h_wf_params : TyList.WellFormed kctx rctx params)
+    (h_wf_effects : EffectRow.WellFormed kctx rctx effects)
+    (h_wf_ret : Ty.WellFormed kctx rctx ret)
+    (htv_params : ∀ v ∈ freeTypeVarsTyList params, s.typeMap v = none)
+    (hrv_params : ∀ v ∈ freeRowVarsTyList params, s.rowMap v = none)
+    (htv_effects : ∀ v ∈ freeTypeVarsEffectRow effects, s.typeMap v = none)
+    (hrv_effects : ∀ v ∈ freeRowVarsEffectRow effects, s.rowMap v = none)
+    (htv_ret : ∀ v ∈ freeTypeVars ret, s.typeMap v = none)
+    (hrv_ret : ∀ v ∈ freeRowVars ret, s.rowMap v = none) :
+    Ty.WellFormed kctx rctx (applySubstWF s h (.functionEff params effects ret)) := by
+  exact applySubstWF_preserves_wf_of_no_domain_vars s h kctx rctx (.functionEff params effects ret)
+    ⟨h_wf_params, h_wf_effects, h_wf_ret⟩
+    (fun v hv => by
+      rcases (by simpa [freeTypeVars, List.mem_append] using hv) with h_params | h_rest
+      · exact htv_params v h_params
+      · rcases (by simpa [List.mem_append] using h_rest) with h_eff | h_r
+        · exact htv_effects v h_eff
+        · exact htv_ret v h_r)
+    (fun v hv => by
+      rcases (by simpa [freeRowVars, List.mem_append] using hv) with h_params | h_rest
+      · exact hrv_params v h_params
+      · rcases (by simpa [List.mem_append] using h_rest) with h_eff | h_r
+        · exact hrv_effects v h_eff
+        · exact hrv_ret v h_r)
+
 theorem applySubstWF_empty_preserves_wf
     (kctx : KindCtx) (rctx : RowCtx) (ty : Ty)
     (h_wf : Ty.WellFormed kctx rctx ty) :
