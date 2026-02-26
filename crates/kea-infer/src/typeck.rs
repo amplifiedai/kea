@@ -7345,10 +7345,16 @@ pub fn register_effect_decl(
             continue;
         };
 
+        let effect_payload = if module_short == "Fail" {
+            param_tys.first().cloned().unwrap_or(Type::Unit)
+        } else {
+            Type::Unit
+        };
+
         let op_ty = Type::Function(FunctionType {
             params: param_tys,
             ret: Box::new(ret_ty),
-            effects: EffectRow::closed(vec![(Label::new(module_short.clone()), Type::Unit)]),
+            effects: EffectRow::closed(vec![(Label::new(module_short.clone()), effect_payload.clone())]),
         });
         let op_scheme = TypeScheme {
             type_vars: type_vars.clone(),
@@ -7390,7 +7396,7 @@ pub fn register_effect_decl(
             qualified_name,
             FunctionEffectSignature {
                 param_effect_rows,
-                effect_row: EffectRow::closed(vec![(Label::new(module_short.clone()), Type::Unit)]),
+                effect_row: EffectRow::closed(vec![(Label::new(module_short.clone()), effect_payload)]),
                 instantiate_on_call: true,
             },
         );
@@ -7691,7 +7697,7 @@ fn infer_call_effect_row(
             fallback
         };
 
-        let instantiated = resolve_effect_call_signature(&effect_signature, next_effect_var);
+        let mut instantiated = resolve_effect_call_signature(&effect_signature, next_effect_var);
         for (idx, maybe_param_effect) in instantiated.param_effect_rows.iter().enumerate() {
             let Some(param_effect) = maybe_param_effect else {
                 continue;
@@ -7709,6 +7715,9 @@ fn infer_call_effect_row(
                     reason: Reason::TypeAscription,
                 },
             });
+        }
+        if is_fail_operation_call(func) {
+            specialize_fail_payload_from_call_args(&mut instantiated.effect_row, &bound_args, env);
         }
         return instantiated.effect_row;
     }
@@ -7735,6 +7744,47 @@ fn infer_call_effect_row(
             infer_call_effect_row(inner_func, inner_args, env, constraints, next_effect_var)
         }),
         _ => unknown_effect_row(next_effect_var),
+    }
+}
+
+fn is_fail_operation_call(func: &Expr) -> bool {
+    match &func.node {
+        ExprKind::Var(name) => name == "Fail::fail",
+        ExprKind::FieldAccess { expr, field } => {
+            matches!(&expr.node, ExprKind::Var(module) if module == "Fail") && field.node == "fail"
+        }
+        _ => false,
+    }
+}
+
+fn effect_payload_type_hint(expr: &Expr, env: &TypeEnv) -> Option<Type> {
+    match &expr.node {
+        ExprKind::Lit(Lit::Int(_)) => Some(Type::Int),
+        ExprKind::Lit(Lit::Float(_)) => Some(Type::Float),
+        ExprKind::Lit(Lit::Bool(_)) => Some(Type::Bool),
+        ExprKind::Lit(Lit::String(_)) => Some(Type::String),
+        ExprKind::Lit(Lit::Unit) => Some(Type::Unit),
+        ExprKind::Var(name) => env.lookup(name).map(|scheme| scheme.ty.clone()),
+        _ => None,
+    }
+}
+
+fn specialize_fail_payload_from_call_args(
+    effect_row: &mut EffectRow,
+    bound_args: &[BoundArg],
+    env: &TypeEnv,
+) {
+    let Some(first_arg) = bound_args.first().map(bound_arg_expr) else {
+        return;
+    };
+    let Some(payload_hint) = effect_payload_type_hint(first_arg, env) else {
+        return;
+    };
+    let fail_label = Label::new("Fail");
+    for (label, payload) in &mut effect_row.row.fields {
+        if *label == fail_label && matches!(payload, Type::Var(_)) {
+            *payload = payload_hint.clone();
+        }
     }
 }
 

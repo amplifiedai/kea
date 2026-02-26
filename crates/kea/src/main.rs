@@ -585,7 +585,7 @@ mod tests {
     #[test]
     fn compile_and_execute_fail_only_main_err_path_reports_unhandled_fail() {
         let source_path = write_temp_source(
-            "effect Fail\n  fn fail(err: Int) -> Never\n\nfn main() -[Fail]> Int\n  fail 9\n",
+            "effect Fail\n  fn fail(err: Int) -> Never\n\nfn main() -[Fail Int]> Int\n  fail 9\n",
             "kea-cli-fail-main-err",
             "kea",
         );
@@ -959,6 +959,20 @@ mod tests {
 
         let run = run_file(&source_path).expect("run should succeed");
         assert_eq!(run.exit_code, 11);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_builtin_result_constructor_case_exit_code() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  case Err(7)\n    Ok(v) -> v\n    Err(e) -> e\n",
+            "kea-cli-builtin-result-case",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 7);
 
         let _ = std::fs::remove_file(source_path);
     }

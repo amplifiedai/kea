@@ -161,6 +161,102 @@ fn lower_pattern_type_annotation(annotation: &TypeAnnotation) -> Type {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+fn register_variant_meta(
+    sum_type: &str,
+    variant: &str,
+    tag: i64,
+    arity: usize,
+    field_types: Vec<Type>,
+    unqualified: &mut UnitVariantTags,
+    qualified: &mut QualifiedUnitVariantTags,
+    duplicates: &mut BTreeSet<String>,
+    pattern_unqualified: &mut PatternVariantTags,
+    pattern_qualified: &mut QualifiedPatternVariantTags,
+    pattern_duplicates: &mut BTreeSet<String>,
+) {
+    let meta = PatternVariantMeta {
+        tag,
+        sum_type: sum_type.to_string(),
+        arity,
+        field_types,
+    };
+    pattern_qualified.insert((sum_type.to_string(), variant.to_string()), meta.clone());
+    if pattern_unqualified.insert(variant.to_string(), meta).is_some() {
+        pattern_duplicates.insert(variant.to_string());
+    }
+
+    if arity == 0 {
+        qualified.insert((sum_type.to_string(), variant.to_string()), tag);
+        if unqualified.insert(variant.to_string(), tag).is_some() {
+            duplicates.insert(variant.to_string());
+        }
+    }
+}
+
+fn seed_builtin_variant_tags(
+    unqualified: &mut UnitVariantTags,
+    qualified: &mut QualifiedUnitVariantTags,
+    duplicates: &mut BTreeSet<String>,
+    pattern_unqualified: &mut PatternVariantTags,
+    pattern_qualified: &mut QualifiedPatternVariantTags,
+    pattern_duplicates: &mut BTreeSet<String>,
+) {
+    let dynamic = Type::Dynamic;
+    register_variant_meta(
+        "Option",
+        "Some",
+        0,
+        1,
+        vec![dynamic.clone()],
+        unqualified,
+        qualified,
+        duplicates,
+        pattern_unqualified,
+        pattern_qualified,
+        pattern_duplicates,
+    );
+    register_variant_meta(
+        "Option",
+        "None",
+        1,
+        0,
+        vec![],
+        unqualified,
+        qualified,
+        duplicates,
+        pattern_unqualified,
+        pattern_qualified,
+        pattern_duplicates,
+    );
+    register_variant_meta(
+        "Result",
+        "Ok",
+        0,
+        1,
+        vec![dynamic.clone()],
+        unqualified,
+        qualified,
+        duplicates,
+        pattern_unqualified,
+        pattern_qualified,
+        pattern_duplicates,
+    );
+    register_variant_meta(
+        "Result",
+        "Err",
+        1,
+        1,
+        vec![dynamic],
+        unqualified,
+        qualified,
+        duplicates,
+        pattern_unqualified,
+        pattern_qualified,
+        pattern_duplicates,
+    );
+}
+
 fn collect_variant_tags(
     module: &Module,
 ) -> (
@@ -183,41 +279,35 @@ fn collect_variant_tags(
 
         for (idx, variant) in def.variants.iter().enumerate() {
             let tag = idx as i64;
-            let meta = PatternVariantMeta {
+            let field_types = variant
+                .fields
+                .iter()
+                .map(|field| lower_pattern_type_annotation(&field.ty.node))
+                .collect();
+            register_variant_meta(
+                &def.name.node,
+                &variant.name.node,
                 tag,
-                sum_type: def.name.node.clone(),
-                arity: variant.fields.len(),
-                field_types: variant
-                    .fields
-                    .iter()
-                    .map(|field| lower_pattern_type_annotation(&field.ty.node))
-                    .collect(),
-            };
-            pattern_qualified.insert(
-                (def.name.node.clone(), variant.name.node.clone()),
-                meta.clone(),
+                variant.fields.len(),
+                field_types,
+                &mut unqualified,
+                &mut qualified,
+                &mut duplicates,
+                &mut pattern_unqualified,
+                &mut pattern_qualified,
+                &mut pattern_duplicates,
             );
-            if pattern_unqualified
-                .insert(variant.name.node.clone(), meta)
-                .is_some()
-            {
-                pattern_duplicates.insert(variant.name.node.clone());
-            }
-
-            if !variant.fields.is_empty() {
-                continue;
-            }
-
-            qualified.insert((def.name.node.clone(), variant.name.node.clone()), tag);
-
-            if unqualified
-                .insert(variant.name.node.clone(), tag)
-                .is_some()
-            {
-                duplicates.insert(variant.name.node.clone());
-            }
         }
     }
+
+    seed_builtin_variant_tags(
+        &mut unqualified,
+        &mut qualified,
+        &mut duplicates,
+        &mut pattern_unqualified,
+        &mut pattern_qualified,
+        &mut pattern_duplicates,
+    );
 
     for name in duplicates {
         unqualified.remove(&name);
@@ -1183,11 +1273,14 @@ fn lower_literal_case(
         // Type checking enforces exhaustiveness before lowering. For exhaustive literal
         // chains without an explicit fallback (for example unit-enum constructor cases),
         // provide a defensive synthetic else so non-unit MIR value paths stay closed.
-        let (_, fallback_body, _, _, _, _) = literal_arms
+        let (_, fallback_body, bind_name, payload_binds, _, _) = literal_arms
             .last()
             .expect("checked literal_arms is non-empty");
-        else_expr = Some(lower_expr(
+        else_expr = Some(lower_arm_body(
             fallback_body,
+            bind_name.clone(),
+            payload_binds.clone(),
+            &scrutinee_expr,
             ty_hint.clone(),
             unit_variant_tags,
             qualified_variant_tags,
@@ -2687,6 +2780,40 @@ mod tests {
                 "expected unqualified enum case to lower through literal-case path, got {other:?}"
             ),
         }
+    }
+
+    #[test]
+    fn lower_function_builtin_result_constructor_case_stays_lowered() {
+        let module = parse_module_from_text(
+            "fn unwrap_or_fallback() -> Int\n  case Err(7)\n    Ok(v) -> v\n    Err(e) -> e",
+        );
+        let mut env = TypeEnv::new();
+        env.bind(
+            "unwrap_or_fallback".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::pure(vec![], Type::Int))),
+        );
+
+        let lowered = lower_module(&module, &env);
+        let function = lowered
+            .declarations
+            .iter()
+            .find_map(|decl| match decl {
+                HirDecl::Function(function) if function.name == "unwrap_or_fallback" => {
+                    Some(function)
+                }
+                _ => None,
+            })
+            .expect("expected lowered function declaration");
+
+        assert!(
+            !matches!(function.body.kind, HirExprKind::Raw(_)),
+            "expected built-in Result constructor case to stay on lowered path"
+        );
+        let if_count = count_if_nodes(&function.body);
+        assert!(
+            if_count >= 1,
+            "expected Result constructor case to lower to if chain, got {if_count}"
+        );
     }
 
     #[test]
