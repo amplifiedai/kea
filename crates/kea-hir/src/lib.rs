@@ -1263,7 +1263,8 @@ fn literal_case_values_from_pattern(
                 match (&shared_payload_bind, branch_payload_bind) {
                     (None, None) => {}
                     (None, Some(payload_bind)) => shared_payload_bind = Some(payload_bind),
-                    (Some(existing), Some(payload_bind)) if existing == &payload_bind => {}
+                    (Some(existing), Some(payload_bind))
+                        if payload_bind_or_compatible(existing, &payload_bind) => {}
                     // OR payload patterns are only supported when all branches
                     // agree on the same payload bind site.
                     _ => return None,
@@ -1377,6 +1378,16 @@ fn build_literal_arm_bindings(
         });
     }
     bindings
+}
+
+fn payload_bind_or_compatible(
+    existing: &ConstructorPayloadBind,
+    candidate: &ConstructorPayloadBind,
+) -> bool {
+    existing.name == candidate.name
+        && existing.sum_type == candidate.sum_type
+        && existing.field_index == candidate.field_index
+        && existing.field_ty == candidate.field_ty
 }
 
 fn bool_case_fallback_compatible(pattern: &PatternKind) -> bool {
@@ -2077,6 +2088,56 @@ mod tests {
             ),
             "expected payload OR branch to bind shared payload name"
         );
+    }
+
+    #[test]
+    fn lower_function_payload_constructor_or_case_across_variants_keeps_binding() {
+        let module = parse_module_from_text(
+            "type Either = Left(Int) | Right(Int) | Nope\nfn pick(x: Either) -> Int\n  case x\n    Left(n) | Right(n) -> n + 1\n    Nope -> 0",
+        );
+        let mut env = TypeEnv::new();
+        env.bind(
+            "pick".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::pure(
+                vec![Type::Sum(kea_types::SumType {
+                    name: "Either".to_string(),
+                    type_args: vec![],
+                    variants: vec![
+                        ("Left".to_string(), vec![Type::Int]),
+                        ("Right".to_string(), vec![Type::Int]),
+                        ("Nope".to_string(), vec![]),
+                    ],
+                })],
+                Type::Int,
+            ))),
+        );
+
+        let lowered = lower_module(&module, &env);
+        let function = lowered
+            .declarations
+            .iter()
+            .find_map(|decl| match decl {
+                HirDecl::Function(function) if function.name == "pick" => Some(function),
+                _ => None,
+            })
+            .expect("expected lowered pick function");
+
+        let then_branch = match &function.body.kind {
+            HirExprKind::If { then_branch, .. } => then_branch,
+            other => panic!("expected constructor OR case to lower to if, got {other:?}"),
+        };
+        let HirExprKind::Block(exprs) = &then_branch.kind else {
+            panic!("expected payload OR branch to emit binding block");
+        };
+        let HirExprKind::Let { pattern, value } = &exprs[0].kind else {
+            panic!("expected first OR branch expression to be payload binding");
+        };
+        assert_eq!(pattern, &HirPattern::Var("n".to_string()));
+        let HirExprKind::SumPayloadAccess { sum_type, field_index, .. } = &value.kind else {
+            panic!("expected payload OR branch binding to use SumPayloadAccess");
+        };
+        assert_eq!(sum_type, "Either");
+        assert_eq!(*field_index, 0);
     }
 
     #[test]

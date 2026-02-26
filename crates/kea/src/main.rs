@@ -862,6 +862,20 @@ mod tests {
         let _ = std::fs::remove_file(source_path);
     }
 
+    #[test]
+    fn compile_and_execute_payload_constructor_or_across_variants_exit_code() {
+        let source_path = write_temp_source(
+            "type Either = Left(Int) | Right(Int) | Nope\n\nfn main() -> Int\n  case Right(7)\n    Left(n) | Right(n) -> n + 4\n    Nope -> 0\n",
+            "kea-cli-sum-case-or-variants",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 11);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
     fn write_temp_source(contents: &str, prefix: &str, extension: &str) -> PathBuf {
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
