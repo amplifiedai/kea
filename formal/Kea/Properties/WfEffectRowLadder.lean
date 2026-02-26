@@ -1,6 +1,7 @@
 import Kea.WellFormed
 import Kea.Properties.WfSubstitution
 import Kea.Properties.WfGeneralize
+import Kea.Properties.WfUnifyExtends
 
 /-!
   Kea.Properties.WfEffectRowLadder — packaged WF ladder for `Ty.functionEff`.
@@ -72,6 +73,14 @@ def FunctionEffGenInstWfSlice
     (generalize (.functionEff params effects ret) env s lc traitBounds fuel).ty
   ∧ Ty.WellFormed kctx rctx (instantiate scheme st).1
 
+/-- Packaged `bindTypeVar` contract obligations for `Ty.functionEff`. -/
+def FunctionEffBindTypeVarContractSlice
+    (st stNext : UnifyState) (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat)
+    (h_idemp_next : stNext.subst.Idempotent) : Prop :=
+  ExtendsAndWfRange st stNext kctx rctx
+  ∧ (let h_ac := Subst.acyclicOfIdempotent h_idemp_next
+     CompatWFAgreeOnDomainLookupsAcyclic stNext fuel h_ac)
+
 theorem functionEff_gen_inst_wf_slice
     (scheme : TypeScheme) (env : TypeEnv) (st : UnifyState)
     (s : Subst) (lc : Lacks) (traitBounds : TraitBounds)
@@ -122,3 +131,19 @@ theorem functionEff_gen_inst_wf_slice_mono
     h_scheme h_wf_params h_wf_effects h_wf_ret
     htv_params hrv_params htv_effects hrv_effects htv_ret hrv_ret
     (Or.inl h_mono)
+
+theorem functionEff_bindTypeVar_contract_slice
+    (st stNext : UnifyState) (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat)
+    (v : TypeVarId) (params : TyList) (effects : EffectRow) (ret : Ty)
+    (h_bind : bindTypeVar st v (.functionEff params effects ret) fuel = .ok stNext)
+    (h_wf_state : UnifyState.SubstWellFormedRange st kctx rctx)
+    (h_wf_params : TyList.WellFormed kctx rctx params)
+    (h_wf_effects : EffectRow.WellFormed kctx rctx effects)
+    (h_wf_ret : Ty.WellFormed kctx rctx ret)
+    (h_idemp_next : stNext.subst.Idempotent) :
+    ExtendsAndWfRange st stNext kctx rctx
+    ∧ (let h_ac := Subst.acyclicOfIdempotent h_idemp_next
+       CompatWFAgreeOnDomainLookupsAcyclic stNext fuel h_ac) := by
+  exact bindTypeVar_ok_contract_full_wf
+    st stNext kctx rctx v (.functionEff params effects ret) fuel
+    h_bind h_wf_state ⟨h_wf_params, h_wf_effects, h_wf_ret⟩ h_idemp_next
