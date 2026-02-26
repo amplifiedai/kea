@@ -2,7 +2,7 @@
 
 **Status:** ready
 **Priority:** v1-critical
-**Depends on:** 0g-advanced-types (needs GADTs, Eff kind stable for deriving and collection traits)
+**Depends on:** 0g-advanced-types (needs GADTs, Eff kind stable for deriving and collection traits), 0e-runtime-effects (IO granularity decision shapes stdlib module boundaries)
 **Blocks:** Phase 1 (self-hosting requires full stdlib)
 **Also read before implementing:**
 - [effects-platform-vision](../design/effects-platform-vision.md) — stdlib IS the effect vocabulary. IO decomposition directly shapes stdlib module boundaries.
@@ -64,10 +64,10 @@ across multiple agents once the type features from 0g are stable.
 
 - **Stdlib functions perform effects, not return Results.**
   The Fail/Result duality (KERNEL §5.8) means the stdlib API
-  surface uses effects:
+  surface uses effects for operations that genuinely fail:
 
   ```kea
-  -- stdlib API: effects-first
+  -- IO operations: effects-first (failure is inherent)
   fn read_file(path: String) -[IO, Fail IoError]> String
 
   -- caller decides policy via handlers:
@@ -75,6 +75,24 @@ across multiple agents once the type features from 0g are stable.
   -- or let it propagate:
   let content = read_file("config.toml")        -- Fail IoError in caller's row
   ```
+
+  But **pure lookups stay pure**. Don't force Fail into common
+  data structure operations:
+
+  ```kea
+  -- Map: pure lookups return Option, effectful variant is opt-in
+  fn get(self: Map K V, key: K) -> Option V           -- default, pure
+  fn get_or_fail(self: Map K V, key: K) -[Fail KeyNotFound]> V  -- opt-in
+
+  -- same pattern for List, Set, etc.
+  fn first(self: List T) -> Option T                   -- pure
+  fn first_or_fail(self: List T) -[Fail Empty]> T      -- opt-in
+  ```
+
+  The principle: effects for I/O and operations that *inherently*
+  fail (file not found, network error). Option for data structure
+  lookups where absence is a normal result, not an error. The
+  programmer opts into Fail when they want propagation.
 
   This is not `Result` vs exceptions. It's structural: the effect
   row tracks capabilities, `catch` converts to `Result` at any
@@ -95,9 +113,18 @@ across multiple agents once the type features from 0g are stable.
   Each stdlib module *is* its effect. Import the module, get the
   capability. Handle the effect, define the policy.
 
+  **Fallback if 0e chooses monolithic IO (Option B):** stdlib ships
+  a single `kea-io` module with one `IO` effect. The module structure
+  still separates concerns internally (file ops, net ops, time ops)
+  so that decomposition into separate effects later is a refactor,
+  not a rewrite. API signatures use `IO` where they'd use `Net`/`Clock`/`Rand`.
+
 ## Implementation Plan
 
-### Step 1: Deriving (KERNEL §6.9)
+This brief is large. It lands in three checkpoints, each independently
+shippable and testable.
+
+### Checkpoint 1: Deriving (KERNEL §6.9)
 
 ```kea
 @derive(Show, Eq)
@@ -109,11 +136,14 @@ struct Point
 Compiler-generated trait implementations:
 - For each derivable trait, a codegen recipe that produces an
   impl block from the struct/enum definition
-- Start with: Show, Eq, Ord, Codec
+- Start with: Show, Eq, Ord, Encode, Decode
 - Each derived impl must type-check (it's generated code, not
   magic)
 
-### Step 2: Full stdlib for self-hosting
+**Checkpoint 1 gate:** `@derive(Show, Eq)` works on structs and enums.
+Derived impls type-check. `mise run check-full` passes.
+
+### Checkpoint 2: Core stdlib for self-hosting
 
 The Kea compiler in Kea needs:
 - **Collections:** Map (HAMT), Set (HAMT), SortedMap, SortedSet
@@ -130,7 +160,10 @@ vs interpreted) but the APIs inform design.
 
 This is highly parallelizable — each stdlib module is independent.
 
-### Step 3: Error message investment
+**Checkpoint 2 gate:** Map, String, File IO, JSON all work. Compiler
+can read a `.kea` file, parse it, and write output. `mise run check-full` passes.
+
+### Checkpoint 3: Error message investment
 
 KERNEL ethos: "error messages are a feature." PEDAGOGY.md governs
 the design. This phase invests heavily.
@@ -244,18 +277,23 @@ infrastructure — extend it for Kea's novel type features.
 
 ## Definition of Done
 
-- @derive works for Show, Eq, Ord, Codec
+- @derive works for Show, Eq, Ord, Encode, Decode
 - Stdlib sufficient for compiler self-hosting
 - Error messages are human-readable for all type features
 - Row diff errors show structural missing/extra for both records
   and effects
 - Effect errors include provenance (which call introduced each effect)
+- **Diagnostics gate:** snapshot test coverage for every error category
+  (record row mismatch, effect row mismatch, effect provenance,
+  handler scope, Fail/catch, kind mismatch, ambiguous dispatch).
+  Each error code has at least one snapshot test. Stable codes
+  assigned (E0001-E00XX).
 - `mise run check` passes
 
 ## Open Questions
 
 - Which traits should be derivable in v0? (Proposal: Show, Eq,
-  Ord, Codec. Everything else requires manual implementation.)
+  Ord, Encode, Decode. Everything else requires manual implementation.)
 - Should Map/Set use HAMT from the start or a simpler tree?
   (Proposal: HAMT. It's the specified representation in
   KERNEL §1.2, and there are good Rust HAMT implementations
