@@ -4,6 +4,7 @@
 
 import Kea.Ty
 import Kea.Substitution
+import Kea.WellFormed
 import Kea.FreeVars
 import Kea.OccursCheck
 import Kea.LacksConstraints
@@ -13,6 +14,7 @@ import Kea.Typing
 import Kea.Properties.SubstIdempotent
 import Kea.Properties.SubstCompose
 import Kea.Properties.SubstBridge
+import Kea.Properties.WfSubstitution
 import Kea.Properties.UnifyReflexive
 import Kea.Properties.UnifyConsistent
 import Kea.Properties.UnifyExtends
