@@ -64,24 +64,21 @@ rewriting for indent-sensitive output.
 
 ### The Test Runner
 
-`kea test` runs test blocks defined in source files:
+See **[testing brief](testing.md)** for the full design. Summary:
 
-```kea
-test "user validation rejects negative age"
-  let result = catch(|| -> User.validate({ name: "Alice", age: -1 }))
-  assert result.is_err()
-  assert result.err().message.contains("age")
-```
-
-Test blocks are first-class syntax, not a framework. The compiler
-knows about them. Benefits:
-
-- **Effect-aware test isolation.** Pure tests need no setup.
-  Effectful tests get handlers injected automatically. The test
-  runner knows the difference because effect signatures tell it.
-- **Parallel by default.** Pure tests can run in parallel safely.
-  Tests with shared state (actors) are sequenced automatically.
-- **No test framework dependency.** Tests are part of the language.
+- **`assert` (Fail) + `check` (Test effect):** two assertion modes.
+  `assert` stops the test (precondition). `check` accumulates
+  failures and continues (observation). The handler decides
+  accumulation semantics, not the call site.
+- **Expression capture:** the compiler rewrites assertions in test
+  blocks to capture sub-expression values. Structural diff for
+  records via row types.
+- **Effect-driven parallelism:** pure + Fail-only tests parallel
+  by default. IO/concurrency tests sequenced, opt-in parallel.
+- **Property testing:** `Gen` effect, `@derive(Arbitrary)`,
+  seed replay via `--replay`.
+- **Structured results:** `TestResult` type rendered by CLI or
+  consumed as JSON by MCP/CI.
 
 ## What Only Kea Can Do
 
@@ -117,15 +114,9 @@ compiler proves it.
 
 ### Effect-Aware Test Isolation
 
-The test runner can automatically:
-
-- Mock IO via effect handlers (test file operations without
-  touching the filesystem)
-- Mock Send/Spawn (test actor code without spinning up a runtime)
-- Verify that pure functions stay pure (no IO leaks into tests)
-
-The effect system makes this compositional — swap the handler,
-not the code.
+See [testing brief](testing.md) for details. Handler-based mocking
+replaces mock frameworks entirely — swap the handler, not the code.
+The compiler verifies handler/effect signature match.
 
 ### Structured Diagnostics for Agents
 
