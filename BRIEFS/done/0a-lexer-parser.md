@@ -1,6 +1,6 @@
 # Brief: Lexer and Indentation-Sensitive Parser
 
-**Status:** active
+**Status:** done
 **Priority:** v1-critical
 **Depends on:** bootstrap-infra
 **Blocks:** 0b-type-system-core, 0c-effect-handlers, everything downstream

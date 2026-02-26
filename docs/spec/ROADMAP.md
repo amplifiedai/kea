@@ -171,6 +171,10 @@ for writing Kea code productively. Can be developed in parallel.
   backend swapped to Kea type system. Lands by 0d-0e so there's
   editor intelligence before self-hosting.
   Estimated: ~1-2 weeks.
+- **Semantic query contract (cross-cutting)** — define a stable
+  semantic response layer shared by MCP/LSP/REPL so tooling does
+  not depend on raw compiler internals. Rich compiler-side queries
+  in dev; runtime-safe introspection is deferred to Phase 2a.
 
 **0d: Code generation — pure subset (week 4-6)**
 
@@ -302,6 +306,9 @@ landed during Phase 0. This phase is ecosystem infrastructure:
 - LSP polish: rename, references, code actions, workspace symbols
   (basic LSP from Phase 0 gets full IDE features)
 - MCP server polish and documentation (running since 0b)
+- Runtime introspection API (capability-gated): bounded/audited
+  semantic queries for debugger/ops/agents (`effects_of`,
+  `methods_of`, protocol summaries, graph summaries)
 - Formatter polish: `// kea-fmt: off/on` directives, editor
   format-on-save integration
 - Test runner (new)

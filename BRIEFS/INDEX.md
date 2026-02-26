@@ -23,15 +23,16 @@ Designed and approved. Ready to pick up. Ordered by execution sequence per ROADM
 
 ### Phase 0b: Type System Core (weeks 1-3)
 
-2. **[MCP server](todo/0b-mcp-server.md)** — Compiler-as-MCP-server for agent feedback loop. Lands immediately after type checker works. Cannibalises rill-mcp (371 LOC).
+2. **[Post-0b Rill surface cleanup](todo/0b-rill-surface-cleanup.md)** — Remove remaining inherited pipe/DataFrame/HKT-era and other unbriefed parser/typechecker substrate from core crates so 0a/0b completion matches locked Kea v0 surface.
+3. **[MCP server](todo/0b-mcp-server.md)** — Compiler-as-MCP-server for agent feedback loop. Lands immediately after type checker works. Cannibalises rill-mcp (371 LOC).
 
 ### Phase 0c: Effect Handlers (weeks 3-4)
 
-3. **[Effect handlers](todo/0c-effect-handlers.md)** — `effect` declarations, `handle`/`resume` expressions, handler typing, at-most-once resumption, `Fail` sugar (`?`, `fail`, `catch`). Genuinely new — no rill code to cannibalise.
+4. **[Effect handlers](todo/0c-effect-handlers.md)** — `effect` declarations, `handle`/`resume` expressions, handler typing, at-most-once resumption, `Fail` sugar (`?`, `fail`, `catch`). Genuinely new — no rill code to cannibalise.
 
 ### Phase 0d: Code Generation — Pure Subset (weeks 4-6)
 
-4. **[Codegen — pure subset](todo/0d-codegen-pure.md)** — Cranelift backend (JIT + AOT), struct/enum layout, pattern matching compilation, refcounting, CoW, basic stdlib, CLI. kea-hir, kea-mir, kea-codegen, kea crates. Cannibalises rill-codegen, rill-mir.
+5. **[Codegen — pure subset](todo/0d-codegen-pure.md)** — Cranelift backend (JIT + AOT), struct/enum layout, pattern matching compilation, refcounting, CoW, basic stdlib, CLI. kea-hir, kea-mir, kea-codegen, kea crates. Cannibalises rill-codegen, rill-mir.
 
 ### Phase 1-3: Not yet briefed
 
@@ -88,6 +89,9 @@ Completed briefs. Kept for reference and design rationale.
 0a: lexer + parser (kea-ast, kea-syntax, kea-diag)
  │
  ├── 0b: type system core (kea-types, kea-infer)
+ │    │
+ │    ├── 0b cleanup: remove inherited non-Kea core surface
+ │    │    (pipe/DataFrame/HKT-era and unbriefed parser/typeck forms)
  │    │
  │    ├── 0c: effect handlers (extends kea-infer)
  │    │    │
