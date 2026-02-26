@@ -1,0 +1,12 @@
+fn fib(n: Int) -> Int
+  if n < 2
+    n
+  else
+    fib(n - 1) + fib(n - 2)
+
+fn main() -> Int
+  let value = fib(20)
+  if value == 6765
+    0
+  else
+    1

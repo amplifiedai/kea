@@ -143,3 +143,7 @@ run = "./scripts/bench-export.sh benchmark-results/latest"
 [tasks."bench:variance"]
 description = "Run repeated benchmark exports and summarize median timing variance"
 run = "./scripts/bench-variance.sh 3 benchmark-results/variance"
+
+[tasks."bench:programs"]
+description = "Run whole-program benchmark corpus with hyperfine (fallback runner if missing)"
+run = "./scripts/bench-programs.sh benchmarks/programs benchmark-results/programs/latest"
