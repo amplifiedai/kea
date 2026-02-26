@@ -116,6 +116,11 @@ pub enum MirInst {
         tag: u32,
         fields: Vec<MirValueId>,
     },
+    SumTagLoad {
+        dest: MirValueId,
+        sum: MirValueId,
+        sum_type: String,
+    },
     RecordFieldLoad {
         dest: MirValueId,
         record: MirValueId,
@@ -264,6 +269,7 @@ impl MirInst {
                 | MirInst::Freeze { .. }
                 | MirInst::RecordInit { .. }
                 | MirInst::SumInit { .. }
+                | MirInst::SumTagLoad { .. }
                 | MirInst::RecordFieldLoad { .. }
                 | MirInst::CowUpdate { .. }
         )
@@ -351,6 +357,10 @@ fn lower_hir_function(function: &HirFunction, layouts: &MirLayoutCatalog) -> Mir
                     .insert(name.clone(), record_ty.name.clone());
             }
         }
+        if let Some(Type::Sum(sum_ty)) = params.get(index) {
+            ctx.sum_value_types
+                .insert(MirValueId(index as u32), sum_ty.name.clone());
+        }
     }
     let return_value = ctx.lower_expr(&function.body);
     let blocks = ctx.finish(return_value, &ret);
@@ -380,6 +390,7 @@ struct FunctionLoweringCtx {
     current_block: MirBlockId,
     vars: BTreeMap<String, MirValueId>,
     var_record_types: BTreeMap<String, String>,
+    sum_value_types: BTreeMap<MirValueId, String>,
     sum_ctor_candidates: BTreeMap<String, Vec<SumCtorCandidate>>,
     next_value_id: u32,
 }
@@ -417,6 +428,7 @@ impl FunctionLoweringCtx {
             current_block: MirBlockId(0),
             vars: BTreeMap::new(),
             var_record_types: BTreeMap::new(),
+            sum_value_types: BTreeMap::new(),
             sum_ctor_candidates,
             next_value_id: param_count as u32,
         }
@@ -517,6 +529,9 @@ impl FunctionLoweringCtx {
                 }
                 let left_value = self.lower_expr(left)?;
                 let right_value = self.lower_expr(right)?;
+                let left_value = self.lower_maybe_sum_tag_operand(*op, left, left_value, right);
+                let right_value =
+                    self.lower_maybe_sum_tag_operand(*op, right, right_value, left);
                 let dest = self.new_value();
                 self.emit_inst(MirInst::Binary {
                     dest: dest.clone(),
@@ -623,6 +638,9 @@ impl FunctionLoweringCtx {
                     ret_type: expr.ty.clone(),
                     cc_manifest_id: "default".to_string(),
                 });
+                if let (Some(dest), Type::Sum(sum_ty)) = (&result, &expr.ty) {
+                    self.sum_value_types.insert(dest.clone(), sum_ty.name.clone());
+                }
                 result
             }
             HirExprKind::Let { pattern, value } => {
@@ -680,17 +698,56 @@ impl FunctionLoweringCtx {
                     fields.push(self.lower_raw_ast_expr(&arg.value.node)?);
                 }
                 let dest = self.new_value();
+                let sum_type = selected.sum_type.clone();
                 self.emit_inst(MirInst::SumInit {
                     dest: dest.clone(),
-                    sum_type: selected.sum_type,
+                    sum_type,
                     variant: name.node.clone(),
                     tag: selected.tag,
                     fields,
                 });
+                self.sum_value_types
+                    .insert(dest.clone(), selected.sum_type.clone());
                 Some(dest)
             }
             _ => None,
         }
+    }
+
+    fn lower_maybe_sum_tag_operand(
+        &mut self,
+        op: BinOp,
+        operand_expr: &HirExpr,
+        operand_value: MirValueId,
+        other_expr: &HirExpr,
+    ) -> MirValueId {
+        if !matches!(op, BinOp::Eq | BinOp::Neq) {
+            return operand_value;
+        }
+        if !matches!(other_expr.kind, HirExprKind::Lit(kea_ast::Lit::Int(_))) {
+            return operand_value;
+        }
+        let Some(sum_type) = self.sum_value_types.get(&operand_value).cloned() else {
+            return operand_value;
+        };
+        // Only rewrite sum-pointer comparisons that come from case-style tag checks.
+        if !matches!(
+            operand_expr.kind,
+            HirExprKind::Var(_)
+                | HirExprKind::Call { .. }
+                | HirExprKind::Raw(AstExprKind::Constructor { .. })
+                | HirExprKind::Let { .. }
+                | HirExprKind::Block(_)
+        ) {
+            return operand_value;
+        }
+        let tag_value = self.new_value();
+        self.emit_inst(MirInst::SumTagLoad {
+            dest: tag_value.clone(),
+            sum: operand_value,
+            sum_type,
+        });
+        tag_value
     }
 
     fn lower_if(
@@ -853,7 +910,7 @@ mod tests {
         VariantField,
     };
     use kea_hir::{HirExpr, HirExprKind, HirFunction, HirParam};
-    use kea_types::{FunctionType, Label, RecordType, RowType};
+    use kea_types::{FunctionType, Label, RecordType, RowType, SumType};
 
     fn sp<T>(node: T) -> Spanned<T> {
         Spanned::new(node, kea_ast::Span::synthetic())
@@ -1061,6 +1118,53 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn lower_hir_module_rewrites_sum_pointer_eq_to_tag_compare() {
+        let sum_ty = Type::Sum(SumType {
+            name: "Option".to_string(),
+            type_args: vec![Type::Int],
+            variants: vec![
+                ("Some".to_string(), vec![Type::Int]),
+                ("None".to_string(), vec![]),
+            ],
+        });
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "is_some_tag".to_string(),
+                params: vec![HirParam {
+                    name: Some("x".to_string()),
+                    span: kea_ast::Span::synthetic(),
+                }],
+                body: HirExpr {
+                    kind: HirExprKind::Binary {
+                        op: BinOp::Eq,
+                        left: Box::new(HirExpr {
+                            kind: HirExprKind::Var("x".to_string()),
+                            ty: sum_ty.clone(),
+                            span: kea_ast::Span::synthetic(),
+                        }),
+                        right: Box::new(HirExpr {
+                            kind: HirExprKind::Lit(kea_ast::Lit::Int(0)),
+                            ty: Type::Int,
+                            span: kea_ast::Span::synthetic(),
+                        }),
+                    },
+                    ty: Type::Bool,
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::pure(vec![sum_ty], Type::Bool)),
+                effects: EffectRow::pure(),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+        let mir = lower_hir_module(&hir);
+        let function = &mir.functions[0];
+        assert!(function.blocks[0]
+            .instructions
+            .iter()
+            .any(|inst| matches!(inst, MirInst::SumTagLoad { .. })));
     }
 
     #[test]

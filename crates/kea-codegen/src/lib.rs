@@ -826,6 +826,27 @@ fn lower_instruction<M: Module>(
             values.insert(dest.clone(), base_ptr);
             Ok(false)
         }
+        MirInst::SumTagLoad { dest, sum, sum_type } => {
+            let base = get_value(values, function_name, sum)?;
+            let layout = ctx
+                .layout_plan
+                .sums
+                .get(sum_type)
+                .ok_or_else(|| CodegenError::UnsupportedMir {
+                    function: function_name.to_string(),
+                    detail: format!("sum layout `{sum_type}` not found"),
+                })?;
+            let tag_offset = i32::try_from(layout.tag_offset).map_err(|_| {
+                CodegenError::UnsupportedMir {
+                    function: function_name.to_string(),
+                    detail: format!("sum tag offset for `{sum_type}` does not fit i32"),
+                }
+            })?;
+            let tag_i32 = builder.ins().load(types::I32, MemFlags::new(), base, tag_offset);
+            let tag_i64 = builder.ins().uextend(types::I64, tag_i32);
+            values.insert(dest.clone(), tag_i64);
+            Ok(false)
+        }
         MirInst::RecordFieldLoad {
             dest,
             record,
@@ -1572,6 +1593,7 @@ fn collect_function_stats(function: &MirFunction) -> FunctionPassStats {
                 MirInst::Const { .. }
                 | MirInst::Binary { .. }
                 | MirInst::Unary { .. }
+                | MirInst::SumTagLoad { .. }
                 | MirInst::RecordFieldLoad { .. }
                 | MirInst::Move { .. }
                 | MirInst::Borrow { .. }
@@ -2077,6 +2099,72 @@ mod tests {
         }
     }
 
+    fn sample_sum_tag_load_module() -> MirModule {
+        MirModule {
+            functions: vec![MirFunction {
+                name: "is_some".to_string(),
+                signature: MirFunctionSignature {
+                    params: vec![Type::Sum(SumType {
+                        name: "Option".to_string(),
+                        type_args: vec![Type::Int],
+                        variants: vec![
+                            ("Some".to_string(), vec![Type::Int]),
+                            ("None".to_string(), vec![]),
+                        ],
+                    })],
+                    ret: Type::Bool,
+                    effects: EffectRow::pure(),
+                },
+                entry: MirBlockId(0),
+                blocks: vec![MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions: vec![
+                        MirInst::SumTagLoad {
+                            dest: MirValueId(1),
+                            sum: MirValueId(0),
+                            sum_type: "Option".to_string(),
+                        },
+                        MirInst::Const {
+                            dest: MirValueId(2),
+                            literal: MirLiteral::Int(0),
+                        },
+                        MirInst::Binary {
+                            dest: MirValueId(3),
+                            op: MirBinaryOp::Eq,
+                            left: MirValueId(1),
+                            right: MirValueId(2),
+                        },
+                    ],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirValueId(3)),
+                    },
+                }],
+            }],
+            layouts: MirLayoutCatalog {
+                records: vec![],
+                sums: vec![MirSumLayout {
+                    name: "Option".to_string(),
+                    variants: vec![
+                        MirVariantLayout {
+                            name: "Some".to_string(),
+                            tag: 0,
+                            fields: vec![MirVariantFieldLayout {
+                                name: None,
+                                annotation: kea_ast::TypeAnnotation::Named("Int".to_string()),
+                            }],
+                        },
+                        MirVariantLayout {
+                            name: "None".to_string(),
+                            tag: 1,
+                            fields: vec![],
+                        },
+                    ],
+                }],
+            },
+        }
+    }
+
     fn sample_record_handle_signature_module() -> MirModule {
         let user_ty = Type::Record(RecordType {
             name: "User".to_string(),
@@ -2535,6 +2623,22 @@ mod tests {
         let artifact = backend
             .compile_module(&module, &manifest, &config)
             .expect("sum init lowering should compile");
+        assert!(!artifact.object.is_empty());
+    }
+
+    #[test]
+    fn cranelift_backend_lowers_sum_tag_load() {
+        let module = sample_sum_tag_load_module();
+        let manifest = default_abi_manifest(&module);
+        let backend = CraneliftBackend;
+        let config = BackendConfig {
+            mode: CodegenMode::Aot,
+            ..BackendConfig::default()
+        };
+
+        let artifact = backend
+            .compile_module(&module, &manifest, &config)
+            .expect("sum tag load lowering should compile");
         assert!(!artifact.object.is_empty());
     }
 

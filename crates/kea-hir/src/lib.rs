@@ -98,6 +98,8 @@ pub enum HirPattern {
 
 type UnitVariantTags = BTreeMap<String, i64>;
 type QualifiedUnitVariantTags = BTreeMap<(String, String), i64>;
+type PatternVariantTags = BTreeMap<String, i64>;
+type QualifiedPatternVariantTags = BTreeMap<(String, String), i64>;
 type KnownRecordDefs = BTreeSet<String>;
 
 fn is_namespace_qualifier(name: &str) -> bool {
@@ -121,10 +123,20 @@ fn expr_decl_to_fn_decl(expr: &ExprDecl) -> FnDecl {
     }
 }
 
-fn collect_unit_variant_tags(module: &Module) -> (UnitVariantTags, QualifiedUnitVariantTags) {
+fn collect_variant_tags(
+    module: &Module,
+) -> (
+    UnitVariantTags,
+    QualifiedUnitVariantTags,
+    PatternVariantTags,
+    QualifiedPatternVariantTags,
+) {
     let mut unqualified = UnitVariantTags::new();
     let mut qualified = QualifiedUnitVariantTags::new();
     let mut duplicates = BTreeSet::new();
+    let mut pattern_unqualified = PatternVariantTags::new();
+    let mut pattern_qualified = QualifiedPatternVariantTags::new();
+    let mut pattern_duplicates = BTreeSet::new();
 
     for decl in &module.declarations {
         let DeclKind::TypeDef(def) = &decl.node else {
@@ -132,11 +144,19 @@ fn collect_unit_variant_tags(module: &Module) -> (UnitVariantTags, QualifiedUnit
         };
 
         for (idx, variant) in def.variants.iter().enumerate() {
+            let tag = idx as i64;
+            pattern_qualified.insert((def.name.node.clone(), variant.name.node.clone()), tag);
+            if pattern_unqualified
+                .insert(variant.name.node.clone(), tag)
+                .is_some()
+            {
+                pattern_duplicates.insert(variant.name.node.clone());
+            }
+
             if !variant.fields.is_empty() {
                 continue;
             }
 
-            let tag = idx as i64;
             qualified.insert((def.name.node.clone(), variant.name.node.clone()), tag);
 
             if unqualified
@@ -151,8 +171,11 @@ fn collect_unit_variant_tags(module: &Module) -> (UnitVariantTags, QualifiedUnit
     for name in duplicates {
         unqualified.remove(&name);
     }
+    for name in pattern_duplicates {
+        pattern_unqualified.remove(&name);
+    }
 
-    (unqualified, qualified)
+    (unqualified, qualified, pattern_unqualified, pattern_qualified)
 }
 
 fn collect_record_defs(module: &Module) -> KnownRecordDefs {
@@ -167,7 +190,8 @@ fn collect_record_defs(module: &Module) -> KnownRecordDefs {
 }
 
 pub fn lower_module(module: &Module, env: &TypeEnv) -> HirModule {
-    let (unit_variant_tags, qualified_variant_tags) = collect_unit_variant_tags(module);
+    let (unit_variant_tags, qualified_variant_tags, pattern_variant_tags, pattern_qualified_tags) =
+        collect_variant_tags(module);
     let known_record_defs = collect_record_defs(module);
     let declarations = module
         .declarations
@@ -178,6 +202,8 @@ pub fn lower_module(module: &Module, env: &TypeEnv) -> HirModule {
                 env,
                 &unit_variant_tags,
                 &qualified_variant_tags,
+                &pattern_variant_tags,
+                &pattern_qualified_tags,
                 &known_record_defs,
             )),
             DeclKind::ExprFn(expr_decl) => HirDecl::Function(lower_function_with_variants(
@@ -185,6 +211,8 @@ pub fn lower_module(module: &Module, env: &TypeEnv) -> HirModule {
                 env,
                 &unit_variant_tags,
                 &qualified_variant_tags,
+                &pattern_variant_tags,
+                &pattern_qualified_tags,
                 &known_record_defs,
             )),
             other => HirDecl::Raw(other.clone()),
@@ -200,6 +228,8 @@ pub fn lower_function(fn_decl: &FnDecl, env: &TypeEnv) -> HirFunction {
         env,
         &UnitVariantTags::new(),
         &QualifiedUnitVariantTags::new(),
+        &PatternVariantTags::new(),
+        &QualifiedPatternVariantTags::new(),
         &known_record_defs,
     )
 }
@@ -209,6 +239,8 @@ fn lower_function_with_variants(
     env: &TypeEnv,
     unit_variant_tags: &UnitVariantTags,
     qualified_variant_tags: &QualifiedUnitVariantTags,
+    pattern_variant_tags: &PatternVariantTags,
+    pattern_qualified_tags: &QualifiedPatternVariantTags,
     known_record_defs: &KnownRecordDefs,
 ) -> HirFunction {
     let fn_ty = env
@@ -229,6 +261,8 @@ fn lower_function_with_variants(
             Some(ret_ty),
             unit_variant_tags,
             qualified_variant_tags,
+            pattern_variant_tags,
+            pattern_qualified_tags,
             known_record_defs,
         ),
         ty: fn_ty,
@@ -256,6 +290,8 @@ fn lower_expr(
     ty_hint: Option<Type>,
     unit_variant_tags: &UnitVariantTags,
     qualified_variant_tags: &QualifiedUnitVariantTags,
+    pattern_variant_tags: &PatternVariantTags,
+    pattern_qualified_tags: &QualifiedPatternVariantTags,
     known_record_defs: &KnownRecordDefs,
 ) -> HirExpr {
     let default_ty = ty_hint.clone().unwrap_or(Type::Dynamic);
@@ -270,6 +306,8 @@ fn lower_expr(
                 None,
                 unit_variant_tags,
                 qualified_variant_tags,
+                pattern_variant_tags,
+                pattern_qualified_tags,
                 known_record_defs,
             )),
             right: Box::new(lower_expr(
@@ -277,6 +315,8 @@ fn lower_expr(
                 None,
                 unit_variant_tags,
                 qualified_variant_tags,
+                pattern_variant_tags,
+                pattern_qualified_tags,
                 known_record_defs,
             )),
         },
@@ -287,6 +327,8 @@ fn lower_expr(
                 None,
                 unit_variant_tags,
                 qualified_variant_tags,
+                pattern_variant_tags,
+                pattern_qualified_tags,
                 known_record_defs,
             )),
         },
@@ -296,6 +338,8 @@ fn lower_expr(
                 None,
                 unit_variant_tags,
                 qualified_variant_tags,
+                pattern_variant_tags,
+                pattern_qualified_tags,
                 known_record_defs,
             )),
             args: args
@@ -306,6 +350,8 @@ fn lower_expr(
                         None,
                         unit_variant_tags,
                         qualified_variant_tags,
+                        pattern_variant_tags,
+                        pattern_qualified_tags,
                         known_record_defs,
                     )
                 })
@@ -318,6 +364,8 @@ fn lower_expr(
                 None,
                 unit_variant_tags,
                 qualified_variant_tags,
+                pattern_variant_tags,
+                pattern_qualified_tags,
                 known_record_defs,
             )),
         },
@@ -328,6 +376,8 @@ fn lower_expr(
                 None,
                 unit_variant_tags,
                 qualified_variant_tags,
+                pattern_variant_tags,
+                pattern_qualified_tags,
                 known_record_defs,
             )),
         },
@@ -341,6 +391,8 @@ fn lower_expr(
                 None,
                 unit_variant_tags,
                 qualified_variant_tags,
+                pattern_variant_tags,
+                pattern_qualified_tags,
                 known_record_defs,
             )),
             then_branch: Box::new(lower_expr(
@@ -348,6 +400,8 @@ fn lower_expr(
                 ty_hint.clone(),
                 unit_variant_tags,
                 qualified_variant_tags,
+                pattern_variant_tags,
+                pattern_qualified_tags,
                 known_record_defs,
             )),
             else_branch: else_branch
@@ -358,6 +412,8 @@ fn lower_expr(
                         ty_hint.clone(),
                         unit_variant_tags,
                         qualified_variant_tags,
+                        pattern_variant_tags,
+                        pattern_qualified_tags,
                         known_record_defs,
                     ))
                 }),
@@ -369,6 +425,8 @@ fn lower_expr(
                 ty_hint.clone(),
                 unit_variant_tags,
                 qualified_variant_tags,
+                pattern_variant_tags,
+                pattern_qualified_tags,
                 known_record_defs,
             ) {
                 case_kind
@@ -389,6 +447,8 @@ fn lower_expr(
                             hint,
                             unit_variant_tags,
                             qualified_variant_tags,
+                            pattern_variant_tags,
+                            pattern_qualified_tags,
                             known_record_defs,
                         )
                     })
@@ -404,6 +464,8 @@ fn lower_expr(
                         None,
                         unit_variant_tags,
                         qualified_variant_tags,
+                        pattern_variant_tags,
+                        pattern_qualified_tags,
                         known_record_defs,
                     )
                 })
@@ -425,6 +487,8 @@ fn lower_expr(
                             None,
                             unit_variant_tags,
                             qualified_variant_tags,
+                            pattern_variant_tags,
+                            pattern_qualified_tags,
                             known_record_defs,
                         ),
                     )
@@ -456,6 +520,8 @@ fn lower_expr(
                             None,
                             unit_variant_tags,
                             qualified_variant_tags,
+                            pattern_variant_tags,
+                            pattern_qualified_tags,
                             known_record_defs,
                         )),
                         field: field.node.clone(),
@@ -468,6 +534,8 @@ fn lower_expr(
                         None,
                         unit_variant_tags,
                         qualified_variant_tags,
+                        pattern_variant_tags,
+                        pattern_qualified_tags,
                         known_record_defs,
                     )),
                     field: field.node.clone(),
@@ -559,12 +627,15 @@ enum LiteralCaseValue {
     Bool(bool),
 }
 
+#[allow(clippy::too_many_arguments)]
 fn lower_bool_case(
     scrutinee: &Expr,
     arms: &[CaseArm],
     ty_hint: Option<Type>,
     unit_variant_tags: &UnitVariantTags,
     qualified_variant_tags: &QualifiedUnitVariantTags,
+    pattern_variant_tags: &PatternVariantTags,
+    pattern_qualified_tags: &QualifiedPatternVariantTags,
     known_record_defs: &KnownRecordDefs,
 ) -> Option<HirExprKind> {
     if let Some(kind) = lower_literal_case(
@@ -573,6 +644,8 @@ fn lower_bool_case(
         ty_hint.clone(),
         unit_variant_tags,
         qualified_variant_tags,
+        pattern_variant_tags,
+        pattern_qualified_tags,
         known_record_defs,
     ) {
         return Some(kind);
@@ -588,6 +661,8 @@ fn lower_bool_case(
         None,
         unit_variant_tags,
         qualified_variant_tags,
+        pattern_variant_tags,
+        pattern_qualified_tags,
         known_record_defs,
     );
     let safe_scrutinee = matches!(lowered_scrutinee.kind, HirExprKind::Var(_) | HirExprKind::Lit(_));
@@ -620,6 +695,8 @@ fn lower_bool_case(
             ty_hint.clone(),
             unit_variant_tags,
             qualified_variant_tags,
+            pattern_variant_tags,
+            pattern_qualified_tags,
             known_record_defs,
         );
         match bind {
@@ -728,12 +805,15 @@ fn lower_bool_case(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn lower_literal_case(
     scrutinee: &Expr,
     arms: &[CaseArm],
     ty_hint: Option<Type>,
     unit_variant_tags: &UnitVariantTags,
     qualified_variant_tags: &QualifiedUnitVariantTags,
+    pattern_variant_tags: &PatternVariantTags,
+    pattern_qualified_tags: &QualifiedPatternVariantTags,
     known_record_defs: &KnownRecordDefs,
 ) -> Option<HirExprKind> {
     enum LiteralFallbackArm<'a> {
@@ -765,8 +845,8 @@ fn lower_literal_case(
             pattern => {
                 let (values, bind_name) = literal_case_values_from_pattern(
                     pattern,
-                    unit_variant_tags,
-                    qualified_variant_tags,
+                    pattern_variant_tags,
+                    pattern_qualified_tags,
                 )?;
                 for value in values {
                     literal_arms.push((value, &arm.body, bind_name.clone(), arm.guard.as_deref()));
@@ -802,6 +882,8 @@ fn lower_literal_case(
         None,
         unit_variant_tags,
         qualified_variant_tags,
+        pattern_variant_tags,
+        pattern_qualified_tags,
         known_record_defs,
     );
     let safe_scrutinee = matches!(lowered_scrutinee.kind, HirExprKind::Var(_) | HirExprKind::Lit(_));
@@ -843,6 +925,8 @@ fn lower_literal_case(
                     ty_hint.clone(),
                     unit_variant_tags,
                     qualified_variant_tags,
+                    pattern_variant_tags,
+                    pattern_qualified_tags,
                     known_record_defs,
                 );
                 let Some(guard_expr) = guard else {
@@ -855,6 +939,8 @@ fn lower_literal_case(
                     None,
                     unit_variant_tags,
                     qualified_variant_tags,
+                    pattern_variant_tags,
+                    pattern_qualified_tags,
                     known_record_defs,
                 );
                 let next_else = else_expr.clone().or_else(|| {
@@ -891,6 +977,8 @@ fn lower_literal_case(
                             ty_hint.clone(),
                             unit_variant_tags,
                             qualified_variant_tags,
+                            pattern_variant_tags,
+                            pattern_qualified_tags,
                             known_record_defs,
                         ),
                     ]),
@@ -910,6 +998,8 @@ fn lower_literal_case(
                             None,
                             unit_variant_tags,
                             qualified_variant_tags,
+                            pattern_variant_tags,
+                            pattern_qualified_tags,
                             known_record_defs,
                         ),
                     ]),
@@ -948,6 +1038,8 @@ fn lower_literal_case(
             ty_hint.clone(),
             unit_variant_tags,
             qualified_variant_tags,
+            pattern_variant_tags,
+            pattern_qualified_tags,
             known_record_defs,
         ));
     }
@@ -989,6 +1081,8 @@ fn lower_literal_case(
                     None,
                     unit_variant_tags,
                     qualified_variant_tags,
+                    pattern_variant_tags,
+                    pattern_qualified_tags,
                     known_record_defs,
                 );
                 HirExpr {
@@ -1002,6 +1096,8 @@ fn lower_literal_case(
                     None,
                     unit_variant_tags,
                     qualified_variant_tags,
+                    pattern_variant_tags,
+                    pattern_qualified_tags,
                     known_record_defs,
                 )
             };
@@ -1026,6 +1122,8 @@ fn lower_literal_case(
                     ty_hint.clone(),
                     unit_variant_tags,
                     qualified_variant_tags,
+                    pattern_variant_tags,
+                    pattern_qualified_tags,
                     known_record_defs,
                 )),
                 else_branch: else_expr.as_ref().map(|expr| Box::new(expr.clone())),
@@ -1046,8 +1144,8 @@ fn lower_literal_case(
 
 fn literal_case_values_from_pattern(
     pattern: &PatternKind,
-    unit_variant_tags: &UnitVariantTags,
-    qualified_variant_tags: &QualifiedUnitVariantTags,
+    pattern_variant_tags: &PatternVariantTags,
+    pattern_qualified_tags: &QualifiedPatternVariantTags,
 ) -> Option<(Vec<LiteralCaseValue>, Option<String>)> {
     match pattern {
         PatternKind::Lit(lit @ Lit::Int(_))
@@ -1060,12 +1158,20 @@ fn literal_case_values_from_pattern(
             qualifier,
             args,
             rest,
-        } if args.is_empty() && !*rest => {
-            let tag = resolve_unit_variant_tag(
+        } if !*rest => {
+            // 0d compiled constructor-pattern fast path: tag-only dispatch.
+            // Accept payload constructors when payload subpatterns are wildcard-only.
+            if !args
+                .iter()
+                .all(|arg| arg.name.is_none() && matches!(arg.pattern.node, PatternKind::Wildcard))
+            {
+                return None;
+            }
+            let tag = resolve_variant_tag(
                 name,
                 qualifier.as_ref(),
-                unit_variant_tags,
-                qualified_variant_tags,
+                pattern_variant_tags,
+                pattern_qualified_tags,
             )?;
             Some((vec![LiteralCaseValue::Int(tag)], None))
         }
@@ -1075,8 +1181,8 @@ fn literal_case_values_from_pattern(
             for branch in patterns {
                 let (branch_values, branch_bind_name) = literal_case_values_from_pattern(
                     &branch.node,
-                    unit_variant_tags,
-                    qualified_variant_tags,
+                    pattern_variant_tags,
+                    pattern_qualified_tags,
                 )?;
                 match (&shared_bind_name, branch_bind_name) {
                     (None, None) => {}
@@ -1092,8 +1198,8 @@ fn literal_case_values_from_pattern(
         PatternKind::As { pattern, name } => {
             let (values, inner_bind_name) = literal_case_values_from_pattern(
                 &pattern.node,
-                unit_variant_tags,
-                qualified_variant_tags,
+                pattern_variant_tags,
+                pattern_qualified_tags,
             )?;
             if inner_bind_name.is_some() {
                 return None;
@@ -1104,6 +1210,7 @@ fn literal_case_values_from_pattern(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn lower_arm_body(
     body: &Expr,
     bind_name: Option<String>,
@@ -1111,6 +1218,8 @@ fn lower_arm_body(
     ty_hint: Option<Type>,
     unit_variant_tags: &UnitVariantTags,
     qualified_variant_tags: &QualifiedUnitVariantTags,
+    pattern_variant_tags: &PatternVariantTags,
+    pattern_qualified_tags: &QualifiedPatternVariantTags,
     known_record_defs: &KnownRecordDefs,
 ) -> HirExpr {
     let lowered_body = lower_expr(
@@ -1118,6 +1227,8 @@ fn lower_arm_body(
         ty_hint,
         unit_variant_tags,
         qualified_variant_tags,
+        pattern_variant_tags,
+        pattern_qualified_tags,
         known_record_defs,
     );
     let Some(name) = bind_name else {
@@ -1167,18 +1278,18 @@ fn literal_case_type(lit: LiteralCaseValue) -> Type {
     }
 }
 
-fn resolve_unit_variant_tag(
+fn resolve_variant_tag(
     name: &str,
     qualifier: Option<&String>,
-    unit_variant_tags: &UnitVariantTags,
-    qualified_variant_tags: &QualifiedUnitVariantTags,
+    pattern_variant_tags: &PatternVariantTags,
+    pattern_qualified_tags: &QualifiedPatternVariantTags,
 ) -> Option<i64> {
     if let Some(type_name) = qualifier {
-        return qualified_variant_tags
+        return pattern_qualified_tags
             .get(&(type_name.clone(), name.to_string()))
             .copied();
     }
-    unit_variant_tags.get(name).copied()
+    pattern_variant_tags.get(name).copied()
 }
 
 #[cfg(test)]
@@ -1620,6 +1731,48 @@ mod tests {
                 assert!(matches!(exprs.last().map(|expr| &expr.kind), Some(HirExprKind::If { .. })));
             }
             other => panic!("expected enum case to lower through literal-case path, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn lower_function_payload_constructor_wildcard_case_desugars_to_if_chain() {
+        let module = parse_module_from_text(
+            "type Flag = Yep(Int) | Nope\nfn pick(x: Flag) -> Int\n  case x\n    Yep(_) -> 1\n    Nope -> 0",
+        );
+        let mut env = TypeEnv::new();
+        env.bind(
+            "pick".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::pure(
+                vec![Type::Sum(kea_types::SumType {
+                    name: "Flag".to_string(),
+                    type_args: vec![],
+                    variants: vec![
+                        ("Yep".to_string(), vec![Type::Int]),
+                        ("Nope".to_string(), vec![]),
+                    ],
+                })],
+                Type::Int,
+            ))),
+        );
+
+        let lowered = lower_module(&module, &env);
+        let function = lowered
+            .declarations
+            .iter()
+            .find_map(|decl| match decl {
+                HirDecl::Function(function) if function.name == "pick" => Some(function),
+                _ => None,
+            })
+            .expect("expected lowered pick function");
+
+        match &function.body.kind {
+            HirExprKind::If { .. } => {}
+            HirExprKind::Block(exprs) => {
+                assert!(matches!(exprs.last().map(|expr| &expr.kind), Some(HirExprKind::If { .. })));
+            }
+            other => panic!(
+                "expected payload constructor wildcard case to lower through literal-case path, got {other:?}"
+            ),
         }
     }
 
