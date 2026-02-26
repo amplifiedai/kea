@@ -201,6 +201,18 @@ theorem bindTypeVar_ok_substWellFormedRange_of_contract_full_wf
   exact (bindTypeVar_ok_contract_full_wf
     st st' kctx rctx v ty fuel h_ok h_wf h_ty h_idemp_next).1.2
 
+theorem bindTypeVar_ok_compatWFAgreeOnDomainLookupsAcyclic_of_contract_full_wf
+    (st st' : UnifyState) (kctx : KindCtx) (rctx : RowCtx)
+    (v : TypeVarId) (ty : Ty) (fuel : Nat)
+    (h_ok : bindTypeVar st v ty fuel = .ok st')
+    (h_wf : UnifyState.SubstWellFormedRange st kctx rctx)
+    (h_ty : Ty.WellFormed kctx rctx ty)
+    (h_idemp_next : st'.subst.Idempotent) :
+    let h_ac := Subst.acyclicOfIdempotent h_idemp_next
+    CompatWFAgreeOnDomainLookupsAcyclic st' fuel h_ac := by
+  exact (bindTypeVar_ok_contract_full_wf
+    st st' kctx rctx v ty fuel h_ok h_wf h_ty h_idemp_next).2
+
 theorem bindTypeVar_ok_with_non_subst_fields_contract_full_wf
     (st st' : UnifyState) (kctx : KindCtx) (rctx : RowCtx)
     (v : TypeVarId) (ty : Ty) (fuel : Nat)
@@ -292,6 +304,31 @@ theorem bindTypeVar_ok_with_non_subst_fields_substWellFormedRange_of_contract_fu
   exact (bindTypeVar_ok_with_non_subst_fields_contract_full_wf
     st st' kctx rctx v ty fuel lacks' bounds' nextType' nextRow'
     h_ok h_wf h_ty h_idemp_next).1.2
+
+theorem bindTypeVar_ok_with_non_subst_fields_compatWFAgreeOnDomainLookupsAcyclic_of_contract_full_wf
+    (st st' : UnifyState) (kctx : KindCtx) (rctx : RowCtx)
+    (v : TypeVarId) (ty : Ty) (fuel : Nat)
+    (lacks' : Lacks) (bounds' : TraitBounds) (nextType' nextRow' : Nat)
+    (h_ok : bindTypeVar st v ty fuel = .ok st')
+    (h_wf : UnifyState.SubstWellFormedRange st kctx rctx)
+    (h_ty : Ty.WellFormed kctx rctx ty)
+    (h_idemp_next :
+      ({ st' with
+          lacks := lacks',
+          traitBounds := bounds',
+          nextTypeVar := nextType',
+          nextRowVar := nextRow' }).subst.Idempotent) :
+    let h_ac := Subst.acyclicOfIdempotent h_idemp_next
+    CompatWFAgreeOnDomainLookupsAcyclic
+      { st' with
+          lacks := lacks',
+          traitBounds := bounds',
+          nextTypeVar := nextType',
+          nextRowVar := nextRow' }
+      fuel h_ac := by
+  exact (bindTypeVar_ok_with_non_subst_fields_contract_full_wf
+    st st' kctx rctx v ty fuel lacks' bounds' nextType' nextRow'
+    h_ok h_wf h_ty h_idemp_next).2
 
 theorem closedBind_extendsAndWfRange
     (st st' : UnifyState) (kctx : KindCtx) (rctx : RowCtx)
