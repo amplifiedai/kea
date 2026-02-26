@@ -114,6 +114,21 @@ theorem noUpdate_with_non_subst_fields_extendsAndWfRange
   · exact UnifyState.substWellFormedRange_with_non_subst_fields
       st' kctx rctx lacks' bounds' nextType' nextRow' h_wf
 
+theorem noUpdate_contract_full_wf
+    (st st' : UnifyState) (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat)
+    (h_ext : ExtendsRowBindings st st')
+    (h_wf : UnifyState.SubstWellFormedRange st' kctx rctx)
+    (h_idemp : st'.subst.Idempotent) :
+    ExtendsAndWfRange st st' kctx rctx
+    ∧ (let h_ac := Subst.acyclicOfIdempotent h_idemp
+       CompatWFAgreeOnDomainLookupsAcyclic st' fuel h_ac) := by
+  refine ⟨noUpdate_extendsAndWfRange st st' kctx rctx h_ext h_wf, ?_⟩
+  have h_shape : UnifyRowsSuccessUpdateShape st' st' fuel := Or.inl rfl
+  have h_agree_idemp : CompatWFAgreeOnDomainLookups st' fuel h_idemp :=
+    unifyRows_success_update_compat_wf_swap_invariant st' st' fuel h_shape h_idemp
+  exact compatWFAgreeOnDomainLookupsAcyclic_of_idempotent
+    st' fuel h_idemp h_agree_idemp
+
 theorem closedBind_extendsAndWfRange
     (st st' : UnifyState) (kctx : KindCtx) (rctx : RowCtx)
     (rv : RowVarId) (fields : RowFields)
