@@ -87,6 +87,38 @@ theorem wellFormedRange_of_extends
   · intro rv row h_lookup
     exact h_range.2 rv row (h_ext.rowExt rv row h_lookup)
 
+theorem extends_bindType_if_unbound
+    (s : Subst) (v : TypeVarId) (ty : Ty)
+    (h_unbound : s.typeMap v = none) :
+    Subst.Extends s (s.bindType v ty) := by
+  refine ⟨?_, ?_⟩
+  · intro w t h_lookup
+    unfold Subst.bindType
+    by_cases h_eq : w == v
+    · have h_wv : w = v := by simpa [BEq.beq] using h_eq
+      rw [h_wv] at h_lookup
+      simp [h_unbound] at h_lookup
+    · simpa [h_eq] using h_lookup
+  · intro rv row h_lookup
+    unfold Subst.bindType
+    exact h_lookup
+
+theorem extends_bindRow_if_unbound
+    (s : Subst) (rv : RowVarId) (row : Row)
+    (h_unbound : s.rowMap rv = none) :
+    Subst.Extends s (s.bindRow rv row) := by
+  refine ⟨?_, ?_⟩
+  · intro v ty h_lookup
+    unfold Subst.bindRow
+    exact h_lookup
+  · intro rv' row' h_lookup
+    unfold Subst.bindRow
+    by_cases h_eq : rv' == rv
+    · have h_rv : rv' = rv := by simpa [BEq.beq] using h_eq
+      rw [h_rv] at h_lookup
+      simp [h_unbound] at h_lookup
+    · simpa [h_eq] using h_lookup
+
 end Subst
 
 theorem applySubst_preserves_wf_of_no_domain_vars
