@@ -53,6 +53,25 @@ theorem substWellFormedRange_with_nextRowVar
     SubstWellFormedRange { st with nextRowVar := next' } kctx rctx := by
   exact substWellFormedRange_of_subst_eq st { st with nextRowVar := next' } kctx rctx rfl h_wf
 
+theorem substWellFormedRange_with_non_subst_fields
+    (st : UnifyState) (kctx : KindCtx) (rctx : RowCtx)
+    (lacks' : Lacks) (bounds' : TraitBounds) (nextType' nextRow' : Nat)
+    (h_wf : SubstWellFormedRange st kctx rctx) :
+    SubstWellFormedRange
+      { st with
+          lacks := lacks',
+          traitBounds := bounds',
+          nextTypeVar := nextType',
+          nextRowVar := nextRow' } kctx rctx := by
+  exact substWellFormedRange_of_subst_eq
+    st
+    { st with
+        lacks := lacks',
+        traitBounds := bounds',
+        nextTypeVar := nextType',
+        nextRowVar := nextRow' }
+    kctx rctx rfl h_wf
+
 theorem substWellFormedRange_freshTypeVar
     (st : UnifyState) (kctx : KindCtx) (rctx : RowCtx)
     (h_wf : SubstWellFormedRange st kctx rctx) :
