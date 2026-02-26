@@ -61,8 +61,11 @@ Needs more design work. Briefs exist but aren't implementation-ready.
 ### Other design work
 
 - **[Serialization](design/serialization.md)** (Phase 2) — Type-driven Encode/Decode with Validated error accumulation, row-polymorphic partial deserialization, format-agnostic FormatWriter/FormatReader traits. Adapted from Rill's Format brief.
+- **[Semantic introspection platform](design/runtime-introspection-mcp.md)** (Phase 0b-2 cross-cutting) — One semantic engine for many consumers (LSP, REPL, debugger, CI, agents). Hard split between compiler MCP (dev-time rich surface) and runtime introspection (policy-gated capability effect with bounded/audited responses).
 - **Supervision trait API + mailbox configuration** — How exactly does the `Supervisor` trait work? KERNEL §19.5 sketches it loosely. Needs concrete trait definition for kea-actors. Also: mailbox config at spawn time — `Spawn.spawn(actor, config: { mailbox: Bounded 1000 })`. Backpressure is a mailbox property (receiver-side), not an effect handler (sender-side). `Send.tell` stays a direct runtime call per §5.15; the mailbox type determines full-queue behavior (block/error/drop). Depends on Actor trait (§19.3) being implemented.
 - **[Distributed actors](design/distributed-actors.md)** (Phase 2-3) — Location-transparent `Ref`, remote proxy handles (no distributed refcounting), `Encode` constraint at node boundary, monitoring/links, supervision. `Send` remains a capability effect with runtime transport decision (local vs remote). Typed OTP-style guarantees. Depends on local actors (0e), serialization, GADTs (0g).
+- **[Tooling and DX](design/tooling-dx.md)** (Phase 0 parallel through Phase 2) — Go-style blessed tooling in one binary. Zero-config formatter, built-in test runner, effect-aware documentation, effect badges in package registry. Everything in `kea`.
+- **[Packaging, FFI, and comptime](design/packaging-ffi-comptime.md)** (Phase 1-2) — C FFI via `extern "C"`, Arrow as library package, package registry with effect-based permissions, no install/build scripts, comptime via `Compile` effect (compiler layer interface as code generation). `@derive` transitions from hardcoded pass to comptime function.
 - **Arena allocation semantics** — `Alloc` effect, deep-copy at boundary, interaction with Unique. KERNEL §12.7 specifies behavior; implementation strategy is the open question. Partially covered in 0e and 0f briefs.
 - **Lean formalization** — Transfer rill's formal methods to Kea. Priority order in ROADMAP.md "Formal Methods Strategy." Depends on type system being stable enough to formalize.
 
@@ -89,6 +92,10 @@ Completed briefs. Kept for reference and design rationale.
  │    ├── 0c: effect handlers (extends kea-infer)
  │    │    │
  │    │    └── 0d: codegen pure (kea-hir, kea-mir, kea-codegen, kea)
+ │    │         │
+ │    │         ├── semantic introspection platform (cross-cutting):
+ │    │         │    compiler MCP contracts in 0b-0d, runtime-safe
+ │    │         │    introspection in Phase 2a
  │    │         │
  │    │         ├── 0e: runtime effects
  │    │         │    │
