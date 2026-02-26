@@ -239,6 +239,47 @@ runtime interpreter distinct from ordinary Kea execution.
 - Grammar diagnostics and semantic queries integrate with existing tooling.
 - No grammar-specific runtime privilege path exists.
 
+## Grammar–Recipe–IR Convergence
+
+KERNEL §15 states: "The compiler's HIR and MIR are Kea types. Compiler
+passes are pure Kea functions that transform these types." This means
+the Grammar trait and the Recipe system (§15) converge:
+
+| Concept | Grammar interface | Recipe system (§15) |
+|---------|------------------|---------------------|
+| Input | Source text in `embed` block | StableHIR / UnstableMIR nodes |
+| Validation | `check` under `Compile` effect | Recipe validates IR subset |
+| Output | `LoweredExpr` (normal Kea IR) | Transformed IR / codegen output |
+| Extension | Package implements `Grammar` trait | Package implements recipe |
+| Stability | Grammar contract is versioned | StableHIR is row-extensible |
+
+**Key insight:** Restricted sublanguages (§15.2) ARE grammars. A `@gpu`
+recipe validates that a function body conforms to a restricted grammar
+(no closures, no recursion, no heap) and then lowers through a custom
+backend. The Grammar trait's `parse → check → lower` is exactly what
+a recipe does: parse IR nodes → validate constraints → produce target
+output. The `Compile` effect governs both.
+
+**Row polymorphism is the versioning mechanism.** StableHIR uses
+row-polymorphic interfaces (§15.1) so recipes tolerate new IR nodes —
+the row variable absorbs additions. This is the same row extensibility
+that powers record types and effect rows throughout the language.
+
+**What this means for backends:** A compilation backend is a Grammar
+that accepts MIR and lowers to its target representation. The backend
+interface trait from performance-backend-strategy.md is a grammar
+contract. Cranelift, LLVM, and a future Kea-native backend are all
+Grammar implementations over MIR. The interface is unified.
+
+**What this means for self-hosting:** When Kea compiles itself, its
+own IR passes through the same typed grammar mechanism that user code
+uses for HTML/SQL. The compiler is not special — it is another grammar
+consumer. `@derive` is a recipe. A linter is a recipe. A backend is
+a grammar. The typed grammar interface is the universal extension point.
+
+See [ir-recipes-grammar-convergence](ir-recipes-grammar-convergence.md)
+for the full design brief connecting these mechanisms.
+
 ## Non-Goals (initial)
 
 - Arbitrary runtime code execution inside embedded grammar blocks.

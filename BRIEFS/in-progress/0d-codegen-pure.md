@@ -301,6 +301,15 @@ Create `crates/kea/` (the binary crate):
   boundaries (at Send.tell, Spawn.spawn, Par.map) are promoted
   to atomic at the boundary. See §12.2 discussion (pending).
 
+- **Bootstrap IR tier.** The Rust HIR/MIR types built in 0d are
+  InternalIR (KERNEL §15.1) — no stability promise, compiler-private.
+  When Kea self-hosts, these same IRs become Kea types with stability
+  tiers: StableHIR (versioned, row-extensible, for recipes) and
+  UnstableMIR (for backends). Design the Rust types with this future
+  in mind — clean node enums, no Cranelift types leaking into MIR
+  node definitions — but don't build the versioning/row-extensibility
+  machinery now. See [ir-recipes-grammar-convergence](../design/ir-recipes-grammar-convergence.md).
+
 ## Optimization Contract
 
 Type-driven codegen classes with benchmark gates. 0d establishes
