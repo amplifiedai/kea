@@ -1,0 +1,12 @@
+[package]
+name = "kea-mir"
+description = "Backend-neutral mid-level IR for Kea"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+kea-types.workspace = true
+kea-hir.workspace = true
+
+[dev-dependencies]
+kea-ast.workspace = true
