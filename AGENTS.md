@@ -408,6 +408,7 @@ The body contains motivation, design, implementation plan, and testing requireme
 - **Update INDEX.md atomically with brief moves.** If you move a file, update the index in the same commit.
 - **Keep briefs concise at the top.** Long briefs cause context rot. Put detailed rationale in a "Design decisions" section at the end. The first screen of a brief should answer: what, why, and what's the implementation plan.
 - **Progress sections are append-only** during active work. Don't rewrite history.
+- **Use timestamps in progress entries.** Format: `YYYY-MM-DD HH:MM:` (24h, local time). Not just the date — intra-day sequencing matters when multiple agents are working in parallel.
 
 ### When Unsure
 
