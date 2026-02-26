@@ -7,3 +7,7 @@ version.workspace = true
 [dependencies]
 kea-ast.workspace = true
 kea-diag.workspace = true
+
+[dev-dependencies]
+insta.workspace = true
+proptest.workspace = true

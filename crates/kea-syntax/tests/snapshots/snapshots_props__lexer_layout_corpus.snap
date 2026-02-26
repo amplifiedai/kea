@@ -1,0 +1,410 @@
+---
+source: crates/kea-syntax/tests/snapshots_props.rs
+expression: output
+---
+## fn_decl
+source:
+|fn·add(x,·y)·->·Int
+|··x·+·y
+status: ok
+tokens:
+- Fn
+- Ident("add")
+- LParen
+- Ident("x")
+- Comma
+- Ident("y")
+- RParen
+- Arrow
+- UpperIdent("Int")
+- Newline
+- Indent
+- Ident("x")
+- Plus
+- Ident("y")
+- Dedent
+- Eof
+warnings: []
+
+## if_else_block
+source:
+|if·ready
+|··start()
+|else
+|··wait()
+status: ok
+tokens:
+- If
+- Ident("ready")
+- Newline
+- Indent
+- Ident("start")
+- LParen
+- RParen
+- Newline
+- Dedent
+- Else
+- Newline
+- Indent
+- Ident("wait")
+- LParen
+- RParen
+- Dedent
+- Eof
+warnings: []
+
+## case_block
+source:
+|case·x
+|··Some(v)·->·v
+|··_·->·0
+status: ok
+tokens:
+- Case
+- Ident("x")
+- Newline
+- Indent
+- UpperIdent("Some")
+- LParen
+- Ident("v")
+- RParen
+- Arrow
+- Ident("v")
+- Newline
+- Ident("_")
+- Arrow
+- Int(0)
+- Dedent
+- Eof
+warnings: []
+
+## cond_block
+source:
+|cond
+|··x·>·0·->·x
+|··_·->·0
+status: ok
+tokens:
+- Cond
+- Newline
+- Indent
+- Ident("x")
+- Gt
+- Int(0)
+- Arrow
+- Ident("x")
+- Newline
+- Ident("_")
+- Arrow
+- Int(0)
+- Dedent
+- Eof
+warnings: []
+
+## record_decl
+source:
+|record·User
+|··name:·String
+|··age:·Int
+status: ok
+tokens:
+- Record
+- UpperIdent("User")
+- Newline
+- Indent
+- Ident("name")
+- Colon
+- UpperIdent("String")
+- Newline
+- Ident("age")
+- Colon
+- UpperIdent("Int")
+- Dedent
+- Eof
+warnings: []
+
+## trait_decl
+source:
+|trait·Show
+|··fn·show(self)·->·String
+status: ok
+tokens:
+- Trait
+- UpperIdent("Show")
+- Newline
+- Indent
+- Fn
+- Ident("show")
+- LParen
+- Ident("self")
+- RParen
+- Arrow
+- UpperIdent("String")
+- Dedent
+- Eof
+warnings: []
+
+## impl_decl
+source:
+|impl·Show·for·Int
+|··fn·show(self)·->·String
+|····"int"
+status: ok
+tokens:
+- Impl
+- UpperIdent("Show")
+- Ident("for")
+- UpperIdent("Int")
+- Newline
+- Indent
+- Fn
+- Ident("show")
+- LParen
+- Ident("self")
+- RParen
+- Arrow
+- UpperIdent("String")
+- Newline
+- Indent
+- String("int")
+- Dedent
+- Dedent
+- Eof
+warnings: []
+
+## for_expr
+source:
+|for·x·in·xs·when·x·>·0
+|··x·+·1
+status: ok
+tokens:
+- Ident("for")
+- Ident("x")
+- In
+- Ident("xs")
+- When
+- Ident("x")
+- Gt
+- Int(0)
+- Newline
+- Indent
+- Ident("x")
+- Plus
+- Int(1)
+- Dedent
+- Eof
+warnings: []
+
+## use_expr
+source:
+|use·value·<-·load()
+status: ok
+tokens:
+- Use
+- Ident("value")
+- LeftArrow
+- Ident("load")
+- LParen
+- RParen
+- Eof
+warnings: []
+
+## spawn_with_config
+source:
+|spawn·Counter·{·count:·0·}·with
+|··mailbox_size:·100
+status: ok
+tokens:
+- Spawn
+- UpperIdent("Counter")
+- LBrace
+- Ident("count")
+- Colon
+- Int(0)
+- RBrace
+- Ident("with")
+- Newline
+- Indent
+- Ident("mailbox_size")
+- Colon
+- Int(100)
+- Dedent
+- Eof
+warnings: []
+
+## stream_with_config
+source:
+|stream
+|··yield·1
+|with
+|··buffer:·128
+status: ok
+tokens:
+- Stream
+- Newline
+- Indent
+- Yield
+- Int(1)
+- Newline
+- Dedent
+- Ident("with")
+- Newline
+- Indent
+- Ident("buffer")
+- Colon
+- Int(128)
+- Dedent
+- Eof
+warnings: []
+
+## sql_with_config
+source:
+|sql·{·SELECT·*·FROM·t·WHERE·id·=·${id}·}·with
+|··timeout:·30
+status: ok
+tokens:
+- Sql
+- SqlBody("SELECT * FROM t WHERE id = ${id}")
+- Ident("with")
+- Newline
+- Indent
+- Ident("timeout")
+- Colon
+- Int(30)
+- Dedent
+- Eof
+warnings: []
+
+## html_with_config
+source:
+|html·{·<h1>${:name}</h1>·}·with
+|··lang:·"en"
+status: ok
+tokens:
+- Html
+- HtmlBody(" <h1>${:name}</h1> ")
+- Ident("with")
+- Newline
+- Indent
+- Ident("lang")
+- Colon
+- String("en")
+- Dedent
+- Eof
+warnings: []
+
+## import_named
+source:
+|import·Kea.Core.{read_csv,·write_csv}
+status: ok
+tokens:
+- Import
+- UpperIdent("Kea")
+- Dot
+- UpperIdent("Core")
+- Dot
+- LBrace
+- Ident("read_csv")
+- Comma
+- Ident("write_csv")
+- RBrace
+- Eof
+warnings: []
+
+## type_deriving
+source:
+|type·Result(a,·e)·=·|·Ok(a)·|·Err(e)·deriving·Eq
+status: ok
+tokens:
+- TypeKw
+- UpperIdent("Result")
+- LParen
+- Ident("a")
+- Comma
+- Ident("e")
+- RParen
+- Eq
+- Pipe
+- UpperIdent("Ok")
+- LParen
+- Ident("a")
+- RParen
+- Pipe
+- UpperIdent("Err")
+- LParen
+- Ident("e")
+- RParen
+- Deriving
+- UpperIdent("Eq")
+- Eof
+warnings: []
+
+## anon_record
+source:
+|#{·..base,·retries:·3,·timeout:·30·}
+status: ok
+tokens:
+- HashBrace
+- DotDot
+- Ident("base")
+- Comma
+- Ident("retries")
+- Colon
+- Int(3)
+- Comma
+- Ident("timeout")
+- Colon
+- Int(30)
+- RBrace
+- Eof
+warnings: []
+
+## record_pattern
+source:
+|case·x
+|··User·{·name,·..·}·->·name
+status: ok
+tokens:
+- Case
+- Ident("x")
+- Newline
+- Indent
+- UpperIdent("User")
+- LBrace
+- Ident("name")
+- Comma
+- DotDot
+- RBrace
+- Arrow
+- Ident("name")
+- Dedent
+- Eof
+warnings: []
+
+## string_interp
+source:
+|"hello·${name},·total:·${1·+·2}"
+status: ok
+tokens:
+- StringInterp([Literal("hello "), Expr("name"), Literal(", total: "), Expr("1 + 2")])
+- Eof
+warnings: []
+
+## bare_brace_warning
+source:
+|"hello·{name}"
+status: ok
+tokens:
+- String("hello {name}")
+- Eof
+warnings:
+- Warning E0006 @7..13: did you mean ${name}? Use ${name} for interpolation, or \{ for a literal brace
+
+## tab_indent_error
+source:
+|fn·bad()·->·Int
+|\t1
+status: err
+errors:
+- Error E0006 @16..17: tabs are not allowed in indentation
+  help: replace tabs with spaces

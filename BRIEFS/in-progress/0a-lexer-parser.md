@@ -175,4 +175,6 @@ and other crates depend on it.)
 ## Progress
 - 2026-02-25: Bootstrapped `kea-ast`, `kea-diag`, and `kea-syntax` from Rill; added `lex_layout` with INDENT/DEDENT emission, `--|` doc comments, and layout lexer tests. (commit `6456af5`)
 - 2026-02-26: Parser accepts INDENT/DEDENT for declaration and expression blocks. Dual-mode (brace + indent) is transitional scaffolding from the rill cannibalization.
-- **Next:** Remove `BlockDelimiter::Brace` and all `LBrace`/`RBrace` support for block bodies (structs, enums, functions, traits, impls, match arms, if/else, handle, for). Kea is indentation-only for blocks. Braces remain only where they are part of syntax: `#{ }` anonymous records (§2.5), `x~{ field: val }` functional update (§2.3), `{ }` record patterns (§4.2), `-[e]>` effect arrows (§5.1). After this cleanup, `BlockDelimiter::Brace` can be deleted entirely.
+- 2026-02-26: Removed brace-delimited block bodies from parser (`BlockDelimiter::Brace` deleted). Block parsing is indentation-only for declaration/expr blocks; braces remain only for non-block syntax forms. (commit `ab9ab78`)
+- 2026-02-26: Added snapshot corpus tests for layout lexer + parser AST output and property tests for randomized indentation/error coherence in `crates/kea-syntax/tests/snapshots_props.rs`.
+- **Next:** 0a Definition of Done is satisfied; move brief to `done/` when coordinating phase handoff to 0b.
