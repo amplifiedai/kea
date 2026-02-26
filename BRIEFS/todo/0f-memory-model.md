@@ -234,6 +234,29 @@ used once, consumed). Extend to more complex patterns later.
 - Fixed-width integers and bitwise operations work
 - `mise run check` passes
 
+## Optimization Contract
+
+Memory classes with benchmark gates. These are type-driven — the
+compiler reads types and picks the optimal memory strategy.
+
+| Class | Strategy | Benchmark gate |
+|-------|---------|----------------|
+| **Unique T** | No refcount ops, unconditional in-place mutation | Zero overhead vs raw pointer mutation |
+| **Reuse-hit** (refcount==1 proven by analysis) | Elide retain/release, in-place mutation | Within 10% of Unique for linear-use patterns |
+| **@unboxed** | Flat value-type layout, passed in registers, no heap | Zero overhead vs C struct by-value |
+| **Refcounted** (general case) | Atomic or non-atomic refcount (effect-directed per 0d) | Baseline — this is the default |
+
+Precision notes:
+1. **Unique + Alloc** (arena-allocated unique values) is the fastest
+   path: bump allocation + no refcount + deterministic deallocation.
+   But this only holds with explicit no-escape/no-alias guarantees.
+   Unique values crossing handler/Send/Spawn/borrow boundaries
+   must have escape checks. The move checker (step 1) enforces this.
+2. **Reuse analysis is a pure optimisation** — correctness must not
+   depend on it firing. Test with allocation counters: assert
+   allocation count *with* reuse analysis, verify it's lower than
+   *without*.
+
 ## Open Questions
 
 - How precise should the move checker be in the first pass?

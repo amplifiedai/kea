@@ -301,6 +301,25 @@ Create `crates/kea/` (the binary crate):
   boundaries (at Send.tell, Spawn.spawn, Par.map) are promoted
   to atomic at the boundary. See §12.2 discussion (pending).
 
+## Optimization Contract
+
+Type-driven codegen classes with benchmark gates. 0d establishes
+the pure and Fail-only classes; 0e adds the handler classes.
+
+| Class | Codegen strategy | Benchmark gate | Phase |
+|-------|-----------------|----------------|-------|
+| **Pure** (no effects) | Direct call, full inlining | Baseline. Must match hand-written C for tight loops | 0d |
+| **Fail-only** | Result-passing (branch on error), never enters handler dispatch | Within 5% of pure for non-error path. **Codegen invariant: Fail must not use generic handler dispatch** | 0d |
+| **Tail-resumptive** | Evidence parameter, resume = tail call. **Required fast path: inline to direct call when handler is statically known** | Within 2x of parameter-passing baseline | 0e |
+| **Non-tail** | CPS or segmented stack (full continuations) | Within 10x of direct call (this is the expensive case) | 0e |
+
+Precision notes:
+1. Closed-row field access compiles to known offset **after monomorphisation**.
+   Open rows use polymorphic representation until specialised.
+2. Fail-only near-zero overhead is only true when lowered to Result
+   branch form. This is a codegen invariant — Fail must never enter
+   generic handler dispatch.
+
 ## Open Questions
 
 - Do we need an evaluator (kea-eval) for bootstrap, or can we
