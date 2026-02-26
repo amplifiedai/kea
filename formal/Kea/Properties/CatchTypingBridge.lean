@@ -55,6 +55,25 @@ def mkCatchTypingJudgment
   h_lowered := h_lowered
 }
 
+/--
+Combined catch-lowering capstone outcome used by premise-level classifier theorems.
+-/
+def CatchTypingCapstoneOutcome
+    (clause : HandleClauseContract)
+    (params : TyList)
+    (okTy errTy loweredTy : Ty) : Prop :=
+  RowFields.has
+      (EffectRow.fields (HandleClauseContract.resultEffects clause))
+      FailResultContracts.failLabel = false ∧
+    ∃ loweredEffects,
+      loweredTy = .functionEff params loweredEffects (.result okTy errTy) ∧
+      EffectPolymorphismSoundness.rowTailStable clause.exprEffects loweredEffects ∧
+      EffectPolymorphismSoundness.labelsPreservedExcept
+        clause.exprEffects loweredEffects FailResultContracts.failLabel ∧
+      RowFields.has (EffectRow.fields loweredEffects) FailResultContracts.failLabel = false ∧
+      FailResultContracts.catchAdmissible clause.exprEffects ∧
+      ¬ FailResultContracts.catchUnnecessary clause.exprEffects
+
 def toAdmissibleEffectPolyHandlerSchema
     (j : CatchTypingJudgment) :
     EffectPolymorphismSoundness.AdmissibleEffectPolyHandlerSchema := {
@@ -129,6 +148,73 @@ theorem catchTypingJudgment_sound_of_premises
   let j := mkCatchTypingJudgment
     clause params okTy errTy loweredTy h_wellTyped h_failZero h_admissible h_lowered
   exact catchTypingJudgment_sound j
+
+theorem catchTypingJudgment_capstone_of_premises
+    (clause : HandleClauseContract)
+    (params : TyList)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_admissible : FailResultContracts.catchAdmissible clause.exprEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType params clause.exprEffects okTy errTy) :
+    CatchTypingCapstoneOutcome clause params okTy errTy loweredTy := by
+  rcases catchTypingJudgment_sound_of_premises
+      clause params okTy errTy loweredTy
+      h_wellTyped h_failZero h_admissible h_lowered with
+    ⟨h_clause_removed, loweredEffects, h_ty, h_tail, h_preserve, h_removed⟩
+  have h_branch :
+      FailResultContracts.catchAdmissible clause.exprEffects ∧
+        ¬ FailResultContracts.catchUnnecessary clause.exprEffects :=
+    catchTypingJudgment_admissibility_branch
+      (mkCatchTypingJudgment
+        clause params okTy errTy loweredTy
+        h_wellTyped h_failZero h_admissible h_lowered)
+  exact ⟨h_clause_removed, loweredEffects, h_ty, h_tail, h_preserve, h_removed, h_branch.1, h_branch.2⟩
+
+theorem catchTypingJudgment_capstone_of_fail_present
+    (clause : HandleClauseContract)
+    (params : TyList)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_fail_present :
+      RowFields.has (EffectRow.fields clause.exprEffects) FailResultContracts.failLabel = true)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType params clause.exprEffects okTy errTy) :
+    CatchTypingCapstoneOutcome clause params okTy errTy loweredTy := by
+  have h_admissible : FailResultContracts.catchAdmissible clause.exprEffects :=
+    (FailResultContracts.catchAdmissible_iff_fail_present clause.exprEffects).2 h_fail_present
+  exact catchTypingJudgment_capstone_of_premises
+    clause params okTy errTy loweredTy
+    h_wellTyped h_failZero h_admissible h_lowered
+
+theorem catchTypingUnnecessary_of_fail_absent
+    (effects : EffectRow)
+    (h_fail_absent :
+      RowFields.has (EffectRow.fields effects) FailResultContracts.failLabel = false) :
+    FailResultContracts.catchUnnecessary effects := by
+  exact (FailResultContracts.catchUnnecessary_iff_fail_absent effects).2 h_fail_absent
+
+theorem catchTypingJudgment_classify_of_premises
+    (clause : HandleClauseContract)
+    (params : TyList)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType params clause.exprEffects okTy errTy) :
+    CatchTypingCapstoneOutcome clause params okTy errTy loweredTy ∨
+      FailResultContracts.catchUnnecessary clause.exprEffects := by
+  rcases FailResultContracts.catchAdmissible_or_unnecessary clause.exprEffects with h_adm | h_unnecessary
+  · left
+    exact catchTypingJudgment_capstone_of_premises
+      clause params okTy errTy loweredTy
+      h_wellTyped h_failZero h_adm h_lowered
+  · exact Or.inr h_unnecessary
 
 theorem catchTypingJudgment_rowTailStable_of_premises
     (clause : HandleClauseContract)

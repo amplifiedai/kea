@@ -5620,3 +5620,26 @@ returns either full capstone consequences or the unnecessary branch.
 - Higher-order catch now has a single entry theorem over raw premises that
   captures the runtime-aligned admissible-vs-unnecessary split while preserving
   access to full lowering guarantees on the admissible branch.
+
+### 2026-02-26: generic catch bridge classifier alignment (proof-only)
+
+**Context**: Mirrored the higher-order capstone/classifier entry pattern in the
+generic catch bridge so both surfaces expose the same runtime-aligned split.
+
+**MCP tools used**: none (proof-only API consolidation).
+
+**Lean side**:
+- Extended `Kea/Properties/CatchTypingBridge.lean` with:
+  - `CatchTypingCapstoneOutcome`
+  - `catchTypingJudgment_capstone_of_premises`
+  - `catchTypingJudgment_capstone_of_fail_present`
+  - `catchTypingUnnecessary_of_fail_absent`
+  - `catchTypingJudgment_classify_of_premises`
+- Verified with `cd formal && lake build` (pass).
+
+**Classify**: N/A (proof-only step).
+
+**Outcome**:
+- Generic and higher-order catch theorem surfaces now share the same
+  admissible-vs-unnecessary classifier shape and direct Fail-label entry
+  wrappers.
