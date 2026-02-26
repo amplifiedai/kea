@@ -184,6 +184,20 @@ theorem applySubstWF_empty_preserves_wf
   rw [applySubstWF_empty ty]
   exact h_wf
 
+theorem applySubstRowWF_empty_preserves_wf
+    (kctx : KindCtx) (rctx : RowCtx) (r : Row)
+    (h_wf : Row.WellFormed kctx rctx r) :
+    Row.WellFormed kctx rctx (applySubstRowWF Subst.empty Subst.emptyAcyclic r) := by
+  rw [applySubstRowWF_empty r]
+  exact h_wf
+
+theorem applySubstEffectRowWF_empty_preserves_wf
+    (kctx : KindCtx) (rctx : RowCtx) (effects : EffectRow)
+    (h_wf : EffectRow.WellFormed kctx rctx effects) :
+    EffectRow.WellFormed kctx rctx (applySubstEffectRowWF Subst.empty Subst.emptyAcyclic effects) := by
+  rw [applySubstEffectRowWF_empty effects]
+  exact h_wf
+
 theorem applySubstCompat_functionEff_preserves_wf_of_component_no_domain_vars
     (s : Subst) (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat)
     (params : TyList) (effects : EffectRow) (ret : Ty)
