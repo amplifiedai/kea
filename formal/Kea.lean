@@ -17,6 +17,7 @@ import Kea.Properties.SubstBridge
 import Kea.Properties.WfSubstitution
 import Kea.Properties.WfRename
 import Kea.Properties.WfGeneralize
+import Kea.Properties.WfUnify
 import Kea.Properties.UnifyReflexive
 import Kea.Properties.UnifyConsistent
 import Kea.Properties.UnifyExtends

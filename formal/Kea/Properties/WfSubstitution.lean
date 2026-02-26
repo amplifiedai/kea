@@ -9,6 +9,74 @@ import Kea.Properties.SubstBridge
   term's well-formedness immediately.
 -/
 
+namespace Subst
+
+/--
+Every binding currently present in the substitution maps to a well-formed term.
+-/
+def WellFormedRange (s : Subst) (kctx : KindCtx) (rctx : RowCtx) : Prop :=
+  (∀ v ty, s.typeMap v = some ty → Ty.WellFormed kctx rctx ty) ∧
+  (∀ rv row, s.rowMap rv = some row → Row.WellFormed kctx rctx row)
+
+theorem wellFormedRange_empty
+    (kctx : KindCtx) (rctx : RowCtx) :
+    WellFormedRange Subst.empty kctx rctx := by
+  constructor <;> intro _ _ h_lookup
+  · simp [Subst.empty] at h_lookup
+  · simp [Subst.empty] at h_lookup
+
+theorem wellFormedRange_bindType
+    (s : Subst) (kctx : KindCtx) (rctx : RowCtx) (v : TypeVarId) (ty : Ty)
+    (h_range : WellFormedRange s kctx rctx)
+    (h_ty : Ty.WellFormed kctx rctx ty) :
+    WellFormedRange (s.bindType v ty) kctx rctx := by
+  constructor
+  · intro w t h_lookup
+    unfold Subst.bindType at h_lookup
+    by_cases h_eq : w == v
+    · simp [h_eq] at h_lookup
+      cases h_lookup
+      exact h_ty
+    · have h_prev : s.typeMap w = some t := by
+        simpa [h_eq] using h_lookup
+      exact h_range.1 w t h_prev
+  · intro rv row h_lookup
+    unfold Subst.bindType at h_lookup
+    exact h_range.2 rv row h_lookup
+
+theorem wellFormedRange_bindRow
+    (s : Subst) (kctx : KindCtx) (rctx : RowCtx) (rv : RowVarId) (row : Row)
+    (h_range : WellFormedRange s kctx rctx)
+    (h_row : Row.WellFormed kctx rctx row) :
+    WellFormedRange (s.bindRow rv row) kctx rctx := by
+  constructor
+  · intro w t h_lookup
+    unfold Subst.bindRow at h_lookup
+    exact h_range.1 w t h_lookup
+  · intro rv' row' h_lookup
+    unfold Subst.bindRow at h_lookup
+    by_cases h_eq : rv' == rv
+    · simp [h_eq] at h_lookup
+      cases h_lookup
+      exact h_row
+    · have h_prev : s.rowMap rv' = some row' := by
+        simpa [h_eq] using h_lookup
+      exact h_range.2 rv' row' h_prev
+
+theorem wellFormedRange_bindRow_bindRow
+    (s : Subst) (kctx : KindCtx) (rctx : RowCtx)
+    (rv1 rv2 : RowVarId) (row1 row2 : Row)
+    (h_range : WellFormedRange s kctx rctx)
+    (h_row1 : Row.WellFormed kctx rctx row1)
+    (h_row2 : Row.WellFormed kctx rctx row2) :
+    WellFormedRange (Subst.bindRow (Subst.bindRow s rv1 row1) rv2 row2) kctx rctx := by
+  exact wellFormedRange_bindRow
+    (Subst.bindRow s rv1 row1) kctx rctx rv2 row2
+    (wellFormedRange_bindRow s kctx rctx rv1 row1 h_range h_row1)
+    h_row2
+
+end Subst
+
 theorem applySubst_preserves_wf_of_no_domain_vars
     (s : Subst) (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat) (ty : Ty)
     (h_wf : Ty.WellFormed kctx rctx ty)
