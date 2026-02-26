@@ -224,6 +224,7 @@ fn collect_function_stats(function: &MirFunction) -> FunctionPassStats {
                 },
                 MirInst::CowUpdate { .. } => stats.alloc_count += 1,
                 MirInst::Const { .. }
+                | MirInst::Binary { .. }
                 | MirInst::Move { .. }
                 | MirInst::Borrow { .. }
                 | MirInst::TryClaim { .. }

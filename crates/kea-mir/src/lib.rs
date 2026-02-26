@@ -3,7 +3,10 @@
 //! This crate defines explicit control-flow + memory/effect operations that are
 //! independent of any specific backend API (Cranelift, LLVM, etc.).
 
-use kea_hir::{HirDecl, HirModule};
+use std::collections::BTreeMap;
+
+use kea_ast::BinOp;
+use kea_hir::{HirDecl, HirExpr, HirExprKind, HirFunction, HirModule, HirPattern};
 use kea_types::{EffectRow, Type};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -44,6 +47,12 @@ pub enum MirInst {
     Const {
         dest: MirValueId,
         literal: MirLiteral,
+    },
+    Binary {
+        dest: MirValueId,
+        op: MirBinaryOp,
+        left: MirValueId,
+        right: MirValueId,
     },
     Retain {
         value: MirValueId,
@@ -122,6 +131,27 @@ pub enum MirLiteral {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MirBinaryOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    Concat,
+    Combine,
+    Eq,
+    Neq,
+    Lt,
+    Lte,
+    Gt,
+    Gte,
+    And,
+    Or,
+    In,
+    NotIn,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MirEffectOpClass {
     Direct,
     Dispatch,
@@ -171,27 +201,7 @@ pub fn lower_hir_module(module: &HirModule) -> MirModule {
         .declarations
         .iter()
         .filter_map(|decl| match decl {
-            HirDecl::Function(function) => Some(MirFunction {
-                name: function.name.clone(),
-                signature: MirFunctionSignature {
-                    params: function
-                        .params
-                        .iter()
-                        .map(|_| Type::Dynamic)
-                        .collect(),
-                    ret: match &function.ty {
-                        Type::Function(ft) => ft.ret.as_ref().clone(),
-                        _ => Type::Dynamic,
-                    },
-                    effects: function.effects.clone(),
-                },
-                entry: MirBlockId(0),
-                blocks: vec![MirBlock {
-                    id: MirBlockId(0),
-                    instructions: vec![MirInst::Nop],
-                    terminator: MirTerminator::Return { value: None },
-                }],
-            }),
+            HirDecl::Function(function) => Some(lower_hir_function(function)),
             HirDecl::Raw(_) => None,
         })
         .collect();
@@ -199,10 +209,181 @@ pub fn lower_hir_module(module: &HirModule) -> MirModule {
     MirModule { functions }
 }
 
+fn lower_hir_function(function: &HirFunction) -> MirFunction {
+    let (params, ret) = match &function.ty {
+        Type::Function(ft) => (ft.params.clone(), ft.ret.as_ref().clone()),
+        _ => (
+            function.params.iter().map(|_| Type::Dynamic).collect(),
+            Type::Dynamic,
+        ),
+    };
+
+    let mut ctx = FunctionLoweringCtx::new(&function.name, params.len());
+    for (index, param) in function.params.iter().enumerate() {
+        if let Some(name) = &param.name {
+            ctx.vars.insert(name.clone(), MirValueId(index as u32));
+        }
+    }
+    let return_value = ctx.lower_expr(&function.body);
+
+    let mut instructions = ctx.instructions;
+    if instructions.is_empty() {
+        instructions.push(MirInst::Nop);
+    }
+
+    MirFunction {
+        name: function.name.clone(),
+        signature: MirFunctionSignature {
+            params,
+            ret,
+            effects: function.effects.clone(),
+        },
+        entry: MirBlockId(0),
+        blocks: vec![MirBlock {
+            id: MirBlockId(0),
+            instructions,
+            terminator: MirTerminator::Return {
+                value: return_value,
+            },
+        }],
+    }
+}
+
+struct FunctionLoweringCtx {
+    instructions: Vec<MirInst>,
+    vars: BTreeMap<String, MirValueId>,
+    next_value_id: u32,
+}
+
+impl FunctionLoweringCtx {
+    fn new(_function_name: &str, param_count: usize) -> Self {
+        Self {
+            instructions: Vec::new(),
+            vars: BTreeMap::new(),
+            next_value_id: param_count as u32,
+        }
+    }
+
+    fn new_value(&mut self) -> MirValueId {
+        let value = MirValueId(self.next_value_id);
+        self.next_value_id += 1;
+        value
+    }
+
+    fn lower_expr(&mut self, expr: &HirExpr) -> Option<MirValueId> {
+        match &expr.kind {
+            HirExprKind::Lit(lit) => {
+                let dest = self.new_value();
+                self.instructions.push(MirInst::Const {
+                    dest: dest.clone(),
+                    literal: lower_literal(lit),
+                });
+                Some(dest)
+            }
+            HirExprKind::Var(name) => self.vars.get(name).cloned(),
+            HirExprKind::Binary { op, left, right } => {
+                let left_value = self.lower_expr(left)?;
+                let right_value = self.lower_expr(right)?;
+                let dest = self.new_value();
+                self.instructions.push(MirInst::Binary {
+                    dest: dest.clone(),
+                    op: lower_binop(*op),
+                    left: left_value,
+                    right: right_value,
+                });
+                Some(dest)
+            }
+            HirExprKind::Call { func, args } => {
+                let callee = match &func.kind {
+                    HirExprKind::Var(name) => MirCallee::Local(name.clone()),
+                    _ => {
+                        let callee_value = self.lower_expr(func)?;
+                        MirCallee::Value(callee_value)
+                    }
+                };
+
+                let mut lowered_args = Vec::with_capacity(args.len());
+                for arg in args {
+                    lowered_args.push(self.lower_expr(arg)?);
+                }
+
+                let result = if expr.ty == Type::Unit {
+                    None
+                } else {
+                    Some(self.new_value())
+                };
+
+                self.instructions.push(MirInst::Call {
+                    callee,
+                    args: lowered_args,
+                    result: result.clone(),
+                    cc_manifest_id: "default".to_string(),
+                });
+                result
+            }
+            HirExprKind::Let { pattern, value } => {
+                let value_id = self.lower_expr(value)?;
+                self.bind_pattern(pattern, value_id.clone());
+                Some(value_id)
+            }
+            HirExprKind::Block(exprs) => {
+                let mut last = None;
+                for expr in exprs {
+                    last = self.lower_expr(expr);
+                }
+                last
+            }
+            HirExprKind::Tuple(_)
+            | HirExprKind::Lambda { .. }
+            | HirExprKind::If { .. }
+            | HirExprKind::Raw(_) => None,
+        }
+    }
+
+    fn bind_pattern(&mut self, pattern: &HirPattern, value_id: MirValueId) {
+        if let HirPattern::Var(name) = pattern {
+            self.vars.insert(name.clone(), value_id);
+        }
+    }
+}
+
+fn lower_literal(lit: &kea_ast::Lit) -> MirLiteral {
+    match lit {
+        kea_ast::Lit::Int(value) => MirLiteral::Int(*value),
+        kea_ast::Lit::Float(value) => MirLiteral::Float(*value),
+        kea_ast::Lit::Bool(value) => MirLiteral::Bool(*value),
+        kea_ast::Lit::String(value) => MirLiteral::String(value.clone()),
+        kea_ast::Lit::Unit => MirLiteral::Unit,
+    }
+}
+
+fn lower_binop(op: BinOp) -> MirBinaryOp {
+    match op {
+        BinOp::Add => MirBinaryOp::Add,
+        BinOp::Sub => MirBinaryOp::Sub,
+        BinOp::Mul => MirBinaryOp::Mul,
+        BinOp::Div => MirBinaryOp::Div,
+        BinOp::Mod => MirBinaryOp::Mod,
+        BinOp::Concat => MirBinaryOp::Concat,
+        BinOp::Combine => MirBinaryOp::Combine,
+        BinOp::Eq => MirBinaryOp::Eq,
+        BinOp::Neq => MirBinaryOp::Neq,
+        BinOp::Lt => MirBinaryOp::Lt,
+        BinOp::Lte => MirBinaryOp::Lte,
+        BinOp::Gt => MirBinaryOp::Gt,
+        BinOp::Gte => MirBinaryOp::Gte,
+        BinOp::And => MirBinaryOp::And,
+        BinOp::Or => MirBinaryOp::Or,
+        BinOp::In => MirBinaryOp::In,
+        BinOp::NotIn => MirBinaryOp::NotIn,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use kea_hir::{HirExpr, HirExprKind, HirFunction, HirParam};
+    use kea_types::FunctionType;
 
     #[test]
     fn memory_op_classifier_matches_contract() {
@@ -248,5 +429,78 @@ mod tests {
         let mir = lower_hir_module(&hir);
         assert_eq!(mir.functions.len(), 1);
         assert_eq!(mir.functions[0].signature.effects.to_string(), "[IO]");
+    }
+
+    #[test]
+    fn lower_hir_module_lowers_var_return_to_param_value() {
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "id".to_string(),
+                params: vec![HirParam {
+                    name: Some("x".to_string()),
+                    span: kea_ast::Span::synthetic(),
+                }],
+                body: HirExpr {
+                    kind: HirExprKind::Var("x".to_string()),
+                    ty: Type::Int,
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::pure(vec![Type::Int], Type::Int)),
+                effects: EffectRow::pure(),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let mir = lower_hir_module(&hir);
+        assert_eq!(mir.functions.len(), 1);
+        let function = &mir.functions[0];
+        assert_eq!(function.signature.params, vec![Type::Int]);
+        assert!(matches!(
+            function.blocks[0].terminator,
+            MirTerminator::Return {
+                value: Some(MirValueId(0))
+            }
+        ));
+    }
+
+    #[test]
+    fn lower_hir_module_lowers_binary_expression() {
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "sum".to_string(),
+                params: vec![],
+                body: HirExpr {
+                    kind: HirExprKind::Binary {
+                        op: BinOp::Add,
+                        left: Box::new(HirExpr {
+                            kind: HirExprKind::Lit(kea_ast::Lit::Int(1)),
+                            ty: Type::Int,
+                            span: kea_ast::Span::synthetic(),
+                        }),
+                        right: Box::new(HirExpr {
+                            kind: HirExprKind::Lit(kea_ast::Lit::Int(2)),
+                            ty: Type::Int,
+                            span: kea_ast::Span::synthetic(),
+                        }),
+                    },
+                    ty: Type::Int,
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
+                effects: EffectRow::pure(),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let mir = lower_hir_module(&hir);
+        let function = &mir.functions[0];
+        assert_eq!(function.blocks[0].instructions.len(), 3);
+        assert!(matches!(
+            function.blocks[0].instructions[2],
+            MirInst::Binary {
+                op: MirBinaryOp::Add,
+                ..
+            }
+        ));
     }
 }

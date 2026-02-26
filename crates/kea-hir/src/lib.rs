@@ -4,7 +4,10 @@
 //! This initial slice provides a stable typed representation for function declarations
 //! and expression trees, with a conservative fallback for unsupported syntax.
 
-use kea_ast::{DeclKind, Expr, ExprDecl, ExprKind, FnDecl, Lit, Module, Param, Pattern, PatternKind, Span};
+use kea_ast::{
+    BinOp, DeclKind, Expr, ExprDecl, ExprKind, FnDecl, Lit, Module, Param, Pattern, PatternKind,
+    Span,
+};
 use kea_infer::typeck::TypeEnv;
 use kea_types::{EffectRow, FunctionType, Type};
 
@@ -46,6 +49,11 @@ pub struct HirExpr {
 pub enum HirExprKind {
     Lit(Lit),
     Var(String),
+    Binary {
+        op: BinOp,
+        left: Box<HirExpr>,
+        right: Box<HirExpr>,
+    },
     Call {
         func: Box<HirExpr>,
         args: Vec<HirExpr>,
@@ -147,6 +155,11 @@ fn lower_expr(expr: &Expr, ty_hint: Option<Type>) -> HirExpr {
     let kind = match &expr.node {
         ExprKind::Lit(lit) => HirExprKind::Lit(lit.clone()),
         ExprKind::Var(name) => HirExprKind::Var(name.clone()),
+        ExprKind::BinaryOp { op, left, right } => HirExprKind::Binary {
+            op: op.node,
+            left: Box::new(lower_expr(left, None)),
+            right: Box::new(lower_expr(right, None)),
+        },
         ExprKind::Call { func, args } => HirExprKind::Call {
             func: Box::new(lower_expr(func, None)),
             args: args
@@ -194,6 +207,30 @@ fn lower_expr(expr: &Expr, ty_hint: Option<Type>) -> HirExpr {
         ExprKind::Lit(Lit::Bool(_)) => Type::Bool,
         ExprKind::Lit(Lit::String(_)) => Type::String,
         ExprKind::Lit(Lit::Unit) => Type::Unit,
+        ExprKind::BinaryOp { op, left, .. } => match op.node {
+            BinOp::Eq
+            | BinOp::Neq
+            | BinOp::Lt
+            | BinOp::Lte
+            | BinOp::Gt
+            | BinOp::Gte
+            | BinOp::And
+            | BinOp::Or
+            | BinOp::In
+            | BinOp::NotIn => Type::Bool,
+            BinOp::Add
+            | BinOp::Sub
+            | BinOp::Mul
+            | BinOp::Div
+            | BinOp::Mod
+            | BinOp::Concat
+            | BinOp::Combine => match &left.node {
+                ExprKind::Lit(Lit::Int(_)) => Type::Int,
+                ExprKind::Lit(Lit::Float(_)) => Type::Float,
+                ExprKind::Lit(Lit::String(_)) => Type::String,
+                _ => default_ty,
+            },
+        },
         _ => default_ty,
     };
 
@@ -261,5 +298,22 @@ mod tests {
 
         assert_eq!(function.ty.to_string(), "(String) -[IO | e0]> ()");
         assert_eq!(function.effects.to_string(), "[IO | e0]");
+    }
+
+    #[test]
+    fn lower_function_recognizes_binary_expressions() {
+        let module = parse_module_from_text("fn inc(x: Int) -> Int\n  x + 1");
+        let mut env = TypeEnv::new();
+        env.bind(
+            "inc".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::pure(vec![Type::Int], Type::Int))),
+        );
+
+        let lowered = lower_module(&module, &env);
+        let HirDecl::Function(function) = &lowered.declarations[0] else {
+            panic!("expected lowered function declaration");
+        };
+
+        assert!(matches!(function.body.kind, HirExprKind::Binary { .. }));
     }
 }
