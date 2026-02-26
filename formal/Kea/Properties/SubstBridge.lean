@@ -567,6 +567,35 @@ theorem applySubstEffectRowWF_empty (effects : EffectRow) :
   · intro v hv
     simp [Subst.empty]
 
+/--
+Generic effect-row compat/WF bridge: if an effect row has no free vars in
+substitution domain, both fueled and WF substitution are identity on it.
+-/
+theorem applySubstEffectRowCompat_eq_applySubstEffectRowWF_of_no_domain_vars
+    (s : Subst) (h : Subst.Acyclic s) (fuel : Nat) (effects : EffectRow)
+    (htv : ∀ v ∈ freeTypeVarsEffectRow effects, s.typeMap v = none)
+    (hrv : ∀ v ∈ freeRowVarsEffectRow effects, s.rowMap v = none) :
+    applySubstEffectRow s fuel effects = applySubstEffectRowWF s h effects := by
+  cases effects with
+  | mk row =>
+    simp [applySubstEffectRow, applySubstEffectRowWF]
+    rw [(applySubst_noop s fuel).2.1 row
+      (fun v hv => htv v (by simpa [freeTypeVarsEffectRow] using hv))
+      (fun v hv => hrv v (by simpa [freeRowVarsEffectRow] using hv))]
+    exact (applySubstBounded_noop_row s h _ _ row
+      (fun v hv => htv v (by simpa [freeTypeVarsEffectRow] using hv))
+      (fun v hv => hrv v (by simpa [freeRowVarsEffectRow] using hv))).symm
+
+/-- Fuel and WF substitution agree on `Subst.empty` (effect rows). -/
+theorem applySubstEffectRow_empty_eq_applySubstEffectRowWF_empty (fuel : Nat) (effects : EffectRow) :
+    applySubstEffectRow Subst.empty fuel effects =
+      applySubstEffectRowWF Subst.empty Subst.emptyAcyclic effects := by
+  rw [applySubstEffectRowWF_empty]
+  cases effects with
+  | mk row =>
+    simp [applySubstEffectRow]
+    exact (applySubst_noop Subst.empty fuel).2.1 row (fun _ _ => rfl) (fun _ _ => rfl)
+
 /-- Fuel and WF substitution agree on `Subst.empty` (types). -/
 theorem applySubst_empty_eq_applySubstWF_empty (fuel : Nat) (ty : Ty) :
     applySubst Subst.empty fuel ty = applySubstWF Subst.empty Subst.emptyAcyclic ty := by
