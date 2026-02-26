@@ -2141,6 +2141,116 @@ mod tests {
     }
 
     #[test]
+    fn lower_function_payload_constructor_as_guard_binds_before_guard() {
+        let module = parse_module_from_text(
+            "type Flag = Yep(Int) | Nope\nfn pick(x: Flag) -> Int\n  case x\n    Yep(n) as whole when n == 7 -> n + 1\n    Nope -> 0",
+        );
+        let mut env = TypeEnv::new();
+        env.bind(
+            "pick".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::pure(
+                vec![Type::Sum(kea_types::SumType {
+                    name: "Flag".to_string(),
+                    type_args: vec![],
+                    variants: vec![
+                        ("Yep".to_string(), vec![Type::Int]),
+                        ("Nope".to_string(), vec![]),
+                    ],
+                })],
+                Type::Int,
+            ))),
+        );
+
+        let lowered = lower_module(&module, &env);
+        let function = lowered
+            .declarations
+            .iter()
+            .find_map(|decl| match decl {
+                HirDecl::Function(function) if function.name == "pick" => Some(function),
+                _ => None,
+            })
+            .expect("expected lowered pick function");
+
+        let HirExprKind::If { condition, .. } = &function.body.kind else {
+            panic!("expected payload as+guard case to lower to if expression");
+        };
+        let HirExprKind::Binary {
+            op: BinOp::And,
+            right,
+            ..
+        } = &condition.kind
+        else {
+            panic!("expected payload as+guard lowering to use and-composed condition");
+        };
+        let HirExprKind::Block(exprs) = &right.kind else {
+            panic!("expected payload as+guard to bind names before guard expression");
+        };
+        assert!(
+            matches!(
+                exprs.first().map(|expr| &expr.kind),
+                Some(HirExprKind::Let {
+                    pattern: HirPattern::Var(name),
+                    ..
+                }) if name == "whole"
+            ),
+            "expected first guard binding to capture as-pattern scrutinee"
+        );
+        assert!(
+            matches!(
+                exprs.get(1).map(|expr| &expr.kind),
+                Some(HirExprKind::Let {
+                    pattern: HirPattern::Var(name),
+                    ..
+                }) if name == "n"
+            ),
+            "expected second guard binding to capture payload"
+        );
+    }
+
+    #[test]
+    fn lower_function_payload_constructor_or_guard_across_variants_stays_lowered() {
+        let module = parse_module_from_text(
+            "type Either = Left(Int) | Right(Int) | Nope\nfn pick(x: Either) -> Int\n  case x\n    Left(n) | Right(n) when n > 0 -> n\n    Nope -> 0",
+        );
+        let mut env = TypeEnv::new();
+        env.bind(
+            "pick".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::pure(
+                vec![Type::Sum(kea_types::SumType {
+                    name: "Either".to_string(),
+                    type_args: vec![],
+                    variants: vec![
+                        ("Left".to_string(), vec![Type::Int]),
+                        ("Right".to_string(), vec![Type::Int]),
+                        ("Nope".to_string(), vec![]),
+                    ],
+                })],
+                Type::Int,
+            ))),
+        );
+
+        let lowered = lower_module(&module, &env);
+        let function = lowered
+            .declarations
+            .iter()
+            .find_map(|decl| match decl {
+                HirDecl::Function(function) if function.name == "pick" => Some(function),
+                _ => None,
+            })
+            .expect("expected lowered pick function");
+
+        assert!(
+            !matches!(function.body.kind, HirExprKind::Raw(_)),
+            "expected payload OR guarded case to stay on lowered path"
+        );
+        let if_count = count_if_nodes(&function.body);
+        assert!(
+            if_count >= 2,
+            "expected payload OR guarded case to lower to >= 2 if nodes, got {if_count}"
+        );
+    }
+
+    #[test]
     fn lower_function_unit_enum_case_literalized_scrutinee_avoids_setup_block() {
         let module = parse_module_from_text(
             "type Color = Red | Green\nfn pick() -> Int\n  case Color.Red\n    Color.Red -> 1\n    _ -> 2",
