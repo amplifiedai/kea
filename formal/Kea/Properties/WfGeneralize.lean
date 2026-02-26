@@ -47,7 +47,8 @@ theorem instantiate_mono_preserves_wf
   rw [instantiate_mono_eq scheme st h_mono]
   simpa using h_wf
 
-private def instantiateTypeFold (scheme : TypeScheme) (st : UnifyState) :
+/-- Type-variable instantiation fold used by `instantiate`. -/
+def instantiateTypeFold (scheme : TypeScheme) (st : UnifyState) :
     List (TypeVarId × TypeVarId) × UnifyState :=
   scheme.typeVars.foldl
     (fun (acc, st) tv =>
@@ -55,7 +56,8 @@ private def instantiateTypeFold (scheme : TypeScheme) (st : UnifyState) :
       ((tv, fresh) :: acc, st'))
     ([], st)
 
-private def instantiateRowFold (scheme : TypeScheme) (st : UnifyState) :
+/-- Row-variable instantiation fold used by `instantiate`. -/
+def instantiateRowFold (scheme : TypeScheme) (st : UnifyState) :
     List (RowVarId × RowVarId) × UnifyState :=
   scheme.rowVars.foldl
     (fun (acc, st) rv =>
@@ -63,7 +65,8 @@ private def instantiateRowFold (scheme : TypeScheme) (st : UnifyState) :
       ((rv, fresh) :: acc, st'))
     ([], (instantiateTypeFold scheme st).2)
 
-private def instantiateVarMapping (scheme : TypeScheme) (st : UnifyState) : VarMapping :=
+/-- Variable renaming map induced by instantiation folds. -/
+def instantiateVarMapping (scheme : TypeScheme) (st : UnifyState) : VarMapping :=
   { typeMap := (instantiateTypeFold scheme st).1
     rowMap := (instantiateRowFold scheme st).1 }
 
@@ -105,4 +108,14 @@ theorem instantiate_preserves_wf_of_mapping_respects_ctx
     Ty.WellFormed kctx rctx (instantiate scheme st).1 := by
   simpa [instantiateVarMapping, instantiateTypeFold, instantiateRowFold] using
     instantiate_preserves_wf_of_instantiateVarMapping_respects_ctx
+      scheme st kctx rctx h_wf h_respects
+
+theorem instantiate_preserves_wf
+    (scheme : TypeScheme) (st : UnifyState) (kctx : KindCtx) (rctx : RowCtx)
+    (h_wf : Ty.WellFormed kctx rctx scheme.ty)
+    (h_assume : scheme.isMono = true ∨ (instantiateVarMapping scheme st).RespectsCtx kctx rctx) :
+    Ty.WellFormed kctx rctx (instantiate scheme st).1 := by
+  rcases h_assume with h_mono | h_respects
+  · exact instantiate_mono_preserves_wf scheme st kctx rctx h_mono h_wf
+  · exact instantiate_preserves_wf_of_instantiateVarMapping_respects_ctx
       scheme st kctx rctx h_wf h_respects
