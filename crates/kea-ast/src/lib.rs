@@ -483,6 +483,11 @@ impl Param {
 pub enum TypeAnnotation {
     Named(String),
     Applied(String, Vec<TypeAnnotation>),
+    /// Row type annotation: `{ name: String, age: Int | r }`.
+    Row {
+        fields: Vec<(String, TypeAnnotation)>,
+        rest: Option<String>,
+    },
     EffectRow(EffectRowAnnotation),
     Tuple(Vec<TypeAnnotation>),
     Forall {

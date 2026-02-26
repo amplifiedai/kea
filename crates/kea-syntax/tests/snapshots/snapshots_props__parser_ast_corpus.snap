@@ -1023,7 +1023,7 @@ Cond {
 
 ## expr_lambda
 source:
-|x·->·x·+·1
+||x|·->·x·+·1
 status: ok
 Lambda {
     params: [

@@ -334,10 +334,10 @@ mod tests {
 
     #[test]
     fn multiline_lambda_expression_not_split() {
-        let source = "let f = x ->\n  x + 1\nf(1)\n";
+        let source = "let f = |x| ->\n  x + 1\nf(1)\n";
         let chunks = split_chunks(source);
         assert_eq!(chunks.len(), 2);
-        assert!(chunks[0].text.contains("x ->"));
+        assert!(chunks[0].text.contains("|x| ->"));
         assert_eq!(chunks[1].text.trim(), "f(1)");
     }
 

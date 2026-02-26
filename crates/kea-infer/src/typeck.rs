@@ -320,11 +320,16 @@ impl TypeEnv {
         }
     }
 
-    fn effect_row_from_scheme(scheme: &TypeScheme) -> Option<EffectRow> {
-        match &scheme.ty {
+    fn effect_row_from_type(ty: &Type) -> Option<EffectRow> {
+        match ty {
             Type::Function(ft) => Some(ft.effects.clone()),
+            Type::Forall(inner) => Self::effect_row_from_type(&inner.ty),
             _ => None,
         }
+    }
+
+    fn effect_row_from_scheme(scheme: &TypeScheme) -> Option<EffectRow> {
+        Self::effect_row_from_type(&scheme.ty)
     }
 
     fn ensure_module_alias_for_path(&mut self, module_path: &str) {
@@ -2482,6 +2487,12 @@ fn validate_self_projection_targets(
                 }
                 Ok(())
             }
+            TypeAnnotation::Row { fields, .. } => {
+                for (_, field_ty) in fields {
+                    walk(field_ty, declared_assoc_types, span, context)?;
+                }
+                Ok(())
+            }
             TypeAnnotation::EffectRow(_) => Ok(()),
             TypeAnnotation::Tuple(elems) => {
                 for elem in elems {
@@ -4347,6 +4358,13 @@ fn resolve_annotation_with_type_params(
                 }),
             }
         }
+        TypeAnnotation::Row { fields, rest } => row_annotation_to_type_with(
+            fields,
+            rest,
+            |field_ann| {
+                resolve_annotation_with_type_params(field_ann, type_param_scope, records, sum_types)
+            },
+        ),
         TypeAnnotation::EffectRow(_) => None,
         TypeAnnotation::Tuple(elems) => {
             let types: Option<Vec<_>> = elems
@@ -5829,6 +5847,46 @@ fn annotation_label(ann: &TypeAnnotation) -> Option<Label> {
     }
 }
 
+fn row_annotation_to_type_with<F>(
+    fields: &[(String, TypeAnnotation)],
+    rest: &Option<String>,
+    mut resolve: F,
+) -> Option<Type>
+where
+    F: FnMut(&TypeAnnotation) -> Option<Type>,
+{
+    let resolved_fields: Option<Vec<(Label, Type)>> = fields
+        .iter()
+        .map(|(name, ann)| resolve(ann).map(|ty| (Label::new(name.clone()), ty)))
+        .collect();
+    let resolved_fields = resolved_fields?;
+
+    if let Some(rest_name) = rest {
+        let mut row_var_bindings = BTreeMap::new();
+        let mut next_row_var = 0u32;
+        let rest_var = row_var_from_name(rest_name, &mut row_var_bindings, &mut next_row_var);
+        Some(Type::AnonRecord(RowType::open(resolved_fields, rest_var)))
+    } else {
+        Some(Type::AnonRecord(RowType::closed(resolved_fields)))
+    }
+}
+
+fn row_annotation_label(fields: &[(String, TypeAnnotation)], rest: &Option<String>) -> String {
+    let mut body = fields
+        .iter()
+        .map(|(name, ty)| format!("{name}: {}", annotation_display(ty)))
+        .collect::<Vec<_>>()
+        .join(", ");
+    if let Some(rest) = rest {
+        if body.is_empty() {
+            body = format!("| {rest}");
+        } else {
+            body = format!("{body} | {rest}");
+        }
+    }
+    format!("{{ {body} }}")
+}
+
 fn extract_row_type(ty: &Type) -> Option<RowType> {
     match ty {
         Type::Record(rt) => Some(rt.row.clone()),
@@ -6233,6 +6291,14 @@ fn collect_annotation_named_types(ann: &TypeAnnotation, out: &mut BTreeSet<Strin
                 collect_annotation_named_types(arg, out);
             }
         }
+        TypeAnnotation::Row { fields, rest } => {
+            for (_, ty) in fields {
+                collect_annotation_named_types(ty, out);
+            }
+            if let Some(rest) = rest {
+                out.insert(rest.clone());
+            }
+        }
         TypeAnnotation::EffectRow(row) => {
             for item in &row.effects {
                 out.insert(item.name.clone());
@@ -6513,6 +6579,11 @@ pub fn resolve_annotation(
                 }),
             }
         }
+        TypeAnnotation::Row { fields, rest } => {
+            row_annotation_to_type_with(fields, rest, |field_ann| {
+                resolve_annotation(field_ann, records, sum_types)
+            })
+        }
         TypeAnnotation::EffectRow(_) => None,
         TypeAnnotation::Tuple(elems) => {
             let types: Option<Vec<_>> = elems
@@ -6682,6 +6753,11 @@ fn resolve_annotation_or_bare_df(
                 }),
             }
         }
+        TypeAnnotation::Row { fields, rest } => {
+            row_annotation_to_type_with(fields, rest, |field_ann| {
+                resolve_annotation_or_bare_df(field_ann, records, sum_types, unifier)
+            })
+        }
         TypeAnnotation::EffectRow(_) => None,
         TypeAnnotation::Tuple(elems) => {
             let types: Option<Vec<_>> = elems
@@ -6803,6 +6879,10 @@ fn volatile_effect_row() -> EffectRow {
 
 fn impure_effect_row() -> EffectRow {
     EffectRow::closed(vec![(Label::new("IO"), Type::Unit)])
+}
+
+fn unknown_effect_row(next_effect_var: &mut u32) -> EffectRow {
+    EffectRow::open(vec![], fresh_effect_var(next_effect_var))
 }
 
 fn effect_row_from_effects(effects: Effects) -> EffectRow {
@@ -7384,7 +7464,7 @@ fn infer_callable_value_effect_row(
                 resolve_effect_call_signature(signature, next_effect_var).effect_row
             } else {
                 env.function_effect_row(name)
-                    .unwrap_or_else(impure_effect_row)
+                    .unwrap_or_else(|| unknown_effect_row(next_effect_var))
             }
         }
         ExprKind::Lambda { params, body, .. } => {
@@ -7397,10 +7477,10 @@ fn infer_callable_value_effect_row(
                     resolve_effect_call_signature(signature, next_effect_var).effect_row
                 } else {
                     env.resolve_qualified_effect_row(module, &field.node)
-                        .unwrap_or_else(impure_effect_row)
+                        .unwrap_or_else(|| unknown_effect_row(next_effect_var))
                 }
             } else {
-                impure_effect_row()
+                unknown_effect_row(next_effect_var)
             }
         }
         _ => infer_expr_effect_row(expr, env, constraints, next_effect_var),
@@ -7481,19 +7561,19 @@ fn infer_call_effect_row(
     match &func.node {
         ExprKind::Var(name) => env
             .function_effect_row(name)
-            .unwrap_or_else(impure_effect_row),
+            .unwrap_or_else(|| unknown_effect_row(next_effect_var)),
         ExprKind::Lambda { params, body, .. } => {
             infer_lambda_effect_row(params, body, env, constraints, next_effect_var)
         }
         ExprKind::FieldAccess { expr, field } => {
             if let ExprKind::Var(module) = &expr.node {
                 env.resolve_qualified_effect_row(module, &field.node)
-                    .unwrap_or_else(impure_effect_row)
+                    .unwrap_or_else(|| unknown_effect_row(next_effect_var))
             } else {
-                impure_effect_row()
+                unknown_effect_row(next_effect_var)
             }
         }
-        _ => impure_effect_row(),
+        _ => unknown_effect_row(next_effect_var),
     }
 }
 
@@ -7977,6 +8057,9 @@ fn type_annotation_has_effect_var(ann: &TypeAnnotation, target: &str) -> bool {
         TypeAnnotation::Applied(_, args) | TypeAnnotation::Tuple(args) => args
             .iter()
             .any(|arg| type_annotation_has_effect_var(arg, target)),
+        TypeAnnotation::Row { fields, .. } => fields
+            .iter()
+            .any(|(_, ty)| type_annotation_has_effect_var(ty, target)),
         TypeAnnotation::EffectRow(row) => {
             row.rest.as_deref() == Some(target)
                 || row.effects.iter().any(|item| {
@@ -16421,6 +16504,18 @@ fn resolve_annotation_with_self_assoc_and_params(
                 }),
             }
         }
+        TypeAnnotation::Row { fields, rest } => {
+            row_annotation_to_type_with(fields, rest, |field_ann| {
+                resolve_annotation_with_self_assoc_and_params(
+                    field_ann,
+                    records,
+                    self_type,
+                    assoc_types,
+                    type_params,
+                    placeholder_id,
+                )
+            })
+        }
         TypeAnnotation::EffectRow(_) => None,
         TypeAnnotation::Tuple(elems) => {
             let resolved: Vec<Type> = elems
@@ -16725,6 +16820,7 @@ fn annotation_display(ann: &TypeAnnotation) -> String {
             let args_str: Vec<String> = args.iter().map(annotation_display).collect();
             format!("{}({})", name, args_str.join(", "))
         }
+        TypeAnnotation::Row { fields, rest } => row_annotation_label(fields, rest),
         TypeAnnotation::EffectRow(row) => effect_row_annotation_label(row),
         TypeAnnotation::Tuple(elems) => {
             let elems_str: Vec<String> = elems.iter().map(annotation_display).collect();
