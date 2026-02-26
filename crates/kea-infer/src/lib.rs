@@ -3082,10 +3082,7 @@ mod tests {
             doc: None,
             type_params: vec![kea_ast::TraitTypeParam {
                 name: sp("F"),
-                kind: kea_ast::KindAnnotation::Arrow(
-                    Box::new(kea_ast::KindAnnotation::Star),
-                    Box::new(kea_ast::KindAnnotation::Star),
-                ),
+                kind: kea_ast::KindAnnotation::Star,
             }],
             supertraits: vec![],
             fundeps: vec![],
@@ -3106,7 +3103,7 @@ mod tests {
         registry.add_impl_methods(BTreeMap::new()).unwrap();
 
         let mut u = Unifier::new();
-        let f = u.fresh_type_var_with_kind(Kind::Arrow(Box::new(Kind::Star), Box::new(Kind::Star)));
+        let f = u.fresh_type_var_with_kind(Kind::Star);
         u.add_trait_bound(f, "Applicative".to_string());
         u.unify(
             &Type::Var(f),
@@ -3139,10 +3136,7 @@ mod tests {
             doc: None,
             type_params: vec![kea_ast::TraitTypeParam {
                 name: sp("F"),
-                kind: kea_ast::KindAnnotation::Arrow(
-                    Box::new(kea_ast::KindAnnotation::Star),
-                    Box::new(kea_ast::KindAnnotation::Star),
-                ),
+                kind: kea_ast::KindAnnotation::Star,
             }],
             supertraits: vec![],
             fundeps: vec![],
@@ -3163,7 +3157,7 @@ mod tests {
         registry.add_impl_methods(BTreeMap::new()).unwrap();
 
         let mut u = Unifier::new();
-        let f = u.fresh_type_var_with_kind(Kind::Arrow(Box::new(Kind::Star), Box::new(Kind::Star)));
+        let f = u.fresh_type_var_with_kind(Kind::Star);
         u.add_trait_bound(f, "Applicative".to_string());
         u.note_evidence_site(span, &Type::Var(f));
         u.unify(
@@ -3719,7 +3713,7 @@ mod tests {
         let mut u = Unifier::new();
         let constraints = vec![Constraint::KindEqual {
             expected: Kind::Star,
-            actual: Kind::from_arity(1),
+            actual: Kind::Eff,
             provenance: test_prov(),
         }];
         let err = u

@@ -6507,7 +6507,9 @@ fn kind_star() -> KindAnnotation {
 }
 
 fn kind_arrow(lhs: KindAnnotation, rhs: KindAnnotation) -> KindAnnotation {
-    KindAnnotation::Arrow(Box::new(lhs), Box::new(rhs))
+    let _ = lhs;
+    let _ = rhs;
+    KindAnnotation::Star
 }
 
 fn make_trait_method(
@@ -7745,7 +7747,7 @@ fn trait_impl_registers_successfully() {
 }
 
 #[test]
-fn trait_impl_kind_mismatch_reports_clear_error() {
+fn trait_impl_accepts_concrete_self_when_hkts_disabled() {
     let records = RecordRegistry::new();
     let mut traits = TraitRegistry::new();
     let bind_trait = kea_ast::TraitDef {
@@ -7763,15 +7765,9 @@ fn trait_impl_kind_mismatch_reports_clear_error() {
     };
     traits.register_trait(&bind_trait, &records).unwrap();
 
-    let err = traits
+    traits
         .register_trait_impl(&make_impl_block("Bind", "Int", vec![]))
-        .unwrap_err();
-    assert!(err.message.contains("kind mismatch in Bind implementation"));
-    assert!(
-        err.help
-            .as_ref()
-            .is_some_and(|h| h.contains("Int has kind *"))
-    );
+        .expect("Kea v0 disables HKT kind arrows, so concrete Self types are accepted");
 }
 
 #[test]
@@ -7798,7 +7794,7 @@ fn trait_impl_kind_partial_application_accepts_result_hole() {
 }
 
 #[test]
-fn trait_impl_kind_uses_named_self_param_when_present() {
+fn trait_impl_named_self_param_is_not_kind_restricted_in_v0() {
     let records = RecordRegistry::new();
     let mut traits = TraitRegistry::new();
     let trait_def = kea_ast::TraitDef {
@@ -7822,18 +7818,13 @@ fn trait_impl_kind_uses_named_self_param_when_present() {
     };
     traits.register_trait(&trait_def, &records).unwrap();
 
-    // Should validate against the `Self` kind (* -> *), not the first parameter (`X`: *).
+    // Kea v0 has no HKT kind arrows; both List and Int are accepted here.
     traits
         .register_trait_impl(&make_impl_block("NamedSelf", "List", vec![]))
         .expect("List should satisfy named Self kind");
-
-    let err = traits
+    traits
         .register_trait_impl(&make_impl_block("NamedSelf", "Int", vec![]))
-        .expect_err("Int should violate named Self kind");
-    assert!(
-        err.message
-            .contains("kind mismatch in NamedSelf implementation")
-    );
+        .expect("Int is also accepted when HKT kind arrows are disabled");
 }
 
 #[test]
@@ -7866,7 +7857,7 @@ fn trait_impl_accepts_trait_with_multiple_type_params_when_self_kind_matches() {
 }
 
 #[test]
-fn trait_impl_kind_mismatch_uses_first_trait_type_param_kind() {
+fn trait_impl_accepts_first_trait_param_when_hkts_disabled() {
     let records = RecordRegistry::new();
     let mut traits = TraitRegistry::new();
     let trait_def = kea_ast::TraitDef {
@@ -7890,13 +7881,9 @@ fn trait_impl_kind_mismatch_uses_first_trait_type_param_kind() {
     };
     traits.register_trait(&trait_def, &records).unwrap();
 
-    let err = traits
+    traits
         .register_trait_impl(&make_impl_block("BiLike", "Int", vec![]))
-        .unwrap_err();
-    assert!(
-        err.message
-            .contains("kind mismatch in BiLike implementation")
-    );
+        .expect("Kea v0 disables HKT kind arrows, so concrete Self types are accepted");
 }
 
 #[test]
@@ -10286,7 +10273,7 @@ fn seed_fn_where_type_params_registers_kinded_constructor_var() {
     };
     assert_eq!(
         unifier.type_var_kinds.get(&f_tv),
-        Some(&Kind::Arrow(Box::new(Kind::Star), Box::new(Kind::Star)))
+        Some(&Kind::Star)
     );
     assert!(
         unifier
@@ -10357,7 +10344,7 @@ fn seed_fn_where_type_params_uses_matching_kind_for_multi_param_trait() {
     };
     assert_eq!(
         unifier.type_var_kinds.get(&f_tv),
-        Some(&Kind::Arrow(Box::new(Kind::Star), Box::new(Kind::Star)))
+        Some(&Kind::Star)
     );
 }
 
@@ -10572,7 +10559,7 @@ fn fn_decl_annotations_support_constructor_application_type_vars() {
     );
     assert_eq!(
         scheme.kinds.get(&f_tv),
-        Some(&Kind::Arrow(Box::new(Kind::Star), Box::new(Kind::Star)))
+        Some(&Kind::Star)
     );
 }
 
@@ -10741,7 +10728,7 @@ fn trait_method_where_clause_propagates_kind_and_trait_bound() {
         .find_map(|(tv, bounds)| bounds.contains("Traversable").then_some(*tv))
         .expect("expected self Traversable bound");
 
-    let expected_hkt_kind = Kind::Arrow(Box::new(Kind::Star), Box::new(Kind::Star));
+    let expected_hkt_kind = Kind::Star;
     assert_eq!(
         unifier.type_var_kinds.get(&applicative_var),
         Some(&expected_hkt_kind)
