@@ -206,19 +206,8 @@ theorem unifyRows_open_open_update_extendsAndWf_idempotent_full_state_fresh
       freshOpenRows_update_with_lacks_preserves_substWellFormedRange
         st' kctx rctx rv1 rv2 onlyLeft onlyRight lacks''
         h_wf h_onlyLeft h_onlyRight h_fresh_in_ctx
-    exact UnifyState.substWellFormedRange_of_subst_eq
-      stBase
-      { (st'.freshRowVar).2 with
-          subst :=
-            Subst.bindRow
-              (Subst.bindRow (st'.freshRowVar).2.subst rv1 (Row.mkOpen onlyRight (st'.freshRowVar).1))
-              rv2
-              (Row.mkOpen onlyLeft (st'.freshRowVar).1),
-          lacks := lacks'',
-          traitBounds := bounds'',
-          nextTypeVar := nextType'',
-          nextRowVar := nextRow'' }
-      kctx rctx rfl h_base
+    exact UnifyState.substWellFormedRange_with_non_subst_fields
+      stBase kctx rctx lacks'' bounds'' nextType'' nextRow'' h_base
 
 /-- Preconditioned dispatcher combining extension and WF-range preservation. -/
 theorem unifyRows_success_update_extendsAndWf_idempotent

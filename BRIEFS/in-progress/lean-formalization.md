@@ -274,6 +274,7 @@ Mitigation:
 - 2026-02-26: Added `WfSubstitution` extension-monotonicity bridge (`Subst.wellFormedRange_of_extends`) so WF-range invariants can be transported backward across established substitution extension relations.
 - 2026-02-26: Added projection lemmas in `WfUnifyExtends` to recover both (a) direct `stNext` WF-range and (b) legacy `unifyRows_contract_wf` assumptions from the WF-annotated branch-shape contract.
 - 2026-02-26: Added direct projection from WF-annotated branch-shape assumptions to the legacy unsplit contract (`unifyRows_extends_rowMap_preconditioned_wf_of_shape_wf`), avoiding manual shape conversion at call sites.
+- 2026-02-26: Added bundled `UnifyState` WF transport over non-`subst` updates (`substWellFormedRange_with_non_subst_fields`) and used it to simplify full-state open-open WF contract proofs in `WfUnifyExtends`.
 - 2026-02-26: `cd formal && lake build` passes after full `functionEff` exhaustiveness repair in remaining Phase-1 core proofs.
 - 2026-02-26: Added explicit WF effect-row bridge lemmas in `SubstBridge` (`applySubstEffectRowWF_noop`, `applySubstEffectRowWF_empty`) so effect rows have the same no-domain-vars/empty-substitution identity surface as rows.
 - 2026-02-26: Added fuel-vs-WF effect-row bridge lemmas in `SubstBridge` (`applySubstEffectRowCompat_eq_applySubstEffectRowWF_of_no_domain_vars`, `applySubstEffectRow_empty_eq_applySubstEffectRowWF_empty`) and introduced `Substitution.applySubstEffectRow` helper to make the effect-row substitution boundary explicit.
