@@ -24,7 +24,7 @@ that apply across multiple implementation phases. Ignoring them means rework.
 ## Active
 
 Work in progress right now. Each entry should have a `## Progress` section in its brief.
-- **[Codegen — pure subset](in-progress/0d-codegen-pure.md)** — Active. Step 0 structural function-effect embedding is complete; Step 1 (`kea-hir`) and Step 2 (`kea-mir`) include real pure-path lowering for literals/vars/unary/binary/call/let/block plus Unit/value `if` control-flow graphs; bool and simple literal+wildcard `case` arms (`Int`/`Bool`/`Float`) lower to canonical `if` in HIR. Step 3 performs real pure-subset MIR→Cranelift lowering with host JIT + AOT object emission, including block params/Jump args for value-producing control flow; Step 7 now has a `kea` CLI scaffold (`run`/`build`) wired through the pipeline with executable linking in `build` and direct JIT entrypoint execution in `run`.
+- **[Codegen — pure subset](in-progress/0d-codegen-pure.md)** — Active. Step 0 structural function-effect embedding is complete; Step 1 (`kea-hir`) and Step 2 (`kea-mir`) include real pure-path lowering for literals/vars/unary/binary/call/let/block plus Unit/value `if` control-flow graphs; bool and simple literal+wildcard `case` arms (`Int`/`Bool`/`Float`) lower to canonical `if` in HIR, including expression scrutinees lowered through single-evaluation bindings. Step 3 performs real pure-subset MIR→Cranelift lowering with host JIT + AOT object emission, including block params/Jump args for value-producing control flow; Step 7 now has a `kea` CLI scaffold (`run`/`build`) wired through the pipeline with executable linking in `build` and direct JIT entrypoint execution in `run`.
 - **[Lean formalization](in-progress/lean-formalization.md)** — Active. Phase 1 kickoff started from the Rill Lean baseline; next is Kea effect-row alignment in core modules/proofs.
 
 ---
@@ -53,9 +53,9 @@ Designed and approved. Ready to pick up. Ordered by execution sequence per ROADM
 
 6. **[Runtime effects](todo/0e-runtime-effects.md)** — Handler compilation strategy (evidence passing vs CPS vs segmented stacks), tail-resumptive optimisation, handler inlining/devirtualization, IO runtime, Fail optimised path, arena allocation. Highest risk phase. **Also read:** [performance-backend-strategy](design/performance-backend-strategy.md) (effect ops as classified MIR ops, handler benchmark gates).
 
-### Phase 0f: Memory Model (parallel with 0e, steps 1-5 only need 0d)
+### Phase 0f: Memory Model (parallel with 0e, steps 1-6 only need 0d)
 
-9. **[Memory model](todo/0f-memory-model.md)** — Unique T (move semantics), borrow convention, reuse analysis (pure optimisation), unsafe/Ptr, @unboxed, fixed-width integers. Steps 1-5 only need 0d codegen. Step 6 (Unique + effects) needs 0e. Type-driven optimisation: Unique gives guaranteed single ownership → unconditional in-place mutation. Reuse analysis uses type info to prove refcount==1.
+9. **[Memory model](todo/0f-memory-model.md)** — Unique T (move semantics), borrow convention, reuse analysis (pure optimisation), unsafe/Ptr, @unboxed, fixed-width integers. Steps 1-6 only need 0d codegen. Step 7 (Unique + effects) needs 0e. Type-driven optimisation: Unique gives guaranteed single ownership → unconditional in-place mutation. Reuse analysis uses type info to prove refcount==1.
 
 ### Phase 0g: Advanced Types (parallel with 0f, only needs 0d + 0c)
 
@@ -131,9 +131,9 @@ Completed briefs. Kept for reference and design rationale.
                 │
                 ├── 0e: runtime effects (handler compilation, IO)
                 │    │
-                │    └── 0f step 6: Unique + effects interaction
+                │    └── 0f step 7: Unique + effects interaction
                 │
-                ├── 0f steps 1-5: Unique, borrow, reuse, unsafe, unboxed
+                ├── 0f steps 1-6: Unique, borrow, reuse, unsafe, unboxed, fixed-width
                 │    (only needs 0d — NOT blocked on 0e)
                 │
                 ├── 0g: GADTs, Eff kind, assoc types, supertraits
