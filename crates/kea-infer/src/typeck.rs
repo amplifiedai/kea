@@ -7868,12 +7868,7 @@ fn ensure_effect_var_is_constrained(
 ///
 /// Returns `Ok(())` when there is no annotation or when inferred effects satisfy it.
 pub fn validate_declared_fn_effect(fn_decl: &FnDecl, inferred: Effects) -> Result<(), Diagnostic> {
-    validate_declared_fn_effect_with_env_and_records(
-        fn_decl,
-        inferred,
-        &TypeEnv::new(),
-        &RecordRegistry::new(),
-    )
+    validate_declared_fn_effect_with_env(fn_decl, inferred, &TypeEnv::new())
 }
 
 /// Validate a declaration-level effect annotation against inferred effects and
@@ -7889,10 +7884,49 @@ pub fn validate_declared_fn_effect_with_env(
     validate_declared_fn_effect_with_env_and_records(fn_decl, inferred, env, &RecordRegistry::new())
 }
 
+/// Validate an optional declaration-level effect annotation against an inferred row.
+pub fn validate_declared_fn_effect_row(
+    fn_decl: &FnDecl,
+    inferred_row: &EffectRow,
+) -> Result<(), Diagnostic> {
+    validate_declared_fn_effect_row_with_env_and_records(
+        fn_decl,
+        inferred_row,
+        &TypeEnv::new(),
+        &RecordRegistry::new(),
+    )
+}
+
+/// Validate a declaration-level effect annotation against an inferred row and
+/// function-body effect model within a type environment.
+pub fn validate_declared_fn_effect_row_with_env(
+    fn_decl: &FnDecl,
+    inferred_row: &EffectRow,
+    env: &TypeEnv,
+) -> Result<(), Diagnostic> {
+    validate_declared_fn_effect_row_with_env_and_records(
+        fn_decl,
+        inferred_row,
+        env,
+        &RecordRegistry::new(),
+    )
+}
+
 /// Record-aware variant of declared effect validation.
 pub fn validate_declared_fn_effect_with_env_and_records(
     fn_decl: &FnDecl,
     inferred: Effects,
+    env: &TypeEnv,
+    records: &RecordRegistry,
+) -> Result<(), Diagnostic> {
+    let inferred_row = effect_row_from_effects(inferred);
+    validate_declared_fn_effect_row_with_env_and_records(fn_decl, &inferred_row, env, records)
+}
+
+/// Record-aware variant of declared row validation.
+pub fn validate_declared_fn_effect_row_with_env_and_records(
+    fn_decl: &FnDecl,
+    inferred_row: &EffectRow,
     env: &TypeEnv,
     records: &RecordRegistry,
 ) -> Result<(), Diagnostic> {
@@ -7914,8 +7948,7 @@ pub fn validate_declared_fn_effect_with_env_and_records(
     };
     validate_effect_row_fail_cardinality(&declared_row, ann.span, "declaration")?;
 
-    let inferred_row = effect_row_from_effects(inferred);
-    if let Err(row_err) = unify_effect_row_subsumption(&inferred_row, &declared_row, ann.span) {
+    if let Err(row_err) = unify_effect_row_subsumption(inferred_row, &declared_row, ann.span) {
         let mut diag = Diagnostic::error(
             Category::TypeMismatch,
             format!(
@@ -7940,7 +7973,6 @@ pub fn validate_declared_fn_effect_with_env_and_records(
     }
     Ok(())
 }
-
 fn validate_declared_fn_effect_variable_contract(
     fn_decl: &FnDecl,
     env: &TypeEnv,
