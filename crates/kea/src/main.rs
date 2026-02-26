@@ -876,6 +876,34 @@ mod tests {
         let _ = std::fs::remove_file(source_path);
     }
 
+    #[test]
+    fn compile_and_execute_payload_constructor_as_guard_case_exit_code() {
+        let source_path = write_temp_source(
+            "type Flag = Yep(Int) | Nope\n\nfn main() -> Int\n  case Yep(7)\n    Yep(n) as whole when n == 7 -> n + 5\n    Yep(_) -> 1\n    Nope -> 0\n",
+            "kea-cli-sum-case-as-guard",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 12);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_payload_constructor_or_guard_across_variants_exit_code() {
+        let source_path = write_temp_source(
+            "type Either = Left(Int) | Right(Int) | Nope\n\nfn main() -> Int\n  case Right(7)\n    Left(n) | Right(n) when n > 0 -> n + 6\n    Left(_) | Right(_) -> 1\n    Nope -> 0\n",
+            "kea-cli-sum-case-or-guard-variants",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 13);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
     fn write_temp_source(contents: &str, prefix: &str, extension: &str) -> PathBuf {
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
