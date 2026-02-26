@@ -226,6 +226,68 @@ theorem unifyRows_closed_open_update_extendsAndWf_idempotent
   · exact bindClosedRow_update_preserves_substWellFormedRange
       st' kctx rctx rv onlyLeft h_wf h_onlyLeft
 
+theorem unifyRows_open_closed_contract_full_wf_idempotent
+    (st st' : UnifyState) (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat)
+    (rOpen : Row) (rv : RowVarId) (onlyRight : RowFields)
+    (h_ext : ExtendsRowBindings st st')
+    (h_idemp : st'.subst.Idempotent)
+    (h_rest : (applySubstRow st'.subst (fuel + 1) rOpen).rest = some rv)
+    (h_wf : UnifyState.SubstWellFormedRange st' kctx rctx)
+    (h_onlyRight : RowFields.WellFormed kctx rctx onlyRight)
+    (h_idemp_next : ({ st' with subst := st'.subst.bindRow rv (Row.closed onlyRight) }).subst.Idempotent) :
+    ExtendsAndWfRange st
+      { st' with subst := st'.subst.bindRow rv (Row.closed onlyRight) }
+      kctx rctx
+    ∧ (let h_ac := Subst.acyclicOfIdempotent h_idemp_next
+       CompatWFAgreeOnDomainLookupsAcyclic
+         { st' with subst := st'.subst.bindRow rv (Row.closed onlyRight) }
+         fuel h_ac) := by
+  let stNext : UnifyState := { st' with subst := st'.subst.bindRow rv (Row.closed onlyRight) }
+  have h_shape : UnifyRowsSuccessUpdateShape st' stNext fuel :=
+    Or.inr (Or.inl ⟨rOpen, rv, onlyRight, h_rest, rfl⟩)
+  refine ⟨?_, ?_⟩
+  · simpa [stNext] using
+      unifyRows_open_closed_update_extendsAndWf_idempotent
+        st st' kctx rctx fuel rOpen rv onlyRight
+        h_ext h_idemp h_rest h_wf h_onlyRight
+  ·
+    have h_agree_idemp :
+        CompatWFAgreeOnDomainLookups stNext fuel h_idemp_next :=
+      unifyRows_success_update_compat_wf_swap_invariant st' stNext fuel h_shape h_idemp_next
+    exact compatWFAgreeOnDomainLookupsAcyclic_of_idempotent
+      stNext fuel h_idemp_next h_agree_idemp
+
+theorem unifyRows_closed_open_contract_full_wf_idempotent
+    (st st' : UnifyState) (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat)
+    (rOpen : Row) (rv : RowVarId) (onlyLeft : RowFields)
+    (h_ext : ExtendsRowBindings st st')
+    (h_idemp : st'.subst.Idempotent)
+    (h_rest : (applySubstRow st'.subst (fuel + 1) rOpen).rest = some rv)
+    (h_wf : UnifyState.SubstWellFormedRange st' kctx rctx)
+    (h_onlyLeft : RowFields.WellFormed kctx rctx onlyLeft)
+    (h_idemp_next : ({ st' with subst := st'.subst.bindRow rv (Row.closed onlyLeft) }).subst.Idempotent) :
+    ExtendsAndWfRange st
+      { st' with subst := st'.subst.bindRow rv (Row.closed onlyLeft) }
+      kctx rctx
+    ∧ (let h_ac := Subst.acyclicOfIdempotent h_idemp_next
+       CompatWFAgreeOnDomainLookupsAcyclic
+         { st' with subst := st'.subst.bindRow rv (Row.closed onlyLeft) }
+         fuel h_ac) := by
+  let stNext : UnifyState := { st' with subst := st'.subst.bindRow rv (Row.closed onlyLeft) }
+  have h_shape : UnifyRowsSuccessUpdateShape st' stNext fuel :=
+    Or.inr (Or.inl ⟨rOpen, rv, onlyLeft, h_rest, rfl⟩)
+  refine ⟨?_, ?_⟩
+  · simpa [stNext] using
+      unifyRows_closed_open_update_extendsAndWf_idempotent
+        st st' kctx rctx fuel rOpen rv onlyLeft
+        h_ext h_idemp h_rest h_wf h_onlyLeft
+  ·
+    have h_agree_idemp :
+        CompatWFAgreeOnDomainLookups stNext fuel h_idemp_next :=
+      unifyRows_success_update_compat_wf_swap_invariant st' stNext fuel h_shape h_idemp_next
+    exact compatWFAgreeOnDomainLookupsAcyclic_of_idempotent
+      stNext fuel h_idemp_next h_agree_idemp
+
 /-- Combined contract for the open-open fresh-row successful `unifyRows` update. -/
 theorem unifyRows_open_open_update_extendsAndWf_idempotent_fresh
     (st st' : UnifyState) (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat)
