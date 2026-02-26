@@ -1461,6 +1461,10 @@ fn lower_instruction<M: Module>(
                 })
             }
         }
+        MirInst::Unsupported { detail } => Err(CodegenError::UnsupportedMir {
+            function: function_name.to_string(),
+            detail: detail.clone(),
+        }),
         MirInst::Nop => Ok(false),
         MirInst::Retain { .. } | MirInst::Release { .. } => Ok(false),
         MirInst::Move { dest, src }
@@ -2231,6 +2235,7 @@ fn collect_function_stats(function: &MirFunction) -> FunctionPassStats {
                 | MirInst::SumPayloadLoad { .. }
                 | MirInst::RecordFieldLoad { .. }
                 | MirInst::FunctionRef { .. }
+                | MirInst::Unsupported { .. }
                 | MirInst::Move { .. }
                 | MirInst::Borrow { .. }
                 | MirInst::TryClaim { .. }

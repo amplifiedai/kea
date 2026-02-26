@@ -671,6 +671,23 @@ mod tests {
     }
 
     #[test]
+    fn compile_and_execute_escaping_capturing_lambda_value_is_rejected() {
+        let source_path = write_temp_source(
+            "fn apply(f: fn(Int) -> Int, x: Int) -> Int\n  f(x)\n\nfn make_adder(y: Int) -> fn(Int) -> Int\n  |x| -> x + y\n\nfn main() -> Int\n  apply(make_adder(2), 40)\n",
+            "kea-cli-escaping-capturing-lambda",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject escaping capturing closure value");
+        assert!(
+            err.contains("capturing closure values currently require immediate or let-bound invocation"),
+            "expected unsupported closure-value diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_fail_only_main_ok_path_exit_code() {
         let source_path = write_temp_source(
             "effect Fail\n  fn fail(err: Int) -> Never\n\nfn main() -[Fail]> Int\n  12\n",

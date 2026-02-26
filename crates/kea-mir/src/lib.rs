@@ -196,6 +196,9 @@ pub enum MirInst {
         capture_fail_result: bool,
         cc_manifest_id: String,
     },
+    Unsupported {
+        detail: String,
+    },
     Nop,
 }
 
@@ -1095,7 +1098,18 @@ impl FunctionLoweringCtx {
                 });
                 Some(dest)
             }
-            HirExprKind::Call { func, args } => self.lower_call_expr(expr, func, args, false),
+            HirExprKind::Call { func, args } => {
+                if self.call_is_escaping_capturing_factory(func, args) {
+                    self.emit_inst(MirInst::Unsupported {
+                        detail:
+                            "capturing closure values currently require immediate or let-bound invocation"
+                                .to_string(),
+                    });
+                    self.set_terminator(MirTerminator::Unreachable);
+                    return None;
+                }
+                self.lower_call_expr(expr, func, args, false)
+            }
             HirExprKind::Catch { expr: caught } => {
                 let HirExprKind::Call { func, args } = &caught.kind else {
                     return None;
@@ -1402,6 +1416,16 @@ impl FunctionLoweringCtx {
             self.sum_value_types.insert(dest.clone(), sum_ty.name.clone());
         }
         result
+    }
+
+    fn call_is_escaping_capturing_factory(&self, func: &HirExpr, args: &[HirExpr]) -> bool {
+        let HirExprKind::Var(factory_name) = &func.kind else {
+            return false;
+        };
+        let Some(template) = self.lambda_factories.get(factory_name) else {
+            return false;
+        };
+        !template.captures.is_empty() && template.outer_params.len() == args.len()
     }
 
     fn lower_raw_ast_expr(&mut self, raw_expr: &AstExprKind) -> Option<MirValueId> {
