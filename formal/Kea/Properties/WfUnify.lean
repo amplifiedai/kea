@@ -29,6 +29,44 @@ theorem substWellFormedRange_of_subst_eq
     SubstWellFormedRange st' kctx rctx := by
   simpa [SubstWellFormedRange, h_eq] using h_wf
 
+theorem substWellFormedRange_with_lacks
+    (st : UnifyState) (kctx : KindCtx) (rctx : RowCtx) (lacks' : Lacks)
+    (h_wf : SubstWellFormedRange st kctx rctx) :
+    SubstWellFormedRange { st with lacks := lacks' } kctx rctx := by
+  exact substWellFormedRange_of_subst_eq st { st with lacks := lacks' } kctx rctx rfl h_wf
+
+theorem substWellFormedRange_with_traitBounds
+    (st : UnifyState) (kctx : KindCtx) (rctx : RowCtx) (bounds' : TraitBounds)
+    (h_wf : SubstWellFormedRange st kctx rctx) :
+    SubstWellFormedRange { st with traitBounds := bounds' } kctx rctx := by
+  exact substWellFormedRange_of_subst_eq st { st with traitBounds := bounds' } kctx rctx rfl h_wf
+
+theorem substWellFormedRange_with_nextTypeVar
+    (st : UnifyState) (kctx : KindCtx) (rctx : RowCtx) (next' : Nat)
+    (h_wf : SubstWellFormedRange st kctx rctx) :
+    SubstWellFormedRange { st with nextTypeVar := next' } kctx rctx := by
+  exact substWellFormedRange_of_subst_eq st { st with nextTypeVar := next' } kctx rctx rfl h_wf
+
+theorem substWellFormedRange_with_nextRowVar
+    (st : UnifyState) (kctx : KindCtx) (rctx : RowCtx) (next' : Nat)
+    (h_wf : SubstWellFormedRange st kctx rctx) :
+    SubstWellFormedRange { st with nextRowVar := next' } kctx rctx := by
+  exact substWellFormedRange_of_subst_eq st { st with nextRowVar := next' } kctx rctx rfl h_wf
+
+theorem substWellFormedRange_freshTypeVar
+    (st : UnifyState) (kctx : KindCtx) (rctx : RowCtx)
+    (h_wf : SubstWellFormedRange st kctx rctx) :
+    SubstWellFormedRange (st.freshTypeVar).2 kctx rctx := by
+  unfold UnifyState.freshTypeVar
+  simpa using substWellFormedRange_with_nextTypeVar st kctx rctx (st.nextTypeVar + 1) h_wf
+
+theorem substWellFormedRange_freshRowVar
+    (st : UnifyState) (kctx : KindCtx) (rctx : RowCtx)
+    (h_wf : SubstWellFormedRange st kctx rctx) :
+    SubstWellFormedRange (st.freshRowVar).2 kctx rctx := by
+  unfold UnifyState.freshRowVar
+  simpa using substWellFormedRange_with_nextRowVar st kctx rctx (st.nextRowVar + 1) h_wf
+
 end UnifyState
 
 theorem subst_bindType_preserves_wf_range
@@ -104,6 +142,15 @@ theorem bindTypeVar_ok_preserves_wf_range
       cases h_ok
       simpa using subst_bindType_preserves_wf_range st.subst kctx rctx v ty h_range h_ty
 
+theorem bindTypeVar_ok_preserves_substWellFormedRange
+    (st st' : UnifyState) (v : TypeVarId) (ty : Ty) (fuel : Nat)
+    (kctx : KindCtx) (rctx : RowCtx)
+    (h_ok : bindTypeVar st v ty fuel = .ok st')
+    (h_range : UnifyState.SubstWellFormedRange st kctx rctx)
+    (h_ty : Ty.WellFormed kctx rctx ty) :
+    UnifyState.SubstWellFormedRange st' kctx rctx := by
+  exact bindTypeVar_ok_preserves_wf_range st st' v ty fuel kctx rctx h_ok h_range h_ty
+
 theorem bindClosedRow_update_preserves_wf_range
     (st : UnifyState) (kctx : KindCtx) (rctx : RowCtx)
     (rv : RowVarId) (fields : RowFields)
@@ -114,6 +161,15 @@ theorem bindClosedRow_update_preserves_wf_range
       kctx rctx := by
   simpa using subst_bindClosedRow_preserves_wf_range
     st.subst kctx rctx rv fields h_range h_fields
+
+theorem bindClosedRow_update_preserves_substWellFormedRange
+    (st : UnifyState) (kctx : KindCtx) (rctx : RowCtx)
+    (rv : RowVarId) (fields : RowFields)
+    (h_range : UnifyState.SubstWellFormedRange st kctx rctx)
+    (h_fields : RowFields.WellFormed kctx rctx fields) :
+    UnifyState.SubstWellFormedRange
+      { st with subst := st.subst.bindRow rv (Row.closed fields) } kctx rctx := by
+  exact bindClosedRow_update_preserves_wf_range st kctx rctx rv fields h_range h_fields
 
 theorem bindOpenRows_update_preserves_wf_range
     (st : UnifyState) (kctx : KindCtx) (rctx : RowCtx)
@@ -131,3 +187,19 @@ theorem bindOpenRows_update_preserves_wf_range
       kctx rctx := by
   simpa using subst_bindOpenRows_preserves_wf_range
     st.subst kctx rctx rv1 rv2 r3 onlyLeft onlyRight h_range h_left h_right h_r3
+
+theorem bindOpenRows_update_preserves_substWellFormedRange
+    (st : UnifyState) (kctx : KindCtx) (rctx : RowCtx)
+    (rv1 rv2 r3 : RowVarId) (onlyLeft onlyRight : RowFields)
+    (h_range : UnifyState.SubstWellFormedRange st kctx rctx)
+    (h_left : RowFields.WellFormed kctx rctx onlyLeft)
+    (h_right : RowFields.WellFormed kctx rctx onlyRight)
+    (h_r3 : r3 ∈ rctx) :
+    UnifyState.SubstWellFormedRange
+      { st with
+          subst :=
+            Subst.bindRow
+              (Subst.bindRow st.subst rv1 (Row.mkOpen onlyRight r3))
+              rv2 (Row.mkOpen onlyLeft r3) } kctx rctx := by
+  exact bindOpenRows_update_preserves_wf_range
+    st kctx rctx rv1 rv2 r3 onlyLeft onlyRight h_range h_left h_right h_r3
