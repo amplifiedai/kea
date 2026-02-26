@@ -2022,6 +2022,16 @@ impl Parser {
                     TypeAnnotation::Applied(name_str, args),
                     start.merge(end_span),
                 ))
+            } else if self.starts_space_type_application_arg() {
+                let mut args = Vec::new();
+                while self.starts_space_type_application_arg() {
+                    args.push(self.type_application_arg_annotation()?);
+                }
+                let end = self.current_span();
+                Some(Spanned::new(
+                    TypeAnnotation::Applied(name_str, args),
+                    start.merge(end),
+                ))
             } else if self.match_token(&TokenKind::Question) {
                 let end = self.current_span();
                 Some(Spanned::new(
@@ -2067,6 +2077,16 @@ impl Parser {
                 Some(Spanned::new(
                     TypeAnnotation::Applied(name_str, args),
                     start.merge(end_span),
+                ))
+            } else if self.starts_space_type_application_arg() {
+                let mut args = Vec::new();
+                while self.starts_space_type_application_arg() {
+                    args.push(self.type_application_arg_annotation()?);
+                }
+                let end = self.current_span();
+                Some(Spanned::new(
+                    TypeAnnotation::Applied(name_str, args),
+                    start.merge(end),
                 ))
             } else if self.match_token(&TokenKind::Question) {
                 let end = self.current_span();
@@ -2163,6 +2183,22 @@ impl Parser {
             return Some(TypeAnnotation::DimLiteral(n));
         }
         Some(self.type_annotation()?.node)
+    }
+
+    fn starts_space_type_application_arg(&self) -> bool {
+        matches!(
+            self.peek_kind(),
+            Some(
+                TokenKind::Ident(_)
+                    | TokenKind::UpperIdent(_)
+                    | TokenKind::Fn
+                    | TokenKind::Forall
+                    | TokenKind::LBracket
+                    | TokenKind::LBrace
+                    | TokenKind::HashParen
+                    | TokenKind::Int(_)
+            )
+        )
     }
 
     // -- Expression parsing --
@@ -6881,6 +6917,28 @@ mod tests {
                         assert!(matches!(&args[1], TypeAnnotation::DimLiteral(2)));
                     }
                     other => panic!("expected Decimal(18, 2) annotation, got {other:?}"),
+                }
+            }
+            _ => panic!("expected Function"),
+        }
+    }
+
+    #[test]
+    fn parse_param_type_annotation_space_application() {
+        let m = parse_mod("fn f(opt: Maybe Int) -> Int\n  0");
+        match &m.declarations[0].node {
+            DeclKind::Function(fd) => {
+                let ann = fd.params[0]
+                    .annotation
+                    .as_ref()
+                    .expect("param should have annotation");
+                match &ann.node {
+                    TypeAnnotation::Applied(name, args) => {
+                        assert_eq!(name, "Maybe");
+                        assert_eq!(args.len(), 1);
+                        assert!(matches!(&args[0], TypeAnnotation::Named(inner) if inner == "Int"));
+                    }
+                    other => panic!("expected `Maybe Int` to parse as Applied, got {other:?}"),
                 }
             }
             _ => panic!("expected Function"),
