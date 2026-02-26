@@ -150,6 +150,8 @@ pub enum CodegenError {
     DuplicateLayoutVariant { type_name: String, variant: String },
     #[error("sum layout `{type_name}` must use contiguous tags starting at 0")]
     InvalidLayoutVariantTags { type_name: String },
+    #[error("Fail-only lowering invariant violated in `{function}`: {detail}")]
+    FailOnlyInvariantViolation { function: String, detail: String },
 }
 
 pub trait Backend {
@@ -194,6 +196,7 @@ impl Backend for CraneliftBackend {
     ) -> Result<BackendArtifact, CodegenError> {
         validate_abi_manifest(module, abi)?;
         validate_layout_catalog(module)?;
+        validate_fail_only_invariants(module)?;
 
         let isa = build_isa(config)?;
         let stats = collect_pass_stats(module);
@@ -977,6 +980,86 @@ fn validate_layout_catalog(module: &MirModule) -> Result<(), CodegenError> {
     Ok(())
 }
 
+fn is_fail_only_effect_row(row: &EffectRow) -> bool {
+    row.row.rest.is_none()
+        && !row.row.fields.is_empty()
+        && row
+            .row
+            .fields
+            .iter()
+            .all(|(label, _)| label.as_str() == "Fail")
+}
+
+fn validate_fail_only_invariants(module: &MirModule) -> Result<(), CodegenError> {
+    for function in &module.functions {
+        if !is_fail_only_effect_row(&function.signature.effects) {
+            continue;
+        }
+
+        for block in &function.blocks {
+            for inst in &block.instructions {
+                match inst {
+                    MirInst::EffectOp {
+                        class,
+                        effect,
+                        operation,
+                        ..
+                    } => {
+                        if effect != "Fail" {
+                            return Err(CodegenError::FailOnlyInvariantViolation {
+                                function: function.name.clone(),
+                                detail: format!(
+                                    "block {} performs non-Fail effect op `{effect}.{operation}`",
+                                    block.id.0
+                                ),
+                            });
+                        }
+
+                        if *class != MirEffectOpClass::ZeroResume {
+                            return Err(CodegenError::FailOnlyInvariantViolation {
+                                function: function.name.clone(),
+                                detail: format!(
+                                    "block {} lowers `Fail.{operation}` as {class:?}; expected ZeroResume Result path",
+                                    block.id.0
+                                ),
+                            });
+                        }
+                    }
+                    MirInst::HandlerEnter { effect } => {
+                        return Err(CodegenError::FailOnlyInvariantViolation {
+                            function: function.name.clone(),
+                            detail: format!(
+                                "block {} enters handler `{effect}` in Fail-only function",
+                                block.id.0
+                            ),
+                        });
+                    }
+                    MirInst::HandlerExit { effect } => {
+                        return Err(CodegenError::FailOnlyInvariantViolation {
+                            function: function.name.clone(),
+                            detail: format!(
+                                "block {} exits handler `{effect}` in Fail-only function",
+                                block.id.0
+                            ),
+                        });
+                    }
+                    MirInst::Resume { .. } => {
+                        return Err(CodegenError::FailOnlyInvariantViolation {
+                            function: function.name.clone(),
+                            detail: format!(
+                                "block {} uses `resume` in Fail-only function",
+                                block.id.0
+                            ),
+                        });
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 pub fn collect_pass_stats(module: &MirModule) -> PassStats {
     let per_function = module
         .functions
@@ -1247,6 +1330,27 @@ mod tests {
         }
     }
 
+    fn sample_fail_only_module_with_inst(inst: MirInst) -> MirModule {
+        MirModule {
+            functions: vec![MirFunction {
+                name: "fail_only".to_string(),
+                signature: MirFunctionSignature {
+                    params: vec![],
+                    ret: Type::Unit,
+                    effects: EffectRow::closed(vec![(Label::new("Fail"), Type::String)]),
+                },
+                entry: MirBlockId(0),
+                blocks: vec![MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions: vec![inst],
+                    terminator: MirTerminator::Return { value: None },
+                }],
+            }],
+            layouts: MirLayoutCatalog::default(),
+        }
+    }
+
     #[test]
     fn validate_abi_manifest_reports_missing_function() {
         let module = sample_stats_module();
@@ -1300,6 +1404,52 @@ mod tests {
             err,
             CodegenError::InvalidLayoutVariantTags { type_name } if type_name == "Option"
         ));
+    }
+
+    #[test]
+    fn validate_fail_only_invariants_rejects_non_zero_resume_fail_op() {
+        let module = sample_fail_only_module_with_inst(MirInst::EffectOp {
+            class: MirEffectOpClass::Dispatch,
+            effect: "Fail".to_string(),
+            operation: "fail".to_string(),
+            args: vec![MirValueId(0)],
+            result: Some(MirValueId(1)),
+        });
+
+        let err =
+            validate_fail_only_invariants(&module).expect_err("should reject dispatch in Fail-only");
+        assert!(matches!(
+            err,
+            CodegenError::FailOnlyInvariantViolation { function, .. } if function == "fail_only"
+        ));
+    }
+
+    #[test]
+    fn validate_fail_only_invariants_rejects_handler_ops() {
+        let module = sample_fail_only_module_with_inst(MirInst::HandlerEnter {
+            effect: "Fail".to_string(),
+        });
+
+        let err =
+            validate_fail_only_invariants(&module).expect_err("should reject handler ops in Fail-only");
+        assert!(matches!(
+            err,
+            CodegenError::FailOnlyInvariantViolation { function, .. } if function == "fail_only"
+        ));
+    }
+
+    #[test]
+    fn validate_fail_only_invariants_accepts_zero_resume_fail_op() {
+        let module = sample_fail_only_module_with_inst(MirInst::EffectOp {
+            class: MirEffectOpClass::ZeroResume,
+            effect: "Fail".to_string(),
+            operation: "fail".to_string(),
+            args: vec![MirValueId(0)],
+            result: Some(MirValueId(1)),
+        });
+
+        validate_fail_only_invariants(&module)
+            .expect("ZeroResume Fail operation should satisfy Fail-only invariant");
     }
 
     #[test]
