@@ -5406,3 +5406,37 @@ projection helpers so theorem consumers can request only the facet they need.
 - Raw-premise call sites now have direct one-hop access to selected
 catch-lowering consequences without constructing or destructuring intermediate
 judgment/bundle values.
+
+### 2026-02-26: higher-order catch admissibility regression (typed Fail rows)
+
+**Context**: Sanity re-probe after recent proof-surface expansions surfaced a
+new higher-order behavior mismatch on the current MCP binary.
+
+**MCP tools used**: direct `kea-mcp` stdio (`initialize`,
+`notifications/initialized`, `tools/call` with `reset_session`, `get_type`,
+`diagnose`).
+
+**Probe**:
+1. First-order typed Fail row (control):
+   - `body : () -[Log, Fail String]> Int`, `wrapped : () -[Log]> Result(Int, String)`
+   - `catch body()` => `ok`, inferred `() -[Log]> Result(Int, String)`.
+2. Fail-absent control:
+   - `catch pureish()` where `pureish : () -[Log]> Int`
+   - rejected with `E0012` (`expression cannot fail; catch is unnecessary`) as expected.
+3. Higher-order typed Fail row:
+   - `wrap_poly(f: fn() -[Log, Fail String]> Int) -[Log]> Result(Int, String)`
+   - body `catch f()`
+   - unexpectedly rejected with `E0012` (`expression cannot fail; catch is unnecessary`).
+
+**Classify**: Divergence (higher-order effect propagation / catch admissibility).
+
+**Lean side impacted**:
+- `EffectPolymorphismSoundness` higher-order usage expectations under admissible
+  function-typed premises.
+- `CatchTypingBridge` runtime-alignment claims for higher-order parameterized
+  catch paths.
+
+**Outcome**:
+- Runtime alignment remains valid for first-order catch slices, but higher-order
+  admissible catch with typed Fail rows is currently divergent and should be
+  fixed before claiming full higher-order alignment.
