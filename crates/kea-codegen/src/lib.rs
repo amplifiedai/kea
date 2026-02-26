@@ -354,6 +354,7 @@ fn compile_into_module<M: Module>(
     let mut signatures: BTreeMap<String, cranelift_codegen::ir::Signature> = BTreeMap::new();
     let external_signatures = collect_external_call_signatures(module, mir)?;
     let mut requires_heap_alloc = false;
+    let mut requires_io_stdout = false;
     for function in &mir.functions {
         let runtime_sig = runtime_signatures.get(&function.name).ok_or_else(|| {
             CodegenError::UnknownFunction {
@@ -373,6 +374,21 @@ fn compile_into_module<M: Module>(
                 )
             })
         });
+        if function.blocks.iter().any(|block| {
+            block.instructions.iter().any(|inst| {
+                matches!(
+                    inst,
+                    MirInst::EffectOp {
+                        class: MirEffectOpClass::Direct,
+                        effect,
+                        operation,
+                        ..
+                    } if effect == "IO" && operation == "stdout"
+                )
+            })
+        }) {
+            requires_io_stdout = true;
+        }
         let needs_fail_result_alloc = runtime_sig.fail_result_abi
             || (matches!(runtime_sig.runtime_return, Type::Result(_, _))
                 && function.blocks.iter().any(|block| {
@@ -390,7 +406,9 @@ fn compile_into_module<M: Module>(
                 }));
         if needs_aggregate_alloc || needs_fail_result_alloc {
             requires_heap_alloc = true;
-            break;
+            if requires_io_stdout {
+                break;
+            }
         }
     }
 
@@ -433,6 +451,22 @@ fn compile_into_module<M: Module>(
         Some(
             module
                 .declare_function("malloc", Linkage::Import, &signature)
+                .map_err(|detail| CodegenError::Module {
+                    detail: detail.to_string(),
+                })?,
+        )
+    } else {
+        None
+    };
+
+    let stdout_func_id = if requires_io_stdout {
+        let ptr_ty = module.target_config().pointer_type();
+        let mut signature = module.make_signature();
+        signature.params.push(AbiParam::new(ptr_ty));
+        signature.returns.push(AbiParam::new(types::I32));
+        Some(
+            module
+                .declare_function("puts", Linkage::Import, &signature)
                 .map_err(|detail| CodegenError::Module {
                     detail: detail.to_string(),
                 })?,
@@ -537,6 +571,7 @@ fn compile_into_module<M: Module>(
                     external_func_ids: &external_func_ids,
                     layout_plan,
                     malloc_func_id,
+                    stdout_func_id,
                     runtime_signatures: &runtime_signatures,
                     current_runtime_sig,
                 };
@@ -914,6 +949,7 @@ struct LowerInstCtx<'a> {
     external_func_ids: &'a BTreeMap<String, FuncId>,
     layout_plan: &'a BackendLayoutPlan,
     malloc_func_id: Option<FuncId>,
+    stdout_func_id: Option<FuncId>,
     runtime_signatures: &'a BTreeMap<String, RuntimeFunctionSig>,
     current_runtime_sig: &'a RuntimeFunctionSig,
 }
@@ -1362,10 +1398,32 @@ fn lower_instruction<M: Module>(
             class,
             effect,
             operation,
+            args,
             result,
             ..
         } => {
-            if *class == MirEffectOpClass::ZeroResume && effect == "Fail" && operation == "fail" {
+            if *class == MirEffectOpClass::Direct && effect == "IO" && operation == "stdout" {
+                let stdout_func_id = ctx.stdout_func_id.ok_or_else(|| CodegenError::UnsupportedMir {
+                    function: function_name.to_string(),
+                    detail: "IO.stdout lowering requires imported `puts` symbol".to_string(),
+                })?;
+                let arg = args.first().ok_or_else(|| CodegenError::UnsupportedMir {
+                    function: function_name.to_string(),
+                    detail: "IO.stdout expects one string argument".to_string(),
+                })?;
+                let arg_value = get_value(values, function_name, arg)?;
+                let ptr_ty = module.target_config().pointer_type();
+                let arg_ptr = coerce_value_to_clif_type(builder, arg_value, ptr_ty);
+                let stdout_ref = module.declare_func_in_func(stdout_func_id, builder.func);
+                let _ = builder.ins().call(stdout_ref, &[arg_ptr]);
+                if let Some(dest) = result {
+                    values.insert(dest.clone(), builder.ins().iconst(types::I8, 0));
+                }
+                Ok(false)
+            } else if *class == MirEffectOpClass::ZeroResume
+                && effect == "Fail"
+                && operation == "fail"
+            {
                 if result.is_some() {
                     return Err(CodegenError::UnsupportedMir {
                         function: function_name.to_string(),
@@ -1375,16 +1433,12 @@ fn lower_instruction<M: Module>(
                     });
                 }
                 if let Type::Result(_, err_ty) = &ctx.current_runtime_sig.runtime_return {
-                    let payload_value_id = if let MirInst::EffectOp { args, .. } = inst {
-                        args.first().ok_or_else(|| CodegenError::UnsupportedMir {
-                            function: function_name.to_string(),
-                            detail:
-                                "Fail.zero-resume operation in Result-returning function requires one payload argument"
-                                    .to_string(),
-                        })?
-                    } else {
-                        unreachable!("matched EffectOp above")
-                    };
+                    let payload_value_id = args.first().ok_or_else(|| CodegenError::UnsupportedMir {
+                        function: function_name.to_string(),
+                        detail:
+                            "Fail.zero-resume operation in Result-returning function requires one payload argument"
+                                .to_string(),
+                    })?;
                     let payload = get_value(values, function_name, payload_value_id)?;
                     let result_ptr = lower_result_allocation(
                         module,
@@ -2244,6 +2298,39 @@ mod tests {
                         },
                         MirInst::Release {
                             value: MirValueId(0),
+                        },
+                        MirInst::EffectOp {
+                            class: MirEffectOpClass::Direct,
+                            effect: "IO".to_string(),
+                            operation: "stdout".to_string(),
+                            args: vec![MirValueId(0)],
+                            result: None,
+                        },
+                    ],
+                    terminator: MirTerminator::Return { value: None },
+                }],
+            }],
+            layouts: MirLayoutCatalog::default(),
+        }
+    }
+
+    fn sample_stdout_module() -> MirModule {
+        MirModule {
+            functions: vec![MirFunction {
+                name: "print_hello".to_string(),
+                signature: MirFunctionSignature {
+                    params: vec![],
+                    ret: Type::Unit,
+                    effects: EffectRow::closed(vec![(Label::new("IO"), Type::Unit)]),
+                },
+                entry: MirBlockId(0),
+                blocks: vec![MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: MirValueId(0),
+                            literal: MirLiteral::String("hello".to_string()),
                         },
                         MirInst::EffectOp {
                             class: MirEffectOpClass::Direct,
@@ -3545,6 +3632,19 @@ mod tests {
         let artifact = backend
             .compile_module(&module, &manifest, &BackendConfig::default())
             .expect("string literal lowering should compile");
+
+        assert_eq!(artifact.stats.per_function.len(), 1);
+    }
+
+    #[test]
+    fn cranelift_backend_compiles_io_stdout_effect_op_module() {
+        let module = sample_stdout_module();
+        let manifest = default_abi_manifest(&module);
+        let backend = CraneliftBackend;
+
+        let artifact = backend
+            .compile_module(&module, &manifest, &BackendConfig::default())
+            .expect("IO.stdout lowering should compile");
 
         assert_eq!(artifact.stats.per_function.len(), 1);
     }

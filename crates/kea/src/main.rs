@@ -523,6 +523,20 @@ mod tests {
     }
 
     #[test]
+    fn compile_and_execute_io_stdout_unit_main_exit_code() {
+        let source_path = write_temp_source(
+            "effect IO\n  fn stdout(msg: String) -> Unit\n\nfn main() -[IO]> Unit\n  IO::stdout(\"hello world\")\n",
+            "kea-cli-io-stdout",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 0);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     #[cfg(not(target_os = "windows"))]
     fn compile_build_and_execute_aot_payload_constructor_case_exit_code() {
         let source_path = write_temp_source(
