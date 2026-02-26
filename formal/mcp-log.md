@@ -5242,3 +5242,27 @@ claim).
 **Outcome**:
 - Downstream proofs can now discharge admissible Fail-lowering capstones from
   premise bundles in a single theorem call, with no manual structure wiring.
+
+### 2026-02-26: admissible one-hop projections (proof-only)
+
+**Context**: Added direct projection helpers so individual guarantees can be
+consumed without destructuring full capstone conjunctions.
+
+**MCP tools used**: none (proof-only API decomposition layer).
+
+**Lean side**:
+- Extended `Kea/Properties/EffectPolymorphismSoundness.lean` with one-hop
+  projections from admissible assumptions:
+  - `admissibleEffectPolyFailLowering_rowTailStable`
+  - `admissibleEffectPolyFailLowering_preserves_nonFail`
+  - `admissibleEffectPolyFailLowering_failRemoved`
+  - `admissibleEffectPolyHandlerSchema_rowTailStable`
+  - `admissibleEffectPolyHandlerSchema_preserves_nonFail`
+  - `admissibleEffectPolyHandlerSchema_failRemoved_in_lowered_effects`
+- Verified with `cd formal && lake build` (pass).
+
+**Classify**: N/A (proof-only step).
+
+**Outcome**:
+- Admissible capstones now support clean one-hop chaining across downstream
+  proofs that need only one consequence facet at a time.

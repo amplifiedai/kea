@@ -116,6 +116,33 @@ theorem admissibleEffectPolyFailLowering_sound
       RowFields.has (EffectRow.fields loweredEffects) FailResultContracts.failLabel = false := by
   exact effectPolyFailLowering_sound_of_catchAdmissible c.toEffectPolyFailLoweringContract c.h_admissible
 
+theorem admissibleEffectPolyFailLowering_rowTailStable
+    (c : AdmissibleEffectPolyFailLoweringContract) :
+    ∃ loweredEffects,
+      c.lowered = .functionEff c.params loweredEffects (.result c.okTy c.errTy) ∧
+      rowTailStable c.effects loweredEffects := by
+  rcases admissibleEffectPolyFailLowering_sound c with
+    ⟨loweredEffects, h_ty, h_tail, _h_preserve, _h_removed⟩
+  exact ⟨loweredEffects, h_ty, h_tail⟩
+
+theorem admissibleEffectPolyFailLowering_preserves_nonFail
+    (c : AdmissibleEffectPolyFailLoweringContract) :
+    ∃ loweredEffects,
+      c.lowered = .functionEff c.params loweredEffects (.result c.okTy c.errTy) ∧
+      labelsPreservedExcept c.effects loweredEffects FailResultContracts.failLabel := by
+  rcases admissibleEffectPolyFailLowering_sound c with
+    ⟨loweredEffects, h_ty, _h_tail, h_preserve, _h_removed⟩
+  exact ⟨loweredEffects, h_ty, h_preserve⟩
+
+theorem admissibleEffectPolyFailLowering_failRemoved
+    (c : AdmissibleEffectPolyFailLoweringContract) :
+    ∃ loweredEffects,
+      c.lowered = .functionEff c.params loweredEffects (.result c.okTy c.errTy) ∧
+      RowFields.has (EffectRow.fields loweredEffects) FailResultContracts.failLabel = false := by
+  rcases admissibleEffectPolyFailLowering_sound c with
+    ⟨loweredEffects, h_ty, _h_tail, _h_preserve, h_removed⟩
+  exact ⟨loweredEffects, h_ty, h_removed⟩
+
 def mkAdmissibleEffectPolyFailLoweringContract
     (params : TyList)
     (effects : EffectRow)
@@ -266,6 +293,33 @@ theorem admissibleEffectPolyHandlerSchema_sound
         labelsPreservedExcept s.clause.exprEffects loweredEffects FailResultContracts.failLabel ∧
         RowFields.has (EffectRow.fields loweredEffects) FailResultContracts.failLabel = false := by
   exact effectPolyHandlerSchema_sound s.toEffectPolyHandlerSchema
+
+theorem admissibleEffectPolyHandlerSchema_rowTailStable
+    (s : AdmissibleEffectPolyHandlerSchema) :
+    ∃ loweredEffects,
+      s.loweredTy = .functionEff s.params loweredEffects (.result s.okTy s.errTy) ∧
+      rowTailStable s.clause.exprEffects loweredEffects := by
+  rcases admissibleEffectPolyHandlerSchema_sound s with
+    ⟨_h_clause_removed, loweredEffects, h_ty, h_tail, _h_preserve, _h_removed⟩
+  exact ⟨loweredEffects, h_ty, h_tail⟩
+
+theorem admissibleEffectPolyHandlerSchema_preserves_nonFail
+    (s : AdmissibleEffectPolyHandlerSchema) :
+    ∃ loweredEffects,
+      s.loweredTy = .functionEff s.params loweredEffects (.result s.okTy s.errTy) ∧
+      labelsPreservedExcept s.clause.exprEffects loweredEffects FailResultContracts.failLabel := by
+  rcases admissibleEffectPolyHandlerSchema_sound s with
+    ⟨_h_clause_removed, loweredEffects, h_ty, _h_tail, h_preserve, _h_removed⟩
+  exact ⟨loweredEffects, h_ty, h_preserve⟩
+
+theorem admissibleEffectPolyHandlerSchema_failRemoved_in_lowered_effects
+    (s : AdmissibleEffectPolyHandlerSchema) :
+    ∃ loweredEffects,
+      s.loweredTy = .functionEff s.params loweredEffects (.result s.okTy s.errTy) ∧
+      RowFields.has (EffectRow.fields loweredEffects) FailResultContracts.failLabel = false := by
+  rcases admissibleEffectPolyHandlerSchema_sound s with
+    ⟨_h_clause_removed, loweredEffects, h_ty, _h_tail, _h_preserve, h_removed⟩
+  exact ⟨loweredEffects, h_ty, h_removed⟩
 
 theorem admissibleEffectPolyHandlerSchema_not_unnecessary
     (s : AdmissibleEffectPolyHandlerSchema) :
