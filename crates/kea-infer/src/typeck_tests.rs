@@ -1282,6 +1282,73 @@ fn alias_cycle_is_rejected() {
 }
 
 #[test]
+fn effect_row_alias_expands_in_declared_effect_contract_validation() {
+    let mut records = RecordRegistry::new();
+    records
+        .register_alias(&make_alias_def(
+            "DbEffects",
+            vec![],
+            TypeAnnotation::EffectRow(EffectRowAnnotation {
+                effects: vec![EffectRowItem {
+                    name: "IO".to_string(),
+                    payload: None,
+                }],
+                rest: None,
+            }),
+        ))
+        .expect("alias registration");
+
+    let mut fn_decl = make_fn_decl("f", vec![], lit_int(1));
+    fn_decl.effect_annotation = Some(sp(effect_row_annotation(vec![("DbEffects", None)], None)));
+
+    let env = TypeEnv::new();
+    assert!(
+        validate_declared_fn_effect_with_env_and_records(
+            &fn_decl,
+            Effects::impure(),
+            &env,
+            &records
+        )
+        .is_ok()
+    );
+}
+
+#[test]
+fn open_effect_row_alias_is_rejected_in_contract_validation_compat_mode() {
+    let mut records = RecordRegistry::new();
+    records
+        .register_alias(&make_alias_def(
+            "WithDb",
+            vec![],
+            TypeAnnotation::EffectRow(EffectRowAnnotation {
+                effects: vec![EffectRowItem {
+                    name: "IO".to_string(),
+                    payload: None,
+                }],
+                rest: Some("e".to_string()),
+            }),
+        ))
+        .expect("alias registration");
+
+    let mut fn_decl = make_fn_decl("f", vec![], lit_int(1));
+    fn_decl.effect_annotation = Some(sp(effect_row_annotation(vec![("WithDb", None)], None)));
+    let env = TypeEnv::new();
+    let err = validate_declared_fn_effect_with_env_and_records(
+        &fn_decl,
+        Effects::impure(),
+        &env,
+        &records,
+    )
+    .expect_err("open effect row aliases should be rejected in compatibility contracts");
+    assert!(
+        err.message
+            .contains("open effect rows with concrete entries are not supported in contracts yet"),
+        "unexpected message: {}",
+        err.message
+    );
+}
+
+#[test]
 fn opaque_named_resolves_as_nominal_type() {
     let mut records = RecordRegistry::new();
     records

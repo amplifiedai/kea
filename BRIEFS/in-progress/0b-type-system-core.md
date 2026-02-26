@@ -215,17 +215,54 @@ removed before 0b closes:
 Kill point for all of the above: before moving this brief to
 `done/`, with removal tracked in `## Progress`.
 
-## Open Questions
+## 0b Exit Criterion: Delete Lattice Effect Model
 
-- Should effect inference be integrated into the main HM pass or
-  run as a separate post-pass? (Proposal: integrated — effect
-  variables are just row variables, they participate in the same
-  unification. This is the Koka approach and it works because
-  rows are rows.)
-- How do we handle the `Fail E` uniqueness constraint ("at most
-  one Fail in an effect set")? (Proposal: a special lacks-like
-  constraint on the effect row variable. Or: defer this to 0c
-  and allow multiple Fail effects initially.)
+The lattice effect model (`EffectLevel { Pure, Volatile, Impure }`,
+`EffectTerm`, `EffectConstraint { Eq, Leq, Join }`,
+`solve_effect_constraints`, `effects_leq`, and all bridge functions
+like `effects_as_row`, `effect_annotation_to_effects`,
+`effect_label`) is migration scaffolding from rill. It must be
+deleted before this brief moves to `done/`.
+
+**What replaces it:** Effect rows are `RowType` with kind `Eff`.
+Effect checking uses the same Rémy row unification as record rows.
+The constraint solver for effects is the existing row unifier —
+no separate `solve_effect_constraints` needed.
+
+**How to track:** Every lattice function gets a
+`// TODO(0b-exit): delete when row-based effect solver is complete`
+marker. The exit criterion is: `EffectLevel` enum is deleted from
+kea-types, and all effect checking flows through `EffectRow`
+unification.
+
+**Legacy syntax handling:** `EffectAnnotation::Pure` desugars to
+`EffectRow::pure()` (closed empty row). `EffectAnnotation::Volatile`
+and `EffectAnnotation::Impure` emit a deprecation diagnostic —
+they have no semantic meaning in the row model and must not be
+modelled as fresh open row variables (that would accidentally make
+signatures polymorphic). Existing test files using these annotations
+should be migrated to row syntax (`->` for pure, `-[IO]>` for
+impure) as part of the exit criterion.
+
+## Resolved Questions
+
+- **Effect inference integration:** Integrated into the main HM
+  pass. Effect variables are row variables; they participate in
+  the same unification. This is the Koka approach.
+
+- **Fail uniqueness:** Enforced in 0b. At most one `Fail E` per
+  effect row. When merging effect rows with different `Fail`
+  payloads, require unification or `From` conversion to the
+  declared type. If neither resolves, emit a diagnostic with help:
+  "implement `From ParseError for AppError`" or "use `catch` to
+  handle ParseError explicitly." This is a row-level constraint
+  (lacks `Fail` on the rest variable after one `Fail` entry).
+
+- **Capability effects (IO, Send, Spawn):** Ordinary effect labels
+  in the type system. No special-case type rules. Handlers for
+  them type-check normally (enabling test mocks). Direct-call
+  compilation is a codegen/runtime optimisation (0e), not a type
+  system concern.
 
 ## Progress
 - 2026-02-26: Moved brief to `in-progress`; starting rill-types/rill-infer cannibalisation for `kea-types` + `kea-infer`.
@@ -235,4 +272,5 @@ Kill point for all of the above: before moving this brief to
 - 2026-02-26: Threaded `EffectRow` into function-effect verification diagnostics in `typeck.rs` (declared vs inferred mismatch now reports row-form context alongside lattice labels). Verified with `PKG=kea-infer mise run test-pkg` (726/726) and `mise run check`.
 - 2026-02-26: Added AST/parser support for row-style effect annotations (`-[IO, Fail E | e]>`) and threaded compatibility handling through `kea-infer` contract/effect annotation paths. Verified with `PKG=kea-syntax mise run test-pkg` (375/375), `PKG=kea-infer mise run test-pkg` (726/726), and `mise run check`.
 - 2026-02-26: Added `kea-infer` regression tests for row-based effect contracts (closed rows accepted, open concrete rows rejected in compatibility mode, tail-only row vars propagated/validated). Verified with `PKG=kea-infer mise run test-pkg` (729/729) and `mise run check`.
-- **Next:** Add effect-row alias expansion tests, then remove remaining lattice-only contract paths and explicitly delete temporary compatibility scaffolding noted above.
+- 2026-02-26: Added effect-row alias substrate and tests: AST/Parser now represent `alias X = [ ... ]` via `TypeAnnotation::EffectRow`; contract validation has record-aware alias expansion for declared effect rows, with compatibility rejection for aliases that expand to open rows. Verified with `PKG=kea-syntax mise run test-pkg` (376/376), `PKG=kea-infer mise run test-pkg` (731/731), and `mise run check`.
+- **Next:** Remove remaining lattice-only contract paths and explicitly delete temporary compatibility scaffolding noted above.

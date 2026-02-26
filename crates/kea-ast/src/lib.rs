@@ -723,6 +723,7 @@ impl Param {
 pub enum TypeAnnotation {
     Named(String),
     Applied(String, Vec<TypeAnnotation>),
+    EffectRow(EffectRowAnnotation),
     Tuple(Vec<TypeAnnotation>),
     Forall {
         type_vars: Vec<String>,

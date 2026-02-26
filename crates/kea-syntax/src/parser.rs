@@ -1769,6 +1769,45 @@ impl Parser {
                 start.merge(end),
             ));
         }
+        if self.match_token(&TokenKind::LBracket) {
+            self.skip_newlines();
+            let mut effects = Vec::new();
+            let mut rest = None;
+
+            if self.match_token(&TokenKind::Pipe) {
+                self.skip_newlines();
+                rest = Some(self.parse_effect_row_name(
+                    "expected tail effect variable after '|' in effect row annotation",
+                )?);
+                self.skip_newlines();
+            } else if !self.check(&TokenKind::RBracket) {
+                let first = self.parse_effect_row_item("expected effect name in effect row annotation")?;
+                effects.push(first);
+                self.skip_newlines();
+                while self.match_token(&TokenKind::Comma) {
+                    self.skip_newlines();
+                    let item = self.parse_effect_row_item(
+                        "expected effect name after ',' in effect row annotation",
+                    )?;
+                    effects.push(item);
+                    self.skip_newlines();
+                }
+                if self.match_token(&TokenKind::Pipe) {
+                    self.skip_newlines();
+                    rest = Some(self.parse_effect_row_name(
+                        "expected tail effect variable after '|' in effect row annotation",
+                    )?);
+                    self.skip_newlines();
+                }
+            }
+
+            self.expect(&TokenKind::RBracket, "expected ']' in effect row annotation")?;
+            let end = self.current_span();
+            return Some(Spanned::new(
+                TypeAnnotation::EffectRow(EffectRowAnnotation { effects, rest }),
+                start.merge(end),
+            ));
+        }
         // Simple: Named or Applied
         if let Some(name) = self.try_ident() {
             let name_str = name.node.clone();
@@ -6297,6 +6336,26 @@ mod tests {
                 assert!(def.params.is_empty());
                 assert!(matches!(def.target.node, TypeAnnotation::Named(ref n) if n == "Int"));
             }
+            _ => panic!("expected AliasDecl"),
+        }
+    }
+
+    #[test]
+    fn parse_effect_row_alias_decl() {
+        let module = parse_mod("alias DbEffects = [IO, Fail DbError | e]");
+        assert_eq!(module.declarations.len(), 1);
+        match &module.declarations[0].node {
+            DeclKind::AliasDecl(def) => match &def.target.node {
+                TypeAnnotation::EffectRow(row) => {
+                    assert_eq!(row.effects.len(), 2);
+                    assert_eq!(row.effects[0].name, "IO");
+                    assert_eq!(row.effects[0].payload, None);
+                    assert_eq!(row.effects[1].name, "Fail");
+                    assert_eq!(row.effects[1].payload.as_deref(), Some("DbError"));
+                    assert_eq!(row.rest.as_deref(), Some("e"));
+                }
+                other => panic!("expected effect row alias target, got {other:?}"),
+            },
             _ => panic!("expected AliasDecl"),
         }
     }
