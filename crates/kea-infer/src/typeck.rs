@@ -12394,6 +12394,19 @@ fn infer_expr_bidir(
                 }
                 param_types.push(param_ty);
             }
+            // Seed function-typed parameter effect signatures so that
+            // `catch` pre-checks (infer_resolved_expr_effect_row) can
+            // see the Fail effect in higher-order parameter types.
+            {
+                let mut effect_var_bindings = BTreeMap::new();
+                let mut next_effect_var = 0u32;
+                seed_function_param_effect_rows(
+                    params,
+                    env,
+                    &mut effect_var_bindings,
+                    &mut next_effect_var,
+                );
+            }
             let mut body_ty = infer_expr_bidir(body, env, unifier, records, traits, sum_types);
             if let Some(ann) = return_annotation {
                 if let Some(declared_ret) =
@@ -14532,6 +14545,20 @@ fn check_expr_bidir(
                         );
                     }
                 }
+            }
+
+            // Seed function-typed parameter effect signatures so that
+            // `catch` pre-checks can see the Fail effect in higher-order
+            // parameter types.
+            {
+                let mut effect_var_bindings = BTreeMap::new();
+                let mut next_effect_var = 0u32;
+                seed_function_param_effect_rows(
+                    params,
+                    env,
+                    &mut effect_var_bindings,
+                    &mut next_effect_var,
+                );
             }
 
             let expected_ret = expected_fn.ret.as_ref().clone();
