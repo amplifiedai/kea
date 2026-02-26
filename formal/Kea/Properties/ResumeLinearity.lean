@@ -91,6 +91,36 @@ theorem resume_combine_preserves_atMostOnce_of_exclusive
       exact resume_combine_preserves_atMostOnce_of_right_zero a b h_a h_zero
 
 /--
+Exact characterization of linearity for composed summaries:
+the composition is at-most-once iff one side is zero and the other side
+is itself at-most-once.
+-/
+theorem resume_combine_atMostOnce_iff
+    (a b : ResumeUse) :
+    ResumeUse.atMostOnce (ResumeUse.combine a b) ↔
+      (a = .zero ∧ ResumeUse.atMostOnce b) ∨
+      (b = .zero ∧ ResumeUse.atMostOnce a) := by
+  cases a <;> cases b <;> simp [ResumeUse.combine, ResumeUse.atMostOnce]
+
+/--
+Corollary: if a composed summary is at-most-once, at least one side is zero.
+This is the abstract branch-exclusivity signal used by resume-linearity checks.
+-/
+theorem resume_combine_atMostOnce_implies_one_side_zero
+    (a b : ResumeUse)
+    (h : ResumeUse.atMostOnce (ResumeUse.combine a b)) :
+    a = .zero ∨ b = .zero := by
+  have h_iff := (resume_combine_atMostOnce_iff a b).mp h
+  cases h_iff with
+  | inl h_left => exact Or.inl h_left.1
+  | inr h_right => exact Or.inr h_right.1
+
+/-- Two definitely-resuming sides cannot compose to at-most-once. -/
+theorem resume_combine_one_one_not_atMostOnce :
+    ¬ ResumeUse.atMostOnce (ResumeUse.combine .one .one) := by
+  simp [ResumeUse.combine, ResumeUse.atMostOnce]
+
+/--
 Phase-2 named contract surface for the resume linearity theorem family.
 -/
 def resume_at_most_once (u : ResumeUse) : Prop :=
