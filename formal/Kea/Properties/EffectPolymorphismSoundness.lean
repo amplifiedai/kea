@@ -73,6 +73,13 @@ structure EffectPolyFailLoweringContract where
     lowered = FailResultContracts.lowerFailFunctionType params effects okTy errTy
 
 /--
+Runtime-aligned strengthening of `EffectPolyFailLoweringContract`:
+`catch` is only modeled on effect rows that contain `Fail`.
+-/
+structure AdmissibleEffectPolyFailLoweringContract extends EffectPolyFailLoweringContract where
+  h_admissible : FailResultContracts.catchAdmissible effects
+
+/--
 Capstone: lowered polymorphic function type preserves tail polymorphism and all
 non-`Fail` effects while removing `Fail`.
 -/
@@ -99,6 +106,15 @@ theorem effectPolyFailLowering_sound_of_catchAdmissible
       labelsPreservedExcept c.effects loweredEffects FailResultContracts.failLabel ∧
       RowFields.has (EffectRow.fields loweredEffects) FailResultContracts.failLabel = false := by
   exact effectPolyFailLowering_sound c
+
+theorem admissibleEffectPolyFailLowering_sound
+    (c : AdmissibleEffectPolyFailLoweringContract) :
+    ∃ loweredEffects,
+      c.lowered = .functionEff c.params loweredEffects (.result c.okTy c.errTy) ∧
+      rowTailStable c.effects loweredEffects ∧
+      labelsPreservedExcept c.effects loweredEffects FailResultContracts.failLabel ∧
+      RowFields.has (EffectRow.fields loweredEffects) FailResultContracts.failLabel = false := by
+  exact effectPolyFailLowering_sound_of_catchAdmissible c.toEffectPolyFailLoweringContract c.h_admissible
 
 theorem effectPolyFailLowering_noop_if_fail_absent
     (c : EffectPolyFailLoweringContract)
@@ -133,6 +149,12 @@ structure EffectPolyHandlerSchema where
   h_lowered :
     loweredTy =
       FailResultContracts.lowerFailFunctionType params clause.exprEffects okTy errTy
+
+/--
+Runtime-aligned schema specialization: handler schema + `catch` admissibility.
+-/
+structure AdmissibleEffectPolyHandlerSchema extends EffectPolyHandlerSchema where
+  h_admissible : FailResultContracts.catchAdmissible clause.exprEffects
 
 /--
 Bridge theorem: concrete handler typing premises imply the polymorphic
@@ -199,6 +221,27 @@ theorem catchUnnecessary_implies_no_admissible_schema
     ¬ FailResultContracts.catchAdmissible s.clause.exprEffects := by
   exact FailResultContracts.catchUnnecessary_implies_not_admissible
     s.clause.exprEffects h_unnecessary
+
+theorem admissibleEffectPolyHandlerSchema_sound
+    (s : AdmissibleEffectPolyHandlerSchema) :
+    RowFields.has
+      (EffectRow.fields (HandleClauseContract.resultEffects s.clause))
+      FailResultContracts.failLabel = false ∧
+      ∃ loweredEffects,
+        s.loweredTy = .functionEff s.params loweredEffects (.result s.okTy s.errTy) ∧
+        rowTailStable s.clause.exprEffects loweredEffects ∧
+        labelsPreservedExcept s.clause.exprEffects loweredEffects FailResultContracts.failLabel ∧
+        RowFields.has (EffectRow.fields loweredEffects) FailResultContracts.failLabel = false := by
+  exact effectPolyHandlerSchema_sound s.toEffectPolyHandlerSchema
+
+theorem admissibleEffectPolyHandlerSchema_not_unnecessary
+    (s : AdmissibleEffectPolyHandlerSchema) :
+    ¬ FailResultContracts.catchUnnecessary s.clause.exprEffects := by
+  intro h_unnecessary
+  have h_not_adm :=
+    FailResultContracts.catchUnnecessary_implies_not_admissible
+      s.clause.exprEffects h_unnecessary
+  exact h_not_adm s.h_admissible
 
 end EffectPolymorphismSoundness
 end Kea

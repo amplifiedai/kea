@@ -5192,3 +5192,30 @@ preceding divergence-closure probes).
 - Phase-2 theorem entrypoints now carry the same admissibility boundary as the
 runtime (`catch` requires Fail presence), preventing future drift between model
 claims and executable behavior.
+
+### 2026-02-26: admissible-schema capstone entrypoints (proof-only)
+
+**Context**: Strengthened the admissibility packaging by introducing explicit
+runtime-aligned wrapper structures, so downstream proofs cannot accidentally
+instantiate fail-absent `catch` paths.
+
+**MCP tools used**: none (proof-only surface refinement over already verified
+`E0012` runtime behavior).
+
+**Lean side**:
+- Extended `Kea/Properties/EffectPolymorphismSoundness.lean` with:
+  - `AdmissibleEffectPolyFailLoweringContract`
+  - `AdmissibleEffectPolyHandlerSchema`
+  - `admissibleEffectPolyFailLowering_sound`
+  - `admissibleEffectPolyHandlerSchema_sound`
+  - `admissibleEffectPolyHandlerSchema_not_unnecessary`
+- These wrappers require `catchAdmissible` as a field-level premise, so capstone
+  theorem entrypoints are runtime-aligned by construction.
+- Verified with `cd formal && lake build` (pass).
+
+**Classify**: N/A (proof-only step).
+
+**Outcome**:
+- Phase-2 proofs now have a clean admissible-only API surface, reducing
+call-site precondition threading and removing accidental dependence on
+inadmissible fail-absent paths.
