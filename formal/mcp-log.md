@@ -5032,3 +5032,34 @@ delta).
 **Outcome**:
 - The Fail/Result track now has an explicit typing-equivalence slice suitable
   for reuse in the next effect-polymorphism soundness contract layer.
+
+### 2026-02-26: effect-polymorphism soundness contract kickoff (proof-only)
+
+**Context**: Added a dedicated Phase-2 module to package polymorphic effect-row
+soundness guarantees for Fail lowering.
+
+**MCP tools used**: none (proof-only theorem packaging; no new runtime-facing
+claim delta).
+
+**Lean side**:
+- Added `Kea/Properties/EffectPolymorphismSoundness.lean`.
+- Defined reusable relations:
+  - `rowTailStable`
+  - `labelsPreservedExcept`
+- Proved row-level soundness for Fail lowering:
+  - `lowerFailEffects_rowTailStable`
+  - `lowerFailEffects_labelsPreservedExceptFail`
+  - `lowerFailEffects_failRemoved`
+  - `lowerFailEffects_effectPoly_sound`
+- Added polymorphic function contract surface
+  (`EffectPolyFailLoweringContract`) and capstone theorems:
+  - `effectPolyFailLowering_sound`
+  - `effectPolyFailLowering_noop_if_fail_absent`
+- Imported module in `formal/Kea.lean`.
+- Verified with `cd formal && lake build` (pass).
+
+**Classify**: N/A (proof-only step).
+
+**Outcome**:
+- Effect-polymorphism soundness now has an explicit reusable theorem surface
+  bridging Fail lowering with row-tail-preserving polymorphic effects.
