@@ -2357,8 +2357,8 @@ impl Type {
     ///
     /// Returns `true` for scalar types that can be used as UDF parameters or
     /// return types: Int, Float, Bool, String, Unit, Date, DateTime, Option(T).
-    /// This is a pure check that doesn't depend on Arrow — it mirrors the
-    /// mapping in `rill_df::types::rill_to_arrow`.
+    /// This is a pure check that doesn't depend on Arrow and mirrors the
+    /// scalar mapping used at the dataframe runtime boundary.
     pub fn is_arrow_scalar(&self) -> bool {
         matches!(
             self,

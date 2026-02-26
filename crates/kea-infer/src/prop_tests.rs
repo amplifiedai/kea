@@ -3109,16 +3109,16 @@ proptest! {
     /// End-to-end callback effect polymorphism: function signatures carrying an
     /// effect row variable should propagate the callback's concrete effect row.
     #[test]
-    fn prop_callback_effect_polymorphism_propagates_callback_level(
-        callback_is_volatile in any::<bool>(),
+    fn prop_callback_effect_polymorphism_propagates_callback_row(
+        callback_has_send in any::<bool>(),
         callback_is_impure in any::<bool>(),
     ) {
         use kea_ast::{Expr, ExprKind, Lit};
 
         let callback_row = if callback_is_impure {
             EffectRow::closed(vec![(Label::new("IO"), Type::Unit)])
-        } else if callback_is_volatile {
-            EffectRow::closed(vec![(Label::new("Volatile"), Type::Unit)])
+        } else if callback_has_send {
+            EffectRow::closed(vec![(Label::new("Send"), Type::Unit)])
         } else {
             EffectRow::pure()
         };
@@ -3151,8 +3151,6 @@ proptest! {
         let inferred = crate::typeck::infer_expr_effects(&expr, &env);
         let expected = if callback_row.is_pure() {
             Effects::pure_deterministic()
-        } else if callback_row.row.has(&Label::new("Volatile")) {
-            Effects::pure_volatile()
         } else {
             Effects::impure()
         };
