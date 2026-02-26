@@ -295,29 +295,55 @@ fn compile_into_module<M: Module>(module: &mut M, mir: &MirModule) -> Result<(),
 
         {
             let mut builder = FunctionBuilder::new(&mut context.func, &mut builder_context);
-            let entry_block = builder.create_block();
+            let mut block_map = BTreeMap::new();
+            for block in &function.blocks {
+                block_map.insert(block.id.clone(), builder.create_block());
+            }
+
+            let entry_block = *block_map
+                .get(&function.entry)
+                .ok_or_else(|| CodegenError::UnsupportedMir {
+                    function: function.name.clone(),
+                    detail: "entry block missing".to_string(),
+                })?;
+
             builder.append_block_params_for_function_params(entry_block);
-            builder.switch_to_block(entry_block);
-            builder.seal_block(entry_block);
 
             let mut values: BTreeMap<MirValueId, Value> = BTreeMap::new();
             for (index, value) in builder.block_params(entry_block).iter().copied().enumerate() {
                 values.insert(MirValueId(index as u32), value);
             }
 
-            let block = function
-                .blocks
-                .iter()
-                .find(|block| block.id == function.entry)
-                .ok_or_else(|| CodegenError::UnsupportedMir {
-                    function: function.name.clone(),
-                    detail: "entry block missing".to_string(),
-                })?;
+            for block in &function.blocks {
+                let clif_block =
+                    *block_map
+                        .get(&block.id)
+                        .ok_or_else(|| CodegenError::UnsupportedMir {
+                            function: function.name.clone(),
+                            detail: format!("missing Cranelift block for MIR block {:?}", block.id),
+                        })?;
+                builder.switch_to_block(clif_block);
 
-            for inst in &block.instructions {
-                lower_instruction(module, &mut builder, &function.name, inst, &mut values, &func_ids)?;
+                for inst in &block.instructions {
+                    lower_instruction(
+                        module,
+                        &mut builder,
+                        &function.name,
+                        inst,
+                        &mut values,
+                        &func_ids,
+                    )?;
+                }
+                lower_terminator(
+                    &mut builder,
+                    &function.name,
+                    &block.terminator,
+                    &function.signature.ret,
+                    &values,
+                    &block_map,
+                )?;
             }
-            lower_terminator(&mut builder, &function.name, &block.terminator, &function.signature.ret, &values)?;
+            builder.seal_all_blocks();
             builder.finalize();
         }
 
@@ -575,6 +601,7 @@ fn lower_terminator(
     terminator: &MirTerminator,
     return_ty: &Type,
     values: &BTreeMap<MirValueId, Value>,
+    block_map: &BTreeMap<kea_mir::MirBlockId, cranelift::prelude::Block>,
 ) -> Result<(), CodegenError> {
     match terminator {
         MirTerminator::Return { value } => {
@@ -591,12 +618,53 @@ fn lower_terminator(
             builder.ins().return_(&[value]);
             Ok(())
         }
-        MirTerminator::Jump { .. }
-        | MirTerminator::Branch { .. }
-        | MirTerminator::Unreachable => Err(CodegenError::UnsupportedMir {
-            function: function_name.to_string(),
-            detail: format!("terminator `{terminator:?}` is not implemented in 0d pure lowering"),
-        }),
+        MirTerminator::Jump { target } => {
+            let target_block =
+                *block_map
+                    .get(target)
+                    .ok_or_else(|| CodegenError::UnsupportedMir {
+                        function: function_name.to_string(),
+                        detail: format!("jump target block {:?} not found", target),
+                    })?;
+            builder.ins().jump(target_block, &[]);
+            Ok(())
+        }
+        MirTerminator::Branch {
+            condition,
+            then_block,
+            else_block,
+        } => {
+            let cond = get_value(values, function_name, condition)?;
+            let then_clif =
+                *block_map
+                    .get(then_block)
+                    .ok_or_else(|| CodegenError::UnsupportedMir {
+                        function: function_name.to_string(),
+                        detail: format!("then block {:?} not found", then_block),
+                    })?;
+            let else_clif =
+                *block_map
+                    .get(else_block)
+                    .ok_or_else(|| CodegenError::UnsupportedMir {
+                        function: function_name.to_string(),
+                        detail: format!("else block {:?} not found", else_block),
+                    })?;
+
+            let cond_ty = builder.func.dfg.value_type(cond);
+            let bool_pred = if cond_ty.bits() == 1 {
+                cond
+            } else {
+                builder.ins().icmp_imm(IntCC::NotEqual, cond, 0)
+            };
+            builder.ins().brif(bool_pred, then_clif, &[], else_clif, &[]);
+            Ok(())
+        }
+        MirTerminator::Unreachable => {
+            builder
+                .ins()
+                .trap(cranelift_codegen::ir::TrapCode::unwrap_user(1));
+            Ok(())
+        }
     }
 }
 
@@ -781,6 +849,54 @@ mod tests {
         }
     }
 
+    fn sample_cfg_module() -> MirModule {
+        MirModule {
+            functions: vec![MirFunction {
+                name: "branchy".to_string(),
+                signature: MirFunctionSignature {
+                    params: vec![],
+                    ret: Type::Int,
+                    effects: EffectRow::pure(),
+                },
+                entry: MirBlockId(0),
+                blocks: vec![
+                    MirBlock {
+                        id: MirBlockId(0),
+                        instructions: vec![MirInst::Const {
+                            dest: MirValueId(0),
+                            literal: MirLiteral::Bool(true),
+                        }],
+                        terminator: MirTerminator::Branch {
+                            condition: MirValueId(0),
+                            then_block: MirBlockId(1),
+                            else_block: MirBlockId(2),
+                        },
+                    },
+                    MirBlock {
+                        id: MirBlockId(1),
+                        instructions: vec![MirInst::Const {
+                            dest: MirValueId(1),
+                            literal: MirLiteral::Int(1),
+                        }],
+                        terminator: MirTerminator::Return {
+                            value: Some(MirValueId(1)),
+                        },
+                    },
+                    MirBlock {
+                        id: MirBlockId(2),
+                        instructions: vec![MirInst::Const {
+                            dest: MirValueId(2),
+                            literal: MirLiteral::Int(0),
+                        }],
+                        terminator: MirTerminator::Return {
+                            value: Some(MirValueId(2)),
+                        },
+                    },
+                ],
+            }],
+        }
+    }
+
     #[test]
     fn validate_abi_manifest_reports_missing_function() {
         let module = sample_stats_module();
@@ -842,6 +958,17 @@ mod tests {
             .expect("AOT compilation should succeed");
 
         assert!(!artifact.object.is_empty(), "AOT mode should emit object bytes");
+    }
+
+    #[test]
+    fn cranelift_backend_compiles_branch_terminators() {
+        let module = sample_cfg_module();
+        let manifest = default_abi_manifest(&module);
+        let backend = CraneliftBackend;
+
+        backend
+            .compile_module(&module, &manifest, &BackendConfig::default())
+            .expect("branch lowering should compile");
     }
 
     #[test]

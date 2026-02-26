@@ -351,4 +351,5 @@ Precision notes:
 - 2026-02-26: Step 3 scaffold landed: new `kea-codegen` crate added with backend interface trait (`Backend`), ABI manifest artifact types, per-function pass stats collection, and a `CraneliftBackend` implementation stub that validates ABI coverage and consumes MIR.
 - 2026-02-26: Step 2 lowering progressed from stub to real pure-path translation for `lit/var/binary/call/let/block`, with parameter binding and deterministic MIR return values plus regression tests for identity and arithmetic lowering.
 - 2026-02-26: Step 3 backend progressed from stub to real Cranelift lowering for current pure MIR subset (`const`, `binary`, `call`, `return`) with host JIT compilation and AOT object emission paths covered by crate tests.
+- 2026-02-26: Step 3 control-flow extension landed: Cranelift lowering now compiles multi-block MIR control flow with `Jump`/`Branch` terminators (no block params yet), unlocking incremental `if`/match lowering work.
 - **Next:** Expand MIR/codegen coverage for control-flow blocks, structs/enums/pattern matching, and Fail-only Result lowering fast path.
