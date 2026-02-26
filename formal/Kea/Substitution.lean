@@ -166,11 +166,18 @@ abbrev applySubstCompat (s : Subst) (fuel : Nat) (ty : Ty) : Ty :=
 abbrev applySubstRowCompat (s : Subst) (fuel : Nat) (r : Row) : Row :=
   applySubstRow s fuel r
 
+/-- Compatibility wrapper for effect-row substitution (see `applySubstCompat`). -/
+abbrev applySubstEffectRowCompat (s : Subst) (fuel : Nat) (effects : EffectRow) : EffectRow :=
+  applySubstEffectRow s fuel effects
+
 @[simp] theorem applySubstCompat_eq (s : Subst) (fuel : Nat) (ty : Ty) :
     applySubstCompat s fuel ty = applySubst s fuel ty := rfl
 
 @[simp] theorem applySubstRowCompat_eq (s : Subst) (fuel : Nat) (r : Row) :
     applySubstRowCompat s fuel r = applySubstRow s fuel r := rfl
+
+@[simp] theorem applySubstEffectRowCompat_eq (s : Subst) (fuel : Nat) (effects : EffectRow) :
+    applySubstEffectRowCompat s fuel effects = applySubstEffectRow s fuel effects := rfl
 
 -- =========================================================================
 -- Well-founded substitution (rank-bounded recursion; no external fuel)

@@ -355,3 +355,19 @@ theorem applySubstEffectRow_empty_preserves_wf
   | mk row =>
     simpa [applySubstEffectRow, EffectRow.WellFormed] using
       applySubstRow_empty_preserves_wf kctx rctx fuel row h_wf
+
+theorem applySubstEffectRowCompat_preserves_wf_of_no_domain_vars
+    (s : Subst) (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat) (effects : EffectRow)
+    (h_wf : EffectRow.WellFormed kctx rctx effects)
+    (htv : ∀ v ∈ freeTypeVarsEffectRow effects, s.typeMap v = none)
+    (hrv : ∀ v ∈ freeRowVarsEffectRow effects, s.rowMap v = none) :
+    EffectRow.WellFormed kctx rctx (applySubstEffectRowCompat s fuel effects) := by
+  simpa [applySubstEffectRowCompat] using
+    applySubstEffectRow_preserves_wf_of_no_domain_vars s kctx rctx fuel effects h_wf htv hrv
+
+theorem applySubstEffectRowCompat_empty_preserves_wf
+    (kctx : KindCtx) (rctx : RowCtx) (fuel : Nat) (effects : EffectRow)
+    (h_wf : EffectRow.WellFormed kctx rctx effects) :
+    EffectRow.WellFormed kctx rctx (applySubstEffectRowCompat Subst.empty fuel effects) := by
+  simpa [applySubstEffectRowCompat] using
+    applySubstEffectRow_empty_preserves_wf kctx rctx fuel effects h_wf
