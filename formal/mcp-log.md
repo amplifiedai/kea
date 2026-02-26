@@ -4666,3 +4666,33 @@ whether the previous divergence report was resolved.
 - Direct local calls propagate `Log`; higher-order wrapper calls remain
   under-constrained (`e0`) and do not enforce/reflect `Log` at the outer
   function boundary in this probe shape.
+
+### 2026-02-26: higher-order effect divergence split (annotated vs unannotated)
+
+**Context**: Follow-up probe to separate the two suspected failure modes in
+higher-order `functionEff` propagation: (a) annotated function parameter path
+and (b) unannotated inference path.
+
+**MCP tools used**: `reset_session`, `type_check`, `diagnose`
+
+**Probe**:
+1. Annotated parameter path:
+   - `type_check` on
+     `effect Log; fn log(msg: String) -> Unit; fn anno_run() -[Log]> Unit { let apply = |f: fn(String) -[Log]> Unit| -> |x| -> f(x); let logger = |y| -> Log.log(y); apply(logger)(\"x\") }`
+     returns `error` with `missing_field` / `the function is missing field Log`.
+   - `diagnose` on the same snippet reports the same `missing_field` result.
+2. Unannotated parameter path:
+   - `type_check` on
+     `effect Log; fn log(msg: String) -> Unit; fn unanno_run() -[Log]> Unit { let apply = |f| -> |x| -> f(x); let logger = |y| -> Log.log(y); apply(logger)(\"x\") }`
+     returns `ok` with binding `unanno_run : () -[e0]> ()`.
+
+**Classify**: Divergence persists, now split into two distinct sub-bugs.
+
+**Outcome**:
+- Annotated path indicates effect-row annotations on function parameters are
+  entering row-field unification (`missing field Log`) rather than effect-row
+  unification.
+- Unannotated path still leaves the higher-order effect variable unconstrained
+  (`e0`) through the curried application chain.
+- These are separate manifestations in the same higher-order/effect-unify
+  family and should be tracked as distinct implementation defects.
