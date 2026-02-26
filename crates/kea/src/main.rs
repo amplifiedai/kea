@@ -546,7 +546,7 @@ mod tests {
     #[test]
     fn compile_and_execute_int_case_exit_code() {
         let source_path = write_temp_source(
-            "fn main() -> Int\n  case 2\n    2 -> 6\n    _ -> 9\n",
+            "fn main() -> Int\n  case 2\n    1 -> 4\n    2 -> 6\n    _ -> 9\n",
             "kea-cli-int-case",
             "kea",
         );
