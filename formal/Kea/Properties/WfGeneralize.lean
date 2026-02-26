@@ -63,6 +63,23 @@ theorem generalize_functionEff_preserves_wf_of_component_no_domain_vars
         · exact hrv_effects v h_eff
         · exact hrv_ret v h_r)
 
+theorem generalize_functionEff_empty_preserves_wf
+    (env : TypeEnv) (lc : Lacks) (traitBounds : TraitBounds) (fuel : Nat)
+    (kctx : KindCtx) (rctx : RowCtx)
+    (params : TyList) (effects : EffectRow) (ret : Ty)
+    (h_wf_params : TyList.WellFormed kctx rctx params)
+    (h_wf_effects : EffectRow.WellFormed kctx rctx effects)
+    (h_wf_ret : Ty.WellFormed kctx rctx ret) :
+    Ty.WellFormed kctx rctx
+      (generalize (.functionEff params effects ret) env Subst.empty lc traitBounds fuel).ty := by
+  exact generalize_functionEff_preserves_wf_of_component_no_domain_vars
+    env Subst.empty lc traitBounds fuel kctx rctx
+    params effects ret
+    h_wf_params h_wf_effects h_wf_ret
+    (fun _ _ => rfl) (fun _ _ => rfl)
+    (fun _ _ => rfl) (fun _ _ => rfl)
+    (fun _ _ => rfl) (fun _ _ => rfl)
+
 theorem instantiate_mono_eq
     (scheme : TypeScheme) (st : UnifyState)
     (h_mono : scheme.isMono = true) :
@@ -164,3 +181,29 @@ theorem instantiate_functionEff_preserves_wf
     simpa [h_scheme] using (show Ty.WellFormed kctx rctx (.functionEff params effects ret) from
       ⟨h_wf_params, h_wf_effects, h_wf_ret⟩)
   exact instantiate_preserves_wf scheme st kctx rctx h_wf_ty h_assume
+
+theorem instantiate_functionEff_mono_preserves_wf
+    (scheme : TypeScheme) (st : UnifyState) (kctx : KindCtx) (rctx : RowCtx)
+    (params : TyList) (effects : EffectRow) (ret : Ty)
+    (h_scheme : scheme.ty = .functionEff params effects ret)
+    (h_mono : scheme.isMono = true)
+    (h_wf_params : TyList.WellFormed kctx rctx params)
+    (h_wf_effects : EffectRow.WellFormed kctx rctx effects)
+    (h_wf_ret : Ty.WellFormed kctx rctx ret) :
+    Ty.WellFormed kctx rctx (instantiate scheme st).1 := by
+  exact instantiate_functionEff_preserves_wf
+    scheme st kctx rctx params effects ret h_scheme
+    h_wf_params h_wf_effects h_wf_ret (Or.inl h_mono)
+
+theorem instantiate_functionEff_preserves_wf_of_mapping_respects_ctx
+    (scheme : TypeScheme) (st : UnifyState) (kctx : KindCtx) (rctx : RowCtx)
+    (params : TyList) (effects : EffectRow) (ret : Ty)
+    (h_scheme : scheme.ty = .functionEff params effects ret)
+    (h_wf_params : TyList.WellFormed kctx rctx params)
+    (h_wf_effects : EffectRow.WellFormed kctx rctx effects)
+    (h_wf_ret : Ty.WellFormed kctx rctx ret)
+    (h_respects : (instantiateVarMapping scheme st).RespectsCtx kctx rctx) :
+    Ty.WellFormed kctx rctx (instantiate scheme st).1 := by
+  exact instantiate_functionEff_preserves_wf
+    scheme st kctx rctx params effects ret h_scheme
+    h_wf_params h_wf_effects h_wf_ret (Or.inr h_respects)
