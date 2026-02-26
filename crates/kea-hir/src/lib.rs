@@ -6,7 +6,7 @@
 
 use kea_ast::{
     BinOp, DeclKind, Expr, ExprDecl, ExprKind, FnDecl, Lit, Module, Param, Pattern, PatternKind,
-    Span,
+    Span, UnaryOp,
 };
 use kea_infer::typeck::TypeEnv;
 use kea_types::{EffectRow, FunctionType, Type};
@@ -53,6 +53,10 @@ pub enum HirExprKind {
         op: BinOp,
         left: Box<HirExpr>,
         right: Box<HirExpr>,
+    },
+    Unary {
+        op: UnaryOp,
+        operand: Box<HirExpr>,
     },
     Call {
         func: Box<HirExpr>,
@@ -160,6 +164,10 @@ fn lower_expr(expr: &Expr, ty_hint: Option<Type>) -> HirExpr {
             left: Box::new(lower_expr(left, None)),
             right: Box::new(lower_expr(right, None)),
         },
+        ExprKind::UnaryOp { op, operand } => HirExprKind::Unary {
+            op: op.node,
+            operand: Box::new(lower_expr(operand, None)),
+        },
         ExprKind::Call { func, args } => HirExprKind::Call {
             func: Box::new(lower_expr(func, None)),
             args: args
@@ -230,6 +238,14 @@ fn lower_expr(expr: &Expr, ty_hint: Option<Type>) -> HirExpr {
                 ExprKind::Lit(Lit::String(_)) => Type::String,
                 _ => default_ty,
             },
+        },
+        ExprKind::UnaryOp { op, operand } => match op.node {
+            UnaryOp::Neg => match &operand.node {
+                ExprKind::Lit(Lit::Int(_)) => Type::Int,
+                ExprKind::Lit(Lit::Float(_)) => Type::Float,
+                _ => default_ty,
+            },
+            UnaryOp::Not => Type::Bool,
         },
         _ => default_ty,
     };
@@ -315,5 +331,22 @@ mod tests {
         };
 
         assert!(matches!(function.body.kind, HirExprKind::Binary { .. }));
+    }
+
+    #[test]
+    fn lower_function_recognizes_unary_expressions() {
+        let module = parse_module_from_text("fn negate(x: Int) -> Int\n  -x");
+        let mut env = TypeEnv::new();
+        env.bind(
+            "negate".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::pure(vec![Type::Int], Type::Int))),
+        );
+
+        let lowered = lower_module(&module, &env);
+        let HirDecl::Function(function) = &lowered.declarations[0] else {
+            panic!("expected lowered function declaration");
+        };
+
+        assert!(matches!(function.body.kind, HirExprKind::Unary { .. }));
     }
 }

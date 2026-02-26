@@ -19,7 +19,7 @@ use cranelift_object::{ObjectBuilder, ObjectModule};
 use kea_hir::HirModule;
 use kea_mir::{
     MirBinaryOp, MirCallee, MirEffectOpClass, MirFunction, MirInst, MirLiteral, MirModule,
-    MirTerminator, MirValueId, lower_hir_module,
+    MirTerminator, MirUnaryOp, MirValueId, lower_hir_module,
 };
 use kea_types::{EffectRow, Type};
 
@@ -453,6 +453,12 @@ fn lower_instruction<M: Module>(
             values.insert(dest.clone(), result);
             Ok(())
         }
+        MirInst::Unary { dest, op, operand } => {
+            let value = get_value(values, function_name, operand)?;
+            let result = lower_unary(builder, function_name, *op, value)?;
+            values.insert(dest.clone(), result);
+            Ok(())
+        }
         MirInst::Call {
             callee,
             args,
@@ -625,6 +631,36 @@ fn lower_binary(
     Ok(value)
 }
 
+fn lower_unary(
+    builder: &mut FunctionBuilder,
+    function_name: &str,
+    op: MirUnaryOp,
+    value: Value,
+) -> Result<Value, CodegenError> {
+    let value_ty = builder.func.dfg.value_type(value);
+    let result = match op {
+        MirUnaryOp::Neg if value_ty.is_int() => builder.ins().ineg(value),
+        MirUnaryOp::Neg if value_ty.is_float() => builder.ins().fneg(value),
+        MirUnaryOp::Not if value_ty.bits() == 1 => {
+            let pred = builder.ins().bnot(value);
+            b1_to_i8(builder, pred)
+        }
+        MirUnaryOp::Not if value_ty.is_int() => {
+            let pred = builder.ins().icmp_imm(IntCC::Equal, value, 0);
+            b1_to_i8(builder, pred)
+        }
+        _ => {
+            return Err(CodegenError::UnsupportedMir {
+                function: function_name.to_string(),
+                detail: format!(
+                    "unary operation `{op:?}` unsupported for Cranelift type `{value_ty}`"
+                ),
+            });
+        }
+    };
+    Ok(result)
+}
+
 fn b1_to_i8(builder: &mut FunctionBuilder, predicate: Value) -> Value {
     builder.ins().uextend(types::I8, predicate)
 }
@@ -773,6 +809,7 @@ fn collect_function_stats(function: &MirFunction) -> FunctionPassStats {
                 MirInst::CowUpdate { .. } => stats.alloc_count += 1,
                 MirInst::Const { .. }
                 | MirInst::Binary { .. }
+                | MirInst::Unary { .. }
                 | MirInst::Move { .. }
                 | MirInst::Borrow { .. }
                 | MirInst::TryClaim { .. }
@@ -1113,6 +1150,35 @@ mod tests {
 
         let artifact = compile_hir_module(&CraneliftBackend, &hir, &BackendConfig::default())
             .expect("value if pipeline should compile");
+        assert_eq!(artifact.stats.per_function.len(), 1);
+    }
+
+    #[test]
+    fn compile_hir_module_lowers_unary_negation() {
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "negate".to_string(),
+                params: vec![],
+                body: HirExpr {
+                    kind: HirExprKind::Unary {
+                        op: kea_ast::UnaryOp::Neg,
+                        operand: Box::new(HirExpr {
+                            kind: HirExprKind::Lit(kea_ast::Lit::Int(3)),
+                            ty: Type::Int,
+                            span: kea_ast::Span::synthetic(),
+                        }),
+                    },
+                    ty: Type::Int,
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
+                effects: EffectRow::pure(),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let artifact = compile_hir_module(&CraneliftBackend, &hir, &BackendConfig::default())
+            .expect("unary lowering should compile");
         assert_eq!(artifact.stats.per_function.len(), 1);
     }
 }

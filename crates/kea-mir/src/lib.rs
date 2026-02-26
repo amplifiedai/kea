@@ -5,7 +5,7 @@
 
 use std::collections::BTreeMap;
 
-use kea_ast::BinOp;
+use kea_ast::{BinOp, UnaryOp};
 use kea_hir::{HirDecl, HirExpr, HirExprKind, HirFunction, HirModule, HirPattern};
 use kea_types::{EffectRow, Type};
 
@@ -60,6 +60,11 @@ pub enum MirInst {
         op: MirBinaryOp,
         left: MirValueId,
         right: MirValueId,
+    },
+    Unary {
+        dest: MirValueId,
+        op: MirUnaryOp,
+        operand: MirValueId,
     },
     Retain {
         value: MirValueId,
@@ -156,6 +161,12 @@ pub enum MirBinaryOp {
     Or,
     In,
     NotIn,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MirUnaryOp {
+    Neg,
+    Not,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -378,6 +389,16 @@ impl FunctionLoweringCtx {
                 });
                 Some(dest)
             }
+            HirExprKind::Unary { op, operand } => {
+                let operand_value = self.lower_expr(operand)?;
+                let dest = self.new_value();
+                self.emit_inst(MirInst::Unary {
+                    dest: dest.clone(),
+                    op: lower_unaryop(*op),
+                    operand: operand_value,
+                });
+                Some(dest)
+            }
             HirExprKind::Call { func, args } => {
                 let callee = match &func.kind {
                     HirExprKind::Var(name) => MirCallee::Local(name.clone()),
@@ -518,6 +539,13 @@ fn lower_binop(op: BinOp) -> MirBinaryOp {
     }
 }
 
+fn lower_unaryop(op: UnaryOp) -> MirUnaryOp {
+    match op {
+        UnaryOp::Neg => MirUnaryOp::Neg,
+        UnaryOp::Not => MirUnaryOp::Not,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -638,6 +666,42 @@ mod tests {
             function.blocks[0].instructions[2],
             MirInst::Binary {
                 op: MirBinaryOp::Add,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn lower_hir_module_lowers_unary_expression() {
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "negate".to_string(),
+                params: vec![],
+                body: HirExpr {
+                    kind: HirExprKind::Unary {
+                        op: kea_ast::UnaryOp::Neg,
+                        operand: Box::new(HirExpr {
+                            kind: HirExprKind::Lit(kea_ast::Lit::Int(1)),
+                            ty: Type::Int,
+                            span: kea_ast::Span::synthetic(),
+                        }),
+                    },
+                    ty: Type::Int,
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
+                effects: EffectRow::pure(),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let mir = lower_hir_module(&hir);
+        let function = &mir.functions[0];
+        assert_eq!(function.blocks[0].instructions.len(), 2);
+        assert!(matches!(
+            function.blocks[0].instructions[1],
+            MirInst::Unary {
+                op: MirUnaryOp::Neg,
                 ..
             }
         ));
