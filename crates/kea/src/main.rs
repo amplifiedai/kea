@@ -13,7 +13,6 @@ use kea_codegen::{
 };
 use kea_diag::{Diagnostic, Severity};
 use kea_hir::lower_module;
-use kea_infer::{Category, InferenceContext};
 use kea_infer::typeck::{
     RecordRegistry, SumTypeRegistry, TraitRegistry, TypeEnv, apply_where_clause,
     infer_and_resolve_in_context, infer_fn_decl_effect_row, register_effect_decl,
@@ -21,6 +20,7 @@ use kea_infer::typeck::{
     validate_declared_fn_effect_row_with_env_and_records, validate_module_annotations,
     validate_module_fn_annotations, validate_where_clause_traits,
 };
+use kea_infer::{Category, InferenceContext};
 use kea_mir::lower_hir_module;
 use kea_syntax::{lex_layout, parse_module};
 
@@ -139,8 +139,8 @@ struct PipelineResult {
 }
 
 fn parse_and_typecheck_module(source: &str, file_id: FileId) -> Result<PipelineResult, String> {
-    let (tokens, mut diagnostics) = lex_layout(source, file_id)
-        .map_err(|diags| format_diagnostics("lexing failed", &diags))?;
+    let (tokens, mut diagnostics) =
+        lex_layout(source, file_id).map_err(|diags| format_diagnostics("lexing failed", &diags))?;
 
     let module = parse_module(tokens, file_id)
         .map_err(|diags| format_diagnostics("parsing failed", &diags))?;
@@ -153,7 +153,10 @@ fn parse_and_typecheck_module(source: &str, file_id: FileId) -> Result<PipelineR
     diagnostics.extend(validate_module_fn_annotations(&module));
     diagnostics.extend(validate_module_annotations(&module));
     if has_errors(&diagnostics) {
-        return Err(format_diagnostics("type annotation validation failed", &diagnostics));
+        return Err(format_diagnostics(
+            "type annotation validation failed",
+            &diagnostics,
+        ));
     }
 
     register_top_level_declarations(
@@ -200,7 +203,10 @@ fn register_top_level_declarations(
 
     if let Err(diag) = sum_types.register_many(&type_defs, records) {
         diagnostics.push(diag);
-        return Err(format_diagnostics("sum type registration failed", diagnostics));
+        return Err(format_diagnostics(
+            "sum type registration failed",
+            diagnostics,
+        ));
     }
 
     for decl in &module.declarations {
@@ -214,13 +220,19 @@ fn register_top_level_declarations(
             DeclKind::OpaqueTypeDef(opaque) => {
                 if let Err(diag) = records.register_opaque(opaque) {
                     diagnostics.push(diag);
-                    return Err(format_diagnostics("opaque registration failed", diagnostics));
+                    return Err(format_diagnostics(
+                        "opaque registration failed",
+                        diagnostics,
+                    ));
                 }
             }
             DeclKind::RecordDef(record) => {
                 if let Err(diag) = records.register(record) {
                     diagnostics.push(diag);
-                    return Err(format_diagnostics("record registration failed", diagnostics));
+                    return Err(format_diagnostics(
+                        "record registration failed",
+                        diagnostics,
+                    ));
                 }
             }
             DeclKind::TraitDef(trait_def) => {
@@ -239,7 +251,10 @@ fn register_top_level_declarations(
                 let effect_diags = register_effect_decl(effect_decl, records, Some(sum_types), env);
                 diagnostics.extend(effect_diags);
                 if has_errors(diagnostics) {
-                    return Err(format_diagnostics("effect registration failed", diagnostics));
+                    return Err(format_diagnostics(
+                        "effect registration failed",
+                        diagnostics,
+                    ));
                 }
             }
             DeclKind::Import(import) => {
@@ -317,9 +332,12 @@ fn typecheck_functions(
         }
 
         let effect_row = infer_fn_decl_effect_row(&fn_decl, env);
-        if let Err(diag) =
-            validate_declared_fn_effect_row_with_env_and_records(&fn_decl, &effect_row, env, records)
-        {
+        if let Err(diag) = validate_declared_fn_effect_row_with_env_and_records(
+            &fn_decl,
+            &effect_row,
+            env,
+            records,
+        ) {
             diagnostics.push(diag);
             return Err(format_diagnostics("effect contract failed", diagnostics));
         }
@@ -378,8 +396,13 @@ fn format_diagnostics(prefix: &str, diagnostics: &[Diagnostic]) -> String {
 
 #[derive(Debug, PartialEq, Eq)]
 enum Command {
-    Run { input: PathBuf },
-    Build { input: PathBuf, output: Option<PathBuf> },
+    Run {
+        input: PathBuf,
+    },
+    Build {
+        input: PathBuf,
+        output: Option<PathBuf>,
+    },
 }
 
 fn parse_cli(args: &[String]) -> Result<Command, String> {
@@ -406,10 +429,7 @@ fn parse_cli(args: &[String]) -> Result<Command, String> {
                         idx += 2;
                     }
                     unknown => {
-                        return Err(format!(
-                            "unknown argument `{unknown}`\n{}",
-                            usage()
-                        ));
+                        return Err(format!("unknown argument `{unknown}`\n{}", usage()));
                     }
                 }
             }
@@ -430,8 +450,12 @@ fn default_build_output_path(input: &Path) -> PathBuf {
 
 fn link_object_bytes(object: &[u8], output: &Path) -> Result<(), String> {
     let temp_object = std::env::temp_dir().join(format!("kea-build-{}.o", std::process::id()));
-    fs::write(&temp_object, object)
-        .map_err(|err| format!("failed to write temporary object `{}`: {err}", temp_object.display()))?;
+    fs::write(&temp_object, object).map_err(|err| {
+        format!(
+            "failed to write temporary object `{}`: {err}",
+            temp_object.display()
+        )
+    })?;
 
     let status = ProcessCommand::new("cc")
         .arg(&temp_object)
@@ -486,14 +510,24 @@ mod tests {
 
     #[test]
     fn compile_and_execute_main_exit_code() {
+        let source_path = write_temp_source("fn main() -> Int\n  9\n", "kea-cli-exec", "kea");
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 9);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_higher_order_function_pointer_exit_code() {
         let source_path = write_temp_source(
-            "fn main() -> Int\n  9\n",
-            "kea-cli-exec",
+            "fn inc(n: Int) -> Int\n  n + 1\n\nfn apply_twice(f: fn(Int) -> Int, x: Int) -> Int\n  f(f(x))\n\nfn main() -> Int\n  apply_twice(inc, 41)\n",
+            "kea-cli-hof-fn-pointer",
             "kea",
         );
 
         let run = run_file(&source_path).expect("run should succeed");
-        assert_eq!(run.exit_code, 9);
+        assert_eq!(run.exit_code, 43);
 
         let _ = std::fs::remove_file(source_path);
     }
@@ -953,8 +987,7 @@ mod tests {
             .as_nanos()
             .to_string();
         let counter = TEMP_NONCE.fetch_add(1, Ordering::Relaxed);
-        let path =
-            std::env::temp_dir().join(format!("{prefix}-{timestamp}-{counter}.{extension}"));
+        let path = std::env::temp_dir().join(format!("{prefix}-{timestamp}-{counter}.{extension}"));
         std::fs::write(&path, contents).expect("temp source write should succeed");
         path
     }
