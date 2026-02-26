@@ -1,0 +1,36 @@
+name: benchmark-stage-a
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  benchmark:
+    name: Run And Publish Benchmarks
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run benchmark export (stage A, non-gating)
+        env:
+          DIVAN_SAMPLE_COUNT: "60"
+        run: ./scripts/bench-export.sh benchmark-results/ci
+
+      - name: Upload benchmark artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-stage-a-${{ github.run_id }}
+          path: benchmark-results/ci/
+          if-no-files-found: error
