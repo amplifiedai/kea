@@ -4866,3 +4866,36 @@ composed summaries stay at-most-once.
 **Outcome**:
 - The scaffold now has a direct theorem hook for enforcing branch exclusivity
   in future concrete resume-typing proofs.
+
+### 2026-02-26: overlap-normalization divergence closure on restarted kea-mcp
+
+**Context**: Re-checked the previously logged overlap-normalization divergence
+after user restart with the latest `kea-mcp` binary.
+
+**MCP tools used**: direct `kea-mcp` stdio (`initialize`,
+`notifications/initialized`, `tools/call` with `reset_session`, `type_check`,
+`diagnose`).
+
+**Probe**:
+1. User-provided overlap case:
+   - `body_fn : () -[Log, Trace]> ()`
+   - `overlap_case : () -[Trace]> ()`
+   - `diagnose` reports no diagnostics.
+2. Prior duplicate-label regression shape:
+   - `mixed : () -[IO, Log]> ()`
+   - `handled : () -[IO]> ()` (previously observed as `()-[IO, IO]> ()`)
+   - `diagnose` reports no diagnostics.
+3. Non-overlap control remains stable:
+   - `handled : () -[IO]> ()`
+   - `diagnose` reports no diagnostics.
+
+**Classify**: Agreement (divergence closed).
+
+**Outcome**:
+- Implementation now normalizes overlap unions in the probed cases.
+- The earlier “overlap-normalization precondition” for spec/model alignment is
+  now satisfied by runtime behavior on current probes.
+
+**Impact**:
+- Phase-2 formalization can treat idempotent-union alignment as observed
+  runtime behavior (not only a spec-side assumption) for these handler cases.
