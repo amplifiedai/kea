@@ -27,6 +27,7 @@ This work starts by cannibalizing the existing Rill formal corpus and then exten
 - **Phase 1 (active):** Added `Kea/Properties/WfEffectRowLadder.lean` and imported it in `Kea.lean`; it packages effect-row `functionEff` WF obligations into citable slices (`FunctionEffSubstWfSlice`, `FunctionEffGenInstWfSlice`) spanning substitution, generalize, and instantiate.
 - **Phase 1 (active):** `WfEffectRowLadder` now includes direct specializations (`functionEff_subst_wf_slice_empty`, `functionEff_gen_inst_wf_slice_mono`) for immediate empty-substitution and monomorphic instantiate use.
 - **Phase 1 (active):** `WfEffectRowLadder` now includes a unifier-success contract slice for `Ty.functionEff` (`FunctionEffBindTypeVarContractSlice`, `functionEff_bindTypeVar_contract_slice`) linking effect-row WF premises to `bindTypeVar` extension/WF/acyclic-agreement guarantees.
+- **Phase 1 (active):** `WfEffectRowLadder` now includes projection helpers for the `FunctionEffBindTypeVarContractSlice` (extension-only, WF-range-only, and acyclic-agreement) so packaged assumptions can be consumed directly.
 - **Phase 2 (next):** Kea-specific effect typing and handler theorems.
 
 The formal workspace lives at [`formal/`](formal/).
