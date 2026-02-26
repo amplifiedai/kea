@@ -104,6 +104,13 @@ pub enum MirInst {
         op: MirUnaryOp,
         operand: MirValueId,
     },
+    RecordFieldLoad {
+        dest: MirValueId,
+        record: MirValueId,
+        record_type: String,
+        field: String,
+        field_ty: Type,
+    },
     Retain {
         value: MirValueId,
     },
@@ -243,6 +250,7 @@ impl MirInst {
                 | MirInst::Borrow { .. }
                 | MirInst::TryClaim { .. }
                 | MirInst::Freeze { .. }
+                | MirInst::RecordFieldLoad { .. }
                 | MirInst::CowUpdate { .. }
         )
     }
@@ -483,6 +491,21 @@ impl FunctionLoweringCtx {
                 });
                 Some(dest)
             }
+            HirExprKind::FieldAccess { expr: base, field } => {
+                let record = self.lower_expr(base)?;
+                let Type::Record(record_ty) = &base.ty else {
+                    return None;
+                };
+                let dest = self.new_value();
+                self.emit_inst(MirInst::RecordFieldLoad {
+                    dest: dest.clone(),
+                    record,
+                    record_type: record_ty.name.clone(),
+                    field: field.clone(),
+                    field_ty: expr.ty.clone(),
+                });
+                Some(dest)
+            }
             HirExprKind::Call { func, args } => {
                 if let HirExprKind::Var(name) = &func.kind
                     && name == "Fail::fail"
@@ -717,7 +740,7 @@ mod tests {
         DeclKind, RecordDef, Spanned, TypeAnnotation, TypeDef, TypeVariant, VariantField,
     };
     use kea_hir::{HirExpr, HirExprKind, HirFunction, HirParam};
-    use kea_types::{FunctionType, Label};
+    use kea_types::{FunctionType, Label, RecordType, RowType};
 
     fn sp<T>(node: T) -> Spanned<T> {
         Spanned::new(node, kea_ast::Span::synthetic())
@@ -960,6 +983,57 @@ mod tests {
                 op: MirUnaryOp::Neg,
                 ..
             }
+        ));
+    }
+
+    #[test]
+    fn lower_hir_module_lowers_record_field_access_expression() {
+        let user_ty = Type::Record(RecordType {
+            name: "User".to_string(),
+            params: vec![],
+            row: RowType::closed(vec![
+                (Label::new("age"), Type::Int),
+                (Label::new("name"), Type::String),
+            ]),
+        });
+
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "get_age".to_string(),
+                params: vec![HirParam {
+                    name: Some("user".to_string()),
+                    span: kea_ast::Span::synthetic(),
+                }],
+                body: HirExpr {
+                    kind: HirExprKind::FieldAccess {
+                        expr: Box::new(HirExpr {
+                            kind: HirExprKind::Var("user".to_string()),
+                            ty: user_ty.clone(),
+                            span: kea_ast::Span::synthetic(),
+                        }),
+                        field: "age".to_string(),
+                    },
+                    ty: Type::Int,
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::pure(vec![user_ty], Type::Int)),
+                effects: EffectRow::pure(),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let mir = lower_hir_module(&hir);
+        let function = &mir.functions[0];
+        assert_eq!(function.blocks[0].instructions.len(), 1);
+        assert!(matches!(
+            function.blocks[0].instructions[0],
+            MirInst::RecordFieldLoad {
+                record: MirValueId(0),
+                ref record_type,
+                ref field,
+                field_ty: Type::Int,
+                ..
+            } if record_type == "User" && field == "age"
         ));
     }
 
