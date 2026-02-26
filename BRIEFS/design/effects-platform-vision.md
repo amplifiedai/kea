@@ -165,6 +165,42 @@ This is a genuine new platform play. Most agent stacks are glued together
 with dynamic JSON and best-effort validation. Kea can make agent policies
 structural and compiler-checked.
 
+### 8) Effects as memory optimization proofs
+
+The deepest platform unlock may be memory performance. Effects
+structurally prove properties about memory that other languages
+discover heuristically — or can't discover at all.
+
+**The core insight:** Rust requires explicit lifetime annotations to
+prove memory safety. Kea gets equivalent (and sometimes stronger)
+information from effect signatures that programmers are already
+declaring for functionality reasons. The memory optimization is a
+_free rider_ on the effect system.
+
+What effects prove about memory:
+
+| Effect signature | What it proves | Memory optimization |
+|-----------------|----------------|---------------------|
+| `->` (pure) | No storage, no aliasing, no escape except return | Skip retain/release on arguments, stack-allocate intermediates |
+| `-[Fail E]>` only | Same as pure (early return, not storage) | All pure optimizations apply |
+| No `Send`/`Spawn` in scope | Value is thread-local | Non-atomic refcounts |
+| `handle` block (tail-resumptive) | Known lifetime scope, no continuation capture | Region/arena allocation, bulk deallocation |
+| `Alloc` handler scope | Explicit arena lifetime | Bump allocation + no individual frees |
+| `Unique T` + pure scope | Provably RC==1 for all intermediates | Skip runtime RC checks on functional update chains |
+
+**Why this matters for the platform story:** every effect signature
+a programmer writes for correctness, policy, or testability also
+gives the compiler memory optimization information for free. The
+same `->` that means "this function is deterministic" also means
+"this function can't alias its arguments." The same `handle` block
+that means "errors are caught here" also means "these allocations
+die here."
+
+This is not an optimization pass bolted on after the fact — it's a
+structural consequence of the effect system's design. The normative
+optimization contracts are in the [memory model brief](../todo/0f-memory-model.md)
+(§ Type-System-Driven Memory Optimizations).
+
 ## Effect Surface Design Requirements
 
 These platform capabilities impose design constraints on which effects
@@ -224,7 +260,8 @@ These effect surfaces should be defined and stable before Phase 1:
 | [runtime-introspection-mcp](runtime-introspection-mcp.md) | Observability (#6) and agent introspection (#7) feed into the introspection platform |
 | [packaging-ffi-comptime](packaging-ffi-comptime.md) | Safe plugins (#3) extend the effect-based permissions model |
 | [typed-grammar-interface](typed-grammar-interface.md) | Grammar `Compile` capability is an instance of #3 (safe plugins) |
-| [performance-backend-strategy](performance-backend-strategy.md) | Optimization (#10 from original analysis) requires trustworthy effect classification |
+| [0f-memory-model](../todo/0f-memory-model.md) | Effects as memory proofs (#8) — pure retain elision, handler-scoped regions, effect-directed atomicity |
+| [performance-backend-strategy](performance-backend-strategy.md) | Optimization requires trustworthy effect classification |
 | [lean-formalization](../todo/lean-formalization.md) | Policy-as-code (#1) properties are provable: "pure function has no IO" is a theorem |
 
 ## Top 3 Platform Unlocks

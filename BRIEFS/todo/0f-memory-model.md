@@ -2,7 +2,7 @@
 
 **Status:** ready
 **Priority:** v1-critical
-**Depends on:** 0d-codegen-pure (steps 1-5), 0e-runtime-effects (step 6 only: Unique + effects)
+**Depends on:** 0d-codegen-pure (steps 1-6), 0e-runtime-effects (step 7 only: Unique + effects)
 **Blocks:** Phase 1
 **Also read before implementing:**
 - [performance-backend-strategy](../design/performance-backend-strategy.md) — Reuse analysis is a MIR pass. Layout stability (declaration order = memory order) governs @unboxed. ABI manifest must include Unique/borrow metadata.
@@ -74,7 +74,12 @@ Key rules:
 - borrow callee cannot capture in a closure
 - Multiple borrows of different values in same call are OK
 - borrow on non-Unique values is an optimisation hint (skip
-  refcount increment)
+  refcount increment). **Safety condition:** this is sound only
+  when the borrow's no-escape guarantee holds — the callee cannot
+  store, return, or capture the reference, so no alias can outlive
+  the call. The existing borrow escape checks (step 2) are
+  sufficient; no additional analysis needed beyond what Unique
+  borrows already require.
 
 ### 3. Reuse analysis (KERNEL §12.5)
 
@@ -108,6 +113,19 @@ Implementation: the compiler tracks unsafe context. Ptr
 operations outside unsafe context are compile errors. This is
 a scope-based check, not a type system extension.
 
+**Managed memory invariants:**
+- `Ptr T` must NOT point into refcounted heap objects. RC'd
+  values can be moved/freed by the runtime at any time. A Ptr
+  into RC'd memory is a dangling pointer waiting to happen.
+- `Ptr T` may point into: stack allocations, `@unboxed` values,
+  foreign-allocated memory, or arena-allocated memory (within
+  the arena's lifetime).
+- No "pinning" mechanism in v1. If you need a stable address for
+  an RC'd value, `freeze` it and use the safe API, or copy the
+  data into foreign-allocated memory via unsafe.
+- `free` on a Ptr that was not allocated via `alloc` is undefined
+  behavior (same as C). The unsafe boundary is the trust boundary.
+
 ### 5. @unboxed types (KERNEL §12.8)
 
 `@unboxed` structs are always stack-allocated, passed by value,
@@ -130,17 +148,33 @@ No retain/release generated.
 
 ### 6. Unique + effects interaction (KERNEL §12.6)
 
-This is the tricky part. Key questions:
-- Can a `Unique T` value cross a handler boundary? (Yes — if
-  the handler doesn't capture it. The handler body runs in the
-  same scope.)
-- Can a `Unique T` be sent as an actor message? (Yes — it's
-  a move. KERNEL §12.6 says "sending moves the value.")
-- Can a `borrow` reference appear in an actor message? (No —
-  borrows are synchronous. KERNEL §12.6 says compile error.)
-- `Unique T` + `Alloc` effect: unique arena-allocated values
-  get both zero refcount checks (Unique) and bump allocation
-  (Alloc). This is the strongest performance path.
+This is the tricky part. The rules depend on handler classification
+from 0e (tail-resumptive vs non-tail vs zero-resume):
+
+**Handler boundary rules:**
+- **Tail-resumptive handlers** (inlined, no continuation capture):
+  Unique values flow through freely. The handler runs synchronously
+  in the same scope — no capture, no suspension.
+- **Non-tail handlers** (continuation captured): Unique values in
+  the continuation's captured environment are MOVED into the
+  continuation. The caller loses ownership. Use-after-resume is a
+  compile error. If resume is called, the Unique value moves back
+  to the handler body — but only once (at-most-once resume).
+- **Zero-resume handlers** (Fail-style): Unique values in the
+  aborted continuation are dropped. No ownership questions.
+
+**Actor messages:**
+- `Unique T` sent as actor message: move semantics. Sender loses
+  ownership. KERNEL §12.6 says "sending moves the value."
+- `borrow` reference in actor message: compile error. Borrows are
+  synchronous-scope-only. KERNEL §12.6 is explicit about this.
+
+**Arena interaction:**
+- `Unique T` + `Alloc` effect: unique arena-allocated values get
+  both zero refcount checks (Unique) and bump allocation (Alloc).
+  This is the strongest performance path. Arena-allocated Unique
+  values must not escape the arena's handler scope — the move
+  checker enforces this at handler boundaries.
 
 ## Implementation Plan
 
@@ -195,8 +229,11 @@ used once, consumed). Extend to more complex patterns later.
 - Verify all fields are value types
 - Codegen: flat layout, value semantics, no retain/release
 - Type checker: @unboxed types can't have trait impls that
-  require heap allocation (this constraint may be too strict —
-  revisit)
+  require heap allocation. **PROVISIONAL** — this constraint may
+  be too strict (e.g., Show on @unboxed should be fine since it
+  allocates a String, not modifying the @unboxed value). Revisit
+  when trait impls land. Do not hard-code this restriction into
+  the type system; implement as a lint/warning initially.
 
 ### Step 6: Fixed-width integers and bitwise ops
 
@@ -205,6 +242,20 @@ used once, consumed). Extend to more complex patterns later.
   bit_not, shift_left, shift_right, shift_right_unsigned
 - Widening conversions implicit, narrowing explicit
 - Codegen: direct Cranelift integer types
+
+### Step 7: Unique + effects interaction (needs 0e)
+
+This is the 0e-dependent step. After handler compilation lands:
+- Verify Unique values can cross handler boundaries when the
+  handler doesn't capture them
+- Verify Unique values move correctly in actor message sends
+- Verify borrow references are rejected in actor messages
+- Verify Unique + Alloc arena path compiles to bump + no-refcount
+- Escape checks at handler/Send/Spawn/borrow boundaries
+
+**Parallelism note:** Steps 1-3 are sequential (borrow extends
+move checking; reuse needs move info). Steps 4-6 are independent
+of 1-3 and of each other. Step 7 is blocked on 0e.
 
 ## Testing
 
@@ -231,6 +282,7 @@ used once, consumed). Extend to more complex patterns later.
 - unsafe blocks and @unsafe functions work
 - Ptr T operations work for FFI
 - @unboxed types compile to flat value-type layout
+- Unique + effects interaction works (step 7, after 0e)
 - Fixed-width integers and bitwise operations work
 - `mise run check` passes
 
@@ -256,6 +308,105 @@ Precision notes:
    depend on it firing. Test with allocation counters: assert
    allocation count *with* reuse analysis, verify it's lower than
    *without*.
+
+## Type-System-Driven Memory Optimizations
+
+Effects and types structurally prove properties about memory that
+other languages discover heuristically (or can't discover at all).
+These optimizations are free riders on the effect system — programmers
+declare effects for functionality, the compiler harvests them for
+memory performance.
+
+### Guaranteed in v0
+
+These require no speculative analysis. They follow directly from
+the type/effect signatures and existing compiler passes.
+
+**1. Pure callee retain elision.**
+A pure function (`->`) cannot store its arguments — no side effects
+means no hidden storage paths. The compiler can skip caller-side
+retain/release on arguments to pure callees when the argument
+cannot escape except via the return value. Condition: the callee's
+signature is `->` (no effects) and no `unsafe` blocks exist in the
+callee body. This generalizes the `borrow` optimization to all
+pure functions without annotation.
+
+**2. Effect-directed refcount atomicity.**
+Values that never cross a thread boundary (no `Send` effect in
+scope) use non-atomic refcount operations. Condition: no `Send`
+or `Spawn` in the function's effect row, AND no FFI calls that
+could share the reference with foreign threads. The FFI boundary
+must be audited — `extern "C"` calls that take a managed reference
+are conservatively treated as thread-escaping unless annotated
+`@thread_local`.
+
+**3. Unique functional update chain.**
+Chained functional updates (`x ~ {a: 1} ~ {b: 2} ~ {c: 3}`) in
+a pure scope: after the first update creates a new value, subsequent
+updates operate on a value with provably RC==1 (just created, pure
+scope, no aliasing possible). The compiler can skip the runtime
+RC==1 check for all updates after the first.
+
+**4. Fail-only = pure for memory.**
+Functions whose only effect is `Fail E` have the same memory
+properties as pure functions — `Fail` is an early return, not a
+storage operation. All pure-callee optimizations apply to
+fail-only callees.
+
+### Conditional (requires proof pass, lands with reuse analysis)
+
+These require a MIR analysis pass but the analysis is sound because
+effects provide the necessary invariants.
+
+**5. Handler-scoped region inference.**
+A `handle` block creates a scope with a known lifetime. Values
+allocated inside the handler scope that don't appear in the
+handler's return type provably don't escape. Condition: the handler
+is non-escaping (tail-resumptive or zero-resume — NOT non-tail
+handlers where continuations are captured and may be stored). For
+qualifying handlers, all intermediate allocations can use region/
+arena allocation with bulk deallocation at handler exit.
+
+**6. Pure-scope escape analysis.**
+Values created inside a pure function body that aren't returned
+are provably scope-local. The compiler can stack-allocate them.
+This is stronger than traditional escape analysis because purity
+is a type-level guarantee, not a heuristic. Requires: a pass that
+tracks value flow within pure function bodies and identifies
+non-escaping allocations.
+
+**7. Effect-narrowed CoW elimination.**
+Functional update on a value in a pure scope where the value was
+created in the same scope: the compiler can prove RC==1 without
+runtime checks (no aliasing path exists in pure code). This
+extends optimization #3 beyond chained updates to any functional
+update on a locally-created value in a pure context.
+
+### Phase 2+ research
+
+These are structurally sound but require significant implementation
+investment. Keep as research targets, not commitments.
+
+**8. Automatic arena promotion.**
+The compiler detects allocation-heavy pure scopes and automatically
+inserts `Alloc` handlers with arena allocation. Correctness
+invariant: values escaping the arena boundary must be deep-copied.
+The effect system guarantees the boundary is well-defined (handler
+scope), but automatic insertion requires heuristics for when it's
+profitable. Requires: cost model for arena vs individual allocation.
+
+**9. Handler allocation fusion.**
+Consecutive handler blocks for the same effect type could share
+an allocation arena. The compiler knows the scope boundaries
+precisely from handler nesting. Requires: analysis that consecutive
+handlers don't have escaping references between them.
+
+**10. Dead allocation elimination.**
+If a pure function's return value is unused, the entire call and
+all its internal allocations can be eliminated. Effects make this
+safe: pure means no observable side effects. Requires: standard
+dead code elimination extended with effect-awareness (only safe
+for pure or fail-only functions).
 
 ## Open Questions
 
