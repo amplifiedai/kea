@@ -467,84 +467,147 @@ fn lower_bool_case(
         return None;
     }
 
-    if arms.len() == 1 && matches!(arms[0].pattern.node, PatternKind::Wildcard) {
-        return Some(
-            lower_expr(
-                &arms[0].body,
-                ty_hint,
-                unit_variant_tags,
-                qualified_variant_tags,
-            )
-            .kind,
+    let return_ty = ty_hint.clone().unwrap_or(Type::Dynamic);
+    let lowered_scrutinee = lower_expr(
+        scrutinee,
+        None,
+        unit_variant_tags,
+        qualified_variant_tags,
+    );
+    let safe_scrutinee = matches!(lowered_scrutinee.kind, HirExprKind::Var(_) | HirExprKind::Lit(_));
+    let (scrutinee_expr, setup_expr) = if safe_scrutinee {
+        (lowered_scrutinee.clone(), None)
+    } else {
+        let temp_name = format!(
+            "__kea_case_scrutinee${}_{}",
+            scrutinee.span.start, scrutinee.span.end
         );
+        let temp_var = HirExpr {
+            kind: HirExprKind::Var(temp_name.clone()),
+            ty: lowered_scrutinee.ty.clone(),
+            span: scrutinee.span,
+        };
+        let setup = HirExpr {
+            kind: HirExprKind::Let {
+                pattern: HirPattern::Var(temp_name),
+                value: Box::new(lowered_scrutinee),
+            },
+            ty: temp_var.ty.clone(),
+            span: scrutinee.span,
+        };
+        (temp_var, Some(setup))
+    };
+
+    let lower_branch_with_bind = |body: &Expr, bind: Option<String>| {
+        let lowered_body = lower_expr(
+            body,
+            ty_hint.clone(),
+            unit_variant_tags,
+            qualified_variant_tags,
+        );
+        match bind {
+            Some(name) => HirExpr {
+                kind: HirExprKind::Block(vec![
+                    HirExpr {
+                        kind: HirExprKind::Let {
+                            pattern: HirPattern::Var(name),
+                            value: Box::new(scrutinee_expr.clone()),
+                        },
+                        ty: scrutinee_expr.ty.clone(),
+                        span: scrutinee.span,
+                    },
+                    lowered_body.clone(),
+                ]),
+                ty: lowered_body.ty,
+                span: lowered_body.span,
+            },
+            None => lowered_body,
+        }
+    };
+
+    if arms.len() == 1 {
+        let lowered = match &arms[0].pattern.node {
+            PatternKind::Wildcard => lower_branch_with_bind(&arms[0].body, None),
+            PatternKind::Var(name) => lower_branch_with_bind(&arms[0].body, Some(name.clone())),
+            _ => return None,
+        };
+        if let Some(setup) = setup_expr {
+            return Some(HirExprKind::Block(vec![setup, lowered]));
+        }
+        return Some(lowered.kind);
     }
 
     let mut true_body: Option<&Expr> = None;
     let mut false_body: Option<&Expr> = None;
     let mut wildcard_body: Option<&Expr> = None;
+    let mut var_body: Option<(&Expr, String)> = None;
 
     for arm in arms {
         match &arm.pattern.node {
             PatternKind::Lit(Lit::Bool(true)) => true_body = Some(&arm.body),
             PatternKind::Lit(Lit::Bool(false)) => false_body = Some(&arm.body),
             PatternKind::Wildcard => wildcard_body = Some(&arm.body),
+            PatternKind::Var(name) => var_body = Some((&arm.body, name.clone())),
             _ => return None,
         }
     }
 
-    let condition = Box::new(lower_expr(
-        scrutinee,
-        None,
-        unit_variant_tags,
-        qualified_variant_tags,
-    ));
-    match (true_body, false_body, wildcard_body) {
-        (Some(then_body), Some(else_body), None) if arms.len() == 2 => Some(HirExprKind::If {
-            condition,
-            then_branch: Box::new(lower_expr(
-                then_body,
-                ty_hint.clone(),
-                unit_variant_tags,
-                qualified_variant_tags,
-            )),
-            else_branch: Some(Box::new(lower_expr(
-                else_body,
-                ty_hint,
-                unit_variant_tags,
-                qualified_variant_tags,
-            ))),
-        }),
-        (Some(then_body), None, Some(default_body)) if arms.len() == 2 => Some(HirExprKind::If {
-            condition,
-            then_branch: Box::new(lower_expr(
-                then_body,
-                ty_hint.clone(),
-                unit_variant_tags,
-                qualified_variant_tags,
-            )),
-            else_branch: Some(Box::new(lower_expr(
-                default_body,
-                ty_hint,
-                unit_variant_tags,
-                qualified_variant_tags,
-            ))),
-        }),
-        (None, Some(else_body), Some(default_body)) if arms.len() == 2 => Some(HirExprKind::If {
-            condition,
-            then_branch: Box::new(lower_expr(
-                default_body,
-                ty_hint.clone(),
-                unit_variant_tags,
-                qualified_variant_tags,
-            )),
-            else_branch: Some(Box::new(lower_expr(
-                else_body,
-                ty_hint,
-                unit_variant_tags,
-                qualified_variant_tags,
-            ))),
-        }),
+    let lowered_if = match (true_body, false_body, wildcard_body, var_body) {
+        (Some(then_body), Some(else_body), None, None) if arms.len() == 2 => {
+            Some(HirExprKind::If {
+                condition: Box::new(scrutinee_expr.clone()),
+                then_branch: Box::new(lower_branch_with_bind(then_body, None)),
+                else_branch: Some(Box::new(lower_branch_with_bind(else_body, None))),
+            })
+        }
+        (Some(then_body), None, Some(default_body), None) if arms.len() == 2 => {
+            Some(HirExprKind::If {
+                condition: Box::new(scrutinee_expr.clone()),
+                then_branch: Box::new(lower_branch_with_bind(then_body, None)),
+                else_branch: Some(Box::new(lower_branch_with_bind(default_body, None))),
+            })
+        }
+        (None, Some(else_body), Some(default_body), None) if arms.len() == 2 => {
+            Some(HirExprKind::If {
+                condition: Box::new(scrutinee_expr.clone()),
+                then_branch: Box::new(lower_branch_with_bind(default_body, None)),
+                else_branch: Some(Box::new(lower_branch_with_bind(else_body, None))),
+            })
+        }
+        (Some(then_body), None, None, Some((default_body, bind_name))) if arms.len() == 2 => {
+            Some(HirExprKind::If {
+                condition: Box::new(scrutinee_expr.clone()),
+                then_branch: Box::new(lower_branch_with_bind(then_body, None)),
+                else_branch: Some(Box::new(lower_branch_with_bind(
+                    default_body,
+                    Some(bind_name),
+                ))),
+            })
+        }
+        (None, Some(else_body), None, Some((default_body, bind_name))) if arms.len() == 2 => {
+            Some(HirExprKind::If {
+                condition: Box::new(scrutinee_expr.clone()),
+                then_branch: Box::new(lower_branch_with_bind(
+                    default_body,
+                    Some(bind_name),
+                )),
+                else_branch: Some(Box::new(lower_branch_with_bind(else_body, None))),
+            })
+        }
         _ => None,
+    }?;
+
+    if let Some(setup) = setup_expr {
+        Some(HirExprKind::Block(vec![
+            setup,
+            HirExpr {
+                kind: lowered_if,
+                ty: return_ty,
+                span: scrutinee.span,
+            },
+        ]))
+    } else {
+        Some(lowered_if)
     }
 }
 
@@ -1089,6 +1152,67 @@ mod tests {
         };
 
         assert!(matches!(function.body.kind, HirExprKind::If { .. }));
+    }
+
+    #[test]
+    fn lower_function_bool_case_var_fallback_binds_scrutinee() {
+        let module = parse_module_from_text(
+            "fn pick(x: Bool) -> Int\n  case x\n    true -> 1\n    b -> if b then 2 else 3",
+        );
+        let mut env = TypeEnv::new();
+        env.bind(
+            "pick".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::pure(vec![Type::Bool], Type::Int))),
+        );
+
+        let lowered = lower_module(&module, &env);
+        let HirDecl::Function(function) = &lowered.declarations[0] else {
+            panic!("expected lowered function declaration");
+        };
+
+        let HirExprKind::If {
+            else_branch: Some(else_branch),
+            ..
+        } = &function.body.kind
+        else {
+            panic!("expected bool var fallback to lower to if with else branch");
+        };
+
+        let HirExprKind::Block(exprs) = &else_branch.kind else {
+            panic!("expected bool var fallback branch to bind scrutinee");
+        };
+        assert_eq!(exprs.len(), 2);
+        assert!(matches!(
+            exprs[0].kind,
+            HirExprKind::Let {
+                pattern: HirPattern::Var(_),
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn lower_function_bool_case_var_fallback_with_expression_scrutinee_uses_single_binding() {
+        let module = parse_module_from_text(
+            "fn pick(x: Bool) -> Int\n  case x == true\n    true -> 1\n    b -> if b then 2 else 3",
+        );
+        let mut env = TypeEnv::new();
+        env.bind(
+            "pick".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::pure(vec![Type::Bool], Type::Int))),
+        );
+
+        let lowered = lower_module(&module, &env);
+        let HirDecl::Function(function) = &lowered.declarations[0] else {
+            panic!("expected lowered function declaration");
+        };
+
+        let HirExprKind::Block(exprs) = &function.body.kind else {
+            panic!("expected expression scrutinee bool case to lower through setup block");
+        };
+        assert_eq!(exprs.len(), 2);
+        assert!(matches!(exprs[0].kind, HirExprKind::Let { .. }));
+        assert!(matches!(exprs[1].kind, HirExprKind::If { .. }));
     }
 
     #[test]
