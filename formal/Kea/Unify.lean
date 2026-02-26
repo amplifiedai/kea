@@ -162,6 +162,33 @@ mutual
         match unifyTyList st fuel params1 params2 with
         | .ok st' => unify st' fuel ret1 ret2
         | e => e
+      | .functionEff params1 effects1 ret1, .functionEff params2 effects2 ret2 =>
+        match unifyTyList st fuel params1 params2 with
+        | .ok st' =>
+          match effects1, effects2 with
+          | .mk row1, .mk row2 =>
+            match unifyRows st' fuel row1 row2 with
+            | .ok st'' => unify st'' fuel ret1 ret2
+            | e => e
+        | e => e
+      | .function params1 ret1, .functionEff params2 effects2 ret2 =>
+        match unifyTyList st fuel params1 params2 with
+        | .ok st' =>
+          match effects2 with
+          | .mk row2 =>
+            match unifyRows st' fuel (.mk .nil none) row2 with
+            | .ok st'' => unify st'' fuel ret1 ret2
+            | e => e
+        | e => e
+      | .functionEff params1 effects1 ret1, .function params2 ret2 =>
+        match unifyTyList st fuel params1 params2 with
+        | .ok st' =>
+          match effects1 with
+          | .mk row1 =>
+            match unifyRows st' fuel row1 (.mk .nil none) with
+            | .ok st'' => unify st'' fuel ret1 ret2
+            | e => e
+        | e => e
       | .forall _ body1, .forall _ body2 =>
         -- Runtime behavior canonicalizes quantified binders (alpha-equivalent
         -- names and vacuous binders do not block compatibility), so the

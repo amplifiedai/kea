@@ -107,6 +107,12 @@ mutual
     | .function params ret =>
       simp [applySubstBounded, applySubstBounded_empty_tyList tlim rlim params,
         applySubstBounded_empty_ty tlim rlim ret]
+    | .functionEff params effects ret =>
+      cases effects with
+      | mk effectRow =>
+        simp [applySubstBounded, applySubstBounded_empty_tyList tlim rlim params,
+          applySubstBounded_empty_row tlim rlim effectRow,
+          applySubstBounded_empty_ty tlim rlim ret]
     | .forall vars body =>
       simp [applySubstBounded, applySubstBounded_empty_ty tlim rlim body]
     | .app ctor args =>
@@ -293,6 +299,21 @@ mutual
       · exact applySubstBounded_noop_ty s h tlim rlim ret
           (fun w hw => htv w (by simp [freeTypeVars, List.mem_append]; right; exact hw))
           (fun w hw => hrv w (by simp [freeRowVars, List.mem_append]; right; exact hw))
+    | .functionEff params effects ret =>
+      cases effects with
+      | mk effectRow =>
+        simp [applySubstBounded]
+        constructor
+        · exact applySubstBounded_noop_tyList s h tlim rlim params
+            (fun w hw => htv w (by simp [freeTypeVars, freeTypeVarsEffectRow, List.mem_append, hw]))
+            (fun w hw => hrv w (by simp [freeRowVars, freeRowVarsEffectRow, List.mem_append, hw]))
+        · constructor
+          · exact applySubstBounded_noop_row s h tlim rlim effectRow
+              (fun w hw => htv w (by simp [freeTypeVars, freeTypeVarsEffectRow, List.mem_append, hw]))
+              (fun w hw => hrv w (by simp [freeRowVars, freeRowVarsEffectRow, List.mem_append, hw]))
+          · exact applySubstBounded_noop_ty s h tlim rlim ret
+              (fun w hw => htv w (by simp [freeTypeVars, freeTypeVarsEffectRow, List.mem_append, hw]))
+              (fun w hw => hrv w (by simp [freeRowVars, freeRowVarsEffectRow, List.mem_append, hw]))
     | .forall vars body =>
       simp [applySubstBounded]
       exact applySubstBounded_noop_ty s h tlim rlim body

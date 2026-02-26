@@ -31,6 +31,8 @@ mutual
     | .result ok err => occursIn v ok || occursIn v err
     | .record _ r | .anonRecord r | .row r => occursInRow v r
     | .function params ret => occursInTyList v params || occursIn v ret
+    | .functionEff params effects ret =>
+      occursInTyList v params || occursInEffectRow v effects || occursIn v ret
     | .forall _ body => occursIn v body
     | .app ctor args => occursIn v ctor || occursInTyList v args
     | .constructor _ fixedArgs _ => occursInTyList v fixedArgs
@@ -52,6 +54,11 @@ mutual
     match rf with
     | .nil => false
     | .cons _ ty rest => occursIn v ty || occursInRowFields v rest
+
+  /-- Does type variable `v` occur in an effect row? -/
+  def occursInEffectRow (v : TypeVarId) (effects : EffectRow) : Bool :=
+    match effects with
+    | .mk row => occursInRow v row
 end
 
 -- =========================================================================

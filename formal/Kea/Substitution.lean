@@ -90,6 +90,9 @@ mutual
       | .actor inner => .actor (applySubst s fuel inner)
       | .arc inner => .arc (applySubst s fuel inner)
       | .function params ret => .function (applySubstTyList s fuel params) (applySubst s fuel ret)
+      | .functionEff params (.mk row) ret =>
+        let effects' := .mk (applySubstRow s fuel row)
+        .functionEff (applySubstTyList s fuel params) effects' (applySubst s fuel ret)
       | .forall vars body => .forall vars (applySubst s fuel body)
       | .app ctor args => .app (applySubst s fuel ctor) (applySubstTyList s fuel args)
       | .constructor name fixedArgs arity => .constructor name (applySubstTyList s fuel fixedArgs) arity
@@ -133,6 +136,7 @@ mutual
       match rf with
       | .nil => .nil
       | .cons l ty rest => .cons l (applySubst s fuel ty) (applySubstRowFields s fuel rest)
+
 end
 
 -- Convenience wrappers with default fuel.
@@ -180,6 +184,7 @@ mutual
     | .map k v | .result k v => 1 + tySize k + tySize v
     | .record _ r | .anonRecord r | .row r => 1 + rowSize r
     | .function params ret => 1 + tyListSize params + tySize ret
+    | .functionEff params (.mk row) ret => 2 + tyListSize params + rowSize row + tySize ret
     | .forall _ body => 1 + tySize body
     | .app ctor args => 1 + tySize ctor + tyListSize args
     | .constructor _ fixedArgs _ => 1 + tyListSize fixedArgs
@@ -198,6 +203,7 @@ mutual
   private def rowFieldsSize : RowFields → Nat
     | .nil => 1
     | .cons _ ty rest => 1 + tySize ty + rowFieldsSize rest
+
 end
 
 namespace Subst
@@ -300,6 +306,12 @@ mutual
     | .arc inner => .arc (applySubstBounded s h tlim rlim inner)
     | .function params ret =>
       .function (applySubstTyListBounded s h tlim rlim params) (applySubstBounded s h tlim rlim ret)
+    | .functionEff params (.mk row) ret =>
+      let effects' := .mk (applySubstRowBounded s h tlim rlim row)
+      .functionEff
+        (applySubstTyListBounded s h tlim rlim params)
+        effects'
+        (applySubstBounded s h tlim rlim ret)
     | .forall vars body =>
       .forall vars (applySubstBounded s h tlim rlim body)
     | .app ctor args =>
@@ -366,6 +378,7 @@ mutual
       simp_wf
       simp [rowFieldsSize]
       omega
+
 end
 
 /-- Well-founded substitution for types (no external fuel). -/
@@ -391,6 +404,14 @@ def applySubstRowFieldsWF (s : Subst) (h : Subst.Acyclic s) (rf : RowFields) : R
   let tlim := typeRankBoundRowFields h rf + 1
   let rlim := rowRankBoundRowFields h rf + 1
   applySubstRowFieldsBounded s h tlim rlim rf
+
+/-- Well-founded substitution for effect rows (no external fuel). -/
+def applySubstEffectRowWF (s : Subst) (h : Subst.Acyclic s) (effects : EffectRow) : EffectRow :=
+  match effects with
+  | .mk row =>
+    let tlim := typeRankBoundRow h row + 1
+    let rlim := rowRankBoundRow h row + 1
+    .mk (applySubstRowBounded s h tlim rlim row)
 
 /-- On a type variable, WF substitution takes one lookup step when bound. -/
 theorem applySubstWF_var_lookup

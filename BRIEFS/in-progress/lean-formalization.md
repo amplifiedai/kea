@@ -257,4 +257,6 @@ Mitigation:
 - 2026-02-26: Bootstrapped `formal/` in Kea by cannibalizing `/Users/chris/Projects/rill/formal`, renaming the Lean namespace target from `Rill` to `Kea`, and preserving the roadmap + MCP verification history baseline.
 - 2026-02-26: `cd formal && lake build` passes in Kea after namespace-portability proof repairs in `SubstBridge`, `UnifyReflexive`, `PrecisionLeafParity`, and `ShapeConstructorParity` (warning-only simp lint remains).
 - 2026-02-26: Repository guardrail check passes after formalization bootstrap (`mise run check`).
-- **Next:** prune Rill-only modules from the root target, align `Kea/Ty.lean` with `kea-types` effect-row shape, and log first Kea MCP-first verification entries.
+- 2026-02-26: Aligned core formal typing surface with `kea-types` effect rows (`Ty.functionEff`, `EffectRow`, `Kind`) and propagated constructor coverage through `Substitution`, `FreeVars`, `OccursCheck`, `Unify`, `Generalize`, `Typing`, plus proof repair in `SubstCompose`/`SubstBridge`/`SubstIdempotent`/`UnifyReflexive`.
+- 2026-02-26: `cd formal && lake build` passes after full `functionEff` exhaustiveness repair in remaining Phase-1 core proofs.
+- **Next:** start explicit WF theorem ladder for the effect-row surface (substitution preserves WF, unification preserves WF, generalize/instantiate preserves WF), then begin first Phase-2 handler/effect typing theorem stubs.

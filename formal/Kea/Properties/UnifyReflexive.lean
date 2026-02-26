@@ -129,6 +129,10 @@ mutual
     | .groupedFrame inner keys => by simp [beqTy, beqTy_refl inner]
     | .tagged inner tags => by simp [beqTy, beqTy_refl inner]
     | .function params ret => by simp [beqTy, beqTyList_refl params, beqTy_refl ret]
+    | .functionEff params effects ret => by
+      cases effects with
+      | mk row =>
+        simp [beqTy, beqEffectRow, beqTyList_refl params, beqRow_refl row, beqTy_refl ret]
     | .forall vars body => by simp [beqTy, beqTy_refl body]
     | .app ctor args => by simp [beqTy, beqTy_refl ctor, beqTyList_refl args]
     | .constructor _ fixedArgs arity => by simp [beqTy, beqTyList_refl fixedArgs]
@@ -333,6 +337,21 @@ mutual
         have hr := beqTy_sound r1 r2 h.2
         subst hp; subst hr; rfl
       | _ => simp [beqTy] at h
+    | .functionEff p1 e1 r1, b, h => by
+      cases e1 with
+      | mk row1 =>
+        cases b with
+        | functionEff p2 e2 r2 =>
+          cases e2 with
+          | mk row2 =>
+            simp [beqTy, beqEffectRow] at h
+            have h_pair : beqTyList p1 p2 = true ∧ beqRow row1 row2 = true := by
+              simpa [Bool.and_eq_true] using h.1
+            have hp := beqTyList_sound p1 p2 h_pair.1
+            have he := beqRow_sound row1 row2 h_pair.2
+            have hr := beqTy_sound r1 r2 h.2
+            subst hp; subst he; subst hr; rfl
+        | _ => simp [beqTy] at h
     | .forall vars1 body1, b, h => by
       cases b with
       | «forall» vars2 body2 =>

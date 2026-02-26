@@ -6,7 +6,7 @@ This work starts by cannibalizing the existing Rill formal corpus and then exten
 
 ## Current Status
 
-- **Phase 1 (active):** Core migration from Rill `formal/` into `kea/formal/`.
+- **Phase 1 (active):** Core migration from Rill `formal/` into `kea/formal/`, with effect-row surface aligned to Kea (`Ty.functionEff` + `EffectRow`) and current Lean build green.
 - **Phase 2 (next):** Kea-specific effect typing and handler theorems.
 
 The formal workspace lives at [`formal/`](formal/).

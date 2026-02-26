@@ -117,6 +117,8 @@ mutual
     | .actor inner => .actor (renameType inner m)
     | .arc inner => .arc (renameType inner m)
     | .function params ret => .function (renameTyList params m) (renameType ret m)
+    | .functionEff params effects ret =>
+      .functionEff (renameTyList params m) (renameEffectRow effects m) (renameType ret m)
     | .forall vars body => .forall vars (renameType body m)
     | .app ctor args => .app (renameType ctor m) (renameTyList args m)
     | .constructor name fixedArgs arity => .constructor name (renameTyList fixedArgs m) arity
@@ -147,6 +149,11 @@ mutual
     match rf with
     | .nil => .nil
     | .cons l ty rest => .cons l (renameType ty m) (renameRowFields rest m)
+
+  /-- Rename variables in an effect row. -/
+  def renameEffectRow (effects : EffectRow) (m : VarMapping) : EffectRow :=
+    match effects with
+    | .mk row => .mk (renameRow row m)
 end
 
 -- =========================================================================
@@ -178,7 +185,7 @@ def generalize (ty : Ty) (env : TypeEnv) (s : Subst) (lc : Lacks)
     let traits := traitBounds.filter (fun (v, _) => v == tv) |>.map (fun (_, t) => t)
     if traits.isEmpty then none else some (tv, traits)
   { typeVars := genTypeVars, rowVars := genRowVars,
-    lacks := schemeLacks, bounds := schemeBounds, ty := resolvedTy }
+    lacks := schemeLacks, bounds := schemeBounds, kinds := [], ty := resolvedTy }
 
 -- =========================================================================
 -- Instantiate
