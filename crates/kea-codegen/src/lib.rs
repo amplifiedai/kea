@@ -813,22 +813,14 @@ fn lower_result_allocation(
     payload: Value,
     payload_ty: &Type,
 ) -> Result<Value, CodegenError> {
-    let malloc_func_id = malloc_func_id.ok_or_else(|| CodegenError::UnsupportedMir {
-        function: function_name.to_string(),
-        detail: "Result lowering requires malloc import".to_string(),
-    })?;
-    let malloc_ref = module.declare_func_in_func(malloc_func_id, builder.func);
-    let ptr_ty = module.target_config().pointer_type();
-    let alloc_size = builder.ins().iconst(ptr_ty, 16);
-    let alloc_call = builder.ins().call(malloc_ref, &[alloc_size]);
-    let result_ptr = builder
-        .inst_results(alloc_call)
-        .first()
-        .copied()
-        .ok_or_else(|| CodegenError::UnsupportedMir {
-            function: function_name.to_string(),
-            detail: "malloc call returned no pointer value".to_string(),
-        })?;
+    let result_ptr = allocate_heap_payload(
+        module,
+        builder,
+        function_name,
+        malloc_func_id,
+        16,
+        "Result lowering requires malloc import",
+    )?;
     let tag_value = builder.ins().iconst(types::I32, i64::from(tag));
     builder
         .ins()
@@ -837,6 +829,36 @@ fn lower_result_allocation(
     let payload = coerce_value_to_clif_type(builder, payload, payload_clif_ty);
     builder.ins().store(MemFlags::new(), payload, result_ptr, 8);
     Ok(result_ptr)
+}
+
+fn allocate_heap_payload(
+    module: &mut impl Module,
+    builder: &mut FunctionBuilder,
+    function_name: &str,
+    malloc_func_id: Option<FuncId>,
+    payload_bytes: u32,
+    missing_malloc_detail: &str,
+) -> Result<Value, CodegenError> {
+    let malloc_func_id = malloc_func_id.ok_or_else(|| CodegenError::UnsupportedMir {
+        function: function_name.to_string(),
+        detail: missing_malloc_detail.to_string(),
+    })?;
+    let malloc_ref = module.declare_func_in_func(malloc_func_id, builder.func);
+    let ptr_ty = module.target_config().pointer_type();
+    let alloc_bytes = payload_bytes.max(1).saturating_add(8);
+    let alloc_size = builder.ins().iconst(ptr_ty, i64::from(alloc_bytes));
+    let alloc_call = builder.ins().call(malloc_ref, &[alloc_size]);
+    let raw_ptr = builder
+        .inst_results(alloc_call)
+        .first()
+        .copied()
+        .ok_or_else(|| CodegenError::UnsupportedMir {
+            function: function_name.to_string(),
+            detail: "malloc call returned no pointer value".to_string(),
+        })?;
+    let rc_value = builder.ins().iconst(types::I64, 1);
+    builder.ins().store(MemFlags::new(), rc_value, raw_ptr, 0);
+    Ok(builder.ins().iadd_imm(raw_ptr, 8))
 }
 
 struct LowerInstCtx<'a> {
@@ -891,25 +913,16 @@ fn lower_instruction<M: Module>(
                     detail: format!("record layout `{record_type}` not found"),
                 }
             })?;
-            let malloc_func_id = ctx.malloc_func_id.ok_or_else(|| CodegenError::UnsupportedMir {
-                function: function_name.to_string(),
-                detail: format!(
+            let base_ptr = allocate_heap_payload(
+                module,
+                builder,
+                function_name,
+                ctx.malloc_func_id,
+                layout.size_bytes,
+                &format!(
                     "record allocation requested for `{record_type}` but malloc import was not declared"
                 ),
-            })?;
-            let malloc_ref = module.declare_func_in_func(malloc_func_id, builder.func);
-            let ptr_ty = module.target_config().pointer_type();
-            let alloc_size = i64::from(layout.size_bytes.max(1));
-            let size_value = builder.ins().iconst(ptr_ty, alloc_size);
-            let alloc_call = builder.ins().call(malloc_ref, &[size_value]);
-            let base_ptr = builder
-                .inst_results(alloc_call)
-                .first()
-                .copied()
-                .ok_or_else(|| CodegenError::UnsupportedMir {
-                    function: function_name.to_string(),
-                    detail: "malloc call returned no pointer value".to_string(),
-                })?;
+            )?;
             for (field_name, field_value_id) in fields {
                 let field_value = get_value(values, function_name, field_value_id)?;
                 let offset = *layout.field_offsets.get(field_name).ok_or_else(|| {
@@ -966,25 +979,16 @@ fn lower_instruction<M: Module>(
                     ),
                 });
             }
-            let malloc_func_id = ctx.malloc_func_id.ok_or_else(|| CodegenError::UnsupportedMir {
-                function: function_name.to_string(),
-                detail: format!(
+            let base_ptr = allocate_heap_payload(
+                module,
+                builder,
+                function_name,
+                ctx.malloc_func_id,
+                layout.size_bytes,
+                &format!(
                     "sum allocation requested for `{sum_type}` but malloc import was not declared"
                 ),
-            })?;
-            let malloc_ref = module.declare_func_in_func(malloc_func_id, builder.func);
-            let ptr_ty = module.target_config().pointer_type();
-            let alloc_size = i64::from(layout.size_bytes.max(1));
-            let size_value = builder.ins().iconst(ptr_ty, alloc_size);
-            let alloc_call = builder.ins().call(malloc_ref, &[size_value]);
-            let base_ptr = builder
-                .inst_results(alloc_call)
-                .first()
-                .copied()
-                .ok_or_else(|| CodegenError::UnsupportedMir {
-                    function: function_name.to_string(),
-                    detail: "malloc call returned no pointer value".to_string(),
-                })?;
+            )?;
 
             let tag_offset =
                 i32::try_from(layout.tag_offset).map_err(|_| CodegenError::UnsupportedMir {
@@ -1359,25 +1363,6 @@ fn lower_instruction<M: Module>(
                     detail: format!("record layout `{record_type}` not found"),
                 }
             })?;
-            let malloc_func_id = ctx.malloc_func_id.ok_or_else(|| CodegenError::UnsupportedMir {
-                function: function_name.to_string(),
-                detail: format!(
-                    "record allocation requested for `{record_type}` but malloc import was not declared"
-                ),
-            })?;
-            let malloc_ref = module.declare_func_in_func(malloc_func_id, builder.func);
-            let ptr_ty = module.target_config().pointer_type();
-            let alloc_size = i64::from(layout.size_bytes.max(1));
-            let size_value = builder.ins().iconst(ptr_ty, alloc_size);
-            let alloc_call = builder.ins().call(malloc_ref, &[size_value]);
-            let out_ptr = builder
-                .inst_results(alloc_call)
-                .first()
-                .copied()
-                .ok_or_else(|| CodegenError::UnsupportedMir {
-                    function: function_name.to_string(),
-                    detail: "malloc call returned no pointer value".to_string(),
-                })?;
 
             let mut update_values = BTreeMap::new();
             for update in updates {
@@ -1396,6 +1381,61 @@ fn lower_instruction<M: Module>(
                 );
             }
 
+            let ptr_ty = module.target_config().pointer_type();
+            let unique_block = builder.create_block();
+            let copy_block = builder.create_block();
+            let join_block = builder.create_block();
+            builder.append_block_param(join_block, ptr_ty);
+
+            let rc_ptr = builder.ins().iadd_imm(target_ptr, -8);
+            let rc_value = builder.ins().load(types::I64, MemFlags::new(), rc_ptr, 0);
+            let is_unique = builder.ins().icmp_imm(IntCC::Equal, rc_value, 1);
+            builder
+                .ins()
+                .brif(is_unique, unique_block, &[], copy_block, &[]);
+
+            builder.switch_to_block(unique_block);
+            for (field_name, updated) in &update_values {
+                let offset_u32 =
+                    *layout
+                        .field_offsets
+                        .get(field_name)
+                        .ok_or_else(|| CodegenError::UnsupportedMir {
+                            function: function_name.to_string(),
+                            detail: format!(
+                                "record layout `{record_type}` missing field `{field_name}` during in-place update"
+                            ),
+                        })?;
+                let offset = i32::try_from(offset_u32).map_err(|_| CodegenError::UnsupportedMir {
+                    function: function_name.to_string(),
+                    detail: format!(
+                        "record field `{record_type}.{field_name}` offset does not fit i32"
+                    ),
+                })?;
+                let field_ty = layout
+                    .field_types
+                    .get(field_name)
+                    .cloned()
+                    .unwrap_or(Type::Dynamic);
+                let value_ty = clif_type(&field_ty)?;
+                let value = coerce_value_to_clif_type(builder, *updated, value_ty);
+                builder
+                    .ins()
+                    .store(MemFlags::new(), value, target_ptr, offset);
+            }
+            builder.ins().jump(join_block, &[target_ptr]);
+
+            builder.switch_to_block(copy_block);
+            let out_ptr = allocate_heap_payload(
+                module,
+                builder,
+                function_name,
+                ctx.malloc_func_id,
+                layout.size_bytes,
+                &format!(
+                    "record allocation requested for `{record_type}` but malloc import was not declared"
+                ),
+            )?;
             for (field_name, offset_u32) in &layout.field_offsets {
                 let offset = i32::try_from(*offset_u32).map_err(|_| CodegenError::UnsupportedMir {
                     function: function_name.to_string(),
@@ -1420,8 +1460,11 @@ fn lower_instruction<M: Module>(
                     .ins()
                     .store(MemFlags::new(), value, out_ptr, offset);
             }
+            builder.ins().jump(join_block, &[out_ptr]);
 
-            values.insert(dest.clone(), out_ptr);
+            builder.switch_to_block(join_block);
+            let merged = builder.block_params(join_block)[0];
+            values.insert(dest.clone(), merged);
             Ok(false)
         }
         MirInst::HandlerEnter { .. }
