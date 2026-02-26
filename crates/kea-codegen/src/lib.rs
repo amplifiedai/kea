@@ -298,7 +298,7 @@ fn compile_into_module<M: Module>(
             block
                 .instructions
                 .iter()
-                .any(|inst| matches!(inst, MirInst::RecordInit { .. }))
+                .any(|inst| matches!(inst, MirInst::RecordInit { .. } | MirInst::SumInit { .. }))
         })
     });
 
@@ -740,6 +740,88 @@ fn lower_instruction<M: Module>(
                 builder
                     .ins()
                     .store(MemFlags::new(), field_value, base_ptr, offset);
+            }
+            values.insert(dest.clone(), base_ptr);
+            Ok(false)
+        }
+        MirInst::SumInit {
+            dest,
+            sum_type,
+            variant,
+            tag,
+            fields,
+        } => {
+            let layout = ctx
+                .layout_plan
+                .sums
+                .get(sum_type)
+                .ok_or_else(|| CodegenError::UnsupportedMir {
+                    function: function_name.to_string(),
+                    detail: format!("sum layout `{sum_type}` not found"),
+                })?;
+            let expected_fields = *layout.variant_field_counts.get(variant).ok_or_else(|| {
+                CodegenError::UnsupportedMir {
+                    function: function_name.to_string(),
+                    detail: format!(
+                        "sum layout `{sum_type}` missing variant `{variant}` during init"
+                    ),
+                }
+            })?;
+            if expected_fields as usize != fields.len() {
+                return Err(CodegenError::UnsupportedMir {
+                    function: function_name.to_string(),
+                    detail: format!(
+                        "sum init `{sum_type}.{variant}` expected {} fields but got {}",
+                        expected_fields,
+                        fields.len()
+                    ),
+                });
+            }
+            let malloc_func_id = ctx.malloc_func_id.ok_or_else(|| CodegenError::UnsupportedMir {
+                function: function_name.to_string(),
+                detail: format!(
+                    "sum allocation requested for `{sum_type}` but malloc import was not declared"
+                ),
+            })?;
+            let malloc_ref = module.declare_func_in_func(malloc_func_id, builder.func);
+            let ptr_ty = module.target_config().pointer_type();
+            let alloc_size = i64::from(layout.size_bytes.max(1));
+            let size_value = builder.ins().iconst(ptr_ty, alloc_size);
+            let alloc_call = builder.ins().call(malloc_ref, &[size_value]);
+            let base_ptr = builder
+                .inst_results(alloc_call)
+                .first()
+                .copied()
+                .ok_or_else(|| CodegenError::UnsupportedMir {
+                    function: function_name.to_string(),
+                    detail: "malloc call returned no pointer value".to_string(),
+                })?;
+
+            let tag_offset = i32::try_from(layout.tag_offset).map_err(|_| {
+                CodegenError::UnsupportedMir {
+                    function: function_name.to_string(),
+                    detail: format!("sum tag offset for `{sum_type}` does not fit i32"),
+                }
+            })?;
+            let tag_value = builder.ins().iconst(types::I32, i64::from(*tag));
+            builder
+                .ins()
+                .store(MemFlags::new(), tag_value, base_ptr, tag_offset);
+
+            for (idx, field_value_id) in fields.iter().enumerate() {
+                let field_value = get_value(values, function_name, field_value_id)?;
+                let field_offset = layout.payload_offset + (idx as u32 * 8);
+                let field_offset = i32::try_from(field_offset).map_err(|_| {
+                    CodegenError::UnsupportedMir {
+                        function: function_name.to_string(),
+                        detail: format!(
+                            "sum payload offset `{sum_type}.{variant}[{idx}]` does not fit i32"
+                        ),
+                    }
+                })?;
+                builder
+                    .ins()
+                    .store(MemFlags::new(), field_value, base_ptr, field_offset);
             }
             values.insert(dest.clone(), base_ptr);
             Ok(false)
@@ -1276,6 +1358,7 @@ struct BackendSumLayout {
     payload_offset: u32,
     max_payload_fields: u32,
     variant_tags: BTreeMap<String, u32>,
+    variant_field_counts: BTreeMap<String, u32>,
 }
 
 fn align_up(value: u32, align: u32) -> u32 {
@@ -1314,6 +1397,7 @@ fn plan_layout_catalog(module: &MirModule) -> Result<BackendLayoutPlan, CodegenE
 
     for sum in &module.layouts.sums {
         let mut variant_tags = BTreeMap::new();
+        let mut variant_field_counts = BTreeMap::new();
         let max_payload_fields = sum
             .variants
             .iter()
@@ -1322,6 +1406,7 @@ fn plan_layout_catalog(module: &MirModule) -> Result<BackendLayoutPlan, CodegenE
             .unwrap_or(0);
         for variant in &sum.variants {
             variant_tags.insert(variant.name.clone(), variant.tag);
+            variant_field_counts.insert(variant.name.clone(), variant.fields.len() as u32);
         }
         let payload_offset = align_up(TAG_BYTES, WORD_BYTES);
         let size_bytes = payload_offset + max_payload_fields * WORD_BYTES;
@@ -1334,6 +1419,7 @@ fn plan_layout_catalog(module: &MirModule) -> Result<BackendLayoutPlan, CodegenE
                 payload_offset,
                 max_payload_fields,
                 variant_tags,
+                variant_field_counts,
             },
         );
     }
@@ -1463,7 +1549,9 @@ fn collect_function_stats(function: &MirFunction) -> FunctionPassStats {
                     MirEffectOpClass::Dispatch => stats.effect_op_dispatch_count += 1,
                     MirEffectOpClass::ZeroResume => stats.effect_op_zero_resume_count += 1,
                 },
-                MirInst::CowUpdate { .. } | MirInst::RecordInit { .. } => stats.alloc_count += 1,
+                MirInst::CowUpdate { .. }
+                | MirInst::RecordInit { .. }
+                | MirInst::SumInit { .. } => stats.alloc_count += 1,
                 MirInst::Const { .. }
                 | MirInst::Binary { .. }
                 | MirInst::Unary { .. }
@@ -1910,6 +1998,68 @@ mod tests {
         }
     }
 
+    fn sample_sum_init_module() -> MirModule {
+        MirModule {
+            functions: vec![MirFunction {
+                name: "make_some".to_string(),
+                signature: MirFunctionSignature {
+                    params: vec![],
+                    ret: Type::Sum(SumType {
+                        name: "Option".to_string(),
+                        type_args: vec![Type::Int],
+                        variants: vec![
+                            ("Some".to_string(), vec![Type::Int]),
+                            ("None".to_string(), vec![]),
+                        ],
+                    }),
+                    effects: EffectRow::pure(),
+                },
+                entry: MirBlockId(0),
+                blocks: vec![MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: MirValueId(0),
+                            literal: MirLiteral::Int(7),
+                        },
+                        MirInst::SumInit {
+                            dest: MirValueId(1),
+                            sum_type: "Option".to_string(),
+                            variant: "Some".to_string(),
+                            tag: 0,
+                            fields: vec![MirValueId(0)],
+                        },
+                    ],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirValueId(1)),
+                    },
+                }],
+            }],
+            layouts: MirLayoutCatalog {
+                records: vec![],
+                sums: vec![MirSumLayout {
+                    name: "Option".to_string(),
+                    variants: vec![
+                        MirVariantLayout {
+                            name: "Some".to_string(),
+                            tag: 0,
+                            fields: vec![MirVariantFieldLayout {
+                                name: None,
+                                annotation: kea_ast::TypeAnnotation::Named("Int".to_string()),
+                            }],
+                        },
+                        MirVariantLayout {
+                            name: "None".to_string(),
+                            tag: 1,
+                            fields: vec![],
+                        },
+                    ],
+                }],
+            },
+        }
+    }
+
     fn sample_record_handle_signature_module() -> MirModule {
         let user_ty = Type::Record(RecordType {
             name: "User".to_string(),
@@ -2130,6 +2280,8 @@ mod tests {
         assert_eq!(result.size_bytes, 24);
         assert_eq!(result.variant_tags.get("Ok"), Some(&0));
         assert_eq!(result.variant_tags.get("Err"), Some(&1));
+        assert_eq!(result.variant_field_counts.get("Ok"), Some(&1));
+        assert_eq!(result.variant_field_counts.get("Err"), Some(&2));
     }
 
     #[test]
@@ -2350,6 +2502,22 @@ mod tests {
         let artifact = backend
             .compile_module(&module, &manifest, &config)
             .expect("record init + field load lowering should compile");
+        assert!(!artifact.object.is_empty());
+    }
+
+    #[test]
+    fn cranelift_backend_lowers_sum_init() {
+        let module = sample_sum_init_module();
+        let manifest = default_abi_manifest(&module);
+        let backend = CraneliftBackend;
+        let config = BackendConfig {
+            mode: CodegenMode::Aot,
+            ..BackendConfig::default()
+        };
+
+        let artifact = backend
+            .compile_module(&module, &manifest, &config)
+            .expect("sum init lowering should compile");
         assert!(!artifact.object.is_empty());
     }
 
