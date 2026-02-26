@@ -4726,3 +4726,49 @@ verify whether the previously logged divergence family is fixed.
 - The annotated path no longer misroutes to row-field unification.
 - The unannotated higher-order chain no longer leaves effect variables
   unconstrained (`e0`); `Log` is propagated as expected.
+
+### 2026-02-26: handler effect-removal kickoff probes (with overlap divergence)
+
+**Context**: Phase-2 kickoff for handler effect typing. Lean side introduced a
+row-level elimination model (`EffectRow.handleRemove`) with capstone theorems
+`handle_removes_effect` and `handle_preserves_other_effects` for the removal
+step. Probes checked runtime alignment on pure-removal and residual-preservation
+cases, plus overlap behavior where handler-body effects and residual effects
+share labels.
+
+**MCP tools used**: `initialize`, `notifications/initialized`, `tools/list`,
+`tools/call` (`reset_session`, `type_check`) via direct `kea-mcp` stdio probe.
+
+**Predict (Lean side)**:
+1. Handling `Log` in a `Log`-only computation yields pure (`[]`).
+2. Handling `Log` in `[IO, Log]` with pure handler body yields `[IO]`
+   (preserve other effects).
+3. In full handler composition (future theorem slice), overlap between residual
+   and handler-body effects should normalize as a row (no duplicate labels).
+
+**Probe (Rust side via kea-mcp)**:
+1. Pure-removal case:
+   - `fn run() -> Unit` with `handle Log.log("x") ...` returns `run : () -> ()`.
+2. Preserve-other, non-overlap case:
+   - `mixed : () -[IO, Log]> ()`, `handled : () -[IO]> ()` with
+     `handle mixed()` and `Log` clause body `()`.
+3. Overlap case (residual `IO` + handler body emits `IO`):
+   - inferred binding `handled : () -[IO, IO]> ()`.
+   - declaring `-[IO]>` is rejected as too weak (`body requires [IO, IO]`).
+   - declaring duplicate annotation `-[IO, IO]>` is rejected by parser as
+     invalid effect-row contract syntax.
+
+**Classify**: Mixed.
+- Agreement for removal and non-overlap preservation.
+- Divergence for overlap normalization: implementation currently materializes
+  duplicate effect labels in inferred rows.
+
+**Outcome**:
+- Phase-2 theorem kickoff remains valid for the removal slice.
+- Full handler-composition theorem work now needs an explicit normalization
+  precondition or an implementation fix to canonicalize overlapping effect rows.
+
+**Impact**:
+- Logged as a Lean↔MCP semantic divergence for Phase-2 handler composition.
+- `Kea/Properties/HandlerEffectRemoval.lean` stays scoped to the elimination
+  slice while overlap normalization is resolved.

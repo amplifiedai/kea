@@ -42,6 +42,8 @@ This work starts by cannibalizing the existing Rill formal corpus and then exten
 - **Phase 1 (active):** Var-left `unify` entry wrappers in `WfEffectRowLadder` now discharge the constructor-mismatch BEq premise internally (`beqTy` reduction), keeping downstream theorem calls on semantic WF assumptions only.
 - **Phase 1 (active):** `WfEffectRowLadder` now includes symmetric var-right `unify` entry wrappers/bundles (`functionEff_unify_var_right_*`, including full-state variants), backed by the new non-var right-branch bridge.
 - **Phase 2 (next):** Kea-specific effect typing and handler theorems.
+- **Phase 2 (active):** Added `Kea/Properties/HandlerEffectRemoval.lean` with a first handler-elimination core model (`EffectRow.handleRemove`) and capstone theorem surfaces (`handle_removes_effect`, `handle_preserves_other_effects`, row-tail/WF preservation, idempotence).
+- **Phase 2 (active):** MCP probe sweep confirms non-overlap handler removal (`[IO, Log] --handle Log--> [IO]`) and pure removal (`[Log] --handle Log--> []`) but reveals an overlap divergence: when handler bodies re-emit an existing residual effect, inference currently duplicates labels (`-[IO, IO]>`) instead of normalizing the row.
 
 The formal workspace lives at [`formal/`](formal/).
 
