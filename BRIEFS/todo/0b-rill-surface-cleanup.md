@@ -49,6 +49,13 @@ syntax. These may become valid later, but they are currently unbriefed
 for 0a/0b and should not silently persist in core without an explicit
 brief/spec decision.
 
+### 5) Guard against reintroducing deleted 0b effect-lattice scaffolding
+
+0b removed lattice effects (`EffectLevel`, `EffectTerm`,
+`EffectConstraint`) in favor of row-native effect checking. This cleanup
+brief should keep that invariant explicit as a regression gate while
+removing remaining rill substrate.
+
 ## Design Constraints
 
 1. **Spec-first:** If a feature is not in KERNEL/CALL-SYNTAX and has no
@@ -107,11 +114,24 @@ Symbol grep gates (no code hits in core crates):
   - `GroupedFrame`
   - `ColumnExpr`
   - `DfVerb`
+  - `Frame`
+  - `EmbeddedBlock`
+  - `SqlBlock`
+  - `TemplateBlock`
   - `sqlparser`
 - HKT arrows:
   - `Kind::Arrow`
   - `KindAnnotation::Arrow`
   - `from_arity(` (kind-constructor helper)
+- 0b lattice regression guard:
+  - `EffectLevel`
+  - `EffectTerm`
+  - `EffectConstraint`
+  - `solve_effect_constraints`
+  - `effects_leq`
+  - `effects_as_row`
+  - `effect_annotation_to_effects`
+  - `effect_label`
 
 ## Definition of Done
 
@@ -129,4 +149,3 @@ realigning with current Kea docs/brief commitments.
 **Out of scope now:** Designing future data-processing/streaming syntax
 or distributed-runtime expression forms. Those require separate design
 briefs/spec updates.
-
