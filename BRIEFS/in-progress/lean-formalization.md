@@ -266,4 +266,5 @@ Mitigation:
 - 2026-02-26: Added explicit WF judgment layer (`Kea/WellFormed.lean`) and WF-preservation lemmas for both fuel and WF substitution under no-domain-vars preconditions (`Kea/Properties/WfSubstitution.lean`), including effect-row variants.
 - 2026-02-26: Extended WF substitution lemma surface with empty-substitution preservation theorems for type/row/effect-row forms to stabilize the WF baseline API for downstream unification/generalization work.
 - 2026-02-26: Added `applySubstCompat`/`applySubstRowCompat` WF-preservation lemmas so existing compat substitution call sites can consume the WF layer without changing substitution entry points.
+- 2026-02-26: Added component-wise `functionEff` WF-preservation lemma for compat substitution (`applySubstCompat_functionEff_preserves_wf_of_component_no_domain_vars`) to align the WF API with effect-row function decomposition used in existing bridge proofs.
 - **Next:** start explicit WF theorem ladder for the effect-row surface (substitution preserves WF, unification preserves WF, generalize/instantiate preserves WF), then begin first Phase-2 handler/effect typing theorem stubs.
