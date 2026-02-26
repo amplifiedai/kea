@@ -67,6 +67,20 @@ theorem closedBind_extendsAndWfRange
   · exact bindClosedRow_update_preserves_substWellFormedRange
       st' kctx rctx rv fields h_wf h_fields
 
+theorem closedBind_extendsAndWfRange_if_unbound
+    (st : UnifyState) (kctx : KindCtx) (rctx : RowCtx)
+    (rv : RowVarId) (fields : RowFields)
+    (h_unbound : st.subst.rowMap rv = none)
+    (h_wf : UnifyState.SubstWellFormedRange st kctx rctx)
+    (h_fields : RowFields.WellFormed kctx rctx fields) :
+    ExtendsAndWfRange st
+      { st with subst := st.subst.bindRow rv (Row.closed fields) }
+      kctx rctx := by
+  constructor
+  · exact bindRow_extends_if_unbound st rv (Row.closed fields) h_unbound
+  · exact bindClosedRow_update_preserves_substWellFormedRange
+      st kctx rctx rv fields h_wf h_fields
+
 theorem closedBindWithLacks_extendsAndWfRange
     (st st' : UnifyState) (kctx : KindCtx) (rctx : RowCtx)
     (rv : RowVarId) (fields : RowFields) (lacks' : Lacks)
