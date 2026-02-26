@@ -573,6 +573,20 @@ mod tests {
     }
 
     #[test]
+    fn compile_and_execute_higher_order_lambda_argument_exit_code() {
+        let source_path = write_temp_source(
+            "fn apply(f: fn(Int) -> Int, x: Int) -> Int\n  f(x)\n\nfn main() -> Int\n  apply(|x| -> x + 1, 41)\n",
+            "kea-cli-hof-lambda-arg",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_local_function_alias_call_exit_code() {
         let source_path = write_temp_source(
             "fn inc(n: Int) -> Int\n  n + 1\n\nfn main() -> Int\n  let g = inc\n  g(41)\n",
