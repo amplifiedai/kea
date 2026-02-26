@@ -11,7 +11,7 @@ use std::sync::Arc;
 use cranelift::prelude::{
     AbiParam, Configurable, FunctionBuilder, FunctionBuilderContext, InstBuilder, Value, types,
 };
-use cranelift_codegen::ir::TrapCode;
+use cranelift_codegen::ir::{MemFlags, TrapCode};
 use cranelift_codegen::ir::condcodes::{FloatCC, IntCC};
 use cranelift_codegen::{isa, settings};
 use cranelift_codegen::isa::CallConv;
@@ -198,13 +198,13 @@ impl Backend for CraneliftBackend {
         validate_abi_manifest(module, abi)?;
         validate_layout_catalog(module)?;
         validate_fail_only_invariants(module)?;
-        let _layout_plan = plan_layout_catalog(module)?;
+        let layout_plan = plan_layout_catalog(module)?;
 
         let isa = build_isa(config)?;
         let stats = collect_pass_stats(module);
         let object = match config.mode {
-            CodegenMode::Jit => compile_with_jit(module, &isa, config)?,
-            CodegenMode::Aot => compile_with_object(module, &isa, config)?,
+            CodegenMode::Jit => compile_with_jit(module, &layout_plan, &isa, config)?,
+            CodegenMode::Aot => compile_with_object(module, &layout_plan, &isa, config)?,
         };
 
         Ok(BackendArtifact { object, stats })
@@ -245,12 +245,13 @@ fn opt_level_setting(level: OptimizationLevel) -> &'static str {
 
 fn compile_with_jit(
     module: &MirModule,
+    layout_plan: &BackendLayoutPlan,
     isa: &Arc<dyn isa::TargetIsa>,
     _config: &BackendConfig,
 ) -> Result<Vec<u8>, CodegenError> {
     let builder = JITBuilder::with_isa(isa.clone(), cranelift_module::default_libcall_names());
     let mut jit_module = JITModule::new(builder);
-    let _ = compile_into_module(&mut jit_module, module)?;
+    let _ = compile_into_module(&mut jit_module, module, layout_plan)?;
     jit_module
         .finalize_definitions()
         .map_err(|detail| CodegenError::Module {
@@ -263,6 +264,7 @@ fn compile_with_jit(
 
 fn compile_with_object(
     module: &MirModule,
+    layout_plan: &BackendLayoutPlan,
     isa: &Arc<dyn isa::TargetIsa>,
     _config: &BackendConfig,
 ) -> Result<Vec<u8>, CodegenError> {
@@ -275,7 +277,7 @@ fn compile_with_object(
         detail: detail.to_string(),
     })?;
     let mut object_module = ObjectModule::new(builder);
-    let _ = compile_into_module(&mut object_module, module)?;
+    let _ = compile_into_module(&mut object_module, module, layout_plan)?;
     let product = object_module.finish();
     product.emit().map_err(|detail| CodegenError::ObjectEmit {
         detail: detail.to_string(),
@@ -285,6 +287,7 @@ fn compile_with_object(
 fn compile_into_module<M: Module>(
     module: &mut M,
     mir: &MirModule,
+    layout_plan: &BackendLayoutPlan,
 ) -> Result<BTreeMap<String, FuncId>, CodegenError> {
     let mut func_ids: BTreeMap<String, FuncId> = BTreeMap::new();
     let mut external_func_ids: BTreeMap<String, FuncId> = BTreeMap::new();
@@ -401,6 +404,11 @@ fn compile_into_module<M: Module>(
                 };
 
                 let mut block_terminated = false;
+                let lower_inst_ctx = LowerInstCtx {
+                    func_ids: &func_ids,
+                    external_func_ids: &external_func_ids,
+                    layout_plan,
+                };
                 for inst in block.instructions.iter().take(instruction_count) {
                     if lower_instruction(
                         module,
@@ -408,8 +416,7 @@ fn compile_into_module<M: Module>(
                         &function.name,
                         inst,
                         &mut values,
-                        &func_ids,
-                        &external_func_ids,
+                        &lower_inst_ctx,
                     )? {
                         block_terminated = true;
                         break;
@@ -473,7 +480,8 @@ fn execute_mir_main_jit(module: &MirModule, config: &BackendConfig) -> Result<i3
     let isa = build_isa(config)?;
     let builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
     let mut jit_module = JITModule::new(builder);
-    let func_ids = compile_into_module(&mut jit_module, module)?;
+    let layout_plan = plan_layout_catalog(module)?;
+    let func_ids = compile_into_module(&mut jit_module, module, &layout_plan)?;
     jit_module
         .finalize_definitions()
         .map_err(|detail| CodegenError::Module {
@@ -617,14 +625,19 @@ fn clif_type(ty: &Type) -> Result<cranelift::prelude::Type, CodegenError> {
     }
 }
 
+struct LowerInstCtx<'a> {
+    func_ids: &'a BTreeMap<String, FuncId>,
+    external_func_ids: &'a BTreeMap<String, FuncId>,
+    layout_plan: &'a BackendLayoutPlan,
+}
+
 fn lower_instruction<M: Module>(
     module: &mut M,
     builder: &mut FunctionBuilder,
     function_name: &str,
     inst: &MirInst,
     values: &mut BTreeMap<MirValueId, Value>,
-    func_ids: &BTreeMap<String, FuncId>,
-    external_func_ids: &BTreeMap<String, FuncId>,
+    ctx: &LowerInstCtx<'_>,
 ) -> Result<bool, CodegenError> {
     match inst {
         MirInst::Const { dest, literal } => {
@@ -650,6 +663,37 @@ fn lower_instruction<M: Module>(
             values.insert(dest.clone(), result);
             Ok(false)
         }
+        MirInst::RecordFieldLoad {
+            dest,
+            record,
+            record_type,
+            field,
+            field_ty,
+        } => {
+            let base = get_value(values, function_name, record)?;
+            let layout = ctx
+                .layout_plan
+                .records
+                .get(record_type)
+                .ok_or_else(|| CodegenError::UnsupportedMir {
+                    function: function_name.to_string(),
+                    detail: format!("record layout `{record_type}` not found"),
+                })?;
+            let offset = *layout
+                .field_offsets
+                .get(field)
+                .ok_or_else(|| CodegenError::UnsupportedMir {
+                    function: function_name.to_string(),
+                    detail: format!(
+                        "record layout `{record_type}` missing field `{field}` during lowering"
+                    ),
+                })?;
+            let addr = builder.ins().iadd_imm(base, i64::from(offset));
+            let value_ty = clif_type(field_ty)?;
+            let value = builder.ins().load(value_ty, MemFlags::new(), addr, 0);
+            values.insert(dest.clone(), value);
+            Ok(false)
+        }
         MirInst::Call {
             callee,
             args,
@@ -665,9 +709,12 @@ fn lower_instruction<M: Module>(
 
             let call_result = match callee {
                 MirCallee::Local(name) => {
-                    let callee_id = *func_ids.get(name).ok_or_else(|| CodegenError::UnknownFunction {
-                        function: name.clone(),
-                    })?;
+                    let callee_id = *ctx
+                        .func_ids
+                        .get(name)
+                        .ok_or_else(|| CodegenError::UnknownFunction {
+                            function: name.clone(),
+                        })?;
                     let local_ref = module.declare_func_in_func(callee_id, builder.func);
                     let call = builder.ins().call(local_ref, &lowered_args);
                     builder.inst_results(call).first().copied()
@@ -683,7 +730,8 @@ fn lower_instruction<M: Module>(
                             ),
                         });
                     }
-                    let callee_id = *external_func_ids
+                    let callee_id = *ctx
+                        .external_func_ids
                         .get(name)
                         .ok_or_else(|| CodegenError::UnknownFunction {
                             function: name.clone(),
@@ -1338,6 +1386,7 @@ fn collect_function_stats(function: &MirFunction) -> FunctionPassStats {
                 MirInst::Const { .. }
                 | MirInst::Binary { .. }
                 | MirInst::Unary { .. }
+                | MirInst::RecordFieldLoad { .. }
                 | MirInst::Move { .. }
                 | MirInst::Borrow { .. }
                 | MirInst::TryClaim { .. }
@@ -1677,6 +1726,57 @@ mod tests {
                 },
             ],
             layouts: MirLayoutCatalog::default(),
+        }
+    }
+
+    fn sample_record_field_load_module() -> MirModule {
+        MirModule {
+            functions: vec![MirFunction {
+                name: "get_age".to_string(),
+                signature: MirFunctionSignature {
+                    params: vec![Type::Record(RecordType {
+                        name: "User".to_string(),
+                        params: vec![],
+                        row: RowType::closed(vec![
+                            (Label::new("age"), Type::Int),
+                            (Label::new("name"), Type::String),
+                        ]),
+                    })],
+                    ret: Type::Int,
+                    effects: EffectRow::pure(),
+                },
+                entry: MirBlockId(0),
+                blocks: vec![MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions: vec![MirInst::RecordFieldLoad {
+                        dest: MirValueId(1),
+                        record: MirValueId(0),
+                        record_type: "User".to_string(),
+                        field: "age".to_string(),
+                        field_ty: Type::Int,
+                    }],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirValueId(1)),
+                    },
+                }],
+            }],
+            layouts: MirLayoutCatalog {
+                records: vec![MirRecordLayout {
+                    name: "User".to_string(),
+                    fields: vec![
+                        MirRecordFieldLayout {
+                            name: "name".to_string(),
+                            annotation: kea_ast::TypeAnnotation::Named("String".to_string()),
+                        },
+                        MirRecordFieldLayout {
+                            name: "age".to_string(),
+                            annotation: kea_ast::TypeAnnotation::Named("Int".to_string()),
+                        },
+                    ],
+                }],
+                sums: vec![],
+            },
         }
     }
 
@@ -2089,6 +2189,22 @@ mod tests {
             CodegenError::UnsupportedMir { ref detail, .. }
                 if detail.contains("conflicting signatures")
         ));
+    }
+
+    #[test]
+    fn cranelift_backend_lowers_record_field_load_from_layout_offsets() {
+        let module = sample_record_field_load_module();
+        let manifest = default_abi_manifest(&module);
+        let backend = CraneliftBackend;
+        let config = BackendConfig {
+            mode: CodegenMode::Aot,
+            ..BackendConfig::default()
+        };
+
+        let artifact = backend
+            .compile_module(&module, &manifest, &config)
+            .expect("record field load lowering should compile");
+        assert!(!artifact.object.is_empty());
     }
 
     #[test]

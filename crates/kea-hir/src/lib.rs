@@ -51,6 +51,10 @@ pub struct HirExpr {
 pub enum HirExprKind {
     Lit(Lit),
     Var(String),
+    FieldAccess {
+        expr: Box<HirExpr>,
+        field: String,
+    },
     Binary {
         op: BinOp,
         left: Box<HirExpr>,
@@ -370,10 +374,26 @@ fn lower_expr(
                 } else if is_namespace_qualifier(type_name) {
                     HirExprKind::Var(format!("{type_name}::{}", field.node))
                 } else {
-                    HirExprKind::Raw(expr.node.clone())
+                    HirExprKind::FieldAccess {
+                        expr: Box::new(lower_expr(
+                            qualifier,
+                            None,
+                            unit_variant_tags,
+                            qualified_variant_tags,
+                        )),
+                        field: field.node.clone(),
+                    }
                 }
             } else {
-                HirExprKind::Raw(expr.node.clone())
+                HirExprKind::FieldAccess {
+                    expr: Box::new(lower_expr(
+                        qualifier,
+                        None,
+                        unit_variant_tags,
+                        qualified_variant_tags,
+                    )),
+                    field: field.node.clone(),
+                }
             }
         }
         other => HirExprKind::Raw(other.clone()),
@@ -1132,6 +1152,35 @@ mod tests {
     }
 
     #[test]
+    fn lower_function_record_field_access_stays_structured_hir() {
+        let module = parse_module_from_text("fn age(user: User) -> Int\n  user.age");
+        let mut env = TypeEnv::new();
+        env.bind(
+            "age".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::pure(
+                vec![Type::Record(kea_types::RecordType {
+                    name: "User".to_string(),
+                    params: vec![],
+                    row: kea_types::RowType::closed(vec![
+                        (Label::new("age"), Type::Int),
+                        (Label::new("name"), Type::String),
+                    ]),
+                })],
+                Type::Int,
+            ))),
+        );
+
+        let lowered = lower_module(&module, &env);
+        let HirDecl::Function(function) = &lowered.declarations[0] else {
+            panic!("expected lowered function declaration");
+        };
+        assert!(matches!(
+            function.body.kind,
+            HirExprKind::FieldAccess { ref field, .. } if field == "age"
+        ));
+    }
+
+    #[test]
     fn lower_function_recognizes_binary_expressions() {
         let module = parse_module_from_text("fn inc(x: Int) -> Int\n  x + 1");
         let mut env = TypeEnv::new();
@@ -1883,6 +1932,7 @@ mod tests {
             HirExprKind::Call { func, args } => {
                 count_if_nodes(func) + args.iter().map(count_if_nodes).sum::<usize>()
             }
+            HirExprKind::FieldAccess { expr, .. } => count_if_nodes(expr),
             HirExprKind::Lambda { body, .. } => count_if_nodes(body),
             HirExprKind::Let { value, .. } => count_if_nodes(value),
             HirExprKind::Lit(_) | HirExprKind::Var(_) | HirExprKind::Raw(_) => 0,
