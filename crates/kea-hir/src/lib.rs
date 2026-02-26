@@ -680,7 +680,7 @@ type LiteralArm<'a> = (
     LiteralCaseValue,
     &'a Expr,
     Option<String>,
-    Option<ConstructorPayloadBind>,
+    Vec<ConstructorPayloadBind>,
     Option<&'a Expr>,
 );
 
@@ -899,7 +899,7 @@ fn lower_literal_case(
                 guard: arm.guard.as_deref(),
             }),
             pattern => {
-                let (values, bind_name, payload_bind) = literal_case_values_from_pattern(
+                let (values, bind_name, payload_binds) = literal_case_values_from_pattern(
                     pattern,
                     pattern_variant_tags,
                     pattern_qualified_tags,
@@ -909,7 +909,7 @@ fn lower_literal_case(
                         value,
                         &arm.body,
                         bind_name.clone(),
-                        payload_bind.clone(),
+                        payload_binds.clone(),
                         arm.guard.as_deref(),
                     ));
                 }
@@ -1114,7 +1114,7 @@ fn lower_literal_case(
         return Some(lowered.kind);
     }
 
-    for (lit, body, bind_name, payload_bind, guard) in literal_arms.into_iter().rev() {
+    for (lit, body, bind_name, payload_binds, guard) in literal_arms.into_iter().rev() {
         let mut condition = HirExpr {
             kind: HirExprKind::Binary {
                 op: BinOp::Eq,
@@ -1140,7 +1140,7 @@ fn lower_literal_case(
             );
             let mut binds = build_literal_arm_bindings(
                 bind_name.as_deref(),
-                payload_bind.as_ref(),
+                &payload_binds,
                 &scrutinee_expr,
             );
             let lowered_guard = if binds.is_empty() {
@@ -1170,7 +1170,7 @@ fn lower_literal_case(
                 then_branch: Box::new(lower_arm_body(
                     body,
                     bind_name,
-                    payload_bind,
+                    payload_binds,
                     &scrutinee_expr,
                     ty_hint.clone(),
                     unit_variant_tags,
@@ -1202,13 +1202,13 @@ fn literal_case_values_from_pattern(
 ) -> Option<(
     Vec<LiteralCaseValue>,
     Option<String>,
-    Option<ConstructorPayloadBind>,
+    Vec<ConstructorPayloadBind>,
 )> {
     match pattern {
         PatternKind::Lit(lit @ Lit::Int(_))
         | PatternKind::Lit(lit @ Lit::Float(_))
         | PatternKind::Lit(lit @ Lit::Bool(_)) => {
-            Some((vec![literal_case_value_from_lit(lit)?], None, None))
+            Some((vec![literal_case_value_from_lit(lit)?], None, Vec::new()))
         }
         PatternKind::Constructor {
             name,
@@ -1225,7 +1225,7 @@ fn literal_case_values_from_pattern(
             if args.len() != meta.arity {
                 return None;
             }
-            let mut payload_bind = None;
+            let mut payload_binds = Vec::new();
             for (idx, arg) in args.iter().enumerate() {
                 if arg.name.is_some() {
                     return None;
@@ -1233,10 +1233,10 @@ fn literal_case_values_from_pattern(
                 match &arg.pattern.node {
                     PatternKind::Wildcard => {}
                     PatternKind::Var(bind_name) => {
-                        if payload_bind.is_some() {
+                        if payload_binds.iter().any(|bind: &ConstructorPayloadBind| bind.name == *bind_name) {
                             return None;
                         }
-                        payload_bind = Some(ConstructorPayloadBind {
+                        payload_binds.push(ConstructorPayloadBind {
                             name: bind_name.clone(),
                             sum_type: meta.sum_type.clone(),
                             variant: name.clone(),
@@ -1247,26 +1247,25 @@ fn literal_case_values_from_pattern(
                     _ => return None,
                 }
             }
-            Some((vec![LiteralCaseValue::Int(meta.tag)], None, payload_bind))
+            Some((vec![LiteralCaseValue::Int(meta.tag)], None, payload_binds))
         }
         PatternKind::Or(patterns) => {
             let mut values = Vec::new();
             let mut shared_bind_name: Option<String> = None;
-            let mut shared_payload_bind: Option<ConstructorPayloadBind> = None;
+            let mut shared_payload_binds: Option<Vec<ConstructorPayloadBind>> = None;
             for branch in patterns {
-                let (branch_values, branch_bind_name, branch_payload_bind) =
+                let (branch_values, branch_bind_name, branch_payload_binds) =
                     literal_case_values_from_pattern(
                     &branch.node,
                     pattern_variant_tags,
                     pattern_qualified_tags,
                 )?;
-                match (&shared_payload_bind, branch_payload_bind) {
-                    (None, None) => {}
-                    (None, Some(payload_bind)) => shared_payload_bind = Some(payload_bind),
-                    (Some(existing), Some(payload_bind))
-                        if payload_bind_or_compatible(existing, &payload_bind) => {}
+                match &shared_payload_binds {
+                    None => shared_payload_binds = Some(branch_payload_binds.clone()),
+                    Some(existing)
+                        if payload_binds_or_compatible(existing, &branch_payload_binds) => {}
                     // OR payload patterns are only supported when all branches
-                    // agree on the same payload bind site.
+                    // agree on the same payload bind sites.
                     _ => return None,
                 }
                 match (&shared_bind_name, branch_bind_name) {
@@ -1278,10 +1277,14 @@ fn literal_case_values_from_pattern(
                 }
                 values.extend(branch_values);
             }
-            Some((values, shared_bind_name, shared_payload_bind))
+            Some((
+                values,
+                shared_bind_name,
+                shared_payload_binds.unwrap_or_default(),
+            ))
         }
         PatternKind::As { pattern, name } => {
-            let (values, inner_bind_name, inner_payload_bind) = literal_case_values_from_pattern(
+            let (values, inner_bind_name, inner_payload_binds) = literal_case_values_from_pattern(
                 &pattern.node,
                 pattern_variant_tags,
                 pattern_qualified_tags,
@@ -1289,14 +1292,14 @@ fn literal_case_values_from_pattern(
             if inner_bind_name.is_some() {
                 return None;
             }
-            if inner_payload_bind
-                .as_ref()
-                .is_some_and(|payload| payload.name == name.node)
+            if inner_payload_binds
+                .iter()
+                .any(|payload| payload.name == name.node)
             {
                 // Avoid duplicate bindings in a single lowered arm.
                 return None;
             }
-            Some((values, Some(name.node.clone()), inner_payload_bind))
+            Some((values, Some(name.node.clone()), inner_payload_binds))
         }
         _ => None,
     }
@@ -1306,7 +1309,7 @@ fn literal_case_values_from_pattern(
 fn lower_arm_body(
     body: &Expr,
     bind_name: Option<String>,
-    payload_bind: Option<ConstructorPayloadBind>,
+    payload_binds: Vec<ConstructorPayloadBind>,
     scrutinee_expr: &HirExpr,
     ty_hint: Option<Type>,
     unit_variant_tags: &UnitVariantTags,
@@ -1326,7 +1329,7 @@ fn lower_arm_body(
     );
     let mut bind_exprs = build_literal_arm_bindings(
         bind_name.as_deref(),
-        payload_bind.as_ref(),
+        &payload_binds,
         scrutinee_expr,
     );
     if bind_exprs.is_empty() {
@@ -1342,7 +1345,7 @@ fn lower_arm_body(
 
 fn build_literal_arm_bindings(
     bind_name: Option<&str>,
-    payload_bind: Option<&ConstructorPayloadBind>,
+    payload_binds: &[ConstructorPayloadBind],
     scrutinee_expr: &HirExpr,
 ) -> Vec<HirExpr> {
     let mut bindings = Vec::new();
@@ -1356,7 +1359,7 @@ fn build_literal_arm_bindings(
             span: scrutinee_expr.span,
         });
     }
-    if let Some(payload_bind) = payload_bind {
+    for payload_bind in payload_binds {
         let payload_ty = payload_bind.field_ty.clone();
         let payload_value = HirExpr {
             kind: HirExprKind::SumPayloadAccess {
@@ -1380,14 +1383,17 @@ fn build_literal_arm_bindings(
     bindings
 }
 
-fn payload_bind_or_compatible(
-    existing: &ConstructorPayloadBind,
-    candidate: &ConstructorPayloadBind,
+fn payload_binds_or_compatible(
+    existing: &[ConstructorPayloadBind],
+    candidate: &[ConstructorPayloadBind],
 ) -> bool {
-    existing.name == candidate.name
-        && existing.sum_type == candidate.sum_type
-        && existing.field_index == candidate.field_index
-        && existing.field_ty == candidate.field_ty
+    existing.len() == candidate.len()
+        && existing.iter().zip(candidate.iter()).all(|(left, right)| {
+            left.name == right.name
+                && left.sum_type == right.sum_type
+                && left.field_index == right.field_index
+                && left.field_ty == right.field_ty
+        })
 }
 
 fn bool_case_fallback_compatible(pattern: &PatternKind) -> bool {
@@ -2038,6 +2044,66 @@ mod tests {
         assert_eq!(sum_type, "Flag");
         assert_eq!(variant, "Yep");
         assert_eq!(*field_index, 0);
+    }
+
+    #[test]
+    fn lower_function_payload_constructor_multi_bind_case_binds_each_payload_slot() {
+        let module = parse_module_from_text(
+            "type Pair = Pair(Int, Int) | Nope\nfn pick(x: Pair) -> Int\n  case x\n    Pair(a, b) -> a + b\n    Nope -> 0",
+        );
+        let mut env = TypeEnv::new();
+        env.bind(
+            "pick".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::pure(
+                vec![Type::Sum(kea_types::SumType {
+                    name: "Pair".to_string(),
+                    type_args: vec![],
+                    variants: vec![
+                        ("Pair".to_string(), vec![Type::Int, Type::Int]),
+                        ("Nope".to_string(), vec![]),
+                    ],
+                })],
+                Type::Int,
+            ))),
+        );
+
+        let lowered = lower_module(&module, &env);
+        let function = lowered
+            .declarations
+            .iter()
+            .find_map(|decl| match decl {
+                HirDecl::Function(function) if function.name == "pick" => Some(function),
+                _ => None,
+            })
+            .expect("expected lowered pick function");
+
+        let then_branch = match &function.body.kind {
+            HirExprKind::If { then_branch, .. } => then_branch,
+            other => panic!("expected constructor case to lower to if, got {other:?}"),
+        };
+        let HirExprKind::Block(exprs) = &then_branch.kind else {
+            panic!("expected multi-payload branch to emit binding block");
+        };
+        assert!(
+            matches!(
+                exprs.first().map(|expr| &expr.kind),
+                Some(HirExprKind::Let {
+                    pattern: HirPattern::Var(name),
+                    ..
+                }) if name == "a"
+            ),
+            "expected first payload binding for `a`"
+        );
+        assert!(
+            matches!(
+                exprs.get(1).map(|expr| &expr.kind),
+                Some(HirExprKind::Let {
+                    pattern: HirPattern::Var(name),
+                    ..
+                }) if name == "b"
+            ),
+            "expected second payload binding for `b`"
+        );
     }
 
     #[test]
