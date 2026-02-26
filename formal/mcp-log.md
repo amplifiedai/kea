@@ -5578,3 +5578,24 @@ validated in prior higher-order closure probes).
 - Higher-order catch now has a single raw-premise theorem surface that packages
   clause Fail removal, lowered-row tail/non-Fail preservation, lowered Fail
   removal, and admissible-vs-unnecessary branch consequences.
+
+### 2026-02-26: higher-order Fail-presence/absence wrappers (proof-only)
+
+**Context**: Added practical higher-order wrappers so theorem consumers can
+enter the capstone or unnecessary branch directly from Fail-label evidence.
+
+**MCP tools used**: none (proof-only API ergonomics; no runtime semantic
+change).
+
+**Lean side**:
+- Extended `Kea/Properties/HigherOrderCatchContracts.lean` with:
+  - `higherOrderCatchTypingJudgment_capstone_of_fail_present`
+  - `higherOrderCatchUnnecessary_of_fail_absent`
+- Verified with `cd formal && lake build` (pass).
+
+**Classify**: N/A (proof-only step).
+
+**Outcome**:
+- Higher-order catch call sites can now use direct Fail label
+  presence/absence facts as entry assumptions, without first constructing
+  explicit admissibility/unnecessary witnesses.
