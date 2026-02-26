@@ -1,6 +1,6 @@
 # Brief: Remove Remaining Rill Surface from Core (Post-0b Cleanup)
 
-**Status:** ready
+**Status:** done
 **Priority:** v1-critical
 **Depends on:** 0a-lexer-parser, 0b-type-system-core
 **Blocks:** 0c-effect-handlers, 0d-codegen-pure
@@ -153,3 +153,5 @@ briefs/spec updates.
 ## Progress
 - 2026-02-26: Brief moved to `in-progress/`; workboard updated. Baseline audit confirms large remaining DataFrame/SQL/column and HKT-era core surface across `kea-ast`, `kea-syntax`, `kea-types`, and `kea-infer`.
 - **Next:** Step 1 contraction pass: remove parser/AST executable DataFrame/SQL/embedded-block surface and keep explicit unsupported-syntax diagnostics.
+- 2026-02-26: Removed remaining executable Rill substrate from core crates: `TokenKind::Frame`, parser/frame keyword branch + lexer mapping, infer trace `PipeApply`/`Frame`/`EmbeddedBlock`, and stale `sqlparser` dependency. Kept explicit parse-time unsupported diagnostics for `frame/sql/html/markdown`.
+- 2026-02-26: Acceptance gates passed (`mise run check`, `PKG=kea-syntax mise run test-pkg`, `PKG=kea-infer mise run test-pkg`, `mise run check-full`) and symbol grep gates are clean across `kea-ast`/`kea-syntax`/`kea-types`/`kea-infer`; `kea-mcp` also checked clean for removed rill surface strings.

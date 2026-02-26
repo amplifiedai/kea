@@ -9,7 +9,7 @@ See `AGENTS.md` > "Briefs and Workboard" for how to manage this file.
 ## Active
 
 Work in progress right now. Each entry should have a `## Progress` section in its brief.
-- **[Post-0b Rill surface cleanup](in-progress/0b-rill-surface-cleanup.md)** — Remove remaining inherited pipe/DataFrame/HKT-era and other unbriefed parser/typechecker substrate from core crates so 0a/0b completion matches locked Kea v0 surface.
+- *(none)*
 
 ---
 
@@ -77,6 +77,7 @@ Completed briefs. Kept for reference and design rationale.
 
 | Brief | Summary |
 |-------|---------|
+| [0b-rill-surface-cleanup](done/0b-rill-surface-cleanup.md) | Removed remaining inherited non-Kea parser/typechecker substrate from core crates (frame token path, stale infer trace variants, and `sqlparser`), with cleanup gates green across check/test/check-full. |
 | [0b-mcp-server](done/0b-mcp-server.md) | `kea-mcp` now exposes `type_check`, `diagnose`, and `get_type` over MCP stdio with structured JSON diagnostics from serializable `kea-diag` types. |
 | [0b-type-system-core](done/0b-type-system-core.md) | Type checker migrated to row-native effect contracts/unification with lattice model deleted, legacy effect syntax deprecation-only, fail-row constraints enforced, and stable module namespace resolution scaffolding for builtin/source transitions. |
 | [0a-lexer-parser](done/0a-lexer-parser.md) | Indentation-sensitive lexer/parser landed with indentation-only block parsing, snapshot corpora, and property tests for layout/error coherence. |
