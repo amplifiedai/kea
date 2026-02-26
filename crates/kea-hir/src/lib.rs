@@ -714,19 +714,34 @@ fn lower_literal_case(
             span: scrutinee.span,
         };
         if let Some(guard_expr) = guard {
-            if bind_name.is_some() {
-                return None;
-            }
+            let lowered_guard = if let Some(name) = bind_name.clone() {
+                let bind_expr = HirExpr {
+                    kind: HirExprKind::Let {
+                        pattern: HirPattern::Var(name),
+                        value: Box::new(scrutinee_expr.clone()),
+                    },
+                    ty: scrutinee_expr.ty.clone(),
+                    span: scrutinee_expr.span,
+                };
+                let guard_expr = lower_expr(
+                    guard_expr,
+                    None,
+                    unit_variant_tags,
+                    qualified_variant_tags,
+                );
+                HirExpr {
+                    kind: HirExprKind::Block(vec![bind_expr, guard_expr]),
+                    ty: Type::Bool,
+                    span: scrutinee.span,
+                }
+            } else {
+                lower_expr(guard_expr, None, unit_variant_tags, qualified_variant_tags)
+            };
             condition = HirExpr {
                 kind: HirExprKind::Binary {
                     op: BinOp::And,
                     left: Box::new(condition),
-                    right: Box::new(lower_expr(
-                        guard_expr,
-                        None,
-                        unit_variant_tags,
-                        qualified_variant_tags,
-                    )),
+                    right: Box::new(lowered_guard),
                 },
                 ty: Type::Bool,
                 span: scrutinee.span,
@@ -1318,6 +1333,44 @@ mod tests {
         assert!(matches!(
             condition.kind,
             HirExprKind::Binary { op: BinOp::And, .. }
+        ));
+    }
+
+    #[test]
+    fn lower_function_literal_case_as_guard_binds_before_guard() {
+        let module = parse_module_from_text(
+            "fn classify(x: Int) -> Int\n  case x\n    0 as n when n == 0 -> n + 1\n    _ -> 2",
+        );
+        let mut env = TypeEnv::new();
+        env.bind(
+            "classify".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::pure(vec![Type::Int], Type::Int))),
+        );
+
+        let lowered = lower_module(&module, &env);
+        let HirDecl::Function(function) = &lowered.declarations[0] else {
+            panic!("expected lowered function declaration");
+        };
+        let HirExprKind::If { condition, .. } = &function.body.kind else {
+            panic!("expected literal case with as+guard to lower to if expression");
+        };
+        let HirExprKind::Binary {
+            op: BinOp::And,
+            right,
+            ..
+        } = &condition.kind
+        else {
+            panic!("expected guard lowering to use and-composed condition");
+        };
+        let HirExprKind::Block(exprs) = &right.kind else {
+            panic!("expected as-guard lowering to bind name before guard expression");
+        };
+        assert!(matches!(
+            exprs.first().map(|expr| &expr.kind),
+            Some(HirExprKind::Let {
+                pattern: HirPattern::Var(_),
+                ..
+            })
         ));
     }
 
