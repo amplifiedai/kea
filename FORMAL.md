@@ -67,6 +67,7 @@ This work starts by cannibalizing the existing Rill formal corpus and then exten
 - **Phase 2 (active):** Added direct premise adapters in `CatchTypingBridge` (`mkCatchTypingJudgment`, `catchTypingJudgment_sound_of_premises`, noncomputable `catchTypingJudgment_bundle_of_premises`) for judgment-free entry into the bridge surface.
 - **Phase 2 (active):** `CatchTypingBridge` now includes one-hop `of_premises` projections for row-tail/non-Fail preservation and bundle facets, so raw-premise call sites can consume specific guarantees without intermediate destructuring.
 - **Phase 2 (active):** Higher-order typed-Fail catch regression is now closed on latest MCP probes: `catch` over `fn() -[Log, Fail String]> Int` is accepted with residual `Log`, while fail-absent paths still correctly reject with `E0012`.
+- **Phase 2 (active):** Added `Kea/Properties/HigherOrderCatchContracts.lean` to specialize higher-order catch theorem surfaces (`higherOrderCatchType`, `HigherOrderCatchTypingJudgment`, soundness/admissibility theorems) and align formal APIs with the now-fixed higher-order MCP behavior.
 
 The formal workspace lives at [`formal/`](formal/).
 

@@ -5468,3 +5468,28 @@ reported higher-order catch fix.
 **Outcome**:
 - Higher-order typed-Fail catch behavior now aligns with the formal
   effect-polymorphism/catch-admissibility model.
+
+### 2026-02-26: higher-order catch specialization module (proof-only)
+
+**Context**: Added explicit higher-order theorem surfaces now that the runtime
+higher-order catch regression is closed.
+
+**MCP tools used**: none (proof-only specialization, relying on the immediately
+preceding higher-order divergence-closure probes).
+
+**Lean side**:
+- Added `Kea/Properties/HigherOrderCatchContracts.lean`.
+- Introduced:
+  - `higherOrderParamType`
+  - `higherOrderCatchType`
+  - `HigherOrderCatchTypingJudgment`
+  - `higherOrderCatchTypingJudgment_sound`
+  - `higherOrderCatchTypingJudgment_admissibility_branch`
+- Imported module in `formal/Kea.lean`.
+- Verified with `cd formal && lake build` (pass).
+
+**Classify**: N/A (proof-only step).
+
+**Outcome**:
+- The higher-order catch shape now has dedicated, citable theorem surfaces
+instead of relying only on generic bridge instantiation.
