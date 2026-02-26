@@ -73,6 +73,7 @@ This work starts by cannibalizing the existing Rill formal corpus and then exten
 - **Phase 2 (active):** `HigherOrderCatchContracts` now includes one-hop bundle `of_premises` projections (`higherOrderCatchTypingJudgment_bundle_*_of_premises`) so raw-premise higher-order call sites can extract clause-removal/row-tail/non-Fail guarantees directly.
 - **Phase 2 (active):** `HigherOrderCatchContracts` now includes a combined raw-premise capstone (`higherOrderCatchTypingJudgment_capstone_of_premises`) that packages clause Fail-removal, lowered-row guarantees, and admissibility-vs-unnecessary branch facts in one theorem surface.
 - **Phase 2 (active):** Added higher-order practical entry wrappers (`higherOrderCatchTypingJudgment_capstone_of_fail_present`, `higherOrderCatchUnnecessary_of_fail_absent`) so call sites can start from direct Fail-label presence/absence evidence.
+- **Phase 2 (active):** Added a higher-order single-entry classifier (`higherOrderCatchTypingJudgment_classify_of_premises`) over `HigherOrderCatchCapstoneOutcome`, returning either full capstone consequences or the runtime-aligned `catchUnnecessary` branch without requiring an explicit admissibility premise.
 
 The formal workspace lives at [`formal/`](formal/).
 

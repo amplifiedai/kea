@@ -5599,3 +5599,24 @@ change).
 - Higher-order catch call sites can now use direct Fail label
   presence/absence facts as entry assumptions, without first constructing
   explicit admissibility/unnecessary witnesses.
+
+### 2026-02-26: higher-order single-entry classifier (proof-only)
+
+**Context**: Added a higher-order classifier that starts from raw premises and
+returns either full capstone consequences or the unnecessary branch.
+
+**MCP tools used**: none (proof-only theorem-surface consolidation).
+
+**Lean side**:
+- Extended `Kea/Properties/HigherOrderCatchContracts.lean` with:
+  - `HigherOrderCatchCapstoneOutcome`
+  - `higherOrderCatchTypingJudgment_classify_of_premises`
+- Re-targeted existing capstone wrappers to the new named outcome type.
+- Verified with `cd formal && lake build` (pass).
+
+**Classify**: N/A (proof-only step).
+
+**Outcome**:
+- Higher-order catch now has a single entry theorem over raw premises that
+  captures the runtime-aligned admissible-vs-unnecessary split while preserving
+  access to full lowering guarantees on the admissible branch.
