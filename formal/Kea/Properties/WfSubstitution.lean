@@ -1,5 +1,6 @@
 import Kea.WellFormed
 import Kea.Properties.SubstBridge
+import Kea.Properties.SubstCompose
 
 /-
   Kea.Properties.WfSubstitution — WF preservation lemmas for substitution.
@@ -74,6 +75,17 @@ theorem wellFormedRange_bindRow_bindRow
     (Subst.bindRow s rv1 row1) kctx rctx rv2 row2
     (wellFormedRange_bindRow s kctx rctx rv1 row1 h_range h_row1)
     h_row2
+
+theorem wellFormedRange_of_extends
+    (s s' : Subst) (kctx : KindCtx) (rctx : RowCtx)
+    (h_ext : Subst.Extends s s')
+    (h_range : WellFormedRange s' kctx rctx) :
+    WellFormedRange s kctx rctx := by
+  constructor
+  · intro v ty h_lookup
+    exact h_range.1 v ty (h_ext.typeExt v ty h_lookup)
+  · intro rv row h_lookup
+    exact h_range.2 rv row (h_ext.rowExt rv row h_lookup)
 
 end Subst
 
