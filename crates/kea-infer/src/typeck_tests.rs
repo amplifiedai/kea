@@ -7550,6 +7550,41 @@ fn infer_expr_effects_let_alias_lambda_preserves_callback_effect_constraints() {
 }
 
 #[test]
+fn infer_expr_effects_let_call_result_preserves_returned_callable_effect_row() {
+    let mut env = TypeEnv::new();
+    env.bind(
+        "make_emitter".to_string(),
+        TypeScheme::mono(Type::Function(FunctionType {
+            params: vec![],
+            ret: Box::new(Type::Function(FunctionType {
+                params: vec![Type::Int],
+                ret: Box::new(Type::Unit),
+                effects: EffectRow::closed(vec![(Label::new("Emit"), Type::Unit)]),
+            })),
+            effects: EffectRow::pure(),
+        })),
+    );
+
+    let trap = make_fn_decl(
+        "trap",
+        vec![],
+        block(vec![
+            let_bind("f", call(var("make_emitter"), vec![])),
+            call(var("f"), vec![lit_int(42)]),
+        ]),
+    );
+    let row = infer_fn_decl_effect_row(&trap, &env);
+    assert!(
+        row.row.has(&Label::new("Emit")),
+        "expected returned callable effect row to propagate Emit, got {row:?}"
+    );
+    assert!(
+        !row.row.has(&Label::new("IO")),
+        "expected no phantom IO from let-bound call result, got {row:?}"
+    );
+}
+
+#[test]
 fn validate_declared_fn_effect_accepts_weaker_or_equal_inferred_effect() {
     let mut fn_decl = make_fn_decl("f", vec![], lit_int(1));
     fn_decl.effect_annotation = Some(sp(effect_row_annotation(vec![("IO", None)], None)));
