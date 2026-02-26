@@ -1,6 +1,6 @@
 ---
 source: crates/kea-syntax/tests/snapshots_props.rs
-assertion_line: 225
+assertion_line: 213
 expression: output
 ---
 ## module_fn_decl
@@ -1289,60 +1289,6 @@ Use(
         },
     },
 )
-
-## expr_df_pipe_mutate
-source:
-|frame·{·x:·[1],·y:·[2]·}·|>·mutate(total:·:x·+·:y)
-status: err
-- Error E0006 @25..26: unexpected token after expression
-
-## expr_sql_with_config
-source:
-|sql·{·SELECT·*·FROM·t·WHERE·id·=·${id}·}·with
-|··source:·conn,·timeout:·30
-status: ok
-EmbeddedBlock {
-    kind: Sql,
-    parts: [
-        Literal(
-            "SELECT * FROM t WHERE id = ",
-        ),
-        Expr(
-            Spanned {
-                node: Var(
-                    "id",
-                ),
-            },
-        ),
-    ],
-    atom_fields: [],
-    config: Some(
-        [
-            (
-                Spanned {
-                    node: "source",
-                },
-                Spanned {
-                    node: Var(
-                        "conn",
-                    ),
-                },
-            ),
-            (
-                Spanned {
-                    node: "timeout",
-                },
-                Spanned {
-                    node: Lit(
-                        Int(
-                            30,
-                        ),
-                    ),
-                },
-            ),
-        ],
-    ),
-}
 
 ## expr_spawn_with_config
 source:

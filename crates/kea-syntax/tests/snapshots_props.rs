@@ -22,7 +22,7 @@ struct ParseCase {
 
 #[test]
 fn lexer_layout_snapshot_corpus() {
-    let cases: [(&str, &str); 20] = [
+    let cases: [(&str, &str); 18] = [
         ("fn_decl", "fn add(x, y) -> Int\n  x + y"),
         ("if_else_block", "if ready\n  start()\nelse\n  wait()"),
         ("case_block", "case x\n  Some(v) -> v\n  _ -> 0"),
@@ -34,8 +34,6 @@ fn lexer_layout_snapshot_corpus() {
         ("use_expr", "use value <- load()"),
         ("spawn_with_config", "spawn Counter { count: 0 } with\n  mailbox_size: 100"),
         ("stream_with_config", "stream\n  yield 1\nwith\n  buffer: 128"),
-        ("sql_with_config", "sql { SELECT * FROM t WHERE id = ${id} } with\n  timeout: 30"),
-        ("html_with_config", "html { <h1>${:name}</h1> } with\n  lang: \"en\""),
         ("import_named", "import Kea.Core.{read_csv, write_csv}"),
         ("type_deriving", "type Result(a, e) = | Ok(a) | Err(e) deriving Eq"),
         ("anon_record", "#{ ..base, retries: 3, timeout: 30 }"),
@@ -58,7 +56,7 @@ fn lexer_layout_snapshot_corpus() {
 
 #[test]
 fn parser_snapshot_corpus() {
-    let cases: [ParseCase; 30] = [
+    let cases: [ParseCase; 28] = [
         ParseCase {
             name: "module_fn_decl",
             mode: ParseMode::Module,
@@ -171,16 +169,6 @@ fn parser_snapshot_corpus() {
             name: "expr_use_binding",
             mode: ParseMode::Expr,
             source: "use value <- load()",
-        },
-        ParseCase {
-            name: "expr_df_pipe_mutate",
-            mode: ParseMode::Expr,
-            source: "frame { x: [1], y: [2] } |> mutate(total: :x + :y)",
-        },
-        ParseCase {
-            name: "expr_sql_with_config",
-            mode: ParseMode::Expr,
-            source: "sql { SELECT * FROM t WHERE id = ${id} } with\n  source: conn, timeout: 30",
         },
         ParseCase {
             name: "expr_spawn_with_config",

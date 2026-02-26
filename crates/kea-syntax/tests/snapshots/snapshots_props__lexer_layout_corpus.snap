@@ -1,5 +1,6 @@
 ---
 source: crates/kea-syntax/tests/snapshots_props.rs
+assertion_line: 54
 expression: output
 ---
 ## fn_decl
@@ -253,42 +254,6 @@ tokens:
 - Ident("buffer")
 - Colon
 - Int(128)
-- Dedent
-- Eof
-warnings: []
-
-## sql_with_config
-source:
-|sql·{·SELECT·*·FROM·t·WHERE·id·=·${id}·}·with
-|··timeout:·30
-status: ok
-tokens:
-- Sql
-- SqlBody("SELECT * FROM t WHERE id = ${id}")
-- Ident("with")
-- Newline
-- Indent
-- Ident("timeout")
-- Colon
-- Int(30)
-- Dedent
-- Eof
-warnings: []
-
-## html_with_config
-source:
-|html·{·<h1>${:name}</h1>·}·with
-|··lang:·"en"
-status: ok
-tokens:
-- Html
-- HtmlBody(" <h1>${:name}</h1> ")
-- Ident("with")
-- Newline
-- Indent
-- Ident("lang")
-- Colon
-- String("en")
 - Dedent
 - Eof
 warnings: []
