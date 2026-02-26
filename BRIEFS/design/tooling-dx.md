@@ -725,6 +725,250 @@ decisions, and identify whether the bottleneck is handler dispatch,
 allocation, or pure computation — all through structured MCP tools
 without reading source code heuristically.
 
+#### Time-travel debugging with effect replay
+
+Because effects are declared and handlers are scoped, the debugger can
+RECORD effect operations and REPLAY them. This is time-travel debugging
+that actually works — not by recording every memory write (like rr), but
+by recording only the effect boundary crossings.
+
+Consider: a function with signature `-[Log, State S, Fail E]>` has
+exactly three kinds of observable behaviour. The debugger records:
+
+```
+TRACE process_order(Order { id: 42 })
+  [1] State.get() → Stats { count: 6 }
+  [2] Log.log(Info, "Processing order 42")
+  [3] State.put(Stats { count: 7 })
+  [4] RETURN Receipt { id: 42, total: 199.99 }
+```
+
+This trace is COMPLETE. Because the function can only do `Log`, `State`,
+and `Fail`, there are no hidden side effects. The trace captures every
+observable action. And it's REPLAYABLE — provide the same effect
+responses and the function produces the same result. This is
+deterministic replay for free, with no instrumentation beyond the effect
+boundary.
+
+For debugging, this means:
+- **Reverse stepping.** Walk backwards through effect operations.
+  "What was the state before `State.put`?" → look at the previous
+  `State.get` result.
+- **Counterfactual debugging.** "What if `State.get` had returned
+  `Stats { count: 0 }` instead?" Replay with modified responses.
+  No re-execution of the real system.
+- **Bug reproduction from traces.** Ship a trace file, replay locally
+  with mock handlers providing the recorded responses. Exact
+  reproduction without access to the production environment.
+- **Regression traces.** Record effect traces in CI. When a test
+  breaks, diff the before/after traces. The diff shows exactly which
+  effect operation changed — "the second `Log.log` call now passes
+  `Warning` instead of `Info`."
+
+The key insight: effect-annotated code has a natural serialisation
+boundary at every effect operation. Traditional time-travel debuggers
+fight the entire memory model. Kea's debugger only needs to record
+the effect protocol.
+
+```
+(kea-debug) replay trace.kea-trace
+  Loaded 847 effect operations across 23 function calls
+  ⏪ reverse-step: State.put(Stats { count: 7 }) at orders.kea:45
+  ⏪ reverse-step: Log.log(Info, "Processing order 42") at orders.kea:43
+  ⏪ reverse-step: State.get() → Stats { count: 6 } at orders.kea:42
+```
+
+**MCP:** `debug_record_trace` captures effect traces. `debug_replay`
+replays with modified responses. `debug_diff_traces` compares two traces.
+An agent can reproduce and diagnose bugs from trace files without ever
+running the failing code.
+
+#### Grammar-block debugging
+
+Grammar blocks (KERNEL §14) let Kea embed DSLs — parser combinators,
+SQL, regex, protocol definitions — as first-class syntax. The debugger
+understands these:
+
+**Stepping through DSL lowering:**
+When a Grammar block lowers a DSL expression to Kea IR, the debugger
+can show each lowering step. If you're writing a parser combinator
+library and a parse fails, you can see which combinator rejected, what
+input remained, and how the combinators composed:
+
+```
+(kea-debug) step-grammar Parser
+  Grammar: Parser combinator block at grammar.kea:12
+  Input: "Content-Type: text/html\r\n"
+
+  Step 1: string("Content-") → MATCH, consumed 8 bytes
+  Step 2: alpha_word()       → MATCH "Type", consumed 4 bytes
+  Step 3: string(": ")       → MATCH, consumed 2 bytes
+  Step 4: mime_type()        → MATCH "text/html", consumed 9 bytes
+  Step 5: crlf()             → MATCH, consumed 2 bytes
+  Result: Header { name: "Content-Type", value: "text/html" }
+```
+
+**Protocol debugging:**
+A Grammar block defining a wire protocol can be debugged at the
+protocol level — showing message framing, field decoding, and state
+machine transitions rather than byte-level operations:
+
+```
+(kea-debug) step-grammar Protocol
+  Protocol: HTTP/1.1 parser at http.kea:45
+  State: READING_HEADERS
+  Bytes consumed: 247 / 1024
+  Next expected: header-line | blank-line (transition to READING_BODY)
+  Current headers: [("Host", "example.com"), ("Content-Length", "42")]
+```
+
+This is the compiler-writer's debugger. When you're implementing a
+language inside Kea (using Grammar blocks for the syntax), the debugger
+speaks your DSL's language, not Kea's AST language.
+
+#### Distributed debugging for actor systems
+
+Kea's effect system extends to actors (KERNEL §15) — isolated
+processes communicating via typed message channels. The debugger
+supports multi-actor debugging:
+
+**Actor topology view:**
+```
+(kea-debug) show-actors
+  Actor topology:
+  ┌─────────────┐     Send Order      ┌──────────────┐
+  │ OrderRouter  │──────────────────→  │ OrderWorker-1│
+  │ -[Recv Req]> │                     │ -[State, IO]>│
+  └─────────────┘                     └──────────────┘
+        │           Send Order      ┌──────────────┐
+        └────────────────────────→  │ OrderWorker-2│
+                                    │ -[State, IO]>│
+                                    └──────────────┘
+  Each actor's capabilities are visible. OrderRouter can only receive
+  and route — it has no IO, no State. Workers have IO and State but
+  those effects are SCOPED to the actor — no shared mutable state.
+```
+
+**Cross-actor tracing:**
+Because `Send` is an effect, message passing is visible in effect
+traces. The debugger can follow a request across actor boundaries:
+
+```
+(kea-debug) trace-message order-42
+  [OrderRouter] Recv(OrderRequest { id: 42 }) at t=0.001ms
+  [OrderRouter] Send(OrderWorker-1, Order { id: 42 }) at t=0.003ms
+  [OrderWorker-1] Recv(Order { id: 42 }) at t=0.015ms
+  [OrderWorker-1] IO.write_db(order) at t=0.127ms
+  [OrderWorker-1] Send(OrderRouter, Receipt { id: 42 }) at t=0.130ms
+```
+
+**Deadlock detection:**
+The effect system knows which actors can `Send` to which others (from
+the type signatures). A tool can build the communication graph
+statically and detect potential deadlock cycles — before the code runs.
+The debugger can flag when a runtime message pattern is approaching a
+known deadlock topology.
+
+#### Effect profiler
+
+Not just a debugger — a profiler that understands effects:
+
+**Per-effect-operation profiling:**
+```
+(kea-debug) profile run_pipeline
+  Total: 47.3ms
+
+  By effect operation:
+    IO.read_file     3 calls   12.1ms  25.6%
+    IO.write_file    1 call     8.4ms  17.8%
+    State.get       47 calls    0.2ms   0.4%
+    State.put       12 calls    0.1ms   0.2%
+    Log.log         28 calls    1.8ms   3.8%
+    Pure computation           24.7ms  52.2%
+
+  Hottest pure functions:
+    validate_order    8.3ms  (called 3x, pure →)
+    compute_tax       6.1ms  (called 3x, pure →)
+```
+
+This is qualitatively different from a traditional profiler. You're
+not seeing "42% in `process_order`" — you're seeing "25.6% reading
+files, 52.2% pure computation, 3.8% logging." The effect boundaries
+give you a natural cost attribution that maps to architectural
+decisions, not code locations.
+
+**Handler overhead measurement:**
+```
+  Handler overhead analysis:
+    with_stdout_logger: +0.3ms (IO.stdout cost, 28 calls)
+    with_stats:         +0.0ms (tail-resumptive, inlined)
+    catch:              +0.0ms (no actual failure occurred)
+
+  Suggestion: with_stdout_logger accounts for 3.8% of runtime.
+  Consider batching log writes or using an async handler.
+```
+
+The profiler knows which overhead is from the handler mechanism itself
+vs the handler's implementation. It can tell you "the effect system
+adds 0.0ms overhead here because the handler was inlined" or "this
+handler uses continuation capture, adding 0.3ms per invocation."
+
+**Comparative profiling:**
+Because handlers are swappable, the profiler can automatically benchmark
+different handler implementations for the same effect:
+
+```
+(kea-debug) profile-handlers Log
+  Comparing Log handler implementations:
+
+  stdout_logger:    1.8ms / 28 calls (64μs/call)
+  file_logger:      3.2ms / 28 calls (114μs/call, includes IO.write_file)
+  null_logger:      0.0ms / 28 calls (0μs/call, handler discards)
+  batched_logger:   0.4ms / 28 calls (14μs/call, flushes every 10)
+
+  Recommendation: batched_logger is 4.5x faster than stdout_logger
+  with identical output (verified: same Log.log calls).
+```
+
+No other language can do this. Swapping implementations at a typed
+boundary and benchmarking them automatically — with the type system
+guaranteeing the swap is safe — is unique to algebraic effects.
+
+**MCP profiler tools:**
+- `profile_by_effect` — cost breakdown by effect operation
+- `profile_handler_overhead` — handler mechanism cost analysis
+- `profile_compare_handlers` — benchmark alternative implementations
+- `profile_pure_hotspots` — identify expensive pure functions for
+  memoisation candidates (feeds back into the memoisation analysis)
+
+#### Collaborative debugging (agent + human)
+
+The MCP debugger interface enables a new debugging workflow: an agent
+and a human debugging together. The agent has structured access to
+effect traces, handler stacks, memory layouts, and IR correlation.
+The human has visual context and domain knowledge. They share a
+debugging session:
+
+```
+Human: "The order total is wrong for order 42"
+Agent: [debug_effect_context at orders.kea:42]
+  → State.get returns Stats { count: 6 }, no State.put between get and
+    the total calculation. State is not the issue.
+Agent: [debug_record_trace for process_order(order_42)]
+  → Trace shows compute_tax called with Tax.rate = 0.0
+  → compute_tax is pure (→) so the issue is its input, not a side effect
+Agent: "The tax rate is 0.0. This is a pure function so the bug must be
+  in how the rate was loaded. Checking the IO trace..."
+Agent: [debug_replay with modified Tax.rate = 0.08]
+  → Total changes from 199.99 to 215.99. Confirmed: tax rate is the issue.
+```
+
+The agent narrows the search space using structural guarantees (effect
+signatures, purity, handler scoping) that would take a human minutes
+to reason through. The human provides the key insight ("the total is
+wrong") and validates the fix. This is debugging at machine speed
+with human judgment.
+
 #### The meta-insight
 
 Every analysis above is LOCAL. Read the function signature, know the
