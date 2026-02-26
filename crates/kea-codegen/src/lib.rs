@@ -13,6 +13,7 @@ use cranelift::prelude::{
 };
 use cranelift_codegen::ir::condcodes::{FloatCC, IntCC};
 use cranelift_codegen::{isa, settings};
+use cranelift_codegen::isa::CallConv;
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{FuncId, Linkage, Module};
 use cranelift_object::{ObjectBuilder, ObjectModule};
@@ -108,6 +109,7 @@ pub struct FunctionPassStats {
     pub retain_count: usize,
     pub release_count: usize,
     pub alloc_count: usize,
+    pub tail_self_call_count: usize,
     pub handler_enter_count: usize,
     pub handler_exit_count: usize,
     pub resume_count: usize,
@@ -366,7 +368,14 @@ fn compile_into_module<M: Module>(
                     }
                 }
 
-                for inst in &block.instructions {
+                let tail_self_call = detect_tail_self_call(&function.name, block);
+                let instruction_count = if tail_self_call.is_some() {
+                    block.instructions.len().saturating_sub(1)
+                } else {
+                    block.instructions.len()
+                };
+
+                for inst in block.instructions.iter().take(instruction_count) {
                     lower_instruction(
                         module,
                         &mut builder,
@@ -376,14 +385,14 @@ fn compile_into_module<M: Module>(
                         &func_ids,
                     )?;
                 }
-                lower_terminator(
-                    &mut builder,
-                    &function.name,
-                    &block.terminator,
-                    &function.signature.ret,
-                    &values,
-                    &block_map,
-                )?;
+                let terminator_ctx = LowerTerminatorCtx {
+                    function_name: &function.name,
+                    return_ty: &function.signature.ret,
+                    values: &values,
+                    block_map: &block_map,
+                    func_ids: &func_ids,
+                };
+                lower_terminator(module, &mut builder, block, &terminator_ctx)?;
             }
             builder.seal_all_blocks();
             builder.finalize();
@@ -469,6 +478,14 @@ fn build_signature<M: Module>(
     function: &MirFunction,
 ) -> Result<cranelift_codegen::ir::Signature, CodegenError> {
     let mut signature = module.make_signature();
+    if function.name != "main"
+        && function
+            .blocks
+            .iter()
+            .any(|block| detect_tail_self_call(&function.name, block).is_some())
+    {
+        signature.call_conv = CallConv::Tail;
+    }
 
     for param in &function.signature.params {
         let ty = clif_type(param)?;
@@ -739,40 +756,62 @@ fn b1_to_i8(builder: &mut FunctionBuilder, predicate: Value) -> Value {
     }
 }
 
+struct LowerTerminatorCtx<'a> {
+    function_name: &'a str,
+    return_ty: &'a Type,
+    values: &'a BTreeMap<MirValueId, Value>,
+    block_map: &'a BTreeMap<kea_mir::MirBlockId, cranelift::prelude::Block>,
+    func_ids: &'a BTreeMap<String, FuncId>,
+}
+
 fn lower_terminator(
+    module: &mut impl Module,
     builder: &mut FunctionBuilder,
-    function_name: &str,
-    terminator: &MirTerminator,
-    return_ty: &Type,
-    values: &BTreeMap<MirValueId, Value>,
-    block_map: &BTreeMap<kea_mir::MirBlockId, cranelift::prelude::Block>,
+    block: &kea_mir::MirBlock,
+    ctx: &LowerTerminatorCtx<'_>,
 ) -> Result<(), CodegenError> {
-    match terminator {
+    if let Some(tail_call) = detect_tail_self_call(ctx.function_name, block) {
+        let callee_id = *ctx
+            .func_ids
+            .get(ctx.function_name)
+            .ok_or_else(|| CodegenError::UnknownFunction {
+                function: ctx.function_name.to_string(),
+            })?;
+        let callee_ref = module.declare_func_in_func(callee_id, builder.func);
+        let mut lowered_args = Vec::with_capacity(tail_call.args.len());
+        for arg in &tail_call.args {
+            lowered_args.push(get_value(ctx.values, ctx.function_name, arg)?);
+        }
+        builder.ins().return_call(callee_ref, &lowered_args);
+        return Ok(());
+    }
+
+    match &block.terminator {
         MirTerminator::Return { value } => {
-            if *return_ty == Type::Unit {
+            if *ctx.return_ty == Type::Unit {
                 builder.ins().return_(&[]);
                 return Ok(());
             }
 
             let value_id = value.as_ref().ok_or_else(|| CodegenError::UnsupportedMir {
-                function: function_name.to_string(),
+                function: ctx.function_name.to_string(),
                 detail: "non-unit function returned without value".to_string(),
             })?;
-            let value = get_value(values, function_name, value_id)?;
+            let value = get_value(ctx.values, ctx.function_name, value_id)?;
             builder.ins().return_(&[value]);
             Ok(())
         }
         MirTerminator::Jump { target, args } => {
             let target_block =
-                *block_map
+                *ctx.block_map
                     .get(target)
                     .ok_or_else(|| CodegenError::UnsupportedMir {
-                        function: function_name.to_string(),
+                        function: ctx.function_name.to_string(),
                         detail: format!("jump target block {:?} not found", target),
                     })?;
             let mut lowered_args = Vec::with_capacity(args.len());
             for arg in args {
-                lowered_args.push(get_value(values, function_name, arg)?);
+                lowered_args.push(get_value(ctx.values, ctx.function_name, arg)?);
             }
             builder.ins().jump(target_block, &lowered_args);
             Ok(())
@@ -782,19 +821,19 @@ fn lower_terminator(
             then_block,
             else_block,
         } => {
-            let cond = get_value(values, function_name, condition)?;
+            let cond = get_value(ctx.values, ctx.function_name, condition)?;
             let then_clif =
-                *block_map
+                *ctx.block_map
                     .get(then_block)
                     .ok_or_else(|| CodegenError::UnsupportedMir {
-                        function: function_name.to_string(),
+                        function: ctx.function_name.to_string(),
                         detail: format!("then block {:?} not found", then_block),
                     })?;
             let else_clif =
-                *block_map
+                *ctx.block_map
                     .get(else_block)
                     .ok_or_else(|| CodegenError::UnsupportedMir {
-                        function: function_name.to_string(),
+                        function: ctx.function_name.to_string(),
                         detail: format!("else block {:?} not found", else_block),
                     })?;
 
@@ -813,6 +852,35 @@ fn lower_terminator(
                 .trap(cranelift_codegen::ir::TrapCode::unwrap_user(1));
             Ok(())
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TailSelfCall {
+    args: Vec<MirValueId>,
+}
+
+fn detect_tail_self_call(function_name: &str, block: &kea_mir::MirBlock) -> Option<TailSelfCall> {
+    let MirInst::Call {
+        callee: MirCallee::Local(callee_name),
+        args,
+        result,
+        ..
+    } = block.instructions.last()?
+    else {
+        return None;
+    };
+
+    if callee_name != function_name {
+        return None;
+    }
+
+    match (&block.terminator, result) {
+        (MirTerminator::Return { value: Some(ret) }, Some(call_result)) if ret == call_result => {
+            Some(TailSelfCall { args: args.clone() })
+        }
+        (MirTerminator::Return { value: None }, None) => Some(TailSelfCall { args: args.clone() }),
+        _ => None,
     }
 }
 
@@ -867,6 +935,9 @@ fn collect_function_stats(function: &MirFunction) -> FunctionPassStats {
     };
 
     for block in &function.blocks {
+        if detect_tail_self_call(&function.name, block).is_some() {
+            stats.tail_self_call_count += 1;
+        }
         for inst in &block.instructions {
             match inst {
                 MirInst::Retain { .. } => stats.retain_count += 1,
@@ -1051,6 +1122,65 @@ mod tests {
         }
     }
 
+    fn sample_tail_recursive_module() -> MirModule {
+        MirModule {
+            functions: vec![MirFunction {
+                name: "countdown".to_string(),
+                signature: MirFunctionSignature {
+                    params: vec![Type::Int],
+                    ret: Type::Int,
+                    effects: EffectRow::pure(),
+                },
+                entry: MirBlockId(0),
+                blocks: vec![MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions: vec![MirInst::Call {
+                        callee: MirCallee::Local("countdown".to_string()),
+                        args: vec![MirValueId(0)],
+                        result: Some(MirValueId(1)),
+                        cc_manifest_id: "default".to_string(),
+                    }],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirValueId(1)),
+                    },
+                }],
+            }],
+        }
+    }
+
+    fn sample_tail_recursive_with_release_prefix_module() -> MirModule {
+        MirModule {
+            functions: vec![MirFunction {
+                name: "drop_and_recurse".to_string(),
+                signature: MirFunctionSignature {
+                    params: vec![Type::Int],
+                    ret: Type::Int,
+                    effects: EffectRow::pure(),
+                },
+                entry: MirBlockId(0),
+                blocks: vec![MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions: vec![
+                        MirInst::Release {
+                            value: MirValueId(0),
+                        },
+                        MirInst::Call {
+                            callee: MirCallee::Local("drop_and_recurse".to_string()),
+                            args: vec![MirValueId(0)],
+                            result: Some(MirValueId(1)),
+                            cc_manifest_id: "default".to_string(),
+                        },
+                    ],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirValueId(1)),
+                    },
+                }],
+            }],
+        }
+    }
+
     #[test]
     fn validate_abi_manifest_reports_missing_function() {
         let module = sample_stats_module();
@@ -1081,6 +1211,26 @@ mod tests {
         assert_eq!(function.retain_count, 1);
         assert_eq!(function.release_count, 1);
         assert_eq!(function.effect_op_direct_count, 1);
+    }
+
+    #[test]
+    fn collect_pass_stats_counts_tail_self_calls() {
+        let module = sample_tail_recursive_module();
+        let stats = collect_pass_stats(&module);
+
+        assert_eq!(stats.per_function.len(), 1);
+        let function = &stats.per_function[0];
+        assert_eq!(function.tail_self_call_count, 1);
+    }
+
+    #[test]
+    fn collect_pass_stats_detects_tail_self_call_with_release_prefix() {
+        let module = sample_tail_recursive_with_release_prefix_module();
+        let stats = collect_pass_stats(&module);
+
+        assert_eq!(stats.per_function.len(), 1);
+        let function = &stats.per_function[0];
+        assert_eq!(function.tail_self_call_count, 1);
     }
 
     #[test]
@@ -1123,6 +1273,18 @@ mod tests {
         backend
             .compile_module(&module, &manifest, &BackendConfig::default())
             .expect("branch lowering should compile");
+    }
+
+    #[test]
+    fn cranelift_backend_compiles_tail_self_call_with_return_call() {
+        let module = sample_tail_recursive_module();
+        let manifest = default_abi_manifest(&module);
+        let backend = CraneliftBackend;
+
+        let artifact = backend
+            .compile_module(&module, &manifest, &BackendConfig::default())
+            .expect("tail self-call lowering should compile");
+        assert_eq!(artifact.stats.per_function[0].tail_self_call_count, 1);
     }
 
     #[test]
