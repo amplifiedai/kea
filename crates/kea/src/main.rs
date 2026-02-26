@@ -610,6 +610,20 @@ mod tests {
         let _ = std::fs::remove_file(source_path);
     }
 
+    #[test]
+    fn compile_and_execute_unqualified_unit_enum_case_exit_code() {
+        let source_path = write_temp_source(
+            "type Color = Red | Green\n\nfn main() -> Int\n  case Red\n    Red -> 5\n    Green -> 9\n",
+            "kea-cli-unit-enum-unqualified-case",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 5);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
     fn write_temp_source(contents: &str, prefix: &str, extension: &str) -> PathBuf {
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
