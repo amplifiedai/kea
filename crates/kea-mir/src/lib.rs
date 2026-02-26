@@ -121,6 +121,14 @@ pub enum MirInst {
         sum: MirValueId,
         sum_type: String,
     },
+    SumPayloadLoad {
+        dest: MirValueId,
+        sum: MirValueId,
+        sum_type: String,
+        variant: String,
+        field_index: usize,
+        field_ty: Type,
+    },
     RecordFieldLoad {
         dest: MirValueId,
         record: MirValueId,
@@ -270,6 +278,7 @@ impl MirInst {
                 | MirInst::RecordInit { .. }
                 | MirInst::SumInit { .. }
                 | MirInst::SumTagLoad { .. }
+                | MirInst::SumPayloadLoad { .. }
                 | MirInst::RecordFieldLoad { .. }
                 | MirInst::CowUpdate { .. }
         )
@@ -583,6 +592,24 @@ impl FunctionLoweringCtx {
                     record,
                     record_type,
                     field: field.clone(),
+                    field_ty: expr.ty.clone(),
+                });
+                Some(dest)
+            }
+            HirExprKind::SumPayloadAccess {
+                expr: base,
+                sum_type,
+                variant,
+                field_index,
+            } => {
+                let sum = self.lower_expr(base)?;
+                let dest = self.new_value();
+                self.emit_inst(MirInst::SumPayloadLoad {
+                    dest: dest.clone(),
+                    sum,
+                    sum_type: sum_type.clone(),
+                    variant: variant.clone(),
+                    field_index: *field_index,
                     field_ty: expr.ty.clone(),
                 });
                 Some(dest)
@@ -1383,6 +1410,59 @@ mod tests {
                 ref fields,
                 ..
             } if sum_type == "Option" && variant == "Some" && fields.len() == 1
+        ));
+    }
+
+    #[test]
+    fn lower_hir_module_lowers_sum_payload_access_expression() {
+        let option_ty = Type::Sum(kea_types::SumType {
+            name: "Option".to_string(),
+            type_args: vec![Type::Int],
+            variants: vec![
+                ("Some".to_string(), vec![Type::Int]),
+                ("None".to_string(), vec![]),
+            ],
+        });
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "unwrap_some".to_string(),
+                params: vec![HirParam {
+                    name: Some("opt".to_string()),
+                    span: kea_ast::Span::synthetic(),
+                }],
+                body: HirExpr {
+                    kind: HirExprKind::SumPayloadAccess {
+                        expr: Box::new(HirExpr {
+                            kind: HirExprKind::Var("opt".to_string()),
+                            ty: option_ty.clone(),
+                            span: kea_ast::Span::synthetic(),
+                        }),
+                        sum_type: "Option".to_string(),
+                        variant: "Some".to_string(),
+                        field_index: 0,
+                    },
+                    ty: Type::Int,
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::pure(vec![option_ty], Type::Int)),
+                effects: EffectRow::pure(),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let mir = lower_hir_module(&hir);
+        let function = &mir.functions[0];
+        assert_eq!(function.blocks[0].instructions.len(), 1);
+        assert!(matches!(
+            function.blocks[0].instructions[0],
+            MirInst::SumPayloadLoad {
+                sum: MirValueId(0),
+                ref sum_type,
+                ref variant,
+                field_index: 0,
+                field_ty: Type::Int,
+                ..
+            } if sum_type == "Option" && variant == "Some"
         ));
     }
 

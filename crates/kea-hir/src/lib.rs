@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use kea_ast::{
     BinOp, CaseArm, DeclKind, Expr, ExprDecl, ExprKind, FnDecl, Lit, Module, Param, Pattern,
-    PatternKind, Span, UnaryOp,
+    PatternKind, Span, TypeAnnotation, UnaryOp,
 };
 use kea_infer::typeck::TypeEnv;
 use kea_types::{EffectRow, FunctionType, Type};
@@ -55,6 +55,12 @@ pub enum HirExprKind {
         record_type: String,
         fields: Vec<(String, HirExpr)>,
     },
+    SumPayloadAccess {
+        expr: Box<HirExpr>,
+        sum_type: String,
+        variant: String,
+        field_index: usize,
+    },
     FieldAccess {
         expr: Box<HirExpr>,
         field: String,
@@ -98,8 +104,15 @@ pub enum HirPattern {
 
 type UnitVariantTags = BTreeMap<String, i64>;
 type QualifiedUnitVariantTags = BTreeMap<(String, String), i64>;
-type PatternVariantTags = BTreeMap<String, i64>;
-type QualifiedPatternVariantTags = BTreeMap<(String, String), i64>;
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PatternVariantMeta {
+    tag: i64,
+    sum_type: String,
+    arity: usize,
+    field_types: Vec<Type>,
+}
+type PatternVariantTags = BTreeMap<String, PatternVariantMeta>;
+type QualifiedPatternVariantTags = BTreeMap<(String, String), PatternVariantMeta>;
 type KnownRecordDefs = BTreeSet<String>;
 
 fn is_namespace_qualifier(name: &str) -> bool {
@@ -120,6 +133,20 @@ fn expr_decl_to_fn_decl(expr: &ExprDecl) -> FnDecl {
         testing_tags: expr.testing_tags.clone(),
         span: expr.span,
         where_clause: expr.where_clause.clone(),
+    }
+}
+
+fn lower_pattern_type_annotation(annotation: &TypeAnnotation) -> Type {
+    match annotation {
+        TypeAnnotation::Named(name) => match name.as_str() {
+            "Int" => Type::Int,
+            "Float" => Type::Float,
+            "Bool" => Type::Bool,
+            "String" => Type::String,
+            "Unit" => Type::Unit,
+            _ => Type::Dynamic,
+        },
+        _ => Type::Dynamic,
     }
 }
 
@@ -145,9 +172,22 @@ fn collect_variant_tags(
 
         for (idx, variant) in def.variants.iter().enumerate() {
             let tag = idx as i64;
-            pattern_qualified.insert((def.name.node.clone(), variant.name.node.clone()), tag);
+            let meta = PatternVariantMeta {
+                tag,
+                sum_type: def.name.node.clone(),
+                arity: variant.fields.len(),
+                field_types: variant
+                    .fields
+                    .iter()
+                    .map(|field| lower_pattern_type_annotation(&field.ty.node))
+                    .collect(),
+            };
+            pattern_qualified.insert(
+                (def.name.node.clone(), variant.name.node.clone()),
+                meta.clone(),
+            );
             if pattern_unqualified
-                .insert(variant.name.node.clone(), tag)
+                .insert(variant.name.node.clone(), meta)
                 .is_some()
             {
                 pattern_duplicates.insert(variant.name.node.clone());
@@ -627,6 +667,23 @@ enum LiteralCaseValue {
     Bool(bool),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ConstructorPayloadBind {
+    name: String,
+    sum_type: String,
+    variant: String,
+    field_index: usize,
+    field_ty: Type,
+}
+
+type LiteralArm<'a> = (
+    LiteralCaseValue,
+    &'a Expr,
+    Option<String>,
+    Option<ConstructorPayloadBind>,
+    Option<&'a Expr>,
+);
+
 #[allow(clippy::too_many_arguments)]
 fn lower_bool_case(
     scrutinee: &Expr,
@@ -828,8 +885,7 @@ fn lower_literal_case(
         },
     }
 
-    let mut literal_arms: Vec<(LiteralCaseValue, &Expr, Option<String>, Option<&Expr>)> =
-        Vec::new();
+    let mut literal_arms: Vec<LiteralArm<'_>> = Vec::new();
     let mut fallback_arms: Vec<LiteralFallbackArm<'_>> = Vec::new();
     for arm in arms {
         match &arm.pattern.node {
@@ -843,13 +899,19 @@ fn lower_literal_case(
                 guard: arm.guard.as_deref(),
             }),
             pattern => {
-                let (values, bind_name) = literal_case_values_from_pattern(
+                let (values, bind_name, payload_bind) = literal_case_values_from_pattern(
                     pattern,
                     pattern_variant_tags,
                     pattern_qualified_tags,
                 )?;
                 for value in values {
-                    literal_arms.push((value, &arm.body, bind_name.clone(), arm.guard.as_deref()));
+                    literal_arms.push((
+                        value,
+                        &arm.body,
+                        bind_name.clone(),
+                        payload_bind.clone(),
+                        arm.guard.as_deref(),
+                    ));
                 }
             }
         }
@@ -857,10 +919,10 @@ fn lower_literal_case(
 
     let has_true = literal_arms
         .iter()
-        .any(|(lit, _, _, _)| matches!(lit, LiteralCaseValue::Bool(true)));
+        .any(|(lit, _, _, _, _)| matches!(lit, LiteralCaseValue::Bool(true)));
     let has_false = literal_arms
         .iter()
-        .any(|(lit, _, _, _)| matches!(lit, LiteralCaseValue::Bool(false)));
+        .any(|(lit, _, _, _, _)| matches!(lit, LiteralCaseValue::Bool(false)));
     if fallback_arms.is_empty()
         && (has_true || has_false)
         && arms.iter().all(|arm| arm.guard.is_none())
@@ -1030,7 +1092,7 @@ fn lower_literal_case(
         // Type checking enforces exhaustiveness before lowering. For exhaustive literal
         // chains without an explicit fallback (for example unit-enum constructor cases),
         // provide a defensive synthetic else so non-unit MIR value paths stay closed.
-        let (_, fallback_body, _, _) = literal_arms
+        let (_, fallback_body, _, _, _) = literal_arms
             .last()
             .expect("checked literal_arms is non-empty");
         else_expr = Some(lower_expr(
@@ -1052,7 +1114,7 @@ fn lower_literal_case(
         return Some(lowered.kind);
     }
 
-    for (lit, body, bind_name, guard) in literal_arms.into_iter().rev() {
+    for (lit, body, bind_name, payload_bind, guard) in literal_arms.into_iter().rev() {
         let mut condition = HirExpr {
             kind: HirExprKind::Binary {
                 op: BinOp::Eq,
@@ -1067,39 +1129,29 @@ fn lower_literal_case(
             span: scrutinee.span,
         };
         if let Some(guard_expr) = guard {
-            let lowered_guard = if let Some(name) = bind_name.clone() {
-                let bind_expr = HirExpr {
-                    kind: HirExprKind::Let {
-                        pattern: HirPattern::Var(name),
-                        value: Box::new(scrutinee_expr.clone()),
-                    },
-                    ty: scrutinee_expr.ty.clone(),
-                    span: scrutinee_expr.span,
-                };
-                let guard_expr = lower_expr(
-                    guard_expr,
-                    None,
-                    unit_variant_tags,
-                    qualified_variant_tags,
-                    pattern_variant_tags,
-                    pattern_qualified_tags,
-                    known_record_defs,
-                );
+            let guard_expr = lower_expr(
+                guard_expr,
+                None,
+                unit_variant_tags,
+                qualified_variant_tags,
+                pattern_variant_tags,
+                pattern_qualified_tags,
+                known_record_defs,
+            );
+            let mut binds = build_literal_arm_bindings(
+                bind_name.as_deref(),
+                payload_bind.as_ref(),
+                &scrutinee_expr,
+            );
+            let lowered_guard = if binds.is_empty() {
+                guard_expr
+            } else {
+                binds.push(guard_expr);
                 HirExpr {
-                    kind: HirExprKind::Block(vec![bind_expr, guard_expr]),
+                    kind: HirExprKind::Block(binds),
                     ty: Type::Bool,
                     span: scrutinee.span,
                 }
-            } else {
-                lower_expr(
-                    guard_expr,
-                    None,
-                    unit_variant_tags,
-                    qualified_variant_tags,
-                    pattern_variant_tags,
-                    pattern_qualified_tags,
-                    known_record_defs,
-                )
             };
             condition = HirExpr {
                 kind: HirExprKind::Binary {
@@ -1118,6 +1170,7 @@ fn lower_literal_case(
                 then_branch: Box::new(lower_arm_body(
                     body,
                     bind_name,
+                    payload_bind,
                     &scrutinee_expr,
                     ty_hint.clone(),
                     unit_variant_tags,
@@ -1146,12 +1199,16 @@ fn literal_case_values_from_pattern(
     pattern: &PatternKind,
     pattern_variant_tags: &PatternVariantTags,
     pattern_qualified_tags: &QualifiedPatternVariantTags,
-) -> Option<(Vec<LiteralCaseValue>, Option<String>)> {
+) -> Option<(
+    Vec<LiteralCaseValue>,
+    Option<String>,
+    Option<ConstructorPayloadBind>,
+)> {
     match pattern {
         PatternKind::Lit(lit @ Lit::Int(_))
         | PatternKind::Lit(lit @ Lit::Float(_))
         | PatternKind::Lit(lit @ Lit::Bool(_)) => {
-            Some((vec![literal_case_value_from_lit(lit)?], None))
+            Some((vec![literal_case_value_from_lit(lit)?], None, None))
         }
         PatternKind::Constructor {
             name,
@@ -1159,31 +1216,52 @@ fn literal_case_values_from_pattern(
             args,
             rest,
         } if !*rest => {
-            // 0d compiled constructor-pattern fast path: tag-only dispatch.
-            // Accept payload constructors when payload subpatterns are wildcard-only.
-            if !args
-                .iter()
-                .all(|arg| arg.name.is_none() && matches!(arg.pattern.node, PatternKind::Wildcard))
-            {
-                return None;
-            }
-            let tag = resolve_variant_tag(
+            let meta = resolve_variant_tag(
                 name,
                 qualifier.as_ref(),
                 pattern_variant_tags,
                 pattern_qualified_tags,
             )?;
-            Some((vec![LiteralCaseValue::Int(tag)], None))
+            if args.len() != meta.arity {
+                return None;
+            }
+            let mut payload_bind = None;
+            for (idx, arg) in args.iter().enumerate() {
+                if arg.name.is_some() {
+                    return None;
+                }
+                match &arg.pattern.node {
+                    PatternKind::Wildcard => {}
+                    PatternKind::Var(bind_name) => {
+                        if payload_bind.is_some() {
+                            return None;
+                        }
+                        payload_bind = Some(ConstructorPayloadBind {
+                            name: bind_name.clone(),
+                            sum_type: meta.sum_type.clone(),
+                            variant: name.clone(),
+                            field_index: idx,
+                            field_ty: meta.field_types.get(idx).cloned().unwrap_or(Type::Dynamic),
+                        });
+                    }
+                    _ => return None,
+                }
+            }
+            Some((vec![LiteralCaseValue::Int(meta.tag)], None, payload_bind))
         }
         PatternKind::Or(patterns) => {
             let mut values = Vec::new();
             let mut shared_bind_name: Option<String> = None;
             for branch in patterns {
-                let (branch_values, branch_bind_name) = literal_case_values_from_pattern(
+                let (branch_values, branch_bind_name, branch_payload_bind) =
+                    literal_case_values_from_pattern(
                     &branch.node,
                     pattern_variant_tags,
                     pattern_qualified_tags,
                 )?;
+                if branch_payload_bind.is_some() {
+                    return None;
+                }
                 match (&shared_bind_name, branch_bind_name) {
                     (None, None) => {}
                     (None, Some(name)) => shared_bind_name = Some(name),
@@ -1193,10 +1271,10 @@ fn literal_case_values_from_pattern(
                 }
                 values.extend(branch_values);
             }
-            Some((values, shared_bind_name))
+            Some((values, shared_bind_name, None))
         }
         PatternKind::As { pattern, name } => {
-            let (values, inner_bind_name) = literal_case_values_from_pattern(
+            let (values, inner_bind_name, inner_payload_bind) = literal_case_values_from_pattern(
                 &pattern.node,
                 pattern_variant_tags,
                 pattern_qualified_tags,
@@ -1204,7 +1282,10 @@ fn literal_case_values_from_pattern(
             if inner_bind_name.is_some() {
                 return None;
             }
-            Some((values, Some(name.node.clone())))
+            if inner_payload_bind.is_some() {
+                return None;
+            }
+            Some((values, Some(name.node.clone()), None))
         }
         _ => None,
     }
@@ -1214,6 +1295,7 @@ fn literal_case_values_from_pattern(
 fn lower_arm_body(
     body: &Expr,
     bind_name: Option<String>,
+    payload_bind: Option<ConstructorPayloadBind>,
     scrutinee_expr: &HirExpr,
     ty_hint: Option<Type>,
     unit_variant_tags: &UnitVariantTags,
@@ -1231,22 +1313,60 @@ fn lower_arm_body(
         pattern_qualified_tags,
         known_record_defs,
     );
-    let Some(name) = bind_name else {
+    let mut bind_exprs = build_literal_arm_bindings(
+        bind_name.as_deref(),
+        payload_bind.as_ref(),
+        scrutinee_expr,
+    );
+    if bind_exprs.is_empty() {
         return lowered_body;
-    };
-    let bind_expr = HirExpr {
-        kind: HirExprKind::Let {
-            pattern: HirPattern::Var(name),
-            value: Box::new(scrutinee_expr.clone()),
-        },
-        ty: scrutinee_expr.ty.clone(),
-        span: scrutinee_expr.span,
-    };
+    }
+    bind_exprs.push(lowered_body.clone());
     HirExpr {
-        kind: HirExprKind::Block(vec![bind_expr, lowered_body.clone()]),
+        kind: HirExprKind::Block(bind_exprs),
         ty: lowered_body.ty,
         span: lowered_body.span,
     }
+}
+
+fn build_literal_arm_bindings(
+    bind_name: Option<&str>,
+    payload_bind: Option<&ConstructorPayloadBind>,
+    scrutinee_expr: &HirExpr,
+) -> Vec<HirExpr> {
+    let mut bindings = Vec::new();
+    if let Some(name) = bind_name {
+        bindings.push(HirExpr {
+            kind: HirExprKind::Let {
+                pattern: HirPattern::Var(name.to_string()),
+                value: Box::new(scrutinee_expr.clone()),
+            },
+            ty: scrutinee_expr.ty.clone(),
+            span: scrutinee_expr.span,
+        });
+    }
+    if let Some(payload_bind) = payload_bind {
+        let payload_ty = payload_bind.field_ty.clone();
+        let payload_value = HirExpr {
+            kind: HirExprKind::SumPayloadAccess {
+                expr: Box::new(scrutinee_expr.clone()),
+                sum_type: payload_bind.sum_type.clone(),
+                variant: payload_bind.variant.clone(),
+                field_index: payload_bind.field_index,
+            },
+            ty: payload_ty.clone(),
+            span: scrutinee_expr.span,
+        };
+        bindings.push(HirExpr {
+            kind: HirExprKind::Let {
+                pattern: HirPattern::Var(payload_bind.name.clone()),
+                value: Box::new(payload_value),
+            },
+            ty: payload_ty,
+            span: scrutinee_expr.span,
+        });
+    }
+    bindings
 }
 
 fn bool_case_fallback_compatible(pattern: &PatternKind) -> bool {
@@ -1283,13 +1403,13 @@ fn resolve_variant_tag(
     qualifier: Option<&String>,
     pattern_variant_tags: &PatternVariantTags,
     pattern_qualified_tags: &QualifiedPatternVariantTags,
-) -> Option<i64> {
+) -> Option<PatternVariantMeta> {
     if let Some(type_name) = qualifier {
         return pattern_qualified_tags
             .get(&(type_name.clone(), name.to_string()))
-            .copied();
+            .cloned();
     }
-    pattern_variant_tags.get(name).copied()
+    pattern_variant_tags.get(name).cloned()
 }
 
 #[cfg(test)]
@@ -1777,6 +1897,63 @@ mod tests {
     }
 
     #[test]
+    fn lower_function_payload_constructor_var_case_binds_payload_slot() {
+        let module = parse_module_from_text(
+            "type Flag = Yep(Int) | Nope\nfn pick(x: Flag) -> Int\n  case x\n    Yep(n) -> n\n    Nope -> 0",
+        );
+        let mut env = TypeEnv::new();
+        env.bind(
+            "pick".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::pure(
+                vec![Type::Sum(kea_types::SumType {
+                    name: "Flag".to_string(),
+                    type_args: vec![],
+                    variants: vec![
+                        ("Yep".to_string(), vec![Type::Int]),
+                        ("Nope".to_string(), vec![]),
+                    ],
+                })],
+                Type::Int,
+            ))),
+        );
+
+        let lowered = lower_module(&module, &env);
+        let function = lowered
+            .declarations
+            .iter()
+            .find_map(|decl| match decl {
+                HirDecl::Function(function) if function.name == "pick" => Some(function),
+                _ => None,
+            })
+            .expect("expected lowered pick function");
+
+        let then_branch = match &function.body.kind {
+            HirExprKind::If { then_branch, .. } => then_branch,
+            other => panic!("expected constructor case to lower to if, got {other:?}"),
+        };
+        let HirExprKind::Block(exprs) = &then_branch.kind else {
+            panic!("expected payload case branch to emit binding block");
+        };
+        assert_eq!(exprs.len(), 2);
+        let HirExprKind::Let { pattern, value } = &exprs[0].kind else {
+            panic!("expected first payload branch expr to be let binding");
+        };
+        assert_eq!(pattern, &HirPattern::Var("n".to_string()));
+        let HirExprKind::SumPayloadAccess {
+            sum_type,
+            variant,
+            field_index,
+            ..
+        } = &value.kind
+        else {
+            panic!("expected payload binding value to be SumPayloadAccess");
+        };
+        assert_eq!(sum_type, "Flag");
+        assert_eq!(variant, "Yep");
+        assert_eq!(*field_index, 0);
+    }
+
+    #[test]
     fn lower_function_unit_enum_case_literalized_scrutinee_avoids_setup_block() {
         let module = parse_module_from_text(
             "type Color = Red | Green\nfn pick() -> Int\n  case Color.Red\n    Color.Red -> 1\n    _ -> 2",
@@ -2236,6 +2413,7 @@ mod tests {
             HirExprKind::RecordLit { fields, .. } => {
                 fields.iter().map(|(_, value)| count_if_nodes(value)).sum()
             }
+            HirExprKind::SumPayloadAccess { expr, .. } => count_if_nodes(expr),
             HirExprKind::FieldAccess { expr, .. } => count_if_nodes(expr),
             HirExprKind::Lambda { body, .. } => count_if_nodes(body),
             HirExprKind::Let { value, .. } => count_if_nodes(value),
