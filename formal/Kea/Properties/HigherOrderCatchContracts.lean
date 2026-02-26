@@ -300,5 +300,76 @@ noncomputable def higherOrderCatchTypingJudgment_bundle_of_premises
   }
   exact higherOrderCatchTypingJudgment_bundle hj
 
+theorem higherOrderCatchTypingJudgment_bundle_clauseFailRemoved_of_premises
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_admissible : FailResultContracts.catchAdmissible clause.exprEffects)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (.cons (higherOrderParamType innerEffects okTy) .nil)
+          clause.exprEffects
+          okTy
+          errTy) :
+    RowFields.has
+      (EffectRow.fields (HandleClauseContract.resultEffects clause))
+      FailResultContracts.failLabel = false := by
+  exact (higherOrderCatchTypingJudgment_bundle_of_premises
+    clause innerEffects okTy errTy loweredTy
+    h_wellTyped h_failZero h_admissible h_clauseEffects h_lowered).clauseFailRemoved
+
+theorem higherOrderCatchTypingJudgment_bundle_rowTailStable_of_premises
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_admissible : FailResultContracts.catchAdmissible clause.exprEffects)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (.cons (higherOrderParamType innerEffects okTy) .nil)
+          clause.exprEffects
+          okTy
+          errTy) :
+    EffectPolymorphismSoundness.rowTailStable
+      innerEffects
+      (higherOrderCatchTypingJudgment_bundle_of_premises
+        clause innerEffects okTy errTy loweredTy
+        h_wellTyped h_failZero h_admissible h_clauseEffects h_lowered).loweredEffects := by
+  exact (higherOrderCatchTypingJudgment_bundle_of_premises
+    clause innerEffects okTy errTy loweredTy
+    h_wellTyped h_failZero h_admissible h_clauseEffects h_lowered).rowTailStable
+
+theorem higherOrderCatchTypingJudgment_bundle_preserves_nonFail_of_premises
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_admissible : FailResultContracts.catchAdmissible clause.exprEffects)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (.cons (higherOrderParamType innerEffects okTy) .nil)
+          clause.exprEffects
+          okTy
+          errTy) :
+    EffectPolymorphismSoundness.labelsPreservedExcept
+      innerEffects
+      (higherOrderCatchTypingJudgment_bundle_of_premises
+        clause innerEffects okTy errTy loweredTy
+        h_wellTyped h_failZero h_admissible h_clauseEffects h_lowered).loweredEffects
+      FailResultContracts.failLabel := by
+  exact (higherOrderCatchTypingJudgment_bundle_of_premises
+    clause innerEffects okTy errTy loweredTy
+    h_wellTyped h_failZero h_admissible h_clauseEffects h_lowered).preservesNonFail
+
 end HigherOrderCatchContracts
 end Kea
