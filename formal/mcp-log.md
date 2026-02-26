@@ -4808,3 +4808,22 @@ instead of mirroring current duplicate-label runtime behavior.
 - Proofs remain stable and reusable when implementation-side dedup lands.
 - The overlap normalization fix in implementation should make the current
   preconditions trivially satisfied.
+
+### 2026-02-26: nested same-target handler consequences on normalized model
+
+**Context**: Continued Phase-2 theorem work on top of the normalized-idempotent
+composition model, focusing on nested same-target handler consequences.
+
+**MCP tools used**: none (proof-layer extension over previously classified
+preconditioned agreement).
+
+**Lean side**:
+- Added `handleComposeNormalized_preserves_row_tail`.
+- Added `nested_same_target_outer_removal_noop_of_inner_absent`.
+- Added `nested_same_target_remains_absent_of_outer_absent`.
+
+**Classify**: Agreement under existing preconditions.
+
+**Outcome**:
+- Nested same-target behavior now has explicit theorem surfaces in the formal
+  model without coupling to current implementation duplicate-label behavior.
