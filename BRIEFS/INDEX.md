@@ -9,7 +9,7 @@ See `AGENTS.md` > "Briefs and Workboard" for how to manage this file.
 ## Active
 
 Work in progress right now. Each entry should have a `## Progress` section in its brief.
-- *(none currently)*
+- **[Post-0b Rill surface cleanup](in-progress/0b-rill-surface-cleanup.md)** — Remove remaining inherited pipe/DataFrame/HKT-era and other unbriefed parser/typechecker substrate from core crates so 0a/0b completion matches locked Kea v0 surface.
 
 ---
 
@@ -22,8 +22,6 @@ Designed and approved. Ready to pick up. Ordered by execution sequence per ROADM
 *(done — see Done section)*
 
 ### Phase 0b: Type System Core (weeks 1-3)
-
-2. **[Post-0b Rill surface cleanup](todo/0b-rill-surface-cleanup.md)** — Remove remaining inherited pipe/DataFrame/HKT-era and other unbriefed parser/typechecker substrate from core crates so 0a/0b completion matches locked Kea v0 surface.
 
 ### Phase 0c: Effect Handlers (weeks 3-4)
 

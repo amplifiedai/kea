@@ -149,3 +149,7 @@ realigning with current Kea docs/brief commitments.
 **Out of scope now:** Designing future data-processing/streaming syntax
 or distributed-runtime expression forms. Those require separate design
 briefs/spec updates.
+
+## Progress
+- 2026-02-26: Brief moved to `in-progress/`; workboard updated. Baseline audit confirms large remaining DataFrame/SQL/column and HKT-era core surface across `kea-ast`, `kea-syntax`, `kea-types`, and `kea-infer`.
+- **Next:** Step 1 contraction pass: remove parser/AST executable DataFrame/SQL/embedded-block surface and keep explicit unsupported-syntax diagnostics.
