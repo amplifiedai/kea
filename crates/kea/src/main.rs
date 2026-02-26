@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command as ProcessCommand;
 
 use kea_ast::{DeclKind, ExprDecl, FileId, FnDecl, Module, TypeDef};
 use kea_codegen::{
@@ -40,7 +41,7 @@ fn run() -> Result<(), String> {
             Ok(())
         }
         Command::Build { input, output } => {
-            let output = output.unwrap_or_else(|| default_object_path(&input));
+            let output = output.unwrap_or_else(|| default_build_output_path(&input));
             let result = compile_file(&input, CodegenMode::Aot)?;
             emit_diagnostics(&result.diagnostics);
             if result.object.is_empty() {
@@ -52,13 +53,18 @@ fn run() -> Result<(), String> {
                 fs::create_dir_all(parent)
                     .map_err(|err| format!("failed to create output directory: {err}"))?;
             }
-            fs::write(&output, &result.object)
-                .map_err(|err| format!("failed to write `{}`: {err}", output.display()))?;
-            println!(
-                "built object `{}` ({} bytes)",
-                output.display(),
-                result.object.len()
-            );
+            if output.extension().and_then(|ext| ext.to_str()) == Some("o") {
+                fs::write(&output, &result.object)
+                    .map_err(|err| format!("failed to write `{}`: {err}", output.display()))?;
+                println!(
+                    "built object `{}` ({} bytes)",
+                    output.display(),
+                    result.object.len()
+                );
+            } else {
+                link_object_bytes(&result.object, &output)?;
+                println!("built executable `{}`", output.display());
+            }
             Ok(())
         }
     }
@@ -387,11 +393,35 @@ fn parse_cli(args: &[String]) -> Result<Command, String> {
 }
 
 fn usage() -> String {
-    "usage:\n  kea run <file.kea>\n  kea build <file.kea> [-o output.o]".to_string()
+    "usage:\n  kea run <file.kea>\n  kea build <file.kea> [-o output|output.o]".to_string()
 }
 
-fn default_object_path(input: &Path) -> PathBuf {
-    input.with_extension("o")
+fn default_build_output_path(input: &Path) -> PathBuf {
+    input.with_extension("")
+}
+
+fn link_object_bytes(object: &[u8], output: &Path) -> Result<(), String> {
+    let temp_object = std::env::temp_dir().join(format!("kea-build-{}.o", std::process::id()));
+    fs::write(&temp_object, object)
+        .map_err(|err| format!("failed to write temporary object `{}`: {err}", temp_object.display()))?;
+
+    let status = ProcessCommand::new("cc")
+        .arg(&temp_object)
+        .arg("-o")
+        .arg(output)
+        .status()
+        .map_err(|err| format!("failed to invoke linker `cc`: {err}"))?;
+
+    let _ = fs::remove_file(&temp_object);
+
+    if !status.success() {
+        return Err(format!(
+            "linker failed for `{}` (exit status: {status})",
+            output.display()
+        ));
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -419,10 +449,10 @@ mod tests {
     }
 
     #[test]
-    fn default_object_path_uses_o_extension() {
+    fn default_build_output_path_strips_extension() {
         assert_eq!(
-            default_object_path(Path::new("examples/hello.kea")),
-            PathBuf::from("examples/hello.o")
+            default_build_output_path(Path::new("examples/hello.kea")),
+            PathBuf::from("examples/hello")
         );
     }
 }
