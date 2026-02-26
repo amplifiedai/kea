@@ -19,11 +19,11 @@ use kea_ast::{
     StringInterpPart, TypeAnnotation, free_vars,
 };
 use kea_types::{
-    Dim, DimVarId, EffectConstraint, EffectLevel, EffectTerm, EffectVarId, Effects, FloatWidth,
-    FunctionType, IntWidth, Kind, Label, Purity, RecordType, RowType, RowVarId, Signedness,
-    Substitution, SumType, Type, TypeScheme, TypeVarId, Volatility, builtin_type_constructor_arity,
-    free_dim_vars, free_row_vars, free_type_vars, is_sendable, rebuild_type, sanitize_type_display,
-    sendable_violation, type_constructor_for_trait,
+    Dim, DimVarId, EffectConstraint, EffectLevel, EffectRow, EffectTerm, EffectVarId, Effects,
+    FloatWidth, FunctionType, IntWidth, Kind, Label, Purity, RecordType, RowType, RowVarId,
+    Signedness, Substitution, SumType, Type, TypeScheme, TypeVarId, Volatility,
+    builtin_type_constructor_arity, free_dim_vars, free_row_vars, free_type_vars, is_sendable,
+    rebuild_type, sanitize_type_display, sendable_violation, type_constructor_for_trait,
 };
 
 use crate::{
@@ -9580,6 +9580,16 @@ fn effect_label(effects: Effects) -> &'static str {
     }
 }
 
+fn effects_as_row(effects: Effects) -> EffectRow {
+    match (effects.purity, effects.volatility) {
+        (Purity::Pure, Volatility::Deterministic) => EffectRow::pure(),
+        (Purity::Pure, Volatility::Volatile) => {
+            EffectRow::closed(vec![(Label::new("Volatile"), Type::Unit)])
+        }
+        (Purity::Impure, _) => EffectRow::closed(vec![(Label::new("Impure"), Type::Unit)]),
+    }
+}
+
 /// Check whether `actual` is weaker-or-equal to `declared` in the effect lattice.
 pub fn effects_leq(actual: Effects, declared: Effects) -> bool {
     actual.leq(declared)
@@ -9711,17 +9721,20 @@ pub fn validate_declared_fn_effect_with_env(
     Err(Diagnostic::error(
         Category::TypeMismatch,
         format!(
-            "declared effect `{}` is too weak; body requires `{}`",
+            "declared effect `{}` is too weak; body requires `{}` (declared {}, inferred {})",
             effect_annotation_label(&parse_declared_effect(ann)),
-            effect_label(inferred)
+            effect_label(inferred),
+            effects_as_row(declared),
+            effects_as_row(inferred),
         ),
     )
     .at(span_to_loc(ann.span))
     .with_label(
         span_to_loc(ann.span),
         format!(
-            "declared effect `{}`",
-            effect_annotation_label(&parse_declared_effect(ann))
+            "declared effect `{}` ({})",
+            effect_annotation_label(&parse_declared_effect(ann)),
+            effects_as_row(declared),
         ),
     ))
 }
