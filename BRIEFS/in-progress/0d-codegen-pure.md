@@ -432,4 +432,5 @@ deprecation warning) once `|x| -> expr` is implemented.
 - 2026-02-26: Case-lowering scrutinee setup optimized: if the lowered scrutinee is already a literal/var (including unit-enum constructor tags), avoid synthetic temp-binding blocks and emit direct `if` chains; added regression coverage for unit-enum scrutinee shape.
 - 2026-02-26: Added explicit OR+guard regression coverage for both literal and unit-enum constructor arms (`0 | 1 when ...`, `Color.Red | Color.Green when ...`) in HIR and CLI tests to lock in combined condition lowering semantics.
 - 2026-02-26: Guarded fallback arms now stay on the lowered literal-case path when an eventual fallback exists: supports `n when ...` and `_ when ...` fallback arms with correct ordering against later unconditional fallbacks, plus HIR/CLI regressions.
+- 2026-02-26: OR-pattern aliasing widened: literal OR alternatives that bind the same `as` name (`0 as n | 1 as n`) now lower on the compiled path (including end-to-end CLI execution), while ambiguous mixed bindings still conservatively fallback.
 - **Next:** Expand lowering/codegen coverage for structs/enums/pattern matching and Fail-only Result lowering fast path.
