@@ -152,7 +152,9 @@ pub enum MirInst {
     Call {
         callee: MirCallee,
         args: Vec<MirValueId>,
+        arg_types: Vec<Type>,
         result: Option<MirValueId>,
+        ret_type: Type,
         cc_manifest_id: String,
     },
     Nop,
@@ -512,7 +514,9 @@ impl FunctionLoweringCtx {
                 };
 
                 let mut lowered_args = Vec::with_capacity(args.len());
+                let mut arg_types = Vec::with_capacity(args.len());
                 for arg in args {
+                    arg_types.push(arg.ty.clone());
                     lowered_args.push(self.lower_expr(arg)?);
                 }
 
@@ -525,7 +529,9 @@ impl FunctionLoweringCtx {
                 self.emit_inst(MirInst::Call {
                     callee,
                     args: lowered_args,
+                    arg_types,
                     result: result.clone(),
+                    ret_type: expr.ty.clone(),
                     cc_manifest_id: "default".to_string(),
                 });
                 result
