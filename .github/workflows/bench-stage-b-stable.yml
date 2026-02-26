@@ -12,6 +12,8 @@ jobs:
     name: Benchmark Regression Check (Stable, Blocking)
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      KEA_AGENT_TARGET_DIR: target/ci-bench-stage-b-stable
 
     steps:
       - name: Checkout
