@@ -1,0 +1,35 @@
+name: benchmark-variance-stage-a
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  benchmark-variance:
+    name: Characterize Benchmark Variance
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run repeated benchmark exports (stage A, non-gating)
+        env:
+          DIVAN_SAMPLE_COUNT: "40"
+        run: ./scripts/bench-variance.sh 3 benchmark-results/variance-ci
+
+      - name: Upload variance artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-variance-stage-a-${{ github.run_id }}
+          path: benchmark-results/variance-ci/
+          if-no-files-found: error
