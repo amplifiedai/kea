@@ -62,6 +62,7 @@ This work starts by cannibalizing the existing Rill formal corpus and then exten
 - **Phase 2 (active):** Added one-hop admissible projection helpers for both contract and schema surfaces (`*_rowTailStable`, `*_preserves_nonFail`, `*_failRemoved*`) so downstream chaining can consume each guarantee independently from a single admissible assumption.
 - **Phase 2 (active):** Added named admissible bundle contracts (`AdmissibleEffectPolyLoweringBundle`, `AdmissibleEffectPolyHandlerBundle`) with constructor/projection helpers, giving stable one-name theorem outputs for full capstone consequences.
 - **Phase 2 (active):** Added admissibility partition theorems (`catchAdmissible_xor_unnecessary`) and admissible-branch extractors on contract/schema wrappers, making the runtime “admissible vs E0012-unnecessary” split explicit in theorem assumptions.
+- **Phase 2 (active):** Added `Kea/Properties/CatchTypingBridge.lean`, a judgment-shaped bridge (`CatchTypingJudgment`) from typing-style catch premises into admissible effect-polymorphism capstones (`catchTypingJudgment_sound`, row-tail/non-Fail projections, admissibility branch).
 
 The formal workspace lives at [`formal/`](formal/).
 

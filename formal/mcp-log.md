@@ -5313,3 +5313,28 @@ runtime behavior).
 **Outcome**:
 - Admissibility branch classification is now first-class and one-hop, aligned
   with the runtime “catch required vs catch unnecessary (E0012)” split.
+
+### 2026-02-26: catch typing bridge lift (proof-only)
+
+**Context**: Lifted admissible capstones into a judgment-shaped API so this
+Phase-2 track is not purely contract-layer.
+
+**MCP tools used**: none (proof-only bridge construction on top of already
+validated runtime behavior).
+
+**Lean side**:
+- Added `Kea/Properties/CatchTypingBridge.lean`.
+- Introduced `CatchTypingJudgment` as a typing-style premise bundle.
+- Added theorem adapters:
+  - `catchTypingJudgment_sound`
+  - `catchTypingJudgment_rowTailStable`
+  - `catchTypingJudgment_preserves_nonFail`
+  - `catchTypingJudgment_admissibility_branch`
+- Imported module in `formal/Kea.lean`.
+- Verified with `cd formal && lake build` (pass).
+
+**Classify**: N/A (proof-only step).
+
+**Outcome**:
+- Phase-2 now has a judgment-surface bridge from typing-style premises to the
+admissible catch capstones, ready for future concrete typing-rule integration.
