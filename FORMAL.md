@@ -14,6 +14,7 @@ This work starts by cannibalizing the existing Rill formal corpus and then exten
 - **Phase 1 (active):** `WfUnifyExtends` now includes `bindTypeVar` combined contracts (`bindTypeVar_ok_extendsAndWfRange`, `bindTypeVar_ok_contract_full_wf`) so type-var bind success paths share the same extension + WF range + acyclic compat/WF packaging surface.
 - **Phase 1 (active):** `WfUnifyExtends` now includes a direct `unify` var-left bridge (`unify_var_left_eq_bindTypeVar`) and lifted full-contract wrappers (`unify_var_left_ok_*_contract_full_wf`), so WF contracts can be discharged directly from var-branch unifier successes.
 - **Phase 1 (active):** `WfUnifyExtends` now includes one-hop projections for the var-left unifier bridge contracts (base + non-`subst` state variants), exposing extension, WF-range, and acyclic compat/WF facets directly.
+- **Phase 1 (active):** `WfUnifyExtends` now also includes a safe var-right bridge under explicit non-var preconditions (`unify_var_right_*_of_non_var`), with both base and non-`subst` full-contract wrappers.
 - **Phase 1 (active):** `WfUnifyExtends` now includes full-state `bindTypeVar` packaging (`bindTypeVar_ok_with_non_subst_fields_contract_full_wf`) so type-var bind contracts compose cleanly with non-`subst` state updates.
 - **Phase 1 (active):** `WfUnifyExtends` now includes contract projections for `bindTypeVar` full contracts (extension-only and WF-range-only, including non-`subst` state variants) to simplify downstream theorem consumption.
 - **Phase 1 (active):** `WfUnifyExtends` now also projects the acyclic compat/WF agreement component out of `bindTypeVar` full contracts (base + non-`subst` state variants), completing one-hop access to all three contract facets.
@@ -39,6 +40,7 @@ This work starts by cannibalizing the existing Rill formal corpus and then exten
 - **Phase 1 (active):** Named bundle contracts now include direct extension/WF/acyclic projection lemmas (base + full-state), giving a complete one-hop API from a bundle assumption to each unifier contract facet.
 - **Phase 1 (active):** `WfEffectRowLadder` now also supports var-left `unify` entrypoints (`functionEff_unify_var_left_*`) and corresponding one-shot bundle constructors, so effect-row WF contracts can start from successful `unify` var-branches as well as direct `bindTypeVar`.
 - **Phase 1 (active):** Var-left `unify` entry wrappers in `WfEffectRowLadder` now discharge the constructor-mismatch BEq premise internally (`beqTy` reduction), keeping downstream theorem calls on semantic WF assumptions only.
+- **Phase 1 (active):** `WfEffectRowLadder` now includes symmetric var-right `unify` entry wrappers/bundles (`functionEff_unify_var_right_*`, including full-state variants), backed by the new non-var right-branch bridge.
 - **Phase 2 (next):** Kea-specific effect typing and handler theorems.
 
 The formal workspace lives at [`formal/`](formal/).

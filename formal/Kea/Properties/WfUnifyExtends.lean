@@ -137,6 +137,19 @@ theorem unify_var_left_eq_bindTypeVar
     unify st (fuel + 1) (.var v) ty = bindTypeVar st v ty fuel := by
   simp [unify, h_var, h_ty, h_eq_false]
 
+theorem unify_var_right_eq_bindTypeVar_of_non_var
+    (st : UnifyState) (fuel : Nat) (v : TypeVarId) (ty : Ty)
+    (h_ty : applySubstCompat st.subst fuel ty = ty)
+    (h_var : applySubstCompat st.subst fuel (.var v) = .var v)
+    (h_eq_false : (ty == .var v) = false)
+    (h_not_var : ∀ tv, ty ≠ .var tv) :
+    unify st (fuel + 1) ty (.var v) = bindTypeVar st v ty fuel := by
+  cases ty with
+  | var tv =>
+      exact (False.elim (h_not_var tv rfl))
+  | _ =>
+      simp [unify, h_ty, h_var, h_eq_false]
+
 theorem bindTypeVar_ok_extendsAndWfRange
     (st st' : UnifyState) (kctx : KindCtx) (rctx : RowCtx)
     (v : TypeVarId) (ty : Ty) (fuel : Nat)
@@ -355,6 +368,66 @@ theorem unify_var_left_ok_contract_full_wf
     simpa [unify_var_left_eq_bindTypeVar st fuel v ty h_var h_ty_subst h_eq_false] using h_unify
   exact bindTypeVar_ok_contract_full_wf
     st st' kctx rctx v ty fuel h_bind h_wf h_ty_wf h_idemp_next
+
+theorem unify_var_right_ok_contract_full_wf_of_non_var
+    (st st' : UnifyState) (kctx : KindCtx) (rctx : RowCtx)
+    (v : TypeVarId) (ty : Ty) (fuel : Nat)
+    (h_unify : unify st (fuel + 1) ty (.var v) = .ok st')
+    (h_ty_subst : applySubstCompat st.subst fuel ty = ty)
+    (h_var : applySubstCompat st.subst fuel (.var v) = .var v)
+    (h_eq_false : (ty == .var v) = false)
+    (h_not_var : ∀ tv, ty ≠ .var tv)
+    (h_wf : UnifyState.SubstWellFormedRange st kctx rctx)
+    (h_ty_wf : Ty.WellFormed kctx rctx ty)
+    (h_idemp_next : st'.subst.Idempotent) :
+    ExtendsAndWfRange st st' kctx rctx
+    ∧ (let h_ac := Subst.acyclicOfIdempotent h_idemp_next
+       CompatWFAgreeOnDomainLookupsAcyclic st' fuel h_ac) := by
+  have h_bind : bindTypeVar st v ty fuel = .ok st' := by
+    simpa [unify_var_right_eq_bindTypeVar_of_non_var
+      st fuel v ty h_ty_subst h_var h_eq_false h_not_var] using h_unify
+  exact bindTypeVar_ok_contract_full_wf
+    st st' kctx rctx v ty fuel h_bind h_wf h_ty_wf h_idemp_next
+
+theorem unify_var_right_ok_with_non_subst_fields_contract_full_wf_of_non_var
+    (st st' : UnifyState) (kctx : KindCtx) (rctx : RowCtx)
+    (v : TypeVarId) (ty : Ty) (fuel : Nat)
+    (lacks' : Lacks) (bounds' : TraitBounds) (nextType' nextRow' : Nat)
+    (h_unify : unify st (fuel + 1) ty (.var v) = .ok st')
+    (h_ty_subst : applySubstCompat st.subst fuel ty = ty)
+    (h_var : applySubstCompat st.subst fuel (.var v) = .var v)
+    (h_eq_false : (ty == .var v) = false)
+    (h_not_var : ∀ tv, ty ≠ .var tv)
+    (h_wf : UnifyState.SubstWellFormedRange st kctx rctx)
+    (h_ty_wf : Ty.WellFormed kctx rctx ty)
+    (h_idemp_next :
+      ({ st' with
+          lacks := lacks',
+          traitBounds := bounds',
+          nextTypeVar := nextType',
+          nextRowVar := nextRow' }).subst.Idempotent) :
+    ExtendsAndWfRange st
+      { st' with
+          lacks := lacks',
+          traitBounds := bounds',
+          nextTypeVar := nextType',
+          nextRowVar := nextRow' }
+      kctx rctx
+    ∧ (let h_ac := Subst.acyclicOfIdempotent h_idemp_next
+       CompatWFAgreeOnDomainLookupsAcyclic
+         { st' with
+             lacks := lacks',
+             traitBounds := bounds',
+             nextTypeVar := nextType',
+             nextRowVar := nextRow' }
+         fuel h_ac) := by
+  have h_bind : bindTypeVar st v ty fuel = .ok st' := by
+    simpa [unify_var_right_eq_bindTypeVar_of_non_var
+      st fuel v ty h_ty_subst h_var h_eq_false h_not_var] using h_unify
+  exact bindTypeVar_ok_with_non_subst_fields_contract_full_wf
+    st st' kctx rctx v ty fuel
+    lacks' bounds' nextType' nextRow'
+    h_bind h_wf h_ty_wf h_idemp_next
 
 theorem unify_var_left_ok_with_non_subst_fields_contract_full_wf
     (st st' : UnifyState) (kctx : KindCtx) (rctx : RowCtx)
