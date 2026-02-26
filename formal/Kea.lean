@@ -24,6 +24,7 @@ import Kea.Properties.HandlerTypingContracts
 import Kea.Properties.EffectOperationTyping
 import Kea.Properties.TailResumptiveClassification
 import Kea.Properties.TailCapabilityComposition
+import Kea.Properties.NestedHandlerCompositionContracts
 import Kea.Properties.FailResultContracts
 import Kea.Properties.EffectPolymorphismSoundness
 import Kea.Properties.CatchTypingBridge

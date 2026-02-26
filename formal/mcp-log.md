@@ -5931,3 +5931,54 @@ operation-call behavior).
 **Outcome**:
 - Operation-call formal surfaces now have one-name bundle consumption for
   declaration witness, effect-label addition, and row-tail stability.
+
+### 2026-02-26: nested handler composition contracts (proof-only)
+
+**Context**: Added a dedicated contract module for Phase-2 nested same-target
+handler composition.
+
+**MCP tools used**: none (proof-only theorem-surface expansion).
+
+**Lean side**:
+- Added `Kea/Properties/NestedHandlerCompositionContracts.lean` with:
+  - `nestedCompose`
+  - `nested_handlers_compose`
+  - `nested_handlers_compose_row_tail`
+  - `nested_handlers_compose_preserves_other_effects`
+  - `NestedHandlerBundle`, `nested_handler_bundle_of_outer_absent`
+- Imported module in `formal/Kea.lean`.
+- Verified with `cd formal && lake build` (pass).
+
+**Classify**: N/A (proof-only step).
+
+**Outcome**:
+- Nested same-target handler composition now has explicit, citable contract
+  surfaces (including bundle packaging) instead of only lower-level row lemmas.
+
+### 2026-02-26: nested same-target runtime alignment probe
+
+**Context**: Validated a concrete nested same-target handling shape against the
+new contract surface.
+
+**MCP tools used**: direct `kea-mcp` stdio (`initialize`,
+`notifications/initialized`, `tools/call` with `reset_session`, `type_check`,
+`get_type`, `diagnose`).
+
+**Probe**:
+- Snippet:
+  - `effect Log`
+  - `body : () -[Log]> ()`
+  - `nested_same`:
+    - `inner = handle body() { Log.log(x) -> resume () }`
+    - `handle inner { Log.log(y) -> resume () }`
+- `type_check` binds:
+  - `body : () -[Log]> ()`
+  - `nested_same : () -> ()`
+- `get_type "nested_same"` returns `() -> ()`.
+- `diagnose` reports no diagnostics.
+
+**Classify**: Agreement.
+
+**Outcome**:
+- Runtime behavior for this valid nested same-target shape aligns with the
+  nested composition formal contract boundary.
