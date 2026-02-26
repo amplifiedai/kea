@@ -778,6 +778,34 @@ mod tests {
         let _ = std::fs::remove_file(source_path);
     }
 
+    #[test]
+    fn compile_and_execute_record_construct_and_field_access_exit_code() {
+        let source_path = write_temp_source(
+            "record User\n  age: Int\n  score: Int\n\nfn main() -> Int\n  let user = User { age: 4, score: 9 }\n  user.age + user.score\n",
+            "kea-cli-record-init-field",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 13);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_payload_constructor_exit_code() {
+        let source_path = write_temp_source(
+            "type Flag = Yep(Int) | Nope\n\nfn make_flag() -> Flag\n  Yep(7)\n\nfn main() -> Int\n  let ignored = make_flag()\n  3\n",
+            "kea-cli-sum-init",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 3);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
     fn write_temp_source(contents: &str, prefix: &str, extension: &str) -> PathBuf {
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)

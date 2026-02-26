@@ -852,7 +852,12 @@ fn lower_instruction<M: Module>(
                     ),
                 })?;
             let addr = builder.ins().iadd_imm(base, i64::from(offset));
-            let value_ty = clif_type(field_ty)?;
+            let resolved_field_ty = if *field_ty == Type::Dynamic {
+                layout.field_types.get(field).cloned().unwrap_or(Type::Dynamic)
+            } else {
+                field_ty.clone()
+            };
+            let value_ty = clif_type(&resolved_field_ty)?;
             let value = builder.ins().load(value_ty, MemFlags::new(), addr, 0);
             values.insert(dest.clone(), value);
             Ok(false)
@@ -1348,6 +1353,7 @@ struct BackendRecordLayout {
     size_bytes: u32,
     align_bytes: u32,
     field_offsets: BTreeMap<String, u32>,
+    field_types: BTreeMap<String, Type>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1381,8 +1387,18 @@ fn plan_layout_catalog(module: &MirModule) -> Result<BackendLayoutPlan, CodegenE
 
     for record in &module.layouts.records {
         let mut field_offsets = BTreeMap::new();
+        let mut field_types = BTreeMap::new();
         for (idx, field) in record.fields.iter().enumerate() {
             field_offsets.insert(field.name.clone(), idx as u32 * WORD_BYTES);
+            let field_ty = match &field.annotation {
+                kea_ast::TypeAnnotation::Named(name) if name == "Int" => Type::Int,
+                kea_ast::TypeAnnotation::Named(name) if name == "Float" => Type::Float,
+                kea_ast::TypeAnnotation::Named(name) if name == "Bool" => Type::Bool,
+                kea_ast::TypeAnnotation::Named(name) if name == "String" => Type::String,
+                kea_ast::TypeAnnotation::Named(name) if name == "Unit" => Type::Unit,
+                _ => Type::Dynamic,
+            };
+            field_types.insert(field.name.clone(), field_ty);
         }
         let size_bytes = record.fields.len() as u32 * WORD_BYTES;
         plan.records.insert(
@@ -1391,6 +1407,7 @@ fn plan_layout_catalog(module: &MirModule) -> Result<BackendLayoutPlan, CodegenE
                 size_bytes,
                 align_bytes: WORD_BYTES,
                 field_offsets,
+                field_types,
             },
         );
     }
