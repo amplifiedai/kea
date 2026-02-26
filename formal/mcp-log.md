@@ -5361,3 +5361,26 @@ admissible catch capstones, ready for future concrete typing-rule integration.
 **Outcome**:
 - Judgment-level consumers now have one-name bundle outputs and one-hop
 projections, consistent with the rest of the Phase-2 capstone surface.
+
+### 2026-02-26: catch bridge direct premise adapters (proof-only)
+
+**Context**: Added judgment-free adapters in `CatchTypingBridge` so users can
+enter bridge capstones directly from raw premises, matching the schema-side
+adapter pattern.
+
+**MCP tools used**: none (proof-only API extension).
+
+**Lean side**:
+- Extended `Kea/Properties/CatchTypingBridge.lean` with:
+  - `mkCatchTypingJudgment`
+  - `catchTypingJudgment_sound_of_premises`
+  - noncomputable `catchTypingJudgment_bundle_of_premises`
+- Resolved definition-shape constraints by using `def` (not theorem) for
+  non-`Prop` outputs and marking bundle adapter noncomputable where required.
+- Verified with `cd formal && lake build` (pass).
+
+**Classify**: N/A (proof-only step).
+
+**Outcome**:
+- Bridge entrypoints now support both judgment-structured and raw-premise usage
+  with a consistent runtime-aligned admissibility boundary.
