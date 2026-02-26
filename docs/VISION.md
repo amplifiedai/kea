@@ -550,7 +550,8 @@ supervisor. One mechanism, many roles. Methods are combinators
 that take values and return values — composition is safe,
 testable, and parallelisable. Copy-on-write makes it fast:
 immutable semantics, mutable performance. See
-[COMPOSITION.md](COMPOSITION.md) for the full argument.
+[VALUES-AND-COMPOSITION.md](VALUES-AND-COMPOSITION.md) for the
+full argument.
 
 **The handler is the universal seam.** Where you configure
 behavior, where you test, where you sandbox, where you intercept.

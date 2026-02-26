@@ -156,15 +156,45 @@ Extend kea-codegen with AOT path:
 - Entry point: compile `Main.main()` as the binary's main
 - Runtime startup: initialize refcounting, set up IO handler
 
-### Step 5: Refcounting
+### Step 5: Refcounting + Update Fusion
 
-MIR pass that inserts retain/release:
+**Refcounting** — MIR pass that inserts retain/release:
 - Track value lifetimes through the MIR
 - Insert `retain` when a value is copied (shared)
 - Insert `release` when a value goes out of scope
 - CoW for `~`: check refcount, branch to in-place or copy path
 - Optimisation: elide retain/release pairs when possible (value
   is used exactly once)
+
+**Update fusion** — MIR pass that merges chained `~` operations:
+
+```kea
+-- before fusion: 3 separate CoW checks + copies
+user~{ name: "Alice" }~{ age: 30 }~{ email: "a@b.com" }
+
+-- after fusion: 1 CoW check + 1 multi-field update
+user~{ name: "Alice", age: 30, email: "a@b.com" }
+```
+
+Detection: identify sequences of `cow_update` MIR ops where the
+output of one feeds directly into the next (SSA makes this
+trivial — single-use intermediate values in a `~` chain).
+
+Fusion: merge into a single `cow_update` with a combined field
+set. One refcount check, one copy-or-mutate decision, all fields
+updated together.
+
+This is the primary fast path for the combinator pattern — fluent
+method chains that return updated values. Without fusion, each
+`.with_x()` call is a separate CoW check. With fusion, the
+entire chain is one operation.
+
+Constraints:
+- No semantic change. Fused update must produce identical results.
+- Only fuse when intermediate values have no other uses (SSA
+  single-use check).
+- Benchmark: chained `~` vs single `~` should show equivalent
+  performance after fusion.
 
 ### Step 6: Basic stdlib
 
@@ -224,6 +254,8 @@ Create `crates/kea/` (the binary crate):
   closures, and row polymorphism compile and run correctly
 - Both JIT and AOT paths work
 - Refcounting keeps memory bounded (no leaks on simple programs)
+- Update fusion: chained `~` operations fuse into single update.
+  Benchmark: chained `~` vs single `~` shows equivalent performance
 - Backend interface trait exists with Cranelift as sole implementor
 - ABI manifest is a concrete artifact consumed by codegen
 - Pass stats (retain/release/alloc counts) emitted per function

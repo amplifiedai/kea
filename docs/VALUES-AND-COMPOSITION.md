@@ -1,4 +1,4 @@
-# Values, Composition, and Why OOP Is Wrong
+# Values and Composition
 
 Kea has no classes, no inheritance, no mutable objects. This is
 not a limitation — it's the point. Kea's model is fundamentally

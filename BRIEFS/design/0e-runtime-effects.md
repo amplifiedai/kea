@@ -181,6 +181,43 @@ Koka optimises tail-resumptive handlers aggressively and this
 is the single most important performance optimisation for
 making effects cheap. Prioritise getting this right.
 
+### Step 2.75: Handler inlining / devirtualization
+
+When a handler is statically known (the `handle` block is
+visible at the call site), the compiler can inline the handler
+body at each effect operation site:
+
+```kea
+-- before inlining:
+handle computation()
+  State.get() -> resume current_state
+  State.put(s) -> resume ()
+
+-- after inlining: State.get() becomes "return current_state"
+-- State.put(s) becomes "current_state = s; return ()"
+-- no evidence lookup, no handler dispatch, no closure allocation
+```
+
+This is the optimization that makes effects zero-cost for the
+common case. When combined with tail-resumptive classification,
+a statically-known tail-resumptive handler compiles to a direct
+function call with the handler body inlined — identical codegen
+to manually passing the state as a parameter.
+
+Requirements:
+- Must fire for all statically-known tail-resumptive handlers
+- Must preserve semantics exactly (handler body + resume value)
+- Benchmark gate: State effect tight loop with inlined handler
+  must be within 2x of equivalent parameter-passing code.
+  Stretch goal: within 1.2x (just the trampoline overhead).
+- Pass stats must report: handlers inlined vs dispatched, per
+  function
+
+This is an explicit 0e deliverable, not a stretch goal. Effects
+must be cheap enough that people use them everywhere. If handler
+dispatch is measurably slower than function calls for the common
+case, the programming model doesn't work.
+
 ### Step 3: Fail compilation (optimised path)
 
 `Fail` is the most common effect. It deserves an optimised
