@@ -4214,6 +4214,7 @@ fn instantiate_impl_type(
         | Type::Html
         | Type::Markdown
         | Type::Unit
+        | Type::Never
         | Type::Atom
         | Type::Date
         | Type::DateTime
@@ -5807,6 +5808,7 @@ fn rename_type(
         | Type::Html
         | Type::Markdown
         | Type::Unit
+        | Type::Never
         | Type::Atom
         | Type::Date
         | Type::DateTime
@@ -6477,6 +6479,7 @@ pub fn resolve_annotation(
             "Html" => Some(Type::Html),
             "Markdown" => Some(Type::Markdown),
             "Unit" => Some(Type::Unit),
+            "Never" => Some(Type::Never),
             "Atom" => Some(Type::Atom),
             "Date" => Some(Type::Date),
             "DateTime" => Some(Type::DateTime),
