@@ -314,11 +314,6 @@ fn lower_bool_case(scrutinee: &Expr, arms: &[CaseArm], ty_hint: Option<Type>) ->
 }
 
 fn lower_literal_case(scrutinee: &Expr, arms: &[CaseArm], ty_hint: Option<Type>) -> Option<HirExprKind> {
-    let safe_scrutinee = matches!(scrutinee.node, ExprKind::Var(_) | ExprKind::Lit(_));
-    if !safe_scrutinee {
-        return None;
-    }
-
     if arms.iter().any(|arm| arm.guard.is_some()) {
         return None;
     }
@@ -355,22 +350,44 @@ fn lower_literal_case(scrutinee: &Expr, arms: &[CaseArm], ty_hint: Option<Type>)
 
     // Non-exhaustive literal chains without a fallback would introduce
     // missing-value paths for non-Unit expressions.
-    let _ = wildcard_body.as_ref()?;
+    let wildcard_body = wildcard_body?;
+    let return_ty = ty_hint.clone().unwrap_or(Type::Dynamic);
 
-    let mut else_expr = wildcard_body.map(|body| lower_expr(body, ty_hint.clone()));
+    let lowered_scrutinee = lower_expr(scrutinee, None);
+    let safe_scrutinee = matches!(scrutinee.node, ExprKind::Var(_) | ExprKind::Lit(_));
+    let (scrutinee_expr, setup_expr) = if safe_scrutinee {
+        (lowered_scrutinee.clone(), None)
+    } else {
+        // Avoid re-evaluating arbitrary scrutinee expressions in each arm condition.
+        let temp_name = format!(
+            "__kea_case_scrutinee${}_{}",
+            scrutinee.span.start, scrutinee.span.end
+        );
+        let temp_var = HirExpr {
+            kind: HirExprKind::Var(temp_name.clone()),
+            ty: lowered_scrutinee.ty.clone(),
+            span: scrutinee.span,
+        };
+        let setup = HirExpr {
+            kind: HirExprKind::Let {
+                pattern: HirPattern::Var(temp_name),
+                value: Box::new(lowered_scrutinee),
+            },
+            ty: temp_var.ty.clone(),
+            span: scrutinee.span,
+        };
+        (temp_var, Some(setup))
+    };
+
+    let mut else_expr = Some(lower_expr(wildcard_body, ty_hint.clone()));
     for (lit, body) in literal_arms.into_iter().rev() {
         let condition = HirExpr {
             kind: HirExprKind::Binary {
                 op: BinOp::Eq,
-                left: Box::new(lower_expr(scrutinee, None)),
+                left: Box::new(scrutinee_expr.clone()),
                 right: Box::new(HirExpr {
                     kind: HirExprKind::Lit(lit.clone()),
-                    ty: match lit {
-                        Lit::Int(_) => Type::Int,
-                        Lit::Float(_) => Type::Float,
-                        Lit::Bool(_) => Type::Bool,
-                        _ => Type::Dynamic,
-                    },
+                    ty: literal_type(lit),
                     span: scrutinee.span,
                 }),
             },
@@ -384,13 +401,27 @@ fn lower_literal_case(scrutinee: &Expr, arms: &[CaseArm], ty_hint: Option<Type>)
                 then_branch: Box::new(lower_expr(body, ty_hint.clone())),
                 else_branch: else_expr.as_ref().map(|expr| Box::new(expr.clone())),
             },
-            ty: ty_hint.clone().unwrap_or(Type::Dynamic),
+            ty: return_ty.clone(),
             span: scrutinee.span,
         };
         else_expr = Some(next);
     }
 
-    else_expr.map(|expr| expr.kind)
+    let lowered = else_expr?;
+    if let Some(setup) = setup_expr {
+        Some(HirExprKind::Block(vec![setup, lowered]))
+    } else {
+        Some(lowered.kind)
+    }
+}
+
+fn literal_type(lit: &Lit) -> Type {
+    match lit {
+        Lit::Int(_) => Type::Int,
+        Lit::Float(_) => Type::Float,
+        Lit::Bool(_) => Type::Bool,
+        _ => Type::Dynamic,
+    }
 }
 
 #[cfg(test)]
@@ -571,5 +602,29 @@ mod tests {
             panic!("expected chained float case lowering");
         };
         assert!(matches!(else_branch.kind, HirExprKind::If { .. }));
+    }
+
+    #[test]
+    fn lower_function_literal_case_expression_scrutinee_uses_single_binding() {
+        let module = parse_module_from_text(
+            "fn classify(x: Int) -> Int\n  case x + 1\n    2 -> 10\n    _ -> 20",
+        );
+        let mut env = TypeEnv::new();
+        env.bind(
+            "classify".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::pure(vec![Type::Int], Type::Int))),
+        );
+
+        let lowered = lower_module(&module, &env);
+        let HirDecl::Function(function) = &lowered.declarations[0] else {
+            panic!("expected lowered function declaration");
+        };
+
+        let HirExprKind::Block(exprs) = &function.body.kind else {
+            panic!("expected expression scrutinee case to lower through block binding");
+        };
+        assert_eq!(exprs.len(), 2);
+        assert!(matches!(exprs[0].kind, HirExprKind::Let { .. }));
+        assert!(matches!(exprs[1].kind, HirExprKind::If { .. }));
     }
 }
