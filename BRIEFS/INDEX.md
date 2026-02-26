@@ -24,7 +24,7 @@ that apply across multiple implementation phases. Ignoring them means rework.
 ## Active
 
 Work in progress right now. Each entry should have a `## Progress` section in its brief.
-- *(none)*
+- **[Codegen — pure subset](in-progress/0d-codegen-pure.md)** — Started. First gate is complete: `FunctionType` now carries structural effect rows so tooling surfaces effects directly from types.
 
 ---
 
@@ -46,7 +46,7 @@ Designed and approved. Ready to pick up. Ordered by execution sequence per ROADM
 
 ### Phase 0d: Code Generation — Pure Subset (weeks 4-6)
 
-5. **[Codegen — pure subset](todo/0d-codegen-pure.md)** — Cranelift backend (JIT + AOT), struct/enum layout, pattern matching compilation, refcounting, CoW, basic stdlib, CLI. kea-hir, kea-mir, kea-codegen, kea crates. Cannibalises rill-codegen, rill-mir. **Also read:** [performance-backend-strategy](design/performance-backend-strategy.md) (MIR contract, backend interface trait, ABI manifest, pass stats, benchmark harness).
+*(active — see Active section)*
 
 ### Phase 0e: Runtime Effects (weeks 6-8)
 

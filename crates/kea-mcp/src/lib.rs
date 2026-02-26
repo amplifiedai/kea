@@ -538,7 +538,7 @@ fn process_module(
 
         let bound_ty = env
             .lookup(&fn_decl.name.node)
-            .map(|scheme| render_binding_type_with_effect(env, &fn_decl.name.node, &scheme.ty))
+            .map(|scheme| sanitize_type_display(&scheme.ty))
             .unwrap_or_else(|| "?".to_string());
 
         bindings.push(serde_json::json!({
@@ -554,29 +554,6 @@ fn process_module(
     })
 }
 
-
-fn render_binding_type_with_effect(env: &TypeEnv, name: &str, ty: &Type) -> String {
-    let base = sanitize_type_display(ty);
-    let Type::Function(fn_ty) = ty else {
-        return base;
-    };
-
-    let Some(effect_row) = env.function_effect_row(name) else {
-        return base;
-    };
-    if effect_row.is_pure() {
-        return base;
-    }
-
-    let params = fn_ty
-        .params
-        .iter()
-        .map(sanitize_type_display)
-        .collect::<Vec<_>>()
-        .join(", ");
-    let ret = sanitize_type_display(&fn_ty.ret);
-    format!("({params}) -{effect_row}> {ret}")
-}
 fn type_check_decls(
     session: &mut Session,
     tokens: Vec<kea_syntax::Token>,

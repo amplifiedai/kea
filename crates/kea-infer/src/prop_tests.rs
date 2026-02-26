@@ -992,6 +992,7 @@ proptest! {
         let ty = Type::Function(FunctionType {
             params: vec![Type::Var(tv)],
             ret: Box::new(Type::Var(tv)),
+            effects: EffectRow::pure(),
         });
         let scheme = crate::typeck::generalize(
             &ty,
@@ -1066,6 +1067,7 @@ proptest! {
         let ty = Type::Function(FunctionType {
             params,
             ret: Box::new(ret),
+            effects: EffectRow::pure(),
         });
         prop_assert!(!is_sendable(&ty), "Function type should NOT be Sendable");
     }
@@ -1102,6 +1104,7 @@ proptest! {
         let fn_ty = Type::Function(FunctionType {
             params,
             ret: Box::new(ret),
+            effects: EffectRow::pure(),
         });
         let ty = Type::List(Box::new(fn_ty));
         prop_assert!(!is_sendable(&ty), "List(Function) should NOT be Sendable");
@@ -1117,6 +1120,7 @@ proptest! {
         let fn_ty = Type::Function(FunctionType {
             params,
             ret: Box::new(ret),
+            effects: EffectRow::pure(),
         });
         // Function in the error position
         let ty = Type::Result(Box::new(ok_ty), Box::new(fn_ty));
@@ -1183,6 +1187,7 @@ fn arb_nested_type(depth: u32) -> BoxedStrategy<Type> {
             ).prop_map(|(params, ret)| Type::Function(FunctionType {
                 params,
                 ret: Box::new(ret),
+                effects: EffectRow::pure(),
             })),
         ]
         .boxed()
@@ -1195,6 +1200,7 @@ fn arb_nested_type(depth: u32) -> BoxedStrategy<Type> {
             ).prop_map(|(params, ret)| Type::Function(FunctionType {
                 params,
                 ret: Box::new(ret),
+                effects: EffectRow::pure(),
             })),
         ];
         let inner = arb_nested_type(depth - 1);
@@ -2185,6 +2191,7 @@ proptest! {
             TypeScheme::mono(Type::Function(FunctionType {
                 params: vec![Type::Option(Box::new(Type::Int))],
                 ret: Box::new(Type::Bool),
+                effects: EffectRow::pure(),
             })),
         );
         let mut ctx = crate::InferenceContext::new();
@@ -2269,6 +2276,7 @@ proptest! {
             TypeScheme::mono(Type::Function(FunctionType {
                 params: vec![expected.clone()],
                 ret: Box::new(expected.clone()),
+                effects: EffectRow::pure(),
             })),
         );
         let mut ctx = crate::InferenceContext::new();
@@ -2321,6 +2329,7 @@ proptest! {
             TypeScheme::mono(Type::Function(FunctionType {
                 params: vec![expected.clone()],
                 ret: Box::new(expected.clone()),
+                effects: EffectRow::pure(),
             })),
         );
         let mut ctx = crate::InferenceContext::new();
@@ -2373,6 +2382,7 @@ proptest! {
             TypeScheme::mono(Type::Function(FunctionType {
                 params: vec![expected.clone()],
                 ret: Box::new(expected.clone()),
+                effects: EffectRow::pure(),
             })),
         );
         let mut ctx = crate::InferenceContext::new();
@@ -2427,6 +2437,7 @@ proptest! {
             TypeScheme::mono(Type::Function(FunctionType {
                 params: vec![expected.clone()],
                 ret: Box::new(expected.clone()),
+                effects: EffectRow::pure(),
             })),
         );
         let mut ctx = crate::InferenceContext::new();

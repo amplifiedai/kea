@@ -287,6 +287,46 @@ pub struct TypeEnv {
 }
 
 impl TypeEnv {
+    fn apply_effect_row_to_scheme(scheme: &mut TypeScheme, row: &EffectRow) {
+        if let Type::Function(ft) = &mut scheme.ty {
+            ft.effects = row.clone();
+        }
+    }
+
+    fn update_bound_function_effect(&mut self, name: &str, row: &EffectRow) {
+        for scope in self.bindings.iter_mut().rev() {
+            if let Some(scheme) = scope.get_mut(name) {
+                Self::apply_effect_row_to_scheme(scheme, row);
+                break;
+            }
+        }
+    }
+
+    fn update_module_function_effect(&mut self, name: &str, row: &EffectRow) {
+        if let Some((module_path, fn_name)) = name.split_once("::")
+            && let Some(module) = self.module_type_schemes.get_mut(module_path)
+            && let Some((scheme, effects)) = module.get_mut(fn_name)
+        {
+            Self::apply_effect_row_to_scheme(scheme, row);
+            *effects = classify_effect_row(row);
+            return;
+        }
+
+        for module in self.module_type_schemes.values_mut() {
+            if let Some((scheme, effects)) = module.get_mut(name) {
+                Self::apply_effect_row_to_scheme(scheme, row);
+                *effects = classify_effect_row(row);
+            }
+        }
+    }
+
+    fn effect_row_from_scheme(scheme: &TypeScheme) -> Option<EffectRow> {
+        match &scheme.ty {
+            Type::Function(ft) => Some(ft.effects.clone()),
+            _ => None,
+        }
+    }
+
     fn ensure_module_alias_for_path(&mut self, module_path: &str) {
         let Some((_prefix, short)) = module_path.rsplit_once('.') else {
             return;
@@ -314,16 +354,20 @@ impl TypeEnv {
 
     /// Record the inferred/declared effects for a function binding.
     pub fn set_function_effect(&mut self, name: String, effects: Effects) {
-        self.function_effect_rows
-            .insert(name.clone(), effect_row_from_effects(effects));
-        self.function_effects.insert(name, effects);
+        let row = effect_row_from_effects(effects);
+        self.function_effect_rows.insert(name.clone(), row.clone());
+        self.function_effects.insert(name.clone(), effects);
+        self.update_bound_function_effect(&name, &row);
+        self.update_module_function_effect(&name, &row);
     }
 
     /// Record an effect row for a function binding (for effect-polymorphic callbacks).
     pub fn set_function_effect_row(&mut self, name: String, row: EffectRow) {
         self.function_effects
             .insert(name.clone(), classify_effect_row(&row));
-        self.function_effect_rows.insert(name, row);
+        self.function_effect_rows.insert(name.clone(), row.clone());
+        self.update_bound_function_effect(&name, &row);
+        self.update_module_function_effect(&name, &row);
     }
 
     /// Register a function effect-signature template for call-site instantiation.
@@ -347,7 +391,17 @@ impl TypeEnv {
 
     /// Get effect row for a function binding, if known.
     pub fn function_effect_row(&self, name: &str) -> Option<EffectRow> {
-        self.function_effect_rows.get(name).cloned()
+        if let Some(row) = self.function_effect_rows.get(name) {
+            return Some(row.clone());
+        }
+        for scope in self.bindings.iter().rev() {
+            if let Some(scheme) = scope.get(name)
+                && let Some(row) = Self::effect_row_from_scheme(scheme)
+            {
+                return Some(row);
+            }
+        }
+        None
     }
 
     /// Get effect-signature template for a function binding, if present.
@@ -374,9 +428,11 @@ impl TypeEnv {
         &mut self,
         module_path: &str,
         name: &str,
-        scheme: TypeScheme,
+        mut scheme: TypeScheme,
         effects: Effects,
     ) {
+        let row = effect_row_from_effects(effects);
+        Self::apply_effect_row_to_scheme(&mut scheme, &row);
         self.module_type_schemes
             .entry(module_path.to_string())
             .or_default()
@@ -449,12 +505,14 @@ impl TypeEnv {
             .unwrap_or_else(|| format!("Kea.{module_short}"));
 
         if let Some(module) = self.module_type_schemes.get(&module_path) {
-            if let Some((_, effects)) = module.get(field) {
-                return Some(effect_row_from_effects(*effects));
+            if let Some((scheme, effects)) = module.get(field) {
+                return Self::effect_row_from_scheme(scheme)
+                    .or_else(|| Some(effect_row_from_effects(*effects)));
             }
             let prefixed = format!("{}_{}", module_short.to_lowercase(), field);
-            if let Some((_, effects)) = module.get(&prefixed) {
-                return Some(effect_row_from_effects(*effects));
+            if let Some((scheme, effects)) = module.get(&prefixed) {
+                return Self::effect_row_from_scheme(scheme)
+                    .or_else(|| Some(effect_row_from_effects(*effects)));
             }
         }
         None
@@ -1335,6 +1393,7 @@ impl SumTypeRegistry {
         let thunk_to_seq = Type::Function(FunctionType {
             params: vec![],
             ret: Box::new(seq_of_a.clone()),
+            effects: EffectRow::pure(),
         });
         let seq_variants = vec![
             VariantInfo {
@@ -3929,6 +3988,29 @@ fn instantiate_impl_type(
     type_params: &[String],
     bindings: &BTreeMap<String, Type>,
 ) -> Type {
+    fn instantiate_impl_effect_row(
+        row: &EffectRow,
+        type_params: &[String],
+        bindings: &BTreeMap<String, Type>,
+    ) -> EffectRow {
+        EffectRow {
+            row: RowType {
+                fields: row
+                    .row
+                    .fields
+                    .iter()
+                    .map(|(label, ty)| {
+                        (
+                            label.clone(),
+                            instantiate_impl_type(ty, type_params, bindings),
+                        )
+                    })
+                    .collect(),
+                rest: row.row.rest,
+            },
+        }
+    }
+
     match ty {
         Type::Var(tv) => {
             let idx = tv.0 as usize;
@@ -3998,6 +4080,7 @@ fn instantiate_impl_type(
                 .map(|t| instantiate_impl_type(t, type_params, bindings))
                 .collect(),
             ret: Box::new(instantiate_impl_type(&ft.ret, type_params, bindings)),
+            effects: instantiate_impl_effect_row(&ft.effects, type_params, bindings),
         }),
         Type::Forall(scheme) => {
             let mut updated = (**scheme).clone();
@@ -4308,8 +4391,7 @@ fn resolve_annotation_with_type_params(
                 ty: resolve_annotation_with_type_params(ty, &scoped, records, sum_types)?,
             })))
         }
-        TypeAnnotation::Function(params, ret)
-        | TypeAnnotation::FunctionWithEffect(params, _, ret) => {
+        TypeAnnotation::Function(params, ret) => {
             let param_types: Option<Vec<_>> = params
                 .iter()
                 .map(|p| {
@@ -4324,6 +4406,34 @@ fn resolve_annotation_with_type_params(
                     records,
                     sum_types,
                 )?),
+                effects: EffectRow::pure(),
+            }))
+        }
+        TypeAnnotation::FunctionWithEffect(params, effect, ret) => {
+            let param_types: Option<Vec<_>> = params
+                .iter()
+                .map(|p| {
+                    resolve_annotation_with_type_params(p, type_param_scope, records, sum_types)
+                })
+                .collect();
+            let mut effect_var_bindings = BTreeMap::new();
+            let mut next_effect_var = 0u32;
+            let effects = function_param_effect_row_from_type_annotation(
+                ann,
+                &mut effect_var_bindings,
+                &mut next_effect_var,
+            )
+            .or_else(|| effect_annotation_to_compat_row(&effect.node, Some(records)))
+            .unwrap_or_else(pure_effect_row);
+            Some(Type::Function(FunctionType {
+                params: param_types?,
+                ret: Box::new(resolve_annotation_with_type_params(
+                    ret,
+                    type_param_scope,
+                    records,
+                    sum_types,
+                )?),
+                effects,
             }))
         }
         TypeAnnotation::Optional(inner) => Some(Type::Option(Box::new(
@@ -5573,6 +5683,9 @@ fn rename_type(
                 .map(|t| rename_type(t, type_map, row_map, dim_map))
                 .collect(),
             ret: Box::new(rename_type(&ft.ret, type_map, row_map, dim_map)),
+            effects: EffectRow {
+                row: rename_row(&ft.effects.row, type_map, row_map, dim_map),
+            },
         }),
         Type::Forall(scheme) => {
             let mut scoped_type_map = type_map.clone();
@@ -6412,8 +6525,7 @@ pub fn resolve_annotation(
             let scope = BTreeMap::new();
             resolve_annotation_with_type_params(ann, &scope, records, sum_types)
         }
-        TypeAnnotation::Function(params, ret)
-        | TypeAnnotation::FunctionWithEffect(params, _, ret) => {
+        TypeAnnotation::Function(params, ret) => {
             let param_types: Option<Vec<_>> = params
                 .iter()
                 .map(|p| resolve_annotation(p, records, sum_types))
@@ -6421,6 +6533,27 @@ pub fn resolve_annotation(
             Some(Type::Function(FunctionType {
                 params: param_types?,
                 ret: Box::new(resolve_annotation(ret, records, sum_types)?),
+                effects: EffectRow::pure(),
+            }))
+        }
+        TypeAnnotation::FunctionWithEffect(params, effect, ret) => {
+            let param_types: Option<Vec<_>> = params
+                .iter()
+                .map(|p| resolve_annotation(p, records, sum_types))
+                .collect();
+            let mut effect_var_bindings = BTreeMap::new();
+            let mut next_effect_var = 0u32;
+            let effects = function_param_effect_row_from_type_annotation(
+                ann,
+                &mut effect_var_bindings,
+                &mut next_effect_var,
+            )
+            .or_else(|| effect_annotation_to_compat_row(&effect.node, Some(records)))
+            .unwrap_or_else(pure_effect_row);
+            Some(Type::Function(FunctionType {
+                params: param_types?,
+                ret: Box::new(resolve_annotation(ret, records, sum_types)?),
+                effects,
             }))
         }
         TypeAnnotation::Optional(inner) => Some(Type::Option(Box::new(resolve_annotation(
@@ -6581,8 +6714,7 @@ fn resolve_annotation_or_bare_df(
                 ty: resolved?,
             })))
         }
-        TypeAnnotation::Function(params, ret)
-        | TypeAnnotation::FunctionWithEffect(params, _, ret) => {
+        TypeAnnotation::Function(params, ret) => {
             let param_types: Option<Vec<_>> = params
                 .iter()
                 .map(|p| resolve_annotation_or_bare_df(p, records, sum_types, unifier))
@@ -6592,6 +6724,33 @@ fn resolve_annotation_or_bare_df(
                 ret: Box::new(resolve_annotation_or_bare_df(
                     ret, records, sum_types, unifier,
                 )?),
+                effects: EffectRow::pure(),
+            }))
+        }
+        TypeAnnotation::FunctionWithEffect(params, effect, ret) => {
+            let param_types: Option<Vec<_>> = params
+                .iter()
+                .map(|p| resolve_annotation_or_bare_df(p, records, sum_types, unifier))
+                .collect();
+            let mut effect_var_bindings = BTreeMap::new();
+            let mut next_effect_var = 0u32;
+            let effects = function_param_effect_row_from_type_annotation(
+                ann,
+                &mut effect_var_bindings,
+                &mut next_effect_var,
+            )
+            .or_else(|| effect_annotation_to_compat_row(&effect.node, Some(records)))
+            .or_else(|| {
+                effect_annotation_var_name(&effect.node)
+                    .map(|_| EffectRow::open(vec![], unifier.fresh_row_var()))
+            })
+            .unwrap_or_else(pure_effect_row);
+            Some(Type::Function(FunctionType {
+                params: param_types?,
+                ret: Box::new(resolve_annotation_or_bare_df(
+                    ret, records, sum_types, unifier,
+                )?),
+                effects,
             }))
         }
         TypeAnnotation::Optional(inner) => Some(Type::Option(Box::new(
@@ -7085,6 +7244,7 @@ pub fn register_effect_decl(
         let op_ty = Type::Function(FunctionType {
             params: param_tys,
             ret: Box::new(ret_ty),
+            effects: EffectRow::closed(vec![(Label::new(module_short.clone()), Type::Unit)]),
         });
         let op_scheme = TypeScheme {
             type_vars: type_vars.clone(),
@@ -11517,6 +11677,7 @@ fn infer_handle_expr_type(
         let expected = Type::Function(FunctionType {
             params: vec![handled_ty.clone()],
             ret: Box::new(out_ty.clone()),
+            effects: EffectRow::pure(),
         });
         constrain_type_eq(
             unifier,
@@ -11919,6 +12080,7 @@ fn infer_expr_bidir(
             Type::Function(FunctionType {
                 params: param_types,
                 ret: Box::new(body_ty),
+                effects: EffectRow::pure(),
             })
         }
 
@@ -11997,6 +12159,7 @@ fn infer_expr_bidir(
                 let expected_func_ty = Type::Function(FunctionType {
                     params: expected_params,
                     ret: Box::new(ret_ty.clone()),
+                    effects: EffectRow::pure(),
                 });
 
                 constrain_type_eq(
@@ -12342,6 +12505,7 @@ fn infer_expr_bidir(
                             return Type::Function(FunctionType {
                                 params: param_types,
                                 ret: Box::new(inst.sum_type),
+                                effects: EffectRow::pure(),
                             });
                         }
                     }
@@ -14086,6 +14250,7 @@ fn check_expr_bidir(
             return Type::Function(FunctionType {
                 params: param_types,
                 ret: Box::new(expected_ret),
+                effects: expected_fn.effects.clone(),
             });
         }
         (
@@ -15961,8 +16126,7 @@ fn resolve_annotation_with_self_and_assoc(
                 .collect::<Option<Vec<_>>>()?;
             Some(Type::Tuple(resolved))
         }
-        TypeAnnotation::Function(params, ret)
-        | TypeAnnotation::FunctionWithEffect(params, _, ret) => {
+        TypeAnnotation::Function(params, ret) => {
             let resolved_params: Vec<Type> = params
                 .iter()
                 .map(|param| {
@@ -15974,6 +16138,24 @@ fn resolve_annotation_with_self_and_assoc(
             Some(Type::Function(FunctionType {
                 params: resolved_params,
                 ret: Box::new(resolved_ret),
+                effects: EffectRow::pure(),
+            }))
+        }
+        TypeAnnotation::FunctionWithEffect(params, effect, ret) => {
+            let resolved_params: Vec<Type> = params
+                .iter()
+                .map(|param| {
+                    resolve_annotation_with_self_and_assoc(param, records, self_type, assoc_types)
+                })
+                .collect::<Option<Vec<_>>>()?;
+            let resolved_ret =
+                resolve_annotation_with_self_and_assoc(ret, records, self_type, assoc_types)?;
+            let effects = effect_annotation_to_compat_row(&effect.node, Some(records))
+                .unwrap_or_else(pure_effect_row);
+            Some(Type::Function(FunctionType {
+                params: resolved_params,
+                ret: Box::new(resolved_ret),
+                effects,
             }))
         }
         TypeAnnotation::Optional(inner) => {
@@ -16286,8 +16468,7 @@ fn resolve_annotation_with_self_assoc_and_params(
                 ty: resolved,
             })))
         }
-        TypeAnnotation::Function(params, ret)
-        | TypeAnnotation::FunctionWithEffect(params, _, ret) => {
+        TypeAnnotation::Function(params, ret) => {
             let resolved_params: Vec<Type> = params
                 .iter()
                 .map(|param| {
@@ -16312,6 +16493,37 @@ fn resolve_annotation_with_self_assoc_and_params(
             Some(Type::Function(FunctionType {
                 params: resolved_params,
                 ret: Box::new(resolved_ret),
+                effects: EffectRow::pure(),
+            }))
+        }
+        TypeAnnotation::FunctionWithEffect(params, effect, ret) => {
+            let resolved_params: Vec<Type> = params
+                .iter()
+                .map(|param| {
+                    resolve_annotation_with_self_assoc_and_params(
+                        param,
+                        records,
+                        self_type,
+                        assoc_types,
+                        type_params,
+                        placeholder_id,
+                    )
+                })
+                .collect::<Option<Vec<_>>>()?;
+            let resolved_ret = resolve_annotation_with_self_assoc_and_params(
+                ret,
+                records,
+                self_type,
+                assoc_types,
+                type_params,
+                placeholder_id,
+            )?;
+            let effects = effect_annotation_to_compat_row(&effect.node, Some(records))
+                .unwrap_or_else(pure_effect_row);
+            Some(Type::Function(FunctionType {
+                params: resolved_params,
+                ret: Box::new(resolved_ret),
+                effects,
             }))
         }
         TypeAnnotation::Optional(inner) => {
@@ -16402,6 +16614,11 @@ pub fn concrete_method_types_from_decls(
             Type::Function(FunctionType {
                 params,
                 ret: Box::new(ret),
+                effects: method
+                    .effect_annotation
+                    .as_ref()
+                    .and_then(|ann| effect_annotation_to_compat_row(&ann.node, Some(records)))
+                    .unwrap_or_else(pure_effect_row),
             }),
         );
     }
@@ -16446,6 +16663,11 @@ fn instantiate_trait_method_type(
     let raw_method_ty = Type::Function(FunctionType {
         params: method.param_types.clone(),
         ret: Box::new(method.return_type.clone()),
+        effects: method
+            .declared_effect
+            .as_ref()
+            .and_then(|ann| effect_annotation_to_compat_row(ann, None))
+            .unwrap_or_else(pure_effect_row),
     });
 
     let self_placeholder = TypeVarId(u32::MAX);

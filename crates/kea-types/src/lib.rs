@@ -298,15 +298,30 @@ pub fn builtin_sum_type(name: &str) -> Option<Type> {
     builtin_error_sum_type(name).or_else(|| builtin_protocol_sum_type(name))
 }
 
-/// Function type: `(params) -> ret`.
-///
-/// Purity and volatility are tracked separately during inference, not as part
-/// of the structural type. This keeps unification clean — you unify parameter
-/// and return types, not effect properties.
+/// Function type: `(params) -[effects]> ret`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionType {
     pub params: Vec<Type>,
     pub ret: Box<Type>,
+    pub effects: EffectRow,
+}
+
+impl FunctionType {
+    pub fn pure(params: Vec<Type>, ret: Type) -> Self {
+        Self {
+            params,
+            ret: Box::new(ret),
+            effects: EffectRow::pure(),
+        }
+    }
+
+    pub fn with_effects(params: Vec<Type>, ret: Type, effects: EffectRow) -> Self {
+        Self {
+            params,
+            ret: Box::new(ret),
+            effects,
+        }
+    }
 }
 
 /// A nominal record type.
@@ -668,7 +683,11 @@ impl fmt::Display for Type {
                     }
                     write!(f, "{p}")?;
                 }
-                write!(f, ") -> {}", ft.ret)
+                if ft.effects.is_pure() {
+                    write!(f, ") -> {}", ft.ret)
+                } else {
+                    write!(f, ") -{}> {}", ft.effects, ft.ret)
+                }
             }
             Type::Forall(scheme) => {
                 let names: Vec<String> = scheme
@@ -870,6 +889,7 @@ fn collect_free_type_vars(ty: &Type, vars: &mut BTreeSet<TypeVarId>) {
                 collect_free_type_vars(t, vars);
             }
             collect_free_type_vars(&ft.ret, vars);
+            collect_free_type_vars_row(&ft.effects.row, vars);
         }
         Type::Forall(scheme) => {
             let mut inner = free_type_vars(&scheme.ty);
@@ -992,6 +1012,7 @@ fn collect_free_row_vars(ty: &Type, vars: &mut BTreeSet<RowVarId>) {
                 collect_free_row_vars(t, vars);
             }
             collect_free_row_vars(&ft.ret, vars);
+            collect_free_row_vars_row(&ft.effects.row, vars);
         }
         Type::Forall(scheme) => {
             let mut inner = free_row_vars(&scheme.ty);
@@ -1116,6 +1137,7 @@ fn collect_free_dim_vars(ty: &Type, vars: &mut BTreeSet<DimVarId>) {
                 collect_free_dim_vars(t, vars);
             }
             collect_free_dim_vars(&ft.ret, vars);
+            collect_free_dim_vars_row(&ft.effects.row, vars);
         }
         Type::Forall(scheme) => {
             let mut inner = free_dim_vars(&scheme.ty);
@@ -2128,6 +2150,7 @@ impl Substitution {
             Type::Function(ft) => Type::Function(FunctionType {
                 params: ft.params.iter().map(|t| self.apply(t)).collect(),
                 ret: Box::new(self.apply(&ft.ret)),
+                effects: self.apply_effect_row(&ft.effects),
             }),
             Type::Forall(scheme) => {
                 let mut shadowed = self.clone();
@@ -2224,6 +2247,12 @@ impl Substitution {
                     rest: Some(var),
                 },
             },
+        }
+    }
+
+    pub fn apply_effect_row(&self, effects: &EffectRow) -> EffectRow {
+        EffectRow {
+            row: self.apply_row(&effects.row),
         }
     }
 }
@@ -2505,6 +2534,7 @@ mod tests {
         let ft = Type::Function(FunctionType {
             params: vec![Type::Int, Type::Bool],
             ret: Box::new(Type::String),
+            effects: EffectRow::pure(),
         });
         assert_eq!(ft.to_string(), "(Int, Bool) -> String");
     }
@@ -2568,10 +2598,12 @@ mod tests {
         let expected = Type::Function(FunctionType {
             params: vec![Type::Int, Type::Int],
             ret: Box::new(Type::Var(TypeVarId(1))),
+            effects: EffectRow::pure(),
         });
         let actual = Type::Function(FunctionType {
             params: vec![Type::Var(TypeVarId(0))],
             ret: Box::new(Type::Var(TypeVarId(0))),
+            effects: EffectRow::pure(),
         });
         let (expected_s, actual_s) = sanitize_type_pair_display(&expected, &actual);
 
@@ -2663,6 +2695,7 @@ mod tests {
                     type_scheme: TypeScheme::mono(Type::Function(FunctionType {
                         params: vec![Type::Float],
                         ret: Box::new(Type::Float),
+                        effects: EffectRow::pure(),
                     })),
                     effects: Effects::pure_deterministic(),
                     doc: "Square root",
@@ -2675,6 +2708,7 @@ mod tests {
                     type_scheme: TypeScheme::mono(Type::Function(FunctionType {
                         params: vec![Type::Int],
                         ret: Box::new(Type::Int),
+                        effects: EffectRow::pure(),
                     })),
                     effects: Effects::pure_deterministic(),
                     doc: "Absolute value",
@@ -2761,6 +2795,7 @@ mod tests {
             type_constructor_for_trait(&Type::Function(FunctionType {
                 params: vec![Type::Int],
                 ret: Box::new(Type::Int),
+                effects: EffectRow::pure(),
             }))
             .is_none()
         );
@@ -2829,6 +2864,7 @@ mod tests {
         let closure_type = Type::Function(FunctionType {
             params: vec![Type::Int],
             ret: Box::new(Type::Int),
+            effects: EffectRow::pure(),
         });
         assert!(!is_sendable(&closure_type));
         assert!(is_sendable(&Type::Arc(Box::new(closure_type))));
@@ -2863,6 +2899,7 @@ mod tests {
         let ft = Type::Function(FunctionType {
             params: vec![Type::Int],
             ret: Box::new(Type::Bool),
+            effects: EffectRow::pure(),
         });
         assert!(!is_sendable(&ft));
     }
@@ -2872,6 +2909,7 @@ mod tests {
         let ft = Type::Function(FunctionType {
             params: vec![Type::Int],
             ret: Box::new(Type::Int),
+            effects: EffectRow::pure(),
         });
         let row = RowType::closed(vec![
             (Label::new("name"), Type::String),
@@ -2885,6 +2923,7 @@ mod tests {
         let ft = Type::Function(FunctionType {
             params: vec![],
             ret: Box::new(Type::Unit),
+            effects: EffectRow::pure(),
         });
         assert!(!is_sendable(&Type::List(Box::new(ft))));
     }
@@ -2903,6 +2942,7 @@ mod tests {
         let ft = Type::Function(FunctionType {
             params: vec![Type::Int],
             ret: Box::new(Type::Int),
+            effects: EffectRow::pure(),
         });
         let row = RowType::closed(vec![
             (Label::new("callback"), ft),
@@ -2921,6 +2961,7 @@ mod tests {
         let ft = Type::Function(FunctionType {
             params: vec![],
             ret: Box::new(Type::Unit),
+            effects: EffectRow::pure(),
         });
         let inner_row = RowType::closed(vec![(Label::new("action"), ft)]);
         let outer_row = RowType::closed(vec![

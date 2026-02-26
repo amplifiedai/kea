@@ -1233,11 +1233,12 @@ impl Unifier {
                     crate::trace::UnifyAction::Decompose,
                     &expected,
                     &actual,
-                    "Function ~ Function → unify params + return".into(),
+                    "Function ~ Function → unify params + effects + return".into(),
                 );
                 for (a, b) in a.params.iter().zip(b.params.iter()) {
                     self.unify_immediate(a, b, provenance);
                 }
+                self.unify_rows_immediate(&a.effects.row, &b.effects.row, provenance);
                 self.unify_immediate(&a.ret, &b.ret, provenance);
             }
             (Type::Forall(a), Type::Forall(b)) if alpha_equivalent_type_schemes(a, b) => {
@@ -2653,7 +2654,7 @@ mod tests {
 
     use super::*;
     use kea_ast::FileId;
-    use kea_types::{FunctionType, Kind};
+    use kea_types::{EffectRow, FunctionType, Kind};
 
     fn test_span() -> Span {
         Span::new(FileId(0), 0, 1)
@@ -2671,10 +2672,12 @@ mod tests {
         let expected = Type::Function(FunctionType {
             params: vec![Type::Int, Type::Int],
             ret: Box::new(Type::Var(TypeVarId(1))),
+            effects: EffectRow::pure(),
         });
         let actual = Type::Function(FunctionType {
             params: vec![Type::Var(TypeVarId(0))],
             ret: Box::new(Type::Var(TypeVarId(0))),
+            effects: EffectRow::pure(),
         });
 
         let (message, _) =
@@ -2893,6 +2896,7 @@ mod tests {
             ty: Type::Function(FunctionType {
                 params: vec![Type::Var(TypeVarId(7))],
                 ret: Box::new(Type::Var(TypeVarId(7))),
+                effects: EffectRow::pure(),
             }),
         }));
         let right = Type::Forall(Box::new(TypeScheme {
@@ -2905,6 +2909,7 @@ mod tests {
             ty: Type::Function(FunctionType {
                 params: vec![Type::Var(TypeVarId(42))],
                 ret: Box::new(Type::Var(TypeVarId(42))),
+                effects: EffectRow::pure(),
             }),
         }));
 
@@ -3156,10 +3161,12 @@ mod tests {
         let expected = Type::Function(FunctionType {
             params: vec![Type::Var(var)],
             ret: Box::new(Type::Bool),
+            effects: EffectRow::pure(),
         });
         let actual = Type::Function(FunctionType {
             params: vec![Type::Int],
             ret: Box::new(Type::Bool),
+            effects: EffectRow::pure(),
         });
         u.unify(&expected, &actual, &test_prov());
         assert!(!u.has_errors());

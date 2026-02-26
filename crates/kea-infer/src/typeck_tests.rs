@@ -817,6 +817,7 @@ fn check_expr_context_pushes_expected_precision_into_call_arguments() {
         TypeScheme::mono(Type::Function(FunctionType {
             params: vec![expected.clone()],
             ret: Box::new(expected.clone()),
+            effects: EffectRow::pure(),
         })),
     );
     let mut ctx = InferenceContext::new();
@@ -855,6 +856,7 @@ fn check_expr_context_pushes_expected_precision_into_pipe_arguments() {
         TypeScheme::mono(Type::Function(FunctionType {
             params: vec![expected.clone()],
             ret: Box::new(expected.clone()),
+            effects: EffectRow::pure(),
         })),
     );
     let mut ctx = InferenceContext::new();
@@ -2297,6 +2299,7 @@ fn infer_nested_stream_call_resolves_inner_type_parameter() {
             ty: Type::Function(FunctionType {
                 params: vec![Type::List(Box::new(Type::Var(a)))],
                 ret: Box::new(Type::Stream(Box::new(Type::Var(a)))),
+                effects: EffectRow::pure(),
             }),
         },
     );
@@ -2316,9 +2319,11 @@ fn infer_nested_stream_call_resolves_inner_type_parameter() {
                     Type::Function(FunctionType {
                         params: vec![Type::Var(b)],
                         ret: Box::new(Type::Var(c)),
+                        effects: EffectRow::pure(),
                     }),
                 ],
                 ret: Box::new(Type::Stream(Box::new(Type::Var(c)))),
+                effects: EffectRow::pure(),
             }),
         },
     );
@@ -2784,6 +2789,7 @@ fn infer_nested_list_call_resolves_inner_type_parameter() {
             ty: Type::Function(FunctionType {
                 params: vec![Type::List(Box::new(Type::Var(a)))],
                 ret: Box::new(Type::List(Box::new(Type::Var(a)))),
+                effects: EffectRow::pure(),
             }),
         },
     );
@@ -2803,9 +2809,11 @@ fn infer_nested_list_call_resolves_inner_type_parameter() {
                     Type::Function(FunctionType {
                         params: vec![Type::Var(b)],
                         ret: Box::new(Type::Var(c)),
+                        effects: EffectRow::pure(),
                     }),
                 ],
                 ret: Box::new(Type::List(Box::new(Type::Var(c)))),
+                effects: EffectRow::pure(),
             }),
         },
     );
@@ -3065,6 +3073,7 @@ fn infer_if_intermediate_bool_does_not_narrow() {
         TypeScheme::mono(Type::Function(FunctionType {
             params: vec![Type::Option(Box::new(Type::Int))],
             ret: Box::new(Type::Bool),
+            effects: EffectRow::pure(),
         })),
     );
     let expr = block(vec![
@@ -3094,6 +3103,7 @@ fn infer_if_non_narrowing_bool_function_does_not_narrow() {
         TypeScheme::mono(Type::Function(FunctionType {
             params: vec![Type::Option(Box::new(Type::Int))],
             ret: Box::new(Type::Bool),
+            effects: EffectRow::pure(),
         })),
     );
 
@@ -3586,6 +3596,7 @@ fn infer_namespaced_list_member_uses_unprefixed_binding() {
     let scheme = TypeScheme::mono(Type::Function(FunctionType {
         params: vec![Type::Int],
         ret: Box::new(Type::Int),
+        effects: EffectRow::pure(),
     }));
     env.register_module_type_scheme("Kea.List", "map", scheme, Effects::pure_deterministic());
     let expr = field_access(var("List"), "map");
@@ -3596,6 +3607,7 @@ fn infer_namespaced_list_member_uses_unprefixed_binding() {
         Type::Function(FunctionType {
             params: vec![Type::Int],
             ret: Box::new(Type::Int),
+            effects: EffectRow::pure(),
         })
     );
 }
@@ -3610,6 +3622,7 @@ fn infer_namespaced_member_uses_registered_module_alias() {
         TypeScheme::mono(Type::Function(FunctionType {
             params: vec![Type::Int],
             ret: Box::new(Type::Int),
+            effects: EffectRow::pure(),
         })),
         Effects::pure_deterministic(),
     );
@@ -3621,6 +3634,7 @@ fn infer_namespaced_member_uses_registered_module_alias() {
         Type::Function(FunctionType {
             params: vec![Type::Int],
             ret: Box::new(Type::Int),
+            effects: EffectRow::pure(),
         })
     );
 }
@@ -3634,6 +3648,7 @@ fn register_module_type_scheme_auto_registers_short_alias() {
         TypeScheme::mono(Type::Function(FunctionType {
             params: vec![Type::Int],
             ret: Box::new(Type::Int),
+            effects: EffectRow::pure(),
         })),
         Effects::pure_deterministic(),
     );
@@ -3650,6 +3665,7 @@ fn infer_namespaced_map_member_prefers_exact_binding() {
         TypeScheme::mono(Type::Function(FunctionType {
             params: vec![Type::Int],
             ret: Box::new(Type::Int),
+            effects: EffectRow::pure(),
         })),
         Effects::pure_deterministic(),
     );
@@ -3659,6 +3675,7 @@ fn infer_namespaced_map_member_prefers_exact_binding() {
         TypeScheme::mono(Type::Function(FunctionType {
             params: vec![Type::Bool],
             ret: Box::new(Type::Bool),
+            effects: EffectRow::pure(),
         })),
         Effects::pure_deterministic(),
     );
@@ -3670,6 +3687,7 @@ fn infer_namespaced_map_member_prefers_exact_binding() {
         Type::Function(FunctionType {
             params: vec![Type::Int],
             ret: Box::new(Type::Int),
+            effects: EffectRow::pure(),
         })
     );
 }
@@ -3698,6 +3716,7 @@ fn infer_namespaced_unknown_member_reports_clear_error() {
         TypeScheme::mono(Type::Function(FunctionType {
             params: vec![Type::Int],
             ret: Box::new(Type::Int),
+            effects: EffectRow::pure(),
         })),
     );
 
@@ -3955,6 +3974,7 @@ fn infer_call_pushes_expected_precision_into_arguments() {
         TypeScheme::mono(Type::Function(FunctionType {
             params: vec![expected.clone()],
             ret: Box::new(expected),
+            effects: EffectRow::pure(),
         })),
     );
 
@@ -3985,6 +4005,7 @@ fn infer_pipe_pushes_expected_precision_into_arguments() {
         TypeScheme::mono(Type::Function(FunctionType {
             params: vec![expected.clone()],
             ret: Box::new(expected),
+            effects: EffectRow::pure(),
         })),
     );
 
@@ -4019,6 +4040,7 @@ fn infer_precision_lambda_return_annotation_accepts_float_literal() {
         Type::Function(FunctionType {
             params: vec![],
             ret: Box::new(Type::FloatN(kea_types::FloatWidth::F32)),
+            effects: EffectRow::pure(),
         })
     );
 }
@@ -4800,6 +4822,7 @@ fn infer_case_patterns_constrain_variable_scrutinee_type() {
         Type::Function(FunctionType {
             params: vec![Type::Option(Box::new(Type::Int))],
             ret: Box::new(Type::Int),
+            effects: EffectRow::pure(),
         })
     );
 }
@@ -8459,6 +8482,7 @@ fn sendable_parametric_dispatch_handles_nested_and_non_sendable_cases() {
     let fn_ty = Type::Function(FunctionType {
         params: vec![Type::Int],
         ret: Box::new(Type::Int),
+        effects: EffectRow::pure(),
     });
     assert!(!has_unique_impl(
         &traits,
@@ -8654,6 +8678,7 @@ fn trait_add_impl_methods() {
     let fn_type = Type::Function(FunctionType {
         params: vec![Type::Int],
         ret: Box::new(Type::String),
+        effects: EffectRow::pure(),
     });
     methods.insert("show".to_string(), fn_type.clone());
     traits.add_impl_methods(methods).unwrap();
@@ -8697,6 +8722,7 @@ fn trait_lookup_method_for_type_unique() {
                 row: RowType::closed(vec![]),
             })],
             ret: Box::new(Type::String),
+            effects: EffectRow::pure(),
         }),
     );
     traits.add_impl_methods(methods).unwrap();
@@ -8740,6 +8766,7 @@ fn trait_lookup_method_for_type_ambiguous() {
                     row: RowType::closed(vec![]),
                 })],
                 ret: Box::new(Type::String),
+                effects: EffectRow::pure(),
             }),
         );
         traits.add_impl_methods(methods).unwrap();
@@ -9169,6 +9196,7 @@ fn trait_bounds_stored_in_scheme() {
         ty: Type::Function(FunctionType {
             params: vec![Type::Var(tv)],
             ret: Box::new(Type::Var(tv)),
+            effects: EffectRow::pure(),
         }),
     };
     assert!(!scheme.bounds.is_empty());
@@ -9191,6 +9219,7 @@ fn trait_bounds_survive_instantiation() {
         ty: Type::Function(FunctionType {
             params: vec![Type::Var(tv)],
             ret: Box::new(Type::String),
+            effects: EffectRow::pure(),
         }),
     };
 
@@ -9422,6 +9451,7 @@ fn ambiguous_trait_bound_reports_error_and_skips_evidence_sites() {
         ty: Type::Function(FunctionType {
             params: vec![Type::Var(tv)],
             ret: Box::new(Type::String),
+            effects: EffectRow::pure(),
         }),
     };
     env.bind("show".to_string(), scheme);
@@ -9500,6 +9530,7 @@ fn existential_param_check_reports_ambiguous_trait_impl() {
                 associated_types: BTreeMap::new(),
             }],
             ret: Box::new(Type::Unit),
+            effects: EffectRow::pure(),
         })),
     );
 
@@ -9566,6 +9597,7 @@ fn call_site_evidence_annotations_emitted_after_trait_check() {
         ty: Type::Function(FunctionType {
             params: vec![Type::Var(tv)],
             ret: Box::new(Type::String),
+            effects: EffectRow::pure(),
         }),
     };
     env.bind("show".to_string(), show_scheme);
@@ -9727,6 +9759,7 @@ fn call_site_evidence_annotations_include_supertraits() {
         ty: Type::Function(FunctionType {
             params: vec![Type::Var(tv)],
             ret: Box::new(Type::String),
+            effects: EffectRow::pure(),
         }),
     };
     env.bind("show".to_string(), scheme);
@@ -9796,6 +9829,7 @@ fn call_site_evidence_annotations_expand_parametric_impl_bounds() {
         ty: Type::Function(FunctionType {
             params: vec![Type::Var(tv)],
             ret: Box::new(Type::String),
+            effects: EffectRow::pure(),
         }),
     };
     env.bind("show".to_string(), show_scheme);
@@ -9866,6 +9900,7 @@ fn call_site_evidence_annotations_expand_nested_parametric_bounds() {
         ty: Type::Function(FunctionType {
             params: vec![Type::Var(tv)],
             ret: Box::new(Type::String),
+            effects: EffectRow::pure(),
         }),
     };
     env.bind("show".to_string(), show_scheme);
@@ -9991,6 +10026,7 @@ fn module_name_collision_wins_over_trait_qualified_lookup() {
         TypeScheme::mono(Type::Function(FunctionType {
             params: vec![Type::Int],
             ret: Box::new(Type::Int),
+            effects: EffectRow::pure(),
         })),
         Effects::pure_deterministic(),
     );
@@ -10035,6 +10071,7 @@ fn apply_where_clause_attaches_bounds() {
         ty: Type::Function(FunctionType {
             params: vec![Type::Var(tv)],
             ret: Box::new(Type::Var(tv)),
+            effects: EffectRow::pure(),
         }),
     };
 
@@ -10868,6 +10905,7 @@ fn generalize_preserves_trait_bounds() {
     let ty = Type::Function(FunctionType {
         params: vec![Type::Var(tv)],
         ret: Box::new(Type::Var(tv)),
+        effects: EffectRow::pure(),
     });
     let scheme = generalize(
         &ty,
@@ -11232,6 +11270,7 @@ fn spawn_still_checks_sendable_with_actor() {
         kea_types::TypeScheme::mono(Type::Function(kea_types::FunctionType {
             params: vec![Type::Int],
             ret: Box::new(Type::Int),
+            effects: EffectRow::pure(),
         })),
     );
     let expr = spawn_expr(var("bad_val"));
@@ -11553,6 +11592,7 @@ fn build_protocol_strips_self_param() {
         Type::Function(FunctionType {
             params: vec![counter.clone()],
             ret: Box::new(counter.clone()),
+            effects: EffectRow::pure(),
         }),
     );
     // fn get(self) -> Int
@@ -11561,6 +11601,7 @@ fn build_protocol_strips_self_param() {
         Type::Function(FunctionType {
             params: vec![counter.clone()],
             ret: Box::new(Type::Int),
+            effects: EffectRow::pure(),
         }),
     );
     let protocol = build_actor_protocol("Counter", &methods, None);
@@ -11597,6 +11638,7 @@ fn register_and_find_protocol_roundtrip() {
         Type::Function(FunctionType {
             params: vec![counter.clone()],
             ret: Box::new(counter),
+            effects: EffectRow::pure(),
         }),
     );
     let protocol = build_actor_protocol("Counter", &methods, None);
@@ -11631,6 +11673,7 @@ fn setup_actor_protocol_test() -> (TypeEnv, RecordRegistry, TraitRegistry) {
         Type::Function(FunctionType {
             params: vec![counter_ty.clone()],
             ret: Box::new(counter_ty.clone()),
+            effects: EffectRow::pure(),
         }),
     );
     // get(self) -> Int  (CallPure — returns non-Self)
@@ -11639,6 +11682,7 @@ fn setup_actor_protocol_test() -> (TypeEnv, RecordRegistry, TraitRegistry) {
         Type::Function(FunctionType {
             params: vec![counter_ty.clone()],
             ret: Box::new(Type::Int),
+            effects: EffectRow::pure(),
         }),
     );
     // get_and_update(self, Int) -> #(Counter, Int)  (CallWithState)
@@ -11647,6 +11691,7 @@ fn setup_actor_protocol_test() -> (TypeEnv, RecordRegistry, TraitRegistry) {
         Type::Function(FunctionType {
             params: vec![counter_ty.clone(), Type::Int],
             ret: Box::new(Type::Tuple(vec![counter_ty.clone(), Type::Int])),
+            effects: EffectRow::pure(),
         }),
     );
 
@@ -12152,6 +12197,7 @@ fn actor_ref_type_is_actor_self() {
         kea_types::TypeScheme::mono(Type::Function(kea_types::FunctionType {
             params: vec![],
             ret: Box::new(Type::Actor(Box::new(record_ty))),
+            effects: EffectRow::pure(),
         })),
     );
     // actor_ref() is a zero-arg function call
@@ -12450,6 +12496,7 @@ fn spawn_record_with_closure_field_not_sendable() {
             Type::Function(FunctionType {
                 params: vec![Type::Int],
                 ret: Box::new(Type::Int),
+                effects: EffectRow::pure(),
             }),
         )]),
     });
@@ -14320,6 +14367,7 @@ fn labeled_arguments_bind_with_registered_function_signature() {
         TypeScheme::mono(Type::Function(FunctionType {
             params: vec![Type::Int, Type::Int],
             ret: Box::new(Type::Int),
+            effects: EffectRow::pure(),
         })),
     );
     env.set_function_signature(
@@ -14372,6 +14420,7 @@ fn labeled_arguments_rejected_for_first_class_function_values() {
         TypeScheme::mono(Type::Function(FunctionType {
             params: vec![Type::Int],
             ret: Box::new(Type::Int),
+            effects: EffectRow::pure(),
         })),
     );
 
@@ -14400,6 +14449,7 @@ fn dynamic_param_call_accepts_negative_literal_argument() {
         TypeScheme::mono(Type::Function(FunctionType {
             params: vec![Type::Dynamic],
             ret: Box::new(Type::Dynamic),
+            effects: EffectRow::pure(),
         })),
     );
 
