@@ -1336,14 +1336,95 @@ fn lower_instruction<M: Module>(
             }
         }
         MirInst::Nop => Ok(false),
-        MirInst::Retain { .. }
-        | MirInst::Release { .. }
-        | MirInst::Move { .. }
-        | MirInst::Borrow { .. }
-        | MirInst::TryClaim { .. }
-        | MirInst::Freeze { .. }
-        | MirInst::CowUpdate { .. }
-        | MirInst::HandlerEnter { .. }
+        MirInst::Retain { .. } | MirInst::Release { .. } => Ok(false),
+        MirInst::Move { dest, src }
+        | MirInst::Borrow { dest, src }
+        | MirInst::TryClaim { dest, src }
+        | MirInst::Freeze { dest, src } => {
+            let value = get_value(values, function_name, src)?;
+            values.insert(dest.clone(), value);
+            Ok(false)
+        }
+        MirInst::CowUpdate {
+            dest,
+            target,
+            record_type,
+            updates,
+            ..
+        } => {
+            let target_ptr = get_value(values, function_name, target)?;
+            let layout = ctx.layout_plan.records.get(record_type).ok_or_else(|| {
+                CodegenError::UnsupportedMir {
+                    function: function_name.to_string(),
+                    detail: format!("record layout `{record_type}` not found"),
+                }
+            })?;
+            let malloc_func_id = ctx.malloc_func_id.ok_or_else(|| CodegenError::UnsupportedMir {
+                function: function_name.to_string(),
+                detail: format!(
+                    "record allocation requested for `{record_type}` but malloc import was not declared"
+                ),
+            })?;
+            let malloc_ref = module.declare_func_in_func(malloc_func_id, builder.func);
+            let ptr_ty = module.target_config().pointer_type();
+            let alloc_size = i64::from(layout.size_bytes.max(1));
+            let size_value = builder.ins().iconst(ptr_ty, alloc_size);
+            let alloc_call = builder.ins().call(malloc_ref, &[size_value]);
+            let out_ptr = builder
+                .inst_results(alloc_call)
+                .first()
+                .copied()
+                .ok_or_else(|| CodegenError::UnsupportedMir {
+                    function: function_name.to_string(),
+                    detail: "malloc call returned no pointer value".to_string(),
+                })?;
+
+            let mut update_values = BTreeMap::new();
+            for update in updates {
+                if !layout.field_offsets.contains_key(&update.field) {
+                    return Err(CodegenError::UnsupportedMir {
+                        function: function_name.to_string(),
+                        detail: format!(
+                            "record layout `{record_type}` missing field `{}` during update",
+                            update.field
+                        ),
+                    });
+                }
+                update_values.insert(
+                    update.field.clone(),
+                    get_value(values, function_name, &update.value)?,
+                );
+            }
+
+            for (field_name, offset_u32) in &layout.field_offsets {
+                let offset = i32::try_from(*offset_u32).map_err(|_| CodegenError::UnsupportedMir {
+                    function: function_name.to_string(),
+                    detail: format!(
+                        "record field `{record_type}.{field_name}` offset does not fit i32"
+                    ),
+                })?;
+                let field_ty = layout
+                    .field_types
+                    .get(field_name)
+                    .cloned()
+                    .unwrap_or(Type::Dynamic);
+                let value_ty = clif_type(&field_ty)?;
+                let value = if let Some(updated) = update_values.get(field_name) {
+                    coerce_value_to_clif_type(builder, *updated, value_ty)
+                } else {
+                    builder
+                        .ins()
+                        .load(value_ty, MemFlags::new(), target_ptr, offset)
+                };
+                builder
+                    .ins()
+                    .store(MemFlags::new(), value, out_ptr, offset);
+            }
+
+            values.insert(dest.clone(), out_ptr);
+            Ok(false)
+        }
+        MirInst::HandlerEnter { .. }
         | MirInst::HandlerExit { .. }
         | MirInst::Resume { .. } => Err(CodegenError::UnsupportedMir {
             function: function_name.to_string(),
