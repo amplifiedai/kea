@@ -30,6 +30,66 @@ theorem respectsCtx_id (kctx : KindCtx) (rctx : RowCtx) : id.RespectsCtx kctx rc
 end VarMapping
 
 mutual
+  theorem renameType_id_eq : ∀ ty, renameType ty VarMapping.id = ty := by
+    intro ty
+    cases ty with
+    | var v => simp [renameType, VarMapping.lookupType_id]
+    | int | intN _ _ | float | floatN _ | decimal _ _ | bool | string | html | markdown
+      | atom | date | dateTime | unit | dynamic =>
+      simp [renameType]
+    | list inner | set inner | option inner | fixedSizeList inner _ | tensor inner _
+      | dataframe inner | column inner | stream inner | task inner | actor inner | arc inner
+      | groupedFrame inner _ | tagged inner _ =>
+      simp [renameType, renameType_id_eq inner]
+    | map k v | result k v =>
+      simp [renameType, renameType_id_eq k, renameType_id_eq v]
+    | sum _ args | «opaque» _ args | existential _ args | tuple args =>
+      simp [renameType, renameTyList_id_eq args]
+    | record _ r | anonRecord r | row r =>
+      simp [renameType, renameRow_id_eq r]
+    | function params ret =>
+      simp [renameType, renameTyList_id_eq params, renameType_id_eq ret]
+    | functionEff params effects ret =>
+      simp [renameType, renameTyList_id_eq params, renameEffectRow_id_eq effects, renameType_id_eq ret]
+    | «forall» _ body =>
+      simp [renameType, renameType_id_eq body]
+    | app ctor args =>
+      simp [renameType, renameType_id_eq ctor, renameTyList_id_eq args]
+    | constructor _ fixedArgs _ =>
+      simp [renameType, renameTyList_id_eq fixedArgs]
+
+  theorem renameRow_id_eq : ∀ r, renameRow r VarMapping.id = r := by
+    intro r
+    cases r with
+    | mk fields rest =>
+      cases rest with
+      | none =>
+        simp [renameRow, renameRowFields_id_eq fields]
+      | some rv =>
+        simp [renameRow, VarMapping.lookupRow_id, renameRowFields_id_eq fields]
+
+  theorem renameTyList_id_eq : ∀ tl, renameTyList tl VarMapping.id = tl := by
+    intro tl
+    cases tl with
+    | nil => simp [renameTyList]
+    | cons ty rest =>
+      simp [renameTyList, renameType_id_eq ty, renameTyList_id_eq rest]
+
+  theorem renameRowFields_id_eq : ∀ rf, renameRowFields rf VarMapping.id = rf := by
+    intro rf
+    cases rf with
+    | nil => simp [renameRowFields]
+    | cons l ty rest =>
+      simp [renameRowFields, renameType_id_eq ty, renameRowFields_id_eq rest]
+
+  theorem renameEffectRow_id_eq : ∀ effects, renameEffectRow effects VarMapping.id = effects := by
+    intro effects
+    cases effects with
+    | mk row =>
+      simp [renameEffectRow, renameRow_id_eq row]
+end
+
+mutual
   theorem renameType_preserves_wf
       (m : VarMapping) (kctx : KindCtx) (rctx : RowCtx)
       (h_respects : m.RespectsCtx kctx rctx) :
