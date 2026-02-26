@@ -175,6 +175,8 @@ for writing Kea code productively. Can be developed in parallel.
   semantic response layer shared by MCP/LSP/REPL so tooling does
   not depend on raw compiler internals. Rich compiler-side queries
   in dev; runtime-safe introspection is deferred to Phase 2a.
+  See [PLATFORM-ADOPTION.md](PLATFORM-ADOPTION.md) for the
+  cross-consumer contract and adoption rationale.
 
 **0d: Code generation — pure subset (week 4-6)**
 
@@ -306,6 +308,8 @@ landed during Phase 0. This phase is ecosystem infrastructure:
 - LSP polish: rename, references, code actions, workspace symbols
   (basic LSP from Phase 0 gets full IDE features)
 - MCP server polish and documentation (running since 0b)
+- Semantic contract conformance harness across `kea check`, LSP,
+  REPL, MCP, and test reporting surfaces
 - Runtime introspection API (capability-gated): bounded/audited
   semantic queries for debugger/ops/agents (`effects_of`,
   `methods_of`, protocol summaries, graph summaries)
@@ -335,6 +339,7 @@ Informed by Rill's stdlib (rill-eval/src/stdlib/):
 - Standard library API documentation
 - Effect system guide (handlers, custom effects, testing)
 - Actor guide (building on effects)
+- Migration playbooks (Python/TypeScript/Go/Elixir -> Kea)
 - Error catalog (every compiler error with examples)
 - Theory deep dive (row polymorphism, effects, handlers)
 

@@ -9,6 +9,7 @@
 - [spec/KERNEL.md](spec/KERNEL.md) — Kea Kernel Specification v4: types, structs, enums, effects, handlers, traits, row polymorphism, memory model, actors.
 - [spec/CALL-SYNTAX.md](spec/CALL-SYNTAX.md) — Call Syntax Matrix: method dispatch, UMS, receiver placement, resolution algorithm.
 - [spec/ROADMAP.md](spec/ROADMAP.md) — Implementation Roadmap v2: phases, rill inventory, timeline, risk register.
+- [spec/PLATFORM-ADOPTION.md](spec/PLATFORM-ADOPTION.md) — Platform strategy: one semantic engine for compiler/LSP/REPL/tests/MCP/runtime introspection, adoption wedges, and roadmap slotting.
 
 ## Design
 
