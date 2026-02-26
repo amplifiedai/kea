@@ -143,6 +143,54 @@ theorem admissibleEffectPolyFailLowering_failRemoved
     ⟨loweredEffects, h_ty, _h_tail, _h_preserve, h_removed⟩
   exact ⟨loweredEffects, h_ty, h_removed⟩
 
+structure AdmissibleEffectPolyLoweringBundle
+    (params : TyList)
+    (effects : EffectRow)
+    (okTy errTy lowered : Ty) where
+  loweredEffects : EffectRow
+  loweredEq :
+    lowered = .functionEff params loweredEffects (.result okTy errTy)
+  rowTailStable :
+    rowTailStable effects loweredEffects
+  preservesNonFail :
+    labelsPreservedExcept effects loweredEffects FailResultContracts.failLabel
+  failRemoved :
+    RowFields.has (EffectRow.fields loweredEffects) FailResultContracts.failLabel = false
+
+noncomputable def admissibleEffectPolyFailLowering_bundle
+    (c : AdmissibleEffectPolyFailLoweringContract) :
+    AdmissibleEffectPolyLoweringBundle c.params c.effects c.okTy c.errTy c.lowered :=
+  let h := admissibleEffectPolyFailLowering_sound c
+  let loweredEffects := Classical.choose h
+  let hspec := Classical.choose_spec h
+  {
+    loweredEffects := loweredEffects
+    loweredEq := hspec.1
+    rowTailStable := hspec.2.1
+    preservesNonFail := hspec.2.2.1
+    failRemoved := hspec.2.2.2
+  }
+
+theorem admissibleEffectPolyFailLowering_bundle_rowTailStable
+    (c : AdmissibleEffectPolyFailLoweringContract) :
+    rowTailStable c.effects
+      (admissibleEffectPolyFailLowering_bundle c).loweredEffects :=
+  (admissibleEffectPolyFailLowering_bundle c).rowTailStable
+
+theorem admissibleEffectPolyFailLowering_bundle_preserves_nonFail
+    (c : AdmissibleEffectPolyFailLoweringContract) :
+    labelsPreservedExcept c.effects
+      (admissibleEffectPolyFailLowering_bundle c).loweredEffects
+      FailResultContracts.failLabel :=
+  (admissibleEffectPolyFailLowering_bundle c).preservesNonFail
+
+theorem admissibleEffectPolyFailLowering_bundle_failRemoved
+    (c : AdmissibleEffectPolyFailLoweringContract) :
+    RowFields.has
+      (EffectRow.fields (admissibleEffectPolyFailLowering_bundle c).loweredEffects)
+      FailResultContracts.failLabel = false :=
+  (admissibleEffectPolyFailLowering_bundle c).failRemoved
+
 def mkAdmissibleEffectPolyFailLoweringContract
     (params : TyList)
     (effects : EffectRow)
@@ -320,6 +368,62 @@ theorem admissibleEffectPolyHandlerSchema_failRemoved_in_lowered_effects
   rcases admissibleEffectPolyHandlerSchema_sound s with
     ⟨_h_clause_removed, loweredEffects, h_ty, _h_tail, _h_preserve, h_removed⟩
   exact ⟨loweredEffects, h_ty, h_removed⟩
+
+structure AdmissibleEffectPolyHandlerBundle
+    (s : AdmissibleEffectPolyHandlerSchema) where
+  clauseFailRemoved :
+    RowFields.has
+      (EffectRow.fields (HandleClauseContract.resultEffects s.clause))
+      FailResultContracts.failLabel = false
+  lowering :
+    AdmissibleEffectPolyLoweringBundle
+      s.params s.clause.exprEffects s.okTy s.errTy s.loweredTy
+
+noncomputable def admissibleEffectPolyHandler_bundle
+    (s : AdmissibleEffectPolyHandlerSchema) :
+    AdmissibleEffectPolyHandlerBundle s :=
+  let h := admissibleEffectPolyHandlerSchema_sound s
+  let h_clause_removed := h.1
+  let h_lowering := h.2
+  let loweredEffects := Classical.choose h_lowering
+  let hspec := Classical.choose_spec h_lowering
+  {
+    clauseFailRemoved := h_clause_removed
+    lowering := {
+      loweredEffects := loweredEffects
+      loweredEq := hspec.1
+      rowTailStable := hspec.2.1
+      preservesNonFail := hspec.2.2.1
+      failRemoved := hspec.2.2.2
+    }
+  }
+
+theorem admissibleEffectPolyHandler_bundle_clauseFailRemoved
+    (s : AdmissibleEffectPolyHandlerSchema) :
+    RowFields.has
+      (EffectRow.fields (HandleClauseContract.resultEffects s.clause))
+      FailResultContracts.failLabel = false :=
+  (admissibleEffectPolyHandler_bundle s).clauseFailRemoved
+
+theorem admissibleEffectPolyHandler_bundle_rowTailStable
+    (s : AdmissibleEffectPolyHandlerSchema) :
+    rowTailStable s.clause.exprEffects
+      (admissibleEffectPolyHandler_bundle s).lowering.loweredEffects :=
+  (admissibleEffectPolyHandler_bundle s).lowering.rowTailStable
+
+theorem admissibleEffectPolyHandler_bundle_preserves_nonFail
+    (s : AdmissibleEffectPolyHandlerSchema) :
+    labelsPreservedExcept s.clause.exprEffects
+      (admissibleEffectPolyHandler_bundle s).lowering.loweredEffects
+      FailResultContracts.failLabel :=
+  (admissibleEffectPolyHandler_bundle s).lowering.preservesNonFail
+
+theorem admissibleEffectPolyHandler_bundle_failRemoved_in_lowered
+    (s : AdmissibleEffectPolyHandlerSchema) :
+    RowFields.has
+      (EffectRow.fields (admissibleEffectPolyHandler_bundle s).lowering.loweredEffects)
+      FailResultContracts.failLabel = false :=
+  (admissibleEffectPolyHandler_bundle s).lowering.failRemoved
 
 theorem admissibleEffectPolyHandlerSchema_not_unnecessary
     (s : AdmissibleEffectPolyHandlerSchema) :

@@ -5266,3 +5266,26 @@ consumed without destructuring full capstone conjunctions.
 **Outcome**:
 - Admissible capstones now support clean one-hop chaining across downstream
   proofs that need only one consequence facet at a time.
+
+### 2026-02-26: admissible named bundles (proof-only)
+
+**Context**: Added stable named bundle outputs for admissible capstone results,
+mirroring the earlier Phase-1 bundle ergonomics pattern.
+
+**MCP tools used**: none (proof-only packaging layer).
+
+**Lean side**:
+- Extended `Kea/Properties/EffectPolymorphismSoundness.lean` with:
+  - `AdmissibleEffectPolyLoweringBundle`
+  - `AdmissibleEffectPolyHandlerBundle`
+  - `admissibleEffectPolyFailLowering_bundle` (+ projections)
+  - `admissibleEffectPolyHandler_bundle` (+ projections)
+- Bundle constructors are `noncomputable` (`Classical.choose`) over existing
+  existential capstone theorems.
+- Verified with `cd formal && lake build` (pass).
+
+**Classify**: N/A (proof-only step).
+
+**Outcome**:
+- Downstream formal work can now reference one stable bundle name instead of
+  repeatedly reconstructing conjunction/exists shapes from raw capstones.
