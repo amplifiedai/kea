@@ -5643,3 +5643,27 @@ generic catch bridge so both surfaces expose the same runtime-aligned split.
 - Generic and higher-order catch theorem surfaces now share the same
   admissible-vs-unnecessary classifier shape and direct Fail-label entry
   wrappers.
+
+### 2026-02-26: effect declaration/operation typing scaffold (proof-only)
+
+**Context**: Added the Phase-2 effect-declaration/operation-typing scaffold and
+connected it to the normalized handler model for direct-call soundness.
+
+**MCP tools used**: none (proof-only scaffold and theorem-surface expansion).
+
+**Lean side**:
+- Added `Kea/Properties/EffectOperationTyping.lean` with:
+  - `OperationSig`, `EffectDecl`
+  - `operationDeclared`, `operationCallTyping`
+  - `performOperationEffects` + row-preservation lemmas
+  - `operationCallTyping_adds_declared_effect`
+  - `capability_direct_call_sound`
+- Imported the module in `formal/Kea.lean`.
+- Verified with `cd formal && lake build` (pass).
+
+**Classify**: N/A (proof-only step).
+
+**Outcome**:
+- Phase-2 now has explicit formal coverage for effect declaration/operation
+  typing scaffolding and a citable direct-call soundness theorem for
+  unintercepted capabilities.

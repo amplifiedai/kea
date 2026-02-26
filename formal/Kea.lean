@@ -21,6 +21,7 @@ import Kea.Properties.WfEffectRowLadder
 import Kea.Properties.HandlerEffectRemoval
 import Kea.Properties.ResumeLinearity
 import Kea.Properties.HandlerTypingContracts
+import Kea.Properties.EffectOperationTyping
 import Kea.Properties.FailResultContracts
 import Kea.Properties.EffectPolymorphismSoundness
 import Kea.Properties.CatchTypingBridge
