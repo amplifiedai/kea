@@ -24,6 +24,7 @@ This work starts by cannibalizing the existing Rill formal corpus and then exten
 - **Phase 1 (active):** `WfGeneralize` now includes a component-wise effect-row wrapper (`generalize_functionEff_preserves_wf_of_component_no_domain_vars`) for `Ty.functionEff` generalization under split no-domain assumptions.
 - **Phase 1 (active):** `WfGeneralize` now includes `instantiate_functionEff_preserves_wf`, aligning effect-row `instantiate` WF coverage with the `functionEff` component-wise `generalize` wrapper.
 - **Phase 1 (active):** `WfGeneralize` now includes `functionEff` convenience wrappers for `generalize`/`instantiate` entrypoints (`generalize_functionEff_empty_preserves_wf`, `instantiate_functionEff_mono_preserves_wf`, `instantiate_functionEff_preserves_wf_of_mapping_respects_ctx`) so common mono/non-mono cases can be discharged directly.
+- **Phase 1 (active):** Added `Kea/Properties/WfEffectRowLadder.lean` and imported it in `Kea.lean`; it packages effect-row `functionEff` WF obligations into citable slices (`FunctionEffSubstWfSlice`, `FunctionEffGenInstWfSlice`) spanning substitution, generalize, and instantiate.
 - **Phase 2 (next):** Kea-specific effect typing and handler theorems.
 
 The formal workspace lives at [`formal/`](formal/).
