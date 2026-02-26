@@ -152,6 +152,10 @@ run = "./scripts/bench-programs.sh benchmarks/programs benchmark-results/program
 description = "Run whole-program benchmarks and compare means against configured baseline thresholds"
 run = "./scripts/bench-programs.sh benchmarks/programs benchmark-results/programs-regression/latest && ./scripts/bench-program-threshold-check.sh benchmark-results/programs-regression/latest/hyperfine.json benchmarks/baselines/program-bench-thresholds.csv benchmark-results/programs-regression/latest"
 
+[tasks."bench:programs:variance"]
+description = "Run repeated whole-program benchmark runs and summarize mean-runtime variance"
+run = "./scripts/bench-programs-variance.sh 3 benchmark-results/programs-variance"
+
 [tasks."bench:regression"]
 description = "Run microbench export and compare medians against configured Stage B baseline thresholds"
 run = "./scripts/bench-export.sh benchmark-results/regression/latest && ./scripts/bench-threshold-check.sh benchmark-results/regression/latest/divan.summary.csv benchmarks/baselines/microbench-thresholds.csv benchmark-results/regression/latest"

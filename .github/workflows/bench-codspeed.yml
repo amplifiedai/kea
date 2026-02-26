@@ -7,12 +7,15 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   codspeed:
     name: CodSpeed Benchmarks
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    if: ${{ secrets.CODSPEED_TOKEN != '' }}
 
     steps:
       - name: Checkout
@@ -25,7 +28,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Run CodSpeed benchmark suite
-        uses: CodSpeedHQ/action@v3
+        uses: CodSpeedHQ/action@v4
         with:
-          token: ${{ secrets.CODSPEED_TOKEN }}
+          mode: instrumentation
           run: ./scripts/cargo-agent.sh bench -p kea-bench --bench core

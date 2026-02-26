@@ -1,0 +1,46 @@
+name: benchmark-programs-variance
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  benchmark-program-variance:
+    name: Program Benchmark Variance
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install hyperfine
+        run: sudo apt-get update && sudo apt-get install -y hyperfine
+
+      - name: Run repeated whole-program benchmarks (non-gating)
+        run: ./scripts/bench-programs-variance.sh 3 benchmark-results/programs-variance-ci
+
+      - name: Publish variance summary
+        if: always()
+        run: |
+          if [ -f benchmark-results/programs-variance-ci/variance.summary.md ]; then
+            cat benchmark-results/programs-variance-ci/variance.summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No variance summary produced." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload variance artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-programs-variance-${{ github.run_id }}
+          path: benchmark-results/programs-variance-ci/
+          if-no-files-found: warn
