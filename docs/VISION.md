@@ -571,6 +571,126 @@ you point the language at the browser.
 
 ---
 
+## Typed Grammars: The Compiler is Not Special
+
+Kea has one more structural claim that compounds with everything
+above: **grammars are types, and the compiler is a grammar consumer.**
+
+### The mechanism
+
+```kea
+trait Grammar
+  type Ast
+  type Out
+  type Err
+
+  fn parse(_ src: String) -[Compile]> Result(Self.Ast, Self.Err)
+  fn check(_ ast: Self.Ast, _ ctx: GrammarCtx) -[Compile]> Result(Typed(Self.Out), Diag)
+  fn lower(_ typed: Typed(Self.Out)) -[Compile]> LoweredExpr
+```
+
+`embed <Grammar> { ... }` invokes this trait at compile time. The
+grammar parses its input, type-checks it (with access to the host
+type system via `GrammarCtx`), and lowers to normal Kea IR. At
+runtime, there is no grammar machinery. The abstraction compiles
+away completely.
+
+This is a typed macro system — but one where grammar implementations
+run under `Compile` (not `IO`), produce typed IR (not token streams),
+and are formally verifiable (because grammar ASTs are algebraic types).
+
+### Why this is remarkable
+
+**Grammars are types.** When `Grammar.Ast` is an algebraic data type,
+grammar productions are type constructors. Parsing produces a value.
+Pattern matching on the AST is pattern matching on grammar
+productions. The type system gives you exhaustive handling. Functions
+from `Ast → Ast` are grammar-preserving transformations that the
+type checker verifies. The formal agent can prove properties of
+grammars using the same Lean theorems it uses for any other type.
+
+**Row polymorphism makes grammars extensible.** This is where it
+compounds with pillar 2. Represent grammar ASTs with open rows:
+
+```kea
+-- A grammar transformation over base HTML
+fn simplify(node: HtmlAst { Div: DivAttrs, Span: SpanAttrs | r })
+    -> HtmlAst { Div: DivAttrs, Span: SpanAttrs | r }
+```
+
+When someone extends the grammar with `Button` and `Dialog`,
+the transformation works unchanged — new tags pass through the
+row variable `r`. This is the expression problem, solved by the
+same row polymorphism that makes effect rows and record types work.
+
+For user-facing grammars (HTML, SQL), this means template
+components are extensible without modifying the base grammar. For
+the compiler's own IR, this means compiler plugins work unchanged
+when new language features add IR nodes (KERNEL §15.1).
+
+**The compiler is a grammar chain.** When Kea self-hosts, compiler
+passes are recipes that consume StableHIR — which is a Grammar.
+`@derive` is a grammar transformation. A linter is a grammar
+validation. A backend is a Grammar implementation over MIR.
+Cranelift, LLVM, and a future Kea-native backend all implement
+the same trait, with MIR as input:
+
+```
+Source → [Kea Grammar] → AST → [TypeCheck] → HIR → [Lower] → MIR → [Backend Grammar] → Machine Code
+```
+
+Every link in that chain uses the same mechanism. A user who writes
+`embed Html { ... }` and a compiler developer who writes a new
+optimization pass are using the same typed grammar interface. The
+compiler is not special — it's another grammar consumer.
+
+**Interpolation is typed substitution.** `{expr}` in an `embed`
+block is not string interpolation. The grammar's `check` step
+has access to the host type checker. `html { <div class={42}> }`
+is a type error: `class` expects `String`, not `Int`. SQL
+interpolation compiles to parameterised queries — injection is
+structurally impossible. Template props are checked against
+component signatures at compile time. All at zero runtime cost.
+
+**Restricted sublanguages are grammars.** KERNEL §15.2 defines
+subsets of Kea for GPU/FPGA/SQL lowering — no closures, no
+recursion, no heap. A `@gpu` recipe validates that code conforms
+to a restricted grammar, then lowers through a domain-specific
+backend (MLIR, StableHLO). The Grammar trait's `check` step
+validates the restriction. The `lower` step produces target code.
+Same mechanism as HTML templates.
+
+**Compile-time type computation.** Because `check` runs under
+`Compile` with access to `GrammarCtx`, grammars can compute types
+from their content. A SQL grammar can introspect a database schema
+at compile time and produce a return type that is the exact row
+type of the selected columns — `{ name: String, age: Int }`, not
+`Result<Row, Error>`. An einsum grammar can verify tensor
+dimensions at compile time. Component DSLs can check prop types
+against component signatures. The grammar knows the types at every
+position in its content.
+
+### What this replaces
+
+Rust proc macros (untyped, unsafe, arbitrary IO). Template Haskell
+(IO in the Q monad). C++ templates (no grammar extensibility).
+Lisp macros (no types). Zig comptime (no extensibility via row
+polymorphism).
+
+Kea's typed grammar interface is the first system that is
+simultaneously type-safe, effect-safe, extensible via row
+polymorphism, and zero-cost. It's also what makes the self-hosting
+compiler a natural expression of the language rather than a
+separate privileged program.
+
+These are Phase 1-2 capabilities. 0d remains Rust HIR/MIR bootstrap.
+See [typed-grammar-interface](../BRIEFS/design/typed-grammar-interface.md)
+for the normative contract and
+[ir-recipes-grammar-convergence](../BRIEFS/design/ir-recipes-grammar-convergence.md)
+for how grammars, recipes, and backends converge.
+
+---
+
 ## Design Principles
 
 **Effects are the organizing principle.** Every design decision

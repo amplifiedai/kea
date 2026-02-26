@@ -105,6 +105,109 @@ the same semantic query contracts.
 
 No side-channel diagnostics format per grammar.
 
+## Invariants (non-negotiable)
+
+These five properties define the typed grammar interface's contract.
+Relaxing any of them collapses the system into "proc macros with
+extra steps." Hold the line.
+
+1. **Grammar outputs must lower to typed IR.** No runtime eval
+   escape hatch. `lower` produces `LoweredExpr` — normal Kea IR
+   that the type checker validates. At runtime, there is no grammar
+   machinery. The abstraction compiles away completely. This is what
+   makes it zero-cost.
+
+2. **Grammar execution is capability-gated under `Compile`.** No
+   ambient IO, no network, no filesystem (unless explicitly granted
+   in the package manifest and auditable). This is not a sandbox —
+   it's a proof. The effect system guarantees it structurally.
+
+3. **Diagnostics must use normal `kea-diag` structures.** Same
+   error codes, same source spans, same tooling surface. LSP, MCP,
+   REPL, CI all consume grammar diagnostics through the same path
+   as language diagnostics. No side-channel formats.
+
+4. **External grammars target StableHIR, not unstable/internal IR.**
+   The stability tier policy (KERNEL §15.1) applies to grammars.
+   Third-party grammar packages operate on versioned, row-extensible
+   interfaces. They do not reach into compiler internals.
+
+5. **Determinism.** Same input + same compiler version = same lowered
+   output. Grammar parse, check, and lower are pure functions under
+   `Compile`. No nondeterminism, no ambient state, no order-dependent
+   results. This is what makes grammar outputs cacheable, reproducible,
+   and formally verifiable.
+
+## Why This Matters
+
+The full narrative of what typed grammars enable — grammars as types,
+the compiler as a grammar chain, row-polymorphic grammar extensibility,
+compile-time type computation — is in
+[VISION.md](../../docs/VISION.md#typed-grammars-the-compiler-is-not-special).
+
+The key design properties that are normative for this brief:
+
+### Row-polymorphic grammar extensibility
+
+Grammar ASTs represented as row types are forward-compatible by
+construction. A transformation over `{ Div: _, Span: _ | r }`
+works unchanged when someone extends the grammar with new tags —
+they pass through `r`. This is the expression problem solved by
+the same row polymorphism that powers record and effect rows.
+
+This applies equally to user grammars (HTML + custom components)
+and compiler IRs (StableHIR + new language features, per §15.1).
+
+### Grammar composition
+
+Grammars can embed other grammars. `html { <style>{css { ... }}</style> }`
+validates HTML and CSS independently. Diagnostics from nested grammars
+flow through `kea-diag` with source spans into each block.
+
+### Comparison
+
+| System | Type info? | Safe? | Typed output? | Extensible? | Zero-cost? |
+|--------|-----------|-------|---------------|-------------|-----------|
+| Rust proc macros | No (tokens) | No (IO) | No | No | Yes |
+| Zig comptime | Yes | Yes | Yes | No | Yes |
+| Template Haskell | Yes (AST) | No (IO) | Partial | No | Partial |
+| Lisp macros | No (S-exprs) | No | No | Yes | No |
+| C++ templates | Partial | Yes | Partial | No | Yes |
+| **Kea grammars** | **Yes** | **Yes (effect-proven)** | **Yes** | **Yes (row poly)** | **Yes** |
+
+These are Phase 1-2 capabilities; 0d remains Rust HIR/MIR bootstrap.
+
+## Two-Layer Grammar Contract
+
+Grammars must satisfy two contract layers:
+
+### Syntactic contract
+
+1. **Deterministic parsing.** `parse(src)` produces the same `Ast`
+   on every invocation. No ambient state, no nondeterminism.
+2. **Source span mapping.** Every `Ast` node carries source span
+   information for diagnostics. Errors point into the embedded
+   block, not just "somewhere in the grammar."
+3. **Reproducible output.** `lower(check(parse(src)))` is a pure
+   function. Same input, same compiler version → same output.
+
+We do NOT require a specific formal notation (PEG, EBNF, CFG) for
+defining grammars on day one. The `parse` function is a Kea function
+— it can use whatever parsing strategy it wants. But we DO require
+observable invariants: determinism, span mapping, reproducibility.
+
+### Semantic contract
+
+1. **Type-checked output.** `check` validates the `Ast` against
+   both the grammar's own type rules and the host language's type
+   system (via `GrammarCtx`).
+2. **Effect-checked output.** If the grammar's output performs
+   effects at runtime (e.g., SQL performs `Db`), the effects are
+   declared in the output type.
+3. **Lowered to typed IR only.** `lower` produces `LoweredExpr`
+   that passes normal Kea type/effect checking. No escape hatch
+   to untyped runtime execution.
+
 ## Html v1 Contract (Reference Grammar)
 
 `Html` is the first production grammar and the benchmark for whether
