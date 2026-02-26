@@ -165,6 +165,7 @@ pub enum MirInst {
     CowUpdate {
         dest: MirValueId,
         target: MirValueId,
+        record_type: String,
         updates: Vec<MirFieldUpdate>,
         unique_path: MirBlockId,
         copy_path: MirBlockId,
@@ -635,6 +636,48 @@ impl FunctionLoweringCtx {
                     record_type: record_type.clone(),
                     fields: lowered_fields,
                 });
+                Some(dest)
+            }
+            HirExprKind::RecordUpdate {
+                record_type,
+                base,
+                fields,
+            } => {
+                let target = self.lower_expr(base)?;
+                self.emit_inst(MirInst::Retain {
+                    value: target.clone(),
+                });
+                let claimed = self.new_value();
+                self.emit_inst(MirInst::TryClaim {
+                    dest: claimed.clone(),
+                    src: target.clone(),
+                });
+                let frozen = self.new_value();
+                self.emit_inst(MirInst::Freeze {
+                    dest: frozen.clone(),
+                    src: claimed,
+                });
+
+                let mut updates = Vec::with_capacity(fields.len());
+                for (field_name, field_expr) in fields {
+                    let value = self.lower_expr(field_expr)?;
+                    updates.push(MirFieldUpdate {
+                        field: field_name.clone(),
+                        value,
+                    });
+                }
+
+                let dest = self.new_value();
+                let block_id = self.current_block.clone();
+                self.emit_inst(MirInst::CowUpdate {
+                    dest: dest.clone(),
+                    target: frozen,
+                    record_type: record_type.clone(),
+                    updates,
+                    unique_path: block_id.clone(),
+                    copy_path: block_id,
+                });
+                self.emit_inst(MirInst::Release { value: target });
                 Some(dest)
             }
             HirExprKind::SumConstructor {
@@ -1443,6 +1486,80 @@ mod tests {
                 ..
             } if record_type == "User" && fields.len() == 2
         ));
+    }
+
+    #[test]
+    fn lower_hir_module_lowers_record_update_with_memory_ops() {
+        let user_ty = Type::Record(RecordType {
+            name: "User".to_string(),
+            params: vec![],
+            row: RowType::closed(vec![
+                (Label::new("age"), Type::Int),
+                (Label::new("score"), Type::Int),
+            ]),
+        });
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "bump_age".to_string(),
+                params: vec![HirParam {
+                    name: Some("user".to_string()),
+                    span: kea_ast::Span::synthetic(),
+                }],
+                body: HirExpr {
+                    kind: HirExprKind::RecordUpdate {
+                        record_type: "User".to_string(),
+                        base: Box::new(HirExpr {
+                            kind: HirExprKind::Var("user".to_string()),
+                            ty: user_ty.clone(),
+                            span: kea_ast::Span::synthetic(),
+                        }),
+                        fields: vec![(
+                            "age".to_string(),
+                            HirExpr {
+                                kind: HirExprKind::Lit(kea_ast::Lit::Int(10)),
+                                ty: Type::Int,
+                                span: kea_ast::Span::synthetic(),
+                            },
+                        )],
+                    },
+                    ty: user_ty.clone(),
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::pure(vec![user_ty.clone()], user_ty)),
+                effects: EffectRow::pure(),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let mir = lower_hir_module(&hir);
+        let function = &mir.functions[0];
+        assert!(function.blocks[0]
+            .instructions
+            .iter()
+            .any(|inst| matches!(inst, MirInst::Retain { .. })));
+        assert!(function.blocks[0]
+            .instructions
+            .iter()
+            .any(|inst| matches!(inst, MirInst::TryClaim { .. })));
+        assert!(function.blocks[0]
+            .instructions
+            .iter()
+            .any(|inst| matches!(inst, MirInst::Freeze { .. })));
+        assert!(function.blocks[0]
+            .instructions
+            .iter()
+            .any(|inst| matches!(
+                inst,
+                MirInst::CowUpdate {
+                    record_type,
+                    updates,
+                    ..
+                } if record_type == "User" && updates.len() == 1 && updates[0].field == "age"
+            )));
+        assert!(function.blocks[0]
+            .instructions
+            .iter()
+            .any(|inst| matches!(inst, MirInst::Release { .. })));
     }
 
     #[test]

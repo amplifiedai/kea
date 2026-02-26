@@ -55,6 +55,11 @@ pub enum HirExprKind {
         record_type: String,
         fields: Vec<(String, HirExpr)>,
     },
+    RecordUpdate {
+        record_type: String,
+        base: Box<HirExpr>,
+        fields: Vec<(String, HirExpr)>,
+    },
     SumConstructor {
         sum_type: String,
         variant: String,
@@ -532,9 +537,8 @@ fn lower_expr(
             name,
             fields,
             spread,
-        } if spread.is_none() && known_record_defs.contains(&name.node) => HirExprKind::RecordLit {
-            record_type: name.node.clone(),
-            fields: fields
+        } if known_record_defs.contains(&name.node) => {
+            let lowered_fields = fields
                 .iter()
                 .map(|(field_name, field_value)| {
                     (
@@ -550,8 +554,28 @@ fn lower_expr(
                         ),
                     )
                 })
-                .collect(),
-        },
+                .collect();
+            if let Some(base) = spread {
+                HirExprKind::RecordUpdate {
+                    record_type: name.node.clone(),
+                    base: Box::new(lower_expr(
+                        base,
+                        None,
+                        unit_variant_tags,
+                        qualified_variant_tags,
+                        pattern_variant_tags,
+                        pattern_qualified_tags,
+                        known_record_defs,
+                    )),
+                    fields: lowered_fields,
+                }
+            } else {
+                HirExprKind::RecordLit {
+                    record_type: name.node.clone(),
+                    fields: lowered_fields,
+                }
+            }
+        }
         ExprKind::Constructor { name, args } => {
             if args.is_empty() {
                 if let Some(tag) = unit_variant_tags.get(&name.node) {
@@ -690,8 +714,7 @@ fn lower_expr(
                 default_ty
             }
         }
-        ExprKind::Record { name, spread, .. }
-            if spread.is_none() && known_record_defs.contains(&name.node) =>
+        ExprKind::Record { name, .. } if known_record_defs.contains(&name.node) =>
         {
             Type::Record(kea_types::RecordType {
                 name: name.node.clone(),
@@ -1786,6 +1809,51 @@ mod tests {
                 ref fields
             } if sum_type == "Flag" && variant == "Yep" && fields.len() == 1
                 && matches!(fields[0].kind, HirExprKind::Binary { op: BinOp::Add, .. })
+        ));
+    }
+
+    #[test]
+    fn lower_function_record_update_stays_structured_hir() {
+        let module = parse_module_from_text(
+            "record User\n  age: Int\n  score: Int\n\nfn tweak(u: User) -> User\n  User { ..u, age: u.age + 1 }",
+        );
+        let mut env = TypeEnv::new();
+        let user_ty = Type::Record(kea_types::RecordType {
+            name: "User".to_string(),
+            params: vec![],
+            row: kea_types::RowType::closed(vec![
+                (Label::new("age"), Type::Int),
+                (Label::new("score"), Type::Int),
+            ]),
+        });
+        env.bind(
+            "tweak".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::pure(
+                vec![user_ty.clone()],
+                user_ty,
+            ))),
+        );
+
+        let lowered = lower_module(&module, &env);
+        let function = lowered
+            .declarations
+            .iter()
+            .find_map(|decl| match decl {
+                HirDecl::Function(function) if function.name == "tweak" => Some(function),
+                _ => None,
+            })
+            .expect("expected lowered tweak function");
+
+        assert!(matches!(
+            function.body.kind,
+            HirExprKind::RecordUpdate {
+                ref record_type,
+                ref base,
+                ref fields
+            } if record_type == "User"
+                && matches!(base.kind, HirExprKind::Var(ref n) if n == "u")
+                && fields.len() == 1
+                && fields[0].0 == "age"
         ));
     }
 
@@ -3021,6 +3089,9 @@ mod tests {
             }
             HirExprKind::RecordLit { fields, .. } => {
                 fields.iter().map(|(_, value)| count_if_nodes(value)).sum()
+            }
+            HirExprKind::RecordUpdate { base, fields, .. } => {
+                count_if_nodes(base) + fields.iter().map(|(_, value)| count_if_nodes(value)).sum::<usize>()
             }
             HirExprKind::SumConstructor { fields, .. } => fields.iter().map(count_if_nodes).sum(),
             HirExprKind::SumPayloadAccess { expr, .. } => count_if_nodes(expr),

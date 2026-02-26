@@ -894,6 +894,20 @@ mod tests {
     }
 
     #[test]
+    fn compile_and_execute_record_update_with_spread_exit_code() {
+        let source_path = write_temp_source(
+            "record User\n  age: Int\n  score: Int\n\nfn main() -> Int\n  let user = User { age: 4, score: 9 }\n  let updated = User { ..user, age: user.age + 3 }\n  updated.age + updated.score\n",
+            "kea-cli-record-update",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 16);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_payload_constructor_exit_code() {
         let source_path = write_temp_source(
             "type Flag = Yep(Int) | Nope\n\nfn make_flag() -> Flag\n  Yep(7)\n\nfn main() -> Int\n  let ignored = make_flag()\n  3\n",
