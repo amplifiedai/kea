@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use kea_ast::{BinOp, DeclKind, ExprKind as AstExprKind, UnaryOp};
 use kea_hir::{HirDecl, HirExpr, HirExprKind, HirFunction, HirModule, HirPattern};
-use kea_types::{EffectRow, Type};
+use kea_types::{EffectRow, FunctionType, Type};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct MirValueId(pub u32);
@@ -316,6 +316,7 @@ pub fn lower_hir_module(module: &HirModule) -> MirModule {
             HirDecl::Raw(_) => None,
         })
         .collect::<BTreeMap<_, _>>();
+    let lambda_factories = collect_lambda_factory_templates(module, &known_functions);
     let mut layouts = MirLayoutCatalog::default();
     for decl in &module.declarations {
         if let HirDecl::Raw(raw_decl) = decl {
@@ -331,11 +332,133 @@ pub fn lower_hir_module(module: &HirModule) -> MirModule {
                 &layouts,
                 &known_functions,
                 &known_function_types,
+                &lambda_factories,
             ));
         }
     }
 
     MirModule { functions, layouts }
+}
+
+#[derive(Debug, Clone)]
+struct LambdaFactoryTemplate {
+    outer_params: Vec<String>,
+    lambda_params: Vec<kea_hir::HirParam>,
+    lambda_body: HirExpr,
+    captures: Vec<String>,
+}
+
+fn collect_lambda_factory_templates(
+    module: &HirModule,
+    known_functions: &BTreeSet<String>,
+) -> BTreeMap<String, LambdaFactoryTemplate> {
+    let mut templates = BTreeMap::new();
+    for decl in &module.declarations {
+        let HirDecl::Function(function) = decl else {
+            continue;
+        };
+        let HirExprKind::Lambda {
+            params: lambda_params,
+            body: lambda_body,
+        } = &function.body.kind
+        else {
+            continue;
+        };
+
+        let outer_params = function
+            .params
+            .iter()
+            .filter_map(|param| param.name.clone())
+            .collect::<Vec<_>>();
+        if outer_params.len() != function.params.len() {
+            continue;
+        }
+        let outer_param_set = outer_params.iter().cloned().collect::<BTreeSet<_>>();
+
+        let mut var_refs = BTreeSet::new();
+        collect_hir_var_refs(lambda_body, &mut var_refs);
+        for param_name in lambda_params.iter().filter_map(|param| param.name.as_ref()) {
+            var_refs.remove(param_name);
+        }
+        var_refs.retain(|name| !known_functions.contains(name) && !name.contains("::"));
+        if !var_refs.iter().all(|name| outer_param_set.contains(name)) {
+            continue;
+        }
+        let captures = outer_params
+            .iter()
+            .filter(|name| var_refs.contains(*name))
+            .cloned()
+            .collect::<Vec<_>>();
+
+        templates.insert(
+            function.name.clone(),
+            LambdaFactoryTemplate {
+                outer_params,
+                lambda_params: lambda_params.clone(),
+                lambda_body: lambda_body.as_ref().clone(),
+                captures,
+            },
+        );
+    }
+    templates
+}
+
+fn collect_hir_var_refs(expr: &HirExpr, refs: &mut BTreeSet<String>) {
+    match &expr.kind {
+        HirExprKind::Lit(_) => {}
+        HirExprKind::Var(name) => {
+            refs.insert(name.clone());
+        }
+        HirExprKind::Binary { left, right, .. } => {
+            collect_hir_var_refs(left, refs);
+            collect_hir_var_refs(right, refs);
+        }
+        HirExprKind::Unary { operand, .. } => collect_hir_var_refs(operand, refs),
+        HirExprKind::If {
+            condition,
+            then_branch,
+            else_branch,
+        } => {
+            collect_hir_var_refs(condition, refs);
+            collect_hir_var_refs(then_branch, refs);
+            if let Some(else_expr) = else_branch {
+                collect_hir_var_refs(else_expr, refs);
+            }
+        }
+        HirExprKind::Call { func, args } => {
+            collect_hir_var_refs(func, refs);
+            for arg in args {
+                collect_hir_var_refs(arg, refs);
+            }
+        }
+        HirExprKind::Let { value, .. } => collect_hir_var_refs(value, refs),
+        HirExprKind::Block(exprs) | HirExprKind::Tuple(exprs) => {
+            for item in exprs {
+                collect_hir_var_refs(item, refs);
+            }
+        }
+        HirExprKind::Lambda { body, .. } => collect_hir_var_refs(body, refs),
+        HirExprKind::RecordLit { fields, .. } => {
+            for (_, field_expr) in fields {
+                collect_hir_var_refs(field_expr, refs);
+            }
+        }
+        HirExprKind::RecordUpdate { base, fields, .. } => {
+            collect_hir_var_refs(base, refs);
+            for (_, field_expr) in fields {
+                collect_hir_var_refs(field_expr, refs);
+            }
+        }
+        HirExprKind::FieldAccess { expr, .. } => collect_hir_var_refs(expr, refs),
+        HirExprKind::SumConstructor { fields, .. } => {
+            for field_expr in fields {
+                collect_hir_var_refs(field_expr, refs);
+            }
+        }
+        HirExprKind::SumPayloadAccess { expr, .. } => collect_hir_var_refs(expr, refs),
+        HirExprKind::Catch { expr } => collect_hir_var_refs(expr, refs),
+        HirExprKind::Raw(_) => {}
+    }
 }
 
 fn uses_fail_result_abi_from_type(ty: &Type) -> bool {
@@ -446,6 +569,7 @@ fn lower_hir_function(
     layouts: &MirLayoutCatalog,
     known_functions: &BTreeSet<String>,
     known_function_types: &BTreeMap<String, Type>,
+    lambda_factories: &BTreeMap<String, LambdaFactoryTemplate>,
 ) -> Vec<MirFunction> {
     let (params, ret) = match &function.ty {
         Type::Function(ft) => (ft.params.clone(), ft.ret.as_ref().clone()),
@@ -461,6 +585,7 @@ fn lower_hir_function(
         layouts,
         known_functions,
         known_function_types,
+        lambda_factories,
     );
     for (index, param) in function.params.iter().enumerate() {
         if let Some(name) = &param.name {
@@ -522,6 +647,7 @@ struct FunctionLoweringCtx {
     local_lambdas: BTreeMap<String, LocalLambda>,
     known_functions: BTreeSet<String>,
     known_function_types: BTreeMap<String, Type>,
+    lambda_factories: BTreeMap<String, LambdaFactoryTemplate>,
     var_record_types: BTreeMap<String, String>,
     sum_value_types: BTreeMap<MirValueId, String>,
     sum_ctor_candidates: BTreeMap<String, Vec<SumCtorCandidate>>,
@@ -541,6 +667,15 @@ struct SumCtorCandidate {
 struct LocalLambda {
     params: Vec<kea_hir::HirParam>,
     body: HirExpr,
+    captures: Vec<CapturedBinding>,
+}
+
+#[derive(Debug, Clone)]
+struct CapturedBinding {
+    name: String,
+    value: MirValueId,
+    ty: Type,
+    record_type: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -558,6 +693,7 @@ impl FunctionLoweringCtx {
         layouts: &MirLayoutCatalog,
         known_functions: &BTreeSet<String>,
         known_function_types: &BTreeMap<String, Type>,
+        lambda_factories: &BTreeMap<String, LambdaFactoryTemplate>,
     ) -> Self {
         let mut sum_ctor_candidates: BTreeMap<String, Vec<SumCtorCandidate>> = BTreeMap::new();
         for sum in &layouts.sums {
@@ -588,6 +724,7 @@ impl FunctionLoweringCtx {
             local_lambdas: BTreeMap::new(),
             known_functions: known_functions.clone(),
             known_function_types: known_function_types.clone(),
+            lambda_factories: lambda_factories.clone(),
             var_record_types: BTreeMap::new(),
             sum_value_types: BTreeMap::new(),
             sum_ctor_candidates,
@@ -609,13 +746,50 @@ impl FunctionLoweringCtx {
             (_, Some(Type::Function(ft))) => Some(ft.clone()),
             _ => None,
         }?;
+        let param_names = params
+            .iter()
+            .filter_map(|param| param.name.as_ref())
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        let mut var_refs = BTreeSet::new();
+        collect_hir_var_refs(body, &mut var_refs);
+        let captures = var_refs
+            .into_iter()
+            .filter(|name| !param_names.contains(name))
+            .filter(|name| self.vars.contains_key(name))
+            .map(|name| {
+                let capture_ty = self
+                    .var_types
+                    .get(&name)
+                    .cloned()
+                    .unwrap_or(Type::Dynamic);
+                (name, capture_ty)
+            })
+            .collect::<Vec<_>>();
         let lambda_name = format!("{}::lambda${}", self.function_name, self.next_lifted_lambda_id);
         self.next_lifted_lambda_id = self.next_lifted_lambda_id.saturating_add(1);
+        let lifted_params = captures
+            .iter()
+            .map(|(name, _)| kea_hir::HirParam {
+                name: Some(name.clone()),
+                span: expr.span,
+            })
+            .chain(params.iter().cloned())
+            .collect::<Vec<_>>();
+        let lifted_fn_ty = FunctionType::with_effects(
+            captures
+                .iter()
+                .map(|(_, ty)| ty.clone())
+                .chain(resolved_fn_ty.params.iter().cloned())
+                .collect(),
+            resolved_fn_ty.ret.as_ref().clone(),
+            resolved_fn_ty.effects.clone(),
+        );
         let lifted = HirFunction {
             name: lambda_name.clone(),
-            params: params.to_vec(),
+            params: lifted_params,
             body: body.clone(),
-            ty: Type::Function(resolved_fn_ty.clone()),
+            ty: Type::Function(lifted_fn_ty),
             effects: resolved_fn_ty.effects,
             span: expr.span,
         };
@@ -623,7 +797,13 @@ impl FunctionLoweringCtx {
         known.insert(lambda_name.clone());
         let mut known_types = self.known_function_types.clone();
         known_types.insert(lambda_name.clone(), lifted.ty.clone());
-        let lowered = lower_hir_function(&lifted, &self.layouts, &known, &known_types);
+        let lowered = lower_hir_function(
+            &lifted,
+            &self.layouts,
+            &known,
+            &known_types,
+            &self.lambda_factories,
+        );
         self.lifted_functions.extend(lowered);
         self.known_functions.insert(lambda_name.clone());
         self.known_function_types
@@ -934,6 +1114,45 @@ impl FunctionLoweringCtx {
                         LocalLambda {
                             params: params.clone(),
                             body: body.as_ref().clone(),
+                            captures: Vec::new(),
+                        },
+                    );
+                    return None;
+                }
+                if let (HirPattern::Var(name), HirExprKind::Call { func, args }) = (pattern, &value.kind)
+                    && let HirExprKind::Var(factory_name) = &func.kind
+                    && let Some(template) = self.lambda_factories.get(factory_name).cloned()
+                    && template.outer_params.len() == args.len()
+                {
+                    let mut lowered_args = Vec::with_capacity(args.len());
+                    for arg in args {
+                        lowered_args.push(self.lower_expr(arg)?);
+                    }
+                    let mut captures = Vec::new();
+                    for capture_name in &template.captures {
+                        let capture_index = template
+                            .outer_params
+                            .iter()
+                            .position(|param| param == capture_name)?;
+                        let capture_ty = args.get(capture_index)?.ty.clone();
+                        let record_type = match args.get(capture_index).map(|arg| &arg.ty) {
+                            Some(Type::Record(record_ty)) => Some(record_ty.name.clone()),
+                            Some(Type::AnonRecord(row)) => self.infer_unique_record_type_for_row(row),
+                            _ => None,
+                        };
+                        captures.push(CapturedBinding {
+                            name: capture_name.clone(),
+                            value: lowered_args.get(capture_index)?.clone(),
+                            ty: capture_ty,
+                            record_type,
+                        });
+                    }
+                    self.local_lambdas.insert(
+                        name.clone(),
+                        LocalLambda {
+                            params: template.lambda_params,
+                            body: template.lambda_body,
+                            captures,
                         },
                     );
                     return None;
@@ -974,6 +1193,55 @@ impl FunctionLoweringCtx {
         args: &[HirExpr],
         capture_fail_result: bool,
     ) -> Option<MirValueId> {
+        if let HirExprKind::Call {
+            func: factory_func,
+            args: factory_args,
+        } = &func.kind
+            && let HirExprKind::Var(factory_name) = &factory_func.kind
+            && let Some(template) = self.lambda_factories.get(factory_name).cloned()
+            && !capture_fail_result
+            && template.outer_params.len() == factory_args.len()
+            && template.lambda_params.len() == args.len()
+        {
+            let incoming_scope = self.snapshot_var_scope();
+            for capture_name in &template.captures {
+                let capture_index = template
+                    .outer_params
+                    .iter()
+                    .position(|param| param == capture_name)?;
+                let capture_arg = factory_args.get(capture_index)?;
+                let capture_value = self.lower_expr(capture_arg)?;
+                self.vars.insert(capture_name.clone(), capture_value.clone());
+                self.var_types
+                    .insert(capture_name.clone(), capture_arg.ty.clone());
+                if let Type::Record(record_ty) = &capture_arg.ty {
+                    self.var_record_types
+                        .insert(capture_name.clone(), record_ty.name.clone());
+                }
+                if let Type::AnonRecord(row) = &capture_arg.ty
+                    && let Some(record_type) = self.infer_unique_record_type_for_row(row)
+                {
+                    self.var_record_types
+                        .insert(capture_name.clone(), record_type);
+                }
+            }
+            for (param, arg_expr) in template.lambda_params.iter().zip(args) {
+                let Some(param_name) = &param.name else {
+                    continue;
+                };
+                let arg_value = self.lower_expr(arg_expr)?;
+                self.vars.insert(param_name.clone(), arg_value.clone());
+                self.var_types
+                    .insert(param_name.clone(), arg_expr.ty.clone());
+                if let Type::Record(record_ty) = &arg_expr.ty {
+                    self.var_record_types
+                        .insert(param_name.clone(), record_ty.name.clone());
+                }
+            }
+            let result = self.lower_expr(&template.lambda_body);
+            self.restore_var_scope(&incoming_scope);
+            return result;
+        }
         if let HirExprKind::Lambda { params, body } = &func.kind
             && !capture_fail_result
         {
@@ -1006,6 +1274,15 @@ impl FunctionLoweringCtx {
                 return None;
             }
             let incoming_scope = self.snapshot_var_scope();
+            for capture in &local_lambda.captures {
+                self.vars.insert(capture.name.clone(), capture.value.clone());
+                self.var_types
+                    .insert(capture.name.clone(), capture.ty.clone());
+                if let Some(record_type) = &capture.record_type {
+                    self.var_record_types
+                        .insert(capture.name.clone(), record_type.clone());
+                }
+            }
             for (param, arg_expr) in local_lambda.params.iter().zip(args) {
                 let Some(param_name) = &param.name else {
                     continue;
@@ -2873,6 +3150,126 @@ mod tests {
                 .iter()
                 .any(|inst| matches!(inst, MirInst::Binary { op: MirBinaryOp::Add, .. })),
             "inlined lambda body should produce add instruction"
+        );
+    }
+
+    #[test]
+    fn lower_hir_module_inlines_let_bound_lambda_from_factory_call() {
+        let inner_fn_ty = Type::Function(FunctionType::pure(vec![Type::Int], Type::Int));
+        let make_adder_ty = Type::Function(FunctionType::pure(vec![Type::Int], inner_fn_ty.clone()));
+        let hir = HirModule {
+            declarations: vec![
+                HirDecl::Function(HirFunction {
+                    name: "make_adder".to_string(),
+                    params: vec![kea_hir::HirParam {
+                        name: Some("y".to_string()),
+                        span: kea_ast::Span::synthetic(),
+                    }],
+                    body: HirExpr {
+                        kind: HirExprKind::Lambda {
+                            params: vec![kea_hir::HirParam {
+                                name: Some("x".to_string()),
+                                span: kea_ast::Span::synthetic(),
+                            }],
+                            body: Box::new(HirExpr {
+                                kind: HirExprKind::Binary {
+                                    op: BinOp::Add,
+                                    left: Box::new(HirExpr {
+                                        kind: HirExprKind::Var("x".to_string()),
+                                        ty: Type::Int,
+                                        span: kea_ast::Span::synthetic(),
+                                    }),
+                                    right: Box::new(HirExpr {
+                                        kind: HirExprKind::Var("y".to_string()),
+                                        ty: Type::Int,
+                                        span: kea_ast::Span::synthetic(),
+                                    }),
+                                },
+                                ty: Type::Int,
+                                span: kea_ast::Span::synthetic(),
+                            }),
+                        },
+                        ty: inner_fn_ty.clone(),
+                        span: kea_ast::Span::synthetic(),
+                    },
+                    ty: make_adder_ty.clone(),
+                    effects: EffectRow::pure(),
+                    span: kea_ast::Span::synthetic(),
+                }),
+                HirDecl::Function(HirFunction {
+                    name: "main".to_string(),
+                    params: vec![],
+                    body: HirExpr {
+                        kind: HirExprKind::Block(vec![
+                            HirExpr {
+                                kind: HirExprKind::Let {
+                                    pattern: HirPattern::Var("add2".to_string()),
+                                    value: Box::new(HirExpr {
+                                        kind: HirExprKind::Call {
+                                            func: Box::new(HirExpr {
+                                                kind: HirExprKind::Var("make_adder".to_string()),
+                                                ty: make_adder_ty.clone(),
+                                                span: kea_ast::Span::synthetic(),
+                                            }),
+                                            args: vec![HirExpr {
+                                                kind: HirExprKind::Lit(kea_ast::Lit::Int(2)),
+                                                ty: Type::Int,
+                                                span: kea_ast::Span::synthetic(),
+                                            }],
+                                        },
+                                        ty: inner_fn_ty.clone(),
+                                        span: kea_ast::Span::synthetic(),
+                                    }),
+                                },
+                                ty: inner_fn_ty.clone(),
+                                span: kea_ast::Span::synthetic(),
+                            },
+                            HirExpr {
+                                kind: HirExprKind::Call {
+                                    func: Box::new(HirExpr {
+                                        kind: HirExprKind::Var("add2".to_string()),
+                                        ty: inner_fn_ty.clone(),
+                                        span: kea_ast::Span::synthetic(),
+                                    }),
+                                    args: vec![HirExpr {
+                                        kind: HirExprKind::Lit(kea_ast::Lit::Int(40)),
+                                        ty: Type::Int,
+                                        span: kea_ast::Span::synthetic(),
+                                    }],
+                                },
+                                ty: Type::Int,
+                                span: kea_ast::Span::synthetic(),
+                            },
+                        ]),
+                        ty: Type::Int,
+                        span: kea_ast::Span::synthetic(),
+                    },
+                    ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
+                    effects: EffectRow::pure(),
+                    span: kea_ast::Span::synthetic(),
+                }),
+            ],
+        };
+
+        let mir = lower_hir_module(&hir);
+        let main_fn = mir
+            .functions
+            .iter()
+            .find(|func| func.name == "main")
+            .expect("main should lower");
+        assert!(
+            main_fn.blocks[0]
+                .instructions
+                .iter()
+                .all(|inst| !matches!(inst, MirInst::Call { .. })),
+            "factory-returned let-bound lambda call should inline without call instruction"
+        );
+        assert!(
+            main_fn.blocks[0]
+                .instructions
+                .iter()
+                .any(|inst| matches!(inst, MirInst::Binary { op: MirBinaryOp::Add, .. })),
+            "inlined factory lambda should emit add instruction"
         );
     }
 

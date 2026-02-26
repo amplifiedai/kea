@@ -643,6 +643,20 @@ mod tests {
     }
 
     #[test]
+    fn compile_and_execute_returned_capturing_lambda_call_exit_code() {
+        let source_path = write_temp_source(
+            "fn make_adder(y: Int) -> fn(Int) -> Int\n  |x| -> x + y\n\nfn main() -> Int\n  let add2 = make_adder(2)\n  add2(40)\n",
+            "kea-cli-returned-capturing-lambda-call",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_fail_only_main_ok_path_exit_code() {
         let source_path = write_temp_source(
             "effect Fail\n  fn fail(err: Int) -> Never\n\nfn main() -[Fail]> Int\n  12\n",
