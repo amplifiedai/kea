@@ -1,0 +1,18 @@
+[package]
+name = "kea"
+description = "Kea compiler CLI"
+edition.workspace = true
+version.workspace = true
+
+[[bin]]
+name = "kea"
+path = "src/main.rs"
+
+[dependencies]
+kea-ast.workspace = true
+kea-codegen.workspace = true
+kea-hir.workspace = true
+kea-infer.workspace = true
+kea-mir.workspace = true
+kea-syntax.workspace = true
+kea-diag.workspace = true

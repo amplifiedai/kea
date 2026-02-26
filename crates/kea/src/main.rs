@@ -1,0 +1,428 @@
+use std::fs;
+use std::path::{Path, PathBuf};
+
+use kea_ast::{DeclKind, ExprDecl, FileId, FnDecl, Module, TypeDef};
+use kea_codegen::{
+    Backend, BackendConfig, CodegenMode, CraneliftBackend, default_abi_manifest,
+};
+use kea_diag::{Diagnostic, Severity};
+use kea_hir::lower_module;
+use kea_infer::{Category, InferenceContext};
+use kea_infer::typeck::{
+    RecordRegistry, SumTypeRegistry, TraitRegistry, TypeEnv, apply_where_clause,
+    infer_and_resolve_in_context, infer_fn_decl_effect_row, register_effect_decl,
+    register_fn_effect_signature, register_fn_signature, seed_fn_where_type_params_in_context,
+    validate_declared_fn_effect_row_with_env_and_records, validate_module_annotations,
+    validate_module_fn_annotations, validate_where_clause_traits,
+};
+use kea_mir::lower_hir_module;
+use kea_syntax::{lex_layout, parse_module};
+
+fn main() {
+    if let Err(message) = run() {
+        eprintln!("{message}");
+        std::process::exit(1);
+    }
+}
+
+fn run() -> Result<(), String> {
+    let args = std::env::args().collect::<Vec<_>>();
+    let command = parse_cli(&args)?;
+
+    match command {
+        Command::Run { input } => {
+            let result = compile_file(&input, CodegenMode::Jit)?;
+            emit_diagnostics(&result.diagnostics);
+            println!(
+                "compiled `{}` in JIT mode (execution wiring is pending)",
+                input.display()
+            );
+            Ok(())
+        }
+        Command::Build { input, output } => {
+            let output = output.unwrap_or_else(|| default_object_path(&input));
+            let result = compile_file(&input, CodegenMode::Aot)?;
+            emit_diagnostics(&result.diagnostics);
+            if result.object.is_empty() {
+                return Err("AOT backend produced no object bytes".to_string());
+            }
+            if let Some(parent) = output.parent()
+                && !parent.as_os_str().is_empty()
+            {
+                fs::create_dir_all(parent)
+                    .map_err(|err| format!("failed to create output directory: {err}"))?;
+            }
+            fs::write(&output, &result.object)
+                .map_err(|err| format!("failed to write `{}`: {err}", output.display()))?;
+            println!(
+                "built object `{}` ({} bytes)",
+                output.display(),
+                result.object.len()
+            );
+            Ok(())
+        }
+    }
+}
+
+#[derive(Debug)]
+struct CompileResult {
+    object: Vec<u8>,
+    diagnostics: Vec<Diagnostic>,
+}
+
+fn compile_file(input: &Path, mode: CodegenMode) -> Result<CompileResult, String> {
+    let source = fs::read_to_string(input)
+        .map_err(|err| format!("failed to read `{}`: {err}", input.display()))?;
+
+    let pipeline = parse_and_typecheck_module(&source, FileId(0))?;
+    let hir = lower_module(&pipeline.module, &pipeline.type_env);
+    let mir = lower_hir_module(&hir);
+    let abi = default_abi_manifest(&mir);
+
+    let backend = CraneliftBackend;
+    let artifact = backend
+        .compile_module(
+            &mir,
+            &abi,
+            &BackendConfig {
+                mode,
+                ..BackendConfig::default()
+            },
+        )
+        .map_err(|err| format!("codegen failed: {err}"))?;
+
+    Ok(CompileResult {
+        object: artifact.object,
+        diagnostics: pipeline.diagnostics,
+    })
+}
+
+#[derive(Debug)]
+struct PipelineResult {
+    module: Module,
+    type_env: TypeEnv,
+    diagnostics: Vec<Diagnostic>,
+}
+
+fn parse_and_typecheck_module(source: &str, file_id: FileId) -> Result<PipelineResult, String> {
+    let (tokens, mut diagnostics) = lex_layout(source, file_id)
+        .map_err(|diags| format_diagnostics("lexing failed", &diags))?;
+
+    let module = parse_module(tokens, file_id)
+        .map_err(|diags| format_diagnostics("parsing failed", &diags))?;
+
+    let mut env = TypeEnv::new();
+    let mut records = RecordRegistry::new();
+    let mut traits = TraitRegistry::new();
+    let mut sum_types = SumTypeRegistry::new();
+
+    diagnostics.extend(validate_module_fn_annotations(&module));
+    diagnostics.extend(validate_module_annotations(&module));
+    if has_errors(&diagnostics) {
+        return Err(format_diagnostics("type annotation validation failed", &diagnostics));
+    }
+
+    register_top_level_declarations(
+        &module,
+        &mut env,
+        &mut records,
+        &mut traits,
+        &mut sum_types,
+        &mut diagnostics,
+    )?;
+
+    typecheck_functions(
+        &module,
+        &mut env,
+        &mut records,
+        &mut traits,
+        &mut sum_types,
+        &mut diagnostics,
+    )?;
+
+    Ok(PipelineResult {
+        module,
+        type_env: env,
+        diagnostics,
+    })
+}
+
+fn register_top_level_declarations(
+    module: &Module,
+    env: &mut TypeEnv,
+    records: &mut RecordRegistry,
+    traits: &mut TraitRegistry,
+    sum_types: &mut SumTypeRegistry,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Result<(), String> {
+    let type_defs: Vec<&TypeDef> = module
+        .declarations
+        .iter()
+        .filter_map(|decl| match &decl.node {
+            DeclKind::TypeDef(def) => Some(def),
+            _ => None,
+        })
+        .collect();
+
+    if let Err(diag) = sum_types.register_many(&type_defs, records) {
+        diagnostics.push(diag);
+        return Err(format_diagnostics("sum type registration failed", diagnostics));
+    }
+
+    for decl in &module.declarations {
+        match &decl.node {
+            DeclKind::AliasDecl(alias) => {
+                if let Err(diag) = records.register_alias(alias) {
+                    diagnostics.push(diag);
+                    return Err(format_diagnostics("alias registration failed", diagnostics));
+                }
+            }
+            DeclKind::OpaqueTypeDef(opaque) => {
+                if let Err(diag) = records.register_opaque(opaque) {
+                    diagnostics.push(diag);
+                    return Err(format_diagnostics("opaque registration failed", diagnostics));
+                }
+            }
+            DeclKind::RecordDef(record) => {
+                if let Err(diag) = records.register(record) {
+                    diagnostics.push(diag);
+                    return Err(format_diagnostics("record registration failed", diagnostics));
+                }
+            }
+            DeclKind::TraitDef(trait_def) => {
+                if let Err(diag) = traits.register_trait(trait_def, records) {
+                    diagnostics.push(diag);
+                    return Err(format_diagnostics("trait registration failed", diagnostics));
+                }
+            }
+            DeclKind::ImplBlock(impl_block) => {
+                if let Err(diag) = traits.register_trait_impl(impl_block) {
+                    diagnostics.push(diag);
+                    return Err(format_diagnostics("impl registration failed", diagnostics));
+                }
+            }
+            DeclKind::EffectDecl(effect_decl) => {
+                let effect_diags = register_effect_decl(effect_decl, records, Some(sum_types), env);
+                diagnostics.extend(effect_diags);
+                if has_errors(diagnostics) {
+                    return Err(format_diagnostics("effect registration failed", diagnostics));
+                }
+            }
+            DeclKind::Import(import) => {
+                diagnostics.push(
+                    Diagnostic::warning(
+                        Category::TypeError,
+                        format!(
+                            "import `{}` is parsed but module resolution is not yet wired in `kea` CLI",
+                            import.module.node
+                        ),
+                    )
+                    .at(kea_diag::SourceLocation {
+                        file_id: import.module.span.file.0,
+                        start: import.module.span.start,
+                        end: import.module.span.end,
+                    }),
+                );
+            }
+            _ => {}
+        }
+    }
+
+    Ok(())
+}
+
+fn typecheck_functions(
+    module: &Module,
+    env: &mut TypeEnv,
+    records: &mut RecordRegistry,
+    traits: &mut TraitRegistry,
+    sum_types: &mut SumTypeRegistry,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Result<(), String> {
+    for decl in &module.declarations {
+        let fn_decl = match &decl.node {
+            DeclKind::Function(fn_decl) => fn_decl.clone(),
+            DeclKind::ExprFn(expr_decl) => expr_decl_to_fn_decl(expr_decl),
+            _ => continue,
+        };
+
+        let where_diags = validate_where_clause_traits(&fn_decl.where_clause, traits);
+        diagnostics.extend(where_diags.iter().filter(|d| !is_error(d)).cloned());
+        if where_diags.iter().any(is_error) {
+            diagnostics.extend(where_diags);
+            return Err(format_diagnostics(
+                "where-clause validation failed",
+                diagnostics,
+            ));
+        }
+
+        let mut ctx = InferenceContext::new();
+        seed_fn_where_type_params_in_context(&fn_decl, traits, &mut ctx);
+        let expr = fn_decl.to_let_expr();
+        let _ = infer_and_resolve_in_context(&expr, env, &mut ctx, records, traits, sum_types);
+
+        if ctx.has_errors() {
+            diagnostics.extend_from_slice(ctx.errors());
+            return Err(format_diagnostics("type inference failed", diagnostics));
+        }
+
+        ctx.check_trait_bounds(traits);
+        if ctx.has_errors() {
+            diagnostics.extend_from_slice(ctx.errors());
+            return Err(format_diagnostics("trait obligations failed", diagnostics));
+        }
+
+        diagnostics.extend(ctx.errors().iter().filter(|d| !is_error(d)).cloned());
+
+        if !fn_decl.where_clause.is_empty()
+            && let Some(scheme) = env.lookup(&fn_decl.name.node).cloned()
+        {
+            let mut scheme = scheme;
+            apply_where_clause(&mut scheme, &fn_decl, ctx.substitution());
+            env.bind(fn_decl.name.node.clone(), scheme);
+        }
+
+        let effect_row = infer_fn_decl_effect_row(&fn_decl, env);
+        if let Err(diag) =
+            validate_declared_fn_effect_row_with_env_and_records(&fn_decl, &effect_row, env, records)
+        {
+            diagnostics.push(diag);
+            return Err(format_diagnostics("effect contract failed", diagnostics));
+        }
+
+        env.set_function_effect_row(fn_decl.name.node.clone(), effect_row);
+        register_fn_signature(&fn_decl, env);
+        register_fn_effect_signature(&fn_decl, env);
+    }
+
+    Ok(())
+}
+
+fn expr_decl_to_fn_decl(expr: &ExprDecl) -> FnDecl {
+    FnDecl {
+        public: expr.public,
+        name: expr.name.clone(),
+        doc: expr.doc.clone(),
+        annotations: expr.annotations.clone(),
+        params: expr.params.clone(),
+        return_annotation: expr.return_annotation.clone(),
+        effect_annotation: expr.effect_annotation.clone(),
+        body: expr.body.clone(),
+        testing: expr.testing.clone(),
+        testing_tags: expr.testing_tags.clone(),
+        span: expr.span,
+        where_clause: expr.where_clause.clone(),
+    }
+}
+
+fn has_errors(diags: &[Diagnostic]) -> bool {
+    diags.iter().any(is_error)
+}
+
+fn is_error(diag: &Diagnostic) -> bool {
+    matches!(diag.severity, Severity::Error)
+}
+
+fn emit_diagnostics(diags: &[Diagnostic]) {
+    for diag in diags {
+        eprintln!("{diag}");
+    }
+}
+
+fn format_diagnostics(prefix: &str, diagnostics: &[Diagnostic]) -> String {
+    if diagnostics.is_empty() {
+        return prefix.to_string();
+    }
+
+    let rendered = diagnostics
+        .iter()
+        .map(|d| format!("  - {d}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!("{prefix}:\n{rendered}")
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum Command {
+    Run { input: PathBuf },
+    Build { input: PathBuf, output: Option<PathBuf> },
+}
+
+fn parse_cli(args: &[String]) -> Result<Command, String> {
+    if args.len() < 3 {
+        return Err(usage());
+    }
+
+    match args[1].as_str() {
+        "run" => Ok(Command::Run {
+            input: PathBuf::from(&args[2]),
+        }),
+        "build" => {
+            let input = PathBuf::from(&args[2]);
+            let mut output = None;
+
+            let mut idx = 3;
+            while idx < args.len() {
+                match args[idx].as_str() {
+                    "-o" | "--output" => {
+                        if idx + 1 >= args.len() {
+                            return Err("missing value for --output".to_string());
+                        }
+                        output = Some(PathBuf::from(&args[idx + 1]));
+                        idx += 2;
+                    }
+                    unknown => {
+                        return Err(format!(
+                            "unknown argument `{unknown}`\n{}",
+                            usage()
+                        ));
+                    }
+                }
+            }
+
+            Ok(Command::Build { input, output })
+        }
+        _ => Err(usage()),
+    }
+}
+
+fn usage() -> String {
+    "usage:\n  kea run <file.kea>\n  kea build <file.kea> [-o output.o]".to_string()
+}
+
+fn default_object_path(input: &Path) -> PathBuf {
+    input.with_extension("o")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_build_with_output() {
+        let args = vec![
+            "kea".to_string(),
+            "build".to_string(),
+            "main.kea".to_string(),
+            "-o".to_string(),
+            "out/main.o".to_string(),
+        ];
+
+        let command = parse_cli(&args).expect("cli parse should succeed");
+        assert_eq!(
+            command,
+            Command::Build {
+                input: PathBuf::from("main.kea"),
+                output: Some(PathBuf::from("out/main.o")),
+            }
+        );
+    }
+
+    #[test]
+    fn default_object_path_uses_o_extension() {
+        assert_eq!(
+            default_object_path(Path::new("examples/hello.kea")),
+            PathBuf::from("examples/hello.o")
+        );
+    }
+}
