@@ -363,4 +363,5 @@ Precision notes:
 - 2026-02-26: HIR lowering now canonicalizes basic bool `case` expressions (`true/false/_` arms, no guards) into `if` expressions, allowing existing MIR/codegen control-flow lowering to compile that subset.
 - 2026-02-26: Literal `case` coverage extended to include Float arms (`Int`/`Bool`/`Float` + wildcard fallback) via HIR canonicalization, with CLI execution regression for float-case dispatch.
 - 2026-02-26: Literal `case` lowering now supports non-trivial scrutinee expressions by introducing a single-evaluation binding before the generated `if` chain (prevents per-arm re-evaluation), with HIR and CLI regressions.
+- 2026-02-26: Literal `case` lowering now supports variable fallback arms (`n -> ...`) in addition to wildcard fallback, preserving single-evaluation scrutinee semantics and binding the fallback name explicitly in lowered HIR.
 - **Next:** Expand lowering/codegen coverage for structs/enums/pattern matching and Fail-only Result lowering fast path.

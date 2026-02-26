@@ -320,6 +320,7 @@ fn lower_literal_case(scrutinee: &Expr, arms: &[CaseArm], ty_hint: Option<Type>)
 
     let mut literal_arms: Vec<(&Lit, &Expr)> = Vec::new();
     let mut wildcard_body: Option<&Expr> = None;
+    let mut var_fallback: Option<(String, &Expr)> = None;
     for arm in arms {
         match &arm.pattern.node {
             PatternKind::Lit(lit @ Lit::Int(_))
@@ -328,12 +329,13 @@ fn lower_literal_case(scrutinee: &Expr, arms: &[CaseArm], ty_hint: Option<Type>)
                 literal_arms.push((lit, &arm.body));
             }
             PatternKind::Wildcard => wildcard_body = Some(&arm.body),
+            PatternKind::Var(name) => var_fallback = Some((name.clone(), &arm.body)),
             _ => return None,
         }
     }
 
-    if literal_arms.is_empty() {
-        return wildcard_body.map(|body| lower_expr(body, ty_hint).kind);
+    if wildcard_body.is_some() && var_fallback.is_some() {
+        return None;
     }
 
     let has_true = literal_arms
@@ -350,7 +352,9 @@ fn lower_literal_case(scrutinee: &Expr, arms: &[CaseArm], ty_hint: Option<Type>)
 
     // Non-exhaustive literal chains without a fallback would introduce
     // missing-value paths for non-Unit expressions.
-    let wildcard_body = wildcard_body?;
+    if wildcard_body.is_none() && var_fallback.is_none() {
+        return None;
+    }
     let return_ty = ty_hint.clone().unwrap_or(Type::Dynamic);
 
     let lowered_scrutinee = lower_expr(scrutinee, None);
@@ -379,7 +383,34 @@ fn lower_literal_case(scrutinee: &Expr, arms: &[CaseArm], ty_hint: Option<Type>)
         (temp_var, Some(setup))
     };
 
-    let mut else_expr = Some(lower_expr(wildcard_body, ty_hint.clone()));
+    let mut else_expr = if let Some(body) = wildcard_body {
+        Some(lower_expr(body, ty_hint.clone()))
+    } else if let Some((name, body)) = var_fallback {
+        let fallback_bind = HirExpr {
+            kind: HirExprKind::Let {
+                pattern: HirPattern::Var(name),
+                value: Box::new(scrutinee_expr.clone()),
+            },
+            ty: scrutinee_expr.ty.clone(),
+            span: scrutinee.span,
+        };
+        Some(HirExpr {
+            kind: HirExprKind::Block(vec![fallback_bind, lower_expr(body, ty_hint.clone())]),
+            ty: return_ty.clone(),
+            span: scrutinee.span,
+        })
+    } else {
+        None
+    };
+
+    if literal_arms.is_empty() {
+        let lowered = else_expr?;
+        if let Some(setup) = setup_expr {
+            return Some(HirExprKind::Block(vec![setup, lowered]));
+        }
+        return Some(lowered.kind);
+    }
+
     for (lit, body) in literal_arms.into_iter().rev() {
         let condition = HirExpr {
             kind: HirExprKind::Binary {
@@ -626,5 +657,41 @@ mod tests {
         assert_eq!(exprs.len(), 2);
         assert!(matches!(exprs[0].kind, HirExprKind::Let { .. }));
         assert!(matches!(exprs[1].kind, HirExprKind::If { .. }));
+    }
+
+    #[test]
+    fn lower_function_literal_case_var_fallback_binds_scrutinee() {
+        let module =
+            parse_module_from_text("fn classify(x: Int) -> Int\n  case x\n    0 -> 10\n    n -> n");
+        let mut env = TypeEnv::new();
+        env.bind(
+            "classify".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::pure(vec![Type::Int], Type::Int))),
+        );
+
+        let lowered = lower_module(&module, &env);
+        let HirDecl::Function(function) = &lowered.declarations[0] else {
+            panic!("expected lowered function declaration");
+        };
+
+        let HirExprKind::If {
+            else_branch: Some(else_branch),
+            ..
+        } = &function.body.kind
+        else {
+            panic!("expected var fallback lowering to produce if with else branch");
+        };
+
+        let HirExprKind::Block(exprs) = &else_branch.kind else {
+            panic!("expected var fallback else branch to bind scrutinee");
+        };
+        assert_eq!(exprs.len(), 2);
+        assert!(matches!(
+            exprs[0].kind,
+            HirExprKind::Let {
+                pattern: HirPattern::Var(_),
+                ..
+            }
+        ));
     }
 }
