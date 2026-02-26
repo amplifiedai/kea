@@ -8,6 +8,20 @@
 - [performance-backend-strategy](../design/performance-backend-strategy.md) — MIR must be backend-neutral, backend interface trait, ABI manifest, pass stats, layout stability rules, benchmark targets.
 - [testing](testing.md) — Benchmark harness is a 0d Definition of Done item. Test runner design informs `kea test` infrastructure.
 
+**Prerequisite (before Step 1):** Embed effect rows in `FunctionType`.
+Currently `FunctionType` is `{ params, ret }` with effects tracked in
+`TypeEnv` side-tables — inherited from Rill's purity/volatility model.
+Kea's row-typed effects must be part of the structural type so that:
+(a) `Display` shows `(Int) -[IO]> String` not `(Int) -> String`,
+(b) MCP/LSP/REPL surface effects by displaying types (no side-channel),
+(c) MIR can read effect signatures from types without side-table lookups,
+(d) the formal agent's `Ty` inductive includes effect rows for theorems.
+Change: add `effects: EffectRow` to `FunctionType`, update `Display`,
+migrate `set_function_effect`/`set_function_effect_row` callers in
+kea-infer to store effects in the type, update kea-mcp responses.
+See [effects-platform-vision](../design/effects-platform-vision.md)
+for why this matters for the "one semantic engine" principle.
+
 **Note on 0c dependency:** This brief needs Fail sugar (`?`, `fail`,
 `catch`) to work at the type level, but does NOT need the general
 handler compilation machinery from 0e. `Fail` is special: because

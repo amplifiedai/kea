@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "kea": {
+      "type": "stdio",
+      "command": "/Users/chris/Projects/kea/target/debug/kea-mcp",
+      "args": [],
+      "env": {}
+    }
+  }
+}

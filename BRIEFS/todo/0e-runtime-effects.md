@@ -120,6 +120,28 @@ optimise.
 - Actor runtime patterns inform how Send/Spawn could work
   (conceptual reference only — Kea actors are library-level)
 
+## Entry Gate: IO Granularity Decision
+
+Before implementation begins, decide and lock the standard effect
+surface granularity. The [effects-platform-vision](../design/effects-platform-vision.md)
+argues IO must be decomposed into separate capability effects:
+
+| Effect | Scope |
+|--------|-------|
+| `IO` | File read/write, stdout/stderr |
+| `Net` | Network connections, HTTP, DNS |
+| `Clock` | System time, monotonic clock |
+| `Rand` | Random number generation |
+
+This decision affects handler compilation, the runtime effect set,
+and every downstream brief. It must be explicit — not drift in
+during implementation. Decide at 0e kickoff:
+- **Option A:** Decomposed from day one (IO + Net + Clock + Rand)
+- **Option B:** Monolithic IO for 0e, decompose in 0h
+- **Recommendation:** Option A. The platform vision's policy-as-code
+  and deterministic simulation capabilities depend on this split.
+  Retrofitting is harder than building it in.
+
 ## Implementation Plan
 
 ### Step 1: Prototype handler strategies
