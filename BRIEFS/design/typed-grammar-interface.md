@@ -105,6 +105,86 @@ the same semantic query contracts.
 
 No side-channel diagnostics format per grammar.
 
+## Html v1 Contract (Reference Grammar)
+
+`Html` is the first production grammar and the benchmark for whether
+the typed grammar interface is viable.
+
+### 1) Surface forms (v1)
+
+Supported:
+
+```kea
+embed Html {
+  <div class="card">
+    <h1>{title}</h1>
+    {body}
+  </div>
+}
+
+html {
+  <Button label={label} on_click={handler} />
+}
+```
+
+Rules:
+- `html { ... }` is sugar for `embed Html { ... }`.
+- `{expr}` interpolation is expression injection.
+- Component tags are `PascalCase`.
+- Native tags are lowercase (`div`, `span`, `input`).
+
+### 2) Type contract
+
+- Grammar output type: `Html`.
+- Interpolation requires:
+  - `Html` (insert as node), or
+  - `String` / scalar with `Show` (insert as escaped text), or
+  - `Option Html` / `Option String` (none emits nothing).
+- Attributes are typed:
+  - string-like attrs require `String`/`Show`,
+  - boolean attrs require `Bool`,
+  - event attrs require callable values with declared handler type.
+- Component props are compile-time checked against component signature.
+
+### 3) Escaping and safety
+
+- Text interpolation is HTML-escaped by default.
+- Attribute interpolation is escaped by default.
+- Raw HTML insertion requires explicit trusted wrapper API
+  (`Html.raw(...)`) and is opt-in/auditable.
+- No implicit raw string passthrough.
+
+### 4) Effects and purity
+
+- Building `Html` trees is pure (`->`) by default.
+- Rendering/streaming to network/file is boundary API and effectful
+  (`-[IO]>`, etc.) outside grammar construction.
+- Grammar parse/check/lower runs under compile-time `Compile` only.
+
+### 5) Diagnostics contract
+
+Must provide precise diagnostics for:
+- malformed markup,
+- unknown component,
+- missing required prop,
+- unknown prop,
+- prop type mismatch,
+- invalid interpolation type.
+
+All diagnostics must include:
+- source span within the embedded block,
+- expected vs found type where relevant,
+- actionable fix hints.
+
+### 6) Lowering contract
+
+`Html` lowering target in v1:
+- typed `Html` IR node constructors, or
+- equivalent normalized builder calls.
+
+Lowered form must be deterministic and must not require a special
+runtime interpreter distinct from ordinary Kea execution.
+
 ## Security and Policy Invariants
 
 1. Grammar compilation runs under `Compile` capability only.
@@ -118,7 +198,8 @@ No side-channel diagnostics format per grammar.
 ### Phase 1 foundation
 
 - Land generic `embed <Grammar> { ... }` core path.
-- Land one reference grammar (`Html`) for templating competitiveness.
+- Land `Html v1` reference grammar with typed props/interpolation and
+  escaping defaults (templating competitiveness target).
 
 ### Phase 2 expansion
 
@@ -131,9 +212,10 @@ No side-channel diagnostics format per grammar.
 1. Define `Grammar` trait, `GrammarCtx`, and `LoweredExpr` compiler API.
 2. Add parser support for `embed <Ident> { ... }` blocks.
 3. Add compile-time extension execution path via `Compile` effect hooks.
-4. Implement built-in `Html` grammar package with strict typing.
+4. Implement built-in `Html` grammar package per `Html v1 Contract`.
 5. Add sugar parsing/desugaring for `html { ... }` after generic path is stable.
 6. Add conformance tests across LSP/MCP/REPL diagnostics.
+7. Publish `Html v1` performance and diagnostics baseline numbers.
 
 ## Testing Requirements
 
@@ -142,11 +224,18 @@ No side-channel diagnostics format per grammar.
 - Security tests: grammar packages cannot exceed declared compile-time capabilities.
 - Snapshot tests for diagnostics and source spans inside embedded blocks.
 - Performance tests: compile-time overhead bounded for large templates/queries.
+- Html-specific tests:
+  - escaping defaults for text and attributes,
+  - explicit raw HTML API behavior,
+  - component prop type-check coverage,
+  - interpolation type-check coverage,
+  - lowering determinism snapshots.
 
 ## Definition of Done
 
 - Generic typed grammar mechanism exists and is documented.
 - `Html` grammar is production-usable for templating.
+- `Html v1 Contract` is fully satisfied and benchmarked.
 - Grammar diagnostics and semantic queries integrate with existing tooling.
 - No grammar-specific runtime privilege path exists.
 
