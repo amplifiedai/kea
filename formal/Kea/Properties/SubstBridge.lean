@@ -794,3 +794,32 @@ theorem applySubstCompat_functionEff_eq_applySubstWF_of_no_domain_vars
       applySubstWF s h (.functionEff params effects ret) := by
   exact applySubstCompat_eq_applySubstWF_of_no_domain_vars
     s h fuel (.functionEff params effects ret) htv hrv
+
+/--
+Component-wise constructor corollary for `Ty.functionEff` under no-domain-vars
+assumptions on parameters, effect row, and return type.
+-/
+theorem applySubstCompat_functionEff_eq_applySubstWF_of_component_no_domain_vars
+    (s : Subst) (h : Subst.Acyclic s) (fuel : Nat)
+    (params : TyList) (effects : EffectRow) (ret : Ty)
+    (htv_params : ∀ v ∈ freeTypeVarsTyList params, s.typeMap v = none)
+    (hrv_params : ∀ v ∈ freeRowVarsTyList params, s.rowMap v = none)
+    (htv_effects : ∀ v ∈ freeTypeVarsEffectRow effects, s.typeMap v = none)
+    (hrv_effects : ∀ v ∈ freeRowVarsEffectRow effects, s.rowMap v = none)
+    (htv_ret : ∀ v ∈ freeTypeVars ret, s.typeMap v = none)
+    (hrv_ret : ∀ v ∈ freeRowVars ret, s.rowMap v = none) :
+    applySubstCompat s fuel (.functionEff params effects ret) =
+      applySubstWF s h (.functionEff params effects ret) := by
+  apply applySubstCompat_eq_applySubstWF_of_no_domain_vars s h fuel (.functionEff params effects ret)
+  · intro v hv
+    rcases (by simpa [freeTypeVars, List.mem_append] using hv) with h_params | h_rest
+    · exact htv_params v h_params
+    · rcases (by simpa [List.mem_append] using h_rest) with h_eff | h_r
+      · exact htv_effects v h_eff
+      · exact htv_ret v h_r
+  · intro v hv
+    rcases (by simpa [freeRowVars, List.mem_append] using hv) with h_params | h_rest
+    · exact hrv_params v h_params
+    · rcases (by simpa [List.mem_append] using h_rest) with h_eff | h_r
+      · exact hrv_effects v h_eff
+      · exact hrv_ret v h_r
