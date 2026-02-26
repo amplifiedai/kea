@@ -5738,3 +5738,23 @@ operation-call row updates compose with the existing WF theorem ladder.
 **Outcome**:
 - Operation-call effect-row updates now have a direct WF-preservation theorem,
   reducing glue work for downstream Phase-2 soundness composition.
+
+### 2026-02-26: tail-resumptive bundle packaging (proof-only)
+
+**Context**: Added named bundle packaging for tail-resumptive classification so
+consumers can depend on one theorem surface instead of multiple projections.
+
+**MCP tools used**: none (proof-only packaging refinement).
+
+**Lean side**:
+- Extended `Kea/Properties/TailResumptiveClassification.lean` with:
+  - `TailResumptiveBundle`
+  - `tail_resumptive_bundle_of_wellTyped`
+  - `tail_resumptive_bundle_notInvalid`
+- Verified with `cd formal && lake build` (pass).
+
+**Classify**: N/A (proof-only step).
+
+**Outcome**:
+- Tail-resumptive classification now has one-name bundle consumption and direct
+  non-invalid projection from well-typed clause premises.
