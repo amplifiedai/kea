@@ -90,6 +90,16 @@ theorem effectPolyFailLowering_sound
   · exact lowerFailEffects_labelsPreservedExceptFail c.effects
   · exact lowerFailEffects_failRemoved c.effects
 
+theorem effectPolyFailLowering_sound_of_catchAdmissible
+    (c : EffectPolyFailLoweringContract)
+    (_h_adm : FailResultContracts.catchAdmissible c.effects) :
+    ∃ loweredEffects,
+      c.lowered = .functionEff c.params loweredEffects (.result c.okTy c.errTy) ∧
+      rowTailStable c.effects loweredEffects ∧
+      labelsPreservedExcept c.effects loweredEffects FailResultContracts.failLabel ∧
+      RowFields.has (EffectRow.fields loweredEffects) FailResultContracts.failLabel = false := by
+  exact effectPolyFailLowering_sound c
+
 theorem effectPolyFailLowering_noop_if_fail_absent
     (c : EffectPolyFailLoweringContract)
     (h_abs :
@@ -98,6 +108,18 @@ theorem effectPolyFailLowering_noop_if_fail_absent
   exact c.h_lowered.trans
     (FailResultContracts.lowerFailFunctionType_noop_effect_of_absent
       c.params c.effects c.okTy c.errTy h_abs)
+
+theorem effectPolyFailLowering_noop_if_catch_unnecessary
+    (c : EffectPolyFailLoweringContract)
+    (h_unnecessary : FailResultContracts.catchUnnecessary c.effects) :
+    c.lowered = .functionEff c.params c.effects (.result c.okTy c.errTy) := by
+  exact effectPolyFailLowering_noop_if_fail_absent c h_unnecessary
+
+theorem catchUnnecessary_implies_no_admissible_poly_lowering
+    (c : EffectPolyFailLoweringContract)
+    (h_unnecessary : FailResultContracts.catchUnnecessary c.effects) :
+    ¬ FailResultContracts.catchAdmissible c.effects := by
+  exact FailResultContracts.catchUnnecessary_implies_not_admissible c.effects h_unnecessary
 
 /-- Concrete handler-typing premises for polymorphic Fail-lowered function schemas. -/
 structure EffectPolyHandlerSchema where
@@ -162,6 +184,21 @@ theorem effectPolyHandlerSchema_noop_if_fail_absent
     h_lowered := s.h_lowered
   }
   exact effectPolyFailLowering_noop_if_fail_absent poly h_abs
+
+theorem effectPolyHandlerSchema_noop_if_catch_unnecessary
+    (s : EffectPolyHandlerSchema)
+    (h_unnecessary :
+      FailResultContracts.catchUnnecessary s.clause.exprEffects) :
+    s.loweredTy = .functionEff s.params s.clause.exprEffects (.result s.okTy s.errTy) := by
+  exact effectPolyHandlerSchema_noop_if_fail_absent s h_unnecessary
+
+theorem catchUnnecessary_implies_no_admissible_schema
+    (s : EffectPolyHandlerSchema)
+    (h_unnecessary :
+      FailResultContracts.catchUnnecessary s.clause.exprEffects) :
+    ¬ FailResultContracts.catchAdmissible s.clause.exprEffects := by
+  exact FailResultContracts.catchUnnecessary_implies_not_admissible
+    s.clause.exprEffects h_unnecessary
 
 end EffectPolymorphismSoundness
 end Kea
