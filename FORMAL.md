@@ -33,6 +33,7 @@ This work starts by cannibalizing the existing Rill formal corpus and then exten
 - **Phase 1 (active):** Added capstone bundle theorem `functionEff_wf_ladder_bundle_of_bind_success` to export substitution, generalize/instantiate, and bind-contract slices from one `functionEff` entrypoint.
 - **Phase 1 (active):** Added full-state capstone bundle theorem `functionEff_wf_ladder_bundle_of_bind_success_full_state`, lifting the one-shot `functionEff` WF ladder packaging to the non-`subst` state-update surface.
 - **Phase 1 (active):** `WfEffectRowLadder` now includes one-hop projection helpers from both bundle theorems (base + full-state), including direct extraction of extension, WF-range, and compat/WF-acyclic guarantees from a single packaged assumption.
+- **Phase 1 (active):** `WfEffectRowLadder` now exposes named bundle contracts (`FunctionEffWfLadderBundle`, `FunctionEffWfLadderBundleFullState`) with constructor/projection helpers, so downstream proofs can depend on stable one-name theorem surfaces rather than raw conjunction shapes.
 - **Phase 2 (next):** Kea-specific effect typing and handler theorems.
 
 The formal workspace lives at [`formal/`](formal/).
