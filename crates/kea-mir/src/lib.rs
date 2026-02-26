@@ -5,7 +5,7 @@
 
 use std::collections::BTreeMap;
 
-use kea_ast::{BinOp, UnaryOp};
+use kea_ast::{BinOp, DeclKind, UnaryOp};
 use kea_hir::{HirDecl, HirExpr, HirExprKind, HirFunction, HirModule, HirPattern};
 use kea_types::{EffectRow, Type};
 
@@ -18,6 +18,32 @@ pub struct MirBlockId(pub u32);
 #[derive(Debug, Clone, PartialEq)]
 pub struct MirModule {
     pub functions: Vec<MirFunction>,
+    pub layouts: MirLayoutCatalog,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct MirLayoutCatalog {
+    pub records: Vec<MirRecordLayout>,
+    pub sums: Vec<MirSumLayout>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MirRecordLayout {
+    pub name: String,
+    pub fields: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MirSumLayout {
+    pub name: String,
+    pub variants: Vec<MirVariantLayout>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MirVariantLayout {
+    pub name: String,
+    pub tag: u32,
+    pub field_count: usize,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -216,16 +242,47 @@ impl MirInst {
 }
 
 pub fn lower_hir_module(module: &HirModule) -> MirModule {
+    let mut layouts = MirLayoutCatalog::default();
     let functions = module
         .declarations
         .iter()
         .filter_map(|decl| match decl {
             HirDecl::Function(function) => Some(lower_hir_function(function)),
-            HirDecl::Raw(_) => None,
+            HirDecl::Raw(raw_decl) => {
+                collect_layout_metadata(raw_decl, &mut layouts);
+                None
+            }
         })
         .collect();
 
-    MirModule { functions }
+    MirModule { functions, layouts }
+}
+
+fn collect_layout_metadata(raw_decl: &DeclKind, layouts: &mut MirLayoutCatalog) {
+    match raw_decl {
+        DeclKind::RecordDef(record) => layouts.records.push(MirRecordLayout {
+            name: record.name.node.clone(),
+            fields: record
+                .fields
+                .iter()
+                .map(|(field, _)| field.node.clone())
+                .collect(),
+        }),
+        DeclKind::TypeDef(sum) => layouts.sums.push(MirSumLayout {
+            name: sum.name.node.clone(),
+            variants: sum
+                .variants
+                .iter()
+                .enumerate()
+                .map(|(tag, variant)| MirVariantLayout {
+                    name: variant.name.node.clone(),
+                    tag: tag as u32,
+                    field_count: variant.fields.len(),
+                })
+                .collect(),
+        }),
+        _ => {}
+    }
 }
 
 fn lower_hir_function(function: &HirFunction) -> MirFunction {
@@ -594,8 +651,15 @@ fn lower_unaryop(op: UnaryOp) -> MirUnaryOp {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use kea_ast::{
+        DeclKind, RecordDef, Spanned, TypeAnnotation, TypeDef, TypeVariant, VariantField,
+    };
     use kea_hir::{HirExpr, HirExprKind, HirFunction, HirParam};
     use kea_types::FunctionType;
+
+    fn sp<T>(node: T) -> Spanned<T> {
+        Spanned::new(node, kea_ast::Span::synthetic())
+    }
 
     #[test]
     fn memory_op_classifier_matches_contract() {
@@ -612,6 +676,77 @@ mod tests {
 
         assert!(retain.is_memory_op());
         assert!(!effect.is_memory_op());
+    }
+
+    #[test]
+    fn lower_hir_module_collects_record_layout_field_order() {
+        let hir = HirModule {
+            declarations: vec![HirDecl::Raw(DeclKind::RecordDef(RecordDef {
+                public: true,
+                name: sp("User".to_string()),
+                doc: None,
+                annotations: vec![],
+                params: vec![],
+                fields: vec![
+                    (sp("name".to_string()), TypeAnnotation::Named("String".to_string())),
+                    (sp("age".to_string()), TypeAnnotation::Named("Int".to_string())),
+                ],
+                field_annotations: vec![],
+                derives: vec![],
+            }))],
+        };
+
+        let mir = lower_hir_module(&hir);
+        assert!(mir.functions.is_empty());
+        assert_eq!(mir.layouts.records.len(), 1);
+        assert_eq!(mir.layouts.records[0].name, "User");
+        assert_eq!(mir.layouts.records[0].fields, vec!["name", "age"]);
+    }
+
+    #[test]
+    fn lower_hir_module_collects_sum_layout_tags_in_declaration_order() {
+        let hir = HirModule {
+            declarations: vec![HirDecl::Raw(DeclKind::TypeDef(TypeDef {
+                public: true,
+                name: sp("Option".to_string()),
+                doc: None,
+                annotations: vec![],
+                params: vec!["a".to_string()],
+                variants: vec![
+                    TypeVariant {
+                        annotations: vec![],
+                        name: sp("Some".to_string()),
+                        fields: vec![VariantField {
+                            annotations: vec![],
+                            name: None,
+                            ty: sp(TypeAnnotation::Named("a".to_string())),
+                            span: kea_ast::Span::synthetic(),
+                        }],
+                        where_clause: vec![],
+                    },
+                    TypeVariant {
+                        annotations: vec![],
+                        name: sp("None".to_string()),
+                        fields: vec![],
+                        where_clause: vec![],
+                    },
+                ],
+                derives: vec![],
+            }))],
+        };
+
+        let mir = lower_hir_module(&hir);
+        assert!(mir.functions.is_empty());
+        assert_eq!(mir.layouts.sums.len(), 1);
+        let option = &mir.layouts.sums[0];
+        assert_eq!(option.name, "Option");
+        assert_eq!(option.variants.len(), 2);
+        assert_eq!(option.variants[0].name, "Some");
+        assert_eq!(option.variants[0].tag, 0);
+        assert_eq!(option.variants[0].field_count, 1);
+        assert_eq!(option.variants[1].name, "None");
+        assert_eq!(option.variants[1].tag, 1);
+        assert_eq!(option.variants[1].field_count, 0);
     }
 
     #[test]
