@@ -32,6 +32,54 @@ theorem core_capability_direct_call_sound
       c.handled
       h_ne)
 
+theorem resultEffects_preserves_core_label_true
+    (c : HandleClauseContract)
+    (label : Label)
+    (h_core :
+      RowFields.has
+        (EffectRow.fields (HandleClauseContract.resultEffectsCore c))
+        label = true) :
+    RowFields.has
+      (EffectRow.fields (HandleClauseContract.resultEffects c))
+      label = true := by
+  cases h_then : c.thenEffects with
+  | none =>
+      simpa [HandleClauseContract.resultEffects, HandleClauseContract.applyThenEffects, h_then] using h_core
+  | some te =>
+      have h_union :
+          RowFields.has
+            (RowFields.unionIdem
+              (EffectRow.fields (HandleClauseContract.resultEffectsCore c))
+              (EffectRow.fields te))
+            label = true :=
+        RowFields.has_unionIdem_of_has_left_true
+          (EffectRow.fields (HandleClauseContract.resultEffectsCore c))
+          (EffectRow.fields te)
+          label
+          h_core
+      simpa [HandleClauseContract.resultEffects, HandleClauseContract.applyThenEffects, h_then] using h_union
+
+theorem wellTyped_capability_direct_call_sound
+    (c : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice c)
+    (h_expr :
+      c.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_ne : capability ≠ c.handled) :
+    RowFields.has
+      (EffectRow.fields (HandleClauseContract.resultEffects c))
+      capability = true := by
+  have _h_boundary :=
+    TailResumptiveClassification.tail_resumptive_bundle_notInvalid c h_wellTyped
+  have h_core :
+      RowFields.has
+        (EffectRow.fields (HandleClauseContract.resultEffectsCore c))
+        capability = true :=
+    core_capability_direct_call_sound c baseEffects capability h_expr h_ne
+  exact resultEffects_preserves_core_label_true c capability h_core
+
 /--
 Cross-module capstone:
 if a clause is tail-resumptive-eligible (so full result effects equal core
@@ -80,10 +128,10 @@ theorem tail_resumptive_wellTyped_capability_direct_call_sound
     RowFields.has
       (EffectRow.fields (HandleClauseContract.resultEffects c))
       capability = true := by
-  have _h_not_invalid :=
-    TailResumptiveClassification.tail_resumptive_bundle_notInvalid c h_wellTyped
-  exact tail_resumptive_eligible_capability_direct_call_sound
-    c baseEffects capability h_eligible h_expr h_ne
+  have _h_eligible_atMostOnce :=
+    TailResumptiveClassification.tail_resumptive_eligible_implies_atMostOnce c h_eligible
+  exact wellTyped_capability_direct_call_sound
+    c baseEffects capability h_wellTyped h_expr h_ne
 
 end TailCapabilityComposition
 end Kea

@@ -5866,3 +5866,27 @@ the composition surface.
   remain intentionally **well-typed-clause preconditioned**. The diagnostic text
   currently references `[IO]` in this path, but the acceptance/rejection
   boundary matches the formal precondition.
+
+### 2026-02-26: full-result capability lift in composition layer (proof-only)
+
+**Context**: Strengthened tail-capability composition so capability preservation
+is available directly on full clause result effects, not only core effects.
+
+**MCP tools used**: none (proof-only theorem refinement built on already-probed
+operation and tail-resumptive slices).
+
+**Lean side**:
+- Extended `Kea/Properties/TailCapabilityComposition.lean` with:
+  - `resultEffects_preserves_core_label_true`
+  - `wellTyped_capability_direct_call_sound`
+- Rebased
+  `tail_resumptive_wellTyped_capability_direct_call_sound` on the new
+  well-typed lift (tail-resumptive theorem remains as a specialized surface).
+- Verified with `cd formal && lake build` (pass).
+
+**Classify**: N/A (proof-only step).
+
+**Outcome**:
+- Capability-preservation composition now works directly through
+  `HandleClauseContract.resultEffects`, including optional `then` unions, under
+  the explicit well-typed-clause boundary.
