@@ -6859,6 +6859,166 @@ fn handler_clause_rejects_multiple_resumes() {
 }
 
 #[test]
+fn handler_clause_rejects_resume_captured_in_lambda() {
+    let mut env = TypeEnv::new();
+    let records = RecordRegistry::new();
+    let sums = SumTypeRegistry::new();
+    let mut traits = TraitRegistry::new();
+    register_hkt_for_use_for_traits(&mut traits, &records);
+    let log = make_effect_decl(
+        "Log",
+        vec![],
+        vec![make_effect_operation(
+            "log",
+            vec![annotated_param(
+                "msg",
+                TypeAnnotation::Named("String".to_string()),
+            )],
+            TypeAnnotation::Named("Unit".to_string()),
+        )],
+    );
+    let diags = register_effect_decl(&log, &records, Some(&sums), &mut env);
+    assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+
+    let handled = call(field_access(var("Log"), "log"), vec![lit_str("hello")]);
+    let clause = handle_clause(
+        "Log",
+        "log",
+        vec![sp(PatternKind::Var("msg".to_string()))],
+        lambda(&["ignored"], resume(lit_unit())),
+    );
+    let expr = handle_expr(handled, vec![clause], None);
+
+    let mut unifier = Unifier::new();
+    let _ = infer_and_resolve(&expr, &mut env, &mut unifier, &records, &traits, &sums);
+    assert!(
+        unifier
+            .errors()
+            .iter()
+            .any(|d| d.message.contains("cannot be captured in a lambda")),
+        "expected resume-captured-in-lambda diagnostic, got {:?}",
+        unifier.errors()
+    );
+}
+
+#[test]
+fn handler_clause_rejects_resume_inside_loop() {
+    let mut env = TypeEnv::new();
+    let records = RecordRegistry::new();
+    let sums = SumTypeRegistry::new();
+    let mut traits = TraitRegistry::new();
+    register_hkt_for_use_for_traits(&mut traits, &records);
+    let log = make_effect_decl(
+        "Log",
+        vec![],
+        vec![make_effect_operation(
+            "log",
+            vec![annotated_param(
+                "msg",
+                TypeAnnotation::Named("String".to_string()),
+            )],
+            TypeAnnotation::Named("Unit".to_string()),
+        )],
+    );
+    let diags = register_effect_decl(&log, &records, Some(&sums), &mut env);
+    assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+
+    let handled = call(field_access(var("Log"), "log"), vec![lit_str("hello")]);
+    let loop_body = for_expr(
+        vec![for_gen(
+            sp(PatternKind::Var("x".to_string())),
+            list(vec![lit_int(1)]),
+        )],
+        resume(lit_unit()),
+    );
+    let clause = handle_clause(
+        "Log",
+        "log",
+        vec![sp(PatternKind::Var("msg".to_string()))],
+        loop_body,
+    );
+    let expr = handle_expr(handled, vec![clause], None);
+
+    let mut unifier = Unifier::new();
+    let _ = infer_and_resolve(&expr, &mut env, &mut unifier, &records, &traits, &sums);
+    assert!(
+        unifier
+            .errors()
+            .iter()
+            .any(|d| d.message.contains("not allowed inside loops")),
+        "expected resume-in-loop diagnostic, got {:?}",
+        unifier.errors()
+    );
+}
+
+#[test]
+fn handler_clause_resume_value_must_match_operation_return() {
+    let mut env = TypeEnv::new();
+    let records = RecordRegistry::new();
+    let sums = SumTypeRegistry::new();
+    let mut traits = TraitRegistry::new();
+    register_hkt_for_use_for_traits(&mut traits, &records);
+    let counter = make_effect_decl(
+        "Counter",
+        vec![],
+        vec![make_effect_operation(
+            "next",
+            vec![],
+            TypeAnnotation::Named("Int".to_string()),
+        )],
+    );
+    let diags = register_effect_decl(&counter, &records, Some(&sums), &mut env);
+    assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+
+    let handled = call(field_access(var("Counter"), "next"), vec![]);
+    let clause = handle_clause("Counter", "next", vec![], resume(lit_str("bad")));
+    let expr = handle_expr(handled, vec![clause], None);
+
+    let mut unifier = Unifier::new();
+    let _ = infer_and_resolve(&expr, &mut env, &mut unifier, &records, &traits, &sums);
+    let msg = format!("{:?}", unifier.errors());
+    assert!(unifier.has_errors(), "expected resume type mismatch");
+    assert!(
+        msg.contains("Int") && msg.contains("String"),
+        "expected mismatch between Int and String, got {msg}"
+    );
+}
+
+#[test]
+fn handle_requires_clauses_for_all_effect_operations() {
+    let mut env = TypeEnv::new();
+    let records = RecordRegistry::new();
+    let sums = SumTypeRegistry::new();
+    let mut traits = TraitRegistry::new();
+    register_hkt_for_use_for_traits(&mut traits, &records);
+    let net = make_effect_decl(
+        "Net",
+        vec![],
+        vec![
+            make_effect_operation("open", vec![], TypeAnnotation::Named("Unit".to_string())),
+            make_effect_operation("close", vec![], TypeAnnotation::Named("Unit".to_string())),
+        ],
+    );
+    let diags = register_effect_decl(&net, &records, Some(&sums), &mut env);
+    assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+
+    let handled = call(field_access(var("Net"), "open"), vec![]);
+    let clause = handle_clause("Net", "open", vec![], resume(lit_unit()));
+    let expr = handle_expr(handled, vec![clause], None);
+
+    let mut unifier = Unifier::new();
+    let _ = infer_and_resolve(&expr, &mut env, &mut unifier, &records, &traits, &sums);
+    assert!(
+        unifier
+            .errors()
+            .iter()
+            .any(|d| d.message.contains("missing clause(s): close")),
+        "expected missing operation clause diagnostic, got {:?}",
+        unifier.errors()
+    );
+}
+
+#[test]
 fn catch_style_handle_typechecks_to_result_and_removes_fail() {
     let mut env = TypeEnv::new();
     let records = RecordRegistry::new();

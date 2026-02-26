@@ -7720,6 +7720,27 @@ mod tests {
     }
 
     #[test]
+    fn parse_resume_expression() {
+        let expr = parse("resume value");
+        match &expr.node {
+            ExprKind::Resume { value } => {
+                assert!(matches!(&value.node, ExprKind::Var(name) if name == "value"));
+            }
+            other => panic!("expected resume expression, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_handle_requires_operation_clause() {
+        let errors = parse_err("handle run()\n  then value -> value");
+        let msg = format!("{errors:?}");
+        assert!(
+            msg.contains("requires at least one operation clause"),
+            "got {msg}"
+        );
+    }
+
+    #[test]
     fn parse_fail_desugars_to_fail_operation_call() {
         let expr = parse("fail err");
         match &expr.node {
