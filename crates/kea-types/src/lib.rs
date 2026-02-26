@@ -93,6 +93,7 @@ impl std::fmt::Display for Label {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Kind {
     Star,
+    Eff,
     Arrow(Box<Kind>, Box<Kind>),
 }
 
@@ -114,6 +115,7 @@ impl fmt::Display for Kind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Kind::Star => write!(f, "*"),
+            Kind::Eff => write!(f, "Eff"),
             Kind::Arrow(lhs, rhs) => {
                 let needs_paren = matches!(**lhs, Kind::Arrow(_, _));
                 if needs_paren {
@@ -437,6 +439,95 @@ impl RowType {
     /// Labels in this row.
     pub fn labels(&self) -> impl Iterator<Item = &Label> {
         self.fields.iter().map(|(l, _)| l)
+    }
+}
+
+/// Effect row representation.
+///
+/// Effect rows reuse the same Rémy row machinery as record rows:
+/// the payload type is the field type and the open-tail variable is shared.
+/// Convention: effects without payload use `Type::Unit`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EffectRow {
+    pub row: RowType,
+}
+
+impl EffectRow {
+    /// Closed empty effect row (`[]`).
+    pub fn pure() -> Self {
+        Self {
+            row: RowType::empty_closed(),
+        }
+    }
+
+    /// Closed effect row.
+    pub fn closed(effects: Vec<(Label, Type)>) -> Self {
+        Self {
+            row: RowType::closed(effects),
+        }
+    }
+
+    /// Open effect row with a tail variable.
+    pub fn open(effects: Vec<(Label, Type)>, rest: RowVarId) -> Self {
+        Self {
+            row: RowType::open(effects, rest),
+        }
+    }
+
+    pub fn is_pure(&self) -> bool {
+        self.row.fields.is_empty() && self.row.rest.is_none()
+    }
+
+    pub fn as_row(&self) -> &RowType {
+        &self.row
+    }
+
+    pub fn into_row(self) -> RowType {
+        self.row
+    }
+}
+
+impl fmt::Display for EffectRow {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "[")?;
+        for (i, (label, payload)) in self.row.fields.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            if matches!(payload, Type::Unit) {
+                write!(f, "{label}")?;
+            } else {
+                write!(f, "{label}({payload})")?;
+            }
+        }
+        if let Some(rest) = self.row.rest {
+            if !self.row.fields.is_empty() {
+                write!(f, " | ")?;
+            }
+            write!(f, "e{}", rest.0)?;
+        }
+        write!(f, "]")
+    }
+}
+
+/// Handler contract for `handle` expressions.
+///
+/// `handled` is the effect row this handler discharges.
+/// `input` and `output` are value-level domain/codomain.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HandlerType {
+    pub handled: EffectRow,
+    pub input: Box<Type>,
+    pub output: Box<Type>,
+}
+
+impl fmt::Display for HandlerType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "handler {} -{}> {}",
+            self.input, self.handled, self.output
+        )
     }
 }
 
@@ -2891,6 +2982,47 @@ mod tests {
         ]);
         let ty = Type::AnonRecord(row);
         assert_eq!(ty.to_string(), "#{ age: Int, name: String }");
+    }
+
+    #[test]
+    fn display_kind_eff() {
+        assert_eq!(Kind::Eff.to_string(), "Eff");
+        assert_eq!(
+            Kind::Arrow(Box::new(Kind::Eff), Box::new(Kind::Star)).to_string(),
+            "Eff -> *"
+        );
+    }
+
+    #[test]
+    fn effect_row_display_and_sorting() {
+        let effects = EffectRow::closed(vec![
+            (Label::new("Fail"), Type::String),
+            (Label::new("IO"), Type::Unit),
+        ]);
+        assert_eq!(effects.to_string(), "[Fail(String), IO]");
+    }
+
+    #[test]
+    fn effect_row_open_tail_displays_evar() {
+        let effects = EffectRow::open(vec![(Label::new("IO"), Type::Unit)], RowVarId(7));
+        assert_eq!(effects.to_string(), "[IO | e7]");
+    }
+
+    #[test]
+    fn effect_row_pure_is_empty_closed() {
+        let effects = EffectRow::pure();
+        assert!(effects.is_pure());
+        assert_eq!(effects.to_string(), "[]");
+    }
+
+    #[test]
+    fn handler_type_display() {
+        let handler = HandlerType {
+            handled: EffectRow::closed(vec![(Label::new("IO"), Type::Unit)]),
+            input: Box::new(Type::Int),
+            output: Box::new(Type::String),
+        };
+        assert_eq!(handler.to_string(), "handler Int -[IO]> String");
     }
 
     #[test]
