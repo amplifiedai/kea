@@ -1,2 +1,3 @@
 effect Rand
+  fn seed(seed: Int) -> Unit
   fn int() -> Int

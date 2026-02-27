@@ -365,6 +365,7 @@ fn compile_into_module<M: Module>(
     let mut requires_io_stderr = false;
     let mut requires_clock_time = false;
     let mut requires_rand_int = false;
+    let mut requires_rand_seed = false;
     let mut requires_string_concat = false;
     let mut requires_free = false;
     for function in &mir.functions {
@@ -446,6 +447,21 @@ fn compile_into_module<M: Module>(
             })
         }) {
             requires_rand_int = true;
+        }
+        if function.blocks.iter().any(|block| {
+            block.instructions.iter().any(|inst| {
+                matches!(
+                    inst,
+                    MirInst::EffectOp {
+                        class: MirEffectOpClass::Direct,
+                        effect,
+                        operation,
+                        ..
+                    } if effect == "Rand" && operation == "seed"
+                )
+            })
+        }) {
+            requires_rand_seed = true;
         }
         if function.blocks.iter().any(|block| {
             block.instructions.iter().any(|inst| {
@@ -615,6 +631,20 @@ fn compile_into_module<M: Module>(
         None
     };
 
+    let srand_func_id = if requires_rand_seed {
+        let mut signature = module.make_signature();
+        signature.params.push(AbiParam::new(types::I32));
+        Some(
+            module
+                .declare_function("srand", Linkage::Import, &signature)
+                .map_err(|detail| CodegenError::Module {
+                    detail: detail.to_string(),
+                })?,
+        )
+    } else {
+        None
+    };
+
     let strlen_func_id = if requires_string_concat || requires_io_stderr {
         let ptr_ty = module.target_config().pointer_type();
         let mut signature = module.make_signature();
@@ -750,6 +780,7 @@ fn compile_into_module<M: Module>(
                     write_func_id,
                     time_func_id,
                     rand_func_id,
+                    srand_func_id,
                     strlen_func_id,
                     memcpy_func_id,
                     runtime_signatures: &runtime_signatures,
@@ -1167,6 +1198,7 @@ struct LowerInstCtx<'a> {
     write_func_id: Option<FuncId>,
     time_func_id: Option<FuncId>,
     rand_func_id: Option<FuncId>,
+    srand_func_id: Option<FuncId>,
     strlen_func_id: Option<FuncId>,
     memcpy_func_id: Option<FuncId>,
     runtime_signatures: &'a BTreeMap<String, RuntimeFunctionSig>,
@@ -1792,35 +1824,67 @@ fn lower_instruction<M: Module>(
                         values.insert(dest.clone(), coerce_value_to_clif_type(builder, timestamp, ptr_ty));
                     }
                     Ok(false)
-                } else if effect == "Rand" && operation == "int" {
-                    if !args.is_empty() {
-                        return Err(CodegenError::UnsupportedMir {
-                            function: function_name.to_string(),
-                            detail: "Rand.int expects no arguments".to_string(),
-                        });
-                    }
-                    let rand_func_id = ctx
-                        .rand_func_id
-                        .ok_or_else(|| CodegenError::UnsupportedMir {
-                            function: function_name.to_string(),
-                            detail: "Rand.int lowering requires imported `rand` symbol"
-                                .to_string(),
-                        })?;
-                    let rand_ref = module.declare_func_in_func(rand_func_id, builder.func);
-                    let rand_call = builder.ins().call(rand_ref, &[]);
-                    if let Some(dest) = result {
-                        let raw = builder
-                            .inst_results(rand_call)
-                            .first()
-                            .copied()
-                            .ok_or_else(|| CodegenError::UnsupportedMir {
+                } else if effect == "Rand" && matches!(operation.as_str(), "int" | "seed") {
+                    match operation.as_str() {
+                        "int" => {
+                            if !args.is_empty() {
+                                return Err(CodegenError::UnsupportedMir {
+                                    function: function_name.to_string(),
+                                    detail: "Rand.int expects no arguments".to_string(),
+                                });
+                            }
+                            let rand_func_id = ctx
+                                .rand_func_id
+                                .ok_or_else(|| CodegenError::UnsupportedMir {
+                                    function: function_name.to_string(),
+                                    detail: "Rand.int lowering requires imported `rand` symbol"
+                                        .to_string(),
+                                })?;
+                            let rand_ref = module.declare_func_in_func(rand_func_id, builder.func);
+                            let rand_call = builder.ins().call(rand_ref, &[]);
+                            if let Some(dest) = result {
+                                let raw = builder
+                                    .inst_results(rand_call)
+                                    .first()
+                                    .copied()
+                                    .ok_or_else(|| CodegenError::UnsupportedMir {
+                                        function: function_name.to_string(),
+                                        detail: "rand call returned no value".to_string(),
+                                    })?;
+                                let as_i64 = coerce_value_to_clif_type(builder, raw, types::I64);
+                                values.insert(dest.clone(), as_i64);
+                            }
+                            Ok(false)
+                        }
+                        "seed" => {
+                            let seed_value_id = args.first().ok_or_else(|| CodegenError::UnsupportedMir {
                                 function: function_name.to_string(),
-                                detail: "rand call returned no value".to_string(),
+                                detail: "Rand.seed expects one Int argument".to_string(),
                             })?;
-                        let as_i64 = coerce_value_to_clif_type(builder, raw, types::I64);
-                        values.insert(dest.clone(), as_i64);
+                            if args.len() != 1 {
+                                return Err(CodegenError::UnsupportedMir {
+                                    function: function_name.to_string(),
+                                    detail: "Rand.seed expects exactly one Int argument".to_string(),
+                                });
+                            }
+                            let seed_value = get_value(values, function_name, seed_value_id)?;
+                            let seed_value = coerce_value_to_clif_type(builder, seed_value, types::I32);
+                            let srand_func_id = ctx
+                                .srand_func_id
+                                .ok_or_else(|| CodegenError::UnsupportedMir {
+                                    function: function_name.to_string(),
+                                    detail: "Rand.seed lowering requires imported `srand` symbol"
+                                        .to_string(),
+                                })?;
+                            let srand_ref = module.declare_func_in_func(srand_func_id, builder.func);
+                            let _ = builder.ins().call(srand_ref, &[seed_value]);
+                            if let Some(dest) = result {
+                                values.insert(dest.clone(), builder.ins().iconst(types::I8, 0));
+                            }
+                            Ok(false)
+                        }
+                        _ => unreachable!("Rand branch is guarded by operation match"),
                     }
-                    Ok(false)
                 } else {
                     Err(CodegenError::UnsupportedMir {
                         function: function_name.to_string(),
@@ -3034,6 +3098,39 @@ mod tests {
                     terminator: MirTerminator::Return {
                         value: Some(MirValueId(0)),
                     },
+                }],
+            }],
+            layouts: MirLayoutCatalog::default(),
+        }
+    }
+
+    fn sample_rand_seed_module() -> MirModule {
+        MirModule {
+            functions: vec![MirFunction {
+                name: "seed_rand".to_string(),
+                signature: MirFunctionSignature {
+                    params: vec![],
+                    ret: Type::Unit,
+                    effects: EffectRow::closed(vec![(Label::new("Rand"), Type::Unit)]),
+                },
+                entry: MirBlockId(0),
+                blocks: vec![MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: MirValueId(0),
+                            literal: MirLiteral::Int(123),
+                        },
+                        MirInst::EffectOp {
+                            class: MirEffectOpClass::Direct,
+                            effect: "Rand".to_string(),
+                            operation: "seed".to_string(),
+                            args: vec![MirValueId(0)],
+                            result: None,
+                        },
+                    ],
+                    terminator: MirTerminator::Return { value: None },
                 }],
             }],
             layouts: MirLayoutCatalog::default(),
@@ -4579,6 +4676,20 @@ mod tests {
         let artifact = backend
             .compile_module(&module, &manifest, &BackendConfig::default())
             .expect("Rand.int lowering should compile");
+
+        assert_eq!(artifact.stats.per_function.len(), 1);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn cranelift_backend_compiles_rand_seed_effect_op_module() {
+        let module = sample_rand_seed_module();
+        let manifest = default_abi_manifest(&module);
+        let backend = CraneliftBackend;
+
+        let artifact = backend
+            .compile_module(&module, &manifest, &BackendConfig::default())
+            .expect("Rand.seed lowering should compile");
 
         assert_eq!(artifact.stats.per_function.len(), 1);
     }
