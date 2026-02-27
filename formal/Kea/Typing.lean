@@ -13877,6 +13877,246 @@ theorem principalNoUnifyFieldAllHooksRouteSurface_via_masterRunBundleConsequence
     principalNoUnifyAllHooksRouteSurfaceBothMasterConsequenceRoutesSlices_proved
     h_no h_ok).viaMasterRunBundleConsequence
 
+/-- One-hop core projection from an expression all-hooks route surface. -/
+theorem principalNoUnifyExprAllHooksRouteSurface_core
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_surface : PrincipalNoUnifyExprAllHooksRouteSurface st fuel env e st' ty) :
+    PrincipalTypingSliceCore env e ty :=
+  h_surface.consequences.core
+
+/-- One-hop core projection from a field all-hooks route surface. -/
+theorem principalNoUnifyFieldAllHooksRouteSurface_core
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_surface : PrincipalNoUnifyFieldAllHooksRouteSurface st fuel env fs st' rf) :
+    PrincipalFieldTypingSliceCore env fs rf :=
+  h_surface.consequences.core
+
+/-- One-hop any-hooks preconditioned projection from an expression route surface. -/
+theorem principalNoUnifyExprAllHooksRouteSurface_preconditioned_anyHooks
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_surface : PrincipalNoUnifyExprAllHooksRouteSurface st fuel env e st' ty) :
+    ∀ h_app h_proj,
+      PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty :=
+  h_surface.consequences.preconditionedAny
+
+/-- One-hop any-hooks preconditioned projection from a field route surface. -/
+theorem principalNoUnifyFieldAllHooksRouteSurface_preconditioned_anyHooks
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_surface : PrincipalNoUnifyFieldAllHooksRouteSurface st fuel env fs st' rf) :
+    ∀ h_app h_proj,
+      PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf :=
+  h_surface.consequences.preconditionedAny
+
+/--
+One-hop any-hooks `preconditioned ↔ core` projection from an expression
+all-hooks route surface.
+-/
+theorem principalNoUnifyExprAllHooksRouteSurface_preconditionedCoreIff_anyHooks
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_surface : PrincipalNoUnifyExprAllHooksRouteSurface st fuel env e st' ty) :
+    ∀ h_app h_proj,
+      (PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty
+        ↔ PrincipalTypingSliceCore env e ty) :=
+  h_surface.consequences.preconditionedAnyIffCore
+
+/--
+One-hop any-hooks `preconditioned ↔ core` projection from a field all-hooks
+route surface.
+-/
+theorem principalNoUnifyFieldAllHooksRouteSurface_preconditionedCoreIff_anyHooks
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_surface : PrincipalNoUnifyFieldAllHooksRouteSurface st fuel env fs st' rf) :
+    ∀ h_app h_proj,
+      (PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf
+        ↔ PrincipalFieldTypingSliceCore env fs rf) :=
+  h_surface.consequences.preconditionedAnyIffCore
+
+/--
+Canonical core projection from proved route-surface slices to the
+master-consequence-capstone route.
+-/
+theorem principalNoUnifyCoreExpr_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalTypingSliceCore env e ty :=
+  principalNoUnifyExprAllHooksRouteSurface_core
+    (principalNoUnifyExprAllHooksRouteSurface_via_masterConsequenceCapstone_from_cross_route_surface_slices
+      h_no h_ok)
+
+/--
+Canonical core projection from proved route-surface slices to the
+master-consequence-capstone field route.
+-/
+theorem principalNoUnifyCoreField_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalFieldTypingSliceCore env fs rf :=
+  principalNoUnifyFieldAllHooksRouteSurface_core
+    (principalNoUnifyFieldAllHooksRouteSurface_via_masterConsequenceCapstone_from_cross_route_surface_slices
+      h_no h_ok)
+
+/--
+Canonical any-hooks preconditioned projection from proved route-surface slices
+to the master-consequence-capstone route.
+-/
+theorem principalNoUnifyPreconditionedExpr_anyHooks_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    ∀ h_app h_proj,
+      PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty :=
+  principalNoUnifyExprAllHooksRouteSurface_preconditioned_anyHooks
+    (principalNoUnifyExprAllHooksRouteSurface_via_masterConsequenceCapstone_from_cross_route_surface_slices
+      h_no h_ok)
+
+/--
+Canonical any-hooks preconditioned projection from proved route-surface slices
+to the master-consequence-capstone field route.
+-/
+theorem principalNoUnifyPreconditionedField_anyHooks_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    ∀ h_app h_proj,
+      PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf :=
+  principalNoUnifyFieldAllHooksRouteSurface_preconditioned_anyHooks
+    (principalNoUnifyFieldAllHooksRouteSurface_via_masterConsequenceCapstone_from_cross_route_surface_slices
+      h_no h_ok)
+
+/--
+Canonical any-hooks `preconditioned ↔ core` projection from proved route-surface
+slices to the master-consequence-capstone route.
+-/
+theorem principalNoUnifyPreconditionedCoreIffExpr_anyHooks_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    ∀ h_app h_proj,
+      (PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty
+        ↔ PrincipalTypingSliceCore env e ty) :=
+  principalNoUnifyExprAllHooksRouteSurface_preconditionedCoreIff_anyHooks
+    (principalNoUnifyExprAllHooksRouteSurface_via_masterConsequenceCapstone_from_cross_route_surface_slices
+      h_no h_ok)
+
+/--
+Canonical any-hooks `preconditioned ↔ core` projection from proved route-surface
+slices to the master-consequence-capstone field route.
+-/
+theorem principalNoUnifyPreconditionedCoreIffField_anyHooks_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    ∀ h_app h_proj,
+      (PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf
+        ↔ PrincipalFieldTypingSliceCore env fs rf) :=
+  principalNoUnifyFieldAllHooksRouteSurface_preconditionedCoreIff_anyHooks
+    (principalNoUnifyFieldAllHooksRouteSurface_via_masterConsequenceCapstone_from_cross_route_surface_slices
+      h_no h_ok)
+
+/--
+Canonical core projection from proved route-surface slices to the
+master-run-bundle-consequence route.
+-/
+theorem principalNoUnifyCoreExpr_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalTypingSliceCore env e ty :=
+  principalNoUnifyExprAllHooksRouteSurface_core
+    (principalNoUnifyExprAllHooksRouteSurface_via_masterRunBundleConsequence_from_cross_route_surface_slices
+      h_no h_ok)
+
+/--
+Canonical core projection from proved route-surface slices to the
+master-run-bundle-consequence field route.
+-/
+theorem principalNoUnifyCoreField_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalFieldTypingSliceCore env fs rf :=
+  principalNoUnifyFieldAllHooksRouteSurface_core
+    (principalNoUnifyFieldAllHooksRouteSurface_via_masterRunBundleConsequence_from_cross_route_surface_slices
+      h_no h_ok)
+
+/--
+Canonical any-hooks preconditioned projection from proved route-surface slices
+to the master-run-bundle-consequence route.
+-/
+theorem principalNoUnifyPreconditionedExpr_anyHooks_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    ∀ h_app h_proj,
+      PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty :=
+  principalNoUnifyExprAllHooksRouteSurface_preconditioned_anyHooks
+    (principalNoUnifyExprAllHooksRouteSurface_via_masterRunBundleConsequence_from_cross_route_surface_slices
+      h_no h_ok)
+
+/--
+Canonical any-hooks preconditioned projection from proved route-surface slices
+to the master-run-bundle-consequence field route.
+-/
+theorem principalNoUnifyPreconditionedField_anyHooks_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    ∀ h_app h_proj,
+      PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf :=
+  principalNoUnifyFieldAllHooksRouteSurface_preconditioned_anyHooks
+    (principalNoUnifyFieldAllHooksRouteSurface_via_masterRunBundleConsequence_from_cross_route_surface_slices
+      h_no h_ok)
+
+/--
+Canonical any-hooks `preconditioned ↔ core` projection from proved route-surface
+slices to the master-run-bundle-consequence route.
+-/
+theorem principalNoUnifyPreconditionedCoreIffExpr_anyHooks_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    ∀ h_app h_proj,
+      (PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty
+        ↔ PrincipalTypingSliceCore env e ty) :=
+  principalNoUnifyExprAllHooksRouteSurface_preconditionedCoreIff_anyHooks
+    (principalNoUnifyExprAllHooksRouteSurface_via_masterRunBundleConsequence_from_cross_route_surface_slices
+      h_no h_ok)
+
+/--
+Canonical any-hooks `preconditioned ↔ core` projection from proved route-surface
+slices to the master-run-bundle-consequence field route.
+-/
+theorem principalNoUnifyPreconditionedCoreIffField_anyHooks_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    ∀ h_app h_proj,
+      (PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf
+        ↔ PrincipalFieldTypingSliceCore env fs rf) :=
+  principalNoUnifyFieldAllHooksRouteSurface_preconditionedCoreIff_anyHooks
+    (principalNoUnifyFieldAllHooksRouteSurface_via_masterRunBundleConsequence_from_cross_route_surface_slices
+      h_no h_ok)
+
 /--
 Canonical core projection: derive no-unify expression core principality from
 the master-consequence-capstone route via cross-route consequence slices.
