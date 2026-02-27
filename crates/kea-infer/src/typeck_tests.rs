@@ -14919,6 +14919,46 @@ fn validate_module_annotations_unknown_annotation_suggests_known_name() {
 }
 
 #[test]
+fn validate_module_annotations_intrinsic_function_annotation_is_allowed() {
+    let mut fn_decl = make_fn_decl("strlen", vec!["s"], lit_int(0));
+    fn_decl.annotations = vec![ann("intrinsic", vec![ann_arg(lit_str("strlen"))])];
+    fn_decl.params[0].annotation = Some(sp(TypeAnnotation::Named("String".to_string())));
+    fn_decl.return_annotation = Some(sp(TypeAnnotation::Named("Int".to_string())));
+
+    let module = Module {
+        declarations: vec![sp(DeclKind::Function(fn_decl))],
+        span: s(),
+    };
+
+    let diags = validate_module_annotations(&module);
+    assert!(
+        diags.is_empty(),
+        "expected @intrinsic annotation to validate, got {diags:?}"
+    );
+}
+
+#[test]
+fn validate_module_annotations_intrinsic_requires_string_literal_argument() {
+    let mut fn_decl = make_fn_decl("strlen", vec!["s"], lit_int(0));
+    fn_decl.annotations = vec![ann("intrinsic", vec![ann_arg(lit_int(42))])];
+    fn_decl.params[0].annotation = Some(sp(TypeAnnotation::Named("String".to_string())));
+    fn_decl.return_annotation = Some(sp(TypeAnnotation::Named("Int".to_string())));
+
+    let module = Module {
+        declarations: vec![sp(DeclKind::Function(fn_decl))],
+        span: s(),
+    };
+
+    let diags = validate_module_annotations(&module);
+    assert!(
+        diags
+            .iter()
+            .any(|d| d.message.contains("`@intrinsic` argument must be a string literal")),
+        "expected @intrinsic string-literal diagnostic, got {diags:?}"
+    );
+}
+
+#[test]
 fn validate_module_annotations_default_literal_type_mismatch_errors() {
     let mut record = make_record_def(
         "Config",

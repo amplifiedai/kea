@@ -933,6 +933,21 @@ mod tests {
 
     #[test]
     #[cfg(not(target_os = "windows"))]
+    fn compile_and_execute_intrinsic_strlen_exit_code() {
+        let source_path = write_temp_source(
+            "@intrinsic(\"strlen\")\nfn string_len(s: String) -> Int\n  0\n\nfn main() -> Int\n  string_len(\"hello\")\n",
+            "kea-cli-intrinsic-strlen",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 5);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
     fn compile_build_and_execute_aot_payload_constructor_case_exit_code() {
         let source_path = write_temp_source(
             "type Flag = Yep(Int) | Nope\n\nfn main() -> Int\n  case Yep(1 + 6)\n    Yep(n) -> n\n    Nope -> 0\n",
