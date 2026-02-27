@@ -1,0 +1,47 @@
+use Int
+use Float
+use Option
+use Text
+use Order
+use Eq
+use Ord
+
+effect Fail E
+  fn fail(error: E) -> Never
+
+fn assert(value: Bool) -[Fail String]> Unit
+  if value
+    ()
+  else
+    Fail.fail("assertion failed")
+
+fn run() -[Fail String]> Unit
+  assert Int.abs(-5) == 5
+  assert Int.min(2, 9) == 2
+  assert Int.max(2, 9) == 9
+  assert Int.clamp(12, 0, 10) == 10
+  assert Int.bit_and(42, 15) == 10
+  assert Int.shift_left(1, 3) == 8
+
+  let fx = Float.fabs(-3.5)
+  assert fx > 3.4 and fx < 3.6
+
+  assert Option.unwrap_or(None, 0) == 0
+  assert Option.is_some(Some(1))
+  assert Option.is_none(None)
+
+  assert Text.length("kea") == 3
+  assert Text.is_empty("")
+  assert Text.non_empty("kea")
+
+  assert Order.is_less(Order.compare_int(1, 2))
+  assert Order.is_equal(Order.compare_int(3, 3))
+  assert Order.is_greater(Order.compare_int(9, 2))
+
+  assert Eq.eq(4, 4)
+  assert Ord.compare(1, 2) == -1
+
+fn main() -> Int
+  case catch run()
+    Ok(_) -> 0
+    Err(_) -> 1

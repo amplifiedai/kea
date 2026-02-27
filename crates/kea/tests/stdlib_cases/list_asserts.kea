@@ -1,0 +1,34 @@
+use List
+
+effect Fail E
+  fn fail(error: E) -> Never
+
+fn assert(value: Bool) -[Fail String]> Unit
+  if value
+    ()
+  else
+    Fail.fail("assertion failed")
+
+fn inc(x: Int) -> Int
+  x + 1
+
+fn even(x: Int) -> Bool
+  x % 2 == 0
+
+fn add(acc: Int, x: Int) -> Int
+  acc + x
+
+fn run() -[Fail String]> Unit
+  let xs = Cons(1, Cons(2, Cons(3, Cons(4, Nil))))
+  let ys = List.map(xs, inc)
+  let zs = List.filter(ys, even)
+
+  assert List.is_empty(Nil)
+  assert List.length(xs) == 4
+  assert List.length(zs) == 2
+  assert List.fold(zs, 0, add) == 6
+
+fn main() -> Int
+  case catch run()
+    Ok(_) -> 0
+    Err(_) -> 1

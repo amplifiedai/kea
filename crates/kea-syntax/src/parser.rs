@@ -4772,13 +4772,21 @@ impl Parser {
     }
 
     fn expect_ident(&mut self, msg: &str) -> Option<Spanned<String>> {
-        if let Some(TokenKind::Ident(name)) = self.peek_kind() {
-            let name = name.clone();
-            let tok = self.advance();
-            Some(Spanned::new(name, tok.span))
-        } else {
-            self.error_at_current(msg);
-            None
+        match self.peek_kind() {
+            Some(TokenKind::Ident(name)) => {
+                let name = name.clone();
+                let tok = self.advance();
+                Some(Spanned::new(name, tok.span))
+            }
+            Some(kind) if Self::assert_keyword_name(kind).is_some() => {
+                let name = Self::assert_keyword_name(kind).expect("checked above");
+                let tok = self.advance();
+                Some(Spanned::new(name.to_string(), tok.span))
+            }
+            _ => {
+                self.error_at_current(msg);
+                None
+            }
         }
     }
 
@@ -4791,6 +4799,11 @@ impl Parser {
                 let name = name.clone();
                 let tok = self.advance();
                 Some(Spanned::new(name, tok.span))
+            }
+            Some(kind) if Self::assert_keyword_name(kind).is_some() => {
+                let name = Self::assert_keyword_name(kind).expect("checked above");
+                let tok = self.advance();
+                Some(Spanned::new(name.to_string(), tok.span))
             }
             _ => {
                 self.error_at_current(msg);
@@ -4811,12 +4824,31 @@ impl Parser {
     }
 
     fn try_ident(&mut self) -> Option<Spanned<String>> {
-        if let Some(TokenKind::Ident(name)) = self.peek_kind() {
-            let name = name.clone();
-            let tok = self.advance();
-            Some(Spanned::new(name, tok.span))
-        } else {
-            None
+        match self.peek_kind() {
+            Some(TokenKind::Ident(name)) => {
+                let name = name.clone();
+                let tok = self.advance();
+                Some(Spanned::new(name, tok.span))
+            }
+            Some(kind) if Self::assert_keyword_name(kind).is_some() => {
+                let name = Self::assert_keyword_name(kind).expect("checked above");
+                let tok = self.advance();
+                Some(Spanned::new(name.to_string(), tok.span))
+            }
+            _ => None,
+        }
+    }
+
+    fn assert_keyword_name(kind: &TokenKind) -> Option<&'static str> {
+        match kind {
+            TokenKind::Assert => Some("assert"),
+            TokenKind::AssertEq => Some("assert_eq"),
+            TokenKind::AssertNe => Some("assert_ne"),
+            TokenKind::AssertFrameEqual => Some("assert_frame_equal"),
+            TokenKind::AssertSnapshot => Some("assert_snapshot"),
+            TokenKind::AssertOk => Some("assert_ok"),
+            TokenKind::AssertError => Some("assert_error"),
+            _ => None,
         }
     }
 
@@ -5256,6 +5288,24 @@ mod tests {
                     ExprKind::FieldAccess { expr, field } => {
                         assert_eq!(expr.node, ExprKind::Var("List".into()));
                         assert_eq!(field.node, "map");
+                    }
+                    other => panic!("expected FieldAccess callee, got {other:?}"),
+                }
+            }
+            other => panic!("expected Call, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_namespaced_upper_ident_assert_dot_call() {
+        let expr = parse("Test.assert(x)");
+        match &expr.node {
+            ExprKind::Call { func, args } => {
+                assert_eq!(args.len(), 1);
+                match &func.node {
+                    ExprKind::FieldAccess { expr, field } => {
+                        assert_eq!(expr.node, ExprKind::Var("Test".into()));
+                        assert_eq!(field.node, "assert");
                     }
                     other => panic!("expected FieldAccess callee, got {other:?}"),
                 }
@@ -6057,6 +6107,18 @@ mod tests {
                 assert!(f.testing.is_none());
             }
             _ => panic!("expected Function"),
+        }
+    }
+
+    #[test]
+    fn parse_fn_decl_named_assert() {
+        let module = parse_mod("fn assert(value: Bool) -> Unit\n  ()");
+        match &module.declarations[0].node {
+            DeclKind::Function(f) => {
+                assert_eq!(f.name.node, "assert");
+                assert_eq!(f.params.len(), 1);
+            }
+            other => panic!("expected Function, got {other:?}"),
         }
     }
 
@@ -8027,6 +8089,22 @@ mod tests {
                     other => panic!("expected Named, got {other:?}"),
                 }
             }
+            other => panic!("expected Import, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_use_named_with_assert_keyword_function() {
+        let module = parse_mod("use Test.{assert, assert_eq}");
+        match &module.declarations[0].node {
+            DeclKind::Import(decl) => match &decl.items {
+                ImportItems::Named(names) => {
+                    assert_eq!(names.len(), 2);
+                    assert_eq!(names[0].node, "assert");
+                    assert_eq!(names[1].node, "assert_eq");
+                }
+                other => panic!("expected Named, got {other:?}"),
+            },
             other => panic!("expected Import, got {other:?}"),
         }
     }

@@ -1,0 +1,20 @@
+effect Fail E
+  fn fail(error: E) -> Never
+
+--| Assert a condition, failing with a default message when false.
+--|
+--|   Test.assert(true)    -- => ()
+fn assert(value: Bool) -[Fail String]> Unit
+  if value
+    ()
+  else
+    Fail.fail("assertion failed")
+
+--| Assert a condition with a custom failure message.
+--|
+--|   Test.assert_with_message(1 == 2, "math broke")   -- => Fail("math broke")
+fn assert_with_message(value: Bool, message: String) -[Fail String]> Unit
+  if value
+    ()
+  else
+    Fail.fail(message)
