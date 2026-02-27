@@ -366,6 +366,10 @@ struct LambdaFactoryTemplate {
     captures: Vec<String>,
 }
 
+fn is_namespaced_symbol_name(name: &str) -> bool {
+    name.contains('.')
+}
+
 fn collect_lambda_factory_templates(
     module: &HirModule,
     known_functions: &BTreeSet<String>,
@@ -398,7 +402,7 @@ fn collect_lambda_factory_templates(
         for param_name in lambda_params.iter().filter_map(|param| param.name.as_ref()) {
             var_refs.remove(param_name);
         }
-        var_refs.retain(|name| !known_functions.contains(name) && !name.contains("::"));
+        var_refs.retain(|name| !known_functions.contains(name) && !is_namespaced_symbol_name(name));
         if !var_refs.iter().all(|name| outer_param_set.contains(name)) {
             continue;
         }
@@ -1615,7 +1619,7 @@ impl FunctionLoweringCtx {
             materialized_local_lambda_callee = Some(closure_value);
         }
         if let HirExprKind::Var(name) = &func.kind
-            && name == "IO::stdout"
+            && name == "IO.stdout"
             && !capture_fail_result
         {
             let mut lowered_args = Vec::with_capacity(args.len());
@@ -1632,7 +1636,7 @@ impl FunctionLoweringCtx {
             return None;
         }
         if let HirExprKind::Var(name) = &func.kind
-            && name == "Fail::fail"
+            && name == "Fail.fail"
             && !capture_fail_result
         {
             let mut lowered_args = Vec::with_capacity(args.len());
@@ -1650,7 +1654,7 @@ impl FunctionLoweringCtx {
             return None;
         }
         if let HirExprKind::Var(name) = &func.kind
-            && name.contains("::")
+            && is_namespaced_symbol_name(name)
             && !self.known_function_types.contains_key(name)
         {
             self.emit_inst(MirInst::Unsupported {
@@ -1677,7 +1681,9 @@ impl FunctionLoweringCtx {
                 HirExprKind::Var(name) if self.known_function_types.contains_key(name) => {
                     MirCallee::Local(name.clone())
                 }
-                HirExprKind::Var(name) if name.contains("::") => MirCallee::External(name.clone()),
+                HirExprKind::Var(name) if is_namespaced_symbol_name(name) => {
+                    MirCallee::External(name.clone())
+                }
                 HirExprKind::Var(name) => MirCallee::Local(name.clone()),
                 _ => {
                     let callee_value = self.lower_expr(func)?;
@@ -3543,7 +3549,7 @@ mod tests {
                 body: HirExpr {
                     kind: HirExprKind::Call {
                         func: Box::new(HirExpr {
-                            kind: HirExprKind::Var("Fail::fail".to_string()),
+                            kind: HirExprKind::Var("Fail.fail".to_string()),
                             ty: Type::Dynamic,
                             span: kea_ast::Span::synthetic(),
                         }),
@@ -3602,7 +3608,7 @@ mod tests {
                 body: HirExpr {
                     kind: HirExprKind::Call {
                         func: Box::new(HirExpr {
-                            kind: HirExprKind::Var("IO::stdout".to_string()),
+                            kind: HirExprKind::Var("IO.stdout".to_string()),
                             ty: Type::Function(FunctionType::with_effects(
                                 vec![Type::String],
                                 Type::Unit,

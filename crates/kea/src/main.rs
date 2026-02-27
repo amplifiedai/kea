@@ -211,12 +211,12 @@ fn expand_impl_methods_for_codegen(module: &Module) -> Module {
                 .copied()
                 .unwrap_or(1);
             // When a trait method has one impl in-module, lift it under
-            // `Trait::method` so trait-qualified calls compile on the current
+            // `Trait.method` so trait-qualified calls compile on the current
             // monomorphic backend path. Multiple impls get disambiguated names.
             let runtime_name = if duplicate_count == 1 {
-                format!("{trait_name}::{method_name}")
+                format!("{trait_name}.{method_name}")
             } else {
-                format!("{trait_name}::{type_name}::{method_name}")
+                format!("{trait_name}.{type_name}.{method_name}")
             };
             lifted.name.node = runtime_name;
             declarations.push(kea_ast::Spanned::new(
@@ -590,7 +590,7 @@ mod tests {
     #[test]
     fn compile_and_execute_io_stdout_unit_main_exit_code() {
         let source_path = write_temp_source(
-            "effect IO\n  fn stdout(msg: String) -> Unit\n\nfn main() -[IO]> Unit\n  IO::stdout(\"hello world\")\n",
+            "effect IO\n  fn stdout(msg: String) -> Unit\n\nfn main() -[IO]> Unit\n  IO.stdout(\"hello world\")\n",
             "kea-cli-io-stdout",
             "kea",
         );
@@ -604,7 +604,7 @@ mod tests {
     #[test]
     fn compile_and_execute_io_stdout_string_concat_exit_code() {
         let source_path = write_temp_source(
-            "effect IO\n  fn stdout(msg: String) -> Unit\n\nfn main() -[IO]> Unit\n  IO::stdout(\"hello \" ++ \"world\")\n",
+            "effect IO\n  fn stdout(msg: String) -> Unit\n\nfn main() -[IO]> Unit\n  IO.stdout(\"hello \" ++ \"world\")\n",
             "kea-cli-io-stdout-concat",
             "kea",
         );
@@ -641,7 +641,7 @@ mod tests {
     #[cfg(not(target_os = "windows"))]
     fn compile_build_and_execute_aot_io_stdout_unit_main_exit_code() {
         let source_path = write_temp_source(
-            "effect IO\n  fn stdout(msg: String) -> Unit\n\nfn main() -[IO]> Unit\n  IO::stdout(\"hello aot\")\n",
+            "effect IO\n  fn stdout(msg: String) -> Unit\n\nfn main() -[IO]> Unit\n  IO.stdout(\"hello aot\")\n",
             "kea-cli-aot-io-stdout",
             "kea",
         );
@@ -668,7 +668,7 @@ mod tests {
     #[cfg(not(target_os = "windows"))]
     fn compile_build_and_execute_aot_io_stdout_concat_exit_code() {
         let source_path = write_temp_source(
-            "effect IO\n  fn stdout(msg: String) -> Unit\n\nfn main() -[IO]> Unit\n  IO::stdout(\"hello \" ++ \"aot\")\n",
+            "effect IO\n  fn stdout(msg: String) -> Unit\n\nfn main() -[IO]> Unit\n  IO.stdout(\"hello \" ++ \"aot\")\n",
             "kea-cli-aot-io-stdout-concat",
             "kea",
         );
@@ -879,7 +879,7 @@ mod tests {
     #[test]
     fn compile_and_execute_trait_qualified_method_single_impl_exit_code() {
         let source_path = write_temp_source(
-            "trait Inc a\n  fn inc(x: a) -> a\n\nimpl Inc for Int\n  fn inc(x: Int) -> Int\n    x + 1\n\nfn main() -> Int\n  Inc::inc(41)\n",
+            "trait Inc a\n  fn inc(x: a) -> a\n\nimpl Inc for Int\n  fn inc(x: Int) -> Int\n    x + 1\n\nfn main() -> Int\n  Inc.inc(41)\n",
             "kea-cli-trait-qualified-single-impl",
             "kea",
         );
@@ -893,14 +893,14 @@ mod tests {
     #[test]
     fn compile_and_execute_trait_qualified_method_ambiguous_impls_error() {
         let source_path = write_temp_source(
-            "trait Inc a\n  fn inc(x: a) -> a\n\nimpl Inc for Int\n  fn inc(x: Int) -> Int\n    x + 1\n\nimpl Inc for Float\n  fn inc(x: Float) -> Float\n    x + 1.0\n\nfn main() -> Int\n  Inc::inc(41)\n",
+            "trait Inc a\n  fn inc(x: a) -> a\n\nimpl Inc for Int\n  fn inc(x: Int) -> Int\n    x + 1\n\nimpl Inc for Float\n  fn inc(x: Float) -> Float\n    x + 1.0\n\nfn main() -> Int\n  Inc.inc(41)\n",
             "kea-cli-trait-qualified-ambiguous-impls",
             "kea",
         );
 
         let err = run_file(&source_path).expect_err("run should reject unresolved trait dispatch target");
         assert!(
-            err.contains("unresolved qualified call target `Inc::inc`"),
+            err.contains("unresolved qualified call target `Inc.inc`"),
             "expected unresolved qualified call target diagnostic, got: {err}"
         );
 
