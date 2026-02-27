@@ -4841,6 +4841,18 @@ theorem principalBoundaryNoUnifyExprCapstone_of_success_via_suite
       principalBoundaryBridgeSuite_proved h_hooks st fuel env e st' ty h_ok
   }
 
+/-- Bundled-seed alias for suite-based no-unify expression capstone construction. -/
+theorem principalBoundaryNoUnifyExprCapstone_of_success_via_suite_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_hooks : UnifyHookPremises) :
+    PrincipalBoundaryNoUnifyExprCapstone
+      h_hooks.1 h_hooks.2 st fuel env e st' ty :=
+  principalBoundaryNoUnifyExprCapstone_of_success_via_suite
+    h_no h_ok h_hooks
+
 /--
 Unbundled-hook entrypoint for the no-unify expression capstone.
 -/
@@ -4950,6 +4962,18 @@ theorem principalBoundaryNoUnifyFieldCapstone_of_success_via_suite
     preconditionedCoreIff := principalBoundaryBridgeSuite_preconditionedCoreIff_field
       principalBoundaryBridgeSuite_proved h_hooks st fuel env fs st' rf h_ok
   }
+
+/-- Bundled-seed alias for suite-based no-unify field capstone construction. -/
+theorem principalBoundaryNoUnifyFieldCapstone_of_success_via_suite_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_hooks : UnifyHookPremises) :
+    PrincipalBoundaryNoUnifyFieldCapstone
+      h_hooks.1 h_hooks.2 st fuel env fs st' rf :=
+  principalBoundaryNoUnifyFieldCapstone_of_success_via_suite
+    h_no h_ok h_hooks
 
 /--
 Unbundled-hook entrypoint for the no-unify field capstone.
@@ -7110,6 +7134,18 @@ theorem principalBoundaryNoUnifyRunBundleExpr_of_success_via_allHooksSuite
     PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty :=
   principalBoundaryNoUnifyAllHooksSuite_runBundle_expr h_suite h_no h_ok
 
+/-- Bundled-seed alias for no-unify all-hooks expression run-bundle construction. -/
+theorem principalBoundaryNoUnifyRunBundleExpr_of_success_via_allHooksSuite_from_bundle
+    (h_suite : PrincipalBoundaryNoUnifyAllHooksSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_hooks : UnifyHookPremises) :
+    PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty :=
+  principalBoundaryNoUnifyRunBundleExpr_of_success_via_allHooksSuite
+    h_suite h_no h_ok
+
 /--
 No-unify all-hooks suite convenience wrapper: derive the field run-bundle
 surface from a successful no-unify field run.
@@ -7122,6 +7158,18 @@ theorem principalBoundaryNoUnifyRunBundleField_of_success_via_allHooksSuite
     (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
     PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf :=
   principalBoundaryNoUnifyAllHooksSuite_runBundle_field h_suite h_no h_ok
+
+/-- Bundled-seed alias for no-unify all-hooks field run-bundle construction. -/
+theorem principalBoundaryNoUnifyRunBundleField_of_success_via_allHooksSuite_from_bundle
+    (h_suite : PrincipalBoundaryNoUnifyAllHooksSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_hooks : UnifyHookPremises) :
+    PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf :=
+  principalBoundaryNoUnifyRunBundleField_of_success_via_allHooksSuite
+    h_suite h_no h_ok
 
 /--
 All-hooks-suite convenience wrapper: derive the expression run-bundle surface
