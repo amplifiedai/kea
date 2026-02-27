@@ -615,7 +615,7 @@ pub enum DeclKind {
     /// Implementation block: `impl Additive for Int { ... }` or `impl Counter { ... }`.
     ImplBlock(ImplBlock),
 
-    /// Import: `import Module.{name1, name2}`.
+    /// Module import: `use Module.{name1, name2}`.
     Import(ImportDecl),
 
     /// Test declaration: `test "name" { ... }` or
@@ -907,15 +907,15 @@ pub enum WhereItem {
 pub struct ImportDecl {
     pub module: Spanned<String>,
     pub items: ImportItems,
-    /// Optional alias: `import Module as Alias`
+    /// Optional alias: `use Module as Alias`
     pub alias: Option<Spanned<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ImportItems {
-    /// `import Module` — qualified access only (`Module.member()`)
+    /// `use Module` — qualified access only (`Module.member()`)
     Module,
-    /// `import Module.{a, b}` — brings specific names into bare scope
+    /// `use Module.{a, b}` — brings specific names into bare scope
     Named(Vec<Spanned<String>>),
 }
 

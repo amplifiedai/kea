@@ -118,19 +118,21 @@ impl Parser {
         self.parse_legacy_derive_attributes();
         let annotations = self.parse_annotations()?;
 
-        // import Kea.Core
-        // import Kea.Core.{read_csv, write_csv}
-        // import Kea.Core as C
-        if self.check(&TokenKind::Import) {
+        // use Kea.Core
+        // use Kea.Core.{read_csv, write_csv}
+        // use Kea.Core as C
+        //
+        // Keep legacy `import` as parser compatibility alias during 0d1.
+        if self.check(&TokenKind::Use) || self.check(&TokenKind::Import) {
             if doc.is_some() {
                 self.error_at_current(
                     "doc comments can only be attached to fn, type, alias, opaque, record, trait, or effect declarations",
                 );
             }
             if !annotations.is_empty() {
-                self.error_at_current("annotations are not allowed on import declarations");
+                self.error_at_current("annotations are not allowed on use/import declarations");
             }
-            self.advance(); // consume 'import'
+            self.advance(); // consume 'use' or legacy 'import'
             return self.import_decl(start);
         }
 
@@ -261,7 +263,7 @@ impl Parser {
             );
         }
         self.error_at_current(
-            "expected declaration (fn, expr, test, pub fn, type, alias, opaque, record, trait, effect, impl, or import)",
+            "expected declaration (fn, expr, test, pub fn, type, alias, opaque, record, trait, effect, impl, use, or import)",
         );
         // Skip to next newline to recover
         while !self.at_eof() && !self.check_newline() {
@@ -339,15 +341,16 @@ impl Parser {
         })
     }
 
-    /// Parse an import declaration after the `import` keyword has been consumed.
+    /// Parse a module import declaration after `use` (or legacy `import`) has
+    /// been consumed.
     ///
     /// Syntax:
-    /// - `import Kea.Core`           → ImportItems::Module (qualified access only)
-    /// - `import Kea.Core.{a, b}`    → ImportItems::Named(["a", "b"]) (bare access)
-    /// - `import Kea.Core as C`      → ImportItems::Module with alias
+    /// - `use Kea.Core`              → ImportItems::Module (qualified access only)
+    /// - `use Kea.Core.{a, b}`       → ImportItems::Named(["a", "b"]) (bare access)
+    /// - `use Kea.Core as C`         → ImportItems::Module with alias
     fn import_decl(&mut self, start: Span) -> Option<Decl> {
         // Parse dotted module path: UpperIdent(.UpperIdent)*
-        let first = self.expect_upper_ident("expected module name after 'import'")?;
+        let first = self.expect_upper_ident("expected module name after `use`")?;
         let mut path = first.node.clone();
         let mut end = first.span;
 
@@ -7869,11 +7872,11 @@ mod tests {
         );
     }
 
-    // -- Import declarations --
+    // -- Module imports (`use`, legacy `import`) --
 
     #[test]
-    fn parse_import_module() {
-        let module = parse_mod("import Kea");
+    fn parse_use_module() {
+        let module = parse_mod("use Kea");
         assert_eq!(module.declarations.len(), 1);
         match &module.declarations[0].node {
             DeclKind::Import(decl) => {
@@ -7885,8 +7888,8 @@ mod tests {
     }
 
     #[test]
-    fn parse_import_dotted_module() {
-        let module = parse_mod("import Kea.Core");
+    fn parse_use_dotted_module() {
+        let module = parse_mod("use Kea.Core");
         assert_eq!(module.declarations.len(), 1);
         match &module.declarations[0].node {
             DeclKind::Import(decl) => {
@@ -7898,8 +7901,8 @@ mod tests {
     }
 
     #[test]
-    fn parse_import_deeply_nested() {
-        let module = parse_mod("import Kea.Core.IO");
+    fn parse_use_deeply_nested() {
+        let module = parse_mod("use Kea.Core.IO");
         match &module.declarations[0].node {
             DeclKind::Import(decl) => {
                 assert_eq!(decl.module.node, "Kea.Core.IO");
@@ -7910,8 +7913,8 @@ mod tests {
     }
 
     #[test]
-    fn parse_import_glob_is_error() {
-        let tokens = crate::lex("import Kea.Core.*", FileId(0))
+    fn parse_use_glob_is_error() {
+        let tokens = crate::lex("use Kea.Core.*", FileId(0))
             .expect("lex ok")
             .0;
         let result = crate::parse_module(tokens, FileId(0));
@@ -7919,8 +7922,8 @@ mod tests {
     }
 
     #[test]
-    fn parse_import_with_alias() {
-        let module = parse_mod("import Kea.Math as M");
+    fn parse_use_with_alias() {
+        let module = parse_mod("use Kea.Math as M");
         match &module.declarations[0].node {
             DeclKind::Import(decl) => {
                 assert_eq!(decl.module.node, "Kea.Math");
@@ -7932,8 +7935,8 @@ mod tests {
     }
 
     #[test]
-    fn parse_import_named() {
-        let module = parse_mod("import Kea.Core.{read_csv, write_csv}");
+    fn parse_use_named() {
+        let module = parse_mod("use Kea.Core.{read_csv, write_csv}");
         match &module.declarations[0].node {
             DeclKind::Import(decl) => {
                 assert_eq!(decl.module.node, "Kea.Core");
@@ -7951,8 +7954,8 @@ mod tests {
     }
 
     #[test]
-    fn parse_import_named_trailing_comma() {
-        let module = parse_mod("import Kea.Core.{read_csv,}");
+    fn parse_use_named_trailing_comma() {
+        let module = parse_mod("use Kea.Core.{read_csv,}");
         match &module.declarations[0].node {
             DeclKind::Import(decl) => {
                 assert_eq!(decl.module.node, "Kea.Core");
@@ -7969,11 +7972,17 @@ mod tests {
     }
 
     #[test]
-    fn parse_import_with_fn_decl() {
-        let module = parse_mod("import Kea.Core\nfn add(x, y) -> Int\n  x + y");
+    fn parse_use_with_fn_decl() {
+        let module = parse_mod("use Kea.Core\nfn add(x, y) -> Int\n  x + y");
         assert_eq!(module.declarations.len(), 2);
         assert!(matches!(module.declarations[0].node, DeclKind::Import(_)));
         assert!(matches!(module.declarations[1].node, DeclKind::Function(_)));
+    }
+
+    #[test]
+    fn parse_legacy_import_still_supported() {
+        let module = parse_mod("import Kea.Core");
+        assert!(matches!(module.declarations[0].node, DeclKind::Import(_)));
     }
 
     // -- Actor operations --
