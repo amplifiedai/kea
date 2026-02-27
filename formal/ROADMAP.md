@@ -59,6 +59,7 @@ Concrete milestone checklist for moving from the current fuel model to an implem
 - [x] Lift unification-threaded inference to a full preconditioned soundness theorem (`inferExprUnify_sound_preconditioned`, `inferFieldsUnify_sound_preconditioned`) with explicit app/proj hooks.
 - [x] Document principal-typing boundary for the vertical slice via uniqueness theorems (`inferExprUnify_deterministic`, `inferExprUnify_type_unique_preconditioned`).
 - [x] Refine app-branch boundary with a derivable weaker hook (`AppUnifySoundHookWeak`, `appUnifySoundHookWeak_proved`).
+- [x] Refine projection-branch boundary with a derivable weaker hook (`ProjUnifySoundHookWeak`, `projUnifySoundHookWeak_proved`) and bundled weak premise package (`UnifyHookPremisesWeak`, `unifyHookPremisesWeak_proved`).
 - [x] Introduce two-judgment architecture scaffold (`HasType` + `HasTypeU`) with explicit substitution admissibility and lift lemmas.
 - [x] Show counterexample recovery in `HasTypeU` (`app_counterexample_hasTypeU`), validating the architecture shift.
 - [x] Discharge a unification-aware app hook from substitution admissibility alone (`AppUnifySoundHookUResolved`, `appUnifySoundHookUResolved_proved`) once a resolved function-shape equation is available.
