@@ -1221,8 +1221,10 @@ fn clif_type(ty: &Type) -> Result<cranelift::prelude::Type, CodegenError> {
         Type::FloatN(width) => clif_float_type(*width),
         Type::Bool => Ok(types::I8),
         Type::Unit => Ok(types::I8),
+        Type::Never => Ok(types::I64),
         Type::String => Ok(types::I64),
         Type::Dynamic => Ok(types::I64),
+        Type::Var(_) => Ok(types::I64),
         // 0d bootstrap aggregate/runtime representation:
         // nominal records/sums and Result-like carriers flow through ABI as
         // opaque machine-word handles until full aggregate lowering lands.
