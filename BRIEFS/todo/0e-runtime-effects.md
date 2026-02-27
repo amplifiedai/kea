@@ -341,7 +341,32 @@ operations. The 0d1 intrinsic set needs `__kea_clock_now`,
 `__kea_rand_bytes`, `__kea_net_connect`, `__kea_net_listen`,
 `__kea_net_send`, `__kea_net_recv` alongside the existing IO intrinsics.
 
-### Step 7: Non-tail-resumptive handlers (Tier 4) — DEFERRABLE
+### Step 7: `then` clause on handle expressions
+
+The `then` clause (KERNEL §5.14) runs when the handled body completes
+normally. `catch` already desugars to a handler with a `then` clause
+(landed in 0d), but the general form is needed for handlers that
+transform the body's return value:
+
+```kea
+handle computation()
+  State.get() -> resume current_state
+  State.put(s) ->
+    current_state = s
+    resume ()
+then result ->
+  (result, current_state)
+```
+
+This is the general form of what `catch` already does. Implementation
+is incremental on top of the existing handler frame work — the `then`
+body runs after `HandlerExit` with the body's return value bound.
+
+**In scope for 0e.** Without `then`, you can't write handlers that
+return accumulated state alongside the computation result (the State
+handler above needs it to return the final state).
+
+### Step 8: Non-tail-resumptive handlers (Tier 4) — DEFERRABLE
 
 One-shot continuations for the rare case where `resume` is in
 non-tail position. Because Kea enforces at-most-once resumption,
@@ -356,7 +381,7 @@ yield, backtracking with commit). Emit a clear error message
 ("non-tail-resumptive handlers not yet supported") until this
 lands.
 
-### Step 8: Arena allocation (Alloc effect) — DEFERRED to post-0f
+### Step 9: Arena allocation (Alloc effect) — DEFERRED to post-0f
 
 The `Alloc` effect (KERNEL §5.9, §12.7). Deferred until the
 memory model (0f) clarifies Unique type interactions. For now,
@@ -428,10 +453,15 @@ Handler composition:
 
 ## Decisions
 
-- **Refcount atomicity: scope model.** Non-atomic refcounts by
-  default. The current function's effect set determines atomicity
-  of new allocations — no concurrency effects (Send, Spawn, Par)
-  means non-atomic. Values crossing thread boundaries are promoted
+- **Refcount atomicity: scope model, non-atomic only in 0e.**
+  Non-atomic refcounts by default. The current function's effect set
+  determines atomicity of new allocations — no concurrency effects
+  (Send, Spawn, Par) means non-atomic. Since 0e doesn't include
+  actors, **0e wires the non-atomic path only.** Everything is
+  non-atomic until actors land (post-0f), at which point the atomic
+  path and promotion at Send.tell / Spawn.spawn / Par.map boundaries
+  are added. No point building the atomic branch before the effects
+  that trigger it exist. Values crossing thread boundaries are promoted
   to atomic at the Send.tell / Spawn.spawn / Par.map boundary.
 
   Scope model (not infection model): atomicity is determined by
@@ -571,3 +601,16 @@ that handler compilation works end-to-end.
   Koka's production experience validates evidence passing, and
   Kea's at-most-once resumption makes CPS/setjmp advantages
   negligible. Ship evidence passing, optimize with inlining.
+
+- **`@with` annotation deferred to 0h.** The `@with` annotation
+  (KERNEL §10.6) marks handler-shaped functions for implicit handler
+  installation at call sites. This is sugar, not plumbing — it changes
+  how the function is called, not how it's compiled. Stdlib Tier 1
+  handlers use explicit `handle`/`with` blocks. `@with` lands with
+  the rest of the annotation system in 0h.
+
+- **`then` clause in scope for 0e.** The `then` clause on `handle`
+  expressions (KERNEL §5.14) is the general form of the `catch`
+  desugaring already landed in 0d. Needed for handlers that transform
+  the body's return value (e.g., State handler returning final state
+  alongside result). See Step 7.

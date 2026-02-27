@@ -237,8 +237,14 @@ orchestration (parse, typecheck session setup, compilation) lives
 in `main.rs`. The MCP server already duplicates the type-checking
 setup independently.
 
-**As part of 0d1, extract a public compilation API** from `main.rs`
-into `crates/kea/src/lib.rs` (or a new `kea-compiler` crate):
+**Hard requirement of 0d1: extract a public compilation API** from
+`main.rs` into `crates/kea/src/lib.rs` (or a new `kea-compiler` crate).
+The MCP server already duplicates session setup independently, and this
+divergence is already causing bugs (phantom IO leak was partly surfaced
+through MCP behaving differently from direct inference). With 0e adding
+handler machinery that both CLI and MCP will need, two divergent setup
+paths is a guaranteed source of subtle correctness issues. Extract once
+before 0e, not after.
 
 ```rust
 pub struct CompilationContext {
@@ -265,6 +271,12 @@ instead of duplicating session setup.
 
 - Package manifest (`kea.toml`)
 - Dependency resolution and version management
-- `pub` enforcement (all items public for bootstrap)
+- `pub` enforcement — all items are accessible for bootstrap. However,
+  the parser MUST accept `pub` and the module system MUST store
+  visibility metadata on declarations. The stdlib uses `pub` from day
+  one so it's correct when enforcement turns on (post-bootstrap). The
+  metadata must be present in the compiled representation so that
+  enforcement is a policy check, not a representation change.
 - Separate compilation / incremental compilation
 - Module caching / precompiled headers
+- `@with` annotation on handler-shaped functions (deferred to 0h)

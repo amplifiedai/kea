@@ -48,7 +48,7 @@ manual impls.
 ```
 stdlib/
   prelude.kea      -- Option, Result, Bool extensions, Unit
-  list.kea         -- List (Cons/Nil linked list)
+  list.kea         -- List (struct wrapping Option (A, List A))
   string.kea       -- String operations via @intrinsic
   int.kea          -- Int: abs, min, max, clamp
   float.kea        -- Float: abs, floor, ceil, round
@@ -64,9 +64,19 @@ stdlib/
 higher-order functions, recursion, generics, basic trait dispatch,
 the module system itself.
 
-**List is a linked list.** `type List A = Cons(A, List A) | Nil`.
-It's O(n) for indexing but sufficient for bootstrap. Tier 2
-replaces it with a contiguous array.
+**List is a linked list, struct wrapping `Option (A, List A)`.**
+No `Cons`/`Nil` — use the existing `Option` type for the empty case.
+Empty list is `List None`, cons is `List Some(x, xs)`. UMS hangs
+methods on the struct. Pattern matching goes through Option.
+
+```kea
+record List A
+  head: Option (A, List A)
+```
+
+It's O(n) for indexing but sufficient for bootstrap. `List` is the
+permanent name for linked list — it does NOT get renamed or replaced.
+Tier 2 adds `Vector` as a separate type for array-backed collections.
 
 **String operations use @intrinsic.** `String.length`,
 `String.concat`, `String.slice` call Rust-provided runtime
@@ -121,10 +131,15 @@ stdlib/
 
 **~800-1200 additional lines.**
 
-**Vector is the "real" List.** Backed by contiguous memory via
-`Ptr` and `@unsafe`. `Unique` ensures single-ownership for
-in-place mutations. The API matches Tier 0's `List` so existing
-code migrates by changing the type.
+**Vector is a separate type, not a List replacement.** `List`
+remains the linked list permanently — it's the correct name for
+a linked list, and Kea is a functional language where linked lists
+are idiomatic for recursive processing. `Vector` is the array-backed
+collection for when you need O(1) indexing and cache-friendly
+iteration. Backed by contiguous memory via `Ptr` and `@unsafe`.
+`Unique` ensures single-ownership for in-place mutations. Users
+choose explicitly: `List` for recursive/cons patterns, `Vector`
+for performance-sensitive sequential access.
 
 **HAMT Map/Set.** Hash Array Mapped Tries per KERNEL §1.2.
 Internal nodes use `Ptr` and `@unsafe` for the trie structure.
