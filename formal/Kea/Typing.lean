@@ -21825,6 +21825,91 @@ theorem principalRowPolyBoundaryBundle_vertical_proj
   h_bundle.hookFreeVertical.2
 
 /--
+Packaged current row-polymorphic boundary + recursive dual-judgment soundness
+for a fixed hook pair.
+-/
+structure PrincipalRowPolyBoundarySoundBundle
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook) : Prop where
+  boundary : PrincipalRowPolyBoundaryBundle
+  soundDual : InferUnifySoundDualBundle h_app h_proj
+
+/--
+Build the row-polymorphic boundary+soundness package from hook premises using
+the canonical boundary capstone.
+-/
+theorem principalRowPolyBoundarySoundBundle_of_hooks
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook) :
+    PrincipalRowPolyBoundarySoundBundle h_app h_proj := by
+  refine {
+    boundary := principalRowPolyBoundaryBundle_proved
+    soundDual := inferUnifySoundDualBundle_of_hooks h_app h_proj
+  }
+
+/--
+Dual-routed boundary variant of the row-polymorphic boundary+soundness package.
+-/
+theorem principalRowPolyBoundarySoundBundle_of_hooks_via_dualConsequenceSlices
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook) :
+    PrincipalRowPolyBoundarySoundBundle h_app h_proj := by
+  refine {
+    boundary := principalRowPolyBoundaryBundle_proved_via_dualConsequenceSlices
+    soundDual := inferUnifySoundDualBundle_of_hooks h_app h_proj
+  }
+
+/-- Bundled-hook constructor for the row-polymorphic boundary+soundness package. -/
+theorem principalRowPolyBoundarySoundBundle_of_hook_bundle
+    (h_hooks : UnifyHookPremises) :
+    PrincipalRowPolyBoundarySoundBundle h_hooks.1 h_hooks.2 :=
+  principalRowPolyBoundarySoundBundle_of_hooks h_hooks.1 h_hooks.2
+
+/-- One-hop boundary projection from the row-polymorphic boundary+soundness package. -/
+theorem principalRowPolyBoundarySoundBundle_boundary
+    {h_app : AppUnifySoundHook}
+    {h_proj : ProjUnifySoundHook}
+    (h_bundle : PrincipalRowPolyBoundarySoundBundle h_app h_proj) :
+    PrincipalRowPolyBoundaryBundle :=
+  h_bundle.boundary
+
+/-- One-hop dual-soundness projection from the row-polymorphic boundary+soundness package. -/
+theorem principalRowPolyBoundarySoundBundle_soundDual
+    {h_app : AppUnifySoundHook}
+    {h_proj : ProjUnifySoundHook}
+    (h_bundle : PrincipalRowPolyBoundarySoundBundle h_app h_proj) :
+    InferUnifySoundDualBundle h_app h_proj :=
+  h_bundle.soundDual
+
+/--
+Expression `HasTypeU` recursive soundness one-hop wrapper from the
+row-polymorphic boundary+soundness package.
+-/
+theorem principalRowPolyBoundarySoundBundle_expr_hasTypeU
+    {h_app : AppUnifySoundHook}
+    {h_proj : ProjUnifySoundHook}
+    (h_bundle : PrincipalRowPolyBoundarySoundBundle h_app h_proj)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    HasTypeU env e ty :=
+  h_bundle.soundDual.expr_hasTypeU st fuel env e st' ty h_ok
+
+/--
+Field `HasFieldsTypeU` recursive soundness one-hop wrapper from the
+row-polymorphic boundary+soundness package.
+-/
+theorem principalRowPolyBoundarySoundBundle_field_hasTypeU
+    {h_app : AppUnifySoundHook}
+    {h_proj : ProjUnifySoundHook}
+    (h_bundle : PrincipalRowPolyBoundarySoundBundle h_app h_proj)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    HasFieldsTypeU env fs rf :=
+  h_bundle.soundDual.field_hasTypeU st fuel env fs st' rf h_ok
+
+/--
 Expression preconditioned↔core wrapper on the dual-routed proved master suite.
 -/
 theorem principalBoundaryMasterSuite_preconditionedCoreIff_expr_via_dualConsequenceSlices
