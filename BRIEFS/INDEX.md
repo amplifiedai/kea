@@ -25,7 +25,6 @@ that apply across multiple implementation phases. Ignoring them means rework.
 
 Work in progress right now. Each entry should have a `## Progress` section in its brief.
 - **[Stdlib bootstrap](in-progress/stdlib-bootstrap.md)** — Active. Tier-0 bootstrap started with real repo stdlib modules (`prelude`, `option`, intrinsic-backed `text`) and execute-path module-system coverage; remaining Tier-0 pure modules (`int`, `float`, `order`, `eq`, `ord`, `show`) are next, while heap-list `List` stays explicitly blocked on runtime/list-lowering support.
-- **[Runtime effects](in-progress/0e-runtime-effects.md)** — Active. 0e started with compiled-path scaffolding in `kea-codegen`: handler scope markers (`HandlerEnter/HandlerExit`) now lower as no-op ops and non-tail `Resume` emits a precise unsupported diagnostic, with dedicated codegen regression tests. Next: Fail/ZeroResume native path end-to-end and execute-path validation.
 - **[Benchmark infrastructure](in-progress/benchmark-infrastructure.md)** — Active. `divan` harness is in-tree (`kea-bench` + `AllocProfiler`) with lex/parse/infer/lower/codegen workload baselines plus string/allocation variants; stable artifacts are exported (`raw/csv/json/meta`), repeat-run variance summaries are generated (`bench:variance`), CI Stage A publishes baseline+variance artifacts, CodSpeed CI is wired via `codspeed-divan-compat` using OIDC auth, whole-program corpus tooling (`benchmarks/programs` + `bench:programs`) is bootstrapped with no-shell/inner-iteration execution for lower noise, whole-program variance summaries are automated, benchmark workflows now use cache-friendly stable target dirs (`KEA_AGENT_TARGET_DIR=target/ci-*`), non-blocking Stage B regression checks remain for full-matrix calibration, and stable benchmark classes run in dedicated blocking Stage B lanes.
 - **[Lean formalization](in-progress/lean-formalization.md)** — Active. Phase 1 kickoff started from the Rill Lean baseline; next is Kea effect-row alignment in core modules/proofs.
 
@@ -57,7 +56,7 @@ Designed and approved. Ready to pick up. Ordered by execution sequence per ROADM
 
 ### Phase 0e: Runtime Effects + Stdlib Tier 1 (after 0d1)
 
-*(in progress — see Active section)*
+*(done — see Done section)*
 
 ### Phase 0f: Memory Model + Stdlib Tier 2 (steps 1-6 need 0d, step 7 needs 0e)
 
@@ -120,6 +119,7 @@ Completed briefs. Kept for reference and design rationale.
 |-------|---------|
 | [0d-codegen-pure](done/0d-codegen-pure.md) | Pure-subset codegen landed end-to-end (HIR→MIR→Cranelift, JIT+AOT, closure/RC/runtime lowering coverage), with 0d punch-list closeout complete; evaluator-parity snapshot corpus is explicitly deferred and blocked on future `kea-eval` infrastructure. |
 | [0d1-module-system](done/0d1-module-system.md) | Module resolver/import DAG/prelude/matrix/compiler-API extraction are done, with real repo `stdlib/` modules in-tree and execute-path integration proving module imports plus intrinsic-backed stdlib calls (`Option.unwrap_or` + `Text.length`) end-to-end. Heap-list stdlib remains deferred to stdlib-bootstrap/runtime support. |
+| [0e-runtime-effects](done/0e-runtime-effects.md) | Runtime effects landed end-to-end: Fail/ZeroResume Result path, direct capability effects (IO/Net/Clock/Rand), tail-resumptive user handlers (`State`/`Log`/`Reader`) with nesting/scoping + `then`, pass-stat visibility, and benchmark + CI gates validated (`check-full`, regression benchmarks green). |
 | [0b-rill-surface-cleanup](done/0b-rill-surface-cleanup.md) | Removed remaining inherited non-Kea parser/typechecker substrate from core crates (frame token path, stale infer trace variants, and `sqlparser`), with cleanup gates green across check/test/check-full. |
 | [0b-mcp-server](done/0b-mcp-server.md) | `kea-mcp` now exposes `type_check`, `diagnose`, and `get_type` over MCP stdio with structured JSON diagnostics from serializable `kea-diag` types. |
 | [0b-type-system-core](done/0b-type-system-core.md) | Type checker migrated to row-native effect contracts/unification with lattice model deleted, legacy effect syntax deprecation-only, fail-row constraints enforced, and stable module namespace resolution scaffolding for builtin/source transitions. |
@@ -141,7 +141,7 @@ Completed briefs. Kept for reference and design rationale.
                 ├── 0d1: module system + STDLIB TIER 0 (pure)
                 │    │   (use/import, prelude, Option/Result/List/String as .kea)
                 │    │
-                │    ├── 0e: runtime effects + STDLIB TIER 1 (effects)
+                │    ├── 0e: runtime effects + STDLIB TIER 1 (effects)  ← DONE
                 │    │    │   (IO/State/Log as .kea, handler tests in Kea)
                 │    │    │
                 │    │    └── 0f step 7: Unique + effects
