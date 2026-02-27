@@ -603,9 +603,7 @@ fn is_main_decl(decl: &kea_ast::Decl) -> bool {
 }
 
 fn build_test_main_decl(test_fn_name: &str, file_id: FileId) -> Result<kea_ast::Decl, String> {
-    let source = format!(
-        "fn main() -> Int\n  let r = catch {test_fn_name}()\n  case r\n    Ok(_) -> 0\n    Err(_) -> 1\n"
-    );
+    let source = format!("fn main() -> Int\n  {test_fn_name}()\n  0\n");
     let (tokens, _) = lex_layout(&source, file_id)
         .map_err(|diags| format_diagnostics("lexing failed", &diags))?;
     let module = parse_module(tokens, file_id)

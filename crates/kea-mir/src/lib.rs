@@ -2406,10 +2406,17 @@ impl FunctionLoweringCtx {
             }),
             _ => None,
         };
-        let call_ret_type = if expr.ty == Type::Unit {
-            inferred_ret_type.unwrap_or_else(|| expr.ty.clone())
-        } else {
-            expr.ty.clone()
+        let call_ret_type = match (&expr.ty, inferred_ret_type) {
+            // Always trust known unit-return signatures so codegen does not
+            // expect a value from unit-return callees.
+            (_, Some(Type::Unit)) => Type::Unit,
+            // Dynamic/variable expression types should defer to known callee
+            // signatures when available.
+            (Type::Dynamic, Some(inferred)) | (Type::Var(_), Some(inferred)) => inferred,
+            // Unit-typed call expressions without a better signature stay unit.
+            (Type::Unit, Some(inferred)) => inferred,
+            (Type::Unit, None) => Type::Unit,
+            _ => expr.ty.clone(),
         };
 
         let result = if call_ret_type == Type::Unit {
