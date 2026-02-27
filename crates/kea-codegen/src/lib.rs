@@ -367,6 +367,7 @@ fn compile_into_module<M: Module>(
                 matches!(
                     inst,
                     MirInst::RecordInit { .. }
+                        | MirInst::ClosureInit { .. }
                         | MirInst::SumInit { .. }
                         | MirInst::Const {
                             literal: MirLiteral::String(_),
@@ -1328,6 +1329,67 @@ fn lower_instruction<M: Module>(
             values.insert(dest.clone(), addr);
             Ok(false)
         }
+        MirInst::ClosureInit {
+            dest,
+            entry,
+            captures,
+            capture_types,
+        } => {
+            if captures.len() != capture_types.len() {
+                return Err(CodegenError::UnsupportedMir {
+                    function: function_name.to_string(),
+                    detail: format!(
+                        "closure init capture arity mismatch: {} values, {} types",
+                        captures.len(),
+                        capture_types.len()
+                    ),
+                });
+            }
+            let ptr_ty = module.target_config().pointer_type();
+            let closure_ptr = allocate_heap_payload(
+                module,
+                builder,
+                function_name,
+                ctx.malloc_func_id,
+                (1 + captures.len()) as u32 * 8,
+                "closure lowering requires malloc import",
+            )?;
+
+            let entry_value = get_value(values, function_name, entry)?;
+            let entry_ptr = coerce_value_to_clif_type(builder, entry_value, ptr_ty);
+            builder.ins().store(MemFlags::new(), entry_ptr, closure_ptr, 0);
+
+            for (idx, (capture, capture_ty)) in captures.iter().zip(capture_types.iter()).enumerate() {
+                let capture_value = get_value(values, function_name, capture)?;
+                let expected_capture_ty = clif_type(capture_ty)?;
+                let capture_value =
+                    coerce_value_to_clif_type(builder, capture_value, expected_capture_ty);
+                let offset = ((idx + 1) * 8) as i32;
+                builder
+                    .ins()
+                    .store(MemFlags::new(), capture_value, closure_ptr, offset);
+            }
+
+            values.insert(dest.clone(), closure_ptr);
+            Ok(false)
+        }
+        MirInst::ClosureCaptureLoad {
+            dest,
+            closure,
+            capture_index,
+            capture_ty,
+        } => {
+            let closure_ptr = get_value(values, function_name, closure)?;
+            let ptr_ty = module.target_config().pointer_type();
+            let closure_ptr = coerce_value_to_clif_type(builder, closure_ptr, ptr_ty);
+            let value_ty = clif_type(capture_ty)?;
+            let offset = ((*capture_index + 1) * 8) as i32;
+            let capture_value = builder
+                .ins()
+                .load(value_ty, MemFlags::new(), closure_ptr, offset);
+            values.insert(dest.clone(), capture_value);
+            Ok(false)
+        }
         MirInst::Call {
             callee,
             args,
@@ -1406,8 +1468,12 @@ fn lower_instruction<M: Module>(
                         unreachable!("matched Value callee above")
                     };
                     let ptr_ty = module.target_config().pointer_type();
-                    let callee_ptr = coerce_value_to_clif_type(builder, callee_value, ptr_ty);
+                    let closure_ptr = coerce_value_to_clif_type(builder, callee_value, ptr_ty);
+                    let callee_ptr = builder
+                        .ins()
+                        .load(ptr_ty, MemFlags::new(), closure_ptr, 0);
                     let mut signature = module.make_signature();
+                    signature.params.push(AbiParam::new(ptr_ty));
                     for arg_ty in arg_types {
                         signature.params.push(AbiParam::new(clif_type(arg_ty)?));
                     }
@@ -1415,9 +1481,12 @@ fn lower_instruction<M: Module>(
                         signature.returns.push(AbiParam::new(clif_type(ret_type)?));
                     }
                     let sig_ref = builder.import_signature(signature);
+                    let mut closure_call_args = Vec::with_capacity(lowered_args.len() + 1);
+                    closure_call_args.push(closure_ptr);
+                    closure_call_args.extend(lowered_args);
                     let call = builder
                         .ins()
-                        .call_indirect(sig_ref, callee_ptr, &lowered_args);
+                        .call_indirect(sig_ref, callee_ptr, &closure_call_args);
                     let call_result = builder.inst_results(call).first().copied();
                     if *ret_type == Type::Unit {
                         None
@@ -2392,13 +2461,15 @@ fn collect_function_stats(function: &MirFunction) -> FunctionPassStats {
                 },
                 MirInst::CowUpdate { .. }
                 | MirInst::RecordInit { .. }
-                | MirInst::SumInit { .. } => stats.alloc_count += 1,
+                | MirInst::SumInit { .. }
+                | MirInst::ClosureInit { .. } => stats.alloc_count += 1,
                 MirInst::Const { .. }
                 | MirInst::Binary { .. }
                 | MirInst::Unary { .. }
                 | MirInst::SumTagLoad { .. }
                 | MirInst::SumPayloadLoad { .. }
                 | MirInst::RecordFieldLoad { .. }
+                | MirInst::ClosureCaptureLoad { .. }
                 | MirInst::FunctionRef { .. }
                 | MirInst::Unsupported { .. }
                 | MirInst::Move { .. }
@@ -3404,6 +3475,32 @@ mod tests {
                     }],
                 },
                 MirFunction {
+                    name: "inc_entry".to_string(),
+                    signature: MirFunctionSignature {
+                        params: vec![Type::Dynamic, Type::Int],
+                        ret: Type::Int,
+                        effects: EffectRow::pure(),
+                    },
+                    entry: MirBlockId(0),
+                    blocks: vec![MirBlock {
+                        id: MirBlockId(0),
+                        params: vec![],
+                        instructions: vec![MirInst::Call {
+                            callee: MirCallee::Local("inc".to_string()),
+                            args: vec![MirValueId(1)],
+                            arg_types: vec![Type::Int],
+                            result: Some(MirValueId(2)),
+                            ret_type: Type::Int,
+                            callee_fail_result_abi: false,
+                            capture_fail_result: false,
+                            cc_manifest_id: "default".to_string(),
+                        }],
+                        terminator: MirTerminator::Return {
+                            value: Some(MirValueId(2)),
+                        },
+                    }],
+                },
+                MirFunction {
                     name: "apply_twice".to_string(),
                     signature: MirFunctionSignature {
                         params: vec![unary_fn_ty.clone(), Type::Int],
@@ -3455,13 +3552,19 @@ mod tests {
                         instructions: vec![
                             MirInst::FunctionRef {
                                 dest: MirValueId(1),
-                                function: "inc".to_string(),
+                                function: "inc_entry".to_string(),
+                            },
+                            MirInst::ClosureInit {
+                                dest: MirValueId(2),
+                                entry: MirValueId(1),
+                                captures: vec![],
+                                capture_types: vec![],
                             },
                             MirInst::Call {
                                 callee: MirCallee::Local("apply_twice".to_string()),
-                                args: vec![MirValueId(1), MirValueId(0)],
+                                args: vec![MirValueId(2), MirValueId(0)],
                                 arg_types: vec![unary_fn_ty, Type::Int],
-                                result: Some(MirValueId(2)),
+                                result: Some(MirValueId(3)),
                                 ret_type: Type::Int,
                                 callee_fail_result_abi: false,
                                 capture_fail_result: false,
@@ -3469,7 +3572,7 @@ mod tests {
                             },
                         ],
                         terminator: MirTerminator::Return {
-                            value: Some(MirValueId(2)),
+                            value: Some(MirValueId(3)),
                         },
                     }],
                 },
@@ -3505,6 +3608,32 @@ mod tests {
                             result: None,
                         }],
                         terminator: MirTerminator::Unreachable,
+                    }],
+                },
+                MirFunction {
+                    name: "failer_entry".to_string(),
+                    signature: MirFunctionSignature {
+                        params: vec![Type::Dynamic, Type::Int],
+                        ret: Type::Int,
+                        effects: EffectRow::closed(vec![(Label::new("Fail"), Type::Int)]),
+                    },
+                    entry: MirBlockId(0),
+                    blocks: vec![MirBlock {
+                        id: MirBlockId(0),
+                        params: vec![],
+                        instructions: vec![MirInst::Call {
+                            callee: MirCallee::Local("failer".to_string()),
+                            args: vec![MirValueId(1)],
+                            arg_types: vec![Type::Int],
+                            result: Some(MirValueId(2)),
+                            ret_type: Type::Int,
+                            callee_fail_result_abi: true,
+                            capture_fail_result: false,
+                            cc_manifest_id: "default".to_string(),
+                        }],
+                        terminator: MirTerminator::Return {
+                            value: Some(MirValueId(2)),
+                        },
                     }],
                 },
                 MirFunction {
@@ -3547,13 +3676,19 @@ mod tests {
                         instructions: vec![
                             MirInst::FunctionRef {
                                 dest: MirValueId(1),
-                                function: "failer".to_string(),
+                                function: "failer_entry".to_string(),
+                            },
+                            MirInst::ClosureInit {
+                                dest: MirValueId(2),
+                                entry: MirValueId(1),
+                                captures: vec![],
+                                capture_types: vec![],
                             },
                             MirInst::Call {
                                 callee: MirCallee::Local("apply_once".to_string()),
-                                args: vec![MirValueId(1), MirValueId(0)],
+                                args: vec![MirValueId(2), MirValueId(0)],
                                 arg_types: vec![fail_fn_ty, Type::Int],
-                                result: Some(MirValueId(2)),
+                                result: Some(MirValueId(3)),
                                 ret_type: Type::Int,
                                 callee_fail_result_abi: false,
                                 capture_fail_result: false,
@@ -3561,7 +3696,7 @@ mod tests {
                             },
                         ],
                         terminator: MirTerminator::Return {
-                            value: Some(MirValueId(2)),
+                            value: Some(MirValueId(3)),
                         },
                     }],
                 },

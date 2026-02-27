@@ -140,6 +140,18 @@ pub enum MirInst {
         dest: MirValueId,
         function: String,
     },
+    ClosureInit {
+        dest: MirValueId,
+        entry: MirValueId,
+        captures: Vec<MirValueId>,
+        capture_types: Vec<Type>,
+    },
+    ClosureCaptureLoad {
+        dest: MirValueId,
+        closure: MirValueId,
+        capture_index: usize,
+        capture_ty: Type,
+    },
     Retain {
         value: MirValueId,
     },
@@ -287,9 +299,11 @@ impl MirInst {
                 | MirInst::Freeze { .. }
                 | MirInst::RecordInit { .. }
                 | MirInst::SumInit { .. }
+                | MirInst::ClosureInit { .. }
                 | MirInst::SumTagLoad { .. }
                 | MirInst::SumPayloadLoad { .. }
                 | MirInst::RecordFieldLoad { .. }
+                | MirInst::ClosureCaptureLoad { .. }
                 | MirInst::CowUpdate { .. }
         )
     }
@@ -771,7 +785,9 @@ struct FunctionLoweringCtx {
     sum_value_types: BTreeMap<MirValueId, String>,
     sum_ctor_candidates: BTreeMap<String, Vec<SumCtorCandidate>>,
     lifted_functions: Vec<MirFunction>,
+    named_function_closure_entries: BTreeMap<String, String>,
     next_lifted_lambda_id: u32,
+    next_closure_entry_id: u32,
     next_value_id: u32,
 }
 
@@ -849,12 +865,161 @@ impl FunctionLoweringCtx {
             sum_value_types: BTreeMap::new(),
             sum_ctor_candidates,
             lifted_functions: Vec::new(),
+            named_function_closure_entries: BTreeMap::new(),
             next_lifted_lambda_id: 0,
+            next_closure_entry_id: 0,
             next_value_id: param_count as u32,
         }
     }
 
-    fn lower_lambda_to_function_ref(
+    fn allocate_generated_closure_entry_name(&mut self, stem: &str) -> String {
+        let id = self.next_closure_entry_id;
+        self.next_closure_entry_id = self.next_closure_entry_id.saturating_add(1);
+        format!("{}::closure_entry${id}${}", self.function_name, stem)
+    }
+
+    fn register_generated_function(&mut self, function: MirFunction) {
+        let signature_ty = Type::Function(FunctionType {
+            params: function.signature.params.clone(),
+            ret: Box::new(function.signature.ret.clone()),
+            effects: function.signature.effects.clone(),
+        });
+        self.known_functions.insert(function.name.clone());
+        self.known_function_types
+            .insert(function.name.clone(), signature_ty);
+        self.lifted_functions.push(function);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn build_closure_entry_wrapper(
+        &self,
+        entry_name: String,
+        target_name: String,
+        capture_types: Vec<Type>,
+        call_param_types: Vec<Type>,
+        return_type: Type,
+        effects: EffectRow,
+        callee_fail_result_abi: bool,
+    ) -> MirFunction {
+        let mut instructions = Vec::new();
+        let mut next_value_id = 1 + call_param_types.len() as u32;
+        let closure_value = MirValueId(0);
+
+        let mut call_args = Vec::new();
+        let mut call_arg_types = Vec::new();
+
+        for (idx, capture_ty) in capture_types.iter().enumerate() {
+            let dest = MirValueId(next_value_id);
+            next_value_id = next_value_id.saturating_add(1);
+            instructions.push(MirInst::ClosureCaptureLoad {
+                dest: dest.clone(),
+                closure: closure_value.clone(),
+                capture_index: idx,
+                capture_ty: capture_ty.clone(),
+            });
+            call_args.push(dest);
+            call_arg_types.push(capture_ty.clone());
+        }
+
+        for (idx, param_ty) in call_param_types.iter().enumerate() {
+            call_args.push(MirValueId(1 + idx as u32));
+            call_arg_types.push(param_ty.clone());
+        }
+
+        let call_result = if return_type == Type::Unit {
+            None
+        } else {
+            Some(MirValueId(next_value_id))
+        };
+        instructions.push(MirInst::Call {
+            callee: MirCallee::Local(target_name),
+            args: call_args,
+            arg_types: call_arg_types,
+            result: call_result.clone(),
+            ret_type: return_type.clone(),
+            callee_fail_result_abi,
+            capture_fail_result: false,
+            cc_manifest_id: "default".to_string(),
+        });
+
+        let wrapper_signature = MirFunctionSignature {
+            params: std::iter::once(Type::Dynamic)
+                .chain(call_param_types)
+                .collect(),
+            ret: return_type,
+            effects,
+        };
+
+        MirFunction {
+            name: entry_name,
+            signature: wrapper_signature,
+            entry: MirBlockId(0),
+            blocks: vec![MirBlock {
+                id: MirBlockId(0),
+                params: Vec::new(),
+                instructions,
+                terminator: MirTerminator::Return { value: call_result },
+            }],
+        }
+    }
+
+    fn emit_closure_value(
+        &mut self,
+        entry_function: String,
+        captures: Vec<(MirValueId, Type)>,
+    ) -> Option<MirValueId> {
+        let entry_value = self.new_value();
+        self.emit_inst(MirInst::FunctionRef {
+            dest: entry_value.clone(),
+            function: entry_function,
+        });
+        let dest = self.new_value();
+        let capture_values = captures.iter().map(|(value, _)| value.clone()).collect();
+        let capture_types = captures.into_iter().map(|(_, ty)| ty).collect();
+        self.emit_inst(MirInst::ClosureInit {
+            dest: dest.clone(),
+            entry: entry_value,
+            captures: capture_values,
+            capture_types,
+        });
+        Some(dest)
+    }
+
+    fn lower_named_function_to_closure_value(&mut self, name: &str) -> Option<MirValueId> {
+        let Type::Function(ft) = self.known_function_types.get(name)?.clone() else {
+            let dest = self.new_value();
+            self.emit_inst(MirInst::FunctionRef {
+                dest: dest.clone(),
+                function: name.to_string(),
+            });
+            return Some(dest);
+        };
+
+        let entry_name = if let Some(existing) = self.named_function_closure_entries.get(name) {
+            existing.clone()
+        } else {
+            let entry_name = self.allocate_generated_closure_entry_name("named");
+            let callee_fail_result_abi =
+                uses_fail_result_abi_from_type(&Type::Function(ft.clone()));
+            let wrapper = self.build_closure_entry_wrapper(
+                entry_name.clone(),
+                name.to_string(),
+                Vec::new(),
+                ft.params.clone(),
+                ft.ret.as_ref().clone(),
+                ft.effects.clone(),
+                callee_fail_result_abi,
+            );
+            self.register_generated_function(wrapper);
+            self.named_function_closure_entries
+                .insert(name.to_string(), entry_name.clone());
+            entry_name
+        };
+
+        self.emit_closure_value(entry_name, Vec::new())
+    }
+
+    fn lower_lambda_to_closure_value(
         &mut self,
         expr: &HirExpr,
         params: &[kea_hir::HirParam],
@@ -883,14 +1048,19 @@ impl FunctionLoweringCtx {
                     .get(&name)
                     .cloned()
                     .unwrap_or(Type::Dynamic);
-                (name, capture_ty)
+                let capture_value = self
+                    .vars
+                    .get(&name)
+                    .cloned()
+                    .expect("capture values must exist in lowering scope");
+                (name, capture_ty, capture_value)
             })
             .collect::<Vec<_>>();
         let lambda_name = format!("{}::lambda${}", self.function_name, self.next_lifted_lambda_id);
         self.next_lifted_lambda_id = self.next_lifted_lambda_id.saturating_add(1);
         let lifted_params = captures
             .iter()
-            .map(|(name, _)| kea_hir::HirParam {
+            .map(|(name, _, _)| kea_hir::HirParam {
                 name: Some(name.clone()),
                 span: expr.span,
             })
@@ -899,7 +1069,7 @@ impl FunctionLoweringCtx {
         let lifted_fn_ty = FunctionType::with_effects(
             captures
                 .iter()
-                .map(|(_, ty)| ty.clone())
+                .map(|(_, ty, _)| ty.clone())
                 .chain(resolved_fn_ty.params.iter().cloned())
                 .collect(),
             resolved_fn_ty.ret.as_ref().clone(),
@@ -910,31 +1080,44 @@ impl FunctionLoweringCtx {
             params: lifted_params,
             body: body.clone(),
             ty: Type::Function(lifted_fn_ty),
-            effects: resolved_fn_ty.effects,
+            effects: resolved_fn_ty.effects.clone(),
             span: expr.span,
         };
         let mut known = self.known_functions.clone();
         known.insert(lambda_name.clone());
         let mut known_types = self.known_function_types.clone();
         known_types.insert(lambda_name.clone(), lifted.ty.clone());
-        let lowered = lower_hir_function(
+        let lowered_functions = lower_hir_function(
             &lifted,
             &self.layouts,
             &known,
             &known_types,
             &self.lambda_factories,
         );
-        self.lifted_functions.extend(lowered);
-        self.known_functions.insert(lambda_name.clone());
-        self.known_function_types
-            .insert(lambda_name.clone(), lifted.ty.clone());
+        for lowered in lowered_functions {
+            self.register_generated_function(lowered);
+        }
 
-        let dest = self.new_value();
-        self.emit_inst(MirInst::FunctionRef {
-            dest: dest.clone(),
-            function: lambda_name,
-        });
-        Some(dest)
+        let entry_name = self.allocate_generated_closure_entry_name("lambda");
+        let callee_fail_result_abi = uses_fail_result_abi_from_type(&lifted.ty);
+        let wrapper = self.build_closure_entry_wrapper(
+            entry_name.clone(),
+            lambda_name,
+            captures.iter().map(|(_, ty, _)| ty.clone()).collect(),
+            resolved_fn_ty.params.clone(),
+            resolved_fn_ty.ret.as_ref().clone(),
+            resolved_fn_ty.effects.clone(),
+            callee_fail_result_abi,
+        );
+        self.register_generated_function(wrapper);
+
+        self.emit_closure_value(
+            entry_name,
+            captures
+                .into_iter()
+                .map(|(_, ty, value)| (value, ty))
+                .collect(),
+        )
     }
 
     fn finish(mut self, return_value: Option<MirValueId>, ret_ty: &Type) -> Vec<MirBlock> {
@@ -1046,12 +1229,7 @@ impl FunctionLoweringCtx {
                     return Some(value.clone());
                 }
                 if self.known_functions.contains(name) {
-                    let dest = self.new_value();
-                    self.emit_inst(MirInst::FunctionRef {
-                        dest: dest.clone(),
-                        function: name.clone(),
-                    });
-                    return Some(dest);
+                    return self.lower_named_function_to_closure_value(name);
                 }
                 None
             }
@@ -1224,15 +1402,6 @@ impl FunctionLoweringCtx {
                 Some(dest)
             }
             HirExprKind::Call { func, args } => {
-                if self.call_is_escaping_capturing_factory(func, args) {
-                    self.emit_inst(MirInst::Unsupported {
-                        detail:
-                            "capturing closure values currently require immediate or let-bound invocation"
-                                .to_string(),
-                    });
-                    self.set_terminator(MirTerminator::Unreachable);
-                    return None;
-                }
                 self.lower_call_expr(expr, func, args, false)
             }
             HirExprKind::Catch { expr: caught } => {
@@ -1256,45 +1425,6 @@ impl FunctionLoweringCtx {
                             captures: Vec::new(),
                         },
                     );
-                    return None;
-                }
-                if let (HirPattern::Var(name), HirExprKind::Call { func, args }) = (pattern, &value.kind)
-                    && let HirExprKind::Var(factory_name) = &func.kind
-                    && let Some(template) = self.lambda_factories.get(factory_name).cloned()
-                    && template.outer_params.len() == args.len()
-                {
-                    let mut lowered_args = Vec::with_capacity(args.len());
-                    for arg in args {
-                        lowered_args.push(self.lower_expr(arg)?);
-                    }
-                    let mut captures = Vec::new();
-                    for capture_name in &template.captures {
-                        let capture_index = template
-                            .outer_params
-                            .iter()
-                            .position(|param| param == capture_name)?;
-                        let capture_ty = args.get(capture_index)?.ty.clone();
-                        let record_type = match args.get(capture_index).map(|arg| &arg.ty) {
-                            Some(Type::Record(record_ty)) => Some(record_ty.name.clone()),
-                            Some(Type::AnonRecord(row)) => self.infer_unique_record_type_for_row(row),
-                            _ => None,
-                        };
-                        captures.push(CapturedBinding {
-                            name: capture_name.clone(),
-                            value: lowered_args.get(capture_index)?.clone(),
-                            ty: capture_ty,
-                            record_type,
-                        });
-                    }
-                    self.local_lambdas.insert(
-                        name.clone(),
-                        LocalLambda {
-                            params: template.lambda_params,
-                            body: template.lambda_body,
-                            captures,
-                        },
-                    );
-                    return None;
                 }
                 let value_id = self.lower_expr(value)?;
                 self.bind_pattern(pattern, value_id.clone(), &value.ty);
@@ -1316,7 +1446,7 @@ impl FunctionLoweringCtx {
                 else_branch,
             } => self.lower_if(expr, condition, then_branch, else_branch.as_deref()),
             HirExprKind::Lambda { params, body } => {
-                self.lower_lambda_to_function_ref(expr, params, body, None)
+                self.lower_lambda_to_closure_value(expr, params, body, None)
             }
             HirExprKind::Tuple(_) | HirExprKind::Raw(_) => match &expr.kind {
                 HirExprKind::Raw(raw_expr) => self.lower_raw_ast_expr(raw_expr),
@@ -1332,6 +1462,7 @@ impl FunctionLoweringCtx {
         args: &[HirExpr],
         capture_fail_result: bool,
     ) -> Option<MirValueId> {
+        let mut materialized_local_lambda_callee = None;
         if let HirExprKind::Call {
             func: factory_func,
             args: factory_args,
@@ -1406,12 +1537,9 @@ impl FunctionLoweringCtx {
             return result;
         }
         if let HirExprKind::Var(name) = &func.kind
+            && !self.vars.contains_key(name)
             && let Some(local_lambda) = self.local_lambdas.get(name).cloned()
-            && !capture_fail_result
         {
-            if local_lambda.params.len() != args.len() {
-                return None;
-            }
             let incoming_scope = self.snapshot_var_scope();
             for capture in &local_lambda.captures {
                 self.vars.insert(capture.name.clone(), capture.value.clone());
@@ -1422,22 +1550,34 @@ impl FunctionLoweringCtx {
                         .insert(capture.name.clone(), record_type.clone());
                 }
             }
-            for (param, arg_expr) in local_lambda.params.iter().zip(args) {
-                let Some(param_name) = &param.name else {
-                    continue;
-                };
-                let arg_value = self.lower_expr(arg_expr)?;
-                self.vars.insert(param_name.clone(), arg_value.clone());
-                self.var_types
-                    .insert(param_name.clone(), arg_expr.ty.clone());
-                if let Type::Record(record_ty) = &arg_expr.ty {
-                    self.var_record_types
-                        .insert(param_name.clone(), record_ty.name.clone());
-                }
-            }
-            let result = self.lower_expr(&local_lambda.body);
+            let synthesized_ty = if matches!(func.ty, Type::Function(_)) {
+                func.ty.clone()
+            } else {
+                Type::Function(FunctionType::pure(
+                    args.iter().map(|arg| arg.ty.clone()).collect(),
+                    if expr.ty == Type::Dynamic {
+                        local_lambda.body.ty.clone()
+                    } else {
+                        expr.ty.clone()
+                    },
+                ))
+            };
+            let synthesized_expr = HirExpr {
+                kind: HirExprKind::Lambda {
+                    params: local_lambda.params.clone(),
+                    body: Box::new(local_lambda.body.clone()),
+                },
+                ty: synthesized_ty,
+                span: func.span,
+            };
+            let closure_value = self.lower_lambda_to_closure_value(
+                &synthesized_expr,
+                &local_lambda.params,
+                &local_lambda.body,
+                Some(&synthesized_expr.ty),
+            )?;
             self.restore_var_scope(&incoming_scope);
-            return result;
+            materialized_local_lambda_callee = Some(closure_value);
         }
         if let HirExprKind::Var(name) = &func.kind
             && name == "IO::stdout"
@@ -1491,19 +1631,23 @@ impl FunctionLoweringCtx {
             _ => uses_fail_result_abi_from_type(&func.ty),
         };
 
-        let callee = match &func.kind {
-            HirExprKind::Var(name) if self.known_function_types.contains_key(name) => {
-                MirCallee::Local(name.clone())
-            }
-            HirExprKind::Var(name) if name.contains("::") => MirCallee::External(name.clone()),
-            HirExprKind::Var(name) if self.vars.contains_key(name) => {
-                let callee_value = self.lower_expr(func)?;
-                MirCallee::Value(callee_value)
-            }
-            HirExprKind::Var(name) => MirCallee::Local(name.clone()),
-            _ => {
-                let callee_value = self.lower_expr(func)?;
-                MirCallee::Value(callee_value)
+        let callee = if let Some(closure_value) = materialized_local_lambda_callee {
+            MirCallee::Value(closure_value)
+        } else {
+            match &func.kind {
+                HirExprKind::Var(name) if self.vars.contains_key(name) => {
+                    let callee_value = self.lower_expr(func)?;
+                    MirCallee::Value(callee_value)
+                }
+                HirExprKind::Var(name) if self.known_function_types.contains_key(name) => {
+                    MirCallee::Local(name.clone())
+                }
+                HirExprKind::Var(name) if name.contains("::") => MirCallee::External(name.clone()),
+                HirExprKind::Var(name) => MirCallee::Local(name.clone()),
+                _ => {
+                    let callee_value = self.lower_expr(func)?;
+                    MirCallee::Value(callee_value)
+                }
             }
         };
 
@@ -1522,9 +1666,48 @@ impl FunctionLoweringCtx {
         };
         for (idx, arg) in args.iter().enumerate() {
             let expected = expected_param_types.as_ref().and_then(|tys| tys.get(idx));
+            if let HirExprKind::Var(name) = &arg.kind
+                && let Some(local_lambda) = self.local_lambdas.get(name).cloned()
+            {
+                let incoming_scope = self.snapshot_var_scope();
+                for capture in &local_lambda.captures {
+                    self.vars.insert(capture.name.clone(), capture.value.clone());
+                    self.var_types
+                        .insert(capture.name.clone(), capture.ty.clone());
+                    if let Some(record_type) = &capture.record_type {
+                        self.var_record_types
+                            .insert(capture.name.clone(), record_type.clone());
+                    }
+                }
+                let synthesized_ty = expected
+                    .cloned()
+                    .unwrap_or_else(|| arg.ty.clone());
+                let synthesized_expr = HirExpr {
+                    kind: HirExprKind::Lambda {
+                        params: local_lambda.params.clone(),
+                        body: Box::new(local_lambda.body.clone()),
+                    },
+                    ty: synthesized_ty.clone(),
+                    span: arg.span,
+                };
+                let value = self.lower_lambda_to_closure_value(
+                    &synthesized_expr,
+                    &local_lambda.params,
+                    &local_lambda.body,
+                    expected,
+                )?;
+                self.restore_var_scope(&incoming_scope);
+                arg_types.push(
+                    expected
+                        .cloned()
+                        .unwrap_or(synthesized_ty),
+                );
+                lowered_args.push(value);
+                continue;
+            }
             if let HirExprKind::Lambda { params, body } = &arg.kind {
                 let value =
-                    self.lower_lambda_to_function_ref(arg, params, body.as_ref(), expected)?;
+                    self.lower_lambda_to_closure_value(arg, params, body.as_ref(), expected)?;
                 arg_types.push(expected.cloned().unwrap_or_else(|| arg.ty.clone()));
                 lowered_args.push(value);
                 continue;
@@ -1533,7 +1716,24 @@ impl FunctionLoweringCtx {
             lowered_args.push(self.lower_expr(arg)?);
         }
 
-        let result = if expr.ty == Type::Unit {
+        let inferred_ret_type = match (&func.ty, &func.kind) {
+            (Type::Function(ft), _) => Some(ft.ret.as_ref().clone()),
+            (_, HirExprKind::Var(name)) => self.known_function_types.get(name).and_then(|ty| {
+                if let Type::Function(ft) = ty {
+                    Some(ft.ret.as_ref().clone())
+                } else {
+                    None
+                }
+            }),
+            _ => None,
+        };
+        let call_ret_type = if expr.ty == Type::Unit {
+            inferred_ret_type.unwrap_or_else(|| expr.ty.clone())
+        } else {
+            expr.ty.clone()
+        };
+
+        let result = if call_ret_type == Type::Unit {
             None
         } else {
             Some(self.new_value())
@@ -1544,25 +1744,15 @@ impl FunctionLoweringCtx {
             args: lowered_args,
             arg_types,
             result: result.clone(),
-            ret_type: expr.ty.clone(),
+            ret_type: call_ret_type.clone(),
             callee_fail_result_abi,
             capture_fail_result,
             cc_manifest_id: "default".to_string(),
         });
-        if let (Some(dest), Type::Sum(sum_ty)) = (&result, &expr.ty) {
+        if let (Some(dest), Type::Sum(sum_ty)) = (&result, &call_ret_type) {
             self.sum_value_types.insert(dest.clone(), sum_ty.name.clone());
         }
         result
-    }
-
-    fn call_is_escaping_capturing_factory(&self, func: &HirExpr, args: &[HirExpr]) -> bool {
-        let HirExprKind::Var(factory_name) = &func.kind else {
-            return false;
-        };
-        let Some(template) = self.lambda_factories.get(factory_name) else {
-            return false;
-        };
-        !template.captures.is_empty() && template.outer_params.len() == args.len()
     }
 
     fn infer_record_type_from_call(&self, func: &HirExpr) -> Option<String> {
@@ -3545,21 +3735,15 @@ mod tests {
             function.blocks[0]
                 .instructions
                 .iter()
-                .all(|inst| !matches!(
-                    inst,
-                    MirInst::Call {
-                        callee: MirCallee::Local(name),
-                        ..
-                    } if name == "f"
-                )),
-            "let-bound lambda call should inline rather than lowering as unknown local call"
+                .any(|inst| matches!(inst, MirInst::ClosureInit { .. })),
+            "let-bound lambda should lower to a first-class closure value"
         );
         assert!(
             function.blocks[0]
                 .instructions
                 .iter()
-                .any(|inst| matches!(inst, MirInst::Binary { op: MirBinaryOp::Add, .. })),
-            "inlined lambda body should produce add instruction"
+                .any(|inst| matches!(inst, MirInst::Call { callee: MirCallee::Value(_), .. })),
+            "let-bound lambda call should lower through closure indirect-call path"
         );
     }
 
@@ -3671,15 +3855,15 @@ mod tests {
             main_fn.blocks[0]
                 .instructions
                 .iter()
-                .all(|inst| !matches!(inst, MirInst::Call { .. })),
-            "factory-returned let-bound lambda call should inline without call instruction"
+                .any(|inst| matches!(inst, MirInst::Call { callee: MirCallee::Local(name), .. } if name == "make_adder")),
+            "factory call should stay as a regular local call"
         );
         assert!(
             main_fn.blocks[0]
                 .instructions
                 .iter()
-                .any(|inst| matches!(inst, MirInst::Binary { op: MirBinaryOp::Add, .. })),
-            "inlined factory lambda should emit add instruction"
+                .any(|inst| matches!(inst, MirInst::Call { callee: MirCallee::Value(_), .. })),
+            "factory-returned closure call should lower through indirect closure dispatch"
         );
     }
 
@@ -3785,7 +3969,7 @@ mod tests {
     }
 
     #[test]
-    fn lower_hir_module_marks_escaping_capturing_factory_call_unsupported() {
+    fn lower_hir_module_lowers_escaping_capturing_factory_call_to_closure_value() {
         let inner_fn_ty = Type::Function(FunctionType::pure(vec![Type::Int], Type::Int));
         let make_adder_ty = Type::Function(FunctionType::pure(vec![Type::Int], inner_fn_ty.clone()));
         let hir = HirModule {
@@ -3864,8 +4048,16 @@ mod tests {
                 .blocks
                 .iter()
                 .flat_map(|block| block.instructions.iter())
-                .any(|inst| matches!(inst, MirInst::Unsupported { detail } if detail.contains("capturing closure values"))),
-            "expected escaping capturing factory call to lower as unsupported"
+                .any(|inst| matches!(inst, MirInst::Call { callee: MirCallee::Local(name), .. } if name == "make_adder")),
+            "escaping capturing factory value should lower via normal call result"
+        );
+        assert!(
+            !factory_use
+                .blocks
+                .iter()
+                .flat_map(|block| block.instructions.iter())
+                .any(|inst| matches!(inst, MirInst::Unsupported { .. })),
+            "escaping capturing factory value should stay on compiled path"
         );
     }
 
@@ -4228,11 +4420,17 @@ mod tests {
             .find(|function| function.name == "caller")
             .expect("caller function");
         assert!(matches!(
-            caller.blocks[0].instructions.first(),
-            Some(MirInst::FunctionRef { function, .. }) if function == "inc"
+            caller.blocks[0]
+                .instructions
+                .iter()
+                .find(|inst| matches!(inst, MirInst::ClosureInit { .. })),
+            Some(MirInst::ClosureInit { .. })
         ));
         assert!(matches!(
-            caller.blocks[0].instructions.get(1),
+            caller.blocks[0]
+                .instructions
+                .iter()
+                .find(|inst| matches!(inst, MirInst::Call { callee: MirCallee::Local(_), .. })),
             Some(MirInst::Call {
                 callee: MirCallee::Local(name),
                 ..
