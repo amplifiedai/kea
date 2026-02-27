@@ -5815,6 +5815,36 @@ theorem principalPreconditionedExpr_anyHooks_of_success_noUnify_via_generalAllHo
   (principalPreconditionedExprAllHooksCapstone_of_success_noUnify h_no h_ok).preconditionedAny
 
 /--
+No-unify-to-general convenience wrapper: derive preconditioned expression
+principality for a bundled hook witness from a successful no-unify run.
+-/
+theorem principalPreconditionedExpr_of_success_noUnify_via_generalAllHooks
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_hooks : UnifyHookPremises) :
+    PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty :=
+  (principalPreconditionedExpr_anyHooks_of_success_noUnify_via_generalAllHooks
+    h_no h_ok) h_hooks.1 h_hooks.2
+
+/--
+No-unify-to-general convenience wrapper: derive fixed-run hook irrelevance for
+expression principality from a successful no-unify run.
+-/
+theorem principalPreconditionedExpr_hookIrrelevant_of_success_noUnify_via_generalAllHooks
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+      ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) :=
+  principalPreconditionedExprAllHooksCapstone_hook_irrelevant
+    (principalPreconditionedExprAllHooksCapstone_of_success_noUnify h_no h_ok)
+
+/--
 No-unify-to-general convenience wrapper: derive core field principality from a
 successful no-unify field run using the general all-hooks capstone surface.
 -/
@@ -5838,6 +5868,36 @@ theorem principalPreconditionedField_anyHooks_of_success_noUnify_via_generalAllH
     ∀ h_app h_proj,
       PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf :=
   (principalPreconditionedFieldAllHooksCapstone_of_success_noUnify h_no h_ok).preconditionedAny
+
+/--
+No-unify-to-general convenience wrapper: derive preconditioned field
+principality for a bundled hook witness from a successful no-unify field run.
+-/
+theorem principalPreconditionedField_of_success_noUnify_via_generalAllHooks
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_hooks : UnifyHookPremises) :
+    PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf :=
+  (principalPreconditionedField_anyHooks_of_success_noUnify_via_generalAllHooks
+    h_no h_ok) h_hooks.1 h_hooks.2
+
+/--
+No-unify-to-general convenience wrapper: derive fixed-run hook irrelevance for
+field principality from a successful no-unify run.
+-/
+theorem principalPreconditionedField_hookIrrelevant_of_success_noUnify_via_generalAllHooks
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
+  principalPreconditionedFieldAllHooksCapstone_hook_irrelevant
+    (principalPreconditionedFieldAllHooksCapstone_of_success_noUnify h_no h_ok)
 
 /--
 Convert an all-hooks expression capstone into a hook-specific no-unify
