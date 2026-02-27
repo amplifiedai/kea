@@ -981,6 +981,17 @@ fn collect_hir_var_refs(expr: &HirExpr, refs: &mut BTreeSet<String>) {
     }
 }
 
+fn block_tail_ref_sets(exprs: &[HirExpr]) -> Vec<BTreeSet<String>> {
+    let mut suffix = vec![BTreeSet::new(); exprs.len() + 1];
+    for idx in (0..exprs.len()).rev() {
+        suffix[idx] = suffix[idx + 1].clone();
+        let mut refs = BTreeSet::new();
+        collect_hir_var_refs(&exprs[idx], &mut refs);
+        suffix[idx].extend(refs);
+    }
+    suffix
+}
+
 fn uses_fail_result_abi_from_type(ty: &Type) -> bool {
     match ty {
         Type::Function(ft) => {
@@ -1326,6 +1337,8 @@ struct FunctionLoweringCtx {
     sum_ctor_candidates: BTreeMap<String, Vec<SumCtorCandidate>>,
     lifted_functions: Vec<MirFunction>,
     named_function_closure_entries: BTreeMap<String, String>,
+    block_tail_refs_stack: Vec<BTreeSet<String>>,
+    block_incoming_bindings_stack: Vec<BTreeSet<String>>,
     next_lifted_lambda_id: u32,
     next_closure_entry_id: u32,
     next_value_id: u32,
@@ -1438,10 +1451,31 @@ impl FunctionLoweringCtx {
             sum_ctor_candidates,
             lifted_functions: Vec::new(),
             named_function_closure_entries: BTreeMap::new(),
+            block_tail_refs_stack: Vec::new(),
+            block_incoming_bindings_stack: Vec::new(),
             next_lifted_lambda_id: 0,
             next_closure_entry_id: 0,
             next_value_id: (param_count + hidden_dispatch_effects.len()) as u32,
         }
+    }
+
+    fn name_maybe_referenced_later_in_block(&self, name: &str) -> bool {
+        self.block_tail_refs_stack
+            .last()
+            .is_some_and(|refs| refs.contains(name))
+    }
+
+    fn name_captured_from_outer_block_scope(&self, name: &str) -> bool {
+        self.block_incoming_bindings_stack
+            .last()
+            .is_some_and(|names| names.contains(name))
+    }
+
+    fn drop_local_binding_metadata(&mut self, name: &str) {
+        self.vars.remove(name);
+        self.var_types.remove(name);
+        self.var_record_types.remove(name);
+        self.local_lambdas.remove(name);
     }
 
     fn allocate_generated_closure_entry_name(&mut self, stem: &str) -> String {
@@ -2008,13 +2042,23 @@ impl FunctionLoweringCtx {
                     );
                 }
                 let value_id = self.lower_expr(value)?;
-                if let (HirPattern::Var(_), HirExprKind::Var(source_name)) = (pattern, &value.kind)
+                if let (HirPattern::Var(target_name), HirExprKind::Var(source_name)) =
+                    (pattern, &value.kind)
                     && self.vars.contains_key(source_name)
                     && is_heap_managed_type(&value.ty)
                 {
-                    self.emit_inst(MirInst::Retain {
-                        value: value_id.clone(),
-                    });
+                    let source_used_later = self.name_maybe_referenced_later_in_block(source_name);
+                    let source_from_outer_scope =
+                        self.name_captured_from_outer_block_scope(source_name);
+                    if source_used_later || source_from_outer_scope {
+                        self.emit_inst(MirInst::Retain {
+                            value: value_id.clone(),
+                        });
+                    } else if target_name != source_name {
+                        // Linear local alias: transfer ownership from source binding
+                        // to target binding and avoid retain/release churn.
+                        self.drop_local_binding_metadata(source_name);
+                    }
                 }
                 self.bind_pattern(pattern, value_id.clone(), &value.ty);
                 Some(value_id)
@@ -2022,12 +2066,18 @@ impl FunctionLoweringCtx {
             HirExprKind::Block(exprs) => {
                 let incoming_scope = self.snapshot_var_scope();
                 let mut last = None;
-                for expr in exprs {
+                let tail_refs = block_tail_ref_sets(exprs);
+                self.block_incoming_bindings_stack
+                    .push(incoming_scope.vars.keys().cloned().collect());
+                for (index, expr) in exprs.iter().enumerate() {
+                    self.block_tail_refs_stack.push(tail_refs[index + 1].clone());
                     last = self.lower_expr(expr);
+                    self.block_tail_refs_stack.pop();
                     if self.current_block().terminator.is_some() {
                         break;
                     }
                 }
+                self.block_incoming_bindings_stack.pop();
                 if self.current_block().terminator.is_none() {
                     let mut releases = Vec::new();
                     for (name, value_id) in &self.vars {
@@ -5847,6 +5897,177 @@ mod tests {
                 .iter()
                 .any(|inst| matches!(inst, MirInst::Release { .. })),
             "heap alias lowering should keep memory lifecycle ops observable"
+        );
+    }
+
+    #[test]
+    fn lower_hir_module_transfers_linear_local_heap_alias_without_retain() {
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "main".to_string(),
+                params: vec![],
+                body: HirExpr {
+                    kind: HirExprKind::Block(vec![
+                        HirExpr {
+                            kind: HirExprKind::Let {
+                                pattern: HirPattern::Var("s".to_string()),
+                                value: Box::new(HirExpr {
+                                    kind: HirExprKind::Lit(kea_ast::Lit::String("x".to_string())),
+                                    ty: Type::String,
+                                    span: kea_ast::Span::synthetic(),
+                                }),
+                            },
+                            ty: Type::String,
+                            span: kea_ast::Span::synthetic(),
+                        },
+                        HirExpr {
+                            kind: HirExprKind::Let {
+                                pattern: HirPattern::Var("t".to_string()),
+                                value: Box::new(HirExpr {
+                                    kind: HirExprKind::Var("s".to_string()),
+                                    ty: Type::String,
+                                    span: kea_ast::Span::synthetic(),
+                                }),
+                            },
+                            ty: Type::String,
+                            span: kea_ast::Span::synthetic(),
+                        },
+                        HirExpr {
+                            kind: HirExprKind::Lit(kea_ast::Lit::Int(1)),
+                            ty: Type::Int,
+                            span: kea_ast::Span::synthetic(),
+                        },
+                    ]),
+                    ty: Type::Int,
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
+                effects: EffectRow::pure(),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let mir = lower_hir_module(&hir);
+        let instructions = &mir.functions[0].blocks[0].instructions;
+        let source_value = instructions
+            .iter()
+            .find_map(|inst| match inst {
+                MirInst::Const {
+                    dest,
+                    literal: MirLiteral::String(_),
+                } => Some(dest.clone()),
+                _ => None,
+            })
+            .expect("expected string literal source value");
+        let retain_count = instructions
+            .iter()
+            .filter(|inst| matches!(inst, MirInst::Retain { value } if *value == source_value))
+            .count();
+        let release_count = instructions
+            .iter()
+            .filter(|inst| matches!(inst, MirInst::Release { value } if *value == source_value))
+            .count();
+        assert_eq!(
+            retain_count, 0,
+            "linear local alias should transfer ownership without retain: {instructions:?}"
+        );
+        assert_eq!(
+            release_count, 1,
+            "linear local alias should keep a single release for lifecycle balance: {instructions:?}"
+        );
+    }
+
+    #[test]
+    fn lower_hir_module_keeps_outer_heap_binding_alive_across_inner_alias_block() {
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "main".to_string(),
+                params: vec![],
+                body: HirExpr {
+                    kind: HirExprKind::Block(vec![
+                        HirExpr {
+                            kind: HirExprKind::Let {
+                                pattern: HirPattern::Var("s".to_string()),
+                                value: Box::new(HirExpr {
+                                    kind: HirExprKind::Lit(kea_ast::Lit::String("x".to_string())),
+                                    ty: Type::String,
+                                    span: kea_ast::Span::synthetic(),
+                                }),
+                            },
+                            ty: Type::String,
+                            span: kea_ast::Span::synthetic(),
+                        },
+                        HirExpr {
+                            kind: HirExprKind::Block(vec![
+                                HirExpr {
+                                    kind: HirExprKind::Let {
+                                        pattern: HirPattern::Var("t".to_string()),
+                                        value: Box::new(HirExpr {
+                                            kind: HirExprKind::Var("s".to_string()),
+                                            ty: Type::String,
+                                            span: kea_ast::Span::synthetic(),
+                                        }),
+                                    },
+                                    ty: Type::String,
+                                    span: kea_ast::Span::synthetic(),
+                                },
+                                HirExpr {
+                                    kind: HirExprKind::Lit(kea_ast::Lit::Int(1)),
+                                    ty: Type::Int,
+                                    span: kea_ast::Span::synthetic(),
+                                },
+                            ]),
+                            ty: Type::Int,
+                            span: kea_ast::Span::synthetic(),
+                        },
+                        HirExpr {
+                            kind: HirExprKind::Var("s".to_string()),
+                            ty: Type::String,
+                            span: kea_ast::Span::synthetic(),
+                        },
+                    ]),
+                    ty: Type::String,
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::pure(vec![], Type::String)),
+                effects: EffectRow::pure(),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let mir = lower_hir_module(&hir);
+        let function = &mir.functions[0];
+        let instructions = &function.blocks[0].instructions;
+        let source_value = instructions
+            .iter()
+            .find_map(|inst| match inst {
+                MirInst::Const {
+                    dest,
+                    literal: MirLiteral::String(_),
+                } => Some(dest.clone()),
+                _ => None,
+            })
+            .expect("expected string literal source value");
+        let (retain_count, release_count) =
+            instructions
+                .iter()
+                .fold((0usize, 0usize), |(retains, releases), inst| match inst {
+                    MirInst::Retain { value } if *value == source_value => (retains + 1, releases),
+                    MirInst::Release { value } if *value == source_value => (retains, releases + 1),
+                    _ => (retains, releases),
+                });
+        assert!(
+            release_count <= retain_count,
+            "outer binding must remain alive across inner alias block; retains={retain_count}, releases={release_count}, instructions={instructions:?}"
+        );
+        assert!(
+            matches!(
+                &function.blocks[0].terminator,
+                MirTerminator::Return {
+                    value: Some(ret)
+                } if ret == &source_value
+            ),
+            "test expects function to return the original outer binding"
         );
     }
 
