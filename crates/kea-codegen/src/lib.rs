@@ -363,7 +363,7 @@ fn compile_into_module<M: Module>(
     let mut requires_heap_alloc = false;
     let mut requires_io_stdout = false;
     let mut requires_io_stderr = false;
-    let mut requires_clock_now = false;
+    let mut requires_clock_time = false;
     let mut requires_string_concat = false;
     let mut requires_free = false;
     for function in &mir.functions {
@@ -425,11 +425,11 @@ fn compile_into_module<M: Module>(
                         effect,
                         operation,
                         ..
-                    } if effect == "Clock" && operation == "now"
+                    } if effect == "Clock" && matches!(operation.as_str(), "now" | "monotonic")
                 )
             })
         }) {
-            requires_clock_now = true;
+            requires_clock_time = true;
         }
         if function.blocks.iter().any(|block| {
             block.instructions.iter().any(|inst| {
@@ -569,7 +569,7 @@ fn compile_into_module<M: Module>(
         None
     };
 
-    let time_func_id = if requires_clock_now {
+    let time_func_id = if requires_clock_time {
         let ptr_ty = module.target_config().pointer_type();
         let mut signature = module.make_signature();
         signature.params.push(AbiParam::new(ptr_ty));
@@ -1728,19 +1728,21 @@ fn lower_instruction<M: Module>(
                         values.insert(dest.clone(), builder.ins().iconst(types::I8, 0));
                     }
                     Ok(false)
-                } else if effect == "Clock" && operation == "now" {
+                } else if effect == "Clock" && matches!(operation.as_str(), "now" | "monotonic")
+                {
                     if !args.is_empty() {
                         return Err(CodegenError::UnsupportedMir {
                             function: function_name.to_string(),
-                            detail: "Clock.now expects no arguments".to_string(),
+                            detail: format!("Clock.{operation} expects no arguments"),
                         });
                     }
                     let time_func_id = ctx
                         .time_func_id
                         .ok_or_else(|| CodegenError::UnsupportedMir {
                             function: function_name.to_string(),
-                            detail: "Clock.now lowering requires imported `time` symbol"
-                                .to_string(),
+                            detail: format!(
+                                "Clock.{operation} lowering requires imported `time` symbol"
+                            ),
                         })?;
                     let time_ref = module.declare_func_in_func(time_func_id, builder.func);
                     let ptr_ty = module.target_config().pointer_type();
@@ -2907,6 +2909,35 @@ mod tests {
                         class: MirEffectOpClass::Direct,
                         effect: "Clock".to_string(),
                         operation: "now".to_string(),
+                        args: vec![],
+                        result: Some(MirValueId(0)),
+                    }],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirValueId(0)),
+                    },
+                }],
+            }],
+            layouts: MirLayoutCatalog::default(),
+        }
+    }
+
+    fn sample_clock_monotonic_module() -> MirModule {
+        MirModule {
+            functions: vec![MirFunction {
+                name: "clock_monotonic".to_string(),
+                signature: MirFunctionSignature {
+                    params: vec![],
+                    ret: Type::Int,
+                    effects: EffectRow::closed(vec![(Label::new("Clock"), Type::Unit)]),
+                },
+                entry: MirBlockId(0),
+                blocks: vec![MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions: vec![MirInst::EffectOp {
+                        class: MirEffectOpClass::Direct,
+                        effect: "Clock".to_string(),
+                        operation: "monotonic".to_string(),
                         args: vec![],
                         result: Some(MirValueId(0)),
                     }],
@@ -4430,6 +4461,20 @@ mod tests {
         let artifact = backend
             .compile_module(&module, &manifest, &BackendConfig::default())
             .expect("Clock.now lowering should compile");
+
+        assert_eq!(artifact.stats.per_function.len(), 1);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn cranelift_backend_compiles_clock_monotonic_effect_op_module() {
+        let module = sample_clock_monotonic_module();
+        let manifest = default_abi_manifest(&module);
+        let backend = CraneliftBackend;
+
+        let artifact = backend
+            .compile_module(&module, &manifest, &BackendConfig::default())
+            .expect("Clock.monotonic lowering should compile");
 
         assert_eq!(artifact.stats.per_function.len(), 1);
     }
