@@ -27559,6 +27559,43 @@ theorem principalBoundarySoundFullVerticalMasterRoutes_noUnifyField_pair
   ⟨h_master.regular.viaTypingSuite.full.noUnifyField h_no,
     h_master.dual.viaTypingSuite.full.noUnifyField h_no⟩
 
+/-- One-hop paired extraction: regular+dual `(full ∧ vertical)` decompositions from master routes. -/
+theorem principalBoundarySoundFullVerticalMasterRoutes_full_and_vertical_pair
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_master : PrincipalBoundarySoundFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf) :
+    (PrincipalBoundarySoundFullSuite st fuel env e fs stExpr ty stField rf
+      ∧ VerticalHookFreeUnifySlices)
+      ∧
+      (PrincipalBoundarySoundFullSuite st fuel env e fs stExpr ty stField rf
+        ∧ VerticalHookFreeUnifySlices) :=
+  ⟨⟨h_master.regular.viaTypingSuite.full, h_master.regular.viaTypingSuite.vertical⟩,
+    ⟨h_master.dual.viaTypingSuite.full, h_master.dual.viaTypingSuite.vertical⟩⟩
+
+/-- One-hop decomposition: regular route branch from master routes. -/
+theorem principalBoundarySoundFullVerticalMasterRoutes_regular_as_full_and_vertical
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_master : PrincipalBoundarySoundFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundFullSuite st fuel env e fs stExpr ty stField rf
+      ∧ VerticalHookFreeUnifySlices :=
+  ⟨h_master.regular.viaTypingSuite.full, h_master.regular.viaTypingSuite.vertical⟩
+
+/-- One-hop decomposition: dual route branch from master routes. -/
+theorem principalBoundarySoundFullVerticalMasterRoutes_dual_as_full_and_vertical
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_master : PrincipalBoundarySoundFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundFullSuite st fuel env e fs stExpr ty stField rf
+      ∧ VerticalHookFreeUnifySlices :=
+  ⟨h_master.dual.viaTypingSuite.full, h_master.dual.viaTypingSuite.vertical⟩
+
 /--
 The row-poly full+vertical capstone is equivalent to providing:
 - a full principal boundary soundness suite witness, and
