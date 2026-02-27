@@ -1,0 +1,37 @@
+# Kea language support for Helix
+#
+# Setup:
+#   1. Copy or merge into ~/.config/helix/languages.toml
+#   2. Update paths below to match your local checkout
+#   3. Build the grammar: hx --grammar fetch && hx --grammar build
+#   4. Link queries:
+#        mkdir -p ~/.config/helix/runtime/queries/kea
+#        ln -s <kea-repo>/tree-sitter-kea/queries/* ~/.config/helix/runtime/queries/kea/
+
+[[language]]
+name = "kea"
+scope = "source.kea"
+injection-regex = "^kea$"
+file-types = ["kea"]
+comment-token = "--"
+indent = { tab-width = 2, unit = "  " }
+language-servers = ["kea-lsp"]
+formatter = { command = "kea", args = ["fmt", "--stdin"] }
+auto-format = true
+
+[language.auto-pairs]
+'(' = ')'
+'[' = ']'
+'{' = '}'
+'"' = '"'
+'|' = '|'
+
+[[grammar]]
+name = "kea"
+# Replace with the absolute path to your kea checkout
+source = { path = "/path/to/kea/tree-sitter-kea" }
+
+[language-server.kea-lsp]
+# Replace with the path to your kea binary
+command = "/path/to/kea/target/debug/kea"
+args = ["lsp"]
