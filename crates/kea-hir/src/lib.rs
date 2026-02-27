@@ -873,7 +873,20 @@ fn lower_expr(
 
     let kind = match &expr.node {
         ExprKind::Lit(lit) => HirExprKind::Lit(lit.clone()),
-        ExprKind::Var(name) => HirExprKind::Var(name.clone()),
+        ExprKind::Var(name) => {
+            if let Some(tag) = unit_variant_tags.get(name) {
+                HirExprKind::Lit(Lit::Int(*tag))
+            } else {
+                HirExprKind::Var(name.clone())
+            }
+        }
+        ExprKind::None => {
+            if let Some(tag) = unit_variant_tags.get("None") {
+                HirExprKind::Lit(Lit::Int(*tag))
+            } else {
+                HirExprKind::Raw(expr.node.clone())
+            }
+        }
         ExprKind::BinaryOp { op, left, right } => HirExprKind::Binary {
             op: op.node,
             left: Box::new(lower_expr(
@@ -1218,6 +1231,7 @@ fn lower_expr(
         ExprKind::Lit(Lit::Bool(_)) => Type::Bool,
         ExprKind::Lit(Lit::String(_)) => Type::String,
         ExprKind::Lit(Lit::Unit) => Type::Unit,
+        ExprKind::None if unit_variant_tags.contains_key("None") => Type::Int,
         ExprKind::BinaryOp { op, left, .. } => match op.node {
             BinOp::Eq
             | BinOp::Neq
@@ -1281,6 +1295,7 @@ fn lower_expr(
                 default_ty
             }
         }
+        ExprKind::Var(name) if unit_variant_tags.contains_key(name) => Type::Int,
         ExprKind::Record { name, .. } if known_record_defs.contains(&name.node) => {
             Type::Record(kea_types::RecordType {
                 name: name.node.clone(),

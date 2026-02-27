@@ -2,3 +2,13 @@ fn unwrap_or(opt: Option Int, fallback: Int) -> Int
   case opt
     Some(value) -> value
     None -> fallback
+
+fn is_some(opt: Option Int) -> Bool
+  case opt
+    None -> false
+    _ -> true
+
+fn is_none(opt: Option Int) -> Bool
+  case opt
+    None -> true
+    _ -> false
