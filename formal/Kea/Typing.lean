@@ -9300,6 +9300,73 @@ theorem principalNoUnifyRunBundleConsequenceSlices_field
   h_slices.2 h_no h_ok
 
 /--
+Top-level master run-bundle consequence suite.
+
+This packages the existing master run-bundle surface together with the new
+master-run-bundle no-unify consequence slices.
+-/
+structure PrincipalBoundaryMasterRunBundleConsequenceSuite : Prop where
+  runBundles : PrincipalBoundaryMasterRunBundleSuite
+  noUnifyConsequences : PrincipalNoUnifyRunBundleConsequenceSlices
+
+/--
+Construct the master run-bundle consequence suite from a master run-bundle
+suite.
+-/
+theorem principalBoundaryMasterRunBundleConsequenceSuite_of_runBundleSuite
+    (h_suite : PrincipalBoundaryMasterRunBundleSuite) :
+    PrincipalBoundaryMasterRunBundleConsequenceSuite := by
+  refine {
+    runBundles := h_suite
+    noUnifyConsequences := ?_
+  }
+  exact principalNoUnifyRunBundleConsequenceSlices_proved
+
+/--
+Construct the master run-bundle consequence suite from a master principal
+boundary suite.
+-/
+theorem principalBoundaryMasterRunBundleConsequenceSuite_of_master
+    (h_suite : PrincipalBoundaryMasterSuite) :
+    PrincipalBoundaryMasterRunBundleConsequenceSuite :=
+  principalBoundaryMasterRunBundleConsequenceSuite_of_runBundleSuite
+    (principalBoundaryMasterRunBundleSuite_of_master h_suite)
+
+/-- The master run-bundle consequence suite is fully proved. -/
+theorem principalBoundaryMasterRunBundleConsequenceSuite_proved :
+    PrincipalBoundaryMasterRunBundleConsequenceSuite :=
+  principalBoundaryMasterRunBundleConsequenceSuite_of_master
+    principalBoundaryMasterSuite_proved
+
+/--
+One-hop projection: no-unify expression run-bundle consequences from the master
+run-bundle consequence suite.
+-/
+theorem principalBoundaryMasterRunBundleConsequenceSuite_noUnify_expr
+    (h_suite : PrincipalBoundaryMasterRunBundleConsequenceSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalNoUnifyExprRunBundleConsequences st fuel env e st' ty :=
+  principalNoUnifyRunBundleConsequenceSlices_expr
+    h_suite.noUnifyConsequences h_no h_ok
+
+/--
+One-hop projection: no-unify field run-bundle consequences from the master
+run-bundle consequence suite.
+-/
+theorem principalBoundaryMasterRunBundleConsequenceSuite_noUnify_field
+    (h_suite : PrincipalBoundaryMasterRunBundleConsequenceSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalNoUnifyFieldRunBundleConsequences st fuel env fs st' rf :=
+  principalNoUnifyRunBundleConsequenceSlices_field
+    h_suite.noUnifyConsequences h_no h_ok
+
+/--
 One-hop expression hook-specific no-unify capstone projection (derived from
 all-hooks compatibility) from the master suite.
 -/
