@@ -1,6 +1,6 @@
 # Brief: Module System
 
-**Status:** active
+**Status:** done
 **Priority:** v1-critical
 **Depends on:** 0d-codegen-pure (needs working codegen pipeline)
 **Blocks:** stdlib-bootstrap (all tiers), 0e-runtime-effects, self-hosting
@@ -417,4 +417,4 @@ instead of duplicating session setup.
 - 2026-02-27 16:59: Wired unqualified call fallback to prefer inherent module-struct methods before trait fallback: unresolved `x.method(...)` now checks receiver constructor ownership via `TypeEnv` inherent-method metadata and resolves through module-qualified schemes when available. Added regression `compile_project_use_module_unqualified_ums_for_same_name_module_struct_method` to lock compile-time UMS resolution for same-name module struct methods (`use List` + `xs.size()`).
 - 2026-02-27 17:02: Closed the runtime/codegen UMS gap for bare cross-module method symbols by fixing HIR function typing fallback: when lowering merged modules, bare non-entry declarations now recover their type from a unique module-member scheme (`TypeEnv::lookup_unique_module_type_scheme`) instead of defaulting to `() -> Dynamic`. This removed the call-arity verifier fault on `xs.size()` and upgraded the same-name module-struct UMS regression to execute-path coverage (`compile_and_execute_use_module_unqualified_ums_for_same_name_module_struct_method`).
 - 2026-02-27 17:05: Folded same-name module-struct behavior into the resolution matrix with execute-path coverage (`resolution_matrix_same_name_module_struct_methods`): matrix now validates direct-qualified, UMS-unqualified, and UMS-qualified calls across same-module/cross-module relations and import states (`not imported`, `use Module`, `use Module.{name}`, prelude), including module-qualifier differences (`App` same-module vs `List` cross-module).
-- **Next:** run final 0d1 closeout gates (`mise run check-full`), then move 0d1 brief to `done/` and update `BRIEFS/INDEX.md`.
+- 2026-02-27 17:07: Final closeout gate passed (`mise run check-full`), including full lint, 1279/1279 workspace tests, and doctests. 0d1 marked done and moved to `BRIEFS/done/` with `BRIEFS/INDEX.md` updated atomically.
