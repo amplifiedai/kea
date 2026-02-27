@@ -1,6 +1,6 @@
 # Brief: Tree-sitter and TextMate Grammars
 
-**Status:** ready
+**Status:** active
 **Priority:** v1 (parallel track)
 **Depends on:** 0a (done — syntax is stable)
 **Blocks:** Neovim plugin, Helix config, VS Code extension, GitHub syntax highlighting
@@ -400,3 +400,12 @@ Test every stdlib file as a parse-without-error check.
       control flow, modules, doc comments
 - [ ] TextMate grammar is self-contained and extractable to a standalone
       repo for GitHub Linguist submission
+
+## Progress
+
+- 2026-02-28: Tree-sitter grammar.js landed (flat grammar, no external scanner). Generates cleanly with 8 GLR conflicts. Parses all 16 stdlib files + 13/15 test files with zero ERROR nodes. 2 test files (clock_tests, rand_tests) have errors in handler clause boundaries — inherent flat-grammar limitation without indentation tracking.
+- 2026-02-28: Highlight queries with effect-aware captures: `@keyword.effect`, `@type.effect`, `@operator.effect`, `@punctuation.bracket.effect`, `@function.effect`. Doc comments as `@comment.documentation`.
+- 2026-02-28: TextMate grammar (`source.kea` scope) with `firstLineMatch` for Linguist content sniffing. Self-contained JSON, no VS Code extension dependencies.
+- 2026-02-28: Editor configs: Neovim (ftdetect + tree-sitter + queries), Helix (languages.toml), VS Code (extension manifest + language config).
+- 2026-02-28: Test corpus: 35 tests across 6 files (literals, declarations, effects, expressions, patterns, control_flow). 100% pass rate.
+- **Next:** Validate highlighting in actual Neovim session. Consider external scanner for indentation if structural editing needs arise.

@@ -89,7 +89,7 @@ Needs more design work. Briefs exist but aren't implementation-ready.
 
 ### Early tooling (parallel track, weeks 2-6)
 
-- **[Syntax grammars](todo/syntax-grammars.md)** — Tree-sitter + TextMate grammars for editor highlighting and GitHub rendering. Effect-aware capture strategy so effects are a distinct visual layer. Cannibalises `tree-sitter-rill/`. Ready to start (0a done, stdlib corpus growing). Includes Neovim, Helix, and VS Code editor configs.
+- **[Syntax grammars](in-progress/syntax-grammars.md)** — Active. Tree-sitter grammar (flat, no external scanner) generates cleanly, parses all 16 stdlib + 13/15 test files with zero ERROR nodes. Effect-aware highlight queries (`@keyword.effect`, `@type.effect`), TextMate grammar (`source.kea` scope, Linguist-ready), Neovim/Helix/VS Code editor configs landed.
 - **Formatter** (`kea fmt`) — indentation-sensitive language needs a formatter before serious code is written. Reuse rill-fmt's doc algebra + comment infra (~440 LOC transfers). Rewrite printer + rules for indent-sensitive output. Lands before 0g.
 - **Basic LSP** — hover types, go-to-def, diagnostics. Adapted from rill-lsp (protocol layer unchanged). Lands by 0d-0e.
 
