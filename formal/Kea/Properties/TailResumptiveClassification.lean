@@ -1,4 +1,4 @@
-import Kea.Properties.HandlerTypingContracts
+import Kea.Properties.HandlerClosedAwareContracts
 
 /-!
   Kea.Properties.TailResumptiveClassification
@@ -88,17 +88,30 @@ def directCallEquivalent (c : HandleClauseContract) : Prop :=
   HandleClauseContract.resultEffects c =
     HandleClauseContract.resultEffectsCore c
 
+/-- Closed-aware direct-call equivalence contract for the tail-resumptive path. -/
+def directCallEquivalentClosedAware (c : HandleClauseContract) : Prop :=
+  HandlerClosedAwareContracts.resultEffectsClosedAware c =
+    HandlerClosedAwareContracts.resultEffectsCoreClosedAware c
+
 /--
 Soundness of the tail-resumptive fast path:
 if a clause is tail-resumptive-eligible, result effects reduce to core
 handler effects (no extra `then` transformation).
 -/
-  theorem tail_resumptive_direct_call_sound
+theorem tail_resumptive_direct_call_sound
     (c : HandleClauseContract)
     (h_eligible : tailResumptiveEligible c) :
     directCallEquivalent c := by
   rcases h_eligible with ⟨_h_class, h_then_none⟩
   unfold directCallEquivalent HandleClauseContract.resultEffects
+  simp [h_then_none]
+
+theorem tail_resumptive_direct_call_sound_closedAware
+    (c : HandleClauseContract)
+    (h_eligible : tailResumptiveEligible c) :
+    directCallEquivalentClosedAware c := by
+  rcases h_eligible with ⟨_h_class, h_then_none⟩
+  unfold directCallEquivalentClosedAware HandlerClosedAwareContracts.resultEffectsClosedAware
   simp [h_then_none]
 
 theorem tail_resumptive_eligible_implies_resume_one
