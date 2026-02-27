@@ -220,6 +220,13 @@ fn build_isa(config: &BackendConfig) -> Result<Arc<dyn isa::TargetIsa>, CodegenE
         .map_err(|detail| CodegenError::Module {
             detail: detail.to_string(),
         })?;
+    // Cranelift's x64 `return_call` lowering currently relies on frame pointers.
+    // Keep them enabled so tail-recursive self calls compile across CI targets.
+    flag_builder
+        .set("preserve_frame_pointers", "true")
+        .map_err(|detail| CodegenError::Module {
+            detail: detail.to_string(),
+        })?;
     if matches!(config.mode, CodegenMode::Aot) {
         flag_builder
             .set("is_pic", "true")
