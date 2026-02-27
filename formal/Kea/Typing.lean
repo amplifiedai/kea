@@ -5900,6 +5900,225 @@ theorem principalPreconditionedField_hookIrrelevant_of_success_noUnify_via_gener
     (principalPreconditionedFieldAllHooksCapstone_of_success_noUnify h_no h_ok)
 
 /--
+Packaged no-unify-to-general expression all-hooks capstone slice.
+-/
+def PrincipalNoUnifyToGeneralAllHooksExprCapstoneSlice : Prop :=
+  ∀ {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty},
+    NoUnifyBranchesExpr e →
+    inferExprUnify st fuel env e = .ok st' ty →
+    PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty
+
+/--
+Packaged no-unify-to-general field all-hooks capstone slice.
+-/
+def PrincipalNoUnifyToGeneralAllHooksFieldCapstoneSlice : Prop :=
+  ∀ {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields},
+    NoUnifyBranchesFields fs →
+    inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)) →
+    PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf
+
+/--
+Combined no-unify-to-general all-hooks capstone slices across expressions and
+fields.
+-/
+def PrincipalNoUnifyToGeneralAllHooksCapstoneSlices : Prop :=
+  PrincipalNoUnifyToGeneralAllHooksExprCapstoneSlice ∧
+    PrincipalNoUnifyToGeneralAllHooksFieldCapstoneSlice
+
+/--
+The combined no-unify-to-general all-hooks capstone slices are fully proved.
+-/
+theorem principalNoUnifyToGeneralAllHooksCapstoneSlices_proved :
+    PrincipalNoUnifyToGeneralAllHooksCapstoneSlices := by
+  refine ⟨?_, ?_⟩
+  · intro st fuel env e st' ty h_no h_ok
+    exact principalPreconditionedExprAllHooksCapstone_of_success_noUnify h_no h_ok
+  · intro st fuel env fs st' rf h_no h_ok
+    exact principalPreconditionedFieldAllHooksCapstone_of_success_noUnify h_no h_ok
+
+/--
+One-hop expression branch projection from no-unify-to-general all-hooks
+capstone slices.
+-/
+theorem principalNoUnifyToGeneralAllHooksCapstoneSlices_expr
+    (h_slice : PrincipalNoUnifyToGeneralAllHooksCapstoneSlices)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty :=
+  h_slice.1 h_no h_ok
+
+/--
+One-hop field branch projection from no-unify-to-general all-hooks capstone
+slices.
+-/
+theorem principalNoUnifyToGeneralAllHooksCapstoneSlices_field
+    (h_slice : PrincipalNoUnifyToGeneralAllHooksCapstoneSlices)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
+  h_slice.2 h_no h_ok
+
+/--
+Packaged no-unify-to-general expression hook-irrelevance slice.
+-/
+def PrincipalNoUnifyToGeneralAllHooksExprIrrelevanceSlice : Prop :=
+  ∀ {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook},
+    NoUnifyBranchesExpr e →
+    inferExprUnify st fuel env e = .ok st' ty →
+    (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+      ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty)
+
+/--
+Packaged no-unify-to-general field hook-irrelevance slice.
+-/
+def PrincipalNoUnifyToGeneralAllHooksFieldIrrelevanceSlice : Prop :=
+  ∀ {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook},
+    NoUnifyBranchesFields fs →
+    inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)) →
+    (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf)
+
+/--
+Combined no-unify-to-general all-hooks irrelevance slices across expressions and
+fields.
+-/
+def PrincipalNoUnifyToGeneralAllHooksIrrelevanceSlices : Prop :=
+  PrincipalNoUnifyToGeneralAllHooksExprIrrelevanceSlice ∧
+    PrincipalNoUnifyToGeneralAllHooksFieldIrrelevanceSlice
+
+/--
+The combined no-unify-to-general all-hooks irrelevance slices are fully proved.
+-/
+theorem principalNoUnifyToGeneralAllHooksIrrelevanceSlices_proved :
+    PrincipalNoUnifyToGeneralAllHooksIrrelevanceSlices := by
+  refine ⟨?_, ?_⟩
+  · intro st fuel env e st' ty h_app₁ h_proj₁ h_app₂ h_proj₂ h_no h_ok
+    exact principalPreconditionedExpr_hookIrrelevant_of_success_noUnify_via_generalAllHooks
+      h_no h_ok
+  · intro st fuel env fs st' rf h_app₁ h_proj₁ h_app₂ h_proj₂ h_no h_ok
+    exact principalPreconditionedField_hookIrrelevant_of_success_noUnify_via_generalAllHooks
+      h_no h_ok
+
+/--
+One-hop projection: expression branch from no-unify-to-general all-hooks
+irrelevance slices.
+-/
+theorem principalNoUnifyToGeneralAllHooksIrrelevanceSlices_expr
+    (h_slice : PrincipalNoUnifyToGeneralAllHooksIrrelevanceSlices)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+      ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) :=
+  h_slice.1 h_no h_ok
+
+/--
+One-hop projection: field branch from no-unify-to-general all-hooks irrelevance
+slices.
+-/
+theorem principalNoUnifyToGeneralAllHooksIrrelevanceSlices_field
+    (h_slice : PrincipalNoUnifyToGeneralAllHooksIrrelevanceSlices)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
+  h_slice.2 h_no h_ok
+
+/--
+Top-level no-unify-to-general all-hooks suite.
+-/
+structure PrincipalNoUnifyToGeneralAllHooksSuite : Prop where
+  capstones : PrincipalNoUnifyToGeneralAllHooksCapstoneSlices
+  irrelevance : PrincipalNoUnifyToGeneralAllHooksIrrelevanceSlices
+
+/--
+The no-unify-to-general all-hooks suite is fully proved.
+-/
+theorem principalNoUnifyToGeneralAllHooksSuite_proved :
+    PrincipalNoUnifyToGeneralAllHooksSuite := by
+  refine {
+    capstones := principalNoUnifyToGeneralAllHooksCapstoneSlices_proved
+    irrelevance := principalNoUnifyToGeneralAllHooksIrrelevanceSlices_proved
+  }
+
+/--
+One-hop expression capstone projection from no-unify-to-general all-hooks
+suite.
+-/
+theorem principalNoUnifyToGeneralAllHooksSuite_capstone_expr
+    (h_suite : PrincipalNoUnifyToGeneralAllHooksSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty :=
+  principalNoUnifyToGeneralAllHooksCapstoneSlices_expr h_suite.capstones h_no h_ok
+
+/--
+One-hop field capstone projection from no-unify-to-general all-hooks suite.
+-/
+theorem principalNoUnifyToGeneralAllHooksSuite_capstone_field
+    (h_suite : PrincipalNoUnifyToGeneralAllHooksSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
+  principalNoUnifyToGeneralAllHooksCapstoneSlices_field h_suite.capstones h_no h_ok
+
+/--
+One-hop expression irrelevance projection from no-unify-to-general all-hooks
+suite.
+-/
+theorem principalNoUnifyToGeneralAllHooksSuite_irrelevance_expr
+    (h_suite : PrincipalNoUnifyToGeneralAllHooksSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+      ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) :=
+  principalNoUnifyToGeneralAllHooksIrrelevanceSlices_expr
+    h_suite.irrelevance h_no h_ok
+
+/--
+One-hop field irrelevance projection from no-unify-to-general all-hooks suite.
+-/
+theorem principalNoUnifyToGeneralAllHooksSuite_irrelevance_field
+    (h_suite : PrincipalNoUnifyToGeneralAllHooksSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
+  principalNoUnifyToGeneralAllHooksIrrelevanceSlices_field
+    h_suite.irrelevance h_no h_ok
+
+/--
 Convert an all-hooks expression capstone into a hook-specific no-unify
 expression capstone by selecting concrete hook witnesses.
 -/
