@@ -160,6 +160,7 @@ Concrete milestone checklist for moving from the current fuel model to an implem
 - [x] Introduce two-judgment architecture scaffold (`HasType` + `HasTypeU`) with explicit substitution admissibility and lift lemmas.
 - [x] Show counterexample recovery in `HasTypeU` (`app_counterexample_hasTypeU`), validating the architecture shift.
 - [x] Add a packaged unification-aware recursive soundness bundle (`InferUnifyHasTypeUSoundBundle` in `Kea/Typing.lean`) with constructors from weak hooks/bundled weak hooks/resolved-shape premises and one-hop expr/field projections, so `HasTypeU` recursive soundness is consumable from one theorem surface.
+- [x] Extend that recursive `HasTypeU` bundle with strong-hook constructors (`inferUnifyHasTypeUSoundBundle_of_{strong_hooks,strong_hook_bundle}`), so strong, weak, bundled, and resolved premise paths all feed one packaged soundness API.
 - [x] Discharge a unification-aware app hook from substitution admissibility alone (`AppUnifySoundHookUResolved`, `appUnifySoundHookUResolved_proved`) once a resolved function-shape equation is available.
 - [x] Add successor-fuel app hook variant (`AppUnifySoundHookUResolvedSucc`, `appUnifySoundHookUResolvedSucc_proved`) aligned with current bindTypeVar/idempotence bridge equalities.
 - [x] Add one-step app bridge theorem in the unification-aware judgment (`inferExprUnify_app_step_sound_hasTypeU_resolved`) parameterized by explicit resolved function-shape equality.

@@ -20375,6 +20375,35 @@ theorem inferUnifyHasTypeUSoundBundle_of_hook_bundle
   inferUnifyHasTypeUSoundBundle_of_hooks h_hooks.1 h_hooks.2
 
 /--
+Build the packaged recursive `HasTypeU` soundness surface from strong hook
+premises.
+-/
+theorem inferUnifyHasTypeUSoundBundle_of_strong_hooks
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    {h_appU : AppUnifySoundHookU}
+    {h_projU : ProjUnifySoundHookU} :
+    InferUnifyHasTypeUSoundBundle h_appU h_projU := by
+  refine ⟨?expr, ?field⟩
+  · intro st fuel env e st' ty h_ok
+    exact inferExprUnify_sound_preconditioned_hasTypeU
+      h_app h_proj st fuel env e st' ty h_ok
+  · intro st fuel env fs st' rf h_ok
+    exact inferFieldsUnify_sound_preconditioned_hasTypeU
+      h_app h_proj st fuel env fs st' rf h_ok
+
+/--
+Build the packaged recursive `HasTypeU` soundness surface from bundled strong
+hook premises.
+-/
+theorem inferUnifyHasTypeUSoundBundle_of_strong_hook_bundle
+    (h_hooks : UnifyHookPremises)
+    {h_appU : AppUnifySoundHookU}
+    {h_projU : ProjUnifySoundHookU} :
+    InferUnifyHasTypeUSoundBundle h_appU h_projU :=
+  inferUnifyHasTypeUSoundBundle_of_strong_hooks h_hooks.1 h_hooks.2
+
+/--
 Build the packaged recursive `HasTypeU` soundness surface directly from
 resolved-shape premises.
 -/
