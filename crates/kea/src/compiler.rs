@@ -842,6 +842,62 @@ fn register_top_level_declarations(
         .map(|path| format!("project:{path}"))
         .unwrap_or_else(|| "repl:".to_string());
 
+    if let Some(module_path) = module_path {
+        for decl in &module.declarations {
+            match &decl.node {
+                DeclKind::Function(fn_decl) => {
+                    env.register_module_item_visibility(module_path, &fn_decl.name.node, fn_decl.public);
+                }
+                DeclKind::ExprFn(expr_decl) => {
+                    env.register_module_item_visibility(
+                        module_path,
+                        &expr_decl.name.node,
+                        expr_decl.public,
+                    );
+                }
+                DeclKind::TypeDef(def) => {
+                    env.register_module_item_visibility(module_path, &def.name.node, def.public);
+                }
+                DeclKind::AliasDecl(alias) => {
+                    env.register_module_item_visibility(
+                        module_path,
+                        &alias.name.node,
+                        alias.public,
+                    );
+                }
+                DeclKind::OpaqueTypeDef(opaque) => {
+                    env.register_module_item_visibility(
+                        module_path,
+                        &opaque.name.node,
+                        opaque.public,
+                    );
+                }
+                DeclKind::RecordDef(record) => {
+                    env.register_module_item_visibility(
+                        module_path,
+                        &record.name.node,
+                        record.public,
+                    );
+                }
+                DeclKind::TraitDef(trait_def) => {
+                    env.register_module_item_visibility(
+                        module_path,
+                        &trait_def.name.node,
+                        trait_def.public,
+                    );
+                }
+                DeclKind::EffectDecl(effect_decl) => {
+                    env.register_module_item_visibility(
+                        module_path,
+                        &effect_decl.name.node,
+                        effect_decl.public,
+                    );
+                }
+                _ => {}
+            }
+        }
+    }
+
     // Pass 1: register type names that sum payloads may reference.
     // This makes `type Wrap = W(User)` work regardless of declaration order.
     for decl in &module.declarations {
