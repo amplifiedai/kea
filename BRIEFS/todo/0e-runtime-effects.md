@@ -362,6 +362,19 @@ This is the general form of what `catch` already does. Implementation
 is incremental on top of the existing handler frame work — the `then`
 body runs after `HandlerExit` with the body's return value bound.
 
+**Interaction with evidence passing:** The evidence struct contains
+one closure per operation. The `then` clause is a completion callback
+that transforms the handler's return value. In the evidence
+representation, `then` is a separate field — not an operation closure.
+When `HandlerExit` fires, the runtime checks for a `then` callback
+in the handler frame: if present, apply it to the body's return value
+before returning to the handler's caller. If absent, return the body's
+value directly (the `catch` desugaring from 0d is the special case
+where `then` wraps in `Ok`). The implementing agent should design
+the evidence struct with a `then: Option<Closure>` field from the
+start, even though Steps 1-5 don't use it — retrofitting it later
+means revisiting every handler frame layout.
+
 **In scope for 0e.** Without `then`, you can't write handlers that
 return accumulated state alongside the computation result (the State
 handler above needs it to return the final state).
@@ -567,6 +580,14 @@ stdlib/
 Log, and Reader handlers are pure Kea — the first real validation
 that handler compilation works end-to-end.
 
+**Net scope for 0e:** 0e ships raw TCP primitives only (`Net.connect`,
+`Net.send`, `Net.recv`, `Net.listen`). The HTTP client (`http.kea`)
+is listed as Tier 1 in the stdlib brief and is pure Kea code that
+wraps Net operations — someone needs to write it, but it's a stdlib
+deliverable that lands alongside 0e, not a 0e implementation step.
+The 0e agent's job is to make the Net intrinsics work; the HTTP
+client is a separate task that exercises them.
+
 ## Open Questions
 
 *(None remaining — see Resolved Questions.)*
@@ -589,6 +610,21 @@ that handler compilation works end-to-end.
   Direct-call compilation is a codegen optimisation, not a type
   system restriction. See Decisions section above.
 
+- **Capability effect dual-path compilation (IMPORTANT):** The
+  compiler must decide per-callsite whether a capability effect
+  operation (e.g., `IO.read_file`) goes through the direct runtime
+  call or through a user handler. The decision rule: at MIR lowering
+  time, check whether there is a `HandlerEnter` for this effect in
+  the current scope. If yes → `EffectOp { class: Dispatch }` (route
+  through handler evidence). If no → `EffectOp { class: Direct }`
+  (direct runtime call). This is a **codegen correctness** decision,
+  not just a performance optimization. When a user writes
+  `handle f() with IO.read_file(path) -> resume fake_data`, all IO
+  operations inside `f()` must go through the handler. IO operations
+  outside that handler scope must still be direct. The scoping of
+  this decision is critical — get it wrong and test mocks don't
+  work or production code pays handler overhead unnecessarily.
+
 - **Cranelift calling convention interaction:** Evidence passing
   adds hidden parameters to effectful functions. Cranelift handles
   this naturally — evidence structs are pointer-sized arguments in
@@ -608,6 +644,14 @@ that handler compilation works end-to-end.
   how the function is called, not how it's compiled. Stdlib Tier 1
   handlers use explicit `handle`/`with` blocks. `@with` lands with
   the rest of the annotation system in 0h.
+
+- **Handler composition uses nested `handle` blocks, not `with`
+  syntax.** `with` is not special syntax — it is (or will be) a
+  stdlib function. In 0e, the only mechanism for composing multiple
+  handlers is nested `handle` blocks. The implementing agent should
+  NOT add `with` as a language keyword or special form. Ergonomic
+  handler composition (via a `Par` stdlib module or similar) depends
+  on the `Eff` kind from 0g for proper typing.
 
 - **`then` clause in scope for 0e.** The `then` clause on `handle`
   expressions (KERNEL §5.14) is the general form of the `catch`

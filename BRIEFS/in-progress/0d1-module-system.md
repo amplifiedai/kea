@@ -223,7 +223,7 @@ impl ModuleGraph {
 }
 ```
 
-### Step 4: Multi-module compilation
+### Step 4: Multi-module compilation with struct-everything
 
 Compile modules in topological order. Each module's declarations
 are registered into a shared `TypeEnv` (the infrastructure already
@@ -235,6 +235,33 @@ The key change to the pipeline: instead of processing one `Module`,
 process a `Vec<Module>` in dependency order, accumulating type
 information across modules.
 
+**Implicit module struct creation:** When compiling a module file,
+the compiler must:
+
+1. Derive the struct name from the filename (`list.kea` → `List`)
+2. Register an implicit `Struct { name }` in the TypeEnv
+3. Register all top-level functions as inherent methods of that struct
+4. Register all type definitions as nested types in the struct's
+   namespace
+5. **Same-name merge:** If the file defines a type matching the
+   module name (e.g., `list.kea` defines `record List A`), the type
+   and the module struct are the same thing — don't create a separate
+   wrapper struct. `List` is both the constructable type and the
+   method namespace.
+6. **Different-name types:** Nest under the module namespace.
+   `order.kea` defining `enum Ordering` → `Order.Ordering`.
+
+This is what makes `List.map(xs, f)` (direct qualified call) and
+`xs.map(f)` (UMS unqualified) both work — `map` is an inherent
+method of the `List` struct, and UMS resolution finds it via the
+receiver type.
+
+**Trait impl visibility:** All impls are globally visible for
+bootstrap. When module A defines `impl Show for MyType`, that impl
+is visible in module B regardless of imports. This matches Haskell's
+instance model. Orphan rules and visibility restrictions are
+deferred to post-bootstrap.
+
 ### Step 5: Prelude loading
 
 The prelude is a set of stdlib modules auto-imported before user
@@ -245,6 +272,12 @@ sees prelude types and traits without `use`.
 
 Prelude modules are compiled once per invocation and their
 declarations are available to all user modules.
+
+**Prelude re-exports are hardcoded.** The prelude brings specific
+names into unqualified scope via a hardcoded list (e.g., `Ordering`
+from `Order`, `Some`/`None` from `Option`). This is not a general
+`pub use` mechanism — it's a bootstrap expedient. General re-export
+syntax (`pub use`) is deferred to the packaging phase.
 
 ### Step 6: Intrinsic function support
 
@@ -293,6 +326,16 @@ interpreted).
   correctly
 - **Integration test:** compile a program that uses stdlib
   `List.map` and `Option.unwrap_or`
+- **Resolution test matrix:** Write before implementing UMS +
+  module dispatch. Cover every combination of:
+  - Call form: direct qualified (`List.map(xs, f)`), UMS
+    unqualified (`xs.map(f)`), UMS qualified (`xs.List.map(f)`)
+  - Method kind: inherent method, trait method
+  - Import state: not imported, `use Module`, `use Module.{name}`,
+    prelude (implicit)
+  - Module relationship: same module, cross-module
+  This matrix is where subtle resolution bugs hide. Write the
+  tests first, then implement.
 
 ## Definition of Done
 
