@@ -21706,6 +21706,56 @@ theorem principalBoundaryMasterSuite_proved_via_dualConsequenceSlices :
     principalDualConsequenceSlices_proved
 
 /--
+Packaged current row-polymorphic principality boundary:
+- the top-level principal boundary master suite, and
+- the proved hook-free app/projection vertical slice.
+-/
+structure PrincipalRowPolyBoundaryBundle where
+  principalBoundary : PrincipalBoundaryMasterSuite
+  hookFreeVertical : VerticalHookFreeUnifySlices
+
+/--
+Build the current row-polymorphic principality boundary package from any
+master principal-boundary witness.
+-/
+theorem principalRowPolyBoundaryBundle_of_master
+    (h_master : PrincipalBoundaryMasterSuite) :
+    PrincipalRowPolyBoundaryBundle := by
+  refine {
+    principalBoundary := h_master
+    hookFreeVertical := verticalHookFreeUnifySlices_proved
+  }
+
+/-- Canonical current row-polymorphic principality boundary package. -/
+theorem principalRowPolyBoundaryBundle_proved :
+    PrincipalRowPolyBoundaryBundle :=
+  principalRowPolyBoundaryBundle_of_master principalBoundaryMasterSuite_proved
+
+/-- Dual-routed canonical current row-polymorphic principality boundary package. -/
+theorem principalRowPolyBoundaryBundle_proved_via_dualConsequenceSlices :
+    PrincipalRowPolyBoundaryBundle :=
+  principalRowPolyBoundaryBundle_of_master
+    principalBoundaryMasterSuite_proved_via_dualConsequenceSlices
+
+/-- One-hop projection of the principal boundary surface from the package. -/
+theorem principalRowPolyBoundaryBundle_principal
+    (h_bundle : PrincipalRowPolyBoundaryBundle) :
+    PrincipalBoundaryMasterSuite :=
+  h_bundle.principalBoundary
+
+/-- One-hop projection of the hook-free vertical app/proj slice from the package. -/
+theorem principalRowPolyBoundaryBundle_vertical
+    (h_bundle : PrincipalRowPolyBoundaryBundle) :
+    VerticalHookFreeUnifySlices :=
+  h_bundle.hookFreeVertical
+
+/-- One-hop projection of the dual consequence slice from the packaged boundary. -/
+theorem principalRowPolyBoundaryBundle_dual
+    (h_bundle : PrincipalRowPolyBoundaryBundle) :
+    PrincipalDualConsequenceSlices :=
+  principalDualConsequenceSlices_of_principalBoundaryMasterSuite h_bundle.principalBoundary
+
+/--
 Expression preconditioned↔core wrapper on the dual-routed proved master suite.
 -/
 theorem principalBoundaryMasterSuite_preconditionedCoreIff_expr_via_dualConsequenceSlices
