@@ -250,6 +250,17 @@ used once, consumed). Extend to more complex patterns later.
   0o77 — requires lexer extension. Underscore separators (1_000_000).
 - Widening conversions implicit, narrowing explicit
 - Codegen: direct Cranelift integer types
+- **Bidirectional numeric literal inference** (KERNEL §1.1.1):
+  `let x: Int32 = 42` infers `42` as `Int32`. When an integer
+  literal appears in a context with a known expected fixed-width
+  type (let annotation, function argument, return position), the
+  literal should infer as that type. Out-of-range = compile error.
+  Without context, default to `Int`. See [practical-language-gaps](../todo/practical-language-gaps.md) Gap 2.
+- **Layout intrinsics** (KERNEL §17.4): `size_of` and `align_of`
+  as compiler intrinsics that return compile-time constants for
+  any sized type. Safe (not @unsafe). Required for Vector, HAMT,
+  and arena allocators in Tier 2 stdlib. Emit as Cranelift `iconst`
+  with monomorphized size. See [practical-language-gaps](../todo/practical-language-gaps.md) Gap 1.
 
 ### Step 7: Unique + effects interaction (needs 0e)
 

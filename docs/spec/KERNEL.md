@@ -65,6 +65,14 @@ values (§10). Examples are shorthand for the enclosing struct context.
 Fixed-width types are used when precise representation matters:
 binary formats, FFI, hash values, machine code emission.
 
+**Literal type inference:** When an integer literal appears in a
+context with a known expected type (assignment, argument, return
+position), the literal infers as that type. `let x: Int32 = 42`
+gives `42` the type `Int32`. If the literal value exceeds the
+range of the expected type, this is a compile error. Without
+context, integer literals default to `Int` and float literals
+default to `Float`.
+
 **Conversions:** All narrowing conversions (e.g. `Int` to `Int8`)
 are explicit via `From` / `try_from` and may fail. Widening
 conversions (e.g. `Int8` to `Int`) are implicit. Signed-to-unsigned
@@ -463,13 +471,16 @@ pattern matching. All arms must have the same type.
 | `{ f1: p1, f2: p2 }`  | Struct/record destructuring          |
 | `{ f1, .. }`           | Struct with punning, ignoring rest   |
 | `[p1, p2]`             | List of exact length                 |
-| `[head, ..tail]`       | List cons (head + rest)              |
+| `[head, ..tail]`       | List spread (head + rest)            |
+| `head :: tail`         | List cons                            |
 | `[]`                   | Empty list                           |
 | `42`, `"hello"`, `true`| Literal                              |
 | `name`                 | Variable binding                     |
 | `_`                    | Wildcard (matches anything, no bind) |
 
 `..tail` in list patterns is only allowed at the end and only once.
+`head :: tail` is equivalent to `[head, ..tail]` — both destructure
+a non-empty list into its first element and remainder.
 
 ### 4.2.1 Guards
 
@@ -582,9 +593,23 @@ effect IO
   fn read_file(_ path: String) -> Bytes
   fn write_file(_ path: String, _ data: Bytes) -> Unit
   fn stdout(_ msg: String) -> Unit
-  fn clock_now() -> Timestamp
-  fn net_connect(_ addr: String, _ port: Int) -> Connection
+
+effect Clock
+  fn now() -> Timestamp
+
+effect Net
+  fn connect(_ addr: String, _ port: Int) -> Connection
+
+effect Rand
+  fn random() -> Float
+  fn random_int(_ lo: Int, _ hi: Int) -> Int
 ```
+
+IO capabilities are decomposed into separate effects so that
+functions declare the minimum capabilities they need. A function
+that only reads the clock declares `-[Clock]>`, not `-[IO]>`.
+This enables finer-grained mocking in tests and makes capability
+requirements visible in signatures.
 
 Each operation is a function signature. Performing an effect
 operation introduces that effect into the current function's
@@ -699,6 +724,22 @@ Inside the handler body, `resume value` returns `value` to the
 point where the effect was performed, and execution continues
 from there.
 
+The `then` clause (optional) transforms the result when the
+handled computation completes normally (without performing the
+handled effect):
+
+```kea
+handle expr
+  E.operation(args) -> handler_body
+then |result| -> transform(result)
+```
+
+When `E` is performed: the handler body runs. Whether to
+`resume` is the handler's choice.
+
+When `E` is NOT performed: the `then` clause transforms the
+result. If no `then` clause, the result passes through unchanged.
+
 **Example — logging handler:**
 
 ```kea
@@ -809,7 +850,7 @@ fn validate(_ x: Int) -[Fail String]> Int
 ```kea
 let value = fallible_call()?
 -- desugars to:
-let value = match fallible_call()
+let value = case fallible_call()
   Ok(v) -> v
   Err(e) -> Fail.fail(From.from(e))
 ```
@@ -877,7 +918,10 @@ language primitives — they are ordinary effect declarations.
 
 | Effect      | Defined in      | Operations                     | Common handler                |
 |-------------|-----------------|--------------------------------|-------------------------------|
-| `IO`        | `kea-io`        | `read_file`, `write_file`, `stdout`, `clock_now`, `net_connect`, ... | Runtime (or mock for tests) |
+| `IO`        | `kea-io`        | `read_file`, `write_file`, `stdout` | Runtime (or mock for tests) |
+| `Clock`     | `kea-io`        | `now`                          | Runtime (or mock for tests)   |
+| `Net`       | `kea-io`        | `connect`                      | Runtime (or mock for tests)   |
+| `Rand`      | `kea-io`        | `random`, `random_int`         | Runtime (or `with_seed`)      |
 | `Fail E`    | `kea-core`      | `fail`                         | `catch` (sugar)               |
 | `Alloc`     | `kea-core`      | `alloc`                        | `with_arena`                  |
 
@@ -889,7 +933,6 @@ Other libraries define their own effects:
 | `Spawn`     | `kea-actors`    | `spawn`                 | Actor runtime                 |
 | `Log`       | `kea-log`       | `log`                   | `with_stdout_logger`, etc.    |
 | `State S`   | `kea-state`     | `get`, `put`            | `with_state`                  |
-| `Rand`      | `kea-rand`      | `random`, `random_int`  | `with_seed`                   |
 | `Tx`        | `kea-db`        | `query`, `execute`      | `with_transaction`            |
 
 **Purity:** A function with no effects (`->`) is pure. A function
@@ -1010,22 +1053,6 @@ design, it can be added later without breaking existing code.
 
 See §6.6 for the kind system, §11.5 for effect row aliases.
 
-The `then` clause (optional) transforms the result when the
-handled computation completes normally (without performing the
-handled effect):
-
-```kea
-handle expr
-  E.operation(args) -> handler_body
-then |result| -> transform(result)
-```
-
-When `E` is performed: the handler body runs. Whether to
-`resume` is the handler's choice.
-
-When `E` is NOT performed: the `then` clause transforms the
-result. If no `then` clause, the result passes through unchanged.
-
 ### 5.15 Effect Compilation Guarantees
 
 Effects are a type-system feature first and a runtime feature
@@ -1039,6 +1066,9 @@ handler overhead:
 | Effect  | Compilation                                  |
 |---------|----------------------------------------------|
 | `IO`    | Direct runtime calls (syscalls, libc)        |
+| `Clock` | Direct runtime calls                         |
+| `Net`   | Direct runtime calls                         |
+| `Rand`  | Direct runtime calls                         |
 | `Send`  | Direct actor runtime calls                   |
 | `Spawn` | Direct actor runtime calls                   |
 
@@ -2275,8 +2305,8 @@ costs matter.
 | `%`                | `Int`          | Remainder                  |
 | `==`, `!=`         | `Eq`           | Equality                   |
 | `<`, `>`, `<=`, `>=`| `Ord`         | Ordering                   |
-| `&&`, `\|\|`       | `Bool`         | Short-circuit logic        |
-| `!`                | `Bool`         | Negation                   |
+| `and`, `or`        | `Bool`         | Short-circuit logic (keywords) |
+| `not`              | `Bool`         | Negation (keyword)         |
 | `++`               | `Concatenable` | Concatenation              |
 | `<>`               | `Monoid`       | Monoidal combine           |
 | `~`                | Struct/row     | Functional update          |
@@ -2523,6 +2553,23 @@ dereferenced, offset, or cast outside of unsafe context.
 **`Ptr.is_null` is the only safe operation on `Ptr T`.** All
 others require unsafe context.
 
+### 17.4 Layout Intrinsics
+
+```kea
+fn size_of() -> Int     -- size in bytes of type T
+fn align_of() -> Int    -- alignment in bytes of type T
+```
+
+`size_of` and `align_of` are compiler intrinsics available to
+all code (safe — they return compile-time constants). They are
+required for implementing generic data structures that manage
+raw memory: `Vector`, `HashMap`, arena allocators.
+
+The type parameter `T` is always explicit: `size_of(Int32)`
+returns `4`. `size_of` on unsized types (`String`, `List T`)
+returns the size of the *handle* (pointer + metadata), not the
+heap payload.
+
 **Interaction with Unique:** `Ptr T` is orthogonal to `Unique`.
 `Ptr` is unmanaged memory — no refcount, no CoW, no compiler
 guarantees. `Unique` is managed memory with a compile-time
@@ -2737,7 +2784,7 @@ The following traits are in scope in every module without explicit
 
 ```
 -- Core
-Show  Eq  Ord  From  Codec
+Show  Eq  Ord  From
 
 -- Numeric
 Additive  Numeric
@@ -2746,7 +2793,7 @@ Additive  Numeric
 Concatenable  Monoid
 
 -- Collections
-Enumerable  Iterator  Foldable  Filterable
+Iterable  Iterator  Foldable  Filterable
 ```
 
 These traits are available for unqualified method dispatch (§9.1)
@@ -2760,7 +2807,6 @@ Eq
 Ord : Eq
 Show
 From T
-Codec
 
 Additive          -- (+), zero
 Numeric : Additive -- (*), (/)
@@ -2768,7 +2814,7 @@ Numeric : Additive -- (*), (/)
 Concatenable      -- (++)
 Monoid            -- (<>), empty
 
-Enumerable        -- to_seq
+Iterable          -- iter
 Iterator          -- next
 Foldable          -- fold, sum, any, all, find
 Filterable        -- filter

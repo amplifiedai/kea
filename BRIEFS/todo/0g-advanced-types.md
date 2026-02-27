@@ -7,6 +7,7 @@
 **Also read before implementing:**
 - [effects-platform-vision](../design/effects-platform-vision.md) — Eff kind is load-bearing for effect-parameterised types (Server E, Step E A). GADTs enable typed actor protocols.
 - [lean-formalization](lean-formalization.md) — GADT refinement soundness and Eff kind consistency are formalization targets.
+- [practical-language-gaps](practical-language-gaps.md) — Gap 4 (early-exit ergonomics) and Gap 5 (tuple-case optimization) land in 0g. Assess whether `Fail` for non-error early exit is ergonomic enough during Tier 3 stdlib writing.
 
 ## Motivation
 

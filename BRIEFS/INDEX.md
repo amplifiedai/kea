@@ -71,6 +71,10 @@ Designed and approved. Ready to pick up. Ordered by execution sequence per ROADM
 
 11. **[Error message quality](todo/0h-stdlib-errors.md)** — Row-diff error messages, effect provenance in diagnostics, stable error codes, snapshot tests. Not on critical path — runs in parallel with 0g.
 
+### Cross-phase: Practical Language Gaps (0f through Phase 1)
+
+13. **[Practical language gaps](todo/practical-language-gaps.md)** — Layout intrinsics (`size_of`/`align_of`), bidirectional numeric literal inference, String/Bytes core operations, IO decomposition into Clock/Net/Rand, early-exit ergonomics assessment. Items land incrementally alongside 0f and 0g. No single phase — tracks what self-hosting needs that isn't covered by other briefs.
+
 ### Parallel tracks
 
 7. **[Testing](todo/testing.md)** (Phase 0d through Phase 1) — `assert` (Fail) + `check` (Test effect) dual assertion model. Compiler-level expression capture, structural diff, effect-driven parallelism, property testing via `Gen` effect. Test runner portion starts with 0d. Benchmark harness is a 0d deliverable.
