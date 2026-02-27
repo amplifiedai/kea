@@ -1,6 +1,6 @@
 # Brief: Memory Model
 
-**Status:** ready
+**Status:** active
 **Priority:** v1-critical
 **Depends on:** 0d-codegen-pure (steps 1-6), 0e-runtime-effects (step 7 only: Unique + effects)
 **Blocks:** Phase 1
@@ -463,3 +463,7 @@ From ROADMAP.md:
 
 These are the formalizations most likely to find false theorems.
 Start them as soon as the design stabilizes from prototyping.
+
+## Progress
+- 2026-02-28 00:31: Step 6 kickoff landed in `kea-syntax` lexer: numeric literal parsing now supports base-prefixed integers (`0x`, `0b`, `0o`) and underscore separators for decimal integers/floats. Added lexer regressions for valid prefixed/underscored forms and invalid forms (`0x`, `1__0`). Verified with `PKG=kea-syntax mise run test-pkg` and `mise run check`.
+- **Next:** complete Step 6 parser/typechecker surface by adding literal regression coverage at parse/typecheck/execute levels (hex/bin/octal + underscore literals in real programs), then continue fixed-width numeric and conversion semantics.

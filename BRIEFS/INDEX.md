@@ -25,6 +25,7 @@ that apply across multiple implementation phases. Ignoring them means rework.
 
 Work in progress right now. Each entry should have a `## Progress` section in its brief.
 - **[Stdlib bootstrap](in-progress/stdlib-bootstrap.md)** — Active. Tier-0 bootstrap started with real repo stdlib modules (`prelude`, `option`, intrinsic-backed `text`) and execute-path module-system coverage; remaining Tier-0 pure modules (`int`, `float`, `order`, `eq`, `ord`, `show`) are next, while heap-list `List` stays explicitly blocked on runtime/list-lowering support.
+- **[Memory model](in-progress/0f-memory-model.md)** — Active. 0f started with Step 6 numeric literal infrastructure: lexer now accepts prefixed integers (`0x`/`0b`/`0o`) and underscore separators, with regression coverage for valid/invalid forms. Next: push this through parse/typecheck/execute regression coverage, then continue fixed-width numeric + conversion semantics.
 - **[Benchmark infrastructure](in-progress/benchmark-infrastructure.md)** — Active. `divan` harness is in-tree (`kea-bench` + `AllocProfiler`) with lex/parse/infer/lower/codegen workload baselines plus string/allocation variants; stable artifacts are exported (`raw/csv/json/meta`), repeat-run variance summaries are generated (`bench:variance`), CI Stage A publishes baseline+variance artifacts, CodSpeed CI is wired via `codspeed-divan-compat` using OIDC auth, whole-program corpus tooling (`benchmarks/programs` + `bench:programs`) is bootstrapped with no-shell/inner-iteration execution for lower noise, whole-program variance summaries are automated, benchmark workflows now use cache-friendly stable target dirs (`KEA_AGENT_TARGET_DIR=target/ci-*`), non-blocking Stage B regression checks remain for full-matrix calibration, and stable benchmark classes run in dedicated blocking Stage B lanes.
 - **[Lean formalization](in-progress/lean-formalization.md)** — Active. Phase 1 kickoff started from the Rill Lean baseline; next is Kea effect-row alignment in core modules/proofs.
 
@@ -60,7 +61,7 @@ Designed and approved. Ready to pick up. Ordered by execution sequence per ROADM
 
 ### Phase 0f: Memory Model + Stdlib Tier 2 (steps 1-6 need 0d, step 7 needs 0e)
 
-9. **[Memory model](todo/0f-memory-model.md)** — Unique T (move semantics), borrow convention, reuse analysis, unsafe/Ptr, @unboxed, fixed-width integers. Stdlib Tier 2: Vector, HAMT Map/Set using Ptr/@unsafe — writing them IS the test for 0f.
+*(in progress — see Active section)*
 
 ### Phase 0g: Advanced Types + @derive + Stdlib Tier 3 (needs 0d + 0c)
 
