@@ -1,9 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
-#[cfg(test)]
 use std::sync::atomic::{AtomicU64, Ordering};
-#[cfg(test)]
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use kea_ast::{DeclKind, ExprDecl, FileId, FnDecl, Module, TypeDef};
@@ -24,7 +22,6 @@ use kea_infer::{Category, InferenceContext};
 use kea_mir::lower_hir_module;
 use kea_syntax::{lex_layout, parse_module};
 
-#[cfg(test)]
 static TEMP_NONCE: AtomicU64 = AtomicU64::new(0);
 
 fn main() {
@@ -453,7 +450,15 @@ fn default_build_output_path(input: &Path) -> PathBuf {
 }
 
 fn link_object_bytes(object: &[u8], output: &Path) -> Result<(), String> {
-    let temp_object = std::env::temp_dir().join(format!("kea-build-{}.o", std::process::id()));
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("time should move forward")
+        .as_nanos();
+    let counter = TEMP_NONCE.fetch_add(1, Ordering::Relaxed);
+    let temp_object = std::env::temp_dir().join(format!(
+        "kea-build-{}-{timestamp}-{counter}.o",
+        std::process::id()
+    ));
     fs::write(&temp_object, object).map_err(|err| {
         format!(
             "failed to write temporary object `{}`: {err}",
@@ -567,6 +572,60 @@ mod tests {
             .status()
             .expect("aot executable should run");
         assert_eq!(status.code(), Some(7));
+
+        let _ = std::fs::remove_file(source_path);
+        let _ = std::fs::remove_file(output_path);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn compile_build_and_execute_aot_io_stdout_unit_main_exit_code() {
+        let source_path = write_temp_source(
+            "effect IO\n  fn stdout(msg: String) -> Unit\n\nfn main() -[IO]> Unit\n  IO::stdout(\"hello aot\")\n",
+            "kea-cli-aot-io-stdout",
+            "kea",
+        );
+        let output_path = temp_artifact_path("kea-cli-aot-io-stdout", "bin");
+
+        let compiled = compile_file(&source_path, CodegenMode::Aot).expect("aot compile should work");
+        link_object_bytes(&compiled.object, &output_path).expect("link should work");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("aot executable should run");
+        assert_eq!(output.status.code(), Some(0));
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            stdout.contains("hello aot"),
+            "expected stdout to contain greeting, got `{stdout}`"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+        let _ = std::fs::remove_file(output_path);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn compile_build_and_execute_aot_io_stdout_concat_exit_code() {
+        let source_path = write_temp_source(
+            "effect IO\n  fn stdout(msg: String) -> Unit\n\nfn main() -[IO]> Unit\n  IO::stdout(\"hello \" ++ \"aot\")\n",
+            "kea-cli-aot-io-stdout-concat",
+            "kea",
+        );
+        let output_path = temp_artifact_path("kea-cli-aot-io-stdout-concat", "bin");
+
+        let compiled = compile_file(&source_path, CodegenMode::Aot).expect("aot compile should work");
+        link_object_bytes(&compiled.object, &output_path).expect("link should work");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("aot executable should run");
+        assert_eq!(output.status.code(), Some(0));
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            stdout.contains("hello aot"),
+            "expected stdout to contain concat greeting, got `{stdout}`"
+        );
 
         let _ = std::fs::remove_file(source_path);
         let _ = std::fs::remove_file(output_path);

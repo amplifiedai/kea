@@ -750,8 +750,9 @@ fn execute_mir_main_jit(module: &MirModule, config: &BackendConfig) -> Result<i3
                     main_fn() as i32
                 }
                 Type::Unit => {
-                    let main_fn = std::mem::transmute::<*const u8, extern "C" fn()>(entrypoint);
-                    main_fn();
+                    let main_fn =
+                        std::mem::transmute::<*const u8, extern "C" fn() -> i32>(entrypoint);
+                    let _ = main_fn();
                     0
                 }
                 _ => unreachable!("validated return type before JIT entrypoint dispatch"),
@@ -781,7 +782,9 @@ fn build_signature<M: Module>(
         signature.params.push(AbiParam::new(ty));
     }
 
-    if runtime_sig.runtime_return != Type::Unit {
+    if function.name == "main" && runtime_sig.runtime_return == Type::Unit {
+        signature.returns.push(AbiParam::new(types::I32));
+    } else if runtime_sig.runtime_return != Type::Unit {
         let ret_type = clif_type(&runtime_sig.runtime_return)?;
         signature.returns.push(AbiParam::new(ret_type));
     }
@@ -1972,7 +1975,12 @@ fn lower_terminator(
             }
 
             if ctx.current_runtime_sig.runtime_return == Type::Unit {
-                builder.ins().return_(&[]);
+                if ctx.function_name == "main" {
+                    let zero = builder.ins().iconst(types::I32, 0);
+                    builder.ins().return_(&[zero]);
+                } else {
+                    builder.ins().return_(&[]);
+                }
                 return Ok(());
             }
 
