@@ -5279,6 +5279,75 @@ theorem principalBoundaryNoUnifyAllHooksIrrelevanceSlices_field
   h_slice.2 h_no h_ok
 
 /--
+Top-level no-unify all-hooks suite.
+
+This packages:
+- all-hooks no-unify capstones (expression+field), and
+- no-unify hook-irrelevance derived from those all-hooks capstones.
+-/
+structure PrincipalBoundaryNoUnifyAllHooksSuite : Prop where
+  capstones : PrincipalBoundaryNoUnifyAllHooksCapstoneSlices
+  irrelevance : PrincipalBoundaryNoUnifyAllHooksIrrelevanceSlices
+
+/-- The no-unify all-hooks suite is fully proved. -/
+theorem principalBoundaryNoUnifyAllHooksSuite_proved :
+    PrincipalBoundaryNoUnifyAllHooksSuite := by
+  refine {
+    capstones := principalBoundaryNoUnifyAllHooksCapstoneSlices_proved
+    irrelevance := principalBoundaryNoUnifyAllHooksIrrelevanceSlices_proved
+  }
+
+/-- One-hop expression all-hooks capstone projection from all-hooks suite. -/
+theorem principalBoundaryNoUnifyAllHooksSuite_capstone_expr
+    (h_suite : PrincipalBoundaryNoUnifyAllHooksSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalBoundaryNoUnifyExprAllHooksCapstone st fuel env e st' ty :=
+  principalBoundaryNoUnifyAllHooksCapstoneSlices_expr
+    h_suite.capstones h_no h_ok
+
+/-- One-hop field all-hooks capstone projection from all-hooks suite. -/
+theorem principalBoundaryNoUnifyAllHooksSuite_capstone_field
+    (h_suite : PrincipalBoundaryNoUnifyAllHooksSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalBoundaryNoUnifyFieldAllHooksCapstone st fuel env fs st' rf :=
+  principalBoundaryNoUnifyAllHooksCapstoneSlices_field
+    h_suite.capstones h_no h_ok
+
+/-- One-hop expression irrelevance projection from all-hooks suite. -/
+theorem principalBoundaryNoUnifyAllHooksSuite_irrelevance_expr
+    (h_suite : PrincipalBoundaryNoUnifyAllHooksSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+      ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) :=
+  principalBoundaryNoUnifyAllHooksIrrelevanceSlices_expr
+    h_suite.irrelevance h_no h_ok
+
+/-- One-hop field irrelevance projection from all-hooks suite. -/
+theorem principalBoundaryNoUnifyAllHooksSuite_irrelevance_field
+    (h_suite : PrincipalBoundaryNoUnifyAllHooksSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
+  principalBoundaryNoUnifyAllHooksIrrelevanceSlices_field
+    h_suite.irrelevance h_no h_ok
+
+/--
 `HasTypeU` lift of non-app/proj recursive soundness: on the fragment that never
 executes unification branches, algorithmic inference results are declaratively
 typable in the unification-aware judgment as well.
