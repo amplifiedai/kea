@@ -6850,6 +6850,32 @@ theorem principalBoundaryNoUnifyAllHooksSuite_runBundle_field
   principalBoundaryNoUnifyAllHooksRunBundleSlices_field
     h_suite.runBundles h_no h_ok
 
+/--
+No-unify all-hooks suite convenience wrapper: derive the expression run-bundle
+surface from a successful no-unify run.
+-/
+theorem principalBoundaryNoUnifyRunBundleExpr_of_success_via_allHooksSuite
+    (h_suite : PrincipalBoundaryNoUnifyAllHooksSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty :=
+  principalBoundaryNoUnifyAllHooksSuite_runBundle_expr h_suite h_no h_ok
+
+/--
+No-unify all-hooks suite convenience wrapper: derive the field run-bundle
+surface from a successful no-unify field run.
+-/
+theorem principalBoundaryNoUnifyRunBundleField_of_success_via_allHooksSuite
+    (h_suite : PrincipalBoundaryNoUnifyAllHooksSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf :=
+  principalBoundaryNoUnifyAllHooksSuite_runBundle_field h_suite h_no h_ok
+
 /-- One-hop expression irrelevance projection from all-hooks suite. -/
 theorem principalBoundaryNoUnifyAllHooksSuite_irrelevance_expr
     (h_suite : PrincipalBoundaryNoUnifyAllHooksSuite)
@@ -7442,6 +7468,32 @@ theorem principalNoUnifyToGeneralAllHooksSuite_runBundle_field
     (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
     PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf :=
   principalNoUnifyToGeneralAllHooksRunBundleSlices_field h_suite.runBundles h_no h_ok
+
+/--
+No-unify-to-general suite convenience wrapper: derive the expression run-bundle
+surface from a successful no-unify run.
+-/
+theorem principalNoUnifyToGeneralRunBundleExpr_of_success
+    (h_suite : PrincipalNoUnifyToGeneralAllHooksSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty :=
+  principalNoUnifyToGeneralAllHooksSuite_runBundle_expr h_suite h_no h_ok
+
+/--
+No-unify-to-general suite convenience wrapper: derive the field run-bundle
+surface from a successful no-unify field run.
+-/
+theorem principalNoUnifyToGeneralRunBundleField_of_success
+    (h_suite : PrincipalNoUnifyToGeneralAllHooksSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf :=
+  principalNoUnifyToGeneralAllHooksSuite_runBundle_field h_suite h_no h_ok
 
 /--
 One-hop expression irrelevance projection from no-unify-to-general all-hooks
