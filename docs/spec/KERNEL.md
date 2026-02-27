@@ -87,6 +87,38 @@ Bitwise operations are methods on all integer types:
 Shift amounts are `Int`. Shifting by a negative amount or by
 more than the bit width is a panic.
 
+### 1.1.3 Arithmetic Overflow
+
+Default arithmetic (`+`, `-`, `*`) on fixed-width integer types
+**traps on overflow** in debug builds. In release builds, overflow
+is unspecified (the compiler may trap, wrap, or optimize assuming
+no overflow occurs). This matches the principle that silent
+wrapping is a bug source.
+
+For algorithms that intentionally need wrapping (hash functions,
+checksums, RNGs), explicit wrapping methods are provided:
+
+| Method                   | Description                  |
+|--------------------------|------------------------------|
+| `.wrapping_add(other)`   | Wrapping addition            |
+| `.wrapping_sub(other)`   | Wrapping subtraction         |
+| `.wrapping_mul(other)`   | Wrapping multiplication      |
+
+These always wrap modulo 2^N regardless of build mode.
+
+Saturating and checked variants may be added later.
+
+### 1.1.4 Bit Counting
+
+| Method              | Description                              |
+|---------------------|------------------------------------------|
+| `.popcount()`       | Number of set bits                       |
+| `.leading_zeros()`  | Number of leading zero bits              |
+| `.trailing_zeros()` | Number of trailing zero bits             |
+
+Available on all integer types. These map directly to hardware
+instructions (`popcnt`, `clz`, `ctz`) via Cranelift intrinsics.
+
 ### 1.2 Built-in Compound Types
 
 | Type           | Description                                |
@@ -125,6 +157,10 @@ the `Fail E` effect annotation (§5). There are no exceptions.
 | Syntax              | Type          | Notes                       |
 |---------------------|---------------|-----------------------------|
 | `42`, `-7`          | `Int`         |                             |
+| `0xFF`, `0xff`      | `Int`         | Hexadecimal prefix          |
+| `0b1010`            | `Int`         | Binary prefix               |
+| `0o77`              | `Int`         | Octal prefix                |
+| `1_000_000`         | `Int`         | Underscore separators       |
 | `3.14`, `-0.5`      | `Float`       | Must contain `.`            |
 | `true`, `false`     | `Bool`        |                             |
 | `"hello"`           | `String`      | Interpolation: `"{expr}"`   |
@@ -1731,6 +1767,65 @@ with conn <- Db.with_connection(config.db)
 -- conn is bound by the with
 query(conn, "SELECT 1")
 ```
+
+### 10.7 While Loops
+
+```kea
+while condition
+  body
+```
+
+`while` is syntactic sugar for tail-recursive iteration. The above
+desugars to:
+
+```kea
+let rec loop () =
+  if condition
+    body
+    loop ()
+loop ()
+```
+
+`while` has type `Unit`. It is a statement, not an expression.
+For accumulating results, use explicit recursion or `.fold()`.
+
+`while` exists for clarity in imperative-style code inside
+`Unique` blocks and effect handlers. It does not introduce
+mutable state — the loop condition must change via effects
+(e.g., `State`) or by consuming a data structure.
+
+### 10.8 Tail Call Optimization
+
+The compiler optimizes direct tail calls (a function calling
+itself in tail position) into loops. This is guaranteed for
+self-recursive functions.
+
+**`@tailrec` annotation:** Opt-in verification that a recursive
+call is in tail position. If the annotated call is not actually
+a tail call, the compiler emits an error.
+
+```kea
+fn sum(xs: List Int, acc: Int) -> Int
+  case xs
+    [] -> acc
+    [x, ..rest] -> @tailrec sum(rest, acc + x)
+```
+
+```
+error: @tailrec call is not in tail position
+  --> src/list.kea:4:25
+   |
+4  |     [x, ..rest] -> @tailrec sum(rest, acc + x) + 1
+   |                     ^^^^^^^ this call has `+ 1` after it
+```
+
+`@tailrec` is applied at the call site, not the function
+definition. This makes it explicit which recursive calls the
+programmer expects to be optimized.
+
+Mutual tail calls (A calls B calls A) are not guaranteed to be
+optimized in the bootstrap compiler. `@tailrec` on a mutual
+call is a compile error until mutual TCO is implemented.
 
 ---
 
