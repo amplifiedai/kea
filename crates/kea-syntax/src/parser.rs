@@ -4937,9 +4937,27 @@ mod tests {
     }
 
     #[test]
+    fn parse_prefixed_int() {
+        let expr = parse("0x2a");
+        assert_eq!(expr.node, ExprKind::Lit(Lit::Int(42)));
+    }
+
+    #[test]
+    fn parse_underscored_int() {
+        let expr = parse("1_000_000");
+        assert_eq!(expr.node, ExprKind::Lit(Lit::Int(1_000_000)));
+    }
+
+    #[test]
     fn parse_float() {
         let expr = parse("1.5");
         assert_eq!(expr.node, ExprKind::Lit(Lit::Float(1.5)));
+    }
+
+    #[test]
+    fn parse_underscored_float() {
+        let expr = parse("1_000.25_5");
+        assert_eq!(expr.node, ExprKind::Lit(Lit::Float(1_000.255)));
     }
 
     #[test]

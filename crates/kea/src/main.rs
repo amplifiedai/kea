@@ -1724,6 +1724,34 @@ mod tests {
     }
 
     #[test]
+    fn compile_and_execute_prefixed_integer_literals_exit_code() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  0x2A + 0b1010 + 0o10\n",
+            "kea-cli-prefixed-int-literals",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("prefixed integer literal run should succeed");
+        assert_eq!(run.exit_code, 60);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_underscored_numeric_literals_exit_code() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  1_000_000 + 0x10\n",
+            "kea-cli-underscored-numeric-literals",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("underscored numeric literal run should succeed");
+        assert_eq!(run.exit_code, 1_000_016);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_shift_left_method_exit_code() {
         let source_path = write_temp_source(
             "fn main() -> Int\n  1.shift_left(3)\n",
