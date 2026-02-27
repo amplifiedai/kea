@@ -286,6 +286,8 @@ pub enum MirUnaryOp {
     Popcount,
     LeadingZeros,
     TrailingZeros,
+    WidenSignedToInt,
+    WidenUnsignedToInt,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2695,6 +2697,40 @@ impl FunctionLoweringCtx {
         let (min, max) = Self::integer_bounds_for_target(&target_ty)?;
 
         let source = self.lower_expr(&args[0])?;
+        let source_int = match &args[0].ty {
+            Type::Int => source.clone(),
+            // Some resolved callsites still carry `Dynamic` in HIR even when
+            // type checking has already constrained the argument to integer
+            // input for `*.try_from(...)`.
+            Type::Dynamic => source.clone(),
+            Type::IntN(_, kea_types::Signedness::Signed) => {
+                let widened = self.new_value();
+                self.emit_inst(MirInst::Unary {
+                    dest: widened.clone(),
+                    op: MirUnaryOp::WidenSignedToInt,
+                    operand: source.clone(),
+                });
+                widened
+            }
+            Type::IntN(_, kea_types::Signedness::Unsigned) => {
+                let widened = self.new_value();
+                self.emit_inst(MirInst::Unary {
+                    dest: widened.clone(),
+                    op: MirUnaryOp::WidenUnsignedToInt,
+                    operand: source.clone(),
+                });
+                widened
+            }
+            _ => {
+                self.emit_inst(MirInst::Unsupported {
+                    detail: format!(
+                        "fixed-width try_from expects integer input, got `{}`",
+                        args[0].ty
+                    ),
+                });
+                return None;
+            }
+        };
 
         let min_value = self.new_value();
         self.emit_inst(MirInst::Const {
@@ -2711,14 +2747,14 @@ impl FunctionLoweringCtx {
         self.emit_inst(MirInst::Binary {
             dest: below_min.clone(),
             op: MirBinaryOp::Lt,
-            left: source.clone(),
+            left: source_int.clone(),
             right: min_value,
         });
         let above_max = self.new_value();
         self.emit_inst(MirInst::Binary {
             dest: above_max.clone(),
             op: MirBinaryOp::Gt,
-            left: source.clone(),
+            left: source_int.clone(),
             right: max_value,
         });
         let out_of_range = self.new_value();
@@ -2757,7 +2793,7 @@ impl FunctionLoweringCtx {
             sum_type: "Option".to_string(),
             variant: "Some".to_string(),
             tag: 0,
-            fields: vec![source],
+            fields: vec![source_int],
         });
         self.sum_value_types
             .insert(some_value.clone(), "Option".to_string());
@@ -3639,6 +3675,71 @@ mod tests {
                     } if sum_type == "Option" && variant == "Some" && *tag == 0
                 )),
             "expected Some construction in try_from lowering"
+        );
+    }
+
+    #[test]
+    fn lower_hir_module_widens_signed_fixed_width_input_before_try_from_checks() {
+        let option_int8 = Type::Option(Box::new(Type::IntN(
+            kea_types::IntWidth::I8,
+            kea_types::Signedness::Signed,
+        )));
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "narrow_param".to_string(),
+                params: vec![HirParam {
+                    name: Some("x".to_string()),
+                    span: kea_ast::Span::synthetic(),
+                }],
+                body: HirExpr {
+                    kind: HirExprKind::Call {
+                        func: Box::new(HirExpr {
+                            kind: HirExprKind::Var("Int8.try_from".to_string()),
+                            ty: Type::Function(FunctionType::pure(
+                                vec![Type::Dynamic],
+                                option_int8.clone(),
+                            )),
+                            span: kea_ast::Span::synthetic(),
+                        }),
+                        args: vec![HirExpr {
+                            kind: HirExprKind::Var("x".to_string()),
+                            ty: Type::IntN(
+                                kea_types::IntWidth::I8,
+                                kea_types::Signedness::Signed,
+                            ),
+                            span: kea_ast::Span::synthetic(),
+                        }],
+                    },
+                    ty: option_int8.clone(),
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::pure(
+                    vec![Type::IntN(
+                        kea_types::IntWidth::I8,
+                        kea_types::Signedness::Signed,
+                    )],
+                    option_int8,
+                )),
+                effects: EffectRow::pure(),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let mir = lower_hir_module(&hir);
+        let function = &mir.functions[0];
+        assert!(
+            function
+                .blocks
+                .iter()
+                .flat_map(|block| block.instructions.iter())
+                .any(|inst| matches!(
+                    inst,
+                    MirInst::Unary {
+                        op: MirUnaryOp::WidenSignedToInt,
+                        ..
+                    }
+                )),
+            "expected signed widening before try_from range checks"
         );
     }
 

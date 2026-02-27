@@ -12982,29 +12982,41 @@ fn infer_expr_bidir(
                 for (i, bound_arg) in bound_args.iter().enumerate() {
                     if let Some(param_ty) = ft.params.get(i) {
                         let known_arg_ty = arg_types[i].clone();
-                        arg_types[i] = match bound_arg {
-                            BoundArg::Provided(arg_expr) => enforce_param_contract_with_known_arg(
-                                arg_expr,
-                                &known_arg_ty,
-                                param_ty,
-                                i,
-                                env,
-                                unifier,
-                                records,
-                                traits,
-                                sum_types,
-                            ),
-                            BoundArg::Default(arg_expr) => enforce_param_contract_with_known_arg(
-                                arg_expr,
-                                &known_arg_ty,
-                                param_ty,
-                                i,
-                                &mut default_env,
-                                unifier,
-                                records,
-                                traits,
-                                sum_types,
-                            ),
+                        let allow_try_from_integer_widening = i == 0
+                            && is_try_from_function_reference(func)
+                            && matches!(param_ty, Type::Int)
+                            && known_arg_ty.is_integer();
+                        arg_types[i] = if allow_try_from_integer_widening {
+                            Type::Int
+                        } else {
+                            match bound_arg {
+                                BoundArg::Provided(arg_expr) => {
+                                    enforce_param_contract_with_known_arg(
+                                        arg_expr,
+                                        &known_arg_ty,
+                                        param_ty,
+                                        i,
+                                        env,
+                                        unifier,
+                                        records,
+                                        traits,
+                                        sum_types,
+                                    )
+                                }
+                                BoundArg::Default(arg_expr) => {
+                                    enforce_param_contract_with_known_arg(
+                                        arg_expr,
+                                        &known_arg_ty,
+                                        param_ty,
+                                        i,
+                                        &mut default_env,
+                                        unifier,
+                                        records,
+                                        traits,
+                                        sum_types,
+                                    )
+                                }
+                            }
                         };
                         if let Some(param_name) = call_signature
                             .as_ref()
@@ -13050,6 +13062,20 @@ fn infer_expr_bidir(
                     try_from_target_from_callable_type(&resolved_callable)
                 && let Some(bound_arg) = bound_args.first()
             {
+                if let Some(arg_ty) = arg_types.first() {
+                    let resolved_arg = unifier.substitution.apply(arg_ty);
+                    if !matches!(resolved_arg, Type::Var(_)) && !resolved_arg.is_integer() {
+                        unifier.push_error(
+                            Diagnostic::error(
+                                Category::TypeMismatch,
+                                format!(
+                                    "narrowing conversion expects an integer input, got `{resolved_arg}`"
+                                ),
+                            )
+                            .at(span_to_loc(func.span)),
+                        );
+                    }
+                }
                 let arg_expr = match bound_arg {
                     BoundArg::Provided(arg_expr) | BoundArg::Default(arg_expr) => arg_expr,
                 };

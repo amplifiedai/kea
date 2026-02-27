@@ -2907,6 +2907,14 @@ fn lower_unary(
         MirUnaryOp::Popcount if value_ty.is_int() => builder.ins().popcnt(value),
         MirUnaryOp::LeadingZeros if value_ty.is_int() => builder.ins().clz(value),
         MirUnaryOp::TrailingZeros if value_ty.is_int() => builder.ins().ctz(value),
+        MirUnaryOp::WidenSignedToInt if value_ty.is_int() && value_ty.bits() < 64 => {
+            builder.ins().sextend(types::I64, value)
+        }
+        MirUnaryOp::WidenUnsignedToInt if value_ty.is_int() && value_ty.bits() < 64 => {
+            builder.ins().uextend(types::I64, value)
+        }
+        MirUnaryOp::WidenSignedToInt if value_ty == types::I64 => value,
+        MirUnaryOp::WidenUnsignedToInt if value_ty == types::I64 => value,
         _ => {
             return Err(CodegenError::UnsupportedMir {
                 function: function_name.to_string(),
