@@ -9367,6 +9367,90 @@ theorem principalBoundaryMasterRunBundleConsequenceSuite_noUnify_field
     h_suite.noUnifyConsequences h_no h_ok
 
 /--
+One-hop projection: arbitrary-success all-hooks expression run-bundle from the
+master run-bundle consequence suite.
+-/
+theorem principalBoundaryMasterRunBundleConsequenceSuite_allHooks_expr
+    (h_suite : PrincipalBoundaryMasterRunBundleConsequenceSuite)
+    (h_app0 : AppUnifySoundHook) (h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty :=
+  principalBoundaryMasterRunBundleSuite_allHooks_expr
+    h_suite.runBundles h_app0 h_proj0 h_ok
+
+/--
+One-hop projection: arbitrary-success all-hooks field run-bundle from the
+master run-bundle consequence suite.
+-/
+theorem principalBoundaryMasterRunBundleConsequenceSuite_allHooks_field
+    (h_suite : PrincipalBoundaryMasterRunBundleConsequenceSuite)
+    (h_app0 : AppUnifySoundHook) (h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf :=
+  principalBoundaryMasterRunBundleSuite_allHooks_field
+    h_suite.runBundles h_app0 h_proj0 h_ok
+
+/--
+One-hop projection: no-unify all-hooks expression run-bundle from the master
+run-bundle consequence suite.
+-/
+theorem principalBoundaryMasterRunBundleConsequenceSuite_noUnifyAllHooks_expr
+    (h_suite : PrincipalBoundaryMasterRunBundleConsequenceSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty :=
+  principalBoundaryMasterRunBundleSuite_noUnifyAllHooks_expr
+    h_suite.runBundles h_no h_ok
+
+/--
+One-hop projection: no-unify all-hooks field run-bundle from the master
+run-bundle consequence suite.
+-/
+theorem principalBoundaryMasterRunBundleConsequenceSuite_noUnifyAllHooks_field
+    (h_suite : PrincipalBoundaryMasterRunBundleConsequenceSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf :=
+  principalBoundaryMasterRunBundleSuite_noUnifyAllHooks_field
+    h_suite.runBundles h_no h_ok
+
+/--
+One-hop projection: no-unify-to-general expression run-bundle from the master
+run-bundle consequence suite.
+-/
+theorem principalBoundaryMasterRunBundleConsequenceSuite_noUnifyToGeneral_expr
+    (h_suite : PrincipalBoundaryMasterRunBundleConsequenceSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty :=
+  principalBoundaryMasterRunBundleSuite_noUnifyToGeneral_expr
+    h_suite.runBundles h_no h_ok
+
+/--
+One-hop projection: no-unify-to-general field run-bundle from the master
+run-bundle consequence suite.
+-/
+theorem principalBoundaryMasterRunBundleConsequenceSuite_noUnifyToGeneral_field
+    (h_suite : PrincipalBoundaryMasterRunBundleConsequenceSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf :=
+  principalBoundaryMasterRunBundleSuite_noUnifyToGeneral_field
+    h_suite.runBundles h_no h_ok
+
+/--
 Master-run-bundle-consequence-suite convenience wrapper: derive the packaged
 no-unify expression consequence bundle from a successful no-unify run.
 -/
