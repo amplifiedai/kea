@@ -10,3 +10,26 @@ fn reversed_less_is_greater() -> Bool
   case reverse(Less)
     Greater -> true
     _ -> false
+
+fn is_less(value: Ordering) -> Bool
+  case value
+    Less -> true
+    _ -> false
+
+fn is_equal(value: Ordering) -> Bool
+  case value
+    Equal -> true
+    _ -> false
+
+fn is_greater(value: Ordering) -> Bool
+  case value
+    Greater -> true
+    _ -> false
+
+fn compare_int(x: Int, y: Int) -> Ordering
+  if x < y
+    Less
+  else if x > y
+    Greater
+  else
+    Equal
