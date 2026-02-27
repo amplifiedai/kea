@@ -210,6 +210,26 @@ theorem failResultContract_sound
     simpa [failLabel, fc.h_failZero.1] using h_removed_handled
   exact ⟨h_removed_fail, failAsZeroResume_implies_resumeProvenance fc.clause fc.h_failZero, fc.h_lowered⟩
 
+theorem failResultContract_sound_closedAware
+    (fc : FailResultContract) :
+    RowFields.has
+      (EffectRow.fields (HandlerClosedAwareContracts.resultEffectsClosedAware fc.clause))
+      failLabel = false ∧
+      HandleClauseContract.resumeProvenance fc.clause ∧
+      fc.loweredTy = .result fc.okTy fc.errTy := by
+  have h_removed_handled :
+      RowFields.has
+        (EffectRow.fields (HandlerClosedAwareContracts.resultEffectsClosedAware fc.clause))
+        fc.clause.handled = false :=
+    HandlerClosedAwareContracts.wellTypedSlice_implies_handled_removed_closedAware
+      fc.clause fc.h_wellTyped
+  have h_removed_fail :
+      RowFields.has
+        (EffectRow.fields (HandlerClosedAwareContracts.resultEffectsClosedAware fc.clause))
+        failLabel = false := by
+    simpa [failLabel, fc.h_failZero.1] using h_removed_handled
+  exact ⟨h_removed_fail, failAsZeroResume_implies_resumeProvenance fc.clause fc.h_failZero, fc.h_lowered⟩
+
 theorem failResultContract_loopLegal
     (fc : FailResultContract) :
     ResumeUse.loopLegal fc.clause.resumeUse := by
