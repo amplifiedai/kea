@@ -3037,6 +3037,52 @@ mod tests {
     }
 
     #[test]
+    fn lower_function_record_pattern_guard_binds_before_guard() {
+        let module = parse_module_from_text(
+            "record User\n  age: Int\n  score: Int\n\nfn pick(u: User) -> Int\n  case u\n    User { age: years, .. } when years == 7 -> years\n    _ -> 0",
+        );
+        let mut env = TypeEnv::new();
+        env.bind(
+            "pick".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::pure(
+                vec![Type::Record(kea_types::RecordType {
+                    name: "User".to_string(),
+                    params: vec![],
+                    row: kea_types::RowType::closed(vec![
+                        (Label::new("age"), Type::Int),
+                        (Label::new("score"), Type::Int),
+                    ]),
+                })],
+                Type::Int,
+            ))),
+        );
+
+        let lowered = lower_module(&module, &env);
+        let function = lowered
+            .declarations
+            .iter()
+            .find_map(|decl| match decl {
+                HirDecl::Function(function) if function.name == "pick" => Some(function),
+                _ => None,
+            })
+            .expect("expected lowered pick function");
+
+        let HirExprKind::If { condition, .. } = &function.body.kind else {
+            panic!("expected guarded record case to lower to if expression");
+        };
+        let HirExprKind::Block(exprs) = &condition.kind else {
+            panic!("expected record guard to evaluate inside binding block");
+        };
+        assert!(matches!(
+            exprs.first().map(|expr| &expr.kind),
+            Some(HirExprKind::Let {
+                pattern: HirPattern::Var(name),
+                ..
+            }) if name == "years"
+        ));
+    }
+
+    #[test]
     fn lower_function_anon_record_pattern_case_desugars_to_if_chain() {
         let module = parse_module_from_text(
             "fn pick(u: { age: Int, score: Int }) -> Int\n  case u\n    #{ age: 7, .. } -> 1\n    _ -> 0",
