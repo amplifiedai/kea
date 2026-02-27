@@ -1,6 +1,6 @@
 # Brief: Module System
 
-**Status:** done
+**Status:** active
 **Priority:** v1-critical
 **Depends on:** 0d-codegen-pure (needs working codegen pipeline)
 **Blocks:** stdlib-bootstrap (all tiers), 0e-runtime-effects, self-hosting
@@ -417,4 +417,6 @@ instead of duplicating session setup.
 - 2026-02-27 16:59: Wired unqualified call fallback to prefer inherent module-struct methods before trait fallback: unresolved `x.method(...)` now checks receiver constructor ownership via `TypeEnv` inherent-method metadata and resolves through module-qualified schemes when available. Added regression `compile_project_use_module_unqualified_ums_for_same_name_module_struct_method` to lock compile-time UMS resolution for same-name module struct methods (`use List` + `xs.size()`).
 - 2026-02-27 17:02: Closed the runtime/codegen UMS gap for bare cross-module method symbols by fixing HIR function typing fallback: when lowering merged modules, bare non-entry declarations now recover their type from a unique module-member scheme (`TypeEnv::lookup_unique_module_type_scheme`) instead of defaulting to `() -> Dynamic`. This removed the call-arity verifier fault on `xs.size()` and upgraded the same-name module-struct UMS regression to execute-path coverage (`compile_and_execute_use_module_unqualified_ums_for_same_name_module_struct_method`).
 - 2026-02-27 17:05: Folded same-name module-struct behavior into the resolution matrix with execute-path coverage (`resolution_matrix_same_name_module_struct_methods`): matrix now validates direct-qualified, UMS-unqualified, and UMS-qualified calls across same-module/cross-module relations and import states (`not imported`, `use Module`, `use Module.{name}`, prelude), including module-qualifier differences (`App` same-module vs `List` cross-module).
-- 2026-02-27 17:07: Final closeout gate passed (`mise run check-full`), including full lint, 1279/1279 workspace tests, and doctests. 0d1 marked done and moved to `BRIEFS/done/` with `BRIEFS/INDEX.md` updated atomically.
+- 2026-02-27 17:07: Final closeout gate passed (`mise run check-full`), including full lint, 1279/1279 workspace tests, and doctests.
+- 2026-02-27 17:15: Reopened after DoD audit: three required items were not complete at closeout time — (1) `@intrinsic` compile-to-runtime-call pipeline, (2) prelude autoload validated against real repo stdlib modules (not only temp test fixtures), and (3) integration test proving user code imports stdlib and executes `List.map` + `Option.unwrap_or`. Remaining 0d1 work is now scoped to these deltas only.
+- **Next:** implement `@intrinsic` annotation lowering/codegen path with runtime-symbol call tests, land initial repo `stdlib/` Tier 0 modules needed for prelude autoload validation, and add execute-path integration test for `List.map`/`Option.unwrap_or` over real stdlib files.
