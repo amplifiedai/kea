@@ -7720,6 +7720,28 @@ theorem principalBoundaryMasterSuite_allHooks_field
   principalPreconditionedAllHooksSuite_capstone_field
     h_suite.allHooks h_app0 h_proj0 h_ok
 
+/-- One-hop expression general all-hooks run-bundle projection from master suite. -/
+theorem principalBoundaryMasterSuite_allHooks_runBundle_expr
+    (h_suite : PrincipalBoundaryMasterSuite)
+    (h_app0 : AppUnifySoundHook) (h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty :=
+  principalPreconditionedAllHooksSuite_runBundle_expr
+    h_suite.allHooks h_app0 h_proj0 h_ok
+
+/-- One-hop field general all-hooks run-bundle projection from master suite. -/
+theorem principalBoundaryMasterSuite_allHooks_runBundle_field
+    (h_suite : PrincipalBoundaryMasterSuite)
+    (h_app0 : AppUnifySoundHook) (h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf :=
+  principalPreconditionedAllHooksSuite_runBundle_field
+    h_suite.allHooks h_app0 h_proj0 h_ok
+
 /-- One-hop expression all-hooks no-unify capstone projection from master suite. -/
 theorem principalBoundaryMasterSuite_noUnifyAllHooks_expr
     (h_suite : PrincipalBoundaryMasterSuite)
