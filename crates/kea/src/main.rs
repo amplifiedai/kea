@@ -5,7 +5,7 @@ use std::process::Command as ProcessCommand;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use kea_ast::{DeclKind, ExprDecl, FileId, FnDecl, Module, Span, TypeDef};
+use kea_ast::{DeclKind, ExprDecl, FileId, FnDecl, ImportItems, Module, Span, TypeDef};
 use kea_codegen::{Backend, BackendConfig, CodegenMode, CraneliftBackend, default_abi_manifest, execute_hir_main_jit};
 #[cfg(test)]
 use kea_codegen::PassStats;
@@ -18,7 +18,7 @@ use kea_infer::typeck::{
     validate_declared_fn_effect_row_with_env_and_records, validate_module_annotations,
     validate_module_fn_annotations, validate_where_clause_traits,
 };
-use kea_infer::InferenceContext;
+use kea_infer::{Category, InferenceContext};
 use kea_mir::lower_hir_module;
 use kea_syntax::{lex_layout, parse_module};
 
@@ -374,6 +374,7 @@ fn merge_modules_for_codegen(modules: &[(String, Module)]) -> Module {
 
 fn parse_and_typecheck_project(entry: &Path) -> Result<PipelineResult, String> {
     let loaded_modules = collect_project_modules(entry)?;
+    let entry_module_path = module_path_from_entry(entry);
     let mut env = TypeEnv::new();
     let mut records = RecordRegistry::new();
     let mut traits = TraitRegistry::new();
@@ -382,11 +383,19 @@ fn parse_and_typecheck_project(entry: &Path) -> Result<PipelineResult, String> {
     let mut typed_modules = Vec::new();
 
     for loaded in &loaded_modules {
+        let is_entry_module = loaded.module_path == entry_module_path;
+        if !is_entry_module {
+            env.push_scope();
+        }
+
         let expanded = expand_impl_methods_for_codegen(&loaded.module);
 
         diagnostics.extend(validate_module_fn_annotations(&loaded.module));
         diagnostics.extend(validate_module_annotations(&loaded.module));
         if has_errors(&diagnostics) {
+            if !is_entry_module {
+                env.pop_scope();
+            }
             return Err(format_diagnostics(
                 "type annotation validation failed",
                 &diagnostics,
@@ -402,6 +411,8 @@ fn parse_and_typecheck_project(entry: &Path) -> Result<PipelineResult, String> {
             &mut diagnostics,
         )?;
 
+        let imported_symbols = apply_module_imports(&expanded, &mut env, &mut diagnostics)?;
+
         typecheck_functions(
             &expanded,
             &mut env,
@@ -412,6 +423,16 @@ fn parse_and_typecheck_project(entry: &Path) -> Result<PipelineResult, String> {
             Some(&loaded.module_path),
         )?;
 
+        if !is_entry_module {
+            for fn_name in declared_function_names(&expanded) {
+                env.clear_function_metadata(&fn_name);
+            }
+            for imported_name in imported_symbols {
+                env.clear_function_metadata(&imported_name);
+            }
+            env.pop_scope();
+        }
+
         typed_modules.push((loaded.module_path.clone(), expanded));
     }
 
@@ -421,6 +442,99 @@ fn parse_and_typecheck_project(entry: &Path) -> Result<PipelineResult, String> {
         type_env: env,
         diagnostics,
     })
+}
+
+fn declared_function_names(module: &Module) -> Vec<String> {
+    module
+        .declarations
+        .iter()
+        .filter_map(|decl| match &decl.node {
+            DeclKind::Function(fn_decl) => Some(fn_decl.name.node.clone()),
+            DeclKind::ExprFn(expr_decl) => Some(expr_decl.name.node.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+fn apply_module_imports(
+    module: &Module,
+    env: &mut TypeEnv,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Result<Vec<String>, String> {
+    let mut imported_symbols = Vec::new();
+
+    for decl in &module.declarations {
+        let DeclKind::Import(import) = &decl.node else {
+            continue;
+        };
+
+        let module_path = import.module.node.clone();
+        let module_short = import
+            .alias
+            .as_ref()
+            .map(|alias| alias.node.clone())
+            .unwrap_or_else(|| {
+                module_path
+                    .rsplit('.')
+                    .next()
+                    .unwrap_or(module_path.as_str())
+                    .to_string()
+            });
+        env.register_module_alias(&module_short, &module_path);
+
+        let ImportItems::Named(items) = &import.items else {
+            continue;
+        };
+
+        for item in items {
+            let item_name = item.node.clone();
+            let Some(scheme) = env.resolve_qualified(&module_path, &item_name).cloned() else {
+                let available = env
+                    .module_function_names(&module_path)
+                    .unwrap_or_default()
+                    .join(", ");
+                let mut diag = Diagnostic::error(
+                    Category::TypeError,
+                    format!("module `{module_path}` has no item `{item_name}`"),
+                )
+                .at(kea_diag::SourceLocation {
+                    file_id: item.span.file.0,
+                    start: item.span.start,
+                    end: item.span.end,
+                });
+                if !available.is_empty() {
+                    diag = diag.with_help(format!("available items: {available}"));
+                }
+                diagnostics.push(diag);
+                continue;
+            };
+
+            env.bind(item_name.clone(), scheme);
+            imported_symbols.push(item_name.clone());
+
+            if let Some(signature) = env
+                .resolve_qualified_function_signature(&module_path, &item_name)
+                .cloned()
+            {
+                env.set_function_signature(item_name.clone(), signature);
+            }
+            if let Some(effect_signature) = env
+                .resolve_qualified_effect_signature(&module_path, &item_name)
+                .cloned()
+            {
+                env.set_function_effect_signature(item_name.clone(), effect_signature);
+            }
+            if let Some(effect_row) = env.resolve_qualified_effect_row(&module_path, &item_name) {
+                env.set_function_effect_row(item_name, effect_row);
+            }
+        }
+    }
+
+    if has_errors(diagnostics) {
+        return Err(format_diagnostics("import resolution failed", diagnostics));
+    }
+
+    Ok(imported_symbols)
 }
 
 fn expand_impl_methods_for_codegen(module: &Module) -> Module {
@@ -852,6 +966,45 @@ mod tests {
 
         let run = run_file(&app_path).expect("run should succeed");
         assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_dir_all(project_dir);
+    }
+
+    #[test]
+    fn compile_and_execute_use_named_import_bare_call_exit_code() {
+        let project_dir = temp_project_dir("kea-cli-project-import-named");
+        let src_dir = project_dir.join("src");
+        std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+
+        std::fs::write(src_dir.join("math.kea"), "fn inc(x: Int) -> Int\n  x + 1\n")
+            .expect("math module write should succeed");
+        let app_path = src_dir.join("app.kea");
+        std::fs::write(&app_path, "use Math.{inc}\nfn main() -> Int\n  inc(41)\n")
+            .expect("app module write should succeed");
+
+        let run = run_file(&app_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_dir_all(project_dir);
+    }
+
+    #[test]
+    fn compile_project_rejects_bare_call_without_named_import() {
+        let project_dir = temp_project_dir("kea-cli-project-import-scope");
+        let src_dir = project_dir.join("src");
+        std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+
+        std::fs::write(src_dir.join("math.kea"), "fn inc(x: Int) -> Int\n  x + 1\n")
+            .expect("math module write should succeed");
+        let app_path = src_dir.join("app.kea");
+        std::fs::write(&app_path, "use Math\nfn main() -> Int\n  inc(41)\n")
+            .expect("app module write should succeed");
+
+        let err = run_file(&app_path).expect_err("bare import should require named use");
+        assert!(
+            err.contains("undefined variable `inc`"),
+            "expected undefined variable diagnostic, got: {err}"
+        );
 
         let _ = std::fs::remove_dir_all(project_dir);
     }
