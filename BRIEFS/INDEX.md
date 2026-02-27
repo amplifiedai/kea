@@ -75,6 +75,7 @@ Designed and approved. Ready to pick up. Ordered by execution sequence per ROADM
 
 7. **[Testing](todo/testing.md)** (Phase 0d through Phase 1) — `assert` (Fail) + `check` (Test effect) dual assertion model. Compiler-level expression capture, structural diff, effect-driven parallelism, property testing via `Gen` effect. Test runner portion starts with 0d. Benchmark harness is a 0d deliverable.
 8. **[Lean formalization](in-progress/lean-formalization.md)** (Phase 0c-0e parallel, active) — Migrate Rill's Lean 4 formalization into Kea, then prove Kea-specific effect handler properties (removal, resume linearity, Fail/Result equivalence).
+12. **[Algorithm gallery](todo/algorithm-gallery.md)** (Phase 0e through 0g, parallel) — Curated corpus of classic algorithms in `tests/algorithms/`. Exemplary code with doc comments, test blocks, and CI benchmarks. Validates language features per phase: Welford's (0e), FNV-1a + merge sort (0f early), quicksort + HAMT (0f mid-late), UTF-8 validation + KMP (0g).
 
 ### Phase 1-3: Not yet briefed
 
