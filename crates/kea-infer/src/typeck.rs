@@ -13074,6 +13074,10 @@ fn infer_expr_bidir(
                         unifier,
                     ) {
                         decimal_ty
+                    } else if let Some(widened_ty) =
+                        widened_integer_arithmetic_result_type(&left_resolved, &right_resolved)
+                    {
+                        widened_ty
                     } else {
                         constrain_type_eq(
                             unifier,
@@ -14924,6 +14928,42 @@ fn eval_const_int_expr(expr: &Expr) -> Option<i128> {
                     }
                 }
                 _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+fn int_width_bits(width: kea_types::IntWidth) -> u8 {
+    match width {
+        kea_types::IntWidth::I8 => 8,
+        kea_types::IntWidth::I16 => 16,
+        kea_types::IntWidth::I32 => 32,
+        kea_types::IntWidth::I64 => 64,
+    }
+}
+
+fn max_int_width(left: kea_types::IntWidth, right: kea_types::IntWidth) -> kea_types::IntWidth {
+    if int_width_bits(left) >= int_width_bits(right) {
+        left
+    } else {
+        right
+    }
+}
+
+fn widened_integer_arithmetic_result_type(left: &Type, right: &Type) -> Option<Type> {
+    match (left, right) {
+        (Type::Int, rhs) if rhs.is_integer() => Some(Type::Int),
+        (lhs, Type::Int) if lhs.is_integer() => Some(Type::Int),
+        (Type::IntN(left_w, left_sign), Type::IntN(right_w, right_sign)) => {
+            if left_sign == right_sign {
+                Some(Type::IntN(
+                    max_int_width(*left_w, *right_w),
+                    *left_sign,
+                ))
+            } else {
+                // Mixed signed/unsigned arithmetic widens to `Int` in v0.
+                Some(Type::Int)
             }
         }
         _ => None,
