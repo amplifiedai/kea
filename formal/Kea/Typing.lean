@@ -14765,6 +14765,122 @@ theorem principalNoUnifyPreconditionedField_hookIrrelevant_of_success_via_master
   principalNoUnifyPreconditionedField_hookIrrelevant_of_success_via_masterRunBundleConsequenceSuite
     h_no h_ok
 
+/-- Bundled-seed alias for no-unify core expression on the consequence suite. -/
+theorem principalNoUnifyCoreExpr_of_success_via_masterRunBundleConsequenceSuite_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_hooks : UnifyHookPremises) :
+    PrincipalTypingSliceCore env e ty :=
+  principalNoUnifyCoreExpr_of_success_via_masterRunBundleConsequenceSuite
+    h_no h_ok
+
+/-- Bundled-seed alias for no-unify core field on the consequence suite. -/
+theorem principalNoUnifyCoreField_of_success_via_masterRunBundleConsequenceSuite_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_hooks : UnifyHookPremises) :
+    PrincipalFieldTypingSliceCore env fs rf :=
+  principalNoUnifyCoreField_of_success_via_masterRunBundleConsequenceSuite
+    h_no h_ok
+
+/-- Bundled-seed alias for no-unify any-hooks expression preconditioning. -/
+theorem principalNoUnifyPreconditionedExpr_anyHooks_of_success_via_masterRunBundleConsequenceSuite_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_hooks : UnifyHookPremises) :
+    ∀ h_app h_proj,
+      PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty :=
+  principalNoUnifyPreconditionedExpr_anyHooks_of_success_via_masterRunBundleConsequenceSuite
+    h_no h_ok
+
+/-- Bundled-seed alias for no-unify any-hooks field preconditioning. -/
+theorem principalNoUnifyPreconditionedField_anyHooks_of_success_via_masterRunBundleConsequenceSuite_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_hooks : UnifyHookPremises) :
+    ∀ h_app h_proj,
+      PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf :=
+  principalNoUnifyPreconditionedField_anyHooks_of_success_via_masterRunBundleConsequenceSuite
+    h_no h_ok
+
+/-- Bundled-seed alias for no-unify any-hooks expression iff preconditioning. -/
+theorem principalNoUnifyPreconditionedCoreIffExpr_anyHooks_of_success_via_masterRunBundleConsequenceSuite_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_hooks : UnifyHookPremises) :
+    ∀ h_app h_proj,
+      (PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty
+        ↔ PrincipalTypingSliceCore env e ty) :=
+  principalNoUnifyPreconditionedCoreIffExpr_anyHooks_of_success_via_masterRunBundleConsequenceSuite
+    h_no h_ok
+
+/-- Bundled-seed alias for no-unify any-hooks field iff preconditioning. -/
+theorem principalNoUnifyPreconditionedCoreIffField_anyHooks_of_success_via_masterRunBundleConsequenceSuite_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_hooks : UnifyHookPremises) :
+    ∀ h_app h_proj,
+      (PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf
+        ↔ PrincipalFieldTypingSliceCore env fs rf) :=
+  principalNoUnifyPreconditionedCoreIffField_anyHooks_of_success_via_masterRunBundleConsequenceSuite
+    h_no h_ok
+
+/-- Bundled-seed alias for no-unify run-bundle expression on the consequence suite. -/
+theorem principalNoUnifyRunBundleExpr_of_success_via_masterRunBundleConsequenceSuite_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_hooks : UnifyHookPremises) :
+    PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty :=
+  principalNoUnifyRunBundleExpr_of_success_via_masterRunBundleConsequenceSuite
+    h_no h_ok
+
+/-- Bundled-seed alias for no-unify run-bundle field on the consequence suite. -/
+theorem principalNoUnifyRunBundleField_of_success_via_masterRunBundleConsequenceSuite_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_hooks : UnifyHookPremises) :
+    PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf :=
+  principalNoUnifyRunBundleField_of_success_via_masterRunBundleConsequenceSuite
+    h_no h_ok
+
+/-- Bundled-seed alias for no-unify expression consequence bundle on the consequence suite. -/
+theorem principalNoUnifyExprRunBundleConsequences_of_success_via_masterRunBundleConsequenceSuite_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_hooks : UnifyHookPremises) :
+    PrincipalNoUnifyExprRunBundleConsequences st fuel env e st' ty :=
+  principalNoUnifyExprRunBundleConsequences_of_success_via_masterRunBundleConsequenceSuite
+    h_no h_ok
+
+/-- Bundled-seed alias for no-unify field consequence bundle on the consequence suite. -/
+theorem principalNoUnifyFieldRunBundleConsequences_of_success_via_masterRunBundleConsequenceSuite_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_hooks : UnifyHookPremises) :
+    PrincipalNoUnifyFieldRunBundleConsequences st fuel env fs st' rf :=
+  principalNoUnifyFieldRunBundleConsequences_of_success_via_masterRunBundleConsequenceSuite
+    h_no h_ok
+
 /--
 One-hop expression hook-specific no-unify capstone projection (derived from
 all-hooks compatibility) from the master suite.
