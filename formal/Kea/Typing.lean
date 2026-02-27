@@ -9406,8 +9406,9 @@ theorem principalNoUnifyCoreExpr_of_success_via_masterSuite
     (h_no : NoUnifyBranchesExpr e)
     (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
     PrincipalTypingSliceCore env e ty :=
-  principalNoUnifyToGeneralCoreExpr_of_success
-    h_suite.noUnifyToGeneralAllHooks h_no h_ok
+  principalPreconditionedExprAllHooksRunBundle_core
+    (principalNoUnifyToGeneralRunBundleExpr_of_success
+      h_suite.noUnifyToGeneralAllHooks h_no h_ok)
 
 /--
 Master-suite no-unify convenience wrapper: derive preconditioned expression
@@ -9421,8 +9422,9 @@ theorem principalNoUnifyPreconditionedExpr_anyHooks_of_success_via_masterSuite
     (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
     ∀ h_app h_proj,
       PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty :=
-  principalNoUnifyToGeneralPreconditionedExpr_anyHooks_of_success
-    h_suite.noUnifyToGeneralAllHooks h_no h_ok
+  principalPreconditionedExprAllHooksRunBundle_preconditioned_anyHooks
+    (principalNoUnifyToGeneralRunBundleExpr_of_success
+      h_suite.noUnifyToGeneralAllHooks h_no h_ok)
 
 /--
 Master-suite no-unify convenience wrapper: derive preconditioned expression
@@ -9523,8 +9525,8 @@ theorem principalNoUnifyPreconditionedCoreIffExpr_anyHooks_of_success_via_master
     ∀ h_app h_proj,
       (PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty
         ↔ PrincipalTypingSliceCore env e ty) :=
-  principalNoUnifyToGeneralPreconditionedCoreIffExpr_anyHooks_of_success
-    h_suite.noUnifyToGeneralAllHooks h_no h_ok
+  principalPreconditionedExprAllHooksRunBundle_preconditionedCoreIff_anyHooks
+    (principalNoUnifyRunBundleExpr_of_success_via_masterSuite h_suite h_no h_ok)
 
 /--
 Master-suite no-unify convenience wrapper: derive fixed-run expression
@@ -9585,8 +9587,9 @@ theorem principalNoUnifyCoreField_of_success_via_masterSuite
     (h_no : NoUnifyBranchesFields fs)
     (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
     PrincipalFieldTypingSliceCore env fs rf :=
-  principalNoUnifyToGeneralCoreField_of_success
-    h_suite.noUnifyToGeneralAllHooks h_no h_ok
+  principalPreconditionedFieldAllHooksRunBundle_core
+    (principalNoUnifyToGeneralRunBundleField_of_success
+      h_suite.noUnifyToGeneralAllHooks h_no h_ok)
 
 /--
 Master-suite no-unify convenience wrapper: derive preconditioned field
@@ -9600,8 +9603,9 @@ theorem principalNoUnifyPreconditionedField_anyHooks_of_success_via_masterSuite
     (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
     ∀ h_app h_proj,
       PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf :=
-  principalNoUnifyToGeneralPreconditionedField_anyHooks_of_success
-    h_suite.noUnifyToGeneralAllHooks h_no h_ok
+  principalPreconditionedFieldAllHooksRunBundle_preconditioned_anyHooks
+    (principalNoUnifyToGeneralRunBundleField_of_success
+      h_suite.noUnifyToGeneralAllHooks h_no h_ok)
 
 /--
 Master-suite no-unify convenience wrapper: derive preconditioned field
@@ -9701,8 +9705,8 @@ theorem principalNoUnifyPreconditionedCoreIffField_anyHooks_of_success_via_maste
     ∀ h_app h_proj,
       (PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf
         ↔ PrincipalFieldTypingSliceCore env fs rf) :=
-  principalNoUnifyToGeneralPreconditionedCoreIffField_anyHooks_of_success
-    h_suite.noUnifyToGeneralAllHooks h_no h_ok
+  principalPreconditionedFieldAllHooksRunBundle_preconditionedCoreIff_anyHooks
+    (principalNoUnifyRunBundleField_of_success_via_masterSuite h_suite h_no h_ok)
 
 /--
 Master-suite no-unify convenience wrapper: derive fixed-run field
@@ -9766,8 +9770,8 @@ theorem principalNoUnifyPreconditionedExpr_hookIrrelevant_of_success_via_masterS
     (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
     (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
       ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) :=
-  principalNoUnifyToGeneralPreconditionedExpr_hookIrrelevant_of_success
-    h_suite.noUnifyToGeneralAllHooks h_no h_ok
+  principalPreconditionedExprAllHooksRunBundle_hook_irrelevant
+    (principalNoUnifyRunBundleExpr_of_success_via_masterSuite h_suite h_no h_ok)
 
 /--
 Master-suite no-unify convenience wrapper: derive fixed-run field
@@ -9783,8 +9787,8 @@ theorem principalNoUnifyPreconditionedField_hookIrrelevant_of_success_via_master
     (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
     (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
       ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
-  principalNoUnifyToGeneralPreconditionedField_hookIrrelevant_of_success
-    h_suite.noUnifyToGeneralAllHooks h_no h_ok
+  principalPreconditionedFieldAllHooksRunBundle_hook_irrelevant
+    (principalNoUnifyRunBundleField_of_success_via_masterSuite h_suite h_no h_ok)
 
 /--
 Master-suite no-unify-to-general convenience wrapper: derive fixed-run
