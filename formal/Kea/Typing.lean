@@ -13319,6 +13319,293 @@ theorem principalNoUnifyRunBundleField_via_masterRunBundleConsequence_from_cross
     principalNoUnifyAllHooksRunBundlesBothMasterConsequenceRoutesSlices_proved h_no h_ok
 
 /--
+Cross-route coherence: successful no-unify expression runs yield fixed-run
+hook-irrelevance witnesses on both the master-consequence-capstone and
+master-run-bundle-consequence routes.
+-/
+structure PrincipalNoUnifyExprHookIrrelevanceBothMasterConsequenceRoutes
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty) : Prop where
+  viaMasterConsequenceCapstone :
+    ∀ {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+      {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook},
+      (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+        ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty)
+  viaMasterRunBundleConsequence :
+    ∀ {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+      {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook},
+      (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+        ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty)
+
+/--
+Cross-route coherence constructor: successful no-unify expression runs yield
+fixed-run hook-irrelevance witnesses on both master consequence routes.
+-/
+theorem principalNoUnifyExprHookIrrelevance_on_both_master_consequence_routes
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalNoUnifyExprHookIrrelevanceBothMasterConsequenceRoutes
+      st fuel env e st' ty := by
+  refine {
+    viaMasterConsequenceCapstone :=
+      (principalNoUnifyExprRunBundleConsequences_via_masterConsequenceCapstone_from_cross_route_slices
+        h_no h_ok).hookIrrelevant
+    viaMasterRunBundleConsequence :=
+      (principalNoUnifyExprRunBundleConsequences_via_masterRunBundleConsequence_from_cross_route_slices
+        h_no h_ok).hookIrrelevant
+  }
+
+/--
+Cross-route coherence: successful no-unify field runs yield fixed-run
+hook-irrelevance witnesses on both the master-consequence-capstone and
+master-run-bundle-consequence routes.
+-/
+structure PrincipalNoUnifyFieldHookIrrelevanceBothMasterConsequenceRoutes
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields) : Prop where
+  viaMasterConsequenceCapstone :
+    ∀ {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+      {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook},
+      (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+        ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf)
+  viaMasterRunBundleConsequence :
+    ∀ {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+      {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook},
+      (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+        ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf)
+
+/--
+Cross-route coherence constructor: successful no-unify field runs yield
+fixed-run hook-irrelevance witnesses on both master consequence routes.
+-/
+theorem principalNoUnifyFieldHookIrrelevance_on_both_master_consequence_routes
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalNoUnifyFieldHookIrrelevanceBothMasterConsequenceRoutes
+      st fuel env fs st' rf := by
+  refine {
+    viaMasterConsequenceCapstone :=
+      (principalNoUnifyFieldRunBundleConsequences_via_masterConsequenceCapstone_from_cross_route_slices
+        h_no h_ok).hookIrrelevant
+    viaMasterRunBundleConsequence :=
+      (principalNoUnifyFieldRunBundleConsequences_via_masterRunBundleConsequence_from_cross_route_slices
+        h_no h_ok).hookIrrelevant
+  }
+
+/--
+Packaged cross-route irrelevance coherence slice (expression): every successful
+no-unify run yields fixed-run hook-irrelevance witnesses on both master
+consequence routes.
+-/
+def PrincipalNoUnifyExprHookIrrelevanceBothMasterConsequenceRoutesSlice : Prop :=
+  ∀ {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty},
+    NoUnifyBranchesExpr e →
+    inferExprUnify st fuel env e = .ok st' ty →
+    PrincipalNoUnifyExprHookIrrelevanceBothMasterConsequenceRoutes
+      st fuel env e st' ty
+
+/--
+Packaged cross-route irrelevance coherence slice (field): every successful
+no-unify field run yields fixed-run hook-irrelevance witnesses on both master
+consequence routes.
+-/
+def PrincipalNoUnifyFieldHookIrrelevanceBothMasterConsequenceRoutesSlice : Prop :=
+  ∀ {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields},
+    NoUnifyBranchesFields fs →
+    inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)) →
+    PrincipalNoUnifyFieldHookIrrelevanceBothMasterConsequenceRoutes
+      st fuel env fs st' rf
+
+/--
+Combined cross-route fixed-run hook-irrelevance coherence slices over
+expressions and fields for the master consequence entry layers.
+-/
+def PrincipalNoUnifyHookIrrelevanceBothMasterConsequenceRoutesSlices : Prop :=
+  PrincipalNoUnifyExprHookIrrelevanceBothMasterConsequenceRoutesSlice ∧
+    PrincipalNoUnifyFieldHookIrrelevanceBothMasterConsequenceRoutesSlice
+
+/--
+The combined cross-route fixed-run hook-irrelevance coherence slices are fully
+proved for the master consequence entry layers.
+-/
+theorem principalNoUnifyHookIrrelevanceBothMasterConsequenceRoutesSlices_proved :
+    PrincipalNoUnifyHookIrrelevanceBothMasterConsequenceRoutesSlices := by
+  refine ⟨?_, ?_⟩
+  · intro st fuel env e st' ty h_no h_ok
+    exact principalNoUnifyExprHookIrrelevance_on_both_master_consequence_routes
+      h_no h_ok
+  · intro st fuel env fs st' rf h_no h_ok
+    exact principalNoUnifyFieldHookIrrelevance_on_both_master_consequence_routes
+      h_no h_ok
+
+/--
+One-hop projection: expression branch from the cross-route fixed-run
+hook-irrelevance coherence slices.
+-/
+theorem principalNoUnifyHookIrrelevanceBothMasterConsequenceRoutesSlices_expr
+    (h_slices : PrincipalNoUnifyHookIrrelevanceBothMasterConsequenceRoutesSlices)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalNoUnifyExprHookIrrelevanceBothMasterConsequenceRoutes
+      st fuel env e st' ty :=
+  h_slices.1 h_no h_ok
+
+/--
+One-hop projection: field branch from the cross-route fixed-run
+hook-irrelevance coherence slices.
+-/
+theorem principalNoUnifyHookIrrelevanceBothMasterConsequenceRoutesSlices_field
+    (h_slices : PrincipalNoUnifyHookIrrelevanceBothMasterConsequenceRoutesSlices)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalNoUnifyFieldHookIrrelevanceBothMasterConsequenceRoutes
+      st fuel env fs st' rf :=
+  h_slices.2 h_no h_ok
+
+/--
+One-hop projection: extract the master-consequence-capstone expression
+fixed-run hook-irrelevance witness from cross-route irrelevance slices.
+-/
+theorem principalNoUnifyHookIrrelevanceBothMasterConsequenceRoutesSlices_expr_via_masterConsequenceCapstone
+    (h_slices : PrincipalNoUnifyHookIrrelevanceBothMasterConsequenceRoutesSlices)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+      ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) :=
+  (principalNoUnifyHookIrrelevanceBothMasterConsequenceRoutesSlices_expr
+    h_slices h_no h_ok).viaMasterConsequenceCapstone
+
+/--
+One-hop projection: extract the master-run-bundle-consequence expression
+fixed-run hook-irrelevance witness from cross-route irrelevance slices.
+-/
+theorem principalNoUnifyHookIrrelevanceBothMasterConsequenceRoutesSlices_expr_via_masterRunBundleConsequence
+    (h_slices : PrincipalNoUnifyHookIrrelevanceBothMasterConsequenceRoutesSlices)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+      ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) :=
+  (principalNoUnifyHookIrrelevanceBothMasterConsequenceRoutesSlices_expr
+    h_slices h_no h_ok).viaMasterRunBundleConsequence
+
+/--
+One-hop projection: extract the master-consequence-capstone field fixed-run
+hook-irrelevance witness from cross-route irrelevance slices.
+-/
+theorem principalNoUnifyHookIrrelevanceBothMasterConsequenceRoutesSlices_field_via_masterConsequenceCapstone
+    (h_slices : PrincipalNoUnifyHookIrrelevanceBothMasterConsequenceRoutesSlices)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
+  (principalNoUnifyHookIrrelevanceBothMasterConsequenceRoutesSlices_field
+    h_slices h_no h_ok).viaMasterConsequenceCapstone
+
+/--
+One-hop projection: extract the master-run-bundle-consequence field fixed-run
+hook-irrelevance witness from cross-route irrelevance slices.
+-/
+theorem principalNoUnifyHookIrrelevanceBothMasterConsequenceRoutesSlices_field_via_masterRunBundleConsequence
+    (h_slices : PrincipalNoUnifyHookIrrelevanceBothMasterConsequenceRoutesSlices)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
+  (principalNoUnifyHookIrrelevanceBothMasterConsequenceRoutesSlices_field
+    h_slices h_no h_ok).viaMasterRunBundleConsequence
+
+/--
+Canonical projection from proved cross-route irrelevance coherence slices to
+the master-consequence-capstone expression fixed-run hook-irrelevance witness.
+-/
+theorem principalNoUnifyPreconditionedExpr_hookIrrelevant_via_masterConsequenceCapstone_from_cross_route_irrelevance_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+      ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) :=
+  principalNoUnifyHookIrrelevanceBothMasterConsequenceRoutesSlices_expr_via_masterConsequenceCapstone
+    principalNoUnifyHookIrrelevanceBothMasterConsequenceRoutesSlices_proved h_no h_ok
+
+/--
+Canonical projection from proved cross-route irrelevance coherence slices to
+the master-run-bundle-consequence expression fixed-run hook-irrelevance
+witness.
+-/
+theorem principalNoUnifyPreconditionedExpr_hookIrrelevant_via_masterRunBundleConsequence_from_cross_route_irrelevance_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+      ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) :=
+  principalNoUnifyHookIrrelevanceBothMasterConsequenceRoutesSlices_expr_via_masterRunBundleConsequence
+    principalNoUnifyHookIrrelevanceBothMasterConsequenceRoutesSlices_proved h_no h_ok
+
+/--
+Canonical projection from proved cross-route irrelevance coherence slices to
+the master-consequence-capstone field fixed-run hook-irrelevance witness.
+-/
+theorem principalNoUnifyPreconditionedField_hookIrrelevant_via_masterConsequenceCapstone_from_cross_route_irrelevance_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
+  principalNoUnifyHookIrrelevanceBothMasterConsequenceRoutesSlices_field_via_masterConsequenceCapstone
+    principalNoUnifyHookIrrelevanceBothMasterConsequenceRoutesSlices_proved h_no h_ok
+
+/--
+Canonical projection from proved cross-route irrelevance coherence slices to
+the master-run-bundle-consequence field fixed-run hook-irrelevance witness.
+-/
+theorem principalNoUnifyPreconditionedField_hookIrrelevant_via_masterRunBundleConsequence_from_cross_route_irrelevance_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
+  principalNoUnifyHookIrrelevanceBothMasterConsequenceRoutesSlices_field_via_masterRunBundleConsequence
+    principalNoUnifyHookIrrelevanceBothMasterConsequenceRoutesSlices_proved h_no h_ok
+
+/--
 Canonical core projection: derive no-unify expression core principality from
 the master-consequence-capstone route via cross-route consequence slices.
 -/
@@ -14323,7 +14610,7 @@ theorem principalNoUnifyPreconditionedExpr_hookIrrelevant_of_success_via_masterC
     (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
     (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
       ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) :=
-  principalPreconditionedExpr_hookIrrelevant_of_success_noUnify_via_masterConsequenceCapstone_from_cross_route_slices
+  principalNoUnifyPreconditionedExpr_hookIrrelevant_via_masterConsequenceCapstone_from_cross_route_irrelevance_slices
     h_no h_ok
 
 /--
@@ -14339,7 +14626,7 @@ theorem principalNoUnifyPreconditionedField_hookIrrelevant_of_success_via_master
     (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
     (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
       ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
-  principalPreconditionedField_hookIrrelevant_of_success_noUnify_via_masterConsequenceCapstone_from_cross_route_slices
+  principalNoUnifyPreconditionedField_hookIrrelevant_via_masterConsequenceCapstone_from_cross_route_irrelevance_slices
     h_no h_ok
 
 /--
@@ -14937,7 +15224,7 @@ theorem principalNoUnifyPreconditionedExpr_hookIrrelevant_of_success_via_masterR
     (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
     (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
       ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) :=
-  principalPreconditionedExpr_hookIrrelevant_of_success_noUnify_via_masterRunBundleConsequence_from_cross_route_slices
+  principalNoUnifyPreconditionedExpr_hookIrrelevant_via_masterRunBundleConsequence_from_cross_route_irrelevance_slices
     h_no h_ok
 
 /--
@@ -14953,7 +15240,7 @@ theorem principalNoUnifyPreconditionedField_hookIrrelevant_of_success_via_master
     (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
     (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
       ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
-  principalPreconditionedField_hookIrrelevant_of_success_noUnify_via_masterRunBundleConsequence_from_cross_route_slices
+  principalNoUnifyPreconditionedField_hookIrrelevant_via_masterRunBundleConsequence_from_cross_route_irrelevance_slices
     h_no h_ok
 
 /--
