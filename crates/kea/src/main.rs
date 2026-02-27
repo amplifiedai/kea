@@ -2327,6 +2327,42 @@ mod tests {
     }
 
     #[test]
+    fn compile_elides_heap_alias_retain_release_churn_in_stats() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  let s = \"x\"\n  let t = s\n  1\n",
+            "kea-cli-alias-rc-fusion-stats",
+            "kea",
+        );
+
+        let compiled = compile_file(&source_path, CodegenMode::Jit).expect("compile should work");
+        let retain_count: usize = compiled
+            .stats
+            .per_function
+            .iter()
+            .map(|f| f.retain_count)
+            .sum();
+        let release_count: usize = compiled
+            .stats
+            .per_function
+            .iter()
+            .map(|f| f.release_count)
+            .sum();
+
+        assert_eq!(
+            retain_count, 0,
+            "expected retain/release fusion to remove heap alias churn, stats: {:?}",
+            compiled.stats
+        );
+        assert!(
+            release_count > 0,
+            "expected at least one release to preserve heap lifecycle, stats: {:?}",
+            compiled.stats
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_local_function_alias_call_exit_code() {
         let source_path = write_temp_source(
             "fn inc(n: Int) -> Int\n  n + 1\n\nfn main() -> Int\n  let g = inc\n  g(41)\n",
