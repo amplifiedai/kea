@@ -1186,7 +1186,8 @@ at the substitution-resolved projection type.
 -/
 def ProjUnifySoundHookWeak : Prop :=
   ∀ env recv label recvTy stBefore stAfter fuel fieldVar restVar rowFields,
-    HasType env recv (.anonRecord (.mk rowFields none)) →
+    HasType env recv recvTy →
+    recvTy = .anonRecord (.mk rowFields none) →
     unify stBefore fuel recvTy (.anonRecord (.mk (.cons label (.var fieldVar) .nil) (some restVar))) = .ok stAfter →
     RowFields.get rowFields label = some (applySubstCompat stAfter.subst fuel (.var fieldVar)) →
     HasType env (.proj recv label) (applySubstCompat stAfter.subst fuel (.var fieldVar))
@@ -1194,9 +1195,28 @@ def ProjUnifySoundHookWeak : Prop :=
 /-- `ProjUnifySoundHookWeak` is derivable from declarative projection typing. -/
 theorem projUnifySoundHookWeak_proved : ProjUnifySoundHookWeak := by
   intro env recv label recvTy stBefore stAfter fuel fieldVar restVar rowFields
-    h_recv _ h_get
+    h_recv h_shape _ h_get
+  rw [h_shape] at h_recv
   exact HasType.proj env recv rowFields label
     (applySubstCompat stAfter.subst fuel (.var fieldVar)) h_recv h_get
+
+/-- Any strong app hook witness implies the app weak-hook surface. -/
+theorem appUnifySoundHookWeak_of_appUnifySoundHook
+    (h_app : AppUnifySoundHook) :
+    AppUnifySoundHookWeak := by
+  intro env fn arg argTy retTy stBefore stAfter fuel resVar h_fn h_arg h_unify h_res_eq
+  have h_app_step : HasType env (.app fn arg) (applySubstCompat stAfter.subst fuel (.var resVar)) :=
+    h_app env fn arg (.function (.cons argTy .nil) retTy) argTy stBefore stAfter fuel resVar
+      h_fn h_arg h_unify
+  simpa [h_res_eq] using h_app_step
+
+/-- Any strong projection hook witness implies the projection weak-hook surface. -/
+theorem projUnifySoundHookWeak_of_projUnifySoundHook
+    (h_proj : ProjUnifySoundHook) :
+    ProjUnifySoundHookWeak := by
+  intro env recv label recvTy stBefore stAfter fuel fieldVar restVar rowFields
+    h_recv _ h_unify _
+  exact h_proj env recv label recvTy stBefore stAfter fuel fieldVar restVar h_recv h_unify
 
 /-- Packaged weak hook assumptions for app/projection branch reasoning. -/
 def UnifyHookPremisesWeak : Prop :=
@@ -1205,6 +1225,13 @@ def UnifyHookPremisesWeak : Prop :=
 /-- The weak hook package is derivable on both app and projection branches. -/
 theorem unifyHookPremisesWeak_proved : UnifyHookPremisesWeak := by
   exact ⟨appUnifySoundHookWeak_proved, projUnifySoundHookWeak_proved⟩
+
+/-- Any strong hook package implies the weak hook package. -/
+theorem unifyHookPremisesWeak_of_unifyHookPremises
+    (h_hooks : UnifyHookPremises) :
+    UnifyHookPremisesWeak := by
+  exact ⟨appUnifySoundHookWeak_of_appUnifySoundHook h_hooks.1,
+    projUnifySoundHookWeak_of_projUnifySoundHook h_hooks.2⟩
 
 /--
 Unification-aware app hook: if substitution-resolving `fnTy` yields a
