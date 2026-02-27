@@ -1055,11 +1055,17 @@ enum LiteralCaseValue {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct ConstructorPayloadAccessStep {
-    sum_type: String,
-    variant: String,
-    field_index: usize,
-    field_ty: Type,
+enum ConstructorPayloadAccessStep {
+    SumPayload {
+        sum_type: String,
+        variant: String,
+        field_index: usize,
+        field_ty: Type,
+    },
+    RecordField {
+        field: String,
+        field_ty: Type,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1592,8 +1598,7 @@ fn lower_literal_case(
             span: scrutinee.span,
         };
         for payload_check in payload_checks {
-            let payload_expr =
-                build_sum_payload_access_expr(&payload_check.access_path, &scrutinee_expr)?;
+            let payload_expr = build_payload_access_expr(&payload_check.access_path, &scrutinee_expr)?;
             let payload_eq = HirExpr {
                 kind: HirExprKind::Binary {
                     op: BinOp::Eq,
@@ -2069,7 +2074,7 @@ fn literal_case_values_from_pattern(
                     .get(field_index)
                     .cloned()
                     .unwrap_or(Type::Dynamic);
-                let access_path = vec![ConstructorPayloadAccessStep {
+                let access_path = vec![ConstructorPayloadAccessStep::SumPayload {
                     sum_type: meta.sum_type.clone(),
                     variant: name.clone(),
                     field_index,
@@ -2271,11 +2276,17 @@ fn collect_constructor_payload_pattern(
                 return None;
             }
             if let Some(last_step) = access_path.last_mut() {
-                last_step.field_ty = Type::Sum(kea_types::SumType {
+                let sum_ty = Type::Sum(kea_types::SumType {
                     name: meta.sum_type.clone(),
                     type_args: Vec::new(),
                     variants: Vec::new(),
                 });
+                match last_step {
+                    ConstructorPayloadAccessStep::SumPayload { field_ty, .. }
+                    | ConstructorPayloadAccessStep::RecordField { field_ty, .. } => {
+                        *field_ty = sum_ty;
+                    }
+                }
             }
             payload_checks.push(ConstructorPayloadCheck {
                 access_path: access_path.clone(),
@@ -2301,7 +2312,7 @@ fn collect_constructor_payload_pattern(
                     position
                 };
                 let mut nested_access_path = access_path.clone();
-                nested_access_path.push(ConstructorPayloadAccessStep {
+                nested_access_path.push(ConstructorPayloadAccessStep::SumPayload {
                     sum_type: meta.sum_type.clone(),
                     variant: name.clone(),
                     field_index,
@@ -2313,6 +2324,61 @@ fn collect_constructor_payload_pattern(
                 });
                 collect_constructor_payload_pattern(
                     &arg.pattern.node,
+                    nested_access_path,
+                    payload_binds,
+                    payload_checks,
+                    pattern_variant_tags,
+                    pattern_qualified_tags,
+                )?;
+            }
+            Some(())
+        }
+        PatternKind::Record { name, fields, .. } => {
+            let record_ty = access_path_last_type(&access_path)?;
+            if let Type::Record(record) = &record_ty
+                && &record.name != name
+            {
+                return None;
+            }
+            let mut seen_fields = BTreeSet::new();
+            for (field_name, field_pattern) in fields {
+                if !seen_fields.insert(field_name.clone()) {
+                    return None;
+                }
+                let field_ty = lookup_record_field_type(&record_ty, field_name)
+                    .unwrap_or(Type::Dynamic);
+                let mut nested_access_path = access_path.clone();
+                nested_access_path.push(ConstructorPayloadAccessStep::RecordField {
+                    field: field_name.clone(),
+                    field_ty,
+                });
+                collect_constructor_payload_pattern(
+                    &field_pattern.node,
+                    nested_access_path,
+                    payload_binds,
+                    payload_checks,
+                    pattern_variant_tags,
+                    pattern_qualified_tags,
+                )?;
+            }
+            Some(())
+        }
+        PatternKind::AnonRecord { fields, .. } => {
+            let record_ty = access_path_last_type(&access_path)?;
+            let mut seen_fields = BTreeSet::new();
+            for (field_name, field_pattern) in fields {
+                if !seen_fields.insert(field_name.clone()) {
+                    return None;
+                }
+                let field_ty = lookup_record_field_type(&record_ty, field_name)
+                    .unwrap_or(Type::Dynamic);
+                let mut nested_access_path = access_path.clone();
+                nested_access_path.push(ConstructorPayloadAccessStep::RecordField {
+                    field: field_name.clone(),
+                    field_ty,
+                });
+                collect_constructor_payload_pattern(
+                    &field_pattern.node,
                     nested_access_path,
                     payload_binds,
                     payload_checks,
@@ -2381,9 +2447,7 @@ fn build_literal_arm_bindings(
         });
     }
     for payload_bind in payload_binds {
-        let Some(payload_value) =
-            build_sum_payload_access_expr(&payload_bind.access_path, scrutinee_expr)
-        else {
+        let Some(payload_value) = build_payload_access_expr(&payload_bind.access_path, scrutinee_expr) else {
             continue;
         };
         let payload_ty = payload_value.ty.clone();
@@ -2399,21 +2463,36 @@ fn build_literal_arm_bindings(
     bindings
 }
 
-fn build_sum_payload_access_expr(
+fn build_payload_access_expr(
     access_path: &[ConstructorPayloadAccessStep],
     scrutinee_expr: &HirExpr,
 ) -> Option<HirExpr> {
     let mut current = scrutinee_expr.clone();
     for step in access_path {
-        current = HirExpr {
-            kind: HirExprKind::SumPayloadAccess {
-                expr: Box::new(current),
-                sum_type: step.sum_type.clone(),
-                variant: step.variant.clone(),
-                field_index: step.field_index,
+        current = match step {
+            ConstructorPayloadAccessStep::SumPayload {
+                sum_type,
+                variant,
+                field_index,
+                field_ty,
+            } => HirExpr {
+                kind: HirExprKind::SumPayloadAccess {
+                    expr: Box::new(current),
+                    sum_type: sum_type.clone(),
+                    variant: variant.clone(),
+                    field_index: *field_index,
+                },
+                ty: field_ty.clone(),
+                span: scrutinee_expr.span,
             },
-            ty: step.field_ty.clone(),
-            span: scrutinee_expr.span,
+            ConstructorPayloadAccessStep::RecordField { field, field_ty } => HirExpr {
+                kind: HirExprKind::FieldAccess {
+                    expr: Box::new(current),
+                    field: field.clone(),
+                },
+                ty: field_ty.clone(),
+                span: scrutinee_expr.span,
+            },
         };
     }
     if access_path.is_empty() {
@@ -2488,10 +2567,58 @@ fn payload_access_paths_compatible(
 ) -> bool {
     existing.len() == candidate.len()
         && existing.iter().zip(candidate.iter()).all(|(left, right)| {
-            left.sum_type == right.sum_type
-                && left.field_index == right.field_index
-                && left.field_ty == right.field_ty
+            match (left, right) {
+                (
+                    ConstructorPayloadAccessStep::SumPayload {
+                        sum_type: left_sum,
+                        field_index: left_index,
+                        field_ty: left_ty,
+                        ..
+                    },
+                    ConstructorPayloadAccessStep::SumPayload {
+                        sum_type: right_sum,
+                        field_index: right_index,
+                        field_ty: right_ty,
+                        ..
+                    },
+                ) => left_sum == right_sum && left_index == right_index && left_ty == right_ty,
+                (
+                    ConstructorPayloadAccessStep::RecordField {
+                        field: left_field,
+                        field_ty: left_ty,
+                    },
+                    ConstructorPayloadAccessStep::RecordField {
+                        field: right_field,
+                        field_ty: right_ty,
+                    },
+                ) => left_field == right_field && left_ty == right_ty,
+                _ => false,
+            }
         })
+}
+
+fn access_path_last_type(access_path: &[ConstructorPayloadAccessStep]) -> Option<Type> {
+    access_path.last().map(|step| match step {
+        ConstructorPayloadAccessStep::SumPayload { field_ty, .. }
+        | ConstructorPayloadAccessStep::RecordField { field_ty, .. } => field_ty.clone(),
+    })
+}
+
+fn lookup_record_field_type(record_ty: &Type, field_name: &str) -> Option<Type> {
+    match record_ty {
+        Type::Record(record) => record
+            .row
+            .fields
+            .iter()
+            .find(|(label, _)| label.as_str() == field_name)
+            .map(|(_, ty)| ty.clone()),
+        Type::AnonRecord(row) | Type::Row(row) => row
+            .fields
+            .iter()
+            .find(|(label, _)| label.as_str() == field_name)
+            .map(|(_, ty)| ty.clone()),
+        _ => None,
+    }
 }
 
 fn record_field_binds_or_compatible(
@@ -3927,6 +4054,67 @@ mod tests {
         assert!(
             !matches!(function.body.kind, HirExprKind::Raw(_)),
             "expected nested OR constructor case to stay on lowered path"
+        );
+    }
+
+    #[test]
+    fn lower_function_payload_constructor_record_payload_pattern_binds_field() {
+        let module = parse_module_from_text(
+            "record User\n  age: Int\n\ntype Wrap = W(User) | N\nfn pick(x: Wrap) -> Int\n  case x\n    W(User { age: n }) -> n + 1\n    N -> 0",
+        );
+        let mut env = TypeEnv::new();
+        env.bind(
+            "pick".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::pure(
+                vec![Type::Sum(kea_types::SumType {
+                    name: "Wrap".to_string(),
+                    type_args: vec![],
+                    variants: vec![
+                        ("W".to_string(), vec![Type::Record(kea_types::RecordType {
+                            name: "User".to_string(),
+                            params: vec![],
+                            row: kea_types::RowType::closed(vec![(
+                                Label::new("age"),
+                                Type::Int,
+                            )]),
+                        })]),
+                        ("N".to_string(), vec![]),
+                    ],
+                })],
+                Type::Int,
+            ))),
+        );
+
+        let lowered = lower_module(&module, &env);
+        let function = lowered
+            .declarations
+            .iter()
+            .find_map(|decl| match decl {
+                HirDecl::Function(function) if function.name == "pick" => Some(function),
+                _ => None,
+            })
+            .expect("expected lowered pick function");
+
+        let then_branch = match &function.body.kind {
+            HirExprKind::If { then_branch, .. } => then_branch,
+            other => panic!(
+                "expected constructor record-payload pattern to lower to if, got {other:?}"
+            ),
+        };
+        let HirExprKind::Block(exprs) = &then_branch.kind else {
+            panic!("expected constructor record payload branch to emit binding block");
+        };
+        let HirExprKind::Let { pattern, value } = &exprs[0].kind else {
+            panic!("expected first branch expression to be payload-field binding");
+        };
+        assert_eq!(pattern, &HirPattern::Var("n".to_string()));
+        let HirExprKind::FieldAccess { expr, field } = &value.kind else {
+            panic!("expected record payload bind value to be FieldAccess");
+        };
+        assert_eq!(field, "age");
+        assert!(
+            matches!(expr.kind, HirExprKind::SumPayloadAccess { .. }),
+            "expected record field access to read from sum payload"
         );
     }
 
