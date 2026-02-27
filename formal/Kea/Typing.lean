@@ -5685,11 +5685,13 @@ Top-level principal boundary master suite.
 This aggregates the current M4 theorem surfaces:
 - successful-run bridge suite (core↔preconditioned and no-unify bundles),
 - vacuity suite (no-unify + fixed-run hook-irrelevance), and
+- general successful-run all-hooks suite, and
 - no-unify all-hooks suite (+ compatibility back to hook-specific capstones).
 -/
 structure PrincipalBoundaryMasterSuite : Prop where
   bridge : PrincipalBoundaryBridgeSuite
   vacuity : PrincipalBoundaryVacuitySuite
+  allHooks : PrincipalPreconditionedAllHooksSuite
   noUnifyAllHooks : PrincipalBoundaryNoUnifyAllHooksSuite
   noUnifyHookedFromAllHooks : PrincipalBoundaryNoUnifyCapstoneSlices
 
@@ -5698,6 +5700,7 @@ theorem principalBoundaryMasterSuite_proved : PrincipalBoundaryMasterSuite := by
   refine {
     bridge := principalBoundaryBridgeSuite_proved
     vacuity := principalBoundaryVacuitySuite_proved
+    allHooks := principalPreconditionedAllHooksSuite_proved
     noUnifyAllHooks := principalBoundaryNoUnifyAllHooksSuite_proved
     noUnifyHookedFromAllHooks := principalBoundaryNoUnifyCapstoneSlices_of_allHooksSuite
   }
@@ -5757,6 +5760,28 @@ theorem principalBoundaryMasterSuite_hookIrrelevance_field
       ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
   principalPreconditionedHookIrrelevanceSlices_field
     h_suite.vacuity.hookIrrelevance h_ok
+
+/-- One-hop expression general all-hooks capstone projection from master suite. -/
+theorem principalBoundaryMasterSuite_allHooks_expr
+    (h_suite : PrincipalBoundaryMasterSuite)
+    (h_app0 : AppUnifySoundHook) (h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty :=
+  principalPreconditionedAllHooksSuite_capstone_expr
+    h_suite.allHooks h_app0 h_proj0 h_ok
+
+/-- One-hop field general all-hooks capstone projection from master suite. -/
+theorem principalBoundaryMasterSuite_allHooks_field
+    (h_suite : PrincipalBoundaryMasterSuite)
+    (h_app0 : AppUnifySoundHook) (h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
+  principalPreconditionedAllHooksSuite_capstone_field
+    h_suite.allHooks h_app0 h_proj0 h_ok
 
 /-- One-hop expression all-hooks no-unify capstone projection from master suite. -/
 theorem principalBoundaryMasterSuite_noUnifyAllHooks_expr
