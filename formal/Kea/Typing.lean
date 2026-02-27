@@ -12133,6 +12133,62 @@ theorem principalNoUnifyFieldRunBundleConsequences_via_masterRunBundleConsequenc
     principalNoUnifyRunBundleConsequencesBothMasterConsequenceRoutesSlices_proved h_no h_ok
 
 /--
+Canonical capstone projection: derive no-unify expression all-hooks capstone
+from the master-consequence-capstone route via cross-route consequence slices.
+-/
+theorem principalNoUnifyExprAllHooksCapstone_via_masterConsequenceCapstone_from_cross_route_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty :=
+  principalNoUnifyExprRunBundleConsequences_capstone
+    (principalNoUnifyExprRunBundleConsequences_via_masterConsequenceCapstone_from_cross_route_slices
+      h_no h_ok)
+
+/--
+Canonical capstone projection: derive no-unify expression all-hooks capstone
+from the master-run-bundle-consequence route via cross-route consequence slices.
+-/
+theorem principalNoUnifyExprAllHooksCapstone_via_masterRunBundleConsequence_from_cross_route_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty :=
+  principalNoUnifyExprRunBundleConsequences_capstone
+    (principalNoUnifyExprRunBundleConsequences_via_masterRunBundleConsequence_from_cross_route_slices
+      h_no h_ok)
+
+/--
+Canonical capstone projection: derive no-unify field all-hooks capstone from
+the master-consequence-capstone route via cross-route consequence slices.
+-/
+theorem principalNoUnifyFieldAllHooksCapstone_via_masterConsequenceCapstone_from_cross_route_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
+  principalNoUnifyFieldRunBundleConsequences_capstone
+    (principalNoUnifyFieldRunBundleConsequences_via_masterConsequenceCapstone_from_cross_route_slices
+      h_no h_ok)
+
+/--
+Canonical capstone projection: derive no-unify field all-hooks capstone from
+the master-run-bundle-consequence route via cross-route consequence slices.
+-/
+theorem principalNoUnifyFieldAllHooksCapstone_via_masterRunBundleConsequence_from_cross_route_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
+  principalNoUnifyFieldRunBundleConsequences_capstone
+    (principalNoUnifyFieldRunBundleConsequences_via_masterRunBundleConsequence_from_cross_route_slices
+      h_no h_ok)
+
+/--
 Master-run-bundle-consequence-suite no-unify-to-general convenience wrapper:
 derive the expression all-hooks capstone from a successful no-unify run.
 -/
