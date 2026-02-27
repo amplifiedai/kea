@@ -445,6 +445,21 @@ impl TypeEnv {
         self.ensure_module_alias_for_path(module_path);
     }
 
+    /// Register an already-resolved scheme in module scope without rewriting
+    /// its effect row from a legacy `Effects` classifier.
+    pub fn register_module_type_scheme_exact(
+        &mut self,
+        module_path: &str,
+        name: &str,
+        scheme: TypeScheme,
+    ) {
+        self.module_type_schemes
+            .entry(module_path.to_string())
+            .or_default()
+            .insert(name.to_string(), (scheme, Effects::pure_deterministic()));
+        self.ensure_module_alias_for_path(module_path);
+    }
+
     /// Register a short module alias (e.g. "Math" → "Kea.Math").
     pub fn register_module_alias(&mut self, short: &str, full_path: &str) {
         self.module_aliases

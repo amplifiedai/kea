@@ -358,4 +358,6 @@ instead of duplicating session setup.
 
 ## Progress
 - 2026-02-27 15:01: 0d1 kickoff started. Parser now accepts top-level `use` module declarations (legacy `import` retained as compatibility alias), with regression coverage for bare/nested/selective/alias `use` forms and mixed `use` + function declarations. This aligns source syntax with KERNEL §11 while preserving parser compatibility during the resolver migration.
-- **Next:** Wire module resolution + dependency DAG into the `kea` compilation pipeline (replace current "parsed but not wired" import warning), then add multi-file integration tests with cycle diagnostics.
+- 2026-02-27 15:12: Module-resolution pipeline now runs in the CLI compile/run path: project entrypoints load dependency modules via `use`, detect circular imports, and typecheck modules in dependency order before merged lowering/codegen. Added integration tests for cross-file `use` execution and explicit cycle diagnostics.
+- 2026-02-27 15:12: Stabilized merged-module lowering for cross-file codegen by keeping single-file behavior intact, preserving qualified module call metadata in `TypeEnv`, and handling cross-file span aggregation with synthetic module spans.
+- **Next:** Start 0d1 Step 2 (explicit symbol imports / `use Module.{...}` scoping semantics) and then extract shared compilation APIs from `main.rs` into a reusable library surface for CLI + MCP.
