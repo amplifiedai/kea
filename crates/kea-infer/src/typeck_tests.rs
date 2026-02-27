@@ -3360,6 +3360,36 @@ fn infer_arithmetic() {
 }
 
 #[test]
+fn infer_concat_strings() {
+    let expr = binop(BinOp::Concat, lit_str("hello "), lit_str("world"));
+    let (ty, u) = infer(&expr);
+    assert!(!u.has_errors(), "string concat should type-check: {:?}", u.errors());
+    assert_eq!(ty, Type::String);
+}
+
+#[test]
+fn infer_concat_string_argument_to_typed_call() {
+    let mut env = TypeEnv::new();
+    let stdout_ty = Type::Function(FunctionType {
+        params: vec![Type::String],
+        effects: EffectRow::closed(vec![(Label::new("IO"), Type::Unit)]),
+        ret: Box::new(Type::Unit),
+    });
+    env.bind("IO::stdout".into(), TypeScheme::mono(stdout_ty));
+    let expr = call(
+        var("IO::stdout"),
+        vec![binop(BinOp::Concat, lit_str("hello "), lit_str("world"))],
+    );
+    let (ty, u) = infer_with_env(&expr, &mut env);
+    assert!(
+        !u.has_errors(),
+        "string concat should satisfy typed call argument checking: {:?}",
+        u.errors()
+    );
+    assert_eq!(ty, Type::Unit);
+}
+
+#[test]
 fn infer_arithmetic_type_mismatch() {
     // 1 + "hello"  →  error
     let expr = binop(BinOp::Add, lit_int(1), lit_str("hello"));
