@@ -252,6 +252,22 @@ mod tests {
     }
 
     #[test]
+    fn compile_and_execute_real_stdlib_prelude_module_without_explicit_use_exit_code() {
+        let project_dir = temp_workspace_project_dir("kea-cli-project-real-stdlib-prelude");
+        let src_dir = project_dir.join("src");
+        std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+
+        let app_path = src_dir.join("app.kea");
+        std::fs::write(&app_path, "fn main() -> Int\n  Prelude.ping()\n")
+            .expect("app module write should succeed");
+
+        let run = run_file(&app_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 7);
+
+        let _ = std::fs::remove_dir_all(project_dir);
+    }
+
+    #[test]
     fn compile_and_execute_prelude_trait_unqualified_method_without_use_exit_code() {
         let project_dir = temp_project_dir("kea-cli-project-prelude-trait");
         let src_dir = project_dir.join("src");
@@ -267,6 +283,25 @@ mod tests {
         let app_path = src_dir.join("app.kea");
         std::fs::write(&app_path, "fn main() -> Int\n  41.tinc()\n")
             .expect("app module write should succeed");
+
+        let run = run_file(&app_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_dir_all(project_dir);
+    }
+
+    #[test]
+    fn compile_and_execute_real_stdlib_option_unwrap_or_intrinsic_exit_code() {
+        let project_dir = temp_workspace_project_dir("kea-cli-project-real-stdlib-integration");
+        let src_dir = project_dir.join("src");
+        std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+
+        let app_path = src_dir.join("app.kea");
+        std::fs::write(
+            &app_path,
+            "use Option\nuse Text\n\nfn main() -> Int\n  Option.unwrap_or(Some(39), 39) + Text.length(\"abc\")\n",
+        )
+        .expect("app module write should succeed");
 
         let run = run_file(&app_path).expect("run should succeed");
         assert_eq!(run.exit_code, 42);
@@ -2199,6 +2234,26 @@ mod tests {
     fn temp_project_dir(prefix: &str) -> PathBuf {
         let path = temp_artifact_path(prefix, "proj");
         std::fs::create_dir_all(&path).expect("temp project dir should be created");
+        path
+    }
+
+    fn temp_workspace_project_dir(prefix: &str) -> PathBuf {
+        let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(Path::parent)
+            .expect("workspace root should exist")
+            .to_path_buf();
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time should move forward")
+            .as_nanos()
+            .to_string();
+        let counter = TEMP_NONCE.fetch_add(1, Ordering::Relaxed);
+        let path = workspace_root
+            .join("target")
+            .join("kea-tests")
+            .join(format!("{prefix}-{timestamp}-{counter}"));
+        std::fs::create_dir_all(&path).expect("workspace temp project dir should be created");
         path
     }
 

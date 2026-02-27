@@ -1,0 +1,3 @@
+@intrinsic("strlen")
+fn length(s: String) -> Int
+  0
