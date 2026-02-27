@@ -6564,7 +6564,7 @@ theorem principalNoUnifyCoreExpr_of_success_via_masterSuite
     (h_no : NoUnifyBranchesExpr e)
     (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
     PrincipalTypingSliceCore env e ty :=
-  (principalBoundaryMasterSuite_noUnifyAllHooks_expr
+  (principalBoundaryMasterSuite_noUnifyToGeneralAllHooks_expr
     h_suite h_no h_ok).core
 
 /--
@@ -6579,7 +6579,7 @@ theorem principalNoUnifyPreconditionedExpr_anyHooks_of_success_via_masterSuite
     (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
     ∀ h_app h_proj,
       PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty :=
-  (principalBoundaryMasterSuite_noUnifyAllHooks_expr
+  (principalBoundaryMasterSuite_noUnifyToGeneralAllHooks_expr
     h_suite h_no h_ok).preconditionedAny
 
 /--
@@ -6594,7 +6594,7 @@ theorem principalNoUnifyPreconditionedExpr_of_success_via_masterSuite
     (h_ok : inferExprUnify st fuel env e = .ok st' ty)
     (h_hooks : UnifyHookPremises) :
     PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty :=
-  (principalBoundaryMasterSuite_noUnifyAllHooks_expr
+  (principalBoundaryMasterSuite_noUnifyToGeneralAllHooks_expr
     h_suite h_no h_ok).preconditionedAny h_hooks.1 h_hooks.2
 
 /--
@@ -6608,7 +6608,7 @@ theorem principalNoUnifyCoreField_of_success_via_masterSuite
     (h_no : NoUnifyBranchesFields fs)
     (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
     PrincipalFieldTypingSliceCore env fs rf :=
-  (principalBoundaryMasterSuite_noUnifyAllHooks_field
+  (principalBoundaryMasterSuite_noUnifyToGeneralAllHooks_field
     h_suite h_no h_ok).core
 
 /--
@@ -6623,7 +6623,7 @@ theorem principalNoUnifyPreconditionedField_anyHooks_of_success_via_masterSuite
     (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
     ∀ h_app h_proj,
       PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf :=
-  (principalBoundaryMasterSuite_noUnifyAllHooks_field
+  (principalBoundaryMasterSuite_noUnifyToGeneralAllHooks_field
     h_suite h_no h_ok).preconditionedAny
 
 /--
@@ -6638,7 +6638,7 @@ theorem principalNoUnifyPreconditionedField_of_success_via_masterSuite
     (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
     (h_hooks : UnifyHookPremises) :
     PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf :=
-  (principalBoundaryMasterSuite_noUnifyAllHooks_field
+  (principalBoundaryMasterSuite_noUnifyToGeneralAllHooks_field
     h_suite h_no h_ok).preconditionedAny h_hooks.1 h_hooks.2
 
 /--
