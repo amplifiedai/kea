@@ -1512,6 +1512,34 @@ mod tests {
     }
 
     #[test]
+    fn compile_and_execute_try_sugar_fail_path_exit_code() {
+        let source_path = write_temp_source(
+            "effect Fail\n  fn fail(err: Int) -> Never\n\nfn step(ok: Bool) -> Result(Int, Int)\n  if ok then Ok(41) else Err(7)\n\nfn run(ok: Bool) -[Fail Int]> Int\n  step(ok)?\n\nfn main() -> Int\n  let r = catch run(false)\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
+            "kea-cli-try-sugar-fail",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 7);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_try_sugar_ok_path_exit_code() {
+        let source_path = write_temp_source(
+            "effect Fail\n  fn fail(err: Int) -> Never\n\nfn step(ok: Bool) -> Result(Int, Int)\n  if ok then Ok(41) else Err(7)\n\nfn run(ok: Bool) -[Fail Int]> Int\n  step(ok)?\n\nfn main() -> Int\n  let r = catch run(true)\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
+            "kea-cli-try-sugar-ok",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 41);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_catch_fails_when_body_cannot_fail() {
         let source_path = write_temp_source(
             "effect Fail\n  fn fail(err: Int) -> Never\n\nfn main() -> Int\n  let r = catch 42\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",

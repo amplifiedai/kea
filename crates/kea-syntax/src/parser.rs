@@ -3043,23 +3043,7 @@ impl Parser {
             body: Spanned::new(ExprKind::Var("v".to_string()), start),
         };
 
-        let from_call = Spanned::new(
-            ExprKind::Call {
-                func: Box::new(Spanned::new(
-                    ExprKind::FieldAccess {
-                        expr: Box::new(Spanned::new(ExprKind::Var("From".to_string()), start)),
-                        field: Spanned::new("from".to_string(), start),
-                    },
-                    start,
-                )),
-                args: vec![Argument {
-                    label: None,
-                    value: Spanned::new(ExprKind::Var("e".to_string()), start),
-                }],
-            },
-            start,
-        );
-        let err_body = self.desugar_fail_call(from_call, start);
+        let err_body = self.desugar_fail_call(Spanned::new(ExprKind::Var("e".to_string()), start), start);
         let err_arm = CaseArm {
             pattern: Spanned::new(
                 PatternKind::Constructor {
