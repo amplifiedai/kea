@@ -5706,6 +5706,64 @@ theorem principalBoundaryNoUnifyAllHooksSuite_irrelevance_field
     h_suite.irrelevance h_no h_ok
 
 /--
+Convert a no-unify all-hooks expression capstone into the general successful-run
+all-hooks expression capstone.
+-/
+theorem principalPreconditionedExprAllHooksCapstone_of_noUnifyAllHooks
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_cap : PrincipalBoundaryNoUnifyExprAllHooksCapstone st fuel env e st' ty) :
+    PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty := by
+  refine {
+    core := h_cap.core
+    preconditionedAny := h_cap.preconditionedAny
+    preconditionedAnyIffCore := h_cap.preconditionedAnyIffCore
+  }
+
+/--
+Convert a no-unify all-hooks field capstone into the general successful-run
+all-hooks field capstone.
+-/
+theorem principalPreconditionedFieldAllHooksCapstone_of_noUnifyAllHooks
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_cap : PrincipalBoundaryNoUnifyFieldAllHooksCapstone st fuel env fs st' rf) :
+    PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf := by
+  refine {
+    core := h_cap.core
+    preconditionedAny := h_cap.preconditionedAny
+    preconditionedAnyIffCore := h_cap.preconditionedAnyIffCore
+  }
+
+/--
+One-hop expression projection: view a no-unify all-hooks suite capstone on a
+successful no-unify run as a general successful-run all-hooks capstone.
+-/
+theorem principalBoundaryNoUnifyAllHooksSuite_capstone_expr_as_general
+    (h_suite : PrincipalBoundaryNoUnifyAllHooksSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty :=
+  principalPreconditionedExprAllHooksCapstone_of_noUnifyAllHooks
+    (principalBoundaryNoUnifyAllHooksSuite_capstone_expr h_suite h_no h_ok)
+
+/--
+One-hop field projection: view a no-unify all-hooks suite capstone on a
+successful no-unify run as a general successful-run all-hooks capstone.
+-/
+theorem principalBoundaryNoUnifyAllHooksSuite_capstone_field_as_general
+    (h_suite : PrincipalBoundaryNoUnifyAllHooksSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
+  principalPreconditionedFieldAllHooksCapstone_of_noUnifyAllHooks
+    (principalBoundaryNoUnifyAllHooksSuite_capstone_field h_suite h_no h_ok)
+
+/--
 Convert an all-hooks expression capstone into a hook-specific no-unify
 expression capstone by selecting concrete hook witnesses.
 -/
@@ -5893,6 +5951,32 @@ theorem principalBoundaryMasterSuite_noUnifyAllHooks_field
     (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
     PrincipalBoundaryNoUnifyFieldAllHooksCapstone st fuel env fs st' rf :=
   principalBoundaryNoUnifyAllHooksSuite_capstone_field
+    h_suite.noUnifyAllHooks h_no h_ok
+
+/--
+One-hop expression no-unify-as-general all-hooks projection from master suite.
+-/
+theorem principalBoundaryMasterSuite_noUnifyAllHooks_expr_as_general
+    (h_suite : PrincipalBoundaryMasterSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty :=
+  principalBoundaryNoUnifyAllHooksSuite_capstone_expr_as_general
+    h_suite.noUnifyAllHooks h_no h_ok
+
+/--
+One-hop field no-unify-as-general all-hooks projection from master suite.
+-/
+theorem principalBoundaryMasterSuite_noUnifyAllHooks_field_as_general
+    (h_suite : PrincipalBoundaryMasterSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
+  principalBoundaryNoUnifyAllHooksSuite_capstone_field_as_general
     h_suite.noUnifyAllHooks h_no h_ok
 
 /--
