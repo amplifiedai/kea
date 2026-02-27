@@ -20726,6 +20726,106 @@ theorem inferUnifySoundDualBundle_field_hasTypeU
   h_bundle.field_hasTypeU
 
 /--
+Canonical expression-level `HasType` recursive soundness entrypoint via the dual
+bundle surface.
+-/
+theorem inferExprUnify_sound_preconditioned_via_dual_bundle
+    {h_app : AppUnifySoundHook}
+    {h_proj : ProjUnifySoundHook}
+    (h_bundle : InferUnifySoundDualBundle h_app h_proj) :
+    ∀ st fuel env e st' ty,
+      inferExprUnify st fuel env e = .ok st' ty →
+      HasType env e ty := by
+  intro st fuel env e st' ty h_ok
+  exact inferUnifySoundDualBundle_expr_hasType h_bundle st fuel env e st' ty h_ok
+
+/--
+Canonical field-level `HasType` recursive soundness entrypoint via the dual
+bundle surface.
+-/
+theorem inferFieldsUnify_sound_preconditioned_via_dual_bundle
+    {h_app : AppUnifySoundHook}
+    {h_proj : ProjUnifySoundHook}
+    (h_bundle : InferUnifySoundDualBundle h_app h_proj) :
+    ∀ st fuel env fs st' rf,
+      inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)) →
+      HasFieldsType env fs rf := by
+  intro st fuel env fs st' rf h_ok
+  exact inferUnifySoundDualBundle_field_hasType h_bundle st fuel env fs st' rf h_ok
+
+/--
+Canonical expression-level `HasTypeU` recursive soundness entrypoint via the
+dual bundle surface.
+-/
+theorem inferExprUnify_sound_preconditioned_hasTypeU_via_dual_bundle
+    {h_app : AppUnifySoundHook}
+    {h_proj : ProjUnifySoundHook}
+    (h_bundle : InferUnifySoundDualBundle h_app h_proj) :
+    ∀ st fuel env e st' ty,
+      inferExprUnify st fuel env e = .ok st' ty →
+      HasTypeU env e ty := by
+  intro st fuel env e st' ty h_ok
+  exact inferUnifySoundDualBundle_expr_hasTypeU h_bundle st fuel env e st' ty h_ok
+
+/--
+Canonical field-level `HasTypeU` recursive soundness entrypoint via the dual
+bundle surface.
+-/
+theorem inferFieldsUnify_sound_preconditioned_hasTypeU_via_dual_bundle
+    {h_app : AppUnifySoundHook}
+    {h_proj : ProjUnifySoundHook}
+    (h_bundle : InferUnifySoundDualBundle h_app h_proj) :
+    ∀ st fuel env fs st' rf,
+      inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)) →
+      HasFieldsTypeU env fs rf := by
+  intro st fuel env fs st' rf h_ok
+  exact inferUnifySoundDualBundle_field_hasTypeU h_bundle st fuel env fs st' rf h_ok
+
+/--
+Bundled-hook expression-level `HasType` entrypoint via the dual bundle API.
+-/
+theorem inferExprUnify_sound_preconditioned_from_hook_bundle_via_dual_bundle
+    (h_hooks : UnifyHookPremises) :
+    ∀ st fuel env e st' ty,
+      inferExprUnify st fuel env e = .ok st' ty →
+      HasType env e ty :=
+  inferExprUnify_sound_preconditioned_via_dual_bundle
+    (inferUnifySoundDualBundle_of_hook_bundle h_hooks)
+
+/--
+Bundled-hook field-level `HasType` entrypoint via the dual bundle API.
+-/
+theorem inferFieldsUnify_sound_preconditioned_from_hook_bundle_via_dual_bundle
+    (h_hooks : UnifyHookPremises) :
+    ∀ st fuel env fs st' rf,
+      inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)) →
+      HasFieldsType env fs rf :=
+  inferFieldsUnify_sound_preconditioned_via_dual_bundle
+    (inferUnifySoundDualBundle_of_hook_bundle h_hooks)
+
+/--
+Bundled-hook expression-level `HasTypeU` entrypoint via the dual bundle API.
+-/
+theorem inferExprUnify_sound_preconditioned_hasTypeU_from_hook_bundle_via_dual_bundle
+    (h_hooks : UnifyHookPremises) :
+    ∀ st fuel env e st' ty,
+      inferExprUnify st fuel env e = .ok st' ty →
+      HasTypeU env e ty :=
+  inferExprUnify_sound_preconditioned_hasTypeU_via_dual_bundle
+    (inferUnifySoundDualBundle_of_hook_bundle h_hooks)
+
+/--
+Bundled-hook field-level `HasTypeU` entrypoint via the dual bundle API.
+-/
+theorem inferFieldsUnify_sound_preconditioned_hasTypeU_from_hook_bundle_via_dual_bundle
+    (h_hooks : UnifyHookPremises) :
+    ∀ st fuel env fs st' rf,
+      inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)) →
+      HasFieldsTypeU env fs rf :=
+  inferFieldsUnify_sound_preconditioned_hasTypeU_via_dual_bundle
+    (inferUnifySoundDualBundle_of_hook_bundle h_hooks)
+
+/--
 Surface-layer naming-parity wrappers for no-unify cross-route success APIs.
 These mirror the existing `...from_cross_route_slices` families under
 explicit `...from_cross_route_surface_slices` theorem names.
