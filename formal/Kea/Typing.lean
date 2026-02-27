@@ -9404,6 +9404,100 @@ theorem principalBoundaryMasterSuite_noUnifyRunBundleConsequences_field
     (principalBoundaryMasterSuite_runBundleConsequenceSuite h_suite) h_no h_ok
 
 /--
+Project the expression all-hooks capstone consequences out of a packaged
+no-unify expression run-bundle consequence witness.
+-/
+theorem principalNoUnifyExprRunBundleConsequences_capstone
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_cons : PrincipalNoUnifyExprRunBundleConsequences st fuel env e st' ty) :
+    PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty := by
+  refine {
+    core := h_cons.core
+    preconditionedAny := h_cons.preconditionedAny
+    preconditionedAnyIffCore := h_cons.preconditionedAnyIffCore
+  }
+
+/--
+Project the field all-hooks capstone consequences out of a packaged
+no-unify field run-bundle consequence witness.
+-/
+theorem principalNoUnifyFieldRunBundleConsequences_capstone
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_cons : PrincipalNoUnifyFieldRunBundleConsequences st fuel env fs st' rf) :
+    PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf := by
+  refine {
+    core := h_cons.core
+    preconditionedAny := h_cons.preconditionedAny
+    preconditionedAnyIffCore := h_cons.preconditionedAnyIffCore
+  }
+
+/--
+One-hop projection: no-unify-to-general expression capstone from the top-level
+master suite via the consequence-suite aggregate.
+-/
+theorem principalBoundaryMasterSuite_noUnifyToGeneralAllHooks_expr_via_consequenceSuite
+    (h_suite : PrincipalBoundaryMasterSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty :=
+  principalNoUnifyExprRunBundleConsequences_capstone
+    (principalBoundaryMasterSuite_noUnifyRunBundleConsequences_expr
+      h_suite h_no h_ok)
+
+/--
+One-hop projection: no-unify-to-general field capstone from the top-level
+master suite via the consequence-suite aggregate.
+-/
+theorem principalBoundaryMasterSuite_noUnifyToGeneralAllHooks_field_via_consequenceSuite
+    (h_suite : PrincipalBoundaryMasterSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
+  principalNoUnifyFieldRunBundleConsequences_capstone
+    (principalBoundaryMasterSuite_noUnifyRunBundleConsequences_field
+      h_suite h_no h_ok)
+
+/--
+One-hop projection: no-unify-to-general expression hook-irrelevance from the
+top-level master suite via the consequence-suite aggregate.
+-/
+theorem principalBoundaryMasterSuite_noUnifyToGeneralAllHooks_irrelevance_expr_via_consequenceSuite
+    (h_suite : PrincipalBoundaryMasterSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+      ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) :=
+  (principalBoundaryMasterSuite_noUnifyRunBundleConsequences_expr
+    h_suite h_no h_ok).hookIrrelevant
+
+/--
+One-hop projection: no-unify-to-general field hook-irrelevance from the
+top-level master suite via the consequence-suite aggregate.
+-/
+theorem principalBoundaryMasterSuite_noUnifyToGeneralAllHooks_irrelevance_field_via_consequenceSuite
+    (h_suite : PrincipalBoundaryMasterSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
+  (principalBoundaryMasterSuite_noUnifyRunBundleConsequences_field
+    h_suite h_no h_ok).hookIrrelevant
+
+/--
 One-hop projection: arbitrary-success all-hooks expression run-bundle from the
 top-level master suite via the consequence-suite aggregate.
 -/
