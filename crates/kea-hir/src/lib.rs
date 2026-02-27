@@ -357,6 +357,18 @@ fn resolve_unqualified_constructor_meta(
         .cloned()
 }
 
+fn resolve_qualified_constructor_meta(
+    qualifier: &str,
+    name: &str,
+    arity: usize,
+    pattern_qualified_tags: &QualifiedPatternVariantTags,
+) -> Option<PatternVariantMeta> {
+    pattern_qualified_tags
+        .get(&(qualifier.to_string(), name.to_string()))
+        .filter(|meta| meta.arity == arity)
+        .cloned()
+}
+
 #[allow(clippy::too_many_arguments)]
 fn lower_constructor_fields(
     args: &[kea_ast::Argument],
@@ -566,31 +578,62 @@ fn lower_expr(
                 known_record_defs,
             )),
         },
-        ExprKind::Call { func, args } => HirExprKind::Call {
-            func: Box::new(lower_expr(
-                func,
-                None,
-                unit_variant_tags,
-                qualified_variant_tags,
-                pattern_variant_tags,
-                pattern_qualified_tags,
-                known_record_defs,
-            )),
-            args: args
-                .iter()
-                .map(|arg| {
-                    lower_expr(
-                        &arg.value,
+        ExprKind::Call { func, args } => {
+            if let ExprKind::FieldAccess {
+                expr: qualifier,
+                field,
+            } = &func.node
+                && let ExprKind::Var(type_name) = &qualifier.node
+                && let Some(meta) = resolve_qualified_constructor_meta(
+                    type_name,
+                    &field.node,
+                    args.len(),
+                    pattern_qualified_tags,
+                )
+                && let Some(fields) = lower_constructor_fields(
+                    args,
+                    &meta,
+                    unit_variant_tags,
+                    qualified_variant_tags,
+                    pattern_variant_tags,
+                    pattern_qualified_tags,
+                    known_record_defs,
+                )
+            {
+                HirExprKind::SumConstructor {
+                    sum_type: meta.sum_type,
+                    variant: field.node.clone(),
+                    tag: meta.tag,
+                    fields,
+                }
+            } else {
+                HirExprKind::Call {
+                    func: Box::new(lower_expr(
+                        func,
                         None,
                         unit_variant_tags,
                         qualified_variant_tags,
                         pattern_variant_tags,
                         pattern_qualified_tags,
                         known_record_defs,
-                    )
-                })
-                .collect(),
-        },
+                    )),
+                    args: args
+                        .iter()
+                        .map(|arg| {
+                            lower_expr(
+                                &arg.value,
+                                None,
+                                unit_variant_tags,
+                                qualified_variant_tags,
+                                pattern_variant_tags,
+                                pattern_qualified_tags,
+                                known_record_defs,
+                            )
+                        })
+                        .collect(),
+                }
+            }
+        }
         ExprKind::Lambda { params, body, .. } => HirExprKind::Lambda {
             params: params.iter().map(lower_param).collect(),
             body: Box::new(lower_expr(
@@ -2017,6 +2060,49 @@ mod tests {
                 ref fields
             } if sum_type == "Flag" && variant == "Yep" && fields.len() == 1
                 && matches!(fields[0].kind, HirExprKind::Binary { op: BinOp::Add, .. })
+        ));
+    }
+
+    #[test]
+    fn lower_function_qualified_payload_constructor_stays_structured_hir() {
+        let module = parse_module_from_text(
+            "type Flag = Yep(Int) | Nope\n\nfn make_flag() -> Flag\n  Flag.Yep(7)",
+        );
+        let mut env = TypeEnv::new();
+        env.bind(
+            "make_flag".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::pure(
+                vec![],
+                Type::Sum(kea_types::SumType {
+                    name: "Flag".to_string(),
+                    type_args: vec![],
+                    variants: vec![
+                        ("Yep".to_string(), vec![Type::Int]),
+                        ("Nope".to_string(), vec![]),
+                    ],
+                }),
+            ))),
+        );
+
+        let lowered = lower_module(&module, &env);
+        let function = lowered
+            .declarations
+            .iter()
+            .find_map(|decl| match decl {
+                HirDecl::Function(function) if function.name == "make_flag" => Some(function),
+                _ => None,
+            })
+            .expect("expected lowered make_flag function");
+
+        assert!(matches!(
+            function.body.kind,
+            HirExprKind::SumConstructor {
+                ref sum_type,
+                ref variant,
+                tag: 0,
+                ref fields
+            } if sum_type == "Flag" && variant == "Yep" && fields.len() == 1
+                && matches!(fields[0].kind, HirExprKind::Lit(Lit::Int(7)))
         ));
     }
 
