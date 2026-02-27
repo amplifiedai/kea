@@ -308,6 +308,26 @@ mod tests {
 
     #[test]
     #[cfg(not(target_os = "windows"))]
+    fn compile_and_execute_real_stdlib_rand_module_exit_code() {
+        let project_dir = temp_workspace_project_dir("kea-cli-project-real-stdlib-rand");
+        let src_dir = project_dir.join("src");
+        std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+
+        let app_path = src_dir.join("app.kea");
+        std::fs::write(
+            &app_path,
+            "use Rand\n\nfn main() -[Rand]> Int\n  if Rand.int() >= 0\n    1\n  else\n    0\n",
+        )
+        .expect("app module write should succeed");
+
+        let run = run_file(&app_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 1);
+
+        let _ = std::fs::remove_dir_all(project_dir);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
     fn compile_and_execute_clock_now_direct_effect_exit_code() {
         let source_path = write_temp_source(
             "effect Clock\n  fn now() -> Int\n\nfn main() -[Clock]> Int\n  if Clock.now() > 0\n    1\n  else\n    0\n",
@@ -331,6 +351,21 @@ mod tests {
         );
 
         let run = run_file(&source_path).expect("clock-monotonic run should succeed");
+        assert_eq!(run.exit_code, 1);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn compile_and_execute_rand_int_direct_effect_exit_code() {
+        let source_path = write_temp_source(
+            "effect Rand\n  fn int() -> Int\n\nfn main() -[Rand]> Int\n  if Rand.int() >= 0\n    1\n  else\n    0\n",
+            "kea-cli-rand-int-direct",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("rand-int run should succeed");
         assert_eq!(run.exit_code, 1);
 
         let _ = std::fs::remove_file(source_path);
