@@ -23956,6 +23956,70 @@ theorem principalRowPolyBoundarySoundBundle_noUnifyFieldRunBundleRoutes_of_succe
       h_bundle h_no h_ok
   }
 
+/-- One-hop projection of the arbitrary-success expression run-bundle witness from a boundary+sound route pair. -/
+theorem principalBoundarySoundExprRunBundleRoutes_runBundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_routes : PrincipalBoundarySoundExprRunBundleRoutes st fuel env e st' ty) :
+    PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty :=
+  h_routes.runBundle
+
+/-- One-hop projection of the arbitrary-success expression consequence witness from a boundary+sound route pair. -/
+theorem principalBoundarySoundExprRunBundleRoutes_consequences
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_routes : PrincipalBoundarySoundExprRunBundleRoutes st fuel env e st' ty) :
+    PrincipalExprRunBundleConsequences st fuel env e st' ty :=
+  h_routes.consequences
+
+/-- One-hop projection of the arbitrary-success field run-bundle witness from a boundary+sound route pair. -/
+theorem principalBoundarySoundFieldRunBundleRoutes_runBundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_routes : PrincipalBoundarySoundFieldRunBundleRoutes st fuel env fs st' rf) :
+    PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf :=
+  h_routes.runBundle
+
+/-- One-hop projection of the arbitrary-success field consequence witness from a boundary+sound route pair. -/
+theorem principalBoundarySoundFieldRunBundleRoutes_consequences
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_routes : PrincipalBoundarySoundFieldRunBundleRoutes st fuel env fs st' rf) :
+    PrincipalFieldRunBundleConsequences st fuel env fs st' rf :=
+  h_routes.consequences
+
+/-- One-hop projection of the no-unify expression run-bundle witness from a boundary+sound route pair. -/
+theorem principalBoundarySoundNoUnifyExprRunBundleRoutes_runBundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_routes : PrincipalBoundarySoundNoUnifyExprRunBundleRoutes st fuel env e st' ty) :
+    PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty :=
+  h_routes.runBundle
+
+/-- One-hop projection of the no-unify expression consequence witness from a boundary+sound route pair. -/
+theorem principalBoundarySoundNoUnifyExprRunBundleRoutes_consequences
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_routes : PrincipalBoundarySoundNoUnifyExprRunBundleRoutes st fuel env e st' ty) :
+    PrincipalNoUnifyExprRunBundleConsequences st fuel env e st' ty :=
+  h_routes.consequences
+
+/-- One-hop projection of the no-unify field run-bundle witness from a boundary+sound route pair. -/
+theorem principalBoundarySoundNoUnifyFieldRunBundleRoutes_runBundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_routes : PrincipalBoundarySoundNoUnifyFieldRunBundleRoutes st fuel env fs st' rf) :
+    PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf :=
+  h_routes.runBundle
+
+/-- One-hop projection of the no-unify field consequence witness from a boundary+sound route pair. -/
+theorem principalBoundarySoundNoUnifyFieldRunBundleRoutes_consequences
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_routes : PrincipalBoundarySoundNoUnifyFieldRunBundleRoutes st fuel env fs st' rf) :
+    PrincipalNoUnifyFieldRunBundleConsequences st fuel env fs st' rf :=
+  h_routes.consequences
+
 /--
 Expression preconditioned↔core wrapper on the dual-routed proved master suite.
 -/
