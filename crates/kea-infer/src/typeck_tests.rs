@@ -3363,6 +3363,72 @@ fn infer_arithmetic() {
 }
 
 #[test]
+fn infer_arithmetic_widens_signed_precision_ints() {
+    let expr = binop(BinOp::Add, var("a"), var("b"));
+    let mut env = TypeEnv::new();
+    env.bind(
+        "a".into(),
+        TypeScheme::mono(Type::IntN(IntWidth::I8, Signedness::Signed)),
+    );
+    env.bind(
+        "b".into(),
+        TypeScheme::mono(Type::IntN(IntWidth::I16, Signedness::Signed)),
+    );
+
+    let (ty, u) = infer_with_env(&expr, &mut env);
+    assert!(
+        !u.has_errors(),
+        "signed mixed-width arithmetic should type-check: {:?}",
+        u.errors()
+    );
+    assert_eq!(ty, Type::IntN(IntWidth::I16, Signedness::Signed));
+}
+
+#[test]
+fn infer_arithmetic_widens_unsigned_precision_ints() {
+    let expr = binop(BinOp::Add, var("a"), var("b"));
+    let mut env = TypeEnv::new();
+    env.bind(
+        "a".into(),
+        TypeScheme::mono(Type::IntN(IntWidth::I8, Signedness::Unsigned)),
+    );
+    env.bind(
+        "b".into(),
+        TypeScheme::mono(Type::IntN(IntWidth::I16, Signedness::Unsigned)),
+    );
+
+    let (ty, u) = infer_with_env(&expr, &mut env);
+    assert!(
+        !u.has_errors(),
+        "unsigned mixed-width arithmetic should type-check: {:?}",
+        u.errors()
+    );
+    assert_eq!(ty, Type::IntN(IntWidth::I16, Signedness::Unsigned));
+}
+
+#[test]
+fn infer_arithmetic_mixed_signed_unsigned_defaults_to_int() {
+    let expr = binop(BinOp::Add, var("a"), var("b"));
+    let mut env = TypeEnv::new();
+    env.bind(
+        "a".into(),
+        TypeScheme::mono(Type::IntN(IntWidth::I8, Signedness::Signed)),
+    );
+    env.bind(
+        "b".into(),
+        TypeScheme::mono(Type::IntN(IntWidth::I8, Signedness::Unsigned)),
+    );
+
+    let (ty, u) = infer_with_env(&expr, &mut env);
+    assert!(
+        !u.has_errors(),
+        "mixed signed/unsigned arithmetic should type-check: {:?}",
+        u.errors()
+    );
+    assert_eq!(ty, Type::Int);
+}
+
+#[test]
 fn infer_concat_strings() {
     let expr = binop(BinOp::Concat, lit_str("hello "), lit_str("world"));
     let (ty, u) = infer(&expr);
