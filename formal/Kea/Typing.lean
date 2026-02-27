@@ -21224,6 +21224,88 @@ theorem principalFieldTypingDualConsequence_of_success_from_hook_bundle_via_dual
   principalFieldTypingDualConsequence_of_success_via_dual_bundle
     (inferUnifySoundDualBundle_of_hook_bundle h_hooks) st fuel env fs st' rf h_ok
 
+/-- One-hop expression preconditioned projection from dual consequence bundle. -/
+theorem principalTypingDualConsequence_preconditioned
+    {h_app : AppUnifySoundHook}
+    {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_conseq : PrincipalTypingDualConsequence h_app h_proj st fuel env e st' ty) :
+    PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty :=
+  h_conseq.preconditioned
+
+/-- One-hop expression core projection from dual consequence bundle. -/
+theorem principalTypingDualConsequence_core
+    {h_app : AppUnifySoundHook}
+    {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_conseq : PrincipalTypingDualConsequence h_app h_proj st fuel env e st' ty) :
+    PrincipalTypingSliceCore env e ty :=
+  h_conseq.core
+
+/-- One-hop expression preconditioned↔core projection from dual bundle. -/
+theorem principalTypingDualConsequence_iff_core
+    {h_app : AppUnifySoundHook}
+    {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_conseq : PrincipalTypingDualConsequence h_app h_proj st fuel env e st' ty) :
+    PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty
+      ↔ PrincipalTypingSliceCore env e ty :=
+  h_conseq.preconditioned_iff_core
+
+/-- One-hop expression algorithmic-agreement projection from dual bundle. -/
+theorem principalTypingDualConsequence_inferExpr_agrees
+    {h_app : AppUnifySoundHook}
+    {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_conseq : PrincipalTypingDualConsequence h_app h_proj st fuel env e st' ty) :
+    inferExpr env e = some ty :=
+  h_conseq.inferExpr_agrees
+
+/-- One-hop field preconditioned projection from dual consequence bundle. -/
+theorem principalFieldTypingDualConsequence_preconditioned
+    {h_app : AppUnifySoundHook}
+    {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_conseq : PrincipalFieldTypingDualConsequence h_app h_proj st fuel env fs st' rf) :
+    PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf :=
+  h_conseq.preconditioned
+
+/-- One-hop field core projection from dual consequence bundle. -/
+theorem principalFieldTypingDualConsequence_core
+    {h_app : AppUnifySoundHook}
+    {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_conseq : PrincipalFieldTypingDualConsequence h_app h_proj st fuel env fs st' rf) :
+    PrincipalFieldTypingSliceCore env fs rf :=
+  h_conseq.core
+
+/-- One-hop field preconditioned↔core projection from dual bundle. -/
+theorem principalFieldTypingDualConsequence_iff_core
+    {h_app : AppUnifySoundHook}
+    {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_conseq : PrincipalFieldTypingDualConsequence h_app h_proj st fuel env fs st' rf) :
+    PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSliceCore env fs rf :=
+  h_conseq.preconditioned_iff_core
+
+/-- One-hop field algorithmic-agreement projection from dual bundle. -/
+theorem principalFieldTypingDualConsequence_inferFields_agrees
+    {h_app : AppUnifySoundHook}
+    {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_conseq : PrincipalFieldTypingDualConsequence h_app h_proj st fuel env fs st' rf) :
+    inferFields env fs = some rf :=
+  h_conseq.inferFields_agrees
+
 /--
 Surface-layer naming-parity wrappers for no-unify cross-route success APIs.
 These mirror the existing `...from_cross_route_slices` families under
