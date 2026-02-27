@@ -26590,6 +26590,64 @@ theorem principalBoundarySoundFullSuite_of_success_via_rowPolyBoundarySoundBundl
     h_ok_expr h_ok_field
 
 /--
+Canonical hook-seeded constructor for the row-poly-boundary full-suite route.
+-/
+theorem principalBoundarySoundFullSuite_of_success_via_rowPolyBoundarySoundBundle_proved
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundFullSuite st fuel env e fs stExpr ty stField rf :=
+  principalBoundarySoundFullSuite_of_success_via_rowPolyBoundarySoundBundle
+    (h_bundle := principalRowPolyBoundarySoundBundle_of_hooks h_app h_proj)
+    h_ok_expr h_ok_field
+
+/-- Bundled-hook alias for the canonical row-poly-boundary full-suite constructor. -/
+theorem principalBoundarySoundFullSuite_of_success_via_rowPolyBoundarySoundBundle_proved_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundFullSuite st fuel env e fs stExpr ty stField rf :=
+  principalBoundarySoundFullSuite_of_success_via_rowPolyBoundarySoundBundle_proved
+    (h_app := h_seed.1) (h_proj := h_seed.2) h_ok_expr h_ok_field
+
+/--
+Dual-routed hook-seeded constructor for the row-poly-boundary full-suite route.
+-/
+theorem principalBoundarySoundFullSuite_of_success_via_rowPolyBoundarySoundBundle_via_dualConsequenceSlices
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundFullSuite st fuel env e fs stExpr ty stField rf :=
+  principalBoundarySoundFullSuite_of_success_via_rowPolyBoundarySoundBundle
+    (h_bundle := principalRowPolyBoundarySoundBundle_of_hooks_via_dualConsequenceSlices h_app h_proj)
+    h_ok_expr h_ok_field
+
+/-- Bundled-hook alias for the dual-routed row-poly-boundary full-suite constructor. -/
+theorem principalBoundarySoundFullSuite_of_success_via_rowPolyBoundarySoundBundle_via_dualConsequenceSlices_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundFullSuite st fuel env e fs stExpr ty stField rf :=
+  principalBoundarySoundFullSuite_of_success_via_rowPolyBoundarySoundBundle_via_dualConsequenceSlices
+    (h_app := h_seed.1) (h_proj := h_seed.2) h_ok_expr h_ok_field
+
+/--
 Expression preconditioned↔core wrapper on the dual-routed proved master suite.
 -/
 theorem principalBoundaryMasterSuite_preconditionedCoreIff_expr_via_dualConsequenceSlices
