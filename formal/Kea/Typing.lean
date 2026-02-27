@@ -7667,6 +7667,52 @@ theorem principalBoundaryNoUnifyFieldAllHooksCapstone_of_generalAllHooks
   }
 
 /--
+Derive no-unify-to-general run-bundle slices from a no-unify all-hooks suite.
+-/
+theorem principalNoUnifyToGeneralAllHooksRunBundleSlices_of_noUnifyAllHooksSuite
+    (h_suite : PrincipalBoundaryNoUnifyAllHooksSuite) :
+    PrincipalNoUnifyToGeneralAllHooksRunBundleSlices := by
+  refine ⟨?_, ?_⟩
+  · intro st fuel env e st' ty h_no h_ok
+    exact principalBoundaryNoUnifyAllHooksSuite_runBundle_expr
+      h_suite h_no h_ok
+  · intro st fuel env fs st' rf h_no h_ok
+    exact principalBoundaryNoUnifyAllHooksSuite_runBundle_field
+      h_suite h_no h_ok
+
+/--
+Derive no-unify all-hooks run-bundle slices from a no-unify-to-general suite.
+-/
+theorem principalBoundaryNoUnifyAllHooksRunBundleSlices_of_noUnifyToGeneralAllHooksSuite
+    (h_suite : PrincipalNoUnifyToGeneralAllHooksSuite) :
+    PrincipalBoundaryNoUnifyAllHooksRunBundleSlices := by
+  refine ⟨?_, ?_⟩
+  · intro st fuel env e st' ty h_no h_ok
+    exact principalNoUnifyToGeneralAllHooksSuite_runBundle_expr
+      h_suite h_no h_ok
+  · intro st fuel env fs st' rf h_no h_ok
+    exact principalNoUnifyToGeneralAllHooksSuite_runBundle_field
+      h_suite h_no h_ok
+
+/--
+Canonical no-unify-to-general run-bundle slices derived from the proved no-unify
+all-hooks suite.
+-/
+theorem principalNoUnifyToGeneralAllHooksRunBundleSlices_proved_via_noUnifyAllHooks :
+    PrincipalNoUnifyToGeneralAllHooksRunBundleSlices :=
+  principalNoUnifyToGeneralAllHooksRunBundleSlices_of_noUnifyAllHooksSuite
+    principalBoundaryNoUnifyAllHooksSuite_proved
+
+/--
+Canonical no-unify all-hooks run-bundle slices derived from the proved
+no-unify-to-general all-hooks suite.
+-/
+theorem principalBoundaryNoUnifyAllHooksRunBundleSlices_proved_via_noUnifyToGeneral :
+    PrincipalBoundaryNoUnifyAllHooksRunBundleSlices :=
+  principalBoundaryNoUnifyAllHooksRunBundleSlices_of_noUnifyToGeneralAllHooksSuite
+    principalNoUnifyToGeneralAllHooksSuite_proved
+
+/--
 Derive the no-unify-to-general all-hooks suite from a no-unify all-hooks suite.
 -/
 theorem principalNoUnifyToGeneralAllHooksSuite_of_noUnifyAllHooksSuite
