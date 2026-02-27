@@ -6565,6 +6565,36 @@ theorem principalPreconditionedField_hookIrrelevant_of_success_via_generalAllHoo
     principalPreconditionedAllHooksSuite_proved h_ok
 
 /--
+General-all-hooks-suite convenience wrapper: bundled-hook variant for fixed-run
+expression hook-irrelevance from an arbitrary successful run.
+-/
+theorem principalPreconditionedExpr_hookIrrelevant_of_success_via_generalAllHooksSuite_from_bundle
+    (_h_seed : UnifyHookPremises)
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+      ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) :=
+  principalPreconditionedExpr_hookIrrelevant_of_success_via_generalAllHooksSuite h_ok
+
+/--
+General-all-hooks-suite convenience wrapper: bundled-hook variant for fixed-run
+field hook-irrelevance from an arbitrary successful field run.
+-/
+theorem principalPreconditionedField_hookIrrelevant_of_success_via_generalAllHooksSuite_from_bundle
+    (_h_seed : UnifyHookPremises)
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
+  principalPreconditionedField_hookIrrelevant_of_success_via_generalAllHooksSuite h_ok
+
+/--
 Top-level M4 principal vacuity suite.
 
 This packages:
