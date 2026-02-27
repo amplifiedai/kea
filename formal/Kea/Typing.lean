@@ -21366,6 +21366,58 @@ theorem principalDualConsequenceSlices_field
   h_slice.2 h_hooks st fuel env fs st' rf h_ok
 
 /--
+Canonical expression dual consequence entrypoint via the proved combined slice.
+-/
+theorem principalTypingDualConsequence_of_success_via_proved_slice
+    (h_hooks : UnifyHookPremises)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalTypingDualConsequence h_hooks.1 h_hooks.2 st fuel env e st' ty :=
+  principalDualConsequenceSlices_expr
+    principalDualConsequenceSlices_proved h_hooks st fuel env e st' ty h_ok
+
+/--
+Canonical field dual consequence entrypoint via the proved combined slice.
+-/
+theorem principalFieldTypingDualConsequence_of_success_via_proved_slice
+    (h_hooks : UnifyHookPremises)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalFieldTypingDualConsequence h_hooks.1 h_hooks.2 st fuel env fs st' rf :=
+  principalDualConsequenceSlices_field
+    principalDualConsequenceSlices_proved h_hooks st fuel env fs st' rf h_ok
+
+/--
+One-step `inferExpr` agreement extraction from the proved dual consequence
+slice.
+-/
+theorem inferExprUnify_inferExpr_agrees_of_success_via_dual_proved_slice
+    (h_hooks : UnifyHookPremises)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    inferExpr env e = some ty :=
+  principalTypingDualConsequence_inferExpr_agrees
+    (principalTypingDualConsequence_of_success_via_proved_slice
+      h_hooks st fuel env e st' ty h_ok)
+
+/--
+One-step `inferFields` agreement extraction from the proved dual consequence
+slice.
+-/
+theorem inferFieldsUnify_inferFields_agrees_of_success_via_dual_proved_slice
+    (h_hooks : UnifyHookPremises)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    inferFields env fs = some rf :=
+  principalFieldTypingDualConsequence_inferFields_agrees
+    (principalFieldTypingDualConsequence_of_success_via_proved_slice
+      h_hooks st fuel env fs st' rf h_ok)
+
+/--
 Surface-layer naming-parity wrappers for no-unify cross-route success APIs.
 These mirror the existing `...from_cross_route_slices` families under
 explicit `...from_cross_route_surface_slices` theorem names.
