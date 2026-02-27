@@ -877,6 +877,51 @@ mod tests {
     }
 
     #[test]
+    fn compile_and_execute_catch_higher_order_fail_parameter_err_exit_code() {
+        let source_path = write_temp_source(
+            "effect Fail\n  fn fail(err: Int) -> Never\n\nfn call_with_catch(f: fn() -[Fail Int]> Int) -> Result(Int, Int)\n  catch f()\n\nfn boom() -[Fail Int]> Int\n  fail 7\n\nfn main() -> Int\n  let r = call_with_catch(boom)\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
+            "kea-cli-catch-higher-order-fail-err",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 7);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_catch_higher_order_fail_parameter_ok_exit_code() {
+        let source_path = write_temp_source(
+            "effect Fail\n  fn fail(err: Int) -> Never\n\nfn call_with_catch(f: fn() -[Fail Int]> Int) -> Result(Int, Int)\n  catch f()\n\nfn ok() -[Fail Int]> Int\n  9\n\nfn main() -> Int\n  let r = call_with_catch(ok)\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
+            "kea-cli-catch-higher-order-fail-ok",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 9);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_catch_fails_when_body_cannot_fail() {
+        let source_path = write_temp_source(
+            "effect Fail\n  fn fail(err: Int) -> Never\n\nfn main() -> Int\n  let r = catch 42\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
+            "kea-cli-catch-cannot-fail",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject unnecessary catch");
+        assert!(
+            err.contains("expression cannot fail; catch is unnecessary"),
+            "expected unnecessary catch diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_trait_qualified_method_single_impl_exit_code() {
         let source_path = write_temp_source(
             "trait Inc a\n  fn inc(x: a) -> a\n\nimpl Inc for Int\n  fn inc(x: Int) -> Int\n    x + 1\n\nfn main() -> Int\n  Inc.inc(41)\n",
