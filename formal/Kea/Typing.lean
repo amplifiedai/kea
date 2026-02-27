@@ -26452,6 +26452,144 @@ theorem principalBoundarySoundFullSuite_noUnifyField
   h_suite.noUnifyField h_no
 
 /--
+Construct the full typing-suite capstone via the boundary+sound bundle route,
+so one `PrincipalRowPolyBoundarySoundBundle` witness yields the full direct
+arbitrary-success/no-unify expr+field package.
+-/
+theorem principalBoundarySoundFullSuite_of_success_via_rowPolyBoundarySoundBundle
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    (h_bundle : PrincipalRowPolyBoundarySoundBundle h_app h_proj)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundFullSuite st fuel env e fs stExpr ty stField rf := by
+  refine {
+    expr := ?_
+    field := ?_
+    noUnifyExpr := ?_
+    noUnifyField := ?_
+  }
+  · refine {
+      hasType := principalRowPolyBoundarySoundBundle_expr_hasType h_bundle h_ok_expr
+      hasTypeU := principalRowPolyBoundarySoundBundle_expr_hasTypeU h_bundle h_ok_expr
+      core := principalRowPolyBoundarySoundBundle_coreExpr_of_success h_bundle h_ok_expr
+      preconditionedAny := ?_
+      preconditioned := ?_
+      preconditionedAnyIffCore := ?_
+      preconditionedIffCore := ?_
+      hookIrrelevant := ?_
+    }
+    · intro h_app' h_proj'
+      exact principalRowPolyBoundarySoundBundle_preconditionedExpr_anyHooks_of_success
+        h_bundle h_ok_expr h_app' h_proj'
+    · intro h_hooks
+      exact principalRowPolyBoundarySoundBundle_preconditionedExpr_of_success
+        h_bundle h_ok_expr h_hooks
+    · intro h_app' h_proj'
+      exact principalRowPolyBoundarySoundBundle_preconditionedCoreIffExpr_anyHooks_of_success
+        h_bundle h_ok_expr h_app' h_proj'
+    · intro h_hooks
+      exact principalRowPolyBoundarySoundBundle_preconditionedCoreIffExpr_of_success
+        h_bundle h_ok_expr h_hooks
+    · intro h_app₁ h_proj₁ h_app₂ h_proj₂
+      exact principalRowPolyBoundarySoundBundle_hookIrrelevantExpr_of_success
+        h_bundle h_ok_expr
+  · refine {
+      hasType := principalRowPolyBoundarySoundBundle_field_hasType h_bundle h_ok_field
+      hasTypeU := principalRowPolyBoundarySoundBundle_field_hasTypeU h_bundle h_ok_field
+      core := principalRowPolyBoundarySoundBundle_coreField_of_success h_bundle h_ok_field
+      preconditionedAny := ?_
+      preconditioned := ?_
+      preconditionedAnyIffCore := ?_
+      preconditionedIffCore := ?_
+      hookIrrelevant := ?_
+    }
+    · intro h_app' h_proj'
+      exact principalRowPolyBoundarySoundBundle_preconditionedField_anyHooks_of_success
+        h_bundle h_ok_field h_app' h_proj'
+    · intro h_hooks
+      exact principalRowPolyBoundarySoundBundle_preconditionedField_of_success
+        h_bundle h_ok_field h_hooks
+    · intro h_app' h_proj'
+      exact principalRowPolyBoundarySoundBundle_preconditionedCoreIffField_anyHooks_of_success
+        h_bundle h_ok_field h_app' h_proj'
+    · intro h_hooks
+      exact principalRowPolyBoundarySoundBundle_preconditionedCoreIffField_of_success
+        h_bundle h_ok_field h_hooks
+    · intro h_app₁ h_proj₁ h_app₂ h_proj₂
+      exact principalRowPolyBoundarySoundBundle_hookIrrelevantField_of_success
+        h_bundle h_ok_field
+  · intro h_no
+    refine {
+      hasType := principalRowPolyBoundarySoundBundle_expr_hasType h_bundle h_ok_expr
+      hasTypeU := principalRowPolyBoundarySoundBundle_expr_hasTypeU h_bundle h_ok_expr
+      core := principalRowPolyBoundarySoundBundle_coreExpr_of_success_noUnify h_bundle h_no h_ok_expr
+      preconditionedAny := ?_
+      preconditioned := ?_
+      preconditionedAnyIffCore := ?_
+      preconditionedIffCore := ?_
+      hookIrrelevant := ?_
+    }
+    · intro h_app' h_proj'
+      exact principalRowPolyBoundarySoundBundle_preconditionedExpr_anyHooks_of_success_noUnify
+        h_bundle h_no h_ok_expr h_app' h_proj'
+    · intro h_hooks
+      exact principalRowPolyBoundarySoundBundle_preconditionedExpr_of_success_noUnify
+        h_bundle h_no h_ok_expr h_hooks
+    · intro h_app' h_proj'
+      exact principalRowPolyBoundarySoundBundle_preconditionedCoreIffExpr_anyHooks_of_success_noUnify
+        h_bundle h_no h_ok_expr h_app' h_proj'
+    · intro h_hooks
+      exact principalRowPolyBoundarySoundBundle_preconditionedCoreIffExpr_of_success_noUnify
+        h_bundle h_no h_ok_expr h_hooks
+    · intro h_app₁ h_proj₁ h_app₂ h_proj₂
+      exact principalRowPolyBoundarySoundBundle_hookIrrelevantExpr_of_success_noUnify
+        h_bundle h_no h_ok_expr
+  · intro h_no
+    refine {
+      hasType := principalRowPolyBoundarySoundBundle_field_hasType h_bundle h_ok_field
+      hasTypeU := principalRowPolyBoundarySoundBundle_field_hasTypeU h_bundle h_ok_field
+      core := principalRowPolyBoundarySoundBundle_coreField_of_success_noUnify h_bundle h_no h_ok_field
+      preconditionedAny := ?_
+      preconditioned := ?_
+      preconditionedAnyIffCore := ?_
+      preconditionedIffCore := ?_
+      hookIrrelevant := ?_
+    }
+    · intro h_app' h_proj'
+      exact principalRowPolyBoundarySoundBundle_preconditionedField_anyHooks_of_success_noUnify
+        h_bundle h_no h_ok_field h_app' h_proj'
+    · intro h_hooks
+      exact principalRowPolyBoundarySoundBundle_preconditionedField_of_success_noUnify
+        h_bundle h_no h_ok_field h_hooks
+    · intro h_app' h_proj'
+      exact principalRowPolyBoundarySoundBundle_preconditionedCoreIffField_anyHooks_of_success_noUnify
+        h_bundle h_no h_ok_field h_app' h_proj'
+    · intro h_hooks
+      exact principalRowPolyBoundarySoundBundle_preconditionedCoreIffField_of_success_noUnify
+        h_bundle h_no h_ok_field h_hooks
+    · intro h_app₁ h_proj₁ h_app₂ h_proj₂
+      exact principalRowPolyBoundarySoundBundle_hookIrrelevantField_of_success_noUnify
+        h_bundle h_no h_ok_field
+
+/-- Bundled-hook constructor alias for the row-poly-boundary full-suite route. -/
+theorem principalBoundarySoundFullSuite_of_success_via_rowPolyBoundarySoundBundle_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundFullSuite st fuel env e fs stExpr ty stField rf :=
+  principalBoundarySoundFullSuite_of_success_via_rowPolyBoundarySoundBundle
+    (h_bundle := principalRowPolyBoundarySoundBundle_of_hook_bundle h_seed)
+    h_ok_expr h_ok_field
+
+/--
 Expression preconditioned↔core wrapper on the dual-routed proved master suite.
 -/
 theorem principalBoundaryMasterSuite_preconditionedCoreIff_expr_via_dualConsequenceSlices
