@@ -440,6 +440,8 @@ pub struct ConstructorFieldPattern {
 pub enum ParamLabel {
     /// `_` prefix: positional-only parameter.
     Positional,
+    /// `borrow` parameter convention prefix (`borrow x: T`).
+    Borrow,
     /// Explicit label different from bound pattern name (`label name: Type`).
     Label(Spanned<String>),
     /// No prefix/alias: label is derived from simple variable pattern name.
@@ -455,12 +457,8 @@ pub struct Param {
 }
 
 impl Param {
-    /// Returns true when this parameter uses the `borrow` convention prefix.
-    ///
-    /// The parser currently represents `borrow x: T` as an explicit label
-    /// `borrow` followed by the bound pattern `x`.
     pub fn is_borrowed(&self) -> bool {
-        matches!(&self.label, ParamLabel::Label(label) if label.node == "borrow")
+        matches!(&self.label, ParamLabel::Borrow)
     }
 
     /// Returns the parameter name if the pattern is a simple variable.
@@ -478,6 +476,7 @@ impl Param {
         }
         match &self.label {
             ParamLabel::Positional => None,
+            ParamLabel::Borrow => self.name(),
             ParamLabel::Label(label) => Some(label.node.as_str()),
             ParamLabel::Implicit => self.name(),
         }

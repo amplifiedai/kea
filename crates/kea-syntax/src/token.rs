@@ -113,6 +113,7 @@ pub enum TokenKind {
     And,
     Or,
     Not,
+    Borrow,
     In,
 
     // -- Reserved words (KERNEL §16) --

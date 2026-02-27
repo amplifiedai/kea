@@ -117,7 +117,7 @@ pub fn compile_module(source: &str, file_id: FileId) -> Result<CompilationContex
     )?;
 
     let hir = lower_module(&module, &env);
-    let borrow_param_map = collect_borrow_param_positions(&module);
+    let borrow_param_map = collect_borrow_param_positions(&module, None);
     diagnostics.extend(check_unique_moves_with_borrow_map(&hir, &borrow_param_map));
     if has_errors(&diagnostics) {
         return Err(format_diagnostics("move checking failed", &diagnostics));
@@ -321,7 +321,7 @@ pub fn process_module_in_env(
     }
 
     let hir = lower_module(module, env);
-    let borrow_param_map = collect_borrow_param_positions(module);
+    let borrow_param_map = collect_borrow_param_positions(module, None);
     diagnostics.extend(check_unique_moves_with_borrow_map(&hir, &borrow_param_map));
     if has_errors(&diagnostics) {
         return Err(diagnostics);
@@ -780,6 +780,17 @@ fn typecheck_loaded_modules(
     let mut sum_types = SumTypeRegistry::new();
     let mut diagnostics = Vec::new();
     let mut typed_modules = Vec::new();
+    let mut qualified_borrow_param_map = BTreeMap::new();
+    for loaded in loaded_modules {
+        let expanded = expand_impl_methods_for_codegen(&loaded.module);
+        for (name, positions) in
+            collect_borrow_param_positions(&expanded, Some(&loaded.module_path))
+        {
+            if name.contains('.') {
+                qualified_borrow_param_map.insert(name, positions);
+            }
+        }
+    }
 
     for loaded in loaded_modules {
         let is_entry_module = loaded.module_path == entry_module_path;
@@ -828,7 +839,11 @@ fn typecheck_loaded_modules(
         )?;
 
         let hir = lower_module(&expanded, &env);
-        let borrow_param_map = collect_borrow_param_positions(&expanded);
+        let mut borrow_param_map = qualified_borrow_param_map.clone();
+        borrow_param_map.extend(collect_borrow_param_positions(
+            &expanded,
+            Some(&loaded.module_path),
+        ));
         diagnostics.extend(check_unique_moves_with_borrow_map(&hir, &borrow_param_map));
         if has_errors(&diagnostics) {
             if !is_entry_module {

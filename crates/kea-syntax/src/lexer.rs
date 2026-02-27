@@ -793,6 +793,7 @@ impl<'src> Lexer<'src> {
             "and" => TokenKind::And,
             "or" => TokenKind::Or,
             "not" => TokenKind::Not,
+            "borrow" => TokenKind::Borrow,
             "in" => TokenKind::In,
             "nil" => {
                 self.error(start, "`nil` is not supported; use `None`");
@@ -1309,7 +1310,7 @@ mod tests {
     fn keywords() {
         assert_eq!(
             lex_kinds(
-                "let fn expr test property pub if when else case cond alias opaque deriving testing use effect forall"
+                "let fn expr test property pub if when else case cond alias opaque deriving testing use effect forall borrow"
             ),
             vec![
                 TokenKind::Let,
@@ -1330,6 +1331,7 @@ mod tests {
                 TokenKind::Use,
                 TokenKind::Effect,
                 TokenKind::Forall,
+                TokenKind::Borrow,
             ]
         );
     }
