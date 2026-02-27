@@ -1474,6 +1474,15 @@ impl FunctionLoweringCtx {
             self.set_terminator(MirTerminator::Unreachable);
             return None;
         }
+        if let HirExprKind::Var(name) = &func.kind
+            && name.contains("::")
+            && !self.known_function_types.contains_key(name)
+        {
+            self.emit_inst(MirInst::Unsupported {
+                detail: format!("unresolved qualified call target `{name}`"),
+            });
+            return None;
+        }
         let callee_fail_result_abi = match &func.kind {
             HirExprKind::Var(name) => self.var_types.get(name).map_or_else(
                 || uses_fail_result_abi_from_type(&func.ty),
@@ -1483,6 +1492,9 @@ impl FunctionLoweringCtx {
         };
 
         let callee = match &func.kind {
+            HirExprKind::Var(name) if self.known_function_types.contains_key(name) => {
+                MirCallee::Local(name.clone())
+            }
             HirExprKind::Var(name) if name.contains("::") => MirCallee::External(name.clone()),
             HirExprKind::Var(name) if self.vars.contains_key(name) => {
                 let callee_value = self.lower_expr(func)?;

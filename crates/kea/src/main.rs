@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
@@ -139,16 +140,17 @@ fn parse_and_typecheck_module(source: &str, file_id: FileId) -> Result<PipelineR
     let (tokens, mut diagnostics) =
         lex_layout(source, file_id).map_err(|diags| format_diagnostics("lexing failed", &diags))?;
 
-    let module = parse_module(tokens, file_id)
+    let parsed_module = parse_module(tokens, file_id)
         .map_err(|diags| format_diagnostics("parsing failed", &diags))?;
+    let module = expand_impl_methods_for_codegen(&parsed_module);
 
     let mut env = TypeEnv::new();
     let mut records = RecordRegistry::new();
     let mut traits = TraitRegistry::new();
     let mut sum_types = SumTypeRegistry::new();
 
-    diagnostics.extend(validate_module_fn_annotations(&module));
-    diagnostics.extend(validate_module_annotations(&module));
+    diagnostics.extend(validate_module_fn_annotations(&parsed_module));
+    diagnostics.extend(validate_module_annotations(&parsed_module));
     if has_errors(&diagnostics) {
         return Err(format_diagnostics(
             "type annotation validation failed",
@@ -179,6 +181,55 @@ fn parse_and_typecheck_module(source: &str, file_id: FileId) -> Result<PipelineR
         type_env: env,
         diagnostics,
     })
+}
+
+fn expand_impl_methods_for_codegen(module: &Module) -> Module {
+    let mut declarations = module.declarations.clone();
+    let mut trait_method_counts: BTreeMap<(String, String), usize> = BTreeMap::new();
+    for decl in &module.declarations {
+        let DeclKind::ImplBlock(impl_block) = &decl.node else {
+            continue;
+        };
+        for method in &impl_block.methods {
+            *trait_method_counts
+                .entry((impl_block.trait_name.node.clone(), method.name.node.clone()))
+                .or_insert(0) += 1;
+        }
+    }
+
+    for decl in &module.declarations {
+        let DeclKind::ImplBlock(impl_block) = &decl.node else {
+            continue;
+        };
+        for method in &impl_block.methods {
+            let mut lifted = method.clone();
+            let trait_name = impl_block.trait_name.node.clone();
+            let type_name = impl_block.type_name.node.clone();
+            let method_name = method.name.node.clone();
+            let duplicate_count = trait_method_counts
+                .get(&(trait_name.clone(), method_name.clone()))
+                .copied()
+                .unwrap_or(1);
+            // When a trait method has one impl in-module, lift it under
+            // `Trait::method` so trait-qualified calls compile on the current
+            // monomorphic backend path. Multiple impls get disambiguated names.
+            let runtime_name = if duplicate_count == 1 {
+                format!("{trait_name}::{method_name}")
+            } else {
+                format!("{trait_name}::{type_name}::{method_name}")
+            };
+            lifted.name.node = runtime_name;
+            declarations.push(kea_ast::Spanned::new(
+                DeclKind::Function(lifted),
+                method.span,
+            ));
+        }
+    }
+
+    Module {
+        declarations,
+        span: module.span,
+    }
 }
 
 fn register_top_level_declarations(
@@ -824,6 +875,37 @@ mod tests {
 
         let run = run_file(&source_path).expect("run should succeed");
         assert_eq!(run.exit_code, 5);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_trait_qualified_method_single_impl_exit_code() {
+        let source_path = write_temp_source(
+            "trait Inc a\n  fn inc(x: a) -> a\n\nimpl Inc for Int\n  fn inc(x: Int) -> Int\n    x + 1\n\nfn main() -> Int\n  Inc::inc(41)\n",
+            "kea-cli-trait-qualified-single-impl",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_trait_qualified_method_ambiguous_impls_error() {
+        let source_path = write_temp_source(
+            "trait Inc a\n  fn inc(x: a) -> a\n\nimpl Inc for Int\n  fn inc(x: Int) -> Int\n    x + 1\n\nimpl Inc for Float\n  fn inc(x: Float) -> Float\n    x + 1.0\n\nfn main() -> Int\n  Inc::inc(41)\n",
+            "kea-cli-trait-qualified-ambiguous-impls",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject unresolved trait dispatch target");
+        assert!(
+            err.contains("unresolved qualified call target `Inc::inc`"),
+            "expected unresolved qualified call target diagnostic, got: {err}"
+        );
 
         let _ = std::fs::remove_file(source_path);
     }
