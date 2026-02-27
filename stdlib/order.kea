@@ -1,0 +1,12 @@
+type Ordering = Less | Equal | Greater
+
+fn reverse(value: Ordering) -> Ordering
+  case value
+    Less -> Greater
+    Equal -> Equal
+    Greater -> Less
+
+fn reversed_less_is_greater() -> Bool
+  case reverse(Less)
+    Greater -> true
+    _ -> false
