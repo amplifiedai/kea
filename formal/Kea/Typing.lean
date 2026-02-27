@@ -26189,6 +26189,269 @@ theorem principalBoundarySoundFieldFull_of_success_via_typingRunBundleSuite_from
     (h_app := h_hooks.1) (h_proj := h_hooks.2) h_ok
 
 /--
+Packaged no-unify expression capstone on the direct boundary+sound typing-suite
+surface.
+-/
+structure PrincipalBoundarySoundNoUnifyExprFull
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty) : Prop where
+  hasType : HasType env e ty
+  hasTypeU : HasTypeU env e ty
+  core : PrincipalTypingSliceCore env e ty
+  preconditionedAny :
+    ∀ h_app h_proj,
+      PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty
+  preconditioned :
+    ∀ (h_hooks : UnifyHookPremises),
+      PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty
+  preconditionedAnyIffCore :
+    ∀ h_app h_proj,
+      (PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty
+        ↔ PrincipalTypingSliceCore env e ty)
+  preconditionedIffCore :
+    ∀ (h_hooks : UnifyHookPremises),
+      (PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty
+        ↔ PrincipalTypingSliceCore env e ty)
+  hookIrrelevant :
+    ∀ {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+      {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook},
+      (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+        ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty)
+
+/--
+Packaged no-unify field capstone on the direct boundary+sound typing-suite
+surface.
+-/
+structure PrincipalBoundarySoundNoUnifyFieldFull
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields) : Prop where
+  hasType : HasFieldsType env fs rf
+  hasTypeU : HasFieldsTypeU env fs rf
+  core : PrincipalFieldTypingSliceCore env fs rf
+  preconditionedAny :
+    ∀ h_app h_proj,
+      PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf
+  preconditioned :
+    ∀ (h_hooks : UnifyHookPremises),
+      PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf
+  preconditionedAnyIffCore :
+    ∀ h_app h_proj,
+      (PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf
+        ↔ PrincipalFieldTypingSliceCore env fs rf)
+  preconditionedIffCore :
+    ∀ (h_hooks : UnifyHookPremises),
+      (PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf
+        ↔ PrincipalFieldTypingSliceCore env fs rf)
+  hookIrrelevant :
+    ∀ {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+      {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook},
+      (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+        ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf)
+
+/--
+Build the packaged no-unify expression capstone from one successful no-unify
+run via the direct boundary+sound typing-suite surface.
+-/
+theorem principalBoundarySoundNoUnifyExprFull_of_success_via_typingRunBundleSuite
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalBoundarySoundNoUnifyExprFull st fuel env e st' ty := by
+  refine {
+    hasType := principalBoundarySoundNoUnifyExpr_hasType_of_success_via_typingRunBundleSuite
+      (h_app := h_app) (h_proj := h_proj) h_no h_ok
+    hasTypeU := principalBoundarySoundNoUnifyExpr_hasTypeU_of_success_via_typingRunBundleSuite
+      (h_app := h_app) (h_proj := h_proj) h_no h_ok
+    core := principalBoundarySoundNoUnifyExpr_core_of_success_via_typingRunBundleSuite
+      (h_app := h_app) (h_proj := h_proj) h_no h_ok
+    preconditionedAny := ?_
+    preconditioned := ?_
+    preconditionedAnyIffCore := ?_
+    preconditionedIffCore := ?_
+    hookIrrelevant := ?_
+  }
+  · intro h_app' h_proj'
+    exact principalBoundarySoundNoUnifyExpr_preconditioned_anyHooks_of_success_via_typingRunBundleSuite
+      (h_app := h_app) (h_proj := h_proj) h_no h_ok h_app' h_proj'
+  · intro h_hooks
+    exact principalBoundarySoundNoUnifyExpr_preconditioned_of_success_via_typingRunBundleSuite
+      (h_app := h_app) (h_proj := h_proj) h_hooks h_no h_ok
+  · intro h_app' h_proj'
+    exact principalBoundarySoundNoUnifyExpr_preconditionedCoreIff_anyHooks_of_success_via_typingRunBundleSuite
+      (h_app := h_app) (h_proj := h_proj) h_no h_ok h_app' h_proj'
+  · intro h_hooks
+    exact principalBoundarySoundNoUnifyExpr_preconditionedCoreIff_of_success_via_typingRunBundleSuite
+      (h_app := h_app) (h_proj := h_proj) h_hooks h_no h_ok
+  · intro h_app₁ h_proj₁ h_app₂ h_proj₂
+    exact principalBoundarySoundNoUnifyExpr_hookIrrelevant_of_success_via_typingRunBundleSuite
+      (h_app := h_app) (h_proj := h_proj) h_no h_ok
+
+/--
+Build the packaged no-unify field capstone from one successful no-unify field
+run via the direct boundary+sound typing-suite surface.
+-/
+theorem principalBoundarySoundNoUnifyFieldFull_of_success_via_typingRunBundleSuite
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalBoundarySoundNoUnifyFieldFull st fuel env fs st' rf := by
+  refine {
+    hasType := principalBoundarySoundNoUnifyField_hasType_of_success_via_typingRunBundleSuite
+      (h_app := h_app) (h_proj := h_proj) h_no h_ok
+    hasTypeU := principalBoundarySoundNoUnifyField_hasTypeU_of_success_via_typingRunBundleSuite
+      (h_app := h_app) (h_proj := h_proj) h_no h_ok
+    core := principalBoundarySoundNoUnifyField_core_of_success_via_typingRunBundleSuite
+      (h_app := h_app) (h_proj := h_proj) h_no h_ok
+    preconditionedAny := ?_
+    preconditioned := ?_
+    preconditionedAnyIffCore := ?_
+    preconditionedIffCore := ?_
+    hookIrrelevant := ?_
+  }
+  · intro h_app' h_proj'
+    exact principalBoundarySoundNoUnifyField_preconditioned_anyHooks_of_success_via_typingRunBundleSuite
+      (h_app := h_app) (h_proj := h_proj) h_no h_ok h_app' h_proj'
+  · intro h_hooks
+    exact principalBoundarySoundNoUnifyField_preconditioned_of_success_via_typingRunBundleSuite
+      (h_app := h_app) (h_proj := h_proj) h_hooks h_no h_ok
+  · intro h_app' h_proj'
+    exact principalBoundarySoundNoUnifyField_preconditionedCoreIff_anyHooks_of_success_via_typingRunBundleSuite
+      (h_app := h_app) (h_proj := h_proj) h_no h_ok h_app' h_proj'
+  · intro h_hooks
+    exact principalBoundarySoundNoUnifyField_preconditionedCoreIff_of_success_via_typingRunBundleSuite
+      (h_app := h_app) (h_proj := h_proj) h_hooks h_no h_ok
+  · intro h_app₁ h_proj₁ h_app₂ h_proj₂
+    exact principalBoundarySoundNoUnifyField_hookIrrelevant_of_success_via_typingRunBundleSuite
+      (h_app := h_app) (h_proj := h_proj) h_no h_ok
+
+/-- Bundled-hook alias for the no-unify expression full capstone on the direct typing-suite surface. -/
+theorem principalBoundarySoundNoUnifyExprFull_of_success_via_typingRunBundleSuite_from_bundle
+    (h_hooks : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalBoundarySoundNoUnifyExprFull st fuel env e st' ty :=
+  principalBoundarySoundNoUnifyExprFull_of_success_via_typingRunBundleSuite
+    (h_app := h_hooks.1) (h_proj := h_hooks.2) h_no h_ok
+
+/-- Bundled-hook alias for the no-unify field full capstone on the direct typing-suite surface. -/
+theorem principalBoundarySoundNoUnifyFieldFull_of_success_via_typingRunBundleSuite_from_bundle
+    (h_hooks : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalBoundarySoundNoUnifyFieldFull st fuel env fs st' rf :=
+  principalBoundarySoundNoUnifyFieldFull_of_success_via_typingRunBundleSuite
+    (h_app := h_hooks.1) (h_proj := h_hooks.2) h_no h_ok
+
+/--
+Top-level full typing-suite capstone combining arbitrary-success and no-unify
+full surfaces for expression and field runs.
+-/
+structure PrincipalBoundarySoundFullSuite
+    (st : UnifyState) (fuel : Nat) (env : TermEnv)
+    (e : CoreExpr) (fs : CoreFields)
+    (stExpr : UnifyState) (ty : Ty)
+    (stField : UnifyState) (rf : RowFields) : Prop where
+  expr : PrincipalBoundarySoundExprFull st fuel env e stExpr ty
+  field : PrincipalBoundarySoundFieldFull st fuel env fs stField rf
+  noUnifyExpr :
+    NoUnifyBranchesExpr e →
+    PrincipalBoundarySoundNoUnifyExprFull st fuel env e stExpr ty
+  noUnifyField :
+    NoUnifyBranchesFields fs →
+    PrincipalBoundarySoundNoUnifyFieldFull st fuel env fs stField rf
+
+/--
+Build the full typing-suite capstone from successful expression and field runs
+on the direct boundary+sound typing-suite path.
+-/
+theorem principalBoundarySoundFullSuite_of_success_via_typingRunBundleSuite
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundFullSuite st fuel env e fs stExpr ty stField rf := by
+  refine {
+    expr := principalBoundarySoundExprFull_of_success_via_typingRunBundleSuite
+      (h_app := h_app) (h_proj := h_proj) h_ok_expr
+    field := principalBoundarySoundFieldFull_of_success_via_typingRunBundleSuite
+      (h_app := h_app) (h_proj := h_proj) h_ok_field
+    noUnifyExpr := ?_
+    noUnifyField := ?_
+  }
+  · intro h_no
+    exact principalBoundarySoundNoUnifyExprFull_of_success_via_typingRunBundleSuite
+      (h_app := h_app) (h_proj := h_proj) h_no h_ok_expr
+  · intro h_no
+    exact principalBoundarySoundNoUnifyFieldFull_of_success_via_typingRunBundleSuite
+      (h_app := h_app) (h_proj := h_proj) h_no h_ok_field
+
+/-- Bundled-hook alias for the full typing-suite capstone constructor. -/
+theorem principalBoundarySoundFullSuite_of_success_via_typingRunBundleSuite_from_bundle
+    (h_hooks : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundFullSuite st fuel env e fs stExpr ty stField rf :=
+  principalBoundarySoundFullSuite_of_success_via_typingRunBundleSuite
+    (h_app := h_hooks.1) (h_proj := h_hooks.2) h_ok_expr h_ok_field
+
+/-- One-hop projection: arbitrary-success expression full surface from the full suite. -/
+theorem principalBoundarySoundFullSuite_expr
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_suite : PrincipalBoundarySoundFullSuite st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundExprFull st fuel env e stExpr ty :=
+  h_suite.expr
+
+/-- One-hop projection: arbitrary-success field full surface from the full suite. -/
+theorem principalBoundarySoundFullSuite_field
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_suite : PrincipalBoundarySoundFullSuite st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundFieldFull st fuel env fs stField rf :=
+  h_suite.field
+
+/-- One-hop projection: no-unify expression full surface from the full suite. -/
+theorem principalBoundarySoundFullSuite_noUnifyExpr
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_suite : PrincipalBoundarySoundFullSuite st fuel env e fs stExpr ty stField rf)
+    (h_no : NoUnifyBranchesExpr e) :
+    PrincipalBoundarySoundNoUnifyExprFull st fuel env e stExpr ty :=
+  h_suite.noUnifyExpr h_no
+
+/-- One-hop projection: no-unify field full surface from the full suite. -/
+theorem principalBoundarySoundFullSuite_noUnifyField
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_suite : PrincipalBoundarySoundFullSuite st fuel env e fs stExpr ty stField rf)
+    (h_no : NoUnifyBranchesFields fs) :
+    PrincipalBoundarySoundNoUnifyFieldFull st fuel env fs stField rf :=
+  h_suite.noUnifyField h_no
+
+/--
 Expression preconditioned↔core wrapper on the dual-routed proved master suite.
 -/
 theorem principalBoundaryMasterSuite_preconditionedCoreIff_expr_via_dualConsequenceSlices
