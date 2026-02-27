@@ -253,6 +253,357 @@ fn seed_unique_function_params(function: &HirFunction) -> BTreeMap<String, MoveB
     state
 }
 
+fn annotation_is_unique(ann: &TypeAnnotation) -> bool {
+    match ann {
+        TypeAnnotation::Named(name) => name == "Unique",
+        TypeAnnotation::Applied(name, args) => name == "Unique" && args.len() == 1,
+        _ => false,
+    }
+}
+
+fn collect_hir_free_vars(
+    expr: &HirExpr,
+    bound: &mut BTreeSet<String>,
+    out: &mut BTreeSet<String>,
+) {
+    match &expr.kind {
+        HirExprKind::Lit(_) => {}
+        HirExprKind::Var(name) => {
+            if !bound.contains(name) {
+                out.insert(name.clone());
+            }
+        }
+        HirExprKind::RecordLit { fields, .. } => {
+            for (_, field_expr) in fields {
+                collect_hir_free_vars(field_expr, bound, out);
+            }
+        }
+        HirExprKind::RecordUpdate { base, fields, .. } => {
+            collect_hir_free_vars(base, bound, out);
+            for (_, field_expr) in fields {
+                collect_hir_free_vars(field_expr, bound, out);
+            }
+        }
+        HirExprKind::SumConstructor { fields, .. } => {
+            for field_expr in fields {
+                collect_hir_free_vars(field_expr, bound, out);
+            }
+        }
+        HirExprKind::SumPayloadAccess { expr, .. }
+        | HirExprKind::FieldAccess { expr, .. }
+        | HirExprKind::Catch { expr } => {
+            collect_hir_free_vars(expr, bound, out);
+        }
+        HirExprKind::Binary { left, right, .. } => {
+            collect_hir_free_vars(left, bound, out);
+            collect_hir_free_vars(right, bound, out);
+        }
+        HirExprKind::Unary { operand, .. } => {
+            collect_hir_free_vars(operand, bound, out);
+        }
+        HirExprKind::Call { func, args } => {
+            collect_hir_free_vars(func, bound, out);
+            for arg in args {
+                collect_hir_free_vars(arg, bound, out);
+            }
+        }
+        HirExprKind::Lambda { params, body } => {
+            let mut lambda_bound = bound.clone();
+            for param in params {
+                if let Some(name) = &param.name {
+                    lambda_bound.insert(name.clone());
+                }
+            }
+            collect_hir_free_vars(body, &mut lambda_bound, out);
+        }
+        HirExprKind::Handle {
+            expr,
+            clauses,
+            then_clause,
+        } => {
+            collect_hir_free_vars(expr, bound, out);
+            for clause in clauses {
+                let mut clause_bound = bound.clone();
+                for arg in &clause.args {
+                    if let HirPattern::Var(name) = arg {
+                        clause_bound.insert(name.clone());
+                    }
+                }
+                collect_hir_free_vars(&clause.body, &mut clause_bound, out);
+            }
+            if let Some(then_expr) = then_clause {
+                collect_hir_free_vars(then_expr, bound, out);
+            }
+        }
+        HirExprKind::Resume { value } => {
+            collect_hir_free_vars(value, bound, out);
+        }
+        HirExprKind::Let { pattern, value } => {
+            collect_hir_free_vars(value, bound, out);
+            if let HirPattern::Var(name) = pattern {
+                bound.insert(name.clone());
+            }
+        }
+        HirExprKind::If {
+            condition,
+            then_branch,
+            else_branch,
+        } => {
+            collect_hir_free_vars(condition, bound, out);
+            let mut then_bound = bound.clone();
+            collect_hir_free_vars(then_branch, &mut then_bound, out);
+            if let Some(else_expr) = else_branch {
+                let mut else_bound = bound.clone();
+                collect_hir_free_vars(else_expr, &mut else_bound, out);
+            }
+        }
+        HirExprKind::Block(exprs) => {
+            let mut block_bound = bound.clone();
+            for item in exprs {
+                collect_hir_free_vars(item, &mut block_bound, out);
+            }
+        }
+        HirExprKind::Tuple(items) => {
+            for item in items {
+                collect_hir_free_vars(item, bound, out);
+            }
+        }
+        HirExprKind::Raw(_) => {}
+    }
+}
+
+fn merge_case_arm_move_states(
+    span: Span,
+    before: &BTreeMap<String, MoveBindingState>,
+    arm_states: &[BTreeMap<String, MoveBindingState>],
+    state: &mut BTreeMap<String, MoveBindingState>,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    if arm_states.is_empty() {
+        return;
+    }
+    for name in before.keys() {
+        let moved_flags = arm_states
+            .iter()
+            .map(|arm_state| arm_state.get(name).and_then(|binding| binding.moved_at))
+            .collect::<Vec<_>>();
+        let Some(first_flag) = moved_flags.first().map(|m| m.is_some()) else {
+            continue;
+        };
+        if moved_flags.iter().any(|m| m.is_some() != first_flag) {
+            diagnostics.push(
+                Diagnostic::error(
+                    Category::TypeError,
+                    format!("branch move mismatch for `{name}`: all case arms must agree on move state"),
+                )
+                .at(span_to_location(span))
+                .with_help("move the value in every arm or keep it live in every arm."),
+            );
+        }
+        let merged = moved_flags.into_iter().flatten().next();
+        if let Some(entry) = state.get_mut(name) {
+            entry.moved_at = merged;
+        }
+    }
+}
+
+fn check_unique_moves_ast_expr(
+    expr: &Expr,
+    state: &mut BTreeMap<String, MoveBindingState>,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    match &expr.node {
+        ExprKind::Lit(_) | ExprKind::None | ExprKind::Atom(_) | ExprKind::Wildcard => {}
+        ExprKind::Var(name) => consume_unique_binding(name, expr.span, state, diagnostics),
+        ExprKind::Let {
+            pattern,
+            annotation,
+            value,
+        } => {
+            check_unique_moves_ast_expr(value, state, diagnostics);
+            if let Some(name) = pattern.node.as_var()
+                && annotation
+                    .as_ref()
+                    .is_some_and(|ann| annotation_is_unique(&ann.node))
+            {
+                state.insert(name.to_string(), MoveBindingState::default());
+            }
+        }
+        ExprKind::Lambda { params, body, .. } => {
+            let mut lambda_state = BTreeMap::new();
+            for param in params {
+                if let Some(name) = param.name()
+                    && param
+                        .annotation
+                        .as_ref()
+                        .is_some_and(|ann| annotation_is_unique(&ann.node))
+                {
+                    lambda_state.insert(name.to_string(), MoveBindingState::default());
+                }
+            }
+            check_unique_moves_ast_expr(body, &mut lambda_state, diagnostics);
+        }
+        ExprKind::Call { func, args } => {
+            check_unique_moves_ast_expr(func, state, diagnostics);
+            for arg in args {
+                check_unique_moves_ast_expr(&arg.value, state, diagnostics);
+            }
+        }
+        ExprKind::If {
+            condition,
+            then_branch,
+            else_branch,
+        } => {
+            check_unique_moves_ast_expr(condition, state, diagnostics);
+            let before = state.clone();
+            let mut then_state = before.clone();
+            check_unique_moves_ast_expr(then_branch, &mut then_state, diagnostics);
+            let mut else_state = before.clone();
+            if let Some(else_expr) = else_branch {
+                check_unique_moves_ast_expr(else_expr, &mut else_state, diagnostics);
+            }
+            merge_branch_move_states(
+                expr.span,
+                &before,
+                &then_state,
+                &else_state,
+                state,
+                diagnostics,
+            );
+        }
+        ExprKind::Case { scrutinee, arms } => {
+            check_unique_moves_ast_expr(scrutinee, state, diagnostics);
+            let before = state.clone();
+            let mut arm_states = Vec::with_capacity(arms.len());
+            for arm in arms {
+                let mut arm_state = before.clone();
+                if let Some(guard) = &arm.guard {
+                    check_unique_moves_ast_expr(guard, &mut arm_state, diagnostics);
+                }
+                check_unique_moves_ast_expr(&arm.body, &mut arm_state, diagnostics);
+                arm_states.push(arm_state);
+            }
+            merge_case_arm_move_states(expr.span, &before, &arm_states, state, diagnostics);
+        }
+        ExprKind::Handle {
+            expr,
+            clauses,
+            then_clause,
+        } => {
+            check_unique_moves_ast_expr(expr, state, diagnostics);
+            for clause in clauses {
+                let mut clause_state = state.clone();
+                for arg in &clause.args {
+                    if let Some(name) = arg.node.as_var() {
+                        clause_state.insert(name.to_string(), MoveBindingState::default());
+                    }
+                }
+                check_unique_moves_ast_expr(&clause.body, &mut clause_state, diagnostics);
+            }
+            if let Some(then_expr) = then_clause {
+                check_unique_moves_ast_expr(then_expr, state, diagnostics);
+            }
+        }
+        ExprKind::Resume { value }
+        | ExprKind::Yield { value }
+        | ExprKind::As { expr: value, .. } => {
+            check_unique_moves_ast_expr(value, state, diagnostics);
+        }
+        ExprKind::BinaryOp { left, right, .. } => {
+            check_unique_moves_ast_expr(left, state, diagnostics);
+            check_unique_moves_ast_expr(right, state, diagnostics);
+        }
+        ExprKind::UnaryOp { operand, .. }
+        | ExprKind::WhenGuard {
+            body: operand, ..
+        }
+        | ExprKind::Await { expr: operand, .. } => {
+            check_unique_moves_ast_expr(operand, state, diagnostics);
+        }
+        ExprKind::Range { start, end, .. } => {
+            check_unique_moves_ast_expr(start, state, diagnostics);
+            check_unique_moves_ast_expr(end, state, diagnostics);
+        }
+        ExprKind::Tuple(items) | ExprKind::List(items) | ExprKind::Block(items) => {
+            for item in items {
+                check_unique_moves_ast_expr(item, state, diagnostics);
+            }
+        }
+        ExprKind::Record { fields, spread, .. } | ExprKind::AnonRecord { fields, spread } => {
+            for (_, value) in fields {
+                check_unique_moves_ast_expr(value, state, diagnostics);
+            }
+            if let Some(base) = spread {
+                check_unique_moves_ast_expr(base, state, diagnostics);
+            }
+        }
+        ExprKind::FieldAccess { expr, .. }
+        | ExprKind::YieldFrom { source: expr }
+        | ExprKind::ControlSend { actor: expr, .. }
+        | ExprKind::Spawn { value: expr, .. }
+        | ExprKind::StreamBlock { body: expr, .. } => {
+            check_unique_moves_ast_expr(expr, state, diagnostics);
+        }
+        ExprKind::Use(kea_ast::UseExpr { pattern, rhs }) => {
+            check_unique_moves_ast_expr(rhs, state, diagnostics);
+            if let Some(name) = pattern.as_ref().and_then(|pat| pat.node.as_var()) {
+                state.insert(name.to_string(), MoveBindingState::default());
+            }
+        }
+        ExprKind::Constructor { args, .. } => {
+            for arg in args {
+                check_unique_moves_ast_expr(&arg.value, state, diagnostics);
+            }
+        }
+        ExprKind::StringInterp(parts) => {
+            for part in parts {
+                if let kea_ast::StringInterpPart::Expr(inner) = part {
+                    check_unique_moves_ast_expr(inner, state, diagnostics);
+                }
+            }
+        }
+        ExprKind::MapLiteral(entries) => {
+            for (key, value) in entries {
+                check_unique_moves_ast_expr(key, state, diagnostics);
+                check_unique_moves_ast_expr(value, state, diagnostics);
+            }
+        }
+        ExprKind::ActorSend { actor, args, .. } | ExprKind::ActorCall { actor, args, .. } => {
+            check_unique_moves_ast_expr(actor, state, diagnostics);
+            for arg in args {
+                check_unique_moves_ast_expr(arg, state, diagnostics);
+            }
+        }
+        ExprKind::Cond { arms } => {
+            let before = state.clone();
+            let mut arm_states = Vec::with_capacity(arms.len());
+            for arm in arms {
+                let mut arm_state = before.clone();
+                check_unique_moves_ast_expr(&arm.condition, &mut arm_state, diagnostics);
+                check_unique_moves_ast_expr(&arm.body, &mut arm_state, diagnostics);
+                arm_states.push(arm_state);
+            }
+            merge_case_arm_move_states(expr.span, &before, &arm_states, state, diagnostics);
+        }
+        ExprKind::For(for_expr) => {
+            for clause in &for_expr.clauses {
+                match clause {
+                    kea_ast::ForClause::Generator { pattern, source } => {
+                        check_unique_moves_ast_expr(source, state, diagnostics);
+                        if let Some(name) = pattern.node.as_var() {
+                            state.insert(name.to_string(), MoveBindingState::default());
+                        }
+                    }
+                    kea_ast::ForClause::Guard(guard) => {
+                        check_unique_moves_ast_expr(guard, state, diagnostics);
+                    }
+                }
+            }
+            check_unique_moves_ast_expr(&for_expr.body, state, diagnostics);
+        }
+    }
+}
+
 fn check_unique_moves_expr(
     expr: &HirExpr,
     state: &mut BTreeMap<String, MoveBindingState>,
@@ -299,9 +650,15 @@ fn check_unique_moves_expr(
             }
         }
         HirExprKind::Lambda { params, body } => {
-            // TODO(0f-step1): model captured outer `Unique` bindings. This
-            // skeleton only checks lambda-local params; capture analysis lands
-            // in the next move-checking iteration with borrow/escape rules.
+            let mut bound = params
+                .iter()
+                .filter_map(|param| param.name.clone())
+                .collect::<BTreeSet<_>>();
+            let mut captures = BTreeSet::new();
+            collect_hir_free_vars(body, &mut bound, &mut captures);
+            for captured in captures {
+                consume_unique_binding(&captured, expr.span, state, diagnostics);
+            }
             let mut lambda_state = BTreeMap::new();
             if let Type::Function(ft) = &expr.ty {
                 for (param, param_ty) in params.iter().zip(ft.params.iter()) {
@@ -374,10 +731,13 @@ fn check_unique_moves_expr(
                 check_unique_moves_expr(item, state, diagnostics);
             }
         }
-        // TODO(0f-step1): `Raw` currently includes non-lowered `case` paths.
-        // Add explicit arm-by-arm merge semantics (like `if`) so branch move
-        // consistency is enforced for all pattern-match branches.
-        HirExprKind::Raw(_) => {}
+        HirExprKind::Raw(raw) => {
+            let raw_expr = Expr {
+                node: raw.clone(),
+                span: expr.span,
+            };
+            check_unique_moves_ast_expr(&raw_expr, state, diagnostics);
+        }
     }
 }
 

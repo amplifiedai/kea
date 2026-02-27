@@ -1975,6 +1975,23 @@ mod tests {
     }
 
     #[test]
+    fn compile_rejects_unique_capture_then_reuse() {
+        let source_path = write_temp_source(
+            "type Unique a = Unique(a)\n\nfn consume(value: Unique Int) -> Int\n  case value\n    Unique(v) -> v\n\nfn main() -> Int\n  let u = Unique(7)\n  let f = || -> consume(u)\n  consume(u)\n",
+            "kea-cli-unique-capture-then-reuse",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("captured unique reuse should fail");
+        assert!(
+            err.contains("use of moved value `u`"),
+            "expected use-after-move diagnostic after capture, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_wrapping_add_method_exit_code() {
         let source_path = write_temp_source(
             "fn main() -> Int\n  20.wrapping_add(22)\n",
