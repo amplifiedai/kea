@@ -1,0 +1,3 @@
+effect IO
+  fn stdout(msg: String) -> Unit
+  fn stderr(msg: String) -> Unit
