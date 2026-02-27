@@ -6,7 +6,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use kea_ast::{BinOp, DeclKind, ExprKind as AstExprKind, TypeAnnotation, UnaryOp};
-use kea_hir::{HirDecl, HirExpr, HirExprKind, HirFunction, HirModule, HirPattern};
+use kea_hir::{HirDecl, HirExpr, HirExprKind, HirFunction, HirHandleClause, HirModule, HirPattern};
 use kea_types::{EffectRow, FunctionType, SumType, Type};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -151,6 +151,18 @@ pub enum MirInst {
         closure: MirValueId,
         capture_index: usize,
         capture_ty: Type,
+    },
+    StateCellNew {
+        dest: MirValueId,
+        initial: MirValueId,
+    },
+    StateCellLoad {
+        dest: MirValueId,
+        cell: MirValueId,
+    },
+    StateCellStore {
+        cell: MirValueId,
+        value: MirValueId,
     },
     Retain {
         value: MirValueId,
@@ -311,6 +323,9 @@ impl MirInst {
                 | MirInst::SumPayloadLoad { .. }
                 | MirInst::RecordFieldLoad { .. }
                 | MirInst::ClosureCaptureLoad { .. }
+                | MirInst::StateCellNew { .. }
+                | MirInst::StateCellLoad { .. }
+                | MirInst::StateCellStore { .. }
                 | MirInst::CowUpdate { .. }
         )
     }
@@ -341,6 +356,8 @@ pub fn lower_hir_module(module: &HirModule) -> MirModule {
         })
         .collect::<BTreeMap<_, _>>();
     let intrinsic_symbols = collect_intrinsic_symbols(module);
+    let effect_operations = collect_effect_operations(module);
+    let known_function_dispatch_effects = collect_function_dispatch_effects(module, &effect_operations);
     let lambda_factories = collect_lambda_factory_templates(module, &known_functions);
     let mut layouts = MirLayoutCatalog::default();
     for decl in &module.declarations {
@@ -359,6 +376,8 @@ pub fn lower_hir_module(module: &HirModule) -> MirModule {
                 &known_functions,
                 &known_function_types,
                 &intrinsic_symbols,
+                &effect_operations,
+                &known_function_dispatch_effects,
                 &lambda_factories,
             ));
         }
@@ -416,6 +435,65 @@ fn direct_capability_operation(name: &str) -> Option<(&'static str, &'static str
         }
     }
     None
+}
+
+fn is_direct_capability_effect(effect: &str) -> bool {
+    DIRECT_CAPABILITIES
+        .iter()
+        .any(|capability| capability.effect == effect)
+}
+
+fn collect_effect_operations(module: &HirModule) -> BTreeMap<String, (String, String)> {
+    let mut operations = BTreeMap::new();
+    for decl in &module.declarations {
+        let HirDecl::Raw(DeclKind::EffectDecl(effect_decl)) = decl else {
+            continue;
+        };
+        let effect = effect_decl.name.node.clone();
+        let module_path = format!("Kea.{effect}");
+        for op in &effect_decl.operations {
+            let operation = op.name.node.clone();
+            operations.insert(format!("{effect}.{operation}"), (effect.clone(), operation.clone()));
+            operations.insert(
+                format!("{module_path}.{operation}"),
+                (effect.clone(), operation.clone()),
+            );
+        }
+    }
+    operations
+}
+
+fn collect_function_dispatch_effects(
+    module: &HirModule,
+    effect_operations: &BTreeMap<String, (String, String)>,
+) -> BTreeMap<String, Vec<String>> {
+    let dispatchable_effects = effect_operations
+        .values()
+        .map(|(effect, _)| effect.clone())
+        .collect::<BTreeSet<_>>();
+    let mut mapping = BTreeMap::new();
+    for decl in &module.declarations {
+        let HirDecl::Function(function) = decl else {
+            continue;
+        };
+        let Type::Function(ft) = &function.ty else {
+            continue;
+        };
+        let effects = ft
+            .effects
+            .row
+            .fields
+            .iter()
+            .map(|(label, _)| label.as_str().to_string())
+            .filter(|effect| dispatchable_effects.contains(effect))
+            .filter(|effect| effect != "Fail")
+            .filter(|effect| !is_direct_capability_effect(effect))
+            .collect::<Vec<_>>();
+        if !effects.is_empty() {
+            mapping.insert(function.name.clone(), effects);
+        }
+    }
+    mapping
 }
 
 fn is_namespaced_symbol_name(name: &str) -> bool {
@@ -566,6 +644,20 @@ fn collect_hir_var_refs(expr: &HirExpr, refs: &mut BTreeSet<String>) {
         }
         HirExprKind::SumPayloadAccess { expr, .. } => collect_hir_var_refs(expr, refs),
         HirExprKind::Catch { expr } => collect_hir_var_refs(expr, refs),
+        HirExprKind::Handle {
+            expr,
+            clauses,
+            then_clause,
+        } => {
+            collect_hir_var_refs(expr, refs);
+            for clause in clauses {
+                collect_hir_var_refs(&clause.body, refs);
+            }
+            if let Some(then_expr) = then_clause {
+                collect_hir_var_refs(then_expr, refs);
+            }
+        }
+        HirExprKind::Resume { value } => collect_hir_var_refs(value, refs),
         HirExprKind::Raw(_) => {}
     }
 }
@@ -715,6 +807,22 @@ fn collect_anon_record_layouts_from_expr(
         | HirExprKind::Catch { expr } => {
             collect_anon_record_layouts_from_expr(expr, layouts, known);
         }
+        HirExprKind::Handle {
+            expr,
+            clauses,
+            then_clause,
+        } => {
+            collect_anon_record_layouts_from_expr(expr, layouts, known);
+            for clause in clauses {
+                collect_anon_record_layouts_from_expr(&clause.body, layouts, known);
+            }
+            if let Some(then_expr) = then_clause {
+                collect_anon_record_layouts_from_expr(then_expr, layouts, known);
+            }
+        }
+        HirExprKind::Resume { value } => {
+            collect_anon_record_layouts_from_expr(value, layouts, known);
+        }
         HirExprKind::Binary { left, right, .. } => {
             collect_anon_record_layouts_from_expr(left, layouts, known);
             collect_anon_record_layouts_from_expr(right, layouts, known);
@@ -787,35 +895,49 @@ fn anon_record_layout_name(fields: &BTreeSet<String>) -> String {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn lower_hir_function(
     function: &HirFunction,
     layouts: &MirLayoutCatalog,
     known_functions: &BTreeSet<String>,
     known_function_types: &BTreeMap<String, Type>,
     intrinsic_symbols: &BTreeMap<String, String>,
+    effect_operations: &BTreeMap<String, (String, String)>,
+    known_function_dispatch_effects: &BTreeMap<String, Vec<String>>,
     lambda_factories: &BTreeMap<String, LambdaFactoryTemplate>,
 ) -> Vec<MirFunction> {
-    let (params, ret) = match &function.ty {
+    let (declared_params, ret) = match &function.ty {
         Type::Function(ft) => (ft.params.clone(), ft.ret.as_ref().clone()),
         _ => (
             function.params.iter().map(|_| Type::Dynamic).collect(),
             Type::Dynamic,
         ),
     };
+    let hidden_dispatch_effects = known_function_dispatch_effects
+        .get(&function.name)
+        .cloned()
+        .unwrap_or_default();
+    let mut params = declared_params.clone();
+    for _ in &hidden_dispatch_effects {
+        params.push(Type::Dynamic);
+    }
 
     let mut ctx = FunctionLoweringCtx::new(
         &function.name,
-        params.len(),
+        declared_params.len(),
+        &hidden_dispatch_effects,
         layouts,
         known_functions,
         known_function_types,
         intrinsic_symbols,
+        effect_operations,
+        known_function_dispatch_effects,
         lambda_factories,
     );
     for (index, param) in function.params.iter().enumerate() {
         if let Some(name) = &param.name {
             ctx.vars.insert(name.clone(), MirValueId(index as u32));
-            if let Some(param_ty) = params.get(index) {
+            if let Some(param_ty) = declared_params.get(index) {
                 ctx.var_types.insert(name.clone(), param_ty.clone());
                 match param_ty {
                     Type::Record(record_ty) => {
@@ -831,7 +953,7 @@ fn lower_hir_function(
                 }
             }
         }
-        if let Some(param_ty) = params.get(index) {
+        if let Some(param_ty) = declared_params.get(index) {
             match param_ty {
                 Type::Sum(sum_ty) => {
                     ctx.sum_value_types
@@ -885,6 +1007,9 @@ struct FunctionLoweringCtx {
     known_functions: BTreeSet<String>,
     known_function_types: BTreeMap<String, Type>,
     intrinsic_symbols: BTreeMap<String, String>,
+    effect_operations: BTreeMap<String, (String, String)>,
+    known_function_dispatch_effects: BTreeMap<String, Vec<String>>,
+    active_effect_cells: BTreeMap<String, MirValueId>,
     lambda_factories: BTreeMap<String, LambdaFactoryTemplate>,
     var_record_types: BTreeMap<String, String>,
     record_value_types: BTreeMap<MirValueId, String>,
@@ -925,16 +1050,21 @@ struct VarScope {
     var_types: BTreeMap<String, Type>,
     local_lambdas: BTreeMap<String, LocalLambda>,
     var_record_types: BTreeMap<String, String>,
+    active_effect_cells: BTreeMap<String, MirValueId>,
 }
 
 impl FunctionLoweringCtx {
+    #[allow(clippy::too_many_arguments)]
     fn new(
         function_name: &str,
         param_count: usize,
+        hidden_dispatch_effects: &[String],
         layouts: &MirLayoutCatalog,
         known_functions: &BTreeSet<String>,
         known_function_types: &BTreeMap<String, Type>,
         intrinsic_symbols: &BTreeMap<String, String>,
+        effect_operations: &BTreeMap<String, (String, String)>,
+        known_function_dispatch_effects: &BTreeMap<String, Vec<String>>,
         lambda_factories: &BTreeMap<String, LambdaFactoryTemplate>,
     ) -> Self {
         let mut sum_ctor_candidates: BTreeMap<String, Vec<SumCtorCandidate>> = BTreeMap::new();
@@ -949,6 +1079,11 @@ impl FunctionLoweringCtx {
                         arity: variant.fields.len(),
                     });
             }
+        }
+
+        let mut active_effect_cells = BTreeMap::new();
+        for (idx, effect) in hidden_dispatch_effects.iter().enumerate() {
+            active_effect_cells.insert(effect.clone(), MirValueId((param_count + idx) as u32));
         }
 
         Self {
@@ -967,6 +1102,9 @@ impl FunctionLoweringCtx {
             known_functions: known_functions.clone(),
             known_function_types: known_function_types.clone(),
             intrinsic_symbols: intrinsic_symbols.clone(),
+            effect_operations: effect_operations.clone(),
+            known_function_dispatch_effects: known_function_dispatch_effects.clone(),
+            active_effect_cells,
             lambda_factories: lambda_factories.clone(),
             var_record_types: BTreeMap::new(),
             record_value_types: BTreeMap::new(),
@@ -976,7 +1114,7 @@ impl FunctionLoweringCtx {
             named_function_closure_entries: BTreeMap::new(),
             next_lifted_lambda_id: 0,
             next_closure_entry_id: 0,
-            next_value_id: param_count as u32,
+            next_value_id: (param_count + hidden_dispatch_effects.len()) as u32,
         }
     }
 
@@ -1200,6 +1338,8 @@ impl FunctionLoweringCtx {
             &known,
             &known_types,
             &self.intrinsic_symbols,
+            &self.effect_operations,
+            &self.known_function_dispatch_effects,
             &self.lambda_factories,
         );
         for lowered in lowered_functions {
@@ -1306,6 +1446,7 @@ impl FunctionLoweringCtx {
             var_types: self.var_types.clone(),
             local_lambdas: self.local_lambdas.clone(),
             var_record_types: self.var_record_types.clone(),
+            active_effect_cells: self.active_effect_cells.clone(),
         }
     }
 
@@ -1314,6 +1455,7 @@ impl FunctionLoweringCtx {
         self.var_types = scope.var_types.clone();
         self.local_lambdas = scope.local_lambdas.clone();
         self.var_record_types = scope.var_record_types.clone();
+        self.active_effect_cells = scope.active_effect_cells.clone();
     }
 
     fn ensure_jump_to(&mut self, target: MirBlockId, args: Vec<MirValueId>) {
@@ -1518,6 +1660,12 @@ impl FunctionLoweringCtx {
                     .insert(result.clone(), "Result".to_string());
                 Some(result)
             }
+            HirExprKind::Handle {
+                expr: handled,
+                clauses,
+                then_clause: _,
+            } => self.lower_handle_expr(handled, clauses),
+            HirExprKind::Resume { value } => self.lower_expr(value),
             HirExprKind::Let { pattern, value } => {
                 if let (HirPattern::Var(name), HirExprKind::Lambda { params, body }) =
                     (pattern, &value.kind)
@@ -1593,6 +1741,53 @@ impl FunctionLoweringCtx {
                 _ => None,
             },
         }
+    }
+
+    fn lower_handle_expr(
+        &mut self,
+        handled: &HirExpr,
+        clauses: &[HirHandleClause],
+    ) -> Option<MirValueId> {
+        let target_effect = clauses.first()?.effect.clone();
+        if target_effect != "State" {
+            self.emit_inst(MirInst::Unsupported {
+                detail: format!("handler lowering for effect `{target_effect}` is not implemented"),
+            });
+            return None;
+        }
+        let get_clause = clauses
+            .iter()
+            .find(|clause| clause.effect == target_effect && clause.operation == "get")?;
+        let initial_expr = match &get_clause.body.kind {
+            HirExprKind::Resume { value } => value.as_ref(),
+            _ => {
+                self.emit_inst(MirInst::Unsupported {
+                    detail: format!(
+                        "State.get handler clause must be tail-resumptive (`resume value`), got `{}`",
+                        get_clause.operation
+                    ),
+                });
+                return None;
+            }
+        };
+        let initial = self.lower_expr(initial_expr)?;
+        let cell = self.new_value();
+        self.emit_inst(MirInst::StateCellNew {
+            dest: cell.clone(),
+            initial,
+        });
+        self.emit_inst(MirInst::HandlerEnter {
+            effect: target_effect.clone(),
+        });
+        let incoming_scope = self.snapshot_var_scope();
+        self.active_effect_cells.insert(target_effect.clone(), cell.clone());
+        let result = self.lower_expr(handled);
+        self.restore_var_scope(&incoming_scope);
+        self.emit_inst(MirInst::HandlerExit {
+            effect: target_effect,
+        });
+        self.emit_inst(MirInst::Release { value: cell });
+        result
     }
 
     fn lower_call_expr(
@@ -1803,7 +1998,51 @@ impl FunctionLoweringCtx {
             return None;
         }
         if let HirExprKind::Var(name) = &func.kind
+            && !capture_fail_result
+            && let Some((effect, operation)) = self.effect_operations.get(name).cloned()
+        {
+            if effect == "State"
+                && operation == "get"
+                && args.is_empty()
+                && let Some(cell) = self.active_effect_cells.get(&effect).cloned()
+            {
+                let dest = self.new_value();
+                self.emit_inst(MirInst::StateCellLoad {
+                    dest: dest.clone(),
+                    cell,
+                });
+                return Some(dest);
+            }
+            if effect == "State"
+                && operation == "put"
+                && args.len() == 1
+                && let Some(cell) = self.active_effect_cells.get(&effect).cloned()
+            {
+                let value = self.lower_expr(&args[0])?;
+                self.emit_inst(MirInst::StateCellStore { cell, value });
+                return None;
+            }
+            let mut lowered_args = Vec::with_capacity(args.len());
+            for arg in args {
+                lowered_args.push(self.lower_expr(arg)?);
+            }
+            let result = if expr.ty == Type::Unit {
+                None
+            } else {
+                Some(self.new_value())
+            };
+            self.emit_inst(MirInst::EffectOp {
+                class: MirEffectOpClass::Dispatch,
+                effect,
+                operation,
+                args: lowered_args,
+                result: result.clone(),
+            });
+            return result;
+        }
+        if let HirExprKind::Var(name) = &func.kind
             && is_namespaced_symbol_name(name)
+            && !self.effect_operations.contains_key(name)
             && !self.known_function_types.contains_key(name)
         {
             self.emit_inst(MirInst::Unsupported {
@@ -1843,6 +2082,14 @@ impl FunctionLoweringCtx {
                     MirCallee::Value(callee_value)
                 }
             }
+        };
+        let dispatch_effects = match &callee {
+            MirCallee::Local(name) => self
+                .known_function_dispatch_effects
+                .get(name)
+                .cloned()
+                .unwrap_or_default(),
+            _ => Vec::new(),
         };
 
         let mut lowered_args = Vec::with_capacity(args.len());
@@ -1903,6 +2150,18 @@ impl FunctionLoweringCtx {
             }
             arg_types.push(arg.ty.clone());
             lowered_args.push(self.lower_expr(arg)?);
+        }
+        for effect in dispatch_effects {
+            let Some(cell) = self.active_effect_cells.get(&effect).cloned() else {
+                self.emit_inst(MirInst::Unsupported {
+                    detail: format!(
+                        "missing active handler cell for effect `{effect}` in call lowering"
+                    ),
+                });
+                return None;
+            };
+            lowered_args.push(cell);
+            arg_types.push(Type::Dynamic);
         }
 
         let inferred_ret_type = match (&func.ty, &func.kind) {

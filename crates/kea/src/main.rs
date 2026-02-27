@@ -1782,6 +1782,20 @@ mod tests {
     }
 
     #[test]
+    fn compile_and_execute_state_tail_handler_count_to_exit_code() {
+        let source_path = write_temp_source(
+            "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn count_to(n: Int) -[State Int]> Int\n  let i = State.get()\n  if i >= n\n    i\n  else\n    State.put(i + 1)\n    count_to(n)\n\nfn main() -> Int\n  handle count_to(10)\n    State.get() -> resume 0\n    State.put(s) -> resume ()\n",
+            "kea-cli-state-tail-handler-count-to",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("state handler run should succeed");
+        assert_eq!(run.exit_code, 10);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_catch_fail_result_case_exit_code() {
         let source_path = write_temp_source(
             "effect Fail\n  fn fail(err: Int) -> Never\n\nfn f() -[Fail Int]> Int\n  fail 7\n\nfn main() -> Int\n  let r = catch f()\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
