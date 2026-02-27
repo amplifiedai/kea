@@ -557,18 +557,32 @@ fn parse_and_typecheck_project(entry: &Path) -> Result<CompilationContext, Strin
                 .filter(|name| name.contains('.'))
                 .filter_map(|name| env.lookup(&name).cloned().map(|scheme| (name, scheme)))
                 .collect::<Vec<_>>();
+            let retained_prelude_trait_bindings = if is_prelude_module {
+                let module_owner = format!("project:{}", loaded.module_path);
+                trait_method_names_for_owner(&module_owner, &traits)
+                    .into_iter()
+                    .filter_map(|name| env.lookup(&name).cloned().map(|scheme| (name, scheme)))
+                    .collect::<Vec<_>>()
+            } else {
+                Vec::new()
+            };
             for imported_name in imported_symbols {
                 env.clear_function_metadata(&imported_name);
             }
             if !is_prelude_module && let Some(snapshot) = alias_snapshot {
                 env.restore_module_aliases(snapshot);
             }
-            if let Some(snapshot) = trait_scope_snapshot {
+            if !is_prelude_module && let Some(snapshot) = trait_scope_snapshot {
                 env.restore_in_scope_traits(snapshot);
             }
             env.pop_scope();
             for (name, scheme) in retained_qualified_bindings {
                 env.bind(name, scheme);
+            }
+            for (name, scheme) in retained_prelude_trait_bindings {
+                if env.lookup(&name).is_none() {
+                    env.bind(name, scheme);
+                }
             }
         }
 
@@ -595,10 +609,74 @@ fn declared_function_names(module: &Module) -> Vec<String> {
         .collect()
 }
 
+fn trait_method_names_for_owner(owner: &str, traits: &TraitRegistry) -> BTreeSet<String> {
+    let mut method_names = BTreeSet::new();
+    for (trait_name, trait_owner) in traits.all_trait_owners() {
+        if trait_owner != owner {
+            continue;
+        }
+        if let Some(trait_info) = traits.lookup_trait(trait_name) {
+            for method in &trait_info.methods {
+                method_names.insert(method.name.clone());
+            }
+        }
+    }
+    method_names
+}
+
+fn bind_imported_item(
+    module_path: &str,
+    item_name: &str,
+    span: Span,
+    env: &mut TypeEnv,
+    diagnostics: &mut Vec<Diagnostic>,
+    imported_symbols: &mut Vec<String>,
+) {
+    let Some(scheme) = env.resolve_qualified(module_path, item_name).cloned() else {
+        let available = env
+            .module_function_names(module_path)
+            .unwrap_or_default()
+            .join(", ");
+        let mut diag = Diagnostic::error(
+            Category::TypeError,
+            format!("module `{module_path}` has no item `{item_name}`"),
+        )
+        .at(SourceLocation {
+            file_id: span.file.0,
+            start: span.start,
+            end: span.end,
+        });
+        if !available.is_empty() {
+            diag = diag.with_help(format!("available items: {available}"));
+        }
+        diagnostics.push(diag);
+        return;
+    };
+
+    env.bind(item_name.to_string(), scheme);
+    imported_symbols.push(item_name.to_string());
+
+    if let Some(signature) = env
+        .resolve_qualified_function_signature(module_path, item_name)
+        .cloned()
+    {
+        env.set_function_signature(item_name.to_string(), signature);
+    }
+    if let Some(effect_signature) = env
+        .resolve_qualified_effect_signature(module_path, item_name)
+        .cloned()
+    {
+        env.set_function_effect_signature(item_name.to_string(), effect_signature);
+    }
+    if let Some(effect_row) = env.resolve_qualified_effect_row(module_path, item_name) {
+        env.set_function_effect_row(item_name.to_string(), effect_row);
+    }
+}
+
 fn apply_module_imports(
     module: &Module,
     env: &mut TypeEnv,
-    _traits: &TraitRegistry,
+    traits: &TraitRegistry,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Result<Vec<String>, String> {
     let mut imported_symbols = Vec::new();
@@ -621,6 +699,28 @@ fn apply_module_imports(
                     .to_string()
             });
         env.register_module_alias(&module_short, &module_path);
+        let module_owner = format!("project:{module_path}");
+
+        if matches!(import.items, ImportItems::Module) {
+            for (trait_name, owner) in traits.all_trait_owners() {
+                if owner == module_owner {
+                    env.mark_trait_in_scope(trait_name);
+                    if let Some(trait_info) = traits.lookup_trait(trait_name) {
+                        for method in &trait_info.methods {
+                            bind_imported_item(
+                                &module_path,
+                                &method.name,
+                                import.module.span,
+                                env,
+                                diagnostics,
+                                &mut imported_symbols,
+                            );
+                        }
+                    }
+                }
+            }
+            continue;
+        }
 
         let ImportItems::Named(items) = &import.items else {
             continue;
@@ -628,45 +728,19 @@ fn apply_module_imports(
 
         for item in items {
             let item_name = item.node.clone();
-            let Some(scheme) = env.resolve_qualified(&module_path, &item_name).cloned() else {
-                let available = env
-                    .module_function_names(&module_path)
-                    .unwrap_or_default()
-                    .join(", ");
-                let mut diag = Diagnostic::error(
-                    Category::TypeError,
-                    format!("module `{module_path}` has no item `{item_name}`"),
-                )
-                .at(SourceLocation {
-                    file_id: item.span.file.0,
-                    start: item.span.start,
-                    end: item.span.end,
-                });
-                if !available.is_empty() {
-                    diag = diag.with_help(format!("available items: {available}"));
-                }
-                diagnostics.push(diag);
+            if traits.trait_owner(&item_name) == Some(module_owner.as_str()) {
+                env.mark_trait_in_scope(&item_name);
+                imported_symbols.push(item_name);
                 continue;
-            };
-
-            env.bind(item_name.clone(), scheme);
-            imported_symbols.push(item_name.clone());
-
-            if let Some(signature) = env
-                .resolve_qualified_function_signature(&module_path, &item_name)
-                .cloned()
-            {
-                env.set_function_signature(item_name.clone(), signature);
             }
-            if let Some(effect_signature) = env
-                .resolve_qualified_effect_signature(&module_path, &item_name)
-                .cloned()
-            {
-                env.set_function_effect_signature(item_name.clone(), effect_signature);
-            }
-            if let Some(effect_row) = env.resolve_qualified_effect_row(&module_path, &item_name) {
-                env.set_function_effect_row(item_name, effect_row);
-            }
+            bind_imported_item(
+                &module_path,
+                &item_name,
+                item.span,
+                env,
+                diagnostics,
+                &mut imported_symbols,
+            );
         }
     }
 

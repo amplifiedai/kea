@@ -252,6 +252,29 @@ mod tests {
     }
 
     #[test]
+    fn compile_and_execute_prelude_trait_unqualified_method_without_use_exit_code() {
+        let project_dir = temp_project_dir("kea-cli-project-prelude-trait");
+        let src_dir = project_dir.join("src");
+        let stdlib_dir = project_dir.join("stdlib");
+        std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+        std::fs::create_dir_all(&stdlib_dir).expect("stdlib dir should be created");
+
+        std::fs::write(
+            stdlib_dir.join("prelude.kea"),
+            "trait Tinc a\n  fn tinc(x: a) -> a\n\nimpl Tinc for Int\n  fn tinc(x: Int) -> Int\n    x + 1\n",
+        )
+        .expect("prelude module write should succeed");
+        let app_path = src_dir.join("app.kea");
+        std::fs::write(&app_path, "fn main() -> Int\n  41.tinc()\n")
+            .expect("app module write should succeed");
+
+        let run = run_file(&app_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_dir_all(project_dir);
+    }
+
+    #[test]
     fn compile_project_rejects_bare_call_without_named_import() {
         let project_dir = temp_project_dir("kea-cli-project-import-scope");
         let src_dir = project_dir.join("src");
@@ -353,7 +376,12 @@ mod tests {
                 !matches!(import_state, MatrixImportState::NotImported)
             }
             MatrixCallForm::UmsUnqualified => {
-                matches!(import_state, MatrixImportState::UseModuleNamed)
+                matches!(
+                    import_state,
+                    MatrixImportState::UseModule
+                        | MatrixImportState::UseModuleNamed
+                        | MatrixImportState::Prelude
+                )
             }
         }
     }

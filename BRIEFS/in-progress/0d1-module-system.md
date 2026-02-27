@@ -1,6 +1,6 @@
 # Brief: Module System
 
-**Status:** ready
+**Status:** active
 **Priority:** v1-critical
 **Depends on:** 0d-codegen-pure (needs working codegen pipeline)
 **Blocks:** stdlib-bootstrap (all tiers), 0e-runtime-effects, self-hosting
@@ -410,4 +410,5 @@ instead of duplicating session setup.
 - 2026-02-27 15:34: `kea-mcp` now consumes shared declaration/session typecheck logic via `kea::process_module_in_env` instead of its prior in-crate duplicated module-processing path. This removed duplicated registration/typecheck/effect-contract logic and aligned MCP declaration semantics with CLI/library behavior while preserving existing MCP tool contracts and tests.
 - 2026-02-27 15:36: Added prelude autoload scaffolding to project module collection: configured prelude modules are visited before entrypoint resolution (`KEA_PRELUDE_MODULES`, default `Prelude`), and missing prelude files are non-fatal for bootstrap transition. Added CLI integration regression proving `Prelude.*` qualified calls work without explicit `use` when a `stdlib/prelude.kea` module is present.
 - 2026-02-27 16:12: Landed resolution-matrix implementation slice: parser now desugars qualified UMS chains (`x.Trait.method(...)`, `x.Core.Math.map(...)`) to qualified calls with receiver-first args; module alias resolution now requires explicit alias/import visibility (except explicit dotted module paths), and non-entry module alias/trait scope is restored after each module pass while retaining qualified function bindings needed for merged codegen. Added/updated parser regressions for qualified UMS desugaring and CLI matrix regressions for inherent/trait call forms across import states.
-- **Next:** Implement explicit prelude trait in-scope behavior for unqualified trait dispatch (`x.show()` without named import) and tighten module visibility metadata in preparation for stdlib bootstrap.
+- 2026-02-27 16:41: Implemented trait-import scope plumbing for unqualified UMS dispatch. `use TraitModule` now marks owned traits in scope and imports trait method call targets; prelude module passes retain trait scope + trait method bindings so `x.traitMethod()` works without explicit `use` when provided by prelude. Updated resolution matrix expectations (trait unqualified cross-module now succeeds for `use Module` and prelude) and added CLI regression `compile_and_execute_prelude_trait_unqualified_method_without_use_exit_code`.
+- **Next:** Tighten module visibility metadata (store import visibility/export intent for stdlib bootstrap) and wire hardcoded prelude re-export list for unqualified names.
