@@ -2796,6 +2796,24 @@ theorem inferExprUnify_app_step_sound_weak
     HasType env (.app fn arg) (applySubstCompat stAfter.subst fuel (.var resVar)) :=
   h_app env fn arg argTy retTy stBefore stAfter fuel resVar h_fn h_arg h_unify h_res_eq
 
+/--
+One-step app soundness on the weak-hook boundary, derived from any strong app
+hook witness through the strong→weak adapter.
+-/
+theorem inferExprUnify_app_step_sound_weak_of_strong
+    (h_app : AppUnifySoundHook)
+    {env fn arg argTy retTy : _}
+    {stBefore stAfter : UnifyState} {fuel : Nat} {resVar : TypeVarId}
+    (h_fn : HasType env fn (.function (.cons argTy .nil) retTy))
+    (h_arg : HasType env arg argTy)
+    (h_unify : unify stBefore fuel
+      (.function (.cons argTy .nil) retTy)
+      (.function (.cons argTy .nil) (.var resVar)) = .ok stAfter)
+    (h_res_eq : applySubstCompat stAfter.subst fuel (.var resVar) = retTy) :
+    HasType env (.app fn arg) (applySubstCompat stAfter.subst fuel (.var resVar)) :=
+  inferExprUnify_app_step_sound_weak
+    (appUnifySoundHookWeak_of_appUnifySoundHook h_app) h_fn h_arg h_unify h_res_eq
+
 /-- One-step projection soundness: proj branch correctness from typed receiver + unify hook. -/
 theorem inferExprUnify_proj_step_sound
     (h_proj : ProjUnifySoundHook)
@@ -2824,6 +2842,26 @@ theorem inferExprUnify_proj_step_sound_weak
       some (applySubstCompat stAfter.subst fuel (.var fieldVar))) :
     HasType env (.proj recv label) (applySubstCompat stAfter.subst fuel (.var fieldVar)) :=
   h_proj env recv label recvTy stBefore stAfter fuel fieldVar restVar rowFields
+    h_recv h_recv_shape h_unify h_get
+
+/--
+One-step projection soundness on the weak-hook boundary, derived from any
+strong projection hook witness through the strong→weak adapter.
+-/
+theorem inferExprUnify_proj_step_sound_weak_of_strong
+    (h_proj : ProjUnifySoundHook)
+    {env recv : _} {label : Label} {recvTy : Ty}
+    {stBefore stAfter : UnifyState} {fuel : Nat} {fieldVar : TypeVarId}
+    {restVar : RowVarId} {rowFields : RowFields}
+    (h_recv : HasType env recv recvTy)
+    (h_recv_shape : recvTy = .anonRecord (.mk rowFields none))
+    (h_unify : unify stBefore fuel recvTy
+      (.anonRecord (.mk (.cons label (.var fieldVar) .nil) (some restVar))) = .ok stAfter)
+    (h_get : RowFields.get rowFields label =
+      some (applySubstCompat stAfter.subst fuel (.var fieldVar))) :
+    HasType env (.proj recv label) (applySubstCompat stAfter.subst fuel (.var fieldVar)) :=
+  inferExprUnify_proj_step_sound_weak
+    (projUnifySoundHookWeak_of_projUnifySoundHook h_proj)
     h_recv h_recv_shape h_unify h_get
 
 mutual

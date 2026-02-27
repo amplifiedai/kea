@@ -60,7 +60,7 @@ Concrete milestone checklist for moving from the current fuel model to an implem
 - [x] Document principal-typing boundary for the vertical slice via uniqueness theorems (`inferExprUnify_deterministic`, `inferExprUnify_type_unique_preconditioned`).
 - [x] Refine app-branch boundary with a derivable weaker hook (`AppUnifySoundHookWeak`, `appUnifySoundHookWeak_proved`).
 - [x] Refine projection-branch boundary with a derivable weaker hook (`ProjUnifySoundHookWeak`, `projUnifySoundHookWeak_proved`) and bundled weak premise package (`UnifyHookPremisesWeak`, `unifyHookPremisesWeak_proved`), including strong→weak adapters (`appUnifySoundHookWeak_of_appUnifySoundHook`, `projUnifySoundHookWeak_of_projUnifySoundHook`, `unifyHookPremisesWeak_of_unifyHookPremises`).
-- [x] Add one-step weak-boundary app/projection soundness lemmas (`inferExprUnify_app_step_sound_weak`, `inferExprUnify_proj_step_sound_weak`) to make weak-hook consumption explicit at the branch-step API.
+- [x] Add one-step weak-boundary app/projection soundness lemmas (`inferExprUnify_app_step_sound_weak`, `inferExprUnify_proj_step_sound_weak`) plus strong-hook lifted variants (`inferExprUnify_app_step_sound_weak_of_strong`, `inferExprUnify_proj_step_sound_weak_of_strong`) to make weak-hook consumption explicit at the branch-step API.
 - [x] Introduce two-judgment architecture scaffold (`HasType` + `HasTypeU`) with explicit substitution admissibility and lift lemmas.
 - [x] Show counterexample recovery in `HasTypeU` (`app_counterexample_hasTypeU`), validating the architecture shift.
 - [x] Discharge a unification-aware app hook from substitution admissibility alone (`AppUnifySoundHookUResolved`, `appUnifySoundHookUResolved_proved`) once a resolved function-shape equation is available.
