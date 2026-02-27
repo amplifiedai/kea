@@ -5155,6 +5155,130 @@ theorem principalBoundaryNoUnifyAllHooksCapstoneSlices_field
   h_slice.2 h_no h_ok
 
 /--
+Coherence (all-hooks expression capstone): for any two hook witnesses, the
+preconditioned principal slice is equivalent on the same successful run.
+-/
+theorem principalBoundaryNoUnifyExprAllHooksCapstone_hook_irrelevant
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_cap : PrincipalBoundaryNoUnifyExprAllHooksCapstone st fuel env e st' ty)
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook} :
+    (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+      ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) := by
+  constructor
+  · intro h_pre
+    have h_core : PrincipalTypingSliceCore env e ty :=
+      (h_cap.preconditionedAnyIffCore h_app₁ h_proj₁).1 h_pre
+    exact (h_cap.preconditionedAnyIffCore h_app₂ h_proj₂).2 h_core
+  · intro h_pre
+    have h_core : PrincipalTypingSliceCore env e ty :=
+      (h_cap.preconditionedAnyIffCore h_app₂ h_proj₂).1 h_pre
+    exact (h_cap.preconditionedAnyIffCore h_app₁ h_proj₁).2 h_core
+
+/--
+Coherence (all-hooks field capstone): for any two hook witnesses, the
+preconditioned field principal slice is equivalent on the same successful run.
+-/
+theorem principalBoundaryNoUnifyFieldAllHooksCapstone_hook_irrelevant
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_cap : PrincipalBoundaryNoUnifyFieldAllHooksCapstone st fuel env fs st' rf)
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook} :
+    (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) := by
+  constructor
+  · intro h_pre
+    have h_core : PrincipalFieldTypingSliceCore env fs rf :=
+      (h_cap.preconditionedAnyIffCore h_app₁ h_proj₁).1 h_pre
+    exact (h_cap.preconditionedAnyIffCore h_app₂ h_proj₂).2 h_core
+  · intro h_pre
+    have h_core : PrincipalFieldTypingSliceCore env fs rf :=
+      (h_cap.preconditionedAnyIffCore h_app₂ h_proj₂).1 h_pre
+    exact (h_cap.preconditionedAnyIffCore h_app₁ h_proj₁).2 h_core
+
+/--
+Packaged no-unify expression hook-irrelevance obtained directly from the
+all-hooks capstone slice.
+-/
+def PrincipalBoundaryNoUnifyExprAllHooksIrrelevanceSlice : Prop :=
+  ∀ {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook},
+    NoUnifyBranchesExpr e →
+    inferExprUnify st fuel env e = .ok st' ty →
+    (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+      ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty)
+
+/--
+Packaged no-unify field hook-irrelevance obtained directly from the all-hooks
+capstone slice.
+-/
+def PrincipalBoundaryNoUnifyFieldAllHooksIrrelevanceSlice : Prop :=
+  ∀ {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook},
+    NoUnifyBranchesFields fs →
+    inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)) →
+    (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf)
+
+/--
+Combined no-unify all-hooks irrelevance slice across expressions and fields.
+-/
+def PrincipalBoundaryNoUnifyAllHooksIrrelevanceSlices : Prop :=
+  PrincipalBoundaryNoUnifyExprAllHooksIrrelevanceSlice ∧
+    PrincipalBoundaryNoUnifyFieldAllHooksIrrelevanceSlice
+
+/--
+The combined no-unify all-hooks irrelevance slices are fully proved.
+-/
+theorem principalBoundaryNoUnifyAllHooksIrrelevanceSlices_proved :
+    PrincipalBoundaryNoUnifyAllHooksIrrelevanceSlices := by
+  refine ⟨?_, ?_⟩
+  · intro st fuel env e st' ty h_app₁ h_proj₁ h_app₂ h_proj₂ h_no h_ok
+    exact principalBoundaryNoUnifyExprAllHooksCapstone_hook_irrelevant
+      (principalBoundaryNoUnifyExprAllHooksCapstone_of_success h_no h_ok)
+  · intro st fuel env fs st' rf h_app₁ h_proj₁ h_app₂ h_proj₂ h_no h_ok
+    exact principalBoundaryNoUnifyFieldAllHooksCapstone_hook_irrelevant
+      (principalBoundaryNoUnifyFieldAllHooksCapstone_of_success h_no h_ok)
+
+/--
+One-hop projection: expression branch from combined no-unify all-hooks
+irrelevance slices.
+-/
+theorem principalBoundaryNoUnifyAllHooksIrrelevanceSlices_expr
+    (h_slice : PrincipalBoundaryNoUnifyAllHooksIrrelevanceSlices)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+      ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) :=
+  h_slice.1 h_no h_ok
+
+/--
+One-hop projection: field branch from combined no-unify all-hooks irrelevance
+slices.
+-/
+theorem principalBoundaryNoUnifyAllHooksIrrelevanceSlices_field
+    (h_slice : PrincipalBoundaryNoUnifyAllHooksIrrelevanceSlices)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
+  h_slice.2 h_no h_ok
+
+/--
 `HasTypeU` lift of non-app/proj recursive soundness: on the fragment that never
 executes unification branches, algorithmic inference results are declaratively
 typable in the unification-aware judgment as well.
