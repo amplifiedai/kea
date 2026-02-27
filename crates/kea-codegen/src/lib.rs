@@ -355,6 +355,7 @@ fn compile_into_module<M: Module>(
     let external_signatures = collect_external_call_signatures(module, mir)?;
     let mut requires_heap_alloc = false;
     let mut requires_io_stdout = false;
+    let mut requires_string_concat = false;
     for function in &mir.functions {
         let runtime_sig = runtime_signatures.get(&function.name).ok_or_else(|| {
             CodegenError::UnknownFunction {
@@ -389,6 +390,20 @@ fn compile_into_module<M: Module>(
         }) {
             requires_io_stdout = true;
         }
+        if function.blocks.iter().any(|block| {
+            block.instructions.iter().any(|inst| {
+                matches!(
+                    inst,
+                    MirInst::Binary {
+                        op: MirBinaryOp::Concat,
+                        ..
+                    }
+                )
+            })
+        }) {
+            requires_string_concat = true;
+            requires_heap_alloc = true;
+        }
         let needs_fail_result_alloc = runtime_sig.fail_result_abi
             || (matches!(runtime_sig.runtime_return, Type::Result(_, _))
                 && function.blocks.iter().any(|block| {
@@ -406,7 +421,7 @@ fn compile_into_module<M: Module>(
                 }));
         if needs_aggregate_alloc || needs_fail_result_alloc {
             requires_heap_alloc = true;
-            if requires_io_stdout {
+            if requires_io_stdout && requires_string_concat {
                 break;
             }
         }
@@ -467,6 +482,40 @@ fn compile_into_module<M: Module>(
         Some(
             module
                 .declare_function("puts", Linkage::Import, &signature)
+                .map_err(|detail| CodegenError::Module {
+                    detail: detail.to_string(),
+                })?,
+        )
+    } else {
+        None
+    };
+
+    let strlen_func_id = if requires_string_concat {
+        let ptr_ty = module.target_config().pointer_type();
+        let mut signature = module.make_signature();
+        signature.params.push(AbiParam::new(ptr_ty));
+        signature.returns.push(AbiParam::new(ptr_ty));
+        Some(
+            module
+                .declare_function("strlen", Linkage::Import, &signature)
+                .map_err(|detail| CodegenError::Module {
+                    detail: detail.to_string(),
+                })?,
+        )
+    } else {
+        None
+    };
+
+    let memcpy_func_id = if requires_string_concat {
+        let ptr_ty = module.target_config().pointer_type();
+        let mut signature = module.make_signature();
+        signature.params.push(AbiParam::new(ptr_ty));
+        signature.params.push(AbiParam::new(ptr_ty));
+        signature.params.push(AbiParam::new(ptr_ty));
+        signature.returns.push(AbiParam::new(ptr_ty));
+        Some(
+            module
+                .declare_function("memcpy", Linkage::Import, &signature)
                 .map_err(|detail| CodegenError::Module {
                     detail: detail.to_string(),
                 })?,
@@ -572,6 +621,8 @@ fn compile_into_module<M: Module>(
                     layout_plan,
                     malloc_func_id,
                     stdout_func_id,
+                    strlen_func_id,
+                    memcpy_func_id,
                     runtime_signatures: &runtime_signatures,
                     current_runtime_sig,
                 };
@@ -944,12 +995,44 @@ fn allocate_heap_payload(
     Ok(builder.ins().iadd_imm(raw_ptr, 8))
 }
 
+fn allocate_heap_payload_dynamic(
+    module: &mut impl Module,
+    builder: &mut FunctionBuilder,
+    function_name: &str,
+    malloc_func_id: Option<FuncId>,
+    payload_bytes: Value,
+    missing_malloc_detail: &str,
+) -> Result<Value, CodegenError> {
+    let malloc_func_id = malloc_func_id.ok_or_else(|| CodegenError::UnsupportedMir {
+        function: function_name.to_string(),
+        detail: missing_malloc_detail.to_string(),
+    })?;
+    let malloc_ref = module.declare_func_in_func(malloc_func_id, builder.func);
+    let ptr_ty = module.target_config().pointer_type();
+    let payload_bytes = coerce_value_to_clif_type(builder, payload_bytes, ptr_ty);
+    let alloc_bytes = builder.ins().iadd_imm(payload_bytes, 8);
+    let alloc_call = builder.ins().call(malloc_ref, &[alloc_bytes]);
+    let raw_ptr = builder
+        .inst_results(alloc_call)
+        .first()
+        .copied()
+        .ok_or_else(|| CodegenError::UnsupportedMir {
+            function: function_name.to_string(),
+            detail: "malloc call returned no pointer value".to_string(),
+        })?;
+    let rc_value = builder.ins().iconst(types::I64, 1);
+    builder.ins().store(MemFlags::new(), rc_value, raw_ptr, 0);
+    Ok(builder.ins().iadd_imm(raw_ptr, 8))
+}
+
 struct LowerInstCtx<'a> {
     func_ids: &'a BTreeMap<String, FuncId>,
     external_func_ids: &'a BTreeMap<String, FuncId>,
     layout_plan: &'a BackendLayoutPlan,
     malloc_func_id: Option<FuncId>,
     stdout_func_id: Option<FuncId>,
+    strlen_func_id: Option<FuncId>,
+    memcpy_func_id: Option<FuncId>,
     runtime_signatures: &'a BTreeMap<String, RuntimeFunctionSig>,
     current_runtime_sig: &'a RuntimeFunctionSig,
 }
@@ -985,7 +1068,11 @@ fn lower_instruction<M: Module>(
         } => {
             let lhs = get_value(values, function_name, left)?;
             let rhs = get_value(values, function_name, right)?;
-            let result = lower_binary(builder, function_name, *op, lhs, rhs)?;
+            let result = if *op == MirBinaryOp::Concat {
+                lower_string_concat(module, builder, function_name, lhs, rhs, ctx)?
+            } else {
+                lower_binary(builder, function_name, *op, lhs, rhs)?
+            };
             values.insert(dest.clone(), result);
             Ok(false)
         }
@@ -1617,6 +1704,71 @@ fn lower_literal(
             detail: "string constants are not implemented in 0d pure lowering".to_string(),
         }),
     }
+}
+
+fn lower_string_concat(
+    module: &mut impl Module,
+    builder: &mut FunctionBuilder,
+    function_name: &str,
+    lhs: Value,
+    rhs: Value,
+    ctx: &LowerInstCtx<'_>,
+) -> Result<Value, CodegenError> {
+    let ptr_ty = module.target_config().pointer_type();
+    let lhs_ptr = coerce_value_to_clif_type(builder, lhs, ptr_ty);
+    let rhs_ptr = coerce_value_to_clif_type(builder, rhs, ptr_ty);
+
+    let strlen_func_id = ctx.strlen_func_id.ok_or_else(|| CodegenError::UnsupportedMir {
+        function: function_name.to_string(),
+        detail: "string concat lowering requires imported `strlen` symbol".to_string(),
+    })?;
+    let memcpy_func_id = ctx.memcpy_func_id.ok_or_else(|| CodegenError::UnsupportedMir {
+        function: function_name.to_string(),
+        detail: "string concat lowering requires imported `memcpy` symbol".to_string(),
+    })?;
+
+    let strlen_ref = module.declare_func_in_func(strlen_func_id, builder.func);
+    let memcpy_ref = module.declare_func_in_func(memcpy_func_id, builder.func);
+
+    let lhs_len_call = builder.ins().call(strlen_ref, &[lhs_ptr]);
+    let lhs_len = builder
+        .inst_results(lhs_len_call)
+        .first()
+        .copied()
+        .ok_or_else(|| CodegenError::UnsupportedMir {
+            function: function_name.to_string(),
+            detail: "strlen(lhs) returned no value".to_string(),
+        })?;
+
+    let rhs_len_call = builder.ins().call(strlen_ref, &[rhs_ptr]);
+    let rhs_len = builder
+        .inst_results(rhs_len_call)
+        .first()
+        .copied()
+        .ok_or_else(|| CodegenError::UnsupportedMir {
+            function: function_name.to_string(),
+            detail: "strlen(rhs) returned no value".to_string(),
+        })?;
+
+    let joined_len = builder.ins().iadd(lhs_len, rhs_len);
+    let alloc_payload_bytes = builder.ins().iadd_imm(joined_len, 1);
+    let out_ptr = allocate_heap_payload_dynamic(
+        module,
+        builder,
+        function_name,
+        ctx.malloc_func_id,
+        alloc_payload_bytes,
+        "string concat lowering requires malloc import",
+    )?;
+
+    let _ = builder.ins().call(memcpy_ref, &[out_ptr, lhs_ptr, lhs_len]);
+    let rhs_dest = builder.ins().iadd(out_ptr, lhs_len);
+    let _ = builder.ins().call(memcpy_ref, &[rhs_dest, rhs_ptr, rhs_len]);
+
+    let nul_dest = builder.ins().iadd(out_ptr, joined_len);
+    let nul = builder.ins().iconst(types::I8, 0);
+    builder.ins().store(MemFlags::new(), nul, nul_dest, 0);
+    Ok(out_ptr)
 }
 
 fn lower_binary(
@@ -2342,6 +2494,49 @@ mod tests {
                             effect: "IO".to_string(),
                             operation: "stdout".to_string(),
                             args: vec![MirValueId(0)],
+                            result: None,
+                        },
+                    ],
+                    terminator: MirTerminator::Return { value: None },
+                }],
+            }],
+            layouts: MirLayoutCatalog::default(),
+        }
+    }
+
+    fn sample_stdout_concat_module() -> MirModule {
+        MirModule {
+            functions: vec![MirFunction {
+                name: "print_joined".to_string(),
+                signature: MirFunctionSignature {
+                    params: vec![],
+                    ret: Type::Unit,
+                    effects: EffectRow::closed(vec![(Label::new("IO"), Type::Unit)]),
+                },
+                entry: MirBlockId(0),
+                blocks: vec![MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: MirValueId(0),
+                            literal: MirLiteral::String("hello ".to_string()),
+                        },
+                        MirInst::Const {
+                            dest: MirValueId(1),
+                            literal: MirLiteral::String("world".to_string()),
+                        },
+                        MirInst::Binary {
+                            dest: MirValueId(2),
+                            op: MirBinaryOp::Concat,
+                            left: MirValueId(0),
+                            right: MirValueId(1),
+                        },
+                        MirInst::EffectOp {
+                            class: MirEffectOpClass::Direct,
+                            effect: "IO".to_string(),
+                            operation: "stdout".to_string(),
+                            args: vec![MirValueId(2)],
                             result: None,
                         },
                     ],
@@ -3650,6 +3845,19 @@ mod tests {
         let artifact = backend
             .compile_module(&module, &manifest, &BackendConfig::default())
             .expect("IO.stdout lowering should compile");
+
+        assert_eq!(artifact.stats.per_function.len(), 1);
+    }
+
+    #[test]
+    fn cranelift_backend_compiles_string_concat_stdout_module() {
+        let module = sample_stdout_concat_module();
+        let manifest = default_abi_manifest(&module);
+        let backend = CraneliftBackend;
+
+        let artifact = backend
+            .compile_module(&module, &manifest, &BackendConfig::default())
+            .expect("string concat lowering should compile");
 
         assert_eq!(artifact.stats.per_function.len(), 1);
     }
