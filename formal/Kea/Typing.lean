@@ -14513,6 +14513,282 @@ theorem principalNoUnifyPreconditionedCoreIffField_via_masterRunBundleConsequenc
       h_no h_ok)
     h_hooks
 
+/-- Bundled-seed alias for capstone-route core expression projection. -/
+theorem principalNoUnifyCoreExpr_via_masterConsequenceCapstone_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_seed : UnifyHookPremises) :
+    PrincipalTypingSliceCore env e ty :=
+  principalNoUnifyCoreExpr_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok
+
+/-- Bundled-seed alias for capstone-route core field projection. -/
+theorem principalNoUnifyCoreField_via_masterConsequenceCapstone_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_seed : UnifyHookPremises) :
+    PrincipalFieldTypingSliceCore env fs rf :=
+  principalNoUnifyCoreField_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok
+
+/-- Bundled-seed alias for capstone-route any-hooks expression projection. -/
+theorem principalNoUnifyPreconditionedExpr_anyHooks_via_masterConsequenceCapstone_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_seed : UnifyHookPremises) :
+    ∀ h_app h_proj,
+      PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty :=
+  principalNoUnifyPreconditionedExpr_anyHooks_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok
+
+/-- Bundled-seed alias for capstone-route any-hooks field projection. -/
+theorem principalNoUnifyPreconditionedField_anyHooks_via_masterConsequenceCapstone_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_seed : UnifyHookPremises) :
+    ∀ h_app h_proj,
+      PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf :=
+  principalNoUnifyPreconditionedField_anyHooks_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok
+
+/-- Bundled-seed alias for capstone-route any-hooks expression iff projection. -/
+theorem principalNoUnifyPreconditionedCoreIffExpr_anyHooks_via_masterConsequenceCapstone_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_seed : UnifyHookPremises) :
+    ∀ h_app h_proj,
+      (PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty
+        ↔ PrincipalTypingSliceCore env e ty) :=
+  principalNoUnifyPreconditionedCoreIffExpr_anyHooks_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok
+
+/-- Bundled-seed alias for capstone-route any-hooks field iff projection. -/
+theorem principalNoUnifyPreconditionedCoreIffField_anyHooks_via_masterConsequenceCapstone_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_seed : UnifyHookPremises) :
+    ∀ h_app h_proj,
+      (PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf
+        ↔ PrincipalFieldTypingSliceCore env fs rf) :=
+  principalNoUnifyPreconditionedCoreIffField_anyHooks_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok
+
+/-- Bundled-seed alias for capstone-route run-bundle expression projection. -/
+theorem principalNoUnifyRunBundleExpr_via_masterConsequenceCapstone_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_seed : UnifyHookPremises) :
+    PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty :=
+  principalNoUnifyRunBundleExpr_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok
+
+/-- Bundled-seed alias for capstone-route run-bundle field projection. -/
+theorem principalNoUnifyRunBundleField_via_masterConsequenceCapstone_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_seed : UnifyHookPremises) :
+    PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf :=
+  principalNoUnifyRunBundleField_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok
+
+/-- Bundled-seed alias for capstone-route consequence expression projection. -/
+theorem principalNoUnifyExprRunBundleConsequences_via_masterConsequenceCapstone_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_seed : UnifyHookPremises) :
+    PrincipalNoUnifyExprRunBundleConsequences st fuel env e st' ty :=
+  principalNoUnifyExprRunBundleConsequences_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok
+
+/-- Bundled-seed alias for capstone-route consequence field projection. -/
+theorem principalNoUnifyFieldRunBundleConsequences_via_masterConsequenceCapstone_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_seed : UnifyHookPremises) :
+    PrincipalNoUnifyFieldRunBundleConsequences st fuel env fs st' rf :=
+  principalNoUnifyFieldRunBundleConsequences_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok
+
+/-- Bundled-seed alias for capstone-route all-hooks capstone expression projection. -/
+theorem principalNoUnifyExprAllHooksCapstone_via_masterConsequenceCapstone_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_seed : UnifyHookPremises) :
+    PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty :=
+  principalNoUnifyExprAllHooksCapstone_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok
+
+/-- Bundled-seed alias for capstone-route all-hooks capstone field projection. -/
+theorem principalNoUnifyFieldAllHooksCapstone_via_masterConsequenceCapstone_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_seed : UnifyHookPremises) :
+    PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
+  principalNoUnifyFieldAllHooksCapstone_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok
+
+/-- Bundled-seed alias for run-bundle-route core expression projection. -/
+theorem principalNoUnifyCoreExpr_via_masterRunBundleConsequence_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_seed : UnifyHookPremises) :
+    PrincipalTypingSliceCore env e ty :=
+  principalNoUnifyCoreExpr_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok
+
+/-- Bundled-seed alias for run-bundle-route core field projection. -/
+theorem principalNoUnifyCoreField_via_masterRunBundleConsequence_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_seed : UnifyHookPremises) :
+    PrincipalFieldTypingSliceCore env fs rf :=
+  principalNoUnifyCoreField_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok
+
+/-- Bundled-seed alias for run-bundle-route any-hooks expression projection. -/
+theorem principalNoUnifyPreconditionedExpr_anyHooks_via_masterRunBundleConsequence_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_seed : UnifyHookPremises) :
+    ∀ h_app h_proj,
+      PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty :=
+  principalNoUnifyPreconditionedExpr_anyHooks_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok
+
+/-- Bundled-seed alias for run-bundle-route any-hooks field projection. -/
+theorem principalNoUnifyPreconditionedField_anyHooks_via_masterRunBundleConsequence_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_seed : UnifyHookPremises) :
+    ∀ h_app h_proj,
+      PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf :=
+  principalNoUnifyPreconditionedField_anyHooks_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok
+
+/-- Bundled-seed alias for run-bundle-route any-hooks expression iff projection. -/
+theorem principalNoUnifyPreconditionedCoreIffExpr_anyHooks_via_masterRunBundleConsequence_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_seed : UnifyHookPremises) :
+    ∀ h_app h_proj,
+      (PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty
+        ↔ PrincipalTypingSliceCore env e ty) :=
+  principalNoUnifyPreconditionedCoreIffExpr_anyHooks_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok
+
+/-- Bundled-seed alias for run-bundle-route any-hooks field iff projection. -/
+theorem principalNoUnifyPreconditionedCoreIffField_anyHooks_via_masterRunBundleConsequence_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_seed : UnifyHookPremises) :
+    ∀ h_app h_proj,
+      (PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf
+        ↔ PrincipalFieldTypingSliceCore env fs rf) :=
+  principalNoUnifyPreconditionedCoreIffField_anyHooks_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok
+
+/-- Bundled-seed alias for run-bundle-route run-bundle expression projection. -/
+theorem principalNoUnifyRunBundleExpr_via_masterRunBundleConsequence_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_seed : UnifyHookPremises) :
+    PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty :=
+  principalNoUnifyRunBundleExpr_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok
+
+/-- Bundled-seed alias for run-bundle-route run-bundle field projection. -/
+theorem principalNoUnifyRunBundleField_via_masterRunBundleConsequence_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_seed : UnifyHookPremises) :
+    PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf :=
+  principalNoUnifyRunBundleField_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok
+
+/-- Bundled-seed alias for run-bundle-route consequence expression projection. -/
+theorem principalNoUnifyExprRunBundleConsequences_via_masterRunBundleConsequence_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_seed : UnifyHookPremises) :
+    PrincipalNoUnifyExprRunBundleConsequences st fuel env e st' ty :=
+  principalNoUnifyExprRunBundleConsequences_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok
+
+/-- Bundled-seed alias for run-bundle-route consequence field projection. -/
+theorem principalNoUnifyFieldRunBundleConsequences_via_masterRunBundleConsequence_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_seed : UnifyHookPremises) :
+    PrincipalNoUnifyFieldRunBundleConsequences st fuel env fs st' rf :=
+  principalNoUnifyFieldRunBundleConsequences_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok
+
+/-- Bundled-seed alias for run-bundle-route all-hooks capstone expression projection. -/
+theorem principalNoUnifyExprAllHooksCapstone_via_masterRunBundleConsequence_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_seed : UnifyHookPremises) :
+    PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty :=
+  principalNoUnifyExprAllHooksCapstone_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok
+
+/-- Bundled-seed alias for run-bundle-route all-hooks capstone field projection. -/
+theorem principalNoUnifyFieldAllHooksCapstone_via_masterRunBundleConsequence_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_seed : UnifyHookPremises) :
+    PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
+  principalNoUnifyFieldAllHooksCapstone_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok
+
 /--
 Canonical core projection: derive no-unify expression core principality from
 the master-consequence-capstone route via cross-route consequence slices.
