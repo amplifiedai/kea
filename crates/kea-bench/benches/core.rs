@@ -11,7 +11,7 @@ use kea_infer::typeck::{
 };
 use kea_mir::lower_hir_module;
 use kea_syntax::{lex_layout, parse_module};
-use kea_types::{EffectRow, FunctionType, Type};
+use kea_types::{EffectRow, FunctionType, Label, RecordType, RowType, Type};
 
 #[global_allocator]
 static ALLOC: AllocProfiler = AllocProfiler::system();
@@ -102,6 +102,24 @@ fn infer_numeric_module(bencher: Bencher, line_count: usize) {
 #[divan::bench(args = [8, 32, 128])]
 fn lower_allocation_heavy_hir_to_mir(bencher: Bencher, levels: usize) {
     let hir = build_allocation_heavy_hir_module(levels);
+    bencher.bench(|| {
+        let mir = lower_hir_module(black_box(&hir));
+        black_box(mir.functions.len())
+    });
+}
+
+#[divan::bench]
+fn lower_record_update_single_to_mir(bencher: Bencher) {
+    let hir = build_record_update_single_hir_module();
+    bencher.bench(|| {
+        let mir = lower_hir_module(black_box(&hir));
+        black_box(mir.functions.len())
+    });
+}
+
+#[divan::bench]
+fn lower_record_update_chain_to_mir(bencher: Bencher) {
+    let hir = build_record_update_chain_hir_module();
     bencher.bench(|| {
         let mir = lower_hir_module(black_box(&hir));
         black_box(mir.functions.len())
@@ -257,6 +275,127 @@ fn build_allocation_heavy_hir_module(levels: usize) -> HirModule {
                 span,
             },
             ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
+            effects: EffectRow::pure(),
+            span,
+        })],
+    }
+}
+
+fn build_record_update_single_hir_module() -> HirModule {
+    let span = Span::synthetic();
+    let user_ty = Type::Record(RecordType {
+        name: "User".to_string(),
+        params: vec![],
+        row: RowType::closed(vec![
+            (Label::new("age"), Type::Int),
+            (Label::new("score"), Type::Int),
+        ]),
+    });
+
+    let body = HirExpr {
+        kind: HirExprKind::RecordUpdate {
+            record_type: "User".to_string(),
+            base: Box::new(HirExpr {
+                kind: HirExprKind::Var("user".to_string()),
+                ty: user_ty.clone(),
+                span,
+            }),
+            fields: vec![
+                (
+                    "age".to_string(),
+                    HirExpr {
+                        kind: HirExprKind::Lit(Lit::Int(5)),
+                        ty: Type::Int,
+                        span,
+                    },
+                ),
+                (
+                    "score".to_string(),
+                    HirExpr {
+                        kind: HirExprKind::Lit(Lit::Int(8)),
+                        ty: Type::Int,
+                        span,
+                    },
+                ),
+            ],
+        },
+        ty: user_ty.clone(),
+        span,
+    };
+
+    HirModule {
+        declarations: vec![HirDecl::Function(HirFunction {
+            name: "main".to_string(),
+            params: vec![kea_hir::HirParam {
+                name: Some("user".to_string()),
+                span,
+            }],
+            body,
+            ty: Type::Function(FunctionType::pure(vec![user_ty.clone()], user_ty)),
+            effects: EffectRow::pure(),
+            span,
+        })],
+    }
+}
+
+fn build_record_update_chain_hir_module() -> HirModule {
+    let span = Span::synthetic();
+    let user_ty = Type::Record(RecordType {
+        name: "User".to_string(),
+        params: vec![],
+        row: RowType::closed(vec![
+            (Label::new("age"), Type::Int),
+            (Label::new("score"), Type::Int),
+        ]),
+    });
+
+    let base = HirExpr {
+        kind: HirExprKind::Var("user".to_string()),
+        ty: user_ty.clone(),
+        span,
+    };
+    let inner = HirExpr {
+        kind: HirExprKind::RecordUpdate {
+            record_type: "User".to_string(),
+            base: Box::new(base),
+            fields: vec![(
+                "age".to_string(),
+                HirExpr {
+                    kind: HirExprKind::Lit(Lit::Int(5)),
+                    ty: Type::Int,
+                    span,
+                },
+            )],
+        },
+        ty: user_ty.clone(),
+        span,
+    };
+    let body = HirExpr {
+        kind: HirExprKind::RecordUpdate {
+            record_type: "User".to_string(),
+            base: Box::new(inner),
+            fields: vec![(
+                "score".to_string(),
+                HirExpr {
+                    kind: HirExprKind::Lit(Lit::Int(8)),
+                    ty: Type::Int,
+                    span,
+                },
+            )],
+        },
+        ty: user_ty.clone(),
+        span,
+    };
+
+    HirModule {
+        declarations: vec![HirDecl::Function(HirFunction {
+            name: "main".to_string(),
+            params: vec![kea_hir::HirParam {
+                name: Some("user".to_string()),
+                span,
+            }],
+            body,
+            ty: Type::Function(FunctionType::pure(vec![user_ty.clone()], user_ty)),
             effects: EffectRow::pure(),
             span,
         })],
