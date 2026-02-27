@@ -21115,6 +21115,116 @@ theorem principalFieldTypingSlicePreconditioned_iff_core_of_success_from_hook_bu
     (inferUnifySoundDualBundle_of_hook_bundle h_hooks) st fuel env fs st' rf h_ok
 
 /--
+Packaged dual-bundle principal consequences for one successful expression run.
+-/
+structure PrincipalTypingDualConsequence
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty) : Prop where
+  preconditioned : PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty
+  core : PrincipalTypingSliceCore env e ty
+  preconditioned_iff_core :
+    PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty
+      ↔ PrincipalTypingSliceCore env e ty
+  inferExpr_agrees : inferExpr env e = some ty
+
+/--
+Packaged dual-bundle principal consequences for one successful field run.
+-/
+structure PrincipalFieldTypingDualConsequence
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields) : Prop where
+  preconditioned :
+    PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf
+  core : PrincipalFieldTypingSliceCore env fs rf
+  preconditioned_iff_core :
+    PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSliceCore env fs rf
+  inferFields_agrees : inferFields env fs = some rf
+
+/--
+Construct expression dual-principal consequences from a successful run via the
+dual bundle API.
+-/
+theorem principalTypingDualConsequence_of_success_via_dual_bundle
+    {h_app : AppUnifySoundHook}
+    {h_proj : ProjUnifySoundHook}
+    (h_bundle : InferUnifySoundDualBundle h_app h_proj)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalTypingDualConsequence h_app h_proj st fuel env e st' ty := by
+  refine {
+    preconditioned :=
+      principalTypingSlicePreconditioned_of_success_via_dual_bundle
+        h_bundle st fuel env e st' ty h_ok
+    core :=
+      principalTypingSliceCore_of_preconditioned_success_via_dual_bundle
+        h_bundle st fuel env e st' ty h_ok
+    preconditioned_iff_core :=
+      principalTypingSlicePreconditioned_iff_core_of_success_via_dual_bundle
+        h_bundle st fuel env e st' ty h_ok
+    inferExpr_agrees :=
+      inferExprUnify_inferExpr_agrees_of_success_via_dual_bundle
+        h_bundle st fuel env e st' ty h_ok
+  }
+
+/--
+Construct field dual-principal consequences from a successful run via the dual
+bundle API.
+-/
+theorem principalFieldTypingDualConsequence_of_success_via_dual_bundle
+    {h_app : AppUnifySoundHook}
+    {h_proj : ProjUnifySoundHook}
+    (h_bundle : InferUnifySoundDualBundle h_app h_proj)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalFieldTypingDualConsequence h_app h_proj st fuel env fs st' rf := by
+  refine {
+    preconditioned :=
+      principalFieldTypingSlicePreconditioned_of_success_via_dual_bundle
+        h_bundle st fuel env fs st' rf h_ok
+    core :=
+      principalFieldTypingSliceCore_of_preconditioned_success_via_dual_bundle
+        h_bundle st fuel env fs st' rf h_ok
+    preconditioned_iff_core :=
+      principalFieldTypingSlicePreconditioned_iff_core_of_success_via_dual_bundle
+        h_bundle st fuel env fs st' rf h_ok
+    inferFields_agrees :=
+      inferFieldsUnify_inferFields_agrees_of_success_via_dual_bundle
+        h_bundle st fuel env fs st' rf h_ok
+  }
+
+/--
+Bundled-hook dual-bundle expression principal consequences for one successful
+run.
+-/
+theorem principalTypingDualConsequence_of_success_from_hook_bundle_via_dual_bundle
+    (h_hooks : UnifyHookPremises)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalTypingDualConsequence h_hooks.1 h_hooks.2 st fuel env e st' ty :=
+  principalTypingDualConsequence_of_success_via_dual_bundle
+    (inferUnifySoundDualBundle_of_hook_bundle h_hooks) st fuel env e st' ty h_ok
+
+/--
+Bundled-hook dual-bundle field principal consequences for one successful run.
+-/
+theorem principalFieldTypingDualConsequence_of_success_from_hook_bundle_via_dual_bundle
+    (h_hooks : UnifyHookPremises)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalFieldTypingDualConsequence h_hooks.1 h_hooks.2 st fuel env fs st' rf :=
+  principalFieldTypingDualConsequence_of_success_via_dual_bundle
+    (inferUnifySoundDualBundle_of_hook_bundle h_hooks) st fuel env fs st' rf h_ok
+
+/--
 Surface-layer naming-parity wrappers for no-unify cross-route success APIs.
 These mirror the existing `...from_cross_route_slices` families under
 explicit `...from_cross_route_surface_slices` theorem names.
