@@ -3999,6 +3999,38 @@ theorem principalNoUnifyBridgeBundle_of_success_from_hook_bundle
     PrincipalNoUnifyBridgeBundle h_hooks.1 h_hooks.2 st fuel env e st' ty := by
   exact principalNoUnifyBridgeBundle_of_success h_no h_ok h_hooks.1 h_hooks.2
 
+/-- Packaged no-unify expression principal bridge slice (bundle-entry form). -/
+def PrincipalNoUnifyExprBridgeSlice : Prop :=
+  ∀ {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty},
+    NoUnifyBranchesExpr e →
+    inferExprUnify st fuel env e = .ok st' ty →
+    (h_hooks : UnifyHookPremises) →
+    PrincipalNoUnifyBridgeBundle h_hooks.1 h_hooks.2 st fuel env e st' ty
+
+/-- Packaged no-unify field principal bridge slice (bundle-entry form). -/
+def PrincipalNoUnifyFieldBridgeSlice : Prop :=
+  ∀ {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields},
+    NoUnifyBranchesFields fs →
+    inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)) →
+    (h_hooks : UnifyHookPremises) →
+    PrincipalFieldNoUnifyBridgeBundle h_hooks.1 h_hooks.2 st fuel env fs st' rf
+
+/-- Combined no-unify principal bridge slice across expressions and fields. -/
+def PrincipalNoUnifyBridgeSlices : Prop :=
+  PrincipalNoUnifyExprBridgeSlice ∧ PrincipalNoUnifyFieldBridgeSlice
+
+/-- The combined no-unify principal bridge slice is fully proved. -/
+theorem principalNoUnifyBridgeSlices_proved : PrincipalNoUnifyBridgeSlices := by
+  refine ⟨?_, ?_⟩
+  · intro st fuel env e st' ty h_no h_ok h_hooks
+    exact principalNoUnifyBridgeBundle_of_success_from_hook_bundle
+      h_no h_ok h_hooks
+  · intro st fuel env fs st' rf h_no h_ok h_hooks
+    exact principalFieldNoUnifyBridgeBundle_of_success_from_hook_bundle
+      h_no h_ok h_hooks
+
 /--
 `HasTypeU` lift of non-app/proj recursive soundness: on the fragment that never
 executes unification branches, algorithmic inference results are declaratively
