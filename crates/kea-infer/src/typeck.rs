@@ -7964,6 +7964,92 @@ fn effect_payload_type_hint(expr: &Expr, env: &TypeEnv) -> Option<Type> {
     }
 }
 
+fn effect_hint_type_from_annotation(ann: &TypeAnnotation, env: &TypeEnv) -> Option<Type> {
+    match ann {
+        TypeAnnotation::Named(name) => match name.as_str() {
+            "Int" => Some(Type::Int),
+            "Float" => Some(Type::Float),
+            "Bool" => Some(Type::Bool),
+            "String" => Some(Type::String),
+            "Unit" => Some(Type::Unit),
+            "Never" => Some(Type::Never),
+            "Date" => Some(Type::Date),
+            "DateTime" => Some(Type::DateTime),
+            _ => env.lookup(name).map(|scheme| scheme.ty.clone()),
+        },
+        TypeAnnotation::Applied(name, args) => match (name.as_str(), args.as_slice()) {
+            ("List", [inner]) => Some(Type::List(Box::new(effect_hint_type_from_annotation(
+                inner, env,
+            )?))),
+            ("Option", [inner]) => Some(Type::Option(Box::new(effect_hint_type_from_annotation(
+                inner, env,
+            )?))),
+            ("Set", [inner]) => Some(Type::Set(Box::new(effect_hint_type_from_annotation(
+                inner, env,
+            )?))),
+            ("Map", [key, value]) => Some(Type::Map(
+                Box::new(effect_hint_type_from_annotation(key, env)?),
+                Box::new(effect_hint_type_from_annotation(value, env)?),
+            )),
+            ("Result", [ok, err]) => Some(Type::Result(
+                Box::new(effect_hint_type_from_annotation(ok, env)?),
+                Box::new(effect_hint_type_from_annotation(err, env)?),
+            )),
+            _ => None,
+        },
+        TypeAnnotation::Tuple(items) => Some(Type::Tuple(
+            items
+                .iter()
+                .map(|item| effect_hint_type_from_annotation(item, env))
+                .collect::<Option<Vec<_>>>()?,
+        )),
+        TypeAnnotation::Optional(inner) => Some(Type::Option(Box::new(
+            effect_hint_type_from_annotation(inner, env)?,
+        ))),
+        TypeAnnotation::Function(params, ret) => Some(Type::Function(FunctionType::pure(
+            params
+                .iter()
+                .map(|param| effect_hint_type_from_annotation(param, env))
+                .collect::<Option<Vec<_>>>()?,
+            effect_hint_type_from_annotation(ret, env)?,
+        ))),
+        TypeAnnotation::FunctionWithEffect(params, effect, ret) => {
+            let mut effect_var_bindings = BTreeMap::new();
+            let mut next_effect_var = 0u32;
+            let effects = effect_row_from_annotation(
+                &effect.node,
+                &mut effect_var_bindings,
+                &mut next_effect_var,
+            )
+            .unwrap_or_else(pure_effect_row);
+            Some(Type::Function(FunctionType {
+                params: params
+                    .iter()
+                    .map(|param| effect_hint_type_from_annotation(param, env))
+                    .collect::<Option<Vec<_>>>()?,
+                ret: Box::new(effect_hint_type_from_annotation(ret, env)?),
+                effects,
+            }))
+        }
+        TypeAnnotation::Forall { ty, .. } => effect_hint_type_from_annotation(ty, env),
+        _ => None,
+    }
+}
+
+fn seed_value_param_type_hints(params: &[Param], env: &mut TypeEnv) {
+    for param in params {
+        let Some(name) = param.name() else {
+            continue;
+        };
+        let Some(annotation) = &param.annotation else {
+            continue;
+        };
+        if let Some(ty) = effect_hint_type_from_annotation(&annotation.node, env) {
+            env.bind(name.to_string(), TypeScheme::mono(ty));
+        }
+    }
+}
+
 fn specialize_fail_payload_from_call_args(
     effect_row: &mut EffectRow,
     bound_args: &[BoundArg],
@@ -8005,6 +8091,7 @@ pub fn infer_fn_decl_effect_row(fn_decl: &FnDecl, env: &TypeEnv) -> EffectRow {
             &mut effect_var_bindings,
             &mut next_effect_var,
         );
+        seed_value_param_type_hints(&fn_decl.params, &mut trial_env);
         let mut constraints = Vec::new();
         let root = infer_expr_effect_row(
             &fn_decl.body,
@@ -16135,8 +16222,13 @@ fn resolve_module_qualified_variant(
     let matching_types: Vec<String> = sum_types
         .all_types()
         .filter_map(|(type_name, info)| {
-            if env.module_item_visibility(&module_path, type_name).is_some()
-                && info.variants.iter().any(|variant| variant.name == variant_name)
+            if env
+                .module_item_visibility(&module_path, type_name)
+                .is_some()
+                && info
+                    .variants
+                    .iter()
+                    .any(|variant| variant.name == variant_name)
             {
                 Some(type_name.clone())
             } else {
