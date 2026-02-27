@@ -1992,6 +1992,37 @@ mod tests {
     }
 
     #[test]
+    fn compile_and_execute_borrow_param_does_not_consume_caller_unique() {
+        let source_path = write_temp_source(
+            "type Unique a = Unique(a)\n\nfn touch(borrow value: Unique Int) -> Int\n  1\n\nfn main() -> Int\n  let u = Unique(7)\n  let _ = touch(u)\n  let _ = touch(u)\n  7\n",
+            "kea-cli-borrow-does-not-consume",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("borrow call should not consume caller unique");
+        assert_eq!(run.exit_code, 7);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_rejects_consuming_borrow_parameter_in_callee() {
+        let source_path = write_temp_source(
+            "type Unique a = Unique(a)\n\nfn take(value: Unique Int) -> Int\n  1\n\nfn bad(borrow value: Unique Int) -> Int\n  take(value)\n",
+            "kea-cli-borrow-callee-consume-rejected",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("consuming borrowed parameter should fail");
+        assert!(
+            err.contains("borrowed value `value` cannot be consumed"),
+            "expected borrow consumption diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_wrapping_add_method_exit_code() {
         let source_path = write_temp_source(
             "fn main() -> Int\n  20.wrapping_add(22)\n",
