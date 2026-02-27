@@ -355,3 +355,7 @@ instead of duplicating session setup.
 - Separate compilation / incremental compilation
 - Module caching / precompiled headers
 - `@with` annotation on handler-shaped functions (deferred to 0h)
+
+## Progress
+- 2026-02-27 15:01: 0d1 kickoff started. Parser now accepts top-level `use` module declarations (legacy `import` retained as compatibility alias), with regression coverage for bare/nested/selective/alias `use` forms and mixed `use` + function declarations. This aligns source syntax with KERNEL §11 while preserving parser compatibility during the resolver migration.
+- **Next:** Wire module resolution + dependency DAG into the `kea` compilation pipeline (replace current "parsed but not wired" import warning), then add multi-file integration tests with cycle diagnostics.
