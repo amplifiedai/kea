@@ -1002,21 +1002,10 @@ fn lower_hir_function(
                 }
             }
         }
-        if let Some(param_ty) = declared_params.get(index) {
-            match param_ty {
-                Type::Sum(sum_ty) => {
-                    ctx.sum_value_types
-                        .insert(MirValueId(index as u32), sum_ty.name.clone());
-                }
-                // Result constructors are always payload variants in bootstrap
-                // and use pointer-backed runtime layout, so tag-load rewrites
-                // are valid for Result-typed parameters.
-                Type::Result(_, _) => {
-                    ctx.sum_value_types
-                        .insert(MirValueId(index as u32), "Result".to_string());
-                }
-                _ => {}
-            }
+        if let Some(param_ty) = declared_params.get(index)
+            && let Some(sum_type) = ctx.infer_sum_type_from_type(param_ty)
+        {
+            ctx.sum_value_types.insert(MirValueId(index as u32), sum_type);
         }
     }
     let return_value = ctx.lower_expr(&function.body);
@@ -2449,9 +2438,10 @@ impl FunctionLoweringCtx {
             capture_fail_result,
             cc_manifest_id: "default".to_string(),
         });
-        if let (Some(dest), Type::Sum(sum_ty)) = (&result, &call_ret_type) {
-            self.sum_value_types
-                .insert(dest.clone(), sum_ty.name.clone());
+        if let Some(dest) = &result
+            && let Some(sum_type) = self.infer_sum_type_from_type(&call_ret_type)
+        {
+            self.sum_value_types.insert(dest.clone(), sum_type);
         }
         result
     }

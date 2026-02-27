@@ -678,7 +678,7 @@ mod tests {
         let app_path = src_dir.join("app.kea");
         std::fs::write(
             &app_path,
-            "use Option\nuse Text\n\nfn main() -> Int\n  Option.unwrap_or(Some(39), 39) + Text.length(\"abc\")\n",
+            "use Option\nuse Text\n\nfn main() -> Int\n  Option.unwrap_or(Some(39), 0) + Text.length(\"abc\")\n",
         )
         .expect("app module write should succeed");
 
@@ -686,6 +686,20 @@ mod tests {
         assert_eq!(run.exit_code, 42);
 
         let _ = std::fs::remove_dir_all(project_dir);
+    }
+
+    #[test]
+    fn compile_and_execute_option_payload_case_on_function_param_exit_code() {
+        let source_path = write_temp_source(
+            "fn unwrap_or(opt: Option Int, fallback: Int) -> Int\n  case opt\n    Some(value) -> value\n    None -> fallback\n\nfn main() -> Int\n  unwrap_or(Some(7), 0)\n",
+            "kea-cli-option-param-payload-case",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 7);
+
+        let _ = std::fs::remove_file(source_path);
     }
 
     #[test]
