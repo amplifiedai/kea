@@ -1,0 +1,49 @@
+==================
+Wildcard pattern
+==================
+
+case x
+  _ -> 0
+
+---
+
+(source_file
+  (case_expression
+    scrutinee: (identifier)
+    (case_arm
+      pattern: (wildcard_pattern)
+      body: (integer))))
+
+==================
+Constructor pattern with args
+==================
+
+case opt
+  Some(v) -> v
+
+---
+
+(source_file
+  (case_expression
+    scrutinee: (identifier)
+    (case_arm
+      pattern: (constructor_pattern
+        constructor: (upper_identifier)
+        (variable_pattern (identifier)))
+      body: (identifier))))
+
+==================
+Constructor pattern no args
+==================
+
+case opt
+  None -> 0
+
+---
+
+(source_file
+  (case_expression
+    scrutinee: (identifier)
+    (case_arm
+      pattern: (literal_pattern (none))
+      body: (integer))))

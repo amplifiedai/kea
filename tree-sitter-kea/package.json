@@ -1,0 +1,26 @@
+{
+  "name": "tree-sitter-kea",
+  "version": "0.1.0",
+  "description": "Tree-sitter grammar for the Kea programming language",
+  "license": "MIT",
+  "main": "bindings/node",
+  "scripts": {
+    "generate": "tree-sitter generate",
+    "test": "tree-sitter test",
+    "parse": "tree-sitter parse"
+  },
+  "devDependencies": {
+    "tree-sitter-cli": "^0.25.10"
+  },
+  "tree-sitter": [
+    {
+      "scope": "source.kea",
+      "file-types": ["kea"],
+      "injection-regex": "^kea$",
+      "highlights": "queries/highlights.scm",
+      "indents": "queries/indents.scm",
+      "folds": "queries/folds.scm",
+      "locals": "queries/locals.scm"
+    }
+  ]
+}

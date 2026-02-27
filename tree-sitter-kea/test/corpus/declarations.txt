@@ -1,0 +1,135 @@
+==================
+Simple function
+==================
+
+fn add(x: Int, y: Int) -> Int
+  x
+
+---
+
+(source_file
+  (function_declaration
+    name: (identifier)
+    (parameter_list
+      (parameter
+        pattern: (variable_pattern (identifier))
+        type: (named_type (upper_identifier)))
+      (parameter
+        pattern: (variable_pattern (identifier))
+        type: (named_type (upper_identifier))))
+    (pure_return_type
+      type: (named_type (upper_identifier)))
+    (identifier)))
+
+==================
+Effect declaration
+==================
+
+effect IO
+  fn stdout(msg: String) -[IO]> Unit
+
+---
+
+(source_file
+  (effect_declaration
+    name: (upper_identifier)
+    (function_declaration
+      name: (identifier)
+      (parameter_list
+        (parameter
+          pattern: (variable_pattern (identifier))
+          type: (named_type (upper_identifier))))
+      (effect_return_type
+        (effect_row
+          (effect_ref
+            name: (upper_identifier)))
+        type: (named_type (upper_identifier))))))
+
+==================
+Type definition
+==================
+
+type Color = Red | Green | Blue
+
+---
+
+(source_file
+  (type_definition
+    name: (upper_identifier)
+    (variant name: (upper_identifier))
+    (variant name: (upper_identifier))
+    (variant name: (upper_identifier))))
+
+==================
+Record definition
+==================
+
+record User
+  name: String
+  age: Int
+
+---
+
+(source_file
+  (record_definition
+    name: (upper_identifier)
+    (record_field
+      name: (identifier)
+      type: (named_type (upper_identifier)))
+    (record_field
+      name: (identifier)
+      type: (named_type (upper_identifier)))))
+
+==================
+Trait definition
+==================
+
+trait Eq a
+  fn eq(x: a, y: a) -> Bool
+
+---
+
+(source_file
+  (trait_definition
+    name: (upper_identifier)
+    param: (identifier)
+    (function_declaration
+      name: (identifier)
+      (parameter_list
+        (parameter
+          pattern: (variable_pattern (identifier))
+          type: (named_type (identifier)))
+        (parameter
+          pattern: (variable_pattern (identifier))
+          type: (named_type (identifier))))
+      (pure_return_type
+        type: (named_type (upper_identifier))))))
+
+==================
+Use declaration
+==================
+
+use IO
+use Test
+
+---
+
+(source_file
+  (use_declaration
+    module: (upper_identifier))
+  (use_declaration
+    module: (upper_identifier)))
+
+==================
+Test declaration
+==================
+
+test "simple test"
+  true
+
+---
+
+(source_file
+  (test_declaration
+    name: (string)
+    (boolean)))

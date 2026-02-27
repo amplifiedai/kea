@@ -1,0 +1,33 @@
+==================
+If else chain
+==================
+
+if x > 0
+  "positive"
+else
+  "non-positive"
+
+---
+
+(source_file
+  (if_expression
+    condition: (binary_expression
+      (identifier)
+      (integer))
+    then: (string)
+    else: (string)))
+
+==================
+Cond expression
+==================
+
+cond
+  true -> "yes"
+
+---
+
+(source_file
+  (cond_expression
+    (cond_arm
+      condition: (boolean)
+      body: (string))))

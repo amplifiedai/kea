@@ -1,0 +1,112 @@
+==================
+Let binding
+==================
+
+let x = 42
+
+---
+
+(source_file
+  (let_expression
+    pattern: (variable_pattern (identifier))
+    value: (integer)))
+
+==================
+If expression
+==================
+
+if true
+  1
+else
+  0
+
+---
+
+(source_file
+  (if_expression
+    condition: (boolean)
+    then: (integer)
+    else: (integer)))
+
+==================
+Case expression
+==================
+
+case x
+  Some(v) -> v
+  None -> 0
+
+---
+
+(source_file
+  (case_expression
+    scrutinee: (identifier)
+    (case_arm
+      pattern: (constructor_pattern
+        constructor: (upper_identifier)
+        (variable_pattern (identifier)))
+      body: (identifier))
+    (case_arm
+      pattern: (literal_pattern (none))
+      body: (integer))))
+
+==================
+Lambda expression
+==================
+
+|x| -> x
+
+---
+
+(source_file
+  (lambda_expression
+    (lambda_parameter
+      pattern: (variable_pattern (identifier)))
+    body: (identifier)))
+
+==================
+Binary operators
+==================
+
+1 + 2
+x == y
+
+---
+
+(source_file
+  (binary_expression
+    (integer)
+    (integer))
+  (binary_expression
+    (identifier)
+    (identifier)))
+
+==================
+Method call
+==================
+
+IO.stdout("hello")
+
+---
+
+(source_file
+  (call_expression
+    function: (field_expression
+      object: (constructor_expression
+        constructor: (upper_identifier))
+      field: (identifier))
+    (string)))
+
+==================
+List literal
+==================
+
+[1, 2, 3]
+
+---
+
+(source_file
+  (list_expression
+    (integer)
+    (integer)
+    (integer)))

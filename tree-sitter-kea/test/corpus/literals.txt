@@ -1,0 +1,117 @@
+==================
+Integer literals
+==================
+
+42
+0
+1_000_000
+
+---
+
+(source_file
+  (integer)
+  (integer)
+  (integer))
+
+==================
+Hex integer
+==================
+
+0xFF
+
+---
+
+(source_file
+  (integer))
+
+==================
+Binary integer
+==================
+
+0b1010
+
+---
+
+(source_file
+  (integer))
+
+==================
+Octal integer
+==================
+
+0o77
+
+---
+
+(source_file
+  (integer))
+
+==================
+Float literals
+==================
+
+3.14
+1.0e10
+
+---
+
+(source_file
+  (float)
+  (float))
+
+==================
+String literal
+==================
+
+"hello world"
+
+---
+
+(source_file
+  (string))
+
+==================
+String with escapes
+==================
+
+"line\nbreak"
+
+---
+
+(source_file
+  (string))
+
+==================
+Boolean literals
+==================
+
+true
+false
+
+---
+
+(source_file
+  (boolean)
+  (boolean))
+
+==================
+Unit literal
+==================
+
+()
+
+---
+
+(source_file
+  (unit))
+
+==================
+None literal
+==================
+
+None
+
+---
+
+(source_file
+  (none))

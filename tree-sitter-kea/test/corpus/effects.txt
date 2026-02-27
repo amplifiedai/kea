@@ -1,0 +1,104 @@
+==================
+Effect with type parameter
+==================
+
+effect Fail E
+  fn fail(error: E) -> Never
+
+---
+
+(source_file
+  (effect_declaration
+    name: (upper_identifier)
+    param: (upper_identifier)
+    (function_declaration
+      name: (identifier)
+      (parameter_list
+        (parameter
+          pattern: (variable_pattern (identifier))
+          type: (named_type (upper_identifier))))
+      (pure_return_type
+        type: (named_type (upper_identifier))))))
+
+==================
+Effect declaration with operation
+==================
+
+effect Clock
+  fn now() -[Clock]> Int
+
+---
+
+(source_file
+  (effect_declaration
+    name: (upper_identifier)
+    (function_declaration
+      name: (identifier)
+      (parameter_list)
+      (effect_return_type
+        (effect_row
+          (effect_ref
+            name: (upper_identifier)))
+        type: (named_type (upper_identifier))))))
+
+==================
+Multiple effects in arrow
+==================
+
+fn risky(x: Int) -[IO, Fail String]> Bool
+  true
+
+---
+
+(source_file
+  (function_declaration
+    name: (identifier)
+    (parameter_list
+      (parameter
+        pattern: (variable_pattern (identifier))
+        type: (named_type (upper_identifier))))
+    (effect_return_type
+      (effect_row
+        (effect_ref
+          name: (upper_identifier))
+        (effect_ref
+          name: (upper_identifier)
+          arg: (named_type (upper_identifier))))
+      type: (named_type (upper_identifier)))
+    (boolean)))
+
+==================
+Catch expression
+==================
+
+catch x
+
+---
+
+(source_file
+  (catch_expression
+    expr: (identifier)))
+
+==================
+Fail expression
+==================
+
+fail "error"
+
+---
+
+(source_file
+  (fail_expression
+    value: (string)))
+
+==================
+Resume expression
+==================
+
+resume 42
+
+---
+
+(source_file
+  (resume_expression
+    value: (integer)))
