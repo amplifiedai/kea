@@ -27286,6 +27286,86 @@ theorem principalBoundarySoundFullVerticalMasterRoutes_dual_viaRowPolyBundle
     PrincipalBoundarySoundFullVerticalSuite st fuel env e fs stExpr ty stField rf :=
   h_master.dual.viaRowPolyBundle
 
+/-- One-hop projection: regular route full-suite consequence from master routes. -/
+theorem principalBoundarySoundFullVerticalMasterRoutes_regular_full
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_master : PrincipalBoundarySoundFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundFullSuite st fuel env e fs stExpr ty stField rf :=
+  h_master.regular.viaTypingSuite.full
+
+/-- One-hop projection: regular route vertical consequence from master routes. -/
+theorem principalBoundarySoundFullVerticalMasterRoutes_regular_vertical
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_master : PrincipalBoundarySoundFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf) :
+    VerticalHookFreeUnifySlices :=
+  h_master.regular.viaTypingSuite.vertical
+
+/-- One-hop projection: regular route app vertical consequence from master routes. -/
+theorem principalBoundarySoundFullVerticalMasterRoutes_regular_vertical_app
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_master : PrincipalBoundarySoundFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf) :
+    VerticalHookFreeAppSlice :=
+  h_master.regular.viaTypingSuite.vertical.1
+
+/-- One-hop projection: regular route projection vertical consequence from master routes. -/
+theorem principalBoundarySoundFullVerticalMasterRoutes_regular_vertical_proj
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_master : PrincipalBoundarySoundFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf) :
+    VerticalHookFreeProjSlice :=
+  h_master.regular.viaTypingSuite.vertical.2
+
+/-- One-hop projection: dual route full-suite consequence from master routes. -/
+theorem principalBoundarySoundFullVerticalMasterRoutes_dual_full
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_master : PrincipalBoundarySoundFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundFullSuite st fuel env e fs stExpr ty stField rf :=
+  h_master.dual.viaTypingSuite.full
+
+/-- One-hop projection: dual route vertical consequence from master routes. -/
+theorem principalBoundarySoundFullVerticalMasterRoutes_dual_vertical
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_master : PrincipalBoundarySoundFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf) :
+    VerticalHookFreeUnifySlices :=
+  h_master.dual.viaTypingSuite.vertical
+
+/-- One-hop projection: dual route app vertical consequence from master routes. -/
+theorem principalBoundarySoundFullVerticalMasterRoutes_dual_vertical_app
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_master : PrincipalBoundarySoundFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf) :
+    VerticalHookFreeAppSlice :=
+  h_master.dual.viaTypingSuite.vertical.1
+
+/-- One-hop projection: dual route projection vertical consequence from master routes. -/
+theorem principalBoundarySoundFullVerticalMasterRoutes_dual_vertical_proj
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_master : PrincipalBoundarySoundFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf) :
+    VerticalHookFreeProjSlice :=
+  h_master.dual.viaTypingSuite.vertical.2
+
 /--
 The row-poly full+vertical capstone is equivalent to providing:
 - a full principal boundary soundness suite witness, and
