@@ -21883,6 +21883,50 @@ theorem principalPreconditionedField_of_core_success_via_suite_via_dualConsequen
       principalBoundaryBridgeSuite_proved_via_dualConsequenceSlices
       h_hooks st fuel env fs st' rf h_ok).2 h_core
 
+/-- Bundled-seed alias for dual-routed suite preconditioned->core expression conversion. -/
+theorem principalCoreExpr_of_preconditioned_success_via_suite_via_dualConsequenceSlices_from_bundle
+    (h_seed : UnifyHookPremises)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_pre : PrincipalTypingSlicePreconditioned h_seed.1 h_seed.2 st fuel env e st' ty) :
+    PrincipalTypingSliceCore env e ty :=
+  principalCoreExpr_of_preconditioned_success_via_suite_via_dualConsequenceSlices
+    h_seed st fuel env e st' ty h_ok h_pre
+
+/-- Bundled-seed alias for dual-routed suite core->preconditioned expression conversion. -/
+theorem principalPreconditionedExpr_of_core_success_via_suite_via_dualConsequenceSlices_from_bundle
+    (h_seed : UnifyHookPremises)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_core : PrincipalTypingSliceCore env e ty) :
+    PrincipalTypingSlicePreconditioned h_seed.1 h_seed.2 st fuel env e st' ty :=
+  principalPreconditionedExpr_of_core_success_via_suite_via_dualConsequenceSlices
+    h_seed st fuel env e st' ty h_ok h_core
+
+/-- Bundled-seed alias for dual-routed suite preconditioned->core field conversion. -/
+theorem principalCoreField_of_preconditioned_success_via_suite_via_dualConsequenceSlices_from_bundle
+    (h_seed : UnifyHookPremises)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_pre : PrincipalFieldTypingSlicePreconditioned h_seed.1 h_seed.2 st fuel env fs st' rf) :
+    PrincipalFieldTypingSliceCore env fs rf :=
+  principalCoreField_of_preconditioned_success_via_suite_via_dualConsequenceSlices
+    h_seed st fuel env fs st' rf h_ok h_pre
+
+/-- Bundled-seed alias for dual-routed suite core->preconditioned field conversion. -/
+theorem principalPreconditionedField_of_core_success_via_suite_via_dualConsequenceSlices_from_bundle
+    (h_seed : UnifyHookPremises)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_core : PrincipalFieldTypingSliceCore env fs rf) :
+    PrincipalFieldTypingSlicePreconditioned h_seed.1 h_seed.2 st fuel env fs st' rf :=
+  principalPreconditionedField_of_core_success_via_suite_via_dualConsequenceSlices
+    h_seed st fuel env fs st' rf h_ok h_core
+
 /--
 Master-suite dual-routed convenience wrapper: derive core expression
 principality from an arbitrary successful run.
