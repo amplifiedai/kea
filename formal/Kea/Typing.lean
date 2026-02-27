@@ -5754,6 +5754,36 @@ theorem principalPreconditionedAllHooksSuite_runBundle_field
     h_suite.runBundles h_app0 h_proj0 h_ok
 
 /--
+General-all-hooks suite convenience wrapper: derive the expression run-bundle
+surface from an arbitrary successful run.
+-/
+theorem principalGeneralAllHooksRunBundleExpr_of_success
+    (h_suite : PrincipalPreconditionedAllHooksSuite)
+    (h_app0 : AppUnifySoundHook)
+    (h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty :=
+  principalPreconditionedAllHooksSuite_runBundle_expr
+    h_suite h_app0 h_proj0 h_ok
+
+/--
+General-all-hooks suite convenience wrapper: derive the field run-bundle
+surface from an arbitrary successful field run.
+-/
+theorem principalGeneralAllHooksRunBundleField_of_success
+    (h_suite : PrincipalPreconditionedAllHooksSuite)
+    (h_app0 : AppUnifySoundHook)
+    (h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf :=
+  principalPreconditionedAllHooksSuite_runBundle_field
+    h_suite h_app0 h_proj0 h_ok
+
+/--
 General-all-hooks suite convenience wrapper: derive core expression principality
 from an arbitrary successful run.
 -/
@@ -6012,9 +6042,8 @@ theorem principalPreconditionedExprAllHooksRunBundle_of_success_via_generalAllHo
     {st' : UnifyState} {ty : Ty}
     (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
     PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty :=
-  principalPreconditionedExprAllHooksRunBundle_of_capstone
-    (principalPreconditionedExprAllHooksCapstone_of_success_via_generalAllHooksSuite
-      h_app0 h_proj0 h_ok)
+  principalGeneralAllHooksRunBundleExpr_of_success
+    principalPreconditionedAllHooksSuite_proved h_app0 h_proj0 h_ok
 
 /--
 General-all-hooks-suite run-bundle wrapper: package capstone + hook-irrelevance
@@ -6027,9 +6056,8 @@ theorem principalPreconditionedFieldAllHooksRunBundle_of_success_via_generalAllH
     {st' : UnifyState} {rf : RowFields}
     (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
     PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf :=
-  principalPreconditionedFieldAllHooksRunBundle_of_capstone
-    (principalPreconditionedFieldAllHooksCapstone_of_success_via_generalAllHooksSuite
-      h_app0 h_proj0 h_ok)
+  principalGeneralAllHooksRunBundleField_of_success
+    principalPreconditionedAllHooksSuite_proved h_app0 h_proj0 h_ok
 
 /--
 Bundle-entry variant of
@@ -8652,9 +8680,8 @@ theorem principalPreconditionedExprAllHooksRunBundle_of_success_via_masterSuite
     {st' : UnifyState} {ty : Ty}
     (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
     PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty :=
-  principalPreconditionedExprAllHooksRunBundle_of_capstone
-    (principalPreconditionedExprAllHooksCapstone_of_success_via_masterSuite
-      h_suite h_app0 h_proj0 h_ok)
+  principalGeneralAllHooksRunBundleExpr_of_success
+    h_suite.allHooks h_app0 h_proj0 h_ok
 
 /--
 Master-suite run-bundle wrapper: package capstone + hook-irrelevance for
@@ -8668,9 +8695,8 @@ theorem principalPreconditionedFieldAllHooksRunBundle_of_success_via_masterSuite
     {st' : UnifyState} {rf : RowFields}
     (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
     PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf :=
-  principalPreconditionedFieldAllHooksRunBundle_of_capstone
-    (principalPreconditionedFieldAllHooksCapstone_of_success_via_masterSuite
-      h_suite h_app0 h_proj0 h_ok)
+  principalGeneralAllHooksRunBundleField_of_success
+    h_suite.allHooks h_app0 h_proj0 h_ok
 
 /--
 Bundle-entry variant of
