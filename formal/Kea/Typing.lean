@@ -4308,6 +4308,62 @@ theorem principalNoUnifyPreconditionedField_of_success_via_suite
       principalBoundaryBridgeSuite_proved h_no h_ok h_hooks).preconditioned
 
 /--
+Convenience wrapper: convert preconditioned -> core principality on successful
+expression runs via the proved boundary suite.
+-/
+theorem principalCoreExpr_of_preconditioned_success_via_suite
+    (h_hooks : UnifyHookPremises)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_pre : PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty) :
+    PrincipalTypingSliceCore env e ty := by
+  exact (principalBoundaryBridgeSuite_preconditionedCoreIff_expr
+      principalBoundaryBridgeSuite_proved h_hooks st fuel env e st' ty h_ok).1 h_pre
+
+/--
+Convenience wrapper: convert core -> preconditioned principality on successful
+expression runs via the proved boundary suite.
+-/
+theorem principalPreconditionedExpr_of_core_success_via_suite
+    (h_hooks : UnifyHookPremises)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_core : PrincipalTypingSliceCore env e ty) :
+    PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty := by
+  exact (principalBoundaryBridgeSuite_preconditionedCoreIff_expr
+      principalBoundaryBridgeSuite_proved h_hooks st fuel env e st' ty h_ok).2 h_core
+
+/--
+Convenience wrapper: convert preconditioned -> core field principality on
+successful field runs via the proved boundary suite.
+-/
+theorem principalCoreField_of_preconditioned_success_via_suite
+    (h_hooks : UnifyHookPremises)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_pre : PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf) :
+    PrincipalFieldTypingSliceCore env fs rf := by
+  exact (principalBoundaryBridgeSuite_preconditionedCoreIff_field
+      principalBoundaryBridgeSuite_proved h_hooks st fuel env fs st' rf h_ok).1 h_pre
+
+/--
+Convenience wrapper: convert core -> preconditioned field principality on
+successful field runs via the proved boundary suite.
+-/
+theorem principalPreconditionedField_of_core_success_via_suite
+    (h_hooks : UnifyHookPremises)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_core : PrincipalFieldTypingSliceCore env fs rf) :
+    PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf := by
+  exact (principalBoundaryBridgeSuite_preconditionedCoreIff_field
+      principalBoundaryBridgeSuite_proved h_hooks st fuel env fs st' rf h_ok).2 h_core
+
+/--
 `HasTypeU` lift of non-app/proj recursive soundness: on the fragment that never
 executes unification branches, algorithmic inference results are declaratively
 typable in the unification-aware judgment as well.
