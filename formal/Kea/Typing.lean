@@ -12979,6 +12979,382 @@ theorem principalPreconditionedField_hookIrrelevant_of_success_noUnify_via_maste
     h_no h_ok
 
 /--
+No-unify naming-parity alias: expression core principality on the
+master-consequence-capstone cross-route surface.
+-/
+theorem principalNoUnifyCoreExpr_of_success_via_masterConsequenceCapstone_from_cross_route_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalTypingSliceCore env e ty :=
+  principalCoreExpr_of_success_noUnify_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok
+
+/--
+No-unify naming-parity alias: field core principality on the
+master-consequence-capstone cross-route surface.
+-/
+theorem principalNoUnifyCoreField_of_success_via_masterConsequenceCapstone_from_cross_route_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalFieldTypingSliceCore env fs rf :=
+  principalCoreField_of_success_noUnify_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok
+
+/--
+No-unify naming-parity alias: expression any-hooks preconditioned principality
+on the master-consequence-capstone cross-route surface.
+-/
+theorem principalNoUnifyPreconditionedExpr_anyHooks_of_success_via_masterConsequenceCapstone_from_cross_route_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    ∀ h_app h_proj,
+      PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty :=
+  principalPreconditionedExpr_anyHooks_of_success_noUnify_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok
+
+/--
+No-unify naming-parity alias: field any-hooks preconditioned principality on
+the master-consequence-capstone cross-route surface.
+-/
+theorem principalNoUnifyPreconditionedField_anyHooks_of_success_via_masterConsequenceCapstone_from_cross_route_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    ∀ h_app h_proj,
+      PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf :=
+  principalPreconditionedField_anyHooks_of_success_noUnify_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok
+
+/--
+No-unify naming-parity alias: expression preconditioned principality on the
+master-consequence-capstone cross-route surface.
+-/
+theorem principalNoUnifyPreconditionedExpr_of_success_via_masterConsequenceCapstone_from_cross_route_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_hooks : UnifyHookPremises) :
+    PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty :=
+  principalNoUnifyPreconditionedExpr_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok h_hooks
+
+/--
+No-unify naming-parity alias: field preconditioned principality on the
+master-consequence-capstone cross-route surface.
+-/
+theorem principalNoUnifyPreconditionedField_of_success_via_masterConsequenceCapstone_from_cross_route_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_hooks : UnifyHookPremises) :
+    PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf :=
+  principalNoUnifyPreconditionedField_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok h_hooks
+
+/--
+No-unify naming-parity alias: bundled-hook variant for expression preconditioned
+principality on the master-consequence-capstone cross-route surface.
+-/
+theorem principalNoUnifyPreconditionedExpr_of_success_via_masterConsequenceCapstone_from_cross_route_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_hooks : UnifyHookPremises) :
+    PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty :=
+  principalNoUnifyPreconditionedExpr_of_success_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok h_hooks
+
+/--
+No-unify naming-parity alias: bundled-hook variant for field preconditioned
+principality on the master-consequence-capstone cross-route surface.
+-/
+theorem principalNoUnifyPreconditionedField_of_success_via_masterConsequenceCapstone_from_cross_route_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_hooks : UnifyHookPremises) :
+    PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf :=
+  principalNoUnifyPreconditionedField_of_success_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok h_hooks
+
+/--
+No-unify naming-parity alias: expression any-hooks `preconditioned ↔ core`
+equivalence on the master-consequence-capstone cross-route surface.
+-/
+theorem principalNoUnifyPreconditionedCoreIffExpr_anyHooks_of_success_via_masterConsequenceCapstone_from_cross_route_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    ∀ h_app h_proj,
+      (PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty
+        ↔ PrincipalTypingSliceCore env e ty) :=
+  principalPreconditionedCoreIffExpr_anyHooks_of_success_noUnify_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok
+
+/--
+No-unify naming-parity alias: field any-hooks `preconditioned ↔ core`
+equivalence on the master-consequence-capstone cross-route surface.
+-/
+theorem principalNoUnifyPreconditionedCoreIffField_anyHooks_of_success_via_masterConsequenceCapstone_from_cross_route_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    ∀ h_app h_proj,
+      (PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf
+        ↔ PrincipalFieldTypingSliceCore env fs rf) :=
+  principalPreconditionedCoreIffField_anyHooks_of_success_noUnify_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok
+
+/--
+No-unify naming-parity alias: expression `preconditioned ↔ core` equivalence on
+the master-consequence-capstone cross-route surface.
+-/
+theorem principalNoUnifyPreconditionedCoreIffExpr_of_success_via_masterConsequenceCapstone_from_cross_route_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_hooks : UnifyHookPremises) :
+    (PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty
+      ↔ PrincipalTypingSliceCore env e ty) :=
+  principalNoUnifyPreconditionedCoreIffExpr_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok h_hooks
+
+/--
+No-unify naming-parity alias: field `preconditioned ↔ core` equivalence on the
+master-consequence-capstone cross-route surface.
+-/
+theorem principalNoUnifyPreconditionedCoreIffField_of_success_via_masterConsequenceCapstone_from_cross_route_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_hooks : UnifyHookPremises) :
+    (PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSliceCore env fs rf) :=
+  principalNoUnifyPreconditionedCoreIffField_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok h_hooks
+
+/--
+No-unify naming-parity alias: bundled-hook variant for expression
+`preconditioned ↔ core` equivalence on the master-consequence-capstone
+cross-route surface.
+-/
+theorem principalNoUnifyPreconditionedCoreIffExpr_of_success_via_masterConsequenceCapstone_from_cross_route_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_hooks : UnifyHookPremises) :
+    (PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty
+      ↔ PrincipalTypingSliceCore env e ty) :=
+  principalNoUnifyPreconditionedCoreIffExpr_of_success_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok h_hooks
+
+/--
+No-unify naming-parity alias: bundled-hook variant for field
+`preconditioned ↔ core` equivalence on the master-consequence-capstone
+cross-route surface.
+-/
+theorem principalNoUnifyPreconditionedCoreIffField_of_success_via_masterConsequenceCapstone_from_cross_route_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_hooks : UnifyHookPremises) :
+    (PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSliceCore env fs rf) :=
+  principalNoUnifyPreconditionedCoreIffField_of_success_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok h_hooks
+
+/--
+No-unify naming-parity alias: expression fixed-run hook-irrelevance on the
+master-consequence-capstone cross-route surface.
+-/
+theorem principalNoUnifyPreconditionedExpr_hookIrrelevant_of_success_via_masterConsequenceCapstone_from_cross_route_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+      ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) :=
+  principalPreconditionedExpr_hookIrrelevant_of_success_noUnify_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok
+
+/--
+No-unify naming-parity alias: field fixed-run hook-irrelevance on the
+master-consequence-capstone cross-route surface.
+-/
+theorem principalNoUnifyPreconditionedField_hookIrrelevant_of_success_via_masterConsequenceCapstone_from_cross_route_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
+  principalPreconditionedField_hookIrrelevant_of_success_noUnify_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok
+
+/--
+No-unify naming-parity alias: bundled-hook variant for expression fixed-run
+hook-irrelevance on the master-consequence-capstone cross-route surface.
+-/
+theorem principalNoUnifyPreconditionedExpr_hookIrrelevant_of_success_via_masterConsequenceCapstone_from_cross_route_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_seed : UnifyHookPremises) :
+    (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+      ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) :=
+  principalNoUnifyPreconditionedExpr_hookIrrelevant_of_success_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok
+
+/--
+No-unify naming-parity alias: bundled-hook variant for field fixed-run
+hook-irrelevance on the master-consequence-capstone cross-route surface.
+-/
+theorem principalNoUnifyPreconditionedField_hookIrrelevant_of_success_via_masterConsequenceCapstone_from_cross_route_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_seed : UnifyHookPremises) :
+    (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
+  principalNoUnifyPreconditionedField_hookIrrelevant_of_success_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok
+
+/--
+No-unify naming-parity alias: expression run-bundle surface on the
+master-consequence-capstone cross-route surface.
+-/
+theorem principalNoUnifyRunBundleExpr_of_success_via_masterConsequenceCapstone_from_cross_route_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty :=
+  principalPreconditionedExprAllHooksRunBundle_of_capstone
+    (principalNoUnifyExprAllHooksCapstone_via_masterConsequenceCapstone_from_cross_route_slices
+      h_no h_ok)
+
+/--
+No-unify naming-parity alias: field run-bundle surface on the
+master-consequence-capstone cross-route surface.
+-/
+theorem principalNoUnifyRunBundleField_of_success_via_masterConsequenceCapstone_from_cross_route_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf :=
+  principalPreconditionedFieldAllHooksRunBundle_of_capstone
+    (principalNoUnifyFieldAllHooksCapstone_via_masterConsequenceCapstone_from_cross_route_slices
+      h_no h_ok)
+
+/--
+No-unify naming-parity alias: expression packaged consequence bundle on the
+master-consequence-capstone cross-route surface.
+-/
+theorem principalNoUnifyExprRunBundleConsequences_of_success_via_masterConsequenceCapstone_from_cross_route_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalNoUnifyExprRunBundleConsequences st fuel env e st' ty :=
+  principalNoUnifyExprRunBundleConsequences_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok
+
+/--
+No-unify naming-parity alias: field packaged consequence bundle on the
+master-consequence-capstone cross-route surface.
+-/
+theorem principalNoUnifyFieldRunBundleConsequences_of_success_via_masterConsequenceCapstone_from_cross_route_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalNoUnifyFieldRunBundleConsequences st fuel env fs st' rf :=
+  principalNoUnifyFieldRunBundleConsequences_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok
+
+/--
+No-unify naming-parity alias: expression all-hooks capstone on the
+master-consequence-capstone cross-route surface.
+-/
+theorem principalNoUnifyExprAllHooksCapstone_of_success_via_masterConsequenceCapstone_from_cross_route_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty :=
+  principalNoUnifyExprAllHooksCapstone_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok
+
+/--
+No-unify naming-parity alias: field all-hooks capstone on the
+master-consequence-capstone cross-route surface.
+-/
+theorem principalNoUnifyFieldAllHooksCapstone_of_success_via_masterConsequenceCapstone_from_cross_route_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
+  principalNoUnifyFieldAllHooksCapstone_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok
+
+/--
+No-unify naming-parity alias: bundled-hook variant for expression all-hooks
+capstone on the master-consequence-capstone cross-route surface.
+-/
+theorem principalNoUnifyExprAllHooksCapstone_of_success_via_masterConsequenceCapstone_from_cross_route_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_seed : UnifyHookPremises) :
+    PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty :=
+  principalNoUnifyExprAllHooksCapstone_of_success_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok
+
+/--
+No-unify naming-parity alias: bundled-hook variant for field all-hooks capstone
+on the master-consequence-capstone cross-route surface.
+-/
+theorem principalNoUnifyFieldAllHooksCapstone_of_success_via_masterConsequenceCapstone_from_cross_route_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_seed : UnifyHookPremises) :
+    PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
+  principalNoUnifyFieldAllHooksCapstone_of_success_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok
+
+/--
 Bundled-hook alias for long-form expression core principality on the
 master-run-bundle-consequence cross-route surface.
 -/
