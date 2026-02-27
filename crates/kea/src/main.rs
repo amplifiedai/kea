@@ -2363,6 +2363,48 @@ mod tests {
     }
 
     #[test]
+    fn compile_elides_linear_heap_alias_chain_retain_churn_in_stats() {
+        let source_path = write_temp_source(
+            "record Box\n  n: Int\n\nfn main() -> Int\n  let b0 = Box { n: 1 }\n  let b1 = b0\n  let b2 = b1\n  let b3 = b2\n  b3.n\n",
+            "kea-cli-linear-alias-chain-rc-fusion-stats",
+            "kea",
+        );
+
+        let compiled = compile_file(&source_path, CodegenMode::Jit).expect("compile should work");
+        let retain_count: usize = compiled
+            .stats
+            .per_function
+            .iter()
+            .map(|f| f.retain_count)
+            .sum();
+        let release_count: usize = compiled
+            .stats
+            .per_function
+            .iter()
+            .map(|f| f.release_count)
+            .sum();
+
+        assert_eq!(
+            retain_count, 0,
+            "expected linear alias ownership transfer to avoid retain churn, stats: {:?}",
+            compiled.stats
+        );
+        assert!(
+            release_count > 0,
+            "expected release ops to remain for heap lifecycle balance, stats: {:?}",
+            compiled.stats
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(
+            run.exit_code, 1,
+            "linear alias chain should preserve observable value semantics"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_local_function_alias_call_exit_code() {
         let source_path = write_temp_source(
             "fn inc(n: Int) -> Int\n  n + 1\n\nfn main() -> Int\n  let g = inc\n  g(41)\n",
