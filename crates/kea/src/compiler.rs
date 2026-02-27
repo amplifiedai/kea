@@ -378,8 +378,9 @@ fn configured_prelude_modules() -> Vec<String> {
 }
 
 fn configured_prelude_reexports() -> Vec<(String, String)> {
-    let configured = std::env::var("KEA_PRELUDE_REEXPORTS")
-        .unwrap_or_else(|_| "Order.Ordering,Option.Some,Option.None,Result.Ok,Result.Err".to_string());
+    let configured = std::env::var("KEA_PRELUDE_REEXPORTS").unwrap_or_else(|_| {
+        "Order.Ordering,Option.Some,Option.None,Result.Ok,Result.Err".to_string()
+    });
     configured
         .split(',')
         .filter_map(|entry| {
@@ -914,7 +915,11 @@ fn register_top_level_declarations(
         for decl in &module.declarations {
             match &decl.node {
                 DeclKind::Function(fn_decl) => {
-                    env.register_module_item_visibility(module_path, &fn_decl.name.node, fn_decl.public);
+                    env.register_module_item_visibility(
+                        module_path,
+                        &fn_decl.name.node,
+                        fn_decl.public,
+                    );
                 }
                 DeclKind::ExprFn(expr_decl) => {
                     env.register_module_item_visibility(
