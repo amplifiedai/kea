@@ -533,6 +533,14 @@ impl TypeEnv {
         self.module_structs.get(module_path)
     }
 
+    /// Snapshot all registered module-struct entries.
+    pub fn module_struct_entries(&self) -> Vec<(String, ModuleStructInfo)> {
+        self.module_structs
+            .iter()
+            .map(|(path, info)| (path.clone(), info.clone()))
+            .collect()
+    }
+
     /// Register an inherent method owner relationship.
     pub fn register_inherent_method(&mut self, type_name: &str, method_name: &str) {
         self.inherent_methods_by_type
@@ -581,6 +589,11 @@ impl TypeEnv {
             return Some(module_short.to_string());
         }
         None
+    }
+
+    /// Resolve a module alias or fully-qualified module path.
+    pub fn resolve_module_path_alias(&self, module_short: &str) -> Option<String> {
+        self.resolve_module_path(module_short)
     }
 
     /// Resolve `Module.member` to a bound function scheme when available.
@@ -13151,6 +13164,47 @@ fn infer_expr_bidir(
                     return unifier.fresh_type();
                 }
 
+                match resolve_module_qualified_variant(env, sum_types, module_name, &field.node) {
+                    VariantResolution::Unique(resolved_type_name, _) => {
+                        if let Some(inst) = sum_types.instantiate_variant_for_type(
+                            &field.node,
+                            Some(&resolved_type_name),
+                            unifier,
+                        ) {
+                            unifier.record_resolved_variant(field.span, resolved_type_name);
+                            if inst.field_types.is_empty() {
+                                return inst.sum_type;
+                            }
+                            let param_types: Vec<Type> =
+                                inst.field_types.iter().map(|f| f.ty.clone()).collect();
+                            return Type::Function(FunctionType {
+                                params: param_types,
+                                ret: Box::new(inst.sum_type),
+                                effects: EffectRow::pure(),
+                            });
+                        }
+                    }
+                    VariantResolution::Ambiguous(candidates) => {
+                        unifier.push_error(
+                            Diagnostic::error(
+                                Category::TypeMismatch,
+                                format!(
+                                    "ambiguous module-qualified constructor `{module_name}.{}`",
+                                    field.node
+                                ),
+                            )
+                            .at(span_to_loc(field.span))
+                            .with_help(format!(
+                                "constructor `{}` is defined in multiple module types: {}",
+                                field.node,
+                                candidates.join(", ")
+                            )),
+                        );
+                        return unifier.fresh_type();
+                    }
+                    VariantResolution::NotFound => {}
+                }
+
                 if env.has_qualified_module(module_name) {
                     unifier.push_error(
                         Diagnostic::error(
@@ -16035,6 +16089,42 @@ fn looks_like_module_name(name: &str) -> bool {
     name.chars().next().is_some_and(char::is_uppercase)
 }
 
+fn resolve_module_qualified_variant(
+    env: &TypeEnv,
+    sum_types: &SumTypeRegistry,
+    module_name: &str,
+    variant_name: &str,
+) -> VariantResolution {
+    let Some(module_path) = env.resolve_module_path_alias(module_name) else {
+        return VariantResolution::NotFound;
+    };
+
+    let matching_types: Vec<String> = sum_types
+        .all_types()
+        .filter_map(|(type_name, info)| {
+            if env.module_item_visibility(&module_path, type_name).is_some()
+                && info.variants.iter().any(|variant| variant.name == variant_name)
+            {
+                Some(type_name.clone())
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    match matching_types.len() {
+        0 => VariantResolution::NotFound,
+        1 => {
+            let type_name = matching_types[0].clone();
+            let Some(variant) = sum_types.lookup_variant_in_type(variant_name, &type_name) else {
+                return VariantResolution::NotFound;
+            };
+            VariantResolution::Unique(type_name, variant.clone())
+        }
+        _ => VariantResolution::Ambiguous(matching_types),
+    }
+}
+
 enum SendableSatisfaction {
     Satisfied,
     Unsatisfied,
@@ -16314,14 +16404,35 @@ fn infer_pattern(
                         if let Some(info) = sum_types.lookup_variant_in_type(name, qual) {
                             VariantResolution::Unique(qual.clone(), info.clone())
                         } else {
-                            unifier.push_error(
-                                Diagnostic::error(
-                                    Category::UndefinedName,
-                                    format!("type `{qual}` has no variant `{name}`"),
-                                )
-                                .at(span_to_loc(pattern.span)),
-                            );
-                            return;
+                            match resolve_module_qualified_variant(env, sum_types, qual, name) {
+                                VariantResolution::Unique(type_name, info) => {
+                                    VariantResolution::Unique(type_name, info)
+                                }
+                                VariantResolution::Ambiguous(candidates) => {
+                                    unifier.push_error(
+                                        Diagnostic::error(
+                                            Category::TypeMismatch,
+                                            format!("ambiguous constructor `{qual}.{name}` in pattern"),
+                                        )
+                                        .at(span_to_loc(pattern.span))
+                                        .with_help(format!(
+                                            "constructor `{name}` matches multiple types in `{qual}`: {}",
+                                            candidates.join(", ")
+                                        )),
+                                    );
+                                    return;
+                                }
+                                VariantResolution::NotFound => {
+                                    unifier.push_error(
+                                        Diagnostic::error(
+                                            Category::UndefinedName,
+                                            format!("type `{qual}` has no variant `{name}`"),
+                                        )
+                                        .at(span_to_loc(pattern.span)),
+                                    );
+                                    return;
+                                }
+                            }
                         }
                     } else {
                         // In pattern position, the scrutinee type provides the expected type.

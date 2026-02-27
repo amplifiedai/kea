@@ -329,6 +329,63 @@ mod tests {
     }
 
     #[test]
+    fn compile_and_execute_real_stdlib_order_module_qualified_constructor_exit_code() {
+        let project_dir = temp_workspace_project_dir("kea-cli-project-real-stdlib-order-qual");
+        let src_dir = project_dir.join("src");
+        std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+
+        let app_path = src_dir.join("app.kea");
+        std::fs::write(
+            &app_path,
+            "use Order\n\nfn main() -> Int\n  let value = Order.Less\n  case value\n    Order.Less -> 1\n    _ -> 0\n",
+        )
+        .expect("app module write should succeed");
+
+        let run = run_file(&app_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 1);
+
+        let _ = std::fs::remove_dir_all(project_dir);
+    }
+
+    #[test]
+    fn compile_and_execute_real_stdlib_float_module_exit_code() {
+        let project_dir = temp_workspace_project_dir("kea-cli-project-real-stdlib-float");
+        let src_dir = project_dir.join("src");
+        std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+
+        let app_path = src_dir.join("app.kea");
+        std::fs::write(
+            &app_path,
+            "use Float\n\nfn main() -> Int\n  if Float.fabs(-42.5) == 42.5\n    42\n  else\n    0\n",
+        )
+        .expect("app module write should succeed");
+
+        let run = run_file(&app_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_dir_all(project_dir);
+    }
+
+    #[test]
+    fn compile_and_execute_real_stdlib_trait_modules_import_exit_code() {
+        let project_dir = temp_workspace_project_dir("kea-cli-project-real-stdlib-traits");
+        let src_dir = project_dir.join("src");
+        std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+
+        let app_path = src_dir.join("app.kea");
+        std::fs::write(
+            &app_path,
+            "use Eq\nuse Ord\nuse Show\n\nfn main() -> Int\n  0\n",
+        )
+        .expect("app module write should succeed");
+
+        let run = run_file(&app_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 0);
+
+        let _ = std::fs::remove_dir_all(project_dir);
+    }
+
+    #[test]
     fn compile_project_accepts_unqualified_prelude_reexported_type_names() {
         let project_dir = temp_project_dir("kea-cli-project-prelude-reexports");
         let src_dir = project_dir.join("src");

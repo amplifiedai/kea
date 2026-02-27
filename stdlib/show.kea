@@ -1,0 +1,5 @@
+trait Show a
+  fn show(x: a) -> String
+
+fn show(_x: Int) -> String
+  ""
