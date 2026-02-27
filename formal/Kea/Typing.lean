@@ -8287,6 +8287,110 @@ theorem principalBoundaryMasterRunBundleSuite_proved :
   principalBoundaryMasterRunBundleSuite_of_master principalBoundaryMasterSuite_proved
 
 /--
+One-hop projection: arbitrary-success all-hooks expression run-bundle from the
+master run-bundle suite.
+-/
+theorem principalBoundaryMasterRunBundleSuite_allHooks_expr
+    (h_suite : PrincipalBoundaryMasterRunBundleSuite)
+    (h_app0 : AppUnifySoundHook) (h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty :=
+  h_suite.allHooksExpr h_app0 h_proj0 h_ok
+
+/--
+One-hop projection: arbitrary-success all-hooks field run-bundle from the
+master run-bundle suite.
+-/
+theorem principalBoundaryMasterRunBundleSuite_allHooks_field
+    (h_suite : PrincipalBoundaryMasterRunBundleSuite)
+    (h_app0 : AppUnifySoundHook) (h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf :=
+  h_suite.allHooksField h_app0 h_proj0 h_ok
+
+/--
+One-hop projection: successful no-unify all-hooks expression run-bundle from
+the master run-bundle suite.
+-/
+theorem principalBoundaryMasterRunBundleSuite_noUnifyAllHooks_expr
+    (h_suite : PrincipalBoundaryMasterRunBundleSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty :=
+  h_suite.noUnifyAllHooksExpr h_no h_ok
+
+/--
+One-hop projection: successful no-unify all-hooks field run-bundle from the
+master run-bundle suite.
+-/
+theorem principalBoundaryMasterRunBundleSuite_noUnifyAllHooks_field
+    (h_suite : PrincipalBoundaryMasterRunBundleSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf :=
+  h_suite.noUnifyAllHooksField h_no h_ok
+
+/--
+One-hop projection: successful no-unify-to-general expression run-bundle from
+the master run-bundle suite.
+-/
+theorem principalBoundaryMasterRunBundleSuite_noUnifyToGeneral_expr
+    (h_suite : PrincipalBoundaryMasterRunBundleSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty :=
+  h_suite.noUnifyToGeneralExpr h_no h_ok
+
+/--
+One-hop projection: successful no-unify-to-general field run-bundle from the
+master run-bundle suite.
+-/
+theorem principalBoundaryMasterRunBundleSuite_noUnifyToGeneral_field
+    (h_suite : PrincipalBoundaryMasterRunBundleSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf :=
+  h_suite.noUnifyToGeneralField h_no h_ok
+
+/--
+Coherence wrapper: view the no-unify all-hooks expression run-bundle projection
+through the no-unify-to-general projection path.
+-/
+theorem principalBoundaryMasterRunBundleSuite_noUnify_expr_as_general
+    (h_suite : PrincipalBoundaryMasterRunBundleSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty :=
+  principalBoundaryMasterRunBundleSuite_noUnifyToGeneral_expr h_suite h_no h_ok
+
+/--
+Coherence wrapper: view the no-unify all-hooks field run-bundle projection
+through the no-unify-to-general projection path.
+-/
+theorem principalBoundaryMasterRunBundleSuite_noUnify_field_as_general
+    (h_suite : PrincipalBoundaryMasterRunBundleSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf :=
+  principalBoundaryMasterRunBundleSuite_noUnifyToGeneral_field h_suite h_no h_ok
+
+/--
 One-hop expression hook-specific no-unify capstone projection (derived from
 all-hooks compatibility) from the master suite.
 -/
