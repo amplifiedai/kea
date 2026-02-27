@@ -4001,6 +4001,54 @@ fn infer_precision_let_annotation_rejects_out_of_range_int_literal() {
 }
 
 #[test]
+fn infer_precision_let_annotation_rejects_out_of_range_int_expression_result() {
+    let expr = sp(ExprKind::Let {
+        pattern: sp(PatternKind::Var("x".to_string())),
+        annotation: Some(sp(TypeAnnotation::Named("Int8".to_string()))),
+        value: Box::new(binop(BinOp::Add, lit_int(120), lit_int(120))),
+    });
+    let (_ty, u) = infer(&expr);
+    assert!(
+        u.has_errors(),
+        "expected out-of-range expression-result error"
+    );
+    let msg = u
+        .errors()
+        .iter()
+        .map(|d| d.message.as_str())
+        .collect::<Vec<_>>()
+        .join(" | ");
+    assert!(
+        msg.contains("does not fit in `Int8`"),
+        "expected Int8 expression-range diagnostic, got: {msg}"
+    );
+}
+
+#[test]
+fn infer_precision_let_annotation_rejects_negative_expression_for_unsigned_int() {
+    let expr = sp(ExprKind::Let {
+        pattern: sp(PatternKind::Var("x".to_string())),
+        annotation: Some(sp(TypeAnnotation::Named("UInt8".to_string()))),
+        value: Box::new(unary(UnaryOp::Neg, lit_int(1))),
+    });
+    let (_ty, u) = infer(&expr);
+    assert!(
+        u.has_errors(),
+        "expected unsigned-range error for negative expression"
+    );
+    let msg = u
+        .errors()
+        .iter()
+        .map(|d| d.message.as_str())
+        .collect::<Vec<_>>()
+        .join(" | ");
+    assert!(
+        msg.contains("does not fit in `UInt8`"),
+        "expected UInt8 expression-range diagnostic, got: {msg}"
+    );
+}
+
+#[test]
 fn infer_call_pushes_expected_precision_into_arguments() {
     let expected = Type::IntN(IntWidth::I8, Signedness::Signed);
     let expr = call(var("narrow"), vec![lit_int(200)]);
