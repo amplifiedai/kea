@@ -3729,6 +3729,34 @@ theorem principalFieldTypingSlicePreconditioned_of_success_from_bundle
     h_hooks.1 h_hooks.2 st fuel env fs st' rf h_ok
 
 /--
+Successful preconditioned `inferFieldsUnify` runs induce the core principal
+field-typing package on the same `(env, fs, rf)` surface.
+-/
+theorem principalFieldTypingSliceCore_of_preconditioned_success
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalFieldTypingSliceCore env fs rf := by
+  have h_pre :
+      PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf :=
+    principalFieldTypingSlicePreconditioned_of_success h_app h_proj st fuel env fs st' rf h_ok
+  exact principalFieldTypingSliceCore_of_infer h_pre.inferFieldsAgrees
+
+/--
+Bundle-entry variant of `principalFieldTypingSliceCore_of_preconditioned_success`.
+-/
+theorem principalFieldTypingSliceCore_of_preconditioned_success_from_bundle
+    (h_hooks : UnifyHookPremises)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalFieldTypingSliceCore env fs rf := by
+  exact principalFieldTypingSliceCore_of_preconditioned_success
+    h_hooks.1 h_hooks.2 st fuel env fs st' rf h_ok
+
+/--
 If a core principal-field-typing package is already available for
 `(env, fs, rf)`, any successful `inferFieldsUnify` run to that same row-fields
 payload yields the full preconditioned principal field-typing bundle,
