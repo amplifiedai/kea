@@ -479,6 +479,32 @@ fn collect_effect_operations(module: &HirModule) -> BTreeMap<String, EffectOpera
     operations
 }
 
+fn handler_cell_lowering_for_operation(op: &EffectOperationInfo) -> Option<HandlerCellOpLowering> {
+    match (op.arity, op.returns_unit) {
+        (0, _) => Some(HandlerCellOpLowering::LoadCell),
+        (1, true) => Some(HandlerCellOpLowering::StoreArgAndReturnUnit),
+        _ => None,
+    }
+}
+
+fn handler_plan_for_effect(
+    effect_operations: &BTreeMap<String, EffectOperationInfo>,
+    effect: &str,
+) -> Option<ActiveEffectHandlerPlan> {
+    let mut operation_lowering = BTreeMap::new();
+    for op in effect_operations.values().filter(|op| op.effect == effect) {
+        let Some(lowering) = handler_cell_lowering_for_operation(op) else {
+            continue;
+        };
+        operation_lowering.insert(op.operation.clone(), lowering);
+    }
+    if operation_lowering.is_empty() {
+        None
+    } else {
+        Some(ActiveEffectHandlerPlan { operation_lowering })
+    }
+}
+
 fn collect_function_dispatch_effects(
     module: &HirModule,
     effect_operations: &BTreeMap<String, EffectOperationInfo>,
@@ -1112,8 +1138,12 @@ impl FunctionLoweringCtx {
         }
 
         let mut active_effect_cells = BTreeMap::new();
+        let mut active_effect_handlers = BTreeMap::new();
         for (idx, effect) in hidden_dispatch_effects.iter().enumerate() {
             active_effect_cells.insert(effect.clone(), MirValueId((param_count + idx) as u32));
+            if let Some(plan) = handler_plan_for_effect(effect_operations, effect) {
+                active_effect_handlers.insert(effect.clone(), plan);
+            }
         }
 
         Self {
@@ -1135,7 +1165,7 @@ impl FunctionLoweringCtx {
             effect_operations: effect_operations.clone(),
             known_function_dispatch_effects: known_function_dispatch_effects.clone(),
             active_effect_cells,
-            active_effect_handlers: BTreeMap::new(),
+            active_effect_handlers,
             lambda_factories: lambda_factories.clone(),
             var_record_types: BTreeMap::new(),
             record_value_types: BTreeMap::new(),
@@ -2172,52 +2202,54 @@ impl FunctionLoweringCtx {
             let effect = op_info.effect;
             let operation = op_info.operation;
             if let Some(cell) = self.active_effect_cells.get(&effect).cloned() {
-                let lowering = if let Some(plan) = self.active_effect_handlers.get(&effect) {
-                    plan.operation_lowering.get(&operation).copied()
-                } else {
-                    // TODO(0e-step3): replace this shape-based fallback with
-                    // explicit evidence-dispatch lowering once handler evidence
-                    // carries per-operation semantics across function boundaries.
-                    match (op_info.arity, op_info.returns_unit) {
-                        (0, _) => Some(HandlerCellOpLowering::LoadCell),
-                        (1, true) => Some(HandlerCellOpLowering::StoreArgAndReturnUnit),
-                        _ => None,
-                    }
+                let Some(plan) = self.active_effect_handlers.get(&effect) else {
+                    self.emit_inst(MirInst::Unsupported {
+                        detail: format!(
+                            "missing handler operation plan for effect `{effect}` in call lowering"
+                        ),
+                    });
+                    return None;
                 };
-                if let Some(lowering) = lowering {
-                    match lowering {
-                        HandlerCellOpLowering::LoadCell => {
-                            if !args.is_empty() {
-                                self.emit_inst(MirInst::Unsupported {
-                                    detail: format!(
-                                        "handled operation `{effect}.{operation}` expected 0 args for load lowering"
-                                    ),
-                                });
-                                return None;
-                            }
-                            if expr.ty == Type::Unit {
-                                return None;
-                            }
-                            let dest = self.new_value();
-                            self.emit_inst(MirInst::StateCellLoad {
-                                dest: dest.clone(),
-                                cell,
+                let Some(lowering) = plan.operation_lowering.get(&operation).copied() else {
+                    self.emit_inst(MirInst::Unsupported {
+                        detail: format!(
+                            "missing handler operation plan for `{effect}.{operation}` in call lowering"
+                        ),
+                    });
+                    return None;
+                };
+                match lowering {
+                    HandlerCellOpLowering::LoadCell => {
+                        if !args.is_empty() {
+                            self.emit_inst(MirInst::Unsupported {
+                                detail: format!(
+                                    "handled operation `{effect}.{operation}` expected 0 args for load lowering"
+                                ),
                             });
-                            return Some(dest);
-                        }
-                        HandlerCellOpLowering::StoreArgAndReturnUnit => {
-                            if args.len() != 1 {
-                                self.emit_inst(MirInst::Unsupported {
-                                    detail: format!(
-                                        "handled operation `{effect}.{operation}` expected 1 arg for store lowering"
-                                    ),
-                                });
-                                return None;
-                            }
-                            let value = self.lower_expr(&args[0])?;
-                            self.emit_inst(MirInst::StateCellStore { cell, value });
                             return None;
                         }
+                        if expr.ty == Type::Unit {
+                            return None;
+                        }
+                        let dest = self.new_value();
+                        self.emit_inst(MirInst::StateCellLoad {
+                            dest: dest.clone(),
+                            cell,
+                        });
+                        return Some(dest);
+                    }
+                    HandlerCellOpLowering::StoreArgAndReturnUnit => {
+                        if args.len() != 1 {
+                            self.emit_inst(MirInst::Unsupported {
+                                detail: format!(
+                                    "handled operation `{effect}.{operation}` expected 1 arg for store lowering"
+                                ),
+                            });
+                            return None;
+                        }
+                        let value = self.lower_expr(&args[0])?;
+                        self.emit_inst(MirInst::StateCellStore { cell, value });
+                        return None;
                     }
                 }
             }
