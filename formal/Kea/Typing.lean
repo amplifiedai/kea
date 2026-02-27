@@ -14961,7 +14961,8 @@ theorem principalCoreExpr_of_success_noUnify_via_masterConsequenceCapstone_from_
     (h_no : NoUnifyBranchesExpr e)
     (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
     PrincipalTypingSliceCore env e ty :=
-  principalNoUnifyCoreExpr_via_masterConsequenceCapstone_from_cross_route_slices h_no h_ok
+  principalNoUnifyCoreExpr_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok
 
 /--
 Long-form no-unify-to-general alias: field core principality on the
@@ -14973,7 +14974,8 @@ theorem principalCoreField_of_success_noUnify_via_masterConsequenceCapstone_from
     (h_no : NoUnifyBranchesFields fs)
     (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
     PrincipalFieldTypingSliceCore env fs rf :=
-  principalNoUnifyCoreField_via_masterConsequenceCapstone_from_cross_route_slices h_no h_ok
+  principalNoUnifyCoreField_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok
 
 /--
 Long-form no-unify-to-general alias: expression preconditioned principality
@@ -14986,7 +14988,7 @@ theorem principalPreconditionedExpr_anyHooks_of_success_noUnify_via_masterConseq
     (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
     ∀ h_app h_proj,
       PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty :=
-  principalNoUnifyPreconditionedExpr_anyHooks_via_masterConsequenceCapstone_from_cross_route_slices
+  principalNoUnifyPreconditionedExpr_anyHooks_via_masterConsequenceCapstone_from_cross_route_surface_slices
     h_no h_ok
 
 /--
@@ -15000,7 +15002,7 @@ theorem principalPreconditionedField_anyHooks_of_success_noUnify_via_masterConse
     (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
     ∀ h_app h_proj,
       PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf :=
-  principalNoUnifyPreconditionedField_anyHooks_via_masterConsequenceCapstone_from_cross_route_slices
+  principalNoUnifyPreconditionedField_anyHooks_via_masterConsequenceCapstone_from_cross_route_surface_slices
     h_no h_ok
 
 /--
@@ -15015,7 +15017,7 @@ theorem principalPreconditionedCoreIffExpr_anyHooks_of_success_noUnify_via_maste
     ∀ h_app h_proj,
       (PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty
         ↔ PrincipalTypingSliceCore env e ty) :=
-  principalNoUnifyPreconditionedCoreIffExpr_anyHooks_via_masterConsequenceCapstone_from_cross_route_slices
+  principalNoUnifyPreconditionedCoreIffExpr_anyHooks_via_masterConsequenceCapstone_from_cross_route_surface_slices
     h_no h_ok
 
 /--
@@ -15030,7 +15032,7 @@ theorem principalPreconditionedCoreIffField_anyHooks_of_success_noUnify_via_mast
     ∀ h_app h_proj,
       (PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf
         ↔ PrincipalFieldTypingSliceCore env fs rf) :=
-  principalNoUnifyPreconditionedCoreIffField_anyHooks_via_masterConsequenceCapstone_from_cross_route_slices
+  principalNoUnifyPreconditionedCoreIffField_anyHooks_via_masterConsequenceCapstone_from_cross_route_surface_slices
     h_no h_ok
 
 /--
@@ -15046,7 +15048,7 @@ theorem principalPreconditionedExpr_hookIrrelevant_of_success_noUnify_via_master
     (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
     (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
       ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) :=
-  principalNoUnifyPreconditionedExpr_hookIrrelevant_via_masterConsequenceCapstone_from_cross_route_slices
+  principalNoUnifyPreconditionedExpr_hookIrrelevant_via_masterConsequenceCapstone_from_cross_route_surface_slices
     h_no h_ok
 
 /--
@@ -15062,7 +15064,7 @@ theorem principalPreconditionedField_hookIrrelevant_of_success_noUnify_via_maste
     (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
     (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
       ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
-  principalNoUnifyPreconditionedField_hookIrrelevant_via_masterConsequenceCapstone_from_cross_route_slices
+  principalNoUnifyPreconditionedField_hookIrrelevant_via_masterConsequenceCapstone_from_cross_route_surface_slices
     h_no h_ok
 
 /--
@@ -15075,7 +15077,8 @@ theorem principalCoreExpr_of_success_noUnify_via_masterRunBundleConsequence_from
     (h_no : NoUnifyBranchesExpr e)
     (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
     PrincipalTypingSliceCore env e ty :=
-  principalNoUnifyCoreExpr_via_masterRunBundleConsequence_from_cross_route_slices h_no h_ok
+  principalNoUnifyCoreExpr_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok
 
 /--
 Long-form no-unify-to-general alias: field core principality on the
@@ -15087,7 +15090,8 @@ theorem principalCoreField_of_success_noUnify_via_masterRunBundleConsequence_fro
     (h_no : NoUnifyBranchesFields fs)
     (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
     PrincipalFieldTypingSliceCore env fs rf :=
-  principalNoUnifyCoreField_via_masterRunBundleConsequence_from_cross_route_slices h_no h_ok
+  principalNoUnifyCoreField_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok
 
 /--
 Long-form no-unify-to-general alias: expression preconditioned principality for
@@ -15100,7 +15104,7 @@ theorem principalPreconditionedExpr_anyHooks_of_success_noUnify_via_masterRunBun
     (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
     ∀ h_app h_proj,
       PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty :=
-  principalNoUnifyPreconditionedExpr_anyHooks_via_masterRunBundleConsequence_from_cross_route_slices
+  principalNoUnifyPreconditionedExpr_anyHooks_via_masterRunBundleConsequence_from_cross_route_surface_slices
     h_no h_ok
 
 /--
@@ -15114,7 +15118,7 @@ theorem principalPreconditionedField_anyHooks_of_success_noUnify_via_masterRunBu
     (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
     ∀ h_app h_proj,
       PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf :=
-  principalNoUnifyPreconditionedField_anyHooks_via_masterRunBundleConsequence_from_cross_route_slices
+  principalNoUnifyPreconditionedField_anyHooks_via_masterRunBundleConsequence_from_cross_route_surface_slices
     h_no h_ok
 
 /--
@@ -15129,7 +15133,7 @@ theorem principalPreconditionedCoreIffExpr_anyHooks_of_success_noUnify_via_maste
     ∀ h_app h_proj,
       (PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty
         ↔ PrincipalTypingSliceCore env e ty) :=
-  principalNoUnifyPreconditionedCoreIffExpr_anyHooks_via_masterRunBundleConsequence_from_cross_route_slices
+  principalNoUnifyPreconditionedCoreIffExpr_anyHooks_via_masterRunBundleConsequence_from_cross_route_surface_slices
     h_no h_ok
 
 /--
@@ -15144,7 +15148,7 @@ theorem principalPreconditionedCoreIffField_anyHooks_of_success_noUnify_via_mast
     ∀ h_app h_proj,
       (PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf
         ↔ PrincipalFieldTypingSliceCore env fs rf) :=
-  principalNoUnifyPreconditionedCoreIffField_anyHooks_via_masterRunBundleConsequence_from_cross_route_slices
+  principalNoUnifyPreconditionedCoreIffField_anyHooks_via_masterRunBundleConsequence_from_cross_route_surface_slices
     h_no h_ok
 
 /--
@@ -15160,8 +15164,8 @@ theorem principalPreconditionedExpr_hookIrrelevant_of_success_noUnify_via_master
     (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
     (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
       ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) :=
-  (principalNoUnifyExprRunBundleConsequences_via_masterRunBundleConsequence_from_cross_route_slices
-    h_no h_ok).hookIrrelevant
+  principalNoUnifyPreconditionedExpr_hookIrrelevant_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok
 
 /--
 Long-form no-unify-to-general alias: field fixed-run hook-irrelevance on the
@@ -15176,8 +15180,8 @@ theorem principalPreconditionedField_hookIrrelevant_of_success_noUnify_via_maste
     (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
     (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
       ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
-  (principalNoUnifyFieldRunBundleConsequences_via_masterRunBundleConsequence_from_cross_route_slices
-    h_no h_ok).hookIrrelevant
+  principalNoUnifyPreconditionedField_hookIrrelevant_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok
 
 /--
 Bundled-hook alias for long-form expression core principality on the
