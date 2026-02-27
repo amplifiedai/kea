@@ -9984,6 +9984,20 @@ theorem principalNoUnifyPreconditionedExpr_of_success_via_masterRunBundleConsequ
     h_no h_ok h_hooks
 
 /--
+Master-run-bundle-consequence-suite no-unify convenience wrapper:
+bundled-hook alias for fixed-run preconditioned expression principality.
+-/
+theorem principalNoUnifyPreconditionedExpr_of_success_via_masterRunBundleConsequenceSuite_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_hooks : UnifyHookPremises) :
+    PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty :=
+  principalNoUnifyPreconditionedExpr_of_success_via_masterRunBundleConsequenceSuite
+    h_no h_ok h_hooks
+
+/--
 Master-run-bundle-consequence-suite no-unify convenience wrapper: derive
 fixed-run expression preconditioned↔core equivalence for any hook witnesses.
 -/
@@ -10012,6 +10026,21 @@ theorem principalNoUnifyPreconditionedCoreIffExpr_of_success_via_masterRunBundle
     (PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty
       ↔ PrincipalTypingSliceCore env e ty) :=
   principalPreconditionedCoreIffExpr_of_success_noUnify_via_masterRunBundleConsequenceSuite
+    h_no h_ok h_hooks
+
+/--
+Master-run-bundle-consequence-suite no-unify convenience wrapper:
+bundled-hook alias for fixed-run expression preconditioned↔core equivalence.
+-/
+theorem principalNoUnifyPreconditionedCoreIffExpr_of_success_via_masterRunBundleConsequenceSuite_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_hooks : UnifyHookPremises) :
+    (PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty
+      ↔ PrincipalTypingSliceCore env e ty) :=
+  principalNoUnifyPreconditionedCoreIffExpr_of_success_via_masterRunBundleConsequenceSuite
     h_no h_ok h_hooks
 
 /--
@@ -10071,6 +10100,20 @@ theorem principalNoUnifyPreconditionedField_of_success_via_masterRunBundleConseq
     h_no h_ok h_hooks
 
 /--
+Master-run-bundle-consequence-suite no-unify convenience wrapper:
+bundled-hook alias for fixed-run preconditioned field principality.
+-/
+theorem principalNoUnifyPreconditionedField_of_success_via_masterRunBundleConsequenceSuite_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_hooks : UnifyHookPremises) :
+    PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf :=
+  principalNoUnifyPreconditionedField_of_success_via_masterRunBundleConsequenceSuite
+    h_no h_ok h_hooks
+
+/--
 Master-run-bundle-consequence-suite no-unify convenience wrapper: derive
 fixed-run field preconditioned↔core equivalence for any hook witnesses.
 -/
@@ -10098,6 +10141,21 @@ theorem principalNoUnifyPreconditionedCoreIffField_of_success_via_masterRunBundl
     (PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf
       ↔ PrincipalFieldTypingSliceCore env fs rf) :=
   principalPreconditionedCoreIffField_of_success_noUnify_via_masterRunBundleConsequenceSuite
+    h_no h_ok h_hooks
+
+/--
+Master-run-bundle-consequence-suite no-unify convenience wrapper:
+bundled-hook alias for fixed-run field preconditioned↔core equivalence.
+-/
+theorem principalNoUnifyPreconditionedCoreIffField_of_success_via_masterRunBundleConsequenceSuite_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_hooks : UnifyHookPremises) :
+    (PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSliceCore env fs rf) :=
+  principalNoUnifyPreconditionedCoreIffField_of_success_via_masterRunBundleConsequenceSuite
     h_no h_ok h_hooks
 
 /--
@@ -10629,6 +10687,21 @@ theorem principalNoUnifyPreconditionedExpr_of_success_via_masterSuite
     h_suite h_no h_ok).preconditioned h_hooks
 
 /--
+Master-suite no-unify convenience wrapper: bundled-hook alias for fixed-run
+preconditioned expression principality.
+-/
+theorem principalNoUnifyPreconditionedExpr_of_success_via_masterSuite_from_bundle
+    (h_suite : PrincipalBoundaryMasterSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_hooks : UnifyHookPremises) :
+    PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty :=
+  principalNoUnifyPreconditionedExpr_of_success_via_masterSuite
+    h_suite h_no h_ok h_hooks
+
+/--
 Master-suite no-unify-to-general convenience wrapper: derive core expression
 principality from a successful no-unify run.
 -/
@@ -10747,6 +10820,22 @@ theorem principalNoUnifyPreconditionedCoreIffExpr_of_success_via_masterSuite
     h_suite h_no h_ok) h_hooks.1 h_hooks.2
 
 /--
+Master-suite no-unify convenience wrapper: bundled-hook alias for fixed-run
+expression preconditioned↔core equivalence.
+-/
+theorem principalNoUnifyPreconditionedCoreIffExpr_of_success_via_masterSuite_from_bundle
+    (h_suite : PrincipalBoundaryMasterSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_hooks : UnifyHookPremises) :
+    (PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty
+      ↔ PrincipalTypingSliceCore env e ty) :=
+  principalNoUnifyPreconditionedCoreIffExpr_of_success_via_masterSuite
+    h_suite h_no h_ok h_hooks
+
+/--
 Master-suite no-unify-to-general convenience wrapper: derive fixed-run
 expression preconditioned↔core equivalence for any hook witnesses.
 -/
@@ -10837,6 +10926,21 @@ theorem principalNoUnifyPreconditionedField_of_success_via_masterSuite
     PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf :=
   (principalBoundaryMasterSuite_noUnifyRunBundleConsequences_field
     h_suite h_no h_ok).preconditioned h_hooks
+
+/--
+Master-suite no-unify convenience wrapper: bundled-hook alias for fixed-run
+preconditioned field principality.
+-/
+theorem principalNoUnifyPreconditionedField_of_success_via_masterSuite_from_bundle
+    (h_suite : PrincipalBoundaryMasterSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_hooks : UnifyHookPremises) :
+    PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf :=
+  principalNoUnifyPreconditionedField_of_success_via_masterSuite
+    h_suite h_no h_ok h_hooks
 
 /--
 Master-suite no-unify-to-general convenience wrapper: derive core field
@@ -10954,6 +11058,22 @@ theorem principalNoUnifyPreconditionedCoreIffField_of_success_via_masterSuite
       ↔ PrincipalFieldTypingSliceCore env fs rf) :=
   (principalNoUnifyPreconditionedCoreIffField_anyHooks_of_success_via_masterSuite
     h_suite h_no h_ok) h_hooks.1 h_hooks.2
+
+/--
+Master-suite no-unify convenience wrapper: bundled-hook alias for fixed-run
+field preconditioned↔core equivalence.
+-/
+theorem principalNoUnifyPreconditionedCoreIffField_of_success_via_masterSuite_from_bundle
+    (h_suite : PrincipalBoundaryMasterSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_hooks : UnifyHookPremises) :
+    (PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSliceCore env fs rf) :=
+  principalNoUnifyPreconditionedCoreIffField_of_success_via_masterSuite
+    h_suite h_no h_ok h_hooks
 
 /--
 Master-suite no-unify-to-general convenience wrapper: derive fixed-run field
