@@ -3656,6 +3656,30 @@ theorem principalTypingSlicePreconditioned_of_success_from_bundle
     h_hooks.1 h_hooks.2 st fuel env e st' ty h_ok
 
 /--
+If a core principal-typing package is already available for `(env, e, ty)`,
+any successful `inferExprUnify` run to that same type yields the full
+preconditioned principal bundle, independent of hook assumptions.
+-/
+theorem principalTypingSlicePreconditioned_of_success_of_core_principal
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_core : PrincipalTypingSliceCore env e ty)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    ∀ h_app h_proj,
+      PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty := by
+  intro h_app h_proj
+  refine {
+    deterministic := ?_
+    declarativeUnique := ?_
+    inferExprAgrees := ?_
+  }
+  · intro st'' ty'' h_ok'
+    exact inferExprUnify_deterministic st fuel env e h_ok' h_ok
+  · intro ty' h_ty'
+    exact h_core.unique h_ty'
+  · exact inferExpr_complete env e ty h_core.sound
+
+/--
 Hook-independent principal-typing bundle on the no-unify fragment.
 
 When `e` never executes app/proj unification branches, successful
@@ -3669,24 +3693,10 @@ theorem principalTypingSlicePreconditioned_of_success_no_unify
     (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
     ∀ h_app h_proj,
       PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty := by
-  intro h_app h_proj
-  have h_no_unify :
-      st' = st ∧ inferExpr env e = some ty :=
-    (inferExprUnify_ok_iff_inferExpr_no_unify_branches h_no st fuel env st' ty).1 h_ok
-  refine {
-    deterministic := ?_
-    declarativeUnique := ?_
-    inferExprAgrees := ?_
-  }
-  · intro st'' ty'' h_ok'
-    exact inferExprUnify_deterministic st fuel env e h_ok' h_ok
-  · intro ty' h_ty'
-    rcases h_no_unify with ⟨_, h_alg⟩
-    have h_alg' : inferExpr env e = some ty' := inferExpr_complete env e ty' h_ty'
-    rw [h_alg] at h_alg'
-    injection h_alg' with h_eq
-    exact h_eq.symm
-  · exact h_no_unify.2
+  have h_core : PrincipalTypingSliceCore env e ty :=
+    principalTypingSliceCore_of_unify_success_no_unify h_no h_ok
+  exact principalTypingSlicePreconditioned_of_success_of_core_principal
+    h_core h_ok
 
 /--
 Bundle-entry variant of `principalTypingSlicePreconditioned_of_success_no_unify`.
