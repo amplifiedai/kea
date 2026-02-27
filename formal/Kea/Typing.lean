@@ -5021,6 +5021,140 @@ theorem principalBoundaryVacuitySuite_hookIrrelevance_field
     h_suite.hookIrrelevance h_ok
 
 /--
+No-unify all-hooks expression capstone.
+
+This removes explicit hook parameters from the capstone surface by exporting:
+- core principality,
+- preconditioned principality for any hook witnesses, and
+- per-hook successful-run preconditioned↔core equivalence.
+-/
+structure PrincipalBoundaryNoUnifyExprAllHooksCapstone
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty) : Prop where
+  core : PrincipalTypingSliceCore env e ty
+  preconditionedAny :
+    ∀ h_app h_proj, PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty
+  preconditionedAnyIffCore :
+    ∀ h_app h_proj,
+      (PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty
+        ↔ PrincipalTypingSliceCore env e ty)
+
+/--
+Construct the no-unify all-hooks expression capstone from a successful no-unify
+`inferExprUnify` run.
+-/
+theorem principalBoundaryNoUnifyExprAllHooksCapstone_of_success
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalBoundaryNoUnifyExprAllHooksCapstone st fuel env e st' ty := by
+  have h_core : PrincipalTypingSliceCore env e ty :=
+    principalTypingSliceCore_of_unify_success_no_unify h_no h_ok
+  refine {
+    core := h_core
+    preconditionedAny := ?_
+    preconditionedAnyIffCore := ?_
+  }
+  · intro h_app h_proj
+    exact principalTypingSlicePreconditioned_of_success_no_unify
+      h_no h_ok h_app h_proj
+  · intro h_app h_proj
+    exact principalTypingSlicePreconditioned_iff_core_of_success
+      h_app h_proj st fuel env e st' ty h_ok
+
+/--
+No-unify all-hooks field capstone.
+
+Field-side analogue of `PrincipalBoundaryNoUnifyExprAllHooksCapstone`.
+-/
+structure PrincipalBoundaryNoUnifyFieldAllHooksCapstone
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields) : Prop where
+  core : PrincipalFieldTypingSliceCore env fs rf
+  preconditionedAny :
+    ∀ h_app h_proj,
+      PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf
+  preconditionedAnyIffCore :
+    ∀ h_app h_proj,
+      (PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf
+        ↔ PrincipalFieldTypingSliceCore env fs rf)
+
+/--
+Construct the no-unify all-hooks field capstone from a successful no-unify
+`inferFieldsUnify` run.
+-/
+theorem principalBoundaryNoUnifyFieldAllHooksCapstone_of_success
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalBoundaryNoUnifyFieldAllHooksCapstone st fuel env fs st' rf := by
+  have h_core : PrincipalFieldTypingSliceCore env fs rf :=
+    principalFieldTypingSliceCore_of_unify_success_no_unify h_no h_ok
+  refine {
+    core := h_core
+    preconditionedAny := ?_
+    preconditionedAnyIffCore := ?_
+  }
+  · intro h_app h_proj
+    exact principalFieldTypingSlicePreconditioned_of_success_no_unify
+      h_no h_ok h_app h_proj
+  · intro h_app h_proj
+    exact principalFieldTypingSlicePreconditioned_iff_core_of_success
+      h_app h_proj st fuel env fs st' rf h_ok
+
+/-- Packaged no-unify all-hooks expression capstone slice. -/
+def PrincipalBoundaryNoUnifyExprAllHooksCapstoneSlice : Prop :=
+  ∀ {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty},
+    NoUnifyBranchesExpr e →
+    inferExprUnify st fuel env e = .ok st' ty →
+    PrincipalBoundaryNoUnifyExprAllHooksCapstone st fuel env e st' ty
+
+/-- Packaged no-unify all-hooks field capstone slice. -/
+def PrincipalBoundaryNoUnifyFieldAllHooksCapstoneSlice : Prop :=
+  ∀ {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields},
+    NoUnifyBranchesFields fs →
+    inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)) →
+    PrincipalBoundaryNoUnifyFieldAllHooksCapstone st fuel env fs st' rf
+
+/-- Combined no-unify all-hooks capstone slices across expressions and fields. -/
+def PrincipalBoundaryNoUnifyAllHooksCapstoneSlices : Prop :=
+  PrincipalBoundaryNoUnifyExprAllHooksCapstoneSlice ∧
+    PrincipalBoundaryNoUnifyFieldAllHooksCapstoneSlice
+
+/-- The combined no-unify all-hooks capstone slices are fully proved. -/
+theorem principalBoundaryNoUnifyAllHooksCapstoneSlices_proved :
+    PrincipalBoundaryNoUnifyAllHooksCapstoneSlices := by
+  refine ⟨?_, ?_⟩
+  · intro st fuel env e st' ty h_no h_ok
+    exact principalBoundaryNoUnifyExprAllHooksCapstone_of_success h_no h_ok
+  · intro st fuel env fs st' rf h_no h_ok
+    exact principalBoundaryNoUnifyFieldAllHooksCapstone_of_success h_no h_ok
+
+/-- One-hop expression branch projection from all-hooks no-unify capstone slices. -/
+theorem principalBoundaryNoUnifyAllHooksCapstoneSlices_expr
+    (h_slice : PrincipalBoundaryNoUnifyAllHooksCapstoneSlices)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalBoundaryNoUnifyExprAllHooksCapstone st fuel env e st' ty :=
+  h_slice.1 h_no h_ok
+
+/-- One-hop field branch projection from all-hooks no-unify capstone slices. -/
+theorem principalBoundaryNoUnifyAllHooksCapstoneSlices_field
+    (h_slice : PrincipalBoundaryNoUnifyAllHooksCapstoneSlices)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalBoundaryNoUnifyFieldAllHooksCapstone st fuel env fs st' rf :=
+  h_slice.2 h_no h_ok
+
+/--
 `HasTypeU` lift of non-app/proj recursive soundness: on the fragment that never
 executes unification branches, algorithmic inference results are declaratively
 typable in the unification-aware judgment as well.
