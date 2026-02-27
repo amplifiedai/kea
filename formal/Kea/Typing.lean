@@ -3942,6 +3942,42 @@ theorem principalTypingSlicePreconditioned_iff_core_of_success_from_bundle
     h_hooks.1 h_hooks.2 st fuel env e st' ty h_ok
 
 /--
+Packaged successful-run preconditioned↔core principality slice for expressions.
+-/
+def PrincipalPreconditionedExprCoreIffSlice : Prop :=
+  ∀ (h_hooks : UnifyHookPremises)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty),
+    inferExprUnify st fuel env e = .ok st' ty →
+    (PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty
+      ↔ PrincipalTypingSliceCore env e ty)
+
+/--
+Packaged successful-run preconditioned↔core principality slice for fields.
+-/
+def PrincipalPreconditionedFieldCoreIffSlice : Prop :=
+  ∀ (h_hooks : UnifyHookPremises)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields),
+    inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)) →
+    (PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSliceCore env fs rf)
+
+/-- Combined successful-run preconditioned↔core principality slice. -/
+def PrincipalPreconditionedCoreIffSlices : Prop :=
+  PrincipalPreconditionedExprCoreIffSlice ∧ PrincipalPreconditionedFieldCoreIffSlice
+
+/-- The combined preconditioned↔core principality slice is fully proved. -/
+theorem principalPreconditionedCoreIffSlices_proved : PrincipalPreconditionedCoreIffSlices := by
+  refine ⟨?_, ?_⟩
+  · intro h_hooks st fuel env e st' ty h_ok
+    exact principalTypingSlicePreconditioned_iff_core_of_success_from_bundle
+      h_hooks st fuel env e st' ty h_ok
+  · intro h_hooks st fuel env fs st' rf h_ok
+    exact principalFieldTypingSlicePreconditioned_iff_core_of_success_from_bundle
+      h_hooks st fuel env fs st' rf h_ok
+
+/--
 Successful preconditioned `inferExprUnify` runs induce the core principal
 typing package on the same `(env, e, ty)` surface.
 -/
