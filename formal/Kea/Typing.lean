@@ -9339,6 +9339,15 @@ theorem principalBoundaryMasterRunBundleConsequenceSuite_proved :
     principalBoundaryMasterSuite_proved
 
 /--
+One-hop projection: master run-bundle consequence suite from the top-level
+master suite.
+-/
+theorem principalBoundaryMasterSuite_runBundleConsequenceSuite
+    (h_suite : PrincipalBoundaryMasterSuite) :
+    PrincipalBoundaryMasterRunBundleConsequenceSuite :=
+  principalBoundaryMasterRunBundleConsequenceSuite_of_master h_suite
+
+/--
 One-hop projection: no-unify expression run-bundle consequences from the master
 run-bundle consequence suite.
 -/
@@ -9365,6 +9374,34 @@ theorem principalBoundaryMasterRunBundleConsequenceSuite_noUnify_field
     PrincipalNoUnifyFieldRunBundleConsequences st fuel env fs st' rf :=
   principalNoUnifyRunBundleConsequenceSlices_field
     h_suite.noUnifyConsequences h_no h_ok
+
+/--
+One-hop projection: no-unify expression run-bundle consequences from the
+top-level master suite.
+-/
+theorem principalBoundaryMasterSuite_noUnifyRunBundleConsequences_expr
+    (h_suite : PrincipalBoundaryMasterSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalNoUnifyExprRunBundleConsequences st fuel env e st' ty :=
+  principalBoundaryMasterRunBundleConsequenceSuite_noUnify_expr
+    (principalBoundaryMasterSuite_runBundleConsequenceSuite h_suite) h_no h_ok
+
+/--
+One-hop projection: no-unify field run-bundle consequences from the top-level
+master suite.
+-/
+theorem principalBoundaryMasterSuite_noUnifyRunBundleConsequences_field
+    (h_suite : PrincipalBoundaryMasterSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalNoUnifyFieldRunBundleConsequences st fuel env fs st' rf :=
+  principalBoundaryMasterRunBundleConsequenceSuite_noUnify_field
+    (principalBoundaryMasterSuite_runBundleConsequenceSuite h_suite) h_no h_ok
 
 /--
 One-hop projection: arbitrary-success all-hooks expression run-bundle from the
