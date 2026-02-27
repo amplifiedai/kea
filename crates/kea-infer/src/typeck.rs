@@ -7436,6 +7436,55 @@ pub fn register_builtin_int_bitwise_methods(env: &mut TypeEnv) {
         env.register_module_type_scheme_exact(module_path, name, binary.clone());
         env.register_inherent_method("Int", name);
     }
+
+    // Explicit narrowing conversions for fixed-width integers.
+    // Widening remains implicit; narrowing goes through `Type.try_from(Int)`.
+    for (type_name, target_ty) in [
+        (
+            "Int8",
+            Type::IntN(kea_types::IntWidth::I8, kea_types::Signedness::Signed),
+        ),
+        (
+            "Int16",
+            Type::IntN(kea_types::IntWidth::I16, kea_types::Signedness::Signed),
+        ),
+        (
+            "Int32",
+            Type::IntN(kea_types::IntWidth::I32, kea_types::Signedness::Signed),
+        ),
+        (
+            "Int64",
+            Type::IntN(kea_types::IntWidth::I64, kea_types::Signedness::Signed),
+        ),
+        (
+            "UInt8",
+            Type::IntN(kea_types::IntWidth::I8, kea_types::Signedness::Unsigned),
+        ),
+        (
+            "UInt16",
+            Type::IntN(kea_types::IntWidth::I16, kea_types::Signedness::Unsigned),
+        ),
+        (
+            "UInt32",
+            Type::IntN(kea_types::IntWidth::I32, kea_types::Signedness::Unsigned),
+        ),
+        (
+            "UInt64",
+            Type::IntN(kea_types::IntWidth::I64, kea_types::Signedness::Unsigned),
+        ),
+    ] {
+        let module_path = format!("Kea.{type_name}");
+        env.register_module_alias(type_name, &module_path);
+        env.register_module_function(&module_path, "try_from");
+        env.register_module_type_scheme_exact(
+            &module_path,
+            "try_from",
+            TypeScheme::mono(Type::Function(FunctionType::pure(
+                vec![Type::Int],
+                Type::Option(Box::new(target_ty)),
+            ))),
+        );
+    }
 }
 
 /// Register an effect declaration's operations as qualified call targets.
@@ -12994,6 +13043,33 @@ fn infer_expr_bidir(
                 unifier.note_evidence_site(expr.span, &resolved_callable);
             }
 
+            // Checked narrowing conversions (`Type.try_from`) report guaranteed
+            // overflow at compile time for constant arguments.
+            if is_try_from_function_reference(func)
+                && let Some((width, signedness)) =
+                    try_from_target_from_callable_type(&resolved_callable)
+                && let Some(bound_arg) = bound_args.first()
+            {
+                let arg_expr = match bound_arg {
+                    BoundArg::Provided(arg_expr) | BoundArg::Default(arg_expr) => arg_expr,
+                };
+                if let Some(value) = eval_const_int_expr(arg_expr)
+                    && !int_value_fits_precision(value, width, signedness)
+                {
+                    let target_ty = Type::IntN(width, signedness);
+                    unifier.push_error(
+                        Diagnostic::error(
+                            Category::TypeMismatch,
+                            format!("conversion value `{value}` does not fit in `{target_ty}`"),
+                        )
+                        .at(span_to_loc(arg_expr.span))
+                        .with_help(
+                            "use a wider target integer type or clamp the value before conversion",
+                        ),
+                    );
+                }
+            }
+
             note_existential_pack_sites(unifier, expr.span, &callable_ty, &arg_types);
 
             ret_ty
@@ -14930,6 +15006,34 @@ fn eval_const_int_expr(expr: &Expr) -> Option<i128> {
                 _ => None,
             }
         }
+        _ => None,
+    }
+}
+
+fn is_try_from_function_reference(func: &Expr) -> bool {
+    match &func.node {
+        ExprKind::Var(name) => name == "try_from" || name.ends_with(".try_from"),
+        ExprKind::FieldAccess { expr, field, .. } => {
+            field.node == "try_from" && matches!(expr.node, ExprKind::Var(_))
+        }
+        _ => false,
+    }
+}
+
+fn try_from_target_from_callable_type(
+    callable: &Type,
+) -> Option<(kea_types::IntWidth, kea_types::Signedness)> {
+    let Type::Function(ft) = callable else {
+        return None;
+    };
+    if ft.params.len() != 1 || !ft.params[0].is_integer() {
+        return None;
+    }
+    let Type::Option(inner) = ft.ret.as_ref() else {
+        return None;
+    };
+    match inner.as_ref() {
+        Type::IntN(width, signedness) => Some((*width, *signedness)),
         _ => None,
     }
 }

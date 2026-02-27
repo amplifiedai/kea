@@ -544,6 +544,54 @@ fn collect_function_dispatch_effects(
     mapping
 }
 
+fn fixed_width_type_from_name(name: &str) -> Option<Type> {
+    match name {
+        "Int8" => Some(Type::IntN(
+            kea_types::IntWidth::I8,
+            kea_types::Signedness::Signed,
+        )),
+        "Int16" => Some(Type::IntN(
+            kea_types::IntWidth::I16,
+            kea_types::Signedness::Signed,
+        )),
+        "Int32" => Some(Type::IntN(
+            kea_types::IntWidth::I32,
+            kea_types::Signedness::Signed,
+        )),
+        "Int64" => Some(Type::IntN(
+            kea_types::IntWidth::I64,
+            kea_types::Signedness::Signed,
+        )),
+        "UInt8" => Some(Type::IntN(
+            kea_types::IntWidth::I8,
+            kea_types::Signedness::Unsigned,
+        )),
+        "UInt16" => Some(Type::IntN(
+            kea_types::IntWidth::I16,
+            kea_types::Signedness::Unsigned,
+        )),
+        "UInt32" => Some(Type::IntN(
+            kea_types::IntWidth::I32,
+            kea_types::Signedness::Unsigned,
+        )),
+        "UInt64" => Some(Type::IntN(
+            kea_types::IntWidth::I64,
+            kea_types::Signedness::Unsigned,
+        )),
+        _ => None,
+    }
+}
+
+fn try_from_target_type_from_name(name: &str) -> Option<Type> {
+    let mut parts = name.split('.');
+    let last = parts.next_back()?;
+    if last != "try_from" {
+        return None;
+    }
+    let target = parts.next_back()?;
+    fixed_width_type_from_name(target)
+}
+
 fn is_namespaced_symbol_name(name: &str) -> bool {
     name.contains('.')
 }
@@ -2160,6 +2208,13 @@ impl FunctionLoweringCtx {
         }
         if let HirExprKind::Var(name) = &func.kind
             && !capture_fail_result
+            && (name.ends_with(".try_from") || name == "try_from")
+            && let Some(result) = self.lower_fixed_width_try_from_call(expr, name, args)
+        {
+            return Some(result);
+        }
+        if let HirExprKind::Var(name) = &func.kind
+            && !capture_fail_result
             && let Some((effect, operation)) = direct_capability_operation(name)
         {
             let mut lowered_args = Vec::with_capacity(args.len());
@@ -2586,6 +2641,132 @@ impl FunctionLoweringCtx {
             sum_type,
         });
         tag_value
+    }
+
+    fn integer_bounds_for_target(ty: &Type) -> Option<(i64, i64)> {
+        match ty {
+            Type::IntN(kea_types::IntWidth::I8, kea_types::Signedness::Signed) => {
+                Some((i8::MIN as i64, i8::MAX as i64))
+            }
+            Type::IntN(kea_types::IntWidth::I16, kea_types::Signedness::Signed) => {
+                Some((i16::MIN as i64, i16::MAX as i64))
+            }
+            Type::IntN(kea_types::IntWidth::I32, kea_types::Signedness::Signed) => {
+                Some((i32::MIN as i64, i32::MAX as i64))
+            }
+            Type::IntN(kea_types::IntWidth::I64, kea_types::Signedness::Signed) => {
+                Some((i64::MIN, i64::MAX))
+            }
+            Type::IntN(kea_types::IntWidth::I8, kea_types::Signedness::Unsigned) => {
+                Some((0, u8::MAX as i64))
+            }
+            Type::IntN(kea_types::IntWidth::I16, kea_types::Signedness::Unsigned) => {
+                Some((0, u16::MAX as i64))
+            }
+            Type::IntN(kea_types::IntWidth::I32, kea_types::Signedness::Unsigned) => {
+                Some((0, u32::MAX as i64))
+            }
+            // Source `Int` is i64-backed in bootstrap; checked conversion to
+            // UInt64 therefore only rejects negatives.
+            Type::IntN(kea_types::IntWidth::I64, kea_types::Signedness::Unsigned) => {
+                Some((0, i64::MAX))
+            }
+            _ => None,
+        }
+    }
+
+    fn lower_fixed_width_try_from_call(
+        &mut self,
+        expr: &HirExpr,
+        func_name: &str,
+        args: &[HirExpr],
+    ) -> Option<MirValueId> {
+        if args.len() != 1 {
+            return None;
+        }
+        let target_ty = try_from_target_type_from_name(func_name).or_else(|| match &expr.ty {
+            Type::Option(inner) => match inner.as_ref() {
+                Type::IntN(_, _) => Some((**inner).clone()),
+                _ => None,
+            },
+            _ => None,
+        })?;
+        let option_ty = Type::Option(Box::new(target_ty.clone()));
+        let (min, max) = Self::integer_bounds_for_target(&target_ty)?;
+
+        let source = self.lower_expr(&args[0])?;
+
+        let min_value = self.new_value();
+        self.emit_inst(MirInst::Const {
+            dest: min_value.clone(),
+            literal: MirLiteral::Int(min),
+        });
+        let max_value = self.new_value();
+        self.emit_inst(MirInst::Const {
+            dest: max_value.clone(),
+            literal: MirLiteral::Int(max),
+        });
+
+        let below_min = self.new_value();
+        self.emit_inst(MirInst::Binary {
+            dest: below_min.clone(),
+            op: MirBinaryOp::Lt,
+            left: source.clone(),
+            right: min_value,
+        });
+        let above_max = self.new_value();
+        self.emit_inst(MirInst::Binary {
+            dest: above_max.clone(),
+            op: MirBinaryOp::Gt,
+            left: source.clone(),
+            right: max_value,
+        });
+        let out_of_range = self.new_value();
+        self.emit_inst(MirInst::Binary {
+            dest: out_of_range.clone(),
+            op: MirBinaryOp::Or,
+            left: below_min,
+            right: above_max,
+        });
+
+        let none_block = self.new_block();
+        let some_block = self.new_block();
+        let result = self.new_value();
+        let join_block = self.new_block_with_params(vec![MirBlockParam {
+            id: result.clone(),
+            ty: option_ty,
+        }]);
+        self.set_terminator(MirTerminator::Branch {
+            condition: out_of_range,
+            then_block: none_block.clone(),
+            else_block: some_block.clone(),
+        });
+
+        self.switch_to(none_block);
+        let none_value = self.new_value();
+        self.emit_inst(MirInst::Const {
+            dest: none_value.clone(),
+            literal: MirLiteral::Int(1),
+        });
+        self.ensure_jump_to(join_block.clone(), vec![none_value]);
+
+        self.switch_to(some_block);
+        let some_value = self.new_value();
+        self.emit_inst(MirInst::SumInit {
+            dest: some_value.clone(),
+            sum_type: "Option".to_string(),
+            variant: "Some".to_string(),
+            tag: 0,
+            fields: vec![source],
+        });
+        self.sum_value_types
+            .insert(some_value.clone(), "Option".to_string());
+        self.ensure_jump_to(join_block.clone(), vec![some_value]);
+
+        self.switch_to(join_block);
+        self.sum_value_types
+            .insert(result.clone(), "Option".to_string());
+        Some(result)
     }
 
     fn lower_if(
@@ -3368,6 +3549,97 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn lower_hir_module_lowers_fixed_width_try_from_to_checked_option_path() {
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "narrow".to_string(),
+                params: vec![],
+                body: HirExpr {
+                    kind: HirExprKind::Call {
+                        func: Box::new(HirExpr {
+                            kind: HirExprKind::Var("Int8.try_from".to_string()),
+                            ty: Type::Function(FunctionType::pure(
+                                vec![Type::Int],
+                                Type::Option(Box::new(Type::IntN(
+                                    kea_types::IntWidth::I8,
+                                    kea_types::Signedness::Signed,
+                                ))),
+                            )),
+                            span: kea_ast::Span::synthetic(),
+                        }),
+                        args: vec![HirExpr {
+                            kind: HirExprKind::Lit(kea_ast::Lit::Int(42)),
+                            ty: Type::Int,
+                            span: kea_ast::Span::synthetic(),
+                        }],
+                    },
+                    ty: Type::Option(Box::new(Type::IntN(
+                        kea_types::IntWidth::I8,
+                        kea_types::Signedness::Signed,
+                    ))),
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::pure(
+                    vec![],
+                    Type::Option(Box::new(Type::IntN(
+                        kea_types::IntWidth::I8,
+                        kea_types::Signedness::Signed,
+                    ))),
+                )),
+                effects: EffectRow::pure(),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let mir = lower_hir_module(&hir);
+        let function = &mir.functions[0];
+        assert!(
+            function
+                .blocks
+                .iter()
+                .flat_map(|block| block.instructions.iter())
+                .any(|inst| matches!(
+                    inst,
+                    MirInst::Binary {
+                        op: MirBinaryOp::Lt,
+                        ..
+                    }
+                )),
+            "expected lower bound check in try_from lowering"
+        );
+        assert!(
+            function
+                .blocks
+                .iter()
+                .flat_map(|block| block.instructions.iter())
+                .any(|inst| matches!(
+                    inst,
+                    MirInst::Binary {
+                        op: MirBinaryOp::Gt,
+                        ..
+                    }
+                )),
+            "expected upper bound check in try_from lowering"
+        );
+        assert!(
+            function
+                .blocks
+                .iter()
+                .flat_map(|block| block.instructions.iter())
+                .any(|inst| matches!(
+                    inst,
+                    MirInst::SumInit {
+                        sum_type,
+                        variant,
+                        tag,
+                        ..
+                    } if sum_type == "Option" && variant == "Some" && *tag == 0
+                )),
+            "expected Some construction in try_from lowering"
+        );
     }
 
     #[test]
