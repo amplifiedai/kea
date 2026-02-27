@@ -21882,6 +21882,50 @@ theorem principalRowPolyBoundarySoundBundle_soundDual
   h_bundle.soundDual
 
 /--
+The boundary+soundness package is equivalent to providing:
+- a row-polymorphic boundary bundle witness, and
+- a dual recursive-soundness bundle witness for the same hook pair.
+-/
+theorem principalRowPolyBoundarySoundBundle_iff_boundary_and_soundDual
+    {h_app : AppUnifySoundHook}
+    {h_proj : ProjUnifySoundHook} :
+    PrincipalRowPolyBoundarySoundBundle h_app h_proj
+      ↔ (PrincipalRowPolyBoundaryBundle ∧ InferUnifySoundDualBundle h_app h_proj) := by
+  constructor
+  · intro h_bundle
+    exact ⟨h_bundle.boundary, h_bundle.soundDual⟩
+  · intro h_pair
+    exact ⟨h_pair.1, h_pair.2⟩
+
+/--
+Expression `HasType` recursive soundness one-hop wrapper from the
+row-polymorphic boundary+soundness package.
+-/
+theorem principalRowPolyBoundarySoundBundle_expr_hasType
+    {h_app : AppUnifySoundHook}
+    {h_proj : ProjUnifySoundHook}
+    (h_bundle : PrincipalRowPolyBoundarySoundBundle h_app h_proj)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    HasType env e ty :=
+  h_bundle.soundDual.expr_hasType st fuel env e st' ty h_ok
+
+/--
+Field `HasFieldsType` recursive soundness one-hop wrapper from the
+row-polymorphic boundary+soundness package.
+-/
+theorem principalRowPolyBoundarySoundBundle_field_hasType
+    {h_app : AppUnifySoundHook}
+    {h_proj : ProjUnifySoundHook}
+    (h_bundle : PrincipalRowPolyBoundarySoundBundle h_app h_proj)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    HasFieldsType env fs rf :=
+  h_bundle.soundDual.field_hasType st fuel env fs st' rf h_ok
+
+/--
 Expression `HasTypeU` recursive soundness one-hop wrapper from the
 row-polymorphic boundary+soundness package.
 -/
