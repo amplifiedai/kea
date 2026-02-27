@@ -7,8 +7,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use kea_ast::{
-    BinOp, CaseArm, DeclKind, Expr, ExprDecl, ExprKind, FnDecl, HandleClause, Lit, Module, Param,
-    Pattern, PatternKind, Span, TypeAnnotation, UnaryOp,
+    Annotation, BinOp, CaseArm, DeclKind, Expr, ExprDecl, ExprKind, FnDecl, HandleClause, Lit,
+    Module, Param, Pattern, PatternKind, Span, TypeAnnotation, UnaryOp,
 };
 use kea_infer::typeck::TypeEnv;
 use kea_types::{EffectRow, FunctionType, Type};
@@ -626,31 +626,40 @@ pub fn lower_module(module: &Module, env: &TypeEnv) -> HirModule {
     let (unit_variant_tags, qualified_variant_tags, pattern_variant_tags, pattern_qualified_tags) =
         collect_variant_tags(module);
     let known_record_defs = collect_record_defs(module);
-    let declarations = module
-        .declarations
-        .iter()
-        .map(|decl| match &decl.node {
-            DeclKind::Function(fn_decl) => HirDecl::Function(lower_function_with_variants(
-                fn_decl,
-                env,
-                &unit_variant_tags,
-                &qualified_variant_tags,
-                &pattern_variant_tags,
-                &pattern_qualified_tags,
-                &known_record_defs,
-            )),
-            DeclKind::ExprFn(expr_decl) => HirDecl::Function(lower_function_with_variants(
-                &expr_decl_to_fn_decl(expr_decl),
-                env,
-                &unit_variant_tags,
-                &qualified_variant_tags,
-                &pattern_variant_tags,
-                &pattern_qualified_tags,
-                &known_record_defs,
-            )),
-            other => HirDecl::Raw(other.clone()),
-        })
-        .collect();
+    let mut declarations = Vec::new();
+    for decl in &module.declarations {
+        match &decl.node {
+            DeclKind::Function(fn_decl) => {
+                declarations.push(HirDecl::Function(lower_function_with_variants(
+                    fn_decl,
+                    env,
+                    &unit_variant_tags,
+                    &qualified_variant_tags,
+                    &pattern_variant_tags,
+                    &pattern_qualified_tags,
+                    &known_record_defs,
+                )));
+                if intrinsic_symbol_from_annotations(&fn_decl.annotations).is_some() {
+                    declarations.push(HirDecl::Raw(DeclKind::Function(fn_decl.clone())));
+                }
+            }
+            DeclKind::ExprFn(expr_decl) => {
+                declarations.push(HirDecl::Function(lower_function_with_variants(
+                    &expr_decl_to_fn_decl(expr_decl),
+                    env,
+                    &unit_variant_tags,
+                    &qualified_variant_tags,
+                    &pattern_variant_tags,
+                    &pattern_qualified_tags,
+                    &known_record_defs,
+                )));
+                if intrinsic_symbol_from_annotations(&expr_decl.annotations).is_some() {
+                    declarations.push(HirDecl::Raw(DeclKind::ExprFn(expr_decl.clone())));
+                }
+            }
+            other => declarations.push(HirDecl::Raw(other.clone())),
+        }
+    }
     HirModule { declarations }
 }
 
@@ -737,6 +746,22 @@ fn is_catch_desugar_shape(clauses: &[HandleClause], then_clause: Option<&Expr>) 
         && then_clause.is_some()
         && clauses[0].effect.node == "Fail"
         && clauses[0].operation.node == "fail"
+}
+
+fn intrinsic_symbol_from_annotations(annotations: &[Annotation]) -> Option<String> {
+    for annotation in annotations {
+        if annotation.name.node != "intrinsic" {
+            continue;
+        }
+        if annotation.args.len() != 1 {
+            continue;
+        }
+        let arg = &annotation.args[0].value;
+        if let ExprKind::Lit(Lit::String(symbol)) = &arg.node {
+            return Some(symbol.clone());
+        }
+    }
+    None
 }
 
 fn lower_expr(

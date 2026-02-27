@@ -333,6 +333,7 @@ pub fn lower_hir_module(module: &HirModule) -> MirModule {
             HirDecl::Raw(_) => None,
         })
         .collect::<BTreeMap<_, _>>();
+    let intrinsic_symbols = collect_intrinsic_symbols(module);
     let lambda_factories = collect_lambda_factory_templates(module, &known_functions);
     let mut layouts = MirLayoutCatalog::default();
     for decl in &module.declarations {
@@ -350,6 +351,7 @@ pub fn lower_hir_module(module: &HirModule) -> MirModule {
                 &layouts,
                 &known_functions,
                 &known_function_types,
+                &intrinsic_symbols,
                 &lambda_factories,
             ));
         }
@@ -368,6 +370,41 @@ struct LambdaFactoryTemplate {
 
 fn is_namespaced_symbol_name(name: &str) -> bool {
     name.contains('.')
+}
+
+fn collect_intrinsic_symbols(module: &HirModule) -> BTreeMap<String, String> {
+    let mut symbols = BTreeMap::new();
+    for decl in &module.declarations {
+        match decl {
+            HirDecl::Raw(DeclKind::Function(fn_decl)) => {
+                if let Some(symbol) = intrinsic_symbol_from_annotations(&fn_decl.annotations) {
+                    symbols.insert(fn_decl.name.node.clone(), symbol);
+                }
+            }
+            HirDecl::Raw(DeclKind::ExprFn(expr_decl)) => {
+                if let Some(symbol) = intrinsic_symbol_from_annotations(&expr_decl.annotations) {
+                    symbols.insert(expr_decl.name.node.clone(), symbol);
+                }
+            }
+            _ => {}
+        }
+    }
+    symbols
+}
+
+fn intrinsic_symbol_from_annotations(annotations: &[kea_ast::Annotation]) -> Option<String> {
+    for annotation in annotations {
+        if annotation.name.node != "intrinsic" {
+            continue;
+        }
+        if annotation.args.len() != 1 {
+            continue;
+        }
+        if let kea_ast::ExprKind::Lit(kea_ast::Lit::String(symbol)) = &annotation.args[0].value.node {
+            return Some(symbol.clone());
+        }
+    }
+    None
 }
 
 fn collect_lambda_factory_templates(
@@ -705,6 +742,7 @@ fn lower_hir_function(
     layouts: &MirLayoutCatalog,
     known_functions: &BTreeSet<String>,
     known_function_types: &BTreeMap<String, Type>,
+    intrinsic_symbols: &BTreeMap<String, String>,
     lambda_factories: &BTreeMap<String, LambdaFactoryTemplate>,
 ) -> Vec<MirFunction> {
     let (params, ret) = match &function.ty {
@@ -721,6 +759,7 @@ fn lower_hir_function(
         layouts,
         known_functions,
         known_function_types,
+        intrinsic_symbols,
         lambda_factories,
     );
     for (index, param) in function.params.iter().enumerate() {
@@ -783,6 +822,7 @@ struct FunctionLoweringCtx {
     local_lambdas: BTreeMap<String, LocalLambda>,
     known_functions: BTreeSet<String>,
     known_function_types: BTreeMap<String, Type>,
+    intrinsic_symbols: BTreeMap<String, String>,
     lambda_factories: BTreeMap<String, LambdaFactoryTemplate>,
     var_record_types: BTreeMap<String, String>,
     record_value_types: BTreeMap<MirValueId, String>,
@@ -832,6 +872,7 @@ impl FunctionLoweringCtx {
         layouts: &MirLayoutCatalog,
         known_functions: &BTreeSet<String>,
         known_function_types: &BTreeMap<String, Type>,
+        intrinsic_symbols: &BTreeMap<String, String>,
         lambda_factories: &BTreeMap<String, LambdaFactoryTemplate>,
     ) -> Self {
         let mut sum_ctor_candidates: BTreeMap<String, Vec<SumCtorCandidate>> = BTreeMap::new();
@@ -863,6 +904,7 @@ impl FunctionLoweringCtx {
             local_lambdas: BTreeMap::new(),
             known_functions: known_functions.clone(),
             known_function_types: known_function_types.clone(),
+            intrinsic_symbols: intrinsic_symbols.clone(),
             lambda_factories: lambda_factories.clone(),
             var_record_types: BTreeMap::new(),
             record_value_types: BTreeMap::new(),
@@ -1095,6 +1137,7 @@ impl FunctionLoweringCtx {
             &self.layouts,
             &known,
             &known_types,
+            &self.intrinsic_symbols,
             &self.lambda_factories,
         );
         for lowered in lowered_functions {
@@ -1676,13 +1719,17 @@ impl FunctionLoweringCtx {
                     let callee_value = self.lower_expr(func)?;
                     MirCallee::Value(callee_value)
                 }
-                HirExprKind::Var(name) if self.known_function_types.contains_key(name) => {
-                    MirCallee::Local(name.clone())
+                HirExprKind::Var(name) => {
+                    if let Some(symbol) = self.intrinsic_symbols.get(name) {
+                        MirCallee::External(symbol.clone())
+                    } else if self.known_function_types.contains_key(name) {
+                        MirCallee::Local(name.clone())
+                    } else if is_namespaced_symbol_name(name) {
+                        MirCallee::External(name.clone())
+                    } else {
+                        MirCallee::Local(name.clone())
+                    }
                 }
-                HirExprKind::Var(name) if is_namespaced_symbol_name(name) => {
-                    MirCallee::External(name.clone())
-                }
-                HirExprKind::Var(name) => MirCallee::Local(name.clone()),
                 _ => {
                     let callee_value = self.lower_expr(func)?;
                     MirCallee::Value(callee_value)

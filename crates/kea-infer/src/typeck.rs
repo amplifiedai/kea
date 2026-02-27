@@ -5285,12 +5285,19 @@ impl AnnotationTargetKind {
 fn annotation_name_known(name: &str) -> bool {
     matches!(
         name,
-        "rename" | "default" | "skip_if" | "tagged" | "deprecated"
+        "rename" | "default" | "skip_if" | "tagged" | "deprecated" | "intrinsic"
     )
 }
 
 fn annotation_name_suggestion(name: &str) -> Option<&'static str> {
-    const KNOWN: [&str; 5] = ["rename", "default", "skip_if", "tagged", "deprecated"];
+    const KNOWN: [&str; 6] = [
+        "rename",
+        "default",
+        "skip_if",
+        "tagged",
+        "deprecated",
+        "intrinsic",
+    ];
     let mut best: Option<(&str, usize)> = None;
     for candidate in KNOWN {
         let dist = edit_distance(name, candidate);
@@ -5634,6 +5641,37 @@ fn validate_annotation_arguments(
                         "`@deprecated` message must be a string literal",
                     )
                     .at(span_to_loc(arg.span)),
+                );
+            }
+        }
+        "intrinsic" => {
+            if !matches!(
+                target,
+                AnnotationTargetKind::Function | AnnotationTargetKind::ExprFunction
+            ) {
+                diagnostics.push(
+                    Diagnostic::error(
+                        Category::TypeError,
+                        format!("`@intrinsic` is not valid on {}", target.label()),
+                    )
+                    .at(span_to_loc(ann.span)),
+                );
+            }
+            if ann.args.len() != 1 || ann.args[0].label.is_some() {
+                diagnostics.push(
+                    Diagnostic::error(
+                        Category::TypeError,
+                        "`@intrinsic` expects exactly one positional string argument",
+                    )
+                    .at(span_to_loc(ann.span)),
+                );
+            } else if !is_string_literal_expr(&ann.args[0].value) {
+                diagnostics.push(
+                    Diagnostic::error(
+                        Category::TypeError,
+                        "`@intrinsic` argument must be a string literal",
+                    )
+                    .at(span_to_loc(ann.args[0].value.span)),
                 );
             }
         }
