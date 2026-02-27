@@ -316,7 +316,7 @@ mod tests {
         let app_path = src_dir.join("app.kea");
         std::fs::write(
             &app_path,
-            "use Rand\n\nfn main() -[Rand]> Int\n  if Rand.int() >= 0\n    1\n  else\n    0\n",
+            "use Rand\n\nfn main() -[Rand]> Int\n  Rand.seed(123)\n  if Rand.int() >= 0\n    1\n  else\n    0\n",
         )
         .expect("app module write should succeed");
 
@@ -360,7 +360,7 @@ mod tests {
     #[cfg(not(target_os = "windows"))]
     fn compile_and_execute_rand_int_direct_effect_exit_code() {
         let source_path = write_temp_source(
-            "effect Rand\n  fn int() -> Int\n\nfn main() -[Rand]> Int\n  if Rand.int() >= 0\n    1\n  else\n    0\n",
+            "effect Rand\n  fn int() -> Int\n  fn seed(seed: Int) -> Unit\n\nfn main() -[Rand]> Int\n  Rand.seed(123)\n  if Rand.int() >= 0\n    1\n  else\n    0\n",
             "kea-cli-rand-int-direct",
             "kea",
         );
