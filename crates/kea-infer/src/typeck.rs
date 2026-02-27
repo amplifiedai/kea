@@ -7397,6 +7397,39 @@ pub fn register_fn_effect_signature(fn_decl: &FnDecl, env: &mut TypeEnv) {
     }
 }
 
+/// Register builtin Int bitwise methods so UMS method calls work even before
+/// stdlib module loading.
+pub fn register_builtin_int_bitwise_methods(env: &mut TypeEnv) {
+    let module_path = "Kea.Int";
+    env.register_module_alias("Int", module_path);
+
+    let unary = TypeScheme::mono(Type::Function(FunctionType::pure(
+        vec![Type::Int],
+        Type::Int,
+    )));
+    let binary = TypeScheme::mono(Type::Function(FunctionType::pure(
+        vec![Type::Int, Type::Int],
+        Type::Int,
+    )));
+
+    let name = "bit_not";
+    env.register_module_function(module_path, name);
+    env.register_module_type_scheme_exact(module_path, name, unary.clone());
+    env.register_inherent_method("Int", name);
+    for name in [
+        "bit_and",
+        "bit_or",
+        "bit_xor",
+        "shift_left",
+        "shift_right",
+        "shift_right_unsigned",
+    ] {
+        env.register_module_function(module_path, name);
+        env.register_module_type_scheme_exact(module_path, name, binary.clone());
+        env.register_inherent_method("Int", name);
+    }
+}
+
 /// Register an effect declaration's operations as qualified call targets.
 ///
 /// Effect operation calls are always effectful with the declared effect label,

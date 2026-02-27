@@ -1374,6 +1374,7 @@ mod tests {
                 "effect Fail\n  fn fail(err: Int) -> Never\n\nfn f() -[Fail Int]> Int\n  fail 7\n\nfn main() -> Int\n  let r = catch f()\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
                 7,
             ),
+            ("fn main() -> Int\n  5.shift_left(3) + 2\n", 42),
         ];
 
         for (idx, (source, expected_exit)) in cases.iter().enumerate() {
@@ -1406,6 +1407,62 @@ mod tests {
             let _ = std::fs::remove_file(source_path);
             let _ = std::fs::remove_file(output_path);
         }
+    }
+
+    #[test]
+    fn compile_and_execute_bitwise_and_method_exit_code() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  42.bit_and(15)\n",
+            "kea-cli-bitwise-and",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("bitwise-and run should succeed");
+        assert_eq!(run.exit_code, 10);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_shift_left_method_exit_code() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  1.shift_left(3)\n",
+            "kea-cli-bitwise-shift-left",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("shift-left run should succeed");
+        assert_eq!(run.exit_code, 8);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_bit_not_method_exit_code() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  255.bit_not()\n",
+            "kea-cli-bitwise-not",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("bit-not run should succeed");
+        assert_eq!(run.exit_code, -256);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_shift_right_unsigned_method_exit_code() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  16.shift_right_unsigned(2)\n",
+            "kea-cli-bitwise-shift-right-u",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("shift-right-unsigned run should succeed");
+        assert_eq!(run.exit_code, 4);
+
+        let _ = std::fs::remove_file(source_path);
     }
 
     #[test]

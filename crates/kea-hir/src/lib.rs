@@ -714,7 +714,7 @@ fn lower_function_with_variants(
     pattern_qualified_tags: &QualifiedPatternVariantTags,
     known_record_defs: &KnownRecordDefs,
 ) -> HirFunction {
-    let fn_ty = env
+    let mut fn_ty = env
         .lookup(&fn_decl.name.node)
         .map(|scheme| scheme.ty.clone())
         .or_else(|| {
@@ -732,6 +732,17 @@ fn lower_function_with_variants(
                 .map(|scheme| scheme.ty)
         })
         .unwrap_or_else(|| Type::Function(FunctionType::pure(vec![], Type::Dynamic)));
+
+    // HIR lowering must respect declaration arity for codegen parameter wiring.
+    // In some module/bootstrap scenarios, env lookup can resolve a stale or
+    // cross-module scheme with mismatched parameter count. Rebuild from the
+    // declaration annotations in that case.
+    let declared_arity = fn_decl.params.len();
+    if let Type::Function(ft) = &fn_ty
+        && ft.params.len() != declared_arity
+    {
+        fn_ty = function_type_from_decl_annotations(fn_decl, env)
+    }
 
     let (effects, ret_ty) = match &fn_ty {
         Type::Function(ft) => (ft.effects.clone(), ft.ret.as_ref().clone()),
@@ -753,6 +764,62 @@ fn lower_function_with_variants(
         ty: fn_ty,
         effects,
         span: fn_decl.span,
+    }
+}
+
+fn function_type_from_decl_annotations(fn_decl: &FnDecl, env: &TypeEnv) -> Type {
+    let params = fn_decl
+        .params
+        .iter()
+        .map(|param| {
+            param
+                .annotation
+                .as_ref()
+                .map(|ann| lower_type_annotation(&ann.node))
+                .unwrap_or(Type::Dynamic)
+        })
+        .collect();
+    let ret = fn_decl
+        .return_annotation
+        .as_ref()
+        .map(|ann| lower_type_annotation(&ann.node))
+        .unwrap_or(Type::Dynamic);
+    let effects = env
+        .function_effect_row(&fn_decl.name.node)
+        .unwrap_or_else(EffectRow::pure);
+    Type::Function(FunctionType {
+        params,
+        ret: Box::new(ret),
+        effects,
+    })
+}
+
+fn lower_type_annotation(annotation: &TypeAnnotation) -> Type {
+    match annotation {
+        TypeAnnotation::Named(name) => match name.as_str() {
+            "Int" => Type::Int,
+            "Float" => Type::Float,
+            "Bool" => Type::Bool,
+            "String" => Type::String,
+            "Unit" => Type::Unit,
+            _ => Type::Dynamic,
+        },
+        TypeAnnotation::Tuple(items) => Type::Tuple(
+            items
+                .iter()
+                .map(lower_type_annotation)
+                .collect(),
+        ),
+        TypeAnnotation::Function(params, ret) => Type::Function(FunctionType::pure(
+            params.iter().map(lower_type_annotation).collect(),
+            lower_type_annotation(ret),
+        )),
+        TypeAnnotation::FunctionWithEffect(params, _, ret) => Type::Function(FunctionType {
+            params: params.iter().map(lower_type_annotation).collect(),
+            ret: Box::new(lower_type_annotation(ret)),
+            effects: EffectRow::pure(),
+        }),
+        _ => Type::Dynamic,
     }
 }
 
