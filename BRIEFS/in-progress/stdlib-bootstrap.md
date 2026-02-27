@@ -205,6 +205,7 @@ stdlib ergonomic. Also absorbs what was previously 0h Checkpoint 1.
 stdlib/
   foldable.kea     -- Foldable trait + associated Item type
   iterator.kea     -- Iterator trait + lazy iteration
+  generate.kea     -- Generate effect + collect handler
   derive/show.kea  -- @derive(Show) recipe
   derive/eq.kea    -- @derive(Eq) recipe
   derive/ord.kea   -- @derive(Ord) recipe
@@ -227,6 +228,32 @@ for structs and enums.
 
 **Supertraits enable Ord : Eq.** The Tier 0 Ord trait was
 standalone. Now it properly requires Eq.
+
+**Generate effect + collect handler.** `Generate a` is a stdlib
+effect for yielding values from loops. Combined with `for` and a
+`collect` handler, it gives Kea list comprehensions without
+dedicated comprehension syntax:
+
+```kea
+effect Generate a
+  fn yield(value: a) -[Generate a]> Unit
+
+fn collect(f: () -[Generate a, e]> Unit) -[e]> List a
+  -- handler accumulates yielded values into a list
+  ...
+
+-- usage: for-comprehension via effects
+let evens = collect || ->
+  for x in xs
+    if x % 2 == 0
+      Generate.yield(x * 2)
+```
+
+This is a teaching example for why effects matter: other languages
+need dedicated comprehension syntax (Python, Elixir, Scala), Kea
+gets it from composing `for` + `effect` + `handle` — three features
+that exist for other reasons. The comprehension is a *pattern*, not
+a language primitive.
 
 **This tier completes the self-hosting stdlib.** After Tier 3,
 the compiler has: collections (Map, Vector, Set), IO (file
