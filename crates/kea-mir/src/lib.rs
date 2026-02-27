@@ -1724,6 +1724,29 @@ impl FunctionLoweringCtx {
             return result;
         }
         if let HirExprKind::Var(name) = &func.kind
+            && !capture_fail_result
+            && let Some(operation) = name.strip_prefix("Net.")
+            && matches!(operation, "connect" | "send" | "recv")
+        {
+            let mut lowered_args = Vec::with_capacity(args.len());
+            for arg in args {
+                lowered_args.push(self.lower_expr(arg)?);
+            }
+            let result = if expr.ty == Type::Unit {
+                None
+            } else {
+                Some(self.new_value())
+            };
+            self.emit_inst(MirInst::EffectOp {
+                class: MirEffectOpClass::Direct,
+                effect: "Net".to_string(),
+                operation: operation.to_string(),
+                args: lowered_args,
+                result: result.clone(),
+            });
+            return result;
+        }
+        if let HirExprKind::Var(name) = &func.kind
             && name == "Fail.fail"
             && !capture_fail_result
         {
@@ -4016,6 +4039,163 @@ mod tests {
                 result: None,
                 ..
             } if effect == "Rand" && operation == "seed" && lowered_args.len() == 1
+        ));
+    }
+
+    #[test]
+    fn lower_hir_module_lowers_net_connect_call_to_direct_effect_op_with_result() {
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "open_conn".to_string(),
+                params: vec![],
+                body: HirExpr {
+                    kind: HirExprKind::Call {
+                        func: Box::new(HirExpr {
+                            kind: HirExprKind::Var("Net.connect".to_string()),
+                            ty: Type::Function(FunctionType::with_effects(
+                                vec![Type::String],
+                                Type::Int,
+                                EffectRow::closed(vec![(Label::new("Net"), Type::Unit)]),
+                            )),
+                            span: kea_ast::Span::synthetic(),
+                        }),
+                        args: vec![HirExpr {
+                            kind: HirExprKind::Lit(Lit::String("127.0.0.1:0".to_string())),
+                            ty: Type::String,
+                            span: kea_ast::Span::synthetic(),
+                        }],
+                    },
+                    ty: Type::Int,
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::with_effects(
+                    vec![],
+                    Type::Int,
+                    EffectRow::closed(vec![(Label::new("Net"), Type::Unit)]),
+                )),
+                effects: EffectRow::closed(vec![(Label::new("Net"), Type::Unit)]),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let mir = lower_hir_module(&hir);
+        let function = &mir.functions[0];
+        assert_eq!(function.blocks.len(), 1);
+        assert_eq!(function.blocks[0].instructions.len(), 2);
+        assert!(matches!(
+            function.blocks[0].instructions[1],
+            MirInst::EffectOp {
+                class: MirEffectOpClass::Direct,
+                ref effect,
+                ref operation,
+                args: ref lowered_args,
+                result: Some(_),
+                ..
+            } if effect == "Net" && operation == "connect" && lowered_args.len() == 1
+        ));
+    }
+
+    #[test]
+    fn lower_hir_module_lowers_net_send_and_recv_calls_to_direct_effect_ops() {
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "exchange".to_string(),
+                params: vec![],
+                body: HirExpr {
+                    kind: HirExprKind::Block(vec![
+                        HirExpr {
+                            kind: HirExprKind::Call {
+                                func: Box::new(HirExpr {
+                                    kind: HirExprKind::Var("Net.send".to_string()),
+                                    ty: Type::Function(FunctionType::with_effects(
+                                        vec![Type::Int, Type::String],
+                                        Type::Unit,
+                                        EffectRow::closed(vec![(Label::new("Net"), Type::Unit)]),
+                                    )),
+                                    span: kea_ast::Span::synthetic(),
+                                }),
+                                args: vec![
+                                    HirExpr {
+                                        kind: HirExprKind::Lit(Lit::Int(1)),
+                                        ty: Type::Int,
+                                        span: kea_ast::Span::synthetic(),
+                                    },
+                                    HirExpr {
+                                        kind: HirExprKind::Lit(Lit::String("ping".to_string())),
+                                        ty: Type::String,
+                                        span: kea_ast::Span::synthetic(),
+                                    },
+                                ],
+                            },
+                            ty: Type::Unit,
+                            span: kea_ast::Span::synthetic(),
+                        },
+                        HirExpr {
+                            kind: HirExprKind::Call {
+                                func: Box::new(HirExpr {
+                                    kind: HirExprKind::Var("Net.recv".to_string()),
+                                    ty: Type::Function(FunctionType::with_effects(
+                                        vec![Type::Int, Type::Int],
+                                        Type::Int,
+                                        EffectRow::closed(vec![(Label::new("Net"), Type::Unit)]),
+                                    )),
+                                    span: kea_ast::Span::synthetic(),
+                                }),
+                                args: vec![
+                                    HirExpr {
+                                        kind: HirExprKind::Lit(Lit::Int(1)),
+                                        ty: Type::Int,
+                                        span: kea_ast::Span::synthetic(),
+                                    },
+                                    HirExpr {
+                                        kind: HirExprKind::Lit(Lit::Int(4)),
+                                        ty: Type::Int,
+                                        span: kea_ast::Span::synthetic(),
+                                    },
+                                ],
+                            },
+                            ty: Type::Int,
+                            span: kea_ast::Span::synthetic(),
+                        },
+                    ]),
+                    ty: Type::Int,
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::with_effects(
+                    vec![],
+                    Type::Int,
+                    EffectRow::closed(vec![(Label::new("Net"), Type::Unit)]),
+                )),
+                effects: EffectRow::closed(vec![(Label::new("Net"), Type::Unit)]),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let mir = lower_hir_module(&hir);
+        let function = &mir.functions[0];
+        assert_eq!(function.blocks.len(), 1);
+        assert_eq!(function.blocks[0].instructions.len(), 6);
+        assert!(matches!(
+            function.blocks[0].instructions[2],
+            MirInst::EffectOp {
+                class: MirEffectOpClass::Direct,
+                ref effect,
+                ref operation,
+                args: ref lowered_args,
+                result: None,
+                ..
+            } if effect == "Net" && operation == "send" && lowered_args.len() == 2
+        ));
+        assert!(matches!(
+            function.blocks[0].instructions[5],
+            MirInst::EffectOp {
+                class: MirEffectOpClass::Direct,
+                ref effect,
+                ref operation,
+                args: ref lowered_args,
+                result: Some(_),
+                ..
+            } if effect == "Net" && operation == "recv" && lowered_args.len() == 2
         ));
     }
 
