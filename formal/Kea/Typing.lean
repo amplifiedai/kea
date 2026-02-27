@@ -5764,6 +5764,82 @@ theorem principalBoundaryNoUnifyAllHooksSuite_capstone_field_as_general
     (principalBoundaryNoUnifyAllHooksSuite_capstone_field h_suite h_no h_ok)
 
 /--
+Construct the general all-hooks expression capstone directly from a successful
+no-unify expression run.
+-/
+theorem principalPreconditionedExprAllHooksCapstone_of_success_noUnify
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty :=
+  principalPreconditionedExprAllHooksCapstone_of_noUnifyAllHooks
+    (principalBoundaryNoUnifyExprAllHooksCapstone_of_success h_no h_ok)
+
+/--
+Construct the general all-hooks field capstone directly from a successful
+no-unify field run.
+-/
+theorem principalPreconditionedFieldAllHooksCapstone_of_success_noUnify
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
+  principalPreconditionedFieldAllHooksCapstone_of_noUnifyAllHooks
+    (principalBoundaryNoUnifyFieldAllHooksCapstone_of_success h_no h_ok)
+
+/--
+No-unify-to-general convenience wrapper: derive core expression principality
+from a successful no-unify run using the general all-hooks capstone surface.
+-/
+theorem principalCoreExpr_of_success_noUnify_via_generalAllHooks
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalTypingSliceCore env e ty :=
+  (principalPreconditionedExprAllHooksCapstone_of_success_noUnify h_no h_ok).core
+
+/--
+No-unify-to-general convenience wrapper: derive preconditioned expression
+principality for any hook witnesses from a successful no-unify run.
+-/
+theorem principalPreconditionedExpr_anyHooks_of_success_noUnify_via_generalAllHooks
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    ∀ h_app h_proj,
+      PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty :=
+  (principalPreconditionedExprAllHooksCapstone_of_success_noUnify h_no h_ok).preconditionedAny
+
+/--
+No-unify-to-general convenience wrapper: derive core field principality from a
+successful no-unify field run using the general all-hooks capstone surface.
+-/
+theorem principalCoreField_of_success_noUnify_via_generalAllHooks
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalFieldTypingSliceCore env fs rf :=
+  (principalPreconditionedFieldAllHooksCapstone_of_success_noUnify h_no h_ok).core
+
+/--
+No-unify-to-general convenience wrapper: derive preconditioned field
+principality for any hook witnesses from a successful no-unify field run.
+-/
+theorem principalPreconditionedField_anyHooks_of_success_noUnify_via_generalAllHooks
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    ∀ h_app h_proj,
+      PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf :=
+  (principalPreconditionedFieldAllHooksCapstone_of_success_noUnify h_no h_ok).preconditionedAny
+
+/--
 Convert an all-hooks expression capstone into a hook-specific no-unify
 expression capstone by selecting concrete hook witnesses.
 -/
