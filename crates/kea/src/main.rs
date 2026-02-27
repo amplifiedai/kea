@@ -1794,6 +1794,48 @@ mod tests {
     }
 
     #[test]
+    fn compile_and_execute_popcount_method_exit_code() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  0b101011.popcount()\n",
+            "kea-cli-popcount",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("popcount run should succeed");
+        assert_eq!(run.exit_code, 4);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_leading_zeros_method_exit_code() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  0b1000.leading_zeros()\n",
+            "kea-cli-leading-zeros",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("leading_zeros run should succeed");
+        assert_eq!(run.exit_code, 60);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_trailing_zeros_method_exit_code() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  0b1000.trailing_zeros()\n",
+            "kea-cli-trailing-zeros",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("trailing_zeros run should succeed");
+        assert_eq!(run.exit_code, 3);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_shift_left_method_exit_code() {
         let source_path = write_temp_source(
             "fn main() -> Int\n  1.shift_left(3)\n",

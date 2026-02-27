@@ -283,6 +283,9 @@ pub enum MirUnaryOp {
     Neg,
     Not,
     BitNot,
+    Popcount,
+    LeadingZeros,
+    TrailingZeros,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2133,6 +2136,11 @@ impl FunctionLoweringCtx {
                 "wrapping_sub" if args.len() == 2 => Some((Some(MirBinaryOp::WrappingSub), None)),
                 "wrapping_mul" if args.len() == 2 => Some((Some(MirBinaryOp::WrappingMul), None)),
                 "bit_not" if args.len() == 1 => Some((None, Some(MirUnaryOp::BitNot))),
+                "popcount" if args.len() == 1 => Some((None, Some(MirUnaryOp::Popcount))),
+                "leading_zeros" if args.len() == 1 => Some((None, Some(MirUnaryOp::LeadingZeros))),
+                "trailing_zeros" if args.len() == 1 => {
+                    Some((None, Some(MirUnaryOp::TrailingZeros)))
+                }
                 _ => None,
             };
 
@@ -3327,6 +3335,46 @@ mod tests {
             function.blocks[0].instructions[1],
             MirInst::Unary {
                 op: MirUnaryOp::BitNot,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn lower_hir_module_lowers_popcount_method_call_to_mir_unary_op() {
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "ones".to_string(),
+                params: vec![],
+                body: HirExpr {
+                    kind: HirExprKind::Call {
+                        func: Box::new(HirExpr {
+                            kind: HirExprKind::Var("popcount".to_string()),
+                            ty: Type::Function(FunctionType::pure(vec![Type::Int], Type::Int)),
+                            span: kea_ast::Span::synthetic(),
+                        }),
+                        args: vec![HirExpr {
+                            kind: HirExprKind::Lit(kea_ast::Lit::Int(11)),
+                            ty: Type::Int,
+                            span: kea_ast::Span::synthetic(),
+                        }],
+                    },
+                    ty: Type::Int,
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
+                effects: EffectRow::pure(),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let mir = lower_hir_module(&hir);
+        let function = &mir.functions[0];
+        assert_eq!(function.blocks[0].instructions.len(), 2);
+        assert!(matches!(
+            function.blocks[0].instructions[1],
+            MirInst::Unary {
+                op: MirUnaryOp::Popcount,
                 ..
             }
         ));

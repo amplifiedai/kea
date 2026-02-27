@@ -2772,6 +2772,9 @@ fn lower_unary(
             b1_to_i8(builder, pred)
         }
         MirUnaryOp::BitNot if value_ty.is_int() => builder.ins().bnot(value),
+        MirUnaryOp::Popcount if value_ty.is_int() => builder.ins().popcnt(value),
+        MirUnaryOp::LeadingZeros if value_ty.is_int() => builder.ins().clz(value),
+        MirUnaryOp::TrailingZeros if value_ty.is_int() => builder.ins().ctz(value),
         _ => {
             return Err(CodegenError::UnsupportedMir {
                 function: function_name.to_string(),
