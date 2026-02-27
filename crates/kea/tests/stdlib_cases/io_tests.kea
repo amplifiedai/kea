@@ -1,7 +1,13 @@
 use IO
 use Test
 
-test "IO.stdout_stderr_smoke"
+fn sample() -[IO]> Unit
   IO.stdout("stdout smoke")
   IO.stderr("stderr smoke")
+  ()
+
+test "IO.stdout_stderr_smoke"
+  handle sample()
+    IO.stdout(msg) -> resume ()
+    IO.stderr(msg) -> resume ()
   Test.assert(true)

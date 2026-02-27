@@ -320,6 +320,7 @@ mod tests {
     fn run_stdlib_case_corpus_with_kea_test_runner() {
         let cases_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/stdlib_cases");
         let supported = [
+            "clock_tests.kea",
             "eq_tests.kea",
             "float_tests.kea",
             "int_tests.kea",
@@ -327,6 +328,7 @@ mod tests {
             "ord_tests.kea",
             "order_tests.kea",
             "prelude_tests.kea",
+            "rand_tests.kea",
             "result_tests.kea",
             "show_tests.kea",
             "text_tests.kea",
