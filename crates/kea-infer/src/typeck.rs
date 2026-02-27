@@ -260,6 +260,12 @@ pub fn bind_args(
 /// Maps variable names to their type schemes.
 ///
 /// Uses a stack of scopes for lexical scoping: inner scopes shadow outer ones.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModuleStructInfo {
+    pub name: String,
+    pub merged_with_named_type: bool,
+}
+
 #[derive(Debug, Clone)]
 pub struct TypeEnv {
     bindings: Vec<BTreeMap<String, TypeScheme>>,
@@ -273,6 +279,10 @@ pub struct TypeEnv {
     module_type_schemes: BTreeMap<String, BTreeMap<String, (TypeScheme, Effects)>>,
     /// Module-scoped visibility metadata: full module path → (item name → public?).
     module_item_visibility: BTreeMap<String, BTreeMap<String, bool>>,
+    /// Module path → implicit module struct metadata.
+    module_structs: BTreeMap<String, ModuleStructInfo>,
+    /// Type name → inherent method names.
+    inherent_methods_by_type: BTreeMap<String, BTreeSet<String>>,
     /// Short module name → full module path (e.g. "Math" → "Kea.Math").
     /// Populated during import resolution and session init.
     module_aliases: BTreeMap<String, String>,
@@ -354,6 +364,8 @@ impl TypeEnv {
             module_functions: BTreeMap::new(),
             module_type_schemes: BTreeMap::new(),
             module_item_visibility: BTreeMap::new(),
+            module_structs: BTreeMap::new(),
+            inherent_methods_by_type: BTreeMap::new(),
             module_aliases: BTreeMap::new(),
             in_scope_traits: BTreeSet::new(),
             stream_contexts: Vec::new(),
@@ -497,6 +509,44 @@ impl TypeEnv {
             .get(module_path)
             .and_then(|items| items.get(name))
             .copied()
+    }
+
+    /// Register implicit module struct metadata.
+    pub fn register_module_struct(
+        &mut self,
+        module_path: &str,
+        struct_name: &str,
+        merged_with_named_type: bool,
+    ) {
+        self.module_structs.insert(
+            module_path.to_string(),
+            ModuleStructInfo {
+                name: struct_name.to_string(),
+                merged_with_named_type,
+            },
+        );
+        self.ensure_module_alias_for_path(module_path);
+    }
+
+    /// Look up implicit module struct metadata by module path.
+    pub fn module_struct_info(&self, module_path: &str) -> Option<&ModuleStructInfo> {
+        self.module_structs.get(module_path)
+    }
+
+    /// Register an inherent method owner relationship.
+    pub fn register_inherent_method(&mut self, type_name: &str, method_name: &str) {
+        self.inherent_methods_by_type
+            .entry(type_name.to_string())
+            .or_default()
+            .insert(method_name.to_string());
+    }
+
+    /// Return inherent methods known for a nominal type.
+    pub fn inherent_methods_for_type(&self, type_name: &str) -> Vec<String> {
+        self.inherent_methods_by_type
+            .get(type_name)
+            .map(|methods| methods.iter().cloned().collect())
+            .unwrap_or_default()
     }
 
     pub fn snapshot_module_aliases(&self) -> BTreeMap<String, String> {
