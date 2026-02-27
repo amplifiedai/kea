@@ -135,7 +135,7 @@ These conventions apply to all `.kea` source: stdlib, examples, tests.
 
 - **Indentation-sensitive syntax.** No braces, no semicolons. Blocks are delimited by indentation (Python/Haskell style).
 - **Dot syntax for method calls.** `xs.map(f)` is sugar for `List.map(xs, f)`. Use Universal Method Syntax (UMS) — any function whose first parameter matches the receiver type can be called with dot syntax.
-- **Qualified dispatch with `::`.** `xs.Trait::method()` when disambiguation is needed.
+- **Qualified dispatch with dot.** `xs.Trait.method()` when disambiguation is needed. PascalCase after dot = namespace step (lexical rule). No `::` turbofish — dot is dot.
 - **`$` for receiver placement.** `xs.map($.field)` places the receiver at the `$` position.
 - **No pipe operator.** Dot syntax + `$` replaces pipes. Chain with dots.
 - **`case` for pattern matching.** Prefer `case` over nested `if/else` for multi-branch logic.
