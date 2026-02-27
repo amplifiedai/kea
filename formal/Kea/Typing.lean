@@ -7603,6 +7603,50 @@ theorem principalNoUnifyPreconditionedExpr_of_success_via_masterSuite
     h_suite.noUnifyToGeneralAllHooks h_no h_ok h_hooks
 
 /--
+Master-suite no-unify-to-general convenience wrapper: derive core expression
+principality from a successful no-unify run.
+-/
+theorem principalCoreExpr_of_success_noUnify_via_masterSuite
+    (h_suite : PrincipalBoundaryMasterSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalTypingSliceCore env e ty :=
+  principalNoUnifyCoreExpr_of_success_via_masterSuite h_suite h_no h_ok
+
+/--
+Master-suite no-unify-to-general convenience wrapper: derive preconditioned
+expression principality for any hook witnesses from a successful no-unify run.
+-/
+theorem principalPreconditionedExpr_anyHooks_of_success_noUnify_via_masterSuite
+    (h_suite : PrincipalBoundaryMasterSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    ∀ h_app h_proj,
+      PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty :=
+  principalNoUnifyPreconditionedExpr_anyHooks_of_success_via_masterSuite
+    h_suite h_no h_ok
+
+/--
+Master-suite no-unify-to-general convenience wrapper: derive preconditioned
+expression principality for a bundled hook witness from a successful no-unify
+run.
+-/
+theorem principalPreconditionedExpr_of_success_noUnify_via_masterSuite
+    (h_suite : PrincipalBoundaryMasterSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_hooks : UnifyHookPremises) :
+    PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty :=
+  principalNoUnifyPreconditionedExpr_of_success_via_masterSuite
+    h_suite h_no h_ok h_hooks
+
+/--
 Master-suite no-unify convenience wrapper: derive fixed-run expression
 preconditioned↔core equivalence for any hook witnesses.
 -/
@@ -7711,6 +7755,49 @@ theorem principalNoUnifyPreconditionedField_of_success_via_masterSuite
     h_suite.noUnifyToGeneralAllHooks h_no h_ok h_hooks
 
 /--
+Master-suite no-unify-to-general convenience wrapper: derive core field
+principality from a successful no-unify field run.
+-/
+theorem principalCoreField_of_success_noUnify_via_masterSuite
+    (h_suite : PrincipalBoundaryMasterSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalFieldTypingSliceCore env fs rf :=
+  principalNoUnifyCoreField_of_success_via_masterSuite h_suite h_no h_ok
+
+/--
+Master-suite no-unify-to-general convenience wrapper: derive preconditioned
+field principality for any hook witnesses from a successful no-unify run.
+-/
+theorem principalPreconditionedField_anyHooks_of_success_noUnify_via_masterSuite
+    (h_suite : PrincipalBoundaryMasterSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    ∀ h_app h_proj,
+      PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf :=
+  principalNoUnifyPreconditionedField_anyHooks_of_success_via_masterSuite
+    h_suite h_no h_ok
+
+/--
+Master-suite no-unify-to-general convenience wrapper: derive preconditioned
+field principality for a bundled hook witness from a successful no-unify run.
+-/
+theorem principalPreconditionedField_of_success_noUnify_via_masterSuite
+    (h_suite : PrincipalBoundaryMasterSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_hooks : UnifyHookPremises) :
+    PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf :=
+  principalNoUnifyPreconditionedField_of_success_via_masterSuite
+    h_suite h_no h_ok h_hooks
+
+/--
 Master-suite no-unify convenience wrapper: derive fixed-run field
 preconditioned↔core equivalence for any hook witnesses.
 -/
@@ -7809,6 +7896,40 @@ theorem principalNoUnifyPreconditionedField_hookIrrelevant_of_success_via_master
     h_suite.noUnifyToGeneralAllHooks h_no h_ok
 
 /--
+Master-suite no-unify-to-general convenience wrapper: derive fixed-run
+expression hook-irrelevance from a successful no-unify run.
+-/
+theorem principalPreconditionedExpr_hookIrrelevant_of_success_noUnify_via_masterSuite
+    (h_suite : PrincipalBoundaryMasterSuite)
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+      ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) :=
+  principalNoUnifyPreconditionedExpr_hookIrrelevant_of_success_via_masterSuite
+    h_suite h_no h_ok
+
+/--
+Master-suite no-unify-to-general convenience wrapper: derive fixed-run field
+hook-irrelevance from a successful no-unify field run.
+-/
+theorem principalPreconditionedField_hookIrrelevant_of_success_noUnify_via_masterSuite
+    (h_suite : PrincipalBoundaryMasterSuite)
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
+  principalNoUnifyPreconditionedField_hookIrrelevant_of_success_via_masterSuite
+    h_suite h_no h_ok
+
+/--
 All-hooks-suite convenience wrapper: derive core expression principality from a
 successful no-unify expression run.
 -/
@@ -7848,6 +7969,46 @@ theorem principalNoUnifyPreconditionedExpr_of_success_via_allHooksSuite
     PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty :=
   principalNoUnifyToGeneralPreconditionedExpr_of_success
     principalNoUnifyToGeneralAllHooksSuite_proved_via_noUnifyAllHooks h_no h_ok h_hooks
+
+/--
+All-hooks-suite no-unify-to-general convenience wrapper: derive core
+expression principality from a successful no-unify run.
+-/
+theorem principalCoreExpr_of_success_noUnify_via_allHooksSuite
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalTypingSliceCore env e ty :=
+  principalNoUnifyCoreExpr_of_success_via_allHooksSuite h_no h_ok
+
+/--
+All-hooks-suite no-unify-to-general convenience wrapper: derive preconditioned
+expression principality for any hook witnesses from a successful no-unify run.
+-/
+theorem principalPreconditionedExpr_anyHooks_of_success_noUnify_via_allHooksSuite
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    ∀ h_app h_proj,
+      PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty :=
+  principalNoUnifyPreconditionedExpr_anyHooks_of_success_via_allHooksSuite
+    h_no h_ok
+
+/--
+All-hooks-suite no-unify-to-general convenience wrapper: derive preconditioned
+expression principality for a bundled hook witness from a successful no-unify
+run.
+-/
+theorem principalPreconditionedExpr_of_success_noUnify_via_allHooksSuite
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_hooks : UnifyHookPremises) :
+    PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty :=
+  principalNoUnifyPreconditionedExpr_of_success_via_allHooksSuite h_no h_ok h_hooks
 
 /--
 All-hooks-suite convenience wrapper: derive fixed-run expression
@@ -7951,6 +8112,45 @@ theorem principalNoUnifyPreconditionedField_of_success_via_allHooksSuite
     principalNoUnifyToGeneralAllHooksSuite_proved_via_noUnifyAllHooks h_no h_ok h_hooks
 
 /--
+All-hooks-suite no-unify-to-general convenience wrapper: derive core field
+principality from a successful no-unify field run.
+-/
+theorem principalCoreField_of_success_noUnify_via_allHooksSuite
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalFieldTypingSliceCore env fs rf :=
+  principalNoUnifyCoreField_of_success_via_allHooksSuite h_no h_ok
+
+/--
+All-hooks-suite no-unify-to-general convenience wrapper: derive preconditioned
+field principality for any hook witnesses from a successful no-unify run.
+-/
+theorem principalPreconditionedField_anyHooks_of_success_noUnify_via_allHooksSuite
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    ∀ h_app h_proj,
+      PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf :=
+  principalNoUnifyPreconditionedField_anyHooks_of_success_via_allHooksSuite
+    h_no h_ok
+
+/--
+All-hooks-suite no-unify-to-general convenience wrapper: derive preconditioned
+field principality for a bundled hook witness from a successful no-unify run.
+-/
+theorem principalPreconditionedField_of_success_noUnify_via_allHooksSuite
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_hooks : UnifyHookPremises) :
+    PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf :=
+  principalNoUnifyPreconditionedField_of_success_via_allHooksSuite h_no h_ok h_hooks
+
+/--
 All-hooks-suite convenience wrapper: derive fixed-run field preconditioned↔core
 equivalence for any hook witnesses.
 -/
@@ -8041,6 +8241,38 @@ theorem principalNoUnifyPreconditionedField_hookIrrelevant_of_success_via_allHoo
       ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
   principalNoUnifyToGeneralPreconditionedField_hookIrrelevant_of_success
     principalNoUnifyToGeneralAllHooksSuite_proved_via_noUnifyAllHooks h_no h_ok
+
+/--
+All-hooks-suite no-unify-to-general convenience wrapper: derive fixed-run
+expression hook-irrelevance from a successful no-unify run.
+-/
+theorem principalPreconditionedExpr_hookIrrelevant_of_success_noUnify_via_allHooksSuite
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+      ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) :=
+  principalNoUnifyPreconditionedExpr_hookIrrelevant_of_success_via_allHooksSuite
+    h_no h_ok
+
+/--
+All-hooks-suite no-unify-to-general convenience wrapper: derive fixed-run field
+hook-irrelevance from a successful no-unify field run.
+-/
+theorem principalPreconditionedField_hookIrrelevant_of_success_noUnify_via_allHooksSuite
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
+  principalNoUnifyPreconditionedField_hookIrrelevant_of_success_via_allHooksSuite
+    h_no h_ok
 
 /--
 `HasTypeU` lift of non-app/proj recursive soundness: on the fragment that never
