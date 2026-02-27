@@ -3,7 +3,28 @@ use Test
 
 test "Option.unwrap_or"
   Test.assert(Option.unwrap_or(None, 0) == 0)
+  Test.assert(Option.unwrap_or(Some(7), 0) == 7)
+
+test "Option.map.and_then.filter"
+  let mapped = Option.map(Some(2), |x| -> x + 1)
+  Test.assert(Option.unwrap_or(mapped, 0) == 3)
+  let chained = Option.and_then(Some(2), |x| -> Some(x + 3))
+  Test.assert(Option.unwrap_or(chained, 0) == 5)
+  let filtered = Option.filter(Some(2), |x| -> x > 1)
+  Test.assert(Option.is_some(filtered))
+  let filtered_out = Option.filter(Some(0), |x| -> x > 1)
+  Test.assert(Option.is_none(filtered_out))
 
 test "Option.predicates"
   Test.assert(Option.is_some(Some(1)))
   Test.assert(Option.is_none(None))
+
+test "Option.unwrap.catch"
+  let ok = catch Option.unwrap(Some(7))
+  case ok
+    Ok(value) -> Test.assert(value == 7)
+    Err(_) -> Test.assert(false)
+  let err = catch Option.unwrap(None)
+  case err
+    Ok(_) -> Test.assert(false)
+    Err(_) -> Test.assert(true)
