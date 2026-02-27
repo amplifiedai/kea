@@ -1256,32 +1256,34 @@ fn lower_literal_case(
     let mut literal_arms: Vec<LiteralArm<'_>> = Vec::new();
     let mut fallback_arms: Vec<LiteralFallbackArm<'_>> = Vec::new();
     for arm in arms {
-        match &arm.pattern.node {
-            PatternKind::Wildcard => fallback_arms.push(LiteralFallbackArm::Wild {
-                body: &arm.body,
-                guard: arm.guard.as_deref(),
-            }),
-            PatternKind::Var(name) => fallback_arms.push(LiteralFallbackArm::Var {
-                name: name.clone(),
-                body: &arm.body,
-                guard: arm.guard.as_deref(),
-            }),
-            pattern => {
-                let (values, bind_name, payload_binds, payload_checks) =
-                    literal_case_values_from_pattern(
-                    pattern,
-                    pattern_variant_tags,
-                    pattern_qualified_tags,
-                )?;
-                for value in values {
-                    literal_arms.push((
-                        value,
-                        &arm.body,
-                        bind_name.clone(),
-                        payload_binds.clone(),
-                        payload_checks.clone(),
-                        arm.guard.as_deref(),
-                    ));
+        for pattern in expand_pattern_or_branches(&arm.pattern.node) {
+            match pattern {
+                PatternKind::Wildcard => fallback_arms.push(LiteralFallbackArm::Wild {
+                    body: &arm.body,
+                    guard: arm.guard.as_deref(),
+                }),
+                PatternKind::Var(name) => fallback_arms.push(LiteralFallbackArm::Var {
+                    name,
+                    body: &arm.body,
+                    guard: arm.guard.as_deref(),
+                }),
+                pattern => {
+                    let (values, bind_name, payload_binds, payload_checks) =
+                        literal_case_values_from_pattern(
+                            &pattern,
+                            pattern_variant_tags,
+                            pattern_qualified_tags,
+                        )?;
+                    for value in values {
+                        literal_arms.push((
+                            value,
+                            &arm.body,
+                            bind_name.clone(),
+                            payload_binds.clone(),
+                            payload_checks.clone(),
+                            arm.guard.as_deref(),
+                        ));
+                    }
                 }
             }
         }
@@ -2003,55 +2005,11 @@ fn literal_case_values_from_pattern(
                 payload_checks,
             ))
         }
-        PatternKind::Or(patterns) => {
-            let mut values = Vec::new();
-            let mut shared_bind_name: Option<String> = None;
-            let mut shared_payload_binds: Option<Vec<ConstructorPayloadBind>> = None;
-            let mut shared_payload_checks: Option<Vec<ConstructorPayloadCheck>> = None;
-            for branch in patterns {
-                let (
-                    branch_values,
-                    branch_bind_name,
-                    branch_payload_binds,
-                    branch_payload_checks,
-                ) =
-                    literal_case_values_from_pattern(
-                    &branch.node,
-                    pattern_variant_tags,
-                    pattern_qualified_tags,
-                )?;
-                match &shared_payload_binds {
-                    None => shared_payload_binds = Some(branch_payload_binds.clone()),
-                    Some(existing)
-                        if payload_binds_or_compatible(existing, &branch_payload_binds) => {}
-                    // OR payload patterns are only supported when all branches
-                    // agree on the same payload bind sites.
-                    _ => return None,
-                }
-                match &shared_payload_checks {
-                    None => shared_payload_checks = Some(branch_payload_checks.clone()),
-                    Some(existing)
-                        if payload_checks_or_compatible(existing, &branch_payload_checks) => {}
-                    // OR literal payload checks are only supported when all
-                    // branches agree on payload check sites/values.
-                    _ => return None,
-                }
-                match (&shared_bind_name, branch_bind_name) {
-                    (None, None) => {}
-                    (None, Some(name)) => shared_bind_name = Some(name),
-                    (Some(existing), Some(name)) if existing == &name => {}
-                    // Mixed bind/no-bind or mismatched bind names are ambiguous.
-                    _ => return None,
-                }
-                values.extend(branch_values);
-            }
-            Some((
-                values,
-                shared_bind_name,
-                shared_payload_binds.unwrap_or_default(),
-                shared_payload_checks.unwrap_or_default(),
-            ))
-        }
+        PatternKind::Or(patterns) => merge_or_literal_pattern_infos(
+            patterns.iter().map(|pattern| pattern.node.clone()).collect(),
+            pattern_variant_tags,
+            pattern_qualified_tags,
+        ),
         PatternKind::As { pattern, name } => {
             let (values, inner_bind_name, inner_payload_binds, inner_payload_checks) =
                 literal_case_values_from_pattern(
@@ -2078,6 +2036,105 @@ fn literal_case_values_from_pattern(
         }
         _ => None,
     }
+}
+
+fn expand_pattern_or_branches(pattern: &PatternKind) -> Vec<PatternKind> {
+    match pattern {
+        PatternKind::Or(patterns) => patterns
+            .iter()
+            .flat_map(|pattern| expand_pattern_or_branches(&pattern.node))
+            .collect(),
+        PatternKind::Constructor {
+            name,
+            qualifier,
+            args,
+            rest,
+        } => {
+            let mut combinations: Vec<Vec<kea_ast::ConstructorFieldPattern>> = vec![Vec::new()];
+            for arg in args {
+                let expanded_arg_patterns = expand_pattern_or_branches(&arg.pattern.node);
+                let mut next_combinations =
+                    Vec::with_capacity(combinations.len() * expanded_arg_patterns.len().max(1));
+                for combination in &combinations {
+                    for expanded_pattern in &expanded_arg_patterns {
+                        let mut next = combination.clone();
+                        next.push(kea_ast::ConstructorFieldPattern {
+                            name: arg.name.clone(),
+                            pattern: kea_ast::Spanned {
+                                node: expanded_pattern.clone(),
+                                span: arg.pattern.span,
+                            },
+                        });
+                        next_combinations.push(next);
+                    }
+                }
+                combinations = next_combinations;
+            }
+            combinations
+                .into_iter()
+                .map(|expanded_args| PatternKind::Constructor {
+                    name: name.clone(),
+                    qualifier: qualifier.clone(),
+                    args: expanded_args,
+                    rest: *rest,
+                })
+                .collect()
+        }
+        PatternKind::As { pattern, name } => expand_pattern_or_branches(&pattern.node)
+            .into_iter()
+            .map(|expanded_pattern| PatternKind::As {
+                pattern: Box::new(kea_ast::Spanned {
+                    node: expanded_pattern,
+                    span: pattern.span,
+                }),
+                name: name.clone(),
+            })
+            .collect(),
+        _ => vec![pattern.clone()],
+    }
+}
+
+fn merge_or_literal_pattern_infos(
+    branches: Vec<PatternKind>,
+    pattern_variant_tags: &PatternVariantTags,
+    pattern_qualified_tags: &QualifiedPatternVariantTags,
+) -> Option<LiteralCasePatternInfo> {
+    let mut values = Vec::new();
+    let mut shared_bind_name: Option<String> = None;
+    let mut shared_payload_binds: Option<Vec<ConstructorPayloadBind>> = None;
+    let mut shared_payload_checks: Option<Vec<ConstructorPayloadCheck>> = None;
+    for branch in branches {
+        let (branch_values, branch_bind_name, branch_payload_binds, branch_payload_checks) =
+            literal_case_values_from_pattern(&branch, pattern_variant_tags, pattern_qualified_tags)?;
+        match &shared_payload_binds {
+            None => shared_payload_binds = Some(branch_payload_binds.clone()),
+            Some(existing) if payload_binds_or_compatible(existing, &branch_payload_binds) => {}
+            // OR payload patterns are only supported when all branches
+            // agree on the same payload bind sites.
+            _ => return None,
+        }
+        match &shared_payload_checks {
+            None => shared_payload_checks = Some(branch_payload_checks.clone()),
+            Some(existing) if payload_checks_or_compatible(existing, &branch_payload_checks) => {}
+            // OR literal payload checks are only supported when all
+            // branches agree on payload check sites/values.
+            _ => return None,
+        }
+        match (&shared_bind_name, branch_bind_name) {
+            (None, None) => {}
+            (None, Some(name)) => shared_bind_name = Some(name),
+            (Some(existing), Some(name)) if existing == &name => {}
+            // Mixed bind/no-bind or mismatched bind names are ambiguous.
+            _ => return None,
+        }
+        values.extend(branch_values);
+    }
+    Some((
+        values,
+        shared_bind_name,
+        shared_payload_binds.unwrap_or_default(),
+        shared_payload_checks.unwrap_or_default(),
+    ))
 }
 
 fn collect_constructor_payload_pattern(
@@ -3740,6 +3797,50 @@ mod tests {
         assert!(
             matches!(expr.kind, HirExprKind::SumPayloadAccess { .. }),
             "expected nested payload binding to chain SumPayloadAccess operations"
+        );
+    }
+
+    #[test]
+    fn lower_function_payload_constructor_nested_or_case_stays_lowered() {
+        let module = parse_module_from_text(
+            "type Inner = A(Int) | B(Int)\ntype Outer = Wrap(Inner) | End\nfn pick(x: Outer) -> Int\n  case x\n    Wrap(A(n) | B(n)) -> n + 1\n    _ -> 0",
+        );
+        let mut env = TypeEnv::new();
+        env.bind(
+            "pick".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::pure(
+                vec![Type::Sum(kea_types::SumType {
+                    name: "Outer".to_string(),
+                    type_args: vec![],
+                    variants: vec![
+                        ("Wrap".to_string(), vec![Type::Sum(kea_types::SumType {
+                            name: "Inner".to_string(),
+                            type_args: vec![],
+                            variants: vec![
+                                ("A".to_string(), vec![Type::Int]),
+                                ("B".to_string(), vec![Type::Int]),
+                            ],
+                        })]),
+                        ("End".to_string(), vec![]),
+                    ],
+                })],
+                Type::Int,
+            ))),
+        );
+
+        let lowered = lower_module(&module, &env);
+        let function = lowered
+            .declarations
+            .iter()
+            .find_map(|decl| match decl {
+                HirDecl::Function(function) if function.name == "pick" => Some(function),
+                _ => None,
+            })
+            .expect("expected lowered pick function");
+
+        assert!(
+            !matches!(function.body.kind, HirExprKind::Raw(_)),
+            "expected nested OR constructor case to stay on lowered path"
         );
     }
 

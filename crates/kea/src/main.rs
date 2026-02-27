@@ -1492,6 +1492,20 @@ mod tests {
     }
 
     #[test]
+    fn compile_and_execute_nested_or_payload_constructor_case_exit_code() {
+        let source_path = write_temp_source(
+            "type Inner = A(Int) | B(Int)\ntype Outer = Wrap(Inner) | End\n\nfn main() -> Int\n  case Wrap(B(7))\n    Wrap(A(n) | B(n)) -> n + 12\n    _ -> 0\n",
+            "kea-cli-sum-case-nested-or-payload",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 19);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_payload_constructor_as_guard_case_exit_code() {
         let source_path = write_temp_source(
             "type Flag = Yep(Int) | Nope\n\nfn main() -> Int\n  case Yep(7)\n    Yep(n) as whole when n == 7 -> n + 5\n    Yep(_) -> 1\n    Nope -> 0\n",
