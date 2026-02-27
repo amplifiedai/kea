@@ -294,7 +294,7 @@ mod tests {
             &app_path,
             "fn identity(o: Ordering) -> Ordering\n  o\n\nfn main() -> Int\n  0\n",
         )
-            .expect("app module write should succeed");
+        .expect("app module write should succeed");
 
         let _compiled = kea::compile_project(&app_path).expect("project compile should succeed");
 
@@ -416,8 +416,11 @@ mod tests {
         )
         .expect("list module write should succeed");
         let app_path = src_dir.join("app.kea");
-        std::fs::write(&app_path, "use List\nfn main() -> Int\n  let xs = Item(1)\n  xs.size()\n")
-            .expect("app module write should succeed");
+        std::fs::write(
+            &app_path,
+            "use List\nfn main() -> Int\n  let xs = Item(1)\n  xs.size()\n",
+        )
+        .expect("app module write should succeed");
 
         let run = run_file(&app_path).expect("run should succeed");
         assert_eq!(run.exit_code, 9);
