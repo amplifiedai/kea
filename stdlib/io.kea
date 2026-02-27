@@ -1,3 +1,5 @@
 effect IO
   fn stdout(msg: String) -> Unit
   fn stderr(msg: String) -> Unit
+  fn write_file(path: String, data: String) -> Unit
+  fn read_file(path: String) -> String
