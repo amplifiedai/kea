@@ -78,7 +78,7 @@ Every evaluated expression shows its value, type, and effect set:
 kea> 1 + 2
 3 : Int
 
-kea> "hello".String::len()
+kea> "hello".String.len()
 5 : Int
 
 kea> #{ name: "alice", age: 30 }
@@ -144,7 +144,7 @@ kea> struct Point
 ....   y: Float
 ....
 ....   fn distance(_ self, _ other: Point) -> Float
-....     ((self.x - other.x) ** 2.0 + (self.y - other.y) ** 2.0).Float::sqrt()
+....     ((self.x - other.x) ** 2.0 + (self.y - other.y) ** 2.0).Float.sqrt()
 Point { x: Float, y: Float }
   distance : (Point, Point) -> Float
 
@@ -258,7 +258,7 @@ kea> fn process_file(_ path: String) -[IO, Fail AppError]> Report
 ....   Report.generate(parsed)
 
 kea> -- Test it with mocks at the REPL
-kea> let mock_data = "col1,col2\n1,2\n3,4".Bytes::from_string()
+kea> let mock_data = "col1,col2\n1,2\n3,4".Bytes.from_string()
 
 kea> let result = catch
 ....   handle process_file("test.csv")
@@ -662,7 +662,7 @@ The canonical testing pattern: handle all effects, assert on pure results.
 ```
 kea> fn test_load_config()
 ....   let mock_fs = Map.from_list([
-....     ("config.toml", "port = 8080".Bytes::from_string())
+....     ("config.toml", "port = 8080".Bytes.from_string())
 ....   ])
 ....   let result = catch
 ....     handle load_config("config.toml")

@@ -83,12 +83,87 @@ Exception: prelude traits are always in scope. `x.show()` works
 everywhere because `Show` is in the prelude.
 
 **Qualified dispatch always works** regardless of imports:
-`x.Show::show()` works even without `use Show`.
+`x.Show.show()` works even without `use Show`.
 
 ### No circular dependencies (§11.4)
 
 Module imports form a DAG. Circular imports are a compile error
 with a diagnostic showing the cycle.
+
+### Struct-everything module model (§2.7)
+
+Every `.kea` file implicitly defines a singleton struct whose name
+comes from the filename. Top-level functions in the file are
+inherent methods of that implicit struct. Type definitions in the
+file are nested types in the module struct's namespace.
+
+```
+stdlib/list.kea       → implicit `struct List` with methods and types
+stdlib/order.kea      → implicit `struct Order` with methods and types
+src/app.kea           → implicit `struct App` with methods and types
+```
+
+**No explicit `struct List` needed at the top of `list.kea`.**
+The file IS the struct. The KERNEL says "there are no bare functions,
+every function belongs to a struct" (§2.7) and "modules are singleton
+structs" — together these mean the file name gives the struct name.
+
+**Same-name merge:** When a file defines a type whose name matches
+the module name (e.g., `list.kea` defines `record List A`), the type
+and the module struct are the same thing. `List` is both the type you
+construct/pattern-match and the namespace for `List.map`. This is the
+struct-everything model — the type is its own namespace.
+
+```kea
+-- stdlib/list.kea
+-- Implicitly defines `struct List` from filename
+
+record List A
+  head: Option (A, List A)
+
+fn map(_ self: List A, _ f: A -[e]> B) -[e]> List B
+  -- ...
+
+fn filter(_ self: List A, _ f: A -> Bool) -> List A
+  -- ...
+```
+
+`List.map(xs, f)` works because `List` is the module struct and
+`map` is a method. `xs.map(f)` works via UMS because `xs: List A`
+matches the receiver type.
+
+**Different-name types** are nested in the module namespace:
+
+```kea
+-- stdlib/order.kea
+-- Implicitly defines `struct Order` from filename
+
+enum Ordering = Lt | Eq | Gt
+
+fn compare(_ a: A, _ b: A) -> Ordering where A: Ord
+  -- ...
+```
+
+`Order.Ordering` is a nested type. `Order.compare` is a method.
+Prelude re-export makes `Ordering` available unqualified.
+
+**Namespace access uses dot.** PascalCase after a dot is a namespace
+step; lowercase after a dot on a value is field/method. No `::` —
+dot is dot (KERNEL §9.2). The parser distinguishes these lexically.
+
+```kea
+List.map(xs, f)        -- direct qualified call
+xs.List.map(f)         -- UMS qualified
+xs.map(f)              -- UMS unqualified
+Order.Ordering.Lt      -- nested type access
+xs.Show.show()         -- trait-qualified UMS
+user.name              -- field access
+```
+
+**Nested modules as nested structs.** `http/server.kea` defines an
+implicit `struct Server` inside the `Http` namespace. `Http.Server`
+is the nested module struct. If `http/` is a directory without an
+`http.kea` file, `Http` is a synthetic namespace struct (no methods).
 
 ## Implementation Plan
 

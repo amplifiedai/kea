@@ -6,6 +6,12 @@ The goal is simple:
 - One readable call style
 - Effect signatures visible at each step
 - No pipe operator needed
+- No turbofish needed
+
+**Dot is dot.** One operator for field access, method calls, namespace
+qualification, and nested type access. PascalCase after a dot is a
+namespace step. Lowercase after a dot on a value is field/method.
+The parser never needs type information to distinguish them.
 
 ---
 
@@ -15,6 +21,7 @@ In many languages, call style splinters:
 - methods for some APIs
 - free functions for others
 - pipes/chains/macros to glue them together
+- `::` for namespace access, `.` for methods (two operators for related things)
 
 Kea keeps a single surface:
 
@@ -51,16 +58,17 @@ Use for constructors or explicit namespaced calls.
 ### 3) Qualified method call (disambiguation)
 
 ```kea
-value.Trait::method(args)
-value.Module::function(args)
+value.Trait.method(args)
+value.Module.function(args)
 ```
 
 Use when unqualified dispatch is ambiguous or you want a specific namespace.
+PascalCase after the dot tells the parser it's a namespace step.
 
 ### 4) Receiver placement with `$`
 
 ```kea
-text.String::replace("old", $, "new")
+text.String.replace("old", $, "new")
 ```
 
 Use when receiver is not the first positional parameter.
@@ -80,7 +88,7 @@ Important: inherent methods win over trait methods.
 If you need the trait version explicitly:
 
 ```kea
-value.SomeTrait::method()
+value.SomeTrait.method()
 ```
 
 ---
@@ -113,7 +121,7 @@ x.f().g()
 or explicit namespaced call when needed:
 
 ```kea
-x.Module::f().Module::g()
+x.Module.f().Module.g()
 ```
 
 ---
@@ -145,7 +153,7 @@ replace("old", text, "new")
 After (receiver in middle parameter position):
 
 ```kea
-text.String::replace("old", $, "new")
+text.String.replace("old", $, "new")
 ```
 
 ### Ambiguous method name
@@ -159,7 +167,7 @@ render(widget)   # which render?
 After:
 
 ```kea
-widget.Component::render()
+widget.Component.render()
 ```
 
 ---
@@ -168,7 +176,7 @@ widget.Component::render()
 
 - Default to `x.method(...)`
 - Use `Module.function(...)` when you want explicit constructor/static-style calls
-- Use `::` only when needed for disambiguation
+- Use `x.Qualifier.method(...)` only when needed for disambiguation
 - Use `$` sparingly; frequent `$` usually means parameter order should be improved
 
 ---
@@ -178,7 +186,8 @@ widget.Component::render()
 If you come from:
 
 - **Elixir/F#/OCaml pipelines**: dot chains replace most pipe usage
-- **TypeScript/Java/C#**: method style feels familiar; `::` is explicit escape hatch
+- **TypeScript/Java/C#**: method style feels familiar; qualified dot is the escape hatch
+- **Rust**: no turbofish — PascalCase after dot serves the same purpose
 - **Go**: think "explicit receiver placement and namespace calls", but in expression form
 
 Opinionated rule: if you feel tempted to reintroduce pipes, your API surface probably needs better method naming or receiver parameter ordering.
@@ -187,4 +196,4 @@ Opinionated rule: if you feel tempted to reintroduce pipes, your API surface pro
 
 ## One-Line Summary
 
-Universal dot notation gives Kea one consistent, readable, type-checked way to write pipelines without a pipe operator.
+**Dot is dot.** Universal dot notation gives Kea one consistent, readable, type-checked way to write pipelines, namespace access, and method dispatch — no pipe operator, no turbofish.

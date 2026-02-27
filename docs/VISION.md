@@ -171,7 +171,7 @@ surface of that value:
 - **Inherent methods** — defined in the struct block
 - **Trait methods** — from in-scope traits implemented for its type
 - **Qualified functions** — any function where it can slot in
-  as receiver, via `value.Module::function()`
+  as receiver, via `value.Module.function()`
 
 For each one, the effect signature says what happens when you
 call it. `value.save()` shows `-[DB, Log]>`. `value.validate()`
@@ -183,8 +183,8 @@ Four call forms cover every case (see CALL-SYNTAX.md):
 ```kea
 users.filter(|u| -> u.active)             -- method call (~90%)
 Point.origin()                             -- prefix call (~8%)
-widget.Drawable::render()                  -- qualified dispatch (~1%)
-text.String::replace("old", $, "new")     -- receiver placement (~1%)
+widget.Drawable.render()                   -- qualified dispatch (~1%)
+text.String.replace("old", $, "new")      -- receiver placement (~1%)
 ```
 
 No pipe operator. The dot and `$` handle everything pipes would,

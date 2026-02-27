@@ -1335,10 +1335,16 @@ fn sort(_ list: List A) -> List A where A: Ord
 
 ## 9. Methods and Dispatch
 
-Kea uses **dot syntax** for method calls. Unqualified dot resolves
-against inherent methods and in-scope trait methods only (§9.1).
-Qualified dot (`::`) allows calling any namespaced function as a
-method (§9.2). There is no `|>` pipe operator; dot syntax replaces it.
+Kea uses **dot syntax** for all name resolution: field access, method
+calls, namespace qualification, and nested type access. The dot is the
+only accessor operator. There is no `::` turbofish. There is no `|>`
+pipe operator.
+
+**Disambiguation rule:** PascalCase after a dot is a namespace step
+(module, type, or trait qualifier). Lowercase after a dot on a value
+is field access or method call. This is a lexical rule — the parser
+never needs type information to distinguish namespace access from
+field access.
 
 ### 9.1 Method Resolution
 
@@ -1357,7 +1363,7 @@ For `expr.method_name(args)`, lookup proceeds:
 
 Inherent-vs-trait is never ambiguous: inherent always wins. To call
 the trait version when an inherent method shadows it, use qualified
-dispatch: `expr.Trait::method()`.
+dispatch: `expr.Trait.method()`.
 
 Trait-vs-trait collision (multiple in-scope traits provide the same
 method name for the same type) is an ambiguity error requiring
@@ -1371,7 +1377,7 @@ trait) but you cannot define inherent methods on structural types.
 **Scope of unqualified dot:** Only inherent methods and in-scope
 trait methods are candidates. Module functions are not part of
 unqualified dot resolution. To call a module function as a method,
-use qualified dispatch: `expr.Module::function(args)`.
+use qualified dispatch: `expr.Module.function(args)`.
 
 A trait's methods are only available for dispatch if the trait name
 has been brought into scope. The **standard prelude** automatically
@@ -1380,14 +1386,20 @@ the full list).
 
 ### 9.2 Qualified Dispatch
 
-`::` separates a namespace (trait name or module name) from a method
-name in method position:
+PascalCase in dot position is a namespace qualifier (trait, module,
+or type). The same dot syntax used for field access and unqualified
+methods also serves for explicit qualification:
 
 ```kea
-value.Show::show()              -- trait-qualified
-things.List::map(f)             -- module/struct-qualified
-users.Enum::filter(|u| -> u.active)  -- module-qualified
+value.Show.show()               -- trait-qualified
+things.List.map(f)              -- module/struct-qualified
+users.Enum.filter(|u| -> u.active)  -- module-qualified
 ```
+
+**Dot is dot.** There is no separate namespace operator. PascalCase
+after a dot is always a namespace step; lowercase after a dot on a
+value is always field access or method call. The parser distinguishes
+these lexically — no type information needed.
 
 ### 9.3 Universal Receiver Placement with `$`
 
@@ -1401,10 +1413,10 @@ users.filter(|u| -> u.active)
 -- equivalent to: List.filter(users, |u| -> u.active)
 
 -- $ overrides receiver position
-text.String::replace("old", $, "new")
+text.String.replace("old", $, "new")
 -- equivalent to: String.replace("old", text, "new")
 
-body.Json::decode($, User)
+body.Json.decode($, User)
 -- equivalent to: Json.decode(body, User)
 ```
 
@@ -1422,7 +1434,7 @@ Receiver placement rules:
 
 **Grammar restriction:** `$` is valid only in the argument list of
 a dot-method call (`expr.method(... $ ...)`) or a qualified dot-method
-call (`expr.Qual::method(... $ ...)`). It is not a general expression,
+call (`expr.Qual.method(... $ ...)`). It is not a general expression,
 cannot appear in patterns, prefix calls, operator operands, or any
 other syntactic position. `$` outside a method-call argument list is
 a parse error.
@@ -2555,7 +2567,7 @@ type    fail  catch  for  in  handle  resume  unsafe  borrow  with
 
 ```
 -- line comment             --| doc comment
-:  type annotation          :: qualified dispatch
+:  type annotation          :: list cons pattern
 -> pure arrow               -[e]> effectful arrow
 ~  functional update        $  receiver placement
 ?  error propagation        @  annotation
