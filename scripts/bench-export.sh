@@ -54,7 +54,22 @@ function trim(s) {
     iters = trim(parts[6])
     printf "%s,%s,%s,%s,%s,%s,%s,%s\n", bench, arg, fastest, slowest, median, mean, samples, iters
   } else {
-    bench = head
+    # No-arg benchmark rows render benchmark name and fastest in the same
+    # segment (e.g., "lower_hir_to_mir  1.23 µs"). Capture those directly.
+    if (head ~ /^[^[:space:]]+[ \t]+[0-9.]/) {
+      split(head, seg, /[ \t]+/)
+      bench = seg[1]
+      arg = ""
+      fastest = trim(substr(head, length(bench) + 1))
+      slowest = trim(parts[2])
+      median = trim(parts[3])
+      mean = trim(parts[4])
+      samples = trim(parts[5])
+      iters = trim(parts[6])
+      printf "%s,%s,%s,%s,%s,%s,%s,%s\n", bench, arg, fastest, slowest, median, mean, samples, iters
+    } else {
+      bench = head
+    }
   }
 }
 ' "${RAW_OUT}" > "${TMP_ROWS}"

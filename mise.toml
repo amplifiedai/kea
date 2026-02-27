@@ -167,3 +167,7 @@ run = "./scripts/bench-export.sh benchmark-results/regression/latest && ./script
 [tasks."bench:regression:stable"]
 description = "Run microbench export and compare medians against stable-class blocking thresholds"
 run = "./scripts/bench-export.sh benchmark-results/regression-stable/latest && ./scripts/bench-threshold-check.sh benchmark-results/regression-stable/latest/divan.summary.csv benchmarks/baselines/microbench-thresholds-stable.csv benchmark-results/regression-stable/latest"
+
+[tasks."bench:update-fusion:contract"]
+description = "Run microbench export and enforce update-fusion chained-vs-single benchmark contract"
+run = "./scripts/bench-export.sh benchmark-results/update-fusion/latest && ./scripts/bench-update-fusion-contract.sh benchmark-results/update-fusion/latest/divan.summary.csv benchmark-results/update-fusion/latest/update-fusion.contract.md"
