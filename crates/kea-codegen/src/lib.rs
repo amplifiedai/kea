@@ -356,6 +356,7 @@ fn compile_into_module<M: Module>(
     let mut requires_heap_alloc = false;
     let mut requires_io_stdout = false;
     let mut requires_string_concat = false;
+    let mut requires_free = false;
     for function in &mir.functions {
         let runtime_sig = runtime_signatures.get(&function.name).ok_or_else(|| {
             CodegenError::UnknownFunction {
@@ -405,6 +406,11 @@ fn compile_into_module<M: Module>(
             requires_string_concat = true;
             requires_heap_alloc = true;
         }
+        if function.blocks.iter().any(|block| {
+            block.instructions.iter().any(|inst| matches!(inst, MirInst::Release { .. }))
+        }) {
+            requires_free = true;
+        }
         let needs_fail_result_alloc = runtime_sig.fail_result_abi
             || (matches!(runtime_sig.runtime_return, Type::Result(_, _))
                 && function.blocks.iter().any(|block| {
@@ -422,9 +428,6 @@ fn compile_into_module<M: Module>(
                 }));
         if needs_aggregate_alloc || needs_fail_result_alloc {
             requires_heap_alloc = true;
-            if requires_io_stdout && requires_string_concat {
-                break;
-            }
         }
     }
 
@@ -467,6 +470,21 @@ fn compile_into_module<M: Module>(
         Some(
             module
                 .declare_function("malloc", Linkage::Import, &signature)
+                .map_err(|detail| CodegenError::Module {
+                    detail: detail.to_string(),
+                })?,
+        )
+    } else {
+        None
+    };
+
+    let free_func_id = if requires_free {
+        let ptr_ty = module.target_config().pointer_type();
+        let mut signature = module.make_signature();
+        signature.params.push(AbiParam::new(ptr_ty));
+        Some(
+            module
+                .declare_function("free", Linkage::Import, &signature)
                 .map_err(|detail| CodegenError::Module {
                     detail: detail.to_string(),
                 })?,
@@ -621,6 +639,7 @@ fn compile_into_module<M: Module>(
                     external_func_ids: &external_func_ids,
                     layout_plan,
                     malloc_func_id,
+                    free_func_id,
                     stdout_func_id,
                     strlen_func_id,
                     memcpy_func_id,
@@ -1036,6 +1055,7 @@ struct LowerInstCtx<'a> {
     external_func_ids: &'a BTreeMap<String, FuncId>,
     layout_plan: &'a BackendLayoutPlan,
     malloc_func_id: Option<FuncId>,
+    free_func_id: Option<FuncId>,
     stdout_func_id: Option<FuncId>,
     strlen_func_id: Option<FuncId>,
     memcpy_func_id: Option<FuncId>,
@@ -1627,7 +1647,42 @@ fn lower_instruction<M: Module>(
             detail: detail.clone(),
         }),
         MirInst::Nop => Ok(false),
-        MirInst::Retain { .. } | MirInst::Release { .. } => Ok(false),
+        MirInst::Retain { value } => {
+            let ptr_ty = module.target_config().pointer_type();
+            let payload_ptr = get_value(values, function_name, value)?;
+            let payload_ptr = coerce_value_to_clif_type(builder, payload_ptr, ptr_ty);
+            let rc_ptr = builder.ins().iadd_imm(payload_ptr, -8);
+            let rc_value = builder.ins().load(types::I64, MemFlags::new(), rc_ptr, 0);
+            let next = builder.ins().iadd_imm(rc_value, 1);
+            builder.ins().store(MemFlags::new(), next, rc_ptr, 0);
+            Ok(false)
+        }
+        MirInst::Release { value } => {
+            let ptr_ty = module.target_config().pointer_type();
+            let payload_ptr = get_value(values, function_name, value)?;
+            let payload_ptr = coerce_value_to_clif_type(builder, payload_ptr, ptr_ty);
+            let rc_ptr = builder.ins().iadd_imm(payload_ptr, -8);
+            let rc_value = builder.ins().load(types::I64, MemFlags::new(), rc_ptr, 0);
+            let next = builder.ins().iadd_imm(rc_value, -1);
+            builder.ins().store(MemFlags::new(), next, rc_ptr, 0);
+
+            let free_func_id = ctx.free_func_id.ok_or_else(|| CodegenError::UnsupportedMir {
+                function: function_name.to_string(),
+                detail: "release lowering requires imported `free` symbol".to_string(),
+            })?;
+            let free_ref = module.declare_func_in_func(free_func_id, builder.func);
+            let free_block = builder.create_block();
+            let cont_block = builder.create_block();
+            let is_zero = builder.ins().icmp_imm(IntCC::Equal, next, 0);
+            builder
+                .ins()
+                .brif(is_zero, free_block, &[], cont_block, &[]);
+            builder.switch_to_block(free_block);
+            let _ = builder.ins().call(free_ref, &[rc_ptr]);
+            builder.ins().jump(cont_block, &[]);
+            builder.switch_to_block(cont_block);
+            Ok(false)
+        }
         MirInst::Move { dest, src }
         | MirInst::Borrow { dest, src }
         | MirInst::TryClaim { dest, src }
@@ -2740,6 +2795,41 @@ mod tests {
                     }],
                     terminator: MirTerminator::Return {
                         value: Some(MirValueId(0)),
+                    },
+                }],
+            }],
+            layouts: MirLayoutCatalog::default(),
+        }
+    }
+
+    fn sample_release_string_main_module() -> MirModule {
+        MirModule {
+            functions: vec![MirFunction {
+                name: "main".to_string(),
+                signature: MirFunctionSignature {
+                    params: vec![],
+                    ret: Type::Int,
+                    effects: EffectRow::pure(),
+                },
+                entry: MirBlockId(0),
+                blocks: vec![MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: MirValueId(0),
+                            literal: MirLiteral::String("drop me".to_string()),
+                        },
+                        MirInst::Release {
+                            value: MirValueId(0),
+                        },
+                        MirInst::Const {
+                            dest: MirValueId(1),
+                            literal: MirLiteral::Int(0),
+                        },
+                    ],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirValueId(1)),
                     },
                 }],
             }],
@@ -3982,6 +4072,14 @@ mod tests {
             .expect("string literal lowering should compile");
 
         assert_eq!(artifact.stats.per_function.len(), 1);
+    }
+
+    #[test]
+    fn cranelift_backend_executes_release_of_heap_value() {
+        let module = sample_release_string_main_module();
+        let exit_code =
+            execute_mir_main_jit(&module, &BackendConfig::default()).expect("main should execute");
+        assert_eq!(exit_code, 0);
     }
 
     #[test]
