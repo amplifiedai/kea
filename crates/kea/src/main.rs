@@ -1931,6 +1931,34 @@ mod tests {
     }
 
     #[test]
+    fn compile_and_execute_log_tail_handler_resume_unit_exit_code() {
+        let source_path = write_temp_source(
+            "effect Log\n  fn log(msg: Int) -> Unit\n\nfn greet() -[Log]> Int\n  Log.log(7)\n  11\n\nfn main() -> Int\n  handle greet()\n    Log.log(msg) -> resume ()\n",
+            "kea-cli-log-tail-handler",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("log handler run should succeed");
+        assert_eq!(run.exit_code, 11);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_reader_tail_handler_resume_value_exit_code() {
+        let source_path = write_temp_source(
+            "effect Reader C\n  fn ask() -> C\n\nfn read() -[Reader Int]> Int\n  Reader.ask()\n\nfn main() -> Int\n  handle read()\n    Reader.ask() -> resume 42\n",
+            "kea-cli-reader-tail-handler",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("reader handler run should succeed");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_catch_fail_result_case_exit_code() {
         let source_path = write_temp_source(
             "effect Fail\n  fn fail(err: Int) -> Never\n\nfn f() -[Fail Int]> Int\n  fail 7\n\nfn main() -> Int\n  let r = catch f()\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
