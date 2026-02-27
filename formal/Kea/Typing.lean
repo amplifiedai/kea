@@ -24129,6 +24129,123 @@ theorem principalBoundarySoundNoUnifyFieldRunBundleRoutes_consequences
   h_routes.consequences
 
 /--
+Boundary+sound expression typing route package for arbitrary successful runs:
+recursive soundness (`HasType`/`HasTypeU`) plus the run-bundle route pair.
+-/
+structure PrincipalBoundarySoundExprTypingRunBundleRoutes
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty) : Prop where
+  hasType : HasType env e ty
+  hasTypeU : HasTypeU env e ty
+  routes : PrincipalBoundarySoundExprRunBundleRoutes st fuel env e st' ty
+
+/--
+Boundary+sound field typing route package for arbitrary successful runs:
+recursive soundness (`HasFieldsType`/`HasFieldsTypeU`) plus the run-bundle
+route pair.
+-/
+structure PrincipalBoundarySoundFieldTypingRunBundleRoutes
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields) : Prop where
+  hasType : HasFieldsType env fs rf
+  hasTypeU : HasFieldsTypeU env fs rf
+  routes : PrincipalBoundarySoundFieldRunBundleRoutes st fuel env fs st' rf
+
+/--
+Boundary+sound no-unify expression typing route package: recursive soundness
+(`HasType`/`HasTypeU`) plus the no-unify run-bundle route pair.
+-/
+structure PrincipalBoundarySoundNoUnifyExprTypingRunBundleRoutes
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty) : Prop where
+  hasType : HasType env e ty
+  hasTypeU : HasTypeU env e ty
+  routes : PrincipalBoundarySoundNoUnifyExprRunBundleRoutes st fuel env e st' ty
+
+/--
+Boundary+sound no-unify field typing route package: recursive soundness
+(`HasFieldsType`/`HasFieldsTypeU`) plus the no-unify run-bundle route pair.
+-/
+structure PrincipalBoundarySoundNoUnifyFieldTypingRunBundleRoutes
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields) : Prop where
+  hasType : HasFieldsType env fs rf
+  hasTypeU : HasFieldsTypeU env fs rf
+  routes : PrincipalBoundarySoundNoUnifyFieldRunBundleRoutes st fuel env fs st' rf
+
+/--
+Build the boundary+sound expression typing route package from one arbitrary
+successful run.
+-/
+theorem principalRowPolyBoundarySoundBundle_exprTypingRunBundleRoutes_of_success
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    (h_bundle : PrincipalRowPolyBoundarySoundBundle h_app h_proj)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalBoundarySoundExprTypingRunBundleRoutes st fuel env e st' ty := by
+  exact {
+    hasType := principalRowPolyBoundarySoundBundle_expr_hasType h_bundle h_ok
+    hasTypeU := principalRowPolyBoundarySoundBundle_expr_hasTypeU h_bundle h_ok
+    routes := principalRowPolyBoundarySoundBundle_exprRunBundleRoutes_of_success h_bundle h_ok
+  }
+
+/--
+Build the boundary+sound field typing route package from one arbitrary
+successful field run.
+-/
+theorem principalRowPolyBoundarySoundBundle_fieldTypingRunBundleRoutes_of_success
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    (h_bundle : PrincipalRowPolyBoundarySoundBundle h_app h_proj)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalBoundarySoundFieldTypingRunBundleRoutes st fuel env fs st' rf := by
+  exact {
+    hasType := principalRowPolyBoundarySoundBundle_field_hasType h_bundle h_ok
+    hasTypeU := principalRowPolyBoundarySoundBundle_field_hasTypeU h_bundle h_ok
+    routes := principalRowPolyBoundarySoundBundle_fieldRunBundleRoutes_of_success h_bundle h_ok
+  }
+
+/--
+Build the boundary+sound no-unify expression typing route package from one
+successful no-unify expression run.
+-/
+theorem principalRowPolyBoundarySoundBundle_noUnifyExprTypingRunBundleRoutes_of_success
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    (h_bundle : PrincipalRowPolyBoundarySoundBundle h_app h_proj)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalBoundarySoundNoUnifyExprTypingRunBundleRoutes st fuel env e st' ty := by
+  exact {
+    hasType := principalRowPolyBoundarySoundBundle_expr_hasType h_bundle h_ok
+    hasTypeU := principalRowPolyBoundarySoundBundle_expr_hasTypeU h_bundle h_ok
+    routes := principalRowPolyBoundarySoundBundle_noUnifyExprRunBundleRoutes_of_success
+      h_bundle h_no h_ok
+  }
+
+/--
+Build the boundary+sound no-unify field typing route package from one
+successful no-unify field run.
+-/
+theorem principalRowPolyBoundarySoundBundle_noUnifyFieldTypingRunBundleRoutes_of_success
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    (h_bundle : PrincipalRowPolyBoundarySoundBundle h_app h_proj)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalBoundarySoundNoUnifyFieldTypingRunBundleRoutes st fuel env fs st' rf := by
+  exact {
+    hasType := principalRowPolyBoundarySoundBundle_field_hasType h_bundle h_ok
+    hasTypeU := principalRowPolyBoundarySoundBundle_field_hasTypeU h_bundle h_ok
+    routes := principalRowPolyBoundarySoundBundle_noUnifyFieldRunBundleRoutes_of_success
+      h_bundle h_no h_ok
+  }
+
+/--
 Expression preconditioned↔core wrapper on the dual-routed proved master suite.
 -/
 theorem principalBoundaryMasterSuite_preconditionedCoreIff_expr_via_dualConsequenceSlices
