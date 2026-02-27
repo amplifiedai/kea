@@ -1822,12 +1822,12 @@ fn lower_instruction<M: Module>(
             values.insert(dest.clone(), merged);
             Ok(false)
         }
-        MirInst::HandlerEnter { .. } | MirInst::HandlerExit { .. } | MirInst::Resume { .. } => {
-            Err(CodegenError::UnsupportedMir {
-                function: function_name.to_string(),
-                detail: format!("instruction `{inst:?}` not implemented in 0d pure lowering"),
-            })
-        }
+        MirInst::HandlerEnter { .. } | MirInst::HandlerExit { .. } => Ok(false),
+        MirInst::Resume { .. } => Err(CodegenError::UnsupportedMir {
+            function: function_name.to_string(),
+            detail: "non-tail-resumptive handlers are not yet supported in compiled mode"
+                .to_string(),
+        }),
     }
 }
 
@@ -3403,6 +3403,27 @@ mod tests {
         }
     }
 
+    fn sample_handler_marker_module(instructions: Vec<MirInst>) -> MirModule {
+        MirModule {
+            functions: vec![MirFunction {
+                name: "handler_markers".to_string(),
+                signature: MirFunctionSignature {
+                    params: vec![],
+                    ret: Type::Unit,
+                    effects: EffectRow::closed(vec![(Label::new("State"), Type::Int)]),
+                },
+                entry: MirBlockId(0),
+                blocks: vec![MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions,
+                    terminator: MirTerminator::Return { value: None },
+                }],
+            }],
+            layouts: MirLayoutCatalog::default(),
+        }
+    }
+
     fn sample_fail_only_result_module_with_insts(instructions: Vec<MirInst>) -> MirModule {
         MirModule {
             functions: vec![MirFunction {
@@ -4016,6 +4037,63 @@ mod tests {
         assert!(matches!(
             err,
             CodegenError::FailOnlyInvariantViolation { function, .. } if function == "fail_only"
+        ));
+    }
+
+    #[test]
+    fn cranelift_backend_allows_handler_scope_markers_as_noop() {
+        let module = sample_handler_marker_module(vec![
+            MirInst::HandlerEnter {
+                effect: "State".to_string(),
+            },
+            MirInst::HandlerExit {
+                effect: "State".to_string(),
+            },
+        ]);
+        let abi = default_abi_manifest(&module);
+        let backend = CraneliftBackend;
+        backend
+            .compile_module(
+                &module,
+                &abi,
+                &BackendConfig {
+                    mode: CodegenMode::Jit,
+                    ..BackendConfig::default()
+                },
+            )
+            .expect("handler scope markers should lower as no-op");
+    }
+
+    #[test]
+    fn cranelift_backend_reports_non_tail_resume_not_supported() {
+        let module = sample_handler_marker_module(vec![
+            MirInst::HandlerEnter {
+                effect: "State".to_string(),
+            },
+            MirInst::Resume {
+                value: MirValueId(0),
+            },
+            MirInst::HandlerExit {
+                effect: "State".to_string(),
+            },
+        ]);
+        let abi = default_abi_manifest(&module);
+        let backend = CraneliftBackend;
+        let err = backend
+            .compile_module(
+                &module,
+                &abi,
+                &BackendConfig {
+                    mode: CodegenMode::Jit,
+                    ..BackendConfig::default()
+                },
+            )
+            .expect_err("resume should report non-tail handler support gap");
+        assert!(matches!(
+            err,
+            CodegenError::UnsupportedMir { function, ref detail }
+                if function == "handler_markers"
+                    && detail.contains("non-tail-resumptive handlers are not yet supported")
         ));
     }
 
