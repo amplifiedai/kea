@@ -5348,6 +5348,70 @@ theorem principalBoundaryNoUnifyAllHooksSuite_irrelevance_field
     h_suite.irrelevance h_no h_ok
 
 /--
+Convert an all-hooks expression capstone into a hook-specific no-unify
+expression capstone by selecting concrete hook witnesses.
+-/
+theorem principalBoundaryNoUnifyExprCapstone_of_allHooks
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_cap : PrincipalBoundaryNoUnifyExprAllHooksCapstone st fuel env e st' ty)
+    (h_app : AppUnifySoundHook) (h_proj : ProjUnifySoundHook) :
+    PrincipalBoundaryNoUnifyExprCapstone h_app h_proj st fuel env e st' ty := by
+  refine {
+    noUnify := ?_
+    preconditionedCoreIff := h_cap.preconditionedAnyIffCore h_app h_proj
+  }
+  refine {
+    core := h_cap.core
+    preconditioned := h_cap.preconditionedAny h_app h_proj
+  }
+
+/--
+Convert an all-hooks field capstone into a hook-specific no-unify field
+capstone by selecting concrete hook witnesses.
+-/
+theorem principalBoundaryNoUnifyFieldCapstone_of_allHooks
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_cap : PrincipalBoundaryNoUnifyFieldAllHooksCapstone st fuel env fs st' rf)
+    (h_app : AppUnifySoundHook) (h_proj : ProjUnifySoundHook) :
+    PrincipalBoundaryNoUnifyFieldCapstone h_app h_proj st fuel env fs st' rf := by
+  refine {
+    noUnify := ?_
+    preconditionedCoreIff := h_cap.preconditionedAnyIffCore h_app h_proj
+  }
+  refine {
+    core := h_cap.core
+    preconditioned := h_cap.preconditionedAny h_app h_proj
+  }
+
+/--
+Derive the hook-specific no-unify capstone slices from the all-hooks no-unify
+capstone slices.
+-/
+theorem principalBoundaryNoUnifyCapstoneSlices_of_allHooksCapstones
+    (h_all : PrincipalBoundaryNoUnifyAllHooksCapstoneSlices) :
+    PrincipalBoundaryNoUnifyCapstoneSlices := by
+  refine ⟨?_, ?_⟩
+  · intro st fuel env e st' ty h_no h_ok h_hooks
+    exact principalBoundaryNoUnifyExprCapstone_of_allHooks
+      (principalBoundaryNoUnifyAllHooksCapstoneSlices_expr h_all h_no h_ok)
+      h_hooks.1 h_hooks.2
+  · intro st fuel env fs st' rf h_no h_ok h_hooks
+    exact principalBoundaryNoUnifyFieldCapstone_of_allHooks
+      (principalBoundaryNoUnifyAllHooksCapstoneSlices_field h_all h_no h_ok)
+      h_hooks.1 h_hooks.2
+
+/--
+Derive the hook-specific no-unify capstone slices directly from the proved
+all-hooks suite.
+-/
+theorem principalBoundaryNoUnifyCapstoneSlices_of_allHooksSuite :
+    PrincipalBoundaryNoUnifyCapstoneSlices :=
+  principalBoundaryNoUnifyCapstoneSlices_of_allHooksCapstones
+    principalBoundaryNoUnifyAllHooksSuite_proved.capstones
+
+/--
 `HasTypeU` lift of non-app/proj recursive soundness: on the fragment that never
 executes unification branches, algorithmic inference results are declaratively
 typable in the unification-aware judgment as well.
