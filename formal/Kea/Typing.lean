@@ -5471,6 +5471,122 @@ theorem principalPreconditionedFieldAllHooksCapstone_hook_irrelevant
     exact (h_cap.preconditionedAnyIffCore h_app₁ h_proj₁).2 h_core
 
 /--
+Run-level expression bundle for arbitrary successful all-hooks principality.
+
+This packages:
+- the full all-hooks capstone consequences, and
+- fixed-run preconditioned hook-irrelevance.
+-/
+structure PrincipalPreconditionedExprAllHooksRunBundle
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty) : Prop where
+  capstone : PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty
+  hookIrrelevant :
+    ∀ {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+      {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook},
+      (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+        ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty)
+
+/--
+Run-level field bundle for arbitrary successful all-hooks principality.
+
+Field-side analogue of `PrincipalPreconditionedExprAllHooksRunBundle`.
+-/
+structure PrincipalPreconditionedFieldAllHooksRunBundle
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields) : Prop where
+  capstone : PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf
+  hookIrrelevant :
+    ∀ {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+      {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook},
+      (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+        ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf)
+
+/--
+Construct an expression run-level all-hooks bundle from an existing capstone.
+-/
+theorem principalPreconditionedExprAllHooksRunBundle_of_capstone
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_cap : PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty) :
+    PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty := by
+  refine {
+    capstone := h_cap
+    hookIrrelevant := ?_
+  }
+  intro h_app₁ h_proj₁ h_app₂ h_proj₂
+  exact principalPreconditionedExprAllHooksCapstone_hook_irrelevant
+    h_cap
+
+/--
+Construct a field run-level all-hooks bundle from an existing capstone.
+-/
+theorem principalPreconditionedFieldAllHooksRunBundle_of_capstone
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_cap : PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf) :
+    PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf := by
+  refine {
+    capstone := h_cap
+    hookIrrelevant := ?_
+  }
+  intro h_app₁ h_proj₁ h_app₂ h_proj₂
+  exact principalPreconditionedFieldAllHooksCapstone_hook_irrelevant
+    h_cap
+
+/--
+Construct an expression run-level all-hooks bundle from one successful run and
+one baseline hook pair.
+-/
+theorem principalPreconditionedExprAllHooksRunBundle_of_success
+    (h_app0 : AppUnifySoundHook)
+    (h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty := by
+  exact principalPreconditionedExprAllHooksRunBundle_of_capstone
+    (principalPreconditionedExprAllHooksCapstone_of_success h_app0 h_proj0 h_ok)
+
+/--
+Construct a field run-level all-hooks bundle from one successful field run and
+one baseline hook pair.
+-/
+theorem principalPreconditionedFieldAllHooksRunBundle_of_success
+    (h_app0 : AppUnifySoundHook)
+    (h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf := by
+  exact principalPreconditionedFieldAllHooksRunBundle_of_capstone
+    (principalPreconditionedFieldAllHooksCapstone_of_success h_app0 h_proj0 h_ok)
+
+/--
+Bundle-entry variant of `principalPreconditionedExprAllHooksRunBundle_of_success`.
+-/
+theorem principalPreconditionedExprAllHooksRunBundle_of_success_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty := by
+  exact principalPreconditionedExprAllHooksRunBundle_of_success
+    h_seed.1 h_seed.2 h_ok
+
+/--
+Bundle-entry variant of `principalPreconditionedFieldAllHooksRunBundle_of_success`.
+-/
+theorem principalPreconditionedFieldAllHooksRunBundle_of_success_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf := by
+  exact principalPreconditionedFieldAllHooksRunBundle_of_success
+    h_seed.1 h_seed.2 h_ok
+
+/--
 Derive the global preconditioned hook-irrelevance slices directly from general
 all-hooks capstone slices.
 -/
@@ -5795,6 +5911,62 @@ theorem principalPreconditionedFieldAllHooksCapstone_of_success_via_generalAllHo
     (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
     PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
   principalPreconditionedFieldAllHooksCapstone_of_success_via_generalAllHooksSuite
+    h_seed.1 h_seed.2 h_ok
+
+/--
+General-all-hooks-suite run-bundle wrapper: package capstone + hook-irrelevance
+for expression successful runs from one baseline hook witness pair.
+-/
+theorem principalPreconditionedExprAllHooksRunBundle_of_success_via_generalAllHooksSuite
+    (h_app0 : AppUnifySoundHook)
+    (h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty :=
+  principalPreconditionedExprAllHooksRunBundle_of_capstone
+    (principalPreconditionedExprAllHooksCapstone_of_success_via_generalAllHooksSuite
+      h_app0 h_proj0 h_ok)
+
+/--
+General-all-hooks-suite run-bundle wrapper: package capstone + hook-irrelevance
+for successful field runs from one baseline hook witness pair.
+-/
+theorem principalPreconditionedFieldAllHooksRunBundle_of_success_via_generalAllHooksSuite
+    (h_app0 : AppUnifySoundHook)
+    (h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf :=
+  principalPreconditionedFieldAllHooksRunBundle_of_capstone
+    (principalPreconditionedFieldAllHooksCapstone_of_success_via_generalAllHooksSuite
+      h_app0 h_proj0 h_ok)
+
+/--
+Bundle-entry variant of
+`principalPreconditionedExprAllHooksRunBundle_of_success_via_generalAllHooksSuite`.
+-/
+theorem principalPreconditionedExprAllHooksRunBundle_of_success_via_generalAllHooksSuite_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty :=
+  principalPreconditionedExprAllHooksRunBundle_of_success_via_generalAllHooksSuite
+    h_seed.1 h_seed.2 h_ok
+
+/--
+Bundle-entry variant of
+`principalPreconditionedFieldAllHooksRunBundle_of_success_via_generalAllHooksSuite`.
+-/
+theorem principalPreconditionedFieldAllHooksRunBundle_of_success_via_generalAllHooksSuite_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf :=
+  principalPreconditionedFieldAllHooksRunBundle_of_success_via_generalAllHooksSuite
     h_seed.1 h_seed.2 h_ok
 
 /--
@@ -7658,6 +7830,66 @@ theorem principalPreconditionedFieldAllHooksCapstone_of_success_via_masterSuite_
     (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
     PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
   principalPreconditionedFieldAllHooksCapstone_of_success_via_masterSuite
+    h_suite h_seed.1 h_seed.2 h_ok
+
+/--
+Master-suite run-bundle wrapper: package capstone + hook-irrelevance for
+expression successful runs from one baseline hook witness pair.
+-/
+theorem principalPreconditionedExprAllHooksRunBundle_of_success_via_masterSuite
+    (h_suite : PrincipalBoundaryMasterSuite)
+    (h_app0 : AppUnifySoundHook)
+    (h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty :=
+  principalPreconditionedExprAllHooksRunBundle_of_capstone
+    (principalPreconditionedExprAllHooksCapstone_of_success_via_masterSuite
+      h_suite h_app0 h_proj0 h_ok)
+
+/--
+Master-suite run-bundle wrapper: package capstone + hook-irrelevance for
+successful field runs from one baseline hook witness pair.
+-/
+theorem principalPreconditionedFieldAllHooksRunBundle_of_success_via_masterSuite
+    (h_suite : PrincipalBoundaryMasterSuite)
+    (h_app0 : AppUnifySoundHook)
+    (h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf :=
+  principalPreconditionedFieldAllHooksRunBundle_of_capstone
+    (principalPreconditionedFieldAllHooksCapstone_of_success_via_masterSuite
+      h_suite h_app0 h_proj0 h_ok)
+
+/--
+Bundle-entry variant of
+`principalPreconditionedExprAllHooksRunBundle_of_success_via_masterSuite`.
+-/
+theorem principalPreconditionedExprAllHooksRunBundle_of_success_via_masterSuite_from_bundle
+    (h_suite : PrincipalBoundaryMasterSuite)
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty :=
+  principalPreconditionedExprAllHooksRunBundle_of_success_via_masterSuite
+    h_suite h_seed.1 h_seed.2 h_ok
+
+/--
+Bundle-entry variant of
+`principalPreconditionedFieldAllHooksRunBundle_of_success_via_masterSuite`.
+-/
+theorem principalPreconditionedFieldAllHooksRunBundle_of_success_via_masterSuite_from_bundle
+    (h_suite : PrincipalBoundaryMasterSuite)
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf :=
+  principalPreconditionedFieldAllHooksRunBundle_of_success_via_masterSuite
     h_suite h_seed.1 h_seed.2 h_ok
 
 /--
