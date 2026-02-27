@@ -64,6 +64,29 @@ theorem handleComposeClosedAware_preserves_row_tail
   · rw [if_neg h_noop]
     exact EffectRow.handleComposeNormalized_preserves_row_tail effects handlerEffects target
 
+/--
+Closed-aware composition preserves any non-target label already present in the
+expression effects.
+-/
+theorem handleComposeClosedAware_preserves_other_effects
+    (effects handlerEffects : EffectRow)
+    (target other : Label)
+    (h_ne : other ≠ target)
+    (h_other :
+      RowFields.has (EffectRow.fields effects) other = true) :
+    RowFields.has
+      (EffectRow.fields
+        (HandlerAbsentEffectNoop.handleComposeClosedAware effects handlerEffects target))
+      other = true := by
+  unfold HandlerAbsentEffectNoop.handleComposeClosedAware
+  by_cases h_noop :
+      RowFields.has (EffectRow.fields effects) target = false ∧
+        EffectRow.rest effects = none
+  · simp [h_noop, h_other]
+  · rw [if_neg h_noop]
+    exact EffectRow.handle_preserves_other_effects_normalized
+      effects handlerEffects target other h_ne h_other
+
 theorem resultEffectsCoreClosedAware_noop_of_handled_absent_closed
     (c : HandleClauseContract)
     (h_abs : RowFields.has (EffectRow.fields c.exprEffects) c.handled = false)
@@ -152,6 +175,38 @@ theorem resultEffectsClosedAware_preserves_row_tail
     unfold HandleClauseContract.resultEffectsCore
     exact EffectRow.handleComposeNormalized_preserves_row_tail
       c.exprEffects c.handlerEffects c.handled
+
+/--
+Closed-aware full result effects preserve non-handled labels from expression
+effects, including optional `then`-effect composition.
+-/
+theorem resultEffectsClosedAware_preserves_other_effects
+    (c : HandleClauseContract)
+    (other : Label)
+    (h_ne : other ≠ c.handled)
+    (h_other :
+      RowFields.has (EffectRow.fields c.exprEffects) other = true) :
+    RowFields.has (EffectRow.fields (resultEffectsClosedAware c)) other = true := by
+  have h_core :
+      RowFields.has (EffectRow.fields (resultEffectsCoreClosedAware c)) other = true :=
+    handleComposeClosedAware_preserves_other_effects
+      c.exprEffects c.handlerEffects c.handled other h_ne h_other
+  cases h_then : c.thenEffects with
+  | none =>
+      simpa [resultEffectsClosedAware, HandleClauseContract.applyThenEffects, h_then] using h_core
+  | some te =>
+      have h_union :
+          RowFields.has
+            (RowFields.unionIdem
+              (EffectRow.fields (resultEffectsCoreClosedAware c))
+              (EffectRow.fields te))
+            other = true :=
+        RowFields.has_unionIdem_of_has_left_true
+          (EffectRow.fields (resultEffectsCoreClosedAware c))
+          (EffectRow.fields te)
+          other
+          h_core
+      simpa [resultEffectsClosedAware, HandleClauseContract.applyThenEffects, h_then] using h_union
 
 /--
 `wellTypedSlice` remains sufficient for handled-label removal under
