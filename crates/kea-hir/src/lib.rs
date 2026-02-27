@@ -1640,20 +1640,21 @@ fn lower_record_case(
                 guard: arm.guard.as_deref(),
             }),
             pattern => {
-                let (pattern_record_carrier, bind_name, field_binds, field_checks) =
-                    record_case_pattern_info_from_pattern(pattern)?;
-                match &record_carrier {
-                    None => record_carrier = Some(pattern_record_carrier),
-                    Some(existing) if existing == &pattern_record_carrier => {}
-                    _ => return None,
+                let branch_infos = record_case_arms_from_pattern(pattern)?;
+                for (pattern_record_carrier, bind_name, field_binds, field_checks) in branch_infos {
+                    match &record_carrier {
+                        None => record_carrier = Some(pattern_record_carrier.clone()),
+                        Some(existing) if existing == &pattern_record_carrier => {}
+                        _ => return None,
+                    }
+                    record_arms.push((
+                        &arm.body,
+                        bind_name,
+                        field_binds,
+                        field_checks,
+                        arm.guard.as_deref(),
+                    ));
                 }
-                record_arms.push((
-                    &arm.body,
-                    bind_name,
-                    field_binds,
-                    field_checks,
-                    arm.guard.as_deref(),
-                ));
             }
         }
     }
@@ -2254,18 +2255,6 @@ fn record_field_binds_or_compatible(
         })
 }
 
-fn record_field_checks_or_compatible(
-    existing: &[RecordFieldCheck],
-    candidate: &[RecordFieldCheck],
-) -> bool {
-    existing.len() == candidate.len()
-        && existing.iter().zip(candidate.iter()).all(|(left, right)| {
-            left.field == right.field
-                && left.field_ty == right.field_ty
-                && left.expected == right.expected
-        })
-}
-
 fn bool_case_fallback_compatible(pattern: &PatternKind) -> bool {
     matches!(pattern, PatternKind::Lit(Lit::Bool(_)) | PatternKind::Wildcard)
 }
@@ -2279,7 +2268,7 @@ fn literal_case_value_from_lit(lit: &Lit) -> Option<LiteralCaseValue> {
     }
 }
 
-fn record_case_pattern_info_from_pattern(pattern: &PatternKind) -> Option<RecordCasePatternInfo> {
+fn record_case_arms_from_pattern(pattern: &PatternKind) -> Option<Vec<RecordCasePatternInfo>> {
     match pattern {
         PatternKind::Record { name, fields, .. } => {
             let mut seen_fields = BTreeSet::new();
@@ -2311,7 +2300,12 @@ fn record_case_pattern_info_from_pattern(pattern: &PatternKind) -> Option<Record
                     _ => return None,
                 }
             }
-            Some((RecordCaseCarrier::Named(name.clone()), None, binds, checks))
+            Some(vec![(
+                RecordCaseCarrier::Named(name.clone()),
+                None,
+                binds,
+                checks,
+            )])
         }
         PatternKind::AnonRecord { fields, .. } => {
             let mut seen_fields = BTreeSet::new();
@@ -2343,70 +2337,78 @@ fn record_case_pattern_info_from_pattern(pattern: &PatternKind) -> Option<Record
                     _ => return None,
                 }
             }
-            Some((RecordCaseCarrier::Anonymous, None, binds, checks))
+            Some(vec![(RecordCaseCarrier::Anonymous, None, binds, checks)])
         }
         PatternKind::Or(patterns) => {
             let mut record_carrier: Option<RecordCaseCarrier> = None;
-            let mut shared_bind_name: Option<String> = None;
+            let mut shared_bind_name: Option<Option<String>> = None;
             let mut shared_field_binds: Option<Vec<RecordFieldBind>> = None;
-            let mut shared_field_checks: Option<Vec<RecordFieldCheck>> = None;
+            let mut flattened = Vec::new();
             for branch in patterns {
-                let (
+                let branch_infos = record_case_arms_from_pattern(&branch.node)?;
+                for (
                     branch_record_carrier,
                     branch_bind_name,
                     branch_field_binds,
                     branch_field_checks,
-                ) =
-                    record_case_pattern_info_from_pattern(&branch.node)?;
-                match &record_carrier {
-                    None => record_carrier = Some(branch_record_carrier),
-                    Some(existing) if existing == &branch_record_carrier => {}
-                    _ => return None,
-                }
-                match &shared_field_binds {
-                    None => shared_field_binds = Some(branch_field_binds.clone()),
-                    Some(existing)
-                        if record_field_binds_or_compatible(existing, &branch_field_binds) => {}
-                    _ => return None,
-                }
-                match &shared_field_checks {
-                    None => shared_field_checks = Some(branch_field_checks.clone()),
-                    Some(existing)
-                        if record_field_checks_or_compatible(existing, &branch_field_checks) => {}
-                    _ => return None,
-                }
-                match (&shared_bind_name, branch_bind_name) {
-                    (None, None) => {}
-                    (None, Some(name)) => shared_bind_name = Some(name),
-                    (Some(existing), Some(name)) if existing == &name => {}
-                    _ => return None,
+                ) in branch_infos
+                {
+                    match &record_carrier {
+                        None => record_carrier = Some(branch_record_carrier.clone()),
+                        Some(existing) if existing == &branch_record_carrier => {}
+                        _ => return None,
+                    }
+                    match &shared_field_binds {
+                        None => shared_field_binds = Some(branch_field_binds.clone()),
+                        Some(existing)
+                            if record_field_binds_or_compatible(existing, &branch_field_binds) => {}
+                        _ => return None,
+                    }
+                    match &shared_bind_name {
+                        None => shared_bind_name = Some(branch_bind_name.clone()),
+                        Some(existing) if existing == &branch_bind_name => {}
+                        _ => return None,
+                    }
+                    flattened.push((
+                        branch_record_carrier,
+                        branch_bind_name,
+                        branch_field_binds,
+                        branch_field_checks,
+                    ));
                 }
             }
-            Some((
-                record_carrier?,
-                shared_bind_name,
-                shared_field_binds.unwrap_or_default(),
-                shared_field_checks.unwrap_or_default(),
-            ))
+            if flattened.is_empty() {
+                return None;
+            }
+            let expected_carrier = record_carrier?;
+            let expected_bind = shared_bind_name.unwrap_or(None);
+            let expected_binds = shared_field_binds.unwrap_or_default();
+            if flattened.iter().any(|(carrier, bind_name, field_binds, _)| {
+                carrier != &expected_carrier
+                    || bind_name != &expected_bind
+                    || !record_field_binds_or_compatible(field_binds, &expected_binds)
+            }) {
+                return None;
+            }
+            Some(flattened)
         }
         PatternKind::As { pattern, name } => {
-            let (record_carrier, inner_bind_name, inner_field_binds, inner_field_checks) =
-                record_case_pattern_info_from_pattern(&pattern.node)?;
-            if inner_bind_name.is_some() {
-                return None;
+            let mut infos = record_case_arms_from_pattern(&pattern.node)?;
+            for (_, inner_bind_name, inner_field_binds, _) in &infos {
+                if inner_bind_name.is_some() {
+                    return None;
+                }
+                if inner_field_binds
+                    .iter()
+                    .any(|field_bind| field_bind.name == name.node)
+                {
+                    return None;
+                }
             }
-            if inner_field_binds
-                .iter()
-                .any(|field_bind| field_bind.name == name.node)
-            {
-                return None;
+            for (_, inner_bind_name, _, _) in &mut infos {
+                *inner_bind_name = Some(name.node.clone());
             }
-            Some((
-                record_carrier,
-                Some(name.node.clone()),
-                inner_field_binds,
-                inner_field_checks,
-            ))
+            Some(infos)
         }
         _ => None,
     }
@@ -3080,6 +3082,47 @@ mod tests {
                 ..
             }) if name == "years"
         ));
+    }
+
+    #[test]
+    fn lower_function_record_pattern_or_literals_desugar_to_if_chain() {
+        let module = parse_module_from_text(
+            "record User\n  age: Int\n  score: Int\n\nfn pick(u: User) -> Int\n  case u\n    User { age: 3, .. } | User { age: 7, .. } -> 1\n    _ -> 0",
+        );
+        let mut env = TypeEnv::new();
+        env.bind(
+            "pick".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::pure(
+                vec![Type::Record(kea_types::RecordType {
+                    name: "User".to_string(),
+                    params: vec![],
+                    row: kea_types::RowType::closed(vec![
+                        (Label::new("age"), Type::Int),
+                        (Label::new("score"), Type::Int),
+                    ]),
+                })],
+                Type::Int,
+            ))),
+        );
+
+        let lowered = lower_module(&module, &env);
+        let function = lowered
+            .declarations
+            .iter()
+            .find_map(|decl| match decl {
+                HirDecl::Function(function) if function.name == "pick" => Some(function),
+                _ => None,
+            })
+            .expect("expected lowered pick function");
+
+        let HirExprKind::If {
+            else_branch: Some(else_branch),
+            ..
+        } = &function.body.kind
+        else {
+            panic!("expected OR record case to lower to if chain");
+        };
+        assert!(matches!(else_branch.kind, HirExprKind::If { .. }));
     }
 
     #[test]
