@@ -351,6 +351,20 @@ fn module_path_from_entry(entry: &Path) -> String {
     pascal_case_segment(stem)
 }
 
+fn module_struct_name(module_path: &str) -> &str {
+    module_path.rsplit('.').next().unwrap_or(module_path)
+}
+
+fn module_has_same_name_type(module: &Module, struct_name: &str) -> bool {
+    module.declarations.iter().any(|decl| match &decl.node {
+        DeclKind::TypeDef(def) => def.name.node == struct_name,
+        DeclKind::RecordDef(def) => def.name.node == struct_name,
+        DeclKind::AliasDecl(alias) => alias.name.node == struct_name,
+        DeclKind::OpaqueTypeDef(opaque) => opaque.name.node == struct_name,
+        _ => false,
+    })
+}
+
 fn configured_prelude_modules() -> Vec<String> {
     if let Ok(configured) = std::env::var("KEA_PRELUDE_MODULES") {
         return configured
@@ -890,6 +904,13 @@ fn register_top_level_declarations(
         .unwrap_or_else(|| "repl:".to_string());
 
     if let Some(module_path) = module_path {
+        let struct_name = module_struct_name(module_path);
+        env.register_module_alias(struct_name, module_path);
+        env.register_module_struct(
+            module_path,
+            struct_name,
+            module_has_same_name_type(module, struct_name),
+        );
         for decl in &module.declarations {
             match &decl.node {
                 DeclKind::Function(fn_decl) => {
@@ -1100,15 +1121,14 @@ fn typecheck_functions(
         register_fn_signature(&fn_decl, env);
 
         if let Some(module_path) = module_path {
-            let module_short = module_path
-                .rsplit('.')
-                .next()
-                .unwrap_or(module_path)
-                .to_string();
+            let module_short = module_struct_name(module_path).to_string();
             env.register_module_alias(&module_short, module_path);
             env.register_module_function(module_path, &fn_decl.name.node);
             if let Some(scheme) = env.lookup(&fn_decl.name.node).cloned() {
                 env.register_module_type_scheme_exact(module_path, &fn_decl.name.node, scheme);
+            }
+            if !fn_decl.name.node.contains('.') {
+                env.register_inherent_method(&module_short, &fn_decl.name.node);
             }
 
             let qualified_name = format!("{module_path}.{}", fn_decl.name.node);

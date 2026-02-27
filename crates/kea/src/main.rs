@@ -348,6 +348,58 @@ mod tests {
             Some(false),
             "expected private visibility metadata for Math.hidden",
         );
+        let module_struct = compiled
+            .type_env
+            .module_struct_info("Math")
+            .expect("expected module struct metadata for Math");
+        assert_eq!(module_struct.name, "Math");
+        assert!(
+            !module_struct.merged_with_named_type,
+            "Math module should not report same-name type merge",
+        );
+        let inherent_methods = compiled.type_env.inherent_methods_for_type("Math");
+        assert!(
+            inherent_methods.iter().any(|name| name == "inc"),
+            "expected Math.inc to be registered as an inherent module method",
+        );
+        assert!(
+            inherent_methods.iter().any(|name| name == "hidden"),
+            "expected Math.hidden to be registered as an inherent module method",
+        );
+
+        let _ = std::fs::remove_dir_all(project_dir);
+    }
+
+    #[test]
+    fn compile_project_marks_same_name_module_type_merge() {
+        let project_dir = temp_project_dir("kea-cli-project-module-struct-merge");
+        let src_dir = project_dir.join("src");
+        std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+
+        std::fs::write(
+            src_dir.join("list.kea"),
+            "type List = Empty | Item(Int)\n\nfn size(_ self: List) -> Int\n  1\n",
+        )
+        .expect("list module write should succeed");
+        let app_path = src_dir.join("app.kea");
+        std::fs::write(&app_path, "use List\nfn main() -> Int\n  0\n")
+            .expect("app module write should succeed");
+
+        let compiled = kea::compile_project(&app_path).expect("project compile should succeed");
+        let module_struct = compiled
+            .type_env
+            .module_struct_info("List")
+            .expect("expected module struct metadata for List");
+        assert_eq!(module_struct.name, "List");
+        assert!(
+            module_struct.merged_with_named_type,
+            "List module should mark same-name type merge",
+        );
+        let inherent_methods = compiled.type_env.inherent_methods_for_type("List");
+        assert!(
+            inherent_methods.iter().any(|name| name == "size"),
+            "expected List.size to be registered as an inherent module method",
+        );
 
         let _ = std::fs::remove_dir_all(project_dir);
     }
