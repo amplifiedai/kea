@@ -455,6 +455,14 @@ pub struct Param {
 }
 
 impl Param {
+    /// Returns true when this parameter uses the `borrow` convention prefix.
+    ///
+    /// The parser currently represents `borrow x: T` as an explicit label
+    /// `borrow` followed by the bound pattern `x`.
+    pub fn is_borrowed(&self) -> bool {
+        matches!(&self.label, ParamLabel::Label(label) if label.node == "borrow")
+    }
+
     /// Returns the parameter name if the pattern is a simple variable.
     pub fn name(&self) -> Option<&str> {
         match &self.pattern.node {
@@ -465,6 +473,9 @@ impl Param {
 
     /// Returns the effective call-site label when this parameter is labeled.
     pub fn effective_label(&self) -> Option<&str> {
+        if self.is_borrowed() {
+            return self.name();
+        }
         match &self.label {
             ParamLabel::Positional => None,
             ParamLabel::Label(label) => Some(label.node.as_str()),

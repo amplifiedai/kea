@@ -148,10 +148,12 @@ type PatternVariantTags = BTreeMap<String, PatternVariantMeta>;
 type QualifiedPatternVariantTags = BTreeMap<(String, String), PatternVariantMeta>;
 type KnownRecordDefs = BTreeSet<String>;
 type KnownAliasDefs = BTreeMap<String, TypeAnnotation>;
+type BorrowParamMap = BTreeMap<String, BTreeSet<usize>>;
 
 #[derive(Debug, Clone, Default)]
 struct MoveBindingState {
     moved_at: Option<Span>,
+    borrowed: bool,
 }
 
 fn span_to_location(span: Span) -> SourceLocation {
@@ -189,6 +191,19 @@ fn consume_unique_binding(
     let Some(binding) = state.get_mut(name) else {
         return;
     };
+    if binding.borrowed {
+        diagnostics.push(
+            Diagnostic::error(
+                Category::TypeError,
+                format!("borrowed value `{name}` cannot be consumed"),
+            )
+            .at(span_to_location(span))
+            .with_help(
+                "borrow parameters are read-only in step 2; pass to another borrow parameter or return a new value instead.",
+            ),
+        );
+        return;
+    }
     if let Some(moved_at) = binding.moved_at {
         let mut diag = Diagnostic::error(
             Category::TypeError,
@@ -204,6 +219,25 @@ fn consume_unique_binding(
         return;
     }
     binding.moved_at = Some(span);
+}
+
+fn read_unique_binding(
+    name: &str,
+    span: Span,
+    state: &mut BTreeMap<String, MoveBindingState>,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    let Some(binding) = state.get(name) else {
+        return;
+    };
+    if let Some(moved_at) = binding.moved_at {
+        let mut diag =
+            Diagnostic::error(Category::TypeError, format!("use of moved value `{name}`"))
+                .at(span_to_location(span))
+                .with_help("`Unique` values cannot be borrowed after they are moved.");
+        diag = diag.with_label(span_to_location(moved_at), "value was moved here");
+        diagnostics.push(diag);
+    }
 }
 
 fn merge_branch_move_states(
@@ -238,16 +272,25 @@ fn merge_branch_move_states(
     }
 }
 
-fn seed_unique_function_params(function: &HirFunction) -> BTreeMap<String, MoveBindingState> {
+fn seed_unique_function_params(
+    function: &HirFunction,
+    borrow_params: Option<&BTreeSet<usize>>,
+) -> BTreeMap<String, MoveBindingState> {
     let mut state = BTreeMap::new();
     let Type::Function(ft) = &function.ty else {
         return state;
     };
-    for (param, param_ty) in function.params.iter().zip(ft.params.iter()) {
+    for (index, (param, param_ty)) in function.params.iter().zip(ft.params.iter()).enumerate() {
         if let Some(name) = &param.name
             && is_unique_type(param_ty)
         {
-            state.insert(name.clone(), MoveBindingState::default());
+            state.insert(
+                name.clone(),
+                MoveBindingState {
+                    moved_at: None,
+                    borrowed: borrow_params.is_some_and(|positions| positions.contains(&index)),
+                },
+            );
         }
     }
     state
@@ -258,6 +301,20 @@ fn annotation_is_unique(ann: &TypeAnnotation) -> bool {
         TypeAnnotation::Named(name) => name == "Unique",
         TypeAnnotation::Applied(name, args) => name == "Unique" && args.len() == 1,
         _ => false,
+    }
+}
+
+fn borrow_positions_for_hir_call(func: &HirExpr, borrow_param_map: &BorrowParamMap) -> BTreeSet<usize> {
+    match &func.kind {
+        HirExprKind::Var(name) => borrow_param_map.get(name).cloned().unwrap_or_default(),
+        _ => BTreeSet::new(),
+    }
+}
+
+fn borrow_positions_for_ast_call(func: &Expr, borrow_param_map: &BorrowParamMap) -> BTreeSet<usize> {
+    match &func.node {
+        ExprKind::Var(name) => borrow_param_map.get(name).cloned().unwrap_or_default(),
+        _ => BTreeSet::new(),
     }
 }
 
@@ -411,6 +468,7 @@ fn check_unique_moves_ast_expr(
     expr: &Expr,
     state: &mut BTreeMap<String, MoveBindingState>,
     diagnostics: &mut Vec<Diagnostic>,
+    borrow_param_map: &BorrowParamMap,
 ) {
     match &expr.node {
         ExprKind::Lit(_) | ExprKind::None | ExprKind::Atom(_) | ExprKind::Wildcard => {}
@@ -420,7 +478,7 @@ fn check_unique_moves_ast_expr(
             annotation,
             value,
         } => {
-            check_unique_moves_ast_expr(value, state, diagnostics);
+            check_unique_moves_ast_expr(value, state, diagnostics, borrow_param_map);
             if let Some(name) = pattern.node.as_var()
                 && annotation
                     .as_ref()
@@ -441,12 +499,26 @@ fn check_unique_moves_ast_expr(
                     lambda_state.insert(name.to_string(), MoveBindingState::default());
                 }
             }
-            check_unique_moves_ast_expr(body, &mut lambda_state, diagnostics);
+            check_unique_moves_ast_expr(body, &mut lambda_state, diagnostics, borrow_param_map);
         }
         ExprKind::Call { func, args } => {
-            check_unique_moves_ast_expr(func, state, diagnostics);
-            for arg in args {
-                check_unique_moves_ast_expr(&arg.value, state, diagnostics);
+            let borrow_positions = borrow_positions_for_ast_call(func, borrow_param_map);
+            check_unique_moves_ast_expr(func, state, diagnostics, borrow_param_map);
+            for (index, arg) in args.iter().enumerate() {
+                if borrow_positions.contains(&index) {
+                    if let ExprKind::Var(name) = &arg.value.node {
+                        read_unique_binding(name, arg.value.span, state, diagnostics);
+                    } else {
+                        check_unique_moves_ast_expr(
+                            &arg.value,
+                            state,
+                            diagnostics,
+                            borrow_param_map,
+                        );
+                    }
+                } else {
+                    check_unique_moves_ast_expr(&arg.value, state, diagnostics, borrow_param_map);
+                }
             }
         }
         ExprKind::If {
@@ -454,13 +526,18 @@ fn check_unique_moves_ast_expr(
             then_branch,
             else_branch,
         } => {
-            check_unique_moves_ast_expr(condition, state, diagnostics);
+            check_unique_moves_ast_expr(condition, state, diagnostics, borrow_param_map);
             let before = state.clone();
             let mut then_state = before.clone();
-            check_unique_moves_ast_expr(then_branch, &mut then_state, diagnostics);
+            check_unique_moves_ast_expr(
+                then_branch,
+                &mut then_state,
+                diagnostics,
+                borrow_param_map,
+            );
             let mut else_state = before.clone();
             if let Some(else_expr) = else_branch {
-                check_unique_moves_ast_expr(else_expr, &mut else_state, diagnostics);
+                check_unique_moves_ast_expr(else_expr, &mut else_state, diagnostics, borrow_param_map);
             }
             merge_branch_move_states(
                 expr.span,
@@ -472,15 +549,15 @@ fn check_unique_moves_ast_expr(
             );
         }
         ExprKind::Case { scrutinee, arms } => {
-            check_unique_moves_ast_expr(scrutinee, state, diagnostics);
+            check_unique_moves_ast_expr(scrutinee, state, diagnostics, borrow_param_map);
             let before = state.clone();
             let mut arm_states = Vec::with_capacity(arms.len());
             for arm in arms {
                 let mut arm_state = before.clone();
                 if let Some(guard) = &arm.guard {
-                    check_unique_moves_ast_expr(guard, &mut arm_state, diagnostics);
+                    check_unique_moves_ast_expr(guard, &mut arm_state, diagnostics, borrow_param_map);
                 }
-                check_unique_moves_ast_expr(&arm.body, &mut arm_state, diagnostics);
+                check_unique_moves_ast_expr(&arm.body, &mut arm_state, diagnostics, borrow_param_map);
                 arm_states.push(arm_state);
             }
             merge_case_arm_move_states(expr.span, &before, &arm_states, state, diagnostics);
@@ -490,7 +567,7 @@ fn check_unique_moves_ast_expr(
             clauses,
             then_clause,
         } => {
-            check_unique_moves_ast_expr(expr, state, diagnostics);
+            check_unique_moves_ast_expr(expr, state, diagnostics, borrow_param_map);
             for clause in clauses {
                 let mut clause_state = state.clone();
                 for arg in &clause.args {
@@ -498,43 +575,48 @@ fn check_unique_moves_ast_expr(
                         clause_state.insert(name.to_string(), MoveBindingState::default());
                     }
                 }
-                check_unique_moves_ast_expr(&clause.body, &mut clause_state, diagnostics);
+                check_unique_moves_ast_expr(
+                    &clause.body,
+                    &mut clause_state,
+                    diagnostics,
+                    borrow_param_map,
+                );
             }
             if let Some(then_expr) = then_clause {
-                check_unique_moves_ast_expr(then_expr, state, diagnostics);
+                check_unique_moves_ast_expr(then_expr, state, diagnostics, borrow_param_map);
             }
         }
         ExprKind::Resume { value }
         | ExprKind::Yield { value }
         | ExprKind::As { expr: value, .. } => {
-            check_unique_moves_ast_expr(value, state, diagnostics);
+            check_unique_moves_ast_expr(value, state, diagnostics, borrow_param_map);
         }
         ExprKind::BinaryOp { left, right, .. } => {
-            check_unique_moves_ast_expr(left, state, diagnostics);
-            check_unique_moves_ast_expr(right, state, diagnostics);
+            check_unique_moves_ast_expr(left, state, diagnostics, borrow_param_map);
+            check_unique_moves_ast_expr(right, state, diagnostics, borrow_param_map);
         }
         ExprKind::UnaryOp { operand, .. }
         | ExprKind::WhenGuard {
             body: operand, ..
         }
         | ExprKind::Await { expr: operand, .. } => {
-            check_unique_moves_ast_expr(operand, state, diagnostics);
+            check_unique_moves_ast_expr(operand, state, diagnostics, borrow_param_map);
         }
         ExprKind::Range { start, end, .. } => {
-            check_unique_moves_ast_expr(start, state, diagnostics);
-            check_unique_moves_ast_expr(end, state, diagnostics);
+            check_unique_moves_ast_expr(start, state, diagnostics, borrow_param_map);
+            check_unique_moves_ast_expr(end, state, diagnostics, borrow_param_map);
         }
         ExprKind::Tuple(items) | ExprKind::List(items) | ExprKind::Block(items) => {
             for item in items {
-                check_unique_moves_ast_expr(item, state, diagnostics);
+                check_unique_moves_ast_expr(item, state, diagnostics, borrow_param_map);
             }
         }
         ExprKind::Record { fields, spread, .. } | ExprKind::AnonRecord { fields, spread } => {
             for (_, value) in fields {
-                check_unique_moves_ast_expr(value, state, diagnostics);
+                check_unique_moves_ast_expr(value, state, diagnostics, borrow_param_map);
             }
             if let Some(base) = spread {
-                check_unique_moves_ast_expr(base, state, diagnostics);
+                check_unique_moves_ast_expr(base, state, diagnostics, borrow_param_map);
             }
         }
         ExprKind::FieldAccess { expr, .. }
@@ -542,36 +624,36 @@ fn check_unique_moves_ast_expr(
         | ExprKind::ControlSend { actor: expr, .. }
         | ExprKind::Spawn { value: expr, .. }
         | ExprKind::StreamBlock { body: expr, .. } => {
-            check_unique_moves_ast_expr(expr, state, diagnostics);
+            check_unique_moves_ast_expr(expr, state, diagnostics, borrow_param_map);
         }
         ExprKind::Use(kea_ast::UseExpr { pattern, rhs }) => {
-            check_unique_moves_ast_expr(rhs, state, diagnostics);
+            check_unique_moves_ast_expr(rhs, state, diagnostics, borrow_param_map);
             if let Some(name) = pattern.as_ref().and_then(|pat| pat.node.as_var()) {
                 state.insert(name.to_string(), MoveBindingState::default());
             }
         }
         ExprKind::Constructor { args, .. } => {
             for arg in args {
-                check_unique_moves_ast_expr(&arg.value, state, diagnostics);
+                check_unique_moves_ast_expr(&arg.value, state, diagnostics, borrow_param_map);
             }
         }
         ExprKind::StringInterp(parts) => {
             for part in parts {
                 if let kea_ast::StringInterpPart::Expr(inner) = part {
-                    check_unique_moves_ast_expr(inner, state, diagnostics);
+                    check_unique_moves_ast_expr(inner, state, diagnostics, borrow_param_map);
                 }
             }
         }
         ExprKind::MapLiteral(entries) => {
             for (key, value) in entries {
-                check_unique_moves_ast_expr(key, state, diagnostics);
-                check_unique_moves_ast_expr(value, state, diagnostics);
+                check_unique_moves_ast_expr(key, state, diagnostics, borrow_param_map);
+                check_unique_moves_ast_expr(value, state, diagnostics, borrow_param_map);
             }
         }
         ExprKind::ActorSend { actor, args, .. } | ExprKind::ActorCall { actor, args, .. } => {
-            check_unique_moves_ast_expr(actor, state, diagnostics);
+            check_unique_moves_ast_expr(actor, state, diagnostics, borrow_param_map);
             for arg in args {
-                check_unique_moves_ast_expr(arg, state, diagnostics);
+                check_unique_moves_ast_expr(arg, state, diagnostics, borrow_param_map);
             }
         }
         ExprKind::Cond { arms } => {
@@ -579,8 +661,13 @@ fn check_unique_moves_ast_expr(
             let mut arm_states = Vec::with_capacity(arms.len());
             for arm in arms {
                 let mut arm_state = before.clone();
-                check_unique_moves_ast_expr(&arm.condition, &mut arm_state, diagnostics);
-                check_unique_moves_ast_expr(&arm.body, &mut arm_state, diagnostics);
+                check_unique_moves_ast_expr(
+                    &arm.condition,
+                    &mut arm_state,
+                    diagnostics,
+                    borrow_param_map,
+                );
+                check_unique_moves_ast_expr(&arm.body, &mut arm_state, diagnostics, borrow_param_map);
                 arm_states.push(arm_state);
             }
             merge_case_arm_move_states(expr.span, &before, &arm_states, state, diagnostics);
@@ -589,17 +676,17 @@ fn check_unique_moves_ast_expr(
             for clause in &for_expr.clauses {
                 match clause {
                     kea_ast::ForClause::Generator { pattern, source } => {
-                        check_unique_moves_ast_expr(source, state, diagnostics);
+                        check_unique_moves_ast_expr(source, state, diagnostics, borrow_param_map);
                         if let Some(name) = pattern.node.as_var() {
                             state.insert(name.to_string(), MoveBindingState::default());
                         }
                     }
                     kea_ast::ForClause::Guard(guard) => {
-                        check_unique_moves_ast_expr(guard, state, diagnostics);
+                        check_unique_moves_ast_expr(guard, state, diagnostics, borrow_param_map);
                     }
                 }
             }
-            check_unique_moves_ast_expr(&for_expr.body, state, diagnostics);
+            check_unique_moves_ast_expr(&for_expr.body, state, diagnostics, borrow_param_map);
         }
     }
 }
@@ -608,6 +695,7 @@ fn check_unique_moves_expr(
     expr: &HirExpr,
     state: &mut BTreeMap<String, MoveBindingState>,
     diagnostics: &mut Vec<Diagnostic>,
+    borrow_param_map: &BorrowParamMap,
 ) {
     match &expr.kind {
         HirExprKind::Lit(_) => {}
@@ -616,37 +704,46 @@ fn check_unique_moves_expr(
         }
         HirExprKind::RecordLit { fields, .. } => {
             for (_, field_expr) in fields {
-                check_unique_moves_expr(field_expr, state, diagnostics);
+                check_unique_moves_expr(field_expr, state, diagnostics, borrow_param_map);
             }
         }
         HirExprKind::RecordUpdate { base, fields, .. } => {
-            check_unique_moves_expr(base, state, diagnostics);
+            check_unique_moves_expr(base, state, diagnostics, borrow_param_map);
             for (_, field_expr) in fields {
-                check_unique_moves_expr(field_expr, state, diagnostics);
+                check_unique_moves_expr(field_expr, state, diagnostics, borrow_param_map);
             }
         }
         HirExprKind::SumConstructor { fields, .. } => {
             for field_expr in fields {
-                check_unique_moves_expr(field_expr, state, diagnostics);
+                check_unique_moves_expr(field_expr, state, diagnostics, borrow_param_map);
             }
         }
         HirExprKind::SumPayloadAccess { expr, .. } => {
-            check_unique_moves_expr(expr, state, diagnostics);
+            check_unique_moves_expr(expr, state, diagnostics, borrow_param_map);
         }
         HirExprKind::FieldAccess { expr, .. } => {
-            check_unique_moves_expr(expr, state, diagnostics);
+            check_unique_moves_expr(expr, state, diagnostics, borrow_param_map);
         }
         HirExprKind::Binary { left, right, .. } => {
-            check_unique_moves_expr(left, state, diagnostics);
-            check_unique_moves_expr(right, state, diagnostics);
+            check_unique_moves_expr(left, state, diagnostics, borrow_param_map);
+            check_unique_moves_expr(right, state, diagnostics, borrow_param_map);
         }
         HirExprKind::Unary { operand, .. } => {
-            check_unique_moves_expr(operand, state, diagnostics);
+            check_unique_moves_expr(operand, state, diagnostics, borrow_param_map);
         }
         HirExprKind::Call { func, args } => {
-            check_unique_moves_expr(func, state, diagnostics);
-            for arg in args {
-                check_unique_moves_expr(arg, state, diagnostics);
+            let borrow_positions = borrow_positions_for_hir_call(func, borrow_param_map);
+            check_unique_moves_expr(func, state, diagnostics, borrow_param_map);
+            for (index, arg) in args.iter().enumerate() {
+                if borrow_positions.contains(&index) {
+                    if let HirExprKind::Var(name) = &arg.kind {
+                        read_unique_binding(name, arg.span, state, diagnostics);
+                    } else {
+                        check_unique_moves_expr(arg, state, diagnostics, borrow_param_map);
+                    }
+                } else {
+                    check_unique_moves_expr(arg, state, diagnostics, borrow_param_map);
+                }
             }
         }
         HirExprKind::Lambda { params, body } => {
@@ -669,30 +766,35 @@ fn check_unique_moves_expr(
                     }
                 }
             }
-            check_unique_moves_expr(body, &mut lambda_state, diagnostics);
+            check_unique_moves_expr(body, &mut lambda_state, diagnostics, borrow_param_map);
         }
         HirExprKind::Catch { expr } => {
-            check_unique_moves_expr(expr, state, diagnostics);
+            check_unique_moves_expr(expr, state, diagnostics, borrow_param_map);
         }
         HirExprKind::Handle {
             expr,
             clauses,
             then_clause,
         } => {
-            check_unique_moves_expr(expr, state, diagnostics);
+            check_unique_moves_expr(expr, state, diagnostics, borrow_param_map);
             for clause in clauses {
                 let mut clause_state = state.clone();
-                check_unique_moves_expr(&clause.body, &mut clause_state, diagnostics);
+                check_unique_moves_expr(
+                    &clause.body,
+                    &mut clause_state,
+                    diagnostics,
+                    borrow_param_map,
+                );
             }
             if let Some(then_expr) = then_clause {
-                check_unique_moves_expr(then_expr, state, diagnostics);
+                check_unique_moves_expr(then_expr, state, diagnostics, borrow_param_map);
             }
         }
         HirExprKind::Resume { value } => {
-            check_unique_moves_expr(value, state, diagnostics);
+            check_unique_moves_expr(value, state, diagnostics, borrow_param_map);
         }
         HirExprKind::Let { pattern, value } => {
-            check_unique_moves_expr(value, state, diagnostics);
+            check_unique_moves_expr(value, state, diagnostics, borrow_param_map);
             if let HirPattern::Var(name) = pattern
                 && is_unique_type(&value.ty)
             {
@@ -704,13 +806,13 @@ fn check_unique_moves_expr(
             then_branch,
             else_branch,
         } => {
-            check_unique_moves_expr(condition, state, diagnostics);
+            check_unique_moves_expr(condition, state, diagnostics, borrow_param_map);
             let before = state.clone();
             let mut then_state = before.clone();
-            check_unique_moves_expr(then_branch, &mut then_state, diagnostics);
+            check_unique_moves_expr(then_branch, &mut then_state, diagnostics, borrow_param_map);
             let mut else_state = before.clone();
             if let Some(else_expr) = else_branch {
-                check_unique_moves_expr(else_expr, &mut else_state, diagnostics);
+                check_unique_moves_expr(else_expr, &mut else_state, diagnostics, borrow_param_map);
             }
             merge_branch_move_states(
                 expr.span,
@@ -723,12 +825,12 @@ fn check_unique_moves_expr(
         }
         HirExprKind::Block(exprs) => {
             for item in exprs {
-                check_unique_moves_expr(item, state, diagnostics);
+                check_unique_moves_expr(item, state, diagnostics, borrow_param_map);
             }
         }
         HirExprKind::Tuple(items) => {
             for item in items {
-                check_unique_moves_expr(item, state, diagnostics);
+                check_unique_moves_expr(item, state, diagnostics, borrow_param_map);
             }
         }
         HirExprKind::Raw(raw) => {
@@ -736,24 +838,72 @@ fn check_unique_moves_expr(
                 node: raw.clone(),
                 span: expr.span,
             };
-            check_unique_moves_ast_expr(&raw_expr, state, diagnostics);
+            check_unique_moves_ast_expr(&raw_expr, state, diagnostics, borrow_param_map);
         }
     }
 }
 
-fn check_unique_moves_function(function: &HirFunction) -> Vec<Diagnostic> {
+pub fn collect_borrow_param_positions(module: &Module) -> BTreeMap<String, BTreeSet<usize>> {
+    let mut out = BTreeMap::new();
+    for decl in &module.declarations {
+        match &decl.node {
+            DeclKind::Function(fn_decl) => {
+                let borrowed = fn_decl
+                    .params
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, param)| param.is_borrowed().then_some(index))
+                    .collect::<BTreeSet<_>>();
+                if !borrowed.is_empty() {
+                    out.insert(fn_decl.name.node.clone(), borrowed);
+                }
+            }
+            DeclKind::ExprFn(expr_decl) => {
+                let borrowed = expr_decl
+                    .params
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, param)| param.is_borrowed().then_some(index))
+                    .collect::<BTreeSet<_>>();
+                if !borrowed.is_empty() {
+                    out.insert(expr_decl.name.node.clone(), borrowed);
+                }
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+fn check_unique_moves_function(
+    function: &HirFunction,
+    borrow_param_map: &BorrowParamMap,
+) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
-    let mut state = seed_unique_function_params(function);
-    check_unique_moves_expr(&function.body, &mut state, &mut diagnostics);
+    let mut state = seed_unique_function_params(function, borrow_param_map.get(&function.name));
+    check_unique_moves_expr(
+        &function.body,
+        &mut state,
+        &mut diagnostics,
+        borrow_param_map,
+    );
     diagnostics
 }
 
 pub fn check_unique_moves(module: &HirModule) -> Vec<Diagnostic> {
+    let borrow_param_map = BorrowParamMap::new();
+    check_unique_moves_with_borrow_map(module, &borrow_param_map)
+}
+
+pub fn check_unique_moves_with_borrow_map(
+    module: &HirModule,
+    borrow_param_map: &BorrowParamMap,
+) -> Vec<Diagnostic> {
     module
         .declarations
         .iter()
         .flat_map(|decl| match decl {
-            HirDecl::Function(function) => check_unique_moves_function(function),
+            HirDecl::Function(function) => check_unique_moves_function(function, borrow_param_map),
             HirDecl::Raw(_) => Vec::new(),
         })
         .collect()
