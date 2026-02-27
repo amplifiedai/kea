@@ -20480,6 +20480,96 @@ theorem inferUnifyHasTypeUSoundBundle_field
   h_bundle.field
 
 /--
+Canonical expression recursive `HasTypeU` soundness entrypoint from a packaged
+bundle witness.
+-/
+theorem inferExprUnify_sound_preconditioned_hasTypeU_via_sound_bundle
+    {h_app : AppUnifySoundHookU}
+    {h_proj : ProjUnifySoundHookU}
+    (h_bundle : InferUnifyHasTypeUSoundBundle h_app h_proj) :
+    ∀ st fuel env e st' ty,
+      inferExprUnify st fuel env e = .ok st' ty →
+      HasTypeU env e ty :=
+  inferUnifyHasTypeUSoundBundle_expr h_bundle
+
+/--
+Canonical field recursive `HasTypeU` soundness entrypoint from a packaged
+bundle witness.
+-/
+theorem inferFieldsUnify_sound_preconditioned_hasTypeU_via_sound_bundle
+    {h_app : AppUnifySoundHookU}
+    {h_proj : ProjUnifySoundHookU}
+    (h_bundle : InferUnifyHasTypeUSoundBundle h_app h_proj) :
+    ∀ st fuel env fs st' rf,
+      inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)) →
+      HasFieldsTypeU env fs rf :=
+  inferUnifyHasTypeUSoundBundle_field h_bundle
+
+/--
+Weak-bundle expression entrypoint routed through the packaged bundle API.
+-/
+theorem inferExprUnify_sound_preconditioned_hasTypeU_from_hook_bundle_via_sound_bundle
+    (h_hooks : UnifyHookPremisesU) :
+    ∀ st fuel env e st' ty,
+      inferExprUnify st fuel env e = .ok st' ty →
+      HasTypeU env e ty :=
+  inferExprUnify_sound_preconditioned_hasTypeU_via_sound_bundle
+    (inferUnifyHasTypeUSoundBundle_of_hook_bundle h_hooks)
+
+/--
+Weak-bundle field entrypoint routed through the packaged bundle API.
+-/
+theorem inferFieldsUnify_sound_preconditioned_hasTypeU_from_hook_bundle_via_sound_bundle
+    (h_hooks : UnifyHookPremisesU) :
+    ∀ st fuel env fs st' rf,
+      inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)) →
+      HasFieldsTypeU env fs rf :=
+  inferFieldsUnify_sound_preconditioned_hasTypeU_via_sound_bundle
+    (inferUnifyHasTypeUSoundBundle_of_hook_bundle h_hooks)
+
+/--
+Strong-bundle expression entrypoint routed through the packaged bundle API.
+-/
+theorem inferExprUnify_sound_preconditioned_hasTypeU_from_strong_hook_bundle_via_sound_bundle
+    (h_hooks : UnifyHookPremises) :
+    ∀ st fuel env e st' ty,
+      inferExprUnify st fuel env e = .ok st' ty →
+      HasTypeU env e ty :=
+  inferExprUnify_sound_preconditioned_hasTypeU_from_strong_hook_bundle h_hooks
+
+/--
+Strong-bundle field entrypoint routed through the packaged bundle API.
+-/
+theorem inferFieldsUnify_sound_preconditioned_hasTypeU_from_strong_hook_bundle_via_sound_bundle
+    (h_hooks : UnifyHookPremises) :
+    ∀ st fuel env fs st' rf,
+      inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)) →
+      HasFieldsTypeU env fs rf :=
+  inferFieldsUnify_sound_preconditioned_hasTypeU_from_strong_hook_bundle h_hooks
+
+/--
+Resolved-bundle expression entrypoint routed through the packaged bundle API.
+-/
+theorem inferExprUnify_sound_preconditioned_hasTypeU_from_resolved_bundle_via_sound_bundle
+    (h_resolved : UnifyResolvedShapePremises) :
+    ∀ st fuel env e st' ty,
+      inferExprUnify st fuel env e = .ok st' ty →
+      HasTypeU env e ty :=
+  inferExprUnify_sound_preconditioned_hasTypeU_via_sound_bundle
+    (inferUnifyHasTypeUSoundBundle_of_resolved h_resolved)
+
+/--
+Resolved-bundle field entrypoint routed through the packaged bundle API.
+-/
+theorem inferFieldsUnify_sound_preconditioned_hasTypeU_from_resolved_bundle_via_sound_bundle
+    (h_resolved : UnifyResolvedShapePremises) :
+    ∀ st fuel env fs st' rf,
+      inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)) →
+      HasFieldsTypeU env fs rf :=
+  inferFieldsUnify_sound_preconditioned_hasTypeU_via_sound_bundle
+    (inferUnifyHasTypeUSoundBundle_of_resolved h_resolved)
+
+/--
 Surface-layer naming-parity wrappers for no-unify cross-route success APIs.
 These mirror the existing `...from_cross_route_slices` families under
 explicit `...from_cross_route_surface_slices` theorem names.
