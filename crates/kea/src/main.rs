@@ -272,6 +272,23 @@ mod tests {
     }
 
     #[test]
+    fn run_test_file_executes_property_iterations() {
+        let source_path = write_temp_source(
+            "effect Fail E\n  fn fail(error: E) -> Never\n\nfn assert(value: Bool) -[Fail String]> Unit\n  if value\n    ()\n  else\n    Fail.fail(\"assertion failed\")\n\ntest property (iterations: 3) \"repeat pass\"\n  assert true\n",
+            "kea-cli-test-runner-property-iterations",
+            "kea",
+        );
+
+        let run = run_test_file(&source_path).expect("test run should succeed");
+        assert_eq!(run.cases.len(), 1);
+        assert_eq!(run.cases[0].name, "repeat pass");
+        assert_eq!(run.cases[0].iterations, 3);
+        assert!(run.cases[0].passed);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_main_exit_code() {
         let source_path = write_temp_source("fn main() -> Int\n  9\n", "kea-cli-exec", "kea");
 
