@@ -20726,6 +20726,54 @@ theorem inferUnifySoundDualBundle_field_hasTypeU
   h_bundle.field_hasTypeU
 
 /--
+One-hop bundled-hook `HasType` expression projection from the dual soundness
+bundle constructor.
+-/
+theorem inferUnifySoundDualBundle_expr_hasType_of_hook_bundle
+    (h_hooks : UnifyHookPremises) :
+    ∀ st fuel env e st' ty,
+      inferExprUnify st fuel env e = .ok st' ty →
+      HasType env e ty :=
+  inferUnifySoundDualBundle_expr_hasType
+    (inferUnifySoundDualBundle_of_hook_bundle h_hooks)
+
+/--
+One-hop bundled-hook `HasType` field projection from the dual soundness bundle
+constructor.
+-/
+theorem inferUnifySoundDualBundle_field_hasType_of_hook_bundle
+    (h_hooks : UnifyHookPremises) :
+    ∀ st fuel env fs st' rf,
+      inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)) →
+      HasFieldsType env fs rf :=
+  inferUnifySoundDualBundle_field_hasType
+    (inferUnifySoundDualBundle_of_hook_bundle h_hooks)
+
+/--
+One-hop bundled-hook `HasTypeU` expression projection from the dual soundness
+bundle constructor.
+-/
+theorem inferUnifySoundDualBundle_expr_hasTypeU_of_hook_bundle
+    (h_hooks : UnifyHookPremises) :
+    ∀ st fuel env e st' ty,
+      inferExprUnify st fuel env e = .ok st' ty →
+      HasTypeU env e ty :=
+  inferUnifySoundDualBundle_expr_hasTypeU
+    (inferUnifySoundDualBundle_of_hook_bundle h_hooks)
+
+/--
+One-hop bundled-hook `HasTypeU` field projection from the dual soundness
+bundle constructor.
+-/
+theorem inferUnifySoundDualBundle_field_hasTypeU_of_hook_bundle
+    (h_hooks : UnifyHookPremises) :
+    ∀ st fuel env fs st' rf,
+      inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)) →
+      HasFieldsTypeU env fs rf :=
+  inferUnifySoundDualBundle_field_hasTypeU
+    (inferUnifySoundDualBundle_of_hook_bundle h_hooks)
+
+/--
 Canonical expression-level `HasType` recursive soundness entrypoint via the dual
 bundle surface.
 -/
