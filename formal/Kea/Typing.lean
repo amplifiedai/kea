@@ -6685,8 +6685,8 @@ theorem principalNoUnifyCoreExpr_of_success_via_allHooksSuite
     (h_no : NoUnifyBranchesExpr e)
     (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
     PrincipalTypingSliceCore env e ty :=
-  (principalBoundaryNoUnifyAllHooksSuite_capstone_expr
-    principalBoundaryNoUnifyAllHooksSuite_proved h_no h_ok).core
+  (principalNoUnifyToGeneralAllHooksSuite_capstone_expr
+    principalNoUnifyToGeneralAllHooksSuite_proved h_no h_ok).core
 
 /--
 All-hooks-suite convenience wrapper: derive preconditioned expression
@@ -6699,8 +6699,8 @@ theorem principalNoUnifyPreconditionedExpr_anyHooks_of_success_via_allHooksSuite
     (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
     ∀ h_app h_proj,
       PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty :=
-  (principalBoundaryNoUnifyAllHooksSuite_capstone_expr
-    principalBoundaryNoUnifyAllHooksSuite_proved h_no h_ok).preconditionedAny
+  (principalNoUnifyToGeneralAllHooksSuite_capstone_expr
+    principalNoUnifyToGeneralAllHooksSuite_proved h_no h_ok).preconditionedAny
 
 /--
 All-hooks-suite convenience wrapper: derive preconditioned expression
@@ -6713,8 +6713,8 @@ theorem principalNoUnifyPreconditionedExpr_of_success_via_allHooksSuite
     (h_ok : inferExprUnify st fuel env e = .ok st' ty)
     (h_hooks : UnifyHookPremises) :
     PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty :=
-  (principalBoundaryNoUnifyAllHooksSuite_capstone_expr
-    principalBoundaryNoUnifyAllHooksSuite_proved h_no h_ok).preconditionedAny
+  (principalNoUnifyToGeneralAllHooksSuite_capstone_expr
+    principalNoUnifyToGeneralAllHooksSuite_proved h_no h_ok).preconditionedAny
       h_hooks.1 h_hooks.2
 
 /--
@@ -6727,8 +6727,8 @@ theorem principalNoUnifyCoreField_of_success_via_allHooksSuite
     (h_no : NoUnifyBranchesFields fs)
     (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
     PrincipalFieldTypingSliceCore env fs rf :=
-  (principalBoundaryNoUnifyAllHooksSuite_capstone_field
-    principalBoundaryNoUnifyAllHooksSuite_proved h_no h_ok).core
+  (principalNoUnifyToGeneralAllHooksSuite_capstone_field
+    principalNoUnifyToGeneralAllHooksSuite_proved h_no h_ok).core
 
 /--
 All-hooks-suite convenience wrapper: derive preconditioned field principality
@@ -6741,8 +6741,8 @@ theorem principalNoUnifyPreconditionedField_anyHooks_of_success_via_allHooksSuit
     (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
     ∀ h_app h_proj,
       PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf :=
-  (principalBoundaryNoUnifyAllHooksSuite_capstone_field
-    principalBoundaryNoUnifyAllHooksSuite_proved h_no h_ok).preconditionedAny
+  (principalNoUnifyToGeneralAllHooksSuite_capstone_field
+    principalNoUnifyToGeneralAllHooksSuite_proved h_no h_ok).preconditionedAny
 
 /--
 All-hooks-suite convenience wrapper: derive preconditioned field principality
@@ -6755,8 +6755,8 @@ theorem principalNoUnifyPreconditionedField_of_success_via_allHooksSuite
     (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
     (h_hooks : UnifyHookPremises) :
     PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf :=
-  (principalBoundaryNoUnifyAllHooksSuite_capstone_field
-    principalBoundaryNoUnifyAllHooksSuite_proved h_no h_ok).preconditionedAny
+  (principalNoUnifyToGeneralAllHooksSuite_capstone_field
+    principalNoUnifyToGeneralAllHooksSuite_proved h_no h_ok).preconditionedAny
       h_hooks.1 h_hooks.2
 
 /--
@@ -6772,8 +6772,8 @@ theorem principalNoUnifyPreconditionedExpr_hookIrrelevant_of_success_via_allHook
     (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
     (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
       ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) :=
-  principalBoundaryNoUnifyAllHooksSuite_irrelevance_expr
-    principalBoundaryNoUnifyAllHooksSuite_proved h_no h_ok
+  principalNoUnifyToGeneralAllHooksSuite_irrelevance_expr
+    principalNoUnifyToGeneralAllHooksSuite_proved h_no h_ok
 
 /--
 All-hooks-suite convenience wrapper: derive fixed-run field hook-irrelevance
@@ -6788,8 +6788,8 @@ theorem principalNoUnifyPreconditionedField_hookIrrelevant_of_success_via_allHoo
     (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
     (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
       ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
-  principalBoundaryNoUnifyAllHooksSuite_irrelevance_field
-    principalBoundaryNoUnifyAllHooksSuite_proved h_no h_ok
+  principalNoUnifyToGeneralAllHooksSuite_irrelevance_field
+    principalNoUnifyToGeneralAllHooksSuite_proved h_no h_ok
 
 /--
 `HasTypeU` lift of non-app/proj recursive soundness: on the fragment that never
