@@ -300,6 +300,137 @@ nothing is unhandled.
 
 ---
 
+## Row polymorphism composes across boundaries
+
+The examples so far show effects making individual functions
+honest about what they do. The deeper payoff comes from
+composition — when row polymorphism on both records and effects
+lets you build systems where the types verify the assembly,
+not just the parts.
+
+Consider an HTTP server. Your handler needs things — an
+authenticated user, a database pool, a request ID — and does
+things — queries, logs, might fail. In most frameworks, the
+"needs things" part is an untyped grab bag: Express puts
+properties on `req`, Go threads `context.Value` with type
+assertions, Axum uses a type-map extractor. The "does things"
+part is invisible.
+
+In Kea, the handler's signature says both:
+
+```kea
+fn handle(_ req: { user: User, db: Pool, request_id: String })
+    -[DB, Log, Fail AppError]> Response
+```
+
+The record row says what data the handler requires. The effect
+row says what capabilities it uses. Both are checked.
+
+Middleware transforms both rows:
+
+```kea
+fn auth(_ next: { user: User | r } -[e]> Response)
+    -> { headers: Headers | r } -[Net, Fail AuthError, e]> Response
+  |req| ->
+    let token = req.headers.get("Authorization")
+      .ok_or(AuthError.missing_token())?
+    let user = Auth.verify(token)?
+    next(req~{ user })
+```
+
+This middleware takes a handler that *requires* `user: User` in
+its input and returns a handler that doesn't — it provides the
+user by verifying the auth token and adding the field via `~{}`.
+The row variable `r` carries all other fields through unchanged.
+The effect variable `e` carries all other effects through. The
+middleware adds `Net` (it calls the auth service) and
+`Fail AuthError` (verification can fail).
+
+Stack three middlewares:
+
+```kea
+let stack = App.handle         -- needs { user, db, request_id }, does [DB, Log]
+  |> Middleware.auth           -- provides user, adds [Net, Fail AuthError]
+  |> Middleware.db_pool        -- provides db, adds [Net]
+  |> Middleware.request_id     -- provides request_id, adds [Clock]
+```
+
+The type of `stack` is the composition of all the row
+transformations: it needs `{ headers: Headers }` (for auth),
+performs `[Net, Fail AuthError, Log, Clock]`, and requires no
+other context. Each middleware peeled off a data requirement
+and added capabilities.
+
+Forget the auth middleware? The type checker says `user: User`
+is missing from the request context. Put middlewares in the
+wrong order — say auth needs a database lookup but db_pool
+hasn't been applied yet? `DB` propagates unhandled to the
+server boundary — type error.
+
+**Compile-time middleware ordering validation from row
+polymorphism.** No existing framework has this. It falls out
+of standard Rémy-style row unification — no new inference
+machinery, no special HTTP types. The same mechanism that makes
+effect rows extensible and record types composable also makes
+middleware stacks verifiable.
+
+The same principle applies to per-request scoping:
+
+```kea
+fn serve(_ req: Request) -[Net]> Response
+  handle App.handle(req)
+    DB.query(sql, params) -> resume pool.execute(sql, params)
+    Log.log(level, msg) -> resume logger.log(level, "[{req.id}] {msg}")
+```
+
+Every request gets its own handler scope. Logging automatically
+includes the request ID. Database queries route to the pool.
+No `Context` parameter threading, no request-scoped DI container.
+The handler *is* the request scope. When it exits, the scope
+is done.
+
+This isn't an HTTP-specific feature. It's what happens when
+row polymorphism — the same mechanism that powers record
+extensibility, effect composition, and grammar AST
+extensibility — meets real-world system composition.
+
+### Why this works: one mechanism, three domains
+
+The middleware example might look like a clever HTTP trick.
+It isn't. It's the same mechanism the type system uses
+everywhere, applied to a new domain:
+
+| Domain | Rule | Goal | Resolution |
+|---|---|---|---|
+| Effects | handler: `[Log]` → `[IO]` | Run `[Log, State]` computation | Chain handlers until `[]` |
+| Middleware | auth: `{headers}` ⊢ `{user}` | Satisfy `{user, db, request_id}` | Compose until all fields provided |
+| Traits | `impl Show for List A where Show A` | `Show List(List Int)` | Resolve instances recursively |
+
+All three are the same operation: given rules that transform
+rows, find a composition that satisfies a goal. Effect handlers
+remove effects from the row. Middleware removes fields from the
+row (by providing them). Trait resolution finds instances by
+following constraints. The type checker does the same work in
+each case — Rémy-style row unification.
+
+This is why Kea doesn't need a middleware framework, a DI
+container, or a monad transformer stack. The type system
+already does what those tools do: verify that a composition
+is complete. When it says "missing field `user`" or "unhandled
+effect `DB`", it's reporting a specific point where the
+derivation is incomplete — the same way a proof assistant
+reports a missing lemma, but rendered in your domain's
+vocabulary.
+
+The power is in the verification, not in synthesis. The type
+system doesn't choose your middleware stack or your handler
+composition. You write it explicitly, four lines, readable
+top to bottom. The type system verifies it's complete. That's
+the right division of labor: humans decide intent, the compiler
+verifies soundness.
+
+---
+
 ## Effects and traits: two dimensions of polymorphism
 
 Kea has both traits (ad-hoc polymorphism over types) and effects

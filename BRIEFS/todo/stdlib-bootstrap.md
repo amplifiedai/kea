@@ -95,13 +95,17 @@ that perform effects.
 ```
 stdlib/
   io.kea           -- IO effect: stdout, stderr, read_file, write_file
+  net.kea          -- Net effect: TCP/TLS primitives
+  http.kea         -- Http client: get, post, request (over Net)
+  stream.kea       -- Stream effect: chunked Bytes producer (monomorphic;
+                    -- parameterized Stream T requires Eff kind from 0g)
   state.kea        -- State effect + with_state handler
   log.kea          -- Log effect + stdout/collect handlers
   reader.kea       -- Reader effect + with_reader handler
   test.kea         -- assert (Fail-based), basic test utilities
 ```
 
-**~300-500 additional lines.**
+**~500-700 additional lines.**
 
 **IO wraps intrinsics.** `IO.stdout` is a Kea function with
 `-[IO]>` in its signature that calls `@intrinsic("__kea_io_stdout")`.
@@ -165,9 +169,13 @@ stdlib/
   sorted_map.kea   -- SortedMap (Ord supertrait constraint)
   sorted_set.kea   -- SortedSet
   format.kea       -- String formatting, pretty-printing
+  http/server.kea  -- Http server: listen, row-polymorphic middleware
+                    -- (nested module: Http.Server — test case for 0d1 module system)
+  http/router.kea  -- Basic routing utilities
+  shutdown.kea     -- Shutdown effect for graceful server termination
 ```
 
-**~800-1000 additional lines.**
+**~1000-1400 additional lines.**
 
 **@derive lands here.** Moved from 0h. Tightly coupled to the
 trait system and associated types from 0g. @derive(Show, Eq, Ord)
@@ -206,7 +214,7 @@ functions are Rust code linked into the JIT/AOT module.
 | Tier | Intrinsics |
 |------|-----------|
 | 0 | String ops, alloc/free, print (debug) |
-| 1 | IO syscalls (read/write/stdout/stderr), clock |
+| 1 | IO syscalls (read/write/stdout/stderr), clock, TCP/TLS (Net) |
 | 2 | Ptr ops (read/write/alloc/free/offset) |
 | 3 | None (pure Kea, builds on Tier 0-2 intrinsics) |
 
@@ -217,9 +225,9 @@ Every tier is a test of the phase that enables it:
 | Tier | Tests |
 |------|-------|
 | 0 | Enums, pattern matching, closures, recursion, generics, trait dispatch, module system |
-| 1 | Effect declarations, handler compilation, evidence passing, IO runtime |
+| 1 | Effect declarations, handler compilation, evidence passing, IO runtime, Net, HTTP client, Stream |
 | 2 | Unique T, move checking, Ptr/@unsafe, refcounting, reuse analysis |
-| 3 | GADTs, associated types, supertraits, @derive recipes |
+| 3 | GADTs, associated types, supertraits, @derive recipes, HTTP server, row-polymorphic middleware |
 
 If the stdlib compiles and its tests pass, the phase works.
 
@@ -229,9 +237,11 @@ If the stdlib compiles and its tests pass, the phase works.
 Show exist as `.kea` files. A user program can `use List` and
 call `List.map`. At least 20 tests exercising stdlib functions.
 
-**Tier 1:** IO, State, Log, Reader exist with working handlers.
-A program can read a file, process it with State, and write
-output. At least 10 handler tests.
+**Tier 1:** IO, Net, Http (client), Stream, State, Log, Reader
+exist with working handlers. A program can make an HTTP request,
+read a file, process it with State, and write output. Test
+handlers for Net return canned responses with zero network access.
+At least 15 handler tests.
 
 **Tier 2:** Vector and HAMT Map replace linked-list for production
 use. Benchmark comparison: HAMT Map within 5x of Rust HashMap for
@@ -239,8 +249,210 @@ use. Benchmark comparison: HAMT Map within 5x of Rust HashMap for
 
 **Tier 3:** @derive(Show, Eq, Ord) works on structs and enums.
 Foldable/Iterator enable `list.fold(0, |a, b| -> a + b)`. JSON
-round-trips through Encode/Decode. Stdlib is sufficient for
-compiler self-hosting.
+round-trips through Encode/Decode. HTTP server with row-polymorphic
+middleware composition — at least one middleware that adds a context
+field and one that adds an effect, composed together with correct
+type inference. Stdlib is sufficient for compiler self-hosting.
+
+## HTTP
+
+HTTP is stdlib, not a framework dependency. Most programs are HTTP
+clients before they're servers. The effect system makes the API
+naturally testable and composable.
+
+### Client (Tier 1)
+
+Lands alongside IO. Minimal request/response:
+
+```kea
+struct Http
+  fn get(_ url: String) -[Net, Fail HttpError]> Response
+  fn post(_ url: String, body: Body) -[Net, Fail HttpError]> Response
+  fn request(_ req: Request) -[Net, Fail HttpError]> Response
+```
+
+Note `Net`, not `IO` — the effect signature documents that this
+touches the network and nothing else. Test handlers return canned
+responses with zero network access.
+
+Tier 3 adds `.json(T)` deserialization via the `Codec` trait,
+and a reusable client struct with retry/timeout/auth via
+functional update:
+
+```kea
+let client = Http.client()
+  ~{ base_url: "https://api.example.com" }
+  ~{ auth: Bearer(token) }
+  ~{ retry: Retry.exponential(max: 3) }
+```
+
+### Server (Tier 3)
+
+Lands when middleware composition and streaming patterns are solid.
+A server handler is a function — the `net/http` insight:
+
+```kea
+struct Server
+  fn listen(_ port: Int, _ handler: Request -[e]> Response)
+      -[Net, Shutdown, e]> Unit
+```
+
+The effect variable `e` propagates handler effects through the
+server. If the handler does `[DB, Log]`, the server's signature
+shows `[Net, Shutdown, DB, Log]`. The `Shutdown` effect models
+graceful shutdown — the caller decides the policy via handler.
+
+**Row-polymorphic request context.** This is the genuinely novel
+part. Middleware transforms the request's row type:
+
+```kea
+-- Auth middleware: removes user requirement, adds Net + Fail AuthError
+fn auth(_ next: { user: User | r } -[e]> Response)
+    -> { headers: Headers | r } -[Net, Fail AuthError, e]> Response
+  |req| ->
+    let token = req.headers.get("Authorization")
+      .ok_or(AuthError.missing_token())?
+    let user = Auth.verify(token)?
+    next(req~{ user })
+```
+
+The middleware takes a handler that *requires* `user: User` in
+its context and returns a handler that doesn't — it provides the
+user by verifying the auth token and adding the field via `~{}`.
+The row variable `r` preserves all other context fields.
+
+Stack middlewares and the types compose:
+
+```kea
+let stack = App.handle         -- needs { user: User, db: Pool, request_id: String }
+  |> Middleware.auth           -- removes user, adds Net + Fail AuthError
+  |> Middleware.db_pool        -- removes db, adds Net
+  |> Middleware.request_id     -- removes request_id, adds Clock
+-- Final: needs {} (nothing), effects [Net, Fail AuthError, Log, Clock]
+```
+
+Forget a middleware? Type error — `user: User` is missing from
+the context. Wrong order? Type error — a middleware tries to read
+a field that hasn't been added yet. **Compile-time middleware
+ordering validation from row polymorphism.** No existing framework
+has this.
+
+**Error message quality is load-bearing here.** The raw type error
+is row unification failure. The user-facing error must be:
+
+```
+error[E0312]: handler requires `user: User` in request context
+  --> src/server.kea:15:3
+   |
+15 |   Server.listen(8080, stack)
+   |   ^^^^^^^^^^^^^^^^^^^^^^^^^ missing field `user` in request context
+   |
+   = help: add `Middleware.auth` to the middleware stack
+```
+
+Not "row unification failed: expected `{ user: User | r42 }`."
+The error message is the difference between a headline feature
+and an academic curiosity. This is 0h territory but is a hard
+requirement for the HTTP server to be usable.
+
+**Context fields vs effects.** These are complementary, not
+competing. Context fields are *values*: a pool handle, a user
+struct, a request ID string. Effects are *capabilities*: the
+ability to query, to log, to read the clock. Middleware provides
+the value (adds `db: Pool` to the context row); the effect system
+tracks what the handler does with it (`DB.query` operations that
+the pool connection backs). A handler receives `db: Pool` through
+the row and uses it through `DB` effect operations.
+
+**Connection-scoped effect handlers.** Per-request handlers *are*
+request scoping:
+
+```kea
+fn serve(_ req: Request) -[Net]> Response
+  handle App.handle(req)
+    DB.query(sql, params) -> resume pool.execute(sql, params)
+    Log.log(level, msg) -> resume logger.log(level, "[{req.id}] {msg}")
+```
+
+Every request gets its own handler scope. Logging automatically
+includes the request ID. DB queries route to the pool. No Context
+parameter threading, no request-scoped DI container. When the
+handler scope exits, the request scope is done.
+
+### What's NOT in stdlib
+
+Routing libraries, template engines, ORM layers, WebSocket
+frameworks — these are ecosystem packages. The stdlib provides
+the HTTP primitives and the language provides the composition
+mechanisms (effects, handlers, rows, grammars). The framework
+is what the community builds. The stdlib is the foundation that
+makes the framework thin.
+
+### Stream effect (Tier 1, general-purpose)
+
+`Stream` is not HTTP-specific. It belongs in core alongside IO.
+
+Tier 1 ships a monomorphic `Stream Bytes` — parameterized effects
+require the `Eff` kind from 0g. The type parameter generalizes
+in Tier 3 when `Stream T` becomes possible:
+
+```kea
+-- Tier 1: monomorphic
+effect Stream
+  fn chunk(_ data: Bytes) -> Unit
+  fn done() -> Never
+    -- Never = uninhabited. Code after done() is unreachable.
+    -- The handler catches done() and doesn't resume —
+    -- the producer is finished.
+
+-- Tier 3 (after 0g): parameterized
+effect Stream T
+  fn chunk(_ data: T) -> Unit
+  fn done() -> Never
+```
+
+Consumers: HTTP streaming responses, file reading, database
+cursors, CSV parsing, WebSocket messages.
+
+**Backpressure through effect suspension.** The handler side is
+where `Stream` gets interesting:
+
+```kea
+handle large_download(req)
+  Stream.chunk(data) ->
+    Http.write_chunk(conn, data)  -- blocks if TCP send buffer full
+    resume ()                      -- resumes producer only when ready
+```
+
+The effect handler *is* the backpressure mechanism. `resume` only
+fires when the downstream is ready. The producer suspends
+automatically at each `Stream.chunk` call. No reactive streams
+library, no `Flow` or `Publisher/Subscriber` — just normal effect
+handler semantics doing what backpressure frameworks do with a
+fraction of the API surface.
+
+### Shutdown (Tier 3, with server)
+
+Graceful shutdown is an effect, not a special server mode:
+
+```kea
+effect Shutdown
+  fn on_signal(_ sig: Signal) -> ShutdownAction
+```
+
+The caller decides the policy via handler:
+
+```kea
+handle Server.listen(8080, stack)
+  Shutdown.on_signal(SigInt) -> resume Drain(timeout: Duration.seconds(30))
+  Shutdown.on_signal(SigTerm) -> resume Immediate
+```
+
+`Server.listen` returns `Unit` instead of `Never` because
+shutdown is an expected exit path. The effect signature documents
+that the server can be shut down, and the handler determines how.
+
+---
 
 ## Open Questions
 
