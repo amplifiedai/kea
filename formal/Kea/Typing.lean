@@ -11953,6 +11953,78 @@ theorem principalNoUnifyFieldRunBundleConsequences_on_both_master_consequence_ro
   }
 
 /--
+Packaged cross-route coherence slice (expression): every successful no-unify
+run yields consequence bundles on both master consequence entry layers.
+-/
+def PrincipalNoUnifyExprRunBundleConsequencesBothMasterConsequenceRoutesSlice : Prop :=
+  ∀ {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty},
+    NoUnifyBranchesExpr e →
+    inferExprUnify st fuel env e = .ok st' ty →
+    PrincipalNoUnifyExprRunBundleConsequencesBothMasterConsequenceRoutes
+      st fuel env e st' ty
+
+/--
+Packaged cross-route coherence slice (field): every successful no-unify field
+run yields consequence bundles on both master consequence entry layers.
+-/
+def PrincipalNoUnifyFieldRunBundleConsequencesBothMasterConsequenceRoutesSlice : Prop :=
+  ∀ {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields},
+    NoUnifyBranchesFields fs →
+    inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)) →
+    PrincipalNoUnifyFieldRunBundleConsequencesBothMasterConsequenceRoutes
+      st fuel env fs st' rf
+
+/--
+Combined cross-route coherence slices over expressions and fields for the
+master consequence entry layers.
+-/
+def PrincipalNoUnifyRunBundleConsequencesBothMasterConsequenceRoutesSlices : Prop :=
+  PrincipalNoUnifyExprRunBundleConsequencesBothMasterConsequenceRoutesSlice ∧
+    PrincipalNoUnifyFieldRunBundleConsequencesBothMasterConsequenceRoutesSlice
+
+/--
+The combined cross-route coherence slices are fully proved for the master
+consequence entry layers.
+-/
+theorem principalNoUnifyRunBundleConsequencesBothMasterConsequenceRoutesSlices_proved :
+    PrincipalNoUnifyRunBundleConsequencesBothMasterConsequenceRoutesSlices := by
+  refine ⟨?_, ?_⟩
+  · intro st fuel env e st' ty h_no h_ok
+    exact principalNoUnifyExprRunBundleConsequences_on_both_master_consequence_routes
+      h_no h_ok
+  · intro st fuel env fs st' rf h_no h_ok
+    exact principalNoUnifyFieldRunBundleConsequences_on_both_master_consequence_routes
+      h_no h_ok
+
+/--
+One-hop projection: expression branch from the cross-route coherence slices.
+-/
+theorem principalNoUnifyRunBundleConsequencesBothMasterConsequenceRoutesSlices_expr
+    (h_slices : PrincipalNoUnifyRunBundleConsequencesBothMasterConsequenceRoutesSlices)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalNoUnifyExprRunBundleConsequencesBothMasterConsequenceRoutes
+      st fuel env e st' ty :=
+  h_slices.1 h_no h_ok
+
+/--
+One-hop projection: field branch from the cross-route coherence slices.
+-/
+theorem principalNoUnifyRunBundleConsequencesBothMasterConsequenceRoutesSlices_field
+    (h_slices : PrincipalNoUnifyRunBundleConsequencesBothMasterConsequenceRoutesSlices)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalNoUnifyFieldRunBundleConsequencesBothMasterConsequenceRoutes
+      st fuel env fs st' rf :=
+  h_slices.2 h_no h_ok
+
+/--
 Master-run-bundle-consequence-suite no-unify-to-general convenience wrapper:
 derive the expression all-hooks capstone from a successful no-unify run.
 -/
