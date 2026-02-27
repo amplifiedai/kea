@@ -1,13 +1,25 @@
+--| Return the Ok value, or a fallback for Err.
+--|
+--|   Result.unwrap_or(Ok(5), 0)     -- => 5
+--|   Result.unwrap_or(Err(5), 0)    -- => 0
 fn unwrap_or(res: Result(Int, Int), fallback: Int) -> Int
   case res
     Ok(value) -> value
     Err(_) -> fallback
 
+--| Return true when a result is Ok.
+--|
+--|   Result.is_ok(Ok(1))    -- => true
+--|   Result.is_ok(Err(1))   -- => false
 fn is_ok(res: Result(Int, Int)) -> Bool
   case res
     Err(_) -> false
     _ -> true
 
+--| Return true when a result is Err.
+--|
+--|   Result.is_err(Ok(1))    -- => false
+--|   Result.is_err(Err(1))   -- => true
 fn is_err(res: Result(Int, Int)) -> Bool
   case res
     Err(_) -> true

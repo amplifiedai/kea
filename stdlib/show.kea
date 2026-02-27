@@ -1,5 +1,11 @@
 trait Show a
+  --| Convert a value to its string representation.
+  --|
+  --|   Show.show(5)   -- => "5"
   fn show(x: a) -> String
 
+--| Int show implementation placeholder for bootstrap.
+--|
+--|   Show.show(5)   -- => ""
 fn show(_x: Int) -> String
   ""

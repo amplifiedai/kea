@@ -1,5 +1,13 @@
 trait Eq a
+  --| Return true when two values are equal.
+  --|
+  --|   Eq.eq(2, 2)   -- => true
+  --|   Eq.eq(2, 3)   -- => false
   fn eq(x: a, y: a) -> Bool
 
+--| Int equality implementation for Eq.
+--|
+--|   Eq.eq(4, 4)   -- => true
+--|   Eq.eq(4, 5)   -- => false
 fn eq(x: Int, y: Int) -> Bool
   x == y
