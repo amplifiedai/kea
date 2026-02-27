@@ -20903,6 +20903,111 @@ theorem inferUnifyHasTypeUSoundBundle_of_dual_hook_bundle
     (inferUnifySoundDualBundle_of_hook_bundle h_hooks)
 
 /--
+Dual-bundle entrypoint to the expression principal-typing preconditioned slice.
+-/
+theorem principalTypingSlicePreconditioned_of_success_via_dual_bundle
+    {h_app : AppUnifySoundHook}
+    {h_proj : ProjUnifySoundHook}
+    (_h_bundle : InferUnifySoundDualBundle h_app h_proj)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty :=
+  principalTypingSlicePreconditioned_of_success h_app h_proj st fuel env e st' ty h_ok
+
+/--
+Dual-bundle entrypoint to the field principal-typing preconditioned slice.
+-/
+theorem principalFieldTypingSlicePreconditioned_of_success_via_dual_bundle
+    {h_app : AppUnifySoundHook}
+    {h_proj : ProjUnifySoundHook}
+    (_h_bundle : InferUnifySoundDualBundle h_app h_proj)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf :=
+  principalFieldTypingSlicePreconditioned_of_success h_app h_proj st fuel env fs st' rf h_ok
+
+/--
+Bundled-hook dual-bundle expression principal-typing entrypoint.
+-/
+theorem principalTypingSlicePreconditioned_of_success_from_hook_bundle_via_dual_bundle
+    (h_hooks : UnifyHookPremises)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty :=
+  principalTypingSlicePreconditioned_of_success_via_dual_bundle
+    (inferUnifySoundDualBundle_of_hook_bundle h_hooks) st fuel env e st' ty h_ok
+
+/--
+Bundled-hook dual-bundle field principal-typing entrypoint.
+-/
+theorem principalFieldTypingSlicePreconditioned_of_success_from_hook_bundle_via_dual_bundle
+    (h_hooks : UnifyHookPremises)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf :=
+  principalFieldTypingSlicePreconditioned_of_success_via_dual_bundle
+    (inferUnifySoundDualBundle_of_hook_bundle h_hooks) st fuel env fs st' rf h_ok
+
+/--
+One-step `inferExpr` agreement extraction from dual-bundle principal typing.
+-/
+theorem inferExprUnify_inferExpr_agrees_of_success_via_dual_bundle
+    {h_app : AppUnifySoundHook}
+    {h_proj : ProjUnifySoundHook}
+    (h_bundle : InferUnifySoundDualBundle h_app h_proj)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    inferExpr env e = some ty :=
+  (principalTypingSlicePreconditioned_of_success_via_dual_bundle
+    h_bundle st fuel env e st' ty h_ok).inferExprAgrees
+
+/--
+One-step `inferFields` agreement extraction from dual-bundle field principal
+typing.
+-/
+theorem inferFieldsUnify_inferFields_agrees_of_success_via_dual_bundle
+    {h_app : AppUnifySoundHook}
+    {h_proj : ProjUnifySoundHook}
+    (h_bundle : InferUnifySoundDualBundle h_app h_proj)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    inferFields env fs = some rf :=
+  (principalFieldTypingSlicePreconditioned_of_success_via_dual_bundle
+    h_bundle st fuel env fs st' rf h_ok).inferFieldsAgrees
+
+/--
+Bundled-hook one-step `inferExpr` agreement extraction via the dual-bundle
+principal-typing surface.
+-/
+theorem inferExprUnify_inferExpr_agrees_of_success_from_hook_bundle_via_dual_bundle
+    (h_hooks : UnifyHookPremises)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    inferExpr env e = some ty :=
+  inferExprUnify_inferExpr_agrees_of_success_via_dual_bundle
+    (inferUnifySoundDualBundle_of_hook_bundle h_hooks) st fuel env e st' ty h_ok
+
+/--
+Bundled-hook one-step `inferFields` agreement extraction via the dual-bundle
+field principal-typing surface.
+-/
+theorem inferFieldsUnify_inferFields_agrees_of_success_from_hook_bundle_via_dual_bundle
+    (h_hooks : UnifyHookPremises)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    inferFields env fs = some rf :=
+  inferFieldsUnify_inferFields_agrees_of_success_via_dual_bundle
+    (inferUnifySoundDualBundle_of_hook_bundle h_hooks) st fuel env fs st' rf h_ok
+
+/--
 Surface-layer naming-parity wrappers for no-unify cross-route success APIs.
 These mirror the existing `...from_cross_route_slices` families under
 explicit `...from_cross_route_surface_slices` theorem names.
