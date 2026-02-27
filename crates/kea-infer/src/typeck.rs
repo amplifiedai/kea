@@ -15,7 +15,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use kea_ast::{
     AliasDecl, Argument, BinOp, EffectDecl, Expr, ExprKind, FnDecl, ForClause, ForExpr, Lit,
     OpaqueTypeDef, Param, ParamLabel, Pattern, PatternKind, RecordDef, Span, TypeAnnotation,
-    free_vars,
+    UnaryOp, free_vars,
 };
 use kea_types::{
     Dim, DimVarId, EffectRow, Effects, FunctionType, Kind, Label, Purity, RecordType, RowType,
@@ -14871,8 +14871,8 @@ enum PrecisionLiteralCompatibility {
     Incompatible,
 }
 
-fn int_literal_fits_precision(
-    value: i64,
+fn int_value_fits_precision(
+    value: i128,
     width: kea_types::IntWidth,
     signedness: kea_types::Signedness,
 ) -> bool {
@@ -14895,6 +14895,41 @@ fn int_literal_fits_precision(
     }
 }
 
+fn eval_const_int_expr(expr: &Expr) -> Option<i128> {
+    match &expr.node {
+        ExprKind::Lit(Lit::Int(value)) => Some(i128::from(*value)),
+        ExprKind::UnaryOp { op, operand } => match op.node {
+            UnaryOp::Neg => eval_const_int_expr(operand).and_then(|value| value.checked_neg()),
+            _ => None,
+        },
+        ExprKind::BinaryOp { op, left, right } => {
+            let lhs = eval_const_int_expr(left)?;
+            let rhs = eval_const_int_expr(right)?;
+            match op.node {
+                BinOp::Add => lhs.checked_add(rhs),
+                BinOp::Sub => lhs.checked_sub(rhs),
+                BinOp::Mul => lhs.checked_mul(rhs),
+                BinOp::Div => {
+                    if rhs == 0 {
+                        None
+                    } else {
+                        lhs.checked_div(rhs)
+                    }
+                }
+                BinOp::Mod => {
+                    if rhs == 0 {
+                        None
+                    } else {
+                        lhs.checked_rem(rhs)
+                    }
+                }
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
 fn float_literal_fits_precision(value: f64, width: kea_types::FloatWidth) -> bool {
     match width {
         kea_types::FloatWidth::F64 => value.is_finite(),
@@ -14911,18 +14946,27 @@ fn check_precision_literal_against_expected(
     span: Span,
 ) -> PrecisionLiteralCompatibility {
     match (&expr.node, expected) {
-        (ExprKind::Lit(Lit::Int(value)), Type::IntN(width, signedness)) => {
-            if int_literal_fits_precision(*value, *width, *signedness) {
-                PrecisionLiteralCompatibility::Compatible(expected.clone())
+        (_, Type::IntN(width, signedness)) => {
+            if let Some(value) = eval_const_int_expr(expr) {
+                if int_value_fits_precision(value, *width, *signedness) {
+                    PrecisionLiteralCompatibility::Compatible(expected.clone())
+                } else {
+                    let prefix = if matches!(expr.node, ExprKind::Lit(Lit::Int(_))) {
+                        "integer literal"
+                    } else {
+                        "integer expression result"
+                    };
+                    unifier.push_error(
+                        Diagnostic::error(
+                            Category::TypeMismatch,
+                            format!("{prefix} `{value}` does not fit in `{expected}`"),
+                        )
+                        .at(span_to_loc(span)),
+                    );
+                    PrecisionLiteralCompatibility::Incompatible
+                }
             } else {
-                unifier.push_error(
-                    Diagnostic::error(
-                        Category::TypeMismatch,
-                        format!("integer literal `{value}` does not fit in `{expected}`"),
-                    )
-                    .at(span_to_loc(span)),
-                );
-                PrecisionLiteralCompatibility::Incompatible
+                PrecisionLiteralCompatibility::NotApplicable
             }
         }
         (ExprKind::Lit(Lit::Float(value)), Type::FloatN(width)) => {
@@ -14982,6 +15026,10 @@ fn check_expr_bidir(
     traits: &TraitRegistry,
     sum_types: &SumTypeRegistry,
 ) -> Type {
+    if matches!(expr.node, ExprKind::BinaryOp { .. } | ExprKind::UnaryOp { .. }) {
+        let _ = check_precision_literal_against_expected(expr, expected, unifier, expr.span);
+    }
+
     match (&expr.node, expected) {
         (
             ExprKind::Lambda {
