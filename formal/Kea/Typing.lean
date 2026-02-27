@@ -4188,6 +4188,70 @@ theorem principalNoUnifyBridgeSlices_field
   h_slice.2 h_no h_ok h_hooks
 
 /--
+Combined M4 principal boundary bridge suite.
+
+This packages the two capstones needed at the current boundary:
+- hook-free no-unify bridge slices, and
+- successful-run preconditioned↔core equivalence slices.
+-/
+structure PrincipalBoundaryBridgeSuite : Prop where
+  noUnify : PrincipalNoUnifyBridgeSlices
+  preconditionedCoreIff : PrincipalPreconditionedCoreIffSlices
+
+/-- The combined principal boundary bridge suite is fully proved. -/
+theorem principalBoundaryBridgeSuite_proved : PrincipalBoundaryBridgeSuite := by
+  refine {
+    noUnify := principalNoUnifyBridgeSlices_proved
+    preconditionedCoreIff := principalPreconditionedCoreIffSlices_proved
+  }
+
+/-- One-hop expression no-unify bridge projection from the suite. -/
+theorem principalBoundaryBridgeSuite_noUnify_expr
+    (h_suite : PrincipalBoundaryBridgeSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_hooks : UnifyHookPremises) :
+    PrincipalNoUnifyBridgeBundle h_hooks.1 h_hooks.2 st fuel env e st' ty :=
+  principalNoUnifyBridgeSlices_expr h_suite.noUnify h_no h_ok h_hooks
+
+/-- One-hop field no-unify bridge projection from the suite. -/
+theorem principalBoundaryBridgeSuite_noUnify_field
+    (h_suite : PrincipalBoundaryBridgeSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_hooks : UnifyHookPremises) :
+    PrincipalFieldNoUnifyBridgeBundle h_hooks.1 h_hooks.2 st fuel env fs st' rf :=
+  principalNoUnifyBridgeSlices_field h_suite.noUnify h_no h_ok h_hooks
+
+/-- One-hop expression preconditioned↔core equivalence projection from suite. -/
+theorem principalBoundaryBridgeSuite_preconditionedCoreIff_expr
+    (h_suite : PrincipalBoundaryBridgeSuite)
+    (h_hooks : UnifyHookPremises)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    (PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty
+      ↔ PrincipalTypingSliceCore env e ty) :=
+  principalPreconditionedCoreIffSlices_expr
+    h_suite.preconditionedCoreIff h_hooks st fuel env e st' ty h_ok
+
+/-- One-hop field preconditioned↔core equivalence projection from suite. -/
+theorem principalBoundaryBridgeSuite_preconditionedCoreIff_field
+    (h_suite : PrincipalBoundaryBridgeSuite)
+    (h_hooks : UnifyHookPremises)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    (PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSliceCore env fs rf) :=
+  principalPreconditionedCoreIffSlices_field
+    h_suite.preconditionedCoreIff h_hooks st fuel env fs st' rf h_ok
+
+/--
 `HasTypeU` lift of non-app/proj recursive soundness: on the fragment that never
 executes unification branches, algorithmic inference results are declaratively
 typable in the unification-aware judgment as well.
