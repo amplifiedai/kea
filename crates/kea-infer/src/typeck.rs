@@ -15414,36 +15414,89 @@ fn check_expr_bidir(
             ) =>
         {
             let op_name = binop_name(op.node);
-            let left_ty = check_expr_bidir(
-                left,
-                expected,
-                Reason::BinaryOp(op_name),
-                env,
-                unifier,
-                records,
-                traits,
-                sum_types,
+            let is_numeric_arithmetic = matches!(
+                op.node,
+                BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Mod
             );
-            let right_ty = check_expr_bidir(
-                right,
-                expected,
-                Reason::BinaryOp(op_name),
-                env,
-                unifier,
-                records,
-                traits,
-                sum_types,
-            );
-            constrain_type_eq_with_nominal_boundary(
-                unifier,
-                &left_ty,
-                &right_ty,
-                &Provenance {
-                    span: expr.span,
-                    reason: Reason::BinaryOp(op_name),
-                },
-            );
+
+            let (left_ty, right_ty, result_ty) = if is_numeric_arithmetic {
+                let left_ty = infer_expr_bidir(left, env, unifier, records, traits, sum_types);
+                let right_ty = infer_expr_bidir(right, env, unifier, records, traits, sum_types);
+                let left_resolved = unifier.substitution.apply(&left_ty);
+                let right_resolved = unifier.substitution.apply(&right_ty);
+                let result_ty = if let Some(decimal_ty) = infer_decimal_binary_result_fallback(
+                    op.node,
+                    &left_resolved,
+                    &right_resolved,
+                    unifier,
+                ) {
+                    decimal_ty
+                } else if let Some(widened_ty) =
+                    widened_integer_arithmetic_result_type(&left_resolved, &right_resolved)
+                {
+                    widened_ty
+                } else {
+                    constrain_type_eq_with_nominal_boundary(
+                        unifier,
+                        &left_ty,
+                        &right_ty,
+                        &Provenance {
+                            span: expr.span,
+                            reason: Reason::BinaryOp(op_name),
+                        },
+                    );
+                    left_ty.clone()
+                };
+                (left_ty, right_ty, result_ty)
+            } else {
+                let left_ty = check_expr_bidir(
+                    left,
+                    expected,
+                    Reason::BinaryOp(op_name),
+                    env,
+                    unifier,
+                    records,
+                    traits,
+                    sum_types,
+                );
+                let right_ty = check_expr_bidir(
+                    right,
+                    expected,
+                    Reason::BinaryOp(op_name),
+                    env,
+                    unifier,
+                    records,
+                    traits,
+                    sum_types,
+                );
+                constrain_type_eq_with_nominal_boundary(
+                    unifier,
+                    &left_ty,
+                    &right_ty,
+                    &Provenance {
+                        span: expr.span,
+                        reason: Reason::BinaryOp(op_name),
+                    },
+                );
+                (left_ty.clone(), right_ty, left_ty)
+            };
+
             let resolved_expected = unifier.substitution.apply(expected);
+            let resolved_result = unifier.substitution.apply(&result_ty);
+            let implicit_int_widen_ok =
+                matches!(resolved_expected, Type::Int) && resolved_result.is_integer();
+            if !implicit_int_widen_ok {
+                constrain_type_eq_with_nominal_boundary(
+                    unifier,
+                    expected,
+                    &result_ty,
+                    &Provenance {
+                        span: expr.span,
+                        reason: Reason::BinaryOp(op_name),
+                    },
+                );
+            }
+
             // Each operator dispatches through its own trait:
             // `+` → Additive (numeric + Duration, not String)
             // `++` → Concatenable (String, List, Seq)
@@ -15493,7 +15546,9 @@ fn check_expr_bidir(
                     .at(span_to_loc(expr.span)),
                 );
             }
-            return unifier.substitution.apply(&left_ty);
+            let _ = left_ty;
+            let _ = right_ty;
+            return unifier.substitution.apply(&result_ty);
         }
         (ExprKind::UnaryOp { op, operand }, _) => match op.node {
             kea_ast::UnaryOp::Neg => {

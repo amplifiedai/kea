@@ -1143,8 +1143,8 @@ fn collect_external_call_signatures<M: Module>(
 
 fn clif_type(ty: &Type) -> Result<cranelift::prelude::Type, CodegenError> {
     match ty {
-        Type::Int => Ok(types::I64),
-        Type::Float => Ok(types::F64),
+        Type::Int | Type::IntN(_, _) => Ok(types::I64),
+        Type::Float | Type::FloatN(_) => Ok(types::F64),
         Type::Bool => Ok(types::I8),
         Type::Unit => Ok(types::I8),
         Type::String => Ok(types::I64),
