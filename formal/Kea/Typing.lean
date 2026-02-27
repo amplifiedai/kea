@@ -418,6 +418,26 @@ theorem inferExpr_iff_hasType (env : TermEnv) (e : CoreExpr) (ty : Ty) :
   · intro h
     exact inferExpr_complete env e ty h
 
+/-- Declarative field typing is functional on the core slice. -/
+theorem hasFieldsType_unique
+    {env : TermEnv} {fs : CoreFields} {row₁ row₂ : RowFields}
+    (h₁ : HasFieldsType env fs row₁)
+    (h₂ : HasFieldsType env fs row₂) :
+    row₁ = row₂ := by
+  have h_inf₁ : inferFields env fs = some row₁ := inferFields_complete env fs row₁ h₁
+  have h_inf₂ : inferFields env fs = some row₂ := inferFields_complete env fs row₂ h₂
+  rw [h_inf₁] at h_inf₂
+  exact Option.some.inj h_inf₂
+
+/-- Principal-field-typing corollary from one successful `inferFields` run. -/
+theorem inferFields_principal
+    {env : TermEnv} {fs : CoreFields} {row : RowFields}
+    (h_inf : inferFields env fs = some row) :
+    ∀ {row' : RowFields}, HasFieldsType env fs row' → row' = row := by
+  intro row' h_row'
+  have h_row : HasFieldsType env fs row := inferFields_sound env fs row h_inf
+  exact hasFieldsType_unique h_row' h_row
+
 /-- Declarative typing is functional on the core slice. -/
 theorem hasType_unique
     {env : TermEnv} {e : CoreExpr} {ty₁ ty₂ : Ty}
@@ -444,6 +464,12 @@ structure PrincipalTypingSliceCore
   sound : HasType env e ty
   unique : ∀ {ty' : Ty}, HasType env e ty' → ty' = ty
 
+/-- Packaged principal-field-typing surface for core `inferFields`. -/
+structure PrincipalFieldTypingSliceCore
+    (env : TermEnv) (fs : CoreFields) (row : RowFields) : Prop where
+  sound : HasFieldsType env fs row
+  unique : ∀ {row' : RowFields}, HasFieldsType env fs row' → row' = row
+
 /-- Build the core principal-typing bundle from `inferExpr` success. -/
 theorem principalTypingSliceCore_of_infer
     {env : TermEnv} {e : CoreExpr} {ty : Ty}
@@ -455,6 +481,18 @@ theorem principalTypingSliceCore_of_infer
   }
   intro ty' h_ty'
   exact inferExpr_principal h_inf h_ty'
+
+/-- Build the core principal-field-typing bundle from `inferFields` success. -/
+theorem principalFieldTypingSliceCore_of_infer
+    {env : TermEnv} {fs : CoreFields} {row : RowFields}
+    (h_inf : inferFields env fs = some row) :
+    PrincipalFieldTypingSliceCore env fs row := by
+  refine {
+    sound := inferFields_sound env fs row h_inf
+    unique := ?_
+  }
+  intro row' h_row'
+  exact inferFields_principal h_inf h_row'
 
 /-- Generic boundary assignability judgment for core expressions. -/
 def HasTypeAtCoreBoundary
@@ -3094,6 +3132,34 @@ theorem inferFieldsUnify_ok_iff_inferFields_no_unify_branches
     rcases h with ⟨h_st, h_inf⟩
     cases h_st
     exact inferFieldsUnify_complete_no_unify_branches h_no st fuel env rf h_inf
+
+/--
+Bridge from successful no-unify `inferExprUnify` runs into the core principal
+typing package.
+-/
+theorem principalTypingSliceCore_of_unify_success_no_unify
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalTypingSliceCore env e ty := by
+  have h_inf : inferExpr env e = some ty :=
+    (inferExprUnify_ok_iff_inferExpr_no_unify_branches h_no st fuel env st' ty).1 h_ok |>.2
+  exact principalTypingSliceCore_of_infer h_inf
+
+/--
+Bridge from successful no-unify `inferFieldsUnify` runs into the core
+principal field-typing package.
+-/
+theorem principalFieldTypingSliceCore_of_unify_success_no_unify
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalFieldTypingSliceCore env fs rf := by
+  have h_inf : inferFields env fs = some rf :=
+    (inferFieldsUnify_ok_iff_inferFields_no_unify_branches h_no st fuel env st' rf).1 h_ok |>.2
+  exact principalFieldTypingSliceCore_of_infer h_inf
 
 /-- Packaged hook-free principal/equivalence surface on the no-unify fragment. -/
 def PrincipalTypingNoUnifySlice : Prop :=
