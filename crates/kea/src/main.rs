@@ -6,10 +6,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use kea_ast::{DeclKind, ExprDecl, FileId, FnDecl, Module, TypeDef};
-use kea_codegen::{
-    Backend, BackendConfig, CodegenMode, CraneliftBackend, default_abi_manifest,
-    execute_hir_main_jit,
-};
+use kea_codegen::{Backend, BackendConfig, CodegenMode, CraneliftBackend, default_abi_manifest, execute_hir_main_jit};
+#[cfg(test)]
+use kea_codegen::PassStats;
 use kea_diag::{Diagnostic, Severity};
 use kea_hir::lower_module;
 use kea_infer::typeck::{
@@ -78,6 +77,8 @@ fn run() -> Result<(), String> {
 #[derive(Debug)]
 struct CompileResult {
     object: Vec<u8>,
+    #[cfg(test)]
+    stats: PassStats,
     diagnostics: Vec<Diagnostic>,
 }
 
@@ -110,6 +111,8 @@ fn compile_file(input: &Path, mode: CodegenMode) -> Result<CompileResult, String
 
     Ok(CompileResult {
         object: artifact.object,
+        #[cfg(test)]
+        stats: artifact.stats,
         diagnostics: pipeline.diagnostics,
     })
 }
@@ -799,6 +802,65 @@ mod tests {
 
         let run = run_file(&source_path).expect("run should succeed");
         assert_eq!(run.exit_code, 100000);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_tail_recursive_factorial_mod_exit_code() {
+        let source_path = write_temp_source(
+            "fn fact_mod(n: Int, acc: Int) -> Int\n  if n == 0\n    acc\n  else\n    fact_mod(n - 1, (acc * n) % 1000000007)\n\nfn main() -> Int\n  fact_mod(100000, 1)\n",
+            "kea-cli-tail-recursive-factorial-mod",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 457992974);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_refcount_allocation_churn_exit_code() {
+        let source_path = write_temp_source(
+            "record Box\n  n: Int\n\nfn churn(i: Int, acc: Int) -> Int\n  if i == 0\n    acc\n  else\n    let b = Box { n: i }\n    churn(i - 1, acc + b.n - i)\n\nfn main() -> Int\n  churn(5000, 0)\n",
+            "kea-cli-refcount-churn",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 0);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_emits_release_ops_for_allocation_churn_program() {
+        let source_path = write_temp_source(
+            "record Box\n  n: Int\n\nfn churn(i: Int, acc: Int) -> Int\n  if i == 0\n    acc\n  else\n    let b = Box { n: i }\n    churn(i - 1, acc + b.n - i)\n\nfn main() -> Int\n  churn(1024, 0)\n",
+            "kea-cli-refcount-stats",
+            "kea",
+        );
+
+        let compiled = compile_file(&source_path, CodegenMode::Jit).expect("compile should work");
+        let alloc_count: usize = compiled.stats.per_function.iter().map(|f| f.alloc_count).sum();
+        let release_count: usize = compiled
+            .stats
+            .per_function
+            .iter()
+            .map(|f| f.release_count)
+            .sum();
+
+        assert!(alloc_count > 0, "expected allocation ops in churn program");
+        assert!(
+            release_count > 0,
+            "expected release ops in churn program, stats: {:?}",
+            compiled.stats
+        );
+        assert!(
+            release_count >= alloc_count.saturating_sub(2),
+            "expected release count to track allocations closely, alloc={alloc_count}, release={release_count}"
+        );
 
         let _ = std::fs::remove_file(source_path);
     }
