@@ -9912,6 +9912,62 @@ theorem principalNoUnifyFieldAllHooksCapstone_of_success_via_masterRunBundleCons
     h_no h_ok
 
 /--
+Master-run-bundle-consequence-suite no-unify-to-general convenience wrapper:
+bundled-hook variant for expression all-hooks capstone.
+-/
+theorem principalPreconditionedExprAllHooksCapstone_of_success_noUnify_via_masterRunBundleConsequenceSuite_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_hooks : UnifyHookPremises) :
+    PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty :=
+  principalPreconditionedExprAllHooksCapstone_of_success_noUnify_via_masterRunBundleConsequenceSuite
+    h_no h_ok
+
+/--
+Master-run-bundle-consequence-suite no-unify-to-general convenience wrapper:
+bundled-hook variant for field all-hooks capstone.
+-/
+theorem principalPreconditionedFieldAllHooksCapstone_of_success_noUnify_via_masterRunBundleConsequenceSuite_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_hooks : UnifyHookPremises) :
+    PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
+  principalPreconditionedFieldAllHooksCapstone_of_success_noUnify_via_masterRunBundleConsequenceSuite
+    h_no h_ok
+
+/--
+Master-run-bundle-consequence-suite no-unify convenience wrapper:
+bundled-hook alias for expression all-hooks capstone.
+-/
+theorem principalNoUnifyExprAllHooksCapstone_of_success_via_masterRunBundleConsequenceSuite_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_hooks : UnifyHookPremises) :
+    PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty :=
+  principalNoUnifyExprAllHooksCapstone_of_success_via_masterRunBundleConsequenceSuite
+    h_no h_ok
+
+/--
+Master-run-bundle-consequence-suite no-unify convenience wrapper:
+bundled-hook alias for field all-hooks capstone.
+-/
+theorem principalNoUnifyFieldAllHooksCapstone_of_success_via_masterRunBundleConsequenceSuite_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_hooks : UnifyHookPremises) :
+    PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
+  principalNoUnifyFieldAllHooksCapstone_of_success_via_masterRunBundleConsequenceSuite
+    h_no h_ok
+
+/--
 Master-run-bundle-consequence-suite convenience wrapper: derive core expression
 principality from a successful no-unify run.
 -/
@@ -10498,6 +10554,66 @@ theorem principalNoUnifyFieldAllHooksCapstone_of_success_via_masterSuite
     (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
     PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
   principalPreconditionedFieldAllHooksCapstone_of_success_noUnify_via_masterSuite
+    h_suite h_no h_ok
+
+/--
+Master-suite no-unify-to-general convenience wrapper: bundled-hook variant for
+expression all-hooks capstone.
+-/
+theorem principalPreconditionedExprAllHooksCapstone_of_success_noUnify_via_masterSuite_from_bundle
+    (h_suite : PrincipalBoundaryMasterSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_hooks : UnifyHookPremises) :
+    PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty :=
+  principalPreconditionedExprAllHooksCapstone_of_success_noUnify_via_masterSuite
+    h_suite h_no h_ok
+
+/--
+Master-suite no-unify-to-general convenience wrapper: bundled-hook variant for
+field all-hooks capstone.
+-/
+theorem principalPreconditionedFieldAllHooksCapstone_of_success_noUnify_via_masterSuite_from_bundle
+    (h_suite : PrincipalBoundaryMasterSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_hooks : UnifyHookPremises) :
+    PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
+  principalPreconditionedFieldAllHooksCapstone_of_success_noUnify_via_masterSuite
+    h_suite h_no h_ok
+
+/--
+Master-suite no-unify convenience wrapper: bundled-hook alias for expression
+all-hooks capstone.
+-/
+theorem principalNoUnifyExprAllHooksCapstone_of_success_via_masterSuite_from_bundle
+    (h_suite : PrincipalBoundaryMasterSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_hooks : UnifyHookPremises) :
+    PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty :=
+  principalNoUnifyExprAllHooksCapstone_of_success_via_masterSuite
+    h_suite h_no h_ok
+
+/--
+Master-suite no-unify convenience wrapper: bundled-hook alias for field
+all-hooks capstone.
+-/
+theorem principalNoUnifyFieldAllHooksCapstone_of_success_via_masterSuite_from_bundle
+    (h_suite : PrincipalBoundaryMasterSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_hooks : UnifyHookPremises) :
+    PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
+  principalNoUnifyFieldAllHooksCapstone_of_success_via_masterSuite
     h_suite h_no h_ok
 
 /--
@@ -11515,6 +11631,60 @@ theorem principalNoUnifyFieldAllHooksCapstone_of_success_via_allHooksSuite
     PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
   principalPreconditionedFieldAllHooksCapstone_of_success_noUnify_via_allHooksSuite
     h_no h_ok
+
+/--
+All-hooks-suite no-unify-to-general convenience wrapper: bundled-hook variant
+for expression all-hooks capstone.
+-/
+theorem principalPreconditionedExprAllHooksCapstone_of_success_noUnify_via_allHooksSuite_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_hooks : UnifyHookPremises) :
+    PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty :=
+  principalPreconditionedExprAllHooksCapstone_of_success_noUnify_via_allHooksSuite
+    h_no h_ok
+
+/--
+All-hooks-suite no-unify-to-general convenience wrapper: bundled-hook variant
+for field all-hooks capstone.
+-/
+theorem principalPreconditionedFieldAllHooksCapstone_of_success_noUnify_via_allHooksSuite_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_hooks : UnifyHookPremises) :
+    PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
+  principalPreconditionedFieldAllHooksCapstone_of_success_noUnify_via_allHooksSuite
+    h_no h_ok
+
+/--
+All-hooks-suite no-unify convenience wrapper: bundled-hook alias for expression
+all-hooks capstone.
+-/
+theorem principalNoUnifyExprAllHooksCapstone_of_success_via_allHooksSuite_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_hooks : UnifyHookPremises) :
+    PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty :=
+  principalNoUnifyExprAllHooksCapstone_of_success_via_allHooksSuite h_no h_ok
+
+/--
+All-hooks-suite no-unify convenience wrapper: bundled-hook alias for field
+all-hooks capstone.
+-/
+theorem principalNoUnifyFieldAllHooksCapstone_of_success_via_allHooksSuite_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_hooks : UnifyHookPremises) :
+    PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
+  principalNoUnifyFieldAllHooksCapstone_of_success_via_allHooksSuite h_no h_ok
 
 /--
 All-hooks-suite convenience wrapper: derive preconditioned expression
