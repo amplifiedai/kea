@@ -1114,6 +1114,34 @@ mod tests {
     }
 
     #[test]
+    fn compile_and_execute_record_pattern_renamed_field_binding_exit_code() {
+        let source_path = write_temp_source(
+            "record User\n  age: Int\n  score: Int\n\nfn main() -> Int\n  let user = User { age: 4, score: 9 }\n  case user\n    User { age: years, .. } -> years + 2\n    _ -> 0\n",
+            "kea-cli-record-pattern-rename-bind",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 6);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_record_pattern_pun_binding_exit_code() {
+        let source_path = write_temp_source(
+            "record User\n  age: Int\n  score: Int\n\nfn main() -> Int\n  let user = User { age: 4, score: 9 }\n  case user\n    User { age, .. } -> age + 3\n    _ -> 0\n",
+            "kea-cli-record-pattern-pun-bind",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 7);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_anon_record_pattern_case_exit_code() {
         let source_path = write_temp_source(
             "record User\n  age: Int\n  score: Int\n\nfn main() -> Int\n  let user = User { age: 4, score: 9 }\n  case user\n    #{ age: 4, .. } -> 6\n    _ -> 2\n",
