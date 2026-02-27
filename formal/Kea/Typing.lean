@@ -5742,6 +5742,62 @@ theorem principalGeneralAllHooksPreconditionedField_hookIrrelevant_of_success
   principalPreconditionedAllHooksSuite_irrelevance_field h_suite h_ok
 
 /--
+General-all-hooks-suite capstone wrapper: package the full expression
+successful-run all-hooks principal boundary from one successful run and one
+baseline hook witness pair.
+-/
+theorem principalPreconditionedExprAllHooksCapstone_of_success_via_generalAllHooksSuite
+    (h_app0 : AppUnifySoundHook)
+    (h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty :=
+  principalPreconditionedAllHooksSuite_capstone_expr
+    principalPreconditionedAllHooksSuite_proved h_app0 h_proj0 h_ok
+
+/--
+General-all-hooks-suite capstone wrapper: package the full field successful-run
+all-hooks principal boundary from one successful field run and one baseline hook
+witness pair.
+-/
+theorem principalPreconditionedFieldAllHooksCapstone_of_success_via_generalAllHooksSuite
+    (h_app0 : AppUnifySoundHook)
+    (h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
+  principalPreconditionedAllHooksSuite_capstone_field
+    principalPreconditionedAllHooksSuite_proved h_app0 h_proj0 h_ok
+
+/--
+General-all-hooks-suite capstone wrapper: bundled-hook variant for expression
+successful-run all-hooks principal boundary packaging.
+-/
+theorem principalPreconditionedExprAllHooksCapstone_of_success_via_generalAllHooksSuite_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty :=
+  principalPreconditionedExprAllHooksCapstone_of_success_via_generalAllHooksSuite
+    h_seed.1 h_seed.2 h_ok
+
+/--
+General-all-hooks-suite capstone wrapper: bundled-hook variant for field
+successful-run all-hooks principal boundary packaging.
+-/
+theorem principalPreconditionedFieldAllHooksCapstone_of_success_via_generalAllHooksSuite_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
+  principalPreconditionedFieldAllHooksCapstone_of_success_via_generalAllHooksSuite
+    h_seed.1 h_seed.2 h_ok
+
+/--
 General-all-hooks-suite convenience wrapper: derive core expression principality
 from an arbitrary successful `inferExprUnify` run.
 -/
@@ -7395,6 +7451,66 @@ theorem principalBoundaryMasterSuite_noUnifyHookedFromAllHooks_field
       h_hooks.1 h_hooks.2 st fuel env fs st' rf :=
   principalBoundaryNoUnifyCapstoneSlices_field
     h_suite.noUnifyHookedFromAllHooks h_no h_ok h_hooks
+
+/--
+Master-suite capstone wrapper: package the full expression successful-run
+all-hooks principal boundary from one successful run and one baseline hook
+witness pair.
+-/
+theorem principalPreconditionedExprAllHooksCapstone_of_success_via_masterSuite
+    (h_suite : PrincipalBoundaryMasterSuite)
+    (h_app0 : AppUnifySoundHook)
+    (h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty :=
+  principalPreconditionedAllHooksSuite_capstone_expr
+    h_suite.allHooks h_app0 h_proj0 h_ok
+
+/--
+Master-suite capstone wrapper: package the full field successful-run all-hooks
+principal boundary from one successful field run and one baseline hook witness
+pair.
+-/
+theorem principalPreconditionedFieldAllHooksCapstone_of_success_via_masterSuite
+    (h_suite : PrincipalBoundaryMasterSuite)
+    (h_app0 : AppUnifySoundHook)
+    (h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
+  principalPreconditionedAllHooksSuite_capstone_field
+    h_suite.allHooks h_app0 h_proj0 h_ok
+
+/--
+Master-suite capstone wrapper: bundled-hook variant for expression successful-run
+all-hooks principal boundary packaging.
+-/
+theorem principalPreconditionedExprAllHooksCapstone_of_success_via_masterSuite_from_bundle
+    (h_suite : PrincipalBoundaryMasterSuite)
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty :=
+  principalPreconditionedExprAllHooksCapstone_of_success_via_masterSuite
+    h_suite h_seed.1 h_seed.2 h_ok
+
+/--
+Master-suite capstone wrapper: bundled-hook variant for field successful-run
+all-hooks principal boundary packaging.
+-/
+theorem principalPreconditionedFieldAllHooksCapstone_of_success_via_masterSuite_from_bundle
+    (h_suite : PrincipalBoundaryMasterSuite)
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
+  principalPreconditionedFieldAllHooksCapstone_of_success_via_masterSuite
+    h_suite h_seed.1 h_seed.2 h_ok
 
 /--
 Master-suite convenience wrapper: derive core expression principality from an
