@@ -3978,6 +3978,32 @@ theorem principalPreconditionedCoreIffSlices_proved : PrincipalPreconditionedCor
       h_hooks st fuel env fs st' rf h_ok
 
 /--
+One-hop projection: expression branch from combined preconditioned↔core slice.
+-/
+theorem principalPreconditionedCoreIffSlices_expr
+    (h_slice : PrincipalPreconditionedCoreIffSlices)
+    (h_hooks : UnifyHookPremises)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    (PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty
+      ↔ PrincipalTypingSliceCore env e ty) :=
+  h_slice.1 h_hooks st fuel env e st' ty h_ok
+
+/--
+One-hop projection: field branch from combined preconditioned↔core slice.
+-/
+theorem principalPreconditionedCoreIffSlices_field
+    (h_slice : PrincipalPreconditionedCoreIffSlices)
+    (h_hooks : UnifyHookPremises)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    (PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSliceCore env fs rf) :=
+  h_slice.2 h_hooks st fuel env fs st' rf h_ok
+
+/--
 Successful preconditioned `inferExprUnify` runs induce the core principal
 typing package on the same `(env, e, ty)` surface.
 -/
@@ -4138,6 +4164,28 @@ theorem principalNoUnifyBridgeSlices_proved : PrincipalNoUnifyBridgeSlices := by
   · intro st fuel env fs st' rf h_no h_ok h_hooks
     exact principalFieldNoUnifyBridgeBundle_of_success_from_hook_bundle
       h_no h_ok h_hooks
+
+/-- One-hop projection: expression branch from combined no-unify bridge slice. -/
+theorem principalNoUnifyBridgeSlices_expr
+    (h_slice : PrincipalNoUnifyBridgeSlices)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_hooks : UnifyHookPremises) :
+    PrincipalNoUnifyBridgeBundle h_hooks.1 h_hooks.2 st fuel env e st' ty :=
+  h_slice.1 h_no h_ok h_hooks
+
+/-- One-hop projection: field branch from combined no-unify bridge slice. -/
+theorem principalNoUnifyBridgeSlices_field
+    (h_slice : PrincipalNoUnifyBridgeSlices)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_hooks : UnifyHookPremises) :
+    PrincipalFieldNoUnifyBridgeBundle h_hooks.1 h_hooks.2 st fuel env fs st' rf :=
+  h_slice.2 h_no h_ok h_hooks
 
 /--
 `HasTypeU` lift of non-app/proj recursive soundness: on the fragment that never
