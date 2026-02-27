@@ -11459,6 +11459,34 @@ theorem principalNoUnifyFieldRunBundleConsequences_of_success_via_masterConseque
       h_no h_ok
 
 /--
+Master-consequence-capstone-suite no-unify convenience wrapper: bundled-hook
+alias for packaged expression no-unify consequences.
+-/
+theorem principalNoUnifyExprRunBundleConsequences_of_success_via_masterConsequenceCapstoneSuite_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_hooks : UnifyHookPremises) :
+    PrincipalNoUnifyExprRunBundleConsequences st fuel env e st' ty :=
+  principalNoUnifyExprRunBundleConsequences_of_success_via_masterConsequenceCapstoneSuite
+    h_no h_ok
+
+/--
+Master-consequence-capstone-suite no-unify convenience wrapper: bundled-hook
+alias for packaged field no-unify consequences.
+-/
+theorem principalNoUnifyFieldRunBundleConsequences_of_success_via_masterConsequenceCapstoneSuite_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_hooks : UnifyHookPremises) :
+    PrincipalNoUnifyFieldRunBundleConsequences st fuel env fs st' rf :=
+  principalNoUnifyFieldRunBundleConsequences_of_success_via_masterConsequenceCapstoneSuite
+    h_no h_ok
+
+/--
 One-hop projection: arbitrary-success all-hooks expression run-bundle from the
 master run-bundle consequence suite.
 -/
