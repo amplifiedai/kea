@@ -1662,20 +1662,25 @@ impl FunctionLoweringCtx {
         if let HirExprKind::Var(name) = &func.kind
             && !capture_fail_result
             && let Some(operation) = name.strip_prefix("IO.")
-            && matches!(operation, "stdout" | "stderr")
+            && matches!(operation, "stdout" | "stderr" | "read_file" | "write_file")
         {
             let mut lowered_args = Vec::with_capacity(args.len());
             for arg in args {
                 lowered_args.push(self.lower_expr(arg)?);
             }
+            let result = if expr.ty == Type::Unit {
+                None
+            } else {
+                Some(self.new_value())
+            };
             self.emit_inst(MirInst::EffectOp {
                 class: MirEffectOpClass::Direct,
                 effect: "IO".to_string(),
                 operation: operation.to_string(),
                 args: lowered_args,
-                result: None,
+                result: result.clone(),
             });
-            return None;
+            return result;
         }
         if let HirExprKind::Var(name) = &func.kind
             && !capture_fail_result
@@ -3881,6 +3886,119 @@ mod tests {
                 result: Some(_),
                 ..
             } if effect == "Clock" && operation == "now" && lowered_args.is_empty()
+        ));
+    }
+
+    #[test]
+    fn lower_hir_module_lowers_io_read_file_call_to_direct_effect_op_with_result() {
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "read_config".to_string(),
+                params: vec![],
+                body: HirExpr {
+                    kind: HirExprKind::Call {
+                        func: Box::new(HirExpr {
+                            kind: HirExprKind::Var("IO.read_file".to_string()),
+                            ty: Type::Function(FunctionType::with_effects(
+                                vec![Type::String],
+                                Type::String,
+                                EffectRow::closed(vec![(Label::new("IO"), Type::Unit)]),
+                            )),
+                            span: kea_ast::Span::synthetic(),
+                        }),
+                        args: vec![HirExpr {
+                            kind: HirExprKind::Lit(Lit::String("config".to_string())),
+                            ty: Type::String,
+                            span: kea_ast::Span::synthetic(),
+                        }],
+                    },
+                    ty: Type::String,
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::with_effects(
+                    vec![],
+                    Type::String,
+                    EffectRow::closed(vec![(Label::new("IO"), Type::Unit)]),
+                )),
+                effects: EffectRow::closed(vec![(Label::new("IO"), Type::Unit)]),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let mir = lower_hir_module(&hir);
+        let function = &mir.functions[0];
+        assert_eq!(function.blocks.len(), 1);
+        assert_eq!(function.blocks[0].instructions.len(), 2);
+        assert!(matches!(
+            function.blocks[0].instructions[1],
+            MirInst::EffectOp {
+                class: MirEffectOpClass::Direct,
+                ref effect,
+                ref operation,
+                args: ref lowered_args,
+                result: Some(_),
+                ..
+            } if effect == "IO" && operation == "read_file" && lowered_args.len() == 1
+        ));
+    }
+
+    #[test]
+    fn lower_hir_module_lowers_io_write_file_call_to_direct_effect_op() {
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "write_config".to_string(),
+                params: vec![],
+                body: HirExpr {
+                    kind: HirExprKind::Call {
+                        func: Box::new(HirExpr {
+                            kind: HirExprKind::Var("IO.write_file".to_string()),
+                            ty: Type::Function(FunctionType::with_effects(
+                                vec![Type::String, Type::String],
+                                Type::Unit,
+                                EffectRow::closed(vec![(Label::new("IO"), Type::Unit)]),
+                            )),
+                            span: kea_ast::Span::synthetic(),
+                        }),
+                        args: vec![
+                            HirExpr {
+                                kind: HirExprKind::Lit(Lit::String("config".to_string())),
+                                ty: Type::String,
+                                span: kea_ast::Span::synthetic(),
+                            },
+                            HirExpr {
+                                kind: HirExprKind::Lit(Lit::String("hello".to_string())),
+                                ty: Type::String,
+                                span: kea_ast::Span::synthetic(),
+                            },
+                        ],
+                    },
+                    ty: Type::Unit,
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::with_effects(
+                    vec![],
+                    Type::Unit,
+                    EffectRow::closed(vec![(Label::new("IO"), Type::Unit)]),
+                )),
+                effects: EffectRow::closed(vec![(Label::new("IO"), Type::Unit)]),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let mir = lower_hir_module(&hir);
+        let function = &mir.functions[0];
+        assert_eq!(function.blocks.len(), 1);
+        assert_eq!(function.blocks[0].instructions.len(), 3);
+        assert!(matches!(
+            function.blocks[0].instructions[2],
+            MirInst::EffectOp {
+                class: MirEffectOpClass::Direct,
+                ref effect,
+                ref operation,
+                args: ref lowered_args,
+                result: None,
+                ..
+            } if effect == "IO" && operation == "write_file" && lowered_args.len() == 2
         ));
     }
 

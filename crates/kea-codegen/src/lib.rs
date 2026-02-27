@@ -322,10 +322,25 @@ unsafe extern "C" fn kea_net_recv_stub(_conn: i64, size: i64) -> i64 {
     if size < 0 { 0 } else { size }
 }
 
+unsafe extern "C" fn kea_io_write_file_stub(_path: *const c_char, _data: *const c_char) -> i8 {
+    0
+}
+
+unsafe extern "C" fn kea_io_read_file_stub(path: *const c_char) -> *const c_char {
+    static EMPTY: &[u8] = b"\0";
+    if path.is_null() {
+        EMPTY.as_ptr() as *const c_char
+    } else {
+        path
+    }
+}
+
 fn register_jit_runtime_symbols(builder: &mut JITBuilder) {
     builder.symbol("__kea_net_connect", kea_net_connect_stub as *const u8);
     builder.symbol("__kea_net_send", kea_net_send_stub as *const u8);
     builder.symbol("__kea_net_recv", kea_net_recv_stub as *const u8);
+    builder.symbol("__kea_io_write_file", kea_io_write_file_stub as *const u8);
+    builder.symbol("__kea_io_read_file", kea_io_read_file_stub as *const u8);
 }
 
 fn compile_with_jit(
@@ -383,6 +398,8 @@ fn compile_into_module<M: Module>(
     let mut requires_heap_alloc = false;
     let mut requires_io_stdout = false;
     let mut requires_io_stderr = false;
+    let mut requires_io_read_file = false;
+    let mut requires_io_write_file = false;
     let mut requires_clock_time = false;
     let mut requires_rand_int = false;
     let mut requires_rand_seed = false;
@@ -440,6 +457,36 @@ fn compile_into_module<M: Module>(
             })
         }) {
             requires_io_stderr = true;
+        }
+        if function.blocks.iter().any(|block| {
+            block.instructions.iter().any(|inst| {
+                matches!(
+                    inst,
+                    MirInst::EffectOp {
+                        class: MirEffectOpClass::Direct,
+                        effect,
+                        operation,
+                        ..
+                    } if effect == "IO" && operation == "read_file"
+                )
+            })
+        }) {
+            requires_io_read_file = true;
+        }
+        if function.blocks.iter().any(|block| {
+            block.instructions.iter().any(|inst| {
+                matches!(
+                    inst,
+                    MirInst::EffectOp {
+                        class: MirEffectOpClass::Direct,
+                        effect,
+                        operation,
+                        ..
+                    } if effect == "IO" && operation == "write_file"
+                )
+            })
+        }) {
+            requires_io_write_file = true;
         }
         if function.blocks.iter().any(|block| {
             block.instructions.iter().any(|inst| {
@@ -661,6 +708,39 @@ fn compile_into_module<M: Module>(
         Some(
             module
                 .declare_function("write", Linkage::Import, &signature)
+                .map_err(|detail| CodegenError::Module {
+                    detail: detail.to_string(),
+                })?,
+        )
+    } else {
+        None
+    };
+
+    let io_write_file_func_id = if requires_io_write_file {
+        let ptr_ty = module.target_config().pointer_type();
+        let mut signature = module.make_signature();
+        signature.params.push(AbiParam::new(ptr_ty));
+        signature.params.push(AbiParam::new(ptr_ty));
+        signature.returns.push(AbiParam::new(types::I8));
+        Some(
+            module
+                .declare_function("__kea_io_write_file", Linkage::Import, &signature)
+                .map_err(|detail| CodegenError::Module {
+                    detail: detail.to_string(),
+                })?,
+        )
+    } else {
+        None
+    };
+
+    let io_read_file_func_id = if requires_io_read_file {
+        let ptr_ty = module.target_config().pointer_type();
+        let mut signature = module.make_signature();
+        signature.params.push(AbiParam::new(ptr_ty));
+        signature.returns.push(AbiParam::new(ptr_ty));
+        Some(
+            module
+                .declare_function("__kea_io_read_file", Linkage::Import, &signature)
                 .map_err(|detail| CodegenError::Module {
                     detail: detail.to_string(),
                 })?,
@@ -895,6 +975,8 @@ fn compile_into_module<M: Module>(
                     free_func_id,
                     stdout_func_id,
                     write_func_id,
+                    io_write_file_func_id,
+                    io_read_file_func_id,
                     time_func_id,
                     rand_func_id,
                     srand_func_id,
@@ -1317,6 +1399,8 @@ struct LowerInstCtx<'a> {
     free_func_id: Option<FuncId>,
     stdout_func_id: Option<FuncId>,
     write_func_id: Option<FuncId>,
+    io_write_file_func_id: Option<FuncId>,
+    io_read_file_func_id: Option<FuncId>,
     time_func_id: Option<FuncId>,
     rand_func_id: Option<FuncId>,
     srand_func_id: Option<FuncId>,
@@ -1842,82 +1926,169 @@ fn lower_instruction<M: Module>(
             Ok(false)
         }
         MirInst::EffectOp {
-            class,
-            effect,
-            operation,
-            args,
-            result,
-            ..
-        } => {
-            if *class == MirEffectOpClass::Direct {
-                if effect == "IO" {
-                    let arg = args.first().ok_or_else(|| CodegenError::UnsupportedMir {
-                        function: function_name.to_string(),
-                        detail: format!("IO.{operation} expects one string argument"),
-                    })?;
-                    let arg_value = get_value(values, function_name, arg)?;
-                    let ptr_ty = module.target_config().pointer_type();
-                    let arg_ptr = coerce_value_to_clif_type(builder, arg_value, ptr_ty);
-                    match operation.as_str() {
-                        "stdout" => {
-                            let stdout_func_id =
-                                ctx.stdout_func_id
-                                    .ok_or_else(|| CodegenError::UnsupportedMir {
-                                        function: function_name.to_string(),
-                                        detail:
-                                            "IO.stdout lowering requires imported `puts` symbol"
-                                                .to_string(),
-                                    })?;
-                            let stdout_ref = module.declare_func_in_func(stdout_func_id, builder.func);
-                            let _ = builder.ins().call(stdout_ref, &[arg_ptr]);
-                        }
-                        "stderr" => {
-                            let write_func_id =
-                                ctx.write_func_id
-                                    .ok_or_else(|| CodegenError::UnsupportedMir {
-                                        function: function_name.to_string(),
-                                        detail:
-                                            "IO.stderr lowering requires imported `write` symbol"
-                                                .to_string(),
-                                    })?;
-                            let strlen_func_id =
-                                ctx.strlen_func_id
-                                    .ok_or_else(|| CodegenError::UnsupportedMir {
-                                        function: function_name.to_string(),
-                                        detail:
-                                            "IO.stderr lowering requires imported `strlen` symbol"
-                                                .to_string(),
-                                    })?;
-                            let strlen_ref = module.declare_func_in_func(strlen_func_id, builder.func);
-                            let strlen_call = builder.ins().call(strlen_ref, &[arg_ptr]);
-                            let len = builder
-                                .inst_results(strlen_call)
-                                .first()
-                                .copied()
-                                .ok_or_else(|| CodegenError::UnsupportedMir {
+                class,
+                effect,
+                operation,
+                args,
+                result,
+                ..
+            } => {
+                if *class == MirEffectOpClass::Direct {
+                    if effect == "IO" {
+                        let ptr_ty = module.target_config().pointer_type();
+                        match operation.as_str() {
+                            "stdout" => {
+                                let arg = args.first().ok_or_else(|| CodegenError::UnsupportedMir {
                                     function: function_name.to_string(),
-                                    detail: "strlen call returned no value".to_string(),
+                                    detail: "IO.stdout expects one string argument".to_string(),
                                 })?;
-                            let len = coerce_value_to_clif_type(builder, len, ptr_ty);
-                            let write_ref = module.declare_func_in_func(write_func_id, builder.func);
-                            let fd = builder.ins().iconst(types::I32, 2);
-                            let _ = builder.ins().call(write_ref, &[fd, arg_ptr, len]);
-                        }
-                        _ => {
-                            return Err(CodegenError::UnsupportedMir {
+                                if args.len() != 1 {
+                                    return Err(CodegenError::UnsupportedMir {
+                                        function: function_name.to_string(),
+                                        detail:
+                                            "IO.stdout expects exactly one string argument".to_string(),
+                                    });
+                                }
+                                let arg_value = get_value(values, function_name, arg)?;
+                                let arg_ptr = coerce_value_to_clif_type(builder, arg_value, ptr_ty);
+                                let stdout_func_id =
+                                    ctx.stdout_func_id
+                                        .ok_or_else(|| CodegenError::UnsupportedMir {
+                                            function: function_name.to_string(),
+                                            detail:
+                                                "IO.stdout lowering requires imported `puts` symbol"
+                                                    .to_string(),
+                                        })?;
+                                let stdout_ref =
+                                    module.declare_func_in_func(stdout_func_id, builder.func);
+                                let _ = builder.ins().call(stdout_ref, &[arg_ptr]);
+                                if let Some(dest) = result {
+                                    values.insert(dest.clone(), builder.ins().iconst(types::I8, 0));
+                                }
+                                Ok(false)
+                            }
+                            "stderr" => {
+                                let arg = args.first().ok_or_else(|| CodegenError::UnsupportedMir {
+                                    function: function_name.to_string(),
+                                    detail: "IO.stderr expects one string argument".to_string(),
+                                })?;
+                                if args.len() != 1 {
+                                    return Err(CodegenError::UnsupportedMir {
+                                        function: function_name.to_string(),
+                                        detail:
+                                            "IO.stderr expects exactly one string argument".to_string(),
+                                    });
+                                }
+                                let arg_value = get_value(values, function_name, arg)?;
+                                let arg_ptr = coerce_value_to_clif_type(builder, arg_value, ptr_ty);
+                                let write_func_id =
+                                    ctx.write_func_id
+                                        .ok_or_else(|| CodegenError::UnsupportedMir {
+                                            function: function_name.to_string(),
+                                            detail:
+                                                "IO.stderr lowering requires imported `write` symbol"
+                                                    .to_string(),
+                                        })?;
+                                let strlen_func_id =
+                                    ctx.strlen_func_id
+                                        .ok_or_else(|| CodegenError::UnsupportedMir {
+                                            function: function_name.to_string(),
+                                            detail:
+                                                "IO.stderr lowering requires imported `strlen` symbol"
+                                                    .to_string(),
+                                        })?;
+                                let strlen_ref =
+                                    module.declare_func_in_func(strlen_func_id, builder.func);
+                                let strlen_call = builder.ins().call(strlen_ref, &[arg_ptr]);
+                                let len = builder
+                                    .inst_results(strlen_call)
+                                    .first()
+                                    .copied()
+                                    .ok_or_else(|| CodegenError::UnsupportedMir {
+                                        function: function_name.to_string(),
+                                        detail: "strlen call returned no value".to_string(),
+                                    })?;
+                                let len = coerce_value_to_clif_type(builder, len, ptr_ty);
+                                let write_ref = module.declare_func_in_func(write_func_id, builder.func);
+                                let fd = builder.ins().iconst(types::I32, 2);
+                                let _ = builder.ins().call(write_ref, &[fd, arg_ptr, len]);
+                                if let Some(dest) = result {
+                                    values.insert(dest.clone(), builder.ins().iconst(types::I8, 0));
+                                }
+                                Ok(false)
+                            }
+                            "write_file" => {
+                                if args.len() != 2 {
+                                    return Err(CodegenError::UnsupportedMir {
+                                        function: function_name.to_string(),
+                                        detail:
+                                            "IO.write_file expects exactly two string arguments"
+                                                .to_string(),
+                                    });
+                                }
+                                let path_value = get_value(values, function_name, &args[0])?;
+                                let data_value = get_value(values, function_name, &args[1])?;
+                                let path_ptr = coerce_value_to_clif_type(builder, path_value, ptr_ty);
+                                let data_ptr = coerce_value_to_clif_type(builder, data_value, ptr_ty);
+                                let write_file_func_id = ctx.io_write_file_func_id.ok_or_else(|| {
+                                    CodegenError::UnsupportedMir {
+                                        function: function_name.to_string(),
+                                        detail: "IO.write_file lowering requires imported `__kea_io_write_file` symbol".to_string(),
+                                    }
+                                })?;
+                                let write_file_ref =
+                                    module.declare_func_in_func(write_file_func_id, builder.func);
+                                let _ = builder.ins().call(write_file_ref, &[path_ptr, data_ptr]);
+                                if let Some(dest) = result {
+                                    values.insert(dest.clone(), builder.ins().iconst(types::I8, 0));
+                                }
+                                Ok(false)
+                            }
+                            "read_file" => {
+                                let arg = args.first().ok_or_else(|| CodegenError::UnsupportedMir {
+                                    function: function_name.to_string(),
+                                    detail: "IO.read_file expects one string argument".to_string(),
+                                })?;
+                                if args.len() != 1 {
+                                    return Err(CodegenError::UnsupportedMir {
+                                        function: function_name.to_string(),
+                                        detail:
+                                            "IO.read_file expects exactly one string argument".to_string(),
+                                    });
+                                }
+                                let path_value = get_value(values, function_name, arg)?;
+                                let path_ptr = coerce_value_to_clif_type(builder, path_value, ptr_ty);
+                                let read_file_func_id = ctx.io_read_file_func_id.ok_or_else(|| {
+                                    CodegenError::UnsupportedMir {
+                                        function: function_name.to_string(),
+                                        detail: "IO.read_file lowering requires imported `__kea_io_read_file` symbol".to_string(),
+                                    }
+                                })?;
+                                let read_file_ref =
+                                    module.declare_func_in_func(read_file_func_id, builder.func);
+                                let read_call = builder.ins().call(read_file_ref, &[path_ptr]);
+                                if let Some(dest) = result {
+                                    let raw = builder
+                                        .inst_results(read_call)
+                                        .first()
+                                        .copied()
+                                        .ok_or_else(|| CodegenError::UnsupportedMir {
+                                            function: function_name.to_string(),
+                                            detail: "IO.read_file call returned no value".to_string(),
+                                        })?;
+                                    values.insert(dest.clone(), coerce_value_to_clif_type(builder, raw, ptr_ty));
+                                }
+                                Ok(false)
+                            }
+                            _ => Err(CodegenError::UnsupportedMir {
                                 function: function_name.to_string(),
                                 detail: format!(
                                     "instruction `{inst:?}` not implemented in 0d pure lowering"
                                 ),
-                            });
+                            }),
                         }
-                    }
-                    if let Some(dest) = result {
-                        values.insert(dest.clone(), builder.ins().iconst(types::I8, 0));
-                    }
-                    Ok(false)
-                } else if effect == "Clock" && matches!(operation.as_str(), "now" | "monotonic")
-                {
+                    } else if effect == "Clock" && matches!(operation.as_str(), "now" | "monotonic")
+                    {
                     if !args.is_empty() {
                         return Err(CodegenError::UnsupportedMir {
                             function: function_name.to_string(),
@@ -3191,6 +3362,78 @@ mod tests {
                             effect: "IO".to_string(),
                             operation: "stderr".to_string(),
                             args: vec![MirValueId(0)],
+                            result: None,
+                        },
+                    ],
+                    terminator: MirTerminator::Return { value: None },
+                }],
+            }],
+            layouts: MirLayoutCatalog::default(),
+        }
+    }
+
+    fn sample_io_read_file_module() -> MirModule {
+        MirModule {
+            functions: vec![MirFunction {
+                name: "read_file".to_string(),
+                signature: MirFunctionSignature {
+                    params: vec![],
+                    ret: Type::String,
+                    effects: EffectRow::closed(vec![(Label::new("IO"), Type::Unit)]),
+                },
+                entry: MirBlockId(0),
+                blocks: vec![MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: MirValueId(0),
+                            literal: MirLiteral::String("config".to_string()),
+                        },
+                        MirInst::EffectOp {
+                            class: MirEffectOpClass::Direct,
+                            effect: "IO".to_string(),
+                            operation: "read_file".to_string(),
+                            args: vec![MirValueId(0)],
+                            result: Some(MirValueId(1)),
+                        },
+                    ],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirValueId(1)),
+                    },
+                }],
+            }],
+            layouts: MirLayoutCatalog::default(),
+        }
+    }
+
+    fn sample_io_write_file_module() -> MirModule {
+        MirModule {
+            functions: vec![MirFunction {
+                name: "write_file".to_string(),
+                signature: MirFunctionSignature {
+                    params: vec![],
+                    ret: Type::Unit,
+                    effects: EffectRow::closed(vec![(Label::new("IO"), Type::Unit)]),
+                },
+                entry: MirBlockId(0),
+                blocks: vec![MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: MirValueId(0),
+                            literal: MirLiteral::String("config".to_string()),
+                        },
+                        MirInst::Const {
+                            dest: MirValueId(1),
+                            literal: MirLiteral::String("hello".to_string()),
+                        },
+                        MirInst::EffectOp {
+                            class: MirEffectOpClass::Direct,
+                            effect: "IO".to_string(),
+                            operation: "write_file".to_string(),
+                            args: vec![MirValueId(0), MirValueId(1)],
                             result: None,
                         },
                     ],
@@ -4946,6 +5189,34 @@ mod tests {
         let artifact = backend
             .compile_module(&module, &manifest, &BackendConfig::default())
             .expect("IO.stderr lowering should compile");
+
+        assert_eq!(artifact.stats.per_function.len(), 1);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn cranelift_backend_compiles_io_read_file_effect_op_module() {
+        let module = sample_io_read_file_module();
+        let manifest = default_abi_manifest(&module);
+        let backend = CraneliftBackend;
+
+        let artifact = backend
+            .compile_module(&module, &manifest, &BackendConfig::default())
+            .expect("IO.read_file lowering should compile");
+
+        assert_eq!(artifact.stats.per_function.len(), 1);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn cranelift_backend_compiles_io_write_file_effect_op_module() {
+        let module = sample_io_write_file_module();
+        let manifest = default_abi_manifest(&module);
+        let backend = CraneliftBackend;
+
+        let artifact = backend
+            .compile_module(&module, &manifest, &BackendConfig::default())
+            .expect("IO.write_file lowering should compile");
 
         assert_eq!(artifact.stats.per_function.len(), 1);
     }

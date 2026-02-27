@@ -288,6 +288,26 @@ mod tests {
 
     #[test]
     #[cfg(not(target_os = "windows"))]
+    fn compile_and_execute_real_stdlib_io_read_write_module_exit_code() {
+        let project_dir = temp_workspace_project_dir("kea-cli-project-real-stdlib-io-read-write");
+        let src_dir = project_dir.join("src");
+        std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+
+        let app_path = src_dir.join("app.kea");
+        std::fs::write(
+            &app_path,
+            "use IO\n\nfn main() -[IO]> Int\n  IO.write_file(\"tmp\", \"hello\")\n  let msg = IO.read_file(\"hello\")\n  IO.stdout(msg)\n  1\n",
+        )
+        .expect("app module write should succeed");
+
+        let run = run_file(&app_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 1);
+
+        let _ = std::fs::remove_dir_all(project_dir);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
     fn compile_and_execute_real_stdlib_clock_module_exit_code() {
         let project_dir = temp_workspace_project_dir("kea-cli-project-real-stdlib-clock");
         let src_dir = project_dir.join("src");
@@ -386,6 +406,21 @@ mod tests {
         );
 
         let run = run_file(&source_path).expect("rand-int run should succeed");
+        assert_eq!(run.exit_code, 1);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn compile_and_execute_io_read_write_file_direct_effect_exit_code() {
+        let source_path = write_temp_source(
+            "effect IO\n  fn stdout(msg: String) -> Unit\n  fn write_file(path: String, data: String) -> Unit\n  fn read_file(path: String) -> String\n\nfn main() -[IO]> Int\n  IO.write_file(\"tmp\", \"hello\")\n  let msg = IO.read_file(\"hello\")\n  IO.stdout(msg)\n  1\n",
+            "kea-cli-io-read-write-direct",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("io-read-write run should succeed");
         assert_eq!(run.exit_code, 1);
 
         let _ = std::fs::remove_file(source_path);
