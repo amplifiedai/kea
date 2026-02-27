@@ -1678,6 +1678,28 @@ impl FunctionLoweringCtx {
             return None;
         }
         if let HirExprKind::Var(name) = &func.kind
+            && !capture_fail_result
+            && name == "Clock.now"
+        {
+            let mut lowered_args = Vec::with_capacity(args.len());
+            for arg in args {
+                lowered_args.push(self.lower_expr(arg)?);
+            }
+            let result = if expr.ty == Type::Unit {
+                None
+            } else {
+                Some(self.new_value())
+            };
+            self.emit_inst(MirInst::EffectOp {
+                class: MirEffectOpClass::Direct,
+                effect: "Clock".to_string(),
+                operation: "now".to_string(),
+                args: lowered_args,
+                result: result.clone(),
+            });
+            return result;
+        }
+        if let HirExprKind::Var(name) = &func.kind
             && name == "Fail.fail"
             && !capture_fail_result
         {
@@ -3763,6 +3785,55 @@ mod tests {
                 result: None,
                 ..
             } if effect == "IO" && operation == "stderr"
+        ));
+    }
+
+    #[test]
+    fn lower_hir_module_lowers_clock_now_call_to_direct_effect_op_with_result() {
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "now_tick".to_string(),
+                params: vec![],
+                body: HirExpr {
+                    kind: HirExprKind::Call {
+                        func: Box::new(HirExpr {
+                            kind: HirExprKind::Var("Clock.now".to_string()),
+                            ty: Type::Function(FunctionType::with_effects(
+                                vec![],
+                                Type::Int,
+                                EffectRow::closed(vec![(Label::new("Clock"), Type::Unit)]),
+                            )),
+                            span: kea_ast::Span::synthetic(),
+                        }),
+                        args: vec![],
+                    },
+                    ty: Type::Int,
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::with_effects(
+                    vec![],
+                    Type::Int,
+                    EffectRow::closed(vec![(Label::new("Clock"), Type::Unit)]),
+                )),
+                effects: EffectRow::closed(vec![(Label::new("Clock"), Type::Unit)]),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let mir = lower_hir_module(&hir);
+        let function = &mir.functions[0];
+        assert_eq!(function.blocks.len(), 1);
+        assert_eq!(function.blocks[0].instructions.len(), 1);
+        assert!(matches!(
+            function.blocks[0].instructions[0],
+            MirInst::EffectOp {
+                class: MirEffectOpClass::Direct,
+                ref effect,
+                ref operation,
+                args: ref lowered_args,
+                result: Some(_),
+                ..
+            } if effect == "Clock" && operation == "now" && lowered_args.is_empty()
         ));
     }
 
