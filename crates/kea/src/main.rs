@@ -1752,6 +1752,48 @@ mod tests {
     }
 
     #[test]
+    fn compile_and_execute_mixed_width_signed_arithmetic_exit_code() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  let a: Int8 = 12\n  let b: Int16 = 30\n  a + b + 0\n",
+            "kea-cli-mixed-width-signed-arithmetic",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("mixed-width signed arithmetic should run");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_mixed_width_unsigned_arithmetic_exit_code() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  let a: UInt8 = 10\n  let b: UInt16 = 7\n  a + b + 0\n",
+            "kea-cli-mixed-width-unsigned-arithmetic",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("mixed-width unsigned arithmetic should run");
+        assert_eq!(run.exit_code, 17);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_mixed_width_signed_unsigned_arithmetic_exit_code() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  let a: Int8 = -5\n  let b: UInt8 = 10\n  a + b\n",
+            "kea-cli-mixed-width-signed-unsigned-arithmetic",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("mixed signed/unsigned arithmetic should run");
+        assert_eq!(run.exit_code, 5);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_wrapping_add_method_exit_code() {
         let source_path = write_temp_source(
             "fn main() -> Int\n  20.wrapping_add(22)\n",
