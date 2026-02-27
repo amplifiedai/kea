@@ -253,6 +253,9 @@ pub enum MirBinaryOp {
     Add,
     Sub,
     Mul,
+    WrappingAdd,
+    WrappingSub,
+    WrappingMul,
     Div,
     Mod,
     Concat,
@@ -2126,6 +2129,9 @@ impl FunctionLoweringCtx {
                 "shift_right_unsigned" if args.len() == 2 => {
                     Some((Some(MirBinaryOp::ShiftRightUnsigned), None))
                 }
+                "wrapping_add" if args.len() == 2 => Some((Some(MirBinaryOp::WrappingAdd), None)),
+                "wrapping_sub" if args.len() == 2 => Some((Some(MirBinaryOp::WrappingSub), None)),
+                "wrapping_mul" if args.len() == 2 => Some((Some(MirBinaryOp::WrappingMul), None)),
                 "bit_not" if args.len() == 1 => Some((None, Some(MirUnaryOp::BitNot))),
                 _ => None,
             };

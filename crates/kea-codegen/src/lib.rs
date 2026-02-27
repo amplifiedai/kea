@@ -2668,6 +2668,9 @@ fn lower_binary(
         MirBinaryOp::Add if lhs_ty.is_int() => builder.ins().iadd(lhs, rhs),
         MirBinaryOp::Sub if lhs_ty.is_int() => builder.ins().isub(lhs, rhs),
         MirBinaryOp::Mul if lhs_ty.is_int() => builder.ins().imul(lhs, rhs),
+        MirBinaryOp::WrappingAdd if lhs_ty.is_int() => builder.ins().iadd(lhs, rhs),
+        MirBinaryOp::WrappingSub if lhs_ty.is_int() => builder.ins().isub(lhs, rhs),
+        MirBinaryOp::WrappingMul if lhs_ty.is_int() => builder.ins().imul(lhs, rhs),
         MirBinaryOp::Div if lhs_ty.is_int() => builder.ins().sdiv(lhs, rhs),
         MirBinaryOp::Mod if lhs_ty.is_int() => builder.ins().srem(lhs, rhs),
 
