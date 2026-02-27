@@ -3784,6 +3784,52 @@ theorem principalFieldTypingSlicePreconditioned_of_success_no_unify_from_bundle
     h_no h_ok h_hooks.1 h_hooks.2
 
 /--
+Packaged no-unify field principal bridge: one successful hook-free
+`inferFieldsUnify` run yields both the core principal field package and the
+preconditioned principal field package.
+-/
+structure PrincipalFieldNoUnifyBridgeBundle
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields) : Prop where
+  core : PrincipalFieldTypingSliceCore env fs rf
+  preconditioned : PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf
+
+/--
+Construct the no-unify field bridge bundle from one successful hook-free
+`inferFieldsUnify` run.
+-/
+theorem principalFieldNoUnifyBridgeBundle_of_success
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    ∀ h_app h_proj,
+      PrincipalFieldNoUnifyBridgeBundle h_app h_proj st fuel env fs st' rf := by
+  intro h_app h_proj
+  let h_core : PrincipalFieldTypingSliceCore env fs rf :=
+    principalFieldTypingSliceCore_of_unify_success_no_unify h_no h_ok
+  refine {
+    core := h_core
+    preconditioned := ?_
+  }
+  exact principalFieldTypingSlicePreconditioned_of_success_of_core_principal
+    h_core h_ok h_app h_proj
+
+/--
+Bundle-entry variant of `principalFieldNoUnifyBridgeBundle_of_success`.
+-/
+theorem principalFieldNoUnifyBridgeBundle_of_success_from_hook_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_hooks : UnifyHookPremises) :
+    PrincipalFieldNoUnifyBridgeBundle h_hooks.1 h_hooks.2 st fuel env fs st' rf := by
+  exact principalFieldNoUnifyBridgeBundle_of_success h_no h_ok h_hooks.1 h_hooks.2
+
+/--
 Bundle-entry variant of `principalTypingSlicePreconditioned_of_success`.
 -/
 theorem principalTypingSlicePreconditioned_of_success_from_bundle
