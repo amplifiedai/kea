@@ -389,6 +389,17 @@ impl TypeEnv {
         self.function_signatures.insert(name, signature);
     }
 
+    /// Remove bare function metadata for a symbol name.
+    ///
+    /// Module-qualified metadata remains intact under qualified keys
+    /// (for example `Math.inc`).
+    pub fn clear_function_metadata(&mut self, name: &str) {
+        self.function_effects.remove(name);
+        self.function_effect_rows.remove(name);
+        self.function_effect_signatures.remove(name);
+        self.function_signatures.remove(name);
+    }
+
     /// Get effects for a function binding, if known.
     pub fn function_effect(&self, name: &str) -> Option<Effects> {
         self.function_effects.get(name).copied()
