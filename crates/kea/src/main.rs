@@ -317,6 +317,71 @@ mod tests {
     }
 
     #[test]
+    fn run_stdlib_case_corpus_with_kea_test_runner() {
+        let cases_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/stdlib_cases");
+        let supported = [
+            "eq_tests.kea",
+            "float_tests.kea",
+            "int_tests.kea",
+            "option_tests.kea",
+            "ord_tests.kea",
+            "order_tests.kea",
+            "prelude_tests.kea",
+            "result_tests.kea",
+            "show_tests.kea",
+            "text_tests.kea",
+        ];
+        let mut case_files = std::fs::read_dir(&cases_dir)
+            .expect("stdlib case dir should exist")
+            .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+            .filter(|path| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| supported.contains(&name))
+            })
+            .collect::<Vec<_>>();
+        case_files.sort();
+        assert!(
+            case_files.len() == supported.len(),
+            "expected {} supported stdlib case files in {}",
+            supported.len(),
+            cases_dir.display()
+        );
+
+        let mut failures = Vec::new();
+        for case_file in &case_files {
+            match run_test_file(case_file) {
+                Ok(run) => {
+                    if run.cases.is_empty() {
+                        failures.push(format!(
+                            "{}: no test declarations executed",
+                            case_file.display()
+                        ));
+                        continue;
+                    }
+                    for case in run.cases {
+                        if !case.passed {
+                            failures.push(format!(
+                                "{}: {} ({})",
+                                case_file.display(),
+                                case.name,
+                                case.error.unwrap_or_else(|| "unknown failure".to_string())
+                            ));
+                        }
+                    }
+                }
+                Err(err) => failures.push(format!("{}: {err}", case_file.display())),
+            }
+        }
+
+        assert!(
+            failures.is_empty(),
+            "stdlib case corpus failures:\n{}",
+            failures.join("\n")
+        );
+    }
+
+    #[test]
     fn compile_and_execute_main_exit_code() {
         let source_path = write_temp_source("fn main() -> Int\n  9\n", "kea-cli-exec", "kea");
 

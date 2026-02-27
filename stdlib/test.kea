@@ -1,4 +1,7 @@
 effect Fail E
+  --| Abort the current computation with an error payload.
+  --|
+  --|   Fail.fail("boom")
   fn fail(error: E) -> Never
 
 --| Assert a condition, failing with a default message when false.

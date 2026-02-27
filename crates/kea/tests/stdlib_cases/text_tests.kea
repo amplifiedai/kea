@@ -1,0 +1,9 @@
+use Text
+use Test
+
+test "Text.length"
+  Test.assert(Text.length("kea") == 3)
+
+test "Text.predicates"
+  Test.assert(Text.is_empty(""))
+  Test.assert(Text.non_empty("kea"))

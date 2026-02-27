@@ -1,3 +1,9 @@
 effect Rand
+  --| Seed the random number generator.
+  --|
+  --|   Rand.seed(1234)
   fn seed(seed: Int) -> Unit
+  --| Generate a random integer.
+  --|
+  --|   Rand.int()   -- => implementation-defined
   fn int() -> Int

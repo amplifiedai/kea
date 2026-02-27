@@ -1,0 +1,7 @@
+use Ord
+use Test
+
+test "Ord.compare"
+  Test.assert(Ord.compare(1, 2) == -1)
+  Test.assert(Ord.compare(3, 3) == 0)
+  Test.assert(Ord.compare(4, 1) == 1)

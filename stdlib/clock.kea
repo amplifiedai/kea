@@ -1,3 +1,9 @@
 effect Clock
+  --| Return wall-clock epoch seconds.
+  --|
+  --|   Clock.now()   -- => 1700000000 (example)
   fn now() -> Int
+  --| Return a monotonic time reading.
+  --|
+  --|   Clock.monotonic()   -- => 123456789 (example)
   fn monotonic() -> Int

@@ -1,0 +1,10 @@
+use Clock
+use Test
+
+test "Clock.now_non_negative"
+  let now = Clock.now()
+  Test.assert(now >= 0)
+
+test "Clock.monotonic_non_negative"
+  let t = Clock.monotonic()
+  Test.assert(t >= 0)

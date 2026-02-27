@@ -1,0 +1,5 @@
+use Prelude
+use Test
+
+test "Prelude.ping"
+  Test.assert(Prelude.ping() == 7)

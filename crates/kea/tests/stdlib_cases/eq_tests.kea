@@ -1,0 +1,6 @@
+use Eq
+use Test
+
+test "Eq.eq"
+  Test.assert(Eq.eq(4, 4))
+  Test.assert(not Eq.eq(4, 5))

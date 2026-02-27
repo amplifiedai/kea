@@ -1,0 +1,10 @@
+use Result
+use Test
+
+test "Result.unwrap_or"
+  Test.assert(Result.unwrap_or(Ok(5), 0) == 5)
+  Test.assert(Result.unwrap_or(Err(5), 0) == 0)
+
+test "Result.predicates"
+  Test.assert(Result.is_ok(Ok(1)))
+  Test.assert(Result.is_err(Err(1)))

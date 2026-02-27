@@ -1,0 +1,23 @@
+use List
+use Test
+
+fn inc(x: Int) -> Int
+  x + 1
+
+fn even(x: Int) -> Bool
+  x % 2 == 0
+
+fn add(acc: Int, x: Int) -> Int
+  acc + x
+
+test "List.basics"
+  let xs = Cons(1, Cons(2, Cons(3, Cons(4, Nil))))
+  Test.assert(List.is_empty(Nil))
+  Test.assert(List.length(xs) == 4)
+
+test "List.map_filter_fold"
+  let xs = Cons(1, Cons(2, Cons(3, Cons(4, Nil))))
+  let ys = List.map(xs, inc)
+  let zs = List.filter(ys, even)
+  Test.assert(List.length(zs) == 2)
+  Test.assert(List.fold(zs, 0, add) == 6)

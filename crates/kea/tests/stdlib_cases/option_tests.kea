@@ -1,0 +1,9 @@
+use Option
+use Test
+
+test "Option.unwrap_or"
+  Test.assert(Option.unwrap_or(None, 0) == 0)
+
+test "Option.predicates"
+  Test.assert(Option.is_some(Some(1)))
+  Test.assert(Option.is_none(None))

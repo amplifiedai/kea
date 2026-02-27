@@ -1,0 +1,8 @@
+use Net
+use Test
+
+test "Net.direct_smoke"
+  let conn = Net.connect("127.0.0.1:9000")
+  Net.send(conn, "ping")
+  let n = Net.recv(conn, 16)
+  Test.assert(n == n)
