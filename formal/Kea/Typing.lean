@@ -21418,6 +21418,82 @@ theorem inferFieldsUnify_inferFields_agrees_of_success_via_dual_proved_slice
       h_hooks st fuel env fs st' rf h_ok)
 
 /--
+Compatibility: the combined dual consequence slice implies the existing
+preconditioned↔core principal slice.
+-/
+theorem principalPreconditionedCoreIffSlices_of_dualConsequenceSlices
+    (h_dual : PrincipalDualConsequenceSlices) :
+    PrincipalPreconditionedCoreIffSlices := by
+  refine ⟨?expr, ?field⟩
+  · intro h_hooks st fuel env e st' ty h_ok
+    exact (principalDualConsequenceSlices_expr h_dual h_hooks st fuel env e st' ty h_ok).preconditioned_iff_core
+  · intro h_hooks st fuel env fs st' rf h_ok
+    exact (principalDualConsequenceSlices_field h_dual h_hooks st fuel env fs st' rf h_ok).preconditioned_iff_core
+
+/--
+Compatibility: the existing preconditioned↔core principal slice implies the
+combined dual consequence slice.
+-/
+theorem principalDualConsequenceSlices_of_principalPreconditionedCoreIffSlices
+    (h_iff : PrincipalPreconditionedCoreIffSlices) :
+    PrincipalDualConsequenceSlices := by
+  refine ⟨?expr, ?field⟩
+  · intro h_hooks st fuel env e st' ty h_ok
+    let h_pre : PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty :=
+      principalTypingSlicePreconditioned_of_success_from_bundle h_hooks st fuel env e st' ty h_ok
+    let h_bridge :
+        PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty
+          ↔ PrincipalTypingSliceCore env e ty :=
+      principalPreconditionedCoreIffSlices_expr h_iff h_hooks st fuel env e st' ty h_ok
+    refine {
+      preconditioned := h_pre
+      core := h_bridge.mp h_pre
+      preconditioned_iff_core := h_bridge
+      inferExpr_agrees := h_pre.inferExprAgrees
+    }
+  · intro h_hooks st fuel env fs st' rf h_ok
+    let h_pre :
+        PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf :=
+      principalFieldTypingSlicePreconditioned_of_success_from_bundle h_hooks st fuel env fs st' rf h_ok
+    let h_bridge :
+        PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf
+          ↔ PrincipalFieldTypingSliceCore env fs rf :=
+      principalPreconditionedCoreIffSlices_field h_iff h_hooks st fuel env fs st' rf h_ok
+    refine {
+      preconditioned := h_pre
+      core := h_bridge.mp h_pre
+      preconditioned_iff_core := h_bridge
+      inferFields_agrees := h_pre.inferFieldsAgrees
+    }
+
+/-- The dual and preconditioned↔core slice surfaces are equivalent. -/
+theorem principalDualConsequenceSlices_iff_principalPreconditionedCoreIffSlices :
+    PrincipalDualConsequenceSlices ↔ PrincipalPreconditionedCoreIffSlices := by
+  constructor
+  · intro h_dual
+    exact principalPreconditionedCoreIffSlices_of_dualConsequenceSlices h_dual
+  · intro h_iff
+    exact principalDualConsequenceSlices_of_principalPreconditionedCoreIffSlices h_iff
+
+/--
+Canonical compatibility witness: recover the existing preconditioned↔core slice
+from the proved dual consequence slice.
+-/
+theorem principalPreconditionedCoreIffSlices_proved_via_dualConsequence :
+    PrincipalPreconditionedCoreIffSlices :=
+  principalPreconditionedCoreIffSlices_of_dualConsequenceSlices
+    principalDualConsequenceSlices_proved
+
+/--
+Canonical compatibility witness: recover the dual consequence slice from the
+existing proved preconditioned↔core slice.
+-/
+theorem principalDualConsequenceSlices_proved_via_principalPreconditionedCoreIff :
+    PrincipalDualConsequenceSlices :=
+  principalDualConsequenceSlices_of_principalPreconditionedCoreIffSlices
+    principalPreconditionedCoreIffSlices_proved
+
+/--
 Surface-layer naming-parity wrappers for no-unify cross-route success APIs.
 These mirror the existing `...from_cross_route_slices` families under
 explicit `...from_cross_route_surface_slices` theorem names.
