@@ -1754,7 +1754,7 @@ mod tests {
     #[test]
     fn compile_and_execute_mixed_width_signed_arithmetic_exit_code() {
         let source_path = write_temp_source(
-            "fn main() -> Int\n  let a: Int8 = 12\n  let b: Int16 = 30\n  a + b + 0\n",
+            "fn main() -> Int\n  let a: Int8 = 12\n  let b: Int16 = 30\n  a + b\n",
             "kea-cli-mixed-width-signed-arithmetic",
             "kea",
         );
@@ -1768,7 +1768,7 @@ mod tests {
     #[test]
     fn compile_and_execute_mixed_width_unsigned_arithmetic_exit_code() {
         let source_path = write_temp_source(
-            "fn main() -> Int\n  let a: UInt8 = 10\n  let b: UInt16 = 7\n  a + b + 0\n",
+            "fn main() -> Int\n  let a: UInt8 = 10\n  let b: UInt16 = 7\n  a + b\n",
             "kea-cli-mixed-width-unsigned-arithmetic",
             "kea",
         );

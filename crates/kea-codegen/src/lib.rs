@@ -953,11 +953,12 @@ fn execute_mir_main_jit(module: &MirModule, config: &BackendConfig) -> Result<i3
             detail: "JIT entrypoint requires zero-argument `main`".to_string(),
         });
     }
-    if !matches!(main_runtime_sig.logical_return, Type::Int | Type::Unit) {
+    if !main_runtime_sig.logical_return.is_integer() && main_runtime_sig.logical_return != Type::Unit
+    {
         return Err(CodegenError::UnsupportedMir {
             function: "main".to_string(),
             detail: format!(
-                "JIT entrypoint only supports `main` returning Int or Unit (got `{}`)",
+                "JIT entrypoint only supports `main` returning integer or Unit (got `{}`)",
                 main_runtime_sig.logical_return
             ),
         });
@@ -996,7 +997,7 @@ fn execute_mir_main_jit(module: &MirModule, config: &BackendConfig) -> Result<i3
             let tag = *(result_ptr as *const i32);
             if tag == 0 {
                 match main_runtime_sig.logical_return {
-                    Type::Int => {
+                    Type::Int | Type::IntN(_, _) => {
                         let payload = *((result_ptr as *const u8).add(8) as *const i64);
                         payload as i32
                     }
@@ -1015,6 +1016,11 @@ fn execute_mir_main_jit(module: &MirModule, config: &BackendConfig) -> Result<i3
                     let main_fn =
                         std::mem::transmute::<*const u8, extern "C" fn() -> i32>(entrypoint);
                     main_fn()
+                }
+                Type::IntN(_, _) => {
+                    let main_fn =
+                        std::mem::transmute::<*const u8, extern "C" fn() -> i64>(entrypoint);
+                    main_fn() as i32
                 }
                 Type::Unit => {
                     let main_fn =
