@@ -1180,6 +1180,33 @@ theorem appUnifySoundHookWeak_proved : AppUnifySoundHookWeak := by
   exact HasType.app env fn arg argTy retTy h_fn h_arg
 
 /--
+Weaker projection hook: derivable when the receiver side is already
+declaratively typed as a closed anonymous record carrying the selected field
+at the substitution-resolved projection type.
+-/
+def ProjUnifySoundHookWeak : Prop :=
+  ∀ env recv label recvTy stBefore stAfter fuel fieldVar restVar rowFields,
+    HasType env recv (.anonRecord (.mk rowFields none)) →
+    unify stBefore fuel recvTy (.anonRecord (.mk (.cons label (.var fieldVar) .nil) (some restVar))) = .ok stAfter →
+    RowFields.get rowFields label = some (applySubstCompat stAfter.subst fuel (.var fieldVar)) →
+    HasType env (.proj recv label) (applySubstCompat stAfter.subst fuel (.var fieldVar))
+
+/-- `ProjUnifySoundHookWeak` is derivable from declarative projection typing. -/
+theorem projUnifySoundHookWeak_proved : ProjUnifySoundHookWeak := by
+  intro env recv label recvTy stBefore stAfter fuel fieldVar restVar rowFields
+    h_recv _ h_get
+  exact HasType.proj env recv rowFields label
+    (applySubstCompat stAfter.subst fuel (.var fieldVar)) h_recv h_get
+
+/-- Packaged weak hook assumptions for app/projection branch reasoning. -/
+def UnifyHookPremisesWeak : Prop :=
+  AppUnifySoundHookWeak ∧ ProjUnifySoundHookWeak
+
+/-- The weak hook package is derivable on both app and projection branches. -/
+theorem unifyHookPremisesWeak_proved : UnifyHookPremisesWeak := by
+  exact ⟨appUnifySoundHookWeak_proved, projUnifySoundHookWeak_proved⟩
+
+/--
 Unification-aware app hook: if substitution-resolving `fnTy` yields a
 single-argument function shape over the resolved argument type, app typing is
 derivable directly in `HasTypeU`.
