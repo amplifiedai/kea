@@ -4364,6 +4364,74 @@ theorem principalPreconditionedField_of_core_success_via_suite
       principalBoundaryBridgeSuite_proved h_hooks st fuel env fs st' rf h_ok).2 h_core
 
 /--
+Coherence (expression): the suite's no-unify preconditioned witness implies the
+suite's core witness through the suite's preconditioned↔core equivalence.
+-/
+theorem principalBoundaryBridgeSuite_noUnify_expr_coherent_core
+    (h_suite : PrincipalBoundaryBridgeSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_hooks : UnifyHookPremises) :
+    PrincipalTypingSliceCore env e ty := by
+  exact (principalBoundaryBridgeSuite_preconditionedCoreIff_expr
+      h_suite h_hooks st fuel env e st' ty h_ok).1
+        ((principalBoundaryBridgeSuite_noUnify_expr
+          h_suite h_no h_ok h_hooks).preconditioned)
+
+/--
+Coherence (expression): the suite's no-unify core witness implies the suite's
+preconditioned witness through the suite's preconditioned↔core equivalence.
+-/
+theorem principalBoundaryBridgeSuite_noUnify_expr_coherent_preconditioned
+    (h_suite : PrincipalBoundaryBridgeSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_hooks : UnifyHookPremises) :
+    PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty := by
+  exact (principalBoundaryBridgeSuite_preconditionedCoreIff_expr
+      h_suite h_hooks st fuel env e st' ty h_ok).2
+        ((principalBoundaryBridgeSuite_noUnify_expr
+          h_suite h_no h_ok h_hooks).core)
+
+/--
+Coherence (field): the suite's no-unify preconditioned witness implies the
+suite's core witness through the suite's preconditioned↔core equivalence.
+-/
+theorem principalBoundaryBridgeSuite_noUnify_field_coherent_core
+    (h_suite : PrincipalBoundaryBridgeSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_hooks : UnifyHookPremises) :
+    PrincipalFieldTypingSliceCore env fs rf := by
+  exact (principalBoundaryBridgeSuite_preconditionedCoreIff_field
+      h_suite h_hooks st fuel env fs st' rf h_ok).1
+        ((principalBoundaryBridgeSuite_noUnify_field
+          h_suite h_no h_ok h_hooks).preconditioned)
+
+/--
+Coherence (field): the suite's no-unify core witness implies the suite's
+preconditioned witness through the suite's preconditioned↔core equivalence.
+-/
+theorem principalBoundaryBridgeSuite_noUnify_field_coherent_preconditioned
+    (h_suite : PrincipalBoundaryBridgeSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_hooks : UnifyHookPremises) :
+    PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf := by
+  exact (principalBoundaryBridgeSuite_preconditionedCoreIff_field
+      h_suite h_hooks st fuel env fs st' rf h_ok).2
+        ((principalBoundaryBridgeSuite_noUnify_field
+          h_suite h_no h_ok h_hooks).core)
+
+/--
 `HasTypeU` lift of non-app/proj recursive soundness: on the fragment that never
 executes unification branches, algorithmic inference results are declaratively
 typable in the unification-aware judgment as well.
