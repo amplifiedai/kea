@@ -26987,6 +26987,112 @@ theorem principalBoundarySoundFullVerticalRoutes_viaRowPolyBundle_vertical_proj
     VerticalHookFreeProjSlice :=
   h_routes.viaRowPolyBundle.vertical.2
 
+/-- One-hop projection: arbitrary-success expression full surface via typing-suite route branch. -/
+theorem principalBoundarySoundFullVerticalRoutes_viaTypingSuite_expr
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_routes : PrincipalBoundarySoundFullVerticalRoutes st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundExprFull st fuel env e stExpr ty :=
+  h_routes.viaTypingSuite.full.expr
+
+/-- One-hop projection: arbitrary-success field full surface via typing-suite route branch. -/
+theorem principalBoundarySoundFullVerticalRoutes_viaTypingSuite_field
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_routes : PrincipalBoundarySoundFullVerticalRoutes st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundFieldFull st fuel env fs stField rf :=
+  h_routes.viaTypingSuite.full.field
+
+/-- One-hop projection: no-unify expression full surface via typing-suite route branch. -/
+theorem principalBoundarySoundFullVerticalRoutes_viaTypingSuite_noUnifyExpr
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_routes : PrincipalBoundarySoundFullVerticalRoutes st fuel env e fs stExpr ty stField rf)
+    (h_no : NoUnifyBranchesExpr e) :
+    PrincipalBoundarySoundNoUnifyExprFull st fuel env e stExpr ty :=
+  h_routes.viaTypingSuite.full.noUnifyExpr h_no
+
+/-- One-hop projection: no-unify field full surface via typing-suite route branch. -/
+theorem principalBoundarySoundFullVerticalRoutes_viaTypingSuite_noUnifyField
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_routes : PrincipalBoundarySoundFullVerticalRoutes st fuel env e fs stExpr ty stField rf)
+    (h_no : NoUnifyBranchesFields fs) :
+    PrincipalBoundarySoundNoUnifyFieldFull st fuel env fs stField rf :=
+  h_routes.viaTypingSuite.full.noUnifyField h_no
+
+/-- One-hop local decomposition on the typing-suite route branch. -/
+theorem principalBoundarySoundFullVerticalRoutes_viaTypingSuite_as_full_and_vertical
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_routes : PrincipalBoundarySoundFullVerticalRoutes st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundFullSuite st fuel env e fs stExpr ty stField rf
+      ∧ VerticalHookFreeUnifySlices :=
+  ⟨h_routes.viaTypingSuite.full, h_routes.viaTypingSuite.vertical⟩
+
+/-- One-hop projection: arbitrary-success expression full surface via row-poly route branch. -/
+theorem principalBoundarySoundFullVerticalRoutes_viaRowPolyBundle_expr
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_routes : PrincipalBoundarySoundFullVerticalRoutes st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundExprFull st fuel env e stExpr ty :=
+  h_routes.viaRowPolyBundle.full.expr
+
+/-- One-hop projection: arbitrary-success field full surface via row-poly route branch. -/
+theorem principalBoundarySoundFullVerticalRoutes_viaRowPolyBundle_field
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_routes : PrincipalBoundarySoundFullVerticalRoutes st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundFieldFull st fuel env fs stField rf :=
+  h_routes.viaRowPolyBundle.full.field
+
+/-- One-hop projection: no-unify expression full surface via row-poly route branch. -/
+theorem principalBoundarySoundFullVerticalRoutes_viaRowPolyBundle_noUnifyExpr
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_routes : PrincipalBoundarySoundFullVerticalRoutes st fuel env e fs stExpr ty stField rf)
+    (h_no : NoUnifyBranchesExpr e) :
+    PrincipalBoundarySoundNoUnifyExprFull st fuel env e stExpr ty :=
+  h_routes.viaRowPolyBundle.full.noUnifyExpr h_no
+
+/-- One-hop projection: no-unify field full surface via row-poly route branch. -/
+theorem principalBoundarySoundFullVerticalRoutes_viaRowPolyBundle_noUnifyField
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_routes : PrincipalBoundarySoundFullVerticalRoutes st fuel env e fs stExpr ty stField rf)
+    (h_no : NoUnifyBranchesFields fs) :
+    PrincipalBoundarySoundNoUnifyFieldFull st fuel env fs stField rf :=
+  h_routes.viaRowPolyBundle.full.noUnifyField h_no
+
+/-- One-hop local decomposition on the row-poly route branch. -/
+theorem principalBoundarySoundFullVerticalRoutes_viaRowPolyBundle_as_full_and_vertical
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_routes : PrincipalBoundarySoundFullVerticalRoutes st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundFullSuite st fuel env e fs stExpr ty stField rf
+      ∧ VerticalHookFreeUnifySlices :=
+  ⟨h_routes.viaRowPolyBundle.full, h_routes.viaRowPolyBundle.vertical⟩
+
 /--
 The row-poly full+vertical capstone is equivalent to providing:
 - a full principal boundary soundness suite witness, and
