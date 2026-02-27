@@ -189,23 +189,8 @@ fn register_top_level_declarations(
     sum_types: &mut SumTypeRegistry,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Result<(), String> {
-    let type_defs: Vec<&TypeDef> = module
-        .declarations
-        .iter()
-        .filter_map(|decl| match &decl.node {
-            DeclKind::TypeDef(def) => Some(def),
-            _ => None,
-        })
-        .collect();
-
-    if let Err(diag) = sum_types.register_many(&type_defs, records) {
-        diagnostics.push(diag);
-        return Err(format_diagnostics(
-            "sum type registration failed",
-            diagnostics,
-        ));
-    }
-
+    // Pass 1: register type names that sum payloads may reference.
+    // This makes `type Wrap = W(User)` work regardless of declaration order.
     for decl in &module.declarations {
         match &decl.node {
             DeclKind::AliasDecl(alias) => {
@@ -232,6 +217,30 @@ fn register_top_level_declarations(
                     ));
                 }
             }
+            _ => {}
+        }
+    }
+
+    let type_defs: Vec<&TypeDef> = module
+        .declarations
+        .iter()
+        .filter_map(|decl| match &decl.node {
+            DeclKind::TypeDef(def) => Some(def),
+            _ => None,
+        })
+        .collect();
+
+    if let Err(diag) = sum_types.register_many(&type_defs, records) {
+        diagnostics.push(diag);
+        return Err(format_diagnostics(
+            "sum type registration failed",
+            diagnostics,
+        ));
+    }
+
+    // Pass 2: register declarations that depend on types.
+    for decl in &module.declarations {
+        match &decl.node {
             DeclKind::TraitDef(trait_def) => {
                 if let Err(diag) = traits.register_trait(trait_def, records) {
                     diagnostics.push(diag);
@@ -1305,6 +1314,20 @@ mod tests {
 
         let run = run_file(&source_path).expect("run should succeed");
         assert_eq!(run.exit_code, 3);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_sum_payload_record_type_exit_code() {
+        let source_path = write_temp_source(
+            "record User\n  age: Int\n\ntype Wrap = W(User) | N\n\nfn main() -> Int\n  case W(User { age: 7 })\n    W(u) -> u.age + 1\n    N -> 0\n",
+            "kea-cli-sum-record-payload",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 8);
 
         let _ = std::fs::remove_file(source_path);
     }

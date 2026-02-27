@@ -151,7 +151,11 @@ fn expr_decl_to_fn_decl(expr: &ExprDecl) -> FnDecl {
     }
 }
 
-fn lower_pattern_type_annotation(annotation: &TypeAnnotation) -> Type {
+fn lower_pattern_type_annotation(
+    annotation: &TypeAnnotation,
+    known_record_defs: &KnownRecordDefs,
+    known_sum_defs: &BTreeSet<String>,
+) -> Type {
     match annotation {
         TypeAnnotation::Named(name) => match name.as_str() {
             "Int" => Type::Int,
@@ -159,8 +163,74 @@ fn lower_pattern_type_annotation(annotation: &TypeAnnotation) -> Type {
             "Bool" => Type::Bool,
             "String" => Type::String,
             "Unit" => Type::Unit,
+            _ if known_record_defs.contains(name) => Type::Record(kea_types::RecordType {
+                name: name.clone(),
+                params: vec![],
+                row: kea_types::RowType::empty_closed(),
+            }),
+            _ if known_sum_defs.contains(name) => Type::Sum(kea_types::SumType {
+                name: name.clone(),
+                type_args: vec![],
+                variants: vec![],
+            }),
             _ => Type::Dynamic,
         },
+        TypeAnnotation::Applied(name, args) if known_record_defs.contains(name) => {
+            let params = args
+                .iter()
+                .map(|arg| lower_pattern_type_annotation(arg, known_record_defs, known_sum_defs))
+                .collect();
+            Type::Record(kea_types::RecordType {
+                name: name.clone(),
+                params,
+                row: kea_types::RowType::empty_closed(),
+            })
+        }
+        TypeAnnotation::Applied(name, args) if known_sum_defs.contains(name) => {
+            let type_args = args
+                .iter()
+                .map(|arg| lower_pattern_type_annotation(arg, known_record_defs, known_sum_defs))
+                .collect();
+            Type::Sum(kea_types::SumType {
+                name: name.clone(),
+                type_args,
+                variants: vec![],
+            })
+        }
+        TypeAnnotation::Tuple(elems) => Type::Tuple(
+            elems
+                .iter()
+                .map(|arg| lower_pattern_type_annotation(arg, known_record_defs, known_sum_defs))
+                .collect(),
+        ),
+        TypeAnnotation::Optional(inner) => Type::Option(Box::new(lower_pattern_type_annotation(
+            inner,
+            known_record_defs,
+            known_sum_defs,
+        ))),
+        TypeAnnotation::Function(params, ret) => Type::Function(kea_types::FunctionType::pure(
+            params
+                .iter()
+                .map(|param| {
+                    lower_pattern_type_annotation(param, known_record_defs, known_sum_defs)
+                })
+                .collect(),
+            lower_pattern_type_annotation(ret, known_record_defs, known_sum_defs),
+        )),
+        TypeAnnotation::FunctionWithEffect(params, _, ret) => Type::Function(kea_types::FunctionType {
+            params: params
+                .iter()
+                .map(|param| {
+                    lower_pattern_type_annotation(param, known_record_defs, known_sum_defs)
+                })
+                .collect(),
+            ret: Box::new(lower_pattern_type_annotation(
+                ret,
+                known_record_defs,
+                known_sum_defs,
+            )),
+            effects: EffectRow::pure(),
+        }),
         _ => Type::Dynamic,
     }
 }
@@ -275,6 +345,16 @@ fn collect_variant_tags(
     PatternVariantTags,
     QualifiedPatternVariantTags,
 ) {
+    let known_record_defs = collect_record_defs(module);
+    let known_sum_defs: BTreeSet<String> = module
+        .declarations
+        .iter()
+        .filter_map(|decl| match &decl.node {
+            DeclKind::TypeDef(def) => Some(def.name.node.clone()),
+            _ => None,
+        })
+        .collect();
+
     let mut unqualified = UnitVariantTags::new();
     let mut qualified = QualifiedUnitVariantTags::new();
     let mut duplicates = BTreeSet::new();
@@ -292,7 +372,13 @@ fn collect_variant_tags(
             let field_types = variant
                 .fields
                 .iter()
-                .map(|field| lower_pattern_type_annotation(&field.ty.node))
+                .map(|field| {
+                    lower_pattern_type_annotation(
+                        &field.ty.node,
+                        &known_record_defs,
+                        &known_sum_defs,
+                    )
+                })
                 .collect();
             let field_names = variant
                 .fields
