@@ -22050,6 +22050,108 @@ theorem principalRowPolyBoundarySoundBundle_preconditionedCoreIffField_of_succes
     h_bundle.boundary.principalBoundary h_app h_proj h_ok h_hooks
 
 /--
+Expression core principality one-hop wrapper for successful no-unify runs from
+the row-polymorphic boundary+soundness package.
+-/
+theorem principalRowPolyBoundarySoundBundle_coreExpr_of_success_noUnify
+    {h_app : AppUnifySoundHook}
+    {h_proj : ProjUnifySoundHook}
+    (h_bundle : PrincipalRowPolyBoundarySoundBundle h_app h_proj)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalTypingSliceCore env e ty :=
+  principalCoreExpr_of_success_noUnify_via_masterSuite
+    h_bundle.boundary.principalBoundary h_no h_ok
+
+/--
+Expression bundled-hook preconditioned principality one-hop wrapper for
+successful no-unify runs from the row-polymorphic boundary+soundness package.
+-/
+theorem principalRowPolyBoundarySoundBundle_preconditionedExpr_of_success_noUnify
+    {h_app : AppUnifySoundHook}
+    {h_proj : ProjUnifySoundHook}
+    (h_bundle : PrincipalRowPolyBoundarySoundBundle h_app h_proj)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_hooks : UnifyHookPremises) :
+    PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty :=
+  principalPreconditionedExpr_of_success_noUnify_via_masterSuite
+    h_bundle.boundary.principalBoundary h_no h_ok h_hooks
+
+/--
+Expression bundled-hook preconditioned↔core one-hop wrapper for successful
+no-unify runs from the row-polymorphic boundary+soundness package.
+-/
+theorem principalRowPolyBoundarySoundBundle_preconditionedCoreIffExpr_of_success_noUnify
+    {h_app : AppUnifySoundHook}
+    {h_proj : ProjUnifySoundHook}
+    (h_bundle : PrincipalRowPolyBoundarySoundBundle h_app h_proj)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_hooks : UnifyHookPremises) :
+    (PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty
+      ↔ PrincipalTypingSliceCore env e ty) :=
+  principalPreconditionedCoreIffExpr_of_success_noUnify_via_masterSuite
+    h_bundle.boundary.principalBoundary h_no h_ok h_hooks
+
+/--
+Field core principality one-hop wrapper for successful no-unify runs from the
+row-polymorphic boundary+soundness package.
+-/
+theorem principalRowPolyBoundarySoundBundle_coreField_of_success_noUnify
+    {h_app : AppUnifySoundHook}
+    {h_proj : ProjUnifySoundHook}
+    (h_bundle : PrincipalRowPolyBoundarySoundBundle h_app h_proj)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalFieldTypingSliceCore env fs rf :=
+  principalCoreField_of_success_noUnify_via_masterSuite
+    h_bundle.boundary.principalBoundary h_no h_ok
+
+/--
+Field bundled-hook preconditioned principality one-hop wrapper for successful
+no-unify runs from the row-polymorphic boundary+soundness package.
+-/
+theorem principalRowPolyBoundarySoundBundle_preconditionedField_of_success_noUnify
+    {h_app : AppUnifySoundHook}
+    {h_proj : ProjUnifySoundHook}
+    (h_bundle : PrincipalRowPolyBoundarySoundBundle h_app h_proj)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_hooks : UnifyHookPremises) :
+    PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf :=
+  principalPreconditionedField_of_success_noUnify_via_masterSuite
+    h_bundle.boundary.principalBoundary h_no h_ok h_hooks
+
+/--
+Field bundled-hook preconditioned↔core one-hop wrapper for successful no-unify
+runs from the row-polymorphic boundary+soundness package.
+-/
+theorem principalRowPolyBoundarySoundBundle_preconditionedCoreIffField_of_success_noUnify
+    {h_app : AppUnifySoundHook}
+    {h_proj : ProjUnifySoundHook}
+    (h_bundle : PrincipalRowPolyBoundarySoundBundle h_app h_proj)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_hooks : UnifyHookPremises) :
+    (PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSliceCore env fs rf) :=
+  principalPreconditionedCoreIffField_of_success_noUnify_via_masterSuite
+    h_bundle.boundary.principalBoundary h_no h_ok h_hooks
+
+/--
 Expression preconditioned↔core wrapper on the dual-routed proved master suite.
 -/
 theorem principalBoundaryMasterSuite_preconditionedCoreIff_expr_via_dualConsequenceSlices
