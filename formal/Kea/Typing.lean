@@ -20334,6 +20334,50 @@ theorem inferFieldsUnify_sound_preconditioned_hasTypeU_from_resolved_bundle
     h_hooks.1 h_hooks.2 st fuel env fs st' rf h_ok
 
 /--
+Bundle-entry variant of recursive `HasTypeU` soundness for expressions under
+weak hook premises.
+-/
+theorem inferExprUnify_sound_preconditioned_hasTypeU_from_hook_bundle
+    (h_hooks : UnifyHookPremisesU) :
+    ∀ st fuel env e st' ty,
+      inferExprUnify st fuel env e = .ok st' ty →
+      HasTypeU env e ty :=
+  inferExprUnify_sound_preconditioned_hasTypeU_direct h_hooks.1 h_hooks.2
+
+/--
+Bundle-entry variant of recursive `HasTypeU` soundness for fields under weak
+hook premises.
+-/
+theorem inferFieldsUnify_sound_preconditioned_hasTypeU_from_hook_bundle
+    (h_hooks : UnifyHookPremisesU) :
+    ∀ st fuel env fs st' rf,
+      inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)) →
+      HasFieldsTypeU env fs rf :=
+  inferFieldsUnify_sound_preconditioned_hasTypeU_direct h_hooks.1 h_hooks.2
+
+/--
+Bundle-entry variant of recursive `HasTypeU` soundness for expressions under
+strong hook premises.
+-/
+theorem inferExprUnify_sound_preconditioned_hasTypeU_from_strong_hook_bundle
+    (h_hooks : UnifyHookPremises) :
+    ∀ st fuel env e st' ty,
+      inferExprUnify st fuel env e = .ok st' ty →
+      HasTypeU env e ty :=
+  inferExprUnify_sound_preconditioned_hasTypeU h_hooks.1 h_hooks.2
+
+/--
+Bundle-entry variant of recursive `HasTypeU` soundness for fields under strong
+hook premises.
+-/
+theorem inferFieldsUnify_sound_preconditioned_hasTypeU_from_strong_hook_bundle
+    (h_hooks : UnifyHookPremises) :
+    ∀ st fuel env fs st' rf,
+      inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)) →
+      HasFieldsTypeU env fs rf :=
+  inferFieldsUnify_sound_preconditioned_hasTypeU h_hooks.1 h_hooks.2
+
+/--
 Packaged recursive `HasTypeU` soundness surface for unification-threaded
 inference under the weak hook premises.
 -/
