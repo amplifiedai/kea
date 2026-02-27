@@ -12274,6 +12274,34 @@ theorem principalNoUnifyPreconditionedField_via_masterConsequenceCapstone_from_c
     h_no h_ok h_hooks.1 h_hooks.2
 
 /--
+Bundled-hook alias for expression preconditioned principality on the
+master-consequence-capstone cross-route surface.
+-/
+theorem principalNoUnifyPreconditionedExpr_via_masterConsequenceCapstone_from_cross_route_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_hooks : UnifyHookPremises) :
+    PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty :=
+  principalNoUnifyPreconditionedExpr_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok h_hooks
+
+/--
+Bundled-hook alias for field preconditioned principality on the
+master-consequence-capstone cross-route surface.
+-/
+theorem principalNoUnifyPreconditionedField_via_masterConsequenceCapstone_from_cross_route_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_hooks : UnifyHookPremises) :
+    PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf :=
+  principalNoUnifyPreconditionedField_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok h_hooks
+
+/--
 Canonical any-hooks `preconditioned ↔ core` projection for expressions from the
 master-consequence-capstone route via cross-route consequence slices.
 -/
@@ -12332,6 +12360,36 @@ theorem principalNoUnifyPreconditionedCoreIffField_via_masterConsequenceCapstone
       ↔ PrincipalFieldTypingSliceCore env fs rf) :=
   principalNoUnifyPreconditionedCoreIffField_anyHooks_via_masterConsequenceCapstone_from_cross_route_slices
     h_no h_ok h_hooks.1 h_hooks.2
+
+/--
+Bundled-hook alias for expression `preconditioned ↔ core` equivalence on the
+master-consequence-capstone cross-route surface.
+-/
+theorem principalNoUnifyPreconditionedCoreIffExpr_via_masterConsequenceCapstone_from_cross_route_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_hooks : UnifyHookPremises) :
+    (PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty
+      ↔ PrincipalTypingSliceCore env e ty) :=
+  principalNoUnifyPreconditionedCoreIffExpr_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok h_hooks
+
+/--
+Bundled-hook alias for field `preconditioned ↔ core` equivalence on the
+master-consequence-capstone cross-route surface.
+-/
+theorem principalNoUnifyPreconditionedCoreIffField_via_masterConsequenceCapstone_from_cross_route_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_hooks : UnifyHookPremises) :
+    (PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSliceCore env fs rf) :=
+  principalNoUnifyPreconditionedCoreIffField_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok h_hooks
 
 /--
 Canonical fixed-run hook-irrelevance projection for expressions from the
@@ -12451,6 +12509,34 @@ theorem principalNoUnifyPreconditionedField_via_masterRunBundleConsequence_from_
     h_no h_ok h_hooks.1 h_hooks.2
 
 /--
+Bundled-hook alias for expression preconditioned principality on the
+master-run-bundle-consequence cross-route surface.
+-/
+theorem principalNoUnifyPreconditionedExpr_via_masterRunBundleConsequence_from_cross_route_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_hooks : UnifyHookPremises) :
+    PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty :=
+  principalNoUnifyPreconditionedExpr_via_masterRunBundleConsequence_from_cross_route_slices
+    h_no h_ok h_hooks
+
+/--
+Bundled-hook alias for field preconditioned principality on the
+master-run-bundle-consequence cross-route surface.
+-/
+theorem principalNoUnifyPreconditionedField_via_masterRunBundleConsequence_from_cross_route_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_hooks : UnifyHookPremises) :
+    PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf :=
+  principalNoUnifyPreconditionedField_via_masterRunBundleConsequence_from_cross_route_slices
+    h_no h_ok h_hooks
+
+/--
 Canonical any-hooks `preconditioned ↔ core` projection for expressions from the
 master-run-bundle-consequence route via cross-route consequence slices.
 -/
@@ -12509,6 +12595,36 @@ theorem principalNoUnifyPreconditionedCoreIffField_via_masterRunBundleConsequenc
       ↔ PrincipalFieldTypingSliceCore env fs rf) :=
   principalNoUnifyPreconditionedCoreIffField_anyHooks_via_masterRunBundleConsequence_from_cross_route_slices
     h_no h_ok h_hooks.1 h_hooks.2
+
+/--
+Bundled-hook alias for expression `preconditioned ↔ core` equivalence on the
+master-run-bundle-consequence cross-route surface.
+-/
+theorem principalNoUnifyPreconditionedCoreIffExpr_via_masterRunBundleConsequence_from_cross_route_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_hooks : UnifyHookPremises) :
+    (PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty
+      ↔ PrincipalTypingSliceCore env e ty) :=
+  principalNoUnifyPreconditionedCoreIffExpr_via_masterRunBundleConsequence_from_cross_route_slices
+    h_no h_ok h_hooks
+
+/--
+Bundled-hook alias for field `preconditioned ↔ core` equivalence on the
+master-run-bundle-consequence cross-route surface.
+-/
+theorem principalNoUnifyPreconditionedCoreIffField_via_masterRunBundleConsequence_from_cross_route_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_hooks : UnifyHookPremises) :
+    (PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSliceCore env fs rf) :=
+  principalNoUnifyPreconditionedCoreIffField_via_masterRunBundleConsequence_from_cross_route_slices
+    h_no h_ok h_hooks
 
 /--
 Canonical fixed-run hook-irrelevance projection for expressions from the
