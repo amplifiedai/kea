@@ -21662,6 +21662,49 @@ theorem principalDualConsequenceSlices_proved_via_principalBoundaryBridgeSuite :
     principalBoundaryBridgeSuite_proved
 
 /--
+Canonical top-level master-suite witness routed through the dual-derived bridge
+suite.
+-/
+theorem principalBoundaryMasterSuite_proved_via_dualConsequenceSlices :
+    PrincipalBoundaryMasterSuite := by
+  refine {
+    bridge := principalBoundaryBridgeSuite_proved_via_dualConsequenceSlices
+    vacuity := principalBoundaryVacuitySuite_proved
+    allHooks := principalPreconditionedAllHooksSuite_proved
+    noUnifyAllHooks := principalBoundaryNoUnifyAllHooksSuite_proved
+    noUnifyHookedFromAllHooks := principalBoundaryNoUnifyCapstoneSlices_of_allHooksSuite
+    noUnifyToGeneralAllHooks := principalNoUnifyToGeneralAllHooksSuite_proved_via_noUnifyAllHooks
+  }
+
+/--
+Expression preconditioned↔core wrapper on the dual-routed proved master suite.
+-/
+theorem principalBoundaryMasterSuite_preconditionedCoreIff_expr_via_dualConsequenceSlices
+    (h_hooks : UnifyHookPremises)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    (PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty
+      ↔ PrincipalTypingSliceCore env e ty) :=
+  principalBoundaryMasterSuite_preconditionedCoreIff_expr
+    principalBoundaryMasterSuite_proved_via_dualConsequenceSlices
+    h_hooks st fuel env e st' ty h_ok
+
+/--
+Field preconditioned↔core wrapper on the dual-routed proved master suite.
+-/
+theorem principalBoundaryMasterSuite_preconditionedCoreIff_field_via_dualConsequenceSlices
+    (h_hooks : UnifyHookPremises)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    (PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSliceCore env fs rf) :=
+  principalBoundaryMasterSuite_preconditionedCoreIff_field
+    principalBoundaryMasterSuite_proved_via_dualConsequenceSlices
+    h_hooks st fuel env fs st' rf h_ok
+
+/--
 Surface-layer naming-parity wrappers for no-unify cross-route success APIs.
 These mirror the existing `...from_cross_route_slices` families under
 explicit `...from_cross_route_surface_slices` theorem names.
