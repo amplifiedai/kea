@@ -1041,6 +1041,20 @@ mod tests {
     }
 
     #[test]
+    fn compile_and_execute_dot_method_dispatch_exit_code() {
+        let source_path = write_temp_source(
+            "record User\n  age: Int\n\nfn inc(self: User) -> User\n  User { ..self, age: self.age + 1 }\n\nfn main() -> Int\n  let user = User { age: 41 }\n  user.inc().age\n",
+            "kea-cli-dot-method-dispatch",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_row_polymorphic_record_field_access_exit_code() {
         let source_path = write_temp_source(
             "record User\n  age: Int\n  score: Int\n\nfn get_age(u: { age: Int | r }) -> Int\n  u.age\n\nfn main() -> Int\n  let user = User { age: 41, score: 1 }\n  get_age(user)\n",
