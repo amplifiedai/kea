@@ -2012,6 +2012,20 @@ mod tests {
     }
 
     #[test]
+    fn compile_and_execute_handle_then_clause_transforms_result_exit_code() {
+        let source_path = write_temp_source(
+            "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn count_to(n: Int) -[State Int]> Int\n  let i = State.get()\n  if i >= n\n    i\n  else\n    State.put(i + 1)\n    count_to(n)\n\nfn main() -> Int\n  let pair = handle count_to(5)\n    State.get() -> resume 0\n    State.put(s) -> resume ()\n    then result ->\n      result + 100\n  pair\n",
+            "kea-cli-handle-then-transform",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("handle then run should succeed");
+        assert_eq!(run.exit_code, 105);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_log_tail_handler_resume_unit_exit_code() {
         let source_path = write_temp_source(
             "effect Log\n  fn log(msg: Int) -> Unit\n\nfn greet() -[Log]> Int\n  Log.log(7)\n  11\n\nfn main() -> Int\n  handle greet()\n    Log.log(msg) -> resume ()\n",
