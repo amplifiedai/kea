@@ -275,6 +275,33 @@ mod tests {
     }
 
     #[test]
+    fn compile_project_accepts_unqualified_prelude_reexported_type_names() {
+        let project_dir = temp_project_dir("kea-cli-project-prelude-reexports");
+        let src_dir = project_dir.join("src");
+        let stdlib_dir = project_dir.join("stdlib");
+        std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+        std::fs::create_dir_all(&stdlib_dir).expect("stdlib dir should be created");
+
+        std::fs::write(stdlib_dir.join("prelude.kea"), "use Order\n")
+            .expect("prelude module write should succeed");
+        std::fs::write(
+            stdlib_dir.join("order.kea"),
+            "type Ordering = Less | Equal | Greater\n",
+        )
+        .expect("order module write should succeed");
+        let app_path = src_dir.join("app.kea");
+        std::fs::write(
+            &app_path,
+            "fn identity(o: Ordering) -> Ordering\n  o\n\nfn main() -> Int\n  0\n",
+        )
+            .expect("app module write should succeed");
+
+        let _compiled = kea::compile_project(&app_path).expect("project compile should succeed");
+
+        let _ = std::fs::remove_dir_all(project_dir);
+    }
+
+    #[test]
     fn compile_project_rejects_bare_call_without_named_import() {
         let project_dir = temp_project_dir("kea-cli-project-import-scope");
         let src_dir = project_dir.join("src");
