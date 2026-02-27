@@ -424,7 +424,7 @@ that refines the type variable within the match arm (§4.4).
 **In patterns:** Constructors are always unqualified.
 
 ```kea
-match tree
+case tree
   Leaf(v) -> ...
   Branch(l, r) -> ...
 ```
@@ -442,15 +442,16 @@ always in scope, unqualified, in all modules.
 
 ## 4. Pattern Matching
 
-### 4.1 Match Expressions
+### 4.1 Case Expressions
 
 ```kea
-match expr
+case expr
   Pattern1 -> body1
   Pattern2 -> body2
 ```
 
-`match` is an expression. All arms must have the same type.
+`case` is an expression that destructures a scrutinee value via
+pattern matching. All arms must have the same type.
 
 ### 4.2 Pattern Forms
 
@@ -473,7 +474,7 @@ match expr
 ### 4.2.1 Guards
 
 ```kea
-match msg
+case msg
   Withdraw(amount) when amount <= self.balance -> ...
   Withdraw(_) -> fail InsufficientFunds
 ```
@@ -491,25 +492,25 @@ pattern. This is enforced by the compiler.
 
 ### 4.3 Exhaustiveness
 
-Non-exhaustive `match` on an enum is a compile error. The compiler
+Non-exhaustive `case` on an enum is a compile error. The compiler
 verifies all constructors are covered. `_` is a catch-all.
 
-`match` over `Int`, `String`, `Float`, or `Bool` requires a `_` arm.
+`case` over `Int`, `String`, `Float`, or `Bool` requires a `_` arm.
 
 ### 4.4 GADT Refinement
 
 When matching on a GADT constructor whose return type specialises a
-type variable, that variable is refined within the match arm.
+type variable, that variable is refined within the case arm.
 
 ```kea
 fn eval(_ expr: Expr T) -> T
-  match expr
+  case expr
     IntLit(v) -> v      -- T = Int in this arm, v: Int, return: Int
     BoolLit(v) -> v     -- T = Bool in this arm
     ...
 ```
 
-Refinement is branch-local. It does not extend beyond the match arm.
+Refinement is branch-local. It does not extend beyond the case arm.
 
 ---
 
@@ -742,7 +743,7 @@ fn with_state(_ initial: S, _ f: () -[State S, e]> T) -[e]> (T, S)
 fn with_mock_fs(_ files: Map String Bytes, _ f: () -[IO, e]> T) -[e]> T
   handle f()
     IO.read_file(path) ->
-      match files.get(path)
+      case files.get(path)
         Some(data) -> resume data
         None -> panic "mock: file not found: {path}"
     IO.write_file(path, data) ->
@@ -1151,7 +1152,7 @@ outside the struct definition.
 ```kea
 Tree A as Show where A: Show
   fn show(_ self: Tree A) -> String
-    match self
+    case self
       Leaf(v) -> "Leaf({v.show()})"
       Branch(l, r) -> "Branch({l.show()}, {r.show()})"
 ```
@@ -1611,6 +1612,35 @@ if should_log
 - `if cond then expr else expr` — single-line (requires `then`)
 - `if cond` / indented block / `else` / indented block — multi-line
 
+### 10.4.1 Cond Expressions
+
+```kea
+cond
+  n < 0 -> "negative"
+  n == 0 -> "zero"
+  n > 0 -> "positive"
+```
+
+`cond` is guard-based multi-way branching — like `case` but without
+a scrutinee. Each arm has a boolean condition and a body. Arms are
+tried top-to-bottom; the first `true` condition wins.
+
+`cond` is an expression. All arms must have the same type. The
+compiler requires a catch-all arm (`_ ->` or an always-true
+condition) unless it can prove exhaustiveness from the conditions.
+
+**When to use which:**
+- `case` — you have a value to destructure. Exhaustiveness is checked
+  against constructors.
+- `cond` — you have arbitrary boolean conditions. No scrutinee, no
+  pattern matching. Use when `if/else if/else` would work but the
+  nesting is awkward.
+- `if/else` — two branches. Use for simple binary decisions.
+
+`cond` replaces chains of `if/else if/else` that don't destructure
+anything. It is *not* pattern matching — conditions are arbitrary
+expressions, not patterns.
+
 ### 10.5 For Loops
 
 ```kea
@@ -1694,7 +1724,7 @@ Db.with_connection(config, |conn| ->
 Each `with pattern <- expr` wraps everything after it in
 `|pattern| ->` and appends it as the last argument to `expr`.
 The pattern must be irrefutable (variable binding or destructuring
-that always succeeds). Refutable matching should use `match`
+that always succeeds). Refutable matching should use `case`
 inside the continuation.
 
 **`@with` annotation required.** `with` only works with functions
@@ -2586,7 +2616,7 @@ This decouples *when* the reply happens from message processing.
 
 ```kea
 fn handle(_ self: Self, _ msg: CounterMsg T, _ reply: T -> Unit) -[Send]> Self
-  match msg
+  case msg
     Increment ->
       reply(())
       self~{ count: self.count + 1 }
@@ -2599,9 +2629,9 @@ fn handle(_ self: Self, _ msg: CounterMsg T, _ reply: T -> Unit) -[Send]> Self
 
 ```kea
 fn handle(_ self: Self, _ msg: PoolMsg T, _ reply: T -> Unit) -[Send]> Self
-  match msg
+  case msg
     Acquire ->
-      match self.available
+      case self.available
         conn :: rest ->
           reply(conn)
           self~{ available: rest }
@@ -2609,7 +2639,7 @@ fn handle(_ self: Self, _ msg: PoolMsg T, _ reply: T -> Unit) -[Send]> Self
           -- Park the caller; reply when a connection is returned
           self~{ waiting: self.waiting ++ [reply] }
     Release(conn) ->
-      match self.waiting
+      case self.waiting
         next :: rest ->
           next(conn)   -- reply to the parked caller
           self~{ waiting: rest }
@@ -2675,12 +2705,13 @@ keys, no casting, no `Any`.
 ## Appendix A: Reserved Words
 
 ```
-struct  enum  trait  effect  fn   let   const  match  if  then  else
-where   use   pub   as   self  Self   true   false
+struct  enum  trait  effect  fn   let   const  case   if  then  else
+where   use   pub   as   self  Self   true   false  cond
 type    fail  catch  for  in  handle  resume  unsafe  borrow  with
+while   test   and   or   not
 ```
 
-31 reserved words.
+36 reserved words.
 
 ## Appendix B: Tokens
 
