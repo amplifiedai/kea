@@ -4412,6 +4412,32 @@ impl Parser {
             self.expect(&TokenKind::RParen, "expected ')' after arguments")?;
 
             if let ExprKind::FieldAccess { expr: receiver, field } = &lhs.node
+                && let Some((method_receiver, qualifier)) =
+                    self.extract_qualified_method_receiver(receiver)
+            {
+                let mut desugared_args = Vec::with_capacity(args.len() + 1);
+                desugared_args.push(Argument {
+                    label: None,
+                    value: method_receiver,
+                });
+                desugared_args.append(&mut args);
+                let qualified_func = Spanned::new(
+                    ExprKind::FieldAccess {
+                        expr: Box::new(Spanned::new(ExprKind::Var(qualifier), receiver.span)),
+                        field: field.clone(),
+                    },
+                    receiver.span.merge(field.span),
+                );
+                return Some(Spanned::new(
+                    ExprKind::Call {
+                        func: Box::new(qualified_func),
+                        args: desugared_args,
+                    },
+                    lhs_span.merge(end),
+                ));
+            }
+
+            if let ExprKind::FieldAccess { expr: receiver, field } = &lhs.node
                 && self.should_desugar_method_call_receiver(&receiver.node)
             {
                 let mut desugared_args = Vec::with_capacity(args.len() + 1);
@@ -4459,6 +4485,35 @@ impl Parser {
         unreachable!()
     }
 
+    fn extract_qualified_method_receiver(&self, receiver: &Expr) -> Option<(Expr, String)> {
+        let mut segments_rev = Vec::new();
+        let mut base = receiver.clone();
+
+        loop {
+            let ExprKind::FieldAccess { expr, field } = &base.node else {
+                break;
+            };
+            if !self.is_namespace_segment(&field.node) {
+                break;
+            }
+            segments_rev.push(field.node.clone());
+            base = (**expr).clone();
+        }
+
+        if segments_rev.is_empty() {
+            return None;
+        }
+        segments_rev.reverse();
+        Some((base, segments_rev.join(".")))
+    }
+
+    fn is_namespace_segment(&self, segment: &str) -> bool {
+        segment
+            .chars()
+            .next()
+            .is_some_and(|ch| ch.is_ascii_uppercase())
+    }
+
     fn should_desugar_method_call_receiver(&self, receiver: &ExprKind) -> bool {
         match receiver {
             // Preserve qualified module calls: `List.map(xs, f)`.
@@ -4466,8 +4521,8 @@ impl Parser {
                 .chars()
                 .next()
                 .is_some_and(|ch| ch.is_ascii_uppercase()),
-            // Preserve explicit qualified chains like `xs.Trait.method()`,
-            // but still allow ordinary value chains like `x.inner.method()`.
+            // Uppercase namespace tails are handled by
+            // `extract_qualified_method_receiver` before this check.
             ExprKind::FieldAccess { field, .. } => !field
                 .node
                 .chars()
@@ -5143,21 +5198,36 @@ mod tests {
     }
 
     #[test]
-    fn parse_trait_qualified_call_does_not_desugar_receiver_first() {
+    fn parse_trait_qualified_call_desugars_receiver_first() {
         let expr = parse("xs.Trait.method()");
         match &expr.node {
             ExprKind::Call { func, args } => {
-                assert!(args.is_empty());
+                assert_eq!(args.len(), 1);
+                assert_eq!(args[0].value.node, ExprKind::Var("xs".into()));
                 match &func.node {
                     ExprKind::FieldAccess { expr, field } => {
                         assert_eq!(field.node, "method");
-                        match &expr.node {
-                            ExprKind::FieldAccess { expr, field } => {
-                                assert_eq!(expr.node, ExprKind::Var("xs".into()));
-                                assert_eq!(field.node, "Trait");
-                            }
-                            other => panic!("expected trait-qualified receiver chain, got {other:?}"),
-                        }
+                        assert_eq!(expr.node, ExprKind::Var("Trait".into()));
+                    }
+                    other => panic!("expected FieldAccess callee, got {other:?}"),
+                }
+            }
+            other => panic!("expected Call, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_deep_qualified_call_desugars_receiver_first() {
+        let expr = parse("xs.Core.Math.map(f)");
+        match &expr.node {
+            ExprKind::Call { func, args } => {
+                assert_eq!(args.len(), 2);
+                assert_eq!(args[0].value.node, ExprKind::Var("xs".into()));
+                assert_eq!(args[1].value.node, ExprKind::Var("f".into()));
+                match &func.node {
+                    ExprKind::FieldAccess { expr, field } => {
+                        assert_eq!(field.node, "map");
+                        assert_eq!(expr.node, ExprKind::Var("Core.Math".into()));
                     }
                     other => panic!("expected FieldAccess callee, got {other:?}"),
                 }

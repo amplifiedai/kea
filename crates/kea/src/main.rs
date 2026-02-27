@@ -292,6 +292,307 @@ mod tests {
         let _ = std::fs::remove_dir_all(project_dir);
     }
 
+    #[derive(Clone, Copy, Debug)]
+    enum MatrixCallForm {
+        DirectQualified,
+        UmsUnqualified,
+        UmsQualified,
+    }
+
+    #[derive(Clone, Copy, Debug)]
+    enum MatrixImportState {
+        NotImported,
+        UseModule,
+        UseModuleNamed,
+        Prelude,
+    }
+
+    #[derive(Clone, Copy, Debug)]
+    enum MatrixModuleRelation {
+        SameModule,
+        CrossModule,
+    }
+
+    fn matrix_inherent_expected(
+        call_form: MatrixCallForm,
+        import_state: MatrixImportState,
+        relation: MatrixModuleRelation,
+    ) -> bool {
+        if matches!(relation, MatrixModuleRelation::SameModule) {
+            return true;
+        }
+        match call_form {
+            MatrixCallForm::DirectQualified | MatrixCallForm::UmsQualified => {
+                !matches!(import_state, MatrixImportState::NotImported)
+            }
+            MatrixCallForm::UmsUnqualified => {
+                matches!(import_state, MatrixImportState::UseModuleNamed)
+            }
+        }
+    }
+
+    fn matrix_trait_expected(
+        call_form: MatrixCallForm,
+        import_state: MatrixImportState,
+        relation: MatrixModuleRelation,
+    ) -> bool {
+        if matches!(relation, MatrixModuleRelation::SameModule) {
+            return true;
+        }
+        match call_form {
+            MatrixCallForm::DirectQualified | MatrixCallForm::UmsQualified => {
+                !matches!(import_state, MatrixImportState::NotImported)
+            }
+            MatrixCallForm::UmsUnqualified => matches!(
+                import_state,
+                MatrixImportState::UseModuleNamed
+            ),
+        }
+    }
+
+    fn matrix_error_looks_like_resolution(err: &str) -> bool {
+        err.contains("undefined variable")
+            || err.contains("unknown module")
+            || err.contains("has no function")
+            || err.contains("unresolved qualified call target")
+    }
+
+    #[test]
+    fn resolution_matrix_inherent_methods() {
+        let call_forms = [
+            MatrixCallForm::DirectQualified,
+            MatrixCallForm::UmsUnqualified,
+            MatrixCallForm::UmsQualified,
+        ];
+        let import_states = [
+            MatrixImportState::NotImported,
+            MatrixImportState::UseModule,
+            MatrixImportState::UseModuleNamed,
+            MatrixImportState::Prelude,
+        ];
+        let relations = [
+            MatrixModuleRelation::SameModule,
+            MatrixModuleRelation::CrossModule,
+        ];
+
+        for relation in relations {
+            for import_state in import_states {
+                for call_form in call_forms {
+                    let expect_success = matrix_inherent_expected(call_form, import_state, relation);
+                    let project_dir = temp_project_dir("kea-cli-resolution-matrix-inherent");
+                    let src_dir = project_dir.join("src");
+                    let stdlib_dir = project_dir.join("stdlib");
+                    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+                    std::fs::create_dir_all(&stdlib_dir).expect("stdlib dir should be created");
+
+                    let mut imports = Vec::new();
+                    let mut app_defs = Vec::new();
+                    let module_qualifier = match relation {
+                        MatrixModuleRelation::SameModule => {
+                            app_defs.push("fn inc(x: Int) -> Int\n  x + 1".to_string());
+                            "App".to_string()
+                        }
+                        MatrixModuleRelation::CrossModule => match import_state {
+                            MatrixImportState::Prelude => {
+                                std::fs::write(
+                                    stdlib_dir.join("prelude.kea"),
+                                    "fn inc(x: Int) -> Int\n  x + 1\n",
+                                )
+                                .expect("prelude write should succeed");
+                                "Prelude".to_string()
+                            }
+                            MatrixImportState::NotImported => {
+                                std::fs::write(
+                                    src_dir.join("core.kea"),
+                                    "fn inc(x: Int) -> Int\n  x + 1\n",
+                                )
+                                .expect("core write should succeed");
+                                "Core".to_string()
+                            }
+                            MatrixImportState::UseModule => {
+                                std::fs::write(
+                                    src_dir.join("core.kea"),
+                                    "fn inc(x: Int) -> Int\n  x + 1\n",
+                                )
+                                .expect("core write should succeed");
+                                imports.push("use Core".to_string());
+                                "Core".to_string()
+                            }
+                            MatrixImportState::UseModuleNamed => {
+                                std::fs::write(
+                                    src_dir.join("core.kea"),
+                                    "fn inc(x: Int) -> Int\n  x + 1\n",
+                                )
+                                .expect("core write should succeed");
+                                imports.push("use Core.{inc}".to_string());
+                                "Core".to_string()
+                            }
+                        },
+                    };
+
+                    let call_expr = match call_form {
+                        MatrixCallForm::DirectQualified => format!("{module_qualifier}.inc(41)"),
+                        MatrixCallForm::UmsUnqualified => "41.inc()".to_string(),
+                        MatrixCallForm::UmsQualified => format!("41.{module_qualifier}.inc()"),
+                    };
+
+                    let mut app_source = String::new();
+                    if !imports.is_empty() {
+                        app_source.push_str(&imports.join("\n"));
+                        app_source.push('\n');
+                    }
+                    if !app_defs.is_empty() {
+                        app_source.push_str(&app_defs.join("\n\n"));
+                        app_source.push_str("\n\n");
+                    }
+                    app_source.push_str("fn main() -> Int\n  ");
+                    app_source.push_str(&call_expr);
+                    app_source.push('\n');
+                    let app_path = src_dir.join("app.kea");
+                    std::fs::write(&app_path, app_source).expect("app write should succeed");
+
+                    let run = run_file(&app_path);
+                    if expect_success {
+                        let run = run.unwrap_or_else(|err| {
+                            panic!(
+                                "expected success for relation={relation:?}, import={import_state:?}, call={call_form:?}, got error: {err}"
+                            )
+                        });
+                        assert_eq!(
+                            run.exit_code, 42,
+                            "unexpected exit code for relation={relation:?}, import={import_state:?}, call={call_form:?}"
+                        );
+                    } else {
+                        let err = run.expect_err("expected resolution failure");
+                        assert!(
+                            matrix_error_looks_like_resolution(&err),
+                            "expected resolution-style error for relation={relation:?}, import={import_state:?}, call={call_form:?}; got: {err}"
+                        );
+                    }
+
+                    let _ = std::fs::remove_dir_all(project_dir);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn resolution_matrix_trait_methods() {
+        let call_forms = [
+            MatrixCallForm::DirectQualified,
+            MatrixCallForm::UmsUnqualified,
+            MatrixCallForm::UmsQualified,
+        ];
+        let import_states = [
+            MatrixImportState::NotImported,
+            MatrixImportState::UseModule,
+            MatrixImportState::UseModuleNamed,
+            MatrixImportState::Prelude,
+        ];
+        let relations = [
+            MatrixModuleRelation::SameModule,
+            MatrixModuleRelation::CrossModule,
+        ];
+
+        for relation in relations {
+            for import_state in import_states {
+                for call_form in call_forms {
+                    let expect_success = matrix_trait_expected(call_form, import_state, relation);
+                    let project_dir = temp_project_dir("kea-cli-resolution-matrix-trait");
+                    let src_dir = project_dir.join("src");
+                    let stdlib_dir = project_dir.join("stdlib");
+                    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+                    std::fs::create_dir_all(&stdlib_dir).expect("stdlib dir should be created");
+
+                    let mut imports = Vec::new();
+                    let mut app_defs = Vec::new();
+                    match relation {
+                        MatrixModuleRelation::SameModule => {
+                            app_defs.push(
+                                "trait Tinc a\n  fn tinc(x: a) -> a\n\nimpl Tinc for Int\n  fn tinc(x: Int) -> Int\n    x + 1"
+                                    .to_string(),
+                            );
+                        }
+                        MatrixModuleRelation::CrossModule => match import_state {
+                            MatrixImportState::Prelude => {
+                                std::fs::write(
+                                    stdlib_dir.join("prelude.kea"),
+                                    "trait Tinc a\n  fn tinc(x: a) -> a\n\nimpl Tinc for Int\n  fn tinc(x: Int) -> Int\n    x + 1\n",
+                                )
+                                .expect("prelude write should succeed");
+                            }
+                            MatrixImportState::NotImported => {
+                                std::fs::write(
+                                    src_dir.join("tinc.kea"),
+                                    "trait Tinc a\n  fn tinc(x: a) -> a\n\nimpl Tinc for Int\n  fn tinc(x: Int) -> Int\n    x + 1\n",
+                                )
+                                .expect("tinc write should succeed");
+                            }
+                            MatrixImportState::UseModule => {
+                                std::fs::write(
+                                    src_dir.join("tinc.kea"),
+                                    "trait Tinc a\n  fn tinc(x: a) -> a\n\nimpl Tinc for Int\n  fn tinc(x: Int) -> Int\n    x + 1\n",
+                                )
+                                .expect("tinc write should succeed");
+                                imports.push("use Tinc".to_string());
+                            }
+                            MatrixImportState::UseModuleNamed => {
+                                std::fs::write(
+                                    src_dir.join("tinc.kea"),
+                                    "trait Tinc a\n  fn tinc(x: a) -> a\n\nimpl Tinc for Int\n  fn tinc(x: Int) -> Int\n    x + 1\n",
+                                )
+                                .expect("tinc write should succeed");
+                                imports.push("use Tinc.{tinc}".to_string());
+                            }
+                        },
+                    }
+
+                    let call_expr = match call_form {
+                        MatrixCallForm::DirectQualified => "Tinc.tinc(41)".to_string(),
+                        MatrixCallForm::UmsUnqualified => "41.tinc()".to_string(),
+                        MatrixCallForm::UmsQualified => "41.Tinc.tinc()".to_string(),
+                    };
+
+                    let mut app_source = String::new();
+                    if !imports.is_empty() {
+                        app_source.push_str(&imports.join("\n"));
+                        app_source.push('\n');
+                    }
+                    if !app_defs.is_empty() {
+                        app_source.push_str(&app_defs.join("\n\n"));
+                        app_source.push_str("\n\n");
+                    }
+                    app_source.push_str("fn main() -> Int\n  ");
+                    app_source.push_str(&call_expr);
+                    app_source.push('\n');
+                    let app_path = src_dir.join("app.kea");
+                    std::fs::write(&app_path, app_source).expect("app write should succeed");
+
+                    let run = run_file(&app_path);
+                    if expect_success {
+                        let run = run.unwrap_or_else(|err| {
+                            panic!(
+                                "expected success for relation={relation:?}, import={import_state:?}, call={call_form:?}, got error: {err}"
+                            )
+                        });
+                        assert_eq!(
+                            run.exit_code, 42,
+                            "unexpected exit code for relation={relation:?}, import={import_state:?}, call={call_form:?}"
+                        );
+                    } else {
+                        let err = run.expect_err("expected resolution failure");
+                        assert!(
+                            matrix_error_looks_like_resolution(&err),
+                            "expected resolution-style error for relation={relation:?}, import={import_state:?}, call={call_form:?}; got: {err}"
+                        );
+                    }
+
+                    let _ = std::fs::remove_dir_all(project_dir);
+                }
+            }
+        }
+    }
+
     #[test]
     fn compile_and_execute_io_stdout_unit_main_exit_code() {
         let source_path = write_temp_source(

@@ -83,6 +83,7 @@ pub fn compile_module(source: &str, file_id: FileId) -> Result<CompilationContex
         &mut traits,
         &mut sum_types,
         &mut diagnostics,
+        None,
     )?;
 
     typecheck_functions(
@@ -171,7 +172,17 @@ pub fn process_module_in_env(
         return Err(diagnostics);
     }
 
-    if register_top_level_declarations(module, env, records, traits, sum_types, &mut diagnostics).is_err() {
+    if register_top_level_declarations(
+        module,
+        env,
+        records,
+        traits,
+        sum_types,
+        &mut diagnostics,
+        None,
+    )
+    .is_err()
+    {
         return Err(diagnostics);
     }
 
@@ -429,23 +440,34 @@ fn collect_project_modules(entry: &Path) -> Result<Vec<LoadedModule>, String> {
 
 fn merge_modules_for_codegen(modules: &[(String, Module)]) -> Module {
     let mut declarations = Vec::new();
+    let mut seen_function_names = BTreeSet::new();
 
     for (module_path, module) in modules {
         for decl in &module.declarations {
+            if let DeclKind::Function(fn_decl) = &decl.node {
+                seen_function_names.insert(fn_decl.name.node.clone());
+            }
+            if let DeclKind::ExprFn(expr_decl) = &decl.node {
+                seen_function_names.insert(expr_decl.name.node.clone());
+            }
             declarations.push(decl.clone());
             match &decl.node {
                 DeclKind::Function(fn_decl) if !fn_decl.name.node.contains('.') => {
                     let mut lifted = fn_decl.clone();
                     lifted.name.node = format!("{module_path}.{}", fn_decl.name.node);
-                    declarations.push(kea_ast::Spanned::new(
-                        DeclKind::Function(lifted),
-                        decl.span,
-                    ));
+                    if seen_function_names.insert(lifted.name.node.clone()) {
+                        declarations.push(kea_ast::Spanned::new(
+                            DeclKind::Function(lifted),
+                            decl.span,
+                        ));
+                    }
                 }
                 DeclKind::ExprFn(expr_decl) if !expr_decl.name.node.contains('.') => {
                     let mut lifted = expr_decl.clone();
                     lifted.name.node = format!("{module_path}.{}", expr_decl.name.node);
-                    declarations.push(kea_ast::Spanned::new(DeclKind::ExprFn(lifted), decl.span));
+                    if seen_function_names.insert(lifted.name.node.clone()) {
+                        declarations.push(kea_ast::Spanned::new(DeclKind::ExprFn(lifted), decl.span));
+                    }
                 }
                 _ => {}
             }
@@ -463,6 +485,7 @@ fn merge_modules_for_codegen(modules: &[(String, Module)]) -> Module {
 fn parse_and_typecheck_project(entry: &Path) -> Result<CompilationContext, String> {
     let loaded_modules = collect_project_modules(entry)?;
     let entry_module_path = module_path_from_entry(entry);
+    let prelude_modules: BTreeSet<String> = configured_prelude_modules().into_iter().collect();
     let mut env = TypeEnv::new();
     let mut records = RecordRegistry::new();
     let mut traits = TraitRegistry::new();
@@ -472,6 +495,9 @@ fn parse_and_typecheck_project(entry: &Path) -> Result<CompilationContext, Strin
 
     for loaded in &loaded_modules {
         let is_entry_module = loaded.module_path == entry_module_path;
+        let is_prelude_module = prelude_modules.contains(&loaded.module_path);
+        let alias_snapshot = (!is_entry_module).then(|| env.snapshot_module_aliases());
+        let trait_scope_snapshot = (!is_entry_module).then(|| env.snapshot_in_scope_traits());
         if !is_entry_module {
             env.push_scope();
         }
@@ -497,9 +523,11 @@ fn parse_and_typecheck_project(entry: &Path) -> Result<CompilationContext, Strin
             &mut traits,
             &mut sum_types,
             &mut diagnostics,
+            Some(&loaded.module_path),
         )?;
 
-        let imported_symbols = apply_module_imports(&expanded, &mut env, &mut diagnostics)?;
+        let imported_symbols =
+            apply_module_imports(&expanded, &mut env, &traits, &mut diagnostics)?;
 
         typecheck_functions(
             &expanded,
@@ -512,13 +540,26 @@ fn parse_and_typecheck_project(entry: &Path) -> Result<CompilationContext, Strin
         )?;
 
         if !is_entry_module {
-            for fn_name in declared_function_names(&expanded) {
-                env.clear_function_metadata(&fn_name);
-            }
+            let retained_qualified_bindings = declared_function_names(&expanded)
+                .into_iter()
+                .filter(|name| name.contains('.'))
+                .filter_map(|name| env.lookup(&name).cloned().map(|scheme| (name, scheme)))
+                .collect::<Vec<_>>();
             for imported_name in imported_symbols {
                 env.clear_function_metadata(&imported_name);
             }
+            if !is_prelude_module
+                && let Some(snapshot) = alias_snapshot
+            {
+                env.restore_module_aliases(snapshot);
+            }
+            if let Some(snapshot) = trait_scope_snapshot {
+                env.restore_in_scope_traits(snapshot);
+            }
             env.pop_scope();
+            for (name, scheme) in retained_qualified_bindings {
+                env.bind(name, scheme);
+            }
         }
 
         typed_modules.push((loaded.module_path.clone(), expanded));
@@ -547,6 +588,7 @@ fn declared_function_names(module: &Module) -> Vec<String> {
 fn apply_module_imports(
     module: &Module,
     env: &mut TypeEnv,
+    _traits: &TraitRegistry,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Result<Vec<String>, String> {
     let mut imported_symbols = Vec::new();
@@ -628,6 +670,16 @@ fn apply_module_imports(
 fn expand_impl_methods_for_codegen(module: &Module) -> Module {
     let mut declarations = module.declarations.clone();
     let mut trait_method_counts: BTreeMap<(String, String), usize> = BTreeMap::new();
+    let mut bare_trait_method_counts: BTreeMap<String, usize> = BTreeMap::new();
+    let mut existing_function_names: BTreeSet<String> = module
+        .declarations
+        .iter()
+        .filter_map(|decl| match &decl.node {
+            DeclKind::Function(fn_decl) => Some(fn_decl.name.node.clone()),
+            DeclKind::ExprFn(expr_decl) => Some(expr_decl.name.node.clone()),
+            _ => None,
+        })
+        .collect();
     for decl in &module.declarations {
         let DeclKind::ImplBlock(impl_block) = &decl.node else {
             continue;
@@ -635,6 +687,9 @@ fn expand_impl_methods_for_codegen(module: &Module) -> Module {
         for method in &impl_block.methods {
             *trait_method_counts
                 .entry((impl_block.trait_name.node.clone(), method.name.node.clone()))
+                .or_insert(0) += 1;
+            *bare_trait_method_counts
+                .entry(method.name.node.clone())
                 .or_insert(0) += 1;
         }
     }
@@ -665,6 +720,18 @@ fn expand_impl_methods_for_codegen(module: &Module) -> Module {
                 DeclKind::Function(lifted),
                 method.span,
             ));
+
+            // Provide an unqualified alias only when the method name is unique
+            // in this module and does not collide with an existing top-level
+            // function. This keeps `x.method()` available for in-scope traits
+            // while preserving deterministic dispatch.
+            if bare_trait_method_counts.get(&method_name).copied().unwrap_or_default() == 1
+                && existing_function_names.insert(method_name.clone())
+            {
+                let mut bare = method.clone();
+                bare.name.node = method_name;
+                declarations.push(kea_ast::Spanned::new(DeclKind::Function(bare), method.span));
+            }
         }
     }
 
@@ -681,7 +748,12 @@ fn register_top_level_declarations(
     traits: &mut TraitRegistry,
     sum_types: &mut SumTypeRegistry,
     diagnostics: &mut Vec<Diagnostic>,
+    module_path: Option<&str>,
 ) -> Result<(), String> {
+    let owner = module_path
+        .map(|path| format!("project:{path}"))
+        .unwrap_or_else(|| "repl:".to_string());
+
     // Pass 1: register type names that sum payloads may reference.
     // This makes `type Wrap = W(User)` work regardless of declaration order.
     for decl in &module.declarations {
@@ -735,13 +807,14 @@ fn register_top_level_declarations(
     for decl in &module.declarations {
         match &decl.node {
             DeclKind::TraitDef(trait_def) => {
-                if let Err(diag) = traits.register_trait(trait_def, records) {
+                if let Err(diag) = traits.register_trait_with_owner(trait_def, records, &owner) {
                     diagnostics.push(diag);
                     return Err(format_diagnostics("trait registration failed", diagnostics));
                 }
+                env.mark_trait_in_scope(&trait_def.name.node);
             }
             DeclKind::ImplBlock(impl_block) => {
-                if let Err(diag) = traits.register_trait_impl(impl_block) {
+                if let Err(diag) = traits.register_trait_impl_in_module(impl_block, &owner) {
                     diagnostics.push(diag);
                     return Err(format_diagnostics("impl registration failed", diagnostics));
                 }

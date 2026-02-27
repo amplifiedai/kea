@@ -275,6 +275,8 @@ pub struct TypeEnv {
     /// Short module name → full module path (e.g. "Math" → "Kea.Math").
     /// Populated during import resolution and session init.
     module_aliases: BTreeMap<String, String>,
+    /// Trait names currently in scope for unqualified method dispatch.
+    in_scope_traits: BTreeSet<String>,
     /// Stack of enclosing stream element types for `stream { ... }` blocks.
     stream_contexts: Vec<Type>,
     /// Nesting depth for actor-method inference contexts.
@@ -351,6 +353,7 @@ impl TypeEnv {
             module_functions: BTreeMap::new(),
             module_type_schemes: BTreeMap::new(),
             module_aliases: BTreeMap::new(),
+            in_scope_traits: BTreeSet::new(),
             stream_contexts: Vec::new(),
             actor_context_depth: 0,
             resume_contexts: Vec::new(),
@@ -477,17 +480,46 @@ impl TypeEnv {
             .insert(short.to_string(), full_path.to_string());
     }
 
+    pub fn snapshot_module_aliases(&self) -> BTreeMap<String, String> {
+        self.module_aliases.clone()
+    }
+
+    pub fn restore_module_aliases(&mut self, snapshot: BTreeMap<String, String>) {
+        self.module_aliases = snapshot;
+    }
+
+    pub fn mark_trait_in_scope(&mut self, trait_name: &str) {
+        self.in_scope_traits.insert(trait_name.to_string());
+    }
+
+    pub fn trait_in_scope(&self, trait_name: &str) -> bool {
+        self.in_scope_traits.contains(trait_name)
+    }
+
+    pub fn snapshot_in_scope_traits(&self) -> BTreeSet<String> {
+        self.in_scope_traits.clone()
+    }
+
+    pub fn restore_in_scope_traits(&mut self, snapshot: BTreeSet<String>) {
+        self.in_scope_traits = snapshot;
+    }
+
+    fn resolve_module_path(&self, module_short: &str) -> Option<String> {
+        if let Some(path) = self.module_aliases.get(module_short) {
+            return Some(path.clone());
+        }
+        if module_short.contains('.') {
+            return Some(module_short.to_string());
+        }
+        None
+    }
+
     /// Resolve `Module.member` to a bound function scheme when available.
     ///
     /// Checks only module-scoped type schemes; qualified lookup does not
     /// consult flat/global bindings.
     pub fn resolve_qualified(&self, module_short: &str, field: &str) -> Option<&TypeScheme> {
-        // Resolve the short name to a full module path.
-        let module_path = self
-            .module_aliases
-            .get(module_short)
-            .cloned()
-            .unwrap_or_else(|| format!("Kea.{module_short}"));
+        let module_path = self.resolve_module_path(module_short)?;
 
         // Check module-scoped type schemes first (primary path).
         if let Some(module) = self.module_type_schemes.get(&module_path) {
@@ -505,11 +537,7 @@ impl TypeEnv {
 
     /// Resolve effects for a qualified function reference.
     pub fn resolve_qualified_effects(&self, module_short: &str, field: &str) -> Option<Effects> {
-        let module_path = self
-            .module_aliases
-            .get(module_short)
-            .cloned()
-            .unwrap_or_else(|| format!("Kea.{module_short}"));
+        let module_path = self.resolve_module_path(module_short)?;
 
         if let Some(module) = self.module_type_schemes.get(&module_path) {
             if let Some((_, effects)) = module.get(field) {
@@ -529,11 +557,7 @@ impl TypeEnv {
         module_short: &str,
         field: &str,
     ) -> Option<EffectRow> {
-        let module_path = self
-            .module_aliases
-            .get(module_short)
-            .cloned()
-            .unwrap_or_else(|| format!("Kea.{module_short}"));
+        let module_path = self.resolve_module_path(module_short)?;
 
         if let Some(module) = self.module_type_schemes.get(&module_path) {
             if let Some((scheme, effects)) = module.get(field) {
@@ -555,12 +579,9 @@ impl TypeEnv {
         module_short: &str,
         field: &str,
     ) -> Option<&FunctionEffectSignature> {
-        let module_path = self
-            .module_aliases
-            .get(module_short)
-            .cloned()
-            .unwrap_or_else(|| format!("Kea.{module_short}"));
-        if let Some(candidates) = self.module_functions.get(&module_path) {
+        if let Some(module_path) = self.resolve_module_path(module_short)
+            && let Some(candidates) = self.module_functions.get(&module_path)
+        {
             // Try module-qualified key first to avoid collision with bare-name globals.
             let qualified_key = format!("{module_path}.{field}");
             if candidates.iter().any(|name| name == field) {
@@ -593,11 +614,7 @@ impl TypeEnv {
         module_short: &str,
         field: &str,
     ) -> Option<&FnSignature> {
-        let module_path = self
-            .module_aliases
-            .get(module_short)
-            .cloned()
-            .unwrap_or_else(|| format!("Kea.{module_short}"));
+        let module_path = self.resolve_module_path(module_short)?;
         let candidates = self.module_functions.get(&module_path)?;
         // Try module-qualified key first to avoid collision with bare-name globals.
         let qualified_key = format!("{module_path}.{field}");
@@ -627,11 +644,9 @@ impl TypeEnv {
     /// Checks alias map first (covers both stdlib like "Math" → "Kea.Math"
     /// and extensions like "Grpc" → "Grpc"), then falls back to "Kea." prefix.
     pub fn has_qualified_module(&self, module_short: &str) -> bool {
-        let module_path = self
-            .module_aliases
-            .get(module_short)
-            .cloned()
-            .unwrap_or_else(|| format!("Kea.{module_short}"));
+        let Some(module_path) = self.resolve_module_path(module_short) else {
+            return false;
+        };
         self.module_functions.contains_key(&module_path)
             || self.module_type_schemes.contains_key(&module_path)
     }
@@ -11113,6 +11128,89 @@ fn resolve_bound_call_args(
     }
 }
 
+enum TraitMethodFallback {
+    Resolved(Type),
+    Ambiguous,
+    None,
+}
+
+fn resolve_unqualified_trait_method_fallback(
+    method_name: &str,
+    arg_types: &[Type],
+    env: &TypeEnv,
+    traits: &TraitRegistry,
+    unifier: &mut Unifier,
+    span: Span,
+) -> TraitMethodFallback {
+    let Some(receiver_ty) = arg_types.first() else {
+        return TraitMethodFallback::None;
+    };
+    let resolved_receiver = unifier.substitution.apply(receiver_ty);
+    let Some((receiver_ctor, _receiver_args)) = type_constructor_for_trait(&resolved_receiver)
+    else {
+        return TraitMethodFallback::None;
+    };
+
+    let mut candidates: Vec<(String, TraitMethodInfo)> = Vec::new();
+    for trait_name in traits.all_trait_names() {
+        if !env.trait_in_scope(trait_name) {
+            continue;
+        }
+        let Some(trait_info) = traits.lookup_trait(trait_name) else {
+            continue;
+        };
+        let Some(method) = trait_info.methods.iter().find(|m| m.name == method_name) else {
+            continue;
+        };
+
+        match traits.solve_goal(&TraitGoal::Implements {
+            trait_name: trait_name.to_string(),
+            ty: resolved_receiver.clone(),
+        }) {
+            SolveOutcome::Unique(_) | SolveOutcome::Ambiguous(_) => {
+                candidates.push((trait_name.to_string(), method.clone()));
+            }
+            SolveOutcome::NoMatch(_) => {}
+        }
+    }
+
+    match candidates.len() {
+        0 => TraitMethodFallback::None,
+        1 => {
+            let (trait_name, method) = candidates.remove(0);
+            let trait_info = traits
+                .lookup_trait(&trait_name)
+                .expect("trait should exist while resolving method fallback");
+            TraitMethodFallback::Resolved(instantiate_trait_method_type(
+                trait_info,
+                &trait_name,
+                &method,
+                unifier,
+            ))
+        }
+        _ => {
+            let mut names = candidates
+                .into_iter()
+                .map(|(trait_name, _)| format!("{trait_name}.{method_name}"))
+                .collect::<Vec<_>>();
+            names.sort();
+            names.dedup();
+            unifier.push_error(
+                Diagnostic::error(
+                    Category::TypeMismatch,
+                    format!(
+                        "ambiguous method `{method_name}` for `{receiver_ctor}`: {}",
+                        names.join(", ")
+                    ),
+                )
+                .at(span_to_loc(span))
+                .with_help("use a qualified call like `x.Trait.method(...)`"),
+            );
+            TraitMethodFallback::Ambiguous
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn infer_bound_args_with_param_contracts(
     bound_args: &[BoundArg],
@@ -12485,18 +12583,65 @@ fn infer_expr_bidir(
         ExprKind::Call { func, args } => {
             let (call_signature, bound_args) =
                 resolve_bound_call_args(func, args, expr.span, env, unifier);
-
-            let func_ty = infer_expr_bidir(func, env, unifier, records, traits, sum_types);
-            let mut arg_types = infer_bound_args_with_param_contracts(
-                &bound_args,
-                call_signature.as_ref(),
-                None,
-                env,
-                unifier,
-                records,
-                traits,
-                sum_types,
+            let unresolved_callee = matches!(
+                &func.node,
+                ExprKind::Var(name) if env.lookup(name).is_none()
             );
+            let mut arg_types = if unresolved_callee {
+                infer_bound_args_with_param_contracts(
+                    &bound_args,
+                    call_signature.as_ref(),
+                    None,
+                    env,
+                    unifier,
+                    records,
+                    traits,
+                    sum_types,
+                )
+            } else {
+                Vec::new()
+            };
+            let mut suppress_undefined_callee = false;
+            let func_ty = if let ExprKind::Var(name) = &func.node {
+                if unresolved_callee {
+                    match resolve_unqualified_trait_method_fallback(
+                        name,
+                        &arg_types,
+                        env,
+                        traits,
+                        unifier,
+                        func.span,
+                    ) {
+                        TraitMethodFallback::Resolved(ty) => ty,
+                        TraitMethodFallback::Ambiguous => {
+                            suppress_undefined_callee = true;
+                            unifier.fresh_type()
+                        }
+                        TraitMethodFallback::None => {
+                            infer_expr_bidir(func, env, unifier, records, traits, sum_types)
+                        }
+                    }
+                } else {
+                    infer_expr_bidir(func, env, unifier, records, traits, sum_types)
+                }
+            } else {
+                infer_expr_bidir(func, env, unifier, records, traits, sum_types)
+            };
+            if arg_types.is_empty() {
+                arg_types = infer_bound_args_with_param_contracts(
+                    &bound_args,
+                    call_signature.as_ref(),
+                    None,
+                    env,
+                    unifier,
+                    records,
+                    traits,
+                    sum_types,
+                );
+            }
+            if suppress_undefined_callee {
+                return unifier.fresh_type();
+            }
 
             let callable_ty = instantiate_callable_type_for_call(&func_ty, unifier, expr.span);
             let resolved_callable = unifier.substitution.apply(&callable_ty);
@@ -12849,16 +12994,6 @@ fn infer_expr_bidir(
                 if let Some(scheme) = env.resolve_qualified(module_name, &field.node) {
                     return instantiate_with_span(scheme, unifier, field.span);
                 }
-                if env.has_qualified_module(module_name) {
-                    unifier.push_error(
-                        Diagnostic::error(
-                            Category::UndefinedName,
-                            format!("module {module_name} has no function `{}`", field.node),
-                        )
-                        .at(span_to_loc(field.span)),
-                    );
-                    return unifier.fresh_type();
-                }
 
                 if let Some(trait_info) = traits.lookup_trait(module_name) {
                     if let Some(method) = trait_info.methods.iter().find(|m| m.name == field.node) {
@@ -12873,6 +13008,17 @@ fn infer_expr_bidir(
                         Diagnostic::error(
                             Category::UndefinedName,
                             format!("trait `{module_name}` has no method `{}`", field.node),
+                        )
+                        .at(span_to_loc(field.span)),
+                    );
+                    return unifier.fresh_type();
+                }
+
+                if env.has_qualified_module(module_name) {
+                    unifier.push_error(
+                        Diagnostic::error(
+                            Category::UndefinedName,
+                            format!("module {module_name} has no function `{}`", field.node),
                         )
                         .at(span_to_loc(field.span)),
                     );
@@ -15327,7 +15473,53 @@ fn check_expr_bidir(
         (ExprKind::Call { func, args }, _) => {
             let (call_signature, bound_args) =
                 resolve_bound_call_args(func, args, expr.span, env, unifier);
-            let func_ty = infer_expr_bidir(func, env, unifier, records, traits, sum_types);
+            let unresolved_callee = matches!(
+                &func.node,
+                ExprKind::Var(name) if env.lookup(name).is_none()
+            );
+            let arg_types_for_fallback = if unresolved_callee {
+                infer_bound_args_with_param_contracts(
+                    &bound_args,
+                    call_signature.as_ref(),
+                    None,
+                    env,
+                    unifier,
+                    records,
+                    traits,
+                    sum_types,
+                )
+            } else {
+                Vec::new()
+            };
+            let mut suppress_undefined_callee = false;
+            let func_ty = if let ExprKind::Var(name) = &func.node {
+                if unresolved_callee {
+                    match resolve_unqualified_trait_method_fallback(
+                        name,
+                        &arg_types_for_fallback,
+                        env,
+                        traits,
+                        unifier,
+                        func.span,
+                    ) {
+                        TraitMethodFallback::Resolved(ty) => ty,
+                        TraitMethodFallback::Ambiguous => {
+                            suppress_undefined_callee = true;
+                            unifier.fresh_type()
+                        }
+                        TraitMethodFallback::None => {
+                            infer_expr_bidir(func, env, unifier, records, traits, sum_types)
+                        }
+                    }
+                } else {
+                    infer_expr_bidir(func, env, unifier, records, traits, sum_types)
+                }
+            } else {
+                infer_expr_bidir(func, env, unifier, records, traits, sum_types)
+            };
+            if suppress_undefined_callee {
+                return expected.clone();
+            }
             let callable_ty = instantiate_callable_type_for_call(&func_ty, unifier, expr.span);
             let resolved_callable = unifier.substitution.apply(&callable_ty);
             if let Type::Function(ft) = &resolved_callable
