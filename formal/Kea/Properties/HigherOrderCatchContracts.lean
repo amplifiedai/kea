@@ -110,12 +110,24 @@ theorem higherOrderCatchTypingJudgment_sound
         EffectPolymorphismSoundness.labelsPreservedExcept
           j.innerEffects loweredEffects FailResultContracts.failLabel ∧
         RowFields.has (EffectRow.fields loweredEffects) FailResultContracts.failLabel = false := by
+  have h_clause_removed :
+      RowFields.has
+        (EffectRow.fields (HandleClauseContract.resultEffects j.judgment.clause))
+        FailResultContracts.failLabel = false :=
+    CatchTypingBridge.catchTypingJudgment_clauseFailRemoved_via_closedAware j.judgment
   rcases CatchTypingBridge.catchTypingJudgment_sound j.judgment with
-    ⟨h_clause_removed, loweredEffects, h_ty, h_tail, h_preserve, h_removed⟩
+    ⟨_h_clause_removed, loweredEffects, h_ty, h_tail, h_preserve, h_removed⟩
   refine ⟨h_clause_removed, loweredEffects, ?_, ?_, ?_, h_removed⟩
   · simpa [higherOrderParamType, j.h_params] using h_ty
   · simpa [j.h_clauseEffects] using h_tail
   · simpa [j.h_clauseEffects] using h_preserve
+
+theorem higherOrderCatchTypingJudgment_clauseFailRemoved_via_closedAware
+    (j : HigherOrderCatchTypingJudgment) :
+    RowFields.has
+      (EffectRow.fields (HandleClauseContract.resultEffects j.judgment.clause))
+      FailResultContracts.failLabel = false :=
+  CatchTypingBridge.catchTypingJudgment_clauseFailRemoved_via_closedAware j.judgment
 
 theorem higherOrderCatchTypingJudgment_admissibility_branch
     (j : HigherOrderCatchTypingJudgment) :
