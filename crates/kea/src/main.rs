@@ -516,6 +516,29 @@ mod tests {
         }
     }
 
+    fn matrix_same_name_module_struct_expected(
+        call_form: MatrixCallForm,
+        import_state: MatrixImportState,
+        relation: MatrixModuleRelation,
+    ) -> bool {
+        if matches!(relation, MatrixModuleRelation::SameModule) {
+            return true;
+        }
+        match call_form {
+            MatrixCallForm::DirectQualified | MatrixCallForm::UmsQualified => {
+                !matches!(import_state, MatrixImportState::NotImported)
+            }
+            MatrixCallForm::UmsUnqualified => {
+                matches!(
+                    import_state,
+                    MatrixImportState::UseModule
+                        | MatrixImportState::UseModuleNamed
+                        | MatrixImportState::Prelude
+                )
+            }
+        }
+    }
+
     fn matrix_error_looks_like_resolution(err: &str) -> bool {
         err.contains("undefined variable")
             || err.contains("unknown module")
@@ -744,6 +767,123 @@ mod tests {
                         });
                         assert_eq!(
                             run.exit_code, 42,
+                            "unexpected exit code for relation={relation:?}, import={import_state:?}, call={call_form:?}"
+                        );
+                    } else {
+                        let err = run.expect_err("expected resolution failure");
+                        assert!(
+                            matrix_error_looks_like_resolution(&err),
+                            "expected resolution-style error for relation={relation:?}, import={import_state:?}, call={call_form:?}; got: {err}"
+                        );
+                    }
+
+                    let _ = std::fs::remove_dir_all(project_dir);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn resolution_matrix_same_name_module_struct_methods() {
+        let call_forms = [
+            MatrixCallForm::DirectQualified,
+            MatrixCallForm::UmsUnqualified,
+            MatrixCallForm::UmsQualified,
+        ];
+        let import_states = [
+            MatrixImportState::NotImported,
+            MatrixImportState::UseModule,
+            MatrixImportState::UseModuleNamed,
+            MatrixImportState::Prelude,
+        ];
+        let relations = [
+            MatrixModuleRelation::SameModule,
+            MatrixModuleRelation::CrossModule,
+        ];
+
+        for relation in relations {
+            for import_state in import_states {
+                for call_form in call_forms {
+                    let expect_success =
+                        matrix_same_name_module_struct_expected(call_form, import_state, relation);
+                    let project_dir = temp_project_dir("kea-cli-resolution-matrix-module-struct");
+                    let src_dir = project_dir.join("src");
+                    let stdlib_dir = project_dir.join("stdlib");
+                    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+                    std::fs::create_dir_all(&stdlib_dir).expect("stdlib dir should be created");
+
+                    let mut imports = Vec::new();
+                    let mut app_defs = Vec::new();
+                    let list_module_source = "type List = Empty | Item(Int)\n\nfn size(xs: List) -> Int\n  case xs\n    Empty -> 0\n    Item(n) -> n + 8\n";
+                    let app_module_source = "type App = Empty | Item(Int)\n\nfn size(xs: App) -> Int\n  case xs\n    Empty -> 0\n    Item(n) -> n + 8\n";
+                    let module_qualifier = match relation {
+                        MatrixModuleRelation::SameModule => "App".to_string(),
+                        MatrixModuleRelation::CrossModule => "List".to_string(),
+                    };
+                    match relation {
+                        MatrixModuleRelation::SameModule => {
+                            app_defs.push(app_module_source.to_string());
+                        }
+                        MatrixModuleRelation::CrossModule => match import_state {
+                            MatrixImportState::Prelude => {
+                                std::fs::write(stdlib_dir.join("list.kea"), list_module_source)
+                                    .expect("list write should succeed");
+                                std::fs::write(stdlib_dir.join("prelude.kea"), "use List\n")
+                                    .expect("prelude write should succeed");
+                            }
+                            MatrixImportState::NotImported => {
+                                std::fs::write(src_dir.join("list.kea"), list_module_source)
+                                    .expect("list write should succeed");
+                            }
+                            MatrixImportState::UseModule => {
+                                std::fs::write(src_dir.join("list.kea"), list_module_source)
+                                    .expect("list write should succeed");
+                                imports.push("use List".to_string());
+                            }
+                            MatrixImportState::UseModuleNamed => {
+                                std::fs::write(src_dir.join("list.kea"), list_module_source)
+                                    .expect("list write should succeed");
+                                imports.push("use List.{size}".to_string());
+                            }
+                        },
+                    }
+
+                    let call_block = match call_form {
+                        MatrixCallForm::DirectQualified => {
+                            format!("{module_qualifier}.size(Item(41))")
+                        }
+                        MatrixCallForm::UmsUnqualified => {
+                            "let xs = Item(41)\nxs.size()".to_string()
+                        }
+                        MatrixCallForm::UmsQualified => {
+                            format!("let xs = Item(41)\nxs.{module_qualifier}.size()")
+                        }
+                    };
+
+                    let mut app_source = String::new();
+                    if !imports.is_empty() {
+                        app_source.push_str(&imports.join("\n"));
+                        app_source.push('\n');
+                    }
+                    if !app_defs.is_empty() {
+                        app_source.push_str(&app_defs.join("\n\n"));
+                        app_source.push_str("\n\n");
+                    }
+                    app_source.push_str("fn main() -> Int\n  ");
+                    app_source.push_str(&call_block.replace('\n', "\n  "));
+                    app_source.push('\n');
+                    let app_path = src_dir.join("app.kea");
+                    std::fs::write(&app_path, app_source).expect("app write should succeed");
+
+                    let run = run_file(&app_path);
+                    if expect_success {
+                        let run = run.unwrap_or_else(|err| {
+                            panic!(
+                                "expected success for relation={relation:?}, import={import_state:?}, call={call_form:?}, got error: {err}"
+                            )
+                        });
+                        assert_eq!(
+                            run.exit_code, 49,
                             "unexpected exit code for relation={relation:?}, import={import_state:?}, call={call_form:?}"
                         );
                     } else {
