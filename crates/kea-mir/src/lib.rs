@@ -1427,10 +1427,19 @@ impl FunctionLoweringCtx {
                     );
                 }
                 let value_id = self.lower_expr(value)?;
+                if let (HirPattern::Var(_), HirExprKind::Var(source_name)) = (pattern, &value.kind)
+                    && self.vars.contains_key(source_name)
+                    && is_heap_managed_type(&value.ty)
+                {
+                    self.emit_inst(MirInst::Retain {
+                        value: value_id.clone(),
+                    });
+                }
                 self.bind_pattern(pattern, value_id.clone(), &value.ty);
                 Some(value_id)
             }
             HirExprKind::Block(exprs) => {
+                let incoming_scope = self.snapshot_var_scope();
                 let mut last = None;
                 for expr in exprs {
                     last = self.lower_expr(expr);
@@ -1438,6 +1447,32 @@ impl FunctionLoweringCtx {
                         break;
                     }
                 }
+                if self.current_block().terminator.is_none() {
+                    let mut releases = Vec::new();
+                    for (name, value_id) in &self.vars {
+                        let is_shadowed_or_new = incoming_scope
+                            .vars
+                            .get(name)
+                            .is_none_or(|incoming_value| incoming_value != value_id);
+                        if !is_shadowed_or_new {
+                            continue;
+                        }
+                        let Some(ty) = self.var_types.get(name) else {
+                            continue;
+                        };
+                        if !is_heap_managed_type(ty) {
+                            continue;
+                        }
+                        if last.as_ref().is_some_and(|result_id| result_id == value_id) {
+                            continue;
+                        }
+                        releases.push(value_id.clone());
+                    }
+                    for value_id in releases {
+                        self.emit_inst(MirInst::Release { value: value_id });
+                    }
+                }
+                self.restore_var_scope(&incoming_scope);
                 last
             }
             HirExprKind::If {
@@ -2114,6 +2149,20 @@ fn lower_unaryop(op: UnaryOp) -> MirUnaryOp {
         UnaryOp::Neg => MirUnaryOp::Neg,
         UnaryOp::Not => MirUnaryOp::Not,
     }
+}
+
+fn is_heap_managed_type(ty: &Type) -> bool {
+    matches!(
+        ty,
+        Type::String
+            | Type::Record(_)
+            | Type::AnonRecord(_)
+            | Type::Sum(_)
+            | Type::Option(_)
+            | Type::Result(_, _)
+            | Type::Function(_)
+            | Type::Opaque { .. }
+    )
 }
 
 #[cfg(test)]
@@ -3744,6 +3793,110 @@ mod tests {
                 .iter()
                 .any(|inst| matches!(inst, MirInst::Call { callee: MirCallee::Value(_), .. })),
             "let-bound lambda call should lower through closure indirect-call path"
+        );
+    }
+
+    #[test]
+    fn lower_hir_module_releases_dropped_heap_locals_at_block_exit() {
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "main".to_string(),
+                params: vec![],
+                body: HirExpr {
+                    kind: HirExprKind::Block(vec![
+                        HirExpr {
+                            kind: HirExprKind::Let {
+                                pattern: HirPattern::Var("s".to_string()),
+                                value: Box::new(HirExpr {
+                                    kind: HirExprKind::Lit(kea_ast::Lit::String("x".to_string())),
+                                    ty: Type::String,
+                                    span: kea_ast::Span::synthetic(),
+                                }),
+                            },
+                            ty: Type::String,
+                            span: kea_ast::Span::synthetic(),
+                        },
+                        HirExpr {
+                            kind: HirExprKind::Lit(kea_ast::Lit::Int(1)),
+                            ty: Type::Int,
+                            span: kea_ast::Span::synthetic(),
+                        },
+                    ]),
+                    ty: Type::Int,
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
+                effects: EffectRow::pure(),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let mir = lower_hir_module(&hir);
+        let function = &mir.functions[0];
+        assert!(
+            function.blocks[0]
+                .instructions
+                .iter()
+                .any(|inst| matches!(inst, MirInst::Release { .. })),
+            "heap local dropped at block exit should emit Release"
+        );
+    }
+
+    #[test]
+    fn lower_hir_module_retains_heap_var_aliases_before_binding() {
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "main".to_string(),
+                params: vec![],
+                body: HirExpr {
+                    kind: HirExprKind::Block(vec![
+                        HirExpr {
+                            kind: HirExprKind::Let {
+                                pattern: HirPattern::Var("s".to_string()),
+                                value: Box::new(HirExpr {
+                                    kind: HirExprKind::Lit(kea_ast::Lit::String("x".to_string())),
+                                    ty: Type::String,
+                                    span: kea_ast::Span::synthetic(),
+                                }),
+                            },
+                            ty: Type::String,
+                            span: kea_ast::Span::synthetic(),
+                        },
+                        HirExpr {
+                            kind: HirExprKind::Let {
+                                pattern: HirPattern::Var("t".to_string()),
+                                value: Box::new(HirExpr {
+                                    kind: HirExprKind::Var("s".to_string()),
+                                    ty: Type::String,
+                                    span: kea_ast::Span::synthetic(),
+                                }),
+                            },
+                            ty: Type::String,
+                            span: kea_ast::Span::synthetic(),
+                        },
+                        HirExpr {
+                            kind: HirExprKind::Lit(kea_ast::Lit::Int(1)),
+                            ty: Type::Int,
+                            span: kea_ast::Span::synthetic(),
+                        },
+                    ]),
+                    ty: Type::Int,
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
+                effects: EffectRow::pure(),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let mir = lower_hir_module(&hir);
+        let function = &mir.functions[0];
+        assert!(
+            function.blocks[0]
+                .instructions
+                .iter()
+                .any(|inst| matches!(inst, MirInst::Retain { .. })),
+            "heap alias let-binding should emit Retain before rebinding"
         );
     }
 
