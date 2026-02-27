@@ -45,10 +45,23 @@ trait Grammar
   type Out
   type Err
 
-  fn parse(_ src: String) -[Compile]> Result(Self.Ast, Self.Err)
-  fn check(_ ast: Self.Ast, _ ctx: GrammarCtx) -[Compile]> Result(Typed(Self.Out), Diag)
-  fn lower(_ typed: Typed(Self.Out)) -[Compile]> LoweredExpr
+  fn parse(_ src: String) -[Parse]> Result(Self.Ast, Self.Err)
+  fn check(_ ast: Self.Ast) -[TypeCheck]> Result(Typed(Self.Out), Diag)
+  fn lower(_ typed: Typed(Self.Out)) -[Lower]> LoweredExpr
 ```
+
+Each method declares exactly the compilation effects it needs:
+
+- **`parse`** runs under `Parse` — it can report parse errors and
+  track source spans, but cannot access the host type system.
+- **`check`** runs under `TypeCheck` — it can resolve host bindings
+  (`TypeCheck.resolve_binding`), unify types across the grammar
+  boundary (`TypeCheck.unify`), and inspect the host scope. There
+  is no `GrammarCtx` parameter — the `TypeCheck` effect *is* the
+  context. The handler (the host compiler's type checker) provides
+  the implementation.
+- **`lower`** runs under `Lower` — it produces Kea IR and can
+  generate fresh names, but cannot invoke the type checker or parser.
 
 Key rule: `lower` must produce normal Kea typed IR forms.
 No grammar gets a privileged runtime execution path.
@@ -82,16 +95,21 @@ Effects remain explicit:
 
 - Pure render/query construction remains `->`.
 - Execution effects (`IO`, DB transport, etc.) appear only at runtime
-  boundary APIs, not at grammar parse/check stages.
+  boundary APIs, not at grammar parse/check/lower stages.
+- Compilation effects (`Parse`, `TypeCheck`, `Lower`) are granular —
+  each grammar method declares only the capabilities it needs.
 
 ### 4) Comptime/extension integration
 
-Grammar implementations are packages using `Compile` effect APIs from
-the comptime brief:
+Grammar implementations are packages using decomposed compilation
+effect APIs (`Parse`, `TypeCheck`, `Lower`, `Diagnose`):
 
 - parse/check/lower run at compile-time only,
 - no install/build scripts,
 - no ambient filesystem/network privileges,
+- each grammar method's effect signature proves which compilation
+  capabilities it uses — `parse` can't invoke the type checker,
+  `lower` can't re-parse source,
 - extension effects are capability-gated and auditable.
 
 This is the same trust model as deriving/comptime, not a separate
@@ -117,10 +135,13 @@ extra steps." Hold the line.
    machinery. The abstraction compiles away completely. This is what
    makes it zero-cost.
 
-2. **Grammar execution is capability-gated under `Compile`.** No
-   ambient IO, no network, no filesystem (unless explicitly granted
-   in the package manifest and auditable). This is not a sandbox —
-   it's a proof. The effect system guarantees it structurally.
+2. **Grammar execution is capability-gated under decomposed
+   compilation effects (`Parse`, `TypeCheck`, `Lower`, `Diagnose`).**
+   No ambient IO, no network, no filesystem (unless explicitly
+   granted in the package manifest and auditable). Each grammar
+   method's effect signature proves exactly which compilation
+   capabilities it uses. This is not a sandbox — it's a proof.
+   The effect system guarantees it structurally.
 
 3. **Diagnostics must use normal `kea-diag` structures.** Same
    error codes, same source spans, same tooling surface. LSP, MCP,
@@ -200,7 +221,8 @@ observable invariants: determinism, span mapping, reproducibility.
 
 1. **Type-checked output.** `check` validates the `Ast` against
    both the grammar's own type rules and the host language's type
-   system (via `GrammarCtx`).
+   system (via `TypeCheck` effect operations — `resolve_binding`,
+   `unify`, `current_scope`).
 2. **Effect-checked output.** If the grammar's output performs
    effects at runtime (e.g., SQL performs `Db`), the effects are
    declared in the output type.
@@ -312,9 +334,12 @@ runtime interpreter distinct from ordinary Kea execution.
 
 ## Implementation Plan (when promoted)
 
-1. Define `Grammar` trait, `GrammarCtx`, and `LoweredExpr` compiler API.
+1. Define `Grammar` trait, decomposed compilation effects (`Parse`,
+   `TypeCheck`, `Lower`, `Diagnose`), and `LoweredExpr` compiler API.
 2. Add parser support for `embed <Ident> { ... }` blocks.
-3. Add compile-time extension execution path via `Compile` effect hooks.
+3. Add compile-time extension execution path via decomposed
+   compilation effect handlers (`Parse`, `TypeCheck`, `Lower`,
+   `Diagnose`).
 4. Implement built-in `Html` grammar package per `Html v1 Contract`.
 5. Add sugar parsing/desugaring for `html { ... }` after generic path is stable.
 6. Add conformance tests across LSP/MCP/REPL diagnostics.
@@ -397,12 +422,14 @@ capability-bounded Compile effect) unifying all of them.
 | Row-polymorphic effects | Koka (Leijen 2014, 2017) | Applied to grammar ASTs, not just effect rows |
 | Typed multi-IR pipelines | CompCert, FLINT | One parse/check/lower contract across DSLs + passes + backends, with stability tiers |
 | Extensible attribute grammars | Silver (Van Wyk+ 2010) | Integrated into the language's type system, not a separate metalanguage |
-| Capability-bounded compilation | (no direct precedent) | Compile effect with no ambient IO, structurally enforced by effect system |
+| Capability-bounded compilation | (no direct precedent) | Decomposed compilation effects (Parse, TypeCheck, Lower, Diagnose) with no ambient IO, structurally enforced |
+| Revision-preserving evolution | Dashbit/Valim (2025) set-theoretic revisions | Potential adaptation via row polymorphism + revision annotations (see revision-preserving-evolution brief) |
 
 **The defensible claim:** no existing system uses one row-polymorphic
 type mechanism to unify user DSL grammars, compiler IR passes, and
 backend lowering under a shared capability-bounded compile-time
-contract with explicit IR stability tiers.
+contract with explicit IR stability tiers and granular compilation
+effects (Parse, TypeCheck, Lower, Diagnose).
 
 ## Non-Goals (initial)
 

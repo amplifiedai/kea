@@ -18,22 +18,24 @@ it's a load-bearing design decision that unifies three mechanisms:
 3. **Backend Interface** — Cranelift, LLVM, Kea-native as
    implementations of a MIR → target lowering contract
 
-All three are compile-time functions running under the `Compile`
-effect that transform typed IR. They share the same trait interface,
-the same capability model, and the same stability contract.
+All three are compile-time functions running under decomposed
+compilation effects (`Parse`, `TypeCheck`, `Lower`, `Diagnose`)
+that transform typed IR. They share the same trait interface, the
+same capability model, and the same stability contract.
 
 ## The Convergence
 
 ### Grammar = Recipe = Backend
 
 ```
-Grammar trait:    parse(src) → check(ast, ctx) → lower(typed) → LoweredExpr
-Recipe:           receive(StableHIR) → validate(constraints) → transform(hir) → StableHIR
-Backend:          receive(MIR) → validate(target_constraints) → lower(mir) → TargetCode
+Grammar trait:    parse(src) -[Parse]> ast → check(ast) -[TypeCheck]> typed → lower(typed) -[Lower]> LoweredExpr
+Recipe:           receive(StableHIR) → validate(constraints) -[TypeCheck, Diagnose]> → transform(hir) → StableHIR
+Backend:          receive(MIR) → validate(target_constraints) -[Diagnose]> → lower(mir) -[Lower]> TargetCode
 ```
 
 These are the same shape: `input → validate → output`, all under
-`Compile`. The difference is input type and output type:
+decomposed compilation effects. The difference is input type, output
+type, and which compilation effects each phase requires:
 
 | Extension kind | Input | Output | Stability tier |
 |----------------|-------|--------|----------------|
@@ -74,11 +76,14 @@ fn matmul(a: Matrix Float, b: Matrix Float) -> Matrix Float
 The `@gpu` recipe:
 1. Receives the function's StableHIR
 2. Validates it conforms to the restricted grammar (no closures, etc.)
+   under `TypeCheck` + `Diagnose`
 3. Lowers through a GPU-specific backend (MLIR, StableHLO, PTX)
+   under `Lower`
 
 This IS a Grammar implementation. The Grammar trait's `check` step
-validates the restriction. The `lower` step produces target code.
-The `Compile` effect governs execution.
+validates the restriction under `TypeCheck`. The `lower` step produces
+target code under `Lower`. Each phase declares exactly the compilation
+capabilities it needs.
 
 ## IR Stability Tiers (KERNEL §15.1)
 
@@ -105,29 +110,42 @@ trait Grammar
   type Ast
   type Out
   type Err
-  fn parse(src: String) -[Compile]> Result(Self.Ast, Self.Err)
-  fn check(ast: Self.Ast, ctx: GrammarCtx) -[Compile]> Result(Typed(Self.Out), Diag)
-  fn lower(typed: Typed(Self.Out)) -[Compile]> LoweredExpr
+  fn parse(_ src: String) -[Parse]> Result(Self.Ast, Self.Err)
+  fn check(_ ast: Self.Ast) -[TypeCheck]> Result(Typed(Self.Out), Diag)
+  fn lower(_ typed: Typed(Self.Out)) -[Lower]> LoweredExpr
 
 trait Recipe
   type Input    -- StableHIR node type (row-polymorphic)
   type Output   -- transformed IR or target code
-  fn validate(input: Self.Input, ctx: RecipeCtx) -[Compile]> Result(Self.Input, Diag)
-  fn transform(input: Self.Input) -[Compile]> Self.Output
+  fn validate(_ input: Self.Input) -[TypeCheck, Diagnose]> Result(Self.Input, Diag)
+  fn transform(_ input: Self.Input) -[Lower]> Self.Output
 ```
 
-Both run under `Compile`. Both produce diagnostics through `kea-diag`.
-Both are capability-gated (no filesystem, no network at compile time
-unless explicitly granted).
+Both use decomposed compilation effects. Both produce diagnostics
+through `kea-diag`. Both are capability-gated (no filesystem, no
+network at compile time unless explicitly granted).
+
+Note: there is no `GrammarCtx` or `RecipeCtx` parameter. The
+decomposed effects *are* the context. `TypeCheck.resolve_binding`
+replaces `ctx.resolve_binding`. The handler (the host compiler)
+provides the implementation. This is cleaner and follows the same
+pattern as IO decomposition — coarse effects hide capability
+requirements.
 
 ### Effect-Gated Compile Capabilities
 
-Recipes and grammars run under the `Compile` effect, which
-provides controlled access to:
-- IR introspection (read types, read effect rows)
-- Code generation (emit new declarations)
-- Diagnostic emission
-- Module metadata queries
+Recipes and grammars run under decomposed compilation effects:
+
+- `Parse` — source span tracking, parse error reporting
+- `TypeCheck` — binding resolution, type unification, scope
+  inspection, IR introspection (read types, read effect rows)
+- `Lower` — IR emission, fresh name generation, code generation
+- `Diagnose` — warning/error/note emission through `kea-diag`
+
+Each grammar/recipe method declares exactly which of these it
+needs. A grammar's `parse` method cannot access the type checker.
+A recipe's `transform` method cannot re-parse source. The effect
+signature is the capability contract.
 
 They do NOT have access to `IO`, `Net`, etc. unless explicitly
 granted in the package manifest. This is the effects-as-policy
