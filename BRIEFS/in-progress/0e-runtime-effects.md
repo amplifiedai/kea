@@ -666,4 +666,5 @@ client is a separate task that exercises them.
   `cranelift_backend_allows_handler_scope_markers_as_noop` and
   `cranelift_backend_reports_non_tail_resume_not_supported`. Targeted package checks are green for `kea-codegen`.
 - 2026-02-27 19:17: Expanded Tier-1 capability-direct IO coverage with `IO.stderr` end-to-end support. MIR now lowers `IO.stderr(...)` calls to `MirEffectOpClass::Direct`; Cranelift lowering handles direct `IO.stderr` via `strlen + write(fd=2, ...)`; and tests now cover MIR lowering, codegen compile-path support, JIT run-path success, and AOT stderr output capture.
+- 2026-02-27 19:28: Restored compiled-path usability of `?` fail sugar by removing hard dependency on unresolved `From.from` desugaring in the parser. `expr?` now propagates `Err(e)` via direct `fail e` desugar in bootstrap mode. Added execute-path regressions for both `?` fail propagation and ok passthrough under `catch`.
 - **Next:** implement 0e Step 1 Fail/ZeroResume end-to-end lowering for compiled mode, then extend execute-path tests to validate native `catch`/`?` behavior beyond current pure/Result lowering paths.
