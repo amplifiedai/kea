@@ -37,7 +37,7 @@ get everything Kea gives any type:
   a row variable. When the compiler adds `Handle` in a later release,
   existing recipes don't break.
 - **The effect system tracks what passes do.** A pure optimization
-  has `->`. A pass that emits diagnostics has `-[Compile]>`. You can
+  has `->`. A pass that emits diagnostics has `-[Diagnose]>`. You can
   read a pass's signature and know whether it just transforms IR or
   does something more.
 
@@ -50,26 +50,83 @@ can pattern-match on, transform, and hand back.
 
 ---
 
+## Compilation effects are granular, not monolithic
+
+Kea's thesis is that coarse effects hide capability requirements.
+The compiler's own effects are not exempt from this principle.
+
+A monolithic `Compile` effect would give every compilation phase
+access to everything — parsing, type-checking, lowering, diagnostics.
+But a formatter only needs to parse. A linter needs parsing and type
+information but not code generation. A backend needs lowering but not
+the type checker. If these distinctions aren't tracked, the "one
+semantic engine" promise erodes: tools get more capability than they
+need, and nothing prevents a grammar's `parse` method from
+accidentally invoking the type checker.
+
+The compilation pipeline decomposes into granular effects:
+
+```kea
+effect Parse
+  fn source_span() -> Span
+  fn report_parse_error(_ err: ParseError) -> Never
+
+effect TypeCheck
+  fn resolve_binding(_ name: String) -> Option TypedBinding
+  fn unify(_ expected: Type, _ actual: Type) -> Result(Type, TypeError)
+  fn current_scope() -> Scope
+
+effect Lower
+  fn emit_ir(_ node: LoweredExpr) -> Unit
+  fn fresh_name(_ prefix: String) -> String
+
+effect Diagnose
+  fn warn(_ msg: String) -> Unit
+  fn error(_ msg: String) -> Unit
+  fn note(_ msg: String, _ span: Span) -> Unit
+```
+
+These are ordinary effects, defined in the compiler's standard
+library. They follow the same rules as `IO`, `Log`, `Send` — they're
+user-defined, handler-provided, and tracked in the type system.
+
+A compiler pass that only transforms IR without emitting diagnostics
+is pure (`->`). A pass that emits warnings has `-[Diagnose]>`. A
+pass that needs to resolve types has `-[TypeCheck, Diagnose]>`. The
+effect signature is the capability contract — machine-checked, not
+convention.
+
+**Consequence for the tool story:** The "every tool is a handler"
+architecture now has precise capability boundaries:
+
+```
+Formatter = handle parse stage with Parse handler only
+Linter    = handle through HIR with Parse + TypeCheck + Diagnose handlers
+LSP       = handle through HIR with Parse + TypeCheck + Diagnose + incremental handlers
+Compiler  = handle full pipeline with Parse + TypeCheck + Lower + Diagnose + backend handlers
+REPL      = handle full pipeline with Parse + TypeCheck + Lower + JIT handler
+MCP       = handle through HIR with Parse + TypeCheck + "return types as JSON" handler
+```
+
+The formatter's handler signature proves it doesn't depend on type
+information. The linter's signature proves it doesn't need codegen.
+These boundaries are types, not conventions. And when the compiler
+drifts — when someone adds a type-checking call to what should be a
+parse-only pass — the effect system catches it at compile time.
+
+---
+
 ## Every tool is a handler
 
 A compiler pipeline is an effectful computation:
 
 ```
-Source -[Compile]> HIR -[Compile]> MIR -[Compile]> Target
+Source -[Parse]> AST -[TypeCheck, Diagnose]> HIR -[Lower]> MIR -[Lower]> Target
 ```
 
-Each stage is a pure function under the `Compile` effect. What makes
-this powerful is that different tools are just **different handlers**
-for the same pipeline:
-
-```
-Compiler  = handle pipeline with Cranelift backend handler
-LSP       = handle pipeline with "emit diagnostics + spans" handler
-MCP       = handle pipeline with "return types as JSON" handler
-REPL      = handle pipeline with "JIT and eval" handler
-Formatter = handle parse stage with "emit formatted source" handler
-Linter    = handle pipeline through HIR with "emit lint warnings" handler
-```
+Each stage declares exactly the effects it needs. What makes this
+powerful is that different tools are just **different handlers** for
+the same pipeline:
 
 These aren't different programs that reimplement parts of
 compilation. They're **the same program with different handlers.**
@@ -93,10 +150,11 @@ only way to meet different requirements is different implementations.
 Effects *are* that composition mechanism. The pipeline stages stay
 the same. The handlers change. And because effects are tracked in
 the type system, you can **prove** that the formatter doesn't depend
-on type information (it only handles the parse stage), that the
-linter doesn't need codegen (it stops at HIR), and that the REPL
-handler doesn't touch the filesystem (it JITs in memory). The
-boundaries between tools aren't conventions — they're types.
+on type information (it only handles the `Parse` stage), that the
+linter doesn't need codegen (it stops at HIR, never touches `Lower`),
+and that the REPL handler doesn't touch the filesystem (it JITs in
+memory). The boundaries between tools aren't conventions — they're
+types.
 
 ---
 
@@ -112,16 +170,38 @@ trait Grammar
   type Out
   type Err
 
-  fn parse(src: String) -[Compile]> Result(Self.Ast, Self.Err)
-  fn check(ast: Self.Ast, ctx: GrammarCtx) -[Compile]> Result(Typed(Self.Out), Diag)
-  fn lower(typed: Typed(Self.Out)) -[Compile]> LoweredExpr
+  fn parse(_ src: String) -[Parse]> Result(Self.Ast, Self.Err)
+  fn check(_ ast: Self.Ast) -[TypeCheck]> Result(Typed(Self.Out), Diag)
+  fn lower(_ typed: Typed(Self.Out)) -[Lower]> LoweredExpr
 ```
 
 The grammar defines parsing, type-checking, and lowering — the same
-three stages the Kea compiler itself has. `check` runs inside the
-host type system via `GrammarCtx`, so types flow between the embedded
-language and the host. `lower` produces Kea IR, which then flows
-through the rest of the compilation pipeline.
+three stages the Kea compiler itself has. Each method declares
+exactly the compilation effects it needs:
+
+- **`parse`** runs under `Parse` — it can report parse errors and
+  track source spans, but cannot access the host type system.
+- **`check`** runs under `TypeCheck` — it can resolve host bindings,
+  unify types across the grammar boundary, and inspect the host scope.
+  Types flow between the embedded language and the host through
+  effect operations, not through a parameter.
+- **`lower`** runs under `Lower` — it produces Kea IR and can
+  generate fresh names, but cannot invoke the type checker or parser.
+
+There is no `GrammarCtx` parameter. The `TypeCheck` effect *is* the
+context. Where an earlier design would have written
+`ctx.resolve_binding("user")`, the grammar's `check` method writes
+`TypeCheck.resolve_binding("user")`. The handler — which is the host
+compiler's type checker — provides the implementation. This is
+cleaner and it's exactly how effects are supposed to replace
+parameter-threaded contexts.
+
+This also means different embedded languages that need host type
+information — SQL looking up table schemas, HTML checking component
+prop types, a GPU grammar validating restricted subsets — all use
+the same `TypeCheck` effect operations. The grammar doesn't need to
+know *how* host bindings are resolved. It performs the effect. The
+handler answers.
 
 This means:
 
@@ -136,9 +216,12 @@ let users = embed Sql {
 -- SQL injection is structurally impossible
 ```
 
-The `Sql` grammar's `check` step introspects the database schema at
-compile time (under the `Compile` effect) and produces a return type
-that is the exact row type of the selected columns.
+The `Sql` grammar's `check` step uses `TypeCheck.resolve_binding`
+to look up `is_active` in the host scope. It uses `TypeCheck.unify`
+to verify the binding's type matches the SQL column type. It
+introspects the database schema at compile time (the schema source
+is handler-provided) and produces a return type that is the exact
+row type of the selected columns.
 
 **HTML templates are component-typed:**
 
@@ -150,9 +233,11 @@ let page = embed Html {
 }
 ```
 
-The `Html` grammar checks that `class` expects `String`, that
-`UserCard` is a component whose `user` prop accepts the type of
-`current_user`. All at compile time, zero runtime cost.
+The `Html` grammar's `check` step uses `TypeCheck.resolve_binding`
+to look up `style` and `current_user`, then uses `TypeCheck.unify`
+to verify that `class` expects `String` and that `UserCard`'s `user`
+prop accepts the type of `current_user`. All at compile time, zero
+runtime cost.
 
 **GPU kernels are validated and lowered to a different target:**
 
@@ -180,17 +265,20 @@ The handler mechanism lets you compose these arbitrarily.
 So `embed Lua { ... }` isn't "Kea with Lua syntax." It's a Grammar
 implementation that:
 
-1. **Parses** actual Lua syntax
-2. **Type-checks** at the Kea boundary — Lua values crossing into
-   Kea are typed, Kea values crossing into Lua are validated
-3. **Lowers** to whatever target makes sense — a Lua interpreter,
-   a JIT, or native code via a Lua-to-MIR lowering
+1. **Parses** actual Lua syntax (under `Parse`)
+2. **Type-checks** at the Kea boundary (under `TypeCheck`) — Lua
+   values crossing into Kea are typed, Kea values crossing into Lua
+   are validated
+3. **Lowers** to whatever target makes sense (under `Lower`) — a
+   Lua interpreter, a JIT, or native code via a Lua-to-MIR lowering
 
 The embedded language retains its own semantics. It doesn't get
 rewritten into Kea. It goes through its own compilation pipeline,
-touching the host only at typed boundaries. And the `Compile`
-effect ensures the whole process is sandboxed — no filesystem
-access, no network, no ambient IO unless explicitly granted.
+touching the host only at typed boundaries. And the decomposed
+compilation effects ensure the whole process is capability-bounded —
+a grammar's `parse` method cannot access the host type system, and
+its `lower` method cannot re-invoke parsing. Each phase does exactly
+what its effect signature declares.
 
 This generalises. A `@sql` recipe validates a restricted subset
 of Kea and lowers to SQL. A `@gpu` recipe validates a different
@@ -233,18 +321,110 @@ to the compiler's IR, it means:
   rejects unsupported nodes at validation time and handles only
   the subset it knows about.
 
-StableHIR is versioned with these properties: additive changes
-(new IR nodes) are absorbed by row variables. Breaking changes
-(removing or modifying nodes) bump the major version. This is
-semver, enforced by the type system.
+Row polymorphism handles **additive changes** — new IR nodes, new
+fields on existing nodes. This is the common case and it's free.
+
+---
+
+## IR evolution: structure and semantics
+
+Row polymorphism handles additive changes automatically. But IR
+evolution isn't always additive. Fields change type. Invariants
+tighten or loosen. Semantic contracts shift. Kea uses a layered
+defense for these cases.
+
+### Structural changes: version tags
+
+StableHIR carries a version parameter. `HirExpr V2` and
+`HirExpr V3` are different types. A recipe targeting V2 won't
+typecheck against V3 input. Migration is explicit — you update
+your recipe to target V3, which forces you to review the
+changelog.
+
+Additive changes (new nodes) are absorbed by row variables
+within a version. Breaking structural changes (removing nodes,
+changing field types) bump the major version.
+
+### Semantic invariants: validation passes
+
+Structural types don't encode semantic invariants. If V3
+requires that `Let` nodes are always in A-normal form (values
+are always atomic), a grammar that constructs
+`Let { name: "x", value: Call { ... }, body: ... }` is
+structurally valid but semantically wrong. No type system
+catches this.
+
+The defense is **validation passes** — pure Kea functions over
+`HirExpr` that check semantic invariants:
+
+```kea
+fn validate_anf(_ expr: HirExpr { Let: _ | r }) -[Diagnose]> Unit
+  match expr
+    Let { value, .. } ->
+      if not value.is_atomic()
+        Diagnose.error("Let value must be atomic in ANF")
+    other -> ()
+```
+
+Validation passes are ordinary functions. They compose. They
+run under `Diagnose` (or are pure). They're tested with the
+same handler-based infrastructure as any other compiler pass.
+The compiler runs them after each transformation to catch
+semantic violations early.
+
+This is the same pragmatic tradeoff Kea makes with actors:
+static types for structure, runtime checks for semantics,
+supervision for recovery. Don't pretend the type system catches
+everything.
+
+### Field widening: a direction for revision-preserving evolution
+
+Additive changes (new nodes) and breaking changes (removed nodes,
+changed field types) have clear strategies. There's a third
+category that's harder: **widening** an existing field's type.
+
+Consider `Let`'s `name` field changing from `String` to `Pattern`
+(supporting destructuring), where `String` is a subtype of
+`Pattern` (every string is a trivial pattern). This isn't a
+breaking change in the traditional sense — all existing `Let`
+nodes are still valid. But existing passes that assume `name` is
+always `String` will see a wider type.
+
+Row polymorphism doesn't help here — the field's type itself
+changed. Version tags force a hard boundary — V2 and V3 are
+separate types, and you can't write a function that works on both.
+
+There's a more principled approach, inspired by set-theoretic
+type systems (see Dashbit's work on [data evolution with
+revisions](https://dashbit.co/blog/data-evolution-with-set-theoretic-types)):
+**revision-preserving signatures**. The idea: if each revision's
+field types are supertypes of the previous revision, the compiler
+can generate function signatures that preserve which revision the
+input belongs to. A pass that receives a V2 `Let` (where `name`
+is always `String`) returns a V2 `Let`. A pass that receives a V3
+`Let` (where `name` might be a destructuring pattern) returns a V3
+`Let`. The preservation property is checked automatically.
+
+In a set-theoretic type system, this uses intersection types and
+negation. Kea doesn't have those. But the combination of row
+polymorphism (for structural extension) and an explicit revision
+mechanism (for field widening) could achieve the same practical
+guarantees. The revision number serves as the discriminant; the
+compiler generates the appropriate match arms.
+
+This is post-v1 design territory. The question only matters once
+there's an ecosystem of third-party recipes targeting StableHIR.
+But the direction is clear: revisions as a general language
+mechanism — not compiler-specific — so that every library gets
+the same evolution guarantees the compiler gives itself.
 
 ---
 
 ## Testing the compiler with the language's own test tools
 
-If compiler passes are pure functions under `Compile`, they're
-tested the same way user code is tested — by providing different
-handlers:
+If compiler passes are pure functions (or functions under
+`Diagnose`), they're tested the same way user code is tested —
+by providing different handlers:
 
 ```kea
 test "dead code elimination"
@@ -254,7 +434,7 @@ test "dead code elimination"
     body: HirExpr.Lit(7)  -- x is never used
 
   let output = handle Passes.eliminate_dead_code(input)
-    Compile.warn(msg) -> resume()  -- silence diagnostics in test
+    Diagnose.warn(msg) -> resume()  -- silence diagnostics in test
 
   assert output == HirExpr.Lit(7)
 ```
@@ -262,6 +442,24 @@ test "dead code elimination"
 No special test harness for compiler internals. No mock compilation
 context. The same `handle` mechanism that lets you test user code
 with fake IO lets you test compiler passes with fake diagnostics.
+
+Semantic invariant validation is tested the same way:
+
+```kea
+test "ANF validation catches non-atomic let values"
+  let bad_ir = HirExpr.Let
+    name: "x"
+    value: HirExpr.Call { func: HirExpr.Lit(42), args: [] }
+    body: HirExpr.Lit(7)
+
+  let diagnostics = []
+  handle validate_anf(bad_ir)
+    Diagnose.error(msg) ->
+      diagnostics = diagnostics ++ [msg]
+      resume()
+
+  assert diagnostics.any(|d| -> d.contains("atomic"))
+```
 
 ---
 
@@ -289,10 +487,29 @@ This is Phase 1-2 work. Phase 0 builds the bootstrap compiler in
 Rust with internal IR types. When Kea self-hosts:
 
 1. The Rust `HirExpr` enum becomes a Kea type with row variables
-2. Compiler passes become Kea functions under `Compile`
+2. Compiler passes become Kea functions under decomposed
+   compilation effects (`Parse`, `TypeCheck`, `Lower`, `Diagnose`)
 3. `@derive` becomes a recipe consuming StableHIR
 4. Backends implement the Grammar trait over MIR
-5. LSP, MCP, REPL become handler configurations
+5. LSP, MCP, REPL become handler configurations — each handling
+   only the compilation effects it needs
+
+The grammar block mechanism is a library feature, not a language
+primitive. The `Grammar` trait and `embed` keyword are
+language-level, but any specific grammar (Hir, Sql, Html) is an
+implementation. The bootstrapping sequence:
+
+1. Rust bootstrap compiles Kea stdlib + self-hosted compiler
+   (using direct pattern matching on IR types)
+2. Self-hosted compiler compiles itself (still direct pattern
+   matching)
+3. Grammar implementations are written as Kea libraries
+4. Compiler passes optionally adopt grammar blocks as sugar
+
+No special compiler support is needed beyond the general `embed`
+mechanism. Grammar blocks are a convenience layer, not a
+requirement. The first self-hosted compiler proves the approach
+works with plain pattern matching and construction.
 
 The stdlib is written in Kea from Phase 0, compiled by the Rust
 bootstrap compiler. By Phase 1, the compiler's first user — its own
