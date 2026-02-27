@@ -746,8 +746,8 @@ fn execute_mir_main_jit(module: &MirModule, config: &BackendConfig) -> Result<i3
             match main_runtime_sig.logical_return {
                 Type::Int => {
                     let main_fn =
-                        std::mem::transmute::<*const u8, extern "C" fn() -> i64>(entrypoint);
-                    main_fn() as i32
+                        std::mem::transmute::<*const u8, extern "C" fn() -> i32>(entrypoint);
+                    main_fn()
                 }
                 Type::Unit => {
                     let main_fn =
@@ -782,7 +782,9 @@ fn build_signature<M: Module>(
         signature.params.push(AbiParam::new(ty));
     }
 
-    if function.name == "main" && runtime_sig.runtime_return == Type::Unit {
+    if function.name == "main"
+        && matches!(runtime_sig.runtime_return, Type::Unit | Type::Int)
+    {
         signature.returns.push(AbiParam::new(types::I32));
     } else if runtime_sig.runtime_return != Type::Unit {
         let ret_type = clif_type(&runtime_sig.runtime_return)?;
@@ -1988,7 +1990,10 @@ fn lower_terminator(
                 function: ctx.function_name.to_string(),
                 detail: "non-unit function returned without value".to_string(),
             })?;
-            let value = get_value(ctx.values, ctx.function_name, value_id)?;
+            let mut value = get_value(ctx.values, ctx.function_name, value_id)?;
+            if ctx.function_name == "main" && ctx.current_runtime_sig.logical_return == Type::Int {
+                value = coerce_value_to_clif_type(builder, value, types::I32);
+            }
             builder.ins().return_(&[value]);
             Ok(())
         }
