@@ -10334,6 +10334,213 @@ theorem principalNoUnifyPreconditionedField_hookIrrelevant_of_success_via_master
     h_no h_ok
 
 /--
+Master-consequence-capstone-suite convenience wrapper: derive core expression
+principality for an arbitrary successful run.
+-/
+theorem principalCoreExpr_of_success_via_masterConsequenceCapstoneSuite
+    (h_app0 : AppUnifySoundHook) (h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalTypingSliceCore env e ty :=
+  (principalPreconditionedExprAllHooksCapstone_of_success_via_masterConsequenceCapstoneSuite
+    h_app0 h_proj0 h_ok).core
+
+/--
+Master-consequence-capstone-suite convenience wrapper: derive core field
+principality for an arbitrary successful field run.
+-/
+theorem principalCoreField_of_success_via_masterConsequenceCapstoneSuite
+    (h_app0 : AppUnifySoundHook) (h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalFieldTypingSliceCore env fs rf :=
+  (principalPreconditionedFieldAllHooksCapstone_of_success_via_masterConsequenceCapstoneSuite
+    h_app0 h_proj0 h_ok).core
+
+/--
+Master-consequence-capstone-suite convenience wrapper: derive preconditioned
+expression principality for any hook witnesses from an arbitrary successful run.
+-/
+theorem principalPreconditionedExpr_anyHooks_of_success_via_masterConsequenceCapstoneSuite
+    (h_app0 : AppUnifySoundHook) (h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    ∀ h_app h_proj,
+      PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty :=
+  (principalPreconditionedExprAllHooksCapstone_of_success_via_masterConsequenceCapstoneSuite
+    h_app0 h_proj0 h_ok).preconditionedAny
+
+/--
+Master-consequence-capstone-suite convenience wrapper: derive preconditioned
+field principality for any hook witnesses from an arbitrary successful field
+run.
+-/
+theorem principalPreconditionedField_anyHooks_of_success_via_masterConsequenceCapstoneSuite
+    (h_app0 : AppUnifySoundHook) (h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    ∀ h_app h_proj,
+      PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf :=
+  (principalPreconditionedFieldAllHooksCapstone_of_success_via_masterConsequenceCapstoneSuite
+    h_app0 h_proj0 h_ok).preconditionedAny
+
+/--
+Master-consequence-capstone-suite convenience wrapper: derive preconditioned
+expression principality for a bundled hook witness from an arbitrary successful
+run.
+-/
+theorem principalPreconditionedExpr_of_success_via_masterConsequenceCapstoneSuite
+    (h_app0 : AppUnifySoundHook) (h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_hooks : UnifyHookPremises) :
+    PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty :=
+  principalPreconditionedExpr_anyHooks_of_success_via_masterConsequenceCapstoneSuite
+    h_app0 h_proj0 h_ok h_hooks.1 h_hooks.2
+
+/--
+Master-consequence-capstone-suite convenience wrapper: derive preconditioned
+field principality for a bundled hook witness from an arbitrary successful field
+run.
+-/
+theorem principalPreconditionedField_of_success_via_masterConsequenceCapstoneSuite
+    (h_app0 : AppUnifySoundHook) (h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_hooks : UnifyHookPremises) :
+    PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf :=
+  principalPreconditionedField_anyHooks_of_success_via_masterConsequenceCapstoneSuite
+    h_app0 h_proj0 h_ok h_hooks.1 h_hooks.2
+
+/--
+Master-consequence-capstone-suite convenience wrapper: bundled-baseline variant
+for preconditioned expression principality.
+-/
+theorem principalPreconditionedExpr_of_success_via_masterConsequenceCapstoneSuite_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_hooks : UnifyHookPremises) :
+    PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty :=
+  principalPreconditionedExpr_of_success_via_masterConsequenceCapstoneSuite
+    h_seed.1 h_seed.2 h_ok h_hooks
+
+/--
+Master-consequence-capstone-suite convenience wrapper: bundled-baseline variant
+for preconditioned field principality.
+-/
+theorem principalPreconditionedField_of_success_via_masterConsequenceCapstoneSuite_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_hooks : UnifyHookPremises) :
+    PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf :=
+  principalPreconditionedField_of_success_via_masterConsequenceCapstoneSuite
+    h_seed.1 h_seed.2 h_ok h_hooks
+
+/--
+Master-consequence-capstone-suite convenience wrapper: derive expression
+preconditioned↔core equivalence for any hook witnesses on an arbitrary
+successful run.
+-/
+theorem principalPreconditionedCoreIffExpr_anyHooks_of_success_via_masterConsequenceCapstoneSuite
+    (h_app0 : AppUnifySoundHook) (h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    ∀ h_app h_proj,
+      (PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty
+        ↔ PrincipalTypingSliceCore env e ty) :=
+  (principalPreconditionedExprAllHooksCapstone_of_success_via_masterConsequenceCapstoneSuite
+    h_app0 h_proj0 h_ok).preconditionedAnyIffCore
+
+/--
+Master-consequence-capstone-suite convenience wrapper: derive field
+preconditioned↔core equivalence for any hook witnesses on an arbitrary
+successful field run.
+-/
+theorem principalPreconditionedCoreIffField_anyHooks_of_success_via_masterConsequenceCapstoneSuite
+    (h_app0 : AppUnifySoundHook) (h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    ∀ h_app h_proj,
+      (PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf
+        ↔ PrincipalFieldTypingSliceCore env fs rf) :=
+  (principalPreconditionedFieldAllHooksCapstone_of_success_via_masterConsequenceCapstoneSuite
+    h_app0 h_proj0 h_ok).preconditionedAnyIffCore
+
+/--
+Master-consequence-capstone-suite convenience wrapper: derive expression
+preconditioned↔core equivalence for a bundled hook witness on an arbitrary
+successful run.
+-/
+theorem principalPreconditionedCoreIffExpr_of_success_via_masterConsequenceCapstoneSuite
+    (h_app0 : AppUnifySoundHook) (h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_hooks : UnifyHookPremises) :
+    (PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty
+      ↔ PrincipalTypingSliceCore env e ty) :=
+  principalPreconditionedCoreIffExpr_anyHooks_of_success_via_masterConsequenceCapstoneSuite
+    h_app0 h_proj0 h_ok h_hooks.1 h_hooks.2
+
+/--
+Master-consequence-capstone-suite convenience wrapper: derive field
+preconditioned↔core equivalence for a bundled hook witness on an arbitrary
+successful field run.
+-/
+theorem principalPreconditionedCoreIffField_of_success_via_masterConsequenceCapstoneSuite
+    (h_app0 : AppUnifySoundHook) (h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_hooks : UnifyHookPremises) :
+    (PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSliceCore env fs rf) :=
+  principalPreconditionedCoreIffField_anyHooks_of_success_via_masterConsequenceCapstoneSuite
+    h_app0 h_proj0 h_ok h_hooks.1 h_hooks.2
+
+/--
+Master-consequence-capstone-suite convenience wrapper: bundled-baseline variant
+for expression preconditioned↔core equivalence.
+-/
+theorem principalPreconditionedCoreIffExpr_of_success_via_masterConsequenceCapstoneSuite_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_hooks : UnifyHookPremises) :
+    (PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty
+      ↔ PrincipalTypingSliceCore env e ty) :=
+  principalPreconditionedCoreIffExpr_of_success_via_masterConsequenceCapstoneSuite
+    h_seed.1 h_seed.2 h_ok h_hooks
+
+/--
+Master-consequence-capstone-suite convenience wrapper: bundled-baseline variant
+for field preconditioned↔core equivalence.
+-/
+theorem principalPreconditionedCoreIffField_of_success_via_masterConsequenceCapstoneSuite_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_hooks : UnifyHookPremises) :
+    (PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSliceCore env fs rf) :=
+  principalPreconditionedCoreIffField_of_success_via_masterConsequenceCapstoneSuite
+    h_seed.1 h_seed.2 h_ok h_hooks
+
+/--
 One-hop projection: arbitrary-success all-hooks expression run-bundle from the
 master run-bundle consequence suite.
 -/
