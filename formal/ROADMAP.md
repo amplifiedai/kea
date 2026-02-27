@@ -32,6 +32,7 @@ Concrete milestone checklist for moving from the current fuel model to an implem
 ## M2. Unify-Level Bridge
 
 - [ ] Refactor `Unify` proofs to consume compat lemmas first, fuel details second.
+  Progress: branch-local compat/WF equivalence wrappers are already landed (`no-update`, `single-bind`, `open-open`) and the bridge capstone (`unifyRows_success_update_compat_wf_swap_invariant`) is proved; remaining work is structural proof refactoring/normalization so `Unify` internals consume those wrappers directly as the first proof layer.
 - [x] Introduce branch-local substitution equivalence lemmas:
   - no-subst-update branches
   - single-bind branches
