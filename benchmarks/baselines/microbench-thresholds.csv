@@ -5,6 +5,9 @@ compile_allocation_heavy_hir_jit,128,976.350 µs,30
 compile_numeric_hir_jit,8,113.000 µs,30
 compile_numeric_hir_jit,32,242.750 µs,30
 compile_numeric_hir_jit,64,425.050 µs,30
+fail_propagation_depth_n,8,293.400 µs,35
+fail_propagation_depth_n,32,1.014 ms,35
+fail_propagation_depth_n,128,4.838 ms,35
 infer_numeric_module,16,69.405 µs,30
 infer_numeric_module,64,511.850 µs,30
 infer_numeric_module,256,6.548 ms,30
@@ -20,3 +23,5 @@ lower_allocation_heavy_hir_to_mir,128,84.345 µs,30
 lower_hir_to_mir,16,6.546 µs,30
 lower_hir_to_mir,64,7.508 µs,30
 lower_hir_to_mir,256,25.465 µs,30
+state_count_to_1_m,,691.100 µs,35
+state_count_to_1_m_manual,,514.000 µs,35

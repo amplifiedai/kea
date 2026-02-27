@@ -1,6 +1,7 @@
 use std::hint::black_box;
 
 use divan::{AllocProfiler, Bencher};
+use kea::{compile_module, execute_jit};
 use kea_ast::{BinOp, DeclKind, FileId, Lit, Module, Span};
 use kea_codegen::{BackendConfig, CraneliftBackend, compile_hir_module};
 use kea_hir::{HirDecl, HirExpr, HirExprKind, HirFunction, HirModule, HirPattern};
@@ -15,6 +16,10 @@ use kea_types::{EffectRow, FunctionType, Label, RecordType, RowType, Type};
 
 #[global_allocator]
 static ALLOC: AllocProfiler = AllocProfiler::system();
+
+// TODO(0e): raise this to 1_000_000 once handler recursion no longer overflows
+// stack in the compiled path.
+const STATE_COUNT_BENCH_N: usize = 100_000;
 
 fn main() {
     divan::main();
@@ -151,6 +156,45 @@ fn compile_allocation_heavy_hir_jit(bencher: Bencher, levels: usize) {
     });
 }
 
+#[divan::bench]
+fn state_count_to_1_m(bencher: Bencher) {
+    let source = build_state_count_to_source(STATE_COUNT_BENCH_N);
+    let ctx = compile_module(&source, FileId(0))
+        .unwrap_or_else(|err| panic!("state benchmark setup should compile: {err}"));
+    bencher.bench(|| {
+        let run = execute_jit(black_box(&ctx))
+            .unwrap_or_else(|err| panic!("state benchmark run should succeed: {err}"));
+        assert_eq!(run.exit_code, STATE_COUNT_BENCH_N as i32);
+        black_box(run.exit_code)
+    });
+}
+
+#[divan::bench]
+fn state_count_to_1_m_manual(bencher: Bencher) {
+    let source = build_manual_count_to_source(STATE_COUNT_BENCH_N);
+    let ctx = compile_module(&source, FileId(0))
+        .unwrap_or_else(|err| panic!("manual state benchmark setup should compile: {err}"));
+    bencher.bench(|| {
+        let run = execute_jit(black_box(&ctx))
+            .unwrap_or_else(|err| panic!("manual state benchmark run should succeed: {err}"));
+        assert_eq!(run.exit_code, STATE_COUNT_BENCH_N as i32);
+        black_box(run.exit_code)
+    });
+}
+
+#[divan::bench(args = [8, 32, 128])]
+fn fail_propagation_depth_n(bencher: Bencher, depth: usize) {
+    let source = build_fail_propagation_source(depth);
+    let ctx = compile_module(&source, FileId(0))
+        .unwrap_or_else(|err| panic!("fail propagation benchmark setup should compile: {err}"));
+    bencher.bench(|| {
+        let run = execute_jit(black_box(&ctx))
+            .unwrap_or_else(|err| panic!("fail propagation benchmark run should succeed: {err}"));
+        assert_eq!(run.exit_code, 7);
+        black_box(run.exit_code)
+    });
+}
+
 fn build_numeric_source(line_count: usize) -> String {
     let mut source = String::from("fn main() -> Int\n");
     if line_count == 0 {
@@ -177,6 +221,37 @@ fn build_string_transform_source(line_count: usize) -> String {
         source.push_str(&format!("  let s{idx} = seed ++ \"{idx}\"\n"));
     }
     source.push_str(&format!("  s{}\n", line_count - 1));
+    source
+}
+
+fn build_state_count_to_source(n: usize) -> String {
+    format!(
+        "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn count_to(n: Int) -[State Int]> Int\n  let i = State.get()\n  if i >= n\n    i\n  else\n    State.put(i + 1)\n    count_to(n)\n\nfn main() -> Int\n  handle count_to({n})\n    State.get() -> resume 0\n    State.put(s) -> resume ()\n"
+    )
+}
+
+fn build_manual_count_to_source(n: usize) -> String {
+    format!(
+        "fn count_to_manual(i: Int, n: Int) -> Int\n  if i >= n\n    i\n  else\n    count_to_manual(i + 1, n)\n\nfn main() -> Int\n  count_to_manual(0, {n})\n"
+    )
+}
+
+fn build_fail_propagation_source(depth: usize) -> String {
+    let depth = depth.max(1);
+    let mut source = String::from(
+        "effect Fail\n  fn fail(err: Int) -> Never\n\nfn fail_0() -[Fail Int]> Int\n  fail 7\n\n",
+    );
+
+    for idx in 1..=depth {
+        source.push_str(&format!(
+            "fn fail_{idx}() -[Fail Int]> Int\n  fail_{}()\n\n",
+            idx - 1
+        ));
+    }
+
+    source.push_str(&format!(
+        "fn main() -> Int\n  let r = catch fail_{depth}()\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n"
+    ));
     source
 }
 
