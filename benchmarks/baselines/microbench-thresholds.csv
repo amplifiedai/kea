@@ -8,9 +8,14 @@ compile_numeric_hir_jit,64,425.050 µs,30
 fail_propagation_depth_n,8,293.400 µs,35
 fail_propagation_depth_n,32,1.014 ms,35
 fail_propagation_depth_n,128,4.838 ms,35
+fail_propagation_depth_n_manual_result,8,542 µs,35
+fail_propagation_depth_n_manual_result,32,2.06 ms,35
+fail_propagation_depth_n_manual_result,128,9.11 ms,35
 infer_numeric_module,16,69.405 µs,30
 infer_numeric_module,64,511.850 µs,30
 infer_numeric_module,256,6.548 ms,30
+io_stdout_throughput,,97.68 µs,35
+io_stdout_throughput_libc_write,,266.8 µs,35
 lex_parse_numeric_module,32,78.980 µs,30
 lex_parse_numeric_module,128,289.250 µs,30
 lex_parse_numeric_module,512,1.433 ms,30

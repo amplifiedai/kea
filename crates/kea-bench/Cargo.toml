@@ -18,6 +18,7 @@ kea-infer.workspace = true
 
 [dev-dependencies]
 divan = { package = "codspeed-divan-compat", version = "4.3.0" }
+libc = "0.2"
 
 [[bench]]
 name = "core"
