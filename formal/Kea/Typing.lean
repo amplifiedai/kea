@@ -20874,6 +20874,35 @@ theorem inferFieldsUnify_sound_preconditioned_hasTypeU_from_hook_bundle_via_dual
     (inferUnifySoundDualBundle_of_hook_bundle h_hooks)
 
 /--
+Bridge from the dual recursive soundness bundle to the packaged `HasTypeU`
+bundle surface.
+-/
+theorem inferUnifyHasTypeUSoundBundle_of_dual_bundle
+    {h_app : AppUnifySoundHook}
+    {h_proj : ProjUnifySoundHook}
+    {h_appU : AppUnifySoundHookU}
+    {h_projU : ProjUnifySoundHookU}
+    (h_bundle : InferUnifySoundDualBundle h_app h_proj) :
+    InferUnifyHasTypeUSoundBundle h_appU h_projU := by
+  refine ⟨?expr, ?field⟩
+  · intro st fuel env e st' ty h_ok
+    exact inferUnifySoundDualBundle_expr_hasTypeU h_bundle st fuel env e st' ty h_ok
+  · intro st fuel env fs st' rf h_ok
+    exact inferUnifySoundDualBundle_field_hasTypeU h_bundle st fuel env fs st' rf h_ok
+
+/--
+Bundled-hook bridge from the dual recursive soundness surface into the packaged
+`HasTypeU` bundle API.
+-/
+theorem inferUnifyHasTypeUSoundBundle_of_dual_hook_bundle
+    (h_hooks : UnifyHookPremises)
+    {h_appU : AppUnifySoundHookU}
+    {h_projU : ProjUnifySoundHookU} :
+    InferUnifyHasTypeUSoundBundle h_appU h_projU :=
+  inferUnifyHasTypeUSoundBundle_of_dual_bundle
+    (inferUnifySoundDualBundle_of_hook_bundle h_hooks)
+
+/--
 Surface-layer naming-parity wrappers for no-unify cross-route success APIs.
 These mirror the existing `...from_cross_route_slices` families under
 explicit `...from_cross_route_surface_slices` theorem names.
