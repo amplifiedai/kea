@@ -99,7 +99,7 @@ Concrete milestone checklist for moving from the current fuel model to an implem
 - [x] Decide whether to formalize strict-module-prelude semantics as a runtime/typing bridge artifact or keep it as implementation-only policy evidence in MCP logs.
   Decision: keep strict-module-prelude behavior as implementation-policy evidence in MCP logs for now; do not add a Lean artifact in this phase.
 
-## M6. Kea Effect/Handler Contract Track (In Progress)
+## M6. Kea Effect/Handler Contract Track (Complete)
 
 - [x] WP6.1 handler core + normalization.
   Progress: `Kea/Properties/HandlerEffectRemoval.lean` landed with `EffectRow.handleRemove` and capstones (`handle_removes_effect`, `handle_preserves_other_effects`, row-tail/WF preservation, idempotence), then moved to spec-normalized composition via `EffectRow.handleComposeNormalized` plus nested same-target consequences (`nested_same_target_outer_removal_noop_of_inner_absent`, `nested_same_target_remains_absent_of_outer_absent`). MCP now confirms overlap-idempotence closure (`[Trace] ∪ [Trace] = [Trace]`) on tracked probes.
