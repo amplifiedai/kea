@@ -1067,6 +1067,7 @@ impl FunctionLoweringCtx {
                     Type::AnonRecord(row) => self.infer_unique_record_type_for_row(row),
                     _ => match &base.kind {
                         HirExprKind::Var(name) => self.var_record_types.get(name).cloned(),
+                        HirExprKind::Call { func, .. } => self.infer_record_type_from_call(func),
                         _ => None,
                     },
                 }?;
@@ -1426,6 +1427,26 @@ impl FunctionLoweringCtx {
             return false;
         };
         !template.captures.is_empty() && template.outer_params.len() == args.len()
+    }
+
+    fn infer_record_type_from_call(&self, func: &HirExpr) -> Option<String> {
+        if let Type::Function(ft) = &func.ty {
+            return self.infer_record_type_from_type(ft.ret.as_ref());
+        }
+        if let HirExprKind::Var(name) = &func.kind
+            && let Some(Type::Function(ft)) = self.known_function_types.get(name)
+        {
+            return self.infer_record_type_from_type(ft.ret.as_ref());
+        }
+        None
+    }
+
+    fn infer_record_type_from_type(&self, ty: &Type) -> Option<String> {
+        match ty {
+            Type::Record(record_ty) => Some(record_ty.name.clone()),
+            Type::AnonRecord(row) => self.infer_unique_record_type_for_row(row),
+            _ => None,
+        }
     }
 
     fn lower_raw_ast_expr(&mut self, raw_expr: &AstExprKind) -> Option<MirValueId> {

@@ -4404,9 +4404,29 @@ impl Parser {
         if self.check(&TokenKind::LParen) {
             let lhs_span = lhs.span;
             self.advance();
-            let args = self.call_arg_list()?;
+            let mut args = self.call_arg_list()?;
             let end = self.current_span();
             self.expect(&TokenKind::RParen, "expected ')' after arguments")?;
+
+            if let ExprKind::FieldAccess { expr: receiver, field } = &lhs.node
+                && self.should_desugar_method_call_receiver(&receiver.node)
+            {
+                let mut desugared_args = Vec::with_capacity(args.len() + 1);
+                desugared_args.push(Argument {
+                    label: None,
+                    value: (**receiver).clone(),
+                });
+                desugared_args.append(&mut args);
+                let func = Spanned::new(ExprKind::Var(field.node.clone()), field.span);
+                return Some(Spanned::new(
+                    ExprKind::Call {
+                        func: Box::new(func),
+                        args: desugared_args,
+                    },
+                    lhs_span.merge(end),
+                ));
+            }
+
             return Some(Spanned::new(
                 ExprKind::Call {
                     func: Box::new(lhs),
@@ -4434,6 +4454,19 @@ impl Parser {
         }
         // Should not reach here if postfix_bp returned Some
         unreachable!()
+    }
+
+    fn should_desugar_method_call_receiver(&self, receiver: &ExprKind) -> bool {
+        match receiver {
+            // Preserve qualified module calls: `List::map(xs, f)`.
+            ExprKind::Var(name) => !name
+                .chars()
+                .next()
+                .is_some_and(|ch| ch.is_ascii_uppercase()),
+            // Preserve explicit qualified chains like `xs.Trait::method()`.
+            ExprKind::FieldAccess { .. } => false,
+            _ => true,
+        }
     }
 
     // -- Binding power tables --
@@ -5060,14 +5093,23 @@ mod tests {
         let expr = parse("r.name()");
         match &expr.node {
             ExprKind::Call { func, args } => {
-                assert!(args.is_empty());
-                match &func.node {
-                    ExprKind::FieldAccess { expr, field } => {
-                        assert_eq!(expr.node, ExprKind::Var("r".into()));
-                        assert_eq!(field.node, "name");
-                    }
-                    other => panic!("expected FieldAccess callee, got {other:?}"),
-                }
+                assert_eq!(func.node, ExprKind::Var("name".into()));
+                assert_eq!(args.len(), 1);
+                assert_eq!(args[0].value.node, ExprKind::Var("r".into()));
+            }
+            other => panic!("expected Call, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_dot_call_with_args_desugars_receiver_first() {
+        let expr = parse("r.map(f)");
+        match &expr.node {
+            ExprKind::Call { func, args } => {
+                assert_eq!(func.node, ExprKind::Var("map".into()));
+                assert_eq!(args.len(), 2);
+                assert_eq!(args[0].value.node, ExprKind::Var("r".into()));
+                assert_eq!(args[1].value.node, ExprKind::Var("f".into()));
             }
             other => panic!("expected Call, got {other:?}"),
         }
