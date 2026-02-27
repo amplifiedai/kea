@@ -1,12 +1,12 @@
 # Brief: Code Generation — Pure Subset
 
-**Status:** active
+**Status:** done
 **Priority:** v1-critical
 **Depends on:** 0b-type-system-core, 0c-effect-handlers (at least Fail sugar)
 **Blocks:** 0d1-module-system, 0e-runtime-effects
 **Also read before implementing:**
 - [performance-backend-strategy](../design/performance-backend-strategy.md) — MIR must be backend-neutral, backend interface trait, ABI manifest, pass stats, layout stability rules, benchmark targets.
-- [testing](testing.md) — Benchmark harness is a 0d Definition of Done item. Test runner design informs `kea test` infrastructure.
+- [testing](../todo/testing.md) — Benchmark harness is a 0d Definition of Done item. Test runner design informs `kea test` infrastructure.
 
 **Prerequisite (before Step 1):** Embed effect rows in `FunctionType`.
 Currently `FunctionType` is `{ params, ret }` with effects tracked in
@@ -267,8 +267,8 @@ Create `crates/kea/` (the binary crate):
 - JIT: `kea run` executes correctly
 - Tail calls: self-recursive function doesn't overflow on large input
 - Lambda syntax: `|x| -> x * 2` parses, `(x) -> x * 2` is rejected
-- Snapshot tests: compiled output matches evaluator output for
-  the same programs
+- Deferred (blocked on `kea-eval`): snapshot parity tests comparing
+  compiled output to evaluator output for the same programs
 
 ## Definition of Done
 
@@ -298,6 +298,8 @@ Create `crates/kea/` (the binary crate):
 - Parametric type annotations in params: `fn f(opt: Maybe Int) -> Int`
 - `Never` bottom type for diverging operations (`Fail.fail`)
 - `mise run check` passes
+- Deferred (blocked on `kea-eval`): evaluator-vs-compiler snapshot
+  parity corpus
 
 ## Decisions
 
@@ -849,4 +851,4 @@ Resolved by:
 - 2026-02-27 14:40: Added update-fusion benchmark contract infrastructure: new no-arg microbenches (`lower_record_update_single_to_mir`, `lower_record_update_chain_to_mir`), contract checker script (`scripts/bench-update-fusion-contract.sh`), and task wiring (`mise run bench:update-fusion:contract`). Also fixed `scripts/bench-export.sh` CSV extraction to include no-arg benchmarks so contract rows are emitted correctly.
 - 2026-02-27 14:40: Snapshot parity against an evaluator is explicitly blocked on `kea-eval` availability. A temporary in-test evaluator harness was removed; 0d closes correctness coverage with explicit expected-output CLI regressions plus JIT-vs-AOT parity corpus until evaluator infrastructure lands as its own deliverable.
 - **Note for codegen agent:** The phantom IO leak fix (746a4cb) is purely in `kea-infer` effect inference. No codegen changes needed. The fix ensures that mismatched handle expressions (handler handles an effect the body doesn't perform) correctly preserve the body's actual effects instead of introducing phantom IO. This means codegen can trust that effect rows on handle expressions are accurate — if IO shows up, it's real IO, not an inference artifact. No action required on your end.
-- **Next:** Continue the remaining 0d runtime/codegen delta by expanding struct/enum runtime lowering beyond handle-only carriers and tightening remaining compiled-path coverage for effects/handlers without regressing current pure + Fail-only fast paths.
+- **Closeout:** 0d is complete. Next critical-path implementation brief is `0d1-module-system`.

@@ -24,7 +24,6 @@ that apply across multiple implementation phases. Ignoring them means rework.
 ## Active
 
 Work in progress right now. Each entry should have a `## Progress` section in its brief.
-- **[Codegen — pure subset](in-progress/0d-codegen-pure.md)** — Active. Step 0 structural function-effect embedding is complete; Step 1 (`kea-hir`) and Step 2 (`kea-mir`) include real pure-path lowering for literals/vars/unary/binary/call/let/block plus Unit/value `if` control-flow graphs with block-tail type-hint propagation; bool and simple literal `case` arms (`Int`/`Bool`/`Float`) lower to canonical `if` in HIR with expression-scrutinee single-evaluation bindings and var/wildcard fallback support, unit-enum constructor cases lower via literal-tag comparisons, and `and`/`or` now lower as short-circuit branch/join control flow. Step 3 performs real pure-subset MIR→Cranelift lowering with host JIT + AOT object emission, including block params/Jump args for value-producing control flow; Step 7 now has a `kea` CLI scaffold (`run`/`build`) wired through the pipeline with executable linking in `build` and direct JIT entrypoint execution in `run`. Benchmark baseline harness is now in-tree via `kea-bench` + `mise run bench`.
 - **[Benchmark infrastructure](in-progress/benchmark-infrastructure.md)** — Active. `divan` harness is in-tree (`kea-bench` + `AllocProfiler`) with lex/parse/infer/lower/codegen workload baselines plus string/allocation variants; stable artifacts are exported (`raw/csv/json/meta`), repeat-run variance summaries are generated (`bench:variance`), CI Stage A publishes baseline+variance artifacts, CodSpeed CI is wired via `codspeed-divan-compat` using OIDC auth, whole-program corpus tooling (`benchmarks/programs` + `bench:programs`) is bootstrapped with no-shell/inner-iteration execution for lower noise, whole-program variance summaries are automated, benchmark workflows now use cache-friendly stable target dirs (`KEA_AGENT_TARGET_DIR=target/ci-*`), non-blocking Stage B regression checks remain for full-matrix calibration, and stable benchmark classes run in dedicated blocking Stage B lanes.
 - **[Lean formalization](in-progress/lean-formalization.md)** — Active. Phase 1 kickoff started from the Rill Lean baseline; next is Kea effect-row alignment in core modules/proofs.
 
@@ -48,7 +47,7 @@ Designed and approved. Ready to pick up. Ordered by execution sequence per ROADM
 
 ### Phase 0d: Code Generation — Pure Subset (weeks 4-6)
 
-*(active — see Active section)*
+*(done — see Done section)*
 
 ### Phase 0d1: Module System + Stdlib Tier 0 (after 0d)
 
@@ -117,6 +116,7 @@ Completed briefs. Kept for reference and design rationale.
 
 | Brief | Summary |
 |-------|---------|
+| [0d-codegen-pure](done/0d-codegen-pure.md) | Pure-subset codegen landed end-to-end (HIR→MIR→Cranelift, JIT+AOT, closure/RC/runtime lowering coverage), with 0d punch-list closeout complete; evaluator-parity snapshot corpus is explicitly deferred and blocked on future `kea-eval` infrastructure. |
 | [0b-rill-surface-cleanup](done/0b-rill-surface-cleanup.md) | Removed remaining inherited non-Kea parser/typechecker substrate from core crates (frame token path, stale infer trace variants, and `sqlparser`), with cleanup gates green across check/test/check-full. |
 | [0b-mcp-server](done/0b-mcp-server.md) | `kea-mcp` now exposes `type_check`, `diagnose`, and `get_type` over MCP stdio with structured JSON diagnostics from serializable `kea-diag` types. |
 | [0b-type-system-core](done/0b-type-system-core.md) | Type checker migrated to row-native effect contracts/unification with lattice model deleted, legacy effect syntax deprecation-only, fail-row constraints enforced, and stable module namespace resolution scaffolding for builtin/source transitions. |
@@ -133,7 +133,7 @@ Completed briefs. Kept for reference and design rationale.
  └── 0b: type system core                                    ← DONE
       └── 0c: effect handlers                                ← DONE
            │
-           └── 0d: codegen pure ◄─── ACTIVE
+           └── 0d: codegen pure                                    ← DONE
                 │
                 ├── 0d1: module system + STDLIB TIER 0 (pure)
                 │    │   (use/import, prelude, Option/Result/List/String as .kea)
