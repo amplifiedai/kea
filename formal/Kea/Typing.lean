@@ -24246,6 +24246,210 @@ theorem principalRowPolyBoundarySoundBundle_noUnifyFieldTypingRunBundleRoutes_of
   }
 
 /--
+Direct hook-seeded entrypoint for arbitrary-success expression typing+route
+packages on the boundary+sound capstone surface.
+-/
+theorem principalBoundarySoundExprTypingRunBundleRoutes_of_success
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalBoundarySoundExprTypingRunBundleRoutes st fuel env e st' ty :=
+  principalRowPolyBoundarySoundBundle_exprTypingRunBundleRoutes_of_success
+    (principalRowPolyBoundarySoundBundle_of_hooks h_app h_proj) h_ok
+
+/--
+Direct hook-seeded entrypoint for arbitrary-success field typing+route packages
+on the boundary+sound capstone surface.
+-/
+theorem principalBoundarySoundFieldTypingRunBundleRoutes_of_success
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalBoundarySoundFieldTypingRunBundleRoutes st fuel env fs st' rf :=
+  principalRowPolyBoundarySoundBundle_fieldTypingRunBundleRoutes_of_success
+    (principalRowPolyBoundarySoundBundle_of_hooks h_app h_proj) h_ok
+
+/--
+Direct hook-seeded entrypoint for no-unify expression typing+route packages on
+the boundary+sound capstone surface.
+-/
+theorem principalBoundarySoundNoUnifyExprTypingRunBundleRoutes_of_success
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalBoundarySoundNoUnifyExprTypingRunBundleRoutes st fuel env e st' ty :=
+  principalRowPolyBoundarySoundBundle_noUnifyExprTypingRunBundleRoutes_of_success
+    (principalRowPolyBoundarySoundBundle_of_hooks h_app h_proj) h_no h_ok
+
+/--
+Direct hook-seeded entrypoint for no-unify field typing+route packages on the
+boundary+sound capstone surface.
+-/
+theorem principalBoundarySoundNoUnifyFieldTypingRunBundleRoutes_of_success
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalBoundarySoundNoUnifyFieldTypingRunBundleRoutes st fuel env fs st' rf :=
+  principalRowPolyBoundarySoundBundle_noUnifyFieldTypingRunBundleRoutes_of_success
+    (principalRowPolyBoundarySoundBundle_of_hooks h_app h_proj) h_no h_ok
+
+/--
+Bundled-hook entrypoint for arbitrary-success expression typing+route packages
+on the boundary+sound capstone surface.
+-/
+theorem principalBoundarySoundExprTypingRunBundleRoutes_of_success_from_bundle
+    (h_hooks : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalBoundarySoundExprTypingRunBundleRoutes st fuel env e st' ty :=
+  principalBoundarySoundExprTypingRunBundleRoutes_of_success
+    (h_app := h_hooks.1) (h_proj := h_hooks.2) h_ok
+
+/--
+Bundled-hook entrypoint for arbitrary-success field typing+route packages on
+the boundary+sound capstone surface.
+-/
+theorem principalBoundarySoundFieldTypingRunBundleRoutes_of_success_from_bundle
+    (h_hooks : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalBoundarySoundFieldTypingRunBundleRoutes st fuel env fs st' rf :=
+  principalBoundarySoundFieldTypingRunBundleRoutes_of_success
+    (h_app := h_hooks.1) (h_proj := h_hooks.2) h_ok
+
+/--
+Bundled-hook entrypoint for no-unify expression typing+route packages on the
+boundary+sound capstone surface.
+-/
+theorem principalBoundarySoundNoUnifyExprTypingRunBundleRoutes_of_success_from_bundle
+    (h_hooks : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalBoundarySoundNoUnifyExprTypingRunBundleRoutes st fuel env e st' ty :=
+  principalBoundarySoundNoUnifyExprTypingRunBundleRoutes_of_success
+    (h_app := h_hooks.1) (h_proj := h_hooks.2) h_no h_ok
+
+/--
+Bundled-hook entrypoint for no-unify field typing+route packages on the
+boundary+sound capstone surface.
+-/
+theorem principalBoundarySoundNoUnifyFieldTypingRunBundleRoutes_of_success_from_bundle
+    (h_hooks : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalBoundarySoundNoUnifyFieldTypingRunBundleRoutes st fuel env fs st' rf :=
+  principalBoundarySoundNoUnifyFieldTypingRunBundleRoutes_of_success
+    (h_app := h_hooks.1) (h_proj := h_hooks.2) h_no h_ok
+
+/-- One-hop projection of `HasType` from an arbitrary-success expression typing+route package. -/
+theorem principalBoundarySoundExprTypingRunBundleRoutes_hasType
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_pkg : PrincipalBoundarySoundExprTypingRunBundleRoutes st fuel env e st' ty) :
+    HasType env e ty :=
+  h_pkg.hasType
+
+/-- One-hop projection of `HasTypeU` from an arbitrary-success expression typing+route package. -/
+theorem principalBoundarySoundExprTypingRunBundleRoutes_hasTypeU
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_pkg : PrincipalBoundarySoundExprTypingRunBundleRoutes st fuel env e st' ty) :
+    HasTypeU env e ty :=
+  h_pkg.hasTypeU
+
+/-- One-hop projection of the route pair from an arbitrary-success expression typing+route package. -/
+theorem principalBoundarySoundExprTypingRunBundleRoutes_routes
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_pkg : PrincipalBoundarySoundExprTypingRunBundleRoutes st fuel env e st' ty) :
+    PrincipalBoundarySoundExprRunBundleRoutes st fuel env e st' ty :=
+  h_pkg.routes
+
+/-- One-hop projection of `HasFieldsType` from an arbitrary-success field typing+route package. -/
+theorem principalBoundarySoundFieldTypingRunBundleRoutes_hasType
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_pkg : PrincipalBoundarySoundFieldTypingRunBundleRoutes st fuel env fs st' rf) :
+    HasFieldsType env fs rf :=
+  h_pkg.hasType
+
+/-- One-hop projection of `HasFieldsTypeU` from an arbitrary-success field typing+route package. -/
+theorem principalBoundarySoundFieldTypingRunBundleRoutes_hasTypeU
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_pkg : PrincipalBoundarySoundFieldTypingRunBundleRoutes st fuel env fs st' rf) :
+    HasFieldsTypeU env fs rf :=
+  h_pkg.hasTypeU
+
+/-- One-hop projection of the route pair from an arbitrary-success field typing+route package. -/
+theorem principalBoundarySoundFieldTypingRunBundleRoutes_routes
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_pkg : PrincipalBoundarySoundFieldTypingRunBundleRoutes st fuel env fs st' rf) :
+    PrincipalBoundarySoundFieldRunBundleRoutes st fuel env fs st' rf :=
+  h_pkg.routes
+
+/-- One-hop projection of `HasType` from a no-unify expression typing+route package. -/
+theorem principalBoundarySoundNoUnifyExprTypingRunBundleRoutes_hasType
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_pkg : PrincipalBoundarySoundNoUnifyExprTypingRunBundleRoutes st fuel env e st' ty) :
+    HasType env e ty :=
+  h_pkg.hasType
+
+/-- One-hop projection of `HasTypeU` from a no-unify expression typing+route package. -/
+theorem principalBoundarySoundNoUnifyExprTypingRunBundleRoutes_hasTypeU
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_pkg : PrincipalBoundarySoundNoUnifyExprTypingRunBundleRoutes st fuel env e st' ty) :
+    HasTypeU env e ty :=
+  h_pkg.hasTypeU
+
+/-- One-hop projection of the route pair from a no-unify expression typing+route package. -/
+theorem principalBoundarySoundNoUnifyExprTypingRunBundleRoutes_routes
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_pkg : PrincipalBoundarySoundNoUnifyExprTypingRunBundleRoutes st fuel env e st' ty) :
+    PrincipalBoundarySoundNoUnifyExprRunBundleRoutes st fuel env e st' ty :=
+  h_pkg.routes
+
+/-- One-hop projection of `HasFieldsType` from a no-unify field typing+route package. -/
+theorem principalBoundarySoundNoUnifyFieldTypingRunBundleRoutes_hasType
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_pkg : PrincipalBoundarySoundNoUnifyFieldTypingRunBundleRoutes st fuel env fs st' rf) :
+    HasFieldsType env fs rf :=
+  h_pkg.hasType
+
+/-- One-hop projection of `HasFieldsTypeU` from a no-unify field typing+route package. -/
+theorem principalBoundarySoundNoUnifyFieldTypingRunBundleRoutes_hasTypeU
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_pkg : PrincipalBoundarySoundNoUnifyFieldTypingRunBundleRoutes st fuel env fs st' rf) :
+    HasFieldsTypeU env fs rf :=
+  h_pkg.hasTypeU
+
+/-- One-hop projection of the route pair from a no-unify field typing+route package. -/
+theorem principalBoundarySoundNoUnifyFieldTypingRunBundleRoutes_routes
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_pkg : PrincipalBoundarySoundNoUnifyFieldTypingRunBundleRoutes st fuel env fs st' rf) :
+    PrincipalBoundarySoundNoUnifyFieldRunBundleRoutes st fuel env fs st' rf :=
+  h_pkg.routes
+
+/--
 Expression preconditioned↔core wrapper on the dual-routed proved master suite.
 -/
 theorem principalBoundaryMasterSuite_preconditionedCoreIff_expr_via_dualConsequenceSlices
