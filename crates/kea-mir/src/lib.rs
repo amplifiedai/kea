@@ -451,44 +451,49 @@ fn schedule_trailing_releases_after_last_use(function: &mut MirFunction) {
 fn elide_adjacent_retain_release_pairs(function: &mut MirFunction) {
     for block in &mut function.blocks {
         let mut instructions = block.instructions.clone();
-        let mut idx = 0usize;
-        while idx < instructions.len() {
-            let Some(retained) = (match &instructions[idx] {
-                MirInst::Retain { value } => Some(value.clone()),
-                _ => None,
-            }) else {
-                idx += 1;
-                continue;
-            };
-            let mut probe = idx + 1;
-            while probe < instructions.len() && matches!(instructions[probe], MirInst::Nop) {
-                probe += 1;
-            }
-            if probe < instructions.len()
-                && matches!(&instructions[probe], MirInst::Release { value } if *value == retained)
-            {
-                instructions.remove(probe);
-                instructions.remove(idx);
-                continue;
-            }
-            idx += 1;
-        }
+        loop {
+            let mut changed = false;
+            let mut idx = 0usize;
+            while idx < instructions.len() {
+                let Some(retained) = (match &instructions[idx] {
+                    MirInst::Retain { value } => Some(value.clone()),
+                    _ => None,
+                }) else {
+                    idx += 1;
+                    continue;
+                };
 
-        let mut rebuilt = Vec::with_capacity(instructions.len());
-        let mut idx = 0usize;
-        while idx < instructions.len() {
-            if idx + 1 < instructions.len()
-                && let MirInst::Retain { value: retained } = &instructions[idx]
-                && let MirInst::Release { value: released } = &instructions[idx + 1]
-                && retained == released
-            {
-                idx += 2;
-                continue;
+                let mut probe = idx + 1;
+                let mut release_idx = None;
+                while probe < instructions.len() {
+                    let inst = &instructions[probe];
+                    if let MirInst::Release { value } = inst
+                        && value == &retained
+                    {
+                        release_idx = Some(probe);
+                        break;
+                    }
+                    if inst_reads_value(inst, &retained)
+                        || inst_defined_value(inst).is_some_and(|dest| dest == &retained)
+                    {
+                        break;
+                    }
+                    probe += 1;
+                }
+
+                if let Some(release_idx) = release_idx {
+                    instructions.remove(release_idx);
+                    instructions.remove(idx);
+                    changed = true;
+                    continue;
+                }
+                idx += 1;
             }
-            rebuilt.push(instructions[idx].clone());
-            idx += 1;
+            if !changed {
+                break;
+            }
         }
-        block.instructions = rebuilt;
+        block.instructions = instructions;
     }
 }
 
@@ -6001,6 +6006,58 @@ mod tests {
                 MirInst::Nop,
             ],
             "nop-separated retain/release pair should be removed"
+        );
+    }
+
+    #[test]
+    fn elide_adjacent_retain_release_pairs_removes_non_interfering_window_churn() {
+        let mut function = MirFunction {
+            name: "main".to_string(),
+            signature: MirFunctionSignature {
+                params: vec![],
+                ret: Type::Unit,
+                effects: EffectRow::pure(),
+            },
+            entry: MirBlockId(0),
+            blocks: vec![MirBlock {
+                id: MirBlockId(0),
+                params: vec![],
+                instructions: vec![
+                    MirInst::Const {
+                        dest: MirValueId(0),
+                        literal: MirLiteral::Int(7),
+                    },
+                    MirInst::Retain {
+                        value: MirValueId(0),
+                    },
+                    MirInst::Const {
+                        dest: MirValueId(1),
+                        literal: MirLiteral::Int(99),
+                    },
+                    MirInst::Release {
+                        value: MirValueId(0),
+                    },
+                ],
+                terminator: MirTerminator::Return {
+                    value: Some(MirValueId(1)),
+                },
+            }],
+        };
+
+        elide_adjacent_retain_release_pairs(&mut function);
+        assert_eq!(
+            function.blocks[0].instructions,
+            vec![
+                MirInst::Const {
+                    dest: MirValueId(0),
+                    literal: MirLiteral::Int(7),
+                },
+                MirInst::Const {
+                    dest: MirValueId(1),
+                    literal: MirLiteral::Int(99),
+                },
+            ],
+            "non-interfering retain/release window should be removed"
         );
     }
 
