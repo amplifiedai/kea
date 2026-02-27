@@ -272,6 +272,34 @@ mod tests {
     }
 
     #[test]
+    fn run_test_file_supports_stdlib_test_assert_module() {
+        let project_dir = temp_workspace_project_dir("kea-cli-test-runner-stdlib-assert");
+        let src_dir = project_dir.join("src");
+        std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+        let source_path = src_dir.join("suite.kea");
+        std::fs::write(
+            &source_path,
+            "use Test\n\ntest \"stdlib assert pass\"\n  Test.assert(1 + 1 == 2)\n\ntest \"stdlib assert fail\"\n  Test.assert(false)\n",
+        )
+        .expect("suite write should succeed");
+
+        let run = run_test_file(&source_path).expect("test run should succeed");
+        assert_eq!(run.cases.len(), 2);
+        assert!(
+            run.cases
+                .iter()
+                .any(|case| case.name == "stdlib assert pass" && case.passed)
+        );
+        assert!(
+            run.cases
+                .iter()
+                .any(|case| case.name == "stdlib assert fail" && !case.passed)
+        );
+
+        let _ = std::fs::remove_dir_all(project_dir);
+    }
+
+    #[test]
     fn run_test_file_executes_property_iterations() {
         let source_path = write_temp_source(
             "effect Fail E\n  fn fail(error: E) -> Never\n\nfn assert(value: Bool) -[Fail String]> Unit\n  if value\n    ()\n  else\n    Fail.fail(\"assertion failed\")\n\ntest property (iterations: 3) \"repeat pass\"\n  assert true\n",

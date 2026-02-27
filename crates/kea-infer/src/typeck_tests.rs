@@ -6809,6 +6809,56 @@ fn fail_operation_call_infers_fail_payload_type_from_argument() {
 }
 
 #[test]
+fn fail_operation_call_infers_fail_payload_type_from_annotated_variable_argument() {
+    let mut env = TypeEnv::new();
+    let records = RecordRegistry::new();
+    let sums = SumTypeRegistry::new();
+    let fail = make_effect_decl(
+        "Fail",
+        vec!["E"],
+        vec![make_effect_operation(
+            "fail",
+            vec![annotated_param(
+                "error",
+                TypeAnnotation::Named("E".to_string()),
+            )],
+            TypeAnnotation::Named("Never".to_string()),
+        )],
+    );
+    let diags = register_effect_decl(&fail, &records, Some(&sums), &mut env);
+    assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+
+    let wrapper = FnDecl {
+        annotations: vec![],
+        public: false,
+        name: sp("wrapper".to_string()),
+        doc: None,
+        params: vec![annotated_param(
+            "message",
+            TypeAnnotation::Named("String".to_string()),
+        )],
+        return_annotation: Some(sp(TypeAnnotation::Named("Unit".to_string()))),
+        effect_annotation: Some(sp(effect_row_annotation(vec![("Fail", Some("String"))], None))),
+        body: call(field_access(var("Fail"), "fail"), vec![var("message")]),
+        span: s(),
+        where_clause: vec![],
+    };
+
+    let row = infer_fn_decl_effect_row(&wrapper, &env);
+    let fail_payload = row
+        .row
+        .fields
+        .iter()
+        .find(|(label, _)| label == &Label::new("Fail"))
+        .map(|(_, payload)| payload.clone());
+    assert_eq!(
+        fail_payload,
+        Some(Type::String),
+        "expected Fail.fail(message:String) to infer `Fail String`, got {row:?}"
+    );
+}
+
+#[test]
 fn curried_annotated_callback_param_uses_effect_row_unification_not_pure_function_unification() {
     let mut env = TypeEnv::new();
     let records = RecordRegistry::new();
