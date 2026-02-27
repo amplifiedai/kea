@@ -7112,6 +7112,74 @@ theorem principalNoUnifyToGeneralAllHooksCapstoneSlices_field
   h_slice.2 h_no h_ok
 
 /--
+Packaged no-unify-to-general expression run-bundle slice.
+-/
+def PrincipalNoUnifyToGeneralAllHooksExprRunBundleSlice : Prop :=
+  ∀ {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty},
+    NoUnifyBranchesExpr e →
+    inferExprUnify st fuel env e = .ok st' ty →
+    PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty
+
+/--
+Packaged no-unify-to-general field run-bundle slice.
+-/
+def PrincipalNoUnifyToGeneralAllHooksFieldRunBundleSlice : Prop :=
+  ∀ {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields},
+    NoUnifyBranchesFields fs →
+    inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)) →
+    PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf
+
+/--
+Combined no-unify-to-general all-hooks run-bundle slices across expressions and
+fields.
+-/
+def PrincipalNoUnifyToGeneralAllHooksRunBundleSlices : Prop :=
+  PrincipalNoUnifyToGeneralAllHooksExprRunBundleSlice ∧
+    PrincipalNoUnifyToGeneralAllHooksFieldRunBundleSlice
+
+/--
+The combined no-unify-to-general all-hooks run-bundle slices are fully proved.
+-/
+theorem principalNoUnifyToGeneralAllHooksRunBundleSlices_proved :
+    PrincipalNoUnifyToGeneralAllHooksRunBundleSlices := by
+  refine ⟨?_, ?_⟩
+  · intro st fuel env e st' ty h_no h_ok
+    exact principalPreconditionedExprAllHooksRunBundle_of_capstone
+      (principalNoUnifyToGeneralAllHooksCapstoneSlices_expr
+        principalNoUnifyToGeneralAllHooksCapstoneSlices_proved h_no h_ok)
+  · intro st fuel env fs st' rf h_no h_ok
+    exact principalPreconditionedFieldAllHooksRunBundle_of_capstone
+      (principalNoUnifyToGeneralAllHooksCapstoneSlices_field
+        principalNoUnifyToGeneralAllHooksCapstoneSlices_proved h_no h_ok)
+
+/--
+One-hop expression projection from no-unify-to-general all-hooks run-bundle
+slices.
+-/
+theorem principalNoUnifyToGeneralAllHooksRunBundleSlices_expr
+    (h_slice : PrincipalNoUnifyToGeneralAllHooksRunBundleSlices)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty :=
+  h_slice.1 h_no h_ok
+
+/--
+One-hop field projection from no-unify-to-general all-hooks run-bundle slices.
+-/
+theorem principalNoUnifyToGeneralAllHooksRunBundleSlices_field
+    (h_slice : PrincipalNoUnifyToGeneralAllHooksRunBundleSlices)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf :=
+  h_slice.2 h_no h_ok
+
+/--
 Packaged no-unify-to-general expression hook-irrelevance slice.
 -/
 def PrincipalNoUnifyToGeneralAllHooksExprIrrelevanceSlice : Prop :=
@@ -7195,6 +7263,7 @@ Top-level no-unify-to-general all-hooks suite.
 -/
 structure PrincipalNoUnifyToGeneralAllHooksSuite : Prop where
   capstones : PrincipalNoUnifyToGeneralAllHooksCapstoneSlices
+  runBundles : PrincipalNoUnifyToGeneralAllHooksRunBundleSlices
   irrelevance : PrincipalNoUnifyToGeneralAllHooksIrrelevanceSlices
 
 /--
@@ -7204,6 +7273,7 @@ theorem principalNoUnifyToGeneralAllHooksSuite_proved :
     PrincipalNoUnifyToGeneralAllHooksSuite := by
   refine {
     capstones := principalNoUnifyToGeneralAllHooksCapstoneSlices_proved
+    runBundles := principalNoUnifyToGeneralAllHooksRunBundleSlices_proved
     irrelevance := principalNoUnifyToGeneralAllHooksIrrelevanceSlices_proved
   }
 
@@ -7231,6 +7301,31 @@ theorem principalNoUnifyToGeneralAllHooksSuite_capstone_field
     (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
     PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
   principalNoUnifyToGeneralAllHooksCapstoneSlices_field h_suite.capstones h_no h_ok
+
+/--
+One-hop expression run-bundle projection from no-unify-to-general all-hooks
+suite.
+-/
+theorem principalNoUnifyToGeneralAllHooksSuite_runBundle_expr
+    (h_suite : PrincipalNoUnifyToGeneralAllHooksSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty :=
+  principalNoUnifyToGeneralAllHooksRunBundleSlices_expr h_suite.runBundles h_no h_ok
+
+/--
+One-hop field run-bundle projection from no-unify-to-general all-hooks suite.
+-/
+theorem principalNoUnifyToGeneralAllHooksSuite_runBundle_field
+    (h_suite : PrincipalNoUnifyToGeneralAllHooksSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf :=
+  principalNoUnifyToGeneralAllHooksRunBundleSlices_field h_suite.runBundles h_no h_ok
 
 /--
 One-hop expression irrelevance projection from no-unify-to-general all-hooks
@@ -7489,6 +7584,7 @@ theorem principalNoUnifyToGeneralAllHooksSuite_of_noUnifyAllHooksSuite
     PrincipalNoUnifyToGeneralAllHooksSuite := by
   refine {
     capstones := ?_
+    runBundles := ?_
     irrelevance := ?_
   }
   · refine ⟨?_, ?_⟩
@@ -7498,6 +7594,15 @@ theorem principalNoUnifyToGeneralAllHooksSuite_of_noUnifyAllHooksSuite
     · intro st fuel env fs st' rf h_no h_ok
       exact principalBoundaryNoUnifyAllHooksSuite_capstone_field_as_general
         h_suite h_no h_ok
+  · refine ⟨?_, ?_⟩
+    · intro st fuel env e st' ty h_no h_ok
+      exact principalPreconditionedExprAllHooksRunBundle_of_capstone
+        (principalBoundaryNoUnifyAllHooksSuite_capstone_expr_as_general
+          h_suite h_no h_ok)
+    · intro st fuel env fs st' rf h_no h_ok
+      exact principalPreconditionedFieldAllHooksRunBundle_of_capstone
+        (principalBoundaryNoUnifyAllHooksSuite_capstone_field_as_general
+          h_suite h_no h_ok)
   · refine ⟨?_, ?_⟩
     · intro st fuel env e st' ty h_app₁ h_proj₁ h_app₂ h_proj₂ h_no h_ok
       exact principalBoundaryNoUnifyAllHooksSuite_irrelevance_expr
@@ -7790,6 +7895,34 @@ theorem principalBoundaryMasterSuite_noUnifyToGeneralAllHooks_field
     (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
     PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
   principalNoUnifyToGeneralAllHooksSuite_capstone_field
+    h_suite.noUnifyToGeneralAllHooks h_no h_ok
+
+/--
+One-hop expression no-unify-to-general all-hooks run-bundle projection from
+master suite.
+-/
+theorem principalBoundaryMasterSuite_noUnifyToGeneralAllHooks_runBundle_expr
+    (h_suite : PrincipalBoundaryMasterSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty :=
+  principalNoUnifyToGeneralAllHooksSuite_runBundle_expr
+    h_suite.noUnifyToGeneralAllHooks h_no h_ok
+
+/--
+One-hop field no-unify-to-general all-hooks run-bundle projection from master
+suite.
+-/
+theorem principalBoundaryMasterSuite_noUnifyToGeneralAllHooks_runBundle_field
+    (h_suite : PrincipalBoundaryMasterSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf :=
+  principalNoUnifyToGeneralAllHooksSuite_runBundle_field
     h_suite.noUnifyToGeneralAllHooks h_no h_ok
 
 /--
