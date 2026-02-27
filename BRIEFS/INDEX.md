@@ -13,9 +13,9 @@ that apply across multiple implementation phases. Ignoring them means rework.
 
 | Brief | Applies to | Key constraints |
 |-------|-----------|-----------------|
-| [Performance and backend strategy](design/performance-backend-strategy.md) | **0d, 0e, 0f** | MIR must be backend-neutral (not shaped around Cranelift). Backend interface trait. ABI manifest artifact. Pass stats. Layout stability (declaration order = memory order). Actor benchmark targets. Reuse analysis is a MIR pass (0f). |
+| [Performance and backend strategy](design/performance-backend-strategy.md) | **0d, 0d1, 0e, 0f** | MIR must be backend-neutral (not shaped around Cranelift). Backend interface trait. ABI manifest artifact. Pass stats. Layout stability (declaration order = memory order). Actor benchmark targets. Reuse analysis is a MIR pass (0f). |
 | [Testing](todo/testing.md) | **0d+** | Benchmark harness is a 0d Definition of Done item. Test runner design (assert/check model) informs how test infrastructure is built. |
-| [Semantic introspection platform](design/runtime-introspection-mcp.md) | **0b-0d** | Compiler MCP contracts must be maintained as new phases land. kea-mcp already exists — new type/effect features must be queryable. |
+| [Semantic introspection platform](design/runtime-introspection-mcp.md) | **0b-0d1** | Compiler MCP contracts must be maintained as new phases land. kea-mcp already exists — new type/effect features must be queryable. 0d1's compilation API extraction is the foundation for "one engine, many consumers." |
 | [Lean formalization](in-progress/lean-formalization.md) | **0c, 0d, 0e** | Formal agent runs in parallel. Core type system migration starts after 0c. Effect typing proofs run alongside 0d/0e. Don't break the MCP interface the formal agent uses. |
 | [Tooling and DX](design/tooling-dx.md) | **0a through Phase 2** | Everything ships in one `kea` binary. Formatter lands before 0g. LSP by 0d-0e. `kea test`, `kea fmt`, `kea build`, `kea run` are non-negotiable. Effect-aware documentation and diagnostics. Every new feature must be queryable via tooling. |
 

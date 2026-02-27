@@ -10,6 +10,8 @@
 - [KERNEL Appendix C](../../docs/spec/KERNEL.md) — prelude traits
 - [stdlib-bootstrap](stdlib-bootstrap.md) — the stdlib that this module system loads
 - [packaging-ffi-comptime](../design/packaging-ffi-comptime.md) — future package system (not in scope here)
+- [performance-backend-strategy](../design/performance-backend-strategy.md) — MIR must be backend-neutral; module resolution metadata must not be Cranelift-specific
+- [runtime-introspection-mcp](../design/runtime-introspection-mcp.md) — the compilation API extraction in this brief is the foundation for "one engine, many consumers" (CLI, MCP, LSP, REPL)
 
 ## Motivation
 
