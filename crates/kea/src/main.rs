@@ -287,6 +287,21 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn compile_and_execute_clock_now_direct_effect_exit_code() {
+        let source_path = write_temp_source(
+            "effect Clock\n  fn now() -> Int\n\nfn main() -[Clock]> Int\n  if Clock.now() > 0\n    1\n  else\n    0\n",
+            "kea-cli-clock-now-direct",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("clock-now run should succeed");
+        assert_eq!(run.exit_code, 1);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_prelude_trait_unqualified_method_without_use_exit_code() {
         let project_dir = temp_project_dir("kea-cli-project-prelude-trait");
         let src_dir = project_dir.join("src");

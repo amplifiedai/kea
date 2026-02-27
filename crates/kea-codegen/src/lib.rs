@@ -363,6 +363,7 @@ fn compile_into_module<M: Module>(
     let mut requires_heap_alloc = false;
     let mut requires_io_stdout = false;
     let mut requires_io_stderr = false;
+    let mut requires_clock_now = false;
     let mut requires_string_concat = false;
     let mut requires_free = false;
     for function in &mir.functions {
@@ -414,6 +415,21 @@ fn compile_into_module<M: Module>(
             })
         }) {
             requires_io_stderr = true;
+        }
+        if function.blocks.iter().any(|block| {
+            block.instructions.iter().any(|inst| {
+                matches!(
+                    inst,
+                    MirInst::EffectOp {
+                        class: MirEffectOpClass::Direct,
+                        effect,
+                        operation,
+                        ..
+                    } if effect == "Clock" && operation == "now"
+                )
+            })
+        }) {
+            requires_clock_now = true;
         }
         if function.blocks.iter().any(|block| {
             block.instructions.iter().any(|inst| {
@@ -545,6 +561,22 @@ fn compile_into_module<M: Module>(
         Some(
             module
                 .declare_function("write", Linkage::Import, &signature)
+                .map_err(|detail| CodegenError::Module {
+                    detail: detail.to_string(),
+                })?,
+        )
+    } else {
+        None
+    };
+
+    let time_func_id = if requires_clock_now {
+        let ptr_ty = module.target_config().pointer_type();
+        let mut signature = module.make_signature();
+        signature.params.push(AbiParam::new(ptr_ty));
+        signature.returns.push(AbiParam::new(ptr_ty));
+        Some(
+            module
+                .declare_function("time", Linkage::Import, &signature)
                 .map_err(|detail| CodegenError::Module {
                     detail: detail.to_string(),
                 })?,
@@ -686,6 +718,7 @@ fn compile_into_module<M: Module>(
                     free_func_id,
                     stdout_func_id,
                     write_func_id,
+                    time_func_id,
                     strlen_func_id,
                     memcpy_func_id,
                     runtime_signatures: &runtime_signatures,
@@ -1101,6 +1134,7 @@ struct LowerInstCtx<'a> {
     free_func_id: Option<FuncId>,
     stdout_func_id: Option<FuncId>,
     write_func_id: Option<FuncId>,
+    time_func_id: Option<FuncId>,
     strlen_func_id: Option<FuncId>,
     memcpy_func_id: Option<FuncId>,
     runtime_signatures: &'a BTreeMap<String, RuntimeFunctionSig>,
@@ -1627,69 +1661,109 @@ fn lower_instruction<M: Module>(
             result,
             ..
         } => {
-            if *class == MirEffectOpClass::Direct && effect == "IO" {
-                let arg = args.first().ok_or_else(|| CodegenError::UnsupportedMir {
-                    function: function_name.to_string(),
-                    detail: format!("IO.{operation} expects one string argument"),
-                })?;
-                let arg_value = get_value(values, function_name, arg)?;
-                let ptr_ty = module.target_config().pointer_type();
-                let arg_ptr = coerce_value_to_clif_type(builder, arg_value, ptr_ty);
-                match operation.as_str() {
-                    "stdout" => {
-                        let stdout_func_id =
-                            ctx.stdout_func_id
+            if *class == MirEffectOpClass::Direct {
+                if effect == "IO" {
+                    let arg = args.first().ok_or_else(|| CodegenError::UnsupportedMir {
+                        function: function_name.to_string(),
+                        detail: format!("IO.{operation} expects one string argument"),
+                    })?;
+                    let arg_value = get_value(values, function_name, arg)?;
+                    let ptr_ty = module.target_config().pointer_type();
+                    let arg_ptr = coerce_value_to_clif_type(builder, arg_value, ptr_ty);
+                    match operation.as_str() {
+                        "stdout" => {
+                            let stdout_func_id =
+                                ctx.stdout_func_id
+                                    .ok_or_else(|| CodegenError::UnsupportedMir {
+                                        function: function_name.to_string(),
+                                        detail:
+                                            "IO.stdout lowering requires imported `puts` symbol"
+                                                .to_string(),
+                                    })?;
+                            let stdout_ref = module.declare_func_in_func(stdout_func_id, builder.func);
+                            let _ = builder.ins().call(stdout_ref, &[arg_ptr]);
+                        }
+                        "stderr" => {
+                            let write_func_id =
+                                ctx.write_func_id
+                                    .ok_or_else(|| CodegenError::UnsupportedMir {
+                                        function: function_name.to_string(),
+                                        detail:
+                                            "IO.stderr lowering requires imported `write` symbol"
+                                                .to_string(),
+                                    })?;
+                            let strlen_func_id =
+                                ctx.strlen_func_id
+                                    .ok_or_else(|| CodegenError::UnsupportedMir {
+                                        function: function_name.to_string(),
+                                        detail:
+                                            "IO.stderr lowering requires imported `strlen` symbol"
+                                                .to_string(),
+                                    })?;
+                            let strlen_ref = module.declare_func_in_func(strlen_func_id, builder.func);
+                            let strlen_call = builder.ins().call(strlen_ref, &[arg_ptr]);
+                            let len = builder
+                                .inst_results(strlen_call)
+                                .first()
+                                .copied()
                                 .ok_or_else(|| CodegenError::UnsupportedMir {
                                     function: function_name.to_string(),
-                                    detail: "IO.stdout lowering requires imported `puts` symbol"
-                                        .to_string(),
+                                    detail: "strlen call returned no value".to_string(),
                                 })?;
-                        let stdout_ref = module.declare_func_in_func(stdout_func_id, builder.func);
-                        let _ = builder.ins().call(stdout_ref, &[arg_ptr]);
+                            let len = coerce_value_to_clif_type(builder, len, ptr_ty);
+                            let write_ref = module.declare_func_in_func(write_func_id, builder.func);
+                            let fd = builder.ins().iconst(types::I32, 2);
+                            let _ = builder.ins().call(write_ref, &[fd, arg_ptr, len]);
+                        }
+                        _ => {
+                            return Err(CodegenError::UnsupportedMir {
+                                function: function_name.to_string(),
+                                detail: format!(
+                                    "instruction `{inst:?}` not implemented in 0d pure lowering"
+                                ),
+                            });
+                        }
                     }
-                    "stderr" => {
-                        let write_func_id =
-                            ctx.write_func_id
-                                .ok_or_else(|| CodegenError::UnsupportedMir {
-                                    function: function_name.to_string(),
-                                    detail: "IO.stderr lowering requires imported `write` symbol"
-                                        .to_string(),
-                                })?;
-                        let strlen_func_id =
-                            ctx.strlen_func_id
-                                .ok_or_else(|| CodegenError::UnsupportedMir {
-                                    function: function_name.to_string(),
-                                    detail: "IO.stderr lowering requires imported `strlen` symbol"
-                                        .to_string(),
-                                })?;
-                        let strlen_ref = module.declare_func_in_func(strlen_func_id, builder.func);
-                        let strlen_call = builder.ins().call(strlen_ref, &[arg_ptr]);
-                        let len = builder
-                            .inst_results(strlen_call)
+                    if let Some(dest) = result {
+                        values.insert(dest.clone(), builder.ins().iconst(types::I8, 0));
+                    }
+                    Ok(false)
+                } else if effect == "Clock" && operation == "now" {
+                    if !args.is_empty() {
+                        return Err(CodegenError::UnsupportedMir {
+                            function: function_name.to_string(),
+                            detail: "Clock.now expects no arguments".to_string(),
+                        });
+                    }
+                    let time_func_id = ctx
+                        .time_func_id
+                        .ok_or_else(|| CodegenError::UnsupportedMir {
+                            function: function_name.to_string(),
+                            detail: "Clock.now lowering requires imported `time` symbol"
+                                .to_string(),
+                        })?;
+                    let time_ref = module.declare_func_in_func(time_func_id, builder.func);
+                    let ptr_ty = module.target_config().pointer_type();
+                    let null_ptr = builder.ins().iconst(ptr_ty, 0);
+                    let time_call = builder.ins().call(time_ref, &[null_ptr]);
+                    if let Some(dest) = result {
+                        let timestamp = builder
+                            .inst_results(time_call)
                             .first()
                             .copied()
                             .ok_or_else(|| CodegenError::UnsupportedMir {
                                 function: function_name.to_string(),
-                                detail: "strlen call returned no value".to_string(),
+                                detail: "time call returned no value".to_string(),
                             })?;
-                        let len = coerce_value_to_clif_type(builder, len, ptr_ty);
-                        let write_ref = module.declare_func_in_func(write_func_id, builder.func);
-                        let fd = builder.ins().iconst(types::I32, 2);
-                        let _ = builder.ins().call(write_ref, &[fd, arg_ptr, len]);
+                        values.insert(dest.clone(), coerce_value_to_clif_type(builder, timestamp, ptr_ty));
                     }
-                    _ => {
-                        return Err(CodegenError::UnsupportedMir {
-                            function: function_name.to_string(),
-                            detail: format!(
-                                "instruction `{inst:?}` not implemented in 0d pure lowering"
-                            ),
-                        });
-                    }
+                    Ok(false)
+                } else {
+                    Err(CodegenError::UnsupportedMir {
+                        function: function_name.to_string(),
+                        detail: format!("instruction `{inst:?}` not implemented in 0d pure lowering"),
+                    })
                 }
-                if let Some(dest) = result {
-                    values.insert(dest.clone(), builder.ins().iconst(types::I8, 0));
-                }
-                Ok(false)
             } else if *class == MirEffectOpClass::ZeroResume
                 && effect == "Fail"
                 && operation == "fail"
@@ -2810,6 +2884,35 @@ mod tests {
                         },
                     ],
                     terminator: MirTerminator::Return { value: None },
+                }],
+            }],
+            layouts: MirLayoutCatalog::default(),
+        }
+    }
+
+    fn sample_clock_now_module() -> MirModule {
+        MirModule {
+            functions: vec![MirFunction {
+                name: "clock_now".to_string(),
+                signature: MirFunctionSignature {
+                    params: vec![],
+                    ret: Type::Int,
+                    effects: EffectRow::closed(vec![(Label::new("Clock"), Type::Unit)]),
+                },
+                entry: MirBlockId(0),
+                blocks: vec![MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions: vec![MirInst::EffectOp {
+                        class: MirEffectOpClass::Direct,
+                        effect: "Clock".to_string(),
+                        operation: "now".to_string(),
+                        args: vec![],
+                        result: Some(MirValueId(0)),
+                    }],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirValueId(0)),
+                    },
                 }],
             }],
             layouts: MirLayoutCatalog::default(),
@@ -4313,6 +4416,20 @@ mod tests {
         let artifact = backend
             .compile_module(&module, &manifest, &BackendConfig::default())
             .expect("IO.stderr lowering should compile");
+
+        assert_eq!(artifact.stats.per_function.len(), 1);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn cranelift_backend_compiles_clock_now_effect_op_module() {
+        let module = sample_clock_now_module();
+        let manifest = default_abi_manifest(&module);
+        let backend = CraneliftBackend;
+
+        let artifact = backend
+            .compile_module(&module, &manifest, &BackendConfig::default())
+            .expect("Clock.now lowering should compile");
 
         assert_eq!(artifact.stats.per_function.len(), 1);
     }
