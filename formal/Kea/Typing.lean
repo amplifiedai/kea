@@ -24750,6 +24750,60 @@ theorem principalBoundarySoundTypingRunBundleSuite_noUnifyField_preconditioned_a
     (principalBoundarySoundNoUnifyFieldTypingRunBundleRoutes_routes
       (principalBoundarySoundTypingRunBundleSuite_noUnifyField h_suite h_no h_ok))).preconditionedAny
 
+/-- Suite wrapper: arbitrary-success expression bundled-hook preconditioned principality. -/
+theorem principalBoundarySoundTypingRunBundleSuite_expr_preconditioned_of_success
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    (h_suite : PrincipalBoundarySoundTypingRunBundleSuite h_app h_proj)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_hooks : UnifyHookPremises)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty :=
+  (principalBoundarySoundExprRunBundleRoutes_consequences
+    (principalBoundarySoundExprTypingRunBundleRoutes_routes
+      (principalBoundarySoundTypingRunBundleSuite_expr h_suite h_ok))).preconditioned h_hooks
+
+/-- Suite wrapper: arbitrary-success field bundled-hook preconditioned principality. -/
+theorem principalBoundarySoundTypingRunBundleSuite_field_preconditioned_of_success
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    (h_suite : PrincipalBoundarySoundTypingRunBundleSuite h_app h_proj)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_hooks : UnifyHookPremises)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf :=
+  (principalBoundarySoundFieldRunBundleRoutes_consequences
+    (principalBoundarySoundFieldTypingRunBundleRoutes_routes
+      (principalBoundarySoundTypingRunBundleSuite_field h_suite h_ok))).preconditioned h_hooks
+
+/-- Suite wrapper: no-unify expression bundled-hook preconditioned principality. -/
+theorem principalBoundarySoundTypingRunBundleSuite_noUnifyExpr_preconditioned_of_success
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    (h_suite : PrincipalBoundarySoundTypingRunBundleSuite h_app h_proj)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_hooks : UnifyHookPremises)
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty :=
+  (principalBoundarySoundNoUnifyExprRunBundleRoutes_consequences
+    (principalBoundarySoundNoUnifyExprTypingRunBundleRoutes_routes
+      (principalBoundarySoundTypingRunBundleSuite_noUnifyExpr h_suite h_no h_ok))).preconditioned h_hooks
+
+/-- Suite wrapper: no-unify field bundled-hook preconditioned principality. -/
+theorem principalBoundarySoundTypingRunBundleSuite_noUnifyField_preconditioned_of_success
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    (h_suite : PrincipalBoundarySoundTypingRunBundleSuite h_app h_proj)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_hooks : UnifyHookPremises)
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf :=
+  (principalBoundarySoundNoUnifyFieldRunBundleRoutes_consequences
+    (principalBoundarySoundNoUnifyFieldTypingRunBundleRoutes_routes
+      (principalBoundarySoundTypingRunBundleSuite_noUnifyField h_suite h_no h_ok))).preconditioned h_hooks
+
 /--
 Expression preconditioned↔core wrapper on the dual-routed proved master suite.
 -/
