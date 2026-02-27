@@ -330,6 +330,18 @@ fn module_path_from_entry(entry: &Path) -> String {
     pascal_case_segment(stem)
 }
 
+fn configured_prelude_modules() -> Vec<String> {
+    if let Ok(configured) = std::env::var("KEA_PRELUDE_MODULES") {
+        return configured
+            .split(',')
+            .map(str::trim)
+            .filter(|segment| !segment.is_empty())
+            .map(ToOwned::to_owned)
+            .collect();
+    }
+    vec!["Prelude".to_string()]
+}
+
 fn collect_project_modules(entry: &Path) -> Result<Vec<LoadedModule>, String> {
     struct VisitState {
         next_file_id: u32,
@@ -399,6 +411,13 @@ fn collect_project_modules(entry: &Path) -> Result<Vec<LoadedModule>, String> {
         loaded: HashMap::new(),
         order: Vec::new(),
     };
+
+    for prelude in configured_prelude_modules() {
+        if let Some(prelude_path) = resolver.resolve(&prelude) {
+            state.visit(&prelude, &prelude_path, &resolver)?;
+        }
+    }
+
     state.visit(&entry_module_path, &entry_path, &resolver)?;
 
     Ok(state
