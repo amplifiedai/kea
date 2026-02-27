@@ -37,6 +37,44 @@ Writing the stdlib in Kea from day one serves three purposes:
    exist. Self-hosting is "rewrite the compiler in Kea" — not
    "rewrite the compiler AND write a stdlib."
 
+## Documentation and Testing Convention
+
+**Every public stdlib function must have a `--|` doc comment.**
+This is a hard rule, not a nice-to-have. Doc comments are the
+stdlib's user-facing documentation and its future doctest suite.
+
+Convention:
+
+```kea
+--| Return the absolute value of an integer.
+--|
+--|   Int.abs(-5)   -- => 5
+--|   Int.abs(3)    -- => 3
+fn abs(x: Int) -> Int
+  if x < 0
+    -x
+  else
+    x
+```
+
+Rules:
+- First line: one-sentence description of what the function does.
+- Then a blank `--|` line, followed by one or more examples.
+- Examples use module-qualified calls (`Int.abs`, `List.map`) so
+  they read the same way user code does.
+- `-- => value` shows the expected result. When `kea test` gains
+  doctest extraction, these become executable tests automatically.
+- Effect signatures are part of the doc surface: if a function
+  has `-[Fail E]>`, the doc comment should mention failure cases.
+
+**Stdlib tests in Kea.** Once Fail/catch compiles end-to-end (0e
+Step 1), stdlib tests should be written in Kea using `assert`, not
+as Rust integration tests in `main.rs`. Each stdlib module gets a
+companion test file (e.g., `tests/stdlib/list_test.kea`) or inline
+tests once `test` block syntax lands. The Rust integration tests
+remain as smoke tests that the compilation pipeline works; behavioral
+correctness testing moves to Kea.
+
 ## Stdlib Tiers
 
 ### Tier 0: Pure (lands with 0d1)
