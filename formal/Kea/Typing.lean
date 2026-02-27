@@ -23956,6 +23956,114 @@ theorem principalRowPolyBoundarySoundBundle_noUnifyFieldRunBundleRoutes_of_succe
       h_bundle h_no h_ok
   }
 
+/--
+Direct hook-seeded entrypoint for arbitrary-success expression route pairs on
+the boundary+sound capstone surface.
+-/
+theorem principalBoundarySoundExprRunBundleRoutes_of_success
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalBoundarySoundExprRunBundleRoutes st fuel env e st' ty :=
+  principalRowPolyBoundarySoundBundle_exprRunBundleRoutes_of_success
+    (principalRowPolyBoundarySoundBundle_of_hooks h_app h_proj) h_ok
+
+/--
+Direct hook-seeded entrypoint for arbitrary-success field route pairs on the
+boundary+sound capstone surface.
+-/
+theorem principalBoundarySoundFieldRunBundleRoutes_of_success
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalBoundarySoundFieldRunBundleRoutes st fuel env fs st' rf :=
+  principalRowPolyBoundarySoundBundle_fieldRunBundleRoutes_of_success
+    (principalRowPolyBoundarySoundBundle_of_hooks h_app h_proj) h_ok
+
+/--
+Direct hook-seeded entrypoint for no-unify expression route pairs on the
+boundary+sound capstone surface.
+-/
+theorem principalBoundarySoundNoUnifyExprRunBundleRoutes_of_success
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalBoundarySoundNoUnifyExprRunBundleRoutes st fuel env e st' ty :=
+  principalRowPolyBoundarySoundBundle_noUnifyExprRunBundleRoutes_of_success
+    (principalRowPolyBoundarySoundBundle_of_hooks h_app h_proj) h_no h_ok
+
+/--
+Direct hook-seeded entrypoint for no-unify field route pairs on the
+boundary+sound capstone surface.
+-/
+theorem principalBoundarySoundNoUnifyFieldRunBundleRoutes_of_success
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalBoundarySoundNoUnifyFieldRunBundleRoutes st fuel env fs st' rf :=
+  principalRowPolyBoundarySoundBundle_noUnifyFieldRunBundleRoutes_of_success
+    (principalRowPolyBoundarySoundBundle_of_hooks h_app h_proj) h_no h_ok
+
+/--
+Bundled-hook entrypoint for arbitrary-success expression route pairs on the
+boundary+sound capstone surface.
+-/
+theorem principalBoundarySoundExprRunBundleRoutes_of_success_from_bundle
+    (h_hooks : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalBoundarySoundExprRunBundleRoutes st fuel env e st' ty :=
+  principalBoundarySoundExprRunBundleRoutes_of_success
+    (h_app := h_hooks.1) (h_proj := h_hooks.2) h_ok
+
+/--
+Bundled-hook entrypoint for arbitrary-success field route pairs on the
+boundary+sound capstone surface.
+-/
+theorem principalBoundarySoundFieldRunBundleRoutes_of_success_from_bundle
+    (h_hooks : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalBoundarySoundFieldRunBundleRoutes st fuel env fs st' rf :=
+  principalBoundarySoundFieldRunBundleRoutes_of_success
+    (h_app := h_hooks.1) (h_proj := h_hooks.2) h_ok
+
+/--
+Bundled-hook entrypoint for no-unify expression route pairs on the
+boundary+sound capstone surface.
+-/
+theorem principalBoundarySoundNoUnifyExprRunBundleRoutes_of_success_from_bundle
+    (h_hooks : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalBoundarySoundNoUnifyExprRunBundleRoutes st fuel env e st' ty :=
+  principalBoundarySoundNoUnifyExprRunBundleRoutes_of_success
+    (h_app := h_hooks.1) (h_proj := h_hooks.2) h_no h_ok
+
+/--
+Bundled-hook entrypoint for no-unify field route pairs on the boundary+sound
+capstone surface.
+-/
+theorem principalBoundarySoundNoUnifyFieldRunBundleRoutes_of_success_from_bundle
+    (h_hooks : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalBoundarySoundNoUnifyFieldRunBundleRoutes st fuel env fs st' rf :=
+  principalBoundarySoundNoUnifyFieldRunBundleRoutes_of_success
+    (h_app := h_hooks.1) (h_proj := h_hooks.2) h_no h_ok
+
 /-- One-hop projection of the arbitrary-success expression run-bundle witness from a boundary+sound route pair. -/
 theorem principalBoundarySoundExprRunBundleRoutes_runBundle
     {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
