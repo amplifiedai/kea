@@ -4657,6 +4657,98 @@ theorem principalBoundaryNoUnifyCapstoneSlices_field
   h_slice.2 h_no h_ok h_hooks
 
 /--
+One-hop projection: core expression principality from combined no-unify
+principal capstone slices.
+-/
+theorem principalBoundaryNoUnifyCapstoneSlices_expr_core
+    (h_slice : PrincipalBoundaryNoUnifyCapstoneSlices)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_hooks : UnifyHookPremises) :
+    PrincipalTypingSliceCore env e ty :=
+  (principalBoundaryNoUnifyCapstoneSlices_expr
+    h_slice h_no h_ok h_hooks).noUnify.core
+
+/--
+One-hop projection: preconditioned expression principality from combined
+no-unify principal capstone slices.
+-/
+theorem principalBoundaryNoUnifyCapstoneSlices_expr_preconditioned
+    (h_slice : PrincipalBoundaryNoUnifyCapstoneSlices)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_hooks : UnifyHookPremises) :
+    PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty :=
+  (principalBoundaryNoUnifyCapstoneSlices_expr
+    h_slice h_no h_ok h_hooks).noUnify.preconditioned
+
+/--
+One-hop projection: successful-run expression preconditioned↔core equivalence
+from combined no-unify principal capstone slices.
+-/
+theorem principalBoundaryNoUnifyCapstoneSlices_expr_preconditionedCoreIff
+    (h_slice : PrincipalBoundaryNoUnifyCapstoneSlices)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_hooks : UnifyHookPremises) :
+    (PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty
+      ↔ PrincipalTypingSliceCore env e ty) :=
+  (principalBoundaryNoUnifyCapstoneSlices_expr
+    h_slice h_no h_ok h_hooks).preconditionedCoreIff
+
+/--
+One-hop projection: core field principality from combined no-unify
+principal capstone slices.
+-/
+theorem principalBoundaryNoUnifyCapstoneSlices_field_core
+    (h_slice : PrincipalBoundaryNoUnifyCapstoneSlices)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_hooks : UnifyHookPremises) :
+    PrincipalFieldTypingSliceCore env fs rf :=
+  (principalBoundaryNoUnifyCapstoneSlices_field
+    h_slice h_no h_ok h_hooks).noUnify.core
+
+/--
+One-hop projection: preconditioned field principality from combined
+no-unify principal capstone slices.
+-/
+theorem principalBoundaryNoUnifyCapstoneSlices_field_preconditioned
+    (h_slice : PrincipalBoundaryNoUnifyCapstoneSlices)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_hooks : UnifyHookPremises) :
+    PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf :=
+  (principalBoundaryNoUnifyCapstoneSlices_field
+    h_slice h_no h_ok h_hooks).noUnify.preconditioned
+
+/--
+One-hop projection: successful-run field preconditioned↔core equivalence
+from combined no-unify principal capstone slices.
+-/
+theorem principalBoundaryNoUnifyCapstoneSlices_field_preconditionedCoreIff
+    (h_slice : PrincipalBoundaryNoUnifyCapstoneSlices)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_hooks : UnifyHookPremises) :
+    (PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSliceCore env fs rf) :=
+  (principalBoundaryNoUnifyCapstoneSlices_field
+    h_slice h_no h_ok h_hooks).preconditionedCoreIff
+
+/--
 `HasTypeU` lift of non-app/proj recursive soundness: on the fragment that never
 executes unification branches, algorithmic inference results are declaratively
 typable in the unification-aware judgment as well.
