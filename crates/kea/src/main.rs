@@ -1055,6 +1055,20 @@ mod tests {
     }
 
     #[test]
+    fn compile_and_execute_dot_method_dispatch_on_field_access_receiver_exit_code() {
+        let source_path = write_temp_source(
+            "record User\n  age: Int\n\nrecord Wrap\n  inner: User\n\nfn inc(self: User) -> User\n  User { ..self, age: self.age + 1 }\n\nfn main() -> Int\n  let wrapped = Wrap { inner: User { age: 41 } }\n  wrapped.inner.inc().age\n",
+            "kea-cli-dot-method-dispatch-field-receiver",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_row_polymorphic_record_field_access_exit_code() {
         let source_path = write_temp_source(
             "record User\n  age: Int\n  score: Int\n\nfn get_age(u: { age: Int | r }) -> Int\n  u.age\n\nfn main() -> Int\n  let user = User { age: 41, score: 1 }\n  get_age(user)\n",

@@ -4463,8 +4463,13 @@ impl Parser {
                 .chars()
                 .next()
                 .is_some_and(|ch| ch.is_ascii_uppercase()),
-            // Preserve explicit qualified chains like `xs.Trait::method()`.
-            ExprKind::FieldAccess { .. } => false,
+            // Preserve explicit qualified chains like `xs.Trait::method()`,
+            // but still allow ordinary value chains like `x.inner.method()`.
+            ExprKind::FieldAccess { field, .. } => !field
+                .node
+                .chars()
+                .next()
+                .is_some_and(|ch| ch.is_ascii_uppercase()),
             _ => true,
         }
     }
@@ -5110,6 +5115,25 @@ mod tests {
                 assert_eq!(args.len(), 2);
                 assert_eq!(args[0].value.node, ExprKind::Var("r".into()));
                 assert_eq!(args[1].value.node, ExprKind::Var("f".into()));
+            }
+            other => panic!("expected Call, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_dot_call_with_field_access_receiver_desugars() {
+        let expr = parse("w.inner.inc()");
+        match &expr.node {
+            ExprKind::Call { func, args } => {
+                assert_eq!(func.node, ExprKind::Var("inc".into()));
+                assert_eq!(args.len(), 1);
+                match &args[0].value.node {
+                    ExprKind::FieldAccess { expr, field } => {
+                        assert_eq!(expr.node, ExprKind::Var("w".into()));
+                        assert_eq!(field.node, "inner");
+                    }
+                    other => panic!("expected field access receiver arg, got {other:?}"),
+                }
             }
             other => panic!("expected Call, got {other:?}"),
         }
