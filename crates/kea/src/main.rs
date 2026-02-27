@@ -1794,6 +1794,48 @@ mod tests {
     }
 
     #[test]
+    fn compile_and_execute_int8_main_exit_code() {
+        let source_path = write_temp_source(
+            "fn main() -> Int8\n  42\n",
+            "kea-cli-int8-main",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("Int8 main run should succeed");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_uint16_main_exit_code() {
+        let source_path = write_temp_source(
+            "fn main() -> UInt16\n  let x: UInt16 = 500\n  x\n",
+            "kea-cli-uint16-main",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("UInt16 main run should succeed");
+        assert_eq!(run.exit_code, 500);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_int8_call_arg_coercion_exit_code() {
+        let source_path = write_temp_source(
+            "fn id(x: Int8) -> Int8\n  x\n\nfn main() -> Int8\n  id(42)\n",
+            "kea-cli-int8-call-arg",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("Int8 call argument coercion should succeed");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_wrapping_add_method_exit_code() {
         let source_path = write_temp_source(
             "fn main() -> Int\n  20.wrapping_add(22)\n",

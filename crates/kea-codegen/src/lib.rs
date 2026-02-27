@@ -24,7 +24,7 @@ use kea_mir::{
     MirBinaryOp, MirCallee, MirEffectOpClass, MirFunction, MirInst, MirLiteral, MirModule,
     MirTerminator, MirUnaryOp, MirValueId, lower_hir_module,
 };
-use kea_types::{EffectRow, Type};
+use kea_types::{EffectRow, FloatWidth, IntWidth, Signedness, Type};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BackendConfig {
@@ -267,6 +267,7 @@ fn opt_level_setting(level: OptimizationLevel) -> &'static str {
 
 #[derive(Debug, Clone)]
 struct RuntimeFunctionSig {
+    runtime_params: Vec<Type>,
     logical_return: Type,
     runtime_return: Type,
     fail_result_abi: bool,
@@ -286,6 +287,7 @@ fn runtime_function_signature(function: &MirFunction) -> RuntimeFunctionSig {
         && let Some(err_ty) = fail_payload_type(&function.signature.effects)
     {
         return RuntimeFunctionSig {
+            runtime_params: function.signature.params.clone(),
             logical_return: function.signature.ret.clone(),
             runtime_return: Type::Result(
                 Box::new(function.signature.ret.clone()),
@@ -296,6 +298,7 @@ fn runtime_function_signature(function: &MirFunction) -> RuntimeFunctionSig {
     }
 
     RuntimeFunctionSig {
+        runtime_params: function.signature.params.clone(),
         logical_return: function.signature.ret.clone(),
         runtime_return: function.signature.ret.clone(),
         fail_result_abi: false,
@@ -997,10 +1000,36 @@ fn execute_mir_main_jit(module: &MirModule, config: &BackendConfig) -> Result<i3
             let tag = *(result_ptr as *const i32);
             if tag == 0 {
                 match main_runtime_sig.logical_return {
-                    Type::Int | Type::IntN(_, _) => {
+                    Type::Int => {
                         let payload = *((result_ptr as *const u8).add(8) as *const i64);
                         payload as i32
                     }
+                    Type::IntN(width, signedness) => match (width, signedness) {
+                        (IntWidth::I8, Signedness::Signed) => {
+                            *((result_ptr as *const u8).add(8) as *const i8) as i32
+                        }
+                        (IntWidth::I8, Signedness::Unsigned) => {
+                            *((result_ptr as *const u8).add(8)) as i32
+                        }
+                        (IntWidth::I16, Signedness::Signed) => {
+                            *((result_ptr as *const u8).add(8) as *const i16) as i32
+                        }
+                        (IntWidth::I16, Signedness::Unsigned) => {
+                            *((result_ptr as *const u8).add(8) as *const u16) as i32
+                        }
+                        (IntWidth::I32, Signedness::Signed) => {
+                            *((result_ptr as *const u8).add(8) as *const i32)
+                        }
+                        (IntWidth::I32, Signedness::Unsigned) => {
+                            *((result_ptr as *const u8).add(8) as *const u32) as i32
+                        }
+                        (IntWidth::I64, Signedness::Signed) => {
+                            *((result_ptr as *const u8).add(8) as *const i64) as i32
+                        }
+                        (IntWidth::I64, Signedness::Unsigned) => {
+                            *((result_ptr as *const u8).add(8) as *const u64) as i32
+                        }
+                    },
                     Type::Unit => 0,
                     _ => unreachable!("validated logical main return type above"),
                 }
@@ -1017,11 +1046,48 @@ fn execute_mir_main_jit(module: &MirModule, config: &BackendConfig) -> Result<i3
                         std::mem::transmute::<*const u8, extern "C" fn() -> i32>(entrypoint);
                     main_fn()
                 }
-                Type::IntN(_, _) => {
-                    let main_fn =
-                        std::mem::transmute::<*const u8, extern "C" fn() -> i64>(entrypoint);
-                    main_fn() as i32
-                }
+                Type::IntN(width, signedness) => match (width, signedness) {
+                    (IntWidth::I8, Signedness::Signed) => {
+                        let main_fn =
+                            std::mem::transmute::<*const u8, extern "C" fn() -> i8>(entrypoint);
+                        main_fn() as i32
+                    }
+                    (IntWidth::I8, Signedness::Unsigned) => {
+                        let main_fn =
+                            std::mem::transmute::<*const u8, extern "C" fn() -> u8>(entrypoint);
+                        main_fn() as i32
+                    }
+                    (IntWidth::I16, Signedness::Signed) => {
+                        let main_fn =
+                            std::mem::transmute::<*const u8, extern "C" fn() -> i16>(entrypoint);
+                        main_fn() as i32
+                    }
+                    (IntWidth::I16, Signedness::Unsigned) => {
+                        let main_fn =
+                            std::mem::transmute::<*const u8, extern "C" fn() -> u16>(entrypoint);
+                        main_fn() as i32
+                    }
+                    (IntWidth::I32, Signedness::Signed) => {
+                        let main_fn =
+                            std::mem::transmute::<*const u8, extern "C" fn() -> i32>(entrypoint);
+                        main_fn()
+                    }
+                    (IntWidth::I32, Signedness::Unsigned) => {
+                        let main_fn =
+                            std::mem::transmute::<*const u8, extern "C" fn() -> u32>(entrypoint);
+                        main_fn() as i32
+                    }
+                    (IntWidth::I64, Signedness::Signed) => {
+                        let main_fn =
+                            std::mem::transmute::<*const u8, extern "C" fn() -> i64>(entrypoint);
+                        main_fn() as i32
+                    }
+                    (IntWidth::I64, Signedness::Unsigned) => {
+                        let main_fn =
+                            std::mem::transmute::<*const u8, extern "C" fn() -> u64>(entrypoint);
+                        main_fn() as i32
+                    }
+                },
                 Type::Unit => {
                     let main_fn =
                         std::mem::transmute::<*const u8, extern "C" fn() -> i32>(entrypoint);
@@ -1149,8 +1215,10 @@ fn collect_external_call_signatures<M: Module>(
 
 fn clif_type(ty: &Type) -> Result<cranelift::prelude::Type, CodegenError> {
     match ty {
-        Type::Int | Type::IntN(_, _) => Ok(types::I64),
-        Type::Float | Type::FloatN(_) => Ok(types::F64),
+        Type::Int => Ok(types::I64),
+        Type::IntN(width, _) => clif_int_type(*width),
+        Type::Float => Ok(types::F64),
+        Type::FloatN(width) => clif_float_type(*width),
         Type::Bool => Ok(types::I8),
         Type::Unit => Ok(types::I8),
         Type::String => Ok(types::I64),
@@ -1169,6 +1237,59 @@ fn clif_type(ty: &Type) -> Result<cranelift::prelude::Type, CodegenError> {
             ty: unsupported.to_string(),
         }),
     }
+}
+
+fn clif_int_type(width: IntWidth) -> Result<cranelift::prelude::Type, CodegenError> {
+    match width {
+        IntWidth::I8 => Ok(types::I8),
+        IntWidth::I16 => Ok(types::I16),
+        IntWidth::I32 => Ok(types::I32),
+        IntWidth::I64 => Ok(types::I64),
+    }
+}
+
+fn clif_float_type(width: FloatWidth) -> Result<cranelift::prelude::Type, CodegenError> {
+    match width {
+        // Bootstrap uses f32 for Float16 paths until full f16 lowering lands.
+        FloatWidth::F16 | FloatWidth::F32 => Ok(types::F32),
+        FloatWidth::F64 => Ok(types::F64),
+    }
+}
+
+fn int_signedness(ty: &Type) -> Option<Signedness> {
+    match ty {
+        Type::Int => Some(Signedness::Signed),
+        Type::IntN(_, signedness) => Some(*signedness),
+        _ => None,
+    }
+}
+
+fn coerce_value_to_type(
+    builder: &mut FunctionBuilder,
+    value: Value,
+    expected_ty: &Type,
+) -> Result<Value, CodegenError> {
+    let expected_clif_ty = clif_type(expected_ty)?;
+    let actual_ty = builder.func.dfg.value_type(value);
+    if actual_ty == expected_clif_ty {
+        return Ok(value);
+    }
+
+    if actual_ty.is_int() && expected_clif_ty.is_int() {
+        if actual_ty.bits() < expected_clif_ty.bits() {
+            let widened = if int_signedness(expected_ty) == Some(Signedness::Signed) {
+                builder.ins().sextend(expected_clif_ty, value)
+            } else {
+                builder.ins().uextend(expected_clif_ty, value)
+            };
+            return Ok(widened);
+        }
+        if actual_ty.bits() > expected_clif_ty.bits() {
+            return Ok(builder.ins().ireduce(expected_clif_ty, value));
+        }
+    }
+
+    Ok(coerce_value_to_clif_type(builder, value, expected_clif_ty))
 }
 
 fn coerce_value_to_clif_type(
@@ -1212,8 +1333,7 @@ fn lower_result_allocation(
     builder
         .ins()
         .store(MemFlags::new(), tag_value, result_ptr, 0);
-    let payload_clif_ty = clif_type(payload_ty)?;
-    let payload = coerce_value_to_clif_type(builder, payload, payload_clif_ty);
+    let payload = coerce_value_to_type(builder, payload, payload_ty)?;
     builder.ins().store(MemFlags::new(), payload, result_ptr, 8);
     Ok(result_ptr)
 }
@@ -1794,21 +1914,45 @@ fn lower_instruction<M: Module>(
             capture_fail_result,
             ..
         } => {
+            if arg_types.len() != args.len() {
+                return Err(CodegenError::UnsupportedMir {
+                    function: function_name.to_string(),
+                    detail: format!(
+                        "call has {} args but {} arg types",
+                        args.len(),
+                        arg_types.len()
+                    ),
+                });
+            }
             let mut lowered_args = Vec::with_capacity(args.len());
-            for arg in args {
-                lowered_args.push(get_value(values, function_name, arg)?);
+            for (arg, arg_ty) in args.iter().zip(arg_types.iter()) {
+                let raw = get_value(values, function_name, arg)?;
+                lowered_args.push(coerce_value_to_type(builder, raw, arg_ty)?);
             }
 
             let mut callee_uses_fail_result_abi = false;
             let call_result = match callee {
                 MirCallee::Local(name) => {
-                    callee_uses_fail_result_abi = ctx
-                        .runtime_signatures
-                        .get(name)
-                        .ok_or_else(|| CodegenError::UnknownFunction {
+                    let runtime_sig = ctx.runtime_signatures.get(name).ok_or_else(|| {
+                        CodegenError::UnknownFunction {
                             function: name.clone(),
-                        })?
-                        .fail_result_abi;
+                        }
+                    })?;
+                    callee_uses_fail_result_abi = runtime_sig.fail_result_abi;
+                    if runtime_sig.runtime_params.len() != lowered_args.len() {
+                        return Err(CodegenError::UnsupportedMir {
+                            function: function_name.to_string(),
+                            detail: format!(
+                                "local call `{name}` has {} args but runtime signature expects {}",
+                                lowered_args.len(),
+                                runtime_sig.runtime_params.len()
+                            ),
+                        });
+                    }
+                    for (idx, expected_ty) in runtime_sig.runtime_params.iter().enumerate() {
+                        lowered_args[idx] =
+                            coerce_value_to_type(builder, lowered_args[idx], expected_ty)?;
+                    }
                     let callee_id =
                         *ctx.func_ids
                             .get(name)
@@ -1820,16 +1964,6 @@ fn lower_instruction<M: Module>(
                     builder.inst_results(call).first().copied()
                 }
                 MirCallee::External(name) => {
-                    if arg_types.len() != args.len() {
-                        return Err(CodegenError::UnsupportedMir {
-                            function: function_name.to_string(),
-                            detail: format!(
-                                "external call `{name}` has {} args but {} arg types",
-                                args.len(),
-                                arg_types.len()
-                            ),
-                        });
-                    }
                     let callee_id = *ctx.external_func_ids.get(name).ok_or_else(|| {
                         CodegenError::UnknownFunction {
                             function: name.clone(),
@@ -1846,16 +1980,6 @@ fn lower_instruction<M: Module>(
                 }
                 MirCallee::Value(_) => {
                     callee_uses_fail_result_abi = *callee_fail_result_abi;
-                    if arg_types.len() != args.len() {
-                        return Err(CodegenError::UnsupportedMir {
-                            function: function_name.to_string(),
-                            detail: format!(
-                                "indirect call has {} args but {} arg types",
-                                args.len(),
-                                arg_types.len()
-                            ),
-                        });
-                    }
                     let callee_value = if let MirCallee::Value(callee_value) = callee {
                         get_value(values, function_name, callee_value)?
                     } else {
@@ -2882,9 +3006,14 @@ fn lower_terminator(
                 detail: "non-unit function returned without value".to_string(),
             })?;
             let mut value = get_value(ctx.values, ctx.function_name, value_id)?;
-            if ctx.function_name == "main" && ctx.current_runtime_sig.logical_return == Type::Int {
-                value = coerce_value_to_clif_type(builder, value, types::I32);
-            }
+            let expected_ret_clif_ty =
+                if ctx.function_name == "main" && ctx.current_runtime_sig.logical_return == Type::Int
+                {
+                    types::I32
+                } else {
+                    clif_type(&ctx.current_runtime_sig.runtime_return)?
+                };
+            value = coerce_value_to_clif_type(builder, value, expected_ret_clif_ty);
             builder.ins().return_(&[value]);
             Ok(())
         }
@@ -3411,6 +3540,32 @@ mod tests {
         MirRecordLayout, MirSumLayout, MirTerminator, MirVariantFieldLayout, MirVariantLayout,
     };
     use kea_types::{FunctionType, Label, RecordType, RowType, SumType};
+
+    #[test]
+    fn clif_type_maps_precision_int_widths() {
+        assert_eq!(
+            clif_type(&Type::IntN(IntWidth::I8, Signedness::Signed)).unwrap(),
+            types::I8
+        );
+        assert_eq!(
+            clif_type(&Type::IntN(IntWidth::I16, Signedness::Unsigned)).unwrap(),
+            types::I16
+        );
+        assert_eq!(
+            clif_type(&Type::IntN(IntWidth::I32, Signedness::Signed)).unwrap(),
+            types::I32
+        );
+        assert_eq!(
+            clif_type(&Type::IntN(IntWidth::I64, Signedness::Unsigned)).unwrap(),
+            types::I64
+        );
+    }
+
+    #[test]
+    fn clif_type_maps_precision_float_widths() {
+        assert_eq!(clif_type(&Type::FloatN(FloatWidth::F32)).unwrap(), types::F32);
+        assert_eq!(clif_type(&Type::FloatN(FloatWidth::F64)).unwrap(), types::F64);
+    }
 
     fn sample_stats_module() -> MirModule {
         MirModule {
