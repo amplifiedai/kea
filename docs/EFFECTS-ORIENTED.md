@@ -261,6 +261,98 @@ type system carries it through.
 
 ---
 
+## Effects are interfaces on computation
+
+In most languages, if you want testable I/O, you define an
+interface, inject it through constructors, wire up a DI container,
+and create mock implementations. That's a lot of machinery to say
+"this function reads files and I want to swap out the implementation."
+
+Effects give you the same thing for free. A function's effect
+signature *is* the interface:
+
+```kea
+fn process_config(path: String) -[IO, Fail ParseError]> Config
+  let data = IO.read_file(path)
+  Config.parse(data)?
+```
+
+No interface definition. No mock class. No DI container. No
+constructor parameter. The caller provides the implementation
+by wrapping the call in a handler:
+
+```kea
+-- Production: real IO, handled by the runtime
+let config = process_config("app.toml")
+
+-- Test: fake filesystem
+handle process_config("app.toml")
+  IO.read_file(path) -> resume "[db]\nurl = localhost"
+```
+
+The critical difference from traditional interfaces: effects
+compose without wiring. If your function needs
+`[IO, State Config, Log]`, you don't need a constructor that
+takes three interface parameters and a factory that wires them
+together. You just write the function. Each handler wraps at the
+call site, they nest naturally, and the type checker ensures
+nothing is unhandled.
+
+---
+
+## Effects and traits: two dimensions of polymorphism
+
+Kea has both traits (ad-hoc polymorphism over types) and effects
+(polymorphism over computation). Most languages give you one or
+the other. Having both means you can abstract over *what a type
+can do* and *what a function needs from its environment*
+simultaneously.
+
+Traits say "this type supports these operations":
+
+```kea
+trait Cacheable
+  fn cache_key(self: Self) -> String
+```
+
+Effects say "this function needs these capabilities":
+
+```kea
+effect Cache K V
+  fn lookup(key: K) -> Option V
+  fn store(key: K, value: V) -> Unit
+```
+
+Together they express things neither can alone:
+
+```kea
+fn cached(key: K, compute: () -[e]> V) -[Cache K V, e]> V
+  where K: Cacheable
+  case Cache.lookup(key.cache_key())
+    Some(v) -> v
+    None ->
+      let v = compute()
+      Cache.store(key.cache_key(), v)
+      v
+```
+
+The trait constrains which types can be cached. The effect
+abstracts over how caching is implemented. In production, the
+handler hits Redis. In tests, it's an in-memory map. In
+benchmarks, it's a no-op that always misses. The function is
+polymorphic in both dimensions at once.
+
+This is also why Kea has no `Monad`, `Functor`, or monad
+transformers. In Haskell, `MonadState`, `MonadReader`, `MonadIO`
+are typeclasses that encode effects — and combining them requires
+transformer stacks or mtl-style plumbing. In Kea, `State`,
+`Reader`, `IO` are effects that compose by listing them in the
+arrow: `-[State Int, Reader Config, IO]>`. No transformers, no
+lifting, no `liftIO`. Traits handle polymorphism over types.
+Effects handle polymorphism over computation. Each does its job.
+
+---
+
 ## Records are structurally typed
 
 Functions can require specific fields without requiring a
