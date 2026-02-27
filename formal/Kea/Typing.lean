@@ -5092,6 +5092,129 @@ theorem principalPreconditionedAllHooksCapstoneSlices_field
   h_slice.2 h_app0 h_proj0 h_ok
 
 /--
+Coherence (general all-hooks expression capstone): any two hook witnesses yield
+equivalent preconditioned principality on the same successful run.
+-/
+theorem principalPreconditionedExprAllHooksCapstone_hook_irrelevant
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_cap : PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty)
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook} :
+    (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+      ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) := by
+  constructor
+  · intro h_pre
+    have h_core : PrincipalTypingSliceCore env e ty :=
+      (h_cap.preconditionedAnyIffCore h_app₁ h_proj₁).1 h_pre
+    exact (h_cap.preconditionedAnyIffCore h_app₂ h_proj₂).2 h_core
+  · intro h_pre
+    have h_core : PrincipalTypingSliceCore env e ty :=
+      (h_cap.preconditionedAnyIffCore h_app₂ h_proj₂).1 h_pre
+    exact (h_cap.preconditionedAnyIffCore h_app₁ h_proj₁).2 h_core
+
+/--
+Coherence (general all-hooks field capstone): any two hook witnesses yield
+equivalent preconditioned field principality on the same successful run.
+-/
+theorem principalPreconditionedFieldAllHooksCapstone_hook_irrelevant
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_cap : PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf)
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook} :
+    (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) := by
+  constructor
+  · intro h_pre
+    have h_core : PrincipalFieldTypingSliceCore env fs rf :=
+      (h_cap.preconditionedAnyIffCore h_app₁ h_proj₁).1 h_pre
+    exact (h_cap.preconditionedAnyIffCore h_app₂ h_proj₂).2 h_core
+  · intro h_pre
+    have h_core : PrincipalFieldTypingSliceCore env fs rf :=
+      (h_cap.preconditionedAnyIffCore h_app₂ h_proj₂).1 h_pre
+    exact (h_cap.preconditionedAnyIffCore h_app₁ h_proj₁).2 h_core
+
+/--
+Derive the global preconditioned hook-irrelevance slices directly from general
+all-hooks capstone slices.
+-/
+theorem principalPreconditionedHookIrrelevanceSlices_of_allHooksCapstones
+    (h_caps : PrincipalPreconditionedAllHooksCapstoneSlices) :
+    PrincipalPreconditionedHookIrrelevanceSlices := by
+  refine ⟨?_, ?_⟩
+  · intro h_app₁ h_proj₁ h_app₂ h_proj₂ st fuel env e st' ty h_ok
+    exact principalPreconditionedExprAllHooksCapstone_hook_irrelevant
+      (principalPreconditionedAllHooksCapstoneSlices_expr
+        h_caps h_app₁ h_proj₁ h_ok)
+  · intro h_app₁ h_proj₁ h_app₂ h_proj₂ st fuel env fs st' rf h_ok
+    exact principalPreconditionedFieldAllHooksCapstone_hook_irrelevant
+      (principalPreconditionedAllHooksCapstoneSlices_field
+        h_caps h_app₁ h_proj₁ h_ok)
+
+/--
+Top-level suite for the general all-hooks successful-run layer.
+-/
+structure PrincipalPreconditionedAllHooksSuite : Prop where
+  capstones : PrincipalPreconditionedAllHooksCapstoneSlices
+  irrelevance : PrincipalPreconditionedHookIrrelevanceSlices
+
+/-- The general all-hooks successful-run suite is fully proved. -/
+theorem principalPreconditionedAllHooksSuite_proved :
+    PrincipalPreconditionedAllHooksSuite := by
+  refine {
+    capstones := principalPreconditionedAllHooksCapstoneSlices_proved
+    irrelevance := principalPreconditionedHookIrrelevanceSlices_of_allHooksCapstones
+      principalPreconditionedAllHooksCapstoneSlices_proved
+  }
+
+/-- One-hop expression capstone projection from general all-hooks suite. -/
+theorem principalPreconditionedAllHooksSuite_capstone_expr
+    (h_suite : PrincipalPreconditionedAllHooksSuite)
+    (h_app0 : AppUnifySoundHook) (h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty :=
+  principalPreconditionedAllHooksCapstoneSlices_expr
+    h_suite.capstones h_app0 h_proj0 h_ok
+
+/-- One-hop field capstone projection from general all-hooks suite. -/
+theorem principalPreconditionedAllHooksSuite_capstone_field
+    (h_suite : PrincipalPreconditionedAllHooksSuite)
+    (h_app0 : AppUnifySoundHook) (h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
+  principalPreconditionedAllHooksCapstoneSlices_field
+    h_suite.capstones h_app0 h_proj0 h_ok
+
+/-- One-hop expression irrelevance projection from general all-hooks suite. -/
+theorem principalPreconditionedAllHooksSuite_irrelevance_expr
+    (h_suite : PrincipalPreconditionedAllHooksSuite)
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+      ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) :=
+  principalPreconditionedHookIrrelevanceSlices_expr h_suite.irrelevance h_ok
+
+/-- One-hop field irrelevance projection from general all-hooks suite. -/
+theorem principalPreconditionedAllHooksSuite_irrelevance_field
+    (h_suite : PrincipalPreconditionedAllHooksSuite)
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
+  principalPreconditionedHookIrrelevanceSlices_field h_suite.irrelevance h_ok
+
+/--
 Top-level M4 principal vacuity suite.
 
 This packages:
