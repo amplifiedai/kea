@@ -788,9 +788,21 @@ fn lower_hir_function(
                 }
             }
         }
-        if let Some(Type::Sum(sum_ty)) = params.get(index) {
-            ctx.sum_value_types
-                .insert(MirValueId(index as u32), sum_ty.name.clone());
+        if let Some(param_ty) = params.get(index) {
+            match param_ty {
+                Type::Sum(sum_ty) => {
+                    ctx.sum_value_types
+                        .insert(MirValueId(index as u32), sum_ty.name.clone());
+                }
+                // Result constructors are always payload variants in bootstrap
+                // and use pointer-backed runtime layout, so tag-load rewrites
+                // are valid for Result-typed parameters.
+                Type::Result(_, _) => {
+                    ctx.sum_value_types
+                        .insert(MirValueId(index as u32), "Result".to_string());
+                }
+                _ => {}
+            }
         }
     }
     let return_value = ctx.lower_expr(&function.body);

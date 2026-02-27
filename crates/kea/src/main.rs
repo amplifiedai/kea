@@ -503,6 +503,25 @@ mod tests {
     }
 
     #[test]
+    fn compile_and_execute_real_stdlib_result_helpers_exit_code() {
+        let project_dir = temp_workspace_project_dir("kea-cli-project-real-stdlib-result");
+        let src_dir = project_dir.join("src");
+        std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+
+        let app_path = src_dir.join("app.kea");
+        std::fs::write(
+            &app_path,
+            "use Result\n\nfn main() -> Int\n  if Result.unwrap_or(Ok(42), 0) == 42 and Result.is_ok(Ok(1)) and Result.is_err(Err(2))\n    42\n  else\n    0\n",
+        )
+        .expect("app module write should succeed");
+
+        let run = run_file(&app_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_dir_all(project_dir);
+    }
+
+    #[test]
     fn compile_and_execute_real_stdlib_int_module_exit_code() {
         let project_dir = temp_workspace_project_dir("kea-cli-project-real-stdlib-numeric");
         let src_dir = project_dir.join("src");

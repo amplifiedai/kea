@@ -1,0 +1,14 @@
+fn unwrap_or(res: Result(Int, Int), fallback: Int) -> Int
+  case res
+    Ok(value) -> value
+    Err(_) -> fallback
+
+fn is_ok(res: Result(Int, Int)) -> Bool
+  case res
+    Err(_) -> false
+    _ -> true
+
+fn is_err(res: Result(Int, Int)) -> Bool
+  case res
+    Err(_) -> true
+    _ -> false
