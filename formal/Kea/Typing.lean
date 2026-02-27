@@ -26817,6 +26817,97 @@ theorem principalBoundarySoundFullVerticalSuite_of_success_via_typingRunBundleSu
     (h_app := h_seed.1) (h_proj := h_seed.2) h_ok_expr h_ok_field
 
 /--
+Route-pair packaging for `FullVertical`: one witness carries both the direct
+typing-suite route and the row-poly-boundary route.
+-/
+structure PrincipalBoundarySoundFullVerticalRoutes
+    (st : UnifyState) (fuel : Nat) (env : TermEnv)
+    (e : CoreExpr) (fs : CoreFields)
+    (stExpr : UnifyState) (ty : Ty)
+    (stField : UnifyState) (rf : RowFields) : Prop where
+  viaTypingSuite :
+    PrincipalBoundarySoundFullVerticalSuite st fuel env e fs stExpr ty stField rf
+  viaRowPolyBundle :
+    PrincipalBoundarySoundFullVerticalSuite st fuel env e fs stExpr ty stField rf
+
+/--
+Construct `FullVertical` route-pair packaging from successful expression/field
+runs and a row-poly boundary+sound bundle.
+-/
+theorem principalBoundarySoundFullVerticalRoutes_of_success
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    (h_bundle : PrincipalRowPolyBoundarySoundBundle h_app h_proj)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundFullVerticalRoutes st fuel env e fs stExpr ty stField rf := by
+  refine {
+    viaTypingSuite := principalBoundarySoundFullVerticalSuite_of_success_via_typingRunBundleSuite
+      (h_app := h_app) (h_proj := h_proj) h_ok_expr h_ok_field
+    viaRowPolyBundle := principalBoundarySoundFullVerticalSuite_of_success_via_rowPolyBoundarySoundBundle
+      h_bundle h_ok_expr h_ok_field
+  }
+
+/-- Bundled-hook constructor alias for `FullVertical` route-pair packaging. -/
+theorem principalBoundarySoundFullVerticalRoutes_of_success_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundFullVerticalRoutes st fuel env e fs stExpr ty stField rf :=
+  principalBoundarySoundFullVerticalRoutes_of_success
+    (h_bundle := principalRowPolyBoundarySoundBundle_of_hook_bundle h_seed)
+    h_ok_expr h_ok_field
+
+/--
+Dual-routed bundled-hook constructor alias for `FullVertical` route-pair
+packaging.
+-/
+theorem principalBoundarySoundFullVerticalRoutes_of_success_via_dualConsequenceSlices_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundFullVerticalRoutes st fuel env e fs stExpr ty stField rf := by
+  refine {
+    viaTypingSuite :=
+      principalBoundarySoundFullVerticalSuite_of_success_via_typingRunBundleSuite_via_dualConsequenceSlices_from_bundle
+        h_seed h_ok_expr h_ok_field
+    viaRowPolyBundle :=
+      principalBoundarySoundFullVerticalSuite_of_success_via_rowPolyBoundarySoundBundle_via_dualConsequenceSlices_from_bundle
+        h_seed h_ok_expr h_ok_field
+  }
+
+/-- One-hop projection: typing-suite `FullVertical` route from the route pair. -/
+theorem principalBoundarySoundFullVerticalRoutes_viaTypingSuite
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_routes : PrincipalBoundarySoundFullVerticalRoutes st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundFullVerticalSuite st fuel env e fs stExpr ty stField rf :=
+  h_routes.viaTypingSuite
+
+/-- One-hop projection: row-poly `FullVertical` route from the route pair. -/
+theorem principalBoundarySoundFullVerticalRoutes_viaRowPolyBundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_routes : PrincipalBoundarySoundFullVerticalRoutes st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundFullVerticalSuite st fuel env e fs stExpr ty stField rf :=
+  h_routes.viaRowPolyBundle
+
+/--
 The row-poly full+vertical capstone is equivalent to providing:
 - a full principal boundary soundness suite witness, and
 - a hook-free vertical app/projection slice witness.
