@@ -4466,6 +4466,35 @@ theorem principalBoundaryNoUnifyExprCapstone_of_success_via_suite
       principalBoundaryBridgeSuite_proved h_hooks st fuel env e st' ty h_ok
   }
 
+/--
+Unbundled-hook entrypoint for the no-unify expression capstone.
+-/
+theorem principalBoundaryNoUnifyExprCapstone_of_success
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    ∀ h_app h_proj,
+      PrincipalBoundaryNoUnifyExprCapstone
+        h_app h_proj st fuel env e st' ty := by
+  intro h_app h_proj
+  exact principalBoundaryNoUnifyExprCapstone_of_success_via_suite
+    h_no h_ok ⟨h_app, h_proj⟩
+
+/--
+Bundle-entry variant of `principalBoundaryNoUnifyExprCapstone_of_success`.
+-/
+theorem principalBoundaryNoUnifyExprCapstone_of_success_from_hook_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_hooks : UnifyHookPremises) :
+    PrincipalBoundaryNoUnifyExprCapstone
+      h_hooks.1 h_hooks.2 st fuel env e st' ty := by
+  exact principalBoundaryNoUnifyExprCapstone_of_success
+    h_no h_ok h_hooks.1 h_hooks.2
+
 /-- One-hop projection: core expression principality from the expression capstone. -/
 theorem principalBoundaryNoUnifyExprCapstone_core
     {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
@@ -4546,6 +4575,35 @@ theorem principalBoundaryNoUnifyFieldCapstone_of_success_via_suite
     preconditionedCoreIff := principalBoundaryBridgeSuite_preconditionedCoreIff_field
       principalBoundaryBridgeSuite_proved h_hooks st fuel env fs st' rf h_ok
   }
+
+/--
+Unbundled-hook entrypoint for the no-unify field capstone.
+-/
+theorem principalBoundaryNoUnifyFieldCapstone_of_success
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    ∀ h_app h_proj,
+      PrincipalBoundaryNoUnifyFieldCapstone
+        h_app h_proj st fuel env fs st' rf := by
+  intro h_app h_proj
+  exact principalBoundaryNoUnifyFieldCapstone_of_success_via_suite
+    h_no h_ok ⟨h_app, h_proj⟩
+
+/--
+Bundle-entry variant of `principalBoundaryNoUnifyFieldCapstone_of_success`.
+-/
+theorem principalBoundaryNoUnifyFieldCapstone_of_success_from_hook_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_hooks : UnifyHookPremises) :
+    PrincipalBoundaryNoUnifyFieldCapstone
+      h_hooks.1 h_hooks.2 st fuel env fs st' rf := by
+  exact principalBoundaryNoUnifyFieldCapstone_of_success
+    h_no h_ok h_hooks.1 h_hooks.2
 
 /-- One-hop projection: core field principality from the field capstone. -/
 theorem principalBoundaryNoUnifyFieldCapstone_core
