@@ -3252,6 +3252,48 @@ theorem inferExprUnify_type_unique_preconditioned
   exact h_eq.symm
 
 /--
+Packaged principal-typing slice on the current preconditioned boundary.
+
+Given one successful `inferExprUnify` run, this bundle exports:
+- uniqueness of successful algorithmic outputs at the same input,
+- uniqueness against any declarative typing derivation,
+- and agreement with the syntax-directed `inferExpr` result.
+-/
+structure PrincipalTypingSlicePreconditioned
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty) : Prop where
+  deterministic :
+    ∀ {st'' : UnifyState} {ty'' : Ty},
+      inferExprUnify st fuel env e = .ok st'' ty'' →
+      st'' = st' ∧ ty'' = ty
+  declarativeUnique :
+    ∀ {ty' : Ty}, HasType env e ty' → ty' = ty
+  inferExprAgrees :
+    inferExpr env e = some ty
+
+theorem principalTypingSlicePreconditioned_of_success
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty := by
+  refine {
+    deterministic := ?_
+    declarativeUnique := ?_
+    inferExprAgrees := ?_
+  }
+  · intro st'' ty'' h_ok'
+    exact inferExprUnify_deterministic st fuel env e h_ok' h_ok
+  · intro ty' h_ty'
+    exact inferExprUnify_type_unique_preconditioned h_app h_proj h_ok h_ty'
+  · have h_ty : HasType env e ty :=
+      inferExprUnify_sound_preconditioned h_app h_proj st fuel env e st' ty h_ok
+    exact inferExpr_complete env e ty h_ty
+
+/--
 `HasTypeU` lift of non-app/proj recursive soundness: on the fragment that never
 executes unification branches, algorithmic inference results are declaratively
 typable in the unification-aware judgment as well.
