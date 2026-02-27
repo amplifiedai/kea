@@ -25338,6 +25338,60 @@ theorem principalBoundarySoundNoUnifyField_preconditionedCoreIff_of_success_via_
   principalBoundarySoundTypingRunBundleSuite_noUnifyField_preconditionedCoreIff_of_success
     (principalBoundarySoundTypingRunBundleSuite_of_hooks h_app h_proj) h_hooks h_no h_ok
 
+/-- Direct hook-seeded expression fixed-run hook-irrelevance via the typing-route suite. -/
+theorem principalBoundarySoundExpr_hookIrrelevant_of_success_via_typingRunBundleSuite
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+      ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) :=
+  principalBoundarySoundTypingRunBundleSuite_expr_hookIrrelevant_of_success
+    (principalBoundarySoundTypingRunBundleSuite_of_hooks h_app h_proj) h_ok
+
+/-- Direct hook-seeded field fixed-run hook-irrelevance via the typing-route suite. -/
+theorem principalBoundarySoundField_hookIrrelevant_of_success_via_typingRunBundleSuite
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
+  principalBoundarySoundTypingRunBundleSuite_field_hookIrrelevant_of_success
+    (principalBoundarySoundTypingRunBundleSuite_of_hooks h_app h_proj) h_ok
+
+/-- Direct hook-seeded no-unify expression fixed-run hook-irrelevance via the typing-route suite. -/
+theorem principalBoundarySoundNoUnifyExpr_hookIrrelevant_of_success_via_typingRunBundleSuite
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+      ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) :=
+  principalBoundarySoundTypingRunBundleSuite_noUnifyExpr_hookIrrelevant_of_success
+    (principalBoundarySoundTypingRunBundleSuite_of_hooks h_app h_proj) h_no h_ok
+
+/-- Direct hook-seeded no-unify field fixed-run hook-irrelevance via the typing-route suite. -/
+theorem principalBoundarySoundNoUnifyField_hookIrrelevant_of_success_via_typingRunBundleSuite
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
+  principalBoundarySoundTypingRunBundleSuite_noUnifyField_hookIrrelevant_of_success
+    (principalBoundarySoundTypingRunBundleSuite_of_hooks h_app h_proj) h_no h_ok
+
 /--
 Expression preconditioned↔core wrapper on the dual-routed proved master suite.
 -/
