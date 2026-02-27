@@ -21662,19 +21662,48 @@ theorem principalDualConsequenceSlices_proved_via_principalBoundaryBridgeSuite :
     principalBoundaryBridgeSuite_proved
 
 /--
-Canonical top-level master-suite witness routed through the dual-derived bridge
-suite.
+Lift any dual-consequence-slice witness into the top-level master suite.
 -/
-theorem principalBoundaryMasterSuite_proved_via_dualConsequenceSlices :
+theorem principalBoundaryMasterSuite_of_dualConsequenceSlices
+    (h_dual : PrincipalDualConsequenceSlices) :
     PrincipalBoundaryMasterSuite := by
   refine {
-    bridge := principalBoundaryBridgeSuite_proved_via_dualConsequenceSlices
+    bridge := principalBoundaryBridgeSuite_of_dualConsequenceSlices h_dual
     vacuity := principalBoundaryVacuitySuite_proved
     allHooks := principalPreconditionedAllHooksSuite_proved
     noUnifyAllHooks := principalBoundaryNoUnifyAllHooksSuite_proved
     noUnifyHookedFromAllHooks := principalBoundaryNoUnifyCapstoneSlices_of_allHooksSuite
     noUnifyToGeneralAllHooks := principalNoUnifyToGeneralAllHooksSuite_proved_via_noUnifyAllHooks
   }
+
+/--
+Any top-level master suite witness yields the dual consequence slice through its
+embedded bridge layer.
+-/
+theorem principalDualConsequenceSlices_of_principalBoundaryMasterSuite
+    (h_suite : PrincipalBoundaryMasterSuite) :
+    PrincipalDualConsequenceSlices :=
+  principalDualConsequenceSlices_of_principalBoundaryBridgeSuite h_suite.bridge
+
+/--
+The dual consequence slice surface and top-level master suite are equivalent.
+-/
+theorem principalBoundaryMasterSuite_iff_dualConsequenceSlices :
+    PrincipalBoundaryMasterSuite ↔ PrincipalDualConsequenceSlices := by
+  constructor
+  · intro h_suite
+    exact principalDualConsequenceSlices_of_principalBoundaryMasterSuite h_suite
+  · intro h_dual
+    exact principalBoundaryMasterSuite_of_dualConsequenceSlices h_dual
+
+/--
+Canonical top-level master-suite witness routed through the dual-derived bridge
+suite.
+-/
+theorem principalBoundaryMasterSuite_proved_via_dualConsequenceSlices :
+    PrincipalBoundaryMasterSuite :=
+  principalBoundaryMasterSuite_of_dualConsequenceSlices
+    principalDualConsequenceSlices_proved
 
 /--
 Expression preconditioned↔core wrapper on the dual-routed proved master suite.
