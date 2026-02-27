@@ -9888,6 +9888,38 @@ theorem principalBoundaryMasterConsequenceCapstoneSuite_allHooks_field
   h_suite.allHooksField h_app0 h_proj0 h_ok
 
 /--
+One-hop projection: arbitrary-success all-hooks expression hook-irrelevance
+from the master consequence capstone suite.
+-/
+theorem principalBoundaryMasterConsequenceCapstoneSuite_allHooks_irrelevance_expr
+    (h_suite : PrincipalBoundaryMasterConsequenceCapstoneSuite)
+    (h_app0 : AppUnifySoundHook) (h_proj0 : ProjUnifySoundHook)
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+      ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) :=
+  h_suite.allHooksIrrelevanceExpr h_app0 h_proj0 h_ok
+
+/--
+One-hop projection: arbitrary-success all-hooks field hook-irrelevance from the
+master consequence capstone suite.
+-/
+theorem principalBoundaryMasterConsequenceCapstoneSuite_allHooks_irrelevance_field
+    (h_suite : PrincipalBoundaryMasterConsequenceCapstoneSuite)
+    (h_app0 : AppUnifySoundHook) (h_proj0 : ProjUnifySoundHook)
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
+  h_suite.allHooksIrrelevanceField h_app0 h_proj0 h_ok
+
+/--
 One-hop projection: no-unify expression capstone from the master consequence
 capstone suite.
 -/
@@ -10103,6 +10135,202 @@ theorem principalNoUnifyFieldAllHooksCapstone_of_success_via_masterConsequenceCa
     (_h_hooks : UnifyHookPremises) :
     PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
   principalNoUnifyFieldAllHooksCapstone_of_success_via_masterConsequenceCapstoneSuite
+    h_no h_ok
+
+/--
+Master-consequence-capstone-suite convenience wrapper: derive fixed-run
+expression hook-irrelevance for arbitrary successful runs.
+-/
+theorem principalPreconditionedExpr_hookIrrelevant_of_success_via_masterConsequenceCapstoneSuite
+    (h_app0 : AppUnifySoundHook) (h_proj0 : ProjUnifySoundHook)
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+      ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) :=
+  principalBoundaryMasterConsequenceCapstoneSuite_allHooks_irrelevance_expr
+    principalBoundaryMasterConsequenceCapstoneSuite_proved h_app0 h_proj0 h_ok
+
+/--
+Master-consequence-capstone-suite convenience wrapper: derive fixed-run field
+hook-irrelevance for arbitrary successful field runs.
+-/
+theorem principalPreconditionedField_hookIrrelevant_of_success_via_masterConsequenceCapstoneSuite
+    (h_app0 : AppUnifySoundHook) (h_proj0 : ProjUnifySoundHook)
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
+  principalBoundaryMasterConsequenceCapstoneSuite_allHooks_irrelevance_field
+    principalBoundaryMasterConsequenceCapstoneSuite_proved h_app0 h_proj0 h_ok
+
+/--
+Master-consequence-capstone-suite convenience wrapper: bundled-baseline
+variant for arbitrary successful expression hook-irrelevance.
+-/
+theorem principalPreconditionedExpr_hookIrrelevant_of_success_via_masterConsequenceCapstoneSuite_from_bundle
+    (h_seed : UnifyHookPremises)
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+      ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) :=
+  principalPreconditionedExpr_hookIrrelevant_of_success_via_masterConsequenceCapstoneSuite
+    h_seed.1 h_seed.2 h_ok
+
+/--
+Master-consequence-capstone-suite convenience wrapper: bundled-baseline
+variant for arbitrary successful field hook-irrelevance.
+-/
+theorem principalPreconditionedField_hookIrrelevant_of_success_via_masterConsequenceCapstoneSuite_from_bundle
+    (h_seed : UnifyHookPremises)
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
+  principalPreconditionedField_hookIrrelevant_of_success_via_masterConsequenceCapstoneSuite
+    h_seed.1 h_seed.2 h_ok
+
+/--
+Master-consequence-capstone-suite no-unify-to-general convenience wrapper:
+derive fixed-run expression hook-irrelevance from a successful no-unify run.
+-/
+theorem principalPreconditionedExpr_hookIrrelevant_of_success_noUnify_via_masterConsequenceCapstoneSuite
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+      ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) :=
+  principalBoundaryMasterConsequenceCapstoneSuite_noUnify_irrelevance_expr
+    principalBoundaryMasterConsequenceCapstoneSuite_proved h_no h_ok
+
+/--
+Master-consequence-capstone-suite no-unify-to-general convenience wrapper:
+derive fixed-run field hook-irrelevance from a successful no-unify field run.
+-/
+theorem principalPreconditionedField_hookIrrelevant_of_success_noUnify_via_masterConsequenceCapstoneSuite
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
+  principalBoundaryMasterConsequenceCapstoneSuite_noUnify_irrelevance_field
+    principalBoundaryMasterConsequenceCapstoneSuite_proved h_no h_ok
+
+/--
+Master-consequence-capstone-suite no-unify-to-general convenience wrapper:
+bundled-hook variant for expression fixed-run hook-irrelevance.
+-/
+theorem principalPreconditionedExpr_hookIrrelevant_of_success_noUnify_via_masterConsequenceCapstoneSuite_from_bundle
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_hooks : UnifyHookPremises) :
+    (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+      ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) :=
+  principalPreconditionedExpr_hookIrrelevant_of_success_noUnify_via_masterConsequenceCapstoneSuite
+    h_no h_ok
+
+/--
+Master-consequence-capstone-suite no-unify-to-general convenience wrapper:
+bundled-hook variant for field fixed-run hook-irrelevance.
+-/
+theorem principalPreconditionedField_hookIrrelevant_of_success_noUnify_via_masterConsequenceCapstoneSuite_from_bundle
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_hooks : UnifyHookPremises) :
+    (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
+  principalPreconditionedField_hookIrrelevant_of_success_noUnify_via_masterConsequenceCapstoneSuite
+    h_no h_ok
+
+/--
+Master-consequence-capstone-suite no-unify convenience wrapper: derive fixed-run
+expression hook-irrelevance from a successful no-unify run.
+-/
+theorem principalNoUnifyPreconditionedExpr_hookIrrelevant_of_success_via_masterConsequenceCapstoneSuite
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+      ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) :=
+  principalPreconditionedExpr_hookIrrelevant_of_success_noUnify_via_masterConsequenceCapstoneSuite
+    h_no h_ok
+
+/--
+Master-consequence-capstone-suite no-unify convenience wrapper: bundled-hook
+alias for expression fixed-run hook-irrelevance.
+-/
+theorem principalNoUnifyPreconditionedExpr_hookIrrelevant_of_success_via_masterConsequenceCapstoneSuite_from_bundle
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_hooks : UnifyHookPremises) :
+    (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+      ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) :=
+  principalNoUnifyPreconditionedExpr_hookIrrelevant_of_success_via_masterConsequenceCapstoneSuite
+    h_no h_ok
+
+/--
+Master-consequence-capstone-suite no-unify convenience wrapper: derive fixed-run
+field hook-irrelevance from a successful no-unify field run.
+-/
+theorem principalNoUnifyPreconditionedField_hookIrrelevant_of_success_via_masterConsequenceCapstoneSuite
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
+  principalPreconditionedField_hookIrrelevant_of_success_noUnify_via_masterConsequenceCapstoneSuite
+    h_no h_ok
+
+/--
+Master-consequence-capstone-suite no-unify convenience wrapper: bundled-hook
+alias for field fixed-run hook-irrelevance.
+-/
+theorem principalNoUnifyPreconditionedField_hookIrrelevant_of_success_via_masterConsequenceCapstoneSuite_from_bundle
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_hooks : UnifyHookPremises) :
+    (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
+  principalNoUnifyPreconditionedField_hookIrrelevant_of_success_via_masterConsequenceCapstoneSuite
     h_no h_ok
 
 /--
