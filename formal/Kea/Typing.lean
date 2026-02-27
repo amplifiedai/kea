@@ -21307,6 +21307,65 @@ theorem principalFieldTypingDualConsequence_inferFields_agrees
   h_conseq.inferFields_agrees
 
 /--
+Packaged successful-run dual principal consequence slice for expressions.
+-/
+def PrincipalDualExprConsequenceSlice : Prop :=
+  ∀ (h_hooks : UnifyHookPremises)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty),
+    inferExprUnify st fuel env e = .ok st' ty →
+    PrincipalTypingDualConsequence h_hooks.1 h_hooks.2 st fuel env e st' ty
+
+/--
+Packaged successful-run dual principal consequence slice for fields.
+-/
+def PrincipalDualFieldConsequenceSlice : Prop :=
+  ∀ (h_hooks : UnifyHookPremises)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields),
+    inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)) →
+    PrincipalFieldTypingDualConsequence h_hooks.1 h_hooks.2 st fuel env fs st' rf
+
+/-- Combined successful-run dual principal consequence slice. -/
+def PrincipalDualConsequenceSlices : Prop :=
+  PrincipalDualExprConsequenceSlice ∧ PrincipalDualFieldConsequenceSlice
+
+/-- The combined dual principal consequence slice is fully proved. -/
+theorem principalDualConsequenceSlices_proved : PrincipalDualConsequenceSlices := by
+  refine ⟨?expr, ?field⟩
+  · intro h_hooks st fuel env e st' ty h_ok
+    exact principalTypingDualConsequence_of_success_from_hook_bundle_via_dual_bundle
+      h_hooks st fuel env e st' ty h_ok
+  · intro h_hooks st fuel env fs st' rf h_ok
+    exact principalFieldTypingDualConsequence_of_success_from_hook_bundle_via_dual_bundle
+      h_hooks st fuel env fs st' rf h_ok
+
+/--
+One-hop expression projection from the combined dual principal consequence
+slice.
+-/
+theorem principalDualConsequenceSlices_expr
+    (h_slice : PrincipalDualConsequenceSlices)
+    (h_hooks : UnifyHookPremises)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalTypingDualConsequence h_hooks.1 h_hooks.2 st fuel env e st' ty :=
+  h_slice.1 h_hooks st fuel env e st' ty h_ok
+
+/--
+One-hop field projection from the combined dual principal consequence slice.
+-/
+theorem principalDualConsequenceSlices_field
+    (h_slice : PrincipalDualConsequenceSlices)
+    (h_hooks : UnifyHookPremises)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalFieldTypingDualConsequence h_hooks.1 h_hooks.2 st fuel env fs st' rf :=
+  h_slice.2 h_hooks st fuel env fs st' rf h_ok
+
+/--
 Surface-layer naming-parity wrappers for no-unify cross-route success APIs.
 These mirror the existing `...from_cross_route_slices` families under
 explicit `...from_cross_route_surface_slices` theorem names.
