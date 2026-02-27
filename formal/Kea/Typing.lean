@@ -27185,6 +27185,108 @@ theorem principalBoundarySoundFullVerticalRoutes_viaRowPolyBundle_as_full_and_ve
   ⟨h_routes.viaRowPolyBundle.full, h_routes.viaRowPolyBundle.vertical⟩
 
 /--
+Master route packaging for `FullVertical`: one witness carries both the regular
+and dual consequence route pairs.
+-/
+structure PrincipalBoundarySoundFullVerticalMasterRoutes
+    (st : UnifyState) (fuel : Nat) (env : TermEnv)
+    (e : CoreExpr) (fs : CoreFields)
+    (stExpr : UnifyState) (ty : Ty)
+    (stField : UnifyState) (rf : RowFields) : Prop where
+  regular : PrincipalBoundarySoundFullVerticalRoutes st fuel env e fs stExpr ty stField rf
+  dual : PrincipalBoundarySoundFullVerticalRoutes st fuel env e fs stExpr ty stField rf
+
+/-- Build `FullVertical` master routes from a bundled hook seed. -/
+theorem principalBoundarySoundFullVerticalMasterRoutes_of_success_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf := by
+  refine {
+    regular := principalBoundarySoundFullVerticalRoutes_of_success_from_bundle
+      h_seed h_ok_expr h_ok_field
+    dual := principalBoundarySoundFullVerticalRoutes_of_success_via_dualConsequenceSlices_from_bundle
+      h_seed h_ok_expr h_ok_field
+  }
+
+/-- Build `FullVertical` master routes from split hook premises. -/
+theorem principalBoundarySoundFullVerticalMasterRoutes_of_success
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf :=
+  principalBoundarySoundFullVerticalMasterRoutes_of_success_from_bundle
+    (h_seed := ⟨h_app, h_proj⟩) h_ok_expr h_ok_field
+
+/-- One-hop projection: regular route pair from master `FullVertical` routes. -/
+theorem principalBoundarySoundFullVerticalMasterRoutes_regular
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_master : PrincipalBoundarySoundFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundFullVerticalRoutes st fuel env e fs stExpr ty stField rf :=
+  h_master.regular
+
+/-- One-hop projection: dual route pair from master `FullVertical` routes. -/
+theorem principalBoundarySoundFullVerticalMasterRoutes_dual
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_master : PrincipalBoundarySoundFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundFullVerticalRoutes st fuel env e fs stExpr ty stField rf :=
+  h_master.dual
+
+/-- One-hop projection: regular typing-suite branch from master `FullVertical` routes. -/
+theorem principalBoundarySoundFullVerticalMasterRoutes_regular_viaTypingSuite
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_master : PrincipalBoundarySoundFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundFullVerticalSuite st fuel env e fs stExpr ty stField rf :=
+  h_master.regular.viaTypingSuite
+
+/-- One-hop projection: regular row-poly branch from master `FullVertical` routes. -/
+theorem principalBoundarySoundFullVerticalMasterRoutes_regular_viaRowPolyBundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_master : PrincipalBoundarySoundFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundFullVerticalSuite st fuel env e fs stExpr ty stField rf :=
+  h_master.regular.viaRowPolyBundle
+
+/-- One-hop projection: dual typing-suite branch from master `FullVertical` routes. -/
+theorem principalBoundarySoundFullVerticalMasterRoutes_dual_viaTypingSuite
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_master : PrincipalBoundarySoundFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundFullVerticalSuite st fuel env e fs stExpr ty stField rf :=
+  h_master.dual.viaTypingSuite
+
+/-- One-hop projection: dual row-poly branch from master `FullVertical` routes. -/
+theorem principalBoundarySoundFullVerticalMasterRoutes_dual_viaRowPolyBundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_master : PrincipalBoundarySoundFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundFullVerticalSuite st fuel env e fs stExpr ty stField rf :=
+  h_master.dual.viaRowPolyBundle
+
+/--
 The row-poly full+vertical capstone is equivalent to providing:
 - a full principal boundary soundness suite witness, and
 - a hook-free vertical app/projection slice witness.
