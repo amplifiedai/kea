@@ -458,25 +458,26 @@ handle Server.listen(8080, stack)
 shutdown is an expected exit path. The effect signature documents
 that the server can be shut down, and the handler determines how.
 
-## Blocked: Tier-0 List Runtime Prerequisites
+## Tier-0 List Runtime Notes
 
-`List` remains blocked in the real stdlib until compiled runtime
-support for heap-linked carriers is present. This is a runtime/codegen
-gate, not a module-system gate.
+`List` is now available in repo stdlib on the bootstrap runtime path as a
+heap-node recursive sum carrier (`Nil | Cons(Int, List)`), with execute-path
+coverage for `map`, `filter`, `fold`, `length`, and `is_empty`.
 
-Required before `stdlib/list.kea` lands:
+Current posture:
 
-- Heap allocation + layout for recursive linked nodes (`List A` carrier).
-- Recursive payload load/store on compiled path for `Option (A, List A)`.
-- Pattern matching over recursive list nodes on compiled path.
-- Retain/release correctness for list node lifetimes under updates/traversal.
+- Correctness-first representation: linked heap nodes via existing 0d aggregate
+  lowering and recursive payload loads.
+- Mixed sum runtime handling in codegen supports unit+payload variants in the
+  same sum during tag loads.
+- RC is conservative for mixed-representation sums during bootstrap to avoid
+  immediate-tag misclassification.
 
-Blocked coverage policy until then:
+Deferred to 0f+ (performance/memory optimization, not semantic blockers):
 
-- Keep an explicit regression that `use List` from repo stdlib fails with
-  `module \`List\` not found` (prevents fake/placeholder List modules).
-- When runtime support lands, replace that regression with execute-path tests
-  for real `List` functions (`map`, `fold`, `length`) and remove the blocked gate.
+- Reuse analysis for in-place list transforms when ownership is unique.
+- More precise RC insertion/removal for recursive aggregate paths.
+- Specialized contiguous collections (`Vector`) as a separate data structure.
 
 ---
 
@@ -516,4 +517,6 @@ Blocked coverage policy until then:
 - 2026-02-27 20:50: Expanded `Text` Tier-0 surface with pure helpers in repo stdlib (`Text.is_empty`, `Text.non_empty`) and added execute-path regression `compile_and_execute_real_stdlib_text_helpers_exit_code`.
 - 2026-02-27 20:50: Fixed backend external-call ABI conflict surfaced by the Text helper slice: external signature collection now canonicalizes call signatures at Cranelift ABI type level before conflict checks. This allows compatible source-level variants (e.g. `Dynamic` vs `String` for `strlen`) while still rejecting true ABI conflicts.
 - 2026-02-27 19:55: Added `Order` helper surface (`is_less`, `is_equal`, `is_greater`, `compare_int`) in `stdlib/order.kea` with execute regression `compile_and_execute_real_stdlib_order_helpers_exit_code`, and fixed the compiled-path SIGSEGV by making codegen `SumTagLoad` treat unit-only sums as immediate-tag values (no heap dereference). Verified with `PKG=kea mise run test-pkg` (131/131) and `mise run check`.
-- **Next:** continue non-list Tier-0 surface expansion with execute-path regressions (Order/Text/Result helpers) while keeping the List blocked gate in place until heap-linked runtime support is implemented.
+- 2026-02-27 20:09: Unblocked recursive bootstrap List runtime: fixed mixed sum tag handling in codegen (`SumTagLoad` now distinguishes immediate unit tags vs payload pointers for mixed variants) and tightened MIR heap-management classification so only pointer-only sums emit retain/release in bootstrap RC paths.
+- 2026-02-27 20:09: Landed `stdlib/list.kea` (linked-list carrier + `is_empty`, `length`, `map`, `filter`, `fold`) and replaced the old blocked-module regression with execute-path integration `compile_and_execute_real_stdlib_list_module_exit_code` (`use List` end-to-end through module loading + codegen).
+- **Next:** expand Tier-0 stdlib breadth with execute-path coverage for remaining modules while tightening mixed-sum ownership handling for recursive aggregate paths.

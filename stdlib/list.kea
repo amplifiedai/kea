@@ -1,0 +1,30 @@
+type List = Nil | Cons(Int, List)
+
+fn is_empty(xs: List) -> Bool
+  case xs
+    Nil -> true
+    Cons(_, _) -> false
+
+fn length(xs: List) -> Int
+  case xs
+    Nil -> 0
+    Cons(_, rest) -> 1 + length(rest)
+
+fn map(xs: List, f: fn(Int) -> Int) -> List
+  case xs
+    Nil -> Nil
+    Cons(x, rest) -> Cons(f(x), map(rest, f))
+
+fn filter(xs: List, pred: fn(Int) -> Bool) -> List
+  case xs
+    Nil -> Nil
+    Cons(x, rest) ->
+      if pred(x)
+        Cons(x, filter(rest, pred))
+      else
+        filter(rest, pred)
+
+fn fold(xs: List, init: Int, f: fn(Int, Int) -> Int) -> Int
+  case xs
+    Nil -> init
+    Cons(x, rest) -> fold(rest, f(init, x), f)

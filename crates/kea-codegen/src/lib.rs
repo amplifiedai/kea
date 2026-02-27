@@ -310,6 +310,37 @@ fn runtime_signature_map(module: &MirModule) -> BTreeMap<String, RuntimeFunction
         .collect()
 }
 
+struct DirectCapabilitySpec {
+    effect: &'static str,
+    operations: &'static [&'static str],
+}
+
+const DIRECT_CAPABILITIES: &[DirectCapabilitySpec] = &[
+    DirectCapabilitySpec {
+        effect: "IO",
+        operations: &["stdout", "stderr", "read_file", "write_file"],
+    },
+    DirectCapabilitySpec {
+        effect: "Clock",
+        operations: &["now", "monotonic"],
+    },
+    DirectCapabilitySpec {
+        effect: "Rand",
+        operations: &["int", "seed"],
+    },
+    DirectCapabilitySpec {
+        effect: "Net",
+        operations: &["connect", "send", "recv"],
+    },
+];
+
+fn is_known_direct_capability_operation(effect: &str, operation: &str) -> bool {
+    DIRECT_CAPABILITIES
+        .iter()
+        .find(|capability| capability.effect == effect)
+        .is_some_and(|capability| capability.operations.contains(&operation))
+}
+
 unsafe extern "C" fn kea_net_connect_stub(addr: *const c_char) -> i64 {
     if addr.is_null() { -1 } else { 1 }
 }
@@ -428,193 +459,55 @@ fn compile_into_module<M: Module>(
                 )
             })
         });
-        if function.blocks.iter().any(|block| {
-            block.instructions.iter().any(|inst| {
-                matches!(
-                    inst,
+        let mut has_fail_zero_resume = false;
+        for block in &function.blocks {
+            for inst in &block.instructions {
+                match inst {
                     MirInst::EffectOp {
                         class: MirEffectOpClass::Direct,
                         effect,
                         operation,
                         ..
-                    } if effect == "IO" && operation == "stdout"
-                )
-            })
-        }) {
-            requires_io_stdout = true;
-        }
-        if function.blocks.iter().any(|block| {
-            block.instructions.iter().any(|inst| {
-                matches!(
-                    inst,
-                    MirInst::EffectOp {
-                        class: MirEffectOpClass::Direct,
-                        effect,
-                        operation,
-                        ..
-                    } if effect == "IO" && operation == "stderr"
-                )
-            })
-        }) {
-            requires_io_stderr = true;
-        }
-        if function.blocks.iter().any(|block| {
-            block.instructions.iter().any(|inst| {
-                matches!(
-                    inst,
-                    MirInst::EffectOp {
-                        class: MirEffectOpClass::Direct,
-                        effect,
-                        operation,
-                        ..
-                    } if effect == "IO" && operation == "read_file"
-                )
-            })
-        }) {
-            requires_io_read_file = true;
-        }
-        if function.blocks.iter().any(|block| {
-            block.instructions.iter().any(|inst| {
-                matches!(
-                    inst,
-                    MirInst::EffectOp {
-                        class: MirEffectOpClass::Direct,
-                        effect,
-                        operation,
-                        ..
-                    } if effect == "IO" && operation == "write_file"
-                )
-            })
-        }) {
-            requires_io_write_file = true;
-        }
-        if function.blocks.iter().any(|block| {
-            block.instructions.iter().any(|inst| {
-                matches!(
-                    inst,
-                    MirInst::EffectOp {
-                        class: MirEffectOpClass::Direct,
-                        effect,
-                        operation,
-                        ..
-                    } if effect == "Clock" && matches!(operation.as_str(), "now" | "monotonic")
-                )
-            })
-        }) {
-            requires_clock_time = true;
-        }
-        if function.blocks.iter().any(|block| {
-            block.instructions.iter().any(|inst| {
-                matches!(
-                    inst,
-                    MirInst::EffectOp {
-                        class: MirEffectOpClass::Direct,
-                        effect,
-                        operation,
-                        ..
-                    } if effect == "Rand" && operation == "int"
-                )
-            })
-        }) {
-            requires_rand_int = true;
-        }
-        if function.blocks.iter().any(|block| {
-            block.instructions.iter().any(|inst| {
-                matches!(
-                    inst,
-                    MirInst::EffectOp {
-                        class: MirEffectOpClass::Direct,
-                        effect,
-                        operation,
-                        ..
-                    } if effect == "Rand" && operation == "seed"
-                )
-            })
-        }) {
-            requires_rand_seed = true;
-        }
-        if function.blocks.iter().any(|block| {
-            block.instructions.iter().any(|inst| {
-                matches!(
-                    inst,
-                    MirInst::EffectOp {
-                        class: MirEffectOpClass::Direct,
-                        effect,
-                        operation,
-                        ..
-                    } if effect == "Net" && operation == "connect"
-                )
-            })
-        }) {
-            requires_net_connect = true;
-        }
-        if function.blocks.iter().any(|block| {
-            block.instructions.iter().any(|inst| {
-                matches!(
-                    inst,
-                    MirInst::EffectOp {
-                        class: MirEffectOpClass::Direct,
-                        effect,
-                        operation,
-                        ..
-                    } if effect == "Net" && operation == "send"
-                )
-            })
-        }) {
-            requires_net_send = true;
-        }
-        if function.blocks.iter().any(|block| {
-            block.instructions.iter().any(|inst| {
-                matches!(
-                    inst,
-                    MirInst::EffectOp {
-                        class: MirEffectOpClass::Direct,
-                        effect,
-                        operation,
-                        ..
-                    } if effect == "Net" && operation == "recv"
-                )
-            })
-        }) {
-            requires_net_recv = true;
-        }
-        if function.blocks.iter().any(|block| {
-            block.instructions.iter().any(|inst| {
-                matches!(
-                    inst,
+                    } => {
+                        if !is_known_direct_capability_operation(effect, operation) {
+                            continue;
+                        }
+                        match (effect.as_str(), operation.as_str()) {
+                            ("IO", "stdout") => requires_io_stdout = true,
+                            ("IO", "stderr") => requires_io_stderr = true,
+                            ("IO", "read_file") => requires_io_read_file = true,
+                            ("IO", "write_file") => requires_io_write_file = true,
+                            ("Clock", "now" | "monotonic") => requires_clock_time = true,
+                            ("Rand", "int") => requires_rand_int = true,
+                            ("Rand", "seed") => requires_rand_seed = true,
+                            ("Net", "connect") => requires_net_connect = true,
+                            ("Net", "send") => requires_net_send = true,
+                            ("Net", "recv") => requires_net_recv = true,
+                            _ => {}
+                        }
+                    }
                     MirInst::Binary {
                         op: MirBinaryOp::Concat,
                         ..
+                    } => {
+                        requires_string_concat = true;
+                        requires_heap_alloc = true;
                     }
-                )
-            })
-        }) {
-            requires_string_concat = true;
-            requires_heap_alloc = true;
-        }
-        if function.blocks.iter().any(|block| {
-            block
-                .instructions
-                .iter()
-                .any(|inst| matches!(inst, MirInst::Release { .. }))
-        }) {
-            requires_free = true;
+                    MirInst::Release { .. } => requires_free = true,
+                    MirInst::EffectOp {
+                        class: MirEffectOpClass::ZeroResume,
+                        effect,
+                        operation,
+                        ..
+                    } if effect == "Fail" && operation == "fail" => {
+                        has_fail_zero_resume = true;
+                    }
+                    _ => {}
+                }
+            }
         }
         let needs_fail_result_alloc = runtime_sig.fail_result_abi
-            || (matches!(runtime_sig.runtime_return, Type::Result(_, _))
-                && function.blocks.iter().any(|block| {
-                    block.instructions.iter().any(|inst| {
-                        matches!(
-                            inst,
-                            MirInst::EffectOp {
-                                class: MirEffectOpClass::ZeroResume,
-                                effect,
-                                operation,
-                                ..
-                            } if effect == "Fail" && operation == "fail"
-                        )
-                    })
-                }));
+            || (matches!(runtime_sig.runtime_return, Type::Result(_, _)) && has_fail_zero_resume);
         if needs_aggregate_alloc || needs_fail_result_alloc {
             requires_heap_alloc = true;
         }
@@ -1600,11 +1493,66 @@ fn lower_instruction<M: Module>(
                         function: function_name.to_string(),
                         detail: format!("sum layout `{sum_type}` not found"),
                     })?;
+            let has_unit_variant = layout.variant_field_counts.values().any(|count| *count == 0);
+            let has_payload_variant = layout.variant_field_counts.values().any(|count| *count > 0);
             // Unit-only sums are represented as immediate integer tags in MIR
             // (e.g. `Ordering` constructors lower to `Const Int(tag)`).
             // Do not dereference these as heap pointers.
-            if layout.variant_field_counts.values().all(|count| *count == 0) {
+            if has_unit_variant && !has_payload_variant {
                 values.insert(dest.clone(), base);
+                return Ok(false);
+            }
+            // Mixed sums currently use a bootstrap representation where unit
+            // variants are immediate tags while payload variants are pointers.
+            // Distinguish them before loading a tag from memory.
+            if has_unit_variant && has_payload_variant {
+                let immediate_block = builder.create_block();
+                let pointer_block = builder.create_block();
+                let continue_block = builder.create_block();
+                builder.append_block_param(continue_block, types::I64);
+
+                let max_tag = i64::try_from(layout.variant_field_counts.len())
+                    .ok()
+                    .and_then(|len| len.checked_sub(1))
+                    .ok_or_else(|| CodegenError::UnsupportedMir {
+                        function: function_name.to_string(),
+                        detail: format!(
+                            "sum `{sum_type}` has invalid mixed-variant tag cardinality"
+                        ),
+                    })?;
+                let is_immediate =
+                    builder
+                        .ins()
+                        .icmp_imm(IntCC::UnsignedLessThanOrEqual, base, max_tag);
+                builder
+                    .ins()
+                    .brif(is_immediate, immediate_block, &[], pointer_block, &[]);
+
+                builder.switch_to_block(immediate_block);
+                builder.ins().jump(continue_block, &[base]);
+
+                builder.switch_to_block(pointer_block);
+                let tag_offset =
+                    i32::try_from(layout.tag_offset).map_err(|_| CodegenError::UnsupportedMir {
+                        function: function_name.to_string(),
+                        detail: format!("sum tag offset for `{sum_type}` does not fit i32"),
+                    })?;
+                let tag_i32 = builder
+                    .ins()
+                    .load(types::I32, MemFlags::new(), base, tag_offset);
+                let tag_i64 = builder.ins().uextend(types::I64, tag_i32);
+                builder.ins().jump(continue_block, &[tag_i64]);
+
+                builder.switch_to_block(continue_block);
+                let tag = builder
+                    .block_params(continue_block)
+                    .first()
+                    .copied()
+                    .ok_or_else(|| CodegenError::UnsupportedMir {
+                        function: function_name.to_string(),
+                        detail: format!("sum tag join block missing value for `{sum_type}`"),
+                    })?;
+                values.insert(dest.clone(), tag);
                 return Ok(false);
             }
             let tag_offset =
@@ -1958,6 +1906,14 @@ fn lower_instruction<M: Module>(
                 ..
             } => {
                 if *class == MirEffectOpClass::Direct {
+                    if !is_known_direct_capability_operation(effect, operation) {
+                        return Err(CodegenError::UnsupportedMir {
+                            function: function_name.to_string(),
+                            detail: format!(
+                                "unknown direct capability operation `{effect}.{operation}`"
+                            ),
+                        });
+                    }
                     if effect == "IO" {
                         let ptr_ty = module.target_config().pointer_type();
                         match operation.as_str() {

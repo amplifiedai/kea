@@ -541,21 +541,20 @@ mod tests {
     }
 
     #[test]
-    fn compile_project_reports_list_module_blocked_until_heap_runtime() {
-        let project_dir = temp_workspace_project_dir("kea-cli-project-real-stdlib-list-blocked");
+    fn compile_and_execute_real_stdlib_list_module_exit_code() {
+        let project_dir = temp_workspace_project_dir("kea-cli-project-real-stdlib-list");
         let src_dir = project_dir.join("src");
         std::fs::create_dir_all(&src_dir).expect("source dir should be created");
 
         let app_path = src_dir.join("app.kea");
-        std::fs::write(&app_path, "use List\n\nfn main() -> Int\n  0\n")
+        std::fs::write(
+            &app_path,
+            "use List\n\nfn inc(x: Int) -> Int\n  x + 1\n\nfn even(x: Int) -> Bool\n  x % 2 == 0\n\nfn add(acc: Int, x: Int) -> Int\n  acc + x\n\nfn main() -> Int\n  let xs = Cons(1, Cons(2, Cons(3, Cons(4, Nil))))\n  let ys = List.map(xs, inc)\n  let zs = List.filter(ys, even)\n  if List.is_empty(Nil) and List.length(zs) == 2\n    List.fold(zs, 0, add)\n  else\n    0\n",
+        )
             .expect("app module write should succeed");
 
-        let err =
-            run_file(&app_path).expect_err("List stdlib module should remain blocked for now");
-        assert!(
-            err.contains("module `List` not found"),
-            "expected missing-List module error, got: {err}"
-        );
+        let run = run_file(&app_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 6);
 
         let _ = std::fs::remove_dir_all(project_dir);
     }

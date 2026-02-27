@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use kea_ast::{BinOp, DeclKind, ExprKind as AstExprKind, TypeAnnotation, UnaryOp};
 use kea_hir::{HirDecl, HirExpr, HirExprKind, HirFunction, HirModule, HirPattern};
-use kea_types::{EffectRow, FunctionType, Type};
+use kea_types::{EffectRow, FunctionType, SumType, Type};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct MirValueId(pub u32);
@@ -373,6 +373,49 @@ struct LambdaFactoryTemplate {
     lambda_params: Vec<kea_hir::HirParam>,
     lambda_body: HirExpr,
     captures: Vec<String>,
+}
+
+struct DirectCapabilitySpec {
+    effect: &'static str,
+    operations: &'static [&'static str],
+}
+
+const DIRECT_CAPABILITIES: &[DirectCapabilitySpec] = &[
+    DirectCapabilitySpec {
+        effect: "IO",
+        operations: &["stdout", "stderr", "read_file", "write_file"],
+    },
+    DirectCapabilitySpec {
+        effect: "Clock",
+        operations: &["now", "monotonic"],
+    },
+    DirectCapabilitySpec {
+        effect: "Rand",
+        operations: &["int", "seed"],
+    },
+    DirectCapabilitySpec {
+        effect: "Net",
+        operations: &["connect", "send", "recv"],
+    },
+];
+
+fn direct_capability_operation(name: &str) -> Option<(&'static str, &'static str)> {
+    for capability in DIRECT_CAPABILITIES {
+        let Some(operation_name) = name.strip_prefix(capability.effect) else {
+            continue;
+        };
+        let Some(operation_name) = operation_name.strip_prefix('.') else {
+            continue;
+        };
+        if let Some(&operation) = capability
+            .operations
+            .iter()
+            .find(|operation| **operation == operation_name)
+        {
+            return Some((capability.effect, operation));
+        }
+    }
+    None
 }
 
 fn is_namespaced_symbol_name(name: &str) -> bool {
@@ -1721,8 +1764,7 @@ impl FunctionLoweringCtx {
         }
         if let HirExprKind::Var(name) = &func.kind
             && !capture_fail_result
-            && let Some(operation) = name.strip_prefix("IO.")
-            && matches!(operation, "stdout" | "stderr" | "read_file" | "write_file")
+            && let Some((effect, operation)) = direct_capability_operation(name)
         {
             let mut lowered_args = Vec::with_capacity(args.len());
             for arg in args {
@@ -1735,76 +1777,7 @@ impl FunctionLoweringCtx {
             };
             self.emit_inst(MirInst::EffectOp {
                 class: MirEffectOpClass::Direct,
-                effect: "IO".to_string(),
-                operation: operation.to_string(),
-                args: lowered_args,
-                result: result.clone(),
-            });
-            return result;
-        }
-        if let HirExprKind::Var(name) = &func.kind
-            && !capture_fail_result
-            && let Some(operation) = name.strip_prefix("Clock.")
-            && matches!(operation, "now" | "monotonic")
-        {
-            let mut lowered_args = Vec::with_capacity(args.len());
-            for arg in args {
-                lowered_args.push(self.lower_expr(arg)?);
-            }
-            let result = if expr.ty == Type::Unit {
-                None
-            } else {
-                Some(self.new_value())
-            };
-            self.emit_inst(MirInst::EffectOp {
-                class: MirEffectOpClass::Direct,
-                effect: "Clock".to_string(),
-                operation: operation.to_string(),
-                args: lowered_args,
-                result: result.clone(),
-            });
-            return result;
-        }
-        if let HirExprKind::Var(name) = &func.kind
-            && !capture_fail_result
-            && let Some(operation) = name.strip_prefix("Rand.")
-            && matches!(operation, "int" | "seed")
-        {
-            let mut lowered_args = Vec::with_capacity(args.len());
-            for arg in args {
-                lowered_args.push(self.lower_expr(arg)?);
-            }
-            let result = if expr.ty == Type::Unit {
-                None
-            } else {
-                Some(self.new_value())
-            };
-            self.emit_inst(MirInst::EffectOp {
-                class: MirEffectOpClass::Direct,
-                effect: "Rand".to_string(),
-                operation: operation.to_string(),
-                args: lowered_args,
-                result: result.clone(),
-            });
-            return result;
-        }
-        if let HirExprKind::Var(name) = &func.kind
-            && !capture_fail_result
-            && let Some(operation) = name.strip_prefix("Net.")
-            && matches!(operation, "connect" | "send" | "recv")
-        {
-            let mut lowered_args = Vec::with_capacity(args.len());
-            for arg in args {
-                lowered_args.push(self.lower_expr(arg)?);
-            }
-            let result = if expr.ty == Type::Unit {
-                None
-            } else {
-                Some(self.new_value())
-            };
-            self.emit_inst(MirInst::EffectOp {
-                class: MirEffectOpClass::Direct,
-                effect: "Net".to_string(),
+                effect: effect.to_string(),
                 operation: operation.to_string(),
                 args: lowered_args,
                 result: result.clone(),
@@ -2344,12 +2317,18 @@ fn is_heap_managed_type(ty: &Type) -> bool {
         Type::String
             | Type::Record(_)
             | Type::AnonRecord(_)
-            | Type::Sum(_)
-            | Type::Option(_)
             | Type::Result(_, _)
             | Type::Function(_)
             | Type::Opaque { .. }
-    )
+    ) || matches!(ty, Type::Sum(sum_ty) if sum_uses_pointer_only_runtime_representation(sum_ty))
+}
+
+fn sum_uses_pointer_only_runtime_representation(sum_ty: &SumType) -> bool {
+    !sum_ty.variants.is_empty()
+        && sum_ty
+            .variants
+            .iter()
+            .all(|(_, fields)| !fields.is_empty())
 }
 
 #[cfg(test)]
