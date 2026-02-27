@@ -1850,6 +1850,66 @@ mod tests {
     }
 
     #[test]
+    fn compile_and_execute_int8_try_from_some_exit_code() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  case Int8.try_from(42)\n    Some(v) -> v + 0\n    None -> 0\n",
+            "kea-cli-int8-try-from-some",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("Int8.try_from in-range should succeed");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_int8_try_from_none_exit_code() {
+        let source_path = write_temp_source(
+            "fn id(x: Int) -> Int\n  x\n\nfn main() -> Int\n  case Int8.try_from(id(200))\n    Some(_) -> 0\n    None -> 1\n",
+            "kea-cli-int8-try-from-none",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("Int8.try_from out-of-range should return None");
+        assert_eq!(run.exit_code, 1);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_uint8_try_from_negative_none_exit_code() {
+        let source_path = write_temp_source(
+            "fn id(x: Int) -> Int\n  x\n\nfn main() -> Int\n  case UInt8.try_from(id(-1))\n    Some(_) -> 0\n    None -> 1\n",
+            "kea-cli-uint8-try-from-negative",
+            "kea",
+        );
+
+        let run =
+            run_file(&source_path).expect("UInt8.try_from negative should return None");
+        assert_eq!(run.exit_code, 1);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_rejects_const_try_from_overflow() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  case Int8.try_from(200)\n    Some(_) -> 0\n    None -> 1\n",
+            "kea-cli-const-try-from-overflow",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("overflowing narrowing conversion should fail");
+        assert!(
+            err.contains("does not fit in `Int8`"),
+            "expected narrowing overflow diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_wrapping_add_method_exit_code() {
         let source_path = write_temp_source(
             "fn main() -> Int\n  20.wrapping_add(22)\n",
