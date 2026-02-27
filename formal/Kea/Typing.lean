@@ -21635,6 +21635,33 @@ theorem principalBoundaryBridgeSuite_proved_via_dualConsequenceSlices :
     principalDualConsequenceSlices_proved
 
 /--
+Compatibility: the principal boundary bridge suite implies the combined dual
+consequence slice.
+-/
+theorem principalDualConsequenceSlices_of_principalBoundaryBridgeSuite
+    (h_suite : PrincipalBoundaryBridgeSuite) :
+    PrincipalDualConsequenceSlices :=
+  principalDualConsequenceSlices_of_principalPreconditionedCoreIffSlices
+    h_suite.preconditionedCoreIff
+
+/-- The boundary bridge suite and dual consequence slice surfaces are equivalent. -/
+theorem principalBoundaryBridgeSuite_iff_dualConsequenceSlices :
+    PrincipalBoundaryBridgeSuite ↔ PrincipalDualConsequenceSlices := by
+  constructor
+  · intro h_suite
+    exact principalDualConsequenceSlices_of_principalBoundaryBridgeSuite h_suite
+  · intro h_dual
+    exact principalBoundaryBridgeSuite_of_dualConsequenceSlices h_dual
+
+/--
+Canonical dual-slice adapter from the existing proved boundary bridge suite.
+-/
+theorem principalDualConsequenceSlices_proved_via_principalBoundaryBridgeSuite :
+    PrincipalDualConsequenceSlices :=
+  principalDualConsequenceSlices_of_principalBoundaryBridgeSuite
+    principalBoundaryBridgeSuite_proved
+
+/--
 Surface-layer naming-parity wrappers for no-unify cross-route success APIs.
 These mirror the existing `...from_cross_route_slices` families under
 explicit `...from_cross_route_surface_slices` theorem names.
