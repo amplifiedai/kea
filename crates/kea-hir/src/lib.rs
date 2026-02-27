@@ -129,6 +129,7 @@ struct PatternVariantMeta {
 type PatternVariantTags = BTreeMap<String, PatternVariantMeta>;
 type QualifiedPatternVariantTags = BTreeMap<(String, String), PatternVariantMeta>;
 type KnownRecordDefs = BTreeSet<String>;
+type KnownAliasDefs = BTreeMap<String, TypeAnnotation>;
 
 fn is_namespace_qualifier(name: &str) -> bool {
     name.chars().next().is_some_and(|ch| ch.is_ascii_uppercase())
@@ -155,30 +156,70 @@ fn lower_pattern_type_annotation(
     annotation: &TypeAnnotation,
     known_record_defs: &KnownRecordDefs,
     known_sum_defs: &BTreeSet<String>,
+    known_alias_defs: &KnownAliasDefs,
+) -> Type {
+    lower_pattern_type_annotation_with_seen(
+        annotation,
+        known_record_defs,
+        known_sum_defs,
+        known_alias_defs,
+        &mut BTreeSet::new(),
+    )
+}
+
+fn lower_pattern_type_annotation_with_seen(
+    annotation: &TypeAnnotation,
+    known_record_defs: &KnownRecordDefs,
+    known_sum_defs: &BTreeSet<String>,
+    known_alias_defs: &KnownAliasDefs,
+    seen_aliases: &mut BTreeSet<String>,
 ) -> Type {
     match annotation {
-        TypeAnnotation::Named(name) => match name.as_str() {
-            "Int" => Type::Int,
-            "Float" => Type::Float,
-            "Bool" => Type::Bool,
-            "String" => Type::String,
-            "Unit" => Type::Unit,
-            _ if known_record_defs.contains(name) => Type::Record(kea_types::RecordType {
-                name: name.clone(),
-                params: vec![],
-                row: kea_types::RowType::empty_closed(),
-            }),
-            _ if known_sum_defs.contains(name) => Type::Sum(kea_types::SumType {
-                name: name.clone(),
-                type_args: vec![],
-                variants: vec![],
-            }),
-            _ => Type::Dynamic,
-        },
+        TypeAnnotation::Named(name) => {
+            if let Some(target) = known_alias_defs.get(name)
+                && seen_aliases.insert(name.clone())
+            {
+                let resolved = lower_pattern_type_annotation_with_seen(
+                    target,
+                    known_record_defs,
+                    known_sum_defs,
+                    known_alias_defs,
+                    seen_aliases,
+                );
+                seen_aliases.remove(name);
+                return resolved;
+            }
+            match name.as_str() {
+                "Int" => Type::Int,
+                "Float" => Type::Float,
+                "Bool" => Type::Bool,
+                "String" => Type::String,
+                "Unit" => Type::Unit,
+                _ if known_record_defs.contains(name) => Type::Record(kea_types::RecordType {
+                    name: name.clone(),
+                    params: vec![],
+                    row: kea_types::RowType::empty_closed(),
+                }),
+                _ if known_sum_defs.contains(name) => Type::Sum(kea_types::SumType {
+                    name: name.clone(),
+                    type_args: vec![],
+                    variants: vec![],
+                }),
+                _ => Type::Dynamic,
+            }
+        }
         TypeAnnotation::Applied(name, args) if known_record_defs.contains(name) => {
             let params = args
                 .iter()
-                .map(|arg| lower_pattern_type_annotation(arg, known_record_defs, known_sum_defs))
+                .map(|arg| {
+                    lower_pattern_type_annotation_with_seen(
+                        arg,
+                        known_record_defs,
+                        known_sum_defs,
+                        known_alias_defs,
+                        seen_aliases,
+                    )
+                })
                 .collect();
             Type::Record(kea_types::RecordType {
                 name: name.clone(),
@@ -189,7 +230,15 @@ fn lower_pattern_type_annotation(
         TypeAnnotation::Applied(name, args) if known_sum_defs.contains(name) => {
             let type_args = args
                 .iter()
-                .map(|arg| lower_pattern_type_annotation(arg, known_record_defs, known_sum_defs))
+                .map(|arg| {
+                    lower_pattern_type_annotation_with_seen(
+                        arg,
+                        known_record_defs,
+                        known_sum_defs,
+                        known_alias_defs,
+                        seen_aliases,
+                    )
+                })
                 .collect();
             Type::Sum(kea_types::SumType {
                 name: name.clone(),
@@ -200,34 +249,66 @@ fn lower_pattern_type_annotation(
         TypeAnnotation::Tuple(elems) => Type::Tuple(
             elems
                 .iter()
-                .map(|arg| lower_pattern_type_annotation(arg, known_record_defs, known_sum_defs))
+                .map(|arg| {
+                    lower_pattern_type_annotation_with_seen(
+                        arg,
+                        known_record_defs,
+                        known_sum_defs,
+                        known_alias_defs,
+                        seen_aliases,
+                    )
+                })
                 .collect(),
         ),
-        TypeAnnotation::Optional(inner) => Type::Option(Box::new(lower_pattern_type_annotation(
-            inner,
-            known_record_defs,
-            known_sum_defs,
-        ))),
+        TypeAnnotation::Optional(inner) => {
+            Type::Option(Box::new(lower_pattern_type_annotation_with_seen(
+                inner,
+                known_record_defs,
+                known_sum_defs,
+                known_alias_defs,
+                seen_aliases,
+            )))
+        }
         TypeAnnotation::Function(params, ret) => Type::Function(kea_types::FunctionType::pure(
             params
                 .iter()
                 .map(|param| {
-                    lower_pattern_type_annotation(param, known_record_defs, known_sum_defs)
+                    lower_pattern_type_annotation_with_seen(
+                        param,
+                        known_record_defs,
+                        known_sum_defs,
+                        known_alias_defs,
+                        seen_aliases,
+                    )
                 })
                 .collect(),
-            lower_pattern_type_annotation(ret, known_record_defs, known_sum_defs),
+            lower_pattern_type_annotation_with_seen(
+                ret,
+                known_record_defs,
+                known_sum_defs,
+                known_alias_defs,
+                seen_aliases,
+            ),
         )),
         TypeAnnotation::FunctionWithEffect(params, _, ret) => Type::Function(kea_types::FunctionType {
             params: params
                 .iter()
                 .map(|param| {
-                    lower_pattern_type_annotation(param, known_record_defs, known_sum_defs)
+                    lower_pattern_type_annotation_with_seen(
+                        param,
+                        known_record_defs,
+                        known_sum_defs,
+                        known_alias_defs,
+                        seen_aliases,
+                    )
                 })
                 .collect(),
-            ret: Box::new(lower_pattern_type_annotation(
+            ret: Box::new(lower_pattern_type_annotation_with_seen(
                 ret,
                 known_record_defs,
                 known_sum_defs,
+                known_alias_defs,
+                seen_aliases,
             )),
             effects: EffectRow::pure(),
         }),
@@ -346,6 +427,7 @@ fn collect_variant_tags(
     QualifiedPatternVariantTags,
 ) {
     let known_record_defs = collect_record_defs(module);
+    let known_alias_defs = collect_alias_defs(module);
     let known_sum_defs: BTreeSet<String> = module
         .declarations
         .iter()
@@ -377,6 +459,7 @@ fn collect_variant_tags(
                         &field.ty.node,
                         &known_record_defs,
                         &known_sum_defs,
+                        &known_alias_defs,
                     )
                 })
                 .collect();
@@ -427,6 +510,19 @@ fn collect_record_defs(module: &Module) -> KnownRecordDefs {
         .iter()
         .filter_map(|decl| match &decl.node {
             DeclKind::RecordDef(def) => Some(def.name.node.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+fn collect_alias_defs(module: &Module) -> KnownAliasDefs {
+    module
+        .declarations
+        .iter()
+        .filter_map(|decl| match &decl.node {
+            DeclKind::AliasDecl(alias) if alias.params.is_empty() => {
+                Some((alias.name.node.clone(), alias.target.node.clone()))
+            }
             _ => None,
         })
         .collect()
