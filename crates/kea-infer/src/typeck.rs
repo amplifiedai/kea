@@ -7416,6 +7416,11 @@ pub fn register_builtin_int_bitwise_methods(env: &mut TypeEnv) {
     env.register_module_function(module_path, name);
     env.register_module_type_scheme_exact(module_path, name, unary.clone());
     env.register_inherent_method("Int", name);
+    for name in ["popcount", "leading_zeros", "trailing_zeros"] {
+        env.register_module_function(module_path, name);
+        env.register_module_type_scheme_exact(module_path, name, unary.clone());
+        env.register_inherent_method("Int", name);
+    }
     for name in [
         "bit_and",
         "bit_or",
