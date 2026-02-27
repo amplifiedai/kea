@@ -363,6 +363,51 @@ fn configured_prelude_modules() -> Vec<String> {
     vec!["Prelude".to_string()]
 }
 
+fn configured_prelude_reexports() -> Vec<(String, String)> {
+    let configured = std::env::var("KEA_PRELUDE_REEXPORTS")
+        .unwrap_or_else(|_| "Order.Ordering,Option.Some,Option.None,Result.Ok,Result.Err".to_string());
+    configured
+        .split(',')
+        .filter_map(|entry| {
+            let trimmed = entry.trim();
+            let (module, item) = trimmed.rsplit_once('.')?;
+            if module.is_empty() || item.is_empty() {
+                return None;
+            }
+            Some((module.to_string(), item.to_string()))
+        })
+        .collect()
+}
+
+fn apply_hardcoded_prelude_reexports(env: &mut TypeEnv, traits: &TraitRegistry) {
+    for (module_path, item_name) in configured_prelude_reexports() {
+        if env.lookup(&item_name).is_none()
+            && let Some(scheme) = env.resolve_qualified(&module_path, &item_name).cloned()
+        {
+            env.bind(item_name.clone(), scheme);
+            if let Some(signature) = env
+                .resolve_qualified_function_signature(&module_path, &item_name)
+                .cloned()
+            {
+                env.set_function_signature(item_name.clone(), signature);
+            }
+            if let Some(effect_signature) = env
+                .resolve_qualified_effect_signature(&module_path, &item_name)
+                .cloned()
+            {
+                env.set_function_effect_signature(item_name.clone(), effect_signature);
+            }
+            if let Some(effect_row) = env.resolve_qualified_effect_row(&module_path, &item_name) {
+                env.set_function_effect_row(item_name.clone(), effect_row);
+            }
+        }
+        let owner_tag = format!("project:{module_path}");
+        if traits.trait_owner(&item_name) == Some(owner_tag.as_str()) {
+            env.mark_trait_in_scope(&item_name);
+        }
+    }
+}
+
 fn collect_project_modules(entry: &Path) -> Result<Vec<LoadedModule>, String> {
     struct VisitState {
         next_file_id: u32,
@@ -588,6 +633,8 @@ fn parse_and_typecheck_project(entry: &Path) -> Result<CompilationContext, Strin
 
         typed_modules.push((loaded.module_path.clone(), expanded));
     }
+
+    apply_hardcoded_prelude_reexports(&mut env, &traits);
 
     let module = merge_modules_for_codegen(&typed_modules);
     Ok(CompilationContext {
