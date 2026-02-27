@@ -21600,6 +21600,41 @@ theorem principalFieldTypingDualConsequence_iff_noUnifyBridgeBundle_of_success
     exact principalFieldTypingDualConsequence_of_noUnifyBridgeBundle h_hooks h_bundle h_ok
 
 /--
+Compatibility: the combined dual consequence slice implies the existing
+no-unify bridge slice.
+-/
+theorem principalNoUnifyBridgeSlices_of_dualConsequenceSlices
+    (h_dual : PrincipalDualConsequenceSlices) :
+    PrincipalNoUnifyBridgeSlices := by
+  refine ⟨?expr, ?field⟩
+  · intro st fuel env e st' ty _h_no h_ok h_hooks
+    exact principalNoUnifyBridgeBundle_of_dualConsequence
+      (principalDualConsequenceSlices_expr h_dual h_hooks st fuel env e st' ty h_ok)
+  · intro st fuel env fs st' rf _h_no h_ok h_hooks
+    exact principalFieldNoUnifyBridgeBundle_of_dualConsequence
+      (principalDualConsequenceSlices_field h_dual h_hooks st fuel env fs st' rf h_ok)
+
+/--
+Compatibility: the combined dual consequence slice implies the full principal
+boundary bridge suite.
+-/
+theorem principalBoundaryBridgeSuite_of_dualConsequenceSlices
+    (h_dual : PrincipalDualConsequenceSlices) :
+    PrincipalBoundaryBridgeSuite := by
+  refine {
+    noUnify := principalNoUnifyBridgeSlices_of_dualConsequenceSlices h_dual
+    preconditionedCoreIff := principalPreconditionedCoreIffSlices_of_dualConsequenceSlices h_dual
+  }
+
+/--
+Canonical suite adapter from the proved combined dual consequence slice.
+-/
+theorem principalBoundaryBridgeSuite_proved_via_dualConsequenceSlices :
+    PrincipalBoundaryBridgeSuite :=
+  principalBoundaryBridgeSuite_of_dualConsequenceSlices
+    principalDualConsequenceSlices_proved
+
+/--
 Surface-layer naming-parity wrappers for no-unify cross-route success APIs.
 These mirror the existing `...from_cross_route_slices` families under
 explicit `...from_cross_route_surface_slices` theorem names.
