@@ -13612,6 +13612,7 @@ no-unify expression runs.
 structure PrincipalNoUnifyExprAllHooksRouteSurface
     (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
     (st' : UnifyState) (ty : Ty) : Prop where
+  consequences : PrincipalNoUnifyExprRunBundleConsequences st fuel env e st' ty
   capstone : PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty
   runBundle : PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty
   irrelevance :
@@ -13627,6 +13628,7 @@ no-unify field runs.
 structure PrincipalNoUnifyFieldAllHooksRouteSurface
     (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
     (st' : UnifyState) (rf : RowFields) : Prop where
+  consequences : PrincipalNoUnifyFieldRunBundleConsequences st fuel env fs st' rf
   capstone : PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf
   runBundle : PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf
   irrelevance :
@@ -13672,6 +13674,9 @@ theorem principalNoUnifyExprAllHooksRouteSurface_on_both_master_consequence_rout
       st fuel env e st' ty := by
   refine {
     viaMasterConsequenceCapstone := {
+      consequences :=
+        principalNoUnifyExprRunBundleConsequences_via_masterConsequenceCapstone_from_cross_route_slices
+          h_no h_ok
       capstone :=
         principalNoUnifyExprAllHooksCapstone_via_masterConsequenceCapstone_from_cross_route_capstone_slices
           h_no h_ok
@@ -13683,6 +13688,9 @@ theorem principalNoUnifyExprAllHooksRouteSurface_on_both_master_consequence_rout
           h_no h_ok
     }
     viaMasterRunBundleConsequence := {
+      consequences :=
+        principalNoUnifyExprRunBundleConsequences_via_masterRunBundleConsequence_from_cross_route_slices
+          h_no h_ok
       capstone :=
         principalNoUnifyExprAllHooksCapstone_via_masterRunBundleConsequence_from_cross_route_capstone_slices
           h_no h_ok
@@ -13708,6 +13716,9 @@ theorem principalNoUnifyFieldAllHooksRouteSurface_on_both_master_consequence_rou
       st fuel env fs st' rf := by
   refine {
     viaMasterConsequenceCapstone := {
+      consequences :=
+        principalNoUnifyFieldRunBundleConsequences_via_masterConsequenceCapstone_from_cross_route_slices
+          h_no h_ok
       capstone :=
         principalNoUnifyFieldAllHooksCapstone_via_masterConsequenceCapstone_from_cross_route_capstone_slices
           h_no h_ok
@@ -13719,6 +13730,9 @@ theorem principalNoUnifyFieldAllHooksRouteSurface_on_both_master_consequence_rou
           h_no h_ok
     }
     viaMasterRunBundleConsequence := {
+      consequences :=
+        principalNoUnifyFieldRunBundleConsequences_via_masterRunBundleConsequence_from_cross_route_slices
+          h_no h_ok
       capstone :=
         principalNoUnifyFieldAllHooksCapstone_via_masterRunBundleConsequence_from_cross_route_capstone_slices
           h_no h_ok
@@ -14957,8 +14971,8 @@ theorem principalNoUnifyExprRunBundleConsequences_of_success_via_masterConsequen
     (h_no : NoUnifyBranchesExpr e)
     (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
     PrincipalNoUnifyExprRunBundleConsequences st fuel env e st' ty :=
-  principalNoUnifyExprRunBundleConsequences_via_masterConsequenceCapstone_from_cross_route_slices
-    h_no h_ok
+  (principalNoUnifyExprAllHooksRouteSurface_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok).consequences
 
 /--
 No-unify naming-parity alias: field packaged consequence bundle on the
@@ -14970,8 +14984,8 @@ theorem principalNoUnifyFieldRunBundleConsequences_of_success_via_masterConseque
     (h_no : NoUnifyBranchesFields fs)
     (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
     PrincipalNoUnifyFieldRunBundleConsequences st fuel env fs st' rf :=
-  principalNoUnifyFieldRunBundleConsequences_via_masterConsequenceCapstone_from_cross_route_slices
-    h_no h_ok
+  (principalNoUnifyFieldAllHooksRouteSurface_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok).consequences
 
 /--
 No-unify naming-parity alias: expression all-hooks capstone on the
@@ -15571,8 +15585,8 @@ theorem principalNoUnifyExprRunBundleConsequences_of_success_via_masterRunBundle
     (h_no : NoUnifyBranchesExpr e)
     (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
     PrincipalNoUnifyExprRunBundleConsequences st fuel env e st' ty :=
-  principalNoUnifyExprRunBundleConsequences_via_masterRunBundleConsequence_from_cross_route_slices
-    h_no h_ok
+  (principalNoUnifyExprAllHooksRouteSurface_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok).consequences
 
 /--
 No-unify naming-parity alias: field packaged consequence bundle on the
@@ -15584,8 +15598,8 @@ theorem principalNoUnifyFieldRunBundleConsequences_of_success_via_masterRunBundl
     (h_no : NoUnifyBranchesFields fs)
     (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
     PrincipalNoUnifyFieldRunBundleConsequences st fuel env fs st' rf :=
-  principalNoUnifyFieldRunBundleConsequences_via_masterRunBundleConsequence_from_cross_route_slices
-    h_no h_ok
+  (principalNoUnifyFieldAllHooksRouteSurface_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok).consequences
 
 /--
 No-unify naming-parity alias: expression all-hooks capstone on the
