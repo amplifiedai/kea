@@ -6149,6 +6149,104 @@ theorem principalNoUnifyToGeneralAllHooksSuite_irrelevance_field
     h_suite.irrelevance h_no h_ok
 
 /--
+Convert a general successful-run all-hooks expression capstone into the
+no-unify all-hooks expression capstone shape.
+-/
+theorem principalBoundaryNoUnifyExprAllHooksCapstone_of_generalAllHooks
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_cap : PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty) :
+    PrincipalBoundaryNoUnifyExprAllHooksCapstone st fuel env e st' ty := by
+  refine {
+    core := h_cap.core
+    preconditionedAny := h_cap.preconditionedAny
+    preconditionedAnyIffCore := h_cap.preconditionedAnyIffCore
+  }
+
+/--
+Convert a general successful-run all-hooks field capstone into the
+no-unify all-hooks field capstone shape.
+-/
+theorem principalBoundaryNoUnifyFieldAllHooksCapstone_of_generalAllHooks
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_cap : PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf) :
+    PrincipalBoundaryNoUnifyFieldAllHooksCapstone st fuel env fs st' rf := by
+  refine {
+    core := h_cap.core
+    preconditionedAny := h_cap.preconditionedAny
+    preconditionedAnyIffCore := h_cap.preconditionedAnyIffCore
+  }
+
+/--
+Derive the no-unify-to-general all-hooks suite from a no-unify all-hooks suite.
+-/
+theorem principalNoUnifyToGeneralAllHooksSuite_of_noUnifyAllHooksSuite
+    (h_suite : PrincipalBoundaryNoUnifyAllHooksSuite) :
+    PrincipalNoUnifyToGeneralAllHooksSuite := by
+  refine {
+    capstones := ?_
+    irrelevance := ?_
+  }
+  · refine ⟨?_, ?_⟩
+    · intro st fuel env e st' ty h_no h_ok
+      exact principalBoundaryNoUnifyAllHooksSuite_capstone_expr_as_general
+        h_suite h_no h_ok
+    · intro st fuel env fs st' rf h_no h_ok
+      exact principalBoundaryNoUnifyAllHooksSuite_capstone_field_as_general
+        h_suite h_no h_ok
+  · refine ⟨?_, ?_⟩
+    · intro st fuel env e st' ty h_app₁ h_proj₁ h_app₂ h_proj₂ h_no h_ok
+      exact principalBoundaryNoUnifyAllHooksSuite_irrelevance_expr
+        h_suite h_no h_ok
+    · intro st fuel env fs st' rf h_app₁ h_proj₁ h_app₂ h_proj₂ h_no h_ok
+      exact principalBoundaryNoUnifyAllHooksSuite_irrelevance_field
+        h_suite h_no h_ok
+
+/--
+Derive the no-unify all-hooks suite from a no-unify-to-general all-hooks suite.
+-/
+theorem principalBoundaryNoUnifyAllHooksSuite_of_noUnifyToGeneralAllHooksSuite
+    (h_suite : PrincipalNoUnifyToGeneralAllHooksSuite) :
+    PrincipalBoundaryNoUnifyAllHooksSuite := by
+  refine {
+    capstones := ?_
+    irrelevance := ?_
+  }
+  · refine ⟨?_, ?_⟩
+    · intro st fuel env e st' ty h_no h_ok
+      exact principalBoundaryNoUnifyExprAllHooksCapstone_of_generalAllHooks
+        (principalNoUnifyToGeneralAllHooksSuite_capstone_expr h_suite h_no h_ok)
+    · intro st fuel env fs st' rf h_no h_ok
+      exact principalBoundaryNoUnifyFieldAllHooksCapstone_of_generalAllHooks
+        (principalNoUnifyToGeneralAllHooksSuite_capstone_field h_suite h_no h_ok)
+  · refine ⟨?_, ?_⟩
+    · intro st fuel env e st' ty h_app₁ h_proj₁ h_app₂ h_proj₂ h_no h_ok
+      exact principalNoUnifyToGeneralAllHooksSuite_irrelevance_expr
+        h_suite h_no h_ok
+    · intro st fuel env fs st' rf h_app₁ h_proj₁ h_app₂ h_proj₂ h_no h_ok
+      exact principalNoUnifyToGeneralAllHooksSuite_irrelevance_field
+        h_suite h_no h_ok
+
+/--
+Canonical derived no-unify-to-general suite from the proved no-unify all-hooks
+suite.
+-/
+theorem principalNoUnifyToGeneralAllHooksSuite_proved_via_noUnifyAllHooks :
+    PrincipalNoUnifyToGeneralAllHooksSuite :=
+  principalNoUnifyToGeneralAllHooksSuite_of_noUnifyAllHooksSuite
+    principalBoundaryNoUnifyAllHooksSuite_proved
+
+/--
+Canonical derived no-unify all-hooks suite from the proved no-unify-to-general
+suite.
+-/
+theorem principalBoundaryNoUnifyAllHooksSuite_proved_via_noUnifyToGeneral :
+    PrincipalBoundaryNoUnifyAllHooksSuite :=
+  principalBoundaryNoUnifyAllHooksSuite_of_noUnifyToGeneralAllHooksSuite
+    principalNoUnifyToGeneralAllHooksSuite_proved
+
+/--
 Convert an all-hooks expression capstone into a hook-specific no-unify
 expression capstone by selecting concrete hook witnesses.
 -/
@@ -6238,7 +6336,7 @@ theorem principalBoundaryMasterSuite_proved : PrincipalBoundaryMasterSuite := by
     allHooks := principalPreconditionedAllHooksSuite_proved
     noUnifyAllHooks := principalBoundaryNoUnifyAllHooksSuite_proved
     noUnifyHookedFromAllHooks := principalBoundaryNoUnifyCapstoneSlices_of_allHooksSuite
-    noUnifyToGeneralAllHooks := principalNoUnifyToGeneralAllHooksSuite_proved
+    noUnifyToGeneralAllHooks := principalNoUnifyToGeneralAllHooksSuite_proved_via_noUnifyAllHooks
   }
 
 /--
