@@ -1,0 +1,21 @@
+use Result
+
+effect Fail E
+  fn fail(error: E) -> Never
+
+fn assert(value: Bool) -[Fail String]> Unit
+  if value
+    ()
+  else
+    Fail.fail("assertion failed")
+
+fn run() -[Fail String]> Unit
+  assert Result.unwrap_or(Ok(5), 0) == 5
+  assert Result.unwrap_or(Err(5), 0) == 0
+  assert Result.is_ok(Ok(1))
+  assert Result.is_err(Err(1))
+
+fn main() -> Int
+  case catch run()
+    Ok(_) -> 0
+    Err(_) -> 1
