@@ -27286,6 +27286,46 @@ theorem principalBoundarySoundFullVerticalMasterRoutes_dual_viaRowPolyBundle
     PrincipalBoundarySoundFullVerticalSuite st fuel env e fs stExpr ty stField rf :=
   h_master.dual.viaRowPolyBundle
 
+/--
+`FullVertical` master routes are equivalent to a pair of route witnesses:
+regular and dual.
+-/
+theorem principalBoundarySoundFullVerticalMasterRoutes_iff_regular_and_dual
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields} :
+    PrincipalBoundarySoundFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf
+      ↔ (PrincipalBoundarySoundFullVerticalRoutes st fuel env e fs stExpr ty stField rf
+          ∧ PrincipalBoundarySoundFullVerticalRoutes st fuel env e fs stExpr ty stField rf) := by
+  constructor
+  · intro h_master
+    exact ⟨h_master.regular, h_master.dual⟩
+  · intro h_pair
+    exact ⟨h_pair.1, h_pair.2⟩
+
+/-- Constructor from an explicit regular/dual route pair. -/
+theorem principalBoundarySoundFullVerticalMasterRoutes_of_pair
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_pair : PrincipalBoundarySoundFullVerticalRoutes st fuel env e fs stExpr ty stField rf
+      ∧ PrincipalBoundarySoundFullVerticalRoutes st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf :=
+  (principalBoundarySoundFullVerticalMasterRoutes_iff_regular_and_dual).2 h_pair
+
+/-- One-hop extraction of the regular/dual route pair from a master witness. -/
+theorem principalBoundarySoundFullVerticalMasterRoutes_as_pair
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_master : PrincipalBoundarySoundFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundFullVerticalRoutes st fuel env e fs stExpr ty stField rf
+      ∧ PrincipalBoundarySoundFullVerticalRoutes st fuel env e fs stExpr ty stField rf :=
+  (principalBoundarySoundFullVerticalMasterRoutes_iff_regular_and_dual).1 h_master
+
 /-- One-hop projection: regular route full-suite consequence from master routes. -/
 theorem principalBoundarySoundFullVerticalMasterRoutes_regular_full
     {st : UnifyState} {fuel : Nat} {env : TermEnv}
