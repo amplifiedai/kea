@@ -5,7 +5,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use kea_ast::{BinOp, DeclKind, ExprKind as AstExprKind, UnaryOp};
+use kea_ast::{BinOp, DeclKind, ExprKind as AstExprKind, TypeAnnotation, UnaryOp};
 use kea_hir::{HirDecl, HirExpr, HirExprKind, HirFunction, HirModule, HirPattern};
 use kea_types::{EffectRow, FunctionType, Type};
 
@@ -327,6 +327,7 @@ pub fn lower_hir_module(module: &HirModule) -> MirModule {
         }
     }
     seed_builtin_sum_layouts(&mut layouts);
+    seed_anon_record_layouts(module, &mut layouts);
     let mut functions = Vec::new();
     for decl in &module.declarations {
         if let HirDecl::Function(function) = decl {
@@ -567,6 +568,120 @@ fn seed_builtin_sum_layouts(layouts: &mut MirLayoutCatalog) {
     }
 }
 
+fn seed_anon_record_layouts(module: &HirModule, layouts: &mut MirLayoutCatalog) {
+    let mut known = layouts
+        .records
+        .iter()
+        .map(|record| record.name.clone())
+        .collect::<BTreeSet<_>>();
+    for decl in &module.declarations {
+        let HirDecl::Function(function) = decl else {
+            continue;
+        };
+        collect_anon_record_layouts_from_expr(&function.body, layouts, &mut known);
+    }
+}
+
+fn collect_anon_record_layouts_from_expr(
+    expr: &HirExpr,
+    layouts: &mut MirLayoutCatalog,
+    known: &mut BTreeSet<String>,
+) {
+    match &expr.kind {
+        HirExprKind::Lit(_) | HirExprKind::Var(_) => {}
+        HirExprKind::RecordLit { fields, .. } => {
+            for (_, field_expr) in fields {
+                collect_anon_record_layouts_from_expr(field_expr, layouts, known);
+            }
+        }
+        HirExprKind::RecordUpdate { base, fields, .. } => {
+            collect_anon_record_layouts_from_expr(base, layouts, known);
+            for (_, field_expr) in fields {
+                collect_anon_record_layouts_from_expr(field_expr, layouts, known);
+            }
+        }
+        HirExprKind::SumConstructor { fields, .. } | HirExprKind::Tuple(fields) => {
+            for field_expr in fields {
+                collect_anon_record_layouts_from_expr(field_expr, layouts, known);
+            }
+        }
+        HirExprKind::SumPayloadAccess { expr, .. }
+        | HirExprKind::FieldAccess { expr, .. }
+        | HirExprKind::Catch { expr } => {
+            collect_anon_record_layouts_from_expr(expr, layouts, known);
+        }
+        HirExprKind::Binary { left, right, .. } => {
+            collect_anon_record_layouts_from_expr(left, layouts, known);
+            collect_anon_record_layouts_from_expr(right, layouts, known);
+        }
+        HirExprKind::Unary { operand, .. } => {
+            collect_anon_record_layouts_from_expr(operand, layouts, known);
+        }
+        HirExprKind::Call { func, args } => {
+            collect_anon_record_layouts_from_expr(func, layouts, known);
+            for arg in args {
+                collect_anon_record_layouts_from_expr(arg, layouts, known);
+            }
+        }
+        HirExprKind::Lambda { body, .. } => {
+            collect_anon_record_layouts_from_expr(body, layouts, known);
+        }
+        HirExprKind::Let { value, .. } => {
+            collect_anon_record_layouts_from_expr(value, layouts, known);
+        }
+        HirExprKind::If {
+            condition,
+            then_branch,
+            else_branch,
+        } => {
+            collect_anon_record_layouts_from_expr(condition, layouts, known);
+            collect_anon_record_layouts_from_expr(then_branch, layouts, known);
+            if let Some(else_expr) = else_branch {
+                collect_anon_record_layouts_from_expr(else_expr, layouts, known);
+            }
+        }
+        HirExprKind::Block(exprs) => {
+            for inner in exprs {
+                collect_anon_record_layouts_from_expr(inner, layouts, known);
+            }
+        }
+        HirExprKind::Raw(raw_expr) => {
+            if let AstExprKind::AnonRecord { fields, spread } = raw_expr
+                && spread.is_none()
+            {
+                let field_names = fields
+                    .iter()
+                    .map(|(name, _)| name.node.clone())
+                    .collect::<BTreeSet<_>>();
+                let layout_name = anon_record_layout_name(&field_names);
+                if known.insert(layout_name.clone()) {
+                    layouts.records.push(MirRecordLayout {
+                        name: layout_name,
+                        fields: field_names
+                            .into_iter()
+                            .map(|field_name| MirRecordFieldLayout {
+                                name: field_name,
+                                annotation: TypeAnnotation::Named("Dynamic".to_string()),
+                            })
+                            .collect(),
+                    });
+                }
+            }
+        }
+    }
+}
+
+fn anon_record_layout_name(fields: &BTreeSet<String>) -> String {
+    if fields.is_empty() {
+        "__AnonRecord$empty".to_string()
+    } else {
+        format!(
+            "__AnonRecord${}",
+            fields.iter().cloned().collect::<Vec<_>>().join("$")
+        )
+    }
+}
+
 fn lower_hir_function(
     function: &HirFunction,
     layouts: &MirLayoutCatalog,
@@ -652,6 +767,7 @@ struct FunctionLoweringCtx {
     known_function_types: BTreeMap<String, Type>,
     lambda_factories: BTreeMap<String, LambdaFactoryTemplate>,
     var_record_types: BTreeMap<String, String>,
+    record_value_types: BTreeMap<MirValueId, String>,
     sum_value_types: BTreeMap<MirValueId, String>,
     sum_ctor_candidates: BTreeMap<String, Vec<SumCtorCandidate>>,
     lifted_functions: Vec<MirFunction>,
@@ -729,6 +845,7 @@ impl FunctionLoweringCtx {
             known_function_types: known_function_types.clone(),
             lambda_factories: lambda_factories.clone(),
             var_record_types: BTreeMap::new(),
+            record_value_types: BTreeMap::new(),
             sum_value_types: BTreeMap::new(),
             sum_ctor_candidates,
             lifted_functions: Vec::new(),
@@ -980,6 +1097,8 @@ impl FunctionLoweringCtx {
                     record_type: record_type.clone(),
                     fields: lowered_fields,
                 });
+                self.record_value_types
+                    .insert(dest.clone(), record_type.clone());
                 Some(dest)
             }
             HirExprKind::RecordUpdate {
@@ -1036,6 +1155,8 @@ impl FunctionLoweringCtx {
                     copy_path: block_id,
                 });
                 self.emit_inst(MirInst::Release { value: target });
+                self.record_value_types
+                    .insert(dest.clone(), record_type.clone());
                 Some(dest)
             }
             HirExprKind::SumConstructor {
@@ -1068,7 +1189,7 @@ impl FunctionLoweringCtx {
                     _ => match &base.kind {
                         HirExprKind::Var(name) => self.var_record_types.get(name).cloned(),
                         HirExprKind::Call { func, .. } => self.infer_record_type_from_call(func),
-                        _ => None,
+                        _ => self.record_value_types.get(&record).cloned(),
                     },
                 }?;
                 let dest = self.new_value();
@@ -1460,6 +1581,34 @@ impl FunctionLoweringCtx {
                 Some(dest)
             }
             AstExprKind::Var(name) => self.vars.get(name).cloned(),
+            AstExprKind::AnonRecord { fields, spread } => {
+                if spread.is_some() {
+                    return None;
+                }
+                let required = fields
+                    .iter()
+                    .map(|(name, _)| name.node.clone())
+                    .collect::<BTreeSet<_>>();
+                let record_type = anon_record_layout_name(&required);
+                if !self.layouts.records.iter().any(|record| record.name == record_type) {
+                    return None;
+                }
+                let mut lowered_fields = Vec::with_capacity(fields.len());
+                for (field_name, field_expr) in fields {
+                    lowered_fields.push((
+                        field_name.node.clone(),
+                        self.lower_raw_ast_expr(&field_expr.node)?,
+                    ));
+                }
+                let dest = self.new_value();
+                self.emit_inst(MirInst::RecordInit {
+                    dest: dest.clone(),
+                    record_type: record_type.clone(),
+                    fields: lowered_fields,
+                });
+                self.record_value_types.insert(dest.clone(), record_type);
+                Some(dest)
+            }
             AstExprKind::Constructor { name, args } => {
                 let candidates = self.sum_ctor_candidates.get(&name.node)?;
                 let matching = candidates
@@ -1595,8 +1744,12 @@ impl FunctionLoweringCtx {
 
     fn bind_pattern(&mut self, pattern: &HirPattern, value_id: MirValueId, value_ty: &Type) {
         if let HirPattern::Var(name) = pattern {
-            self.vars.insert(name.clone(), value_id);
+            self.vars.insert(name.clone(), value_id.clone());
             self.var_types.insert(name.clone(), value_ty.clone());
+            if let Some(record_type) = self.record_value_types.get(&value_id) {
+                self.var_record_types
+                    .insert(name.clone(), record_type.clone());
+            }
             match value_ty {
                 Type::Record(record_ty) => {
                     self.var_record_types
@@ -2200,6 +2353,125 @@ mod tests {
                 ..
             } if record_type == "User" && fields.len() == 2
         ));
+    }
+
+    #[test]
+    fn lower_hir_module_seeds_synthetic_layout_for_raw_anon_record_literal() {
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "main".to_string(),
+                params: vec![],
+                body: HirExpr {
+                    kind: HirExprKind::Raw(ExprKind::AnonRecord {
+                        fields: vec![
+                            (sp("age".to_string()), sp(ExprKind::Lit(kea_ast::Lit::Int(4)))),
+                            (
+                                sp("score".to_string()),
+                                sp(ExprKind::Lit(kea_ast::Lit::Int(9))),
+                            ),
+                        ],
+                        spread: None,
+                    }),
+                    ty: Type::Dynamic,
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::pure(vec![], Type::Dynamic)),
+                effects: EffectRow::pure(),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let mir = lower_hir_module(&hir);
+        let layout = mir
+            .layouts
+            .records
+            .iter()
+            .find(|layout| layout.name == "__AnonRecord$age$score")
+            .expect("expected synthetic anon-record layout");
+        assert_eq!(layout.fields.len(), 2);
+        assert_eq!(layout.fields[0].name, "age");
+        assert_eq!(layout.fields[1].name, "score");
+    }
+
+    #[test]
+    fn lower_hir_module_lowers_raw_anon_record_literal_field_access_expression() {
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "get_age".to_string(),
+                params: vec![],
+                body: HirExpr {
+                    kind: HirExprKind::Block(vec![
+                        HirExpr {
+                            kind: HirExprKind::Let {
+                                pattern: HirPattern::Var("user".to_string()),
+                                value: Box::new(HirExpr {
+                                    kind: HirExprKind::Raw(ExprKind::AnonRecord {
+                                        fields: vec![
+                                            (
+                                                sp("age".to_string()),
+                                                sp(ExprKind::Lit(kea_ast::Lit::Int(4))),
+                                            ),
+                                            (
+                                                sp("score".to_string()),
+                                                sp(ExprKind::Lit(kea_ast::Lit::Int(9))),
+                                            ),
+                                        ],
+                                        spread: None,
+                                    }),
+                                    ty: Type::Dynamic,
+                                    span: kea_ast::Span::synthetic(),
+                                }),
+                            },
+                            ty: Type::Dynamic,
+                            span: kea_ast::Span::synthetic(),
+                        },
+                        HirExpr {
+                            kind: HirExprKind::FieldAccess {
+                                expr: Box::new(HirExpr {
+                                    kind: HirExprKind::Var("user".to_string()),
+                                    ty: Type::Dynamic,
+                                    span: kea_ast::Span::synthetic(),
+                                }),
+                                field: "age".to_string(),
+                            },
+                            ty: Type::Int,
+                            span: kea_ast::Span::synthetic(),
+                        },
+                    ]),
+                    ty: Type::Int,
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
+                effects: EffectRow::pure(),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let mir = lower_hir_module(&hir);
+        let function = &mir.functions[0];
+        assert!(function.blocks[0]
+            .instructions
+            .iter()
+            .any(|inst| matches!(
+                inst,
+                MirInst::RecordInit {
+                    record_type,
+                    fields,
+                    ..
+                } if record_type == "__AnonRecord$age$score" && fields.len() == 2
+            )));
+        assert!(function.blocks[0]
+            .instructions
+            .iter()
+            .any(|inst| matches!(
+                inst,
+                MirInst::RecordFieldLoad {
+                    record_type,
+                    field,
+                    field_ty: Type::Int,
+                    ..
+                } if record_type == "__AnonRecord$age$score" && field == "age"
+            )));
     }
 
     #[test]
