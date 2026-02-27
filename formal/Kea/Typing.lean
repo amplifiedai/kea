@@ -3812,6 +3812,38 @@ theorem principalFieldTypingSlicePreconditioned_of_success_no_unify_from_bundle
     h_no h_ok h_hooks.1 h_hooks.2
 
 /--
+On successful field runs, the preconditioned principal field slice and core
+principal field slice are equivalent.
+-/
+theorem principalFieldTypingSlicePreconditioned_iff_core_of_success
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSliceCore env fs rf := by
+  constructor
+  · intro h_pre
+    exact principalFieldTypingSliceCore_of_infer h_pre.inferFieldsAgrees
+  · intro h_core
+    exact principalFieldTypingSlicePreconditioned_of_success_of_core_principal
+      h_core h_ok h_app h_proj
+
+/--
+Bundle-entry variant of `principalFieldTypingSlicePreconditioned_iff_core_of_success`.
+-/
+theorem principalFieldTypingSlicePreconditioned_iff_core_of_success_from_bundle
+    (h_hooks : UnifyHookPremises)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSliceCore env fs rf := by
+  exact principalFieldTypingSlicePreconditioned_iff_core_of_success
+    h_hooks.1 h_hooks.2 st fuel env fs st' rf h_ok
+
+/--
 Packaged no-unify field principal bridge: one successful hook-free
 `inferFieldsUnify` run yields both the core principal field package and the
 preconditioned principal field package.
@@ -3867,6 +3899,46 @@ theorem principalTypingSlicePreconditioned_of_success_from_bundle
     (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
     PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty := by
   exact principalTypingSlicePreconditioned_of_success
+    h_hooks.1 h_hooks.2 st fuel env e st' ty h_ok
+
+/--
+On successful expression runs, the preconditioned principal slice and core
+principal slice are equivalent.
+-/
+theorem principalTypingSlicePreconditioned_iff_core_of_success
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty
+      ↔ PrincipalTypingSliceCore env e ty := by
+  constructor
+  · intro h_pre
+    exact principalTypingSliceCore_of_infer h_pre.inferExprAgrees
+  · intro h_core
+    refine {
+      deterministic := ?_
+      declarativeUnique := ?_
+      inferExprAgrees := ?_
+    }
+    · intro st'' ty'' h_ok'
+      exact inferExprUnify_deterministic st fuel env e h_ok' h_ok
+    · intro ty' h_ty'
+      exact h_core.unique h_ty'
+    · exact inferExpr_complete env e ty h_core.sound
+
+/--
+Bundle-entry variant of `principalTypingSlicePreconditioned_iff_core_of_success`.
+-/
+theorem principalTypingSlicePreconditioned_iff_core_of_success_from_bundle
+    (h_hooks : UnifyHookPremises)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty
+      ↔ PrincipalTypingSliceCore env e ty := by
+  exact principalTypingSlicePreconditioned_iff_core_of_success
     h_hooks.1 h_hooks.2 st fuel env e st' ty h_ok
 
 /--
