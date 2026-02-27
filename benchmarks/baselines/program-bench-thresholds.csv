@@ -1,4 +1,4 @@
 program,baseline_mean_seconds,max_regression_pct
-alloc_chain,0.216856262,35
-case_chain,0.104471023,35
-fib,0.077349117,35
+alloc_chain,0.208713441,35
+case_chain,0.099389647,35
+fib,0.072949881,35
