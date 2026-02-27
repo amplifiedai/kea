@@ -418,6 +418,44 @@ theorem inferExpr_iff_hasType (env : TermEnv) (e : CoreExpr) (ty : Ty) :
   · intro h
     exact inferExpr_complete env e ty h
 
+/-- Declarative typing is functional on the core slice. -/
+theorem hasType_unique
+    {env : TermEnv} {e : CoreExpr} {ty₁ ty₂ : Ty}
+    (h₁ : HasType env e ty₁)
+    (h₂ : HasType env e ty₂) :
+    ty₁ = ty₂ := by
+  have h_inf₁ : inferExpr env e = some ty₁ := inferExpr_complete env e ty₁ h₁
+  have h_inf₂ : inferExpr env e = some ty₂ := inferExpr_complete env e ty₂ h₂
+  rw [h_inf₁] at h_inf₂
+  exact Option.some.inj h_inf₂
+
+/-- Principal-typing corollary from one successful `inferExpr` run. -/
+theorem inferExpr_principal
+    {env : TermEnv} {e : CoreExpr} {ty : Ty}
+    (h_inf : inferExpr env e = some ty) :
+    ∀ {ty' : Ty}, HasType env e ty' → ty' = ty := by
+  intro ty' h_ty'
+  have h_ty : HasType env e ty := inferExpr_sound env e ty h_inf
+  exact hasType_unique h_ty' h_ty
+
+/-- Packaged principal-typing surface for core `inferExpr`. -/
+structure PrincipalTypingSliceCore
+    (env : TermEnv) (e : CoreExpr) (ty : Ty) : Prop where
+  sound : HasType env e ty
+  unique : ∀ {ty' : Ty}, HasType env e ty' → ty' = ty
+
+/-- Build the core principal-typing bundle from `inferExpr` success. -/
+theorem principalTypingSliceCore_of_infer
+    {env : TermEnv} {e : CoreExpr} {ty : Ty}
+    (h_inf : inferExpr env e = some ty) :
+    PrincipalTypingSliceCore env e ty := by
+  refine {
+    sound := inferExpr_sound env e ty h_inf
+    unique := ?_
+  }
+  intro ty' h_ty'
+  exact inferExpr_principal h_inf h_ty'
+
 /-- Generic boundary assignability judgment for core expressions. -/
 def HasTypeAtCoreBoundary
     (allows : Ty → Ty → Prop)
