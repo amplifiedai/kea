@@ -3656,6 +3656,34 @@ theorem principalTypingSlicePreconditioned_of_success_from_bundle
     h_hooks.1 h_hooks.2 st fuel env e st' ty h_ok
 
 /--
+Successful preconditioned `inferExprUnify` runs induce the core principal
+typing package on the same `(env, e, ty)` surface.
+-/
+theorem principalTypingSliceCore_of_preconditioned_success
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalTypingSliceCore env e ty := by
+  have h_pre :
+      PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty :=
+    principalTypingSlicePreconditioned_of_success h_app h_proj st fuel env e st' ty h_ok
+  exact principalTypingSliceCore_of_infer h_pre.inferExprAgrees
+
+/--
+Bundle-entry variant of `principalTypingSliceCore_of_preconditioned_success`.
+-/
+theorem principalTypingSliceCore_of_preconditioned_success_from_bundle
+    (h_hooks : UnifyHookPremises)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalTypingSliceCore env e ty := by
+  exact principalTypingSliceCore_of_preconditioned_success
+    h_hooks.1 h_hooks.2 st fuel env e st' ty h_ok
+
+/--
 If a core principal-typing package is already available for `(env, e, ty)`,
 any successful `inferExprUnify` run to that same type yields the full
 preconditioned principal bundle, independent of hook assumptions.
