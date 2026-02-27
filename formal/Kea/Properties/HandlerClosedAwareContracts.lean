@@ -24,6 +24,46 @@ def resultEffectsClosedAware (c : HandleClauseContract) : EffectRow :=
     (resultEffectsCoreClosedAware c)
     c.thenEffects
 
+/--
+Closed-aware composition still removes the handled label whenever the handler
+effects themselves do not reintroduce that label.
+-/
+theorem handleComposeClosedAware_removes_target_of_handler_absent
+    (effects handlerEffects : EffectRow)
+    (target : Label)
+    (h_handler_abs :
+      RowFields.has (EffectRow.fields handlerEffects) target = false) :
+    RowFields.has
+      (EffectRow.fields
+        (HandlerAbsentEffectNoop.handleComposeClosedAware effects handlerEffects target))
+      target = false := by
+  unfold HandlerAbsentEffectNoop.handleComposeClosedAware
+  by_cases h_noop :
+      RowFields.has (EffectRow.fields effects) target = false ∧
+        EffectRow.rest effects = none
+  · simp [h_noop]
+  · rw [if_neg h_noop]
+    exact EffectRow.handle_removes_effect_normalized_of_handler_absent
+      effects handlerEffects target h_handler_abs
+
+/--
+Closed-aware composition preserves row-tail openness in both branches:
+no-op branch (`effects`) and normalized branch (`handleComposeNormalized`).
+-/
+theorem handleComposeClosedAware_preserves_row_tail
+    (effects handlerEffects : EffectRow)
+    (target : Label) :
+    EffectRow.rest
+      (HandlerAbsentEffectNoop.handleComposeClosedAware effects handlerEffects target) =
+      EffectRow.rest effects := by
+  unfold HandlerAbsentEffectNoop.handleComposeClosedAware
+  by_cases h_noop :
+      RowFields.has (EffectRow.fields effects) target = false ∧
+        EffectRow.rest effects = none
+  · simp [h_noop]
+  · rw [if_neg h_noop]
+    exact EffectRow.handleComposeNormalized_preserves_row_tail effects handlerEffects target
+
 theorem resultEffectsCoreClosedAware_noop_of_handled_absent_closed
     (c : HandleClauseContract)
     (h_abs : RowFields.has (EffectRow.fields c.exprEffects) c.handled = false)
@@ -196,6 +236,36 @@ theorem closedAwareCoreBundle_of_classification
     exact resultEffectsCoreClosedAware_noop_of_handled_absent_closed c h_abs h_closed
   · intro h_case
     exact resultEffectsCoreClosedAware_eq_normalized_of_present_or_open c h_case
+
+/--
+Shared closed-aware entry bundle for Phase-2 handler theorem surfaces.
+-/
+structure ClosedAwareResultBundle (c : HandleClauseContract) where
+  closedAwareHandledRemoved :
+    RowFields.has (EffectRow.fields (resultEffectsClosedAware c)) c.handled = false
+  closedAwareRowTailStable :
+    EffectRow.rest (resultEffectsClosedAware c) = EffectRow.rest c.exprEffects
+  legacyHandledRemoved :
+    RowFields.has (EffectRow.fields (HandleClauseContract.resultEffects c)) c.handled = false
+
+theorem closedAwareResultBundle_of_wellTyped
+    (c : HandleClauseContract)
+    (h_wt : HandleClauseContract.wellTypedSlice c) :
+    ClosedAwareResultBundle c := by
+  exact {
+    closedAwareHandledRemoved :=
+      wellTypedSlice_implies_handled_removed_closedAware c h_wt
+    closedAwareRowTailStable :=
+      resultEffectsClosedAware_preserves_row_tail c
+    legacyHandledRemoved :=
+      HandleClauseContract.wellTypedSlice_implies_handled_removed c h_wt
+  }
+
+theorem wellTypedSlice_implies_handled_removed_legacy_via_closedAware
+    (c : HandleClauseContract)
+    (h_wt : HandleClauseContract.wellTypedSlice c) :
+    RowFields.has (EffectRow.fields (HandleClauseContract.resultEffects c)) c.handled = false :=
+  (closedAwareResultBundle_of_wellTyped c h_wt).legacyHandledRemoved
 
 end HandlerClosedAwareContracts
 end Kea
