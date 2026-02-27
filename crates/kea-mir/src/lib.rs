@@ -391,8 +391,178 @@ pub fn lower_hir_module(module: &HirModule) -> MirModule {
             ));
         }
     }
+    for function in &mut functions {
+        schedule_trailing_releases_after_last_use(function);
+    }
 
     MirModule { functions, layouts }
+}
+
+fn schedule_trailing_releases_after_last_use(function: &mut MirFunction) {
+    for block in &mut function.blocks {
+        let Some(last_non_release) = block
+            .instructions
+            .iter()
+            .rposition(|inst| !matches!(inst, MirInst::Release { .. }))
+        else {
+            continue;
+        };
+        let tail_start = last_non_release + 1;
+        if tail_start >= block.instructions.len() {
+            continue;
+        }
+
+        let prefix = block.instructions[..tail_start].to_vec();
+        let tail_releases = block.instructions[tail_start..]
+            .iter()
+            .filter_map(|inst| match inst {
+                MirInst::Release { value } => Some(value.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        if tail_releases.is_empty() {
+            continue;
+        }
+
+        let mut insertions: BTreeMap<usize, Vec<MirInst>> = BTreeMap::new();
+        for value in tail_releases {
+            let release_pos =
+                compute_release_insertion_pos(&value, &block.params, &prefix, &block.terminator);
+            insertions
+                .entry(release_pos)
+                .or_default()
+                .push(MirInst::Release { value });
+        }
+
+        let mut rebuilt = Vec::with_capacity(block.instructions.len());
+        for pos in 0..=prefix.len() {
+            if let Some(releases) = insertions.remove(&pos) {
+                rebuilt.extend(releases);
+            }
+            if let Some(inst) = prefix.get(pos) {
+                rebuilt.push(inst.clone());
+            }
+        }
+        block.instructions = rebuilt;
+    }
+}
+
+fn compute_release_insertion_pos(
+    value: &MirValueId,
+    params: &[MirBlockParam],
+    prefix: &[MirInst],
+    terminator: &MirTerminator,
+) -> usize {
+    let mut has_definition = params.iter().any(|param| &param.id == value);
+    let mut def_pos = if has_definition { 0 } else { prefix.len() };
+    for (idx, inst) in prefix.iter().enumerate() {
+        if inst_defined_value(inst).is_some_and(|dest| dest == value) {
+            has_definition = true;
+            def_pos = idx + 1;
+        }
+    }
+
+    let mut last_use_pos = 0usize;
+    for (idx, inst) in prefix.iter().enumerate() {
+        if inst_reads_value(inst, value) {
+            last_use_pos = idx + 1;
+        }
+    }
+    if terminator_reads_value(terminator, value) {
+        last_use_pos = prefix.len();
+    }
+
+    if has_definition {
+        last_use_pos.max(def_pos).min(prefix.len())
+    } else {
+        prefix.len()
+    }
+}
+
+fn inst_defined_value(inst: &MirInst) -> Option<&MirValueId> {
+    match inst {
+        MirInst::Const { dest, .. }
+        | MirInst::Binary { dest, .. }
+        | MirInst::Unary { dest, .. }
+        | MirInst::RecordInit { dest, .. }
+        | MirInst::SumInit { dest, .. }
+        | MirInst::SumTagLoad { dest, .. }
+        | MirInst::SumPayloadLoad { dest, .. }
+        | MirInst::RecordFieldLoad { dest, .. }
+        | MirInst::FunctionRef { dest, .. }
+        | MirInst::ClosureInit { dest, .. }
+        | MirInst::ClosureCaptureLoad { dest, .. }
+        | MirInst::StateCellNew { dest, .. }
+        | MirInst::StateCellLoad { dest, .. }
+        | MirInst::Move { dest, .. }
+        | MirInst::Borrow { dest, .. }
+        | MirInst::TryClaim { dest, .. }
+        | MirInst::Freeze { dest, .. }
+        | MirInst::CowUpdate { dest, .. } => Some(dest),
+        MirInst::EffectOp {
+            result: Some(dest), ..
+        } => Some(dest),
+        MirInst::Call {
+            result: Some(dest), ..
+        } => Some(dest),
+        MirInst::StateCellStore { .. }
+        | MirInst::Retain { .. }
+        | MirInst::Release { .. }
+        | MirInst::EffectOp { result: None, .. }
+        | MirInst::HandlerEnter { .. }
+        | MirInst::HandlerExit { .. }
+        | MirInst::Resume { .. }
+        | MirInst::Call { result: None, .. }
+        | MirInst::Unsupported { .. }
+        | MirInst::Nop => None,
+    }
+}
+
+fn inst_reads_value(inst: &MirInst, value: &MirValueId) -> bool {
+    match inst {
+        MirInst::Const { .. } | MirInst::FunctionRef { .. } | MirInst::HandlerEnter { .. } => false,
+        MirInst::Binary { left, right, .. } => left == value || right == value,
+        MirInst::Unary { operand, .. } => operand == value,
+        MirInst::RecordInit { fields, .. } => fields.iter().any(|(_, field)| field == value),
+        MirInst::SumInit { fields, .. } => fields.iter().any(|field| field == value),
+        MirInst::SumTagLoad { sum, .. } => sum == value,
+        MirInst::SumPayloadLoad { sum, .. } => sum == value,
+        MirInst::RecordFieldLoad { record, .. } => record == value,
+        MirInst::ClosureInit {
+            entry, captures, ..
+        } => entry == value || captures.iter().any(|capture| capture == value),
+        MirInst::ClosureCaptureLoad { closure, .. } => closure == value,
+        MirInst::StateCellNew { initial, .. } => initial == value,
+        MirInst::StateCellLoad { cell, .. } => cell == value,
+        MirInst::StateCellStore { cell, value: stored } => cell == value || stored == value,
+        MirInst::Retain { value: retained } | MirInst::Release { value: retained } => retained == value,
+        MirInst::Move { src, .. }
+        | MirInst::Borrow { src, .. }
+        | MirInst::TryClaim { src, .. }
+        | MirInst::Freeze { src, .. } => src == value,
+        MirInst::CowUpdate {
+            target, updates, ..
+        } => target == value || updates.iter().any(|update| &update.value == value),
+        MirInst::EffectOp { args, .. } => args.iter().any(|arg| arg == value),
+        MirInst::HandlerExit { .. } => false,
+        MirInst::Resume { value: resumed } => resumed == value,
+        MirInst::Call { callee, args, .. } => match callee {
+            MirCallee::Value(callee_value) => callee_value == value || args.iter().any(|arg| arg == value),
+            MirCallee::Local(_) | MirCallee::External(_) => args.iter().any(|arg| arg == value),
+        },
+        MirInst::Unsupported { .. } | MirInst::Nop => false,
+    }
+}
+
+fn terminator_reads_value(terminator: &MirTerminator, value: &MirValueId) -> bool {
+    match terminator {
+        MirTerminator::Jump { args, .. } => args.iter().any(|arg| arg == value),
+        MirTerminator::Branch { condition, .. } => condition == value,
+        MirTerminator::Return {
+            value: Some(returned),
+        } => returned == value,
+        MirTerminator::Return { value: None } | MirTerminator::Unreachable => false,
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -5610,6 +5780,71 @@ mod tests {
                 .iter()
                 .any(|inst| matches!(inst, MirInst::Retain { .. })),
             "heap alias let-binding should emit Retain before rebinding"
+        );
+    }
+
+    #[test]
+    fn lower_hir_module_schedules_block_exit_releases_after_last_use() {
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "main".to_string(),
+                params: vec![],
+                body: HirExpr {
+                    kind: HirExprKind::Block(vec![
+                        HirExpr {
+                            kind: HirExprKind::Let {
+                                pattern: HirPattern::Var("s".to_string()),
+                                value: Box::new(HirExpr {
+                                    kind: HirExprKind::Lit(kea_ast::Lit::String("x".to_string())),
+                                    ty: Type::String,
+                                    span: kea_ast::Span::synthetic(),
+                                }),
+                            },
+                            ty: Type::String,
+                            span: kea_ast::Span::synthetic(),
+                        },
+                        HirExpr {
+                            kind: HirExprKind::Let {
+                                pattern: HirPattern::Var("t".to_string()),
+                                value: Box::new(HirExpr {
+                                    kind: HirExprKind::Var("s".to_string()),
+                                    ty: Type::String,
+                                    span: kea_ast::Span::synthetic(),
+                                }),
+                            },
+                            ty: Type::String,
+                            span: kea_ast::Span::synthetic(),
+                        },
+                        HirExpr {
+                            kind: HirExprKind::Lit(kea_ast::Lit::Int(1)),
+                            ty: Type::Int,
+                            span: kea_ast::Span::synthetic(),
+                        },
+                    ]),
+                    ty: Type::Int,
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
+                effects: EffectRow::pure(),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let mir = lower_hir_module(&hir);
+        let instructions = &mir.functions[0].blocks[0].instructions;
+        let int_const_idx = instructions
+            .iter()
+            .position(|inst| matches!(inst, MirInst::Const { literal: MirLiteral::Int(1), .. }))
+            .expect("expected final int literal in lowered block");
+        let release_indices = instructions
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, inst)| matches!(inst, MirInst::Release { .. }).then_some(idx))
+            .collect::<Vec<_>>();
+        assert!(!release_indices.is_empty(), "expected release instructions");
+        assert!(
+            release_indices.iter().all(|idx| *idx < int_const_idx),
+            "expected releases before unrelated trailing work; releases={release_indices:?}, int_const_idx={int_const_idx}, instructions={instructions:?}"
         );
     }
 
