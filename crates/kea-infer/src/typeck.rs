@@ -14885,6 +14885,11 @@ fn check_expr_bidir(
                 BinOp::Combine => ("Monoid", false),
                 _ => ("", true),
             };
+            let concat_builtin_ok = matches!(&resolved_expected, Type::String | Type::List(_))
+                || matches!(
+                    &resolved_expected,
+                    Type::Opaque { name, .. } if name == "Seq"
+                );
             let type_ok = matches!(resolved_expected, Type::Var(_) | Type::Dynamic)
                 || if !trait_name.is_empty()
                     && traits.lookup_trait(trait_name).is_some()
@@ -14895,9 +14900,11 @@ fn check_expr_bidir(
                             ty: resolved_expected.clone(),
                         }),
                         SolveOutcome::Unique(_)
-                    )
+                    ) || (matches!(op.node, BinOp::Concat) && concat_builtin_ok)
                 } else if fallback_numeric {
                     resolved_expected.is_numeric()
+                } else if matches!(op.node, BinOp::Concat) {
+                    concat_builtin_ok
                 } else {
                     false
                 };
