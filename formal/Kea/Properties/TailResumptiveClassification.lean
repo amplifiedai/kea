@@ -161,5 +161,35 @@ theorem tail_resumptive_bundle_notInvalid
     classifyClause c ≠ .invalid :=
   (tail_resumptive_bundle_of_wellTyped c h_wellTyped).notInvalid
 
+structure TailResumptiveClosedAwareBundle (c : HandleClauseContract) where
+  classification :
+    classifyClause c = .nonResumptive ∨
+      classifyClause c = .tailResumptive
+  notInvalid : classifyClause c ≠ .invalid
+  directCallEquivalentClosedAware_of_eligible :
+    tailResumptiveEligible c →
+      directCallEquivalentClosedAware c
+
+theorem tail_resumptive_closedAware_bundle_of_wellTyped
+    (c : HandleClauseContract)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice c) :
+    TailResumptiveClosedAwareBundle c := by
+  have h_base := tail_resumptive_bundle_of_wellTyped c h_wellTyped
+  exact {
+    classification := h_base.classification
+    notInvalid := h_base.notInvalid
+    directCallEquivalentClosedAware_of_eligible := by
+      intro h_eligible
+      exact tail_resumptive_direct_call_sound_closedAware c h_eligible
+  }
+
+theorem tail_resumptive_closedAware_bundle_direct_call_of_eligible
+    (c : HandleClauseContract)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice c)
+    (h_eligible : tailResumptiveEligible c) :
+    directCallEquivalentClosedAware c :=
+  (tail_resumptive_closedAware_bundle_of_wellTyped c h_wellTyped).directCallEquivalentClosedAware_of_eligible
+    h_eligible
+
 end TailResumptiveClassification
 end Kea
