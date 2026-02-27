@@ -2841,6 +2841,248 @@ end
 
 mutual
   /--
+  Completeness of unification-threaded inference on the no-unify fragment:
+  syntax-directed inference can be replayed with identical result type/state.
+  -/
+  theorem inferExprUnify_complete_no_unify_branches
+      {e : CoreExpr}
+      (h_no : NoUnifyBranchesExpr e) :
+      ∀ st fuel env ty,
+        inferExpr env e = some ty →
+        inferExprUnify st fuel env e = .ok st ty := by
+    cases h_no with
+    | intLit n =>
+      intro st fuel env ty h_inf
+      simp [inferExpr] at h_inf
+      subst h_inf
+      simp [inferExprUnify]
+    | boolLit b =>
+      intro st fuel env ty h_inf
+      simp [inferExpr] at h_inf
+      subst h_inf
+      simp [inferExprUnify]
+    | stringLit s =>
+      intro st fuel env ty h_inf
+      simp [inferExpr] at h_inf
+      subst h_inf
+      simp [inferExprUnify]
+    | var name =>
+      intro st fuel env ty h_inf
+      cases h_lookup : TermEnv.lookup env name with
+      | none =>
+        simp [inferExpr, h_lookup] at h_inf
+      | some vty =>
+        simp [inferExpr, h_lookup] at h_inf
+        subst h_inf
+        simp [inferExprUnify, h_lookup]
+    | lam param paramTy body h_body =>
+      intro st fuel env ty h_inf
+      simp [inferExpr] at h_inf
+      cases h_body_alg : inferExpr ((param, paramTy) :: env) body with
+      | none =>
+        simp [h_body_alg] at h_inf
+      | some bodyTy =>
+        simp [h_body_alg] at h_inf
+        subst h_inf
+        have h_body_unify :
+            inferExprUnify st fuel ((param, paramTy) :: env) body = .ok st bodyTy :=
+          inferExprUnify_complete_no_unify_branches
+            h_body st fuel ((param, paramTy) :: env) bodyTy h_body_alg
+        simp [inferExprUnify, h_body_unify]
+    | letE name value body h_value h_body =>
+      intro st fuel env ty h_inf
+      simp [inferExpr] at h_inf
+      cases h_value_alg : inferExpr env value with
+      | none =>
+        simp [h_value_alg] at h_inf
+      | some valueTy =>
+        have h_value_unify :
+            inferExprUnify st fuel env value = .ok st valueTy :=
+          inferExprUnify_complete_no_unify_branches
+            h_value st fuel env valueTy h_value_alg
+        have h_body_unify :
+            inferExprUnify st fuel ((name, valueTy) :: env) body = .ok st ty :=
+          inferExprUnify_complete_no_unify_branches
+            h_body st fuel ((name, valueTy) :: env) ty (by
+              simpa [h_value_alg] using h_inf)
+        simpa [inferExprUnify, h_value_unify] using h_body_unify
+    | record fields h_fields =>
+      intro st fuel env ty h_inf
+      simp [inferExpr] at h_inf
+      cases h_fields_alg : inferFields env fields with
+      | none =>
+        simp [h_fields_alg] at h_inf
+      | some rowFields =>
+        simp [h_fields_alg] at h_inf
+        subst h_inf
+        have h_fields_unify :
+            inferFieldsUnify st fuel env fields = .ok st (.row (.mk rowFields none)) :=
+          inferFieldsUnify_complete_no_unify_branches
+            h_fields st fuel env rowFields h_fields_alg
+        simp [inferExprUnify, h_fields_unify]
+
+  /--
+  Field-level completeness counterpart on the no-unify fragment.
+  -/
+  theorem inferFieldsUnify_complete_no_unify_branches
+      {fs : CoreFields}
+      (h_no : NoUnifyBranchesFields fs) :
+      ∀ st fuel env rf,
+        inferFields env fs = some rf →
+        inferFieldsUnify st fuel env fs = .ok st (.row (.mk rf none)) := by
+    cases h_no with
+    | nil =>
+      intro st fuel env rf h_inf
+      simp [inferFields] at h_inf
+      subst h_inf
+      simp [inferFieldsUnify]
+    | cons label e rest h_head h_rest =>
+      intro st fuel env rf h_inf
+      simp [inferFields] at h_inf
+      cases h_head_alg : inferExpr env e with
+      | none =>
+        simp [h_head_alg] at h_inf
+      | some tyHead =>
+        cases h_rest_alg : inferFields env rest with
+        | none =>
+          simp [h_head_alg, h_rest_alg] at h_inf
+        | some restFields =>
+          simp [h_head_alg, h_rest_alg] at h_inf
+          subst h_inf
+          have h_head_unify :
+              inferExprUnify st fuel env e = .ok st tyHead :=
+            inferExprUnify_complete_no_unify_branches
+              h_head st fuel env tyHead h_head_alg
+          have h_rest_unify :
+              inferFieldsUnify st fuel env rest = .ok st (.row (.mk restFields none)) :=
+            inferFieldsUnify_complete_no_unify_branches
+              h_rest st fuel env restFields h_rest_alg
+          simp [inferFieldsUnify, h_head_unify, h_rest_unify]
+end
+
+/--
+On the no-unify fragment, successful expression inference preserves
+`UnifyState`.
+-/
+theorem inferExprUnify_state_preserved_no_unify_branches
+    {e : CoreExpr}
+    (h_no : NoUnifyBranchesExpr e) :
+    ∀ st fuel env st' ty,
+      inferExprUnify st fuel env e = .ok st' ty →
+      st' = st := by
+  intro st fuel env st' ty h_ok
+  have h_ty : HasType env e ty :=
+    inferExprUnify_sound_no_unify_branches h_no st fuel env st' ty h_ok
+  have h_inf : inferExpr env e = some ty := inferExpr_complete env e ty h_ty
+  have h_ok_ref :
+      inferExprUnify st fuel env e = .ok st ty :=
+    inferExprUnify_complete_no_unify_branches h_no st fuel env ty h_inf
+  rw [h_ok] at h_ok_ref
+  cases h_ok_ref
+  rfl
+
+/--
+On the no-unify fragment, successful field inference preserves `UnifyState`.
+-/
+theorem inferFieldsUnify_state_preserved_no_unify_branches
+    {fs : CoreFields}
+    (h_no : NoUnifyBranchesFields fs) :
+    ∀ st fuel env st' rf,
+      inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)) →
+      st' = st := by
+  intro st fuel env st' rf h_ok
+  have h_rf : HasFieldsType env fs rf :=
+    inferFieldsUnify_sound_no_unify_branches h_no st fuel env st' rf h_ok
+  have h_inf : inferFields env fs = some rf := inferFields_complete env fs rf h_rf
+  have h_ok_ref :
+      inferFieldsUnify st fuel env fs = .ok st (.row (.mk rf none)) :=
+    inferFieldsUnify_complete_no_unify_branches h_no st fuel env rf h_inf
+  rw [h_ok] at h_ok_ref
+  cases h_ok_ref
+  rfl
+
+/--
+On the no-unify fragment, successful `inferExprUnify` runs are exactly
+syntax-directed inference results with unchanged state.
+-/
+theorem inferExprUnify_ok_iff_inferExpr_no_unify_branches
+    {e : CoreExpr}
+    (h_no : NoUnifyBranchesExpr e) :
+    ∀ st fuel env st' ty,
+      inferExprUnify st fuel env e = .ok st' ty ↔
+        st' = st ∧ inferExpr env e = some ty := by
+  intro st fuel env st' ty
+  constructor
+  · intro h_ok
+    have h_st :
+        st' = st :=
+      inferExprUnify_state_preserved_no_unify_branches
+        h_no st fuel env st' ty h_ok
+    have h_ty : HasType env e ty :=
+      inferExprUnify_sound_no_unify_branches
+        h_no st fuel env st' ty h_ok
+    refine ⟨h_st, ?_⟩
+    exact inferExpr_complete env e ty h_ty
+  · intro h
+    rcases h with ⟨h_st, h_inf⟩
+    cases h_st
+    exact inferExprUnify_complete_no_unify_branches h_no st fuel env ty h_inf
+
+/--
+Field-level counterpart of no-unify equivalence/state preservation.
+-/
+theorem inferFieldsUnify_ok_iff_inferFields_no_unify_branches
+    {fs : CoreFields}
+    (h_no : NoUnifyBranchesFields fs) :
+    ∀ st fuel env st' rf,
+      inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)) ↔
+        st' = st ∧ inferFields env fs = some rf := by
+  intro st fuel env st' rf
+  constructor
+  · intro h_ok
+    have h_st :
+        st' = st :=
+      inferFieldsUnify_state_preserved_no_unify_branches
+        h_no st fuel env st' rf h_ok
+    have h_rf : HasFieldsType env fs rf :=
+      inferFieldsUnify_sound_no_unify_branches h_no st fuel env st' rf h_ok
+    refine ⟨h_st, ?_⟩
+    exact inferFields_complete env fs rf h_rf
+  · intro h
+    rcases h with ⟨h_st, h_inf⟩
+    cases h_st
+    exact inferFieldsUnify_complete_no_unify_branches h_no st fuel env rf h_inf
+
+/-- Packaged hook-free principal/equivalence surface on the no-unify fragment. -/
+def PrincipalTypingNoUnifySlice : Prop :=
+  ∀ {e : CoreExpr},
+    NoUnifyBranchesExpr e →
+    ∀ st fuel env st' ty,
+      inferExprUnify st fuel env e = .ok st' ty ↔
+        st' = st ∧ inferExpr env e = some ty
+
+/-- Field-level packaged hook-free principal/equivalence surface. -/
+def PrincipalTypingNoUnifyFieldSlice : Prop :=
+  ∀ {fs : CoreFields},
+    NoUnifyBranchesFields fs →
+    ∀ st fuel env st' rf,
+      inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)) ↔
+        st' = st ∧ inferFields env fs = some rf
+
+/-- Combined expression+field no-unify principal/equivalence surface. -/
+def PrincipalTypingNoUnifySlices : Prop :=
+  PrincipalTypingNoUnifySlice ∧ PrincipalTypingNoUnifyFieldSlice
+
+/-- The combined no-unify principal/equivalence surface is fully proved. -/
+theorem principalTypingNoUnifySlices_proved : PrincipalTypingNoUnifySlices := by
+  refine ⟨?_, ?_⟩
+  · intro e h_no st fuel env st' ty
+    exact inferExprUnify_ok_iff_inferExpr_no_unify_branches h_no st fuel env st' ty
+  · intro fs h_no st fuel env st' rf
+    exact inferFieldsUnify_ok_iff_inferFields_no_unify_branches h_no st fuel env st' rf
+
+mutual
+  /--
   Full preconditioned soundness for unification-threaded expression inference.
   App/proj branches are discharged via explicit unifier-soundness hooks.
   -/
