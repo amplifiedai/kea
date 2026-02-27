@@ -23845,6 +23845,118 @@ theorem principalRowPolyBoundarySoundBundle_hookIrrelevantField_of_success_noUni
     h_bundle h_no h_ok
 
 /--
+Boundary+sound expression route pair: packaged all-hooks run-bundle witness and
+its packaged consequence witness for an arbitrary successful run.
+-/
+structure PrincipalBoundarySoundExprRunBundleRoutes
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty) : Prop where
+  runBundle : PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty
+  consequences : PrincipalExprRunBundleConsequences st fuel env e st' ty
+
+/--
+Boundary+sound field route pair: packaged all-hooks run-bundle witness and its
+packaged consequence witness for an arbitrary successful field run.
+-/
+structure PrincipalBoundarySoundFieldRunBundleRoutes
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields) : Prop where
+  runBundle : PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf
+  consequences : PrincipalFieldRunBundleConsequences st fuel env fs st' rf
+
+/--
+Boundary+sound no-unify expression route pair: packaged all-hooks run-bundle
+witness and packaged no-unify consequence witness from one successful run.
+-/
+structure PrincipalBoundarySoundNoUnifyExprRunBundleRoutes
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty) : Prop where
+  runBundle : PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty
+  consequences : PrincipalNoUnifyExprRunBundleConsequences st fuel env e st' ty
+
+/--
+Boundary+sound no-unify field route pair: packaged all-hooks run-bundle witness
+and packaged no-unify consequence witness from one successful field run.
+-/
+structure PrincipalBoundarySoundNoUnifyFieldRunBundleRoutes
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields) : Prop where
+  runBundle : PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf
+  consequences : PrincipalNoUnifyFieldRunBundleConsequences st fuel env fs st' rf
+
+/--
+Build the boundary+sound expression route pair from one arbitrary successful
+expression run.
+-/
+theorem principalRowPolyBoundarySoundBundle_exprRunBundleRoutes_of_success
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    (h_bundle : PrincipalRowPolyBoundarySoundBundle h_app h_proj)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalBoundarySoundExprRunBundleRoutes st fuel env e st' ty := by
+  exact {
+    runBundle := principalRowPolyBoundarySoundBundle_runBundleExpr_of_success h_bundle h_ok
+    consequences := principalRowPolyBoundarySoundBundle_exprRunBundleConsequences_of_success_via_runBundle
+      h_bundle h_ok
+  }
+
+/--
+Build the boundary+sound field route pair from one arbitrary successful field
+run.
+-/
+theorem principalRowPolyBoundarySoundBundle_fieldRunBundleRoutes_of_success
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    (h_bundle : PrincipalRowPolyBoundarySoundBundle h_app h_proj)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalBoundarySoundFieldRunBundleRoutes st fuel env fs st' rf := by
+  exact {
+    runBundle := principalRowPolyBoundarySoundBundle_runBundleField_of_success h_bundle h_ok
+    consequences := principalRowPolyBoundarySoundBundle_fieldRunBundleConsequences_of_success_via_runBundle
+      h_bundle h_ok
+  }
+
+/--
+Build the boundary+sound no-unify expression route pair from one successful
+no-unify expression run.
+-/
+theorem principalRowPolyBoundarySoundBundle_noUnifyExprRunBundleRoutes_of_success
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    (h_bundle : PrincipalRowPolyBoundarySoundBundle h_app h_proj)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalBoundarySoundNoUnifyExprRunBundleRoutes st fuel env e st' ty := by
+  exact {
+    runBundle := principalRowPolyBoundarySoundBundle_runBundleExpr_of_success_noUnify
+      h_bundle h_no h_ok
+    consequences := principalRowPolyBoundarySoundBundle_noUnifyExprRunBundleConsequences_of_success_via_runBundle
+      h_bundle h_no h_ok
+  }
+
+/--
+Build the boundary+sound no-unify field route pair from one successful no-unify
+field run.
+-/
+theorem principalRowPolyBoundarySoundBundle_noUnifyFieldRunBundleRoutes_of_success
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    (h_bundle : PrincipalRowPolyBoundarySoundBundle h_app h_proj)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalBoundarySoundNoUnifyFieldRunBundleRoutes st fuel env fs st' rf := by
+  exact {
+    runBundle := principalRowPolyBoundarySoundBundle_runBundleField_of_success_noUnify
+      h_bundle h_no h_ok
+    consequences := principalRowPolyBoundarySoundBundle_noUnifyFieldRunBundleConsequences_of_success_via_runBundle
+      h_bundle h_no h_ok
+  }
+
+/--
 Expression preconditioned↔core wrapper on the dual-routed proved master suite.
 -/
 theorem principalBoundaryMasterSuite_preconditionedCoreIff_expr_via_dualConsequenceSlices
