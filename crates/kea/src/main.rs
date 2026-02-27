@@ -1752,6 +1752,48 @@ mod tests {
     }
 
     #[test]
+    fn compile_and_execute_wrapping_add_method_exit_code() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  20.wrapping_add(22)\n",
+            "kea-cli-wrapping-add",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("wrapping-add run should succeed");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_wrapping_sub_method_exit_code() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  100.wrapping_sub(58)\n",
+            "kea-cli-wrapping-sub",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("wrapping-sub run should succeed");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_wrapping_mul_method_exit_code() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  6.wrapping_mul(7)\n",
+            "kea-cli-wrapping-mul",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("wrapping-mul run should succeed");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_shift_left_method_exit_code() {
         let source_path = write_temp_source(
             "fn main() -> Int\n  1.shift_left(3)\n",

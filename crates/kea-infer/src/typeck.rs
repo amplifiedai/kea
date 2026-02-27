@@ -7423,6 +7423,9 @@ pub fn register_builtin_int_bitwise_methods(env: &mut TypeEnv) {
         "shift_left",
         "shift_right",
         "shift_right_unsigned",
+        "wrapping_add",
+        "wrapping_sub",
+        "wrapping_mul",
     ] {
         env.register_module_function(module_path, name);
         env.register_module_type_scheme_exact(module_path, name, binary.clone());
