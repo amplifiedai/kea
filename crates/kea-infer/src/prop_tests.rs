@@ -3003,8 +3003,6 @@ proptest! {
             },
             span,
             where_clause: Vec::new(),
-        testing: None,
-        testing_tags: Vec::new(),
         };
 
         let missing_count = annotated_params.iter().filter(|is_annotated| !**is_annotated).count();

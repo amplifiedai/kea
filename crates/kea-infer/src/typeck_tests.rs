@@ -6554,8 +6554,6 @@ fn make_fn_decl(name: &str, params: Vec<&str>, body: Expr) -> FnDecl {
         body: body.clone(),
         span: s(),
         where_clause: Vec::new(),
-        testing: None,
-        testing_tags: Vec::new(),
     }
 }
 
@@ -6657,8 +6655,6 @@ fn infer_fn_decl_effects_uses_pure_callback_param_annotation() {
         body: call(var("f"), vec![lit_int(1)]),
         span: s(),
         where_clause: vec![],
-        testing: None,
-        testing_tags: Vec::new(),
     };
     let effects = infer_fn_decl_effects(&fn_decl, &env);
     assert_eq!(effects, Effects::pure_deterministic());
@@ -6690,8 +6686,6 @@ fn infer_fn_decl_effects_uses_forall_wrapped_pure_callback_param_annotation() {
         body: call(var("f"), vec![lit_int(1)]),
         span: s(),
         where_clause: vec![],
-        testing: None,
-        testing_tags: Vec::new(),
     };
     let effects = infer_fn_decl_effects(&fn_decl, &env);
     assert_eq!(effects, Effects::pure_deterministic());
@@ -7704,8 +7698,6 @@ fn infer_fn_decl_effects_uses_volatile_callback_param_annotation() {
         body: call(var("f"), vec![lit_int(1)]),
         span: s(),
         where_clause: vec![],
-        testing: None,
-        testing_tags: Vec::new(),
     };
     let effects = infer_fn_decl_effects(&fn_decl, &env);
     assert_eq!(effects, Effects::pure_volatile());
@@ -7734,8 +7726,6 @@ fn infer_fn_decl_effects_defaults_effect_var_callback_to_impure() {
         body: call(var("f"), vec![lit_int(1)]),
         span: s(),
         where_clause: vec![],
-        testing: None,
-        testing_tags: Vec::new(),
     };
     let effects = infer_fn_decl_effects(&fn_decl, &env);
     assert_eq!(effects, Effects::impure());
@@ -7778,8 +7768,6 @@ fn infer_fn_decl_effects_propagate_nested_callback_constraints_for_pure_argument
         body: call(var("g"), vec![lambda(&["x"], var("x"))]),
         span: s(),
         where_clause: vec![],
-        testing: None,
-        testing_tags: Vec::new(),
     };
 
     let effects = infer_fn_decl_effects(&fn_decl, &env);
@@ -7820,8 +7808,6 @@ fn infer_fn_decl_effects_propagate_nested_callback_constraints_for_impure_argume
         ),
         span: s(),
         where_clause: vec![],
-        testing: None,
-        testing_tags: Vec::new(),
     };
 
     let effects = infer_fn_decl_effects(&fn_decl, &env);
@@ -10757,8 +10743,6 @@ fn apply_where_clause_attaches_bounds() {
             type_var: sp("x".to_string()),
             trait_name: sp("Additive".to_string()),
         }],
-        testing: None,
-        testing_tags: Vec::new(),
     };
 
     let subst = kea_types::Substitution::new();
@@ -10886,8 +10870,6 @@ fn seed_fn_where_type_params_reports_unknown_trait() {
             type_var: sp("F".to_string()),
             trait_name: sp("UnknownTrait".to_string()),
         }],
-        testing: None,
-        testing_tags: Vec::new(),
     };
 
     let mut unifier = Unifier::new();
@@ -10939,8 +10921,6 @@ fn seed_fn_where_type_params_registers_kinded_constructor_var() {
             type_var: sp("F".to_string()),
             trait_name: sp("Applicative".to_string()),
         }],
-        testing: None,
-        testing_tags: Vec::new(),
     };
 
     let mut unifier = Unifier::new();
@@ -11002,8 +10982,6 @@ fn seed_fn_where_type_params_uses_matching_kind_for_multi_param_trait() {
             type_var: sp("F".to_string()),
             trait_name: sp("BiLike".to_string()),
         }],
-        testing: None,
-        testing_tags: Vec::new(),
     };
 
     let mut unifier = Unifier::new();
@@ -11064,8 +11042,6 @@ fn seed_fn_where_type_params_uses_second_kind_when_bound_name_matches() {
             type_var: sp("G".to_string()),
             trait_name: sp("BiLike".to_string()),
         }],
-        testing: None,
-        testing_tags: Vec::new(),
     };
 
     let mut unifier = Unifier::new();
@@ -11126,8 +11102,6 @@ fn seed_fn_where_type_params_errors_for_ambiguous_multi_param_trait_bound() {
             type_var: sp("T".to_string()),
             trait_name: sp("BiLike".to_string()),
         }],
-        testing: None,
-        testing_tags: Vec::new(),
     };
 
     let mut unifier = Unifier::new();
@@ -11193,8 +11167,6 @@ fn fn_decl_annotations_support_constructor_application_type_vars() {
             type_var: sp("F".to_string()),
             trait_name: sp("Applicative".to_string()),
         }],
-        testing: None,
-        testing_tags: Vec::new(),
     };
 
     let expr = fn_decl.to_let_expr();
@@ -11697,8 +11669,6 @@ fn trait_bound_enforcement_end_to_end() {
             type_var: sp("x".to_string()),
             trait_name: sp("Additive".to_string()),
         }],
-        testing: None,
-        testing_tags: Vec::new(),
     };
 
     // 3. Infer (mimics MCP type_check_decls flow)
@@ -12924,8 +12894,6 @@ fn make_method_decl(
         body,
         span: s(),
         where_clause: vec![],
-        testing: None,
-        testing_tags: Vec::new(),
     }
 }
 
@@ -14679,8 +14647,6 @@ fn validate_fn_decl_annotations_reports_missing_parameter_annotations() {
         body: var("data"),
         span: s(),
         where_clause: vec![],
-        testing: None,
-        testing_tags: Vec::new(),
     };
 
     let diags = validate_fn_decl_annotations(&fn_decl);
@@ -14708,8 +14674,6 @@ fn validate_fn_decl_annotations_public_requires_return_annotation() {
         body: var("value"),
         span: s(),
         where_clause: vec![],
-        testing: None,
-        testing_tags: Vec::new(),
     };
 
     let diags = validate_fn_decl_annotations(&fn_decl);
@@ -14740,8 +14704,6 @@ fn validate_fn_decl_annotations_allows_effect_var_in_function_type_annotation() 
         body: lit_int(1),
         span: s(),
         where_clause: vec![],
-        testing: None,
-        testing_tags: Vec::new(),
     };
 
     let diags = validate_fn_decl_annotations(&fn_decl);
@@ -14844,8 +14806,6 @@ fn validate_module_fn_annotations_checks_trait_and_impl_methods() {
             body: lit_int(0),
             span: s(),
             where_clause: vec![],
-            testing: None,
-            testing_tags: Vec::new(),
         }],
         control_type: None,
         where_clause: vec![],
@@ -14951,9 +14911,9 @@ fn validate_module_annotations_intrinsic_requires_string_literal_argument() {
 
     let diags = validate_module_annotations(&module);
     assert!(
-        diags
-            .iter()
-            .any(|d| d.message.contains("`@intrinsic` argument must be a string literal")),
+        diags.iter().any(|d| d
+            .message
+            .contains("`@intrinsic` argument must be a string literal")),
         "expected @intrinsic string-literal diagnostic, got {diags:?}"
     );
 }
