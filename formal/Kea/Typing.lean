@@ -21785,6 +21785,48 @@ theorem principalNoUnifyPreconditionedField_of_success_via_suite_via_dualConsequ
   exact (principalBoundaryBridgeSuite_noUnify_field
       principalBoundaryBridgeSuite_proved_via_dualConsequenceSlices h_no h_ok h_hooks).preconditioned
 
+/-- Bundled-seed alias for dual-routed no-unify core expression via suite. -/
+theorem principalNoUnifyCoreExpr_of_success_via_suite_via_dualConsequenceSlices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_seed : UnifyHookPremises) :
+    PrincipalTypingSliceCore env e ty :=
+  principalNoUnifyCoreExpr_of_success_via_suite_via_dualConsequenceSlices h_no h_ok h_seed
+
+/-- Bundled-seed alias for dual-routed no-unify preconditioned expression via suite. -/
+theorem principalNoUnifyPreconditionedExpr_of_success_via_suite_via_dualConsequenceSlices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_seed : UnifyHookPremises) :
+    PrincipalTypingSlicePreconditioned h_seed.1 h_seed.2 st fuel env e st' ty :=
+  principalNoUnifyPreconditionedExpr_of_success_via_suite_via_dualConsequenceSlices
+    h_no h_ok h_seed
+
+/-- Bundled-seed alias for dual-routed no-unify core field via suite. -/
+theorem principalNoUnifyCoreField_of_success_via_suite_via_dualConsequenceSlices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_seed : UnifyHookPremises) :
+    PrincipalFieldTypingSliceCore env fs rf :=
+  principalNoUnifyCoreField_of_success_via_suite_via_dualConsequenceSlices h_no h_ok h_seed
+
+/-- Bundled-seed alias for dual-routed no-unify preconditioned field via suite. -/
+theorem principalNoUnifyPreconditionedField_of_success_via_suite_via_dualConsequenceSlices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_seed : UnifyHookPremises) :
+    PrincipalFieldTypingSlicePreconditioned h_seed.1 h_seed.2 st fuel env fs st' rf :=
+  principalNoUnifyPreconditionedField_of_success_via_suite_via_dualConsequenceSlices
+    h_no h_ok h_seed
+
 /--
 Dual-routed variant of `principalCoreExpr_of_preconditioned_success_via_suite`.
 -/
