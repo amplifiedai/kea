@@ -1,20 +1,34 @@
 type List = Nil | Cons(Int, List)
 
+--| Return true when a list has no elements.
+--|
+--|   List.is_empty(Nil)             -- => true
+--|   List.is_empty(Cons(1, Nil))    -- => false
 fn is_empty(xs: List) -> Bool
   case xs
     Nil -> true
     Cons(_, _) -> false
 
+--| Count the number of elements in a list.
+--|
+--|   List.length(Nil)                        -- => 0
+--|   List.length(Cons(1, Cons(2, Nil)))      -- => 2
 fn length(xs: List) -> Int
   case xs
     Nil -> 0
     Cons(_, rest) -> 1 + length(rest)
 
+--| Transform each element in a list with a function.
+--|
+--|   List.map(Cons(1, Nil), |x| -> x + 1)    -- => Cons(2, Nil)
 fn map(xs: List, f: fn(Int) -> Int) -> List
   case xs
     Nil -> Nil
     Cons(x, rest) -> Cons(f(x), map(rest, f))
 
+--| Keep only list elements that satisfy a predicate.
+--|
+--|   List.filter(Cons(1, Cons(2, Nil)), |x| -> x > 1)   -- => Cons(2, Nil)
 fn filter(xs: List, pred: fn(Int) -> Bool) -> List
   case xs
     Nil -> Nil
@@ -24,6 +38,9 @@ fn filter(xs: List, pred: fn(Int) -> Bool) -> List
       else
         filter(rest, pred)
 
+--| Reduce a list from left to right.
+--|
+--|   List.fold(Cons(1, Cons(2, Nil)), 0, |acc, x| -> acc + x)   -- => 3
 fn fold(xs: List, init: Int, f: fn(Int, Int) -> Int) -> Int
   case xs
     Nil -> init

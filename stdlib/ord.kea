@@ -1,6 +1,14 @@
 trait Ord a
+  --| Compare two values.
+  --|
+  --|   Ord.compare(1, 2)   -- => -1
+  --|   Ord.compare(2, 2)   -- => 0
   fn compare(x: a, y: a) -> Int
 
+--| Int ordering implementation for Ord.
+--|
+--|   Ord.compare(1, 2)   -- => -1
+--|   Ord.compare(3, 1)   -- => 1
 fn compare(x: Int, y: Int) -> Int
   if x < y
     -1

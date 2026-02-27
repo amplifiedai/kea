@@ -1,3 +1,7 @@
+--| Return the absolute value of a float.
+--|
+--|   Float.fabs(-3.5)   -- => 3.5
+--|   Float.fabs(2.0)    -- => 2.0
 fn fabs(x: Float) -> Float
   if x < 0.0
     -x
