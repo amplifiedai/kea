@@ -3536,6 +3536,39 @@ theorem principalTypingSlicePreconditioned_of_success
     exact inferExpr_complete env e ty h_ty
 
 /--
+Hook-independent principal-typing bundle on the no-unify fragment.
+
+When `e` never executes app/proj unification branches, successful
+`inferExprUnify` runs determine the same principal consequences as the
+preconditioned bundle, independent of app/proj hook assumptions.
+-/
+theorem principalTypingSlicePreconditioned_of_success_no_unify
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    ∀ h_app h_proj,
+      PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty := by
+  intro h_app h_proj
+  have h_no_unify :
+      st' = st ∧ inferExpr env e = some ty :=
+    (inferExprUnify_ok_iff_inferExpr_no_unify_branches h_no st fuel env st' ty).1 h_ok
+  refine {
+    deterministic := ?_
+    declarativeUnique := ?_
+    inferExprAgrees := ?_
+  }
+  · intro st'' ty'' h_ok'
+    exact inferExprUnify_deterministic st fuel env e h_ok' h_ok
+  · intro ty' h_ty'
+    rcases h_no_unify with ⟨_, h_alg⟩
+    have h_alg' : inferExpr env e = some ty' := inferExpr_complete env e ty' h_ty'
+    rw [h_alg] at h_alg'
+    injection h_alg' with h_eq
+    exact h_eq.symm
+  · exact h_no_unify.2
+
+/--
 `HasTypeU` lift of non-app/proj recursive soundness: on the fragment that never
 executes unification branches, algorithmic inference results are declaratively
 typable in the unification-aware judgment as well.
