@@ -2993,6 +2993,50 @@ mod tests {
     }
 
     #[test]
+    fn lower_function_record_pattern_field_binding_uses_field_access() {
+        let module = parse_module_from_text(
+            "record User\n  age: Int\n  score: Int\n\nfn pick(u: User) -> Int\n  case u\n    User { age: years, .. } -> years\n    _ -> 0",
+        );
+        let mut env = TypeEnv::new();
+        env.bind(
+            "pick".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::pure(
+                vec![Type::Record(kea_types::RecordType {
+                    name: "User".to_string(),
+                    params: vec![],
+                    row: kea_types::RowType::closed(vec![
+                        (Label::new("age"), Type::Int),
+                        (Label::new("score"), Type::Int),
+                    ]),
+                })],
+                Type::Int,
+            ))),
+        );
+
+        let lowered = lower_module(&module, &env);
+        let function = lowered
+            .declarations
+            .iter()
+            .find_map(|decl| match decl {
+                HirDecl::Function(function) if function.name == "pick" => Some(function),
+                _ => None,
+            })
+            .expect("expected lowered pick function");
+
+        let HirExprKind::Block(exprs) = &function.body.kind else {
+            panic!("expected bound record case branch to emit binding block");
+        };
+        let HirExprKind::Let { pattern, value } = &exprs[0].kind else {
+            panic!("expected first branch expr to be let binding");
+        };
+        assert_eq!(pattern, &HirPattern::Var("years".to_string()));
+        assert!(matches!(
+            value.kind,
+            HirExprKind::FieldAccess { ref field, .. } if field == "age"
+        ));
+    }
+
+    #[test]
     fn lower_function_anon_record_pattern_case_desugars_to_if_chain() {
         let module = parse_module_from_text(
             "fn pick(u: { age: Int, score: Int }) -> Int\n  case u\n    #{ age: 7, .. } -> 1\n    _ -> 0",
