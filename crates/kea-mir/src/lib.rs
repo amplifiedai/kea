@@ -1468,7 +1468,7 @@ impl FunctionLoweringCtx {
     fn name_captured_from_outer_block_scope(&self, name: &str) -> bool {
         self.block_incoming_bindings_stack
             .last()
-            .is_some_and(|names| names.contains(name))
+            .is_none_or(|names| names.contains(name))
     }
 
     fn drop_local_binding_metadata(&mut self, name: &str) {
@@ -1904,9 +1904,30 @@ impl FunctionLoweringCtx {
                 }
 
                 let target = self.lower_expr(flattened_base)?;
-                self.emit_inst(MirInst::Retain {
-                    value: target.clone(),
-                });
+                let mut retain_target = true;
+                if let HirExprKind::Var(source_name) = &flattened_base.kind
+                    && self.vars.contains_key(source_name)
+                    && is_heap_managed_type(&flattened_base.ty)
+                {
+                    let source_used_later = self.name_maybe_referenced_later_in_block(source_name);
+                    let source_from_outer_scope =
+                        self.name_captured_from_outer_block_scope(source_name);
+                    let source_read_in_update_fields = flattened_updates.iter().any(|(_, field_expr)| {
+                        let mut refs = BTreeSet::new();
+                        collect_hir_var_refs(field_expr, &mut refs);
+                        refs.contains(source_name)
+                    });
+                    if !source_used_later && !source_from_outer_scope && !source_read_in_update_fields
+                    {
+                        self.drop_local_binding_metadata(source_name);
+                        retain_target = false;
+                    }
+                }
+                if retain_target {
+                    self.emit_inst(MirInst::Retain {
+                        value: target.clone(),
+                    });
+                }
                 let claimed = self.new_value();
                 self.emit_inst(MirInst::TryClaim {
                     dest: claimed.clone(),
@@ -4398,6 +4419,205 @@ mod tests {
                     && updates.iter().any(|u| u.field == "age")
                     && updates.iter().any(|u| u.field == "score")
         ));
+    }
+
+    #[test]
+    fn lower_hir_module_transfers_linear_local_record_update_base_without_retain() {
+        let user_ty = Type::Record(RecordType {
+            name: "User".to_string(),
+            params: vec![],
+            row: RowType::closed(vec![(Label::new("age"), Type::Int)]),
+        });
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "main".to_string(),
+                params: vec![],
+                body: HirExpr {
+                    kind: HirExprKind::Block(vec![
+                        HirExpr {
+                            kind: HirExprKind::Let {
+                                pattern: HirPattern::Var("user".to_string()),
+                                value: Box::new(HirExpr {
+                                    kind: HirExprKind::RecordLit {
+                                        record_type: "User".to_string(),
+                                        fields: vec![(
+                                            "age".to_string(),
+                                            HirExpr {
+                                                kind: HirExprKind::Lit(kea_ast::Lit::Int(1)),
+                                                ty: Type::Int,
+                                                span: kea_ast::Span::synthetic(),
+                                            },
+                                        )],
+                                    },
+                                    ty: user_ty.clone(),
+                                    span: kea_ast::Span::synthetic(),
+                                }),
+                            },
+                            ty: user_ty.clone(),
+                            span: kea_ast::Span::synthetic(),
+                        },
+                        HirExpr {
+                            kind: HirExprKind::Let {
+                                pattern: HirPattern::Var("updated".to_string()),
+                                value: Box::new(HirExpr {
+                                    kind: HirExprKind::RecordUpdate {
+                                        record_type: "User".to_string(),
+                                        base: Box::new(HirExpr {
+                                            kind: HirExprKind::Var("user".to_string()),
+                                            ty: user_ty.clone(),
+                                            span: kea_ast::Span::synthetic(),
+                                        }),
+                                        fields: vec![(
+                                            "age".to_string(),
+                                            HirExpr {
+                                                kind: HirExprKind::Lit(kea_ast::Lit::Int(2)),
+                                                ty: Type::Int,
+                                                span: kea_ast::Span::synthetic(),
+                                            },
+                                        )],
+                                    },
+                                    ty: user_ty.clone(),
+                                    span: kea_ast::Span::synthetic(),
+                                }),
+                            },
+                            ty: user_ty.clone(),
+                            span: kea_ast::Span::synthetic(),
+                        },
+                        HirExpr {
+                            kind: HirExprKind::Lit(kea_ast::Lit::Int(0)),
+                            ty: Type::Int,
+                            span: kea_ast::Span::synthetic(),
+                        },
+                    ]),
+                    ty: Type::Int,
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
+                effects: EffectRow::pure(),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let mir = lower_hir_module(&hir);
+        let instructions = &mir.functions[0].blocks[0].instructions;
+        assert!(
+            instructions
+                .iter()
+                .any(|inst| matches!(inst, MirInst::CowUpdate { .. })),
+            "expected record update lowering to emit CowUpdate"
+        );
+        assert!(
+            !instructions
+                .iter()
+                .any(|inst| matches!(inst, MirInst::Retain { .. })),
+            "linear local record-update base should transfer ownership without retain: {instructions:?}"
+        );
+    }
+
+    #[test]
+    fn lower_hir_module_keeps_retain_when_record_update_fields_read_base_binding() {
+        let user_ty = Type::Record(RecordType {
+            name: "User".to_string(),
+            params: vec![],
+            row: RowType::closed(vec![(Label::new("age"), Type::Int)]),
+        });
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "main".to_string(),
+                params: vec![],
+                body: HirExpr {
+                    kind: HirExprKind::Block(vec![
+                        HirExpr {
+                            kind: HirExprKind::Let {
+                                pattern: HirPattern::Var("user".to_string()),
+                                value: Box::new(HirExpr {
+                                    kind: HirExprKind::RecordLit {
+                                        record_type: "User".to_string(),
+                                        fields: vec![(
+                                            "age".to_string(),
+                                            HirExpr {
+                                                kind: HirExprKind::Lit(kea_ast::Lit::Int(1)),
+                                                ty: Type::Int,
+                                                span: kea_ast::Span::synthetic(),
+                                            },
+                                        )],
+                                    },
+                                    ty: user_ty.clone(),
+                                    span: kea_ast::Span::synthetic(),
+                                }),
+                            },
+                            ty: user_ty.clone(),
+                            span: kea_ast::Span::synthetic(),
+                        },
+                        HirExpr {
+                            kind: HirExprKind::Let {
+                                pattern: HirPattern::Var("updated".to_string()),
+                                value: Box::new(HirExpr {
+                                    kind: HirExprKind::RecordUpdate {
+                                        record_type: "User".to_string(),
+                                        base: Box::new(HirExpr {
+                                            kind: HirExprKind::Var("user".to_string()),
+                                            ty: user_ty.clone(),
+                                            span: kea_ast::Span::synthetic(),
+                                        }),
+                                        fields: vec![(
+                                            "age".to_string(),
+                                            HirExpr {
+                                                kind: HirExprKind::Binary {
+                                                    op: BinOp::Add,
+                                                    left: Box::new(HirExpr {
+                                                        kind: HirExprKind::FieldAccess {
+                                                            expr: Box::new(HirExpr {
+                                                                kind: HirExprKind::Var("user".to_string()),
+                                                                ty: user_ty.clone(),
+                                                                span: kea_ast::Span::synthetic(),
+                                                            }),
+                                                            field: "age".to_string(),
+                                                        },
+                                                        ty: Type::Int,
+                                                        span: kea_ast::Span::synthetic(),
+                                                    }),
+                                                    right: Box::new(HirExpr {
+                                                        kind: HirExprKind::Lit(kea_ast::Lit::Int(1)),
+                                                        ty: Type::Int,
+                                                        span: kea_ast::Span::synthetic(),
+                                                    }),
+                                                },
+                                                ty: Type::Int,
+                                                span: kea_ast::Span::synthetic(),
+                                            },
+                                        )],
+                                    },
+                                    ty: user_ty.clone(),
+                                    span: kea_ast::Span::synthetic(),
+                                }),
+                            },
+                            ty: user_ty,
+                            span: kea_ast::Span::synthetic(),
+                        },
+                        HirExpr {
+                            kind: HirExprKind::Lit(kea_ast::Lit::Int(0)),
+                            ty: Type::Int,
+                            span: kea_ast::Span::synthetic(),
+                        },
+                    ]),
+                    ty: Type::Int,
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
+                effects: EffectRow::pure(),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let mir = lower_hir_module(&hir);
+        let instructions = &mir.functions[0].blocks[0].instructions;
+        assert!(
+            instructions
+                .iter()
+                .any(|inst| matches!(inst, MirInst::Retain { .. })),
+            "record-update fields that read the base binding must keep retain for safety: {instructions:?}"
+        );
     }
 
     #[test]
