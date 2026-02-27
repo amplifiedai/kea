@@ -1600,6 +1600,13 @@ fn lower_instruction<M: Module>(
                         function: function_name.to_string(),
                         detail: format!("sum layout `{sum_type}` not found"),
                     })?;
+            // Unit-only sums are represented as immediate integer tags in MIR
+            // (e.g. `Ordering` constructors lower to `Const Int(tag)`).
+            // Do not dereference these as heap pointers.
+            if layout.variant_field_counts.values().all(|count| *count == 0) {
+                values.insert(dest.clone(), base);
+                return Ok(false);
+            }
             let tag_offset =
                 i32::try_from(layout.tag_offset).map_err(|_| CodegenError::UnsupportedMir {
                     function: function_name.to_string(),

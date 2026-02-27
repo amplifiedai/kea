@@ -599,6 +599,25 @@ mod tests {
     }
 
     #[test]
+    fn compile_and_execute_real_stdlib_order_helpers_exit_code() {
+        let project_dir = temp_workspace_project_dir("kea-cli-project-real-stdlib-order-helpers");
+        let src_dir = project_dir.join("src");
+        std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+
+        let app_path = src_dir.join("app.kea");
+        std::fs::write(
+            &app_path,
+            "use Order\n\nfn main() -> Int\n  if Order.is_less(Order.compare_int(1, 2)) and Order.is_equal(Order.compare_int(3, 3)) and Order.is_greater(Order.compare_int(9, 4))\n    42\n  else\n    0\n",
+        )
+        .expect("app module write should succeed");
+
+        let run = run_file(&app_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_dir_all(project_dir);
+    }
+
+    #[test]
     fn compile_and_execute_real_stdlib_float_module_exit_code() {
         let project_dir = temp_workspace_project_dir("kea-cli-project-real-stdlib-float");
         let src_dir = project_dir.join("src");
