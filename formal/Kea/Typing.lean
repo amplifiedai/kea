@@ -1234,6 +1234,44 @@ theorem unifyHookPremisesWeak_of_unifyHookPremises
     projUnifySoundHookWeak_of_projUnifySoundHook h_hooks.2⟩
 
 /--
+Canonical weak-boundary local-step bundle for `HasType`: packages app/proj
+one-step soundness under resolved equality/row-shape premises.
+-/
+def UnifyStepSoundWeak : Prop :=
+  (∀ env fn arg argTy retTy stBefore stAfter fuel resVar,
+    HasType env fn (.function (.cons argTy .nil) retTy) →
+    HasType env arg argTy →
+    unify stBefore fuel (.function (.cons argTy .nil) retTy)
+      (.function (.cons argTy .nil) (.var resVar)) = .ok stAfter →
+    applySubstCompat stAfter.subst fuel (.var resVar) = retTy →
+    HasType env (.app fn arg) (applySubstCompat stAfter.subst fuel (.var resVar)))
+  ∧
+  (∀ env recv label recvTy stBefore stAfter fuel fieldVar restVar rowFields,
+    HasType env recv recvTy →
+    recvTy = .anonRecord (.mk rowFields none) →
+    unify stBefore fuel recvTy
+      (.anonRecord (.mk (.cons label (.var fieldVar) .nil) (some restVar))) = .ok stAfter →
+    RowFields.get rowFields label = some (applySubstCompat stAfter.subst fuel (.var fieldVar)) →
+    HasType env (.proj recv label) (applySubstCompat stAfter.subst fuel (.var fieldVar)))
+
+/-- Build the weak local-step bundle from weak hook premises. -/
+theorem unifyStepSoundWeak_of_hookPremisesWeak
+    (h_hooks : UnifyHookPremisesWeak) :
+    UnifyStepSoundWeak := by
+  exact ⟨h_hooks.1, h_hooks.2⟩
+
+/-- Canonical witness for the weak local-step bundle. -/
+theorem unifyStepSoundWeak_proved : UnifyStepSoundWeak := by
+  exact unifyStepSoundWeak_of_hookPremisesWeak unifyHookPremisesWeak_proved
+
+/-- Build the weak local-step bundle directly from strong hook premises. -/
+theorem unifyStepSoundWeak_of_unifyHookPremises
+    (h_hooks : UnifyHookPremises) :
+    UnifyStepSoundWeak := by
+  exact unifyStepSoundWeak_of_hookPremisesWeak
+    (unifyHookPremisesWeak_of_unifyHookPremises h_hooks)
+
+/--
 Unification-aware app hook: if substitution-resolving `fnTy` yields a
 single-argument function shape over the resolved argument type, app typing is
 derivable directly in `HasTypeU`.
@@ -2847,6 +2885,21 @@ theorem inferExprUnify_app_step_sound_weak_from_strong_bundle
   exact inferExprUnify_app_step_sound_weak_from_bundle
     (unifyHookPremisesWeak_of_unifyHookPremises h_hooks) h_fn h_arg h_unify h_res_eq
 
+/-- Step-bundle-driven app local-step rule on the weak-hook boundary. -/
+theorem inferExprUnify_app_step_sound_weak_from_stepBundle
+    (h_steps : UnifyStepSoundWeak)
+    {env fn arg argTy retTy : _}
+    {stBefore stAfter : UnifyState} {fuel : Nat} {resVar : TypeVarId}
+    (h_fn : HasType env fn (.function (.cons argTy .nil) retTy))
+    (h_arg : HasType env arg argTy)
+    (h_unify : unify stBefore fuel
+      (.function (.cons argTy .nil) retTy)
+      (.function (.cons argTy .nil) (.var resVar)) = .ok stAfter)
+    (h_res_eq : applySubstCompat stAfter.subst fuel (.var resVar) = retTy) :
+    HasType env (.app fn arg) (applySubstCompat stAfter.subst fuel (.var resVar)) := by
+  exact h_steps.1 env fn arg argTy retTy stBefore stAfter fuel resVar
+    h_fn h_arg h_unify h_res_eq
+
 /-- One-step projection soundness: proj branch correctness from typed receiver + unify hook. -/
 theorem inferExprUnify_proj_step_sound
     (h_proj : ProjUnifySoundHook)
@@ -2931,6 +2984,22 @@ theorem inferExprUnify_proj_step_sound_weak_from_strong_bundle
     HasType env (.proj recv label) (applySubstCompat stAfter.subst fuel (.var fieldVar)) := by
   exact inferExprUnify_proj_step_sound_weak_from_bundle
     (unifyHookPremisesWeak_of_unifyHookPremises h_hooks)
+    h_recv h_recv_shape h_unify h_get
+
+/-- Step-bundle-driven projection local-step rule on the weak-hook boundary. -/
+theorem inferExprUnify_proj_step_sound_weak_from_stepBundle
+    (h_steps : UnifyStepSoundWeak)
+    {env recv : _} {label : Label} {recvTy : Ty}
+    {stBefore stAfter : UnifyState} {fuel : Nat} {fieldVar : TypeVarId}
+    {restVar : RowVarId} {rowFields : RowFields}
+    (h_recv : HasType env recv recvTy)
+    (h_recv_shape : recvTy = .anonRecord (.mk rowFields none))
+    (h_unify : unify stBefore fuel recvTy
+      (.anonRecord (.mk (.cons label (.var fieldVar) .nil) (some restVar))) = .ok stAfter)
+    (h_get : RowFields.get rowFields label =
+      some (applySubstCompat stAfter.subst fuel (.var fieldVar))) :
+    HasType env (.proj recv label) (applySubstCompat stAfter.subst fuel (.var fieldVar)) := by
+  exact h_steps.2 env recv label recvTy stBefore stAfter fuel fieldVar restVar rowFields
     h_recv h_recv_shape h_unify h_get
 
 mutual
