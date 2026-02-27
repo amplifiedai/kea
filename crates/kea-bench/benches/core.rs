@@ -115,6 +115,15 @@ fn lower_allocation_heavy_hir_to_mir(bencher: Bencher, levels: usize) {
     });
 }
 
+#[divan::bench(args = [8, 32, 128])]
+fn lower_linear_heap_alias_chain_to_mir(bencher: Bencher, levels: usize) {
+    let hir = build_linear_heap_alias_chain_hir_module(levels);
+    bencher.bench(|| {
+        let mir = lower_hir_module(black_box(&hir));
+        black_box(mir.functions.len())
+    });
+}
+
 #[divan::bench]
 fn lower_record_update_single_to_mir(bencher: Bencher) {
     let hir = build_record_update_single_hir_module();
@@ -148,6 +157,18 @@ fn compile_numeric_hir_jit(bencher: Bencher, terms: usize) {
 #[divan::bench(args = [8, 32, 128])]
 fn compile_allocation_heavy_hir_jit(bencher: Bencher, levels: usize) {
     let hir = build_allocation_heavy_hir_module(levels);
+    let backend = CraneliftBackend;
+    let config = BackendConfig::default();
+    bencher.bench(|| {
+        let artifact = compile_hir_module(&backend, black_box(&hir), &config)
+            .unwrap_or_else(|err| panic!("codegen failed in benchmark setup: {err}"));
+        black_box(artifact.stats.per_function.len())
+    });
+}
+
+#[divan::bench(args = [8, 32, 128])]
+fn compile_linear_heap_alias_chain_hir_jit(bencher: Bencher, levels: usize) {
+    let hir = build_linear_heap_alias_chain_hir_module(levels);
     let backend = CraneliftBackend;
     let config = BackendConfig::default();
     bencher.bench(|| {
@@ -461,6 +482,85 @@ fn build_allocation_heavy_hir_module(levels: usize) -> HirModule {
 
     exprs.push(HirExpr {
         kind: HirExprKind::Var(format!("tmp_{}", level_count - 1)),
+        ty: Type::Int,
+        span,
+    });
+
+    HirModule {
+        declarations: vec![HirDecl::Function(HirFunction {
+            name: "main".to_string(),
+            params: vec![],
+            body: HirExpr {
+                kind: HirExprKind::Block(exprs),
+                ty: Type::Int,
+                span,
+            },
+            ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
+            effects: EffectRow::pure(),
+            span,
+        })],
+    }
+}
+
+fn build_linear_heap_alias_chain_hir_module(levels: usize) -> HirModule {
+    let span = Span::synthetic();
+    let depth = levels.max(1);
+    let box_ty = Type::Record(RecordType {
+        name: "Box".to_string(),
+        params: vec![],
+        row: RowType::closed(vec![(Label::new("n"), Type::Int)]),
+    });
+
+    let mut exprs = Vec::with_capacity(depth + 2);
+    exprs.push(HirExpr {
+        kind: HirExprKind::Let {
+            pattern: HirPattern::Var("b0".to_string()),
+            value: Box::new(HirExpr {
+                kind: HirExprKind::RecordLit {
+                    record_type: "Box".to_string(),
+                    fields: vec![(
+                        "n".to_string(),
+                        HirExpr {
+                            kind: HirExprKind::Lit(Lit::Int(1)),
+                            ty: Type::Int,
+                            span,
+                        },
+                    )],
+                },
+                ty: box_ty.clone(),
+                span,
+            }),
+        },
+        ty: box_ty.clone(),
+        span,
+    });
+
+    for idx in 1..=depth {
+        let prev = format!("b{}", idx - 1);
+        let current = format!("b{idx}");
+        exprs.push(HirExpr {
+            kind: HirExprKind::Let {
+                pattern: HirPattern::Var(current),
+                value: Box::new(HirExpr {
+                    kind: HirExprKind::Var(prev),
+                    ty: box_ty.clone(),
+                    span,
+                }),
+            },
+            ty: box_ty.clone(),
+            span,
+        });
+    }
+
+    exprs.push(HirExpr {
+        kind: HirExprKind::FieldAccess {
+            expr: Box::new(HirExpr {
+                kind: HirExprKind::Var(format!("b{depth}")),
+                ty: box_ty,
+                span,
+            }),
+            field: "n".to_string(),
+        },
         ty: Type::Int,
         span,
     });
