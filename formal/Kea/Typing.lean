@@ -4252,6 +4252,62 @@ theorem principalBoundaryBridgeSuite_preconditionedCoreIff_field
     h_suite.preconditionedCoreIff h_hooks st fuel env fs st' rf h_ok
 
 /--
+Convenience wrapper: derive core principality from successful no-unify
+expression inference via the proved boundary suite.
+-/
+theorem principalNoUnifyCoreExpr_of_success_via_suite
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_hooks : UnifyHookPremises) :
+    PrincipalTypingSliceCore env e ty := by
+  exact (principalBoundaryBridgeSuite_noUnify_expr
+      principalBoundaryBridgeSuite_proved h_no h_ok h_hooks).core
+
+/--
+Convenience wrapper: derive preconditioned principality from successful
+no-unify expression inference via the proved boundary suite.
+-/
+theorem principalNoUnifyPreconditionedExpr_of_success_via_suite
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_hooks : UnifyHookPremises) :
+    PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty := by
+  exact (principalBoundaryBridgeSuite_noUnify_expr
+      principalBoundaryBridgeSuite_proved h_no h_ok h_hooks).preconditioned
+
+/--
+Convenience wrapper: derive core field principality from successful no-unify
+field inference via the proved boundary suite.
+-/
+theorem principalNoUnifyCoreField_of_success_via_suite
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_hooks : UnifyHookPremises) :
+    PrincipalFieldTypingSliceCore env fs rf := by
+  exact (principalBoundaryBridgeSuite_noUnify_field
+      principalBoundaryBridgeSuite_proved h_no h_ok h_hooks).core
+
+/--
+Convenience wrapper: derive preconditioned field principality from successful
+no-unify field inference via the proved boundary suite.
+-/
+theorem principalNoUnifyPreconditionedField_of_success_via_suite
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_hooks : UnifyHookPremises) :
+    PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf := by
+  exact (principalBoundaryBridgeSuite_noUnify_field
+      principalBoundaryBridgeSuite_proved h_no h_ok h_hooks).preconditioned
+
+/--
 `HasTypeU` lift of non-app/proj recursive soundness: on the fragment that never
 executes unification branches, algorithmic inference results are declaratively
 typable in the unification-aware judgment as well.
