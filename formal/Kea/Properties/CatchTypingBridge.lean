@@ -88,6 +88,34 @@ def toAdmissibleEffectPolyHandlerSchema
   h_admissible := j.h_admissible
 }
 
+abbrev CatchTypingClosedAwareBundle (j : CatchTypingJudgment) :=
+  HandlerClosedAwareContracts.ClosedAwareResultBundle j.clause
+
+def catchTypingJudgment_closedAwareBundle
+    (j : CatchTypingJudgment) :
+    CatchTypingClosedAwareBundle j :=
+  HandlerClosedAwareContracts.closedAwareResultBundle_of_wellTyped
+    j.clause j.h_wellTyped
+
+theorem catchTypingJudgment_clauseHandledRemoved_closedAware
+    (j : CatchTypingJudgment) :
+    RowFields.has
+      (EffectRow.fields (HandlerClosedAwareContracts.resultEffectsClosedAware j.clause))
+      j.clause.handled = false :=
+  (catchTypingJudgment_closedAwareBundle j).closedAwareHandledRemoved
+
+theorem catchTypingJudgment_clauseFailRemoved_via_closedAware
+    (j : CatchTypingJudgment) :
+    RowFields.has
+      (EffectRow.fields (HandleClauseContract.resultEffects j.clause))
+      FailResultContracts.failLabel = false := by
+  have h_removed_handled :
+      RowFields.has
+        (EffectRow.fields (HandleClauseContract.resultEffects j.clause))
+        j.clause.handled = false :=
+    (catchTypingJudgment_closedAwareBundle j).legacyHandledRemoved
+  simpa [FailResultContracts.failLabel, j.h_failZero.1] using h_removed_handled
+
 theorem catchTypingJudgment_sound
     (j : CatchTypingJudgment) :
     RowFields.has
@@ -293,8 +321,7 @@ theorem catchTypingJudgment_bundle_clauseFailRemoved_of_premises
       FailResultContracts.failLabel = false := by
   let j := mkCatchTypingJudgment
     clause params okTy errTy loweredTy h_wellTyped h_failZero h_admissible h_lowered
-  exact EffectPolymorphismSoundness.admissibleEffectPolyHandler_bundle_clauseFailRemoved
-    (toAdmissibleEffectPolyHandlerSchema j)
+  exact catchTypingJudgment_clauseFailRemoved_via_closedAware j
 
 theorem catchTypingJudgment_bundle_rowTailStable_of_premises
     (clause : HandleClauseContract)
@@ -319,8 +346,7 @@ theorem catchTypingJudgment_bundle_clauseFailRemoved
     RowFields.has
       (EffectRow.fields (HandleClauseContract.resultEffects j.clause))
       FailResultContracts.failLabel = false :=
-  EffectPolymorphismSoundness.admissibleEffectPolyHandler_bundle_clauseFailRemoved
-    (toAdmissibleEffectPolyHandlerSchema j)
+  catchTypingJudgment_clauseFailRemoved_via_closedAware j
 
 theorem catchTypingJudgment_bundle_rowTailStable
     (j : CatchTypingJudgment) :
