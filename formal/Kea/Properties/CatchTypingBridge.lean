@@ -104,6 +104,12 @@ theorem catchTypingJudgment_clauseHandledRemoved_closedAware
       j.clause.handled = false :=
   (catchTypingJudgment_closedAwareBundle j).closedAwareHandledRemoved
 
+theorem catchTypingJudgment_clauseRowTailStable_closedAware
+    (j : CatchTypingJudgment) :
+    EffectRow.rest (HandlerClosedAwareContracts.resultEffectsClosedAware j.clause) =
+      EffectRow.rest j.clause.exprEffects :=
+  (catchTypingJudgment_closedAwareBundle j).closedAwareRowTailStable
+
 theorem catchTypingJudgment_clauseFailRemoved_via_closedAware
     (j : CatchTypingJudgment) :
     RowFields.has

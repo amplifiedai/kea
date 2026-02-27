@@ -129,6 +129,18 @@ theorem higherOrderCatchTypingJudgment_clauseFailRemoved_via_closedAware
       FailResultContracts.failLabel = false :=
   CatchTypingBridge.catchTypingJudgment_clauseFailRemoved_via_closedAware j.judgment
 
+theorem higherOrderCatchTypingJudgment_clauseRowTailStable_closedAware
+    (j : HigherOrderCatchTypingJudgment) :
+    EffectRow.rest
+      (HandlerClosedAwareContracts.resultEffectsClosedAware j.judgment.clause) =
+      EffectRow.rest j.innerEffects := by
+  have h_tail :
+      EffectRow.rest
+        (HandlerClosedAwareContracts.resultEffectsClosedAware j.judgment.clause) =
+        EffectRow.rest j.judgment.clause.exprEffects :=
+    CatchTypingBridge.catchTypingJudgment_clauseRowTailStable_closedAware j.judgment
+  simpa [j.h_clauseEffects] using h_tail
+
 theorem higherOrderCatchTypingJudgment_admissibility_branch
     (j : HigherOrderCatchTypingJudgment) :
     FailResultContracts.catchAdmissible j.innerEffects ∧
