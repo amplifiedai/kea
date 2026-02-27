@@ -3319,6 +3319,192 @@ mod tests {
     }
 
     #[test]
+    fn lower_hir_module_resolves_record_field_load_for_call_result_var_type() {
+        let user_ty = Type::Record(RecordType {
+            name: "User".to_string(),
+            params: vec![],
+            row: RowType::closed(vec![(Label::new("age"), Type::Int)]),
+        });
+        let hir = HirModule {
+            declarations: vec![
+                HirDecl::Raw(DeclKind::RecordDef(RecordDef {
+                    public: true,
+                    name: sp("User".to_string()),
+                    doc: None,
+                    annotations: vec![],
+                    params: vec![],
+                    fields: vec![(sp("age".to_string()), TypeAnnotation::Named("Int".to_string()))],
+                    field_annotations: vec![],
+                    derives: vec![],
+                })),
+                HirDecl::Function(HirFunction {
+                    name: "id_user".to_string(),
+                    params: vec![HirParam {
+                        name: Some("u".to_string()),
+                        span: kea_ast::Span::synthetic(),
+                    }],
+                    body: HirExpr {
+                        kind: HirExprKind::Var("u".to_string()),
+                        ty: user_ty.clone(),
+                        span: kea_ast::Span::synthetic(),
+                    },
+                    ty: Type::Function(FunctionType::pure(vec![user_ty.clone()], user_ty.clone())),
+                    effects: EffectRow::pure(),
+                    span: kea_ast::Span::synthetic(),
+                }),
+                HirDecl::Function(HirFunction {
+                    name: "main".to_string(),
+                    params: vec![],
+                    body: HirExpr {
+                        kind: HirExprKind::FieldAccess {
+                            expr: Box::new(HirExpr {
+                                kind: HirExprKind::Call {
+                                    func: Box::new(HirExpr {
+                                        kind: HirExprKind::Var("id_user".to_string()),
+                                        ty: Type::Dynamic,
+                                        span: kea_ast::Span::synthetic(),
+                                    }),
+                                    args: vec![HirExpr {
+                                        kind: HirExprKind::RecordLit {
+                                            record_type: "User".to_string(),
+                                            fields: vec![(
+                                                "age".to_string(),
+                                                HirExpr {
+                                                    kind: HirExprKind::Lit(kea_ast::Lit::Int(42)),
+                                                    ty: Type::Int,
+                                                    span: kea_ast::Span::synthetic(),
+                                                },
+                                            )],
+                                        },
+                                        ty: user_ty.clone(),
+                                        span: kea_ast::Span::synthetic(),
+                                    }],
+                                },
+                                ty: Type::Dynamic,
+                                span: kea_ast::Span::synthetic(),
+                            }),
+                            field: "age".to_string(),
+                        },
+                        ty: Type::Int,
+                        span: kea_ast::Span::synthetic(),
+                    },
+                    ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
+                    effects: EffectRow::pure(),
+                    span: kea_ast::Span::synthetic(),
+                }),
+            ],
+        };
+
+        let mir = lower_hir_module(&hir);
+        let main_fn = mir
+            .functions
+            .iter()
+            .find(|func| func.name == "main")
+            .expect("main should lower");
+        assert!(
+            main_fn
+                .blocks
+                .iter()
+                .flat_map(|block| block.instructions.iter())
+                .any(|inst| matches!(
+                    inst,
+                    MirInst::RecordFieldLoad {
+                        record_type,
+                        field,
+                        field_ty: Type::Int,
+                        ..
+                    } if record_type == "User" && field == "age"
+                )),
+            "expected call-result field access to resolve record layout"
+        );
+    }
+
+    #[test]
+    fn lower_hir_module_marks_escaping_capturing_factory_call_unsupported() {
+        let inner_fn_ty = Type::Function(FunctionType::pure(vec![Type::Int], Type::Int));
+        let make_adder_ty = Type::Function(FunctionType::pure(vec![Type::Int], inner_fn_ty.clone()));
+        let hir = HirModule {
+            declarations: vec![
+                HirDecl::Function(HirFunction {
+                    name: "make_adder".to_string(),
+                    params: vec![kea_hir::HirParam {
+                        name: Some("y".to_string()),
+                        span: kea_ast::Span::synthetic(),
+                    }],
+                    body: HirExpr {
+                        kind: HirExprKind::Lambda {
+                            params: vec![kea_hir::HirParam {
+                                name: Some("x".to_string()),
+                                span: kea_ast::Span::synthetic(),
+                            }],
+                            body: Box::new(HirExpr {
+                                kind: HirExprKind::Binary {
+                                    op: BinOp::Add,
+                                    left: Box::new(HirExpr {
+                                        kind: HirExprKind::Var("x".to_string()),
+                                        ty: Type::Int,
+                                        span: kea_ast::Span::synthetic(),
+                                    }),
+                                    right: Box::new(HirExpr {
+                                        kind: HirExprKind::Var("y".to_string()),
+                                        ty: Type::Int,
+                                        span: kea_ast::Span::synthetic(),
+                                    }),
+                                },
+                                ty: Type::Int,
+                                span: kea_ast::Span::synthetic(),
+                            }),
+                        },
+                        ty: inner_fn_ty.clone(),
+                        span: kea_ast::Span::synthetic(),
+                    },
+                    ty: make_adder_ty.clone(),
+                    effects: EffectRow::pure(),
+                    span: kea_ast::Span::synthetic(),
+                }),
+                HirDecl::Function(HirFunction {
+                    name: "factory_use".to_string(),
+                    params: vec![],
+                    body: HirExpr {
+                        kind: HirExprKind::Call {
+                            func: Box::new(HirExpr {
+                                kind: HirExprKind::Var("make_adder".to_string()),
+                                ty: make_adder_ty,
+                                span: kea_ast::Span::synthetic(),
+                            }),
+                            args: vec![HirExpr {
+                                kind: HirExprKind::Lit(kea_ast::Lit::Int(2)),
+                                ty: Type::Int,
+                                span: kea_ast::Span::synthetic(),
+                            }],
+                        },
+                        ty: inner_fn_ty.clone(),
+                        span: kea_ast::Span::synthetic(),
+                    },
+                    ty: Type::Function(FunctionType::pure(vec![], inner_fn_ty)),
+                    effects: EffectRow::pure(),
+                    span: kea_ast::Span::synthetic(),
+                }),
+            ],
+        };
+
+        let mir = lower_hir_module(&hir);
+        let factory_use = mir
+            .functions
+            .iter()
+            .find(|func| func.name == "factory_use")
+            .expect("factory_use should lower");
+        assert!(
+            factory_use
+                .blocks
+                .iter()
+                .flat_map(|block| block.instructions.iter())
+                .any(|inst| matches!(inst, MirInst::Unsupported { detail } if detail.contains("capturing closure values"))),
+            "expected escaping capturing factory call to lower as unsupported"
+        );
+    }
+
+    #[test]
     fn lower_hir_module_inlines_direct_lambda_call() {
         let hir = HirModule {
             declarations: vec![HirDecl::Function(HirFunction {
