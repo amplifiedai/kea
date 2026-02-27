@@ -152,6 +152,12 @@ External API is pure. This is the production Map.
 **Writing these IS the test for 0f.** If HAMT can't be written
 with Ptr + @unsafe, the memory model has a gap.
 
+**Numeric extensions needed:** HAMT needs `popcount` (KERNEL §1.1.4)
+for index calculation and bitwise ops (§1.1.2) for trie navigation.
+Hash functions need `wrapping_mul`/`wrapping_add` (§1.1.3). Hex
+literal prefixes (`0xFF`, §1.5) are needed for hash constants and
+byte manipulation. These all land in 0f Step 6.
+
 ### Tier 3: Abstractions (lands with 0g)
 
 Trait hierarchies, @derive, and the abstractions that make the

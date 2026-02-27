@@ -235,11 +235,19 @@ used once, consumed). Extend to more complex patterns later.
   when trait impls land. Do not hard-code this restriction into
   the type system; implement as a lint/warning initially.
 
-### Step 6: Fixed-width integers and bitwise ops
+### Step 6: Fixed-width integers, bitwise ops, and numeric extensions
 
 - Int8, Int16, Int32, Int64, UInt8-64, Float32 (KERNEL §1.1.1)
 - Bitwise methods (KERNEL §1.1.2): bit_and, bit_or, bit_xor,
   bit_not, shift_left, shift_right, shift_right_unsigned
+- Wrapping arithmetic (KERNEL §1.1.3): wrapping_add, wrapping_sub,
+  wrapping_mul — needed for hash functions and checksums. Default
+  arithmetic traps on overflow in debug builds.
+- Bit counting (KERNEL §1.1.4): popcount, leading_zeros,
+  trailing_zeros — map to Cranelift popcnt/clz/ctz. Needed for
+  HAMT index calculation.
+- Hex/binary/octal literal prefixes (KERNEL §1.5): 0xFF, 0b1010,
+  0o77 — requires lexer extension. Underscore separators (1_000_000).
 - Widening conversions implicit, narrowing explicit
 - Codegen: direct Cranelift integer types
 
@@ -272,7 +280,10 @@ of 1-3 and of each other. Step 7 is blocked on 0e.
   outside
 - @unboxed: value semantics, no heap allocation
 - Fixed-width: bitwise ops produce correct results, narrowing
-  conversions checked
+  conversions checked, wrapping arithmetic wraps correctly,
+  popcount/clz/ctz match hardware instructions
+- Numeric literals: hex (0xFF), binary (0b1010), octal (0o77)
+  lex and compile correctly. Underscore separators ignored.
 
 ## Definition of Done
 

@@ -588,6 +588,35 @@ deliverable that lands alongside 0e, not a 0e implementation step.
 The 0e agent's job is to make the Net intrinsics work; the HTTP
 client is a separate task that exercises them.
 
+## Syntax Features Unlocked by 0e
+
+Two KERNEL.md features become useful once effects land. They aren't
+effect-specific but they're natural companions for effectful code:
+
+**`while` loops (KERNEL §10.7):** Syntactic sugar for tail-recursive
+iteration. Desugars to a self-recursive closure. The canonical use
+is `State` + `while`:
+
+```kea
+handle
+  while State.get() < n
+    State.put(State.get() + 1)
+  State.get() -> resume 0
+  State.put(s) -> resume ()
+```
+
+Implementation: parser desugaring only — no new IR or codegen needed.
+The desugared tail call is already optimized by the existing TCO pass.
+Can land in any 0e step.
+
+**`@tailrec` annotation (KERNEL §10.8):** Opt-in verification that a
+recursive call is in tail position. Compile error if it isn't. Applied
+at the call site: `@tailrec sum(rest, acc + x)`. Useful for recursive
+list/tree traversals in stdlib modules.
+
+Implementation: a simple check at MIR lowering — verify the annotated
+call is the last instruction before return. Can land in any 0e step.
+
 ## Open Questions
 
 *(None remaining — see Resolved Questions.)*
