@@ -2814,6 +2814,39 @@ theorem inferExprUnify_app_step_sound_weak_of_strong
   inferExprUnify_app_step_sound_weak
     (appUnifySoundHookWeak_of_appUnifySoundHook h_app) h_fn h_arg h_unify h_res_eq
 
+/-- Bundle-driven app local-step rule on the weak-hook boundary. -/
+theorem inferExprUnify_app_step_sound_weak_from_bundle
+    (h_steps : UnifyHookPremisesWeak)
+    {env fn arg argTy retTy : _}
+    {stBefore stAfter : UnifyState} {fuel : Nat} {resVar : TypeVarId}
+    (h_fn : HasType env fn (.function (.cons argTy .nil) retTy))
+    (h_arg : HasType env arg argTy)
+    (h_unify : unify stBefore fuel
+      (.function (.cons argTy .nil) retTy)
+      (.function (.cons argTy .nil) (.var resVar)) = .ok stAfter)
+    (h_res_eq : applySubstCompat stAfter.subst fuel (.var resVar) = retTy) :
+    HasType env (.app fn arg) (applySubstCompat stAfter.subst fuel (.var resVar)) := by
+  exact h_steps.1 env fn arg argTy retTy stBefore stAfter fuel resVar
+    h_fn h_arg h_unify h_res_eq
+
+/--
+Strong-hook-bundle entrypoint to the weak app-step theorem surface via the
+strong→weak package adapter.
+-/
+theorem inferExprUnify_app_step_sound_weak_from_strong_bundle
+    (h_hooks : UnifyHookPremises)
+    {env fn arg argTy retTy : _}
+    {stBefore stAfter : UnifyState} {fuel : Nat} {resVar : TypeVarId}
+    (h_fn : HasType env fn (.function (.cons argTy .nil) retTy))
+    (h_arg : HasType env arg argTy)
+    (h_unify : unify stBefore fuel
+      (.function (.cons argTy .nil) retTy)
+      (.function (.cons argTy .nil) (.var resVar)) = .ok stAfter)
+    (h_res_eq : applySubstCompat stAfter.subst fuel (.var resVar) = retTy) :
+    HasType env (.app fn arg) (applySubstCompat stAfter.subst fuel (.var resVar)) := by
+  exact inferExprUnify_app_step_sound_weak_from_bundle
+    (unifyHookPremisesWeak_of_unifyHookPremises h_hooks) h_fn h_arg h_unify h_res_eq
+
 /-- One-step projection soundness: proj branch correctness from typed receiver + unify hook. -/
 theorem inferExprUnify_proj_step_sound
     (h_proj : ProjUnifySoundHook)
@@ -2862,6 +2895,42 @@ theorem inferExprUnify_proj_step_sound_weak_of_strong
     HasType env (.proj recv label) (applySubstCompat stAfter.subst fuel (.var fieldVar)) :=
   inferExprUnify_proj_step_sound_weak
     (projUnifySoundHookWeak_of_projUnifySoundHook h_proj)
+    h_recv h_recv_shape h_unify h_get
+
+/-- Bundle-driven projection local-step rule on the weak-hook boundary. -/
+theorem inferExprUnify_proj_step_sound_weak_from_bundle
+    (h_steps : UnifyHookPremisesWeak)
+    {env recv : _} {label : Label} {recvTy : Ty}
+    {stBefore stAfter : UnifyState} {fuel : Nat} {fieldVar : TypeVarId}
+    {restVar : RowVarId} {rowFields : RowFields}
+    (h_recv : HasType env recv recvTy)
+    (h_recv_shape : recvTy = .anonRecord (.mk rowFields none))
+    (h_unify : unify stBefore fuel recvTy
+      (.anonRecord (.mk (.cons label (.var fieldVar) .nil) (some restVar))) = .ok stAfter)
+    (h_get : RowFields.get rowFields label =
+      some (applySubstCompat stAfter.subst fuel (.var fieldVar))) :
+    HasType env (.proj recv label) (applySubstCompat stAfter.subst fuel (.var fieldVar)) := by
+  exact h_steps.2 env recv label recvTy stBefore stAfter fuel fieldVar restVar rowFields
+    h_recv h_recv_shape h_unify h_get
+
+/--
+Strong-hook-bundle entrypoint to the weak projection-step theorem surface via
+the strong→weak package adapter.
+-/
+theorem inferExprUnify_proj_step_sound_weak_from_strong_bundle
+    (h_hooks : UnifyHookPremises)
+    {env recv : _} {label : Label} {recvTy : Ty}
+    {stBefore stAfter : UnifyState} {fuel : Nat} {fieldVar : TypeVarId}
+    {restVar : RowVarId} {rowFields : RowFields}
+    (h_recv : HasType env recv recvTy)
+    (h_recv_shape : recvTy = .anonRecord (.mk rowFields none))
+    (h_unify : unify stBefore fuel recvTy
+      (.anonRecord (.mk (.cons label (.var fieldVar) .nil) (some restVar))) = .ok stAfter)
+    (h_get : RowFields.get rowFields label =
+      some (applySubstCompat stAfter.subst fuel (.var fieldVar))) :
+    HasType env (.proj recv label) (applySubstCompat stAfter.subst fuel (.var fieldVar)) := by
+  exact inferExprUnify_proj_step_sound_weak_from_bundle
+    (unifyHookPremisesWeak_of_unifyHookPremises h_hooks)
     h_recv h_recv_shape h_unify h_get
 
 mutual
