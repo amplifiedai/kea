@@ -4642,6 +4642,46 @@ theorem principalNoUnifyPreconditionedField_of_success_via_suite
   exact (principalBoundaryBridgeSuite_noUnify_field
       principalBoundaryBridgeSuite_proved h_no h_ok h_hooks).preconditioned
 
+/-- Bundled-seed alias for no-unify core expression via the proved boundary suite. -/
+theorem principalNoUnifyCoreExpr_of_success_via_suite_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_hooks : UnifyHookPremises) :
+    PrincipalTypingSliceCore env e ty :=
+  principalNoUnifyCoreExpr_of_success_via_suite h_no h_ok h_hooks
+
+/-- Bundled-seed alias for no-unify preconditioned expression via the proved boundary suite. -/
+theorem principalNoUnifyPreconditionedExpr_of_success_via_suite_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_hooks : UnifyHookPremises) :
+    PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty :=
+  principalNoUnifyPreconditionedExpr_of_success_via_suite h_no h_ok h_hooks
+
+/-- Bundled-seed alias for no-unify core field via the proved boundary suite. -/
+theorem principalNoUnifyCoreField_of_success_via_suite_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_hooks : UnifyHookPremises) :
+    PrincipalFieldTypingSliceCore env fs rf :=
+  principalNoUnifyCoreField_of_success_via_suite h_no h_ok h_hooks
+
+/-- Bundled-seed alias for no-unify preconditioned field via the proved boundary suite. -/
+theorem principalNoUnifyPreconditionedField_of_success_via_suite_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_hooks : UnifyHookPremises) :
+    PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf :=
+  principalNoUnifyPreconditionedField_of_success_via_suite h_no h_ok h_hooks
+
 /--
 Convenience wrapper: convert preconditioned -> core principality on successful
 expression runs via the proved boundary suite.
