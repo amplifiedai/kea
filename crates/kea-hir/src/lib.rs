@@ -48,6 +48,15 @@ pub struct HirExpr {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct HirHandleClause {
+    pub effect: String,
+    pub operation: String,
+    pub args: Vec<HirPattern>,
+    pub body: HirExpr,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum HirExprKind {
     Lit(Lit),
     Var(String),
@@ -95,6 +104,14 @@ pub enum HirExprKind {
     },
     Catch {
         expr: Box<HirExpr>,
+    },
+    Handle {
+        expr: Box<HirExpr>,
+        clauses: Vec<HirHandleClause>,
+        then_clause: Option<Box<HirExpr>>,
+    },
+    Resume {
+        value: Box<HirExpr>,
     },
     Let {
         pattern: HirPattern,
@@ -1214,6 +1231,61 @@ fn lower_expr(
         } if is_catch_desugar_shape(clauses, then_clause.as_deref()) => HirExprKind::Catch {
             expr: Box::new(lower_expr(
                 handled,
+                None,
+                unit_variant_tags,
+                qualified_variant_tags,
+                pattern_variant_tags,
+                pattern_qualified_tags,
+                known_record_defs,
+            )),
+        },
+        ExprKind::Handle {
+            expr: handled,
+            clauses,
+            then_clause,
+        } => HirExprKind::Handle {
+            expr: Box::new(lower_expr(
+                handled,
+                None,
+                unit_variant_tags,
+                qualified_variant_tags,
+                pattern_variant_tags,
+                pattern_qualified_tags,
+                known_record_defs,
+            )),
+            clauses: clauses
+                .iter()
+                .map(|clause| HirHandleClause {
+                    effect: clause.effect.node.clone(),
+                    operation: clause.operation.node.clone(),
+                    args: clause.args.iter().map(lower_pattern).collect(),
+                    body: lower_expr(
+                        &clause.body,
+                        None,
+                        unit_variant_tags,
+                        qualified_variant_tags,
+                        pattern_variant_tags,
+                        pattern_qualified_tags,
+                        known_record_defs,
+                    ),
+                    span: clause.span,
+                })
+                .collect(),
+            then_clause: then_clause.as_ref().map(|then_expr| {
+                Box::new(lower_expr(
+                    then_expr,
+                    None,
+                    unit_variant_tags,
+                    qualified_variant_tags,
+                    pattern_variant_tags,
+                    pattern_qualified_tags,
+                    known_record_defs,
+                ))
+            }),
+        },
+        ExprKind::Resume { value } => HirExprKind::Resume {
+            value: Box::new(lower_expr(
+                value,
                 None,
                 unit_variant_tags,
                 qualified_variant_tags,
@@ -5217,6 +5289,22 @@ mod tests {
             HirExprKind::FieldAccess { expr, .. } => count_if_nodes(expr),
             HirExprKind::Lambda { body, .. } => count_if_nodes(body),
             HirExprKind::Catch { expr } => count_if_nodes(expr),
+            HirExprKind::Handle {
+                expr,
+                clauses,
+                then_clause,
+            } => {
+                count_if_nodes(expr)
+                    + clauses
+                        .iter()
+                        .map(|clause| count_if_nodes(&clause.body))
+                        .sum::<usize>()
+                    + then_clause
+                        .as_ref()
+                        .map(|expr| count_if_nodes(expr))
+                        .unwrap_or(0)
+            }
+            HirExprKind::Resume { value } => count_if_nodes(value),
             HirExprKind::Let { value, .. } => count_if_nodes(value),
             HirExprKind::Lit(_) | HirExprKind::Var(_) | HirExprKind::Raw(_) => 0,
         }

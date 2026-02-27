@@ -493,6 +493,10 @@ fn compile_into_module<M: Module>(
                         requires_string_concat = true;
                         requires_heap_alloc = true;
                     }
+                    MirInst::StateCellNew { .. } => {
+                        requires_heap_alloc = true;
+                        requires_free = true;
+                    }
                     MirInst::Release { .. } => requires_free = true,
                     MirInst::EffectOp {
                         class: MirEffectOpClass::ZeroResume,
@@ -1730,6 +1734,38 @@ fn lower_instruction<M: Module>(
                 .ins()
                 .load(value_ty, MemFlags::new(), closure_ptr, offset);
             values.insert(dest.clone(), capture_value);
+            Ok(false)
+        }
+        MirInst::StateCellNew { dest, initial } => {
+            let initial = get_value(values, function_name, initial)?;
+            let initial = coerce_value_to_clif_type(builder, initial, types::I64);
+            let cell_ptr = allocate_heap_payload(
+                module,
+                builder,
+                function_name,
+                ctx.malloc_func_id,
+                8,
+                "state cell allocation requested but malloc import was not declared",
+            )?;
+            builder.ins().store(MemFlags::new(), initial, cell_ptr, 0);
+            values.insert(dest.clone(), cell_ptr);
+            Ok(false)
+        }
+        MirInst::StateCellLoad { dest, cell } => {
+            let ptr_ty = module.target_config().pointer_type();
+            let cell_ptr = get_value(values, function_name, cell)?;
+            let cell_ptr = coerce_value_to_clif_type(builder, cell_ptr, ptr_ty);
+            let value = builder.ins().load(types::I64, MemFlags::new(), cell_ptr, 0);
+            values.insert(dest.clone(), value);
+            Ok(false)
+        }
+        MirInst::StateCellStore { cell, value } => {
+            let ptr_ty = module.target_config().pointer_type();
+            let cell_ptr = get_value(values, function_name, cell)?;
+            let cell_ptr = coerce_value_to_clif_type(builder, cell_ptr, ptr_ty);
+            let value = get_value(values, function_name, value)?;
+            let value = coerce_value_to_clif_type(builder, value, types::I64);
+            builder.ins().store(MemFlags::new(), value, cell_ptr, 0);
             Ok(false)
         }
         MirInst::Call {
@@ -3200,10 +3236,13 @@ fn collect_function_stats(function: &MirFunction) -> FunctionPassStats {
                 MirInst::CowUpdate { .. }
                 | MirInst::RecordInit { .. }
                 | MirInst::SumInit { .. }
-                | MirInst::ClosureInit { .. } => stats.alloc_count += 1,
+                | MirInst::ClosureInit { .. }
+                | MirInst::StateCellNew { .. } => stats.alloc_count += 1,
                 MirInst::Const { .. }
                 | MirInst::Binary { .. }
                 | MirInst::Unary { .. }
+                | MirInst::StateCellLoad { .. }
+                | MirInst::StateCellStore { .. }
                 | MirInst::SumTagLoad { .. }
                 | MirInst::SumPayloadLoad { .. }
                 | MirInst::RecordFieldLoad { .. }
