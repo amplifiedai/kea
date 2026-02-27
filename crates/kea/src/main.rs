@@ -405,6 +405,26 @@ mod tests {
     }
 
     #[test]
+    fn compile_project_use_module_unqualified_ums_for_same_name_module_struct_method() {
+        let project_dir = temp_project_dir("kea-cli-project-module-struct-ums");
+        let src_dir = project_dir.join("src");
+        std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+
+        std::fs::write(
+            src_dir.join("list.kea"),
+            "type List = Empty | Item(Int)\n\nfn size(xs: List) -> Int\n  9\n",
+        )
+        .expect("list module write should succeed");
+        let app_path = src_dir.join("app.kea");
+        std::fs::write(&app_path, "use List\nfn main() -> Int\n  let xs = Item(1)\n  xs.size()\n")
+            .expect("app module write should succeed");
+
+        let _compiled = kea::compile_project(&app_path).expect("project compile should succeed");
+
+        let _ = std::fs::remove_dir_all(project_dir);
+    }
+
+    #[test]
     fn compile_project_reports_circular_module_imports() {
         let project_dir = temp_project_dir("kea-cli-project-cycle");
         let src_dir = project_dir.join("src");

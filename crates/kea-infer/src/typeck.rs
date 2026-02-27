@@ -11215,6 +11215,15 @@ fn resolve_unqualified_trait_method_fallback(
         return TraitMethodFallback::None;
     };
 
+    if env
+        .inherent_methods_for_type(&receiver_ctor)
+        .iter()
+        .any(|name| name == method_name)
+        && let Some(scheme) = env.resolve_qualified(&receiver_ctor, method_name)
+    {
+        return TraitMethodFallback::Resolved(scheme.ty.clone());
+    }
+
     let mut candidates: Vec<(String, TraitMethodInfo)> = Vec::new();
     for trait_name in traits.all_trait_names() {
         if !env.trait_in_scope(trait_name) {
