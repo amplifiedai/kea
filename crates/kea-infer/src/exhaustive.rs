@@ -262,7 +262,9 @@ fn pattern_irrefutable_for_type(pattern: &kea_ast::Pattern, ty: &Type) -> bool {
             _ => false,
         },
         PatternKind::Lit(kea_ast::Lit::Unit) => matches!(ty, Type::Unit),
-        PatternKind::Constructor { name, args, rest, .. } => {
+        PatternKind::Constructor {
+            name, args, rest, ..
+        } => {
             if let Type::Opaque {
                 name: opaque_name, ..
             } = ty

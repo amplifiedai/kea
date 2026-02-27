@@ -128,9 +128,10 @@ fn apply_layout(tokens: Vec<Token>, source: &str, file: FileId) -> (Vec<Token>, 
             continue;
         }
         if indent < current {
-            while indent < *indent_stack
-                .last()
-                .expect("indent stack is never empty in layout pass")
+            while indent
+                < *indent_stack
+                    .last()
+                    .expect("indent stack is never empty in layout pass")
             {
                 indent_stack.pop();
                 out.push(layout_token(TokenKind::Dedent, file, anchor));

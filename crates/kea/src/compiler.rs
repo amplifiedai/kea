@@ -186,7 +186,17 @@ pub fn process_module_in_env(
         return Err(diagnostics);
     }
 
-    if typecheck_functions(module, env, records, traits, sum_types, &mut diagnostics, None).is_err() {
+    if typecheck_functions(
+        module,
+        env,
+        records,
+        traits,
+        sum_types,
+        &mut diagnostics,
+        None,
+    )
+    .is_err()
+    {
         return Err(diagnostics);
     }
 
@@ -372,7 +382,10 @@ fn collect_project_modules(entry: &Path) -> Result<Vec<LoadedModule>, String> {
             if let Some(idx) = self.visiting.iter().position(|name| name == module_path) {
                 let mut cycle = self.visiting[idx..].to_vec();
                 cycle.push(module_path.to_string());
-                return Err(format!("circular module import detected: {}", cycle.join(" -> ")));
+                return Err(format!(
+                    "circular module import detected: {}",
+                    cycle.join(" -> ")
+                ));
             }
             if self.visited.contains(module_path) {
                 return Ok(());
@@ -456,17 +469,16 @@ fn merge_modules_for_codegen(modules: &[(String, Module)]) -> Module {
                     let mut lifted = fn_decl.clone();
                     lifted.name.node = format!("{module_path}.{}", fn_decl.name.node);
                     if seen_function_names.insert(lifted.name.node.clone()) {
-                        declarations.push(kea_ast::Spanned::new(
-                            DeclKind::Function(lifted),
-                            decl.span,
-                        ));
+                        declarations
+                            .push(kea_ast::Spanned::new(DeclKind::Function(lifted), decl.span));
                     }
                 }
                 DeclKind::ExprFn(expr_decl) if !expr_decl.name.node.contains('.') => {
                     let mut lifted = expr_decl.clone();
                     lifted.name.node = format!("{module_path}.{}", expr_decl.name.node);
                     if seen_function_names.insert(lifted.name.node.clone()) {
-                        declarations.push(kea_ast::Spanned::new(DeclKind::ExprFn(lifted), decl.span));
+                        declarations
+                            .push(kea_ast::Spanned::new(DeclKind::ExprFn(lifted), decl.span));
                     }
                 }
                 _ => {}
@@ -548,9 +560,7 @@ fn parse_and_typecheck_project(entry: &Path) -> Result<CompilationContext, Strin
             for imported_name in imported_symbols {
                 env.clear_function_metadata(&imported_name);
             }
-            if !is_prelude_module
-                && let Some(snapshot) = alias_snapshot
-            {
+            if !is_prelude_module && let Some(snapshot) = alias_snapshot {
                 env.restore_module_aliases(snapshot);
             }
             if let Some(snapshot) = trait_scope_snapshot {
@@ -725,7 +735,11 @@ fn expand_impl_methods_for_codegen(module: &Module) -> Module {
             // in this module and does not collide with an existing top-level
             // function. This keeps `x.method()` available for in-scope traits
             // while preserving deterministic dispatch.
-            if bare_trait_method_counts.get(&method_name).copied().unwrap_or_default() == 1
+            if bare_trait_method_counts
+                .get(&method_name)
+                .copied()
+                .unwrap_or_default()
+                == 1
                 && existing_function_names.insert(method_name.clone())
             {
                 let mut bare = method.clone();

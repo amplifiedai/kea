@@ -407,7 +407,10 @@ fn compile_into_module<M: Module>(
             requires_heap_alloc = true;
         }
         if function.blocks.iter().any(|block| {
-            block.instructions.iter().any(|inst| matches!(inst, MirInst::Release { .. }))
+            block
+                .instructions
+                .iter()
+                .any(|inst| matches!(inst, MirInst::Release { .. }))
         }) {
             requires_free = true;
         }
@@ -802,9 +805,7 @@ fn build_signature<M: Module>(
         signature.params.push(AbiParam::new(ty));
     }
 
-    if function.name == "main"
-        && matches!(runtime_sig.runtime_return, Type::Unit | Type::Int)
-    {
+    if function.name == "main" && matches!(runtime_sig.runtime_return, Type::Unit | Type::Int) {
         signature.returns.push(AbiParam::new(types::I32));
     } else if runtime_sig.runtime_return != Type::Unit {
         let ret_type = clif_type(&runtime_sig.runtime_return)?;
@@ -1074,13 +1075,9 @@ fn lower_instruction<M: Module>(
     match inst {
         MirInst::Const { dest, literal } => {
             let value = match literal {
-                MirLiteral::String(text) => lower_string_literal(
-                    module,
-                    builder,
-                    function_name,
-                    ctx.malloc_func_id,
-                    text,
-                )?,
+                MirLiteral::String(text) => {
+                    lower_string_literal(module, builder, function_name, ctx.malloc_func_id, text)?
+                }
                 _ => lower_literal(builder, literal, function_name)?,
             };
             values.insert(dest.clone(), value);
@@ -1377,9 +1374,13 @@ fn lower_instruction<M: Module>(
 
             let entry_value = get_value(values, function_name, entry)?;
             let entry_ptr = coerce_value_to_clif_type(builder, entry_value, ptr_ty);
-            builder.ins().store(MemFlags::new(), entry_ptr, closure_ptr, 0);
+            builder
+                .ins()
+                .store(MemFlags::new(), entry_ptr, closure_ptr, 0);
 
-            for (idx, (capture, capture_ty)) in captures.iter().zip(capture_types.iter()).enumerate() {
+            for (idx, (capture, capture_ty)) in
+                captures.iter().zip(capture_types.iter()).enumerate()
+            {
                 let capture_value = get_value(values, function_name, capture)?;
                 let expected_capture_ty = clif_type(capture_ty)?;
                 let capture_value =
@@ -1489,9 +1490,7 @@ fn lower_instruction<M: Module>(
                     };
                     let ptr_ty = module.target_config().pointer_type();
                     let closure_ptr = coerce_value_to_clif_type(builder, callee_value, ptr_ty);
-                    let callee_ptr = builder
-                        .ins()
-                        .load(ptr_ty, MemFlags::new(), closure_ptr, 0);
+                    let callee_ptr = builder.ins().load(ptr_ty, MemFlags::new(), closure_ptr, 0);
                     let mut signature = module.make_signature();
                     signature.params.push(AbiParam::new(ptr_ty));
                     for arg_ty in arg_types {
@@ -1522,10 +1521,12 @@ fn lower_instruction<M: Module>(
                     detail: "Fail-only callee must return Result handle in runtime ABI".to_string(),
                 })?;
                 if *capture_fail_result {
-                    let dest = result.as_ref().ok_or_else(|| CodegenError::UnsupportedMir {
-                        function: function_name.to_string(),
-                        detail: "captured Fail-only call must produce a value".to_string(),
-                    })?;
+                    let dest = result
+                        .as_ref()
+                        .ok_or_else(|| CodegenError::UnsupportedMir {
+                            function: function_name.to_string(),
+                            detail: "captured Fail-only call must produce a value".to_string(),
+                        })?;
                     let ptr_ty = module.target_config().pointer_type();
                     let result_ptr = coerce_value_to_clif_type(builder, result_ptr, ptr_ty);
                     values.insert(dest.clone(), result_ptr);
@@ -1584,10 +1585,13 @@ fn lower_instruction<M: Module>(
             ..
         } => {
             if *class == MirEffectOpClass::Direct && effect == "IO" && operation == "stdout" {
-                let stdout_func_id = ctx.stdout_func_id.ok_or_else(|| CodegenError::UnsupportedMir {
-                    function: function_name.to_string(),
-                    detail: "IO.stdout lowering requires imported `puts` symbol".to_string(),
-                })?;
+                let stdout_func_id =
+                    ctx.stdout_func_id
+                        .ok_or_else(|| CodegenError::UnsupportedMir {
+                            function: function_name.to_string(),
+                            detail: "IO.stdout lowering requires imported `puts` symbol"
+                                .to_string(),
+                        })?;
                 let arg = args.first().ok_or_else(|| CodegenError::UnsupportedMir {
                     function: function_name.to_string(),
                     detail: "IO.stdout expects one string argument".to_string(),
@@ -1666,10 +1670,12 @@ fn lower_instruction<M: Module>(
             let next = builder.ins().iadd_imm(rc_value, -1);
             builder.ins().store(MemFlags::new(), next, rc_ptr, 0);
 
-            let free_func_id = ctx.free_func_id.ok_or_else(|| CodegenError::UnsupportedMir {
-                function: function_name.to_string(),
-                detail: "release lowering requires imported `free` symbol".to_string(),
-            })?;
+            let free_func_id = ctx
+                .free_func_id
+                .ok_or_else(|| CodegenError::UnsupportedMir {
+                    function: function_name.to_string(),
+                    detail: "release lowering requires imported `free` symbol".to_string(),
+                })?;
             let free_ref = module.declare_func_in_func(free_func_id, builder.func);
             let free_block = builder.create_block();
             let cont_block = builder.create_block();
@@ -1748,12 +1754,13 @@ fn lower_instruction<M: Module>(
                                 "record layout `{record_type}` missing field `{field_name}` during in-place update"
                             ),
                         })?;
-                let offset = i32::try_from(offset_u32).map_err(|_| CodegenError::UnsupportedMir {
-                    function: function_name.to_string(),
-                    detail: format!(
-                        "record field `{record_type}.{field_name}` offset does not fit i32"
-                    ),
-                })?;
+                let offset =
+                    i32::try_from(offset_u32).map_err(|_| CodegenError::UnsupportedMir {
+                        function: function_name.to_string(),
+                        detail: format!(
+                            "record field `{record_type}.{field_name}` offset does not fit i32"
+                        ),
+                    })?;
                 let field_ty = layout
                     .field_types
                     .get(field_name)
@@ -1779,12 +1786,13 @@ fn lower_instruction<M: Module>(
                 ),
             )?;
             for (field_name, offset_u32) in &layout.field_offsets {
-                let offset = i32::try_from(*offset_u32).map_err(|_| CodegenError::UnsupportedMir {
-                    function: function_name.to_string(),
-                    detail: format!(
-                        "record field `{record_type}.{field_name}` offset does not fit i32"
-                    ),
-                })?;
+                let offset =
+                    i32::try_from(*offset_u32).map_err(|_| CodegenError::UnsupportedMir {
+                        function: function_name.to_string(),
+                        detail: format!(
+                            "record field `{record_type}.{field_name}` offset does not fit i32"
+                        ),
+                    })?;
                 let field_ty = layout
                     .field_types
                     .get(field_name)
@@ -1798,9 +1806,7 @@ fn lower_instruction<M: Module>(
                         .ins()
                         .load(value_ty, MemFlags::new(), target_ptr, offset)
                 };
-                builder
-                    .ins()
-                    .store(MemFlags::new(), value, out_ptr, offset);
+                builder.ins().store(MemFlags::new(), value, out_ptr, offset);
             }
             builder.ins().jump(join_block, &[out_ptr]);
 
@@ -1809,12 +1815,12 @@ fn lower_instruction<M: Module>(
             values.insert(dest.clone(), merged);
             Ok(false)
         }
-        MirInst::HandlerEnter { .. }
-        | MirInst::HandlerExit { .. }
-        | MirInst::Resume { .. } => Err(CodegenError::UnsupportedMir {
-            function: function_name.to_string(),
-            detail: format!("instruction `{inst:?}` not implemented in 0d pure lowering"),
-        }),
+        MirInst::HandlerEnter { .. } | MirInst::HandlerExit { .. } | MirInst::Resume { .. } => {
+            Err(CodegenError::UnsupportedMir {
+                function: function_name.to_string(),
+                detail: format!("instruction `{inst:?}` not implemented in 0d pure lowering"),
+            })
+        }
     }
 }
 
@@ -1847,14 +1853,18 @@ fn lower_string_concat(
     let lhs_ptr = coerce_value_to_clif_type(builder, lhs, ptr_ty);
     let rhs_ptr = coerce_value_to_clif_type(builder, rhs, ptr_ty);
 
-    let strlen_func_id = ctx.strlen_func_id.ok_or_else(|| CodegenError::UnsupportedMir {
-        function: function_name.to_string(),
-        detail: "string concat lowering requires imported `strlen` symbol".to_string(),
-    })?;
-    let memcpy_func_id = ctx.memcpy_func_id.ok_or_else(|| CodegenError::UnsupportedMir {
-        function: function_name.to_string(),
-        detail: "string concat lowering requires imported `memcpy` symbol".to_string(),
-    })?;
+    let strlen_func_id = ctx
+        .strlen_func_id
+        .ok_or_else(|| CodegenError::UnsupportedMir {
+            function: function_name.to_string(),
+            detail: "string concat lowering requires imported `strlen` symbol".to_string(),
+        })?;
+    let memcpy_func_id = ctx
+        .memcpy_func_id
+        .ok_or_else(|| CodegenError::UnsupportedMir {
+            function: function_name.to_string(),
+            detail: "string concat lowering requires imported `memcpy` symbol".to_string(),
+        })?;
 
     let strlen_ref = module.declare_func_in_func(strlen_func_id, builder.func);
     let memcpy_ref = module.declare_func_in_func(memcpy_func_id, builder.func);
@@ -1892,7 +1902,9 @@ fn lower_string_concat(
 
     let _ = builder.ins().call(memcpy_ref, &[out_ptr, lhs_ptr, lhs_len]);
     let rhs_dest = builder.ins().iadd(out_ptr, lhs_len);
-    let _ = builder.ins().call(memcpy_ref, &[rhs_dest, rhs_ptr, rhs_len]);
+    let _ = builder
+        .ins()
+        .call(memcpy_ref, &[rhs_dest, rhs_ptr, rhs_len]);
 
     let nul_dest = builder.ins().iadd(out_ptr, joined_len);
     let nul = builder.ins().iconst(types::I8, 0);

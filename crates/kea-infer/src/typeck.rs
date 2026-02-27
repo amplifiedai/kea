@@ -25,8 +25,7 @@ use kea_types::{
 };
 
 use crate::{
-    Category, Constraint, Diagnostic, InferenceContext, Provenance, Reason, SourceLocation,
-    Unifier,
+    Category, Constraint, Diagnostic, InferenceContext, Provenance, Reason, SourceLocation, Unifier,
 };
 
 /// Runtime type annotations emitted during expression inference.
@@ -710,8 +709,7 @@ impl TypeEnv {
                     .collect();
 
                 // Lacks constraints must reference quantified row vars.
-                let quantified_rvs: BTreeSet<_> =
-                    scheme.row_vars.iter().copied().collect();
+                let quantified_rvs: BTreeSet<_> = scheme.row_vars.iter().copied().collect();
                 let dangling_lacks: Vec<_> = scheme
                     .lacks
                     .keys()
@@ -719,8 +717,7 @@ impl TypeEnv {
                     .collect();
 
                 // Trait bounds must reference quantified type vars.
-                let quantified_tvs: BTreeSet<_> =
-                    scheme.type_vars.iter().copied().collect();
+                let quantified_tvs: BTreeSet<_> = scheme.type_vars.iter().copied().collect();
                 let dangling_bounds: Vec<_> = scheme
                     .bounds
                     .keys()
@@ -2012,7 +2009,10 @@ impl SumTypeRegistry {
             return Err(format!("type `{name}` is already defined"));
         }
         for variant in &info.variants {
-            let types = self.variant_to_types.entry(variant.name.clone()).or_default();
+            let types = self
+                .variant_to_types
+                .entry(variant.name.clone())
+                .or_default();
             if !types.contains(&name) {
                 types.push(name.clone());
             }
@@ -4400,13 +4400,11 @@ fn resolve_annotation_with_type_params(
                 }),
             }
         }
-        TypeAnnotation::Row { fields, rest } => row_annotation_to_type_with(
-            fields,
-            rest,
-            |field_ann| {
+        TypeAnnotation::Row { fields, rest } => {
+            row_annotation_to_type_with(fields, rest, |field_ann| {
                 resolve_annotation_with_type_params(field_ann, type_param_scope, records, sum_types)
-            },
-        ),
+            })
+        }
         TypeAnnotation::EffectRow(_) => None,
         TypeAnnotation::Tuple(elems) => {
             let types: Option<Vec<_>> = elems
@@ -5108,9 +5106,7 @@ fn legacy_effect_annotation_diagnostic(
     Some(
         Diagnostic::warning(
             Category::TypeError,
-            format!(
-                "legacy `{legacy}` effect syntax is deprecated on {context}; use row syntax"
-            ),
+            format!("legacy `{legacy}` effect syntax is deprecated on {context}; use row syntax"),
         )
         .at(span_to_loc(effect_ann.span))
         .with_help(format!(
@@ -5331,9 +5327,7 @@ fn literal_matches_type_annotation(expr: &Expr, ann: &kea_ast::TypeAnnotation) -
         (ExprKind::Lit(Lit::String(_)), kea_ast::TypeAnnotation::Named(name)) => {
             Some(name == "String")
         }
-        (ExprKind::Lit(Lit::Bool(_)), kea_ast::TypeAnnotation::Named(name)) => {
-            Some(name == "Bool")
-        }
+        (ExprKind::Lit(Lit::Bool(_)), kea_ast::TypeAnnotation::Named(name)) => Some(name == "Bool"),
         (ExprKind::None, kea_ast::TypeAnnotation::Optional(_)) => Some(true),
         _ => None,
     }
@@ -7006,22 +7000,17 @@ fn join_effect_rows_many(
     constraints: &mut Vec<Constraint>,
     next_effect_var: &mut u32,
 ) -> EffectRow {
-    terms
-        .into_iter()
-        .fold(pure_effect_row(), |acc, term| {
-            join_effect_rows(acc, term, constraints, next_effect_var)
-        })
+    terms.into_iter().fold(pure_effect_row(), |acc, term| {
+        join_effect_rows(acc, term, constraints, next_effect_var)
+    })
 }
 
 fn normalize_effect_row_idempotent(row: EffectRow) -> EffectRow {
     let mut fields: Vec<(Label, Type)> = Vec::with_capacity(row.row.fields.len());
     for (label, payload) in row.row.fields {
-        if fields
-            .iter()
-            .any(|(existing_label, existing_payload)| {
-                existing_label == &label && existing_payload == &payload
-            })
-        {
+        if fields.iter().any(|(existing_label, existing_payload)| {
+            existing_label == &label && existing_payload == &payload
+        }) {
             continue;
         }
         fields.push((label, payload));
@@ -7104,7 +7093,8 @@ fn instantiate_function_effect_signature(
                 .map(|r| instantiate_effect_row(r, &mut fresh_vars, next_effect_var))
         })
         .collect();
-    let effect_row = instantiate_effect_row(&signature.effect_row, &mut fresh_vars, next_effect_var);
+    let effect_row =
+        instantiate_effect_row(&signature.effect_row, &mut fresh_vars, next_effect_var);
     FunctionEffectSignature {
         param_effect_rows,
         effect_row,
@@ -7132,11 +7122,9 @@ fn function_param_effect_row_from_type_annotation(
         TypeAnnotation::FunctionWithEffect(_, effect, _) => {
             effect_row_from_annotation(&effect.node, effect_var_bindings, next_effect_var)
         }
-        TypeAnnotation::Forall { ty, .. } => function_param_effect_row_from_type_annotation(
-            ty,
-            effect_var_bindings,
-            next_effect_var,
-        ),
+        TypeAnnotation::Forall { ty, .. } => {
+            function_param_effect_row_from_type_annotation(ty, effect_var_bindings, next_effect_var)
+        }
         _ => None,
     }
 }
@@ -7229,11 +7217,8 @@ pub fn function_effect_signature_from_trait_method(
             })
         })
         .collect();
-    let effect_row = effect_row_from_annotation(
-        effect_ann,
-        &mut effect_var_bindings,
-        &mut next_effect_var,
-    )?;
+    let effect_row =
+        effect_row_from_annotation(effect_ann, &mut effect_var_bindings, &mut next_effect_var)?;
     Some(FunctionEffectSignature {
         param_effect_rows,
         effect_row,
@@ -7376,10 +7361,7 @@ pub fn register_effect_decl(
             diagnostics.push(
                 Diagnostic::error(
                     Category::TypeError,
-                    format!(
-                        "unknown return type in effect operation `{}`",
-                        op.name.node
-                    ),
+                    format!("unknown return type in effect operation `{}`", op.name.node),
                 )
                 .at(span_to_loc(op.return_annotation.span)),
             );
@@ -7395,7 +7377,10 @@ pub fn register_effect_decl(
         let op_ty = Type::Function(FunctionType {
             params: param_tys,
             ret: Box::new(ret_ty),
-            effects: EffectRow::closed(vec![(Label::new(module_short.clone()), effect_payload.clone())]),
+            effects: EffectRow::closed(vec![(
+                Label::new(module_short.clone()),
+                effect_payload.clone(),
+            )]),
         });
         let op_scheme = TypeScheme {
             type_vars: type_vars.clone(),
@@ -7408,15 +7393,13 @@ pub fn register_effect_decl(
         };
 
         env.register_module_function(&module_path, &op.name.node);
-        env.register_module_type_scheme(
-            &module_path,
-            &op.name.node,
-            op_scheme,
-            Effects::impure(),
-        );
+        env.register_module_type_scheme(&module_path, &op.name.node, op_scheme, Effects::impure());
 
         let qualified_name = format!("{module_path}.{}", op.name.node);
-        env.set_function_signature(qualified_name.clone(), function_signature_from_params(&op.params));
+        env.set_function_signature(
+            qualified_name.clone(),
+            function_signature_from_params(&op.params),
+        );
 
         let mut effect_var_bindings = BTreeMap::new();
         let mut next_effect_var = 0u32;
@@ -7437,7 +7420,10 @@ pub fn register_effect_decl(
             qualified_name,
             FunctionEffectSignature {
                 param_effect_rows,
-                effect_row: EffectRow::closed(vec![(Label::new(module_short.clone()), effect_payload)]),
+                effect_row: EffectRow::closed(vec![(
+                    Label::new(module_short.clone()),
+                    effect_payload,
+                )]),
                 instantiate_on_call: true,
             },
         );
@@ -7471,10 +7457,7 @@ fn seed_function_param_effect_rows(
         // Unannotated parameters still participate in callback-effect flow:
         // give them a shared open row so `f(x)`-style higher-order lambdas can
         // relate argument callable effects to returned callable effects.
-        env.set_function_effect_row(
-            param_name.to_string(),
-            unknown_effect_row(next_effect_var),
-        );
+        env.set_function_effect_row(param_name.to_string(), unknown_effect_row(next_effect_var));
     }
 }
 
@@ -7513,7 +7496,11 @@ fn infer_lambda_effect_signature(
     );
     let param_effect_rows = params
         .iter()
-        .map(|param| param.name().and_then(|name| lambda_env.function_effect_row(name)))
+        .map(|param| {
+            param
+                .name()
+                .and_then(|name| lambda_env.function_effect_row(name))
+        })
         .collect();
     let effect_row = join_effect_rows(
         infer_expr_effect_row(body, &lambda_env, constraints, next_effect_var),
@@ -7623,9 +7610,8 @@ fn callable_effect_metadata_from_call_return_type(
 ) -> (Option<EffectRow>, Option<FunctionEffectSignature>) {
     match callee_ty {
         Type::Function(ft) => {
-            let signature = function_effect_signature_from_type(&ft.ret).map(|sig| {
-                instantiate_function_effect_signature(&sig, next_effect_var)
-            });
+            let signature = function_effect_signature_from_type(&ft.ret)
+                .map(|sig| instantiate_function_effect_signature(&sig, next_effect_var));
             let term = signature.as_ref().map(|sig| sig.effect_row.clone());
             (term, signature)
         }
@@ -7652,10 +7638,7 @@ fn callable_effect_metadata_from_call(
             if let ExprKind::Var(module) = &expr.node {
                 env.resolve_qualified(module, &field.node)
                     .map(|scheme| {
-                        callable_effect_metadata_from_call_return_type(
-                            &scheme.ty,
-                            next_effect_var,
-                        )
+                        callable_effect_metadata_from_call_return_type(&scheme.ty, next_effect_var)
                     })
                     .unwrap_or((None, None))
             } else {
@@ -7712,7 +7695,8 @@ fn infer_call_effect_row(
             let nested_effect =
                 infer_call_effect_row(inner_func, inner_args, env, constraints, next_effect_var);
             call_expr_effect = Some(nested_effect.clone());
-            let (_, signature) = callable_effect_metadata_from_call(inner_func, env, next_effect_var);
+            let (_, signature) =
+                callable_effect_metadata_from_call(inner_func, env, next_effect_var);
             signature.map(|mut sig| {
                 sig.effect_row = join_effect_rows(
                     sig.effect_row,
@@ -8161,16 +8145,14 @@ fn validate_effect_row_fail_cardinality(
         return Ok(());
     }
 
-    Err(
-        Diagnostic::error(
-            Category::TypeMismatch,
-            format!("effect row `{context}` contains multiple incompatible `Fail` entries"),
-        )
-        .at(span_to_loc(span))
-        .with_help(
-            "effect rows allow at most one `Fail` payload type; unify them or convert with `From`",
-        ),
+    Err(Diagnostic::error(
+        Category::TypeMismatch,
+        format!("effect row `{context}` contains multiple incompatible `Fail` entries"),
     )
+    .at(span_to_loc(span))
+    .with_help(
+        "effect rows allow at most one `Fail` payload type; unify them or convert with `From`",
+    ))
 }
 
 fn effect_row_fail_payload(row: &EffectRow) -> Option<&Type> {
@@ -8201,10 +8183,7 @@ fn instantiate_effect_row_for_unifier(row: &EffectRow, unifier: &mut Unifier) ->
             )
         })
         .collect();
-    let rest = row
-        .row
-        .rest
-        .and_then(|rv| row_map.get(&rv).copied());
+    let rest = row.row.rest.and_then(|rv| row_map.get(&rv).copied());
     EffectRow {
         row: RowType { fields, rest },
     }
@@ -8314,9 +8293,10 @@ fn type_annotation_has_effect_var(ann: &TypeAnnotation, target: &str) -> bool {
             .any(|(_, ty)| type_annotation_has_effect_var(ty, target)),
         TypeAnnotation::EffectRow(row) => {
             row.rest.as_deref() == Some(target)
-                || row.effects.iter().any(|item| {
-                    item.name == target || item.payload.as_deref() == Some(target)
-                })
+                || row
+                    .effects
+                    .iter()
+                    .any(|item| item.name == target || item.payload.as_deref() == Some(target))
         }
         TypeAnnotation::Optional(inner) => type_annotation_has_effect_var(inner, target),
         TypeAnnotation::Existential {
@@ -8516,7 +8496,11 @@ fn validate_declared_fn_effect_variable_contract(
         .as_ref()
         .map(|a| a.span)
         .unwrap_or(fn_decl.span);
-    for candidate in [pure_effect_row(), volatile_effect_row(), impure_effect_row()] {
+    for candidate in [
+        pure_effect_row(),
+        volatile_effect_row(),
+        impure_effect_row(),
+    ] {
         let mut scoped = constraints.clone();
         scoped.push(Constraint::RowEqual {
             expected: RowType::open(vec![], declared_var),
@@ -8841,7 +8825,12 @@ fn infer_expr_effect_row(
             };
 
             let Some(first_clause) = clauses.first() else {
-                return join_effect_rows(handled_effects, body_effects, constraints, next_effect_var);
+                return join_effect_rows(
+                    handled_effects,
+                    body_effects,
+                    constraints,
+                    next_effect_var,
+                );
             };
 
             let handled_label = Label::new(first_clause.effect.node.clone());
@@ -8852,16 +8841,19 @@ fn infer_expr_effect_row(
             {
                 // `catch` on a body that cannot fail should not poison effect
                 // inference with unsatisfiable constraints.
-                return join_effect_rows(handled_effects, body_effects, constraints, next_effect_var);
+                return join_effect_rows(
+                    handled_effects,
+                    body_effects,
+                    constraints,
+                    next_effect_var,
+                );
             }
 
             // If the handled effect is absent from the body's closed
             // effect row, the handler is a no-op — pass through body
             // effects unchanged.  This prevents a phantom IO leak from
             // an unsatisfiable row decomposition constraint.
-            if !handled_effects.row.has(&handled_label)
-                && handled_effects.row.rest.is_none()
-            {
+            if !handled_effects.row.has(&handled_label) && handled_effects.row.rest.is_none() {
                 return join_effect_rows(
                     handled_effects,
                     body_effects,
@@ -10134,7 +10126,9 @@ fn infer_use_chain_expr(
                             "cannot use `use` with Option in a Result context",
                         )
                         .at(span_to_loc(step.source.span))
-                        .with_help("convert Option explicitly, e.g. `Option.ok_or(opt, MyError.NotFound)`"),
+                        .with_help(
+                            "convert Option explicitly, e.g. `Option.ok_or(opt, MyError.NotFound)`",
+                        ),
                     );
                 } else {
                     unifier.push_error(
@@ -11843,7 +11837,11 @@ fn collect_resume_usage(
             }
             collect_resume_usage(value, inside_loop, inside_lambda, resume_count, diagnostics);
         }
-        ExprKind::Lit(_) | ExprKind::Var(_) | ExprKind::None | ExprKind::Atom(_) | ExprKind::Wildcard => {}
+        ExprKind::Lit(_)
+        | ExprKind::Var(_)
+        | ExprKind::None
+        | ExprKind::Atom(_)
+        | ExprKind::Wildcard => {}
         ExprKind::Let { value, .. } => {
             collect_resume_usage(value, inside_loop, inside_lambda, resume_count, diagnostics);
         }
@@ -11939,20 +11937,12 @@ fn collect_resume_usage(
         ExprKind::For(for_expr) => {
             for clause in &for_expr.clauses {
                 match clause {
-                    ForClause::Generator { source, .. } => collect_resume_usage(
-                        source,
-                        true,
-                        inside_lambda,
-                        resume_count,
-                        diagnostics,
-                    ),
-                    ForClause::Guard(guard) => collect_resume_usage(
-                        guard,
-                        true,
-                        inside_lambda,
-                        resume_count,
-                        diagnostics,
-                    ),
+                    ForClause::Generator { source, .. } => {
+                        collect_resume_usage(source, true, inside_lambda, resume_count, diagnostics)
+                    }
+                    ForClause::Guard(guard) => {
+                        collect_resume_usage(guard, true, inside_lambda, resume_count, diagnostics)
+                    }
                 }
             }
             collect_resume_usage(
@@ -12106,7 +12096,13 @@ fn collect_resume_usage(
             collect_resume_usage(value, inside_loop, inside_lambda, resume_count, diagnostics);
         }
         ExprKind::YieldFrom { source } => {
-            collect_resume_usage(source, inside_loop, inside_lambda, resume_count, diagnostics);
+            collect_resume_usage(
+                source,
+                inside_loop,
+                inside_lambda,
+                resume_count,
+                diagnostics,
+            );
         }
         ExprKind::ActorSend { actor, args, .. } | ExprKind::ActorCall { actor, args, .. } => {
             collect_resume_usage(actor, inside_loop, inside_lambda, resume_count, diagnostics);
@@ -12116,7 +12112,13 @@ fn collect_resume_usage(
         }
         ExprKind::ControlSend { actor, signal } => {
             collect_resume_usage(actor, inside_loop, inside_lambda, resume_count, diagnostics);
-            collect_resume_usage(signal, inside_loop, inside_lambda, resume_count, diagnostics);
+            collect_resume_usage(
+                signal,
+                inside_loop,
+                inside_lambda,
+                resume_count,
+                diagnostics,
+            );
         }
     }
 }
@@ -12265,7 +12267,14 @@ fn infer_handle_expr_type(
         let mut clause_env = env.clone();
         clause_env.push_scope();
         for (pattern, param_ty) in clause.args.iter().zip(op_fn.params.iter()) {
-            infer_pattern(pattern, param_ty, &mut clause_env, unifier, records, sum_types);
+            infer_pattern(
+                pattern,
+                param_ty,
+                &mut clause_env,
+                unifier,
+                records,
+                sum_types,
+            );
         }
 
         let mut resume_count = 0usize;
@@ -12605,12 +12614,7 @@ fn infer_expr_bidir(
             let func_ty = if let ExprKind::Var(name) = &func.node {
                 if unresolved_callee {
                     match resolve_unqualified_trait_method_fallback(
-                        name,
-                        &arg_types,
-                        env,
-                        traits,
-                        unifier,
-                        func.span,
+                        name, &arg_types, env, traits, unifier, func.span,
                     ) {
                         TraitMethodFallback::Resolved(ty) => ty,
                         TraitMethodFallback::Ambiguous => {
@@ -13027,7 +13031,9 @@ fn infer_expr_bidir(
 
                 // Check if the name is a sum type — qualified constructor: SumType.Variant
                 if sum_types.lookup(module_name).is_some() {
-                    if sum_types.lookup_variant_in_type(&field.node, module_name).is_some()
+                    if sum_types
+                        .lookup_variant_in_type(&field.node, module_name)
+                        .is_some()
                     {
                         // This is a qualified constructor reference like `ApiResponse.Error`.
                         // Don't return a value yet — it might be called with args (handled
@@ -13058,10 +13064,7 @@ fn infer_expr_bidir(
                     unifier.push_error(
                         Diagnostic::error(
                             Category::UndefinedName,
-                            format!(
-                                "type `{module_name}` has no variant `{}`",
-                                field.node
-                            ),
+                            format!("type `{module_name}` has no variant `{}`", field.node),
                         )
                         .at(span_to_loc(field.span)),
                     );
@@ -13290,31 +13293,28 @@ fn infer_expr_bidir(
                     // Check user-defined sum types (with scoped constructor disambiguation)
                     if sum_types.has_variant(&name.node) {
                         // Extract expected sum type name from bidirectional hint.
-                        let expected_type_name = unifier
-                            .bidir_expected()
-                            .and_then(|ty| match ty {
-                                Type::Sum(st) => Some(st.name.clone()),
-                                _ => None,
-                            });
-                        let resolution = sum_types.resolve_variant(
-                            &name.node,
-                            expected_type_name.as_deref(),
-                        );
+                        let expected_type_name = unifier.bidir_expected().and_then(|ty| match ty {
+                            Type::Sum(st) => Some(st.name.clone()),
+                            _ => None,
+                        });
+                        let resolution =
+                            sum_types.resolve_variant(&name.node, expected_type_name.as_deref());
                         let (resolved_type_name, variant_info) = match resolution {
                             VariantResolution::Unique(tn, vi) => (tn, vi),
                             VariantResolution::Ambiguous(candidates) => {
                                 unifier.push_error(
                                     Diagnostic::error(
                                         Category::TypeMismatch,
-                                        format!(
-                                            "ambiguous constructor `{}`",
-                                            name.node,
-                                        ),
+                                        format!("ambiguous constructor `{}`", name.node,),
                                     )
                                     .at(span_to_loc(name.span))
                                     .with_help(format!(
                                         "candidates: {}. Qualify with the type name: {}.{}(...)",
-                                        candidates.iter().map(|c| format!("{c}.{}", name.node)).collect::<Vec<_>>().join(", "),
+                                        candidates
+                                            .iter()
+                                            .map(|c| format!("{c}.{}", name.node))
+                                            .collect::<Vec<_>>()
+                                            .join(", "),
                                         candidates[0],
                                         name.node,
                                     )),
@@ -13322,20 +13322,20 @@ fn infer_expr_bidir(
                                 return unifier.fresh_type();
                             }
                             VariantResolution::NotFound => {
-                                unreachable!("has_variant returned true but resolve_variant returned NotFound");
+                                unreachable!(
+                                    "has_variant returned true but resolve_variant returned NotFound"
+                                );
                             }
                         };
                         let has_named_fields =
                             variant_info.fields.iter().any(|field| field.name.is_some());
                         let expected_arity = variant_info.fields.len();
 
-                        let Some(instantiated_variant) =
-                            sum_types.instantiate_variant_for_type(
-                                &name.node,
-                                Some(&resolved_type_name),
-                                unifier,
-                            )
-                        else {
+                        let Some(instantiated_variant) = sum_types.instantiate_variant_for_type(
+                            &name.node,
+                            Some(&resolved_type_name),
+                            unifier,
+                        ) else {
                             unifier.push_error(
                                 Diagnostic::error(
                                     Category::TypeMismatch,
@@ -14628,12 +14628,7 @@ fn check_precision_literal_against_expected(
     }
 }
 
-fn check_nominal_boundary(
-    expected: &Type,
-    actual: &Type,
-    span: Span,
-    unifier: &mut Unifier,
-) {
+fn check_nominal_boundary(expected: &Type, actual: &Type, span: Span, unifier: &mut Unifier) {
     let resolved_expected = unifier.substitution.apply(expected);
     let resolved_actual = unifier.substitution.apply(actual);
     if let (Type::Record(rec), Type::AnonRecord(_)) = (&resolved_expected, &resolved_actual) {
@@ -15063,9 +15058,7 @@ fn check_expr_bidir(
                     Type::Opaque { name, .. } if name == "Seq"
                 );
             let type_ok = matches!(resolved_expected, Type::Var(_) | Type::Dynamic)
-                || if !trait_name.is_empty()
-                    && traits.lookup_trait(trait_name).is_some()
-                {
+                || if !trait_name.is_empty() && traits.lookup_trait(trait_name).is_some() {
                     matches!(
                         traits.solve_goal(&TraitGoal::Implements {
                             trait_name: trait_name.to_string(),
@@ -15694,9 +15687,11 @@ fn reachable_sum_variants_for_case(
     let resolved_scrutinee = unifier.substitution.apply(scrutinee_ty);
     for variant in &info.variants {
         let mut probe_unifier = unifier.clone();
-        if let Some(instantiated_variant) =
-            sum_types.instantiate_variant_for_type(&variant.name, Some(&st.name), &mut probe_unifier)
-        {
+        if let Some(instantiated_variant) = sum_types.instantiate_variant_for_type(
+            &variant.name,
+            Some(&st.name),
+            &mut probe_unifier,
+        ) {
             let provenance = Provenance {
                 span: scrutinee_span,
                 reason: Reason::PatternMatch,
@@ -15734,11 +15729,9 @@ fn pattern_reachable_for_case(
         _ => None,
     };
     let mut probe_unifier = unifier.clone();
-    let Some(instantiated_variant) = sum_types.instantiate_variant_for_type(
-        name,
-        expected_type_name,
-        &mut probe_unifier,
-    ) else {
+    let Some(instantiated_variant) =
+        sum_types.instantiate_variant_for_type(name, expected_type_name, &mut probe_unifier)
+    else {
         return true;
     };
 
@@ -15817,11 +15810,9 @@ fn constrain_case_pattern_shape(
                     Type::Sum(st) => Some(st.name.as_str()),
                     _ => None,
                 };
-                let Some(instantiated_variant) = sum_types.instantiate_variant_for_type(
-                    name,
-                    expected_type_name,
-                    unifier,
-                ) else {
+                let Some(instantiated_variant) =
+                    sum_types.instantiate_variant_for_type(name, expected_type_name, unifier)
+                else {
                     return;
                 };
                 // Shape-only constraint: do not apply variant where-constraints here.
@@ -15890,7 +15881,12 @@ fn constrain_case_pattern_shape(
         }
         PatternKind::List { elements, rest } => {
             let elem_ty = unifier.fresh_type();
-            constrain_type_eq(unifier, &Type::List(Box::new(elem_ty.clone())), expected_ty, &prov);
+            constrain_type_eq(
+                unifier,
+                &Type::List(Box::new(elem_ty.clone())),
+                expected_ty,
+                &prov,
+            );
             for elem in elements {
                 constrain_case_pattern_shape(elem, &elem_ty, unifier, sum_types);
             }
@@ -15974,7 +15970,12 @@ fn infer_pattern(
             constrain_type_eq(unifier, &lit_ty, expected_ty, &prov);
         }
 
-        PatternKind::Constructor { name, qualifier, args, rest } => match name.as_str() {
+        PatternKind::Constructor {
+            name,
+            qualifier,
+            args,
+            rest,
+        } => match name.as_str() {
             "Some" => {
                 if *rest {
                     unifier.push_error(
@@ -16209,7 +16210,11 @@ fn infer_pattern(
                                 .at(span_to_loc(pattern.span))
                                 .with_help(format!(
                                     "candidates: {}. Qualify with the type name: {}.{name}(...)",
-                                    candidates.iter().map(|c| format!("{c}.{name}")).collect::<Vec<_>>().join(", "),
+                                    candidates
+                                        .iter()
+                                        .map(|c| format!("{c}.{name}"))
+                                        .collect::<Vec<_>>()
+                                        .join(", "),
                                     candidates[0],
                                 )),
                             );
@@ -16721,7 +16726,10 @@ fn resolve_annotation_with_self_and_assoc(
                 ))),
                 ("Tagged", [inner_ann]) => Some(Type::Tagged {
                     inner: Box::new(resolve_annotation_with_self_and_assoc(
-                        inner_ann, records, self_type, assoc_types,
+                        inner_ann,
+                        records,
+                        self_type,
+                        assoc_types,
                     )?),
                     tags: BTreeMap::new(),
                 }),

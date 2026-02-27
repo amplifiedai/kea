@@ -15,9 +15,8 @@ pub mod typeck;
 
 use kea_ast::Span;
 use kea_types::{
-    Dim, DimVarId, Kind, Label, LacksConstraints, RowType, RowVarId, Substitution, Type,
-    TypeVarId, free_type_vars,
-    type_constructor_for_trait,
+    Dim, DimVarId, Kind, Label, LacksConstraints, RowType, RowVarId, Substitution, Type, TypeVarId,
+    free_type_vars, type_constructor_for_trait,
 };
 use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -675,11 +674,7 @@ impl Unifier {
     /// Production code should use `new()` (which allocates from a global
     /// counter).  This constructor exists for unit tests that need
     /// deterministic TypeVarIds starting at 0.
-    pub fn with_var_offsets(
-        next_type_var: u32,
-        next_row_var: u32,
-        next_dim_var: u32,
-    ) -> Self {
+    pub fn with_var_offsets(next_type_var: u32, next_row_var: u32, next_dim_var: u32) -> Self {
         Self {
             substitution: Substitution::new(),
             lacks: LacksConstraints::new(),
@@ -816,10 +811,14 @@ impl Unifier {
             self.type_annotations.spawn_kinds.insert(span, kind);
         }
         for (span, type_name) in annotations.resolved_variants {
-            self.type_annotations.resolved_variants.insert(span, type_name);
+            self.type_annotations
+                .resolved_variants
+                .insert(span, type_name);
         }
         for (span, target) in annotations.expect_type_targets {
-            self.type_annotations.expect_type_targets.insert(span, target);
+            self.type_annotations
+                .expect_type_targets
+                .insert(span, target);
         }
     }
 
@@ -978,13 +977,10 @@ impl Unifier {
                     &actual,
                     "Dynamic does not implicitly narrow to concrete type".into(),
                 );
-                let expected_display =
-                    kea_types::sanitize_type_display(&expected);
+                let expected_display = kea_types::sanitize_type_display(&expected);
                 let mut diag = Diagnostic::error(
                     Category::TypeMismatch,
-                    format!(
-                        "cannot use `Dynamic` value as `{expected_display}`"
-                    ),
+                    format!("cannot use `Dynamic` value as `{expected_display}`"),
                 )
                 .at(span_to_location(provenance.span));
                 diag = diag.with_help(
@@ -1869,12 +1865,7 @@ impl Unifier {
     }
 
     /// Register a trait bound on a type variable with source provenance.
-    pub fn add_trait_bound_with_span(
-        &mut self,
-        var: TypeVarId,
-        trait_name: String,
-        span: Span,
-    ) {
+    pub fn add_trait_bound_with_span(&mut self, var: TypeVarId, trait_name: String, span: Span) {
         self.trait_bounds
             .entry(var)
             .or_default()
@@ -2092,7 +2083,10 @@ impl Unifier {
                 // Still polymorphic — bound will be checked on next instantiation.
                 continue;
             }
-            let bound_span = self.trait_bound_spans.get(&(tv, trait_name.clone())).copied();
+            let bound_span = self
+                .trait_bound_spans
+                .get(&(tv, trait_name.clone()))
+                .copied();
             match trait_registry.solve_goal(&crate::typeck::TraitGoal::Implements {
                 trait_name: trait_name.clone(),
                 ty: resolved.clone(),
@@ -3673,7 +3667,10 @@ mod tests {
         let loc = u
             .errors()
             .iter()
-            .find(|d| d.message.contains("does not implement trait `MissingTrait`"))
+            .find(|d| {
+                d.message
+                    .contains("does not implement trait `MissingTrait`")
+            })
             .and_then(|d| d.location);
         assert_eq!(
             loc,

@@ -10,10 +10,10 @@ use std::sync::{Arc, Mutex};
 use kea::process_module_in_env;
 use kea_ast::FileId;
 use kea_diag::{Diagnostic, Severity};
+use kea_infer::InferenceContext;
 use kea_infer::typeck::{
     RecordRegistry, SumTypeRegistry, TraitRegistry, TypeEnv, infer_and_resolve_in_context,
 };
-use kea_infer::InferenceContext;
 use kea_syntax::{classify_as_declaration, lex_layout, parse_expr, parse_module};
 use kea_types::{Type, sanitize_type_display};
 use rmcp::model::*;
@@ -352,7 +352,6 @@ fn type_check_expr(
     result
 }
 
-
 fn type_check_decls(
     session: &mut Session,
     tokens: Vec<kea_syntax::Token>,
@@ -448,14 +447,7 @@ fn get_type_of(session: &Session, code: &str) -> serde_json::Value {
     };
 
     let mut ctx = InferenceContext::new();
-    let ty = infer_and_resolve_in_context(
-        &expr,
-        &mut env,
-        &mut ctx,
-        &records,
-        &traits,
-        &sum_types,
-    );
+    let ty = infer_and_resolve_in_context(&expr, &mut env, &mut ctx, &records, &traits, &sum_types);
 
     if ctx.has_errors() {
         return context_errors_json(&ctx);
