@@ -5140,6 +5140,30 @@ mod tests {
     }
 
     #[test]
+    fn parse_trait_qualified_call_does_not_desugar_receiver_first() {
+        let expr = parse("xs.Trait::method()");
+        match &expr.node {
+            ExprKind::Call { func, args } => {
+                assert!(args.is_empty());
+                match &func.node {
+                    ExprKind::FieldAccess { expr, field } => {
+                        assert_eq!(field.node, "method");
+                        match &expr.node {
+                            ExprKind::FieldAccess { expr, field } => {
+                                assert_eq!(expr.node, ExprKind::Var("xs".into()));
+                                assert_eq!(field.node, "Trait");
+                            }
+                            other => panic!("expected trait-qualified receiver chain, got {other:?}"),
+                        }
+                    }
+                    other => panic!("expected FieldAccess callee, got {other:?}"),
+                }
+            }
+            other => panic!("expected Call, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn parse_namespaced_upper_ident_field_access() {
         let expr = parse("List.map");
         match &expr.node {
