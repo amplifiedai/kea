@@ -1998,6 +1998,20 @@ mod tests {
     }
 
     #[test]
+    fn compile_and_execute_nested_state_handler_inner_shadows_outer_exit_code() {
+        let source_path = write_temp_source(
+            "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn read_state() -[State Int]> Int\n  State.get()\n\nfn run_inner() -[State Int]> Int\n  handle read_state()\n    State.get() -> resume 2\n    State.put(s) -> resume ()\n\nfn main() -> Int\n  handle run_inner()\n    State.get() -> resume 9\n    State.put(s) -> resume ()\n",
+            "kea-cli-state-nested-handler-shadow",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("nested state handler run should succeed");
+        assert_eq!(run.exit_code, 2);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_log_tail_handler_resume_unit_exit_code() {
         let source_path = write_temp_source(
             "effect Log\n  fn log(msg: Int) -> Unit\n\nfn greet() -[Log]> Int\n  Log.log(7)\n  11\n\nfn main() -> Int\n  handle greet()\n    Log.log(msg) -> resume ()\n",
