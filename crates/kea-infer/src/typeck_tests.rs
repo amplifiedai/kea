@@ -6838,7 +6838,10 @@ fn fail_operation_call_infers_fail_payload_type_from_annotated_variable_argument
             TypeAnnotation::Named("String".to_string()),
         )],
         return_annotation: Some(sp(TypeAnnotation::Named("Unit".to_string()))),
-        effect_annotation: Some(sp(effect_row_annotation(vec![("Fail", Some("String"))], None))),
+        effect_annotation: Some(sp(effect_row_annotation(
+            vec![("Fail", Some("String"))],
+            None,
+        ))),
         body: call(field_access(var("Fail"), "fail"), vec![var("message")]),
         span: s(),
         where_clause: vec![],
