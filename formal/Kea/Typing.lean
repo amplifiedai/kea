@@ -21783,6 +21783,48 @@ theorem principalRowPolyBoundaryBundle_iff_dual_and_vertical :
     exact principalRowPolyBoundaryBundle_of_dual_and_vertical h_pair.1 h_pair.2
 
 /--
+One-hop expression successful-run preconditioned↔core equivalence from the
+row-polymorphic boundary bundle.
+-/
+theorem principalRowPolyBoundaryBundle_preconditionedCoreIff_expr
+    (h_bundle : PrincipalRowPolyBoundaryBundle)
+    (h_hooks : UnifyHookPremises)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    (PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty
+      ↔ PrincipalTypingSliceCore env e ty) :=
+  principalBoundaryMasterSuite_preconditionedCoreIff_expr
+    h_bundle.principalBoundary h_hooks st fuel env e st' ty h_ok
+
+/--
+One-hop field successful-run preconditioned↔core equivalence from the
+row-polymorphic boundary bundle.
+-/
+theorem principalRowPolyBoundaryBundle_preconditionedCoreIff_field
+    (h_bundle : PrincipalRowPolyBoundaryBundle)
+    (h_hooks : UnifyHookPremises)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    (PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSliceCore env fs rf) :=
+  principalBoundaryMasterSuite_preconditionedCoreIff_field
+    h_bundle.principalBoundary h_hooks st fuel env fs st' rf h_ok
+
+/-- One-hop projection of the hook-free app vertical slice from the bundle. -/
+theorem principalRowPolyBoundaryBundle_vertical_app
+    (h_bundle : PrincipalRowPolyBoundaryBundle) :
+    VerticalHookFreeAppSlice :=
+  h_bundle.hookFreeVertical.1
+
+/-- One-hop projection of the hook-free projection vertical slice from the bundle. -/
+theorem principalRowPolyBoundaryBundle_vertical_proj
+    (h_bundle : PrincipalRowPolyBoundaryBundle) :
+    VerticalHookFreeProjSlice :=
+  h_bundle.hookFreeVertical.2
+
+/--
 Expression preconditioned↔core wrapper on the dual-routed proved master suite.
 -/
 theorem principalBoundaryMasterSuite_preconditionedCoreIff_expr_via_dualConsequenceSlices
