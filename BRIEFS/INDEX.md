@@ -89,9 +89,8 @@ Needs more design work. Briefs exist but aren't implementation-ready.
 
 ### Early tooling (parallel track, weeks 2-6)
 
-- **Tree-sitter grammar** — standalone, no compiler dependency. Syntax highlighting in every editor. Can start now (0a is done, syntax is stable).
+- **[Syntax grammars](todo/syntax-grammars.md)** — Tree-sitter + TextMate grammars for editor highlighting and GitHub rendering. Effect-aware capture strategy so effects are a distinct visual layer. Cannibalises `tree-sitter-rill/`. Ready to start (0a done, stdlib corpus growing). Includes Neovim, Helix, and VS Code editor configs.
 - **Formatter** (`kea fmt`) — indentation-sensitive language needs a formatter before serious code is written. Reuse rill-fmt's doc algebra + comment infra (~440 LOC transfers). Rewrite printer + rules for indent-sensitive output. Lands before 0g.
-- **Neovim plugin** — tree-sitter highlighting + LSP client config. After tree-sitter grammar + basic LSP.
 - **Basic LSP** — hover types, go-to-def, diagnostics. Adapted from rill-lsp (protocol layer unchanged). Lands by 0d-0e.
 
 ### Other design work
