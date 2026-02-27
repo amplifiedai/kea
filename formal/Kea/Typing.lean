@@ -9946,6 +9946,166 @@ theorem principalBoundaryMasterConsequenceCapstoneSuite_noUnify_irrelevance_fiel
   h_suite.noUnifyIrrelevanceField h_no h_ok
 
 /--
+Master-consequence-capstone-suite convenience wrapper: derive arbitrary-success
+expression all-hooks capstone from a baseline hook pair.
+-/
+theorem principalPreconditionedExprAllHooksCapstone_of_success_via_masterConsequenceCapstoneSuite
+    (h_app0 : AppUnifySoundHook) (h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty :=
+  principalBoundaryMasterConsequenceCapstoneSuite_allHooks_expr
+    principalBoundaryMasterConsequenceCapstoneSuite_proved h_app0 h_proj0 h_ok
+
+/--
+Master-consequence-capstone-suite convenience wrapper: derive arbitrary-success
+field all-hooks capstone from a baseline hook pair.
+-/
+theorem principalPreconditionedFieldAllHooksCapstone_of_success_via_masterConsequenceCapstoneSuite
+    (h_app0 : AppUnifySoundHook) (h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
+  principalBoundaryMasterConsequenceCapstoneSuite_allHooks_field
+    principalBoundaryMasterConsequenceCapstoneSuite_proved h_app0 h_proj0 h_ok
+
+/--
+Master-consequence-capstone-suite convenience wrapper: bundled-baseline variant
+for arbitrary-success expression all-hooks capstone.
+-/
+theorem principalPreconditionedExprAllHooksCapstone_of_success_via_masterConsequenceCapstoneSuite_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty :=
+  principalPreconditionedExprAllHooksCapstone_of_success_via_masterConsequenceCapstoneSuite
+    h_seed.1 h_seed.2 h_ok
+
+/--
+Master-consequence-capstone-suite convenience wrapper: bundled-baseline variant
+for arbitrary-success field all-hooks capstone.
+-/
+theorem principalPreconditionedFieldAllHooksCapstone_of_success_via_masterConsequenceCapstoneSuite_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
+  principalPreconditionedFieldAllHooksCapstone_of_success_via_masterConsequenceCapstoneSuite
+    h_seed.1 h_seed.2 h_ok
+
+/--
+Master-consequence-capstone-suite no-unify-to-general convenience wrapper:
+derive expression all-hooks capstone from a successful no-unify run.
+-/
+theorem principalPreconditionedExprAllHooksCapstone_of_success_noUnify_via_masterConsequenceCapstoneSuite
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty :=
+  principalBoundaryMasterConsequenceCapstoneSuite_noUnify_expr
+    principalBoundaryMasterConsequenceCapstoneSuite_proved h_no h_ok
+
+/--
+Master-consequence-capstone-suite no-unify-to-general convenience wrapper:
+derive field all-hooks capstone from a successful no-unify field run.
+-/
+theorem principalPreconditionedFieldAllHooksCapstone_of_success_noUnify_via_masterConsequenceCapstoneSuite
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
+  principalBoundaryMasterConsequenceCapstoneSuite_noUnify_field
+    principalBoundaryMasterConsequenceCapstoneSuite_proved h_no h_ok
+
+/--
+Master-consequence-capstone-suite no-unify-to-general convenience wrapper:
+bundled-hook variant for expression all-hooks capstone.
+-/
+theorem principalPreconditionedExprAllHooksCapstone_of_success_noUnify_via_masterConsequenceCapstoneSuite_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_hooks : UnifyHookPremises) :
+    PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty :=
+  principalPreconditionedExprAllHooksCapstone_of_success_noUnify_via_masterConsequenceCapstoneSuite
+    h_no h_ok
+
+/--
+Master-consequence-capstone-suite no-unify-to-general convenience wrapper:
+bundled-hook variant for field all-hooks capstone.
+-/
+theorem principalPreconditionedFieldAllHooksCapstone_of_success_noUnify_via_masterConsequenceCapstoneSuite_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_hooks : UnifyHookPremises) :
+    PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
+  principalPreconditionedFieldAllHooksCapstone_of_success_noUnify_via_masterConsequenceCapstoneSuite
+    h_no h_ok
+
+/--
+Master-consequence-capstone-suite no-unify convenience wrapper: derive
+expression all-hooks capstone from a successful no-unify run.
+-/
+theorem principalNoUnifyExprAllHooksCapstone_of_success_via_masterConsequenceCapstoneSuite
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty :=
+  principalPreconditionedExprAllHooksCapstone_of_success_noUnify_via_masterConsequenceCapstoneSuite
+    h_no h_ok
+
+/--
+Master-consequence-capstone-suite no-unify convenience wrapper: derive field
+all-hooks capstone from a successful no-unify field run.
+-/
+theorem principalNoUnifyFieldAllHooksCapstone_of_success_via_masterConsequenceCapstoneSuite
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
+  principalPreconditionedFieldAllHooksCapstone_of_success_noUnify_via_masterConsequenceCapstoneSuite
+    h_no h_ok
+
+/--
+Master-consequence-capstone-suite no-unify convenience wrapper: bundled-hook
+alias for expression all-hooks capstone.
+-/
+theorem principalNoUnifyExprAllHooksCapstone_of_success_via_masterConsequenceCapstoneSuite_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_hooks : UnifyHookPremises) :
+    PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty :=
+  principalNoUnifyExprAllHooksCapstone_of_success_via_masterConsequenceCapstoneSuite
+    h_no h_ok
+
+/--
+Master-consequence-capstone-suite no-unify convenience wrapper: bundled-hook
+alias for field all-hooks capstone.
+-/
+theorem principalNoUnifyFieldAllHooksCapstone_of_success_via_masterConsequenceCapstoneSuite_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_hooks : UnifyHookPremises) :
+    PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
+  principalNoUnifyFieldAllHooksCapstone_of_success_via_masterConsequenceCapstoneSuite
+    h_no h_ok
+
+/--
 One-hop projection: arbitrary-success all-hooks expression run-bundle from the
 master run-bundle consequence suite.
 -/
