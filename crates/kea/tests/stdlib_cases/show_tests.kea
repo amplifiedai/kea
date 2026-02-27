@@ -1,6 +1,8 @@
 use Show
 use Test
+use Text
 
 test "Show.show Int"
-  let s = Show.show(5)
-  Test.assert(s == s)
+  Test.assert(Text.length(Show.show(5)) == 1)
+  Test.assert(Text.length(Show.show(0)) == 1)
+  Test.assert(Text.length(Show.show(-42)) == 3)

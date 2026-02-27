@@ -3,6 +3,9 @@ trait Ord a
   --|
   --|   Ord.compare(1, 2)   -- => -1
   --|   Ord.compare(2, 2)   -- => 0
+  --|
+  --| TODO(0f): return `Ordering` once trait method annotations resolve
+  --| imported module types during trait registration.
   fn compare(x: a, y: a) -> Int
 
 --| Int ordering implementation for Ord.

@@ -1,11 +1,36 @@
 trait Show a
   --| Convert a value to its string representation.
   --|
-  --|   Show.show(5)   -- => "5"
+  --|   Show.show(5)    -- => "5"
   fn show(x: a) -> String
 
---| Int show implementation placeholder for bootstrap.
+--| Convert a single decimal digit to a string.
+fn digit_to_string(digit: Int) -> String
+  case digit
+    0 -> "0"
+    1 -> "1"
+    2 -> "2"
+    3 -> "3"
+    4 -> "4"
+    5 -> "5"
+    6 -> "6"
+    7 -> "7"
+    8 -> "8"
+    _ -> "9"
+
+--| Convert a non-negative integer to decimal text.
+fn show_non_negative(x: Int) -> String
+  if x < 10
+    digit_to_string(x)
+  else
+    show_non_negative(x / 10) ++ digit_to_string(x % 10)
+
+--| Int Show implementation for bootstrap.
 --|
---|   Show.show(5)   -- => ""
-fn show(_x: Int) -> String
-  ""
+--|   Show.show(0)     -- => "0"
+--|   Show.show(-42)   -- => "-42"
+fn show(x: Int) -> String
+  if x < 0
+    "-" ++ show_non_negative(0 - x)
+  else
+    show_non_negative(x)

@@ -1,5 +1,5 @@
 --| Small prelude smoke function for bootstrap wiring checks.
 --|
---|   ping()   -- => 7
+--|   Prelude.ping()   -- => 7
 fn ping() -> Int
   7
