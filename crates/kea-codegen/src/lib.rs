@@ -341,6 +341,12 @@ fn is_known_direct_capability_operation(effect: &str, operation: &str) -> bool {
         .is_some_and(|capability| capability.operations.contains(&operation))
 }
 
+fn is_direct_capability_effect(effect: &str) -> bool {
+    DIRECT_CAPABILITIES
+        .iter()
+        .any(|capability| capability.effect == effect)
+}
+
 unsafe extern "C" fn kea_net_connect_stub(addr: *const c_char) -> i64 {
     if addr.is_null() { -1 } else { 1 }
 }
@@ -856,7 +862,7 @@ fn compile_into_module<M: Module>(
                     }
                 }
 
-                let tail_self_call = detect_tail_self_call(&function.name, block);
+                let tail_self_call = detect_tail_self_call(function, block);
                 let instruction_count = if tail_self_call.is_some() {
                     block.instructions.len().saturating_sub(1)
                 } else {
@@ -901,6 +907,7 @@ fn compile_into_module<M: Module>(
                 if !block_terminated {
                     let terminator_ctx = LowerTerminatorCtx {
                         function_name: &function.name,
+                        function,
                         current_runtime_sig,
                         malloc_func_id,
                         values: &values,
@@ -1032,7 +1039,7 @@ fn build_signature<M: Module>(
         && function
             .blocks
             .iter()
-            .any(|block| detect_tail_self_call(&function.name, block).is_some())
+            .any(|block| detect_tail_self_call(function, block).is_some())
     {
         signature.call_conv = CallConv::Tail;
     }
@@ -1497,7 +1504,10 @@ fn lower_instruction<M: Module>(
                         function: function_name.to_string(),
                         detail: format!("sum layout `{sum_type}` not found"),
                     })?;
-            let has_unit_variant = layout.variant_field_counts.values().any(|count| *count == 0);
+            let has_unit_variant = layout
+                .variant_field_counts
+                .values()
+                .any(|count| *count == 0);
             let has_payload_variant = layout.variant_field_counts.values().any(|count| *count > 0);
             // Unit-only sums are represented as immediate integer tags in MIR
             // (e.g. `Ordering` constructors lower to `Const Int(tag)`).
@@ -1934,191 +1944,193 @@ fn lower_instruction<M: Module>(
             Ok(false)
         }
         MirInst::EffectOp {
-                class,
-                effect,
-                operation,
-                args,
-                result,
-                ..
-            } => {
-                if *class == MirEffectOpClass::Direct {
-                    if !is_known_direct_capability_operation(effect, operation) {
-                        return Err(CodegenError::UnsupportedMir {
-                            function: function_name.to_string(),
-                            detail: format!(
-                                "unknown direct capability operation `{effect}.{operation}`"
-                            ),
-                        });
-                    }
-                    if effect == "IO" {
-                        let ptr_ty = module.target_config().pointer_type();
-                        match operation.as_str() {
-                            "stdout" => {
-                                let arg = args.first().ok_or_else(|| CodegenError::UnsupportedMir {
+            class,
+            effect,
+            operation,
+            args,
+            result,
+            ..
+        } => {
+            if *class == MirEffectOpClass::Direct {
+                if !is_known_direct_capability_operation(effect, operation) {
+                    return Err(CodegenError::UnsupportedMir {
+                        function: function_name.to_string(),
+                        detail: format!(
+                            "unknown direct capability operation `{effect}.{operation}`"
+                        ),
+                    });
+                }
+                if effect == "IO" {
+                    let ptr_ty = module.target_config().pointer_type();
+                    match operation.as_str() {
+                        "stdout" => {
+                            let arg = args.first().ok_or_else(|| CodegenError::UnsupportedMir {
+                                function: function_name.to_string(),
+                                detail: "IO.stdout expects one string argument".to_string(),
+                            })?;
+                            if args.len() != 1 {
+                                return Err(CodegenError::UnsupportedMir {
                                     function: function_name.to_string(),
-                                    detail: "IO.stdout expects one string argument".to_string(),
-                                })?;
-                                if args.len() != 1 {
-                                    return Err(CodegenError::UnsupportedMir {
-                                        function: function_name.to_string(),
-                                        detail:
-                                            "IO.stdout expects exactly one string argument".to_string(),
-                                    });
-                                }
-                                let arg_value = get_value(values, function_name, arg)?;
-                                let arg_ptr = coerce_value_to_clif_type(builder, arg_value, ptr_ty);
-                                let stdout_func_id =
-                                    ctx.stdout_func_id
-                                        .ok_or_else(|| CodegenError::UnsupportedMir {
-                                            function: function_name.to_string(),
-                                            detail:
-                                                "IO.stdout lowering requires imported `puts` symbol"
-                                                    .to_string(),
-                                        })?;
-                                let stdout_ref =
-                                    module.declare_func_in_func(stdout_func_id, builder.func);
-                                let _ = builder.ins().call(stdout_ref, &[arg_ptr]);
-                                if let Some(dest) = result {
-                                    values.insert(dest.clone(), builder.ins().iconst(types::I8, 0));
-                                }
-                                Ok(false)
+                                    detail: "IO.stdout expects exactly one string argument"
+                                        .to_string(),
+                                });
                             }
-                            "stderr" => {
-                                let arg = args.first().ok_or_else(|| CodegenError::UnsupportedMir {
-                                    function: function_name.to_string(),
-                                    detail: "IO.stderr expects one string argument".to_string(),
-                                })?;
-                                if args.len() != 1 {
-                                    return Err(CodegenError::UnsupportedMir {
-                                        function: function_name.to_string(),
-                                        detail:
-                                            "IO.stderr expects exactly one string argument".to_string(),
-                                    });
-                                }
-                                let arg_value = get_value(values, function_name, arg)?;
-                                let arg_ptr = coerce_value_to_clif_type(builder, arg_value, ptr_ty);
-                                let write_func_id =
-                                    ctx.write_func_id
-                                        .ok_or_else(|| CodegenError::UnsupportedMir {
-                                            function: function_name.to_string(),
-                                            detail:
-                                                "IO.stderr lowering requires imported `write` symbol"
-                                                    .to_string(),
-                                        })?;
-                                let strlen_func_id =
-                                    ctx.strlen_func_id
-                                        .ok_or_else(|| CodegenError::UnsupportedMir {
-                                            function: function_name.to_string(),
-                                            detail:
-                                                "IO.stderr lowering requires imported `strlen` symbol"
-                                                    .to_string(),
-                                        })?;
-                                let strlen_ref =
-                                    module.declare_func_in_func(strlen_func_id, builder.func);
-                                let strlen_call = builder.ins().call(strlen_ref, &[arg_ptr]);
-                                let len = builder
-                                    .inst_results(strlen_call)
-                                    .first()
-                                    .copied()
+                            let arg_value = get_value(values, function_name, arg)?;
+                            let arg_ptr = coerce_value_to_clif_type(builder, arg_value, ptr_ty);
+                            let stdout_func_id =
+                                ctx.stdout_func_id
                                     .ok_or_else(|| CodegenError::UnsupportedMir {
                                         function: function_name.to_string(),
-                                        detail: "strlen call returned no value".to_string(),
+                                        detail:
+                                            "IO.stdout lowering requires imported `puts` symbol"
+                                                .to_string(),
                                     })?;
-                                let len = coerce_value_to_clif_type(builder, len, ptr_ty);
-                                let write_ref = module.declare_func_in_func(write_func_id, builder.func);
-                                let fd = builder.ins().iconst(types::I32, 2);
-                                let _ = builder.ins().call(write_ref, &[fd, arg_ptr, len]);
-                                if let Some(dest) = result {
-                                    values.insert(dest.clone(), builder.ins().iconst(types::I8, 0));
-                                }
-                                Ok(false)
+                            let stdout_ref =
+                                module.declare_func_in_func(stdout_func_id, builder.func);
+                            let _ = builder.ins().call(stdout_ref, &[arg_ptr]);
+                            if let Some(dest) = result {
+                                values.insert(dest.clone(), builder.ins().iconst(types::I8, 0));
                             }
-                            "write_file" => {
-                                if args.len() != 2 {
-                                    return Err(CodegenError::UnsupportedMir {
+                            Ok(false)
+                        }
+                        "stderr" => {
+                            let arg = args.first().ok_or_else(|| CodegenError::UnsupportedMir {
+                                function: function_name.to_string(),
+                                detail: "IO.stderr expects one string argument".to_string(),
+                            })?;
+                            if args.len() != 1 {
+                                return Err(CodegenError::UnsupportedMir {
+                                    function: function_name.to_string(),
+                                    detail: "IO.stderr expects exactly one string argument"
+                                        .to_string(),
+                                });
+                            }
+                            let arg_value = get_value(values, function_name, arg)?;
+                            let arg_ptr = coerce_value_to_clif_type(builder, arg_value, ptr_ty);
+                            let write_func_id =
+                                ctx.write_func_id
+                                    .ok_or_else(|| CodegenError::UnsupportedMir {
                                         function: function_name.to_string(),
                                         detail:
-                                            "IO.write_file expects exactly two string arguments"
+                                            "IO.stderr lowering requires imported `write` symbol"
                                                 .to_string(),
-                                    });
-                                }
-                                let path_value = get_value(values, function_name, &args[0])?;
-                                let data_value = get_value(values, function_name, &args[1])?;
-                                let path_ptr = coerce_value_to_clif_type(builder, path_value, ptr_ty);
-                                let data_ptr = coerce_value_to_clif_type(builder, data_value, ptr_ty);
-                                let write_file_func_id = ctx.io_write_file_func_id.ok_or_else(|| {
+                                    })?;
+                            let strlen_func_id =
+                                ctx.strlen_func_id
+                                    .ok_or_else(|| CodegenError::UnsupportedMir {
+                                        function: function_name.to_string(),
+                                        detail:
+                                            "IO.stderr lowering requires imported `strlen` symbol"
+                                                .to_string(),
+                                    })?;
+                            let strlen_ref =
+                                module.declare_func_in_func(strlen_func_id, builder.func);
+                            let strlen_call = builder.ins().call(strlen_ref, &[arg_ptr]);
+                            let len = builder
+                                .inst_results(strlen_call)
+                                .first()
+                                .copied()
+                                .ok_or_else(|| CodegenError::UnsupportedMir {
+                                    function: function_name.to_string(),
+                                    detail: "strlen call returned no value".to_string(),
+                                })?;
+                            let len = coerce_value_to_clif_type(builder, len, ptr_ty);
+                            let write_ref =
+                                module.declare_func_in_func(write_func_id, builder.func);
+                            let fd = builder.ins().iconst(types::I32, 2);
+                            let _ = builder.ins().call(write_ref, &[fd, arg_ptr, len]);
+                            if let Some(dest) = result {
+                                values.insert(dest.clone(), builder.ins().iconst(types::I8, 0));
+                            }
+                            Ok(false)
+                        }
+                        "write_file" => {
+                            if args.len() != 2 {
+                                return Err(CodegenError::UnsupportedMir {
+                                    function: function_name.to_string(),
+                                    detail: "IO.write_file expects exactly two string arguments"
+                                        .to_string(),
+                                });
+                            }
+                            let path_value = get_value(values, function_name, &args[0])?;
+                            let data_value = get_value(values, function_name, &args[1])?;
+                            let path_ptr = coerce_value_to_clif_type(builder, path_value, ptr_ty);
+                            let data_ptr = coerce_value_to_clif_type(builder, data_value, ptr_ty);
+                            let write_file_func_id = ctx.io_write_file_func_id.ok_or_else(|| {
                                     CodegenError::UnsupportedMir {
                                         function: function_name.to_string(),
                                         detail: "IO.write_file lowering requires imported `__kea_io_write_file` symbol".to_string(),
                                     }
                                 })?;
-                                let write_file_ref =
-                                    module.declare_func_in_func(write_file_func_id, builder.func);
-                                let _ = builder.ins().call(write_file_ref, &[path_ptr, data_ptr]);
-                                if let Some(dest) = result {
-                                    values.insert(dest.clone(), builder.ins().iconst(types::I8, 0));
-                                }
-                                Ok(false)
+                            let write_file_ref =
+                                module.declare_func_in_func(write_file_func_id, builder.func);
+                            let _ = builder.ins().call(write_file_ref, &[path_ptr, data_ptr]);
+                            if let Some(dest) = result {
+                                values.insert(dest.clone(), builder.ins().iconst(types::I8, 0));
                             }
-                            "read_file" => {
-                                let arg = args.first().ok_or_else(|| CodegenError::UnsupportedMir {
+                            Ok(false)
+                        }
+                        "read_file" => {
+                            let arg = args.first().ok_or_else(|| CodegenError::UnsupportedMir {
+                                function: function_name.to_string(),
+                                detail: "IO.read_file expects one string argument".to_string(),
+                            })?;
+                            if args.len() != 1 {
+                                return Err(CodegenError::UnsupportedMir {
                                     function: function_name.to_string(),
-                                    detail: "IO.read_file expects one string argument".to_string(),
-                                })?;
-                                if args.len() != 1 {
-                                    return Err(CodegenError::UnsupportedMir {
-                                        function: function_name.to_string(),
-                                        detail:
-                                            "IO.read_file expects exactly one string argument".to_string(),
-                                    });
-                                }
-                                let path_value = get_value(values, function_name, arg)?;
-                                let path_ptr = coerce_value_to_clif_type(builder, path_value, ptr_ty);
-                                let read_file_func_id = ctx.io_read_file_func_id.ok_or_else(|| {
+                                    detail: "IO.read_file expects exactly one string argument"
+                                        .to_string(),
+                                });
+                            }
+                            let path_value = get_value(values, function_name, arg)?;
+                            let path_ptr = coerce_value_to_clif_type(builder, path_value, ptr_ty);
+                            let read_file_func_id = ctx.io_read_file_func_id.ok_or_else(|| {
                                     CodegenError::UnsupportedMir {
                                         function: function_name.to_string(),
                                         detail: "IO.read_file lowering requires imported `__kea_io_read_file` symbol".to_string(),
                                     }
                                 })?;
-                                let read_file_ref =
-                                    module.declare_func_in_func(read_file_func_id, builder.func);
-                                let read_call = builder.ins().call(read_file_ref, &[path_ptr]);
-                                if let Some(dest) = result {
-                                    let raw = builder
-                                        .inst_results(read_call)
-                                        .first()
-                                        .copied()
-                                        .ok_or_else(|| CodegenError::UnsupportedMir {
-                                            function: function_name.to_string(),
-                                            detail: "IO.read_file call returned no value".to_string(),
-                                        })?;
-                                    values.insert(dest.clone(), coerce_value_to_clif_type(builder, raw, ptr_ty));
-                                }
-                                Ok(false)
+                            let read_file_ref =
+                                module.declare_func_in_func(read_file_func_id, builder.func);
+                            let read_call = builder.ins().call(read_file_ref, &[path_ptr]);
+                            if let Some(dest) = result {
+                                let raw = builder
+                                    .inst_results(read_call)
+                                    .first()
+                                    .copied()
+                                    .ok_or_else(|| CodegenError::UnsupportedMir {
+                                        function: function_name.to_string(),
+                                        detail: "IO.read_file call returned no value".to_string(),
+                                    })?;
+                                values.insert(
+                                    dest.clone(),
+                                    coerce_value_to_clif_type(builder, raw, ptr_ty),
+                                );
                             }
-                            _ => Err(CodegenError::UnsupportedMir {
-                                function: function_name.to_string(),
-                                detail: format!(
-                                    "instruction `{inst:?}` not implemented in 0d pure lowering"
-                                ),
-                            }),
+                            Ok(false)
                         }
-                    } else if effect == "Clock" && matches!(operation.as_str(), "now" | "monotonic")
-                    {
+                        _ => Err(CodegenError::UnsupportedMir {
+                            function: function_name.to_string(),
+                            detail: format!(
+                                "instruction `{inst:?}` not implemented in 0d pure lowering"
+                            ),
+                        }),
+                    }
+                } else if effect == "Clock" && matches!(operation.as_str(), "now" | "monotonic") {
                     if !args.is_empty() {
                         return Err(CodegenError::UnsupportedMir {
                             function: function_name.to_string(),
                             detail: format!("Clock.{operation} expects no arguments"),
                         });
                     }
-                    let time_func_id = ctx
-                        .time_func_id
-                        .ok_or_else(|| CodegenError::UnsupportedMir {
-                            function: function_name.to_string(),
-                            detail: format!(
-                                "Clock.{operation} lowering requires imported `time` symbol"
-                            ),
-                        })?;
+                    let time_func_id =
+                        ctx.time_func_id
+                            .ok_or_else(|| CodegenError::UnsupportedMir {
+                                function: function_name.to_string(),
+                                detail: format!(
+                                    "Clock.{operation} lowering requires imported `time` symbol"
+                                ),
+                            })?;
                     let time_ref = module.declare_func_in_func(time_func_id, builder.func);
                     let ptr_ty = module.target_config().pointer_type();
                     let null_ptr = builder.ins().iconst(ptr_ty, 0);
@@ -2132,7 +2144,10 @@ fn lower_instruction<M: Module>(
                                 function: function_name.to_string(),
                                 detail: "time call returned no value".to_string(),
                             })?;
-                        values.insert(dest.clone(), coerce_value_to_clif_type(builder, timestamp, ptr_ty));
+                        values.insert(
+                            dest.clone(),
+                            coerce_value_to_clif_type(builder, timestamp, ptr_ty),
+                        );
                     }
                     Ok(false)
                 } else if effect == "Rand" && matches!(operation.as_str(), "int" | "seed") {
@@ -2144,13 +2159,13 @@ fn lower_instruction<M: Module>(
                                     detail: "Rand.int expects no arguments".to_string(),
                                 });
                             }
-                            let rand_func_id = ctx
-                                .rand_func_id
-                                .ok_or_else(|| CodegenError::UnsupportedMir {
-                                    function: function_name.to_string(),
-                                    detail: "Rand.int lowering requires imported `rand` symbol"
-                                        .to_string(),
-                                })?;
+                            let rand_func_id =
+                                ctx.rand_func_id
+                                    .ok_or_else(|| CodegenError::UnsupportedMir {
+                                        function: function_name.to_string(),
+                                        detail: "Rand.int lowering requires imported `rand` symbol"
+                                            .to_string(),
+                                    })?;
                             let rand_ref = module.declare_func_in_func(rand_func_id, builder.func);
                             let rand_call = builder.ins().call(rand_ref, &[]);
                             if let Some(dest) = result {
@@ -2168,26 +2183,31 @@ fn lower_instruction<M: Module>(
                             Ok(false)
                         }
                         "seed" => {
-                            let seed_value_id = args.first().ok_or_else(|| CodegenError::UnsupportedMir {
-                                function: function_name.to_string(),
-                                detail: "Rand.seed expects one Int argument".to_string(),
-                            })?;
+                            let seed_value_id =
+                                args.first().ok_or_else(|| CodegenError::UnsupportedMir {
+                                    function: function_name.to_string(),
+                                    detail: "Rand.seed expects one Int argument".to_string(),
+                                })?;
                             if args.len() != 1 {
                                 return Err(CodegenError::UnsupportedMir {
                                     function: function_name.to_string(),
-                                    detail: "Rand.seed expects exactly one Int argument".to_string(),
+                                    detail: "Rand.seed expects exactly one Int argument"
+                                        .to_string(),
                                 });
                             }
                             let seed_value = get_value(values, function_name, seed_value_id)?;
-                            let seed_value = coerce_value_to_clif_type(builder, seed_value, types::I32);
-                            let srand_func_id = ctx
-                                .srand_func_id
-                                .ok_or_else(|| CodegenError::UnsupportedMir {
-                                    function: function_name.to_string(),
-                                    detail: "Rand.seed lowering requires imported `srand` symbol"
-                                        .to_string(),
-                                })?;
-                            let srand_ref = module.declare_func_in_func(srand_func_id, builder.func);
+                            let seed_value =
+                                coerce_value_to_clif_type(builder, seed_value, types::I32);
+                            let srand_func_id =
+                                ctx.srand_func_id
+                                    .ok_or_else(|| CodegenError::UnsupportedMir {
+                                        function: function_name.to_string(),
+                                        detail:
+                                            "Rand.seed lowering requires imported `srand` symbol"
+                                                .to_string(),
+                                    })?;
+                            let srand_ref =
+                                module.declare_func_in_func(srand_func_id, builder.func);
                             let _ = builder.ins().call(srand_ref, &[seed_value]);
                             if let Some(dest) = result {
                                 values.insert(dest.clone(), builder.ins().iconst(types::I8, 0));
@@ -2196,17 +2216,21 @@ fn lower_instruction<M: Module>(
                         }
                         _ => unreachable!("Rand branch is guarded by operation match"),
                     }
-                } else if effect == "Net" && matches!(operation.as_str(), "connect" | "send" | "recv") {
+                } else if effect == "Net"
+                    && matches!(operation.as_str(), "connect" | "send" | "recv")
+                {
                     match operation.as_str() {
                         "connect" => {
-                            let addr_value_id = args.first().ok_or_else(|| CodegenError::UnsupportedMir {
-                                function: function_name.to_string(),
-                                detail: "Net.connect expects one String argument".to_string(),
-                            })?;
+                            let addr_value_id =
+                                args.first().ok_or_else(|| CodegenError::UnsupportedMir {
+                                    function: function_name.to_string(),
+                                    detail: "Net.connect expects one String argument".to_string(),
+                                })?;
                             if args.len() != 1 {
                                 return Err(CodegenError::UnsupportedMir {
                                     function: function_name.to_string(),
-                                    detail: "Net.connect expects exactly one String argument".to_string(),
+                                    detail: "Net.connect expects exactly one String argument"
+                                        .to_string(),
                                 });
                             }
                             let addr_value = get_value(values, function_name, addr_value_id)?;
@@ -2232,7 +2256,10 @@ fn lower_instruction<M: Module>(
                                         function: function_name.to_string(),
                                         detail: "Net.connect call returned no value".to_string(),
                                     })?;
-                                values.insert(dest.clone(), coerce_value_to_clif_type(builder, conn, types::I64));
+                                values.insert(
+                                    dest.clone(),
+                                    coerce_value_to_clif_type(builder, conn, types::I64),
+                                );
                             }
                             Ok(false)
                         }
@@ -2245,7 +2272,8 @@ fn lower_instruction<M: Module>(
                             }
                             let conn_value = get_value(values, function_name, &args[0])?;
                             let data_value = get_value(values, function_name, &args[1])?;
-                            let conn_value = coerce_value_to_clif_type(builder, conn_value, types::I64);
+                            let conn_value =
+                                coerce_value_to_clif_type(builder, conn_value, types::I64);
                             let ptr_ty = module.target_config().pointer_type();
                             let data_ptr = coerce_value_to_clif_type(builder, data_value, ptr_ty);
                             let send_func_id = ctx.net_send_func_id.ok_or_else(|| {
@@ -2272,8 +2300,10 @@ fn lower_instruction<M: Module>(
                             }
                             let conn_value = get_value(values, function_name, &args[0])?;
                             let size_value = get_value(values, function_name, &args[1])?;
-                            let conn_value = coerce_value_to_clif_type(builder, conn_value, types::I64);
-                            let size_value = coerce_value_to_clif_type(builder, size_value, types::I64);
+                            let conn_value =
+                                coerce_value_to_clif_type(builder, conn_value, types::I64);
+                            let size_value =
+                                coerce_value_to_clif_type(builder, size_value, types::I64);
                             let recv_func_id = ctx.net_recv_func_id.ok_or_else(|| {
                                 CodegenError::UnsupportedMir {
                                     function: function_name.to_string(),
@@ -2293,7 +2323,10 @@ fn lower_instruction<M: Module>(
                                         function: function_name.to_string(),
                                         detail: "Net.recv call returned no value".to_string(),
                                     })?;
-                                values.insert(dest.clone(), coerce_value_to_clif_type(builder, received, types::I64));
+                                values.insert(
+                                    dest.clone(),
+                                    coerce_value_to_clif_type(builder, received, types::I64),
+                                );
                             }
                             Ok(false)
                         }
@@ -2302,7 +2335,9 @@ fn lower_instruction<M: Module>(
                 } else {
                     Err(CodegenError::UnsupportedMir {
                         function: function_name.to_string(),
-                        detail: format!("instruction `{inst:?}` not implemented in 0d pure lowering"),
+                        detail: format!(
+                            "instruction `{inst:?}` not implemented in 0d pure lowering"
+                        ),
                     })
                 }
             } else if *class == MirEffectOpClass::ZeroResume
@@ -2759,6 +2794,7 @@ fn b1_to_i8(builder: &mut FunctionBuilder, predicate: Value) -> Value {
 
 struct LowerTerminatorCtx<'a> {
     function_name: &'a str,
+    function: &'a MirFunction,
     current_runtime_sig: &'a RuntimeFunctionSig,
     malloc_func_id: Option<FuncId>,
     values: &'a BTreeMap<MirValueId, Value>,
@@ -2778,7 +2814,7 @@ fn lower_terminator(
         return Ok(());
     }
 
-    if let Some(tail_call) = detect_tail_self_call(ctx.function_name, block) {
+    if let Some(tail_call) = detect_tail_self_call(ctx.function, block) {
         let callee_id =
             *ctx.func_ids
                 .get(ctx.function_name)
@@ -2901,10 +2937,11 @@ struct TailSelfCall {
     args: Vec<MirValueId>,
 }
 
-fn detect_tail_self_call(function_name: &str, block: &kea_mir::MirBlock) -> Option<TailSelfCall> {
+fn detect_tail_self_call(function: &MirFunction, block: &kea_mir::MirBlock) -> Option<TailSelfCall> {
     let MirInst::Call {
         callee: MirCallee::Local(callee_name),
         args,
+        arg_types,
         result,
         ..
     } = block.instructions.last()?
@@ -2912,17 +2949,83 @@ fn detect_tail_self_call(function_name: &str, block: &kea_mir::MirBlock) -> Opti
         return None;
     };
 
-    if callee_name != function_name {
+    if callee_name != &function.name {
         return None;
     }
 
-    match (&block.terminator, result) {
-        (MirTerminator::Return { value: Some(ret) }, Some(call_result)) if ret == call_result => {
-            Some(TailSelfCall { args: args.clone() })
-        }
-        (MirTerminator::Return { value: None }, None) => Some(TailSelfCall { args: args.clone() }),
-        _ => None,
+    if !forwards_handler_cell_args_unchanged(function, args, arg_types) {
+        return None;
     }
+
+    if matches!(
+        (&block.terminator, result),
+        (MirTerminator::Return { value: Some(ret) }, Some(call_result)) if ret == call_result
+    ) {
+        return Some(TailSelfCall { args: args.clone() });
+    }
+
+    if matches!((&block.terminator, result), (MirTerminator::Return { value: None }, None)) {
+        return Some(TailSelfCall { args: args.clone() });
+    }
+
+    let (MirTerminator::Jump { target, args: jump_args }, Some(call_result)) = (&block.terminator, result) else {
+        return None;
+    };
+    let target_block = function.blocks.iter().find(|candidate| candidate.id == *target)?;
+    if !target_block
+        .instructions
+        .iter()
+        .all(|inst| matches!(inst, MirInst::Nop))
+    {
+        return None;
+    }
+    if target_block.params.len() != jump_args.len() {
+        return None;
+    }
+    let MirTerminator::Return { value: Some(ret) } = &target_block.terminator else {
+        return None;
+    };
+    let ret_param_idx = target_block.params.iter().position(|param| &param.id == ret)?;
+    if jump_args.get(ret_param_idx) != Some(call_result) {
+        return None;
+    }
+    Some(TailSelfCall { args: args.clone() })
+}
+
+fn forwards_handler_cell_args_unchanged(
+    function: &MirFunction,
+    call_args: &[MirValueId],
+    call_arg_types: &[Type],
+) -> bool {
+    let hidden_cell_count = function
+        .signature
+        .effects
+        .row
+        .fields
+        .iter()
+        .map(|(label, _)| label.as_str())
+        .filter(|effect| *effect != "Fail")
+        .filter(|effect| !is_direct_capability_effect(effect))
+        .count();
+    if hidden_cell_count == 0 {
+        return true;
+    }
+    if call_args.len() < hidden_cell_count || call_arg_types.len() < hidden_cell_count {
+        return false;
+    }
+    let hidden_start = call_args.len() - hidden_cell_count;
+    for (idx, arg) in call_args.iter().enumerate().skip(hidden_start) {
+        if *arg != MirValueId(idx as u32) {
+            return false;
+        }
+        if call_arg_types.get(idx) != Some(&Type::Dynamic) {
+            return false;
+        }
+        if function.signature.params.get(idx) != Some(&Type::Dynamic) {
+            return false;
+        }
+    }
+    true
 }
 
 fn get_value(
@@ -3217,7 +3320,7 @@ fn collect_function_stats(function: &MirFunction) -> FunctionPassStats {
     };
 
     for block in &function.blocks {
-        if detect_tail_self_call(&function.name, block).is_some() {
+        if detect_tail_self_call(function, block).is_some() {
             stats.tail_self_call_count += 1;
         }
         for inst in &block.instructions {
@@ -3292,7 +3395,7 @@ mod tests {
     use super::*;
     use kea_hir::{HirDecl, HirExpr, HirExprKind, HirFunction, HirParam};
     use kea_mir::{
-        MirBlock, MirBlockId, MirFunctionSignature, MirLayoutCatalog, MirRecordFieldLayout,
+        MirBlock, MirBlockId, MirBlockParam, MirFunctionSignature, MirLayoutCatalog, MirRecordFieldLayout,
         MirRecordLayout, MirSumLayout, MirTerminator, MirVariantFieldLayout, MirVariantLayout,
     };
     use kea_types::{FunctionType, Label, RecordType, RowType, SumType};
@@ -3931,6 +4034,174 @@ mod tests {
                     ],
                     terminator: MirTerminator::Return {
                         value: Some(MirValueId(1)),
+                    },
+                }],
+            }],
+            layouts: MirLayoutCatalog::default(),
+        }
+    }
+
+    fn sample_tail_recursive_through_join_return_module() -> MirModule {
+        MirModule {
+            functions: vec![MirFunction {
+                name: "count".to_string(),
+                signature: MirFunctionSignature {
+                    params: vec![Type::Int, Type::Int],
+                    ret: Type::Int,
+                    effects: EffectRow::pure(),
+                },
+                entry: MirBlockId(0),
+                blocks: vec![
+                    MirBlock {
+                        id: MirBlockId(0),
+                        params: vec![],
+                        instructions: vec![],
+                        terminator: MirTerminator::Branch {
+                            condition: MirValueId(0),
+                            then_block: MirBlockId(1),
+                            else_block: MirBlockId(2),
+                        },
+                    },
+                    MirBlock {
+                        id: MirBlockId(1),
+                        params: vec![],
+                        instructions: vec![],
+                        terminator: MirTerminator::Jump {
+                            target: MirBlockId(3),
+                            args: vec![MirValueId(1)],
+                        },
+                    },
+                    MirBlock {
+                        id: MirBlockId(2),
+                        params: vec![],
+                        instructions: vec![MirInst::Call {
+                            callee: MirCallee::Local("count".to_string()),
+                            args: vec![MirValueId(0), MirValueId(1)],
+                            arg_types: vec![Type::Int, Type::Int],
+                            result: Some(MirValueId(2)),
+                            ret_type: Type::Int,
+                            callee_fail_result_abi: false,
+                            capture_fail_result: false,
+                            cc_manifest_id: "default".to_string(),
+                        }],
+                        terminator: MirTerminator::Jump {
+                            target: MirBlockId(3),
+                            args: vec![MirValueId(2)],
+                        },
+                    },
+                    MirBlock {
+                        id: MirBlockId(3),
+                        params: vec![MirBlockParam {
+                            id: MirValueId(3),
+                            ty: Type::Int,
+                        }],
+                        instructions: vec![MirInst::Nop],
+                        terminator: MirTerminator::Return {
+                            value: Some(MirValueId(3)),
+                        },
+                    },
+                ],
+            }],
+            layouts: MirLayoutCatalog::default(),
+        }
+    }
+
+    fn sample_handler_cell_tail_recursive_through_join_return_module() -> MirModule {
+        MirModule {
+            functions: vec![MirFunction {
+                name: "count".to_string(),
+                signature: MirFunctionSignature {
+                    params: vec![Type::Int, Type::Dynamic],
+                    ret: Type::Int,
+                    effects: EffectRow::closed(vec![(Label::new("State"), Type::Int)]),
+                },
+                entry: MirBlockId(0),
+                blocks: vec![
+                    MirBlock {
+                        id: MirBlockId(0),
+                        params: vec![],
+                        instructions: vec![],
+                        terminator: MirTerminator::Branch {
+                            condition: MirValueId(0),
+                            then_block: MirBlockId(1),
+                            else_block: MirBlockId(2),
+                        },
+                    },
+                    MirBlock {
+                        id: MirBlockId(1),
+                        params: vec![],
+                        instructions: vec![],
+                        terminator: MirTerminator::Jump {
+                            target: MirBlockId(3),
+                            args: vec![MirValueId(0)],
+                        },
+                    },
+                    MirBlock {
+                        id: MirBlockId(2),
+                        params: vec![],
+                        instructions: vec![MirInst::Call {
+                            callee: MirCallee::Local("count".to_string()),
+                            args: vec![MirValueId(0), MirValueId(1)],
+                            arg_types: vec![Type::Int, Type::Dynamic],
+                            result: Some(MirValueId(2)),
+                            ret_type: Type::Int,
+                            callee_fail_result_abi: false,
+                            capture_fail_result: false,
+                            cc_manifest_id: "default".to_string(),
+                        }],
+                        terminator: MirTerminator::Jump {
+                            target: MirBlockId(3),
+                            args: vec![MirValueId(2)],
+                        },
+                    },
+                    MirBlock {
+                        id: MirBlockId(3),
+                        params: vec![MirBlockParam {
+                            id: MirValueId(3),
+                            ty: Type::Int,
+                        }],
+                        instructions: vec![MirInst::Nop],
+                        terminator: MirTerminator::Return {
+                            value: Some(MirValueId(3)),
+                        },
+                    },
+                ],
+            }],
+            layouts: MirLayoutCatalog::default(),
+        }
+    }
+
+    fn sample_handler_cell_tail_recursive_with_rewritten_cell_arg_module() -> MirModule {
+        MirModule {
+            functions: vec![MirFunction {
+                name: "count".to_string(),
+                signature: MirFunctionSignature {
+                    params: vec![Type::Int, Type::Dynamic],
+                    ret: Type::Int,
+                    effects: EffectRow::closed(vec![(Label::new("State"), Type::Int)]),
+                },
+                entry: MirBlockId(0),
+                blocks: vec![MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: MirValueId(2),
+                            literal: MirLiteral::Int(0),
+                        },
+                        MirInst::Call {
+                            callee: MirCallee::Local("count".to_string()),
+                            args: vec![MirValueId(0), MirValueId(2)],
+                            arg_types: vec![Type::Int, Type::Dynamic],
+                            result: Some(MirValueId(3)),
+                            ret_type: Type::Int,
+                            callee_fail_result_abi: false,
+                            capture_fail_result: false,
+                            cc_manifest_id: "default".to_string(),
+                        },
+                    ],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirValueId(3)),
                     },
                 }],
             }],
@@ -5155,6 +5426,36 @@ mod tests {
     }
 
     #[test]
+    fn collect_pass_stats_detects_tail_self_call_through_join_return() {
+        let module = sample_tail_recursive_through_join_return_module();
+        let stats = collect_pass_stats(&module);
+
+        assert_eq!(stats.per_function.len(), 1);
+        let function = &stats.per_function[0];
+        assert_eq!(function.tail_self_call_count, 1);
+    }
+
+    #[test]
+    fn collect_pass_stats_detects_handler_cell_tail_self_call_through_join_return() {
+        let module = sample_handler_cell_tail_recursive_through_join_return_module();
+        let stats = collect_pass_stats(&module);
+
+        assert_eq!(stats.per_function.len(), 1);
+        let function = &stats.per_function[0];
+        assert_eq!(function.tail_self_call_count, 1);
+    }
+
+    #[test]
+    fn collect_pass_stats_rejects_tail_self_call_when_handler_cell_arg_is_rewritten() {
+        let module = sample_handler_cell_tail_recursive_with_rewritten_cell_arg_module();
+        let stats = collect_pass_stats(&module);
+
+        assert_eq!(stats.per_function.len(), 1);
+        let function = &stats.per_function[0];
+        assert_eq!(function.tail_self_call_count, 0);
+    }
+
+    #[test]
     fn cranelift_backend_compiles_jit_pure_module() {
         let module = sample_codegen_module();
         let manifest = default_abi_manifest(&module);
@@ -5683,6 +5984,18 @@ mod tests {
         let artifact = backend
             .compile_module(&module, &manifest, &BackendConfig::default())
             .expect("tail self-call lowering should compile");
+        assert_eq!(artifact.stats.per_function[0].tail_self_call_count, 1);
+    }
+
+    #[test]
+    fn cranelift_backend_compiles_handler_cell_tail_self_call_through_join_return() {
+        let module = sample_handler_cell_tail_recursive_through_join_return_module();
+        let manifest = default_abi_manifest(&module);
+        let backend = CraneliftBackend;
+
+        let artifact = backend
+            .compile_module(&module, &manifest, &BackendConfig::default())
+            .expect("handler-cell tail self-call lowering should compile");
         assert_eq!(artifact.stats.per_function[0].tail_self_call_count, 1);
     }
 

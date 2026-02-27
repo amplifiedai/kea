@@ -17,9 +17,7 @@ use kea_types::{EffectRow, FunctionType, Label, RecordType, RowType, Type};
 #[global_allocator]
 static ALLOC: AllocProfiler = AllocProfiler::system();
 
-// TODO(0e): raise this to 1_000_000 once handler recursion no longer overflows
-// stack in the compiled path.
-const STATE_COUNT_BENCH_N: usize = 100_000;
+const STATE_COUNT_BENCH_N: usize = 1_000_000;
 
 fn main() {
     divan::main();

@@ -2001,6 +2001,45 @@ mod tests {
     }
 
     #[test]
+    fn compile_and_execute_state_tail_handler_count_to_one_million_exit_code() {
+        let source_path = write_temp_source(
+            "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn count_to(n: Int) -[State Int]> Int\n  let i = State.get()\n  if i >= n\n    i\n  else\n    State.put(i + 1)\n    count_to(n)\n\nfn main() -> Int\n  handle count_to(1000000)\n    State.get() -> resume 0\n    State.put(s) -> resume ()\n",
+            "kea-cli-state-tail-handler-count-to-1m",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("state handler 1M run should succeed");
+        assert_eq!(run.exit_code, 1_000_000);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_state_tail_handler_count_to_marks_tail_self_call_in_stats() {
+        let source_path = write_temp_source(
+            "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn count_to(n: Int) -[State Int]> Int\n  let i = State.get()\n  if i >= n\n    i\n  else\n    State.put(i + 1)\n    count_to(n)\n\nfn main() -> Int\n  handle count_to(10)\n    State.get() -> resume 0\n    State.put(s) -> resume ()\n",
+            "kea-cli-state-tail-handler-tail-stats",
+            "kea",
+        );
+
+        let artifact =
+            compile_file(&source_path, CodegenMode::Aot).expect("compile should succeed");
+        let count_to_stats = artifact
+            .stats
+            .per_function
+            .iter()
+            .find(|stats| stats.function.contains("count_to"))
+            .expect("expected stats entry for count_to");
+        assert!(
+            count_to_stats.tail_self_call_count > 0,
+            "expected tail self-call detection in count_to, stats: {:?}",
+            artifact.stats.per_function
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_nested_state_handler_inner_shadows_outer_exit_code() {
         let source_path = write_temp_source(
             "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn read_state() -[State Int]> Int\n  State.get()\n\nfn run_inner() -[State Int]> Int\n  handle read_state()\n    State.get() -> resume 2\n    State.put(s) -> resume ()\n\nfn main() -> Int\n  handle run_inner()\n    State.get() -> resume 9\n    State.put(s) -> resume ()\n",
