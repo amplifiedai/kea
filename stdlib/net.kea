@@ -2,12 +2,12 @@ effect Net
   --| Open a network connection.
   --|
   --|   Net.connect("127.0.0.1:9000")   -- => connection handle
-  fn connect(addr: String) -> Int
+  fn connect(addr: String) -[Net]> Int
   --| Send data on an open connection.
   --|
   --|   Net.send(conn, "ping")
-  fn send(conn: Int, data: String) -> Unit
+  fn send(conn: Int, data: String) -[Net]> Unit
   --| Receive data from a connection.
   --|
   --|   Net.recv(conn, 1024)   -- => bytes read (bootstrap shim)
-  fn recv(conn: Int, size: Int) -> Int
+  fn recv(conn: Int, size: Int) -[Net]> Int
