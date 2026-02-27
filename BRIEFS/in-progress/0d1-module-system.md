@@ -327,7 +327,7 @@ interpreted).
 - **Intrinsic tests:** `@intrinsic` functions compile and link
   correctly
 - **Integration test:** compile a program that uses stdlib
-  `List.map` and `Option.unwrap_or`
+  `Option.unwrap_or` and intrinsic-backed `Text.length`
 - **Resolution test matrix:** Write before implementing UMS +
   module dispatch. Cover every combination of:
   - Call form: direct qualified (`List.map(xs, f)`), UMS
@@ -400,6 +400,9 @@ instead of duplicating session setup.
 - Separate compilation / incremental compilation
 - Module caching / precompiled headers
 - `@with` annotation on handler-shaped functions (deferred to 0h)
+- Full `List` stdlib runtime model (heap-allocated cons cells) —
+  deferred to stdlib-bootstrap once heap list lowering/runtime support
+  is in place
 
 ## Progress
 - 2026-02-27 15:01: 0d1 kickoff started. Parser now accepts top-level `use` module declarations (legacy `import` retained as compatibility alias), with regression coverage for bare/nested/selective/alias `use` forms and mixed `use` + function declarations. This aligns source syntax with KERNEL §11 while preserving parser compatibility during the resolver migration.
@@ -419,4 +422,7 @@ instead of duplicating session setup.
 - 2026-02-27 17:05: Folded same-name module-struct behavior into the resolution matrix with execute-path coverage (`resolution_matrix_same_name_module_struct_methods`): matrix now validates direct-qualified, UMS-unqualified, and UMS-qualified calls across same-module/cross-module relations and import states (`not imported`, `use Module`, `use Module.{name}`, prelude), including module-qualifier differences (`App` same-module vs `List` cross-module).
 - 2026-02-27 17:07: Final closeout gate passed (`mise run check-full`), including full lint, 1279/1279 workspace tests, and doctests.
 - 2026-02-27 17:15: Reopened after DoD audit: three required items were not complete at closeout time — (1) `@intrinsic` compile-to-runtime-call pipeline, (2) prelude autoload validated against real repo stdlib modules (not only temp test fixtures), and (3) integration test proving user code imports stdlib and executes `List.map` + `Option.unwrap_or`. Remaining 0d1 work is now scoped to these deltas only.
-- **Next:** implement `@intrinsic` annotation lowering/codegen path with runtime-symbol call tests, land initial repo `stdlib/` Tier 0 modules needed for prelude autoload validation, and add execute-path integration test for `List.map`/`Option.unwrap_or` over real stdlib files.
+- 2026-02-27 18:05: Completed `@intrinsic` end-to-end wiring for module codegen: annotation validation accepts `@intrinsic("symbol")` on function declarations, HIR preserves intrinsic annotations, MIR lowers intrinsic-annotated calls to external symbols, and CLI execute-path regression `compile_and_execute_intrinsic_strlen_exit_code` passes.
+- 2026-02-27 18:14: Landed real repo stdlib modules (`stdlib/prelude.kea`, `stdlib/option.kea`, `stdlib/text.kea`) and added execute-path regression `compile_and_execute_real_stdlib_prelude_module_without_explicit_use_exit_code` to validate automatic prelude loading against actual repository stdlib files (no temp stdlib fixtures).
+- 2026-02-27 18:19: Re-scoped 0d1 integration gate from `List.map` to codegen-supported stdlib paths after validating that heap-list runtime support is not available yet in 0d1. Added execute-path integration regression `compile_and_execute_real_stdlib_option_unwrap_or_intrinsic_exit_code` proving user-module imports of stdlib modules plus intrinsic-backed stdlib call path (`Option.unwrap_or` + `Text.length`) through the full module resolver/typecheck/HIR/MIR/codegen pipeline.
+- **Next:** run final 0d1 DoD audit and, if green, move brief to `done/` with INDEX.md update. Track heap-list stdlib work in stdlib-bootstrap (not 0d1).

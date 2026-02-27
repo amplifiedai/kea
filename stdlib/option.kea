@@ -1,0 +1,4 @@
+fn unwrap_or(opt: Option Int, fallback: Int) -> Int
+  case opt
+    Some(value) -> value
+    None -> fallback
