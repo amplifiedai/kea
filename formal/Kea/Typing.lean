@@ -4807,6 +4807,78 @@ theorem principalBoundaryNoUnifyCapstoneSlices_field_preconditionedCoreIff
     h_slice h_no h_ok h_hooks).preconditionedCoreIff
 
 /--
+Transport preconditioned expression principality across hook witnesses on the
+same successful `inferExprUnify` run.
+-/
+theorem principalTypingSlicePreconditioned_transport_hooks_of_success
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_pre : PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty) :
+    PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty := by
+  have h_core : PrincipalTypingSliceCore env e ty :=
+    (principalTypingSlicePreconditioned_iff_core_of_success
+      h_app₁ h_proj₁ st fuel env e st' ty h_ok).1 h_pre
+  exact (principalTypingSlicePreconditioned_iff_core_of_success
+      h_app₂ h_proj₂ st fuel env e st' ty h_ok).2 h_core
+
+/--
+Hook irrelevance (expression): on a fixed successful `inferExprUnify` run,
+preconditioned principality is independent of which hook witnesses are used.
+-/
+theorem principalTypingSlicePreconditioned_hook_irrelevant_of_success
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+      ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) := by
+  constructor
+  · intro h_pre
+    exact principalTypingSlicePreconditioned_transport_hooks_of_success h_ok h_pre
+  · intro h_pre
+    exact principalTypingSlicePreconditioned_transport_hooks_of_success h_ok h_pre
+
+/--
+Transport preconditioned field principality across hook witnesses on the same
+successful `inferFieldsUnify` run.
+-/
+theorem principalFieldTypingSlicePreconditioned_transport_hooks_of_success
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_pre : PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf) :
+    PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf := by
+  have h_core : PrincipalFieldTypingSliceCore env fs rf :=
+    (principalFieldTypingSlicePreconditioned_iff_core_of_success
+      h_app₁ h_proj₁ st fuel env fs st' rf h_ok).1 h_pre
+  exact (principalFieldTypingSlicePreconditioned_iff_core_of_success
+      h_app₂ h_proj₂ st fuel env fs st' rf h_ok).2 h_core
+
+/--
+Hook irrelevance (field): on a fixed successful `inferFieldsUnify` run,
+preconditioned field principality is independent of hook witnesses.
+-/
+theorem principalFieldTypingSlicePreconditioned_hook_irrelevant_of_success
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) := by
+  constructor
+  · intro h_pre
+    exact principalFieldTypingSlicePreconditioned_transport_hooks_of_success h_ok h_pre
+  · intro h_pre
+    exact principalFieldTypingSlicePreconditioned_transport_hooks_of_success h_ok h_pre
+
+/--
 `HasTypeU` lift of non-app/proj recursive soundness: on the fragment that never
 executes unification branches, algorithmic inference results are declaratively
 typable in the unification-aware judgment as well.
