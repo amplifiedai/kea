@@ -21705,6 +21705,114 @@ theorem principalBoundaryMasterSuite_preconditionedCoreIff_field_via_dualConsequ
     h_hooks st fuel env fs st' rf h_ok
 
 /--
+Dual-routed variant of `principalNoUnifyCoreExpr_of_success_via_suite`.
+-/
+theorem principalNoUnifyCoreExpr_of_success_via_suite_via_dualConsequenceSlices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_hooks : UnifyHookPremises) :
+    PrincipalTypingSliceCore env e ty := by
+  exact (principalBoundaryBridgeSuite_noUnify_expr
+      principalBoundaryBridgeSuite_proved_via_dualConsequenceSlices h_no h_ok h_hooks).core
+
+/--
+Dual-routed variant of `principalNoUnifyPreconditionedExpr_of_success_via_suite`.
+-/
+theorem principalNoUnifyPreconditionedExpr_of_success_via_suite_via_dualConsequenceSlices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_hooks : UnifyHookPremises) :
+    PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty := by
+  exact (principalBoundaryBridgeSuite_noUnify_expr
+      principalBoundaryBridgeSuite_proved_via_dualConsequenceSlices h_no h_ok h_hooks).preconditioned
+
+/--
+Dual-routed variant of `principalNoUnifyCoreField_of_success_via_suite`.
+-/
+theorem principalNoUnifyCoreField_of_success_via_suite_via_dualConsequenceSlices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_hooks : UnifyHookPremises) :
+    PrincipalFieldTypingSliceCore env fs rf := by
+  exact (principalBoundaryBridgeSuite_noUnify_field
+      principalBoundaryBridgeSuite_proved_via_dualConsequenceSlices h_no h_ok h_hooks).core
+
+/--
+Dual-routed variant of `principalNoUnifyPreconditionedField_of_success_via_suite`.
+-/
+theorem principalNoUnifyPreconditionedField_of_success_via_suite_via_dualConsequenceSlices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_hooks : UnifyHookPremises) :
+    PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf := by
+  exact (principalBoundaryBridgeSuite_noUnify_field
+      principalBoundaryBridgeSuite_proved_via_dualConsequenceSlices h_no h_ok h_hooks).preconditioned
+
+/--
+Dual-routed variant of `principalCoreExpr_of_preconditioned_success_via_suite`.
+-/
+theorem principalCoreExpr_of_preconditioned_success_via_suite_via_dualConsequenceSlices
+    (h_hooks : UnifyHookPremises)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_pre : PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty) :
+    PrincipalTypingSliceCore env e ty := by
+  exact (principalBoundaryBridgeSuite_preconditionedCoreIff_expr
+      principalBoundaryBridgeSuite_proved_via_dualConsequenceSlices
+      h_hooks st fuel env e st' ty h_ok).1 h_pre
+
+/--
+Dual-routed variant of `principalPreconditionedExpr_of_core_success_via_suite`.
+-/
+theorem principalPreconditionedExpr_of_core_success_via_suite_via_dualConsequenceSlices
+    (h_hooks : UnifyHookPremises)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_core : PrincipalTypingSliceCore env e ty) :
+    PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty := by
+  exact (principalBoundaryBridgeSuite_preconditionedCoreIff_expr
+      principalBoundaryBridgeSuite_proved_via_dualConsequenceSlices
+      h_hooks st fuel env e st' ty h_ok).2 h_core
+
+/--
+Dual-routed variant of `principalCoreField_of_preconditioned_success_via_suite`.
+-/
+theorem principalCoreField_of_preconditioned_success_via_suite_via_dualConsequenceSlices
+    (h_hooks : UnifyHookPremises)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_pre : PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf) :
+    PrincipalFieldTypingSliceCore env fs rf := by
+  exact (principalBoundaryBridgeSuite_preconditionedCoreIff_field
+      principalBoundaryBridgeSuite_proved_via_dualConsequenceSlices
+      h_hooks st fuel env fs st' rf h_ok).1 h_pre
+
+/--
+Dual-routed variant of `principalPreconditionedField_of_core_success_via_suite`.
+-/
+theorem principalPreconditionedField_of_core_success_via_suite_via_dualConsequenceSlices
+    (h_hooks : UnifyHookPremises)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_core : PrincipalFieldTypingSliceCore env fs rf) :
+    PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf := by
+  exact (principalBoundaryBridgeSuite_preconditionedCoreIff_field
+      principalBoundaryBridgeSuite_proved_via_dualConsequenceSlices
+      h_hooks st fuel env fs st' rf h_ok).2 h_core
+
+/--
 Surface-layer naming-parity wrappers for no-unify cross-route success APIs.
 These mirror the existing `...from_cross_route_slices` families under
 explicit `...from_cross_route_surface_slices` theorem names.
