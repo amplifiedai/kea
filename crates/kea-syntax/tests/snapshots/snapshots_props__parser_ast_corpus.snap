@@ -1,6 +1,6 @@
 ---
 source: crates/kea-syntax/tests/snapshots_props.rs
-assertion_line: 213
+assertion_line: 224
 expression: output
 ---
 ## module_fn_decl
@@ -63,8 +63,6 @@ Function(
                 },
             },
         },
-        testing: None,
-        testing_tags: [],
         where_clause: [],
     },
 )
@@ -102,18 +100,14 @@ Function(
                 ),
             ),
         },
-        testing: None,
-        testing_tags: [],
         where_clause: [],
     },
 )
 
-## module_expr_decl_testing
+## module_expr_decl
 source:
 |expr·double(x:·Int)·->·Int
 |··x·+·x
-|testing
-|··assert_eq·double(3),·6
 status: ok
 ExprFn(
     ExprDecl {
@@ -166,54 +160,6 @@ ExprFn(
                 },
             },
         },
-        testing: Some(
-            Spanned {
-                node: Call {
-                    func: Spanned {
-                        node: Var(
-                            "assert_eq",
-                        ),
-                    },
-                    args: [
-                        Argument {
-                            label: None,
-                            value: Spanned {
-                                node: Call {
-                                    func: Spanned {
-                                        node: Var(
-                                            "double",
-                                        ),
-                                    },
-                                    args: [
-                                        Argument {
-                                            label: None,
-                                            value: Spanned {
-                                                node: Lit(
-                                                    Int(
-                                                        3,
-                                                    ),
-                                                ),
-                                            },
-                                        },
-                                    ],
-                                },
-                            },
-                        },
-                        Argument {
-                            label: None,
-                            value: Spanned {
-                                node: Lit(
-                                    Int(
-                                        6,
-                                    ),
-                                ),
-                            },
-                        },
-                    ],
-                },
-            },
-        ),
-        testing_tags: [],
         where_clause: [],
     },
 )
@@ -636,8 +582,6 @@ ImplBlock(
                         ),
                     ),
                 },
-                testing: None,
-                testing_tags: [],
                 where_clause: [],
             },
         ],
@@ -809,8 +753,6 @@ ImplBlock(
                         ),
                     ),
                 },
-                testing: None,
-                testing_tags: [],
                 where_clause: [],
             },
         ],
@@ -844,8 +786,6 @@ Function(
                 ),
             ),
         },
-        testing: None,
-        testing_tags: [],
         where_clause: [],
     },
 )

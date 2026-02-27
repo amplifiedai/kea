@@ -1549,12 +1549,6 @@ impl Parser {
         let where_clause = self.where_clause()?;
 
         let body = self.parse_block_expr("expected function body block")?;
-        let (testing, testing_tags) = if self.check(&TokenKind::Testing) {
-            let (tags, block) = self.testing_block()?;
-            (Some(Box::new(block)), tags)
-        } else {
-            (None, vec![])
-        };
         let end = self.current_span();
 
         Some(Spanned::new(
@@ -1567,8 +1561,6 @@ impl Parser {
                 return_annotation,
                 effect_annotation,
                 body,
-                testing,
-                testing_tags,
                 span: start.merge(end),
                 where_clause,
             }),
@@ -1597,12 +1589,6 @@ impl Parser {
         let where_clause = self.where_clause()?;
 
         let body = self.parse_block_expr("expected expr body block")?;
-        let (testing, testing_tags) = if self.check(&TokenKind::Testing) {
-            let (tags, block) = self.testing_block()?;
-            (Some(Box::new(block)), tags)
-        } else {
-            (None, vec![])
-        };
         let end = self.current_span();
 
         Some(Spanned::new(
@@ -1615,20 +1601,11 @@ impl Parser {
                 return_annotation,
                 effect_annotation,
                 body,
-                testing,
-                testing_tags,
                 span: start.merge(end),
                 where_clause,
             }),
             start.merge(end),
         ))
-    }
-
-    fn testing_block(&mut self) -> Option<(Vec<Spanned<String>>, Expr)> {
-        self.expect(&TokenKind::Testing, "expected `testing`")?;
-        let tags = self.parse_optional_tags_clause()?;
-        let body = self.parse_block_expr("expected testing block body")?;
-        Some((tags, body))
     }
 
     fn test_decl(&mut self, start: Span) -> Option<Decl> {
@@ -3043,7 +3020,8 @@ impl Parser {
             body: Spanned::new(ExprKind::Var("v".to_string()), start),
         };
 
-        let err_body = self.desugar_fail_call(Spanned::new(ExprKind::Var("e".to_string()), start), start);
+        let err_body =
+            self.desugar_fail_call(Spanned::new(ExprKind::Var("e".to_string()), start), start);
         let err_arm = CaseArm {
             pattern: Spanned::new(
                 PatternKind::Constructor {
@@ -6104,7 +6082,6 @@ mod tests {
                 assert_eq!(f.name.node, "add");
                 assert!(f.doc.is_none());
                 assert_eq!(f.params.len(), 2);
-                assert!(f.testing.is_none());
             }
             _ => panic!("expected Function"),
         }
@@ -6136,31 +6113,18 @@ mod tests {
     }
 
     #[test]
-    fn parse_fn_decl_with_postfix_testing_block() {
-        let module =
-            parse_mod("fn double(x: Int) -> Int\n  x + x\ntesting\n  assert_eq double(3), 6");
-        match &module.declarations[0].node {
-            DeclKind::Function(f) => {
-                assert!(f.testing.is_some(), "expected postfix testing block");
-                assert!(f.testing_tags.is_empty());
-            }
-            other => panic!("expected Function, got {other:?}"),
-        }
+    fn parse_fn_decl_rejects_postfix_testing_block() {
+        let errors =
+            parse_mod_err("fn double(x: Int) -> Int\n  x + x\ntesting\n  assert_eq double(3), 6");
+        assert!(!errors.is_empty(), "expected parser error");
     }
 
     #[test]
-    fn parse_fn_decl_with_postfix_testing_tags() {
-        let module = parse_mod(
+    fn parse_fn_decl_rejects_postfix_testing_tags() {
+        let errors = parse_mod_err(
             "fn double(x: Int) -> Int\n  x + x\ntesting tags [:fast, :unit]\n  assert_eq double(3), 6",
         );
-        match &module.declarations[0].node {
-            DeclKind::Function(f) => {
-                assert_eq!(f.testing_tags.len(), 2);
-                assert_eq!(f.testing_tags[0].node, "fast");
-                assert_eq!(f.testing_tags[1].node, "unit");
-            }
-            other => panic!("expected Function, got {other:?}"),
-        }
+        assert!(!errors.is_empty(), "expected parser error");
     }
 
     #[test]
@@ -7511,7 +7475,6 @@ mod tests {
                 assert_eq!(ed.params.len(), 1);
                 assert_eq!(ed.params[0].name().unwrap(), "x");
                 assert!(ed.return_annotation.is_some());
-                assert!(ed.testing.is_none());
             }
             other => panic!("expected ExprFn, got {other:?}"),
         }
@@ -7530,15 +7493,10 @@ mod tests {
     }
 
     #[test]
-    fn parse_expr_with_postfix_testing_block() {
-        let m = parse_mod("expr double(x: Int) -> Int\n  x + x\ntesting\n  assert_eq double(0), 0");
-        match &m.declarations[0].node {
-            DeclKind::ExprFn(ed) => {
-                assert!(ed.testing.is_some(), "expected postfix testing block");
-                assert!(ed.testing_tags.is_empty());
-            }
-            other => panic!("expected ExprFn, got {other:?}"),
-        }
+    fn parse_expr_rejects_postfix_testing_block() {
+        let errors =
+            parse_mod_err("expr double(x: Int) -> Int\n  x + x\ntesting\n  assert_eq double(0), 0");
+        assert!(!errors.is_empty(), "expected parser error");
     }
 
     #[test]

@@ -164,8 +164,6 @@ fn expr_decl_to_fn_decl(expr: &ExprDecl) -> FnDecl {
         return_annotation: expr.return_annotation.clone(),
         effect_annotation: expr.effect_annotation.clone(),
         body: expr.body.clone(),
-        testing: expr.testing.clone(),
-        testing_tags: expr.testing_tags.clone(),
         span: expr.span,
         where_clause: expr.where_clause.clone(),
     }
@@ -821,12 +819,9 @@ fn lower_type_annotation(annotation: &TypeAnnotation) -> Type {
             "Unit" => Type::Unit,
             _ => Type::Dynamic,
         },
-        TypeAnnotation::Tuple(items) => Type::Tuple(
-            items
-                .iter()
-                .map(lower_type_annotation)
-                .collect(),
-        ),
+        TypeAnnotation::Tuple(items) => {
+            Type::Tuple(items.iter().map(lower_type_annotation).collect())
+        }
         TypeAnnotation::Function(params, ret) => Type::Function(FunctionType::pure(
             params.iter().map(lower_type_annotation).collect(),
             lower_type_annotation(ret),

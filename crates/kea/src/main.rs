@@ -4,7 +4,7 @@ use std::process::Command as ProcessCommand;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use kea::{compile_file, emit_diagnostics, run_file};
+use kea::{compile_file, emit_diagnostics, run_file, run_test_file};
 use kea_codegen::CodegenMode;
 
 static TEMP_NONCE: AtomicU64 = AtomicU64::new(0);
@@ -56,6 +56,50 @@ fn run() -> Result<(), String> {
             }
             Ok(())
         }
+        Command::Test { input } => {
+            let result = run_test_file(&input)?;
+            if result.cases.is_empty() {
+                println!("no tests found in {}", input.display());
+                return Ok(());
+            }
+
+            let mut passed = 0usize;
+            let mut failed = 0usize;
+            for case in result.cases {
+                if case.passed {
+                    passed += 1;
+                    println!(
+                        "ok   {} ({} run{})",
+                        case.name,
+                        case.iterations,
+                        if case.iterations == 1 { "" } else { "s" }
+                    );
+                } else {
+                    failed += 1;
+                    match case.error {
+                        Some(err) => println!(
+                            "FAIL {} ({} run{}): {}",
+                            case.name,
+                            case.iterations,
+                            if case.iterations == 1 { "" } else { "s" },
+                            err
+                        ),
+                        None => println!(
+                            "FAIL {} ({} run{})",
+                            case.name,
+                            case.iterations,
+                            if case.iterations == 1 { "" } else { "s" }
+                        ),
+                    }
+                }
+            }
+
+            println!("{passed} passed; {failed} failed");
+            if failed > 0 {
+                std::process::exit(1);
+            }
+            Ok(())
+        }
     }
 }
 
@@ -67,6 +111,9 @@ enum Command {
     Build {
         input: PathBuf,
         output: Option<PathBuf>,
+    },
+    Test {
+        input: PathBuf,
     },
 }
 
@@ -101,12 +148,15 @@ fn parse_cli(args: &[String]) -> Result<Command, String> {
 
             Ok(Command::Build { input, output })
         }
+        "test" => Ok(Command::Test {
+            input: PathBuf::from(&args[2]),
+        }),
         _ => Err(usage()),
     }
 }
 
 fn usage() -> String {
-    "usage:\n  kea run <file.kea>\n  kea build <file.kea> [-o output|output.o]".to_string()
+    "usage:\n  kea run <file.kea>\n  kea build <file.kea> [-o output|output.o]\n  kea test <file.kea>".to_string()
 }
 
 fn default_build_output_path(input: &Path) -> PathBuf {
@@ -174,11 +224,51 @@ mod tests {
     }
 
     #[test]
+    fn parse_test_command() {
+        let args = vec![
+            "kea".to_string(),
+            "test".to_string(),
+            "suite.kea".to_string(),
+        ];
+        let command = parse_cli(&args).expect("cli parse should succeed");
+        assert_eq!(
+            command,
+            Command::Test {
+                input: PathBuf::from("suite.kea"),
+            }
+        );
+    }
+
+    #[test]
     fn default_build_output_path_strips_extension() {
         assert_eq!(
             default_build_output_path(Path::new("examples/hello.kea")),
             PathBuf::from("examples/hello")
         );
+    }
+
+    #[test]
+    fn run_test_file_reports_pass_and_fail_without_stopping() {
+        let source_path = write_temp_source(
+            "effect Fail E\n  fn fail(error: E) -> Never\n\nfn assert(value: Bool) -[Fail String]> Unit\n  if value\n    ()\n  else\n    Fail.fail(\"assertion failed\")\n\ntest \"pass\"\n  assert true\n\ntest \"fail\"\n  assert false\n",
+            "kea-cli-test-runner",
+            "kea",
+        );
+
+        let run = run_test_file(&source_path).expect("test run should succeed");
+        assert_eq!(run.cases.len(), 2);
+        assert!(
+            run.cases
+                .iter()
+                .any(|case| case.name == "pass" && case.passed)
+        );
+        assert!(
+            run.cases
+                .iter()
+                .any(|case| case.name == "fail" && !case.passed)
+        );
+
+        let _ = std::fs::remove_file(source_path);
     }
 
     #[test]

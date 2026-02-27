@@ -2,7 +2,10 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use kea_ast::{DeclKind, ExprDecl, FileId, FnDecl, ImportItems, Module, Span, TypeDef};
+use kea_ast::{
+    DeclKind, ExprDecl, FileId, FnDecl, ImportItems, Module, Span, TestDecl, TypeAnnotation,
+    TypeDef,
+};
 use kea_codegen::{
     Backend, BackendConfig, CodegenMode, CraneliftBackend, PassStats, default_abi_manifest,
     execute_hir_main_jit,
@@ -13,9 +16,8 @@ use kea_infer::typeck::{
     RecordRegistry, SumTypeRegistry, TraitRegistry, TypeEnv, apply_where_clause,
     infer_and_resolve_in_context, infer_fn_decl_effect_row, register_builtin_int_bitwise_methods,
     register_effect_decl, register_fn_effect_signature, register_fn_signature,
-    seed_fn_where_type_params_in_context,
-    validate_declared_fn_effect_row_with_env_and_records, validate_module_annotations,
-    validate_module_fn_annotations, validate_where_clause_traits,
+    seed_fn_where_type_params_in_context, validate_declared_fn_effect_row_with_env_and_records,
+    validate_module_annotations, validate_module_fn_annotations, validate_where_clause_traits,
 };
 use kea_infer::{Category, InferenceContext};
 use kea_mir::lower_hir_module;
@@ -40,6 +42,20 @@ pub struct CompileResult {
 pub struct RunResult {
     pub exit_code: i32,
     pub diagnostics: Vec<Diagnostic>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TestCaseResult {
+    pub name: String,
+    pub passed: bool,
+    pub iterations: usize,
+    pub diagnostics: Vec<Diagnostic>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TestRunResult {
+    pub cases: Vec<TestCaseResult>,
 }
 
 #[derive(Debug, Clone)]
@@ -152,6 +168,99 @@ pub fn compile_file(input: &Path, mode: CodegenMode) -> Result<CompileResult, St
 pub fn run_file(input: &Path) -> Result<RunResult, String> {
     let ctx = compile_project(input)?;
     execute_jit(&ctx)
+}
+
+pub fn run_test_file(input: &Path) -> Result<TestRunResult, String> {
+    let loaded_modules = collect_project_modules(input)?;
+    let entry_module_path = module_path_from_entry(input);
+    let Some(entry_module) = loaded_modules
+        .iter()
+        .find(|module| module.module_path == entry_module_path)
+    else {
+        return Err(format!(
+            "entry module `{entry_module_path}` was not found during test discovery"
+        ));
+    };
+
+    let (prepared_entry_module, tests) = strip_test_decls_for_runner(&entry_module.module);
+    if tests.is_empty() {
+        return Ok(TestRunResult { cases: Vec::new() });
+    }
+
+    let prepared_modules = loaded_modules
+        .into_iter()
+        .map(|loaded| {
+            if loaded.module_path == entry_module_path {
+                LoadedModule {
+                    module: prepared_entry_module.clone(),
+                    ..loaded
+                }
+            } else {
+                loaded
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let mut results = Vec::with_capacity(tests.len());
+    for test in tests {
+        let mut scenario_modules = prepared_modules.clone();
+        let scenario_entry = scenario_modules
+            .iter_mut()
+            .find(|module| module.module_path == entry_module_path)
+            .ok_or_else(|| {
+                format!("entry module `{entry_module_path}` is missing in test scenario")
+            })?;
+
+        scenario_entry
+            .module
+            .declarations
+            .retain(|decl| !is_main_decl(decl));
+        let main_decl = build_test_main_decl(&test.function_name, scenario_entry.module.span.file)?;
+        scenario_entry.module.declarations.push(main_decl);
+
+        let mut result = TestCaseResult {
+            name: test.name,
+            passed: true,
+            iterations: test.iterations,
+            diagnostics: Vec::new(),
+            error: None,
+        };
+
+        for _ in 0..test.iterations {
+            match typecheck_loaded_modules(&scenario_modules, &entry_module_path) {
+                Ok(ctx) => {
+                    result.diagnostics.extend(ctx.diagnostics.clone());
+                    match execute_jit(&ctx) {
+                        Ok(run) => {
+                            result.diagnostics.extend(run.diagnostics);
+                            if run.exit_code != 0 {
+                                result.passed = false;
+                                result.error = Some(format!(
+                                    "test returned non-zero exit code {}",
+                                    run.exit_code
+                                ));
+                                break;
+                            }
+                        }
+                        Err(err) => {
+                            result.passed = false;
+                            result.error = Some(err);
+                            break;
+                        }
+                    }
+                }
+                Err(err) => {
+                    result.passed = false;
+                    result.error = Some(err);
+                    break;
+                }
+            }
+        }
+
+        results.push(result);
+    }
+
+    Ok(TestRunResult { cases: results })
 }
 
 pub fn emit_diagnostics(diags: &[Diagnostic]) {
@@ -425,6 +534,89 @@ fn apply_hardcoded_prelude_reexports(env: &mut TypeEnv, traits: &TraitRegistry) 
     }
 }
 
+#[derive(Debug, Clone)]
+struct RunnerTestCase {
+    name: String,
+    function_name: String,
+    iterations: usize,
+}
+
+fn strip_test_decls_for_runner(module: &Module) -> (Module, Vec<RunnerTestCase>) {
+    let mut declarations = Vec::new();
+    let mut tests = Vec::new();
+    let mut next_test_idx: usize = 0;
+
+    for decl in &module.declarations {
+        match &decl.node {
+            DeclKind::Test(test_decl) => {
+                let generated_name = format!("__kea_test_case_{next_test_idx}");
+                next_test_idx += 1;
+                declarations.push(test_decl_to_fn_decl(test_decl, &generated_name));
+                tests.push(RunnerTestCase {
+                    name: test_decl.name.node.clone(),
+                    function_name: generated_name,
+                    iterations: test_decl.iterations.unwrap_or(if test_decl.is_property {
+                        100
+                    } else {
+                        1
+                    }),
+                });
+            }
+            _ => declarations.push(decl.clone()),
+        }
+    }
+
+    (
+        Module {
+            declarations,
+            span: module.span,
+        },
+        tests,
+    )
+}
+
+fn test_decl_to_fn_decl(test_decl: &TestDecl, generated_name: &str) -> kea_ast::Decl {
+    let fn_decl = FnDecl {
+        public: false,
+        name: kea_ast::Spanned::new(generated_name.to_string(), test_decl.name.span),
+        doc: None,
+        annotations: Vec::new(),
+        params: Vec::new(),
+        return_annotation: Some(kea_ast::Spanned::new(
+            TypeAnnotation::Named("Unit".to_string()),
+            test_decl.span,
+        )),
+        effect_annotation: None,
+        body: test_decl.body.clone(),
+        span: test_decl.span,
+        where_clause: Vec::new(),
+    };
+    kea_ast::Spanned::new(DeclKind::Function(fn_decl), test_decl.span)
+}
+
+fn is_main_decl(decl: &kea_ast::Decl) -> bool {
+    match &decl.node {
+        DeclKind::Function(fn_decl) => fn_decl.name.node == "main",
+        DeclKind::ExprFn(expr_decl) => expr_decl.name.node == "main",
+        _ => false,
+    }
+}
+
+fn build_test_main_decl(test_fn_name: &str, file_id: FileId) -> Result<kea_ast::Decl, String> {
+    let source = format!(
+        "fn main() -> Int\n  let r = catch {test_fn_name}()\n  case r\n    Ok(_) -> 0\n    Err(_) -> 1\n"
+    );
+    let (tokens, _) = lex_layout(&source, file_id)
+        .map_err(|diags| format_diagnostics("lexing failed", &diags))?;
+    let module = parse_module(tokens, file_id)
+        .map_err(|diags| format_diagnostics("parsing failed", &diags))?;
+    module
+        .declarations
+        .into_iter()
+        .next()
+        .ok_or_else(|| "failed to build synthetic test main declaration".to_string())
+}
+
 fn collect_project_modules(entry: &Path) -> Result<Vec<LoadedModule>, String> {
     struct VisitState {
         next_file_id: u32,
@@ -559,6 +751,13 @@ fn merge_modules_for_codegen(modules: &[(String, Module)]) -> Module {
 fn parse_and_typecheck_project(entry: &Path) -> Result<CompilationContext, String> {
     let loaded_modules = collect_project_modules(entry)?;
     let entry_module_path = module_path_from_entry(entry);
+    typecheck_loaded_modules(&loaded_modules, &entry_module_path)
+}
+
+fn typecheck_loaded_modules(
+    loaded_modules: &[LoadedModule],
+    entry_module_path: &str,
+) -> Result<CompilationContext, String> {
     let prelude_modules: BTreeSet<String> = configured_prelude_modules().into_iter().collect();
     let mut env = TypeEnv::new();
     register_builtin_int_bitwise_methods(&mut env);
@@ -568,7 +767,7 @@ fn parse_and_typecheck_project(entry: &Path) -> Result<CompilationContext, Strin
     let mut diagnostics = Vec::new();
     let mut typed_modules = Vec::new();
 
-    for loaded in &loaded_modules {
+    for loaded in loaded_modules {
         let is_entry_module = loaded.module_path == entry_module_path;
         let is_prelude_module = prelude_modules.contains(&loaded.module_path);
         let alias_snapshot = (!is_entry_module).then(|| env.snapshot_module_aliases());
@@ -1206,8 +1405,6 @@ fn expr_decl_to_fn_decl(expr: &ExprDecl) -> FnDecl {
         return_annotation: expr.return_annotation.clone(),
         effect_annotation: expr.effect_annotation.clone(),
         body: expr.body.clone(),
-        testing: expr.testing.clone(),
-        testing_tags: expr.testing_tags.clone(),
         span: expr.span,
         where_clause: expr.where_clause.clone(),
     }

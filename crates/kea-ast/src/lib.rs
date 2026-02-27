@@ -643,10 +643,6 @@ pub struct FnDecl {
     pub return_annotation: Option<Spanned<TypeAnnotation>>,
     pub effect_annotation: Option<Spanned<EffectAnnotation>>,
     pub body: Expr,
-    /// Optional postfix unit-test block: `fn f(...) { ... } testing { ... }`.
-    pub testing: Option<Box<Expr>>,
-    /// Optional tags attached to postfix `testing` block.
-    pub testing_tags: Vec<Spanned<String>>,
     pub span: Span,
     pub where_clause: Vec<TraitBound>,
 }
@@ -689,10 +685,6 @@ pub struct ExprDecl {
     pub return_annotation: Option<Spanned<TypeAnnotation>>,
     pub effect_annotation: Option<Spanned<EffectAnnotation>>,
     pub body: Expr,
-    /// Optional postfix unit-test block: `expr f(...) -> T { ... } testing { ... }`.
-    pub testing: Option<Box<Expr>>,
-    /// Optional tags attached to postfix `testing` block.
-    pub testing_tags: Vec<Spanned<String>>,
     pub span: Span,
     pub where_clause: Vec<TraitBound>,
 }

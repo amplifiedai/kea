@@ -82,9 +82,9 @@ fn parser_snapshot_corpus() {
             source: "fn read() -[impure]> String\n  \"ok\"",
         },
         ParseCase {
-            name: "module_expr_decl_testing",
+            name: "module_expr_decl",
             mode: ParseMode::Module,
-            source: "expr double(x: Int) -> Int\n  x + x\ntesting\n  assert_eq double(3), 6",
+            source: "expr double(x: Int) -> Int\n  x + x",
         },
         ParseCase {
             name: "module_test_decl",
