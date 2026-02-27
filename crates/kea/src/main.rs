@@ -1184,6 +1184,20 @@ mod tests {
     }
 
     #[test]
+    fn compile_and_execute_anon_record_pattern_or_literal_exit_code() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  let user = #{ age: 4, score: 9 }\n  case user\n    #{ age: 3, .. } | #{ age: 4, .. } -> 6\n    _ -> 2\n",
+            "kea-cli-anon-record-pattern-or",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 6);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_anon_record_literal_field_access_exit_code() {
         let source_path = write_temp_source(
             "fn main() -> Int\n  let user = #{ age: 4, score: 9 }\n  user.age\n",
