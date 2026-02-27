@@ -2,16 +2,16 @@ effect IO
   --| Write a string to stdout.
   --|
   --|   IO.stdout("hello")
-  fn stdout(msg: String) -> Unit
+  fn stdout(msg: String) -[IO]> Unit
   --| Write a string to stderr.
   --|
   --|   IO.stderr("warning")
-  fn stderr(msg: String) -> Unit
+  fn stderr(msg: String) -[IO]> Unit
   --| Write file contents to disk.
   --|
   --|   IO.write_file("out.txt", "data")
-  fn write_file(path: String, data: String) -> Unit
+  fn write_file(path: String, data: String) -[IO]> Unit
   --| Read file contents from disk.
   --|
   --|   IO.read_file("out.txt")   -- => "data"
-  fn read_file(path: String) -> String
+  fn read_file(path: String) -[IO]> String

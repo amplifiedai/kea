@@ -1012,10 +1012,7 @@ impl Parser {
             let effect_annotation = self.parse_required_return_arrow_effect(
                 "effect operations require a return type: add `-> Type` after the parameter list",
             )?;
-            if let Some(effect_annotation) = effect_annotation {
-                let _ = effect_annotation;
-                self.error_at_current("effect operations cannot declare their own effect arrow");
-            }
+            let _ = effect_annotation;
             let return_annotation = self.type_annotation()?;
             let where_clause = self.where_clause()?;
             if !where_clause.is_empty() {
@@ -6643,14 +6640,16 @@ mod tests {
     }
 
     #[test]
-    fn parse_effect_operation_effect_arrow_is_error() {
-        let errors = parse_mod_err("effect Log\n  fn log(msg: String) -[IO]> Unit");
-        assert!(
-            errors.iter().any(|d| d
-                .message
-                .contains("effect operations cannot declare their own effect arrow")),
-            "expected effect-operation-arrow diagnostic, got {errors:?}"
-        );
+    fn parse_effect_operation_effect_arrow_is_allowed() {
+        let m = parse_mod("effect Log\n  fn log(msg: String) -[Log]> Unit");
+        match &m.declarations[0].node {
+            DeclKind::EffectDecl(def) => {
+                assert_eq!(def.name.node, "Log");
+                assert_eq!(def.operations.len(), 1);
+                assert_eq!(def.operations[0].name.node, "log");
+            }
+            other => panic!("expected EffectDecl, got {other:?}"),
+        }
     }
 
     // -- Trait parsing --
