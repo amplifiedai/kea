@@ -5587,6 +5587,155 @@ theorem principalPreconditionedFieldAllHooksRunBundle_of_success_from_bundle
     h_seed.1 h_seed.2 h_ok
 
 /--
+Project the core expression principality consequence from a run-level all-hooks
+bundle.
+-/
+theorem principalPreconditionedExprAllHooksRunBundle_core
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_bundle : PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty) :
+    PrincipalTypingSliceCore env e ty :=
+  h_bundle.capstone.core
+
+/--
+Project the any-hooks expression preconditioned principality consequence from a
+run-level all-hooks bundle.
+-/
+theorem principalPreconditionedExprAllHooksRunBundle_preconditioned_anyHooks
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_bundle : PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty) :
+    ∀ h_app h_proj,
+      PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty :=
+  h_bundle.capstone.preconditionedAny
+
+/--
+Project the bundled-hook expression preconditioned principality consequence from
+a run-level all-hooks bundle.
+-/
+theorem principalPreconditionedExprAllHooksRunBundle_preconditioned
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_bundle : PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty)
+    (h_hooks : UnifyHookPremises) :
+    PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty :=
+  h_bundle.capstone.preconditionedAny h_hooks.1 h_hooks.2
+
+/--
+Project the any-hooks expression preconditioned↔core equivalence consequence
+from a run-level all-hooks bundle.
+-/
+theorem principalPreconditionedExprAllHooksRunBundle_preconditionedCoreIff_anyHooks
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_bundle : PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty) :
+    ∀ h_app h_proj,
+      (PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty
+        ↔ PrincipalTypingSliceCore env e ty) :=
+  h_bundle.capstone.preconditionedAnyIffCore
+
+/--
+Project the bundled-hook expression preconditioned↔core equivalence consequence
+from a run-level all-hooks bundle.
+-/
+theorem principalPreconditionedExprAllHooksRunBundle_preconditionedCoreIff
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_bundle : PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty)
+    (h_hooks : UnifyHookPremises) :
+    (PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty
+      ↔ PrincipalTypingSliceCore env e ty) :=
+  h_bundle.capstone.preconditionedAnyIffCore h_hooks.1 h_hooks.2
+
+/--
+Project fixed-run expression hook-irrelevance from a run-level all-hooks
+bundle.
+-/
+theorem principalPreconditionedExprAllHooksRunBundle_hook_irrelevant
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    (h_bundle : PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty) :
+    (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+      ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) :=
+  h_bundle.hookIrrelevant
+
+/--
+Project the core field principality consequence from a run-level all-hooks
+bundle.
+-/
+theorem principalPreconditionedFieldAllHooksRunBundle_core
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_bundle : PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf) :
+    PrincipalFieldTypingSliceCore env fs rf :=
+  h_bundle.capstone.core
+
+/--
+Project the any-hooks field preconditioned principality consequence from a
+run-level all-hooks bundle.
+-/
+theorem principalPreconditionedFieldAllHooksRunBundle_preconditioned_anyHooks
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_bundle : PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf) :
+    ∀ h_app h_proj,
+      PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf :=
+  h_bundle.capstone.preconditionedAny
+
+/--
+Project the bundled-hook field preconditioned principality consequence from a
+run-level all-hooks bundle.
+-/
+theorem principalPreconditionedFieldAllHooksRunBundle_preconditioned
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_bundle : PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf)
+    (h_hooks : UnifyHookPremises) :
+    PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf :=
+  h_bundle.capstone.preconditionedAny h_hooks.1 h_hooks.2
+
+/--
+Project the any-hooks field preconditioned↔core equivalence consequence from a
+run-level all-hooks bundle.
+-/
+theorem principalPreconditionedFieldAllHooksRunBundle_preconditionedCoreIff_anyHooks
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_bundle : PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf) :
+    ∀ h_app h_proj,
+      (PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf
+        ↔ PrincipalFieldTypingSliceCore env fs rf) :=
+  h_bundle.capstone.preconditionedAnyIffCore
+
+/--
+Project the bundled-hook field preconditioned↔core equivalence consequence from
+a run-level all-hooks bundle.
+-/
+theorem principalPreconditionedFieldAllHooksRunBundle_preconditionedCoreIff
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_bundle : PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf)
+    (h_hooks : UnifyHookPremises) :
+    (PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSliceCore env fs rf) :=
+  h_bundle.capstone.preconditionedAnyIffCore h_hooks.1 h_hooks.2
+
+/--
+Project fixed-run field hook-irrelevance from a run-level all-hooks bundle.
+-/
+theorem principalPreconditionedFieldAllHooksRunBundle_hook_irrelevant
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    (h_bundle : PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf) :
+    (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
+  h_bundle.hookIrrelevant
+
+/--
 Packaged arbitrary-success expression run-bundle slice for all-hooks principality.
 -/
 def PrincipalPreconditionedAllHooksRunBundleExprSlice : Prop :=
