@@ -21756,6 +21756,33 @@ theorem principalRowPolyBoundaryBundle_dual
   principalDualConsequenceSlices_of_principalBoundaryMasterSuite h_bundle.principalBoundary
 
 /--
+Build the row-polymorphic boundary bundle from the dual principal slice plus
+an explicit hook-free vertical slice witness.
+-/
+theorem principalRowPolyBoundaryBundle_of_dual_and_vertical
+    (h_dual : PrincipalDualConsequenceSlices)
+    (h_vertical : VerticalHookFreeUnifySlices) :
+    PrincipalRowPolyBoundaryBundle := by
+  refine {
+    principalBoundary := principalBoundaryMasterSuite_of_dualConsequenceSlices h_dual
+    hookFreeVertical := h_vertical
+  }
+
+/--
+The row-polymorphic boundary package is equivalent to providing:
+- a dual principal consequence slice witness, and
+- a hook-free vertical slice witness.
+-/
+theorem principalRowPolyBoundaryBundle_iff_dual_and_vertical :
+    PrincipalRowPolyBoundaryBundle
+      ↔ (PrincipalDualConsequenceSlices ∧ VerticalHookFreeUnifySlices) := by
+  constructor
+  · intro h_bundle
+    exact ⟨principalRowPolyBoundaryBundle_dual h_bundle, h_bundle.hookFreeVertical⟩
+  · intro h_pair
+    exact principalRowPolyBoundaryBundle_of_dual_and_vertical h_pair.1 h_pair.2
+
+/--
 Expression preconditioned↔core wrapper on the dual-routed proved master suite.
 -/
 theorem principalBoundaryMasterSuite_preconditionedCoreIff_expr_via_dualConsequenceSlices
