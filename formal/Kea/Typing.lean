@@ -6963,6 +6963,32 @@ theorem principalPreconditionedFieldAllHooksCapstone_of_success_noUnify
     (principalBoundaryNoUnifyFieldAllHooksCapstone_of_success h_no h_ok)
 
 /--
+No-unify-to-general convenience wrapper: construct an expression run-bundle from
+a successful no-unify run.
+-/
+theorem principalPreconditionedExprAllHooksRunBundle_of_success_noUnify_via_generalAllHooks
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty :=
+  principalPreconditionedExprAllHooksRunBundle_of_capstone
+    (principalPreconditionedExprAllHooksCapstone_of_success_noUnify h_no h_ok)
+
+/--
+No-unify-to-general convenience wrapper: construct a field run-bundle from a
+successful no-unify field run.
+-/
+theorem principalPreconditionedFieldAllHooksRunBundle_of_success_noUnify_via_generalAllHooks
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf :=
+  principalPreconditionedFieldAllHooksRunBundle_of_capstone
+    (principalPreconditionedFieldAllHooksCapstone_of_success_noUnify h_no h_ok)
+
+/--
 No-unify-to-general convenience wrapper: derive core expression principality
 from a successful no-unify run using the general all-hooks capstone surface.
 -/
@@ -8677,6 +8703,20 @@ theorem principalCoreExpr_of_success_noUnify_via_masterSuite
   principalNoUnifyCoreExpr_of_success_via_masterSuite h_suite h_no h_ok
 
 /--
+Master-suite no-unify-to-general convenience wrapper: derive the expression
+run-bundle surface from a successful no-unify run.
+-/
+theorem principalPreconditionedExprAllHooksRunBundle_of_success_noUnify_via_masterSuite
+    (h_suite : PrincipalBoundaryMasterSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty :=
+  principalBoundaryMasterSuite_noUnifyToGeneralAllHooks_runBundle_expr
+    h_suite h_no h_ok
+
+/--
 Master-suite no-unify-to-general convenience wrapper: derive preconditioned
 expression principality for any hook witnesses from a successful no-unify run.
 -/
@@ -8827,6 +8867,20 @@ theorem principalCoreField_of_success_noUnify_via_masterSuite
     (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
     PrincipalFieldTypingSliceCore env fs rf :=
   principalNoUnifyCoreField_of_success_via_masterSuite h_suite h_no h_ok
+
+/--
+Master-suite no-unify-to-general convenience wrapper: derive the field
+run-bundle surface from a successful no-unify field run.
+-/
+theorem principalPreconditionedFieldAllHooksRunBundle_of_success_noUnify_via_masterSuite
+    (h_suite : PrincipalBoundaryMasterSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf :=
+  principalBoundaryMasterSuite_noUnifyToGeneralAllHooks_runBundle_field
+    h_suite h_no h_ok
 
 /--
 Master-suite no-unify-to-general convenience wrapper: derive preconditioned
@@ -9044,6 +9098,19 @@ theorem principalCoreExpr_of_success_noUnify_via_allHooksSuite
   principalNoUnifyCoreExpr_of_success_via_allHooksSuite h_no h_ok
 
 /--
+All-hooks-suite no-unify-to-general convenience wrapper: derive the expression
+run-bundle surface from a successful no-unify run.
+-/
+theorem principalPreconditionedExprAllHooksRunBundle_of_success_noUnify_via_allHooksSuite
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty :=
+  principalNoUnifyToGeneralAllHooksSuite_runBundle_expr
+    principalNoUnifyToGeneralAllHooksSuite_proved_via_noUnifyAllHooks h_no h_ok
+
+/--
 All-hooks-suite no-unify-to-general convenience wrapper: derive preconditioned
 expression principality for any hook witnesses from a successful no-unify run.
 -/
@@ -9183,6 +9250,19 @@ theorem principalCoreField_of_success_noUnify_via_allHooksSuite
     (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
     PrincipalFieldTypingSliceCore env fs rf :=
   principalNoUnifyCoreField_of_success_via_allHooksSuite h_no h_ok
+
+/--
+All-hooks-suite no-unify-to-general convenience wrapper: derive the field
+run-bundle surface from a successful no-unify field run.
+-/
+theorem principalPreconditionedFieldAllHooksRunBundle_of_success_noUnify_via_allHooksSuite
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf :=
+  principalNoUnifyToGeneralAllHooksSuite_runBundle_field
+    principalNoUnifyToGeneralAllHooksSuite_proved_via_noUnifyAllHooks h_no h_ok
 
 /--
 All-hooks-suite no-unify-to-general convenience wrapper: derive preconditioned
