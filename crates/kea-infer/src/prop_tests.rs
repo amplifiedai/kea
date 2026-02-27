@@ -13,12 +13,14 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use proptest::prelude::*;
 use kea_ast::{FileId, ParamLabel, Span};
 use kea_types::*;
+use proptest::prelude::*;
 
+use crate::typeck::{
+    RecordRegistry, SolveOutcome, TraitGoal, TraitRegistry, check_expr_in_context,
+};
 use crate::{Provenance, Reason, Unifier};
-use crate::typeck::{RecordRegistry, SolveOutcome, TraitGoal, TraitRegistry, check_expr_in_context};
 
 /// Check if a type contains Dynamic anywhere (including nested).
 fn contains_dynamic(ty: &Type) -> bool {
@@ -36,11 +38,12 @@ fn contains_dynamic(ty: &Type) -> bool {
         Type::Tagged { inner, .. } => contains_dynamic(inner),
         Type::Result(a, b) | Type::Map(a, b) => contains_dynamic(a) || contains_dynamic(b),
         Type::Tuple(elems) => elems.iter().any(contains_dynamic),
-        Type::Function(ft) => {
-            ft.params.iter().any(contains_dynamic) || contains_dynamic(&ft.ret)
-        }
+        Type::Function(ft) => ft.params.iter().any(contains_dynamic) || contains_dynamic(&ft.ret),
         Type::Record(rt) => rt.row.fields.iter().any(|(_, ty)| contains_dynamic(ty)),
-        Type::Sum(st) => st.variants.iter().any(|(_, fields)| fields.iter().any(contains_dynamic)),
+        Type::Sum(st) => st
+            .variants
+            .iter()
+            .any(|(_, fields)| fields.iter().any(contains_dynamic)),
         _ => false,
     }
 }
@@ -956,9 +959,9 @@ fn contains_var(ty: &Type, var: TypeVarId) -> bool {
         Type::AnonRecord(row) | Type::Row(row) => {
             row.fields.iter().any(|(_, t)| contains_var(t, var))
         }
-        Type::Tagged { inner, .. }
-        | Type::Actor(inner)
-        | Type::Arc(inner) => contains_var(inner, var),
+        Type::Tagged { inner, .. } | Type::Actor(inner) | Type::Arc(inner) => {
+            contains_var(inner, var)
+        }
         _ => false,
     }
 }
@@ -1166,9 +1169,9 @@ fn contains_function(ty: &Type) -> bool {
         Type::AnonRecord(row) | Type::Row(row) => {
             row.fields.iter().any(|(_, t)| contains_function(t))
         }
-        Type::Tagged { inner, .. }
-        | Type::Actor(inner)
-        | Type::Arc(inner) => contains_function(inner),
+        Type::Tagged { inner, .. } | Type::Actor(inner) | Type::Arc(inner) => {
+            contains_function(inner)
+        }
         _ => false,
     }
 }
@@ -1463,9 +1466,7 @@ fn register_container_with_projected_defaults(
     let item_assoc = kea_ast::AssociatedTypeDecl {
         name: sp_ast("Item".to_string()),
         constraints: vec![],
-        default: Some(sp_ast(kea_ast::TypeAnnotation::Named(
-            "String".to_string(),
-        ))),
+        default: Some(sp_ast(kea_ast::TypeAnnotation::Named("String".to_string()))),
     };
     let associated_types = if wrapped_first {
         vec![wrapped_assoc, item_assoc]

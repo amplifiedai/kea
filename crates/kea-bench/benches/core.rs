@@ -26,7 +26,10 @@ fn lex_parse_numeric_module(bencher: Bencher, line_count: usize) {
     bencher.bench(|| {
         let (tokens, warnings) = lex_layout(black_box(&source), FileId(0))
             .unwrap_or_else(|diags| panic!("lexing failed in benchmark setup: {diags:?}"));
-        assert!(warnings.is_empty(), "unexpected lexer warnings: {warnings:?}");
+        assert!(
+            warnings.is_empty(),
+            "unexpected lexer warnings: {warnings:?}"
+        );
         let module = parse_module(tokens, FileId(0))
             .unwrap_or_else(|diags| panic!("parsing failed in benchmark setup: {diags:?}"));
         black_box(module.declarations.len())
@@ -39,7 +42,10 @@ fn lex_parse_string_transform_module(bencher: Bencher, line_count: usize) {
     bencher.bench(|| {
         let (tokens, warnings) = lex_layout(black_box(&source), FileId(0))
             .unwrap_or_else(|diags| panic!("lexing failed in benchmark setup: {diags:?}"));
-        assert!(warnings.is_empty(), "unexpected lexer warnings: {warnings:?}");
+        assert!(
+            warnings.is_empty(),
+            "unexpected lexer warnings: {warnings:?}"
+        );
         let module = parse_module(tokens, FileId(0))
             .unwrap_or_else(|diags| panic!("parsing failed in benchmark setup: {diags:?}"));
         black_box(module.declarations.len())
@@ -73,12 +79,7 @@ fn infer_numeric_module(bencher: Bencher, line_count: usize) {
             let mut ctx = InferenceContext::new();
             let expr = fn_decl.to_let_expr();
             let _ = infer_and_resolve_in_context(
-                &expr,
-                &mut env,
-                &mut ctx,
-                &records,
-                &traits,
-                &sum_types,
+                &expr, &mut env, &mut ctx, &records, &traits, &sum_types,
             );
 
             if ctx.has_errors() {
@@ -183,7 +184,10 @@ fn build_numeric_module_ast(line_count: usize) -> Module {
     let source = build_numeric_source(line_count);
     let (tokens, warnings) = lex_layout(&source, FileId(0))
         .unwrap_or_else(|diags| panic!("lexing failed in benchmark setup: {diags:?}"));
-    assert!(warnings.is_empty(), "unexpected lexer warnings: {warnings:?}");
+    assert!(
+        warnings.is_empty(),
+        "unexpected lexer warnings: {warnings:?}"
+    );
     parse_module(tokens, FileId(0))
         .unwrap_or_else(|diags| panic!("parsing failed in benchmark setup: {diags:?}"))
 }

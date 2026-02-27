@@ -236,8 +236,11 @@ mod tests {
         std::fs::create_dir_all(&src_dir).expect("source dir should be created");
         std::fs::create_dir_all(&stdlib_dir).expect("stdlib dir should be created");
 
-        std::fs::write(stdlib_dir.join("prelude.kea"), "fn inc(x: Int) -> Int\n  x + 1\n")
-            .expect("prelude module write should succeed");
+        std::fs::write(
+            stdlib_dir.join("prelude.kea"),
+            "fn inc(x: Int) -> Int\n  x + 1\n",
+        )
+        .expect("prelude module write should succeed");
         let app_path = src_dir.join("app.kea");
         std::fs::write(&app_path, "fn main() -> Int\n  Prelude.inc(41)\n")
             .expect("app module write should succeed");
@@ -278,10 +281,16 @@ mod tests {
         let app_path = src_dir.join("app.kea");
         std::fs::write(&app_path, "use A\nfn main() -> Int\n  A.value()\n")
             .expect("app module write should succeed");
-        std::fs::write(src_dir.join("a.kea"), "use B\nfn value() -> Int\n  B.other()\n")
-            .expect("module A write should succeed");
-        std::fs::write(src_dir.join("b.kea"), "use A\nfn other() -> Int\n  A.value()\n")
-            .expect("module B write should succeed");
+        std::fs::write(
+            src_dir.join("a.kea"),
+            "use B\nfn value() -> Int\n  B.other()\n",
+        )
+        .expect("module A write should succeed");
+        std::fs::write(
+            src_dir.join("b.kea"),
+            "use A\nfn other() -> Int\n  A.value()\n",
+        )
+        .expect("module B write should succeed");
 
         let err = run_file(&app_path).expect_err("circular import should fail");
         assert!(
@@ -343,10 +352,9 @@ mod tests {
             MatrixCallForm::DirectQualified | MatrixCallForm::UmsQualified => {
                 !matches!(import_state, MatrixImportState::NotImported)
             }
-            MatrixCallForm::UmsUnqualified => matches!(
-                import_state,
-                MatrixImportState::UseModuleNamed
-            ),
+            MatrixCallForm::UmsUnqualified => {
+                matches!(import_state, MatrixImportState::UseModuleNamed)
+            }
         }
     }
 
@@ -378,7 +386,8 @@ mod tests {
         for relation in relations {
             for import_state in import_states {
                 for call_form in call_forms {
-                    let expect_success = matrix_inherent_expected(call_form, import_state, relation);
+                    let expect_success =
+                        matrix_inherent_expected(call_form, import_state, relation);
                     let project_dir = temp_project_dir("kea-cli-resolution-matrix-inherent");
                     let src_dir = project_dir.join("src");
                     let stdlib_dir = project_dir.join("stdlib");
@@ -631,7 +640,8 @@ mod tests {
         );
         let output_path = temp_artifact_path("kea-cli-aot-sum-case", "bin");
 
-        let compiled = compile_file(&source_path, CodegenMode::Aot).expect("aot compile should work");
+        let compiled =
+            compile_file(&source_path, CodegenMode::Aot).expect("aot compile should work");
         link_object_bytes(&compiled.object, &output_path).expect("link should work");
 
         let status = std::process::Command::new(&output_path)
@@ -653,7 +663,8 @@ mod tests {
         );
         let output_path = temp_artifact_path("kea-cli-aot-io-stdout", "bin");
 
-        let compiled = compile_file(&source_path, CodegenMode::Aot).expect("aot compile should work");
+        let compiled =
+            compile_file(&source_path, CodegenMode::Aot).expect("aot compile should work");
         link_object_bytes(&compiled.object, &output_path).expect("link should work");
 
         let output = std::process::Command::new(&output_path)
@@ -680,7 +691,8 @@ mod tests {
         );
         let output_path = temp_artifact_path("kea-cli-aot-io-stdout-concat", "bin");
 
-        let compiled = compile_file(&source_path, CodegenMode::Aot).expect("aot compile should work");
+        let compiled =
+            compile_file(&source_path, CodegenMode::Aot).expect("aot compile should work");
         link_object_bytes(&compiled.object, &output_path).expect("link should work");
 
         let output = std::process::Command::new(&output_path)
@@ -701,10 +713,7 @@ mod tests {
     #[cfg(not(target_os = "windows"))]
     fn compile_jit_and_aot_exit_code_parity_corpus() {
         let cases = [
-            (
-                "fn main() -> Int\n  let x = 40\n  x + 2\n",
-                42,
-            ),
+            ("fn main() -> Int\n  let x = 40\n  x + 2\n", 42),
             (
                 "record User\n  age: Int\n\nfn main() -> Int\n  let u = User { age: 41 }\n  u.age + 1\n",
                 42,
@@ -727,16 +736,18 @@ mod tests {
             let name = format!("kea-cli-jit-aot-parity-{idx}");
             let source_path = write_temp_source(source, &name, "kea");
 
-            let jit = run_file(&source_path)
-                .unwrap_or_else(|err| panic!("jit run should succeed for parity case {idx}: {err}"));
+            let jit = run_file(&source_path).unwrap_or_else(|err| {
+                panic!("jit run should succeed for parity case {idx}: {err}")
+            });
             assert_eq!(
                 jit.exit_code, *expected_exit,
                 "jit exit mismatch for parity case {idx}"
             );
 
             let output_path = temp_artifact_path(&name, "bin");
-            let compiled = compile_file(&source_path, CodegenMode::Aot)
-                .unwrap_or_else(|err| panic!("aot compile should work for parity case {idx}: {err}"));
+            let compiled = compile_file(&source_path, CodegenMode::Aot).unwrap_or_else(|err| {
+                panic!("aot compile should work for parity case {idx}: {err}")
+            });
             link_object_bytes(&compiled.object, &output_path).expect("link should work");
 
             let status = std::process::Command::new(&output_path)
@@ -846,7 +857,12 @@ mod tests {
         );
 
         let compiled = compile_file(&source_path, CodegenMode::Jit).expect("compile should work");
-        let alloc_count: usize = compiled.stats.per_function.iter().map(|f| f.alloc_count).sum();
+        let alloc_count: usize = compiled
+            .stats
+            .per_function
+            .iter()
+            .map(|f| f.alloc_count)
+            .sum();
         let release_count: usize = compiled
             .stats
             .per_function
@@ -1064,7 +1080,8 @@ mod tests {
             "kea",
         );
 
-        let err = run_file(&source_path).expect_err("run should reject unresolved trait dispatch target");
+        let err =
+            run_file(&source_path).expect_err("run should reject unresolved trait dispatch target");
         assert!(
             err.contains("unresolved qualified call target `Inc.inc`"),
             "expected unresolved qualified call target diagnostic, got: {err}"

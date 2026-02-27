@@ -336,13 +336,18 @@ fn traits_with_actor() -> TraitRegistry {
     traits
 }
 
-
 fn apply_first_arg(left: Expr, right: Expr) -> Expr {
     match right.node {
         ExprKind::Call { func, args } => {
-            let mut combined_args = vec![Argument { label: None, value: left }];
+            let mut combined_args = vec![Argument {
+                label: None,
+                value: left,
+            }];
             combined_args.extend(args);
-            sp(ExprKind::Call { func, args: combined_args })
+            sp(ExprKind::Call {
+                func,
+                args: combined_args,
+            })
         }
         _ => call(right, vec![left]),
     }
@@ -554,7 +559,6 @@ fn infer_with_context(expr: &Expr) -> (Type, InferenceContext) {
     let ty = infer_and_resolve_in_context(expr, &mut env, &mut ctx, &records, &traits, &sum_types);
     (ty, ctx)
 }
-
 
 fn make_record_def(name: &str, fields: Vec<(&str, TypeAnnotation)>) -> RecordDef {
     RecordDef {
@@ -2119,7 +2123,6 @@ fn infer_unit_literal() {
     assert_eq!(ty, Type::Unit);
 }
 
-
 // ===========================================================================
 // Variable lookup
 // ===========================================================================
@@ -3363,7 +3366,11 @@ fn infer_arithmetic() {
 fn infer_concat_strings() {
     let expr = binop(BinOp::Concat, lit_str("hello "), lit_str("world"));
     let (ty, u) = infer(&expr);
-    assert!(!u.has_errors(), "string concat should type-check: {:?}", u.errors());
+    assert!(
+        !u.has_errors(),
+        "string concat should type-check: {:?}",
+        u.errors()
+    );
     assert_eq!(ty, Type::String);
 }
 
@@ -3507,7 +3514,6 @@ fn infer_in_with_range() {
     assert!(!u.has_errors(), "`in` with range should type-check");
     assert_eq!(ty, Type::Bool);
 }
-
 
 // ===========================================================================
 // Tuples and lists
@@ -5383,7 +5389,9 @@ fn annotation_reports_parametric_sum_arity_mismatch_in_inference() {
         assert!(
             unifier.errors().iter().any(|diag| {
                 diag.category == Category::ArityMismatch
-                    && diag.message.contains("type `Either` expects 2 type arguments")
+                    && diag
+                        .message
+                        .contains("type `Either` expects 2 type arguments")
                     && diag.message.contains(&format!("got {expected_got}"))
             }),
             "expected arity-mismatch diagnostic for got={expected_got}, got: {:?}",
@@ -5445,10 +5453,7 @@ fn builtin_constructor_arity_mismatch_rejected() {
     );
 
     // Decimal(18) — too few args (needs precision + scale)
-    let ann = TypeAnnotation::Applied(
-        "Decimal".to_string(),
-        vec![TypeAnnotation::DimLiteral(18)],
-    );
+    let ann = TypeAnnotation::Applied("Decimal".to_string(), vec![TypeAnnotation::DimLiteral(18)]);
     assert!(
         resolve_annotation(&ann, &records, Some(&sums)).is_none(),
         "Decimal(18) should be rejected"
@@ -5627,10 +5632,7 @@ fn infer_list_of_bare_decimal_annotation_typechecks() {
 #[test]
 fn dim_literal_in_non_dim_constructor_emits_diagnostic() {
     // List(1) should produce a clear error, not silently become a type variable.
-    let ann = TypeAnnotation::Applied(
-        "List".to_string(),
-        vec![TypeAnnotation::DimLiteral(1)],
-    );
+    let ann = TypeAnnotation::Applied("List".to_string(), vec![TypeAnnotation::DimLiteral(1)]);
     let expr = sp(ExprKind::Lambda {
         params: vec![Param {
             label: ParamLabel::Implicit,
@@ -5642,17 +5644,16 @@ fn dim_literal_in_non_dim_constructor_emits_diagnostic() {
         return_annotation: Some(sp(ann)),
     });
     let (_ty, u) = infer(&expr);
-    assert!(
-        u.has_errors(),
-        "List(1) should produce a type error"
-    );
+    assert!(u.has_errors(), "List(1) should produce a type error");
     assert!(
         u.errors().iter().any(|d| {
-            d.message.contains("integer literal")
-                && d.message.contains("not valid as a type")
+            d.message.contains("integer literal") && d.message.contains("not valid as a type")
         }),
         "expected dim-literal diagnostic, got: {:?}",
-        u.errors().iter().map(|d| d.message.clone()).collect::<Vec<_>>()
+        u.errors()
+            .iter()
+            .map(|d| d.message.clone())
+            .collect::<Vec<_>>()
     );
 }
 
@@ -5856,7 +5857,6 @@ fn ascription_rejects_anon_record_indirection_into_named_record() {
         u.errors()[0].message
     );
 }
-
 
 #[test]
 fn bare_record_annotation_creates_open_row() {
@@ -6763,7 +6763,14 @@ fn effect_operation_call_infers_declared_effect_label() {
     );
 
     let mut unifier = Unifier::new();
-    let ty = infer_and_resolve(&wrapper.body, &mut env, &mut unifier, &records, &traits, &sums);
+    let ty = infer_and_resolve(
+        &wrapper.body,
+        &mut env,
+        &mut unifier,
+        &records,
+        &traits,
+        &sums,
+    );
     assert_eq!(ty, Type::Unit);
     assert!(!unifier.has_errors(), "type errors: {:?}", unifier.errors());
 }
@@ -6839,14 +6846,20 @@ fn curried_annotated_callback_param_uses_effect_row_unification_not_pure_functio
             ),
         )],
         body: Box::new(sp(ExprKind::Lambda {
-            params: vec![annotated_param("x", TypeAnnotation::Named("Int".to_string()))],
+            params: vec![annotated_param(
+                "x",
+                TypeAnnotation::Named("Int".to_string()),
+            )],
             body: Box::new(call(var("f"), vec![var("x")])),
             return_annotation: Some(sp(TypeAnnotation::Named("Unit".to_string()))),
         })),
         return_annotation: None,
     });
     let logger = sp(ExprKind::Lambda {
-        params: vec![annotated_param("y", TypeAnnotation::Named("Int".to_string()))],
+        params: vec![annotated_param(
+            "y",
+            TypeAnnotation::Named("Int".to_string()),
+        )],
         body: Box::new(call(field_access(var("Log"), "log"), vec![var("y")])),
         return_annotation: Some(sp(TypeAnnotation::Named("Unit".to_string()))),
     });
@@ -6857,10 +6870,7 @@ fn curried_annotated_callback_param_uses_effect_row_unification_not_pure_functio
         block(vec![
             let_bind("apply", apply),
             let_bind("logger", logger),
-            call(
-                call(var("apply"), vec![var("logger")]),
-                vec![lit_int(42)],
-            ),
+            call(call(var("apply"), vec![var("logger")]), vec![lit_int(42)]),
         ]),
     );
 
@@ -6908,7 +6918,10 @@ fn curried_unannotated_callback_application_propagates_effect_row_from_argument(
 
     let apply = lambda(&["f"], lambda(&["x"], call(var("f"), vec![var("x")])));
     let logger = sp(ExprKind::Lambda {
-        params: vec![annotated_param("y", TypeAnnotation::Named("Int".to_string()))],
+        params: vec![annotated_param(
+            "y",
+            TypeAnnotation::Named("Int".to_string()),
+        )],
         body: Box::new(call(field_access(var("Log"), "log"), vec![var("y")])),
         return_annotation: Some(sp(TypeAnnotation::Named("Unit".to_string()))),
     });
@@ -6918,10 +6931,7 @@ fn curried_unannotated_callback_application_propagates_effect_row_from_argument(
         block(vec![
             let_bind("apply", apply),
             let_bind("logger", logger),
-            call(
-                call(var("apply"), vec![var("logger")]),
-                vec![lit_int(42)],
-            ),
+            call(call(var("apply"), vec![var("logger")]), vec![lit_int(42)]),
         ]),
     );
 
@@ -6983,7 +6993,14 @@ fn handle_expression_removes_handled_effect_from_row() {
     );
 
     let mut unifier = Unifier::new();
-    let ty = infer_and_resolve(&wrapper.body, &mut env, &mut unifier, &records, &traits, &sums);
+    let ty = infer_and_resolve(
+        &wrapper.body,
+        &mut env,
+        &mut unifier,
+        &records,
+        &traits,
+        &sums,
+    );
     assert_eq!(ty, Type::Unit);
     assert!(!unifier.has_errors(), "type errors: {:?}", unifier.errors());
 }
@@ -7064,12 +7081,18 @@ fn handler_effect_union_is_idempotent_for_residual_trace() {
         vec![],
         vec![make_effect_operation(
             "emit",
-            vec![annotated_param("value", TypeAnnotation::Named("Int".to_string()))],
+            vec![annotated_param(
+                "value",
+                TypeAnnotation::Named("Int".to_string()),
+            )],
             TypeAnnotation::Named("Unit".to_string()),
         )],
     );
     let log_diags = register_effect_decl(&log, &records, Some(&sums), &mut env);
-    assert!(log_diags.is_empty(), "unexpected diagnostics: {log_diags:?}");
+    assert!(
+        log_diags.is_empty(),
+        "unexpected diagnostics: {log_diags:?}"
+    );
     let trace_diags = register_effect_decl(&trace, &records, Some(&sums), &mut env);
     assert!(
         trace_diags.is_empty(),
@@ -7118,10 +7141,9 @@ fn resume_outside_handler_is_type_error() {
     let mut unifier = Unifier::new();
     let _ = infer_and_resolve(&expr, &mut env, &mut unifier, &records, &traits, &sums);
     assert!(
-        unifier
-            .errors()
-            .iter()
-            .any(|d| d.message.contains("only valid inside a matching handler clause")),
+        unifier.errors().iter().any(|d| d
+            .message
+            .contains("only valid inside a matching handler clause")),
         "expected resume-outside-handler diagnostic, got {:?}",
         unifier.errors()
     );
@@ -7342,7 +7364,10 @@ fn catch_style_handle_typechecks_to_result_and_removes_fail() {
         vec!["E"],
         vec![make_effect_operation(
             "fail",
-            vec![annotated_param("error", TypeAnnotation::Named("E".to_string()))],
+            vec![annotated_param(
+                "error",
+                TypeAnnotation::Named("E".to_string()),
+            )],
             TypeAnnotation::Named("Int".to_string()),
         )],
     );
@@ -7395,10 +7420,9 @@ fn catch_reports_error_when_body_cannot_fail() {
     let mut unifier = Unifier::new();
     let _ = infer_and_resolve(&expr, &mut env, &mut unifier, &records, &traits, &sums);
     assert!(
-        unifier
-            .errors()
-            .iter()
-            .any(|d| d.message.contains("expression cannot fail; catch is unnecessary")),
+        unifier.errors().iter().any(|d| d
+            .message
+            .contains("expression cannot fail; catch is unnecessary")),
         "expected catch precondition diagnostic, got {:?}",
         unifier.errors()
     );
@@ -7438,15 +7462,18 @@ fn catch_reports_error_when_body_has_non_fail_effects_only() {
         constructor("Err", vec![var("error")]),
     );
     let then_clause = lambda(&["value"], constructor("Ok", vec![var("value")]));
-    let expr = handle_expr(call(var("pureish"), vec![]), vec![clause], Some(then_clause));
+    let expr = handle_expr(
+        call(var("pureish"), vec![]),
+        vec![clause],
+        Some(then_clause),
+    );
 
     let mut unifier = Unifier::new();
     let _ = infer_and_resolve(&expr, &mut env, &mut unifier, &records, &traits, &sums);
     assert!(
-        unifier
-            .errors()
-            .iter()
-            .any(|d| d.message.contains("expression cannot fail; catch is unnecessary")),
+        unifier.errors().iter().any(|d| d
+            .message
+            .contains("expression cannot fail; catch is unnecessary")),
         "expected catch precondition diagnostic, got {:?}",
         unifier.errors()
     );
@@ -7465,7 +7492,10 @@ fn catch_with_log_and_fail_preserves_log_and_removes_fail() {
         vec!["E"],
         vec![make_effect_operation(
             "fail",
-            vec![annotated_param("error", TypeAnnotation::Named("E".to_string()))],
+            vec![annotated_param(
+                "error",
+                TypeAnnotation::Named("E".to_string()),
+            )],
             TypeAnnotation::Named("Never".to_string()),
         )],
     );
@@ -7504,7 +7534,11 @@ fn catch_with_log_and_fail_preserves_log_and_removes_fail() {
         constructor("Err", vec![var("error")]),
     );
     let then_clause = lambda(&["value"], constructor("Ok", vec![var("value")]));
-    let expr = handle_expr(call(var("with_fail"), vec![]), vec![clause], Some(then_clause));
+    let expr = handle_expr(
+        call(var("with_fail"), vec![]),
+        vec![clause],
+        Some(then_clause),
+    );
 
     let mut unifier = Unifier::new();
     let ty = infer_and_resolve(&expr, &mut env, &mut unifier, &records, &traits, &sums);
@@ -7516,7 +7550,10 @@ fn catch_with_log_and_fail_preserves_log_and_removes_fail() {
 
     let wrapper = make_fn_decl("wrapper", vec![], expr);
     let row = infer_fn_decl_effect_row(&wrapper, &env);
-    assert!(row.row.has(&Label::new("Log")), "expected Log to remain, got {row:?}");
+    assert!(
+        row.row.has(&Label::new("Log")),
+        "expected Log to remain, got {row:?}"
+    );
     assert!(
         !row.row.has(&Label::new("Fail")),
         "expected Fail to be removed, got {row:?}"
@@ -7539,7 +7576,10 @@ fn catch_over_higher_order_fail_parameter_is_accepted() {
         vec!["E"],
         vec![make_effect_operation(
             "fail",
-            vec![annotated_param("error", TypeAnnotation::Named("E".to_string()))],
+            vec![annotated_param(
+                "error",
+                TypeAnnotation::Named("E".to_string()),
+            )],
             TypeAnnotation::Named("Never".to_string()),
         )],
     );
@@ -7581,10 +7621,9 @@ fn catch_over_higher_order_fail_parameter_is_accepted() {
     let mut unifier = Unifier::new();
     let ty = infer_and_resolve(&outer, &mut env, &mut unifier, &records, &traits, &sums);
     assert!(
-        !unifier
-            .errors()
-            .iter()
-            .any(|d| d.message.contains("expression cannot fail; catch is unnecessary")),
+        !unifier.errors().iter().any(|d| d
+            .message
+            .contains("expression cannot fail; catch is unnecessary")),
         "catch over higher-order fail parameter should NOT be rejected, got: {:?}",
         unifier.errors()
     );
@@ -7614,7 +7653,10 @@ fn fail_operation_with_never_return_type_acts_as_bottom_in_branches() {
         vec!["E"],
         vec![make_effect_operation(
             "fail",
-            vec![annotated_param("error", TypeAnnotation::Named("E".to_string()))],
+            vec![annotated_param(
+                "error",
+                TypeAnnotation::Named("E".to_string()),
+            )],
             TypeAnnotation::Named("Never".to_string()),
         )],
     );
@@ -7624,7 +7666,10 @@ fn fail_operation_with_never_return_type_acts_as_bottom_in_branches() {
     let expr = if_expr(
         lit_bool(true),
         lit_int(7),
-        Some(call(field_access(var("Fail"), "fail"), vec![lit_str("boom")])),
+        Some(call(
+            field_access(var("Fail"), "fail"),
+            vec![lit_str("boom")],
+        )),
     );
     let mut unifier = Unifier::new();
     let ty = infer_and_resolve(&expr, &mut env, &mut unifier, &records, &traits, &sums);
@@ -8144,10 +8189,7 @@ fn infer_expr_effects_direct_curried_call_preserves_returned_callable_effect_row
     let trap = make_fn_decl(
         "trap",
         vec![],
-        call(
-            call(var("apply"), vec![var("logger")]),
-            vec![lit_int(42)],
-        ),
+        call(call(var("apply"), vec![var("logger")]), vec![lit_int(42)]),
     );
     let row = infer_fn_decl_effect_row(&trap, &env);
     assert!(
@@ -8221,10 +8263,7 @@ fn validate_declared_fn_effect_rejects_legacy_impure_contract_annotation() {
 #[test]
 fn validate_declared_fn_effect_accepts_open_row_with_concrete_entries() {
     let mut fn_decl = make_fn_decl("f", vec![], lit_int(1));
-    fn_decl.effect_annotation = Some(sp(effect_row_annotation(
-        vec![("IO", None)],
-        Some("e"),
-    )));
+    fn_decl.effect_annotation = Some(sp(effect_row_annotation(vec![("IO", None)], Some("e"))));
     let inferred = Effects::impure();
     assert!(validate_declared_fn_effect(&fn_decl, inferred).is_ok());
 }
@@ -8254,8 +8293,7 @@ fn effect_row_subsumption_rejects_inferred_extra_effects() {
     let err = unify_effect_row_subsumption(&actual, &declared, s())
         .expect_err("closed declared row should reject inferred extra effects");
     assert!(
-        err.message
-            .contains("declared effect row is too weak"),
+        err.message.contains("declared effect row is too weak"),
         "unexpected message: {}",
         err.message
     );
@@ -8289,8 +8327,7 @@ fn validate_declared_fn_effect_rejects_multiple_incompatible_fail_payloads() {
     let err = validate_declared_fn_effect(&fn_decl, inferred)
         .expect_err("multiple incompatible Fail payloads should be rejected");
     assert!(
-        err.message
-            .contains("multiple incompatible `Fail` entries"),
+        err.message.contains("multiple incompatible `Fail` entries"),
         "unexpected message: {}",
         err.message
     );
@@ -8464,8 +8501,9 @@ fn validate_trait_method_impl_contract_with_env_rejects_non_propagating_polymorp
     )
     .expect_err("non-propagating polymorphic impl should be rejected");
     assert!(
-        err.message
-            .contains("declared effect `-[impl_e]>` on `run` does not match body effect propagation"),
+        err.message.contains(
+            "declared effect `-[impl_e]>` on `run` does not match body effect propagation"
+        ),
         "unexpected message: {}",
         err.message
     );
@@ -9681,7 +9719,6 @@ fn error_msg_field_type_mismatch() {
     assert_eq!(errors[0].category, kea_diag::Category::TypeMismatch);
 }
 
-
 #[test]
 fn error_msg_lacks_violation_record_context() {
     // Lacks violation in record context says "field", not "column"
@@ -9700,7 +9737,6 @@ fn error_msg_lacks_violation_record_context() {
     assert!(msg.contains("cannot add field `x`"), "got: {msg}");
     assert!(msg.contains("the record already has a field"), "got: {msg}");
 }
-
 
 #[test]
 fn error_msg_function_context_uses_field() {
@@ -9762,7 +9798,8 @@ fn call_missing_field_emits_single_diagnostic() {
         })
         .count();
     assert_eq!(
-        missing_age_count, 1,
+        missing_age_count,
+        1,
         "expected one missing-field diagnostic for `age`, got {:?}",
         u.errors()
     );
@@ -10912,10 +10949,7 @@ fn seed_fn_where_type_params_registers_kinded_constructor_var() {
     let Some(Type::Var(f_tv)) = unifier.annotation_type_param("F").cloned() else {
         panic!("F should be seeded as a type variable");
     };
-    assert_eq!(
-        unifier.type_var_kinds.get(&f_tv),
-        Some(&Kind::Star)
-    );
+    assert_eq!(unifier.type_var_kinds.get(&f_tv), Some(&Kind::Star));
     assert!(
         unifier
             .trait_bounds
@@ -10983,10 +11017,7 @@ fn seed_fn_where_type_params_uses_matching_kind_for_multi_param_trait() {
     let Some(Type::Var(f_tv)) = unifier.annotation_type_param("F").cloned() else {
         panic!("F should be seeded as a type variable");
     };
-    assert_eq!(
-        unifier.type_var_kinds.get(&f_tv),
-        Some(&Kind::Star)
-    );
+    assert_eq!(unifier.type_var_kinds.get(&f_tv), Some(&Kind::Star));
 }
 
 #[test]
@@ -11198,10 +11229,7 @@ fn fn_decl_annotations_support_constructor_application_type_vars() {
             .is_some_and(|bounds| bounds.contains("Applicative")),
         "generalized scheme should preserve Applicative bound on F"
     );
-    assert_eq!(
-        scheme.kinds.get(&f_tv),
-        Some(&Kind::Star)
-    );
+    assert_eq!(scheme.kinds.get(&f_tv), Some(&Kind::Star));
 }
 
 #[test]
@@ -11757,7 +11785,6 @@ fn trait_bound_enforcement_end_to_end() {
 // =========================================================================
 // frame literal parsing
 // =========================================================================
-
 
 // ---------------------------------------------------------------------------
 // Actor trait enforcement on spawn
@@ -15126,12 +15153,18 @@ fn handle_mismatched_effect_preserves_body_effects_without_phantom_io() {
         vec![],
         vec![make_effect_operation(
             "emit",
-            vec![annotated_param("value", TypeAnnotation::Named("Int".to_string()))],
+            vec![annotated_param(
+                "value",
+                TypeAnnotation::Named("Int".to_string()),
+            )],
             TypeAnnotation::Named("Unit".to_string()),
         )],
     );
     let log_diags = register_effect_decl(&log, &records, Some(&sums), &mut env);
-    assert!(log_diags.is_empty(), "unexpected diagnostics: {log_diags:?}");
+    assert!(
+        log_diags.is_empty(),
+        "unexpected diagnostics: {log_diags:?}"
+    );
     let trace_diags = register_effect_decl(&trace, &records, Some(&sums), &mut env);
     assert!(
         trace_diags.is_empty(),
@@ -15184,12 +15217,18 @@ fn handle_mismatched_effect_preserves_reverse_direction_without_phantom_io() {
         vec![],
         vec![make_effect_operation(
             "emit",
-            vec![annotated_param("value", TypeAnnotation::Named("Int".to_string()))],
+            vec![annotated_param(
+                "value",
+                TypeAnnotation::Named("Int".to_string()),
+            )],
             TypeAnnotation::Named("Unit".to_string()),
         )],
     );
     let log_diags = register_effect_decl(&log, &records, Some(&sums), &mut env);
-    assert!(log_diags.is_empty(), "unexpected diagnostics: {log_diags:?}");
+    assert!(
+        log_diags.is_empty(),
+        "unexpected diagnostics: {log_diags:?}"
+    );
     let trace_diags = register_effect_decl(&trace, &records, Some(&sums), &mut env);
     assert!(
         trace_diags.is_empty(),

@@ -1000,7 +1000,10 @@ impl Parser {
             let op_doc = self.consume_doc_comment_block();
             self.expect(&TokenKind::Fn, "expected 'fn' in effect declaration")?;
             let op_name = self.expect_ident("expected effect operation name")?;
-            self.expect(&TokenKind::LParen, "expected '(' after effect operation name")?;
+            self.expect(
+                &TokenKind::LParen,
+                "expected '(' after effect operation name",
+            )?;
             let params = self.param_list()?;
             self.expect(
                 &TokenKind::RParen,
@@ -1016,12 +1019,12 @@ impl Parser {
             let return_annotation = self.type_annotation()?;
             let where_clause = self.where_clause()?;
             if !where_clause.is_empty() {
-                self.error_at_current(
-                    "effect operations do not support where clauses in Kea v0",
-                );
+                self.error_at_current("effect operations do not support where clauses in Kea v0");
             }
             if self.check(&TokenKind::Indent) {
-                self.error_at_current("effect operations are signatures only and cannot have a body");
+                self.error_at_current(
+                    "effect operations are signatures only and cannot have a body",
+                );
                 let _ = self.parse_block_expr("expected effect operation body block");
             }
 
@@ -1107,9 +1110,7 @@ impl Parser {
         let kind = self.kind_atom()?;
         self.skip_newlines();
         if self.check(&TokenKind::Arrow) {
-            self.error_at_current(
-                "higher-kinded kind arrows are not supported in Kea v0; use `*`",
-            );
+            self.error_at_current("higher-kinded kind arrows are not supported in Kea v0; use `*`");
             return None;
         }
         Some(kind)
@@ -1392,9 +1393,10 @@ impl Parser {
         let start = self.current_span();
         if self.match_token(&TokenKind::Pipe) {
             self.skip_newlines();
-            let rest = Some(self.parse_effect_row_name(
-                "expected tail effect variable after '|' in effect row",
-            )?);
+            let rest =
+                Some(self.parse_effect_row_name(
+                    "expected tail effect variable after '|' in effect row",
+                )?);
             self.skip_newlines();
             if !matches!(self.peek_kind(), Some(TokenKind::RBracket)) {
                 self.error_at_current("expected ] in effect arrow");
@@ -1450,20 +1452,22 @@ impl Parser {
         while self.match_token(&TokenKind::Comma) {
             legacy_candidate = false;
             self.skip_newlines();
-            let item = self.parse_effect_row_item("expected effect name after ',' in effect row")?;
+            let item =
+                self.parse_effect_row_item("expected effect name after ',' in effect row")?;
             effects.push(item);
             self.skip_newlines();
         }
 
-        let mut rest = if self.match_token(&TokenKind::Pipe) {
-            legacy_candidate = false;
-            self.skip_newlines();
-            Some(self.parse_effect_row_name(
-                "expected tail effect variable after '|' in effect row",
-            )?)
-        } else {
-            None
-        };
+        let mut rest =
+            if self.match_token(&TokenKind::Pipe) {
+                legacy_candidate = false;
+                self.skip_newlines();
+                Some(self.parse_effect_row_name(
+                    "expected tail effect variable after '|' in effect row",
+                )?)
+            } else {
+                None
+            };
         self.maybe_promote_comma_tail_effect_var(&mut effects, &mut rest);
 
         self.skip_newlines();
@@ -1948,7 +1952,8 @@ impl Parser {
                 )?);
                 self.skip_newlines();
             } else if !self.check(&TokenKind::RBracket) {
-                let first = self.parse_effect_row_item("expected effect name in effect row annotation")?;
+                let first =
+                    self.parse_effect_row_item("expected effect name in effect row annotation")?;
                 effects.push(first);
                 self.skip_newlines();
                 while self.match_token(&TokenKind::Comma) {
@@ -1969,7 +1974,10 @@ impl Parser {
             }
             self.maybe_promote_comma_tail_effect_var(&mut effects, &mut rest);
 
-            self.expect(&TokenKind::RBracket, "expected ']' in effect row annotation")?;
+            self.expect(
+                &TokenKind::RBracket,
+                "expected ']' in effect row annotation",
+            )?;
             let end = self.current_span();
             return Some(Spanned::new(
                 TypeAnnotation::EffectRow(EffectRowAnnotation { effects, rest }),
@@ -2285,9 +2293,7 @@ impl Parser {
             .is_some_and(|token| token.kind == TokenKind::Arrow)
             && matches!(self.peek_kind(), Some(TokenKind::Ident(_)))
         {
-            self.error_at_current(
-                "bare lambda syntax is not supported; use `|x| -> expr`",
-            );
+            self.error_at_current("bare lambda syntax is not supported; use `|x| -> expr`");
             return None;
         }
         self.pratt_expr(0)
@@ -2792,7 +2798,8 @@ impl Parser {
 
         let handled = self.expression()?;
         self.skip_newlines();
-        let delimiter = self.expect_block_start("expected handler block after `handle` expression")?;
+        let delimiter =
+            self.expect_block_start("expected handler block after `handle` expression")?;
 
         let mut clauses = Vec::new();
         let mut then_clause = None;
@@ -2890,7 +2897,10 @@ impl Parser {
             }
         }
         self.skip_newlines();
-        self.expect(&TokenKind::RParen, "expected ')' after handler clause arguments")?;
+        self.expect(
+            &TokenKind::RParen,
+            "expected ')' after handler clause arguments",
+        )?;
         self.expect(&TokenKind::Arrow, "expected '->' after handler clause head")?;
         self.skip_newlines();
         let body = if self.check(&TokenKind::Indent) {
@@ -3475,21 +3485,22 @@ impl Parser {
             let name = name.clone();
             self.advance();
             // Check for qualified constructor: Name.Variant
-            let (name, qualifier) =
-                if self.check(&TokenKind::Dot)
-                    && matches!(self.peek_at(1).map(|t| &t.kind), Some(TokenKind::UpperIdent(_)))
-                {
-                    self.advance(); // consume '.'
-                    if let Some(TokenKind::UpperIdent(variant)) = self.peek_kind() {
-                        let variant = variant.clone();
-                        self.advance();
-                        (variant, Some(name))
-                    } else {
-                        unreachable!()
-                    }
+            let (name, qualifier) = if self.check(&TokenKind::Dot)
+                && matches!(
+                    self.peek_at(1).map(|t| &t.kind),
+                    Some(TokenKind::UpperIdent(_))
+                ) {
+                self.advance(); // consume '.'
+                if let Some(TokenKind::UpperIdent(variant)) = self.peek_kind() {
+                    let variant = variant.clone();
+                    self.advance();
+                    (variant, Some(name))
                 } else {
-                    (name, None)
-                };
+                    unreachable!()
+                }
+            } else {
+                (name, None)
+            };
             // Named record pattern: Name { field, field: pat, .. }
             if self.match_token(&TokenKind::LBrace) {
                 let mut fields = Vec::new();
@@ -3758,7 +3769,10 @@ impl Parser {
     /// Parse pipe-delimited lambda: `|x| -> expr`, `|x, y| -> expr`, `|| -> expr`.
     fn lambda_pipe(&mut self) -> Option<Expr> {
         let start = self.current_span();
-        self.expect(&TokenKind::Pipe, "expected '|' to start lambda parameter list")?;
+        self.expect(
+            &TokenKind::Pipe,
+            "expected '|' to start lambda parameter list",
+        )?;
         self.skip_newlines();
 
         let mut params = Vec::new();
@@ -3784,10 +3798,7 @@ impl Parser {
             }
         }
         self.skip_newlines();
-        self.expect(
-            &TokenKind::Pipe,
-            "expected '|' after lambda parameters",
-        )?;
+        self.expect(&TokenKind::Pipe, "expected '|' after lambda parameters")?;
         self.expect(
             &TokenKind::Arrow,
             "expected '->' after lambda parameter list",
@@ -4411,7 +4422,10 @@ impl Parser {
             let end = self.current_span();
             self.expect(&TokenKind::RParen, "expected ')' after arguments")?;
 
-            if let ExprKind::FieldAccess { expr: receiver, field } = &lhs.node
+            if let ExprKind::FieldAccess {
+                expr: receiver,
+                field,
+            } = &lhs.node
                 && let Some((method_receiver, qualifier)) =
                     self.extract_qualified_method_receiver(receiver)
             {
@@ -4437,7 +4451,10 @@ impl Parser {
                 ));
             }
 
-            if let ExprKind::FieldAccess { expr: receiver, field } = &lhs.node
+            if let ExprKind::FieldAccess {
+                expr: receiver,
+                field,
+            } = &lhs.node
                 && self.should_desugar_method_call_receiver(&receiver.node)
             {
                 let mut desugared_args = Vec::with_capacity(args.len() + 1);
@@ -4547,10 +4564,9 @@ impl Parser {
             TokenKind::EqEq | TokenKind::BangEq => Some((9, 10)),
             TokenKind::Lt | TokenKind::LtEq | TokenKind::Gt | TokenKind::GtEq => Some((11, 12)),
             TokenKind::DotDot | TokenKind::DotDotEq => Some((12, 13)),
-            TokenKind::Plus
-            | TokenKind::PlusPlus
-            | TokenKind::DiamondOp
-            | TokenKind::Minus => Some((13, 14)),
+            TokenKind::Plus | TokenKind::PlusPlus | TokenKind::DiamondOp | TokenKind::Minus => {
+                Some((13, 14))
+            }
             TokenKind::Star | TokenKind::Slash | TokenKind::Percent => Some((15, 16)),
             _ => None,
         }
@@ -4558,9 +4574,7 @@ impl Parser {
 
     fn postfix_bp(&self) -> Option<u8> {
         match self.peek_kind()? {
-            TokenKind::Dot | TokenKind::LParen | TokenKind::Question => {
-                Some(19)
-            }
+            TokenKind::Dot | TokenKind::LParen | TokenKind::Question => Some(19),
             TokenKind::Ident(s) if s == "as" => Some(2),
             _ => None,
         }
@@ -5269,13 +5283,19 @@ mod tests {
     #[test]
     fn parse_namespaced_upper_ident_coloncolon_field_access_is_error() {
         let errors = parse_err("List::map");
-        assert!(!errors.is_empty(), "expected namespace `::` access to be rejected");
+        assert!(
+            !errors.is_empty(),
+            "expected namespace `::` access to be rejected"
+        );
     }
 
     #[test]
     fn parse_namespaced_upper_ident_coloncolon_call_is_error() {
         let errors = parse_err("List::map(xs, f)");
-        assert!(!errors.is_empty(), "expected namespace `::` call to be rejected");
+        assert!(
+            !errors.is_empty(),
+            "expected namespace `::` call to be rejected"
+        );
     }
 
     #[test]
@@ -5577,9 +5597,9 @@ mod tests {
     fn parse_legacy_parenthesized_lambda_is_error() {
         let errors = parse_err("(x) -> x + 1");
         assert!(
-            errors
-                .iter()
-                .any(|d| d.message.contains("parenthesized lambda syntax is not supported")),
+            errors.iter().any(|d| d
+                .message
+                .contains("parenthesized lambda syntax is not supported")),
             "expected legacy parenthesized lambda diagnostic, got {errors:?}"
         );
     }
@@ -6071,7 +6091,8 @@ mod tests {
 
     #[test]
     fn parse_fn_decl_with_postfix_testing_block() {
-        let module = parse_mod("fn double(x: Int) -> Int\n  x + x\ntesting\n  assert_eq double(3), 6");
+        let module =
+            parse_mod("fn double(x: Int) -> Int\n  x + x\ntesting\n  assert_eq double(3), 6");
         match &module.declarations[0].node {
             DeclKind::Function(f) => {
                 assert!(f.testing.is_some(), "expected postfix testing block");
@@ -6597,9 +6618,9 @@ mod tests {
     fn parse_effect_operation_effect_arrow_is_error() {
         let errors = parse_mod_err("effect Log\n  fn log(msg: String) -[IO]> Unit");
         assert!(
-            errors
-                .iter()
-                .any(|d| d.message.contains("effect operations cannot declare their own effect arrow")),
+            errors.iter().any(|d| d
+                .message
+                .contains("effect operations cannot declare their own effect arrow")),
             "expected effect-operation-arrow diagnostic, got {errors:?}"
         );
     }
@@ -6610,18 +6631,17 @@ mod tests {
     fn parse_trait_empty() {
         let errors = parse_mod_err("trait Additive");
         assert!(
-            errors
-                .iter()
-                .any(|d| d.message.contains("expected trait body block after trait name")),
+            errors.iter().any(|d| d
+                .message
+                .contains("expected trait body block after trait name")),
             "expected missing-trait-body diagnostic, got {errors:?}"
         );
     }
 
     #[test]
     fn parse_trait_with_methods() {
-        let m = parse_mod(
-            "trait Additive\n  fn zero() -> Self\n  fn add(self, other: Self) -> Self",
-        );
+        let m =
+            parse_mod("trait Additive\n  fn zero() -> Self\n  fn add(self, other: Self) -> Self");
         match &m.declarations[0].node {
             DeclKind::TraitDef(td) => {
                 assert!(td.supertraits.is_empty());
@@ -6657,7 +6677,8 @@ mod tests {
 
     #[test]
     fn parse_trait_with_methods_indented() {
-        let m = parse_mod("trait Additive\n  fn zero() -> Self\n  fn add(self, other: Self) -> Self");
+        let m =
+            parse_mod("trait Additive\n  fn zero() -> Self\n  fn add(self, other: Self) -> Self");
         match &m.declarations[0].node {
             DeclKind::TraitDef(td) => {
                 assert_eq!(td.methods.len(), 2);
@@ -6749,8 +6770,9 @@ mod tests {
 
     #[test]
     fn parse_trait_with_multi_param_fundep() {
-        let m =
-            parse_mod("trait Convert(A: *, B: *, C: *) | (A, B) -> C, C -> A\n  fn convert(a: A, b: B) -> C");
+        let m = parse_mod(
+            "trait Convert(A: *, B: *, C: *) | (A, B) -> C, C -> A\n  fn convert(a: A, b: B) -> C",
+        );
         match &m.declarations[0].node {
             DeclKind::TraitDef(td) => {
                 assert_eq!(td.fundeps.len(), 2);
@@ -7013,7 +7035,9 @@ mod tests {
                     TypeAnnotation::Row { fields, rest } => {
                         assert_eq!(fields.len(), 1);
                         assert_eq!(fields[0].0, "name");
-                        assert!(matches!(fields[0].1, TypeAnnotation::Named(ref n) if n == "String"));
+                        assert!(
+                            matches!(fields[0].1, TypeAnnotation::Named(ref n) if n == "String")
+                        );
                         assert_eq!(rest.as_deref(), Some("r"));
                     }
                     other => panic!("expected row type annotation, got {other:?}"),
@@ -7111,7 +7135,9 @@ mod tests {
                             }
                             other => panic!("expected row effect annotation, got {other:?}"),
                         }
-                        assert!(matches!(ret.as_ref(), TypeAnnotation::Named(name) if name == "Int"));
+                        assert!(
+                            matches!(ret.as_ref(), TypeAnnotation::Named(name) if name == "Int")
+                        );
                     }
                     other => panic!("expected bare function type annotation, got {other:?}"),
                 }
@@ -7653,7 +7679,9 @@ mod tests {
 
     #[test]
     fn parse_trait_with_associated_type() {
-        let m = parse_mod("trait From\n  type Source\n  fn from(value: Self.Source) -> Result(Self, String)");
+        let m = parse_mod(
+            "trait From\n  type Source\n  fn from(value: Self.Source) -> Result(Self, String)",
+        );
         match &m.declarations[0].node {
             DeclKind::TraitDef(td) => {
                 assert_eq!(td.name.node, "From");
@@ -7696,8 +7724,7 @@ mod tests {
 
     #[test]
     fn parse_trait_with_default_associated_type() {
-        let m =
-            parse_mod("trait Container\n  type Item = String\n  fn head(self) -> Self.Item");
+        let m = parse_mod("trait Container\n  type Item = String\n  fn head(self) -> Self.Item");
         match &m.declarations[0].node {
             DeclKind::TraitDef(td) => {
                 assert_eq!(td.associated_types.len(), 1);
@@ -7714,7 +7741,8 @@ mod tests {
 
     #[test]
     fn parse_impl_with_where_clause() {
-        let m = parse_mod("impl From for Int where Source = String\n  fn from(value) -> Int\n    0");
+        let m =
+            parse_mod("impl From for Int where Source = String\n  fn from(value) -> Int\n    0");
         match &m.declarations[0].node {
             DeclKind::ImplBlock(ib) => {
                 assert_eq!(ib.trait_name.node, "From");
@@ -7838,9 +7866,7 @@ mod tests {
 
     #[test]
     fn parse_existential_multi_bound_with_assoc_constraints() {
-        let m = parse_mod(
-            "fn f(x: any (Show, Eq) where Item = Int, Source = String) -> Int\n  x",
-        );
+        let m = parse_mod("fn f(x: any (Show, Eq) where Item = Int, Source = String) -> Int\n  x");
         match &m.declarations[0].node {
             DeclKind::Function(fd) => {
                 let ann = fd.params[0].annotation.as_ref().expect("annotation");
@@ -7867,9 +7893,9 @@ mod tests {
     fn parse_frame_literal_is_error() {
         let errors = parse_err("frame { x: [1, 2, 3] }");
         assert!(
-            errors
-                .iter()
-                .any(|d| d.message.contains("`frame` literals are not supported in Kea v0")),
+            errors.iter().any(|d| d
+                .message
+                .contains("`frame` literals are not supported in Kea v0")),
             "expected unsupported frame diagnostic, got {errors:?}"
         );
     }
@@ -7878,9 +7904,9 @@ mod tests {
     fn parse_frame_literal_multi_column_is_error() {
         let errors = parse_err("frame { name: [\"a\", \"b\"], age: [30, 25] }");
         assert!(
-            errors
-                .iter()
-                .any(|d| d.message.contains("`frame` literals are not supported in Kea v0")),
+            errors.iter().any(|d| d
+                .message
+                .contains("`frame` literals are not supported in Kea v0")),
             "expected unsupported frame diagnostic, got {errors:?}"
         );
     }
@@ -7889,9 +7915,9 @@ mod tests {
     fn parse_frame_literal_empty_is_error() {
         let errors = parse_err("frame { }");
         assert!(
-            errors
-                .iter()
-                .any(|d| d.message.contains("`frame` literals are not supported in Kea v0")),
+            errors.iter().any(|d| d
+                .message
+                .contains("`frame` literals are not supported in Kea v0")),
             "expected unsupported frame diagnostic, got {errors:?}"
         );
     }
@@ -7900,9 +7926,9 @@ mod tests {
     fn parse_frame_literal_trailing_comma_is_error() {
         let errors = parse_err("frame { x: [1, 2], y: [3, 4], }");
         assert!(
-            errors
-                .iter()
-                .any(|d| d.message.contains("`frame` literals are not supported in Kea v0")),
+            errors.iter().any(|d| d
+                .message
+                .contains("`frame` literals are not supported in Kea v0")),
             "expected unsupported frame diagnostic, got {errors:?}"
         );
     }
@@ -7913,9 +7939,9 @@ mod tests {
     fn parse_sql_block_is_error() {
         let errors = parse_err("sql { SELECT 1 AS x }");
         assert!(
-            errors
-                .iter()
-                .any(|d| d.message.contains("`sql { ... }` blocks are not supported in Kea v0")),
+            errors.iter().any(|d| d
+                .message
+                .contains("`sql { ... }` blocks are not supported in Kea v0")),
             "expected unsupported sql diagnostic, got {errors:?}"
         );
     }
@@ -7924,9 +7950,9 @@ mod tests {
     fn parse_html_block_is_error() {
         let errors = parse_err("html { <h1>${:name}</h1> }");
         assert!(
-            errors
-                .iter()
-                .any(|d| d.message.contains("`html { ... }` blocks are not supported in Kea v0")),
+            errors.iter().any(|d| d
+                .message
+                .contains("`html { ... }` blocks are not supported in Kea v0")),
             "expected unsupported html diagnostic, got {errors:?}"
         );
     }
@@ -7984,9 +8010,7 @@ mod tests {
 
     #[test]
     fn parse_use_glob_is_error() {
-        let tokens = crate::lex("use Kea.Core.*", FileId(0))
-            .expect("lex ok")
-            .0;
+        let tokens = crate::lex("use Kea.Core.*", FileId(0)).expect("lex ok").0;
         let result = crate::parse_module(tokens, FileId(0));
         assert!(result.is_err(), "glob import should produce a parse error");
     }
@@ -8325,9 +8349,8 @@ mod tests {
 
     #[test]
     fn parse_handle_expression_with_dot_clause_head() {
-        let expr = parse(
-            "handle run()\n  Log.log(level, msg) ->\n    resume ()\n  then value -> value",
-        );
+        let expr =
+            parse("handle run()\n  Log.log(level, msg) ->\n    resume ()\n  then value -> value");
         match &expr.node {
             ExprKind::Handle { clauses, .. } => {
                 assert_eq!(clauses.len(), 1);
@@ -8411,7 +8434,10 @@ mod tests {
                 assert_eq!(clauses.len(), 1);
                 assert_eq!(clauses[0].effect.node, "Fail");
                 assert_eq!(clauses[0].operation.node, "fail");
-                assert!(then_clause.is_some(), "catch desugar should install then clause");
+                assert!(
+                    then_clause.is_some(),
+                    "catch desugar should install then clause"
+                );
             }
             other => panic!("expected handle desugar for catch, got {other:?}"),
         }

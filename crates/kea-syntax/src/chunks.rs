@@ -396,9 +396,12 @@ mod tests {
 
     #[test]
     fn classify_annotated_declaration_as_declaration() {
-        let tokens = crate::lex("@deprecated(\"use new_api\")\nfn old(x: Int) -> Int { x }", FileId(0))
-            .unwrap()
-            .0;
+        let tokens = crate::lex(
+            "@deprecated(\"use new_api\")\nfn old(x: Int) -> Int { x }",
+            FileId(0),
+        )
+        .unwrap()
+        .0;
         assert!(classify_as_declaration(&tokens));
     }
 

@@ -3,7 +3,9 @@ use std::fmt::Write;
 use insta::assert_snapshot;
 use kea_ast::FileId;
 use kea_diag::Diagnostic;
-use kea_syntax::{TokenKind, lex_layout, parse_expr_source, parse_module_source, parse_type_source};
+use kea_syntax::{
+    TokenKind, lex_layout, parse_expr_source, parse_module_source, parse_type_source,
+};
 use proptest::prelude::*;
 
 #[derive(Clone, Copy)]
@@ -29,13 +31,25 @@ fn lexer_layout_snapshot_corpus() {
         ("cond_block", "cond\n  x > 0 -> x\n  _ -> 0"),
         ("record_decl", "record User\n  name: String\n  age: Int"),
         ("trait_decl", "trait Show\n  fn show(self) -> String"),
-        ("impl_decl", "impl Show for Int\n  fn show(self) -> String\n    \"int\""),
+        (
+            "impl_decl",
+            "impl Show for Int\n  fn show(self) -> String\n    \"int\"",
+        ),
         ("for_expr", "for x in xs when x > 0\n  x + 1"),
         ("use_expr", "use value <- load()"),
-        ("spawn_with_config", "spawn Counter { count: 0 } with\n  mailbox_size: 100"),
-        ("stream_with_config", "stream\n  yield 1\nwith\n  buffer: 128"),
+        (
+            "spawn_with_config",
+            "spawn Counter { count: 0 } with\n  mailbox_size: 100",
+        ),
+        (
+            "stream_with_config",
+            "stream\n  yield 1\nwith\n  buffer: 128",
+        ),
         ("import_named", "import Kea.Core.{read_csv, write_csv}"),
-        ("type_deriving", "type Result(a, e) = | Ok(a) | Err(e) deriving Eq"),
+        (
+            "type_deriving",
+            "type Result(a, e) = | Ok(a) | Err(e) deriving Eq",
+        ),
         ("anon_record", "#{ ..base, retries: 3, timeout: 30 }"),
         ("record_pattern", "case x\n  User { name, .. } -> name"),
         ("string_interp", "\"hello ${name}, total: ${1 + 2}\""),
@@ -70,8 +84,7 @@ fn parser_snapshot_corpus() {
         ParseCase {
             name: "module_expr_decl_testing",
             mode: ParseMode::Module,
-            source:
-                "expr double(x: Int) -> Int\n  x + x\ntesting\n  assert_eq double(3), 6",
+            source: "expr double(x: Int) -> Int\n  x + x\ntesting\n  assert_eq double(3), 6",
         },
         ParseCase {
             name: "module_test_decl",
@@ -106,8 +119,7 @@ fn parser_snapshot_corpus() {
         ParseCase {
             name: "module_trait_associated_type",
             mode: ParseMode::Module,
-            source:
-                "trait From\n  type Source\n  fn from(value: Self.Source) -> Result(Self, String)",
+            source: "trait From\n  type Source\n  fn from(value: Self.Source) -> Result(Self, String)",
         },
         ParseCase {
             name: "module_impl_where",
@@ -122,8 +134,7 @@ fn parser_snapshot_corpus() {
         ParseCase {
             name: "module_mixed_decls",
             mode: ParseMode::Module,
-            source:
-                "record Point\n  x: Float\n  y: Float\ntrait Additive\n  fn zero() -> Self\nimpl Additive for Point\n  fn zero() -> Int\n    0\nfn main() -> Int\n  1",
+            source: "record Point\n  x: Float\n  y: Float\ntrait Additive\n  fn zero() -> Self\nimpl Additive for Point\n  fn zero() -> Int\n    0\nfn main() -> Int\n  1",
         },
         ParseCase {
             name: "expr_if_else",
@@ -320,20 +331,14 @@ fn render_parse_case(case: ParseCase) -> String {
         ParseMode::Expr => match parse_expr_source(case.source, FileId(0)) {
             Ok(expr) => {
                 let rendered = format!("{:#?}", expr.node);
-                format!(
-                    "status: ok\n{}",
-                    strip_span_and_location_blocks(&rendered)
-                )
+                format!("status: ok\n{}", strip_span_and_location_blocks(&rendered))
             }
             Err(diags) => format!("status: err\n{}", render_diagnostics(&diags)),
         },
         ParseMode::Type => match parse_type_source(case.source, FileId(0)) {
             Ok(ty) => {
                 let rendered = format!("{:#?}", ty.node);
-                format!(
-                    "status: ok\n{}",
-                    strip_span_and_location_blocks(&rendered)
-                )
+                format!("status: ok\n{}", strip_span_and_location_blocks(&rendered))
             }
             Err(diags) => format!("status: err\n{}", render_diagnostics(&diags)),
         },

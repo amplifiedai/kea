@@ -7,8 +7,8 @@
 //! `kea-syntax`) and
 //! rendered here for display.
 
-use std::fmt;
 use serde::Serialize;
+use std::fmt;
 
 // ---------------------------------------------------------------------------
 // Diagnostic severity and categories

@@ -7,8 +7,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use kea_ast::{
-    BinOp, CaseArm, DeclKind, Expr, ExprDecl, ExprKind, FnDecl, HandleClause, Lit, Module,
-    Param, Pattern, PatternKind, Span, TypeAnnotation, UnaryOp,
+    BinOp, CaseArm, DeclKind, Expr, ExprDecl, ExprKind, FnDecl, HandleClause, Lit, Module, Param,
+    Pattern, PatternKind, Span, TypeAnnotation, UnaryOp,
 };
 use kea_infer::typeck::TypeEnv;
 use kea_types::{EffectRow, FunctionType, Type};
@@ -132,7 +132,9 @@ type KnownRecordDefs = BTreeSet<String>;
 type KnownAliasDefs = BTreeMap<String, TypeAnnotation>;
 
 fn is_namespace_qualifier(name: &str) -> bool {
-    name.chars().next().is_some_and(|ch| ch.is_ascii_uppercase())
+    name.chars()
+        .next()
+        .is_some_and(|ch| ch.is_ascii_uppercase())
 }
 
 fn expr_decl_to_fn_decl(expr: &ExprDecl) -> FnDecl {
@@ -290,28 +292,30 @@ fn lower_pattern_type_annotation_with_seen(
                 seen_aliases,
             ),
         )),
-        TypeAnnotation::FunctionWithEffect(params, _, ret) => Type::Function(kea_types::FunctionType {
-            params: params
-                .iter()
-                .map(|param| {
-                    lower_pattern_type_annotation_with_seen(
-                        param,
-                        known_record_defs,
-                        known_sum_defs,
-                        known_alias_defs,
-                        seen_aliases,
-                    )
-                })
-                .collect(),
-            ret: Box::new(lower_pattern_type_annotation_with_seen(
-                ret,
-                known_record_defs,
-                known_sum_defs,
-                known_alias_defs,
-                seen_aliases,
-            )),
-            effects: EffectRow::pure(),
-        }),
+        TypeAnnotation::FunctionWithEffect(params, _, ret) => {
+            Type::Function(kea_types::FunctionType {
+                params: params
+                    .iter()
+                    .map(|param| {
+                        lower_pattern_type_annotation_with_seen(
+                            param,
+                            known_record_defs,
+                            known_sum_defs,
+                            known_alias_defs,
+                            seen_aliases,
+                        )
+                    })
+                    .collect(),
+                ret: Box::new(lower_pattern_type_annotation_with_seen(
+                    ret,
+                    known_record_defs,
+                    known_sum_defs,
+                    known_alias_defs,
+                    seen_aliases,
+                )),
+                effects: EffectRow::pure(),
+            })
+        }
         _ => Type::Dynamic,
     }
 }
@@ -339,7 +343,10 @@ fn register_variant_meta(
         field_names,
     };
     pattern_qualified.insert((sum_type.to_string(), variant.to_string()), meta.clone());
-    if pattern_unqualified.insert(variant.to_string(), meta).is_some() {
+    if pattern_unqualified
+        .insert(variant.to_string(), meta)
+        .is_some()
+    {
         pattern_duplicates.insert(variant.to_string());
     }
 
@@ -501,7 +508,12 @@ fn collect_variant_tags(
         pattern_unqualified.remove(&name);
     }
 
-    (unqualified, qualified, pattern_unqualified, pattern_qualified)
+    (
+        unqualified,
+        qualified,
+        pattern_unqualified,
+        pattern_qualified,
+    )
 }
 
 fn collect_record_defs(module: &Module) -> KnownRecordDefs {
@@ -668,10 +680,14 @@ fn lower_function_with_variants(
         .lookup(&fn_decl.name.node)
         .map(|scheme| scheme.ty.clone())
         .or_else(|| {
-            fn_decl.name.node.rsplit_once('.').and_then(|(module, field)| {
-                env.resolve_qualified(module, field)
-                    .map(|scheme| scheme.ty.clone())
-            })
+            fn_decl
+                .name
+                .node
+                .rsplit_once('.')
+                .and_then(|(module, field)| {
+                    env.resolve_qualified(module, field)
+                        .map(|scheme| scheme.ty.clone())
+                })
         })
         .unwrap_or_else(|| Type::Function(FunctionType::pure(vec![], Type::Dynamic)));
 
@@ -869,19 +885,17 @@ fn lower_expr(
                 pattern_qualified_tags,
                 known_record_defs,
             )),
-            else_branch: else_branch
-                .as_ref()
-                .map(|expr| {
-                    Box::new(lower_expr(
-                        expr,
-                        ty_hint.clone(),
-                        unit_variant_tags,
-                        qualified_variant_tags,
-                        pattern_variant_tags,
-                        pattern_qualified_tags,
-                        known_record_defs,
-                    ))
-                }),
+            else_branch: else_branch.as_ref().map(|expr| {
+                Box::new(lower_expr(
+                    expr,
+                    ty_hint.clone(),
+                    unit_variant_tags,
+                    qualified_variant_tags,
+                    pattern_variant_tags,
+                    pattern_qualified_tags,
+                    known_record_defs,
+                ))
+            }),
         },
         ExprKind::Case { scrutinee, arms } => {
             if let Some(case_kind) = lower_bool_case(
@@ -906,7 +920,11 @@ fn lower_expr(
                     .iter()
                     .enumerate()
                     .map(|(idx, inner)| {
-                        let hint = if idx == last_idx { ty_hint.clone() } else { None };
+                        let hint = if idx == last_idx {
+                            ty_hint.clone()
+                        } else {
+                            None
+                        };
                         lower_expr(
                             inner,
                             hint,
@@ -1011,9 +1029,13 @@ fn lower_expr(
                 HirExprKind::Raw(expr.node.clone())
             }
         }
-        ExprKind::FieldAccess { expr: qualifier, field } => {
+        ExprKind::FieldAccess {
+            expr: qualifier,
+            field,
+        } => {
             if let ExprKind::Var(type_name) = &qualifier.node {
-                if let Some(tag) = qualified_variant_tags.get(&(type_name.clone(), field.node.clone()))
+                if let Some(tag) =
+                    qualified_variant_tags.get(&(type_name.clone(), field.node.clone()))
                 {
                     HirExprKind::Lit(Lit::Int(*tag))
                 } else if is_namespace_qualifier(type_name) {
@@ -1120,7 +1142,10 @@ fn lower_expr(
                 default_ty
             }
         }
-        ExprKind::FieldAccess { expr: qualifier, field } => {
+        ExprKind::FieldAccess {
+            expr: qualifier,
+            field,
+        } => {
             if let ExprKind::Var(type_name) = &qualifier.node {
                 if qualified_variant_tags.contains_key(&(type_name.clone(), field.node.clone())) {
                     Type::Int
@@ -1131,8 +1156,7 @@ fn lower_expr(
                 default_ty
             }
         }
-        ExprKind::Record { name, .. } if known_record_defs.contains(&name.node) =>
-        {
+        ExprKind::Record { name, .. } if known_record_defs.contains(&name.node) => {
             Type::Record(kea_types::RecordType {
                 name: name.node.clone(),
                 params: vec![],
@@ -1284,7 +1308,10 @@ fn lower_bool_case(
         pattern_qualified_tags,
         known_record_defs,
     );
-    let safe_scrutinee = matches!(lowered_scrutinee.kind, HirExprKind::Var(_) | HirExprKind::Lit(_));
+    let safe_scrutinee = matches!(
+        lowered_scrutinee.kind,
+        HirExprKind::Var(_) | HirExprKind::Lit(_)
+    );
     let (scrutinee_expr, setup_expr) = if safe_scrutinee {
         (lowered_scrutinee.clone(), None)
     } else {
@@ -1400,10 +1427,7 @@ fn lower_bool_case(
         (None, Some(else_body), None, Some((default_body, bind_name))) if arms.len() == 2 => {
             Some(HirExprKind::If {
                 condition: Box::new(scrutinee_expr.clone()),
-                then_branch: Box::new(lower_branch_with_bind(
-                    default_body,
-                    Some(bind_name),
-                )),
+                then_branch: Box::new(lower_branch_with_bind(default_body, Some(bind_name))),
                 else_branch: Some(Box::new(lower_branch_with_bind(else_body, None))),
             })
         }
@@ -1514,7 +1538,10 @@ fn lower_literal_case(
         pattern_qualified_tags,
         known_record_defs,
     );
-    let safe_scrutinee = matches!(lowered_scrutinee.kind, HirExprKind::Var(_) | HirExprKind::Lit(_));
+    let safe_scrutinee = matches!(
+        lowered_scrutinee.kind,
+        HirExprKind::Var(_) | HirExprKind::Lit(_)
+    );
     let (scrutinee_expr, setup_expr) = if safe_scrutinee {
         (lowered_scrutinee.clone(), None)
     } else {
@@ -1700,7 +1727,8 @@ fn lower_literal_case(
             span: scrutinee.span,
         };
         for payload_check in payload_checks {
-            let payload_expr = build_payload_access_expr(&payload_check.access_path, &scrutinee_expr)?;
+            let payload_expr =
+                build_payload_access_expr(&payload_check.access_path, &scrutinee_expr)?;
             let payload_eq = HirExpr {
                 kind: HirExprKind::Binary {
                     op: BinOp::Eq,
@@ -1734,11 +1762,8 @@ fn lower_literal_case(
                 pattern_qualified_tags,
                 known_record_defs,
             );
-            let mut binds = build_literal_arm_bindings(
-                bind_name.as_deref(),
-                &payload_binds,
-                &scrutinee_expr,
-            );
+            let mut binds =
+                build_literal_arm_bindings(bind_name.as_deref(), &payload_binds, &scrutinee_expr);
             let lowered_guard = if binds.is_empty() {
                 guard_expr
             } else {
@@ -1863,7 +1888,10 @@ fn lower_record_case(
         pattern_qualified_tags,
         known_record_defs,
     );
-    let safe_scrutinee = matches!(lowered_scrutinee.kind, HirExprKind::Var(_) | HirExprKind::Lit(_));
+    let safe_scrutinee = matches!(
+        lowered_scrutinee.kind,
+        HirExprKind::Var(_) | HirExprKind::Lit(_)
+    );
     let (scrutinee_expr, setup_expr) = if safe_scrutinee {
         (lowered_scrutinee.clone(), None)
     } else {
@@ -1924,12 +1952,10 @@ fn lower_record_case(
                     kind: HirExprKind::If {
                         condition: Box::new(condition),
                         then_branch: Box::new(then_branch),
-                        else_branch: Some(Box::new(else_expr.clone().unwrap_or_else(|| {
-                            HirExpr {
-                                kind: unit_else.kind.clone(),
-                                ty: return_ty.clone(),
-                                span: scrutinee.span,
-                            }
+                        else_branch: Some(Box::new(else_expr.clone().unwrap_or_else(|| HirExpr {
+                            kind: unit_else.kind.clone(),
+                            ty: return_ty.clone(),
+                            span: scrutinee.span,
                         }))),
                     },
                     ty: return_ty.clone(),
@@ -1937,8 +1963,7 @@ fn lower_record_case(
                 });
             }
             RecordFallbackArm::Var { name, body, guard } => {
-                let binds =
-                    build_record_arm_bindings(Some(name.as_str()), &[], &scrutinee_expr);
+                let binds = build_record_arm_bindings(Some(name.as_str()), &[], &scrutinee_expr);
                 let then_body = lower_expr(
                     body,
                     ty_hint.clone(),
@@ -2051,11 +2076,8 @@ fn lower_record_case(
                 pattern_qualified_tags,
                 known_record_defs,
             );
-            let mut binds = build_record_arm_bindings(
-                bind_name.as_deref(),
-                &field_binds,
-                &scrutinee_expr,
-            );
+            let mut binds =
+                build_record_arm_bindings(bind_name.as_deref(), &field_binds, &scrutinee_expr);
             let lowered_guard = if binds.is_empty() {
                 guard_expr
             } else {
@@ -2127,14 +2149,12 @@ fn literal_case_values_from_pattern(
     match pattern {
         PatternKind::Lit(lit @ Lit::Int(_))
         | PatternKind::Lit(lit @ Lit::Float(_))
-        | PatternKind::Lit(lit @ Lit::Bool(_)) => {
-            Some((
-                vec![literal_case_value_from_lit(lit)?],
-                None,
-                Vec::new(),
-                Vec::new(),
-            ))
-        }
+        | PatternKind::Lit(lit @ Lit::Bool(_)) => Some((
+            vec![literal_case_value_from_lit(lit)?],
+            None,
+            Vec::new(),
+            Vec::new(),
+        )),
         PatternKind::Constructor {
             name,
             qualifier,
@@ -2199,7 +2219,10 @@ fn literal_case_values_from_pattern(
             ))
         }
         PatternKind::Or(patterns) => merge_or_literal_pattern_infos(
-            patterns.iter().map(|pattern| pattern.node.clone()).collect(),
+            patterns
+                .iter()
+                .map(|pattern| pattern.node.clone())
+                .collect(),
             pattern_variant_tags,
             pattern_qualified_tags,
         ),
@@ -2298,7 +2321,11 @@ fn merge_or_literal_pattern_infos(
     let mut shared_payload_checks: Option<Vec<ConstructorPayloadCheck>> = None;
     for branch in branches {
         let (branch_values, branch_bind_name, branch_payload_binds, branch_payload_checks) =
-            literal_case_values_from_pattern(&branch, pattern_variant_tags, pattern_qualified_tags)?;
+            literal_case_values_from_pattern(
+                &branch,
+                pattern_variant_tags,
+                pattern_qualified_tags,
+            )?;
         match &shared_payload_binds {
             None => shared_payload_binds = Some(branch_payload_binds.clone()),
             Some(existing) if payload_binds_or_compatible(existing, &branch_payload_binds) => {}
@@ -2447,8 +2474,8 @@ fn collect_constructor_payload_pattern(
                 if !seen_fields.insert(field_name.clone()) {
                     return None;
                 }
-                let field_ty = lookup_record_field_type(&record_ty, field_name)
-                    .unwrap_or(Type::Dynamic);
+                let field_ty =
+                    lookup_record_field_type(&record_ty, field_name).unwrap_or(Type::Dynamic);
                 let mut nested_access_path = access_path.clone();
                 nested_access_path.push(ConstructorPayloadAccessStep::RecordField {
                     field: field_name.clone(),
@@ -2472,8 +2499,8 @@ fn collect_constructor_payload_pattern(
                 if !seen_fields.insert(field_name.clone()) {
                     return None;
                 }
-                let field_ty = lookup_record_field_type(&record_ty, field_name)
-                    .unwrap_or(Type::Dynamic);
+                let field_ty =
+                    lookup_record_field_type(&record_ty, field_name).unwrap_or(Type::Dynamic);
                 let mut nested_access_path = access_path.clone();
                 nested_access_path.push(ConstructorPayloadAccessStep::RecordField {
                     field: field_name.clone(),
@@ -2516,11 +2543,8 @@ fn lower_arm_body(
         pattern_qualified_tags,
         known_record_defs,
     );
-    let mut bind_exprs = build_literal_arm_bindings(
-        bind_name.as_deref(),
-        &payload_binds,
-        scrutinee_expr,
-    );
+    let mut bind_exprs =
+        build_literal_arm_bindings(bind_name.as_deref(), &payload_binds, scrutinee_expr);
     if bind_exprs.is_empty() {
         return lowered_body;
     }
@@ -2549,7 +2573,9 @@ fn build_literal_arm_bindings(
         });
     }
     for payload_bind in payload_binds {
-        let Some(payload_value) = build_payload_access_expr(&payload_bind.access_path, scrutinee_expr) else {
+        let Some(payload_value) =
+            build_payload_access_expr(&payload_bind.access_path, scrutinee_expr)
+        else {
             continue;
         };
         let payload_ty = payload_value.ty.clone();
@@ -2668,8 +2694,10 @@ fn payload_access_paths_compatible(
     candidate: &[ConstructorPayloadAccessStep],
 ) -> bool {
     existing.len() == candidate.len()
-        && existing.iter().zip(candidate.iter()).all(|(left, right)| {
-            match (left, right) {
+        && existing
+            .iter()
+            .zip(candidate.iter())
+            .all(|(left, right)| match (left, right) {
                 (
                     ConstructorPayloadAccessStep::SumPayload {
                         sum_type: left_sum,
@@ -2695,8 +2723,7 @@ fn payload_access_paths_compatible(
                     },
                 ) => left_field == right_field && left_ty == right_ty,
                 _ => false,
-            }
-        })
+            })
 }
 
 fn access_path_last_type(access_path: &[ConstructorPayloadAccessStep]) -> Option<Type> {
@@ -2729,14 +2756,15 @@ fn record_field_binds_or_compatible(
 ) -> bool {
     existing.len() == candidate.len()
         && existing.iter().zip(candidate.iter()).all(|(left, right)| {
-            left.name == right.name
-                && left.field == right.field
-                && left.field_ty == right.field_ty
+            left.name == right.name && left.field == right.field && left.field_ty == right.field_ty
         })
 }
 
 fn bool_case_fallback_compatible(pattern: &PatternKind) -> bool {
-    matches!(pattern, PatternKind::Lit(Lit::Bool(_)) | PatternKind::Wildcard)
+    matches!(
+        pattern,
+        PatternKind::Lit(Lit::Bool(_)) | PatternKind::Wildcard
+    )
 }
 
 fn literal_case_value_from_lit(lit: &Lit) -> Option<LiteralCaseValue> {
@@ -2761,7 +2789,10 @@ fn record_case_arms_from_pattern(pattern: &PatternKind) -> Option<Vec<RecordCase
                 match &field_pattern.node {
                     PatternKind::Wildcard => {}
                     PatternKind::Var(bind_name) => {
-                        if binds.iter().any(|bind: &RecordFieldBind| bind.name == *bind_name) {
+                        if binds
+                            .iter()
+                            .any(|bind: &RecordFieldBind| bind.name == *bind_name)
+                        {
                             return None;
                         }
                         binds.push(RecordFieldBind {
@@ -2798,7 +2829,10 @@ fn record_case_arms_from_pattern(pattern: &PatternKind) -> Option<Vec<RecordCase
                 match &field_pattern.node {
                     PatternKind::Wildcard => {}
                     PatternKind::Var(bind_name) => {
-                        if binds.iter().any(|bind: &RecordFieldBind| bind.name == *bind_name) {
+                        if binds
+                            .iter()
+                            .any(|bind: &RecordFieldBind| bind.name == *bind_name)
+                        {
                             return None;
                         }
                         binds.push(RecordFieldBind {
@@ -2863,11 +2897,14 @@ fn record_case_arms_from_pattern(pattern: &PatternKind) -> Option<Vec<RecordCase
             let expected_carrier = record_carrier?;
             let expected_bind = shared_bind_name.unwrap_or(None);
             let expected_binds = shared_field_binds.unwrap_or_default();
-            if flattened.iter().any(|(carrier, bind_name, field_binds, _)| {
-                carrier != &expected_carrier
-                    || bind_name != &expected_bind
-                    || !record_field_binds_or_compatible(field_binds, &expected_binds)
-            }) {
+            if flattened
+                .iter()
+                .any(|(carrier, bind_name, field_binds, _)| {
+                    carrier != &expected_carrier
+                        || bind_name != &expected_bind
+                        || !record_field_binds_or_compatible(field_binds, &expected_binds)
+                })
+            {
                 return None;
             }
             Some(flattened)
@@ -2932,11 +2969,8 @@ fn lower_record_arm_body(
         pattern_qualified_tags,
         known_record_defs,
     );
-    let mut bind_exprs = build_record_arm_bindings(
-        bind_name.as_deref(),
-        &field_binds,
-        scrutinee_expr,
-    );
+    let mut bind_exprs =
+        build_record_arm_bindings(bind_name.as_deref(), &field_binds, scrutinee_expr);
     if bind_exprs.is_empty() {
         return lowered_body;
     }
@@ -2971,7 +3005,10 @@ mod tests {
 
     fn parse_module_from_text(source: &str) -> Module {
         let (tokens, warnings) = lex_layout(source, FileId(0)).expect("lexing should succeed");
-        assert!(warnings.is_empty(), "unexpected lexer warnings: {warnings:?}");
+        assert!(
+            warnings.is_empty(),
+            "unexpected lexer warnings: {warnings:?}"
+        );
         parse_module(tokens, FileId(0)).expect("module should parse")
     }
 
@@ -3076,7 +3113,9 @@ mod tests {
 
     #[test]
     fn lower_function_record_literal_stays_structured_hir() {
-        let module = parse_module_from_text("record User\n  age: Int\n\nfn make_user() -> User\n  User { age: 42 }");
+        let module = parse_module_from_text(
+            "record User\n  age: Int\n\nfn make_user() -> User\n  User { age: 42 }",
+        );
         let mut env = TypeEnv::new();
         env.bind(
             "make_user".to_string(),
@@ -3284,7 +3323,10 @@ mod tests {
         let mut env = TypeEnv::new();
         env.bind(
             "inc".to_string(),
-            TypeScheme::mono(Type::Function(FunctionType::pure(vec![Type::Int], Type::Int))),
+            TypeScheme::mono(Type::Function(FunctionType::pure(
+                vec![Type::Int],
+                Type::Int,
+            ))),
         );
 
         let lowered = lower_module(&module, &env);
@@ -3301,7 +3343,10 @@ mod tests {
         let mut env = TypeEnv::new();
         env.bind(
             "negate".to_string(),
-            TypeScheme::mono(Type::Function(FunctionType::pure(vec![Type::Int], Type::Int))),
+            TypeScheme::mono(Type::Function(FunctionType::pure(
+                vec![Type::Int],
+                Type::Int,
+            ))),
         );
 
         let lowered = lower_module(&module, &env);
@@ -3320,7 +3365,10 @@ mod tests {
         let mut env = TypeEnv::new();
         env.bind(
             "pick".to_string(),
-            TypeScheme::mono(Type::Function(FunctionType::pure(vec![Type::Bool], Type::Int))),
+            TypeScheme::mono(Type::Function(FunctionType::pure(
+                vec![Type::Bool],
+                Type::Int,
+            ))),
         );
 
         let lowered = lower_module(&module, &env);
@@ -3339,7 +3387,10 @@ mod tests {
         let mut env = TypeEnv::new();
         env.bind(
             "pick".to_string(),
-            TypeScheme::mono(Type::Function(FunctionType::pure(vec![Type::Bool], Type::Int))),
+            TypeScheme::mono(Type::Function(FunctionType::pure(
+                vec![Type::Bool],
+                Type::Int,
+            ))),
         );
 
         let lowered = lower_module(&module, &env);
@@ -3376,7 +3427,10 @@ mod tests {
         let mut env = TypeEnv::new();
         env.bind(
             "pick".to_string(),
-            TypeScheme::mono(Type::Function(FunctionType::pure(vec![Type::Bool], Type::Int))),
+            TypeScheme::mono(Type::Function(FunctionType::pure(
+                vec![Type::Bool],
+                Type::Int,
+            ))),
         );
 
         let lowered = lower_module(&module, &env);
@@ -3400,7 +3454,10 @@ mod tests {
         let mut env = TypeEnv::new();
         env.bind(
             "classify".to_string(),
-            TypeScheme::mono(Type::Function(FunctionType::pure(vec![Type::Int], Type::Int))),
+            TypeScheme::mono(Type::Function(FunctionType::pure(
+                vec![Type::Int],
+                Type::Int,
+            ))),
         );
 
         let lowered = lower_module(&module, &env);
@@ -3657,7 +3714,10 @@ mod tests {
         let mut env = TypeEnv::new();
         env.bind(
             "classify".to_string(),
-            TypeScheme::mono(Type::Function(FunctionType::pure(vec![Type::Float], Type::Int))),
+            TypeScheme::mono(Type::Function(FunctionType::pure(
+                vec![Type::Float],
+                Type::Int,
+            ))),
         );
 
         let lowered = lower_module(&module, &env);
@@ -3691,7 +3751,10 @@ mod tests {
         let mut env = TypeEnv::new();
         env.bind(
             "classify".to_string(),
-            TypeScheme::mono(Type::Function(FunctionType::pure(vec![Type::Int], Type::Int))),
+            TypeScheme::mono(Type::Function(FunctionType::pure(
+                vec![Type::Int],
+                Type::Int,
+            ))),
         );
 
         let lowered = lower_module(&module, &env);
@@ -3714,7 +3777,10 @@ mod tests {
         let mut env = TypeEnv::new();
         env.bind(
             "classify".to_string(),
-            TypeScheme::mono(Type::Function(FunctionType::pure(vec![Type::Int], Type::Int))),
+            TypeScheme::mono(Type::Function(FunctionType::pure(
+                vec![Type::Int],
+                Type::Int,
+            ))),
         );
 
         let lowered = lower_module(&module, &env);
@@ -3745,9 +3811,8 @@ mod tests {
 
     #[test]
     fn lower_function_block_tail_propagates_type_hint_for_case() {
-        let module = parse_module_from_text(
-            "fn mark() -> Unit\n  let x = 1\n  case x\n    0 -> ()",
-        );
+        let module =
+            parse_module_from_text("fn mark() -> Unit\n  let x = 1\n  case x\n    0 -> ()");
         let mut env = TypeEnv::new();
         env.bind(
             "mark".to_string(),
@@ -3790,7 +3855,10 @@ mod tests {
         match &function.body.kind {
             HirExprKind::If { .. } => {}
             HirExprKind::Block(exprs) => {
-                assert!(matches!(exprs.last().map(|expr| &expr.kind), Some(HirExprKind::If { .. })));
+                assert!(matches!(
+                    exprs.last().map(|expr| &expr.kind),
+                    Some(HirExprKind::If { .. })
+                ));
             }
             other => panic!("expected enum case to lower through literal-case path, got {other:?}"),
         }
@@ -3830,7 +3898,10 @@ mod tests {
         match &function.body.kind {
             HirExprKind::If { .. } => {}
             HirExprKind::Block(exprs) => {
-                assert!(matches!(exprs.last().map(|expr| &expr.kind), Some(HirExprKind::If { .. })));
+                assert!(matches!(
+                    exprs.last().map(|expr| &expr.kind),
+                    Some(HirExprKind::If { .. })
+                ));
             }
             other => panic!(
                 "expected payload constructor wildcard case to lower through literal-case path, got {other:?}"
@@ -4056,10 +4127,7 @@ mod tests {
             panic!("expected literal payload constructor case to lower to if");
         };
         assert!(
-            matches!(
-                condition.kind,
-                HirExprKind::Binary { op: BinOp::And, .. }
-            ),
+            matches!(condition.kind, HirExprKind::Binary { op: BinOp::And, .. }),
             "expected constructor literal payload check to compose tag and payload predicates"
         );
     }
@@ -4128,14 +4196,17 @@ mod tests {
                     name: "Outer".to_string(),
                     type_args: vec![],
                     variants: vec![
-                        ("Wrap".to_string(), vec![Type::Sum(kea_types::SumType {
-                            name: "Inner".to_string(),
-                            type_args: vec![],
-                            variants: vec![
-                                ("A".to_string(), vec![Type::Int]),
-                                ("B".to_string(), vec![Type::Int]),
-                            ],
-                        })]),
+                        (
+                            "Wrap".to_string(),
+                            vec![Type::Sum(kea_types::SumType {
+                                name: "Inner".to_string(),
+                                type_args: vec![],
+                                variants: vec![
+                                    ("A".to_string(), vec![Type::Int]),
+                                    ("B".to_string(), vec![Type::Int]),
+                                ],
+                            })],
+                        ),
                         ("End".to_string(), vec![]),
                     ],
                 })],
@@ -4172,14 +4243,17 @@ mod tests {
                     name: "Wrap".to_string(),
                     type_args: vec![],
                     variants: vec![
-                        ("W".to_string(), vec![Type::Record(kea_types::RecordType {
-                            name: "User".to_string(),
-                            params: vec![],
-                            row: kea_types::RowType::closed(vec![(
-                                Label::new("age"),
-                                Type::Int,
-                            )]),
-                        })]),
+                        (
+                            "W".to_string(),
+                            vec![Type::Record(kea_types::RecordType {
+                                name: "User".to_string(),
+                                params: vec![],
+                                row: kea_types::RowType::closed(vec![(
+                                    Label::new("age"),
+                                    Type::Int,
+                                )]),
+                            })],
+                        ),
                         ("N".to_string(), vec![]),
                     ],
                 })],
@@ -4199,9 +4273,9 @@ mod tests {
 
         let then_branch = match &function.body.kind {
             HirExprKind::If { then_branch, .. } => then_branch,
-            other => panic!(
-                "expected constructor record-payload pattern to lower to if, got {other:?}"
-            ),
+            other => {
+                panic!("expected constructor record-payload pattern to lower to if, got {other:?}")
+            }
         };
         let HirExprKind::Block(exprs) = &then_branch.kind else {
             panic!("expected constructor record payload branch to emit binding block");
@@ -4313,7 +4387,12 @@ mod tests {
             panic!("expected first OR branch expression to be payload binding");
         };
         assert_eq!(pattern, &HirPattern::Var("n".to_string()));
-        let HirExprKind::SumPayloadAccess { sum_type, field_index, .. } = &value.kind else {
+        let HirExprKind::SumPayloadAccess {
+            sum_type,
+            field_index,
+            ..
+        } = &value.kind
+        else {
             panic!("expected payload OR branch binding to use SumPayloadAccess");
         };
         assert_eq!(sum_type, "Either");
@@ -4481,7 +4560,10 @@ mod tests {
         match &function.body.kind {
             HirExprKind::If { .. } => {}
             HirExprKind::Block(exprs) => {
-                assert!(matches!(exprs.last().map(|expr| &expr.kind), Some(HirExprKind::If { .. })));
+                assert!(matches!(
+                    exprs.last().map(|expr| &expr.kind),
+                    Some(HirExprKind::If { .. })
+                ));
             }
             other => panic!(
                 "expected unqualified enum case to lower through literal-case path, got {other:?}"
@@ -4566,7 +4648,10 @@ mod tests {
         let mut env = TypeEnv::new();
         env.bind(
             "classify".to_string(),
-            TypeScheme::mono(Type::Function(FunctionType::pure(vec![Type::Int], Type::Int))),
+            TypeScheme::mono(Type::Function(FunctionType::pure(
+                vec![Type::Int],
+                Type::Int,
+            ))),
         );
 
         let lowered = lower_module(&module, &env);
@@ -4616,12 +4701,16 @@ mod tests {
 
     #[test]
     fn lower_function_literal_case_as_pattern_binds_scrutinee() {
-        let module =
-            parse_module_from_text("fn classify(x: Int) -> Int\n  case x\n    0 as n -> n\n    _ -> 1");
+        let module = parse_module_from_text(
+            "fn classify(x: Int) -> Int\n  case x\n    0 as n -> n\n    _ -> 1",
+        );
         let mut env = TypeEnv::new();
         env.bind(
             "classify".to_string(),
-            TypeScheme::mono(Type::Function(FunctionType::pure(vec![Type::Int], Type::Int))),
+            TypeScheme::mono(Type::Function(FunctionType::pure(
+                vec![Type::Int],
+                Type::Int,
+            ))),
         );
 
         let lowered = lower_module(&module, &env);
@@ -4645,12 +4734,16 @@ mod tests {
 
     #[test]
     fn lower_function_literal_case_guard_desugars_to_and_condition() {
-        let module =
-            parse_module_from_text("fn classify(x: Int) -> Int\n  case x\n    0 when x == 0 -> 1\n    _ -> 2");
+        let module = parse_module_from_text(
+            "fn classify(x: Int) -> Int\n  case x\n    0 when x == 0 -> 1\n    _ -> 2",
+        );
         let mut env = TypeEnv::new();
         env.bind(
             "classify".to_string(),
-            TypeScheme::mono(Type::Function(FunctionType::pure(vec![Type::Int], Type::Int))),
+            TypeScheme::mono(Type::Function(FunctionType::pure(
+                vec![Type::Int],
+                Type::Int,
+            ))),
         );
 
         let lowered = lower_module(&module, &env);
@@ -4677,7 +4770,10 @@ mod tests {
         let mut env = TypeEnv::new();
         env.bind(
             "classify".to_string(),
-            TypeScheme::mono(Type::Function(FunctionType::pure(vec![Type::Int], Type::Int))),
+            TypeScheme::mono(Type::Function(FunctionType::pure(
+                vec![Type::Int],
+                Type::Int,
+            ))),
         );
 
         let lowered = lower_module(&module, &env);
@@ -4740,9 +4836,7 @@ mod tests {
                 };
                 condition
             }
-            other => panic!(
-                "expected unit-enum guarded case to lower to if/block, got {other:?}"
-            ),
+            other => panic!("expected unit-enum guarded case to lower to if/block, got {other:?}"),
         };
         assert!(matches!(
             condition.kind,
@@ -4783,9 +4877,7 @@ mod tests {
                 };
                 condition
             }
-            other => panic!(
-                "expected unit-enum as+guard case to lower to if/block, got {other:?}"
-            ),
+            other => panic!("expected unit-enum as+guard case to lower to if/block, got {other:?}"),
         };
         let HirExprKind::Binary {
             op: BinOp::And,
@@ -4809,12 +4901,16 @@ mod tests {
 
     #[test]
     fn lower_function_literal_or_guard_desugars_to_and_condition() {
-        let module =
-            parse_module_from_text("fn classify(x: Int) -> Int\n  case x\n    0 | 1 when true -> 1\n    _ -> 2");
+        let module = parse_module_from_text(
+            "fn classify(x: Int) -> Int\n  case x\n    0 | 1 when true -> 1\n    _ -> 2",
+        );
         let mut env = TypeEnv::new();
         env.bind(
             "classify".to_string(),
-            TypeScheme::mono(Type::Function(FunctionType::pure(vec![Type::Int], Type::Int))),
+            TypeScheme::mono(Type::Function(FunctionType::pure(
+                vec![Type::Int],
+                Type::Int,
+            ))),
         );
 
         let lowered = lower_module(&module, &env);
@@ -4863,9 +4959,9 @@ mod tests {
                 };
                 condition
             }
-            other => panic!(
-                "expected unit-enum OR guarded case to lower to if/block, got {other:?}"
-            ),
+            other => {
+                panic!("expected unit-enum OR guarded case to lower to if/block, got {other:?}")
+            }
         };
         assert!(matches!(
             condition.kind,
@@ -4881,7 +4977,10 @@ mod tests {
         let mut env = TypeEnv::new();
         env.bind(
             "classify".to_string(),
-            TypeScheme::mono(Type::Function(FunctionType::pure(vec![Type::Int], Type::Int))),
+            TypeScheme::mono(Type::Function(FunctionType::pure(
+                vec![Type::Int],
+                Type::Int,
+            ))),
         );
 
         let lowered = lower_module(&module, &env);
@@ -4902,7 +5001,10 @@ mod tests {
         let mut env = TypeEnv::new();
         env.bind(
             "classify".to_string(),
-            TypeScheme::mono(Type::Function(FunctionType::pure(vec![Type::Int], Type::Int))),
+            TypeScheme::mono(Type::Function(FunctionType::pure(
+                vec![Type::Int],
+                Type::Int,
+            ))),
         );
 
         let lowered = lower_module(&module, &env);
@@ -4923,7 +5025,10 @@ mod tests {
         let mut env = TypeEnv::new();
         env.bind(
             "classify".to_string(),
-            TypeScheme::mono(Type::Function(FunctionType::pure(vec![Type::Int], Type::Int))),
+            TypeScheme::mono(Type::Function(FunctionType::pure(
+                vec![Type::Int],
+                Type::Int,
+            ))),
         );
 
         let lowered = lower_module(&module, &env);
@@ -4942,12 +5047,13 @@ mod tests {
                 then_branch,
                 else_branch,
                 ..
-            } => 1
-                + count_if_nodes(then_branch)
-                + else_branch
-                    .as_ref()
-                    .map(|expr| count_if_nodes(expr))
-                    .unwrap_or(0),
+            } => {
+                1 + count_if_nodes(then_branch)
+                    + else_branch
+                        .as_ref()
+                        .map(|expr| count_if_nodes(expr))
+                        .unwrap_or(0)
+            }
             HirExprKind::Block(exprs) | HirExprKind::Tuple(exprs) => {
                 exprs.iter().map(count_if_nodes).sum()
             }
@@ -4960,7 +5066,11 @@ mod tests {
                 fields.iter().map(|(_, value)| count_if_nodes(value)).sum()
             }
             HirExprKind::RecordUpdate { base, fields, .. } => {
-                count_if_nodes(base) + fields.iter().map(|(_, value)| count_if_nodes(value)).sum::<usize>()
+                count_if_nodes(base)
+                    + fields
+                        .iter()
+                        .map(|(_, value)| count_if_nodes(value))
+                        .sum::<usize>()
             }
             HirExprKind::SumConstructor { fields, .. } => fields.iter().map(count_if_nodes).sum(),
             HirExprKind::SumPayloadAccess { expr, .. } => count_if_nodes(expr),

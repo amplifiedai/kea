@@ -1047,11 +1047,7 @@ impl FunctionLoweringCtx {
             .filter(|name| !param_names.contains(name))
             .filter(|name| self.vars.contains_key(name))
             .map(|name| {
-                let capture_ty = self
-                    .var_types
-                    .get(&name)
-                    .cloned()
-                    .unwrap_or(Type::Dynamic);
+                let capture_ty = self.var_types.get(&name).cloned().unwrap_or(Type::Dynamic);
                 let capture_value = self
                     .vars
                     .get(&name)
@@ -1060,7 +1056,10 @@ impl FunctionLoweringCtx {
                 (name, capture_ty, capture_value)
             })
             .collect::<Vec<_>>();
-        let lambda_name = format!("{}::lambda${}", self.function_name, self.next_lifted_lambda_id);
+        let lambda_name = format!(
+            "{}::lambda${}",
+            self.function_name, self.next_lifted_lambda_id
+        );
         self.next_lifted_lambda_id = self.next_lifted_lambda_id.saturating_add(1);
         let lifted_params = captures
             .iter()
@@ -1310,8 +1309,7 @@ impl FunctionLoweringCtx {
                     src: claimed,
                 });
 
-                let mut updates: Vec<MirFieldUpdate> =
-                    Vec::with_capacity(flattened_updates.len());
+                let mut updates: Vec<MirFieldUpdate> = Vec::with_capacity(flattened_updates.len());
                 for (field_name, field_expr) in flattened_updates {
                     let value = self.lower_expr(field_expr)?;
                     if let Some(existing) =
@@ -1405,9 +1403,7 @@ impl FunctionLoweringCtx {
                 }
                 Some(dest)
             }
-            HirExprKind::Call { func, args } => {
-                self.lower_call_expr(expr, func, args, false)
-            }
+            HirExprKind::Call { func, args } => self.lower_call_expr(expr, func, args, false),
             HirExprKind::Catch { expr: caught } => {
                 let HirExprKind::Call { func, args } = &caught.kind else {
                     return None;
@@ -1520,7 +1516,8 @@ impl FunctionLoweringCtx {
                     .position(|param| param == capture_name)?;
                 let capture_arg = factory_args.get(capture_index)?;
                 let capture_value = self.lower_expr(capture_arg)?;
-                self.vars.insert(capture_name.clone(), capture_value.clone());
+                self.vars
+                    .insert(capture_name.clone(), capture_value.clone());
                 self.var_types
                     .insert(capture_name.clone(), capture_arg.ty.clone());
                 if let Type::Record(record_ty) = &capture_arg.ty {
@@ -1581,7 +1578,8 @@ impl FunctionLoweringCtx {
         {
             let incoming_scope = self.snapshot_var_scope();
             for capture in &local_lambda.captures {
-                self.vars.insert(capture.name.clone(), capture.value.clone());
+                self.vars
+                    .insert(capture.name.clone(), capture.value.clone());
                 self.var_types
                     .insert(capture.name.clone(), capture.ty.clone());
                 if let Some(record_type) = &capture.record_type {
@@ -1712,7 +1710,8 @@ impl FunctionLoweringCtx {
             {
                 let incoming_scope = self.snapshot_var_scope();
                 for capture in &local_lambda.captures {
-                    self.vars.insert(capture.name.clone(), capture.value.clone());
+                    self.vars
+                        .insert(capture.name.clone(), capture.value.clone());
                     self.var_types
                         .insert(capture.name.clone(), capture.ty.clone());
                     if let Some(record_type) = &capture.record_type {
@@ -1720,9 +1719,7 @@ impl FunctionLoweringCtx {
                             .insert(capture.name.clone(), record_type.clone());
                     }
                 }
-                let synthesized_ty = expected
-                    .cloned()
-                    .unwrap_or_else(|| arg.ty.clone());
+                let synthesized_ty = expected.cloned().unwrap_or_else(|| arg.ty.clone());
                 let synthesized_expr = HirExpr {
                     kind: HirExprKind::Lambda {
                         params: local_lambda.params.clone(),
@@ -1738,11 +1735,7 @@ impl FunctionLoweringCtx {
                     expected,
                 )?;
                 self.restore_var_scope(&incoming_scope);
-                arg_types.push(
-                    expected
-                        .cloned()
-                        .unwrap_or(synthesized_ty),
-                );
+                arg_types.push(expected.cloned().unwrap_or(synthesized_ty));
                 lowered_args.push(value);
                 continue;
             }
@@ -1791,7 +1784,8 @@ impl FunctionLoweringCtx {
             cc_manifest_id: "default".to_string(),
         });
         if let (Some(dest), Type::Sum(sum_ty)) = (&result, &call_ret_type) {
-            self.sum_value_types.insert(dest.clone(), sum_ty.name.clone());
+            self.sum_value_types
+                .insert(dest.clone(), sum_ty.name.clone());
         }
         result
     }
@@ -1845,7 +1839,12 @@ impl FunctionLoweringCtx {
                     .map(|(name, _)| name.node.clone())
                     .collect::<BTreeSet<_>>();
                 let record_type = anon_record_layout_name(&required);
-                if !self.layouts.records.iter().any(|record| record.name == record_type) {
+                if !self
+                    .layouts
+                    .records
+                    .iter()
+                    .any(|record| record.name == record_type)
+                {
                     return None;
                 }
                 let mut lowered_fields = Vec::with_capacity(fields.len());
@@ -2702,7 +2701,10 @@ mod tests {
                 body: HirExpr {
                     kind: HirExprKind::Raw(ExprKind::AnonRecord {
                         fields: vec![
-                            (sp("age".to_string()), sp(ExprKind::Lit(kea_ast::Lit::Int(4)))),
+                            (
+                                sp("age".to_string()),
+                                sp(ExprKind::Lit(kea_ast::Lit::Int(4))),
+                            ),
                             (
                                 sp("score".to_string()),
                                 sp(ExprKind::Lit(kea_ast::Lit::Int(9))),
@@ -2787,29 +2789,23 @@ mod tests {
 
         let mir = lower_hir_module(&hir);
         let function = &mir.functions[0];
-        assert!(function.blocks[0]
-            .instructions
-            .iter()
-            .any(|inst| matches!(
-                inst,
-                MirInst::RecordInit {
-                    record_type,
-                    fields,
-                    ..
-                } if record_type == "__AnonRecord$age$score" && fields.len() == 2
-            )));
-        assert!(function.blocks[0]
-            .instructions
-            .iter()
-            .any(|inst| matches!(
-                inst,
-                MirInst::RecordFieldLoad {
-                    record_type,
-                    field,
-                    field_ty: Type::Int,
-                    ..
-                } if record_type == "__AnonRecord$age$score" && field == "age"
-            )));
+        assert!(function.blocks[0].instructions.iter().any(|inst| matches!(
+            inst,
+            MirInst::RecordInit {
+                record_type,
+                fields,
+                ..
+            } if record_type == "__AnonRecord$age$score" && fields.len() == 2
+        )));
+        assert!(function.blocks[0].instructions.iter().any(|inst| matches!(
+            inst,
+            MirInst::RecordFieldLoad {
+                record_type,
+                field,
+                field_ty: Type::Int,
+                ..
+            } if record_type == "__AnonRecord$age$score" && field == "age"
+        )));
     }
 
     #[test]
@@ -2857,33 +2853,38 @@ mod tests {
 
         let mir = lower_hir_module(&hir);
         let function = &mir.functions[0];
-        assert!(function.blocks[0]
-            .instructions
-            .iter()
-            .any(|inst| matches!(inst, MirInst::Retain { .. })));
-        assert!(function.blocks[0]
-            .instructions
-            .iter()
-            .any(|inst| matches!(inst, MirInst::TryClaim { .. })));
-        assert!(function.blocks[0]
-            .instructions
-            .iter()
-            .any(|inst| matches!(inst, MirInst::Freeze { .. })));
-        assert!(function.blocks[0]
-            .instructions
-            .iter()
-            .any(|inst| matches!(
-                inst,
-                MirInst::CowUpdate {
-                    record_type,
-                    updates,
-                    ..
-                } if record_type == "User" && updates.len() == 1 && updates[0].field == "age"
-            )));
-        assert!(function.blocks[0]
-            .instructions
-            .iter()
-            .any(|inst| matches!(inst, MirInst::Release { .. })));
+        assert!(
+            function.blocks[0]
+                .instructions
+                .iter()
+                .any(|inst| matches!(inst, MirInst::Retain { .. }))
+        );
+        assert!(
+            function.blocks[0]
+                .instructions
+                .iter()
+                .any(|inst| matches!(inst, MirInst::TryClaim { .. }))
+        );
+        assert!(
+            function.blocks[0]
+                .instructions
+                .iter()
+                .any(|inst| matches!(inst, MirInst::Freeze { .. }))
+        );
+        assert!(function.blocks[0].instructions.iter().any(|inst| matches!(
+            inst,
+            MirInst::CowUpdate {
+                record_type,
+                updates,
+                ..
+            } if record_type == "User" && updates.len() == 1 && updates[0].field == "age"
+        )));
+        assert!(
+            function.blocks[0]
+                .instructions
+                .iter()
+                .any(|inst| matches!(inst, MirInst::Release { .. }))
+        );
     }
 
     #[test]
@@ -3089,23 +3090,23 @@ mod tests {
             declarations: vec![function_decl],
         });
         let function = &mir.functions[0];
-        assert!(function.blocks[0]
-            .instructions
-            .iter()
-            .any(|inst| matches!(inst, MirInst::Binary { op: MirBinaryOp::Add, .. })));
-        assert!(function.blocks[0]
-            .instructions
-            .iter()
-            .any(|inst| matches!(
-                inst,
-                MirInst::SumInit {
-                    sum_type,
-                    variant,
-                    tag: 0,
-                    fields,
-                    ..
-                } if sum_type == "Option" && variant == "Some" && fields.len() == 1
-            )));
+        assert!(function.blocks[0].instructions.iter().any(|inst| matches!(
+            inst,
+            MirInst::Binary {
+                op: MirBinaryOp::Add,
+                ..
+            }
+        )));
+        assert!(function.blocks[0].instructions.iter().any(|inst| matches!(
+            inst,
+            MirInst::SumInit {
+                sum_type,
+                variant,
+                tag: 0,
+                fields,
+                ..
+            } if sum_type == "Option" && variant == "Some" && fields.len() == 1
+        )));
     }
 
     #[test]
@@ -3751,7 +3752,10 @@ mod tests {
                                             span: kea_ast::Span::synthetic(),
                                         }),
                                     },
-                                    ty: Type::Function(FunctionType::pure(vec![Type::Int], Type::Int)),
+                                    ty: Type::Function(FunctionType::pure(
+                                        vec![Type::Int],
+                                        Type::Int,
+                                    )),
                                     span: kea_ast::Span::synthetic(),
                                 }),
                             },
@@ -3762,7 +3766,10 @@ mod tests {
                             kind: HirExprKind::Call {
                                 func: Box::new(HirExpr {
                                     kind: HirExprKind::Var("f".to_string()),
-                                    ty: Type::Function(FunctionType::pure(vec![Type::Int], Type::Int)),
+                                    ty: Type::Function(FunctionType::pure(
+                                        vec![Type::Int],
+                                        Type::Int,
+                                    )),
                                     span: kea_ast::Span::synthetic(),
                                 }),
                                 args: vec![HirExpr {
@@ -3794,10 +3801,13 @@ mod tests {
             "let-bound lambda should lower to a first-class closure value"
         );
         assert!(
-            function.blocks[0]
-                .instructions
-                .iter()
-                .any(|inst| matches!(inst, MirInst::Call { callee: MirCallee::Value(_), .. })),
+            function.blocks[0].instructions.iter().any(|inst| matches!(
+                inst,
+                MirInst::Call {
+                    callee: MirCallee::Value(_),
+                    ..
+                }
+            )),
             "let-bound lambda call should lower through closure indirect-call path"
         );
     }
@@ -3909,7 +3919,8 @@ mod tests {
     #[test]
     fn lower_hir_module_inlines_let_bound_lambda_from_factory_call() {
         let inner_fn_ty = Type::Function(FunctionType::pure(vec![Type::Int], Type::Int));
-        let make_adder_ty = Type::Function(FunctionType::pure(vec![Type::Int], inner_fn_ty.clone()));
+        let make_adder_ty =
+            Type::Function(FunctionType::pure(vec![Type::Int], inner_fn_ty.clone()));
         let hir = HirModule {
             declarations: vec![
                 HirDecl::Function(HirFunction {
@@ -4018,10 +4029,13 @@ mod tests {
             "factory call should stay as a regular local call"
         );
         assert!(
-            main_fn.blocks[0]
-                .instructions
-                .iter()
-                .any(|inst| matches!(inst, MirInst::Call { callee: MirCallee::Value(_), .. })),
+            main_fn.blocks[0].instructions.iter().any(|inst| matches!(
+                inst,
+                MirInst::Call {
+                    callee: MirCallee::Value(_),
+                    ..
+                }
+            )),
             "factory-returned closure call should lower through indirect closure dispatch"
         );
     }
@@ -4041,7 +4055,10 @@ mod tests {
                     doc: None,
                     annotations: vec![],
                     params: vec![],
-                    fields: vec![(sp("age".to_string()), TypeAnnotation::Named("Int".to_string()))],
+                    fields: vec![(
+                        sp("age".to_string()),
+                        TypeAnnotation::Named("Int".to_string()),
+                    )],
                     field_annotations: vec![],
                     derives: vec![],
                 })),
@@ -4130,7 +4147,8 @@ mod tests {
     #[test]
     fn lower_hir_module_lowers_escaping_capturing_factory_call_to_closure_value() {
         let inner_fn_ty = Type::Function(FunctionType::pure(vec![Type::Int], Type::Int));
-        let make_adder_ty = Type::Function(FunctionType::pure(vec![Type::Int], inner_fn_ty.clone()));
+        let make_adder_ty =
+            Type::Function(FunctionType::pure(vec![Type::Int], inner_fn_ty.clone()));
         let hir = HirModule {
             declarations: vec![
                 HirDecl::Function(HirFunction {
@@ -4280,10 +4298,13 @@ mod tests {
             "direct lambda call should inline without emitting a call instruction"
         );
         assert!(
-            function.blocks[0]
-                .instructions
-                .iter()
-                .any(|inst| matches!(inst, MirInst::Binary { op: MirBinaryOp::Add, .. })),
+            function.blocks[0].instructions.iter().any(|inst| matches!(
+                inst,
+                MirInst::Binary {
+                    op: MirBinaryOp::Add,
+                    ..
+                }
+            )),
             "inlined direct lambda body should produce add instruction"
         );
     }
