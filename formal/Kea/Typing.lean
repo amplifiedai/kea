@@ -11885,6 +11885,74 @@ theorem principalNoUnifyFieldRunBundleConsequences_of_success_via_masterRunBundl
     principalBoundaryMasterRunBundleConsequenceSuite_proved h_no h_ok
 
 /--
+Cross-route coherence: successful no-unify expression runs yield packaged
+consequence bundles on both the master-consequence-capstone and
+master-run-bundle-consequence routes.
+-/
+structure PrincipalNoUnifyExprRunBundleConsequencesBothMasterConsequenceRoutes
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty) : Prop where
+  viaMasterConsequenceCapstone :
+    PrincipalNoUnifyExprRunBundleConsequences st fuel env e st' ty
+  viaMasterRunBundleConsequence :
+    PrincipalNoUnifyExprRunBundleConsequences st fuel env e st' ty
+
+/--
+Cross-route coherence constructor: successful no-unify expression runs yield
+packaged consequence bundles on both the master-consequence-capstone and
+master-run-bundle-consequence routes.
+-/
+theorem principalNoUnifyExprRunBundleConsequences_on_both_master_consequence_routes
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalNoUnifyExprRunBundleConsequencesBothMasterConsequenceRoutes
+      st fuel env e st' ty := by
+  refine {
+    viaMasterConsequenceCapstone :=
+      principalNoUnifyExprRunBundleConsequences_of_success_via_masterConsequenceCapstoneSuite
+        h_no h_ok
+    viaMasterRunBundleConsequence :=
+      principalNoUnifyExprRunBundleConsequences_of_success_via_masterRunBundleConsequenceSuite
+        h_no h_ok
+  }
+
+/--
+Cross-route coherence: successful no-unify field runs yield packaged
+consequence bundles on both the master-consequence-capstone and
+master-run-bundle-consequence routes.
+-/
+structure PrincipalNoUnifyFieldRunBundleConsequencesBothMasterConsequenceRoutes
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields) : Prop where
+  viaMasterConsequenceCapstone :
+    PrincipalNoUnifyFieldRunBundleConsequences st fuel env fs st' rf
+  viaMasterRunBundleConsequence :
+    PrincipalNoUnifyFieldRunBundleConsequences st fuel env fs st' rf
+
+/--
+Cross-route coherence constructor: successful no-unify field runs yield
+packaged consequence bundles on both the master-consequence-capstone and
+master-run-bundle-consequence routes.
+-/
+theorem principalNoUnifyFieldRunBundleConsequences_on_both_master_consequence_routes
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalNoUnifyFieldRunBundleConsequencesBothMasterConsequenceRoutes
+      st fuel env fs st' rf := by
+  refine {
+    viaMasterConsequenceCapstone :=
+      principalNoUnifyFieldRunBundleConsequences_of_success_via_masterConsequenceCapstoneSuite
+        h_no h_ok
+    viaMasterRunBundleConsequence :=
+      principalNoUnifyFieldRunBundleConsequences_of_success_via_masterRunBundleConsequenceSuite
+        h_no h_ok
+  }
+
+/--
 Master-run-bundle-consequence-suite no-unify-to-general convenience wrapper:
 derive the expression all-hooks capstone from a successful no-unify run.
 -/
