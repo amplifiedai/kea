@@ -5950,6 +5950,92 @@ theorem principalPreconditionedCoreIffField_of_success_via_generalAllHooksSuite
     principalPreconditionedAllHooksSuite_proved h_app0 h_proj0 h_ok h_hooks
 
 /--
+General-all-hooks-suite convenience wrapper: bundled-baseline variant for core
+expression principality from an arbitrary successful run.
+-/
+theorem principalCoreExpr_of_success_via_generalAllHooksSuite_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalTypingSliceCore env e ty :=
+  principalCoreExpr_of_success_via_generalAllHooksSuite h_seed.1 h_seed.2 h_ok
+
+/--
+General-all-hooks-suite convenience wrapper: bundled-baseline variant for
+preconditioned expression principality (any target hooks) from an arbitrary
+successful run.
+-/
+theorem principalPreconditionedExpr_anyHooks_of_success_via_generalAllHooksSuite_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    ∀ h_app h_proj,
+      PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty :=
+  principalPreconditionedExpr_anyHooks_of_success_via_generalAllHooksSuite
+    h_seed.1 h_seed.2 h_ok
+
+/--
+General-all-hooks-suite convenience wrapper: bundled-baseline variant for
+fixed-run expression preconditioned↔core equivalence (any target hooks) from an
+arbitrary successful run.
+-/
+theorem principalPreconditionedCoreIffExpr_anyHooks_of_success_via_generalAllHooksSuite_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    ∀ h_app h_proj,
+      (PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty
+        ↔ PrincipalTypingSliceCore env e ty) :=
+  principalPreconditionedCoreIffExpr_anyHooks_of_success_via_generalAllHooksSuite
+    h_seed.1 h_seed.2 h_ok
+
+/--
+General-all-hooks-suite convenience wrapper: bundled-baseline variant for core
+field principality from an arbitrary successful field run.
+-/
+theorem principalCoreField_of_success_via_generalAllHooksSuite_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalFieldTypingSliceCore env fs rf :=
+  principalCoreField_of_success_via_generalAllHooksSuite h_seed.1 h_seed.2 h_ok
+
+/--
+General-all-hooks-suite convenience wrapper: bundled-baseline variant for
+preconditioned field principality (any target hooks) from an arbitrary
+successful field run.
+-/
+theorem principalPreconditionedField_anyHooks_of_success_via_generalAllHooksSuite_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    ∀ h_app h_proj,
+      PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf :=
+  principalPreconditionedField_anyHooks_of_success_via_generalAllHooksSuite
+    h_seed.1 h_seed.2 h_ok
+
+/--
+General-all-hooks-suite convenience wrapper: bundled-baseline variant for
+fixed-run field preconditioned↔core equivalence (any target hooks) from an
+arbitrary successful field run.
+-/
+theorem principalPreconditionedCoreIffField_anyHooks_of_success_via_generalAllHooksSuite_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    ∀ h_app h_proj,
+      (PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf
+        ↔ PrincipalFieldTypingSliceCore env fs rf) :=
+  principalPreconditionedCoreIffField_anyHooks_of_success_via_generalAllHooksSuite
+    h_seed.1 h_seed.2 h_ok
+
+/--
 General-all-hooks-suite convenience wrapper: derive fixed-run expression
 hook-irrelevance from an arbitrary successful run.
 -/
@@ -7673,6 +7759,96 @@ theorem principalPreconditionedCoreIffField_of_success_via_masterSuite
       ↔ PrincipalFieldTypingSliceCore env fs rf) :=
   principalGeneralAllHooksPreconditionedCoreIffField_of_success
     h_suite.allHooks h_app0 h_proj0 h_ok h_hooks
+
+/--
+Master-suite convenience wrapper: bundled-baseline variant for core expression
+principality from an arbitrary successful run.
+-/
+theorem principalCoreExpr_of_success_via_masterSuite_from_bundle
+    (h_suite : PrincipalBoundaryMasterSuite)
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalTypingSliceCore env e ty :=
+  principalCoreExpr_of_success_via_masterSuite h_suite h_seed.1 h_seed.2 h_ok
+
+/--
+Master-suite convenience wrapper: bundled-baseline variant for preconditioned
+expression principality (any target hooks) from an arbitrary successful run.
+-/
+theorem principalPreconditionedExpr_anyHooks_of_success_via_masterSuite_from_bundle
+    (h_suite : PrincipalBoundaryMasterSuite)
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    ∀ h_app h_proj,
+      PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty :=
+  principalPreconditionedExpr_anyHooks_of_success_via_masterSuite
+    h_suite h_seed.1 h_seed.2 h_ok
+
+/--
+Master-suite convenience wrapper: bundled-baseline variant for fixed-run
+expression preconditioned↔core equivalence (any target hooks) from an arbitrary
+successful run.
+-/
+theorem principalPreconditionedCoreIffExpr_anyHooks_of_success_via_masterSuite_from_bundle
+    (h_suite : PrincipalBoundaryMasterSuite)
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    ∀ h_app h_proj,
+      (PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty
+        ↔ PrincipalTypingSliceCore env e ty) :=
+  principalPreconditionedCoreIffExpr_anyHooks_of_success_via_masterSuite
+    h_suite h_seed.1 h_seed.2 h_ok
+
+/--
+Master-suite convenience wrapper: bundled-baseline variant for core field
+principality from an arbitrary successful field run.
+-/
+theorem principalCoreField_of_success_via_masterSuite_from_bundle
+    (h_suite : PrincipalBoundaryMasterSuite)
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalFieldTypingSliceCore env fs rf :=
+  principalCoreField_of_success_via_masterSuite h_suite h_seed.1 h_seed.2 h_ok
+
+/--
+Master-suite convenience wrapper: bundled-baseline variant for preconditioned
+field principality (any target hooks) from an arbitrary successful field run.
+-/
+theorem principalPreconditionedField_anyHooks_of_success_via_masterSuite_from_bundle
+    (h_suite : PrincipalBoundaryMasterSuite)
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    ∀ h_app h_proj,
+      PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf :=
+  principalPreconditionedField_anyHooks_of_success_via_masterSuite
+    h_suite h_seed.1 h_seed.2 h_ok
+
+/--
+Master-suite convenience wrapper: bundled-baseline variant for fixed-run field
+preconditioned↔core equivalence (any target hooks) from an arbitrary successful
+field run.
+-/
+theorem principalPreconditionedCoreIffField_anyHooks_of_success_via_masterSuite_from_bundle
+    (h_suite : PrincipalBoundaryMasterSuite)
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    ∀ h_app h_proj,
+      (PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf
+        ↔ PrincipalFieldTypingSliceCore env fs rf) :=
+  principalPreconditionedCoreIffField_anyHooks_of_success_via_masterSuite
+    h_suite h_seed.1 h_seed.2 h_ok
 
 /--
 Master-suite no-unify convenience wrapper: derive core expression principality
