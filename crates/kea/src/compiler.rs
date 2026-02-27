@@ -1045,6 +1045,45 @@ fn register_top_level_declarations(
                         diagnostics,
                     ));
                 }
+
+                // When an effect is declared inside a source module, expose its
+                // operations through that module path as well (e.g. `use IO`
+                // enables `IO.stdout(...)` from `stdlib/io.kea`) in addition to
+                // the canonical effect namespace (`Kea.IO`).
+                if let Some(module_path) = module_path {
+                    let effect_module = effect_decl.name.node.clone();
+                    for operation in &effect_decl.operations {
+                        let op_name = operation.name.node.clone();
+                        if let Some(scheme) =
+                            env.resolve_qualified(&effect_module, &op_name).cloned()
+                        {
+                            env.register_module_function(module_path, &op_name);
+                            env.register_module_type_scheme_exact(module_path, &op_name, scheme);
+
+                            let qualified_name = format!("{module_path}.{op_name}");
+                            if let Some(signature) = env
+                                .resolve_qualified_function_signature(&effect_module, &op_name)
+                                .cloned()
+                            {
+                                env.set_function_signature(qualified_name.clone(), signature);
+                            }
+                            if let Some(effect_signature) = env
+                                .resolve_qualified_effect_signature(&effect_module, &op_name)
+                                .cloned()
+                            {
+                                env.set_function_effect_signature(
+                                    qualified_name.clone(),
+                                    effect_signature,
+                                );
+                            }
+                            if let Some(effect_row) =
+                                env.resolve_qualified_effect_row(&effect_module, &op_name)
+                            {
+                                env.set_function_effect_row(qualified_name, effect_row);
+                            }
+                        }
+                    }
+                }
             }
             DeclKind::Import(_) => {}
             _ => {}
@@ -1127,7 +1166,9 @@ fn typecheck_functions(
 
         if let Some(module_path) = module_path {
             let module_short = module_struct_name(module_path).to_string();
-            env.register_module_alias(&module_short, module_path);
+            if env.resolve_module_path_alias(&module_short).is_none() {
+                env.register_module_alias(&module_short, module_path);
+            }
             env.register_module_function(module_path, &fn_decl.name.node);
             if let Some(scheme) = env.lookup(&fn_decl.name.node).cloned() {
                 env.register_module_type_scheme_exact(module_path, &fn_decl.name.node, scheme);
