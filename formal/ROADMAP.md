@@ -75,7 +75,8 @@ Concrete milestone checklist for moving from the current fuel model to an implem
 - [x] Bridge from app unification success to weak-hook equality premise (`applySubstCompat stAfter.subst fuel (.var resVar) = retTy`) under explicit substitution assumptions.
   Completed via the app-equality bridge/theorem family in `Kea/Typing.lean` (`app_unify_result_eq_of_bindTypeVar_idempotent`, `app_unify_result_eq_of_unify_function_shape_idempotent`, shifted contract wrappers `app_unify_result_eq_of_unify_success_contract_succ` and closed/fresh specializations), with explicit no-op-domain contracts (`AppUnifyNoopDomain`) and resolved-shape/`HasTypeU` hook packaging (`AppResolvedShapeFromUnifyClosedFreshSucc`, `AppUnifySoundHookUClosedFreshSucc`).
 - [ ] Prove full principal types for the row-polymorphic inference fragment beyond the current preconditioned vertical boundary.
-- [ ] Extend to DataFrame verb typing judgments once core typing soundness is stable.
+- [x] Extend to DataFrame verb typing judgments once core typing soundness is stable.
+  N/A for Kea scope: DataFrame/column verb formalization remains in the archived Rill track and is not part of Kea language formalization.
 - [x] Add supertrait/evidence bridge kickoff model (`Rill/Traits.lean`): trait graph closure (`TraitGraph`) + closure-aware satisfaction/bound-checking surfaces (`satisfiesWithGraph`, `checkTraitBoundsWithGraph`) for MCP-observed evidence behavior.
 - [x] Add concrete supertrait-gap boundary witness theorems (`satisfies_direct_ord_only`, `requiredTraits_ord_requires_eq`, `satisfiesWithGraph_ord_only_false`, `supertrait_gap_witness`) matching MCP-observed direct-impl vs closure-aware divergence.
 - [x] Add bound-checking gap witness trio (`checkTraitBoundsWithGraph_ord_only_reports_missing_super`, `checkTraitBounds_direct_ord_only_accepts`, `checkTraitBoundsWithGraph_ord_and_eq_accepts`) to make the direct-vs-closure discrepancy executable at the trait-bound checker surface.
