@@ -13,6 +13,7 @@ repository = "https://github.com/amplifiedai/kea"
 [workspace.dependencies]
 # Workspace crates
 kea-ast = { path = "crates/kea-ast" }
+kea = { path = "crates/kea" }
 kea-diag = { path = "crates/kea-diag" }
 kea-syntax = { path = "crates/kea-syntax" }
 kea-types = { path = "crates/kea-types" }

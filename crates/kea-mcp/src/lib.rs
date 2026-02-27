@@ -7,13 +7,11 @@
 use std::borrow::Cow;
 use std::sync::{Arc, Mutex};
 
-use kea_ast::{DeclKind, ExprDecl, FileId, FnDecl};
+use kea::process_module_in_env;
+use kea_ast::FileId;
 use kea_diag::{Diagnostic, Severity};
 use kea_infer::typeck::{
-    RecordRegistry, SumTypeRegistry, TraitRegistry, TypeEnv, apply_where_clause,
-    infer_and_resolve_in_context, infer_fn_decl_effect_row, register_fn_effect_signature,
-    register_fn_signature, register_effect_decl, seed_fn_where_type_params_in_context, validate_declared_fn_effect_row_with_env_and_records,
-    validate_module_annotations, validate_module_fn_annotations, validate_where_clause_traits,
+    RecordRegistry, SumTypeRegistry, TraitRegistry, TypeEnv, infer_and_resolve_in_context,
 };
 use kea_infer::InferenceContext;
 use kea_syntax::{classify_as_declaration, lex_layout, parse_expr, parse_module};
@@ -272,12 +270,6 @@ fn text_result(text: &str) -> CallToolResult {
     CallToolResult::success(vec![Content::text(text)])
 }
 
-fn has_error(diags: &[Diagnostic]) -> bool {
-    diags
-        .iter()
-        .any(|diag| matches!(diag.severity, Severity::Error))
-}
-
 fn diagnostics_json(diags: &[Diagnostic]) -> serde_json::Value {
     serde_json::json!({
         "status": "error",
@@ -290,23 +282,6 @@ fn context_errors_json(ctx: &InferenceContext) -> serde_json::Value {
         "status": "error",
         "diagnostics": ctx.errors()
     })
-}
-
-fn expr_decl_to_fn_decl(expr: &ExprDecl) -> FnDecl {
-    FnDecl {
-        public: expr.public,
-        name: expr.name.clone(),
-        doc: expr.doc.clone(),
-        annotations: expr.annotations.clone(),
-        params: expr.params.clone(),
-        return_annotation: expr.return_annotation.clone(),
-        effect_annotation: expr.effect_annotation.clone(),
-        body: expr.body.clone(),
-        testing: expr.testing.clone(),
-        testing_tags: expr.testing_tags.clone(),
-        span: expr.span,
-        where_clause: expr.where_clause.clone(),
-    }
 }
 
 fn is_declaration(tokens: &[kea_syntax::Token]) -> bool {
@@ -377,182 +352,6 @@ fn type_check_expr(
     result
 }
 
-#[derive(Debug, Clone)]
-struct ModuleProcessResult {
-    bindings: Vec<serde_json::Value>,
-    diagnostics: Vec<Diagnostic>,
-}
-
-fn process_module(
-    module: &kea_ast::Module,
-    env: &mut TypeEnv,
-    records: &mut RecordRegistry,
-    traits: &mut TraitRegistry,
-    sum_types: &mut SumTypeRegistry,
-    mut diagnostics: Vec<Diagnostic>,
-) -> Result<ModuleProcessResult, Vec<Diagnostic>> {
-    diagnostics.extend(validate_module_fn_annotations(module));
-    diagnostics.extend(validate_module_annotations(module));
-    if has_error(&diagnostics) {
-        return Err(diagnostics);
-    }
-
-    let type_defs: Vec<&kea_ast::TypeDef> = module
-        .declarations
-        .iter()
-        .filter_map(|decl| {
-            if let DeclKind::TypeDef(def) = &decl.node {
-                Some(def)
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    if let Err(diag) = sum_types.register_many(&type_defs, records) {
-        diagnostics.push(diag);
-        return Err(diagnostics);
-    }
-
-    for decl in &module.declarations {
-        match &decl.node {
-            DeclKind::AliasDecl(alias) => {
-                if let Err(diag) = records.register_alias(alias) {
-                    diagnostics.push(diag);
-                    return Err(diagnostics);
-                }
-            }
-            DeclKind::OpaqueTypeDef(opaque) => {
-                if let Err(diag) = records.register_opaque(opaque) {
-                    diagnostics.push(diag);
-                    return Err(diagnostics);
-                }
-            }
-            DeclKind::RecordDef(record) => {
-                if let Err(diag) = records.register(record) {
-                    diagnostics.push(diag);
-                    return Err(diagnostics);
-                }
-            }
-            DeclKind::TraitDef(trait_def) => {
-                if let Err(diag) = traits.register_trait(trait_def, records) {
-                    diagnostics.push(diag);
-                    return Err(diagnostics);
-                }
-            }
-            DeclKind::ImplBlock(impl_block) => {
-                if let Err(diag) = traits.register_trait_impl(impl_block) {
-                    diagnostics.push(diag);
-                    return Err(diagnostics);
-                }
-            }
-            DeclKind::EffectDecl(effect_decl) => {
-                let effect_diags = register_effect_decl(effect_decl, records, Some(sum_types), env);
-                if has_error(&effect_diags) {
-                    diagnostics.extend(effect_diags);
-                    return Err(diagnostics);
-                }
-                diagnostics.extend(effect_diags);
-            }
-            DeclKind::Import(import) => {
-                diagnostics.push(
-                    Diagnostic::warning(
-                        kea_diag::Category::TypeError,
-                        format!(
-                            "import `{}` is parsed but module resolution is not yet wired in kea-mcp",
-                            import.module.node
-                        ),
-                    )
-                    .at(kea_diag::SourceLocation {
-                        file_id: import.module.span.file.0,
-                        start: import.module.span.start,
-                        end: import.module.span.end,
-                    }),
-                );
-            }
-            _ => {}
-        }
-    }
-
-    let mut bindings = Vec::new();
-    for decl in &module.declarations {
-        let (fn_decl, kind) = match &decl.node {
-            DeclKind::Function(fn_decl) => (fn_decl.clone(), "fn"),
-            DeclKind::ExprFn(expr_decl) => (expr_decl_to_fn_decl(expr_decl), "expr"),
-            _ => continue,
-        };
-
-        let where_diags = validate_where_clause_traits(&fn_decl.where_clause, traits);
-        diagnostics.extend(
-            where_diags
-                .iter()
-                .filter(|d| !matches!(d.severity, Severity::Error))
-                .cloned(),
-        );
-        if has_error(&where_diags) {
-            diagnostics.extend(where_diags);
-            return Err(diagnostics);
-        }
-
-        let mut ctx = InferenceContext::new();
-        seed_fn_where_type_params_in_context(&fn_decl, traits, &mut ctx);
-        let expr = fn_decl.to_let_expr();
-        let _ = infer_and_resolve_in_context(&expr, env, &mut ctx, records, traits, sum_types);
-        if ctx.has_errors() {
-            diagnostics.extend_from_slice(ctx.errors());
-            return Err(diagnostics);
-        }
-
-        ctx.check_trait_bounds(traits);
-        if ctx.has_errors() {
-            diagnostics.extend_from_slice(ctx.errors());
-            return Err(diagnostics);
-        }
-
-        diagnostics.extend(
-            ctx.errors()
-                .iter()
-                .filter(|d| !matches!(d.severity, Severity::Error))
-                .cloned(),
-        );
-
-        if !fn_decl.where_clause.is_empty()
-            && let Some(scheme) = env.lookup(&fn_decl.name.node).cloned()
-        {
-            let mut scheme = scheme;
-            apply_where_clause(&mut scheme, &fn_decl, ctx.substitution());
-            env.bind(fn_decl.name.node.clone(), scheme);
-        }
-
-        let effect_row = infer_fn_decl_effect_row(&fn_decl, env);
-        if let Err(diag) =
-            validate_declared_fn_effect_row_with_env_and_records(&fn_decl, &effect_row, env, records)
-        {
-            diagnostics.push(diag);
-            return Err(diagnostics);
-        }
-
-        env.set_function_effect_row(fn_decl.name.node.clone(), effect_row.clone());
-        register_fn_signature(&fn_decl, env);
-        register_fn_effect_signature(&fn_decl, env);
-
-        let bound_ty = env
-            .lookup(&fn_decl.name.node)
-            .map(|scheme| sanitize_type_display(&scheme.ty))
-            .unwrap_or_else(|| "?".to_string());
-
-        bindings.push(serde_json::json!({
-            "name": fn_decl.name.node,
-            "kind": kind,
-            "type": bound_ty
-        }));
-    }
-
-    Ok(ModuleProcessResult {
-        bindings,
-        diagnostics,
-    })
-}
 
 fn type_check_decls(
     session: &mut Session,
@@ -564,7 +363,7 @@ fn type_check_decls(
         Err(diags) => return diagnostics_json(&diags),
     };
 
-    let processed = match process_module(
+    let processed = match process_module_in_env(
         &module,
         &mut session.type_env,
         &mut session.record_registry,
@@ -576,9 +375,21 @@ fn type_check_decls(
         Err(diags) => return diagnostics_json(&diags),
     };
 
+    let bindings_json = processed
+        .bindings
+        .iter()
+        .map(|binding| {
+            serde_json::json!({
+                "name": binding.name,
+                "kind": binding.kind,
+                "type": binding.ty
+            })
+        })
+        .collect::<Vec<_>>();
+
     let mut result = serde_json::json!({
         "status": "ok",
-        "bindings": processed.bindings
+        "bindings": bindings_json
     });
     if !processed.diagnostics.is_empty() {
         result["diagnostics"] = serde_json::json!(processed.diagnostics);
@@ -603,7 +414,7 @@ fn get_type_of(session: &Session, code: &str) -> serde_json::Value {
             Err(diags) => return diagnostics_json(&diags),
         };
 
-        let processed = match process_module(
+        let processed = match process_module_in_env(
             &module,
             &mut env,
             &mut records,
@@ -618,9 +429,7 @@ fn get_type_of(session: &Session, code: &str) -> serde_json::Value {
         let ty = processed
             .bindings
             .last()
-            .and_then(|binding| binding.get("type"))
-            .and_then(serde_json::Value::as_str)
-            .map(str::to_string)
+            .map(|binding| binding.ty.clone())
             .unwrap_or_else(|| sanitize_type_display(&Type::Unit));
 
         let mut result = serde_json::json!({
