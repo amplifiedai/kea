@@ -21494,6 +21494,112 @@ theorem principalDualConsequenceSlices_proved_via_principalPreconditionedCoreIff
     principalPreconditionedCoreIffSlices_proved
 
 /--
+Drop the extra dual consequence facets to recover the existing expression
+bridge-bundle surface.
+-/
+theorem principalNoUnifyBridgeBundle_of_dualConsequence
+    {h_app : AppUnifySoundHook}
+    {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_dual : PrincipalTypingDualConsequence h_app h_proj st fuel env e st' ty) :
+    PrincipalNoUnifyBridgeBundle h_app h_proj st fuel env e st' ty := by
+  exact {
+    core := h_dual.core
+    preconditioned := h_dual.preconditioned
+  }
+
+/--
+Drop the extra dual consequence facets to recover the existing field
+bridge-bundle surface.
+-/
+theorem principalFieldNoUnifyBridgeBundle_of_dualConsequence
+    {h_app : AppUnifySoundHook}
+    {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_dual : PrincipalFieldTypingDualConsequence h_app h_proj st fuel env fs st' rf) :
+    PrincipalFieldNoUnifyBridgeBundle h_app h_proj st fuel env fs st' rf := by
+  exact {
+    core := h_dual.core
+    preconditioned := h_dual.preconditioned
+  }
+
+/--
+Lift an expression bridge bundle into the richer dual consequence surface on a
+successful run.
+-/
+theorem principalTypingDualConsequence_of_noUnifyBridgeBundle
+    (h_hooks : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_bundle : PrincipalNoUnifyBridgeBundle h_hooks.1 h_hooks.2 st fuel env e st' ty)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalTypingDualConsequence h_hooks.1 h_hooks.2 st fuel env e st' ty := by
+  refine {
+    preconditioned := h_bundle.preconditioned
+    core := h_bundle.core
+    preconditioned_iff_core := ?_
+    inferExpr_agrees := h_bundle.preconditioned.inferExprAgrees
+  }
+  exact principalTypingSlicePreconditioned_iff_core_of_success_from_bundle
+    h_hooks st fuel env e st' ty h_ok
+
+/--
+Lift a field bridge bundle into the richer dual consequence surface on a
+successful run.
+-/
+theorem principalFieldTypingDualConsequence_of_noUnifyBridgeBundle
+    (h_hooks : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_bundle : PrincipalFieldNoUnifyBridgeBundle h_hooks.1 h_hooks.2 st fuel env fs st' rf)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalFieldTypingDualConsequence h_hooks.1 h_hooks.2 st fuel env fs st' rf := by
+  refine {
+    preconditioned := h_bundle.preconditioned
+    core := h_bundle.core
+    preconditioned_iff_core := ?_
+    inferFields_agrees := h_bundle.preconditioned.inferFieldsAgrees
+  }
+  exact principalFieldTypingSlicePreconditioned_iff_core_of_success_from_bundle
+    h_hooks st fuel env fs st' rf h_ok
+
+/--
+On successful expression runs, dual consequence bundles and expression bridge
+bundles are equivalent surfaces.
+-/
+theorem principalTypingDualConsequence_iff_noUnifyBridgeBundle_of_success
+    (h_hooks : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalTypingDualConsequence h_hooks.1 h_hooks.2 st fuel env e st' ty
+      ↔ PrincipalNoUnifyBridgeBundle h_hooks.1 h_hooks.2 st fuel env e st' ty := by
+  constructor
+  · intro h_dual
+    exact principalNoUnifyBridgeBundle_of_dualConsequence h_dual
+  · intro h_bundle
+    exact principalTypingDualConsequence_of_noUnifyBridgeBundle h_hooks h_bundle h_ok
+
+/--
+On successful field runs, dual consequence bundles and field bridge bundles are
+equivalent surfaces.
+-/
+theorem principalFieldTypingDualConsequence_iff_noUnifyBridgeBundle_of_success
+    (h_hooks : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalFieldTypingDualConsequence h_hooks.1 h_hooks.2 st fuel env fs st' rf
+      ↔ PrincipalFieldNoUnifyBridgeBundle h_hooks.1 h_hooks.2 st fuel env fs st' rf := by
+  constructor
+  · intro h_dual
+    exact principalFieldNoUnifyBridgeBundle_of_dualConsequence h_dual
+  · intro h_bundle
+    exact principalFieldTypingDualConsequence_of_noUnifyBridgeBundle h_hooks h_bundle h_ok
+
+/--
 Surface-layer naming-parity wrappers for no-unify cross-route success APIs.
 These mirror the existing `...from_cross_route_slices` families under
 explicit `...from_cross_route_surface_slices` theorem names.
