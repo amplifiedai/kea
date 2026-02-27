@@ -19,6 +19,7 @@ use kea_infer::typeck::{
 use kea_infer::{Category, InferenceContext};
 use kea_mir::lower_hir_module;
 use kea_syntax::{lex_layout, parse_module};
+use kea_types::sanitize_type_display;
 
 #[derive(Debug)]
 pub struct CompilationContext {
@@ -37,6 +38,19 @@ pub struct CompileResult {
 #[derive(Debug)]
 pub struct RunResult {
     pub exit_code: i32,
+    pub diagnostics: Vec<Diagnostic>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ModuleBinding {
+    pub name: String,
+    pub kind: String,
+    pub ty: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ModuleProcessResult {
+    pub bindings: Vec<ModuleBinding>,
     pub diagnostics: Vec<Diagnostic>,
 }
 
@@ -141,6 +155,51 @@ pub fn emit_diagnostics(diags: &[Diagnostic]) {
     for diag in diags {
         eprintln!("{diag}");
     }
+}
+
+pub fn process_module_in_env(
+    module: &Module,
+    env: &mut TypeEnv,
+    records: &mut RecordRegistry,
+    traits: &mut TraitRegistry,
+    sum_types: &mut SumTypeRegistry,
+    mut diagnostics: Vec<Diagnostic>,
+) -> Result<ModuleProcessResult, Vec<Diagnostic>> {
+    diagnostics.extend(validate_module_fn_annotations(module));
+    diagnostics.extend(validate_module_annotations(module));
+    if has_errors(&diagnostics) {
+        return Err(diagnostics);
+    }
+
+    if register_top_level_declarations(module, env, records, traits, sum_types, &mut diagnostics).is_err() {
+        return Err(diagnostics);
+    }
+
+    if typecheck_functions(module, env, records, traits, sum_types, &mut diagnostics, None).is_err() {
+        return Err(diagnostics);
+    }
+
+    let bindings = module
+        .declarations
+        .iter()
+        .filter_map(|decl| match &decl.node {
+            DeclKind::Function(fn_decl) => Some((fn_decl.name.node.clone(), "fn".to_string())),
+            DeclKind::ExprFn(expr_decl) => Some((expr_decl.name.node.clone(), "expr".to_string())),
+            _ => None,
+        })
+        .map(|(name, kind)| {
+            let ty = env
+                .lookup(&name)
+                .map(|scheme| sanitize_type_display(&scheme.ty))
+                .unwrap_or_else(|| "?".to_string());
+            ModuleBinding { name, kind, ty }
+        })
+        .collect();
+
+    Ok(ModuleProcessResult {
+        bindings,
+        diagnostics,
+    })
 }
 
 #[derive(Debug, Clone)]

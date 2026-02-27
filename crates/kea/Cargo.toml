@@ -16,3 +16,4 @@ kea-infer.workspace = true
 kea-mir.workspace = true
 kea-syntax.workspace = true
 kea-diag.workspace = true
+kea-types.workspace = true
