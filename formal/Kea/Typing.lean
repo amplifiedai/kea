@@ -3644,6 +3644,146 @@ theorem principalTypingSlicePreconditioned_of_success
     exact inferExpr_complete env e ty h_ty
 
 /--
+Determinism of `inferFieldsUnify`: for fixed `(st, fuel, env, fs)`, successful
+results are unique in both state and closed row-fields payload.
+-/
+theorem inferFieldsUnify_deterministic
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    {st₁ st₂ : UnifyState} {rf₁ rf₂ : RowFields}
+    (h₁ : inferFieldsUnify st fuel env fs = .ok st₁ (.row (.mk rf₁ none)))
+    (h₂ : inferFieldsUnify st fuel env fs = .ok st₂ (.row (.mk rf₂ none))) :
+    st₁ = st₂ ∧ rf₁ = rf₂ := by
+  rw [h₁] at h₂
+  cases h₂
+  exact ⟨rfl, rfl⟩
+
+/--
+Row-fields uniqueness from the full preconditioned theorem: once an
+`inferFieldsUnify` run succeeds, any declarative field typing derivation for
+the same field list has the same row-fields payload.
+-/
+theorem inferFieldsUnify_row_unique_preconditioned
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    {st st' : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {rf rf' : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_rf' : HasFieldsType env fs rf') :
+    rf' = rf := by
+  have h_rf : HasFieldsType env fs rf :=
+    inferFieldsUnify_sound_preconditioned h_app h_proj st fuel env fs st' rf h_ok
+  exact hasFieldsType_unique h_rf' h_rf
+
+/--
+Packaged preconditioned principal-field-typing slice.
+
+Given one successful `inferFieldsUnify` run, this bundle exports:
+- uniqueness of successful algorithmic outputs at the same input,
+- uniqueness against any declarative field typing derivation,
+- and agreement with the syntax-directed `inferFields` result.
+-/
+structure PrincipalFieldTypingSlicePreconditioned
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields) : Prop where
+  deterministic :
+    ∀ {st'' : UnifyState} {rf'' : RowFields},
+      inferFieldsUnify st fuel env fs = .ok st'' (.row (.mk rf'' none)) →
+      st'' = st' ∧ rf'' = rf
+  declarativeUnique :
+    ∀ {rf' : RowFields}, HasFieldsType env fs rf' → rf' = rf
+  inferFieldsAgrees :
+    inferFields env fs = some rf
+
+theorem principalFieldTypingSlicePreconditioned_of_success
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf := by
+  refine {
+    deterministic := ?_
+    declarativeUnique := ?_
+    inferFieldsAgrees := ?_
+  }
+  · intro st'' rf'' h_ok'
+    exact inferFieldsUnify_deterministic st fuel env fs h_ok' h_ok
+  · intro rf' h_rf'
+    exact inferFieldsUnify_row_unique_preconditioned h_app h_proj h_ok h_rf'
+  · have h_rf : HasFieldsType env fs rf :=
+      inferFieldsUnify_sound_preconditioned h_app h_proj st fuel env fs st' rf h_ok
+    exact inferFields_complete env fs rf h_rf
+
+/--
+Bundle-entry variant of `principalFieldTypingSlicePreconditioned_of_success`.
+-/
+theorem principalFieldTypingSlicePreconditioned_of_success_from_bundle
+    (h_hooks : UnifyHookPremises)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf := by
+  exact principalFieldTypingSlicePreconditioned_of_success
+    h_hooks.1 h_hooks.2 st fuel env fs st' rf h_ok
+
+/--
+If a core principal-field-typing package is already available for
+`(env, fs, rf)`, any successful `inferFieldsUnify` run to that same row-fields
+payload yields the full preconditioned principal field-typing bundle,
+independent of hook assumptions.
+-/
+theorem principalFieldTypingSlicePreconditioned_of_success_of_core_principal
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_core : PrincipalFieldTypingSliceCore env fs rf)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    ∀ h_app h_proj,
+      PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf := by
+  intro h_app h_proj
+  refine {
+    deterministic := ?_
+    declarativeUnique := ?_
+    inferFieldsAgrees := ?_
+  }
+  · intro st'' rf'' h_ok'
+    exact inferFieldsUnify_deterministic st fuel env fs h_ok' h_ok
+  · intro rf' h_rf'
+    exact h_core.unique h_rf'
+  · exact inferFields_complete env fs rf h_core.sound
+
+/--
+Hook-independent preconditioned principal field-typing bundle on the no-unify
+fragment.
+-/
+theorem principalFieldTypingSlicePreconditioned_of_success_no_unify
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    ∀ h_app h_proj,
+      PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf := by
+  have h_core : PrincipalFieldTypingSliceCore env fs rf :=
+    principalFieldTypingSliceCore_of_unify_success_no_unify h_no h_ok
+  exact principalFieldTypingSlicePreconditioned_of_success_of_core_principal
+    h_core h_ok
+
+/--
+Bundle-entry variant of
+`principalFieldTypingSlicePreconditioned_of_success_no_unify`.
+-/
+theorem principalFieldTypingSlicePreconditioned_of_success_no_unify_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_hooks : UnifyHookPremises) :
+    PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf := by
+  exact principalFieldTypingSlicePreconditioned_of_success_no_unify
+    h_no h_ok h_hooks.1 h_hooks.2
+
+/--
 Bundle-entry variant of `principalTypingSlicePreconditioned_of_success`.
 -/
 theorem principalTypingSlicePreconditioned_of_success_from_bundle
