@@ -4947,6 +4947,80 @@ theorem principalPreconditionedHookIrrelevanceSlices_field
   h_slice.2 h_ok
 
 /--
+Top-level M4 principal vacuity suite.
+
+This packages:
+- no-unify principal capstones (expression+field), and
+- fixed-run hook-irrelevance for preconditioned principality.
+-/
+structure PrincipalBoundaryVacuitySuite : Prop where
+  noUnifyCapstones : PrincipalBoundaryNoUnifyCapstoneSlices
+  hookIrrelevance : PrincipalPreconditionedHookIrrelevanceSlices
+
+/-- The principal vacuity suite is fully proved. -/
+theorem principalBoundaryVacuitySuite_proved : PrincipalBoundaryVacuitySuite := by
+  refine {
+    noUnifyCapstones := principalBoundaryNoUnifyCapstoneSlices_proved
+    hookIrrelevance := principalPreconditionedHookIrrelevanceSlices_proved
+  }
+
+/-- One-hop expression no-unify capstone projection from vacuity suite. -/
+theorem principalBoundaryVacuitySuite_noUnify_expr
+    (h_suite : PrincipalBoundaryVacuitySuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_hooks : UnifyHookPremises) :
+    PrincipalBoundaryNoUnifyExprCapstone
+      h_hooks.1 h_hooks.2 st fuel env e st' ty :=
+  principalBoundaryNoUnifyCapstoneSlices_expr
+    h_suite.noUnifyCapstones h_no h_ok h_hooks
+
+/-- One-hop field no-unify capstone projection from vacuity suite. -/
+theorem principalBoundaryVacuitySuite_noUnify_field
+    (h_suite : PrincipalBoundaryVacuitySuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_hooks : UnifyHookPremises) :
+    PrincipalBoundaryNoUnifyFieldCapstone
+      h_hooks.1 h_hooks.2 st fuel env fs st' rf :=
+  principalBoundaryNoUnifyCapstoneSlices_field
+    h_suite.noUnifyCapstones h_no h_ok h_hooks
+
+/--
+One-hop expression hook-irrelevance projection from vacuity suite.
+-/
+theorem principalBoundaryVacuitySuite_hookIrrelevance_expr
+    (h_suite : PrincipalBoundaryVacuitySuite)
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+      ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) :=
+  principalPreconditionedHookIrrelevanceSlices_expr
+    h_suite.hookIrrelevance h_ok
+
+/--
+One-hop field hook-irrelevance projection from vacuity suite.
+-/
+theorem principalBoundaryVacuitySuite_hookIrrelevance_field
+    (h_suite : PrincipalBoundaryVacuitySuite)
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
+  principalPreconditionedHookIrrelevanceSlices_field
+    h_suite.hookIrrelevance h_ok
+
+/--
 `HasTypeU` lift of non-app/proj recursive soundness: on the fragment that never
 executes unification branches, algorithmic inference results are declaratively
 typable in the unification-aware judgment as well.
