@@ -2057,6 +2057,34 @@ mod tests {
     }
 
     #[test]
+    fn compile_and_execute_generic_two_op_tail_handler_exit_code() {
+        let source_path = write_temp_source(
+            "effect Counter\n  fn read() -> Int\n  fn write(next: Int) -> Unit\n\nfn count_to(n: Int) -[Counter]> Int\n  let i = Counter.read()\n  if i >= n\n    i\n  else\n    Counter.write(i + 1)\n    count_to(n)\n\nfn main() -> Int\n  handle count_to(6)\n    Counter.read() -> resume 0\n    Counter.write(next) -> resume ()\n",
+            "kea-cli-generic-two-op-tail-handler",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("generic two-op handler run should succeed");
+        assert_eq!(run.exit_code, 6);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_nested_handlers_for_different_effects_exit_code() {
+        let source_path = write_temp_source(
+            "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\neffect Log\n  fn log(msg: Int) -> Unit\n\nfn count_with_log(n: Int) -[State Int, Log]> Int\n  let i = State.get()\n  Log.log(i)\n  if i >= n\n    i\n  else\n    State.put(i + 1)\n    count_with_log(n)\n\nfn run_state(n: Int) -[Log]> Int\n  handle count_with_log(n)\n    State.get() -> resume 0\n    State.put(next) -> resume ()\n\nfn main() -> Int\n  handle run_state(4)\n    Log.log(msg) -> resume ()\n",
+            "kea-cli-nested-handlers-different-effects",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("nested different-effect handlers should run");
+        assert_eq!(run.exit_code, 4);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_catch_fail_result_case_exit_code() {
         let source_path = write_temp_source(
             "effect Fail\n  fn fail(err: Int) -> Never\n\nfn f() -[Fail Int]> Int\n  fail 7\n\nfn main() -> Int\n  let r = catch f()\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
