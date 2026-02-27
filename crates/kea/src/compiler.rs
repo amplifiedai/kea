@@ -11,7 +11,7 @@ use kea_codegen::{
     execute_hir_main_jit,
 };
 use kea_diag::{Diagnostic, Severity, SourceLocation};
-use kea_hir::lower_module;
+use kea_hir::{check_unique_moves, lower_module};
 use kea_infer::typeck::{
     RecordRegistry, SumTypeRegistry, TraitRegistry, TypeEnv, apply_where_clause,
     infer_and_resolve_in_context, infer_fn_decl_effect_row, register_builtin_int_bitwise_methods,
@@ -113,6 +113,12 @@ pub fn compile_module(source: &str, file_id: FileId) -> Result<CompilationContex
         &mut diagnostics,
         None,
     )?;
+
+    let hir = lower_module(&module, &env);
+    diagnostics.extend(check_unique_moves(&hir));
+    if has_errors(&diagnostics) {
+        return Err(format_diagnostics("move checking failed", &diagnostics));
+    }
 
     Ok(CompilationContext {
         module,
@@ -308,6 +314,12 @@ pub fn process_module_in_env(
     )
     .is_err()
     {
+        return Err(diagnostics);
+    }
+
+    let hir = lower_module(module, env);
+    diagnostics.extend(check_unique_moves(&hir));
+    if has_errors(&diagnostics) {
         return Err(diagnostics);
     }
 
@@ -810,6 +822,15 @@ fn typecheck_loaded_modules(
             &mut diagnostics,
             Some(&loaded.module_path),
         )?;
+
+        let hir = lower_module(&expanded, &env);
+        diagnostics.extend(check_unique_moves(&hir));
+        if has_errors(&diagnostics) {
+            if !is_entry_module {
+                env.pop_scope();
+            }
+            return Err(format_diagnostics("move checking failed", &diagnostics));
+        }
 
         if !is_entry_module {
             let retained_qualified_bindings = declared_function_names(&expanded)

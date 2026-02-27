@@ -11,6 +11,7 @@ use kea_ast::{
     Module, Param, Pattern, PatternKind, Span, TypeAnnotation, UnaryOp,
 };
 use kea_infer::typeck::TypeEnv;
+use kea_infer::{Category, Diagnostic, SourceLocation};
 use kea_types::{EffectRow, FunctionType, Type};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -147,6 +148,256 @@ type PatternVariantTags = BTreeMap<String, PatternVariantMeta>;
 type QualifiedPatternVariantTags = BTreeMap<(String, String), PatternVariantMeta>;
 type KnownRecordDefs = BTreeSet<String>;
 type KnownAliasDefs = BTreeMap<String, TypeAnnotation>;
+
+#[derive(Debug, Clone, Default)]
+struct MoveBindingState {
+    moved_at: Option<Span>,
+}
+
+fn span_to_location(span: Span) -> SourceLocation {
+    SourceLocation {
+        file_id: span.file.0,
+        start: span.start,
+        end: span.end,
+    }
+}
+
+fn is_unique_constructor_type(ty: &Type) -> bool {
+    match ty {
+        Type::Sum(sum) => sum.name == "Unique",
+        Type::Record(record) => record.name == "Unique",
+        Type::Opaque { name, .. } | Type::Constructor { name, .. } => name == "Unique",
+        _ => false,
+    }
+}
+
+fn is_unique_type(ty: &Type) -> bool {
+    match ty {
+        Type::App(constructor, args) => {
+            args.len() == 1 && (is_unique_constructor_type(constructor) || is_unique_type(constructor))
+        }
+        _ => is_unique_constructor_type(ty),
+    }
+}
+
+fn consume_unique_binding(
+    name: &str,
+    span: Span,
+    state: &mut BTreeMap<String, MoveBindingState>,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    let Some(binding) = state.get_mut(name) else {
+        return;
+    };
+    if let Some(moved_at) = binding.moved_at {
+        let mut diag = Diagnostic::error(
+            Category::TypeError,
+            format!("use of moved value `{name}`"),
+        )
+        .at(span_to_location(span))
+        .with_help("`Unique` values move on use; pass by `borrow` (step 2) or avoid reusing after move.");
+        diag = diag.with_label(
+            span_to_location(moved_at),
+            "value was moved here",
+        );
+        diagnostics.push(diag);
+        return;
+    }
+    binding.moved_at = Some(span);
+}
+
+fn merge_branch_move_states(
+    span: Span,
+    before: &BTreeMap<String, MoveBindingState>,
+    then_state: &BTreeMap<String, MoveBindingState>,
+    else_state: &BTreeMap<String, MoveBindingState>,
+    state: &mut BTreeMap<String, MoveBindingState>,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    for name in before.keys() {
+        let then_move = then_state
+            .get(name)
+            .and_then(|binding| binding.moved_at);
+        let else_move = else_state
+            .get(name)
+            .and_then(|binding| binding.moved_at);
+        if then_move.is_some() != else_move.is_some() {
+            diagnostics.push(
+                Diagnostic::error(
+                    Category::TypeError,
+                    format!("branch move mismatch for `{name}`: both branches must agree on move state"),
+                )
+                .at(span_to_location(span))
+                .with_help("move the value in both branches or keep it live in both branches."),
+            );
+        }
+        let merged_move = then_move.or(else_move);
+        if let Some(entry) = state.get_mut(name) {
+            entry.moved_at = merged_move;
+        }
+    }
+}
+
+fn seed_unique_function_params(function: &HirFunction) -> BTreeMap<String, MoveBindingState> {
+    let mut state = BTreeMap::new();
+    let Type::Function(ft) = &function.ty else {
+        return state;
+    };
+    for (param, param_ty) in function.params.iter().zip(ft.params.iter()) {
+        if let Some(name) = &param.name
+            && is_unique_type(param_ty)
+        {
+            state.insert(name.clone(), MoveBindingState::default());
+        }
+    }
+    state
+}
+
+fn check_unique_moves_expr(
+    expr: &HirExpr,
+    state: &mut BTreeMap<String, MoveBindingState>,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    match &expr.kind {
+        HirExprKind::Lit(_) => {}
+        HirExprKind::Var(name) => {
+            consume_unique_binding(name, expr.span, state, diagnostics);
+        }
+        HirExprKind::RecordLit { fields, .. } => {
+            for (_, field_expr) in fields {
+                check_unique_moves_expr(field_expr, state, diagnostics);
+            }
+        }
+        HirExprKind::RecordUpdate { base, fields, .. } => {
+            check_unique_moves_expr(base, state, diagnostics);
+            for (_, field_expr) in fields {
+                check_unique_moves_expr(field_expr, state, diagnostics);
+            }
+        }
+        HirExprKind::SumConstructor { fields, .. } => {
+            for field_expr in fields {
+                check_unique_moves_expr(field_expr, state, diagnostics);
+            }
+        }
+        HirExprKind::SumPayloadAccess { expr, .. } => {
+            check_unique_moves_expr(expr, state, diagnostics);
+        }
+        HirExprKind::FieldAccess { expr, .. } => {
+            check_unique_moves_expr(expr, state, diagnostics);
+        }
+        HirExprKind::Binary { left, right, .. } => {
+            check_unique_moves_expr(left, state, diagnostics);
+            check_unique_moves_expr(right, state, diagnostics);
+        }
+        HirExprKind::Unary { operand, .. } => {
+            check_unique_moves_expr(operand, state, diagnostics);
+        }
+        HirExprKind::Call { func, args } => {
+            check_unique_moves_expr(func, state, diagnostics);
+            for arg in args {
+                check_unique_moves_expr(arg, state, diagnostics);
+            }
+        }
+        HirExprKind::Lambda { params, body } => {
+            // TODO(0f-step1): model captured outer `Unique` bindings. This
+            // skeleton only checks lambda-local params; capture analysis lands
+            // in the next move-checking iteration with borrow/escape rules.
+            let mut lambda_state = BTreeMap::new();
+            if let Type::Function(ft) = &expr.ty {
+                for (param, param_ty) in params.iter().zip(ft.params.iter()) {
+                    if let Some(name) = &param.name
+                        && is_unique_type(param_ty)
+                    {
+                        lambda_state.insert(name.clone(), MoveBindingState::default());
+                    }
+                }
+            }
+            check_unique_moves_expr(body, &mut lambda_state, diagnostics);
+        }
+        HirExprKind::Catch { expr } => {
+            check_unique_moves_expr(expr, state, diagnostics);
+        }
+        HirExprKind::Handle {
+            expr,
+            clauses,
+            then_clause,
+        } => {
+            check_unique_moves_expr(expr, state, diagnostics);
+            for clause in clauses {
+                let mut clause_state = state.clone();
+                check_unique_moves_expr(&clause.body, &mut clause_state, diagnostics);
+            }
+            if let Some(then_expr) = then_clause {
+                check_unique_moves_expr(then_expr, state, diagnostics);
+            }
+        }
+        HirExprKind::Resume { value } => {
+            check_unique_moves_expr(value, state, diagnostics);
+        }
+        HirExprKind::Let { pattern, value } => {
+            check_unique_moves_expr(value, state, diagnostics);
+            if let HirPattern::Var(name) = pattern
+                && is_unique_type(&value.ty)
+            {
+                state.insert(name.clone(), MoveBindingState::default());
+            }
+        }
+        HirExprKind::If {
+            condition,
+            then_branch,
+            else_branch,
+        } => {
+            check_unique_moves_expr(condition, state, diagnostics);
+            let before = state.clone();
+            let mut then_state = before.clone();
+            check_unique_moves_expr(then_branch, &mut then_state, diagnostics);
+            let mut else_state = before.clone();
+            if let Some(else_expr) = else_branch {
+                check_unique_moves_expr(else_expr, &mut else_state, diagnostics);
+            }
+            merge_branch_move_states(
+                expr.span,
+                &before,
+                &then_state,
+                &else_state,
+                state,
+                diagnostics,
+            );
+        }
+        HirExprKind::Block(exprs) => {
+            for item in exprs {
+                check_unique_moves_expr(item, state, diagnostics);
+            }
+        }
+        HirExprKind::Tuple(items) => {
+            for item in items {
+                check_unique_moves_expr(item, state, diagnostics);
+            }
+        }
+        // TODO(0f-step1): `Raw` currently includes non-lowered `case` paths.
+        // Add explicit arm-by-arm merge semantics (like `if`) so branch move
+        // consistency is enforced for all pattern-match branches.
+        HirExprKind::Raw(_) => {}
+    }
+}
+
+fn check_unique_moves_function(function: &HirFunction) -> Vec<Diagnostic> {
+    let mut diagnostics = Vec::new();
+    let mut state = seed_unique_function_params(function);
+    check_unique_moves_expr(&function.body, &mut state, &mut diagnostics);
+    diagnostics
+}
+
+pub fn check_unique_moves(module: &HirModule) -> Vec<Diagnostic> {
+    module
+        .declarations
+        .iter()
+        .flat_map(|decl| match decl {
+            HirDecl::Function(function) => check_unique_moves_function(function),
+            HirDecl::Raw(_) => Vec::new(),
+        })
+        .collect()
+}
 
 fn is_namespace_qualifier(name: &str) -> bool {
     name.chars()
