@@ -21444,3 +21444,99 @@ theorem principalPreconditionedField_hookIrrelevant_of_success_noUnify_via_maste
   principalPreconditionedField_hookIrrelevant_of_success_noUnify_via_masterRunBundleConsequence_from_cross_route_slices
     h_no h_ok
 
+
+/--
+Success-wrapper alias for expression all-hooks route surface on the
+master-consequence-capstone cross-route surface layer.
+-/
+theorem principalNoUnifyExprAllHooksRouteSurface_of_success_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalNoUnifyExprAllHooksRouteSurface st fuel env e st' ty :=
+  principalNoUnifyExprAllHooksRouteSurface_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok
+
+/--
+Success-wrapper alias for field all-hooks route surface on the
+master-consequence-capstone cross-route surface layer.
+-/
+theorem principalNoUnifyFieldAllHooksRouteSurface_of_success_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalNoUnifyFieldAllHooksRouteSurface st fuel env fs st' rf :=
+  principalNoUnifyFieldAllHooksRouteSurface_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok
+
+/--
+Success-wrapper alias for expression all-hooks route surface on the
+master-run-bundle-consequence cross-route surface layer.
+-/
+theorem principalNoUnifyExprAllHooksRouteSurface_of_success_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalNoUnifyExprAllHooksRouteSurface st fuel env e st' ty :=
+  principalNoUnifyExprAllHooksRouteSurface_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok
+
+/--
+Success-wrapper alias for field all-hooks route surface on the
+master-run-bundle-consequence cross-route surface layer.
+-/
+theorem principalNoUnifyFieldAllHooksRouteSurface_of_success_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalNoUnifyFieldAllHooksRouteSurface st fuel env fs st' rf :=
+  principalNoUnifyFieldAllHooksRouteSurface_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok
+
+/-- Bundled-seed alias for capstone-route expression all-hooks route surface. -/
+theorem principalNoUnifyExprAllHooksRouteSurface_of_success_via_masterConsequenceCapstone_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_seed : UnifyHookPremises) :
+    PrincipalNoUnifyExprAllHooksRouteSurface st fuel env e st' ty :=
+  principalNoUnifyExprAllHooksRouteSurface_of_success_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok
+
+/-- Bundled-seed alias for capstone-route field all-hooks route surface. -/
+theorem principalNoUnifyFieldAllHooksRouteSurface_of_success_via_masterConsequenceCapstone_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_seed : UnifyHookPremises) :
+    PrincipalNoUnifyFieldAllHooksRouteSurface st fuel env fs st' rf :=
+  principalNoUnifyFieldAllHooksRouteSurface_of_success_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok
+
+/-- Bundled-seed alias for run-bundle-route expression all-hooks route surface. -/
+theorem principalNoUnifyExprAllHooksRouteSurface_of_success_via_masterRunBundleConsequence_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_seed : UnifyHookPremises) :
+    PrincipalNoUnifyExprAllHooksRouteSurface st fuel env e st' ty :=
+  principalNoUnifyExprAllHooksRouteSurface_of_success_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok
+
+/-- Bundled-seed alias for run-bundle-route field all-hooks route surface. -/
+theorem principalNoUnifyFieldAllHooksRouteSurface_of_success_via_masterRunBundleConsequence_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_seed : UnifyHookPremises) :
+    PrincipalNoUnifyFieldAllHooksRouteSurface st fuel env fs st' rf :=
+  principalNoUnifyFieldAllHooksRouteSurface_of_success_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok
