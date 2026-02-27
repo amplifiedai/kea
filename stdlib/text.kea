@@ -1,3 +1,9 @@
 @intrinsic("strlen")
 fn length(s: String) -> Int
   0
+
+fn is_empty(s: String) -> Bool
+  Text.length(s) == 0
+
+fn non_empty(s: String) -> Bool
+  not Text.is_empty(s)
