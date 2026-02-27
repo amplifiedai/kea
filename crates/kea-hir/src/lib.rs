@@ -124,6 +124,7 @@ struct PatternVariantMeta {
     sum_type: String,
     arity: usize,
     field_types: Vec<Type>,
+    field_names: Vec<Option<String>>,
 }
 type PatternVariantTags = BTreeMap<String, PatternVariantMeta>;
 type QualifiedPatternVariantTags = BTreeMap<(String, String), PatternVariantMeta>;
@@ -171,6 +172,7 @@ fn register_variant_meta(
     tag: i64,
     arity: usize,
     field_types: Vec<Type>,
+    field_names: Vec<Option<String>>,
     unqualified: &mut UnitVariantTags,
     qualified: &mut QualifiedUnitVariantTags,
     duplicates: &mut BTreeSet<String>,
@@ -183,6 +185,7 @@ fn register_variant_meta(
         sum_type: sum_type.to_string(),
         arity,
         field_types,
+        field_names,
     };
     pattern_qualified.insert((sum_type.to_string(), variant.to_string()), meta.clone());
     if pattern_unqualified.insert(variant.to_string(), meta).is_some() {
@@ -212,6 +215,7 @@ fn seed_builtin_variant_tags(
         0,
         1,
         vec![dynamic.clone()],
+        vec![None],
         unqualified,
         qualified,
         duplicates,
@@ -224,6 +228,7 @@ fn seed_builtin_variant_tags(
         "None",
         1,
         0,
+        vec![],
         vec![],
         unqualified,
         qualified,
@@ -238,6 +243,7 @@ fn seed_builtin_variant_tags(
         0,
         1,
         vec![dynamic.clone()],
+        vec![None],
         unqualified,
         qualified,
         duplicates,
@@ -251,6 +257,7 @@ fn seed_builtin_variant_tags(
         1,
         1,
         vec![dynamic],
+        vec![None],
         unqualified,
         qualified,
         duplicates,
@@ -287,12 +294,18 @@ fn collect_variant_tags(
                 .iter()
                 .map(|field| lower_pattern_type_annotation(&field.ty.node))
                 .collect();
+            let field_names = variant
+                .fields
+                .iter()
+                .map(|field| field.name.as_ref().map(|name| name.node.clone()))
+                .collect();
             register_variant_meta(
                 &def.name.node,
                 &variant.name.node,
                 tag,
                 variant.fields.len(),
                 field_types,
+                field_names,
                 &mut unqualified,
                 &mut qualified,
                 &mut duplicates,
@@ -342,6 +355,65 @@ fn resolve_unqualified_constructor_meta(
         .get(name)
         .filter(|meta| meta.arity == arity)
         .cloned()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn lower_constructor_fields(
+    args: &[kea_ast::Argument],
+    meta: &PatternVariantMeta,
+    unit_variant_tags: &UnitVariantTags,
+    qualified_variant_tags: &QualifiedUnitVariantTags,
+    pattern_variant_tags: &PatternVariantTags,
+    pattern_qualified_tags: &QualifiedPatternVariantTags,
+    known_record_defs: &KnownRecordDefs,
+) -> Option<Vec<HirExpr>> {
+    let has_labeled_args = args.iter().any(|arg| arg.label.is_some());
+    if !has_labeled_args {
+        return Some(
+            args.iter()
+                .map(|arg| {
+                    lower_expr(
+                        &arg.value,
+                        None,
+                        unit_variant_tags,
+                        qualified_variant_tags,
+                        pattern_variant_tags,
+                        pattern_qualified_tags,
+                        known_record_defs,
+                    )
+                })
+                .collect(),
+        );
+    }
+
+    if args.iter().any(|arg| arg.label.is_none()) {
+        return None;
+    }
+    if meta.field_names.iter().any(|name| name.is_none()) {
+        return None;
+    }
+
+    let mut lowered_by_slot: Vec<Option<HirExpr>> = vec![None; meta.arity];
+    for arg in args {
+        let label = arg.label.as_ref()?.node.as_str();
+        let field_index = meta
+            .field_names
+            .iter()
+            .position(|name| name.as_deref() == Some(label))?;
+        if lowered_by_slot[field_index].is_some() {
+            return None;
+        }
+        lowered_by_slot[field_index] = Some(lower_expr(
+            &arg.value,
+            None,
+            unit_variant_tags,
+            qualified_variant_tags,
+            pattern_variant_tags,
+            pattern_qualified_tags,
+            known_record_defs,
+        ));
+    }
+    lowered_by_slot.into_iter().collect()
 }
 
 pub fn lower_module(module: &Module, env: &TypeEnv) -> HirModule {
@@ -686,24 +758,23 @@ fn lower_expr(
             } else if let Some(meta) =
                 resolve_unqualified_constructor_meta(&name.node, args.len(), pattern_variant_tags)
             {
-                HirExprKind::SumConstructor {
-                    sum_type: meta.sum_type,
-                    variant: name.node.clone(),
-                    tag: meta.tag,
-                    fields: args
-                        .iter()
-                        .map(|arg| {
-                            lower_expr(
-                                &arg.value,
-                                None,
-                                unit_variant_tags,
-                                qualified_variant_tags,
-                                pattern_variant_tags,
-                                pattern_qualified_tags,
-                                known_record_defs,
-                            )
-                        })
-                        .collect(),
+                if let Some(fields) = lower_constructor_fields(
+                    args,
+                    &meta,
+                    unit_variant_tags,
+                    qualified_variant_tags,
+                    pattern_variant_tags,
+                    pattern_qualified_tags,
+                    known_record_defs,
+                ) {
+                    HirExprKind::SumConstructor {
+                        sum_type: meta.sum_type,
+                        variant: name.node.clone(),
+                        tag: meta.tag,
+                        fields,
+                    }
+                } else {
+                    HirExprKind::Raw(expr.node.clone())
                 }
             } else {
                 HirExprKind::Raw(expr.node.clone())
@@ -1471,12 +1542,27 @@ fn literal_case_values_from_pattern(
             if args.len() != meta.arity {
                 return None;
             }
+            let has_named_args = args.iter().any(|arg| arg.name.is_some());
+            if has_named_args && args.iter().any(|arg| arg.name.is_none()) {
+                return None;
+            }
+            let mut seen_field_indices = BTreeSet::new();
             let mut payload_binds = Vec::new();
             let mut payload_checks = Vec::new();
-            for (idx, arg) in args.iter().enumerate() {
-                if arg.name.is_some() {
-                    return None;
-                }
+            for (position, arg) in args.iter().enumerate() {
+                let field_index = if has_named_args {
+                    let field_name = arg.name.as_ref()?.node.as_str();
+                    let idx = meta
+                        .field_names
+                        .iter()
+                        .position(|name| name.as_deref() == Some(field_name))?;
+                    if !seen_field_indices.insert(idx) {
+                        return None;
+                    }
+                    idx
+                } else {
+                    position
+                };
                 match &arg.pattern.node {
                     PatternKind::Wildcard => {}
                     PatternKind::Var(bind_name) => {
@@ -1487,8 +1573,12 @@ fn literal_case_values_from_pattern(
                             name: bind_name.clone(),
                             sum_type: meta.sum_type.clone(),
                             variant: name.clone(),
-                            field_index: idx,
-                            field_ty: meta.field_types.get(idx).cloned().unwrap_or(Type::Dynamic),
+                            field_index,
+                            field_ty: meta
+                                .field_types
+                                .get(field_index)
+                                .cloned()
+                                .unwrap_or(Type::Dynamic),
                         });
                     }
                     PatternKind::Lit(lit @ Lit::Int(_))
@@ -1497,10 +1587,10 @@ fn literal_case_values_from_pattern(
                         payload_checks.push(ConstructorPayloadCheck {
                             sum_type: meta.sum_type.clone(),
                             variant: name.clone(),
-                            field_index: idx,
+                            field_index,
                             field_ty: meta
                                 .field_types
-                                .get(idx)
+                                .get(field_index)
                                 .cloned()
                                 .unwrap_or(Type::Dynamic),
                             expected: literal_case_value_from_lit(lit)?,
@@ -1928,6 +2018,44 @@ mod tests {
             } if sum_type == "Flag" && variant == "Yep" && fields.len() == 1
                 && matches!(fields[0].kind, HirExprKind::Binary { op: BinOp::Add, .. })
         ));
+    }
+
+    #[test]
+    fn lower_function_named_payload_constructor_reorders_labeled_args() {
+        let module = parse_module_from_text(
+            "type Pair = Pair(left: Int, right: Int)\n\nfn make_pair() -> Pair\n  Pair(right: 1, left: 40)",
+        );
+        let mut env = TypeEnv::new();
+        env.bind(
+            "make_pair".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::pure(
+                vec![],
+                Type::Sum(kea_types::SumType {
+                    name: "Pair".to_string(),
+                    type_args: vec![],
+                    variants: vec![("Pair".to_string(), vec![Type::Int, Type::Int])],
+                }),
+            ))),
+        );
+
+        let lowered = lower_module(&module, &env);
+        let function = lowered
+            .declarations
+            .iter()
+            .find_map(|decl| match decl {
+                HirDecl::Function(function) if function.name == "make_pair" => Some(function),
+                _ => None,
+            })
+            .expect("expected lowered make_pair function");
+
+        match &function.body.kind {
+            HirExprKind::SumConstructor { fields, .. } => {
+                assert_eq!(fields.len(), 2);
+                assert!(matches!(fields[0].kind, HirExprKind::Lit(Lit::Int(40))));
+                assert!(matches!(fields[1].kind, HirExprKind::Lit(Lit::Int(1))));
+            }
+            other => panic!("expected labeled constructor to stay structured, got {other:?}"),
+        }
     }
 
     #[test]
