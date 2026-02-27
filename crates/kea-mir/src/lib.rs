@@ -253,6 +253,12 @@ pub enum MirBinaryOp {
     Gte,
     And,
     Or,
+    BitAnd,
+    BitOr,
+    BitXor,
+    ShiftLeft,
+    ShiftRight,
+    ShiftRightUnsigned,
     In,
     NotIn,
 }
@@ -261,6 +267,7 @@ pub enum MirBinaryOp {
 pub enum MirUnaryOp {
     Neg,
     Not,
+    BitNot,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1661,6 +1668,47 @@ impl FunctionLoweringCtx {
         }
         if let HirExprKind::Var(name) = &func.kind
             && !capture_fail_result
+        {
+            let lowered_op = match name.as_str() {
+                "bit_and" if args.len() == 2 => Some((Some(MirBinaryOp::BitAnd), None)),
+                "bit_or" if args.len() == 2 => Some((Some(MirBinaryOp::BitOr), None)),
+                "bit_xor" if args.len() == 2 => Some((Some(MirBinaryOp::BitXor), None)),
+                "shift_left" if args.len() == 2 => Some((Some(MirBinaryOp::ShiftLeft), None)),
+                "shift_right" if args.len() == 2 => Some((Some(MirBinaryOp::ShiftRight), None)),
+                "shift_right_unsigned" if args.len() == 2 => {
+                    Some((Some(MirBinaryOp::ShiftRightUnsigned), None))
+                }
+                "bit_not" if args.len() == 1 => Some((None, Some(MirUnaryOp::BitNot))),
+                _ => None,
+            };
+
+            if let Some((binary_op, unary_op)) = lowered_op {
+                if let Some(op) = binary_op {
+                    let lhs = self.lower_expr(&args[0])?;
+                    let rhs = self.lower_expr(&args[1])?;
+                    let dest = self.new_value();
+                    self.emit_inst(MirInst::Binary {
+                        dest: dest.clone(),
+                        op,
+                        left: lhs,
+                        right: rhs,
+                    });
+                    return Some(dest);
+                }
+                if let Some(op) = unary_op {
+                    let operand = self.lower_expr(&args[0])?;
+                    let dest = self.new_value();
+                    self.emit_inst(MirInst::Unary {
+                        dest: dest.clone(),
+                        op,
+                        operand,
+                    });
+                    return Some(dest);
+                }
+            }
+        }
+        if let HirExprKind::Var(name) = &func.kind
+            && !capture_fail_result
             && let Some(operation) = name.strip_prefix("IO.")
             && matches!(operation, "stdout" | "stderr" | "read_file" | "write_file")
         {
@@ -2552,6 +2600,56 @@ mod tests {
     }
 
     #[test]
+    fn lower_hir_module_lowers_bitwise_method_call_to_mir_binary_op() {
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "masked".to_string(),
+                params: vec![],
+                body: HirExpr {
+                    kind: HirExprKind::Call {
+                        func: Box::new(HirExpr {
+                            kind: HirExprKind::Var("bit_and".to_string()),
+                            ty: Type::Function(FunctionType::pure(
+                                vec![Type::Int, Type::Int],
+                                Type::Int,
+                            )),
+                            span: kea_ast::Span::synthetic(),
+                        }),
+                        args: vec![
+                            HirExpr {
+                                kind: HirExprKind::Lit(kea_ast::Lit::Int(42)),
+                                ty: Type::Int,
+                                span: kea_ast::Span::synthetic(),
+                            },
+                            HirExpr {
+                                kind: HirExprKind::Lit(kea_ast::Lit::Int(15)),
+                                ty: Type::Int,
+                                span: kea_ast::Span::synthetic(),
+                            },
+                        ],
+                    },
+                    ty: Type::Int,
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
+                effects: EffectRow::pure(),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let mir = lower_hir_module(&hir);
+        let function = &mir.functions[0];
+        assert_eq!(function.blocks[0].instructions.len(), 3);
+        assert!(matches!(
+            function.blocks[0].instructions[2],
+            MirInst::Binary {
+                op: MirBinaryOp::BitAnd,
+                ..
+            }
+        ));
+    }
+
+    #[test]
     fn lower_hir_module_rewrites_sum_pointer_eq_to_tag_compare() {
         let sum_ty = Type::Sum(SumType {
             name: "Option".to_string(),
@@ -2699,6 +2797,46 @@ mod tests {
             function.blocks[0].instructions[1],
             MirInst::Unary {
                 op: MirUnaryOp::Neg,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn lower_hir_module_lowers_bit_not_method_call_to_mir_unary_op() {
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "flipped".to_string(),
+                params: vec![],
+                body: HirExpr {
+                    kind: HirExprKind::Call {
+                        func: Box::new(HirExpr {
+                            kind: HirExprKind::Var("bit_not".to_string()),
+                            ty: Type::Function(FunctionType::pure(vec![Type::Int], Type::Int)),
+                            span: kea_ast::Span::synthetic(),
+                        }),
+                        args: vec![HirExpr {
+                            kind: HirExprKind::Lit(kea_ast::Lit::Int(255)),
+                            ty: Type::Int,
+                            span: kea_ast::Span::synthetic(),
+                        }],
+                    },
+                    ty: Type::Int,
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
+                effects: EffectRow::pure(),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let mir = lower_hir_module(&hir);
+        let function = &mir.functions[0];
+        assert_eq!(function.blocks[0].instructions.len(), 2);
+        assert!(matches!(
+            function.blocks[0].instructions[1],
+            MirInst::Unary {
+                op: MirUnaryOp::BitNot,
                 ..
             }
         ));

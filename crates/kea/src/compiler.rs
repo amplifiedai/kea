@@ -11,8 +11,9 @@ use kea_diag::{Diagnostic, Severity, SourceLocation};
 use kea_hir::lower_module;
 use kea_infer::typeck::{
     RecordRegistry, SumTypeRegistry, TraitRegistry, TypeEnv, apply_where_clause,
-    infer_and_resolve_in_context, infer_fn_decl_effect_row, register_effect_decl,
-    register_fn_effect_signature, register_fn_signature, seed_fn_where_type_params_in_context,
+    infer_and_resolve_in_context, infer_fn_decl_effect_row, register_builtin_int_bitwise_methods,
+    register_effect_decl, register_fn_effect_signature, register_fn_signature,
+    seed_fn_where_type_params_in_context,
     validate_declared_fn_effect_row_with_env_and_records, validate_module_annotations,
     validate_module_fn_annotations, validate_where_clause_traits,
 };
@@ -63,6 +64,7 @@ pub fn compile_module(source: &str, file_id: FileId) -> Result<CompilationContex
     let module = expand_impl_methods_for_codegen(&parsed_module);
 
     let mut env = TypeEnv::new();
+    register_builtin_int_bitwise_methods(&mut env);
     let mut records = RecordRegistry::new();
     let mut traits = TraitRegistry::new();
     let mut sum_types = SumTypeRegistry::new();
@@ -559,6 +561,7 @@ fn parse_and_typecheck_project(entry: &Path) -> Result<CompilationContext, Strin
     let entry_module_path = module_path_from_entry(entry);
     let prelude_modules: BTreeSet<String> = configured_prelude_modules().into_iter().collect();
     let mut env = TypeEnv::new();
+    register_builtin_int_bitwise_methods(&mut env);
     let mut records = RecordRegistry::new();
     let mut traits = TraitRegistry::new();
     let mut sum_types = SumTypeRegistry::new();

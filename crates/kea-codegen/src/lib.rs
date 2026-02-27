@@ -2679,6 +2679,12 @@ fn lower_binary(
 
         MirBinaryOp::And if lhs_ty.is_int() => builder.ins().band(lhs, rhs),
         MirBinaryOp::Or if lhs_ty.is_int() => builder.ins().bor(lhs, rhs),
+        MirBinaryOp::BitAnd if lhs_ty.is_int() => builder.ins().band(lhs, rhs),
+        MirBinaryOp::BitOr if lhs_ty.is_int() => builder.ins().bor(lhs, rhs),
+        MirBinaryOp::BitXor if lhs_ty.is_int() => builder.ins().bxor(lhs, rhs),
+        MirBinaryOp::ShiftLeft if lhs_ty.is_int() => builder.ins().ishl(lhs, rhs),
+        MirBinaryOp::ShiftRight if lhs_ty.is_int() => builder.ins().sshr(lhs, rhs),
+        MirBinaryOp::ShiftRightUnsigned if lhs_ty.is_int() => builder.ins().ushr(lhs, rhs),
 
         _ => {
             return Err(CodegenError::UnsupportedMir {
@@ -2711,6 +2717,7 @@ fn lower_unary(
             let pred = builder.ins().icmp_imm(IntCC::Equal, value, 0);
             b1_to_i8(builder, pred)
         }
+        MirUnaryOp::BitNot if value_ty.is_int() => builder.ins().bnot(value),
         _ => {
             return Err(CodegenError::UnsupportedMir {
                 function: function_name.to_string(),

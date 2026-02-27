@@ -18,3 +18,24 @@ fn max(x: Int, y: Int) -> Int
 
 fn clamp(x: Int, low: Int, high: Int) -> Int
   Int.min(Int.max(x, low), high)
+
+fn bit_and(x: Int, y: Int) -> Int
+  x.bit_and(y)
+
+fn bit_or(x: Int, y: Int) -> Int
+  x.bit_or(y)
+
+fn bit_xor(x: Int, y: Int) -> Int
+  x.bit_xor(y)
+
+fn bit_not(x: Int) -> Int
+  x.bit_not()
+
+fn shift_left(x: Int, amount: Int) -> Int
+  x.shift_left(amount)
+
+fn shift_right(x: Int, amount: Int) -> Int
+  x.shift_right(amount)
+
+fn shift_right_unsigned(x: Int, amount: Int) -> Int
+  x.shift_right_unsigned(amount)
