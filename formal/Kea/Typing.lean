@@ -4947,6 +4947,151 @@ theorem principalPreconditionedHookIrrelevanceSlices_field
   h_slice.2 h_ok
 
 /--
+General successful-run all-hooks expression capstone.
+
+Unlike the no-unify all-hooks capstone, this applies to arbitrary successful
+`inferExprUnify` runs and is constructed from one hook witness pair.
+-/
+structure PrincipalPreconditionedExprAllHooksCapstone
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty) : Prop where
+  core : PrincipalTypingSliceCore env e ty
+  preconditionedAny :
+    ∀ h_app h_proj, PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty
+  preconditionedAnyIffCore :
+    ∀ h_app h_proj,
+      (PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty
+        ↔ PrincipalTypingSliceCore env e ty)
+
+/--
+Construct the general successful-run all-hooks expression capstone from one
+hook witness pair.
+-/
+theorem principalPreconditionedExprAllHooksCapstone_of_success
+    (h_app0 : AppUnifySoundHook)
+    (h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty := by
+  have h_pre0 :
+      PrincipalTypingSlicePreconditioned h_app0 h_proj0 st fuel env e st' ty :=
+    principalTypingSlicePreconditioned_of_success h_app0 h_proj0 st fuel env e st' ty h_ok
+  have h_core : PrincipalTypingSliceCore env e ty :=
+    (principalTypingSlicePreconditioned_iff_core_of_success
+      h_app0 h_proj0 st fuel env e st' ty h_ok).1 h_pre0
+  refine {
+    core := h_core
+    preconditionedAny := ?_
+    preconditionedAnyIffCore := ?_
+  }
+  · intro h_app h_proj
+    exact (principalTypingSlicePreconditioned_iff_core_of_success
+      h_app h_proj st fuel env e st' ty h_ok).2 h_core
+  · intro h_app h_proj
+    exact principalTypingSlicePreconditioned_iff_core_of_success
+      h_app h_proj st fuel env e st' ty h_ok
+
+/--
+General successful-run all-hooks field capstone.
+
+Field-side analogue of `PrincipalPreconditionedExprAllHooksCapstone`.
+-/
+structure PrincipalPreconditionedFieldAllHooksCapstone
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields) : Prop where
+  core : PrincipalFieldTypingSliceCore env fs rf
+  preconditionedAny :
+    ∀ h_app h_proj,
+      PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf
+  preconditionedAnyIffCore :
+    ∀ h_app h_proj,
+      (PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf
+        ↔ PrincipalFieldTypingSliceCore env fs rf)
+
+/--
+Construct the general successful-run all-hooks field capstone from one hook
+witness pair.
+-/
+theorem principalPreconditionedFieldAllHooksCapstone_of_success
+    (h_app0 : AppUnifySoundHook)
+    (h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf := by
+  have h_pre0 :
+      PrincipalFieldTypingSlicePreconditioned h_app0 h_proj0 st fuel env fs st' rf :=
+    principalFieldTypingSlicePreconditioned_of_success
+      h_app0 h_proj0 st fuel env fs st' rf h_ok
+  have h_core : PrincipalFieldTypingSliceCore env fs rf :=
+    (principalFieldTypingSlicePreconditioned_iff_core_of_success
+      h_app0 h_proj0 st fuel env fs st' rf h_ok).1 h_pre0
+  refine {
+    core := h_core
+    preconditionedAny := ?_
+    preconditionedAnyIffCore := ?_
+  }
+  · intro h_app h_proj
+    exact (principalFieldTypingSlicePreconditioned_iff_core_of_success
+      h_app h_proj st fuel env fs st' rf h_ok).2 h_core
+  · intro h_app h_proj
+    exact principalFieldTypingSlicePreconditioned_iff_core_of_success
+      h_app h_proj st fuel env fs st' rf h_ok
+
+/-- Packaged general all-hooks expression capstone slice over successful runs. -/
+def PrincipalPreconditionedAllHooksExprCapstoneSlice : Prop :=
+  ∀ (_h_app0 : AppUnifySoundHook) (_h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty},
+    inferExprUnify st fuel env e = .ok st' ty →
+    PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty
+
+/-- Packaged general all-hooks field capstone slice over successful runs. -/
+def PrincipalPreconditionedAllHooksFieldCapstoneSlice : Prop :=
+  ∀ (_h_app0 : AppUnifySoundHook) (_h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields},
+    inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)) →
+    PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf
+
+/-- Combined general all-hooks capstone slices across expressions and fields. -/
+def PrincipalPreconditionedAllHooksCapstoneSlices : Prop :=
+  PrincipalPreconditionedAllHooksExprCapstoneSlice ∧
+    PrincipalPreconditionedAllHooksFieldCapstoneSlice
+
+/-- The combined general all-hooks capstone slices are fully proved. -/
+theorem principalPreconditionedAllHooksCapstoneSlices_proved :
+    PrincipalPreconditionedAllHooksCapstoneSlices := by
+  refine ⟨?_, ?_⟩
+  · intro h_app0 h_proj0 st fuel env e st' ty h_ok
+    exact principalPreconditionedExprAllHooksCapstone_of_success
+      h_app0 h_proj0 h_ok
+  · intro h_app0 h_proj0 st fuel env fs st' rf h_ok
+    exact principalPreconditionedFieldAllHooksCapstone_of_success
+      h_app0 h_proj0 h_ok
+
+/-- One-hop expression branch projection from general all-hooks capstone slices. -/
+theorem principalPreconditionedAllHooksCapstoneSlices_expr
+    (h_slice : PrincipalPreconditionedAllHooksCapstoneSlices)
+    (h_app0 : AppUnifySoundHook) (h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty :=
+  h_slice.1 h_app0 h_proj0 h_ok
+
+/-- One-hop field branch projection from general all-hooks capstone slices. -/
+theorem principalPreconditionedAllHooksCapstoneSlices_field
+    (h_slice : PrincipalPreconditionedAllHooksCapstoneSlices)
+    (h_app0 : AppUnifySoundHook) (h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
+  h_slice.2 h_app0 h_proj0 h_ok
+
+/--
 Top-level M4 principal vacuity suite.
 
 This packages:
