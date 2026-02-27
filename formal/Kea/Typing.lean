@@ -5673,6 +5673,7 @@ Top-level suite for the general all-hooks successful-run layer.
 structure PrincipalPreconditionedAllHooksSuite : Prop where
   capstones : PrincipalPreconditionedAllHooksCapstoneSlices
   irrelevance : PrincipalPreconditionedHookIrrelevanceSlices
+  runBundles : PrincipalPreconditionedAllHooksRunBundleSlices
 
 /-- The general all-hooks successful-run suite is fully proved. -/
 theorem principalPreconditionedAllHooksSuite_proved :
@@ -5681,6 +5682,7 @@ theorem principalPreconditionedAllHooksSuite_proved :
     capstones := principalPreconditionedAllHooksCapstoneSlices_proved
     irrelevance := principalPreconditionedHookIrrelevanceSlices_of_allHooksCapstones
       principalPreconditionedAllHooksCapstoneSlices_proved
+    runBundles := principalPreconditionedAllHooksRunBundleSlices_proved
   }
 
 /-- One-hop expression capstone projection from general all-hooks suite. -/
@@ -5728,6 +5730,28 @@ theorem principalPreconditionedAllHooksSuite_irrelevance_field
     (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
       ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
   principalPreconditionedHookIrrelevanceSlices_field h_suite.irrelevance h_ok
+
+/-- One-hop expression run-bundle projection from general all-hooks suite. -/
+theorem principalPreconditionedAllHooksSuite_runBundle_expr
+    (h_suite : PrincipalPreconditionedAllHooksSuite)
+    (h_app0 : AppUnifySoundHook) (h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty :=
+  principalPreconditionedAllHooksRunBundleSlices_expr
+    h_suite.runBundles h_app0 h_proj0 h_ok
+
+/-- One-hop field run-bundle projection from general all-hooks suite. -/
+theorem principalPreconditionedAllHooksSuite_runBundle_field
+    (h_suite : PrincipalPreconditionedAllHooksSuite)
+    (h_app0 : AppUnifySoundHook) (h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf :=
+  principalPreconditionedAllHooksRunBundleSlices_field
+    h_suite.runBundles h_app0 h_proj0 h_ok
 
 /--
 General-all-hooks suite convenience wrapper: derive core expression principality
