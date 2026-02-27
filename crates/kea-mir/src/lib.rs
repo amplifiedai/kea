@@ -393,6 +393,7 @@ pub fn lower_hir_module(module: &HirModule) -> MirModule {
     }
     for function in &mut functions {
         schedule_trailing_releases_after_last_use(function);
+        elide_adjacent_retain_release_pairs(function);
     }
 
     MirModule { functions, layouts }
@@ -442,6 +443,26 @@ fn schedule_trailing_releases_after_last_use(function: &mut MirFunction) {
             if let Some(inst) = prefix.get(pos) {
                 rebuilt.push(inst.clone());
             }
+        }
+        block.instructions = rebuilt;
+    }
+}
+
+fn elide_adjacent_retain_release_pairs(function: &mut MirFunction) {
+    for block in &mut function.blocks {
+        let mut rebuilt = Vec::with_capacity(block.instructions.len());
+        let mut idx = 0usize;
+        while idx < block.instructions.len() {
+            if idx + 1 < block.instructions.len()
+                && let MirInst::Retain { value: retained } = &block.instructions[idx]
+                && let MirInst::Release { value: released } = &block.instructions[idx + 1]
+                && retained == released
+            {
+                idx += 2;
+                continue;
+            }
+            rebuilt.push(block.instructions[idx].clone());
+            idx += 1;
         }
         block.instructions = rebuilt;
     }
@@ -5726,7 +5747,7 @@ mod tests {
     }
 
     #[test]
-    fn lower_hir_module_retains_heap_var_aliases_before_binding() {
+    fn lower_hir_module_avoids_adjacent_retain_release_churn_for_heap_alias_binding() {
         let hir = HirModule {
             declarations: vec![HirDecl::Function(HirFunction {
                 name: "main".to_string(),
@@ -5774,12 +5795,29 @@ mod tests {
 
         let mir = lower_hir_module(&hir);
         let function = &mir.functions[0];
+        let has_retain = function
+            .blocks[0]
+            .instructions
+            .iter()
+            .any(|inst| matches!(inst, MirInst::Retain { .. }));
+        let has_adjacent_retain_release_same = function.blocks[0]
+            .instructions
+            .windows(2)
+            .any(|pair| matches!(
+                (&pair[0], &pair[1]),
+                (MirInst::Retain { value: lhs }, MirInst::Release { value: rhs }) if lhs == rhs
+            ));
         assert!(
-            function.blocks[0]
+            !has_adjacent_retain_release_same,
+            "heap alias lowering should not leave adjacent retain/release churn: {:?}",
+            function.blocks[0].instructions
+        );
+        assert!(
+            has_retain || function.blocks[0]
                 .instructions
                 .iter()
-                .any(|inst| matches!(inst, MirInst::Retain { .. })),
-            "heap alias let-binding should emit Retain before rebinding"
+                .any(|inst| matches!(inst, MirInst::Release { .. })),
+            "heap alias lowering should keep memory lifecycle ops observable"
         );
     }
 
@@ -5845,6 +5883,52 @@ mod tests {
         assert!(
             release_indices.iter().all(|idx| *idx < int_const_idx),
             "expected releases before unrelated trailing work; releases={release_indices:?}, int_const_idx={int_const_idx}, instructions={instructions:?}"
+        );
+    }
+
+    #[test]
+    fn elide_adjacent_retain_release_pairs_removes_trivial_churn() {
+        let mut function = MirFunction {
+            name: "main".to_string(),
+            signature: MirFunctionSignature {
+                params: vec![],
+                ret: Type::Unit,
+                effects: EffectRow::pure(),
+            },
+            entry: MirBlockId(0),
+            blocks: vec![MirBlock {
+                id: MirBlockId(0),
+                params: vec![],
+                instructions: vec![
+                    MirInst::Const {
+                        dest: MirValueId(0),
+                        literal: MirLiteral::Int(7),
+                    },
+                    MirInst::Retain {
+                        value: MirValueId(0),
+                    },
+                    MirInst::Release {
+                        value: MirValueId(0),
+                    },
+                    MirInst::Nop,
+                ],
+                terminator: MirTerminator::Return {
+                    value: Some(MirValueId(0)),
+                },
+            }],
+        };
+
+        elide_adjacent_retain_release_pairs(&mut function);
+        assert_eq!(
+            function.blocks[0].instructions,
+            vec![
+                MirInst::Const {
+                    dest: MirValueId(0),
+                    literal: MirLiteral::Int(7),
+                },
+                MirInst::Nop,
+            ],
+            "adjacent retain/release pair should be removed"
         );
     }
 
