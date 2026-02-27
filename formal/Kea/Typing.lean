@@ -20334,6 +20334,79 @@ theorem inferFieldsUnify_sound_preconditioned_hasTypeU_from_resolved_bundle
     h_hooks.1 h_hooks.2 st fuel env fs st' rf h_ok
 
 /--
+Packaged recursive `HasTypeU` soundness surface for unification-threaded
+inference under the weak hook premises.
+-/
+structure InferUnifyHasTypeUSoundBundle
+    (h_app : AppUnifySoundHookU)
+    (h_proj : ProjUnifySoundHookU) : Prop where
+  expr :
+    ∀ st fuel env e st' ty,
+      inferExprUnify st fuel env e = .ok st' ty →
+      HasTypeU env e ty
+  field :
+    ∀ st fuel env fs st' rf,
+      inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)) →
+      HasFieldsTypeU env fs rf
+
+/--
+Build the packaged recursive `HasTypeU` soundness surface from weak hook
+premises.
+-/
+theorem inferUnifyHasTypeUSoundBundle_of_hooks
+    (h_app : AppUnifySoundHookU)
+    (h_proj : ProjUnifySoundHookU) :
+    InferUnifyHasTypeUSoundBundle h_app h_proj := by
+  refine ⟨?expr, ?field⟩
+  · intro st fuel env e st' ty h_ok
+    exact inferExprUnify_sound_preconditioned_hasTypeU_direct
+      h_app h_proj st fuel env e st' ty h_ok
+  · intro st fuel env fs st' rf h_ok
+    exact inferFieldsUnify_sound_preconditioned_hasTypeU_direct
+      h_app h_proj st fuel env fs st' rf h_ok
+
+/--
+Build the packaged recursive `HasTypeU` soundness surface from bundled weak
+hook premises.
+-/
+theorem inferUnifyHasTypeUSoundBundle_of_hook_bundle
+    (h_hooks : UnifyHookPremisesU) :
+    InferUnifyHasTypeUSoundBundle h_hooks.1 h_hooks.2 :=
+  inferUnifyHasTypeUSoundBundle_of_hooks h_hooks.1 h_hooks.2
+
+/--
+Build the packaged recursive `HasTypeU` soundness surface directly from
+resolved-shape premises.
+-/
+theorem inferUnifyHasTypeUSoundBundle_of_resolved
+    (h_resolved : UnifyResolvedShapePremises) :
+    InferUnifyHasTypeUSoundBundle
+      (unifyHookPremisesU_of_resolved h_resolved).1
+      (unifyHookPremisesU_of_resolved h_resolved).2 := by
+  exact inferUnifyHasTypeUSoundBundle_of_hook_bundle
+    (unifyHookPremisesU_of_resolved h_resolved)
+
+/-- One-hop expression projection from a packaged `HasTypeU` soundness bundle. -/
+theorem inferUnifyHasTypeUSoundBundle_expr
+    {h_app : AppUnifySoundHookU}
+    {h_proj : ProjUnifySoundHookU}
+    (h_bundle : InferUnifyHasTypeUSoundBundle h_app h_proj) :
+    ∀ st fuel env e st' ty,
+      inferExprUnify st fuel env e = .ok st' ty →
+      HasTypeU env e ty :=
+  h_bundle.expr
+
+/-- One-hop field projection from a packaged `HasTypeU` soundness bundle. -/
+theorem inferUnifyHasTypeUSoundBundle_field
+    {h_app : AppUnifySoundHookU}
+    {h_proj : ProjUnifySoundHookU}
+    (h_bundle : InferUnifyHasTypeUSoundBundle h_app h_proj) :
+    ∀ st fuel env fs st' rf,
+      inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)) →
+      HasFieldsTypeU env fs rf :=
+  h_bundle.field
+
+/--
 Surface-layer naming-parity wrappers for no-unify cross-route success APIs.
 These mirror the existing `...from_cross_route_slices` families under
 explicit `...from_cross_route_surface_slices` theorem names.
