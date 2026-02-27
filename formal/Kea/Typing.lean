@@ -9742,6 +9742,210 @@ theorem principalBoundaryMasterSuite_noUnifyToGeneralAllHooks_runBundle_field_vi
     h_no h_ok
 
 /--
+Aggregate capstone + irrelevance suite routed through the top-level master
+consequence path.
+-/
+structure PrincipalBoundaryMasterConsequenceCapstoneSuite : Prop where
+  allHooksExpr :
+    ∀ (_h_app0 : AppUnifySoundHook) (_h_proj0 : ProjUnifySoundHook)
+      {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+      {st' : UnifyState} {ty : Ty},
+      inferExprUnify st fuel env e = .ok st' ty →
+      PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty
+  allHooksField :
+    ∀ (_h_app0 : AppUnifySoundHook) (_h_proj0 : ProjUnifySoundHook)
+      {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+      {st' : UnifyState} {rf : RowFields},
+      inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)) →
+      PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf
+  allHooksIrrelevanceExpr :
+    ∀ (_h_app0 : AppUnifySoundHook) (_h_proj0 : ProjUnifySoundHook)
+      {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+      {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+      {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+      {st' : UnifyState} {ty : Ty},
+      inferExprUnify st fuel env e = .ok st' ty →
+      (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+        ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty)
+  allHooksIrrelevanceField :
+    ∀ (_h_app0 : AppUnifySoundHook) (_h_proj0 : ProjUnifySoundHook)
+      {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+      {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+      {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+      {st' : UnifyState} {rf : RowFields},
+      inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)) →
+      (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+        ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf)
+  noUnifyExpr :
+    ∀ {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+      {st' : UnifyState} {ty : Ty},
+      NoUnifyBranchesExpr e →
+      inferExprUnify st fuel env e = .ok st' ty →
+      PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty
+  noUnifyField :
+    ∀ {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+      {st' : UnifyState} {rf : RowFields},
+      NoUnifyBranchesFields fs →
+      inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)) →
+      PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf
+  noUnifyIrrelevanceExpr :
+    ∀ {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+      {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+      {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+      {st' : UnifyState} {ty : Ty},
+      NoUnifyBranchesExpr e →
+      inferExprUnify st fuel env e = .ok st' ty →
+      (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+        ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty)
+  noUnifyIrrelevanceField :
+    ∀ {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+      {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+      {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+      {st' : UnifyState} {rf : RowFields},
+      NoUnifyBranchesFields fs →
+      inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)) →
+      (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+        ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf)
+
+/--
+Construct the master consequence capstone suite from one top-level master
+suite witness.
+-/
+theorem principalBoundaryMasterConsequenceCapstoneSuite_of_master
+    (h_suite : PrincipalBoundaryMasterSuite) :
+    PrincipalBoundaryMasterConsequenceCapstoneSuite := by
+  refine {
+    allHooksExpr := ?_
+    allHooksField := ?_
+    allHooksIrrelevanceExpr := ?_
+    allHooksIrrelevanceField := ?_
+    noUnifyExpr := ?_
+    noUnifyField := ?_
+    noUnifyIrrelevanceExpr := ?_
+    noUnifyIrrelevanceField := ?_
+  }
+  · intro h_app0 h_proj0 st fuel env e st' ty h_ok
+    exact principalBoundaryMasterSuite_allHooks_expr_via_consequenceSuite
+      h_suite h_app0 h_proj0 h_ok
+  · intro h_app0 h_proj0 st fuel env fs st' rf h_ok
+    exact principalBoundaryMasterSuite_allHooks_field_via_consequenceSuite
+      h_suite h_app0 h_proj0 h_ok
+  · intro h_app0 h_proj0 h_app₁ h_proj₁ h_app₂ h_proj₂ st fuel env e st' ty h_ok
+    exact principalBoundaryMasterSuite_allHooks_irrelevance_expr_via_consequenceSuite
+      h_suite h_app0 h_proj0 h_ok
+  · intro h_app0 h_proj0 h_app₁ h_proj₁ h_app₂ h_proj₂ st fuel env fs st' rf h_ok
+    exact principalBoundaryMasterSuite_allHooks_irrelevance_field_via_consequenceSuite
+      h_suite h_app0 h_proj0 h_ok
+  · intro st fuel env e st' ty h_no h_ok
+    exact principalBoundaryMasterSuite_noUnifyToGeneralAllHooks_expr_via_consequenceSuite
+      h_suite h_no h_ok
+  · intro st fuel env fs st' rf h_no h_ok
+    exact principalBoundaryMasterSuite_noUnifyToGeneralAllHooks_field_via_consequenceSuite
+      h_suite h_no h_ok
+  · intro h_app₁ h_proj₁ h_app₂ h_proj₂ st fuel env e st' ty h_no h_ok
+    exact principalBoundaryMasterSuite_noUnifyToGeneralAllHooks_irrelevance_expr_via_consequenceSuite
+      h_suite h_no h_ok
+  · intro h_app₁ h_proj₁ h_app₂ h_proj₂ st fuel env fs st' rf h_no h_ok
+    exact principalBoundaryMasterSuite_noUnifyToGeneralAllHooks_irrelevance_field_via_consequenceSuite
+      h_suite h_no h_ok
+
+/-- The master consequence capstone suite is fully proved. -/
+theorem principalBoundaryMasterConsequenceCapstoneSuite_proved :
+    PrincipalBoundaryMasterConsequenceCapstoneSuite :=
+  principalBoundaryMasterConsequenceCapstoneSuite_of_master
+    principalBoundaryMasterSuite_proved
+
+/-- One-hop projection: master consequence capstone suite from master suite. -/
+theorem principalBoundaryMasterSuite_consequenceCapstoneSuite
+    (h_suite : PrincipalBoundaryMasterSuite) :
+    PrincipalBoundaryMasterConsequenceCapstoneSuite :=
+  principalBoundaryMasterConsequenceCapstoneSuite_of_master h_suite
+
+/--
+One-hop projection: arbitrary-success all-hooks expression capstone from the
+master consequence capstone suite.
+-/
+theorem principalBoundaryMasterConsequenceCapstoneSuite_allHooks_expr
+    (h_suite : PrincipalBoundaryMasterConsequenceCapstoneSuite)
+    (h_app0 : AppUnifySoundHook) (h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty :=
+  h_suite.allHooksExpr h_app0 h_proj0 h_ok
+
+/--
+One-hop projection: arbitrary-success all-hooks field capstone from the master
+consequence capstone suite.
+-/
+theorem principalBoundaryMasterConsequenceCapstoneSuite_allHooks_field
+    (h_suite : PrincipalBoundaryMasterConsequenceCapstoneSuite)
+    (h_app0 : AppUnifySoundHook) (h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
+  h_suite.allHooksField h_app0 h_proj0 h_ok
+
+/--
+One-hop projection: no-unify expression capstone from the master consequence
+capstone suite.
+-/
+theorem principalBoundaryMasterConsequenceCapstoneSuite_noUnify_expr
+    (h_suite : PrincipalBoundaryMasterConsequenceCapstoneSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty :=
+  h_suite.noUnifyExpr h_no h_ok
+
+/--
+One-hop projection: no-unify field capstone from the master consequence
+capstone suite.
+-/
+theorem principalBoundaryMasterConsequenceCapstoneSuite_noUnify_field
+    (h_suite : PrincipalBoundaryMasterConsequenceCapstoneSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
+  h_suite.noUnifyField h_no h_ok
+
+/--
+One-hop projection: no-unify expression hook-irrelevance from the master
+consequence capstone suite.
+-/
+theorem principalBoundaryMasterConsequenceCapstoneSuite_noUnify_irrelevance_expr
+    (h_suite : PrincipalBoundaryMasterConsequenceCapstoneSuite)
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+      ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) :=
+  h_suite.noUnifyIrrelevanceExpr h_no h_ok
+
+/--
+One-hop projection: no-unify field hook-irrelevance from the master consequence
+capstone suite.
+-/
+theorem principalBoundaryMasterConsequenceCapstoneSuite_noUnify_irrelevance_field
+    (h_suite : PrincipalBoundaryMasterConsequenceCapstoneSuite)
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
+  h_suite.noUnifyIrrelevanceField h_no h_ok
+
+/--
 One-hop projection: arbitrary-success all-hooks expression run-bundle from the
 master run-bundle consequence suite.
 -/
