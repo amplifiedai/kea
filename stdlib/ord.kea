@@ -1,0 +1,10 @@
+trait Ord a
+  fn compare(x: a, y: a) -> Int
+
+fn compare(x: Int, y: Int) -> Int
+  if x < y
+    -1
+  else if x > y
+    1
+  else
+    0

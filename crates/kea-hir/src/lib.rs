@@ -427,6 +427,7 @@ fn seed_builtin_variant_tags(
 
 fn collect_variant_tags(
     module: &Module,
+    env: &TypeEnv,
 ) -> (
     UnitVariantTags,
     QualifiedUnitVariantTags,
@@ -489,6 +490,34 @@ fn collect_variant_tags(
                 &mut pattern_qualified,
                 &mut pattern_duplicates,
             );
+        }
+    }
+
+    // Also expose module-qualified constructors (`Order.Less`) for sum types
+    // declared inside a module (`type Ordering = Less | ...` in `order.kea`).
+    let base_pattern_qualified = pattern_qualified.clone();
+    let mut module_qualified_duplicates = BTreeSet::new();
+    for (module_path, module_info) in env.module_struct_entries() {
+        for ((sum_type, variant_name), meta) in &base_pattern_qualified {
+            if env.module_item_visibility(&module_path, sum_type).is_none() {
+                continue;
+            }
+            let key = (module_info.name.clone(), variant_name.clone());
+            if module_qualified_duplicates.contains(&key) {
+                continue;
+            }
+            match pattern_qualified.get(&key) {
+                None => {
+                    qualified.insert(key.clone(), meta.tag);
+                    pattern_qualified.insert(key, meta.clone());
+                }
+                Some(existing) if existing.sum_type == meta.sum_type => {}
+                Some(_) => {
+                    qualified.remove(&key);
+                    pattern_qualified.remove(&key);
+                    module_qualified_duplicates.insert(key);
+                }
+            }
         }
     }
 
@@ -624,7 +653,7 @@ fn lower_constructor_fields(
 
 pub fn lower_module(module: &Module, env: &TypeEnv) -> HirModule {
     let (unit_variant_tags, qualified_variant_tags, pattern_variant_tags, pattern_qualified_tags) =
-        collect_variant_tags(module);
+        collect_variant_tags(module, env);
     let known_record_defs = collect_record_defs(module);
     let mut declarations = Vec::new();
     for decl in &module.declarations {
