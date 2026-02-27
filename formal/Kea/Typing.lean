@@ -26648,6 +26648,92 @@ theorem principalBoundarySoundFullSuite_of_success_via_rowPolyBoundarySoundBundl
     (h_app := h_seed.1) (h_proj := h_seed.2) h_ok_expr h_ok_field
 
 /--
+Combined capstone packaging the direct full-suite theorem surface with the
+row-poly hook-free vertical slice.
+-/
+structure PrincipalBoundarySoundFullVerticalSuite
+    (st : UnifyState) (fuel : Nat) (env : TermEnv)
+    (e : CoreExpr) (fs : CoreFields)
+    (stExpr : UnifyState) (ty : Ty)
+    (stField : UnifyState) (rf : RowFields) : Prop where
+  full : PrincipalBoundarySoundFullSuite st fuel env e fs stExpr ty stField rf
+  vertical : VerticalHookFreeUnifySlices
+
+/--
+Build the full+vertical capstone from a row-poly boundary+sound bundle and
+successful expression/field runs.
+-/
+theorem principalBoundarySoundFullVerticalSuite_of_success_via_rowPolyBoundarySoundBundle
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    (h_bundle : PrincipalRowPolyBoundarySoundBundle h_app h_proj)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundFullVerticalSuite st fuel env e fs stExpr ty stField rf := by
+  refine {
+    full := principalBoundarySoundFullSuite_of_success_via_rowPolyBoundarySoundBundle
+      h_bundle h_ok_expr h_ok_field
+    vertical := principalRowPolyBoundaryBundle_vertical h_bundle.boundary
+  }
+
+/-- Bundled-hook alias for the row-poly full+vertical capstone constructor. -/
+theorem principalBoundarySoundFullVerticalSuite_of_success_via_rowPolyBoundarySoundBundle_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundFullVerticalSuite st fuel env e fs stExpr ty stField rf :=
+  principalBoundarySoundFullVerticalSuite_of_success_via_rowPolyBoundarySoundBundle
+    (h_bundle := principalRowPolyBoundarySoundBundle_of_hook_bundle h_seed)
+    h_ok_expr h_ok_field
+
+/-- One-hop projection: full-suite surface from the full+vertical capstone. -/
+theorem principalBoundarySoundFullVerticalSuite_full
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_suite : PrincipalBoundarySoundFullVerticalSuite st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundFullSuite st fuel env e fs stExpr ty stField rf :=
+  h_suite.full
+
+/-- One-hop projection: hook-free vertical slice from the full+vertical capstone. -/
+theorem principalBoundarySoundFullVerticalSuite_vertical
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_suite : PrincipalBoundarySoundFullVerticalSuite st fuel env e fs stExpr ty stField rf) :
+    VerticalHookFreeUnifySlices :=
+  h_suite.vertical
+
+/-- One-hop projection: hook-free app vertical theorem from the full+vertical capstone. -/
+theorem principalBoundarySoundFullVerticalSuite_vertical_app
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_suite : PrincipalBoundarySoundFullVerticalSuite st fuel env e fs stExpr ty stField rf) :
+    VerticalHookFreeAppSlice :=
+  h_suite.vertical.1
+
+/-- One-hop projection: hook-free projection vertical theorem from the full+vertical capstone. -/
+theorem principalBoundarySoundFullVerticalSuite_vertical_proj
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_suite : PrincipalBoundarySoundFullVerticalSuite st fuel env e fs stExpr ty stField rf) :
+    VerticalHookFreeProjSlice :=
+  h_suite.vertical.2
+
+/--
 Expression preconditioned↔core wrapper on the dual-routed proved master suite.
 -/
 theorem principalBoundaryMasterSuite_preconditionedCoreIff_expr_via_dualConsequenceSlices
