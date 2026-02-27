@@ -3740,6 +3740,52 @@ theorem principalTypingSlicePreconditioned_of_success_no_unify_from_bundle
     h_no h_ok h_hooks.1 h_hooks.2
 
 /--
+Packaged no-unify principal bridge: one successful hook-free `inferExprUnify`
+run yields both the core principal package and the preconditioned principal
+package.
+-/
+structure PrincipalNoUnifyBridgeBundle
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty) : Prop where
+  core : PrincipalTypingSliceCore env e ty
+  preconditioned : PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty
+
+/--
+Construct the no-unify bridge bundle from one successful hook-free
+`inferExprUnify` run.
+-/
+theorem principalNoUnifyBridgeBundle_of_success
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    ∀ h_app h_proj,
+      PrincipalNoUnifyBridgeBundle h_app h_proj st fuel env e st' ty := by
+  intro h_app h_proj
+  let h_core : PrincipalTypingSliceCore env e ty :=
+    principalTypingSliceCore_of_unify_success_no_unify h_no h_ok
+  refine {
+    core := h_core
+    preconditioned := ?_
+  }
+  exact principalTypingSlicePreconditioned_of_success_of_core_principal
+    h_core h_ok h_app h_proj
+
+/--
+Bundle-entry variant of `principalNoUnifyBridgeBundle_of_success`.
+-/
+theorem principalNoUnifyBridgeBundle_of_success_from_hook_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_hooks : UnifyHookPremises) :
+    PrincipalNoUnifyBridgeBundle h_hooks.1 h_hooks.2 st fuel env e st' ty := by
+  exact principalNoUnifyBridgeBundle_of_success h_no h_ok h_hooks.1 h_hooks.2
+
+/--
 `HasTypeU` lift of non-app/proj recursive soundness: on the fragment that never
 executes unification branches, algorithmic inference results are declaratively
 typable in the unification-aware judgment as well.
