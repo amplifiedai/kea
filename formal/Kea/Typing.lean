@@ -12084,6 +12084,28 @@ theorem principalPreconditionedFieldAllHooksRunBundle_of_success_noUnify_via_mas
     PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf :=
   principalNoUnifyRunBundleField_of_success_via_masterRunBundleConsequenceSuite h_no h_ok
 
+/-- Bundled-seed alias for no-unify-to-general expression run-bundle on the consequence suite. -/
+theorem principalPreconditionedExprAllHooksRunBundle_of_success_noUnify_via_masterRunBundleConsequenceSuite_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_hooks : UnifyHookPremises) :
+    PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty :=
+  principalPreconditionedExprAllHooksRunBundle_of_success_noUnify_via_masterRunBundleConsequenceSuite
+    h_no h_ok
+
+/-- Bundled-seed alias for no-unify-to-general field run-bundle on the consequence suite. -/
+theorem principalPreconditionedFieldAllHooksRunBundle_of_success_noUnify_via_masterRunBundleConsequenceSuite_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_hooks : UnifyHookPremises) :
+    PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf :=
+  principalPreconditionedFieldAllHooksRunBundle_of_success_noUnify_via_masterRunBundleConsequenceSuite
+    h_no h_ok
+
 /--
 Master-run-bundle-consequence-suite convenience wrapper: derive the packaged
 no-unify expression consequence bundle from a successful no-unify run.
@@ -14597,6 +14619,78 @@ theorem principalPreconditionedCoreIffField_anyHooks_of_success_noUnify_via_mast
         ↔ PrincipalFieldTypingSliceCore env fs rf) :=
   (principalNoUnifyFieldRunBundleConsequences_of_success_via_masterRunBundleConsequenceSuite
     h_no h_ok).preconditionedAnyIffCore
+
+/-- Bundled-seed alias for no-unify-to-general core expression on the consequence suite. -/
+theorem principalCoreExpr_of_success_noUnify_via_masterRunBundleConsequenceSuite_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_hooks : UnifyHookPremises) :
+    PrincipalTypingSliceCore env e ty :=
+  principalCoreExpr_of_success_noUnify_via_masterRunBundleConsequenceSuite
+    h_no h_ok
+
+/-- Bundled-seed alias for no-unify-to-general core field on the consequence suite. -/
+theorem principalCoreField_of_success_noUnify_via_masterRunBundleConsequenceSuite_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_hooks : UnifyHookPremises) :
+    PrincipalFieldTypingSliceCore env fs rf :=
+  principalCoreField_of_success_noUnify_via_masterRunBundleConsequenceSuite
+    h_no h_ok
+
+/-- Bundled-seed alias for no-unify-to-general any-hooks expression preconditioning on the consequence suite. -/
+theorem principalPreconditionedExpr_anyHooks_of_success_noUnify_via_masterRunBundleConsequenceSuite_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_hooks : UnifyHookPremises) :
+    ∀ h_app h_proj,
+      PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty :=
+  principalPreconditionedExpr_anyHooks_of_success_noUnify_via_masterRunBundleConsequenceSuite
+    h_no h_ok
+
+/-- Bundled-seed alias for no-unify-to-general any-hooks field preconditioning on the consequence suite. -/
+theorem principalPreconditionedField_anyHooks_of_success_noUnify_via_masterRunBundleConsequenceSuite_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_hooks : UnifyHookPremises) :
+    ∀ h_app h_proj,
+      PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf :=
+  principalPreconditionedField_anyHooks_of_success_noUnify_via_masterRunBundleConsequenceSuite
+    h_no h_ok
+
+/-- Bundled-seed alias for no-unify-to-general any-hooks expression iff preconditioning on the consequence suite. -/
+theorem principalPreconditionedCoreIffExpr_anyHooks_of_success_noUnify_via_masterRunBundleConsequenceSuite_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_hooks : UnifyHookPremises) :
+    ∀ h_app h_proj,
+      (PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty
+        ↔ PrincipalTypingSliceCore env e ty) :=
+  principalPreconditionedCoreIffExpr_anyHooks_of_success_noUnify_via_masterRunBundleConsequenceSuite
+    h_no h_ok
+
+/-- Bundled-seed alias for no-unify-to-general any-hooks field iff preconditioning on the consequence suite. -/
+theorem principalPreconditionedCoreIffField_anyHooks_of_success_noUnify_via_masterRunBundleConsequenceSuite_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_hooks : UnifyHookPremises) :
+    ∀ h_app h_proj,
+      (PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf
+        ↔ PrincipalFieldTypingSliceCore env fs rf) :=
+  principalPreconditionedCoreIffField_anyHooks_of_success_noUnify_via_masterRunBundleConsequenceSuite
+    h_no h_ok
 
 /--
 Master-run-bundle-consequence-suite convenience wrapper: derive fixed-run
