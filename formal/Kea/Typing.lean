@@ -13877,6 +13877,226 @@ theorem principalNoUnifyFieldAllHooksRouteSurface_via_masterRunBundleConsequence
     principalNoUnifyAllHooksRouteSurfaceBothMasterConsequenceRoutesSlices_proved
     h_no h_ok).viaMasterRunBundleConsequence
 
+/--
+Canonical capstone projection from proved route-surface slices to the
+master-consequence-capstone route.
+-/
+theorem principalNoUnifyExprAllHooksCapstone_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty :=
+  (principalNoUnifyExprAllHooksRouteSurface_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok).capstone
+
+/--
+Canonical capstone projection from proved route-surface slices to the
+master-run-bundle-consequence route.
+-/
+theorem principalNoUnifyExprAllHooksCapstone_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty :=
+  (principalNoUnifyExprAllHooksRouteSurface_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok).capstone
+
+/--
+Canonical capstone projection from proved route-surface slices to the
+master-consequence-capstone field route.
+-/
+theorem principalNoUnifyFieldAllHooksCapstone_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
+  (principalNoUnifyFieldAllHooksRouteSurface_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok).capstone
+
+/--
+Canonical capstone projection from proved route-surface slices to the
+master-run-bundle-consequence field route.
+-/
+theorem principalNoUnifyFieldAllHooksCapstone_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
+  (principalNoUnifyFieldAllHooksRouteSurface_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok).capstone
+
+/--
+Canonical run-bundle projection from proved route-surface slices to the
+master-consequence-capstone route.
+-/
+theorem principalNoUnifyRunBundleExpr_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty :=
+  (principalNoUnifyExprAllHooksRouteSurface_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok).runBundle
+
+/--
+Canonical run-bundle projection from proved route-surface slices to the
+master-run-bundle-consequence route.
+-/
+theorem principalNoUnifyRunBundleExpr_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty :=
+  (principalNoUnifyExprAllHooksRouteSurface_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok).runBundle
+
+/--
+Canonical run-bundle projection from proved route-surface slices to the
+master-consequence-capstone field route.
+-/
+theorem principalNoUnifyRunBundleField_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf :=
+  (principalNoUnifyFieldAllHooksRouteSurface_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok).runBundle
+
+/--
+Canonical run-bundle projection from proved route-surface slices to the
+master-run-bundle-consequence field route.
+-/
+theorem principalNoUnifyRunBundleField_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf :=
+  (principalNoUnifyFieldAllHooksRouteSurface_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok).runBundle
+
+/--
+Canonical consequence-bundle projection from proved route-surface slices to
+the master-consequence-capstone route.
+-/
+theorem principalNoUnifyExprRunBundleConsequences_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalNoUnifyExprRunBundleConsequences st fuel env e st' ty :=
+  (principalNoUnifyExprAllHooksRouteSurface_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok).consequences
+
+/--
+Canonical consequence-bundle projection from proved route-surface slices to
+the master-run-bundle-consequence route.
+-/
+theorem principalNoUnifyExprRunBundleConsequences_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalNoUnifyExprRunBundleConsequences st fuel env e st' ty :=
+  (principalNoUnifyExprAllHooksRouteSurface_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok).consequences
+
+/--
+Canonical consequence-bundle projection from proved route-surface slices to
+the master-consequence-capstone field route.
+-/
+theorem principalNoUnifyFieldRunBundleConsequences_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalNoUnifyFieldRunBundleConsequences st fuel env fs st' rf :=
+  (principalNoUnifyFieldAllHooksRouteSurface_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok).consequences
+
+/--
+Canonical consequence-bundle projection from proved route-surface slices to
+the master-run-bundle-consequence field route.
+-/
+theorem principalNoUnifyFieldRunBundleConsequences_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalNoUnifyFieldRunBundleConsequences st fuel env fs st' rf :=
+  (principalNoUnifyFieldAllHooksRouteSurface_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok).consequences
+
+/--
+Canonical fixed-run hook-irrelevance projection from proved route-surface
+slices to the master-consequence-capstone route.
+-/
+theorem principalNoUnifyPreconditionedExpr_hookIrrelevant_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+      ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) :=
+  (principalNoUnifyExprAllHooksRouteSurface_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok).irrelevance
+
+/--
+Canonical fixed-run hook-irrelevance projection from proved route-surface
+slices to the master-run-bundle-consequence route.
+-/
+theorem principalNoUnifyPreconditionedExpr_hookIrrelevant_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+      ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) :=
+  (principalNoUnifyExprAllHooksRouteSurface_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok).irrelevance
+
+/--
+Canonical fixed-run hook-irrelevance projection from proved route-surface
+slices to the master-consequence-capstone field route.
+-/
+theorem principalNoUnifyPreconditionedField_hookIrrelevant_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
+  (principalNoUnifyFieldAllHooksRouteSurface_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok).irrelevance
+
+/--
+Canonical fixed-run hook-irrelevance projection from proved route-surface
+slices to the master-run-bundle-consequence field route.
+-/
+theorem principalNoUnifyPreconditionedField_hookIrrelevant_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
+  (principalNoUnifyFieldAllHooksRouteSurface_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok).irrelevance
+
 /-- One-hop core projection from an expression all-hooks route surface. -/
 theorem principalNoUnifyExprAllHooksRouteSurface_core
     {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
@@ -15298,8 +15518,8 @@ theorem principalNoUnifyPreconditionedExpr_hookIrrelevant_of_success_via_masterC
     (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
     (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
       ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) :=
-  (principalNoUnifyExprAllHooksRouteSurface_via_masterConsequenceCapstone_from_cross_route_surface_slices
-    h_no h_ok).irrelevance
+  principalNoUnifyPreconditionedExpr_hookIrrelevant_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok
 
 /--
 No-unify naming-parity alias: field fixed-run hook-irrelevance on the
@@ -15314,8 +15534,8 @@ theorem principalNoUnifyPreconditionedField_hookIrrelevant_of_success_via_master
     (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
     (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
       ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
-  (principalNoUnifyFieldAllHooksRouteSurface_via_masterConsequenceCapstone_from_cross_route_surface_slices
-    h_no h_ok).irrelevance
+  principalNoUnifyPreconditionedField_hookIrrelevant_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok
 
 /--
 No-unify naming-parity alias: bundled-hook variant for expression fixed-run
@@ -15361,8 +15581,8 @@ theorem principalNoUnifyRunBundleExpr_of_success_via_masterConsequenceCapstone_f
     (h_no : NoUnifyBranchesExpr e)
     (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
     PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty :=
-  (principalNoUnifyExprAllHooksRouteSurface_via_masterConsequenceCapstone_from_cross_route_surface_slices
-    h_no h_ok).runBundle
+  principalNoUnifyRunBundleExpr_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok
 
 /--
 No-unify naming-parity alias: field run-bundle surface on the
@@ -15374,8 +15594,8 @@ theorem principalNoUnifyRunBundleField_of_success_via_masterConsequenceCapstone_
     (h_no : NoUnifyBranchesFields fs)
     (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
     PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf :=
-  (principalNoUnifyFieldAllHooksRouteSurface_via_masterConsequenceCapstone_from_cross_route_surface_slices
-    h_no h_ok).runBundle
+  principalNoUnifyRunBundleField_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok
 
 /--
 No-unify naming-parity alias: expression packaged consequence bundle on the
@@ -15387,8 +15607,8 @@ theorem principalNoUnifyExprRunBundleConsequences_of_success_via_masterConsequen
     (h_no : NoUnifyBranchesExpr e)
     (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
     PrincipalNoUnifyExprRunBundleConsequences st fuel env e st' ty :=
-  (principalNoUnifyExprAllHooksRouteSurface_via_masterConsequenceCapstone_from_cross_route_surface_slices
-    h_no h_ok).consequences
+  principalNoUnifyExprRunBundleConsequences_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok
 
 /--
 No-unify naming-parity alias: field packaged consequence bundle on the
@@ -15400,8 +15620,8 @@ theorem principalNoUnifyFieldRunBundleConsequences_of_success_via_masterConseque
     (h_no : NoUnifyBranchesFields fs)
     (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
     PrincipalNoUnifyFieldRunBundleConsequences st fuel env fs st' rf :=
-  (principalNoUnifyFieldAllHooksRouteSurface_via_masterConsequenceCapstone_from_cross_route_surface_slices
-    h_no h_ok).consequences
+  principalNoUnifyFieldRunBundleConsequences_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok
 
 /--
 No-unify naming-parity alias: expression all-hooks capstone on the
@@ -15413,8 +15633,8 @@ theorem principalNoUnifyExprAllHooksCapstone_of_success_via_masterConsequenceCap
     (h_no : NoUnifyBranchesExpr e)
     (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
     PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty :=
-  (principalNoUnifyExprAllHooksRouteSurface_via_masterConsequenceCapstone_from_cross_route_surface_slices
-    h_no h_ok).capstone
+  principalNoUnifyExprAllHooksCapstone_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok
 
 /--
 No-unify naming-parity alias: field all-hooks capstone on the
@@ -15426,8 +15646,8 @@ theorem principalNoUnifyFieldAllHooksCapstone_of_success_via_masterConsequenceCa
     (h_no : NoUnifyBranchesFields fs)
     (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
     PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
-  (principalNoUnifyFieldAllHooksRouteSurface_via_masterConsequenceCapstone_from_cross_route_surface_slices
-    h_no h_ok).capstone
+  principalNoUnifyFieldAllHooksCapstone_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok
 
 /--
 No-unify naming-parity alias: bundled-hook variant for expression all-hooks
@@ -15912,8 +16132,8 @@ theorem principalNoUnifyPreconditionedExpr_hookIrrelevant_of_success_via_masterR
     (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
     (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
       ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) :=
-  (principalNoUnifyExprAllHooksRouteSurface_via_masterRunBundleConsequence_from_cross_route_surface_slices
-    h_no h_ok).irrelevance
+  principalNoUnifyPreconditionedExpr_hookIrrelevant_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok
 
 /--
 No-unify naming-parity alias: field fixed-run hook-irrelevance on the
@@ -15928,8 +16148,8 @@ theorem principalNoUnifyPreconditionedField_hookIrrelevant_of_success_via_master
     (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
     (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
       ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
-  (principalNoUnifyFieldAllHooksRouteSurface_via_masterRunBundleConsequence_from_cross_route_surface_slices
-    h_no h_ok).irrelevance
+  principalNoUnifyPreconditionedField_hookIrrelevant_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok
 
 /--
 No-unify naming-parity alias: bundled-hook variant for expression fixed-run
@@ -15975,8 +16195,8 @@ theorem principalNoUnifyRunBundleExpr_of_success_via_masterRunBundleConsequence_
     (h_no : NoUnifyBranchesExpr e)
     (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
     PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty :=
-  (principalNoUnifyExprAllHooksRouteSurface_via_masterRunBundleConsequence_from_cross_route_surface_slices
-    h_no h_ok).runBundle
+  principalNoUnifyRunBundleExpr_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok
 
 /--
 No-unify naming-parity alias: field run-bundle surface on the
@@ -15988,8 +16208,8 @@ theorem principalNoUnifyRunBundleField_of_success_via_masterRunBundleConsequence
     (h_no : NoUnifyBranchesFields fs)
     (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
     PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf :=
-  (principalNoUnifyFieldAllHooksRouteSurface_via_masterRunBundleConsequence_from_cross_route_surface_slices
-    h_no h_ok).runBundle
+  principalNoUnifyRunBundleField_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok
 
 /--
 No-unify naming-parity alias: expression packaged consequence bundle on the
@@ -16001,8 +16221,8 @@ theorem principalNoUnifyExprRunBundleConsequences_of_success_via_masterRunBundle
     (h_no : NoUnifyBranchesExpr e)
     (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
     PrincipalNoUnifyExprRunBundleConsequences st fuel env e st' ty :=
-  (principalNoUnifyExprAllHooksRouteSurface_via_masterRunBundleConsequence_from_cross_route_surface_slices
-    h_no h_ok).consequences
+  principalNoUnifyExprRunBundleConsequences_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok
 
 /--
 No-unify naming-parity alias: field packaged consequence bundle on the
@@ -16014,8 +16234,8 @@ theorem principalNoUnifyFieldRunBundleConsequences_of_success_via_masterRunBundl
     (h_no : NoUnifyBranchesFields fs)
     (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
     PrincipalNoUnifyFieldRunBundleConsequences st fuel env fs st' rf :=
-  (principalNoUnifyFieldAllHooksRouteSurface_via_masterRunBundleConsequence_from_cross_route_surface_slices
-    h_no h_ok).consequences
+  principalNoUnifyFieldRunBundleConsequences_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok
 
 /--
 No-unify naming-parity alias: expression all-hooks capstone on the
@@ -16027,8 +16247,8 @@ theorem principalNoUnifyExprAllHooksCapstone_of_success_via_masterRunBundleConse
     (h_no : NoUnifyBranchesExpr e)
     (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
     PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty :=
-  (principalNoUnifyExprAllHooksRouteSurface_via_masterRunBundleConsequence_from_cross_route_surface_slices
-    h_no h_ok).capstone
+  principalNoUnifyExprAllHooksCapstone_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok
 
 /--
 No-unify naming-parity alias: field all-hooks capstone on the
@@ -16040,8 +16260,8 @@ theorem principalNoUnifyFieldAllHooksCapstone_of_success_via_masterRunBundleCons
     (h_no : NoUnifyBranchesFields fs)
     (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
     PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
-  (principalNoUnifyFieldAllHooksRouteSurface_via_masterRunBundleConsequence_from_cross_route_surface_slices
-    h_no h_ok).capstone
+  principalNoUnifyFieldAllHooksCapstone_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok
 
 /--
 No-unify naming-parity alias: bundled-hook variant for expression all-hooks
