@@ -5,6 +5,26 @@ test "Result.unwrap_or"
   Test.assert(Result.unwrap_or(Ok(5), 0) == 5)
   Test.assert(Result.unwrap_or(Err(5), 0) == 0)
 
+test "Result.map.and_then"
+  let mapped = Result.map(Ok(2), |x| -> x + 1)
+  Test.assert(Result.unwrap_or(mapped, 0) == 3)
+  let chained = Result.and_then(Ok(2), |x| -> Ok(x + 5))
+  Test.assert(Result.unwrap_or(chained, 0) == 7)
+  let mapped_err = Result.map_err(Err(2), |x| -> x + 1)
+  Test.assert(Result.is_err(mapped_err))
+  let from_some = Result.from_option(Some(3), "missing")
+  Test.assert(Result.is_ok(from_some))
+  Test.assert(Result.unwrap_or(from_some, 0) == 3)
+  let from_none = Result.from_option(None, "missing")
+  Test.assert(Result.is_err(from_none))
+
+test "Result.unwrap.catch"
+  let ok = catch Result.unwrap(Ok(7))
+  Test.assert(Result.is_ok(ok))
+  Test.assert(Result.unwrap_or(ok, 0) == 7)
+  let err = catch Result.unwrap(Err("boom"))
+  Test.assert(Result.is_err(err))
+
 test "Result.predicates"
   Test.assert(Result.is_ok(Ok(1)))
   Test.assert(Result.is_err(Err(1)))
