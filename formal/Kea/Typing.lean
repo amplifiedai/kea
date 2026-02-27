@@ -9367,6 +9367,86 @@ theorem principalBoundaryMasterRunBundleConsequenceSuite_noUnify_field
     h_suite.noUnifyConsequences h_no h_ok
 
 /--
+Master-run-bundle-consequence-suite convenience wrapper: derive the packaged
+no-unify expression consequence bundle from a successful no-unify run.
+-/
+theorem principalNoUnifyExprRunBundleConsequences_of_success_via_masterRunBundleConsequenceSuite
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalNoUnifyExprRunBundleConsequences st fuel env e st' ty :=
+  principalBoundaryMasterRunBundleConsequenceSuite_noUnify_expr
+    principalBoundaryMasterRunBundleConsequenceSuite_proved h_no h_ok
+
+/--
+Master-run-bundle-consequence-suite convenience wrapper: derive the packaged
+no-unify field consequence bundle from a successful no-unify field run.
+-/
+theorem principalNoUnifyFieldRunBundleConsequences_of_success_via_masterRunBundleConsequenceSuite
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalNoUnifyFieldRunBundleConsequences st fuel env fs st' rf :=
+  principalBoundaryMasterRunBundleConsequenceSuite_noUnify_field
+    principalBoundaryMasterRunBundleConsequenceSuite_proved h_no h_ok
+
+/--
+Master-run-bundle-consequence-suite convenience wrapper: derive core expression
+principality from a successful no-unify run.
+-/
+theorem principalCoreExpr_of_success_noUnify_via_masterRunBundleConsequenceSuite
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalTypingSliceCore env e ty :=
+  (principalNoUnifyExprRunBundleConsequences_of_success_via_masterRunBundleConsequenceSuite
+    h_no h_ok).core
+
+/--
+Master-run-bundle-consequence-suite convenience wrapper: derive core field
+principality from a successful no-unify field run.
+-/
+theorem principalCoreField_of_success_noUnify_via_masterRunBundleConsequenceSuite
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalFieldTypingSliceCore env fs rf :=
+  (principalNoUnifyFieldRunBundleConsequences_of_success_via_masterRunBundleConsequenceSuite
+    h_no h_ok).core
+
+/--
+Master-run-bundle-consequence-suite convenience wrapper: derive preconditioned
+expression principality for any hook witnesses from a successful no-unify run.
+-/
+theorem principalPreconditionedExpr_anyHooks_of_success_noUnify_via_masterRunBundleConsequenceSuite
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    ∀ h_app h_proj,
+      PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty :=
+  (principalNoUnifyExprRunBundleConsequences_of_success_via_masterRunBundleConsequenceSuite
+    h_no h_ok).preconditionedAny
+
+/--
+Master-run-bundle-consequence-suite convenience wrapper: derive preconditioned
+field principality for any hook witnesses from a successful no-unify field run.
+-/
+theorem principalPreconditionedField_anyHooks_of_success_noUnify_via_masterRunBundleConsequenceSuite
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    ∀ h_app h_proj,
+      PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf :=
+  (principalNoUnifyFieldRunBundleConsequences_of_success_via_masterRunBundleConsequenceSuite
+    h_no h_ok).preconditionedAny
+
+/--
 One-hop expression hook-specific no-unify capstone projection (derived from
 all-hooks compatibility) from the master suite.
 -/
