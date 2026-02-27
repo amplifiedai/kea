@@ -296,6 +296,36 @@ mod tests {
     }
 
     #[test]
+    fn compile_project_tracks_module_item_visibility_metadata() {
+        let project_dir = temp_project_dir("kea-cli-project-visibility-metadata");
+        let src_dir = project_dir.join("src");
+        std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+
+        std::fs::write(
+            src_dir.join("math.kea"),
+            "pub fn inc(x: Int) -> Int\n  x + 1\n\nfn hidden(x: Int) -> Int\n  x + 2\n",
+        )
+        .expect("math module write should succeed");
+        let app_path = src_dir.join("app.kea");
+        std::fs::write(&app_path, "use Math\nfn main() -> Int\n  Math.inc(41)\n")
+            .expect("app module write should succeed");
+
+        let compiled = kea::compile_project(&app_path).expect("project compile should succeed");
+        assert_eq!(
+            compiled.type_env.module_item_visibility("Math", "inc"),
+            Some(true),
+            "expected public visibility metadata for Math.inc",
+        );
+        assert_eq!(
+            compiled.type_env.module_item_visibility("Math", "hidden"),
+            Some(false),
+            "expected private visibility metadata for Math.hidden",
+        );
+
+        let _ = std::fs::remove_dir_all(project_dir);
+    }
+
+    #[test]
     fn compile_project_reports_circular_module_imports() {
         let project_dir = temp_project_dir("kea-cli-project-cycle");
         let src_dir = project_dir.join("src");

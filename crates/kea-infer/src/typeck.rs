@@ -271,6 +271,8 @@ pub struct TypeEnv {
     /// Module-scoped type schemes: full module path → (fn name → (scheme, effects)).
     /// Enables qualified access (`Math.sqrt`) without requiring bare name binding.
     module_type_schemes: BTreeMap<String, BTreeMap<String, (TypeScheme, Effects)>>,
+    /// Module-scoped visibility metadata: full module path → (item name → public?).
+    module_item_visibility: BTreeMap<String, BTreeMap<String, bool>>,
     /// Short module name → full module path (e.g. "Math" → "Kea.Math").
     /// Populated during import resolution and session init.
     module_aliases: BTreeMap<String, String>,
@@ -351,6 +353,7 @@ impl TypeEnv {
             function_signatures: BTreeMap::new(),
             module_functions: BTreeMap::new(),
             module_type_schemes: BTreeMap::new(),
+            module_item_visibility: BTreeMap::new(),
             module_aliases: BTreeMap::new(),
             in_scope_traits: BTreeSet::new(),
             stream_contexts: Vec::new(),
@@ -477,6 +480,23 @@ impl TypeEnv {
     pub fn register_module_alias(&mut self, short: &str, full_path: &str) {
         self.module_aliases
             .insert(short.to_string(), full_path.to_string());
+    }
+
+    /// Register a module item visibility bit for later policy enforcement.
+    pub fn register_module_item_visibility(&mut self, module_path: &str, name: &str, public: bool) {
+        self.module_item_visibility
+            .entry(module_path.to_string())
+            .or_default()
+            .insert(name.to_string(), public);
+        self.ensure_module_alias_for_path(module_path);
+    }
+
+    /// Look up visibility metadata for a module item.
+    pub fn module_item_visibility(&self, module_path: &str, name: &str) -> Option<bool> {
+        self.module_item_visibility
+            .get(module_path)
+            .and_then(|items| items.get(name))
+            .copied()
     }
 
     pub fn snapshot_module_aliases(&self) -> BTreeMap<String, String> {
