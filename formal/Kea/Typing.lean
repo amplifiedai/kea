@@ -9586,6 +9586,42 @@ theorem principalBoundaryMasterSuite_allHooks_field_via_consequenceSuite
     h_app0 h_proj0 h_ok).capstone
 
 /--
+One-hop projection: arbitrary-success all-hooks expression hook-irrelevance
+from the top-level master suite via the consequence-suite aggregate.
+-/
+theorem principalBoundaryMasterSuite_allHooks_irrelevance_expr_via_consequenceSuite
+    (h_suite : PrincipalBoundaryMasterSuite)
+    (h_app0 : AppUnifySoundHook) (h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+      ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) :=
+  (principalBoundaryMasterRunBundleSuite_allHooks_expr
+    (principalBoundaryMasterSuite_runBundleConsequenceSuite h_suite).runBundles
+    h_app0 h_proj0 h_ok).hookIrrelevant
+
+/--
+One-hop projection: arbitrary-success all-hooks field hook-irrelevance from the
+top-level master suite via the consequence-suite aggregate.
+-/
+theorem principalBoundaryMasterSuite_allHooks_irrelevance_field_via_consequenceSuite
+    (h_suite : PrincipalBoundaryMasterSuite)
+    (h_app0 : AppUnifySoundHook) (h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
+  (principalBoundaryMasterRunBundleSuite_allHooks_field
+    (principalBoundaryMasterSuite_runBundleConsequenceSuite h_suite).runBundles
+    h_app0 h_proj0 h_ok).hookIrrelevant
+
+/--
 One-hop projection: arbitrary-success all-hooks expression run-bundle from the
 top-level master suite via the consequence-suite aggregate.
 -/
@@ -9861,6 +9897,70 @@ theorem principalPreconditionedFieldAllHooksCapstone_of_success_via_masterRunBun
     (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
     PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
   principalPreconditionedFieldAllHooksCapstone_of_success_via_masterRunBundleConsequenceSuite
+    h_seed.1 h_seed.2 h_ok
+
+/--
+Master-run-bundle-consequence-suite convenience wrapper: derive fixed-run
+expression hook-irrelevance for arbitrary successful runs.
+-/
+theorem principalPreconditionedExpr_hookIrrelevant_of_success_via_masterRunBundleConsequenceSuite
+    (h_app0 : AppUnifySoundHook) (h_proj0 : ProjUnifySoundHook)
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+      ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) :=
+  principalBoundaryMasterSuite_allHooks_irrelevance_expr_via_consequenceSuite
+    principalBoundaryMasterSuite_proved h_app0 h_proj0 h_ok
+
+/--
+Master-run-bundle-consequence-suite convenience wrapper: derive fixed-run field
+hook-irrelevance for arbitrary successful field runs.
+-/
+theorem principalPreconditionedField_hookIrrelevant_of_success_via_masterRunBundleConsequenceSuite
+    (h_app0 : AppUnifySoundHook) (h_proj0 : ProjUnifySoundHook)
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
+  principalBoundaryMasterSuite_allHooks_irrelevance_field_via_consequenceSuite
+    principalBoundaryMasterSuite_proved h_app0 h_proj0 h_ok
+
+/--
+Master-run-bundle-consequence-suite convenience wrapper: bundled-baseline
+variant for arbitrary successful expression hook-irrelevance.
+-/
+theorem principalPreconditionedExpr_hookIrrelevant_of_success_via_masterRunBundleConsequenceSuite_from_bundle
+    (h_seed : UnifyHookPremises)
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+      ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) :=
+  principalPreconditionedExpr_hookIrrelevant_of_success_via_masterRunBundleConsequenceSuite
+    h_seed.1 h_seed.2 h_ok
+
+/--
+Master-run-bundle-consequence-suite convenience wrapper: bundled-baseline
+variant for arbitrary successful field hook-irrelevance.
+-/
+theorem principalPreconditionedField_hookIrrelevant_of_success_via_masterRunBundleConsequenceSuite_from_bundle
+    (h_seed : UnifyHookPremises)
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
+  principalPreconditionedField_hookIrrelevant_of_success_via_masterRunBundleConsequenceSuite
     h_seed.1 h_seed.2 h_ok
 
 /--
@@ -10782,6 +10882,74 @@ theorem principalPreconditionedFieldAllHooksRunBundle_of_success_via_masterSuite
     (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
     PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf :=
   principalPreconditionedFieldAllHooksRunBundle_of_success_via_masterSuite
+    h_suite h_seed.1 h_seed.2 h_ok
+
+/--
+Master-suite convenience wrapper: derive fixed-run expression hook-irrelevance
+for arbitrary successful runs.
+-/
+theorem principalPreconditionedExpr_hookIrrelevant_of_success_via_masterSuite
+    (h_suite : PrincipalBoundaryMasterSuite)
+    (h_app0 : AppUnifySoundHook) (h_proj0 : ProjUnifySoundHook)
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+      ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) :=
+  principalBoundaryMasterSuite_allHooks_irrelevance_expr_via_consequenceSuite
+    h_suite h_app0 h_proj0 h_ok
+
+/--
+Master-suite convenience wrapper: derive fixed-run field hook-irrelevance for
+arbitrary successful field runs.
+-/
+theorem principalPreconditionedField_hookIrrelevant_of_success_via_masterSuite
+    (h_suite : PrincipalBoundaryMasterSuite)
+    (h_app0 : AppUnifySoundHook) (h_proj0 : ProjUnifySoundHook)
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
+  principalBoundaryMasterSuite_allHooks_irrelevance_field_via_consequenceSuite
+    h_suite h_app0 h_proj0 h_ok
+
+/--
+Master-suite convenience wrapper: bundled-baseline variant for arbitrary
+successful expression hook-irrelevance.
+-/
+theorem principalPreconditionedExpr_hookIrrelevant_of_success_via_masterSuite_from_bundle
+    (h_suite : PrincipalBoundaryMasterSuite)
+    (h_seed : UnifyHookPremises)
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+      ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) :=
+  principalPreconditionedExpr_hookIrrelevant_of_success_via_masterSuite
+    h_suite h_seed.1 h_seed.2 h_ok
+
+/--
+Master-suite convenience wrapper: bundled-baseline variant for arbitrary
+successful field hook-irrelevance.
+-/
+theorem principalPreconditionedField_hookIrrelevant_of_success_via_masterSuite_from_bundle
+    (h_suite : PrincipalBoundaryMasterSuite)
+    (h_seed : UnifyHookPremises)
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
+  principalPreconditionedField_hookIrrelevant_of_success_via_masterSuite
     h_suite h_seed.1 h_seed.2 h_ok
 
 /--
