@@ -1744,7 +1744,10 @@ impl Parser {
     }
 
     fn param_decl(&mut self) -> Option<Param> {
-        let label = if matches!(self.peek_kind(), Some(TokenKind::Ident(s)) if s == "_") {
+        let label = if self.match_token(&TokenKind::Borrow) {
+            self.skip_newlines();
+            ParamLabel::Borrow
+        } else if matches!(self.peek_kind(), Some(TokenKind::Ident(s)) if s == "_") {
             self.advance();
             self.skip_newlines();
             ParamLabel::Positional
@@ -5831,6 +5834,19 @@ mod tests {
                 assert_eq!(def.annotations.len(), 1);
                 assert_eq!(def.annotations[0].name.node, "deprecated");
                 assert_eq!(def.annotations[0].args.len(), 1);
+            }
+            other => panic!("expected function declaration, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_borrow_parameter_declaration() {
+        let module = parse_mod("fn touch(borrow value: Int) -> Int\n  value");
+        match &module.declarations[0].node {
+            DeclKind::Function(def) => {
+                assert_eq!(def.params.len(), 1);
+                assert!(matches!(def.params[0].label, ParamLabel::Borrow));
+                assert_eq!(def.params[0].name(), Some("value"));
             }
             other => panic!("expected function declaration, got {other:?}"),
         }

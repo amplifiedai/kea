@@ -843,8 +843,23 @@ fn check_unique_moves_expr(
     }
 }
 
-pub fn collect_borrow_param_positions(module: &Module) -> BTreeMap<String, BTreeSet<usize>> {
+pub fn collect_borrow_param_positions(
+    module: &Module,
+    module_path: Option<&str>,
+) -> BTreeMap<String, BTreeSet<usize>> {
     let mut out = BTreeMap::new();
+    let mut insert_positions = |name: &str, borrowed: BTreeSet<usize>| {
+        if borrowed.is_empty() {
+            return;
+        }
+        out.insert(name.to_string(), borrowed.clone());
+        if let Some(path) = module_path
+            && !name.contains('.')
+        {
+            out.insert(format!("{path}.{name}"), borrowed);
+        }
+    };
+
     for decl in &module.declarations {
         match &decl.node {
             DeclKind::Function(fn_decl) => {
@@ -854,9 +869,7 @@ pub fn collect_borrow_param_positions(module: &Module) -> BTreeMap<String, BTree
                     .enumerate()
                     .filter_map(|(index, param)| param.is_borrowed().then_some(index))
                     .collect::<BTreeSet<_>>();
-                if !borrowed.is_empty() {
-                    out.insert(fn_decl.name.node.clone(), borrowed);
-                }
+                insert_positions(&fn_decl.name.node, borrowed);
             }
             DeclKind::ExprFn(expr_decl) => {
                 let borrowed = expr_decl
@@ -865,9 +878,7 @@ pub fn collect_borrow_param_positions(module: &Module) -> BTreeMap<String, BTree
                     .enumerate()
                     .filter_map(|(index, param)| param.is_borrowed().then_some(index))
                     .collect::<BTreeSet<_>>();
-                if !borrowed.is_empty() {
-                    out.insert(expr_decl.name.node.clone(), borrowed);
-                }
+                insert_positions(&expr_decl.name.node, borrowed);
             }
             _ => {}
         }

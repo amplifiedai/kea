@@ -2023,6 +2023,64 @@ mod tests {
     }
 
     #[test]
+    fn compile_rejects_returning_borrow_parameter() {
+        let source_path = write_temp_source(
+            "type Unique a = Unique(a)\n\nfn leak(borrow value: Unique Int) -> Unique Int\n  value\n",
+            "kea-cli-borrow-return-escape-rejected",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("returning borrowed parameter should fail");
+        assert!(
+            err.contains("borrowed value `value` cannot be consumed"),
+            "expected borrow escape diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_rejects_capturing_borrow_parameter() {
+        let source_path = write_temp_source(
+            "type Unique a = Unique(a)\n\nfn leak_capture(borrow value: Unique Int) -> fn() -> Int\n  || ->\n    case value\n      Unique(v) -> v\n",
+            "kea-cli-borrow-capture-escape-rejected",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("capturing borrowed parameter should fail");
+        assert!(
+            err.contains("borrowed value `value` cannot be consumed"),
+            "expected borrow capture diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_qualified_borrow_call_does_not_consume_unique() {
+        let project_dir = temp_project_dir("kea-cli-qualified-borrow");
+        let src_dir = project_dir.join("src");
+        std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+
+        std::fs::write(
+            src_dir.join("helper.kea"),
+            "type Unique a = Unique(a)\n\nfn new(x: Int) -> Unique Int\n  Unique(x)\n\nfn touch(borrow value: Unique Int) -> Int\n  1\n",
+        )
+        .expect("helper module write should succeed");
+        let app_path = src_dir.join("app.kea");
+        std::fs::write(
+            &app_path,
+            "use Helper\n\nfn main() -> Int\n  let u = Helper.new(7)\n  let _ = Helper.touch(u)\n  let _ = Helper.touch(u)\n  7\n",
+        )
+        .expect("app module write should succeed");
+
+        let run = run_file(&app_path).expect("qualified borrow call should not consume unique");
+        assert_eq!(run.exit_code, 7);
+
+        let _ = std::fs::remove_dir_all(project_dir);
+    }
+
+    #[test]
     fn compile_and_execute_wrapping_add_method_exit_code() {
         let source_path = write_temp_source(
             "fn main() -> Int\n  20.wrapping_add(22)\n",
