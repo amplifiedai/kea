@@ -1,6 +1,6 @@
 # Brief: Runtime Effects
 
-**Status:** ready
+**Status:** active
 **Priority:** v1-critical
 **Depends on:** 0d1-module-system (needs module system for stdlib imports)
 **Blocks:** 0f-memory-model (step 7), Phase 1
@@ -658,3 +658,11 @@ client is a separate task that exercises them.
   desugaring already landed in 0d. Needed for handlers that transform
   the body's return value (e.g., State handler returning final state
   alongside result). See Step 7.
+
+## Progress
+
+- 2026-02-27 19:08: Activated 0e brief and started runtime-effects implementation lane. First compiled-path scaffolding landed in `kea-codegen`: `MirInst::HandlerEnter/HandlerExit` lower as explicit no-op instructions (preserve scope markers in MIR without tripping pure-lowering unsupported errors), while `MirInst::Resume` now fails with a precise non-tail-resumptive unsupported diagnostic.
+- 2026-02-27 19:10: Added codegen regression coverage for the new behavior:
+  `cranelift_backend_allows_handler_scope_markers_as_noop` and
+  `cranelift_backend_reports_non_tail_resume_not_supported`. Targeted package checks are green for `kea-codegen`.
+- **Next:** implement 0e Step 1 Fail/ZeroResume end-to-end lowering for compiled mode, then extend execute-path tests to validate native `catch`/`?` behavior beyond current pure/Result lowering paths.

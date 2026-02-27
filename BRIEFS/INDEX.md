@@ -25,6 +25,7 @@ that apply across multiple implementation phases. Ignoring them means rework.
 
 Work in progress right now. Each entry should have a `## Progress` section in its brief.
 - **[Stdlib bootstrap](in-progress/stdlib-bootstrap.md)** — Active. Tier-0 bootstrap started with real repo stdlib modules (`prelude`, `option`, intrinsic-backed `text`) and execute-path module-system coverage; remaining Tier-0 pure modules (`int`, `float`, `order`, `eq`, `ord`, `show`) are next, while heap-list `List` stays explicitly blocked on runtime/list-lowering support.
+- **[Runtime effects](in-progress/0e-runtime-effects.md)** — Active. 0e started with compiled-path scaffolding in `kea-codegen`: handler scope markers (`HandlerEnter/HandlerExit`) now lower as no-op ops and non-tail `Resume` emits a precise unsupported diagnostic, with dedicated codegen regression tests. Next: Fail/ZeroResume native path end-to-end and execute-path validation.
 - **[Benchmark infrastructure](in-progress/benchmark-infrastructure.md)** — Active. `divan` harness is in-tree (`kea-bench` + `AllocProfiler`) with lex/parse/infer/lower/codegen workload baselines plus string/allocation variants; stable artifacts are exported (`raw/csv/json/meta`), repeat-run variance summaries are generated (`bench:variance`), CI Stage A publishes baseline+variance artifacts, CodSpeed CI is wired via `codspeed-divan-compat` using OIDC auth, whole-program corpus tooling (`benchmarks/programs` + `bench:programs`) is bootstrapped with no-shell/inner-iteration execution for lower noise, whole-program variance summaries are automated, benchmark workflows now use cache-friendly stable target dirs (`KEA_AGENT_TARGET_DIR=target/ci-*`), non-blocking Stage B regression checks remain for full-matrix calibration, and stable benchmark classes run in dedicated blocking Stage B lanes.
 - **[Lean formalization](in-progress/lean-formalization.md)** — Active. Phase 1 kickoff started from the Rill Lean baseline; next is Kea effect-row alignment in core modules/proofs.
 
@@ -56,7 +57,7 @@ Designed and approved. Ready to pick up. Ordered by execution sequence per ROADM
 
 ### Phase 0e: Runtime Effects + Stdlib Tier 1 (after 0d1)
 
-8. **[Runtime effects](todo/0e-runtime-effects.md)** — Handler compilation strategy (evidence passing), tail-resumptive optimisation, handler inlining/devirtualization, IO runtime, Fail optimised path. Stdlib Tier 1: IO, State, Log, Reader handlers written in Kea. **Also read:** [performance-backend-strategy](design/performance-backend-strategy.md).
+*(in progress — see Active section)*
 
 ### Phase 0f: Memory Model + Stdlib Tier 2 (steps 1-6 need 0d, step 7 needs 0e)
 
