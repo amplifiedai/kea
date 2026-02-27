@@ -4879,6 +4879,74 @@ theorem principalFieldTypingSlicePreconditioned_hook_irrelevant_of_success
     exact principalFieldTypingSlicePreconditioned_transport_hooks_of_success h_ok h_pre
 
 /--
+Packaged hook-irrelevance slice for expression principality on successful runs.
+-/
+def PrincipalPreconditionedHookIrrelevanceExprSlice : Prop :=
+  ∀ {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty},
+    inferExprUnify st fuel env e = .ok st' ty →
+    (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+      ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty)
+
+/--
+Packaged hook-irrelevance slice for field principality on successful runs.
+-/
+def PrincipalPreconditionedHookIrrelevanceFieldSlice : Prop :=
+  ∀ {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields},
+    inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)) →
+    (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf)
+
+/-- Combined preconditioned-hook-irrelevance principal slice across expressions and fields. -/
+def PrincipalPreconditionedHookIrrelevanceSlices : Prop :=
+  PrincipalPreconditionedHookIrrelevanceExprSlice ∧
+    PrincipalPreconditionedHookIrrelevanceFieldSlice
+
+/-- The combined preconditioned-hook-irrelevance principal slice is fully proved. -/
+theorem principalPreconditionedHookIrrelevanceSlices_proved :
+    PrincipalPreconditionedHookIrrelevanceSlices := by
+  refine ⟨?_, ?_⟩
+  · intro h_app₁ h_proj₁ h_app₂ h_proj₂ st fuel env e st' ty h_ok
+    exact principalTypingSlicePreconditioned_hook_irrelevant_of_success h_ok
+  · intro h_app₁ h_proj₁ h_app₂ h_proj₂ st fuel env fs st' rf h_ok
+    exact principalFieldTypingSlicePreconditioned_hook_irrelevant_of_success h_ok
+
+/--
+One-hop projection: expression branch from the combined preconditioned
+hook-irrelevance principal slice.
+-/
+theorem principalPreconditionedHookIrrelevanceSlices_expr
+    (h_slice : PrincipalPreconditionedHookIrrelevanceSlices)
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+      ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) :=
+  h_slice.1 h_ok
+
+/--
+One-hop projection: field branch from the combined preconditioned
+hook-irrelevance principal slice.
+-/
+theorem principalPreconditionedHookIrrelevanceSlices_field
+    (h_slice : PrincipalPreconditionedHookIrrelevanceSlices)
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
+  h_slice.2 h_ok
+
+/--
 `HasTypeU` lift of non-app/proj recursive soundness: on the fragment that never
 executes unification branches, algorithmic inference results are declaratively
 typable in the unification-aware judgment as well.
