@@ -743,6 +743,22 @@ impl TypeEnv {
             .map(|(_, effects)| *effects)
     }
 
+    /// Resolve a bare name across module-registered schemes when exactly one
+    /// module provides that member.
+    pub fn lookup_unique_module_type_scheme(&self, name: &str) -> Option<TypeScheme> {
+        let mut found: Option<TypeScheme> = None;
+        for module in self.module_type_schemes.values() {
+            let Some((scheme, _)) = module.get(name) else {
+                continue;
+            };
+            if found.is_some() {
+                return None;
+            }
+            found = Some(scheme.clone());
+        }
+        found
+    }
+
     /// Look up a name, searching from innermost to outermost scope.
     pub fn lookup(&self, name: &str) -> Option<&TypeScheme> {
         for scope in self.bindings.iter().rev() {
