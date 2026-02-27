@@ -5587,6 +5587,70 @@ theorem principalPreconditionedFieldAllHooksRunBundle_of_success_from_bundle
     h_seed.1 h_seed.2 h_ok
 
 /--
+Packaged arbitrary-success expression run-bundle slice for all-hooks principality.
+-/
+def PrincipalPreconditionedAllHooksRunBundleExprSlice : Prop :=
+  ∀ (_h_app0 : AppUnifySoundHook) (_h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty},
+    inferExprUnify st fuel env e = .ok st' ty →
+    PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty
+
+/--
+Packaged arbitrary-success field run-bundle slice for all-hooks principality.
+-/
+def PrincipalPreconditionedAllHooksRunBundleFieldSlice : Prop :=
+  ∀ (_h_app0 : AppUnifySoundHook) (_h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields},
+    inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)) →
+    PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf
+
+/--
+Combined arbitrary-success run-bundle slices across expressions and fields.
+-/
+def PrincipalPreconditionedAllHooksRunBundleSlices : Prop :=
+  PrincipalPreconditionedAllHooksRunBundleExprSlice ∧
+    PrincipalPreconditionedAllHooksRunBundleFieldSlice
+
+/--
+The combined arbitrary-success run-bundle slices are fully proved.
+-/
+theorem principalPreconditionedAllHooksRunBundleSlices_proved :
+    PrincipalPreconditionedAllHooksRunBundleSlices := by
+  refine ⟨?_, ?_⟩
+  · intro h_app0 h_proj0 st fuel env e st' ty h_ok
+    exact principalPreconditionedExprAllHooksRunBundle_of_success
+      h_app0 h_proj0 h_ok
+  · intro h_app0 h_proj0 st fuel env fs st' rf h_ok
+    exact principalPreconditionedFieldAllHooksRunBundle_of_success
+      h_app0 h_proj0 h_ok
+
+/--
+One-hop expression projection from combined arbitrary-success run-bundle slices.
+-/
+theorem principalPreconditionedAllHooksRunBundleSlices_expr
+    (h_slice : PrincipalPreconditionedAllHooksRunBundleSlices)
+    (h_app0 : AppUnifySoundHook) (h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty :=
+  h_slice.1 h_app0 h_proj0 h_ok
+
+/--
+One-hop field projection from combined arbitrary-success run-bundle slices.
+-/
+theorem principalPreconditionedAllHooksRunBundleSlices_field
+    (h_slice : PrincipalPreconditionedAllHooksRunBundleSlices)
+    (h_app0 : AppUnifySoundHook) (h_proj0 : ProjUnifySoundHook)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf :=
+  h_slice.2 h_app0 h_proj0 h_ok
+
+/--
 Derive the global preconditioned hook-irrelevance slices directly from general
 all-hooks capstone slices.
 -/
