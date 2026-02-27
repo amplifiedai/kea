@@ -14127,8 +14127,8 @@ theorem principalNoUnifyCoreExpr_via_masterConsequenceCapstone_from_cross_route_
     (h_no : NoUnifyBranchesExpr e)
     (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
     PrincipalTypingSliceCore env e ty :=
-  (principalNoUnifyExprRunBundleConsequences_via_masterConsequenceCapstone_from_cross_route_slices
-    h_no h_ok).core
+  principalNoUnifyCoreExpr_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok
 
 /--
 Canonical core projection: derive no-unify field core principality from the
@@ -14140,8 +14140,8 @@ theorem principalNoUnifyCoreField_via_masterConsequenceCapstone_from_cross_route
     (h_no : NoUnifyBranchesFields fs)
     (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
     PrincipalFieldTypingSliceCore env fs rf :=
-  (principalNoUnifyFieldRunBundleConsequences_via_masterConsequenceCapstone_from_cross_route_slices
-    h_no h_ok).core
+  principalNoUnifyCoreField_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok
 
 /--
 Canonical any-hooks projection: derive no-unify expression preconditioned
@@ -14155,8 +14155,8 @@ theorem principalNoUnifyPreconditionedExpr_anyHooks_via_masterConsequenceCapston
     (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
     ∀ h_app h_proj,
       PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty :=
-  (principalNoUnifyExprRunBundleConsequences_via_masterConsequenceCapstone_from_cross_route_slices
-    h_no h_ok).preconditionedAny
+  principalNoUnifyPreconditionedExpr_anyHooks_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok
 
 /--
 Canonical any-hooks projection: derive no-unify field preconditioned principality
@@ -14169,8 +14169,8 @@ theorem principalNoUnifyPreconditionedField_anyHooks_via_masterConsequenceCapsto
     (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
     ∀ h_app h_proj,
       PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf :=
-  (principalNoUnifyFieldRunBundleConsequences_via_masterConsequenceCapstone_from_cross_route_slices
-    h_no h_ok).preconditionedAny
+  principalNoUnifyPreconditionedField_anyHooks_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok
 
 /--
 Canonical bundled-target projection: derive no-unify expression preconditioned
@@ -14242,8 +14242,8 @@ theorem principalNoUnifyPreconditionedCoreIffExpr_anyHooks_via_masterConsequence
     ∀ h_app h_proj,
       (PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty
         ↔ PrincipalTypingSliceCore env e ty) :=
-  (principalNoUnifyExprRunBundleConsequences_via_masterConsequenceCapstone_from_cross_route_slices
-    h_no h_ok).preconditionedAnyIffCore
+  principalNoUnifyPreconditionedCoreIffExpr_anyHooks_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok
 
 /--
 Canonical any-hooks `preconditioned ↔ core` projection for fields from the
@@ -14257,8 +14257,8 @@ theorem principalNoUnifyPreconditionedCoreIffField_anyHooks_via_masterConsequenc
     ∀ h_app h_proj,
       (PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf
         ↔ PrincipalFieldTypingSliceCore env fs rf) :=
-  (principalNoUnifyFieldRunBundleConsequences_via_masterConsequenceCapstone_from_cross_route_slices
-    h_no h_ok).preconditionedAnyIffCore
+  principalNoUnifyPreconditionedCoreIffField_anyHooks_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok
 
 /--
 Canonical bundled-target `preconditioned ↔ core` projection for expressions
@@ -14333,8 +14333,8 @@ theorem principalNoUnifyPreconditionedExpr_hookIrrelevant_via_masterConsequenceC
     (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
     (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
       ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) :=
-  (principalNoUnifyExprRunBundleConsequences_via_masterConsequenceCapstone_from_cross_route_slices
-    h_no h_ok).hookIrrelevant
+  principalNoUnifyPreconditionedExpr_hookIrrelevant_via_masterConsequenceCapstone_from_cross_route_irrelevance_slices
+    h_no h_ok
 
 /--
 Canonical fixed-run hook-irrelevance projection for fields from the
@@ -14349,8 +14349,8 @@ theorem principalNoUnifyPreconditionedField_hookIrrelevant_via_masterConsequence
     (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
     (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
       ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
-  (principalNoUnifyFieldRunBundleConsequences_via_masterConsequenceCapstone_from_cross_route_slices
-    h_no h_ok).hookIrrelevant
+  principalNoUnifyPreconditionedField_hookIrrelevant_via_masterConsequenceCapstone_from_cross_route_irrelevance_slices
+    h_no h_ok
 
 /--
 Canonical core projection: derive no-unify expression core principality from
@@ -14362,8 +14362,8 @@ theorem principalNoUnifyCoreExpr_via_masterRunBundleConsequence_from_cross_route
     (h_no : NoUnifyBranchesExpr e)
     (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
     PrincipalTypingSliceCore env e ty :=
-  (principalNoUnifyExprRunBundleConsequences_via_masterRunBundleConsequence_from_cross_route_slices
-    h_no h_ok).core
+  principalNoUnifyCoreExpr_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok
 
 /--
 Canonical core projection: derive no-unify field core principality from the
@@ -14375,8 +14375,8 @@ theorem principalNoUnifyCoreField_via_masterRunBundleConsequence_from_cross_rout
     (h_no : NoUnifyBranchesFields fs)
     (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
     PrincipalFieldTypingSliceCore env fs rf :=
-  (principalNoUnifyFieldRunBundleConsequences_via_masterRunBundleConsequence_from_cross_route_slices
-    h_no h_ok).core
+  principalNoUnifyCoreField_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok
 
 /--
 Canonical any-hooks projection: derive no-unify expression preconditioned
@@ -14390,8 +14390,8 @@ theorem principalNoUnifyPreconditionedExpr_anyHooks_via_masterRunBundleConsequen
     (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
     ∀ h_app h_proj,
       PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty :=
-  (principalNoUnifyExprRunBundleConsequences_via_masterRunBundleConsequence_from_cross_route_slices
-    h_no h_ok).preconditionedAny
+  principalNoUnifyPreconditionedExpr_anyHooks_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok
 
 /--
 Canonical any-hooks projection: derive no-unify field preconditioned principality
@@ -14404,8 +14404,8 @@ theorem principalNoUnifyPreconditionedField_anyHooks_via_masterRunBundleConseque
     (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
     ∀ h_app h_proj,
       PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf :=
-  (principalNoUnifyFieldRunBundleConsequences_via_masterRunBundleConsequence_from_cross_route_slices
-    h_no h_ok).preconditionedAny
+  principalNoUnifyPreconditionedField_anyHooks_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok
 
 /--
 Canonical bundled-target projection: derive no-unify expression preconditioned
@@ -14477,8 +14477,8 @@ theorem principalNoUnifyPreconditionedCoreIffExpr_anyHooks_via_masterRunBundleCo
     ∀ h_app h_proj,
       (PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty
         ↔ PrincipalTypingSliceCore env e ty) :=
-  (principalNoUnifyExprRunBundleConsequences_via_masterRunBundleConsequence_from_cross_route_slices
-    h_no h_ok).preconditionedAnyIffCore
+  principalNoUnifyPreconditionedCoreIffExpr_anyHooks_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok
 
 /--
 Canonical any-hooks `preconditioned ↔ core` projection for fields from the
@@ -14492,8 +14492,8 @@ theorem principalNoUnifyPreconditionedCoreIffField_anyHooks_via_masterRunBundleC
     ∀ h_app h_proj,
       (PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf
         ↔ PrincipalFieldTypingSliceCore env fs rf) :=
-  (principalNoUnifyFieldRunBundleConsequences_via_masterRunBundleConsequence_from_cross_route_slices
-    h_no h_ok).preconditionedAnyIffCore
+  principalNoUnifyPreconditionedCoreIffField_anyHooks_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok
 
 /--
 Canonical bundled-target `preconditioned ↔ core` projection for expressions
