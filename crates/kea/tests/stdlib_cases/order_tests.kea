@@ -1,0 +1,7 @@
+use Order
+use Test
+
+test "Order.compare_int"
+  Test.assert(Order.is_less(Order.compare_int(1, 2)))
+  Test.assert(Order.is_equal(Order.compare_int(3, 3)))
+  Test.assert(Order.is_greater(Order.compare_int(9, 2)))

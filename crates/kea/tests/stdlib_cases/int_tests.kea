@@ -1,0 +1,10 @@
+use Int
+use Test
+
+test "Int.abs"
+  Test.assert(Int.abs(-5) == 5)
+
+test "Int.min_max_clamp"
+  Test.assert(Int.min(2, 9) == 2)
+  Test.assert(Int.max(2, 9) == 9)
+  Test.assert(Int.clamp(12, 0, 10) == 10)

@@ -1,0 +1,6 @@
+use Show
+use Test
+
+test "Show.show Int"
+  let s = Show.show(5)
+  Test.assert(s == s)

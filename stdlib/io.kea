@@ -1,5 +1,17 @@
 effect IO
+  --| Write a string to stdout.
+  --|
+  --|   IO.stdout("hello")
   fn stdout(msg: String) -> Unit
+  --| Write a string to stderr.
+  --|
+  --|   IO.stderr("warning")
   fn stderr(msg: String) -> Unit
+  --| Write file contents to disk.
+  --|
+  --|   IO.write_file("out.txt", "data")
   fn write_file(path: String, data: String) -> Unit
+  --| Read file contents from disk.
+  --|
+  --|   IO.read_file("out.txt")   -- => "data"
   fn read_file(path: String) -> String

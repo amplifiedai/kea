@@ -1,0 +1,6 @@
+use Float
+use Test
+
+test "Float.fabs"
+  let x = Float.fabs(-3.5)
+  Test.assert(x > 3.4 and x < 3.6)

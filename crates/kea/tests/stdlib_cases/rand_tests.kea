@@ -1,0 +1,7 @@
+use Rand
+use Test
+
+test "Rand.seed_and_int_smoke"
+  Rand.seed(1234)
+  let x = Rand.int()
+  Test.assert(x == x)

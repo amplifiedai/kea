@@ -1,0 +1,7 @@
+use IO
+use Test
+
+test "IO.stdout_stderr_smoke"
+  IO.stdout("stdout smoke")
+  IO.stderr("stderr smoke")
+  Test.assert(true)
