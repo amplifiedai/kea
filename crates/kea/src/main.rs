@@ -1044,6 +1044,21 @@ mod tests {
 
     #[test]
     #[cfg(not(target_os = "windows"))]
+    fn compile_and_execute_io_stderr_unit_main_exit_code() {
+        let source_path = write_temp_source(
+            "effect IO\n  fn stderr(msg: String) -> Unit\n\nfn main() -[IO]> Unit\n  IO.stderr(\"hello err\")\n",
+            "kea-cli-io-stderr",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 0);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
     fn compile_and_execute_intrinsic_strlen_exit_code() {
         let source_path = write_temp_source(
             "@intrinsic(\"strlen\")\nfn string_len(s: String) -> Int\n  0\n\nfn main() -> Int\n  string_len(\"hello\")\n",
@@ -1130,6 +1145,34 @@ mod tests {
         assert!(
             stdout.contains("hello aot"),
             "expected stdout to contain concat greeting, got `{stdout}`"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+        let _ = std::fs::remove_file(output_path);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn compile_build_and_execute_aot_io_stderr_unit_main_exit_code() {
+        let source_path = write_temp_source(
+            "effect IO\n  fn stderr(msg: String) -> Unit\n\nfn main() -[IO]> Unit\n  IO.stderr(\"hello aot err\")\n",
+            "kea-cli-aot-io-stderr",
+            "kea",
+        );
+        let output_path = temp_artifact_path("kea-cli-aot-io-stderr", "bin");
+
+        let compiled =
+            compile_file(&source_path, CodegenMode::Aot).expect("aot compile should work");
+        link_object_bytes(&compiled.object, &output_path).expect("link should work");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("aot executable should run");
+        assert_eq!(output.status.code(), Some(0));
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("hello aot err"),
+            "expected stderr to contain message, got `{stderr}`"
         );
 
         let _ = std::fs::remove_file(source_path);

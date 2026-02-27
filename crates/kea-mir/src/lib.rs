@@ -1660,8 +1660,9 @@ impl FunctionLoweringCtx {
             materialized_local_lambda_callee = Some(closure_value);
         }
         if let HirExprKind::Var(name) = &func.kind
-            && name == "IO.stdout"
             && !capture_fail_result
+            && let Some(operation) = name.strip_prefix("IO.")
+            && matches!(operation, "stdout" | "stderr")
         {
             let mut lowered_args = Vec::with_capacity(args.len());
             for arg in args {
@@ -1670,7 +1671,7 @@ impl FunctionLoweringCtx {
             self.emit_inst(MirInst::EffectOp {
                 class: MirEffectOpClass::Direct,
                 effect: "IO".to_string(),
-                operation: "stdout".to_string(),
+                operation: operation.to_string(),
                 args: lowered_args,
                 result: None,
             });
@@ -3703,6 +3704,65 @@ mod tests {
                 result: None,
                 ..
             } if effect == "IO" && operation == "stdout"
+        ));
+    }
+
+    #[test]
+    fn lower_hir_module_lowers_io_stderr_call_to_direct_effect_op() {
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "hello_err".to_string(),
+                params: vec![],
+                body: HirExpr {
+                    kind: HirExprKind::Call {
+                        func: Box::new(HirExpr {
+                            kind: HirExprKind::Var("IO.stderr".to_string()),
+                            ty: Type::Function(FunctionType::with_effects(
+                                vec![Type::String],
+                                Type::Unit,
+                                EffectRow::closed(vec![(Label::new("IO"), Type::Unit)]),
+                            )),
+                            span: kea_ast::Span::synthetic(),
+                        }),
+                        args: vec![HirExpr {
+                            kind: HirExprKind::Lit(kea_ast::Lit::String("oops".to_string())),
+                            ty: Type::String,
+                            span: kea_ast::Span::synthetic(),
+                        }],
+                    },
+                    ty: Type::Unit,
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::with_effects(
+                    vec![],
+                    Type::Unit,
+                    EffectRow::closed(vec![(Label::new("IO"), Type::Unit)]),
+                )),
+                effects: EffectRow::closed(vec![(Label::new("IO"), Type::Unit)]),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let mir = lower_hir_module(&hir);
+        let function = &mir.functions[0];
+        assert_eq!(function.blocks.len(), 1);
+        assert_eq!(function.blocks[0].instructions.len(), 2);
+        assert!(matches!(
+            function.blocks[0].instructions[0],
+            MirInst::Const {
+                literal: MirLiteral::String(ref s),
+                ..
+            } if s == "oops"
+        ));
+        assert!(matches!(
+            function.blocks[0].instructions[1],
+            MirInst::EffectOp {
+                class: MirEffectOpClass::Direct,
+                ref effect,
+                ref operation,
+                result: None,
+                ..
+            } if effect == "IO" && operation == "stderr"
         ));
     }
 

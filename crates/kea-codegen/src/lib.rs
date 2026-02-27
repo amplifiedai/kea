@@ -362,6 +362,7 @@ fn compile_into_module<M: Module>(
     let external_signatures = collect_external_call_signatures(module, mir)?;
     let mut requires_heap_alloc = false;
     let mut requires_io_stdout = false;
+    let mut requires_io_stderr = false;
     let mut requires_string_concat = false;
     let mut requires_free = false;
     for function in &mir.functions {
@@ -398,6 +399,21 @@ fn compile_into_module<M: Module>(
             })
         }) {
             requires_io_stdout = true;
+        }
+        if function.blocks.iter().any(|block| {
+            block.instructions.iter().any(|inst| {
+                matches!(
+                    inst,
+                    MirInst::EffectOp {
+                        class: MirEffectOpClass::Direct,
+                        effect,
+                        operation,
+                        ..
+                    } if effect == "IO" && operation == "stderr"
+                )
+            })
+        }) {
+            requires_io_stderr = true;
         }
         if function.blocks.iter().any(|block| {
             block.instructions.iter().any(|inst| {
@@ -519,7 +535,25 @@ fn compile_into_module<M: Module>(
         None
     };
 
-    let strlen_func_id = if requires_string_concat {
+    let write_func_id = if requires_io_stderr {
+        let ptr_ty = module.target_config().pointer_type();
+        let mut signature = module.make_signature();
+        signature.params.push(AbiParam::new(types::I32));
+        signature.params.push(AbiParam::new(ptr_ty));
+        signature.params.push(AbiParam::new(ptr_ty));
+        signature.returns.push(AbiParam::new(ptr_ty));
+        Some(
+            module
+                .declare_function("write", Linkage::Import, &signature)
+                .map_err(|detail| CodegenError::Module {
+                    detail: detail.to_string(),
+                })?,
+        )
+    } else {
+        None
+    };
+
+    let strlen_func_id = if requires_string_concat || requires_io_stderr {
         let ptr_ty = module.target_config().pointer_type();
         let mut signature = module.make_signature();
         signature.params.push(AbiParam::new(ptr_ty));
@@ -651,6 +685,7 @@ fn compile_into_module<M: Module>(
                     malloc_func_id,
                     free_func_id,
                     stdout_func_id,
+                    write_func_id,
                     strlen_func_id,
                     memcpy_func_id,
                     runtime_signatures: &runtime_signatures,
@@ -1065,6 +1100,7 @@ struct LowerInstCtx<'a> {
     malloc_func_id: Option<FuncId>,
     free_func_id: Option<FuncId>,
     stdout_func_id: Option<FuncId>,
+    write_func_id: Option<FuncId>,
     strlen_func_id: Option<FuncId>,
     memcpy_func_id: Option<FuncId>,
     runtime_signatures: &'a BTreeMap<String, RuntimeFunctionSig>,
@@ -1591,23 +1627,65 @@ fn lower_instruction<M: Module>(
             result,
             ..
         } => {
-            if *class == MirEffectOpClass::Direct && effect == "IO" && operation == "stdout" {
-                let stdout_func_id =
-                    ctx.stdout_func_id
-                        .ok_or_else(|| CodegenError::UnsupportedMir {
-                            function: function_name.to_string(),
-                            detail: "IO.stdout lowering requires imported `puts` symbol"
-                                .to_string(),
-                        })?;
+            if *class == MirEffectOpClass::Direct && effect == "IO" {
                 let arg = args.first().ok_or_else(|| CodegenError::UnsupportedMir {
                     function: function_name.to_string(),
-                    detail: "IO.stdout expects one string argument".to_string(),
+                    detail: format!("IO.{operation} expects one string argument"),
                 })?;
                 let arg_value = get_value(values, function_name, arg)?;
                 let ptr_ty = module.target_config().pointer_type();
                 let arg_ptr = coerce_value_to_clif_type(builder, arg_value, ptr_ty);
-                let stdout_ref = module.declare_func_in_func(stdout_func_id, builder.func);
-                let _ = builder.ins().call(stdout_ref, &[arg_ptr]);
+                match operation.as_str() {
+                    "stdout" => {
+                        let stdout_func_id =
+                            ctx.stdout_func_id
+                                .ok_or_else(|| CodegenError::UnsupportedMir {
+                                    function: function_name.to_string(),
+                                    detail: "IO.stdout lowering requires imported `puts` symbol"
+                                        .to_string(),
+                                })?;
+                        let stdout_ref = module.declare_func_in_func(stdout_func_id, builder.func);
+                        let _ = builder.ins().call(stdout_ref, &[arg_ptr]);
+                    }
+                    "stderr" => {
+                        let write_func_id =
+                            ctx.write_func_id
+                                .ok_or_else(|| CodegenError::UnsupportedMir {
+                                    function: function_name.to_string(),
+                                    detail: "IO.stderr lowering requires imported `write` symbol"
+                                        .to_string(),
+                                })?;
+                        let strlen_func_id =
+                            ctx.strlen_func_id
+                                .ok_or_else(|| CodegenError::UnsupportedMir {
+                                    function: function_name.to_string(),
+                                    detail: "IO.stderr lowering requires imported `strlen` symbol"
+                                        .to_string(),
+                                })?;
+                        let strlen_ref = module.declare_func_in_func(strlen_func_id, builder.func);
+                        let strlen_call = builder.ins().call(strlen_ref, &[arg_ptr]);
+                        let len = builder
+                            .inst_results(strlen_call)
+                            .first()
+                            .copied()
+                            .ok_or_else(|| CodegenError::UnsupportedMir {
+                                function: function_name.to_string(),
+                                detail: "strlen call returned no value".to_string(),
+                            })?;
+                        let len = coerce_value_to_clif_type(builder, len, ptr_ty);
+                        let write_ref = module.declare_func_in_func(write_func_id, builder.func);
+                        let fd = builder.ins().iconst(types::I32, 2);
+                        let _ = builder.ins().call(write_ref, &[fd, arg_ptr, len]);
+                    }
+                    _ => {
+                        return Err(CodegenError::UnsupportedMir {
+                            function: function_name.to_string(),
+                            detail: format!(
+                                "instruction `{inst:?}` not implemented in 0d pure lowering"
+                            ),
+                        });
+                    }
+                }
                 if let Some(dest) = result {
                     values.insert(dest.clone(), builder.ins().iconst(types::I8, 0));
                 }
@@ -2651,6 +2729,39 @@ mod tests {
                             class: MirEffectOpClass::Direct,
                             effect: "IO".to_string(),
                             operation: "stdout".to_string(),
+                            args: vec![MirValueId(0)],
+                            result: None,
+                        },
+                    ],
+                    terminator: MirTerminator::Return { value: None },
+                }],
+            }],
+            layouts: MirLayoutCatalog::default(),
+        }
+    }
+
+    fn sample_stderr_module() -> MirModule {
+        MirModule {
+            functions: vec![MirFunction {
+                name: "print_err".to_string(),
+                signature: MirFunctionSignature {
+                    params: vec![],
+                    ret: Type::Unit,
+                    effects: EffectRow::closed(vec![(Label::new("IO"), Type::Unit)]),
+                },
+                entry: MirBlockId(0),
+                blocks: vec![MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: MirValueId(0),
+                            literal: MirLiteral::String("oops".to_string()),
+                        },
+                        MirInst::EffectOp {
+                            class: MirEffectOpClass::Direct,
+                            effect: "IO".to_string(),
+                            operation: "stderr".to_string(),
                             args: vec![MirValueId(0)],
                             result: None,
                         },
@@ -4188,6 +4299,20 @@ mod tests {
         let artifact = backend
             .compile_module(&module, &manifest, &BackendConfig::default())
             .expect("IO.stdout lowering should compile");
+
+        assert_eq!(artifact.stats.per_function.len(), 1);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn cranelift_backend_compiles_io_stderr_effect_op_module() {
+        let module = sample_stderr_module();
+        let manifest = default_abi_manifest(&module);
+        let backend = CraneliftBackend;
+
+        let artifact = backend
+            .compile_module(&module, &manifest, &BackendConfig::default())
+            .expect("IO.stderr lowering should compile");
 
         assert_eq!(artifact.stats.per_function.len(), 1);
     }
