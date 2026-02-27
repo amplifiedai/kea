@@ -9108,6 +9108,128 @@ theorem principalPreconditionedField_hookIrrelevant_of_success_noUnify_via_maste
     h_no h_ok
 
 /--
+Packaged no-unify expression consequences on the master-run-bundle-suite path.
+-/
+structure PrincipalNoUnifyExprRunBundleConsequences
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty) : Prop where
+  core : PrincipalTypingSliceCore env e ty
+  preconditionedAny :
+    ∀ h_app h_proj,
+      PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty
+  preconditioned :
+    ∀ (h_hooks : UnifyHookPremises),
+      PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty
+  preconditionedAnyIffCore :
+    ∀ h_app h_proj,
+      (PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty
+        ↔ PrincipalTypingSliceCore env e ty)
+  preconditionedIffCore :
+    ∀ (h_hooks : UnifyHookPremises),
+      (PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty
+        ↔ PrincipalTypingSliceCore env e ty)
+  hookIrrelevant :
+    ∀ {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+      {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook},
+      (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+        ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty)
+
+/--
+Packaged no-unify field consequences on the master-run-bundle-suite path.
+-/
+structure PrincipalNoUnifyFieldRunBundleConsequences
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields) : Prop where
+  core : PrincipalFieldTypingSliceCore env fs rf
+  preconditionedAny :
+    ∀ h_app h_proj,
+      PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf
+  preconditioned :
+    ∀ (h_hooks : UnifyHookPremises),
+      PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf
+  preconditionedAnyIffCore :
+    ∀ h_app h_proj,
+      (PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf
+        ↔ PrincipalFieldTypingSliceCore env fs rf)
+  preconditionedIffCore :
+    ∀ (h_hooks : UnifyHookPremises),
+      (PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf
+        ↔ PrincipalFieldTypingSliceCore env fs rf)
+  hookIrrelevant :
+    ∀ {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+      {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook},
+      (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+        ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf)
+
+/--
+Build packaged no-unify expression consequences from one successful no-unify run
+on the master-run-bundle-suite path.
+-/
+theorem principalNoUnifyExprRunBundleConsequences_of_success_via_masterRunBundleSuite
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalNoUnifyExprRunBundleConsequences st fuel env e st' ty := by
+  refine {
+    core := principalCoreExpr_of_success_noUnify_via_masterRunBundleSuite h_no h_ok
+    preconditionedAny := ?_
+    preconditioned := ?_
+    preconditionedAnyIffCore := ?_
+    preconditionedIffCore := ?_
+    hookIrrelevant := ?_
+  }
+  · intro h_app h_proj
+    exact principalPreconditionedExpr_anyHooks_of_success_noUnify_via_masterRunBundleSuite
+      h_no h_ok h_app h_proj
+  · intro h_hooks
+    exact principalPreconditionedExpr_of_success_noUnify_via_masterRunBundleSuite
+      h_no h_ok h_hooks
+  · intro h_app h_proj
+    exact principalPreconditionedCoreIffExpr_anyHooks_of_success_noUnify_via_masterRunBundleSuite
+      h_no h_ok h_app h_proj
+  · intro h_hooks
+    exact principalPreconditionedCoreIffExpr_of_success_noUnify_via_masterRunBundleSuite
+      h_no h_ok h_hooks
+  · intro h_app₁ h_proj₁ h_app₂ h_proj₂
+    exact principalPreconditionedExpr_hookIrrelevant_of_success_noUnify_via_masterRunBundleSuite
+      h_no h_ok
+
+/--
+Build packaged no-unify field consequences from one successful no-unify field
+run on the master-run-bundle-suite path.
+-/
+theorem principalNoUnifyFieldRunBundleConsequences_of_success_via_masterRunBundleSuite
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalNoUnifyFieldRunBundleConsequences st fuel env fs st' rf := by
+  refine {
+    core := principalCoreField_of_success_noUnify_via_masterRunBundleSuite h_no h_ok
+    preconditionedAny := ?_
+    preconditioned := ?_
+    preconditionedAnyIffCore := ?_
+    preconditionedIffCore := ?_
+    hookIrrelevant := ?_
+  }
+  · intro h_app h_proj
+    exact principalPreconditionedField_anyHooks_of_success_noUnify_via_masterRunBundleSuite
+      h_no h_ok h_app h_proj
+  · intro h_hooks
+    exact principalPreconditionedField_of_success_noUnify_via_masterRunBundleSuite
+      h_no h_ok h_hooks
+  · intro h_app h_proj
+    exact principalPreconditionedCoreIffField_anyHooks_of_success_noUnify_via_masterRunBundleSuite
+      h_no h_ok h_app h_proj
+  · intro h_hooks
+    exact principalPreconditionedCoreIffField_of_success_noUnify_via_masterRunBundleSuite
+      h_no h_ok h_hooks
+  · intro h_app₁ h_proj₁ h_app₂ h_proj₂
+    exact principalPreconditionedField_hookIrrelevant_of_success_noUnify_via_masterRunBundleSuite
+      h_no h_ok
+
+/--
 One-hop expression hook-specific no-unify capstone projection (derived from
 all-hooks compatibility) from the master suite.
 -/
