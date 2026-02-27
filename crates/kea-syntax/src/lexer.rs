@@ -632,28 +632,126 @@ impl<'src> Lexer<'src> {
     }
 
     fn scan_number(&mut self, start: usize) {
-        while self.peek().is_some_and(|c| c.is_ascii_digit()) {
+        if self.source[start] == b'0'
+            && let Some(radix) = match self.peek() {
+                Some(b'x' | b'X') => Some(16),
+                Some(b'b' | b'B') => Some(2),
+                Some(b'o' | b'O') => Some(8),
+                _ => None,
+            }
+        {
+            self.advance(); // consume radix marker
+            while self
+                .peek()
+                .is_some_and(|c| c == b'_' || Self::digit_matches_radix(c, radix))
+            {
+                self.advance();
+            }
+            let text = std::str::from_utf8(&self.source[start..self.pos]).unwrap();
+            let digits = std::str::from_utf8(&self.source[(start + 2)..self.pos]).unwrap();
+            let normalized = match Self::normalize_digit_run(digits, |c| {
+                Self::digit_matches_radix(c, radix)
+            }) {
+                Ok(d) => d,
+                Err(_) => {
+                    self.error(start, format!("invalid integer literal: {text}"));
+                    return;
+                }
+            };
+            match i64::from_str_radix(&normalized, radix) {
+                Ok(v) => self.emit(TokenKind::Int(v), start, self.pos),
+                Err(_) => self.error(start, format!("invalid integer literal: {text}")),
+            }
+            return;
+        }
+
+        while self
+            .peek()
+            .is_some_and(|c| c.is_ascii_digit() || c == b'_')
+        {
             self.advance();
         }
+
         // Check for float: `.` followed by a digit
         if self.peek() == Some(b'.') && self.peek_next().is_some_and(|c| c.is_ascii_digit()) {
             self.advance(); // consume '.'
-            while self.peek().is_some_and(|c| c.is_ascii_digit()) {
+            while self
+                .peek()
+                .is_some_and(|c| c.is_ascii_digit() || c == b'_')
+            {
                 self.advance();
             }
-            let text = &self.source[start..self.pos];
-            let text = std::str::from_utf8(text).unwrap();
-            match text.parse::<f64>() {
+            let text = std::str::from_utf8(&self.source[start..self.pos]).unwrap();
+            let normalized = match Self::normalize_decimal_float(text) {
+                Ok(v) => v,
+                Err(_) => {
+                    self.error(start, format!("invalid float literal: {text}"));
+                    return;
+                }
+            };
+            match normalized.parse::<f64>() {
                 Ok(v) => self.emit(TokenKind::Float(v), start, self.pos),
                 Err(_) => self.error(start, format!("invalid float literal: {text}")),
             }
         } else {
-            let text = &self.source[start..self.pos];
-            let text = std::str::from_utf8(text).unwrap();
-            match text.parse::<i64>() {
+            let text = std::str::from_utf8(&self.source[start..self.pos]).unwrap();
+            let normalized = match Self::normalize_digit_run(text, |c| c.is_ascii_digit()) {
+                Ok(v) => v,
+                Err(_) => {
+                    self.error(start, format!("invalid integer literal: {text}"));
+                    return;
+                }
+            };
+            match normalized.parse::<i64>() {
                 Ok(v) => self.emit(TokenKind::Int(v), start, self.pos),
                 Err(_) => self.error(start, format!("invalid integer literal: {text}")),
             }
+        }
+    }
+
+    fn normalize_decimal_float(text: &str) -> Result<String, ()> {
+        let Some((whole, frac)) = text.split_once('.') else {
+            return Err(());
+        };
+        let whole = Self::normalize_digit_run(whole, |c| c.is_ascii_digit())?;
+        let frac = Self::normalize_digit_run(frac, |c| c.is_ascii_digit())?;
+        Ok(format!("{whole}.{frac}"))
+    }
+
+    fn normalize_digit_run(text: &str, is_valid_digit: impl Fn(u8) -> bool) -> Result<String, ()> {
+        if text.is_empty() {
+            return Err(());
+        }
+        let mut normalized = String::with_capacity(text.len());
+        let mut prev_underscore = false;
+        let mut saw_digit = false;
+        for byte in text.bytes() {
+            if byte == b'_' {
+                if prev_underscore || !saw_digit {
+                    return Err(());
+                }
+                prev_underscore = true;
+                continue;
+            }
+            if !is_valid_digit(byte) {
+                return Err(());
+            }
+            normalized.push(byte as char);
+            prev_underscore = false;
+            saw_digit = true;
+        }
+        if prev_underscore || !saw_digit {
+            return Err(());
+        }
+        Ok(normalized)
+    }
+
+    fn digit_matches_radix(c: u8, radix: u32) -> bool {
+        match radix {
+            2 => matches!(c, b'0' | b'1'),
+            8 => matches!(c, b'0'..=b'7'),
+            16 => c.is_ascii_hexdigit(),
+            _ => false,
         }
     }
 
@@ -1105,6 +1203,40 @@ mod tests {
     #[test]
     fn single_int() {
         assert_eq!(lex_kinds("42"), vec![TokenKind::Int(42)]);
+    }
+
+    #[test]
+    fn prefixed_int_literals() {
+        assert_eq!(
+            lex_kinds("0x2A 0b101010 0o52"),
+            vec![TokenKind::Int(42), TokenKind::Int(42), TokenKind::Int(42)]
+        );
+    }
+
+    #[test]
+    fn underscored_numeric_literals() {
+        assert_eq!(lex_kinds("1_000_000"), vec![TokenKind::Int(1_000_000)]);
+        assert_eq!(lex_kinds("1_000.25_5"), vec![TokenKind::Float(1_000.255)]);
+    }
+
+    #[test]
+    fn invalid_prefixed_int_literal_reports_error() {
+        let err = lex("0x", FileId(0)).expect_err("0x should be rejected");
+        assert!(
+            err[0].message.contains("invalid integer literal"),
+            "got: {:?}",
+            err[0]
+        );
+    }
+
+    #[test]
+    fn invalid_underscored_int_literal_reports_error() {
+        let err = lex("1__0", FileId(0)).expect_err("1__0 should be rejected");
+        assert!(
+            err[0].message.contains("invalid integer literal"),
+            "got: {:?}",
+            err[0]
+        );
     }
 
     #[test]
