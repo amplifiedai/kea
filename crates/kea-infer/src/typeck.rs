@@ -303,7 +303,7 @@ impl TypeEnv {
     }
 
     fn update_module_function_effect(&mut self, name: &str, row: &EffectRow) {
-        if let Some((module_path, fn_name)) = name.split_once("::")
+        if let Some((module_path, fn_name)) = name.rsplit_once('.')
             && let Some(module) = self.module_type_schemes.get_mut(module_path)
             && let Some((scheme, effects)) = module.get_mut(fn_name)
         {
@@ -536,7 +536,7 @@ impl TypeEnv {
             .unwrap_or_else(|| format!("Kea.{module_short}"));
         if let Some(candidates) = self.module_functions.get(&module_path) {
             // Try module-qualified key first to avoid collision with bare-name globals.
-            let qualified_key = format!("{module_path}::{field}");
+            let qualified_key = format!("{module_path}.{field}");
             if candidates.iter().any(|name| name == field) {
                 if let Some(sig) = self.function_effect_signature(&qualified_key) {
                     return Some(sig);
@@ -549,15 +549,15 @@ impl TypeEnv {
             }
             let prefixed = format!("{}_{}", module_short.to_lowercase(), field);
             if candidates.iter().any(|name| name == &prefixed) {
-                let prefixed_qualified = format!("{module_path}::{prefixed}");
+                let prefixed_qualified = format!("{module_path}.{prefixed}");
                 if let Some(sig) = self.function_effect_signature(&prefixed_qualified) {
                     return Some(sig);
                 }
                 return self.function_effect_signature(&prefixed);
             }
         }
-        // Fall through to trait-qualified lookup: `Comprehensible::map`, etc.
-        let trait_key = format!("{module_short}::{field}");
+        // Fall through to trait-qualified lookup: `Comprehensible.map`, etc.
+        let trait_key = format!("{module_short}.{field}");
         self.function_effect_signature(&trait_key)
     }
 
@@ -574,7 +574,7 @@ impl TypeEnv {
             .unwrap_or_else(|| format!("Kea.{module_short}"));
         let candidates = self.module_functions.get(&module_path)?;
         // Try module-qualified key first to avoid collision with bare-name globals.
-        let qualified_key = format!("{module_path}::{field}");
+        let qualified_key = format!("{module_path}.{field}");
         if candidates.iter().any(|name| name == field) {
             if let Some(sig) = self.function_signature(&qualified_key) {
                 return Some(sig);
@@ -587,7 +587,7 @@ impl TypeEnv {
         }
         let prefixed = format!("{}_{}", module_short.to_lowercase(), field);
         if candidates.iter().any(|name| name == &prefixed) {
-            let prefixed_qualified = format!("{module_path}::{prefixed}");
+            let prefixed_qualified = format!("{module_path}.{prefixed}");
             if let Some(sig) = self.function_signature(&prefixed_qualified) {
                 return Some(sig);
             }
@@ -7374,7 +7374,7 @@ pub fn register_effect_decl(
             Effects::impure(),
         );
 
-        let qualified_name = format!("{module_path}::{}", op.name.node);
+        let qualified_name = format!("{module_path}.{}", op.name.node);
         env.set_function_signature(qualified_name.clone(), function_signature_from_params(&op.params));
 
         let mut effect_var_bindings = BTreeMap::new();
@@ -7749,7 +7749,7 @@ fn infer_call_effect_row(
 
 fn is_fail_operation_call(func: &Expr) -> bool {
     match &func.node {
-        ExprKind::Var(name) => name == "Fail::fail",
+        ExprKind::Var(name) => name == "Fail.fail",
         ExprKind::FieldAccess { expr, field } => {
             matches!(&expr.node, ExprKind::Var(module) if module == "Fail") && field.node == "fail"
         }

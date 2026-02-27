@@ -3375,9 +3375,9 @@ fn infer_concat_string_argument_to_typed_call() {
         effects: EffectRow::closed(vec![(Label::new("IO"), Type::Unit)]),
         ret: Box::new(Type::Unit),
     });
-    env.bind("IO::stdout".into(), TypeScheme::mono(stdout_ty));
+    env.bind("IO.stdout".into(), TypeScheme::mono(stdout_ty));
     let expr = call(
-        var("IO::stdout"),
+        var("IO.stdout"),
         vec![binop(BinOp::Concat, lit_str("hello "), lit_str("world"))],
     );
     let (ty, u) = infer_with_env(&expr, &mut env);

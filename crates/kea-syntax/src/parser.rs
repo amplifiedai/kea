@@ -2867,8 +2867,8 @@ impl Parser {
     fn handle_clause(&mut self) -> Option<HandleClause> {
         let start = self.current_span();
         let effect = self.expect_upper_ident("expected effect name in handler clause")?;
-        if !self.match_token(&TokenKind::Dot) && !self.match_token(&TokenKind::ColonColon) {
-            self.error_at_current("expected '.' or '::' after effect name");
+        if !self.match_token(&TokenKind::Dot) {
+            self.error_at_current("expected '.' after effect name");
             return None;
         }
         let operation = self.expect_ident("expected operation name in handler clause")?;
@@ -4380,11 +4380,11 @@ impl Parser {
     // -- Postfix operations --
 
     fn parse_postfix(&mut self, lhs: Expr) -> Option<Expr> {
-        if self.check(&TokenKind::Dot) || self.check(&TokenKind::ColonColon) {
+        if self.check(&TokenKind::Dot) {
             self.advance();
-            let member = self.expect_any_ident("expected field name after '.' or '::'")?;
+            let member = self.expect_any_ident("expected field name after '.'")?;
             let receiver = match lhs.node {
-                // Allow namespaced module-style access like `List::map` even though
+                // Allow namespaced module-style access like `List.map` even though
                 // bare `List` parses as a nullary constructor elsewhere.
                 ExprKind::Constructor { name, args } if args.is_empty() => {
                     Spanned::new(ExprKind::Var(name.node), lhs.span)
@@ -4458,12 +4458,12 @@ impl Parser {
 
     fn should_desugar_method_call_receiver(&self, receiver: &ExprKind) -> bool {
         match receiver {
-            // Preserve qualified module calls: `List::map(xs, f)`.
+            // Preserve qualified module calls: `List.map(xs, f)`.
             ExprKind::Var(name) => !name
                 .chars()
                 .next()
                 .is_some_and(|ch| ch.is_ascii_uppercase()),
-            // Preserve explicit qualified chains like `xs.Trait::method()`,
+            // Preserve explicit qualified chains like `xs.Trait.method()`,
             // but still allow ordinary value chains like `x.inner.method()`.
             ExprKind::FieldAccess { field, .. } => !field
                 .node
@@ -4500,7 +4500,7 @@ impl Parser {
 
     fn postfix_bp(&self) -> Option<u8> {
         match self.peek_kind()? {
-            TokenKind::Dot | TokenKind::ColonColon | TokenKind::LParen | TokenKind::Question => {
+            TokenKind::Dot | TokenKind::LParen | TokenKind::Question => {
                 Some(19)
             }
             TokenKind::Ident(s) if s == "as" => Some(2),
@@ -5141,7 +5141,7 @@ mod tests {
 
     #[test]
     fn parse_trait_qualified_call_does_not_desugar_receiver_first() {
-        let expr = parse("xs.Trait::method()");
+        let expr = parse("xs.Trait.method()");
         match &expr.node {
             ExprKind::Call { func, args } => {
                 assert!(args.is_empty());
@@ -5194,33 +5194,15 @@ mod tests {
     }
 
     #[test]
-    fn parse_namespaced_upper_ident_turbofish_field_access() {
-        let expr = parse("List::map");
-        match &expr.node {
-            ExprKind::FieldAccess { expr, field } => {
-                assert_eq!(expr.node, ExprKind::Var("List".into()));
-                assert_eq!(field.node, "map");
-            }
-            _ => panic!("expected FieldAccess"),
-        }
+    fn parse_namespaced_upper_ident_coloncolon_field_access_is_error() {
+        let errors = parse_err("List::map");
+        assert!(!errors.is_empty(), "expected namespace `::` access to be rejected");
     }
 
     #[test]
-    fn parse_namespaced_upper_ident_turbofish_call() {
-        let expr = parse("List::map(xs, f)");
-        match &expr.node {
-            ExprKind::Call { func, args } => {
-                assert_eq!(args.len(), 2);
-                match &func.node {
-                    ExprKind::FieldAccess { expr, field } => {
-                        assert_eq!(expr.node, ExprKind::Var("List".into()));
-                        assert_eq!(field.node, "map");
-                    }
-                    other => panic!("expected FieldAccess callee, got {other:?}"),
-                }
-            }
-            other => panic!("expected Call, got {other:?}"),
-        }
+    fn parse_namespaced_upper_ident_coloncolon_call_is_error() {
+        let errors = parse_err("List::map(xs, f)");
+        assert!(!errors.is_empty(), "expected namespace `::` call to be rejected");
     }
 
     #[test]
@@ -8263,9 +8245,9 @@ mod tests {
     }
 
     #[test]
-    fn parse_handle_expression_with_turbofish_clause_head() {
+    fn parse_handle_expression_with_dot_clause_head() {
         let expr = parse(
-            "handle run()\n  Log::log(level, msg) ->\n    resume ()\n  then value -> value",
+            "handle run()\n  Log.log(level, msg) ->\n    resume ()\n  then value -> value",
         );
         match &expr.node {
             ExprKind::Handle { clauses, .. } => {

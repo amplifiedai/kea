@@ -2925,7 +2925,7 @@ mod tests {
                             literal: MirLiteral::Int(7),
                         },
                         MirInst::Call {
-                            callee: MirCallee::External("List::len".to_string()),
+                            callee: MirCallee::External("List.len".to_string()),
                             args: vec![MirValueId(0)],
                             arg_types: vec![Type::Int],
                             result: Some(MirValueId(1)),
@@ -2964,7 +2964,7 @@ mod tests {
                                 literal: MirLiteral::Int(7),
                             },
                             MirInst::Call {
-                                callee: MirCallee::External("List::len".to_string()),
+                                callee: MirCallee::External("List.len".to_string()),
                                 args: vec![MirValueId(0)],
                                 arg_types: vec![Type::Int],
                                 result: Some(MirValueId(1)),
@@ -2996,7 +2996,7 @@ mod tests {
                                 literal: MirLiteral::Float(7.0),
                             },
                             MirInst::Call {
-                                callee: MirCallee::External("List::len".to_string()),
+                                callee: MirCallee::External("List.len".to_string()),
                                 args: vec![MirValueId(0)],
                                 arg_types: vec![Type::Float],
                                 result: Some(MirValueId(1)),
@@ -4756,7 +4756,7 @@ mod tests {
                 body: HirExpr {
                     kind: HirExprKind::Call {
                         func: Box::new(HirExpr {
-                            kind: HirExprKind::Var("Fail::fail".to_string()),
+                            kind: HirExprKind::Var("Fail.fail".to_string()),
                             ty: Type::Dynamic,
                             span: kea_ast::Span::synthetic(),
                         }),

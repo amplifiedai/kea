@@ -1011,7 +1011,7 @@ fn lower_expr(
                 {
                     HirExprKind::Lit(Lit::Int(*tag))
                 } else if is_namespace_qualifier(type_name) {
-                    HirExprKind::Var(format!("{type_name}::{}", field.node))
+                    HirExprKind::Var(format!("{type_name}.{}", field.node))
                 } else {
                     HirExprKind::FieldAccess {
                         expr: Box::new(lower_expr(
@@ -3036,7 +3036,7 @@ mod tests {
         let HirExprKind::Call { func, .. } = &function.body.kind else {
             panic!("expected call expression");
         };
-        assert!(matches!(&func.kind, HirExprKind::Var(name) if name == "Fail::fail"));
+        assert!(matches!(&func.kind, HirExprKind::Var(name) if name == "Fail.fail"));
     }
 
     #[test]
