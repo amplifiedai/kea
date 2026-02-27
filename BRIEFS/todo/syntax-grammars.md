@@ -308,7 +308,7 @@ Write `highlights.scm` using the capture strategy above. Test against:
 
 ### Step 3: TextMate grammar (~200–300 lines JSON)
 
-Regex-based, targeting VS Code + GitHub. Priority patterns:
+Regex-based, targeting VS Code + GitHub Linguist. Priority patterns:
 
 1. Comments (`--`, `--|`)
 2. Strings (with escapes)
@@ -318,6 +318,20 @@ Regex-based, targeting VS Code + GitHub. Priority patterns:
 6. Numbers (int, float, hex, binary, octal)
 7. Operators
 8. Identifiers (upper = type/effect/constructor, lower = variable/function)
+
+**Structure the TextMate grammar for Linguist extraction.** GitHub
+requires a standalone repo containing the `.tmLanguage.json` for
+Linguist to pull from. The grammar should be self-contained in
+`editors/vscode/syntaxes/kea.tmLanguage.json` with `scopeName:
+source.kea` — ready to be published to its own repo (e.g.
+`kea-textmate-grammar`) when we submit the Linguist PR.
+
+The `.kea` extension is currently used by KEA Image (HDF5-based
+GIS raster format from kealib.org) — not a programming language,
+so no grammar conflict, but Linguist will need a content-based
+disambiguation heuristic. Include a first-line or keyword pattern
+that distinguishes Kea source from binary HDF5 files (e.g.
+presence of `fn `, `effect `, `type `, `use `, or `--|`).
 
 ### Step 4: Editor configs
 
@@ -384,3 +398,5 @@ Test every stdlib file as a parse-without-error check.
       keywords/types in at least one theme configuration
 - [ ] Test corpus covers: literals, functions, types, effects, handlers,
       control flow, modules, doc comments
+- [ ] TextMate grammar is self-contained and extractable to a standalone
+      repo for GitHub Linguist submission
