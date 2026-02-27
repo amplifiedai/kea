@@ -1,11 +1,11 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use kea_ast::{DeclKind, ExprDecl, FileId, FnDecl, Module, TypeDef};
+use kea_ast::{DeclKind, ExprDecl, FileId, FnDecl, Module, Span, TypeDef};
 use kea_codegen::{Backend, BackendConfig, CodegenMode, CraneliftBackend, default_abi_manifest, execute_hir_main_jit};
 #[cfg(test)]
 use kea_codegen::PassStats;
@@ -18,7 +18,7 @@ use kea_infer::typeck::{
     validate_declared_fn_effect_row_with_env_and_records, validate_module_annotations,
     validate_module_fn_annotations, validate_where_clause_traits,
 };
-use kea_infer::{Category, InferenceContext};
+use kea_infer::InferenceContext;
 use kea_mir::lower_hir_module;
 use kea_syntax::{lex_layout, parse_module};
 
@@ -89,10 +89,7 @@ struct RunResult {
 }
 
 fn compile_file(input: &Path, mode: CodegenMode) -> Result<CompileResult, String> {
-    let source = fs::read_to_string(input)
-        .map_err(|err| format!("failed to read `{}`: {err}", input.display()))?;
-
-    let pipeline = parse_and_typecheck_module(&source, FileId(0))?;
+    let pipeline = parse_and_typecheck_project(input)?;
     let hir = lower_module(&pipeline.module, &pipeline.type_env);
     let mir = lower_hir_module(&hir);
     let abi = default_abi_manifest(&mir);
@@ -118,10 +115,7 @@ fn compile_file(input: &Path, mode: CodegenMode) -> Result<CompileResult, String
 }
 
 fn run_file(input: &Path) -> Result<RunResult, String> {
-    let source = fs::read_to_string(input)
-        .map_err(|err| format!("failed to read `{}`: {err}", input.display()))?;
-
-    let pipeline = parse_and_typecheck_module(&source, FileId(0))?;
+    let pipeline = parse_and_typecheck_project(input)?;
     let hir = lower_module(&pipeline.module, &pipeline.type_env);
     let exit_code = execute_hir_main_jit(&hir, &BackendConfig::default())
         .map_err(|err| format!("codegen failed: {err}"))?;
@@ -139,46 +133,289 @@ struct PipelineResult {
     diagnostics: Vec<Diagnostic>,
 }
 
-fn parse_and_typecheck_module(source: &str, file_id: FileId) -> Result<PipelineResult, String> {
-    let (tokens, mut diagnostics) =
-        lex_layout(source, file_id).map_err(|diags| format_diagnostics("lexing failed", &diags))?;
+#[derive(Debug, Clone)]
+struct LoadedModule {
+    module_path: String,
+    module: Module,
+}
 
-    let parsed_module = parse_module(tokens, file_id)
-        .map_err(|diags| format_diagnostics("parsing failed", &diags))?;
-    let module = expand_impl_methods_for_codegen(&parsed_module);
+#[derive(Debug)]
+struct ModuleResolver {
+    stdlib_roots: Vec<PathBuf>,
+    source_roots: Vec<PathBuf>,
+}
 
+impl ModuleResolver {
+    fn for_entry(entry: &Path) -> Self {
+        let mut stdlib_roots = Vec::new();
+        if let Ok(path) = std::env::var("KEA_STDLIB_PATH") {
+            stdlib_roots.push(PathBuf::from(path));
+        }
+        if let Ok(cwd) = std::env::current_dir() {
+            stdlib_roots.push(cwd.join("stdlib"));
+        }
+        for ancestor in entry.ancestors() {
+            stdlib_roots.push(ancestor.join("stdlib"));
+        }
+
+        let mut source_roots = Vec::new();
+        if let Some(src_root) = entry
+            .ancestors()
+            .find(|path| path.file_name().and_then(|name| name.to_str()) == Some("src"))
+        {
+            source_roots.push(src_root.to_path_buf());
+        }
+        if let Some(parent) = entry.parent() {
+            source_roots.push(parent.to_path_buf());
+        }
+        if let Ok(cwd) = std::env::current_dir() {
+            source_roots.push(cwd.join("src"));
+            source_roots.push(cwd);
+        }
+
+        fn dedup_existing(paths: Vec<PathBuf>) -> Vec<PathBuf> {
+            let mut seen = BTreeSet::new();
+            let mut out = Vec::new();
+            for path in paths {
+                if !path.is_dir() {
+                    continue;
+                }
+                let canonical = fs::canonicalize(&path).unwrap_or(path);
+                if seen.insert(canonical.clone()) {
+                    out.push(canonical);
+                }
+            }
+            out
+        }
+
+        Self {
+            stdlib_roots: dedup_existing(stdlib_roots),
+            source_roots: dedup_existing(source_roots),
+        }
+    }
+
+    fn resolve(&self, module_path: &str) -> Option<PathBuf> {
+        let rel = module_path
+            .split('.')
+            .filter(|segment| !segment.is_empty())
+            .map(|segment| segment.to_ascii_lowercase())
+            .collect::<Vec<_>>();
+        if rel.is_empty() {
+            return None;
+        }
+
+        let mut rel_path = PathBuf::new();
+        for segment in rel {
+            rel_path.push(segment);
+        }
+        rel_path.set_extension("kea");
+
+        for root in &self.stdlib_roots {
+            let candidate = root.join(&rel_path);
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+        for root in &self.source_roots {
+            let candidate = root.join(&rel_path);
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+        None
+    }
+}
+
+fn parse_module_file(path: &Path, file_id: FileId) -> Result<Module, String> {
+    let source = fs::read_to_string(path)
+        .map_err(|err| format!("failed to read `{}`: {err}", path.display()))?;
+    let (tokens, _) = lex_layout(&source, file_id)
+        .map_err(|diags| format_diagnostics("lexing failed", &diags))?;
+    parse_module(tokens, file_id).map_err(|diags| format_diagnostics("parsing failed", &diags))
+}
+
+fn pascal_case_segment(segment: &str) -> String {
+    let mut out = String::new();
+    for part in segment
+        .split(|ch: char| !ch.is_ascii_alphanumeric())
+        .filter(|part| !part.is_empty())
+    {
+        let mut chars = part.chars();
+        if let Some(first) = chars.next() {
+            out.push(first.to_ascii_uppercase());
+            out.extend(chars);
+        }
+    }
+    if out.is_empty() {
+        "Main".to_string()
+    } else {
+        out
+    }
+}
+
+fn module_path_from_entry(entry: &Path) -> String {
+    let stem = entry
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("main");
+    pascal_case_segment(stem)
+}
+
+fn collect_project_modules(entry: &Path) -> Result<Vec<LoadedModule>, String> {
+    struct VisitState {
+        next_file_id: u32,
+        visiting: Vec<String>,
+        visited: HashSet<String>,
+        loaded: HashMap<String, LoadedModule>,
+        order: Vec<String>,
+    }
+
+    impl VisitState {
+        fn visit(
+            &mut self,
+            module_path: &str,
+            file_path: &Path,
+            resolver: &ModuleResolver,
+        ) -> Result<(), String> {
+            if let Some(idx) = self.visiting.iter().position(|name| name == module_path) {
+                let mut cycle = self.visiting[idx..].to_vec();
+                cycle.push(module_path.to_string());
+                return Err(format!("circular module import detected: {}", cycle.join(" -> ")));
+            }
+            if self.visited.contains(module_path) {
+                return Ok(());
+            }
+
+            let file_path = fs::canonicalize(file_path).unwrap_or_else(|_| file_path.to_path_buf());
+            let file_id = FileId(self.next_file_id);
+            self.next_file_id += 1;
+            let module = parse_module_file(&file_path, file_id)?;
+
+            self.visiting.push(module_path.to_string());
+            for decl in &module.declarations {
+                let DeclKind::Import(import) = &decl.node else {
+                    continue;
+                };
+                let dep_module = import.module.node.clone();
+                let dep_path = resolver.resolve(&dep_module).ok_or_else(|| {
+                    format!(
+                        "module `{dep_module}` not found while resolving imports for `{module_path}`"
+                    )
+                })?;
+                self.visit(&dep_module, &dep_path, resolver)?;
+            }
+            self.visiting.pop();
+
+            self.visited.insert(module_path.to_string());
+            self.order.push(module_path.to_string());
+            self.loaded.insert(
+                module_path.to_string(),
+                LoadedModule {
+                    module_path: module_path.to_string(),
+                    module,
+                },
+            );
+            Ok(())
+        }
+    }
+
+    let entry_path = fs::canonicalize(entry)
+        .map_err(|err| format!("failed to read `{}`: {err}", entry.display()))?;
+    let resolver = ModuleResolver::for_entry(&entry_path);
+    let entry_module_path = module_path_from_entry(&entry_path);
+    let mut state = VisitState {
+        next_file_id: 0,
+        visiting: Vec::new(),
+        visited: HashSet::new(),
+        loaded: HashMap::new(),
+        order: Vec::new(),
+    };
+    state.visit(&entry_module_path, &entry_path, &resolver)?;
+
+    Ok(state
+        .order
+        .into_iter()
+        .filter_map(|module_path| state.loaded.get(&module_path).cloned())
+        .collect())
+}
+
+fn merge_modules_for_codegen(modules: &[(String, Module)]) -> Module {
+    let mut declarations = Vec::new();
+
+    for (module_path, module) in modules {
+        for decl in &module.declarations {
+            declarations.push(decl.clone());
+            match &decl.node {
+                DeclKind::Function(fn_decl) if !fn_decl.name.node.contains('.') => {
+                    let mut lifted = fn_decl.clone();
+                    lifted.name.node = format!("{module_path}.{}", fn_decl.name.node);
+                    declarations.push(kea_ast::Spanned::new(
+                        DeclKind::Function(lifted),
+                        decl.span,
+                    ));
+                }
+                DeclKind::ExprFn(expr_decl) if !expr_decl.name.node.contains('.') => {
+                    let mut lifted = expr_decl.clone();
+                    lifted.name.node = format!("{module_path}.{}", expr_decl.name.node);
+                    declarations.push(kea_ast::Spanned::new(DeclKind::ExprFn(lifted), decl.span));
+                }
+                _ => {}
+            }
+        }
+    }
+
+    Module {
+        declarations,
+        // Merged project modules may originate from different files.
+        // Keep a synthetic span to avoid cross-file merge assertions.
+        span: Span::synthetic(),
+    }
+}
+
+fn parse_and_typecheck_project(entry: &Path) -> Result<PipelineResult, String> {
+    let loaded_modules = collect_project_modules(entry)?;
     let mut env = TypeEnv::new();
     let mut records = RecordRegistry::new();
     let mut traits = TraitRegistry::new();
     let mut sum_types = SumTypeRegistry::new();
+    let mut diagnostics = Vec::new();
+    let mut typed_modules = Vec::new();
 
-    diagnostics.extend(validate_module_fn_annotations(&parsed_module));
-    diagnostics.extend(validate_module_annotations(&parsed_module));
-    if has_errors(&diagnostics) {
-        return Err(format_diagnostics(
-            "type annotation validation failed",
-            &diagnostics,
-        ));
+    for loaded in &loaded_modules {
+        let expanded = expand_impl_methods_for_codegen(&loaded.module);
+
+        diagnostics.extend(validate_module_fn_annotations(&loaded.module));
+        diagnostics.extend(validate_module_annotations(&loaded.module));
+        if has_errors(&diagnostics) {
+            return Err(format_diagnostics(
+                "type annotation validation failed",
+                &diagnostics,
+            ));
+        }
+
+        register_top_level_declarations(
+            &expanded,
+            &mut env,
+            &mut records,
+            &mut traits,
+            &mut sum_types,
+            &mut diagnostics,
+        )?;
+
+        typecheck_functions(
+            &expanded,
+            &mut env,
+            &mut records,
+            &mut traits,
+            &mut sum_types,
+            &mut diagnostics,
+            Some(&loaded.module_path),
+        )?;
+
+        typed_modules.push((loaded.module_path.clone(), expanded));
     }
 
-    register_top_level_declarations(
-        &module,
-        &mut env,
-        &mut records,
-        &mut traits,
-        &mut sum_types,
-        &mut diagnostics,
-    )?;
-
-    typecheck_functions(
-        &module,
-        &mut env,
-        &mut records,
-        &mut traits,
-        &mut sum_types,
-        &mut diagnostics,
-    )?;
-
+    let module = merge_modules_for_codegen(&typed_modules);
     Ok(PipelineResult {
         module,
         type_env: env,
@@ -317,22 +554,7 @@ fn register_top_level_declarations(
                     ));
                 }
             }
-            DeclKind::Import(import) => {
-                diagnostics.push(
-                    Diagnostic::warning(
-                        Category::TypeError,
-                        format!(
-                            "import `{}` is parsed but module resolution is not yet wired in `kea` CLI",
-                            import.module.node
-                        ),
-                    )
-                    .at(kea_diag::SourceLocation {
-                        file_id: import.module.span.file.0,
-                        start: import.module.span.start,
-                        end: import.module.span.end,
-                    }),
-                );
-            }
+            DeclKind::Import(_) => {}
             _ => {}
         }
     }
@@ -347,6 +569,7 @@ fn typecheck_functions(
     traits: &mut TraitRegistry,
     sum_types: &mut SumTypeRegistry,
     diagnostics: &mut Vec<Diagnostic>,
+    module_path: Option<&str>,
 ) -> Result<(), String> {
     for decl in &module.declarations {
         let fn_decl = match &decl.node {
@@ -409,6 +632,30 @@ fn typecheck_functions(
             .unwrap_or(inferred_effect_row);
         env.set_function_effect_row(fn_decl.name.node.clone(), runtime_effect_row);
         register_fn_signature(&fn_decl, env);
+
+        if let Some(module_path) = module_path {
+            let module_short = module_path
+                .rsplit('.')
+                .next()
+                .unwrap_or(module_path)
+                .to_string();
+            env.register_module_alias(&module_short, module_path);
+            env.register_module_function(module_path, &fn_decl.name.node);
+            if let Some(scheme) = env.lookup(&fn_decl.name.node).cloned() {
+                env.register_module_type_scheme_exact(module_path, &fn_decl.name.node, scheme);
+            }
+
+            let qualified_name = format!("{module_path}.{}", fn_decl.name.node);
+            if let Some(signature) = env.function_signature(&fn_decl.name.node).cloned() {
+                env.set_function_signature(qualified_name.clone(), signature);
+            }
+            if let Some(effect_sig) = env.function_effect_signature(&fn_decl.name.node).cloned() {
+                env.set_function_effect_signature(qualified_name.clone(), effect_sig);
+            }
+            if let Some(effect_row) = env.function_effect_row(&fn_decl.name.node) {
+                env.set_function_effect_row(qualified_name, effect_row);
+            }
+        }
     }
 
     Ok(())
@@ -588,6 +835,48 @@ mod tests {
         assert_eq!(run.exit_code, 9);
 
         let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_use_imported_module_function_exit_code() {
+        let project_dir = temp_project_dir("kea-cli-project-import");
+        let src_dir = project_dir.join("src");
+        std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+
+        let math_path = src_dir.join("math.kea");
+        std::fs::write(&math_path, "fn inc(x: Int) -> Int\n  x + 1\n")
+            .expect("math module write should succeed");
+        let app_path = src_dir.join("app.kea");
+        std::fs::write(&app_path, "use Math\nfn main() -> Int\n  Math.inc(41)\n")
+            .expect("app module write should succeed");
+
+        let run = run_file(&app_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_dir_all(project_dir);
+    }
+
+    #[test]
+    fn compile_project_reports_circular_module_imports() {
+        let project_dir = temp_project_dir("kea-cli-project-cycle");
+        let src_dir = project_dir.join("src");
+        std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+
+        let app_path = src_dir.join("app.kea");
+        std::fs::write(&app_path, "use A\nfn main() -> Int\n  A.value()\n")
+            .expect("app module write should succeed");
+        std::fs::write(src_dir.join("a.kea"), "use B\nfn value() -> Int\n  B.other()\n")
+            .expect("module A write should succeed");
+        std::fs::write(src_dir.join("b.kea"), "use A\nfn other() -> Int\n  A.value()\n")
+            .expect("module B write should succeed");
+
+        let err = run_file(&app_path).expect_err("circular import should fail");
+        assert!(
+            err.contains("circular module import detected"),
+            "expected circular import diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_dir_all(project_dir);
     }
 
     #[test]
@@ -1857,6 +2146,12 @@ mod tests {
     fn write_temp_source(contents: &str, prefix: &str, extension: &str) -> PathBuf {
         let path = temp_artifact_path(prefix, extension);
         std::fs::write(&path, contents).expect("temp source write should succeed");
+        path
+    }
+
+    fn temp_project_dir(prefix: &str) -> PathBuf {
+        let path = temp_artifact_path(prefix, "proj");
+        std::fs::create_dir_all(&path).expect("temp project dir should be created");
         path
     }
 

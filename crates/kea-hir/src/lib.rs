@@ -667,6 +667,12 @@ fn lower_function_with_variants(
     let fn_ty = env
         .lookup(&fn_decl.name.node)
         .map(|scheme| scheme.ty.clone())
+        .or_else(|| {
+            fn_decl.name.node.rsplit_once('.').and_then(|(module, field)| {
+                env.resolve_qualified(module, field)
+                    .map(|scheme| scheme.ty.clone())
+            })
+        })
         .unwrap_or_else(|| Type::Function(FunctionType::pure(vec![], Type::Dynamic)));
 
     let (effects, ret_ty) = match &fn_ty {
