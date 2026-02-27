@@ -928,6 +928,27 @@ theorem unifyRows_success_update_compat_wf_swap_invariant
     st' stNext fuel h_shape h_idemp_next
 
 /--
+M2 refactor capstone (compat-first): consume compat/WF swap invariance first,
+then pair it with the preconditioned extension proof.
+-/
+theorem unifyRows_preconditioned_contract_compat_first
+    (st st' stNext : UnifyState) (fuel : Nat)
+    (h_ext : ExtendsRowBindings st st')
+    (h_idemp : st'.subst.Idempotent)
+    (h_shape : UnifyRowsSuccessUpdateShape st' stNext fuel)
+    (h_idemp_next : stNext.subst.Idempotent) :
+    (let h_ac := Subst.acyclicOfIdempotent h_idemp_next
+     CompatWFAgreeOnDomainLookupsAcyclic stNext fuel h_ac)
+    ∧ ExtendsRowBindings st stNext := by
+  refine ⟨?_, ?_⟩
+  · exact compatWFAgreeOnDomainLookupsAcyclic_of_idempotent
+      stNext fuel h_idemp_next
+      (unifyRows_success_update_compat_wf_swap_invariant
+        st' stNext fuel h_shape h_idemp_next)
+  · exact unifyRows_extends_rowMap_preconditioned
+      st st' stNext fuel h_ext h_idemp h_shape
+
+/--
 M3 contract theorem (WF phrasing): the preconditioned global row-binding
 extension result together with compat/WF swap invariance for successful
 `unifyRows` updates.
@@ -960,13 +981,13 @@ theorem unifyRows_extends_rowMap_preconditioned_wf_split
     ExtendsRowBindings st stNext
     ∧ (let h_ac := Subst.acyclicOfIdempotent h_idemp_next
        CompatWFAgreeOnDomainLookupsAcyclic stNext fuel h_ac) := by
-  refine ⟨?_, ?_⟩
-  · exact unifyRows_extends_rowMap_preconditioned
-      st st' stNext fuel h_ext h_idemp h_shape
-  · exact compatWFAgreeOnDomainLookupsAcyclic_of_idempotent
-      stNext fuel h_idemp_next
-      (unifyRows_success_update_compat_wf_swap_invariant
-        st' stNext fuel h_shape h_idemp_next)
+  have h_compat_first :
+      (let h_ac := Subst.acyclicOfIdempotent h_idemp_next
+       CompatWFAgreeOnDomainLookupsAcyclic stNext fuel h_ac)
+      ∧ ExtendsRowBindings st stNext :=
+    unifyRows_preconditioned_contract_compat_first
+      st st' stNext fuel h_ext h_idemp h_shape h_idemp_next
+  exact ⟨h_compat_first.2, h_compat_first.1⟩
 
 /--
 Canonical downstream WF contract name.
