@@ -1218,6 +1218,9 @@ impl FunctionLoweringCtx {
                     field_index: *field_index,
                     field_ty: expr.ty.clone(),
                 });
+                if let Some(inner_sum_type) = self.infer_sum_type_from_type(&expr.ty) {
+                    self.sum_value_types.insert(dest.clone(), inner_sum_type);
+                }
                 Some(dest)
             }
             HirExprKind::Call { func, args } => {
@@ -1570,6 +1573,15 @@ impl FunctionLoweringCtx {
         }
     }
 
+    fn infer_sum_type_from_type(&self, ty: &Type) -> Option<String> {
+        match ty {
+            Type::Sum(sum_ty) => Some(sum_ty.name.clone()),
+            Type::Option(_) => Some("Option".to_string()),
+            Type::Result(_, _) => Some("Result".to_string()),
+            _ => None,
+        }
+    }
+
     fn lower_raw_ast_expr(&mut self, raw_expr: &AstExprKind) -> Option<MirValueId> {
         match raw_expr {
             AstExprKind::Lit(lit) => {
@@ -1662,6 +1674,7 @@ impl FunctionLoweringCtx {
             HirExprKind::Var(_)
                 | HirExprKind::Call { .. }
                 | HirExprKind::SumConstructor { .. }
+                | HirExprKind::SumPayloadAccess { .. }
                 | HirExprKind::Raw(AstExprKind::Constructor { .. })
                 | HirExprKind::Let { .. }
                 | HirExprKind::Block(_)
@@ -2206,6 +2219,74 @@ mod tests {
                 .instructions
                 .iter()
                 .any(|inst| matches!(inst, MirInst::SumTagLoad { .. }))
+        );
+    }
+
+    #[test]
+    fn lower_hir_module_rewrites_sum_payload_eq_to_tag_compare() {
+        let maybe_int_ty = Type::Sum(SumType {
+            name: "Maybe".to_string(),
+            type_args: vec![Type::Int],
+            variants: vec![
+                ("Just".to_string(), vec![Type::Int]),
+                ("Nothing".to_string(), vec![]),
+            ],
+        });
+        let maybe_maybe_ty = Type::Sum(SumType {
+            name: "Maybe".to_string(),
+            type_args: vec![maybe_int_ty.clone()],
+            variants: vec![
+                ("Just".to_string(), vec![maybe_int_ty.clone()]),
+                ("Nothing".to_string(), vec![]),
+            ],
+        });
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "is_nested_just".to_string(),
+                params: vec![HirParam {
+                    name: Some("x".to_string()),
+                    span: kea_ast::Span::synthetic(),
+                }],
+                body: HirExpr {
+                    kind: HirExprKind::Binary {
+                        op: BinOp::Eq,
+                        left: Box::new(HirExpr {
+                            kind: HirExprKind::SumPayloadAccess {
+                                expr: Box::new(HirExpr {
+                                    kind: HirExprKind::Var("x".to_string()),
+                                    ty: maybe_maybe_ty.clone(),
+                                    span: kea_ast::Span::synthetic(),
+                                }),
+                                sum_type: "Maybe".to_string(),
+                                variant: "Just".to_string(),
+                                field_index: 0,
+                            },
+                            ty: maybe_int_ty,
+                            span: kea_ast::Span::synthetic(),
+                        }),
+                        right: Box::new(HirExpr {
+                            kind: HirExprKind::Lit(kea_ast::Lit::Int(0)),
+                            ty: Type::Int,
+                            span: kea_ast::Span::synthetic(),
+                        }),
+                    },
+                    ty: Type::Bool,
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::pure(vec![maybe_maybe_ty], Type::Bool)),
+                effects: EffectRow::pure(),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let mir = lower_hir_module(&hir);
+        let function = &mir.functions[0];
+        assert!(
+            function.blocks[0]
+                .instructions
+                .iter()
+                .any(|inst| matches!(inst, MirInst::SumTagLoad { .. })),
+            "expected nested sum payload tag comparison to lower via SumTagLoad"
         );
     }
 

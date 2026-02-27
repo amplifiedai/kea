@@ -969,8 +969,7 @@ enum LiteralCaseValue {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct ConstructorPayloadBind {
-    name: String,
+struct ConstructorPayloadAccessStep {
     sum_type: String,
     variant: String,
     field_index: usize,
@@ -978,11 +977,14 @@ struct ConstructorPayloadBind {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+struct ConstructorPayloadBind {
+    name: String,
+    access_path: Vec<ConstructorPayloadAccessStep>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 struct ConstructorPayloadCheck {
-    sum_type: String,
-    variant: String,
-    field_index: usize,
-    field_ty: Type,
+    access_path: Vec<ConstructorPayloadAccessStep>,
     expected: LiteralCaseValue,
 }
 
@@ -1502,16 +1504,8 @@ fn lower_literal_case(
             span: scrutinee.span,
         };
         for payload_check in payload_checks {
-            let payload_expr = HirExpr {
-                kind: HirExprKind::SumPayloadAccess {
-                    expr: Box::new(scrutinee_expr.clone()),
-                    sum_type: payload_check.sum_type,
-                    variant: payload_check.variant,
-                    field_index: payload_check.field_index,
-                },
-                ty: payload_check.field_ty,
-                span: scrutinee.span,
-            };
+            let payload_expr =
+                build_sum_payload_access_expr(&payload_check.access_path, &scrutinee_expr)?;
             let payload_eq = HirExpr {
                 kind: HirExprKind::Binary {
                     op: BinOp::Eq,
@@ -1982,41 +1976,25 @@ fn literal_case_values_from_pattern(
                 } else {
                     position
                 };
-                match &arg.pattern.node {
-                    PatternKind::Wildcard => {}
-                    PatternKind::Var(bind_name) => {
-                        if payload_binds.iter().any(|bind: &ConstructorPayloadBind| bind.name == *bind_name) {
-                            return None;
-                        }
-                        payload_binds.push(ConstructorPayloadBind {
-                            name: bind_name.clone(),
-                            sum_type: meta.sum_type.clone(),
-                            variant: name.clone(),
-                            field_index,
-                            field_ty: meta
-                                .field_types
-                                .get(field_index)
-                                .cloned()
-                                .unwrap_or(Type::Dynamic),
-                        });
-                    }
-                    PatternKind::Lit(lit @ Lit::Int(_))
-                    | PatternKind::Lit(lit @ Lit::Float(_))
-                    | PatternKind::Lit(lit @ Lit::Bool(_)) => {
-                        payload_checks.push(ConstructorPayloadCheck {
-                            sum_type: meta.sum_type.clone(),
-                            variant: name.clone(),
-                            field_index,
-                            field_ty: meta
-                                .field_types
-                                .get(field_index)
-                                .cloned()
-                                .unwrap_or(Type::Dynamic),
-                            expected: literal_case_value_from_lit(lit)?,
-                        });
-                    }
-                    _ => return None,
-                }
+                let field_ty = meta
+                    .field_types
+                    .get(field_index)
+                    .cloned()
+                    .unwrap_or(Type::Dynamic);
+                let access_path = vec![ConstructorPayloadAccessStep {
+                    sum_type: meta.sum_type.clone(),
+                    variant: name.clone(),
+                    field_index,
+                    field_ty,
+                }];
+                collect_constructor_payload_pattern(
+                    &arg.pattern.node,
+                    access_path,
+                    &mut payload_binds,
+                    &mut payload_checks,
+                    pattern_variant_tags,
+                    pattern_qualified_tags,
+                )?;
             }
             Some((
                 vec![LiteralCaseValue::Int(meta.tag)],
@@ -2102,6 +2080,109 @@ fn literal_case_values_from_pattern(
     }
 }
 
+fn collect_constructor_payload_pattern(
+    pattern: &PatternKind,
+    mut access_path: Vec<ConstructorPayloadAccessStep>,
+    payload_binds: &mut Vec<ConstructorPayloadBind>,
+    payload_checks: &mut Vec<ConstructorPayloadCheck>,
+    pattern_variant_tags: &PatternVariantTags,
+    pattern_qualified_tags: &QualifiedPatternVariantTags,
+) -> Option<()> {
+    match pattern {
+        PatternKind::Wildcard => Some(()),
+        PatternKind::Var(bind_name) => {
+            if payload_binds
+                .iter()
+                .any(|bind: &ConstructorPayloadBind| bind.name == *bind_name)
+            {
+                return None;
+            }
+            payload_binds.push(ConstructorPayloadBind {
+                name: bind_name.clone(),
+                access_path,
+            });
+            Some(())
+        }
+        PatternKind::Lit(lit @ Lit::Int(_))
+        | PatternKind::Lit(lit @ Lit::Float(_))
+        | PatternKind::Lit(lit @ Lit::Bool(_)) => {
+            payload_checks.push(ConstructorPayloadCheck {
+                access_path,
+                expected: literal_case_value_from_lit(lit)?,
+            });
+            Some(())
+        }
+        PatternKind::Constructor {
+            name,
+            qualifier,
+            args,
+            rest,
+        } if !*rest => {
+            let meta = resolve_variant_tag(
+                name,
+                qualifier.as_ref(),
+                pattern_variant_tags,
+                pattern_qualified_tags,
+            )?;
+            if args.len() != meta.arity {
+                return None;
+            }
+            if let Some(last_step) = access_path.last_mut() {
+                last_step.field_ty = Type::Sum(kea_types::SumType {
+                    name: meta.sum_type.clone(),
+                    type_args: Vec::new(),
+                    variants: Vec::new(),
+                });
+            }
+            payload_checks.push(ConstructorPayloadCheck {
+                access_path: access_path.clone(),
+                expected: LiteralCaseValue::Int(meta.tag),
+            });
+            let has_named_args = args.iter().any(|arg| arg.name.is_some());
+            if has_named_args && args.iter().any(|arg| arg.name.is_none()) {
+                return None;
+            }
+            let mut seen_field_indices = BTreeSet::new();
+            for (position, arg) in args.iter().enumerate() {
+                let field_index = if has_named_args {
+                    let field_name = arg.name.as_ref()?.node.as_str();
+                    let idx = meta
+                        .field_names
+                        .iter()
+                        .position(|name| name.as_deref() == Some(field_name))?;
+                    if !seen_field_indices.insert(idx) {
+                        return None;
+                    }
+                    idx
+                } else {
+                    position
+                };
+                let mut nested_access_path = access_path.clone();
+                nested_access_path.push(ConstructorPayloadAccessStep {
+                    sum_type: meta.sum_type.clone(),
+                    variant: name.clone(),
+                    field_index,
+                    field_ty: meta
+                        .field_types
+                        .get(field_index)
+                        .cloned()
+                        .unwrap_or(Type::Dynamic),
+                });
+                collect_constructor_payload_pattern(
+                    &arg.pattern.node,
+                    nested_access_path,
+                    payload_binds,
+                    payload_checks,
+                    pattern_variant_tags,
+                    pattern_qualified_tags,
+                )?;
+            }
+            Some(())
+        }
+        _ => None,
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn lower_arm_body(
     body: &Expr,
@@ -2157,17 +2238,12 @@ fn build_literal_arm_bindings(
         });
     }
     for payload_bind in payload_binds {
-        let payload_ty = payload_bind.field_ty.clone();
-        let payload_value = HirExpr {
-            kind: HirExprKind::SumPayloadAccess {
-                expr: Box::new(scrutinee_expr.clone()),
-                sum_type: payload_bind.sum_type.clone(),
-                variant: payload_bind.variant.clone(),
-                field_index: payload_bind.field_index,
-            },
-            ty: payload_ty.clone(),
-            span: scrutinee_expr.span,
+        let Some(payload_value) =
+            build_sum_payload_access_expr(&payload_bind.access_path, scrutinee_expr)
+        else {
+            continue;
         };
+        let payload_ty = payload_value.ty.clone();
         bindings.push(HirExpr {
             kind: HirExprKind::Let {
                 pattern: HirPattern::Var(payload_bind.name.clone()),
@@ -2178,6 +2254,30 @@ fn build_literal_arm_bindings(
         });
     }
     bindings
+}
+
+fn build_sum_payload_access_expr(
+    access_path: &[ConstructorPayloadAccessStep],
+    scrutinee_expr: &HirExpr,
+) -> Option<HirExpr> {
+    let mut current = scrutinee_expr.clone();
+    for step in access_path {
+        current = HirExpr {
+            kind: HirExprKind::SumPayloadAccess {
+                expr: Box::new(current),
+                sum_type: step.sum_type.clone(),
+                variant: step.variant.clone(),
+                field_index: step.field_index,
+            },
+            ty: step.field_ty.clone(),
+            span: scrutinee_expr.span,
+        };
+    }
+    if access_path.is_empty() {
+        None
+    } else {
+        Some(current)
+    }
 }
 
 fn build_record_arm_bindings(
@@ -2224,9 +2324,7 @@ fn payload_binds_or_compatible(
     existing.len() == candidate.len()
         && existing.iter().zip(candidate.iter()).all(|(left, right)| {
             left.name == right.name
-                && left.sum_type == right.sum_type
-                && left.field_index == right.field_index
-                && left.field_ty == right.field_ty
+                && payload_access_paths_compatible(&left.access_path, &right.access_path)
         })
 }
 
@@ -2236,10 +2334,20 @@ fn payload_checks_or_compatible(
 ) -> bool {
     existing.len() == candidate.len()
         && existing.iter().zip(candidate.iter()).all(|(left, right)| {
+            payload_access_paths_compatible(&left.access_path, &right.access_path)
+                && left.expected == right.expected
+        })
+}
+
+fn payload_access_paths_compatible(
+    existing: &[ConstructorPayloadAccessStep],
+    candidate: &[ConstructorPayloadAccessStep],
+) -> bool {
+    existing.len() == candidate.len()
+        && existing.iter().zip(candidate.iter()).all(|(left, right)| {
             left.sum_type == right.sum_type
                 && left.field_index == right.field_index
                 && left.field_ty == right.field_ty
-                && left.expected == right.expected
         })
 }
 
@@ -3581,6 +3689,57 @@ mod tests {
                 HirExprKind::Binary { op: BinOp::And, .. }
             ),
             "expected constructor literal payload check to compose tag and payload predicates"
+        );
+    }
+
+    #[test]
+    fn lower_function_payload_constructor_nested_case_binds_nested_payload_slot() {
+        let module = parse_module_from_text(
+            "type Maybe a = Just(a) | Nothing\nfn pick(x: Maybe Int) -> Int\n  case x\n    Just(Just(n)) -> n\n    _ -> 0",
+        );
+        let mut env = TypeEnv::new();
+        env.bind(
+            "pick".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::pure(
+                vec![Type::Sum(kea_types::SumType {
+                    name: "Maybe".to_string(),
+                    type_args: vec![Type::Int],
+                    variants: vec![
+                        ("Just".to_string(), vec![Type::Dynamic]),
+                        ("Nothing".to_string(), vec![]),
+                    ],
+                })],
+                Type::Int,
+            ))),
+        );
+
+        let lowered = lower_module(&module, &env);
+        let function = lowered
+            .declarations
+            .iter()
+            .find_map(|decl| match decl {
+                HirDecl::Function(function) if function.name == "pick" => Some(function),
+                _ => None,
+            })
+            .expect("expected lowered pick function");
+
+        let then_branch = match &function.body.kind {
+            HirExprKind::If { then_branch, .. } => then_branch,
+            other => panic!("expected nested constructor case to lower to if, got {other:?}"),
+        };
+        let HirExprKind::Block(exprs) = &then_branch.kind else {
+            panic!("expected nested payload branch to emit binding block");
+        };
+        let HirExprKind::Let { pattern, value } = &exprs[0].kind else {
+            panic!("expected first nested branch expression to be let binding");
+        };
+        assert_eq!(pattern, &HirPattern::Var("n".to_string()));
+        let HirExprKind::SumPayloadAccess { expr, .. } = &value.kind else {
+            panic!("expected outer nested binding value to be SumPayloadAccess");
+        };
+        assert!(
+            matches!(expr.kind, HirExprKind::SumPayloadAccess { .. }),
+            "expected nested payload binding to chain SumPayloadAccess operations"
         );
     }
 
