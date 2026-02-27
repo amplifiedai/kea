@@ -11487,6 +11487,76 @@ theorem principalNoUnifyFieldRunBundleConsequences_of_success_via_masterConseque
     h_no h_ok
 
 /--
+Packaged no-unify expression consequence slice over all successful runs on the
+master-consequence-capstone-suite route.
+-/
+def PrincipalNoUnifyExprRunBundleConsequenceSliceViaMasterConsequenceCapstoneSuite : Prop :=
+  ∀ {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty},
+    NoUnifyBranchesExpr e →
+    inferExprUnify st fuel env e = .ok st' ty →
+    PrincipalNoUnifyExprRunBundleConsequences st fuel env e st' ty
+
+/--
+Packaged no-unify field consequence slice over all successful field runs on the
+master-consequence-capstone-suite route.
+-/
+def PrincipalNoUnifyFieldRunBundleConsequenceSliceViaMasterConsequenceCapstoneSuite : Prop :=
+  ∀ {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields},
+    NoUnifyBranchesFields fs →
+    inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)) →
+    PrincipalNoUnifyFieldRunBundleConsequences st fuel env fs st' rf
+
+/--
+Combined no-unify consequence slices across expressions and fields on the
+master-consequence-capstone-suite route.
+-/
+def PrincipalNoUnifyRunBundleConsequenceSlicesViaMasterConsequenceCapstoneSuite : Prop :=
+  PrincipalNoUnifyExprRunBundleConsequenceSliceViaMasterConsequenceCapstoneSuite ∧
+    PrincipalNoUnifyFieldRunBundleConsequenceSliceViaMasterConsequenceCapstoneSuite
+
+/--
+The combined no-unify consequence slices on the master-consequence-capstone
+route are fully proved.
+-/
+theorem principalNoUnifyRunBundleConsequenceSlicesViaMasterConsequenceCapstoneSuite_proved :
+    PrincipalNoUnifyRunBundleConsequenceSlicesViaMasterConsequenceCapstoneSuite := by
+  refine ⟨?_, ?_⟩
+  · intro st fuel env e st' ty h_no h_ok
+    exact principalNoUnifyExprRunBundleConsequences_of_success_via_masterConsequenceCapstoneSuite
+      h_no h_ok
+  · intro st fuel env fs st' rf h_no h_ok
+    exact principalNoUnifyFieldRunBundleConsequences_of_success_via_masterConsequenceCapstoneSuite
+      h_no h_ok
+
+/--
+One-hop projection: expression branch from the master-consequence-capstone
+no-unify consequence slices.
+-/
+theorem principalNoUnifyRunBundleConsequenceSlicesViaMasterConsequenceCapstoneSuite_expr
+    (h_slices : PrincipalNoUnifyRunBundleConsequenceSlicesViaMasterConsequenceCapstoneSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalNoUnifyExprRunBundleConsequences st fuel env e st' ty :=
+  h_slices.1 h_no h_ok
+
+/--
+One-hop projection: field branch from the master-consequence-capstone no-unify
+consequence slices.
+-/
+theorem principalNoUnifyRunBundleConsequenceSlicesViaMasterConsequenceCapstoneSuite_field
+    (h_slices : PrincipalNoUnifyRunBundleConsequenceSlicesViaMasterConsequenceCapstoneSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalNoUnifyFieldRunBundleConsequences st fuel env fs st' rf :=
+  h_slices.2 h_no h_ok
+
+/--
 One-hop projection: arbitrary-success all-hooks expression run-bundle from the
 master run-bundle consequence suite.
 -/
