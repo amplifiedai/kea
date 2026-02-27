@@ -6,6 +6,7 @@
 //! diagnostics, and machine-readable pass stats.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::os::raw::c_char;
 use std::sync::Arc;
 
 use cranelift::prelude::{
@@ -309,13 +310,32 @@ fn runtime_signature_map(module: &MirModule) -> BTreeMap<String, RuntimeFunction
         .collect()
 }
 
+unsafe extern "C" fn kea_net_connect_stub(addr: *const c_char) -> i64 {
+    if addr.is_null() { -1 } else { 1 }
+}
+
+unsafe extern "C" fn kea_net_send_stub(_conn: i64, _data: *const c_char) -> i8 {
+    0
+}
+
+unsafe extern "C" fn kea_net_recv_stub(_conn: i64, size: i64) -> i64 {
+    if size < 0 { 0 } else { size }
+}
+
+fn register_jit_runtime_symbols(builder: &mut JITBuilder) {
+    builder.symbol("__kea_net_connect", kea_net_connect_stub as *const u8);
+    builder.symbol("__kea_net_send", kea_net_send_stub as *const u8);
+    builder.symbol("__kea_net_recv", kea_net_recv_stub as *const u8);
+}
+
 fn compile_with_jit(
     module: &MirModule,
     layout_plan: &BackendLayoutPlan,
     isa: &Arc<dyn isa::TargetIsa>,
     _config: &BackendConfig,
 ) -> Result<Vec<u8>, CodegenError> {
-    let builder = JITBuilder::with_isa(isa.clone(), cranelift_module::default_libcall_names());
+    let mut builder = JITBuilder::with_isa(isa.clone(), cranelift_module::default_libcall_names());
+    register_jit_runtime_symbols(&mut builder);
     let mut jit_module = JITModule::new(builder);
     let _ = compile_into_module(&mut jit_module, module, layout_plan)?;
     jit_module
@@ -366,6 +386,9 @@ fn compile_into_module<M: Module>(
     let mut requires_clock_time = false;
     let mut requires_rand_int = false;
     let mut requires_rand_seed = false;
+    let mut requires_net_connect = false;
+    let mut requires_net_send = false;
+    let mut requires_net_recv = false;
     let mut requires_string_concat = false;
     let mut requires_free = false;
     for function in &mir.functions {
@@ -462,6 +485,51 @@ fn compile_into_module<M: Module>(
             })
         }) {
             requires_rand_seed = true;
+        }
+        if function.blocks.iter().any(|block| {
+            block.instructions.iter().any(|inst| {
+                matches!(
+                    inst,
+                    MirInst::EffectOp {
+                        class: MirEffectOpClass::Direct,
+                        effect,
+                        operation,
+                        ..
+                    } if effect == "Net" && operation == "connect"
+                )
+            })
+        }) {
+            requires_net_connect = true;
+        }
+        if function.blocks.iter().any(|block| {
+            block.instructions.iter().any(|inst| {
+                matches!(
+                    inst,
+                    MirInst::EffectOp {
+                        class: MirEffectOpClass::Direct,
+                        effect,
+                        operation,
+                        ..
+                    } if effect == "Net" && operation == "send"
+                )
+            })
+        }) {
+            requires_net_send = true;
+        }
+        if function.blocks.iter().any(|block| {
+            block.instructions.iter().any(|inst| {
+                matches!(
+                    inst,
+                    MirInst::EffectOp {
+                        class: MirEffectOpClass::Direct,
+                        effect,
+                        operation,
+                        ..
+                    } if effect == "Net" && operation == "recv"
+                )
+            })
+        }) {
+            requires_net_recv = true;
         }
         if function.blocks.iter().any(|block| {
             block.instructions.iter().any(|inst| {
@@ -645,6 +713,55 @@ fn compile_into_module<M: Module>(
         None
     };
 
+    let net_connect_func_id = if requires_net_connect {
+        let ptr_ty = module.target_config().pointer_type();
+        let mut signature = module.make_signature();
+        signature.params.push(AbiParam::new(ptr_ty));
+        signature.returns.push(AbiParam::new(types::I64));
+        Some(
+            module
+                .declare_function("__kea_net_connect", Linkage::Import, &signature)
+                .map_err(|detail| CodegenError::Module {
+                    detail: detail.to_string(),
+                })?,
+        )
+    } else {
+        None
+    };
+
+    let net_send_func_id = if requires_net_send {
+        let ptr_ty = module.target_config().pointer_type();
+        let mut signature = module.make_signature();
+        signature.params.push(AbiParam::new(types::I64));
+        signature.params.push(AbiParam::new(ptr_ty));
+        signature.returns.push(AbiParam::new(types::I8));
+        Some(
+            module
+                .declare_function("__kea_net_send", Linkage::Import, &signature)
+                .map_err(|detail| CodegenError::Module {
+                    detail: detail.to_string(),
+                })?,
+        )
+    } else {
+        None
+    };
+
+    let net_recv_func_id = if requires_net_recv {
+        let mut signature = module.make_signature();
+        signature.params.push(AbiParam::new(types::I64));
+        signature.params.push(AbiParam::new(types::I64));
+        signature.returns.push(AbiParam::new(types::I64));
+        Some(
+            module
+                .declare_function("__kea_net_recv", Linkage::Import, &signature)
+                .map_err(|detail| CodegenError::Module {
+                    detail: detail.to_string(),
+                })?,
+        )
+    } else {
+        None
+    };
+
     let strlen_func_id = if requires_string_concat || requires_io_stderr {
         let ptr_ty = module.target_config().pointer_type();
         let mut signature = module.make_signature();
@@ -781,6 +898,9 @@ fn compile_into_module<M: Module>(
                     time_func_id,
                     rand_func_id,
                     srand_func_id,
+                    net_connect_func_id,
+                    net_send_func_id,
+                    net_recv_func_id,
                     strlen_func_id,
                     memcpy_func_id,
                     runtime_signatures: &runtime_signatures,
@@ -858,7 +978,8 @@ fn execute_mir_main_jit(module: &MirModule, config: &BackendConfig) -> Result<i3
     }
 
     let isa = build_isa(config)?;
-    let builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
+    let mut builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
+    register_jit_runtime_symbols(&mut builder);
     let mut jit_module = JITModule::new(builder);
     let layout_plan = plan_layout_catalog(module)?;
     let func_ids = compile_into_module(&mut jit_module, module, &layout_plan)?;
@@ -1199,6 +1320,9 @@ struct LowerInstCtx<'a> {
     time_func_id: Option<FuncId>,
     rand_func_id: Option<FuncId>,
     srand_func_id: Option<FuncId>,
+    net_connect_func_id: Option<FuncId>,
+    net_send_func_id: Option<FuncId>,
+    net_recv_func_id: Option<FuncId>,
     strlen_func_id: Option<FuncId>,
     memcpy_func_id: Option<FuncId>,
     runtime_signatures: &'a BTreeMap<String, RuntimeFunctionSig>,
@@ -1884,6 +2008,109 @@ fn lower_instruction<M: Module>(
                             Ok(false)
                         }
                         _ => unreachable!("Rand branch is guarded by operation match"),
+                    }
+                } else if effect == "Net" && matches!(operation.as_str(), "connect" | "send" | "recv") {
+                    match operation.as_str() {
+                        "connect" => {
+                            let addr_value_id = args.first().ok_or_else(|| CodegenError::UnsupportedMir {
+                                function: function_name.to_string(),
+                                detail: "Net.connect expects one String argument".to_string(),
+                            })?;
+                            if args.len() != 1 {
+                                return Err(CodegenError::UnsupportedMir {
+                                    function: function_name.to_string(),
+                                    detail: "Net.connect expects exactly one String argument".to_string(),
+                                });
+                            }
+                            let addr_value = get_value(values, function_name, addr_value_id)?;
+                            let ptr_ty = module.target_config().pointer_type();
+                            let addr_ptr = coerce_value_to_clif_type(builder, addr_value, ptr_ty);
+                            let connect_func_id = ctx.net_connect_func_id.ok_or_else(|| {
+                                CodegenError::UnsupportedMir {
+                                    function: function_name.to_string(),
+                                    detail:
+                                        "Net.connect lowering requires imported `__kea_net_connect` symbol"
+                                            .to_string(),
+                                }
+                            })?;
+                            let connect_ref =
+                                module.declare_func_in_func(connect_func_id, builder.func);
+                            let connect_call = builder.ins().call(connect_ref, &[addr_ptr]);
+                            if let Some(dest) = result {
+                                let conn = builder
+                                    .inst_results(connect_call)
+                                    .first()
+                                    .copied()
+                                    .ok_or_else(|| CodegenError::UnsupportedMir {
+                                        function: function_name.to_string(),
+                                        detail: "Net.connect call returned no value".to_string(),
+                                    })?;
+                                values.insert(dest.clone(), coerce_value_to_clif_type(builder, conn, types::I64));
+                            }
+                            Ok(false)
+                        }
+                        "send" => {
+                            if args.len() != 2 {
+                                return Err(CodegenError::UnsupportedMir {
+                                    function: function_name.to_string(),
+                                    detail: "Net.send expects exactly two arguments".to_string(),
+                                });
+                            }
+                            let conn_value = get_value(values, function_name, &args[0])?;
+                            let data_value = get_value(values, function_name, &args[1])?;
+                            let conn_value = coerce_value_to_clif_type(builder, conn_value, types::I64);
+                            let ptr_ty = module.target_config().pointer_type();
+                            let data_ptr = coerce_value_to_clif_type(builder, data_value, ptr_ty);
+                            let send_func_id = ctx.net_send_func_id.ok_or_else(|| {
+                                CodegenError::UnsupportedMir {
+                                    function: function_name.to_string(),
+                                    detail:
+                                        "Net.send lowering requires imported `__kea_net_send` symbol"
+                                            .to_string(),
+                                }
+                            })?;
+                            let send_ref = module.declare_func_in_func(send_func_id, builder.func);
+                            let _ = builder.ins().call(send_ref, &[conn_value, data_ptr]);
+                            if let Some(dest) = result {
+                                values.insert(dest.clone(), builder.ins().iconst(types::I8, 0));
+                            }
+                            Ok(false)
+                        }
+                        "recv" => {
+                            if args.len() != 2 {
+                                return Err(CodegenError::UnsupportedMir {
+                                    function: function_name.to_string(),
+                                    detail: "Net.recv expects exactly two arguments".to_string(),
+                                });
+                            }
+                            let conn_value = get_value(values, function_name, &args[0])?;
+                            let size_value = get_value(values, function_name, &args[1])?;
+                            let conn_value = coerce_value_to_clif_type(builder, conn_value, types::I64);
+                            let size_value = coerce_value_to_clif_type(builder, size_value, types::I64);
+                            let recv_func_id = ctx.net_recv_func_id.ok_or_else(|| {
+                                CodegenError::UnsupportedMir {
+                                    function: function_name.to_string(),
+                                    detail:
+                                        "Net.recv lowering requires imported `__kea_net_recv` symbol"
+                                            .to_string(),
+                                }
+                            })?;
+                            let recv_ref = module.declare_func_in_func(recv_func_id, builder.func);
+                            let recv_call = builder.ins().call(recv_ref, &[conn_value, size_value]);
+                            if let Some(dest) = result {
+                                let received = builder
+                                    .inst_results(recv_call)
+                                    .first()
+                                    .copied()
+                                    .ok_or_else(|| CodegenError::UnsupportedMir {
+                                        function: function_name.to_string(),
+                                        detail: "Net.recv call returned no value".to_string(),
+                                    })?;
+                                values.insert(dest.clone(), coerce_value_to_clif_type(builder, received, types::I64));
+                            }
+                            Ok(false)
+                        }
+                        _ => unreachable!("Net branch is guarded by operation match"),
                     }
                 } else {
                     Err(CodegenError::UnsupportedMir {
@@ -3131,6 +3358,91 @@ mod tests {
                         },
                     ],
                     terminator: MirTerminator::Return { value: None },
+                }],
+            }],
+            layouts: MirLayoutCatalog::default(),
+        }
+    }
+
+    fn sample_net_connect_module() -> MirModule {
+        MirModule {
+            functions: vec![MirFunction {
+                name: "net_connect".to_string(),
+                signature: MirFunctionSignature {
+                    params: vec![],
+                    ret: Type::Int,
+                    effects: EffectRow::closed(vec![(Label::new("Net"), Type::Unit)]),
+                },
+                entry: MirBlockId(0),
+                blocks: vec![MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: MirValueId(0),
+                            literal: MirLiteral::String("127.0.0.1:0".to_string()),
+                        },
+                        MirInst::EffectOp {
+                            class: MirEffectOpClass::Direct,
+                            effect: "Net".to_string(),
+                            operation: "connect".to_string(),
+                            args: vec![MirValueId(0)],
+                            result: Some(MirValueId(1)),
+                        },
+                    ],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirValueId(1)),
+                    },
+                }],
+            }],
+            layouts: MirLayoutCatalog::default(),
+        }
+    }
+
+    fn sample_net_send_recv_module() -> MirModule {
+        MirModule {
+            functions: vec![MirFunction {
+                name: "net_send_recv".to_string(),
+                signature: MirFunctionSignature {
+                    params: vec![],
+                    ret: Type::Int,
+                    effects: EffectRow::closed(vec![(Label::new("Net"), Type::Unit)]),
+                },
+                entry: MirBlockId(0),
+                blocks: vec![MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: MirValueId(0),
+                            literal: MirLiteral::Int(1),
+                        },
+                        MirInst::Const {
+                            dest: MirValueId(1),
+                            literal: MirLiteral::String("ping".to_string()),
+                        },
+                        MirInst::EffectOp {
+                            class: MirEffectOpClass::Direct,
+                            effect: "Net".to_string(),
+                            operation: "send".to_string(),
+                            args: vec![MirValueId(0), MirValueId(1)],
+                            result: None,
+                        },
+                        MirInst::Const {
+                            dest: MirValueId(2),
+                            literal: MirLiteral::Int(4),
+                        },
+                        MirInst::EffectOp {
+                            class: MirEffectOpClass::Direct,
+                            effect: "Net".to_string(),
+                            operation: "recv".to_string(),
+                            args: vec![MirValueId(0), MirValueId(2)],
+                            result: Some(MirValueId(3)),
+                        },
+                    ],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirValueId(3)),
+                    },
                 }],
             }],
             layouts: MirLayoutCatalog::default(),
@@ -4690,6 +5002,34 @@ mod tests {
         let artifact = backend
             .compile_module(&module, &manifest, &BackendConfig::default())
             .expect("Rand.seed lowering should compile");
+
+        assert_eq!(artifact.stats.per_function.len(), 1);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn cranelift_backend_compiles_net_connect_effect_op_module() {
+        let module = sample_net_connect_module();
+        let manifest = default_abi_manifest(&module);
+        let backend = CraneliftBackend;
+
+        let artifact = backend
+            .compile_module(&module, &manifest, &BackendConfig::default())
+            .expect("Net.connect lowering should compile");
+
+        assert_eq!(artifact.stats.per_function.len(), 1);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn cranelift_backend_compiles_net_send_recv_effect_ops_module() {
+        let module = sample_net_send_recv_module();
+        let manifest = default_abi_manifest(&module);
+        let backend = CraneliftBackend;
+
+        let artifact = backend
+            .compile_module(&module, &manifest, &BackendConfig::default())
+            .expect("Net.send/Net.recv lowering should compile");
 
         assert_eq!(artifact.stats.per_function.len(), 1);
     }

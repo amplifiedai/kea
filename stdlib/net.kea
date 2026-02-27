@@ -1,0 +1,4 @@
+effect Net
+  fn connect(addr: String) -> Int
+  fn send(conn: Int, data: String) -> Unit
+  fn recv(conn: Int, size: Int) -> Int

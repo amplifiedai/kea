@@ -328,6 +328,26 @@ mod tests {
 
     #[test]
     #[cfg(not(target_os = "windows"))]
+    fn compile_and_execute_real_stdlib_net_module_exit_code() {
+        let project_dir = temp_workspace_project_dir("kea-cli-project-real-stdlib-net");
+        let src_dir = project_dir.join("src");
+        std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+
+        let app_path = src_dir.join("app.kea");
+        std::fs::write(
+            &app_path,
+            "use Net\n\nfn main() -[Net]> Int\n  let c = Net.connect(\"127.0.0.1:0\")\n  Net.send(c, \"ping\")\n  let n = Net.recv(c, 4)\n  if c >= 0 and n >= 0\n    1\n  else\n    0\n",
+        )
+        .expect("app module write should succeed");
+
+        let run = run_file(&app_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 1);
+
+        let _ = std::fs::remove_dir_all(project_dir);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
     fn compile_and_execute_clock_now_direct_effect_exit_code() {
         let source_path = write_temp_source(
             "effect Clock\n  fn now() -> Int\n\nfn main() -[Clock]> Int\n  if Clock.now() > 0\n    1\n  else\n    0\n",
@@ -366,6 +386,21 @@ mod tests {
         );
 
         let run = run_file(&source_path).expect("rand-int run should succeed");
+        assert_eq!(run.exit_code, 1);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn compile_and_execute_net_direct_effect_exit_code() {
+        let source_path = write_temp_source(
+            "effect Net\n  fn connect(addr: String) -> Int\n  fn send(conn: Int, data: String) -> Unit\n  fn recv(conn: Int, size: Int) -> Int\n\nfn main() -[Net]> Int\n  let c = Net.connect(\"127.0.0.1:0\")\n  Net.send(c, \"ping\")\n  let n = Net.recv(c, 4)\n  if c >= 0 and n >= 0\n    1\n  else\n    0\n",
+            "kea-cli-net-direct",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("net-direct run should succeed");
         assert_eq!(run.exit_code, 1);
 
         let _ = std::fs::remove_file(source_path);
