@@ -170,21 +170,26 @@ trait Grammar
   type Out
   type Err
 
-  fn parse(_ src: String) -[Parse]> Result(Self.Ast, Self.Err)
+  fn parse(_ src: String, _ splices: List Splice) -[Parse]> Result(Self.Ast, Self.Err)
   fn check(_ ast: Self.Ast) -[TypeCheck]> Result(Typed(Self.Out), Diag)
   fn lower(_ typed: Typed(Self.Out)) -[Lower]> LoweredExpr
 ```
 
 The grammar defines parsing, type-checking, and lowering — the same
-three stages the Kea compiler itself has. Each method declares
+three stages the Kea compiler itself has. `${expr}` interpolation
+points in the embed block are extracted by the Kea parser into typed
+`Splice` handles before `parse` is called. Each method declares
 exactly the compilation effects it needs:
 
-- **`parse`** runs under `Parse` — it can report parse errors and
-  track source spans, but cannot access the host type system.
+- **`parse`** runs under `Parse` — it receives the source with
+  `${...}` interpolation points extracted into a `Splice` list.
+  It can report parse errors and track source spans, but cannot
+  access the host type system.
 - **`check`** runs under `TypeCheck` — it can resolve host bindings,
-  unify types across the grammar boundary, and inspect the host scope.
-  Types flow between the embedded language and the host through
-  effect operations, not through a parameter.
+  unify types across the grammar boundary, get splice types via
+  `TypeCheck.type_of_splice`, and inspect the host scope. Types flow
+  between the embedded language and the host through effect
+  operations, not through a parameter.
 - **`lower`** runs under `Lower` — it produces Kea IR and can
   generate fresh names, but cannot invoke the type checker or parser.
 

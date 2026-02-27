@@ -604,21 +604,26 @@ trait Grammar
   type Out
   type Err
 
-  fn parse(_ src: String) -[Parse]> Result(Self.Ast, Self.Err)
+  fn parse(_ src: String, _ splices: List Splice) -[Parse]> Result(Self.Ast, Self.Err)
   fn check(_ ast: Self.Ast) -[TypeCheck]> Result(Typed(Self.Out), Diag)
   fn lower(_ typed: Typed(Self.Out)) -[Lower]> LoweredExpr
 ```
 
-`embed <Grammar> { ... }` invokes this trait at compile time. Each
-method declares exactly the compilation effects it needs:
+`embed <Grammar> { ... }` invokes this trait at compile time. `${expr}`
+interpolation points are extracted by the Kea parser into typed `Splice`
+handles before `parse` is called. Each method declares exactly the
+compilation effects it needs:
 
-- **`parse`** runs under `Parse` — it can report parse errors and
-  track source spans, but cannot access the host type system.
+- **`parse`** runs under `Parse` — it receives the source with
+  `${...}` interpolation points extracted into a `Splice` list.
+  It can report parse errors and track source spans, but cannot
+  access the host type system.
 - **`check`** runs under `TypeCheck` — it can resolve host bindings,
-  unify types across the grammar boundary, and inspect the host
-  scope. There is no `GrammarCtx` parameter — the `TypeCheck` effect
-  *is* the context. `TypeCheck.resolve_binding("user")` replaces
-  what an earlier design would have written as `ctx.resolve_binding("user")`.
+  unify types across the grammar boundary, get splice types via
+  `TypeCheck.type_of_splice`, and inspect the host scope. There is no
+  `GrammarCtx` parameter — the `TypeCheck` effect *is* the context.
+  `TypeCheck.resolve_binding("user")` replaces what an earlier design
+  would have written as `ctx.resolve_binding("user")`.
   The handler — the host compiler's type checker — provides the
   implementation.
 - **`lower`** runs under `Lower` — it produces Kea IR and can

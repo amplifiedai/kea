@@ -45,26 +45,142 @@ trait Grammar
   type Out
   type Err
 
-  fn parse(_ src: String) -[Parse]> Result(Self.Ast, Self.Err)
+  fn parse(_ src: String, _ splices: List Splice) -[Parse]> Result(Self.Ast, Self.Err)
   fn check(_ ast: Self.Ast) -[TypeCheck]> Result(Typed(Self.Out), Diag)
   fn lower(_ typed: Typed(Self.Out)) -[Lower]> LoweredExpr
 ```
 
 Each method declares exactly the compilation effects it needs:
 
-- **`parse`** runs under `Parse` — it can report parse errors and
-  track source spans, but cannot access the host type system.
+- **`parse`** runs under `Parse` — it receives the embed block source
+  with `${...}` interpolation points extracted into a `Splice` list.
+  It can report parse errors and track source spans, but cannot access
+  the host type system.
 - **`check`** runs under `TypeCheck` — it can resolve host bindings
-  (`TypeCheck.resolve_binding`), unify types across the grammar
-  boundary (`TypeCheck.unify`), and inspect the host scope. There
-  is no `GrammarCtx` parameter — the `TypeCheck` effect *is* the
-  context. The handler (the host compiler's type checker) provides
-  the implementation.
+  (`TypeCheck.resolve_binding`), get splice types
+  (`TypeCheck.type_of_splice`), unify types across the grammar boundary
+  (`TypeCheck.unify`), and inspect the host scope. There is no
+  `GrammarCtx` parameter — the `TypeCheck` effect *is* the context.
+  The handler (the host compiler's type checker) provides the
+  implementation.
 - **`lower`** runs under `Lower` — it produces Kea IR and can
   generate fresh names, but cannot invoke the type checker or parser.
 
 Key rule: `lower` must produce normal Kea typed IR forms.
 No grammar gets a privileged runtime execution path.
+
+### Splices: typed host bindings in grammar blocks
+
+Interpolation points (`${expr}`) in an `embed` block are **typed
+splices**, not string interpolation. The Kea parser extracts them
+before invoking the Grammar trait:
+
+```kea
+embed Sql { SELECT name FROM users WHERE age > ${min_age} }
+```
+
+The parser produces:
+- Source with placeholders: `"SELECT name FROM users WHERE age > $0"`
+- Splice list: `[Splice { position: 0, span: ..., expr: Expr::Var("min_age") }]`
+
+The Grammar trait receives both:
+
+```kea
+fn parse(_ src: String, _ splices: List Splice) -[Parse]> Result(Self.Ast, Self.Err)
+```
+
+`Splice` is the compiler's representation of a host expression at an
+interpolation point. It carries a position (where in the source it
+appeared), a span (for diagnostics), and an opaque handle to the host
+expression.
+
+The `TypeCheck` effect provides operations to inspect splice types:
+
+```kea
+effect TypeCheck
+  fn resolve_binding(_ name: String) -> Option TypedBinding
+  fn unify(_ expected: Type, _ actual: Type) -> Result(Type, TypeError)
+  fn type_of_splice(_ splice: Splice) -> Type
+  fn current_scope() -> Scope
+```
+
+The flow:
+
+1. **Kea parser** extracts `${...}` from the embed block, parses each
+   as a host expression, produces `Splice` handles
+2. **`parse`** receives source with placeholders + splice list, builds
+   the grammar-specific AST with splice references at interpolation
+   positions
+3. **`check`** walks the AST, calls `TypeCheck.type_of_splice(splice)`
+   to get each host expression's type, calls `TypeCheck.unify` to
+   validate it against what the grammar expects at that position
+4. **`lower`** emits IR that evaluates the host expressions and passes
+   their values to the grammar's runtime representation
+
+### Components are functions
+
+A grammar that supports "components" (HTML, UI frameworks) resolves
+component names through `TypeCheck.resolve_binding`. The component's
+prop types come from its function signature — no separate schema or
+interface definition:
+
+```kea
+-- A component is just a function
+fn Button(props: { label: String, on_click: () -[e]> Unit }) -[e]> Html
+  embed Html {
+    <button onclick=${props.on_click}>${props.label}</button>
+  }
+```
+
+When the Html grammar's `check` method sees `<Button label=${x} />`:
+
+1. `TypeCheck.resolve_binding("Button")` → finds the function signature
+2. `TypeCheck.type_of_splice(label_splice)` → gets the host expression type
+3. `TypeCheck.unify(String, <splice type>)` → validates the prop type
+
+Non-string props work naturally because splices are typed values, not
+stringified text. The grammar's `lower` step emits IR that passes the
+value directly.
+
+### Template parameters (atom fields)
+
+Following Rill's pattern, `${:field}` syntax (colon prefix) creates a
+**template parameter** rather than capturing a host expression directly.
+The grammar collects these and returns a function type:
+
+```kea
+let card = embed Html {
+  <div class="card">
+    <h2>${:name}</h2>
+    <p>Age: ${:age}</p>
+  </div>
+}
+-- card : ({ name: String, age: Int | r }) -> Html
+```
+
+The `:field` syntax tells the grammar that these are parameters, not
+captures. The grammar's `check` method synthesizes a row-polymorphic
+function type from the collected fields. Row polymorphism means the
+template accepts any record with the required fields:
+
+```kea
+record User
+  name: String
+  age: Int
+  email: String
+
+card(User { name: "Alice", age: 30, email: "a@b.com" })  -- works
+```
+
+### Splice error spans
+
+**Requirement:** when `TypeCheck.unify` fails inside a grammar's
+`check` method, the diagnostic MUST point at the `${expr}` location
+in the embed block within the host file. Splice spans map interpolation
+positions back to host file locations. Errors that point at
+grammar-internal AST nodes instead of the source `${...}` are a DX
+failure. The `Diagnose` effect and `Parse` effect span tracking must
+cooperate to make this work.
 
 ### 2) Host Syntax: generic first, sugar second
 

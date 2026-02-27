@@ -110,7 +110,7 @@ trait Grammar
   type Ast
   type Out
   type Err
-  fn parse(_ src: String) -[Parse]> Result(Self.Ast, Self.Err)
+  fn parse(_ src: String, _ splices: List Splice) -[Parse]> Result(Self.Ast, Self.Err)
   fn check(_ ast: Self.Ast) -[TypeCheck]> Result(Typed(Self.Out), Diag)
   fn lower(_ typed: Typed(Self.Out)) -[Lower]> LoweredExpr
 
