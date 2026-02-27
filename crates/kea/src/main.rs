@@ -1100,6 +1100,20 @@ mod tests {
     }
 
     #[test]
+    fn compile_and_execute_record_pattern_case_exit_code() {
+        let source_path = write_temp_source(
+            "record User\n  age: Int\n  score: Int\n\nfn main() -> Int\n  let user = User { age: 4, score: 9 }\n  case user\n    User { age: 4, .. } -> 6\n    _ -> 2\n",
+            "kea-cli-record-pattern-case",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 6);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_record_construct_and_field_access_exit_code() {
         let source_path = write_temp_source(
             "record User\n  age: Int\n  score: Int\n\nfn main() -> Int\n  let user = User { age: 4, score: 9 }\n  user.age + user.score\n",

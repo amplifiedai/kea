@@ -1002,6 +1002,35 @@ type LiteralCasePatternInfo = (
     Vec<ConstructorPayloadCheck>,
 );
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RecordFieldBind {
+    name: String,
+    field: String,
+    field_ty: Type,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct RecordFieldCheck {
+    field: String,
+    field_ty: Type,
+    expected: LiteralCaseValue,
+}
+
+type RecordArm<'a> = (
+    &'a Expr,
+    Option<String>,
+    Vec<RecordFieldBind>,
+    Vec<RecordFieldCheck>,
+    Option<&'a Expr>,
+);
+
+type RecordCasePatternInfo = (
+    String,
+    Option<String>,
+    Vec<RecordFieldBind>,
+    Vec<RecordFieldCheck>,
+);
+
 #[allow(clippy::too_many_arguments)]
 fn lower_bool_case(
     scrutinee: &Expr,
@@ -1014,6 +1043,19 @@ fn lower_bool_case(
     known_record_defs: &KnownRecordDefs,
 ) -> Option<HirExprKind> {
     if let Some(kind) = lower_literal_case(
+        scrutinee,
+        arms,
+        ty_hint.clone(),
+        unit_variant_tags,
+        qualified_variant_tags,
+        pattern_variant_tags,
+        pattern_qualified_tags,
+        known_record_defs,
+    ) {
+        return Some(kind);
+    }
+
+    if let Some(kind) = lower_record_case(
         scrutinee,
         arms,
         ty_hint.clone(),
@@ -1554,6 +1596,333 @@ fn lower_literal_case(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+fn lower_record_case(
+    scrutinee: &Expr,
+    arms: &[CaseArm],
+    ty_hint: Option<Type>,
+    unit_variant_tags: &UnitVariantTags,
+    qualified_variant_tags: &QualifiedUnitVariantTags,
+    pattern_variant_tags: &PatternVariantTags,
+    pattern_qualified_tags: &QualifiedPatternVariantTags,
+    known_record_defs: &KnownRecordDefs,
+) -> Option<HirExprKind> {
+    enum RecordFallbackArm<'a> {
+        Wild {
+            body: &'a Expr,
+            guard: Option<&'a Expr>,
+        },
+        Var {
+            name: String,
+            body: &'a Expr,
+            guard: Option<&'a Expr>,
+        },
+    }
+
+    let mut record_arms: Vec<RecordArm<'_>> = Vec::new();
+    let mut fallback_arms: Vec<RecordFallbackArm<'_>> = Vec::new();
+    let mut record_name: Option<String> = None;
+    for arm in arms {
+        match &arm.pattern.node {
+            PatternKind::Wildcard => fallback_arms.push(RecordFallbackArm::Wild {
+                body: &arm.body,
+                guard: arm.guard.as_deref(),
+            }),
+            PatternKind::Var(name) => fallback_arms.push(RecordFallbackArm::Var {
+                name: name.clone(),
+                body: &arm.body,
+                guard: arm.guard.as_deref(),
+            }),
+            pattern => {
+                let (pattern_record_name, bind_name, field_binds, field_checks) =
+                    record_case_pattern_info_from_pattern(pattern)?;
+                match &record_name {
+                    None => record_name = Some(pattern_record_name),
+                    Some(existing) if existing == &pattern_record_name => {}
+                    _ => return None,
+                }
+                record_arms.push((
+                    &arm.body,
+                    bind_name,
+                    field_binds,
+                    field_checks,
+                    arm.guard.as_deref(),
+                ));
+            }
+        }
+    }
+
+    if record_arms.is_empty() {
+        return None;
+    }
+
+    let return_ty = ty_hint.clone().unwrap_or(Type::Dynamic);
+
+    let lowered_scrutinee = lower_expr(
+        scrutinee,
+        None,
+        unit_variant_tags,
+        qualified_variant_tags,
+        pattern_variant_tags,
+        pattern_qualified_tags,
+        known_record_defs,
+    );
+    let safe_scrutinee = matches!(lowered_scrutinee.kind, HirExprKind::Var(_) | HirExprKind::Lit(_));
+    let (scrutinee_expr, setup_expr) = if safe_scrutinee {
+        (lowered_scrutinee.clone(), None)
+    } else {
+        // Avoid re-evaluating arbitrary scrutinee expressions in each arm condition.
+        let temp_name = format!(
+            "__kea_case_scrutinee${}_{}",
+            scrutinee.span.start, scrutinee.span.end
+        );
+        let temp_var = HirExpr {
+            kind: HirExprKind::Var(temp_name.clone()),
+            ty: lowered_scrutinee.ty.clone(),
+            span: scrutinee.span,
+        };
+        let setup = HirExpr {
+            kind: HirExprKind::Let {
+                pattern: HirPattern::Var(temp_name),
+                value: Box::new(lowered_scrutinee),
+            },
+            ty: temp_var.ty.clone(),
+            span: scrutinee.span,
+        };
+        (temp_var, Some(setup))
+    };
+
+    let unit_else = HirExpr {
+        kind: HirExprKind::Lit(Lit::Unit),
+        ty: Type::Unit,
+        span: scrutinee.span,
+    };
+    let mut else_expr: Option<HirExpr> = None;
+    for fallback in fallback_arms.into_iter().rev() {
+        match fallback {
+            RecordFallbackArm::Wild { body, guard } => {
+                let then_branch = lower_expr(
+                    body,
+                    ty_hint.clone(),
+                    unit_variant_tags,
+                    qualified_variant_tags,
+                    pattern_variant_tags,
+                    pattern_qualified_tags,
+                    known_record_defs,
+                );
+                let Some(guard_expr) = guard else {
+                    // Unconditional fallback shadows any later fallback arm.
+                    else_expr = Some(then_branch);
+                    continue;
+                };
+                let condition = lower_expr(
+                    guard_expr,
+                    None,
+                    unit_variant_tags,
+                    qualified_variant_tags,
+                    pattern_variant_tags,
+                    pattern_qualified_tags,
+                    known_record_defs,
+                );
+                else_expr = Some(HirExpr {
+                    kind: HirExprKind::If {
+                        condition: Box::new(condition),
+                        then_branch: Box::new(then_branch),
+                        else_branch: Some(Box::new(else_expr.clone().unwrap_or_else(|| {
+                            HirExpr {
+                                kind: unit_else.kind.clone(),
+                                ty: return_ty.clone(),
+                                span: scrutinee.span,
+                            }
+                        }))),
+                    },
+                    ty: return_ty.clone(),
+                    span: scrutinee.span,
+                });
+            }
+            RecordFallbackArm::Var { name, body, guard } => {
+                let binds =
+                    build_record_arm_bindings(Some(name.as_str()), &[], &scrutinee_expr);
+                let then_body = lower_expr(
+                    body,
+                    ty_hint.clone(),
+                    unit_variant_tags,
+                    qualified_variant_tags,
+                    pattern_variant_tags,
+                    pattern_qualified_tags,
+                    known_record_defs,
+                );
+                let then_branch = if binds.is_empty() {
+                    then_body
+                } else {
+                    let mut block_exprs = binds;
+                    block_exprs.push(then_body.clone());
+                    HirExpr {
+                        kind: HirExprKind::Block(block_exprs),
+                        ty: then_body.ty,
+                        span: then_body.span,
+                    }
+                };
+                let else_branch = else_expr.clone().unwrap_or_else(|| HirExpr {
+                    kind: unit_else.kind.clone(),
+                    ty: return_ty.clone(),
+                    span: scrutinee.span,
+                });
+                if let Some(guard_expr) = guard {
+                    let lowered_guard = lower_expr(
+                        guard_expr,
+                        None,
+                        unit_variant_tags,
+                        qualified_variant_tags,
+                        pattern_variant_tags,
+                        pattern_qualified_tags,
+                        known_record_defs,
+                    );
+                    let mut guard_bindings =
+                        build_record_arm_bindings(Some(name.as_str()), &[], &scrutinee_expr);
+                    let condition = if guard_bindings.is_empty() {
+                        lowered_guard
+                    } else {
+                        guard_bindings.push(lowered_guard);
+                        HirExpr {
+                            kind: HirExprKind::Block(guard_bindings),
+                            ty: Type::Bool,
+                            span: scrutinee.span,
+                        }
+                    };
+                    else_expr = Some(HirExpr {
+                        kind: HirExprKind::If {
+                            condition: Box::new(condition),
+                            then_branch: Box::new(then_branch),
+                            else_branch: Some(Box::new(else_branch)),
+                        },
+                        ty: return_ty.clone(),
+                        span: scrutinee.span,
+                    });
+                } else {
+                    else_expr = Some(then_branch);
+                }
+            }
+        }
+    }
+
+    for (body, bind_name, field_binds, field_checks, guard_expr) in record_arms.into_iter().rev() {
+        let mut condition: Option<HirExpr> = None;
+        for field_check in &field_checks {
+            let field_expr = HirExpr {
+                kind: HirExprKind::FieldAccess {
+                    expr: Box::new(scrutinee_expr.clone()),
+                    field: field_check.field.clone(),
+                },
+                ty: field_check.field_ty.clone(),
+                span: scrutinee.span,
+            };
+            let expected_expr = HirExpr {
+                kind: HirExprKind::Lit(literal_case_lit(field_check.expected)),
+                ty: literal_case_type(field_check.expected),
+                span: scrutinee.span,
+            };
+            let next = HirExpr {
+                kind: HirExprKind::Binary {
+                    op: BinOp::Eq,
+                    left: Box::new(field_expr),
+                    right: Box::new(expected_expr),
+                },
+                ty: Type::Bool,
+                span: scrutinee.span,
+            };
+            condition = Some(match condition {
+                Some(existing) => HirExpr {
+                    kind: HirExprKind::Binary {
+                        op: BinOp::And,
+                        left: Box::new(existing),
+                        right: Box::new(next),
+                    },
+                    ty: Type::Bool,
+                    span: scrutinee.span,
+                },
+                None => next,
+            });
+        }
+
+        if let Some(guard_expr) = guard_expr {
+            let guard_expr = lower_expr(
+                guard_expr,
+                None,
+                unit_variant_tags,
+                qualified_variant_tags,
+                pattern_variant_tags,
+                pattern_qualified_tags,
+                known_record_defs,
+            );
+            let mut binds = build_record_arm_bindings(
+                bind_name.as_deref(),
+                &field_binds,
+                &scrutinee_expr,
+            );
+            let lowered_guard = if binds.is_empty() {
+                guard_expr
+            } else {
+                binds.push(guard_expr);
+                HirExpr {
+                    kind: HirExprKind::Block(binds),
+                    ty: Type::Bool,
+                    span: scrutinee.span,
+                }
+            };
+            condition = Some(match condition {
+                Some(existing) => HirExpr {
+                    kind: HirExprKind::Binary {
+                        op: BinOp::And,
+                        left: Box::new(existing),
+                        right: Box::new(lowered_guard),
+                    },
+                    ty: Type::Bool,
+                    span: scrutinee.span,
+                },
+                None => lowered_guard,
+            });
+        }
+
+        let then_branch = lower_record_arm_body(
+            body,
+            bind_name,
+            field_binds,
+            &scrutinee_expr,
+            ty_hint.clone(),
+            unit_variant_tags,
+            qualified_variant_tags,
+            pattern_variant_tags,
+            pattern_qualified_tags,
+            known_record_defs,
+        );
+
+        let Some(condition) = condition else {
+            // Unconditional record arm shadows any later arm.
+            else_expr = Some(then_branch);
+            continue;
+        };
+
+        let next = HirExpr {
+            kind: HirExprKind::If {
+                condition: Box::new(condition),
+                then_branch: Box::new(then_branch),
+                else_branch: else_expr.as_ref().map(|expr| Box::new(expr.clone())),
+            },
+            ty: return_ty.clone(),
+            span: scrutinee.span,
+        };
+        else_expr = Some(next);
+    }
+
+    let lowered = else_expr?;
+    if let Some(setup) = setup_expr {
+        Some(HirExprKind::Block(vec![setup, lowered]))
+    } else {
+        Some(lowered.kind)
+    }
+}
+
 fn literal_case_values_from_pattern(
     pattern: &PatternKind,
     pattern_variant_tags: &PatternVariantTags,
@@ -1804,6 +2173,43 @@ fn build_literal_arm_bindings(
     bindings
 }
 
+fn build_record_arm_bindings(
+    bind_name: Option<&str>,
+    field_binds: &[RecordFieldBind],
+    scrutinee_expr: &HirExpr,
+) -> Vec<HirExpr> {
+    let mut bindings = Vec::new();
+    if let Some(name) = bind_name {
+        bindings.push(HirExpr {
+            kind: HirExprKind::Let {
+                pattern: HirPattern::Var(name.to_string()),
+                value: Box::new(scrutinee_expr.clone()),
+            },
+            ty: scrutinee_expr.ty.clone(),
+            span: scrutinee_expr.span,
+        });
+    }
+    for field_bind in field_binds {
+        let field_value = HirExpr {
+            kind: HirExprKind::FieldAccess {
+                expr: Box::new(scrutinee_expr.clone()),
+                field: field_bind.field.clone(),
+            },
+            ty: field_bind.field_ty.clone(),
+            span: scrutinee_expr.span,
+        };
+        bindings.push(HirExpr {
+            kind: HirExprKind::Let {
+                pattern: HirPattern::Var(field_bind.name.clone()),
+                value: Box::new(field_value),
+            },
+            ty: field_bind.field_ty.clone(),
+            span: scrutinee_expr.span,
+        });
+    }
+    bindings
+}
+
 fn payload_binds_or_compatible(
     existing: &[ConstructorPayloadBind],
     candidate: &[ConstructorPayloadBind],
@@ -1830,6 +2236,30 @@ fn payload_checks_or_compatible(
         })
 }
 
+fn record_field_binds_or_compatible(
+    existing: &[RecordFieldBind],
+    candidate: &[RecordFieldBind],
+) -> bool {
+    existing.len() == candidate.len()
+        && existing.iter().zip(candidate.iter()).all(|(left, right)| {
+            left.name == right.name
+                && left.field == right.field
+                && left.field_ty == right.field_ty
+        })
+}
+
+fn record_field_checks_or_compatible(
+    existing: &[RecordFieldCheck],
+    candidate: &[RecordFieldCheck],
+) -> bool {
+    existing.len() == candidate.len()
+        && existing.iter().zip(candidate.iter()).all(|(left, right)| {
+            left.field == right.field
+                && left.field_ty == right.field_ty
+                && left.expected == right.expected
+        })
+}
+
 fn bool_case_fallback_compatible(pattern: &PatternKind) -> bool {
     matches!(pattern, PatternKind::Lit(Lit::Bool(_)) | PatternKind::Wildcard)
 }
@@ -1839,6 +2269,102 @@ fn literal_case_value_from_lit(lit: &Lit) -> Option<LiteralCaseValue> {
         Lit::Int(value) => Some(LiteralCaseValue::Int(*value)),
         Lit::Float(value) => Some(LiteralCaseValue::Float(*value)),
         Lit::Bool(value) => Some(LiteralCaseValue::Bool(*value)),
+        _ => None,
+    }
+}
+
+fn record_case_pattern_info_from_pattern(pattern: &PatternKind) -> Option<RecordCasePatternInfo> {
+    match pattern {
+        PatternKind::Record { name, fields, .. } => {
+            let mut seen_fields = BTreeSet::new();
+            let mut binds = Vec::new();
+            let mut checks = Vec::new();
+            for (field_name, field_pattern) in fields {
+                if !seen_fields.insert(field_name.clone()) {
+                    return None;
+                }
+                match &field_pattern.node {
+                    PatternKind::Wildcard => {}
+                    PatternKind::Var(bind_name) => {
+                        if binds.iter().any(|bind: &RecordFieldBind| bind.name == *bind_name) {
+                            return None;
+                        }
+                        binds.push(RecordFieldBind {
+                            name: bind_name.clone(),
+                            field: field_name.clone(),
+                            field_ty: Type::Dynamic,
+                        });
+                    }
+                    PatternKind::Lit(lit @ Lit::Int(_))
+                    | PatternKind::Lit(lit @ Lit::Float(_))
+                    | PatternKind::Lit(lit @ Lit::Bool(_)) => checks.push(RecordFieldCheck {
+                        field: field_name.clone(),
+                        field_ty: literal_case_type(literal_case_value_from_lit(lit)?),
+                        expected: literal_case_value_from_lit(lit)?,
+                    }),
+                    _ => return None,
+                }
+            }
+            Some((name.clone(), None, binds, checks))
+        }
+        PatternKind::Or(patterns) => {
+            let mut record_name: Option<String> = None;
+            let mut shared_bind_name: Option<String> = None;
+            let mut shared_field_binds: Option<Vec<RecordFieldBind>> = None;
+            let mut shared_field_checks: Option<Vec<RecordFieldCheck>> = None;
+            for branch in patterns {
+                let (branch_record_name, branch_bind_name, branch_field_binds, branch_field_checks) =
+                    record_case_pattern_info_from_pattern(&branch.node)?;
+                match &record_name {
+                    None => record_name = Some(branch_record_name),
+                    Some(existing) if existing == &branch_record_name => {}
+                    _ => return None,
+                }
+                match &shared_field_binds {
+                    None => shared_field_binds = Some(branch_field_binds.clone()),
+                    Some(existing)
+                        if record_field_binds_or_compatible(existing, &branch_field_binds) => {}
+                    _ => return None,
+                }
+                match &shared_field_checks {
+                    None => shared_field_checks = Some(branch_field_checks.clone()),
+                    Some(existing)
+                        if record_field_checks_or_compatible(existing, &branch_field_checks) => {}
+                    _ => return None,
+                }
+                match (&shared_bind_name, branch_bind_name) {
+                    (None, None) => {}
+                    (None, Some(name)) => shared_bind_name = Some(name),
+                    (Some(existing), Some(name)) if existing == &name => {}
+                    _ => return None,
+                }
+            }
+            Some((
+                record_name?,
+                shared_bind_name,
+                shared_field_binds.unwrap_or_default(),
+                shared_field_checks.unwrap_or_default(),
+            ))
+        }
+        PatternKind::As { pattern, name } => {
+            let (record_name, inner_bind_name, inner_field_binds, inner_field_checks) =
+                record_case_pattern_info_from_pattern(&pattern.node)?;
+            if inner_bind_name.is_some() {
+                return None;
+            }
+            if inner_field_binds
+                .iter()
+                .any(|field_bind| field_bind.name == name.node)
+            {
+                return None;
+            }
+            Some((
+                record_name,
+                Some(name.node.clone()),
+                inner_field_binds,
+                inner_field_checks,
+            ))
+        }
         _ => None,
     }
 }
@@ -1856,6 +2382,44 @@ fn literal_case_type(lit: LiteralCaseValue) -> Type {
         LiteralCaseValue::Int(_) => Type::Int,
         LiteralCaseValue::Float(_) => Type::Float,
         LiteralCaseValue::Bool(_) => Type::Bool,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn lower_record_arm_body(
+    body: &Expr,
+    bind_name: Option<String>,
+    field_binds: Vec<RecordFieldBind>,
+    scrutinee_expr: &HirExpr,
+    ty_hint: Option<Type>,
+    unit_variant_tags: &UnitVariantTags,
+    qualified_variant_tags: &QualifiedUnitVariantTags,
+    pattern_variant_tags: &PatternVariantTags,
+    pattern_qualified_tags: &QualifiedPatternVariantTags,
+    known_record_defs: &KnownRecordDefs,
+) -> HirExpr {
+    let lowered_body = lower_expr(
+        body,
+        ty_hint,
+        unit_variant_tags,
+        qualified_variant_tags,
+        pattern_variant_tags,
+        pattern_qualified_tags,
+        known_record_defs,
+    );
+    let mut bind_exprs = build_record_arm_bindings(
+        bind_name.as_deref(),
+        &field_binds,
+        scrutinee_expr,
+    );
+    if bind_exprs.is_empty() {
+        return lowered_body;
+    }
+    bind_exprs.push(lowered_body.clone());
+    HirExpr {
+        kind: HirExprKind::Block(bind_exprs),
+        ty: lowered_body.ty,
+        span: lowered_body.span,
     }
 }
 
@@ -2335,6 +2899,54 @@ mod tests {
             panic!("expected chained int case lowering");
         };
         assert!(matches!(else_branch.kind, HirExprKind::If { .. }));
+    }
+
+    #[test]
+    fn lower_function_record_pattern_case_desugars_to_if_chain() {
+        let module = parse_module_from_text(
+            "record User\n  age: Int\n  score: Int\n\nfn pick(u: User) -> Int\n  case u\n    User { age: 7, .. } -> 1\n    _ -> 0",
+        );
+        let mut env = TypeEnv::new();
+        env.bind(
+            "pick".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::pure(
+                vec![Type::Record(kea_types::RecordType {
+                    name: "User".to_string(),
+                    params: vec![],
+                    row: kea_types::RowType::closed(vec![
+                        (Label::new("age"), Type::Int),
+                        (Label::new("score"), Type::Int),
+                    ]),
+                })],
+                Type::Int,
+            ))),
+        );
+
+        let lowered = lower_module(&module, &env);
+        let function = lowered
+            .declarations
+            .iter()
+            .find_map(|decl| match decl {
+                HirDecl::Function(function) if function.name == "pick" => Some(function),
+                _ => None,
+            })
+            .expect("expected lowered pick function");
+
+        let HirExprKind::If { condition, .. } = &function.body.kind else {
+            panic!("expected record case to lower to if expression");
+        };
+        let HirExprKind::Binary {
+            op: BinOp::Eq,
+            left,
+            ..
+        } = &condition.kind
+        else {
+            panic!("expected record case condition to compare field with literal");
+        };
+        assert!(matches!(
+            left.kind,
+            HirExprKind::FieldAccess { ref field, .. } if field == "age"
+        ));
     }
 
     #[test]
