@@ -1,5 +1,6 @@
 import Kea.Properties.EffectOperationTyping
 import Kea.Properties.TailResumptiveClassification
+import Kea.Properties.HandlerClosedAwareContracts
 
 /-!
   Kea.Properties.TailCapabilityComposition
@@ -133,6 +134,25 @@ theorem tail_resumptive_wellTyped_capability_direct_call_sound
   exact wellTyped_capability_direct_call_sound
     c baseEffects capability h_wellTyped h_expr h_ne
 
+theorem wellTyped_capability_direct_call_sound_closedAware
+    (c : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (_h_wellTyped : HandleClauseContract.wellTypedSlice c)
+    (h_expr :
+      c.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_ne : capability ≠ c.handled) :
+    RowFields.has
+      (EffectRow.fields (HandlerClosedAwareContracts.resultEffectsClosedAware c))
+      capability = true := by
+  have h_expr_capability :
+      RowFields.has (EffectRow.fields c.exprEffects) capability = true := by
+    rw [h_expr]
+    exact EffectOperationTyping.performOperation_adds_effect baseEffects capability
+  exact HandlerClosedAwareContracts.resultEffectsClosedAware_preserves_other_effects
+    c capability h_ne h_expr_capability
+
 structure TailCapabilityBundle
     (c : HandleClauseContract)
     (capability : Label) where
@@ -192,6 +212,57 @@ theorem tailCapabilityBundle_resultCapability_of_wellTyped
       (EffectRow.fields (HandleClauseContract.resultEffects c))
       capability = true :=
   (tailCapabilityBundle_of_wellTyped c baseEffects capability h_wellTyped h_expr h_ne).resultCapability
+
+structure TailCapabilityClosedAwareBundle
+    (c : HandleClauseContract)
+    (capability : Label) where
+  closedAwareResultCapability :
+    RowFields.has
+      (EffectRow.fields (HandlerClosedAwareContracts.resultEffectsClosedAware c))
+      capability = true
+  notInvalid :
+    TailResumptiveClassification.classifyClause c ≠
+      TailResumptiveClassification.TailResumptiveClass.invalid
+
+theorem tailCapabilityClosedAwareBundle_of_wellTyped
+    (c : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice c)
+    (h_expr :
+      c.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_ne : capability ≠ c.handled) :
+    TailCapabilityClosedAwareBundle c capability := by
+  have h_result :
+      RowFields.has
+        (EffectRow.fields (HandlerClosedAwareContracts.resultEffectsClosedAware c))
+        capability = true :=
+    wellTyped_capability_direct_call_sound_closedAware
+      c baseEffects capability h_wellTyped h_expr h_ne
+  have h_not_invalid :
+      TailResumptiveClassification.classifyClause c ≠
+        TailResumptiveClassification.TailResumptiveClass.invalid :=
+    TailResumptiveClassification.tail_resumptive_bundle_notInvalid c h_wellTyped
+  exact {
+    closedAwareResultCapability := h_result
+    notInvalid := h_not_invalid
+  }
+
+theorem tailCapabilityClosedAwareBundle_resultCapability_of_wellTyped
+    (c : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice c)
+    (h_expr :
+      c.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_ne : capability ≠ c.handled) :
+    RowFields.has
+      (EffectRow.fields (HandlerClosedAwareContracts.resultEffectsClosedAware c))
+      capability = true :=
+  (tailCapabilityClosedAwareBundle_of_wellTyped
+    c baseEffects capability h_wellTyped h_expr h_ne).closedAwareResultCapability
 
 end TailCapabilityComposition
 end Kea
