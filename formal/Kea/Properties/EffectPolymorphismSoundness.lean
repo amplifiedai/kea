@@ -292,7 +292,8 @@ theorem effectPolyHandlerSchema_sound
       RowFields.has
         (EffectRow.fields (HandleClauseContract.resultEffects s.clause))
         s.clause.handled = false :=
-    HandleClauseContract.wellTypedSlice_implies_handled_removed s.clause s.h_wellTyped
+    HandlerClosedAwareContracts.wellTypedSlice_implies_handled_removed_legacy_via_closedAware
+      s.clause s.h_wellTyped
   have h_removed_fail :
       RowFields.has
         (EffectRow.fields (HandleClauseContract.resultEffects s.clause))

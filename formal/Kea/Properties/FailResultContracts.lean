@@ -9,7 +9,7 @@
   handler-typing integration surface.
 -/
 
-import Kea.Properties.HandlerTypingContracts
+import Kea.Properties.HandlerClosedAwareContracts
 
 namespace Kea
 namespace FailResultContracts
@@ -203,7 +203,8 @@ theorem failResultContract_sound
   have h_removed_handled :
       RowFields.has (EffectRow.fields (HandleClauseContract.resultEffects fc.clause))
         fc.clause.handled = false :=
-    HandleClauseContract.wellTypedSlice_implies_handled_removed fc.clause fc.h_wellTyped
+    HandlerClosedAwareContracts.wellTypedSlice_implies_handled_removed_legacy_via_closedAware
+      fc.clause fc.h_wellTyped
   have h_removed_fail :
       RowFields.has (EffectRow.fields (HandleClauseContract.resultEffects fc.clause)) failLabel = false := by
     simpa [failLabel, fc.h_failZero.1] using h_removed_handled
