@@ -22,6 +22,7 @@ import Kea.Properties.HandlerEffectRemoval
 import Kea.Properties.HandlerAbsentEffectNoop
 import Kea.Properties.ResumeLinearity
 import Kea.Properties.HandlerTypingContracts
+import Kea.Properties.HandlerClosedAwareContracts
 import Kea.Properties.EffectOperationTyping
 import Kea.Properties.TailResumptiveClassification
 import Kea.Properties.TailCapabilityComposition

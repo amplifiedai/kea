@@ -6035,6 +6035,30 @@ alignment established in preceding closure probe).
 - Formal layer now has a direct, runtime-aligned theorem surface for
   absent-effect no-op semantics in the closed-row case.
 
+### 2026-02-26: clause-level closed-aware bridge (proof-only)
+
+**Context**: Added a bridge module that lifts handled-absent closed-row no-op
+semantics into the clause-level handler contract API.
+
+**MCP tools used**: none (proof-only integration layer; runtime alignment for
+handled-absent no-op already established in preceding probe).
+
+**Lean side**:
+- Added `Kea/Properties/HandlerClosedAwareContracts.lean` with:
+  - `resultEffectsCoreClosedAware`
+  - `resultEffectsClosedAware`
+  - `resultEffectsCoreClosedAware_noop_of_handled_absent_closed`
+  - `resultEffectsCoreClosedAware_eq_normalized_of_present_or_open`
+  - `resultEffectsClosedAware_*` bridge lemmas
+- Imported module in `formal/Kea.lean`.
+- Verified with `cd formal && lake build` (pass).
+
+**Classify**: N/A (proof-only step).
+
+**Outcome**:
+- Clause-level formal APIs can now choose closed-aware semantics directly, while
+  retaining explicit equivalence to normalized semantics on present/open cases.
+
 ### 2026-02-26: fail/result equivalence capstone module (proof-only)
 
 **Context**: Added a dedicated theorem API for Fail/Result equivalence so
