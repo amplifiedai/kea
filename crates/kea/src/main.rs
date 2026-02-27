@@ -1333,6 +1333,20 @@ mod tests {
     }
 
     #[test]
+    fn compile_and_execute_sum_payload_record_pattern_exit_code() {
+        let source_path = write_temp_source(
+            "record User\n  age: Int\n\ntype Wrap = W(User) | N\n\nfn main() -> Int\n  case W(User { age: 7 })\n    W(User { age: n }) -> n + 2\n    N -> 0\n",
+            "kea-cli-sum-record-payload-pattern",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 9);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_payload_constructor_expression_arg_exit_code() {
         let source_path = write_temp_source(
             "type Flag = Yep(Int) | Nope\n\nfn main() -> Int\n  case Yep(1 + 6)\n    Yep(n) -> n\n    Nope -> 0\n",
