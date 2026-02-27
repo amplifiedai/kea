@@ -1864,6 +1864,20 @@ mod tests {
     }
 
     #[test]
+    fn compile_and_execute_int8_try_from_fixed_width_input_exit_code() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  let x: Int8 = 42\n  case Int8.try_from(x)\n    Some(v) -> v + 0\n    None -> 0\n",
+            "kea-cli-int8-try-from-int8-input",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("Int8.try_from should accept Int8 input");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_int8_try_from_none_exit_code() {
         let source_path = write_temp_source(
             "fn id(x: Int) -> Int\n  x\n\nfn main() -> Int\n  case Int8.try_from(id(200))\n    Some(_) -> 0\n    None -> 1\n",
@@ -1904,6 +1918,23 @@ mod tests {
         assert!(
             err.contains("does not fit in `Int8`"),
             "expected narrowing overflow diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_rejects_try_from_non_integer_input() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  case Int8.try_from(\"oops\")\n    Some(_) -> 0\n    None -> 1\n",
+            "kea-cli-try-from-non-integer",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("non-integer try_from should fail");
+        assert!(
+            err.contains("expects an integer input"),
+            "expected non-integer conversion diagnostic, got: {err}"
         );
 
         let _ = std::fs::remove_file(source_path);
