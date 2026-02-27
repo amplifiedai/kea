@@ -11391,6 +11391,74 @@ theorem principalNoUnifyRunBundleField_of_success_via_masterConsequenceCapstoneS
     h_no h_ok
 
 /--
+Master-consequence-capstone-suite no-unify convenience wrapper: package
+expression no-unify consequences from one successful run.
+-/
+theorem principalNoUnifyExprRunBundleConsequences_of_success_via_masterConsequenceCapstoneSuite
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalNoUnifyExprRunBundleConsequences st fuel env e st' ty := by
+  refine {
+    core := principalCoreExpr_of_success_noUnify_via_masterConsequenceCapstoneSuite h_no h_ok
+    preconditionedAny := ?_
+    preconditioned := ?_
+    preconditionedAnyIffCore := ?_
+    preconditionedIffCore := ?_
+    hookIrrelevant := ?_
+  }
+  · intro h_app h_proj
+    exact principalPreconditionedExpr_anyHooks_of_success_noUnify_via_masterConsequenceCapstoneSuite
+      h_no h_ok h_app h_proj
+  · intro h_hooks
+    exact principalPreconditionedExpr_of_success_noUnify_via_masterConsequenceCapstoneSuite
+      h_no h_ok h_hooks
+  · intro h_app h_proj
+    exact principalPreconditionedCoreIffExpr_anyHooks_of_success_noUnify_via_masterConsequenceCapstoneSuite
+      h_no h_ok h_app h_proj
+  · intro h_hooks
+    exact principalPreconditionedCoreIffExpr_of_success_noUnify_via_masterConsequenceCapstoneSuite
+      h_no h_ok h_hooks
+  · intro h_app₁ h_proj₁ h_app₂ h_proj₂
+    exact principalPreconditionedExpr_hookIrrelevant_of_success_noUnify_via_masterConsequenceCapstoneSuite
+      h_no h_ok
+
+/--
+Master-consequence-capstone-suite no-unify convenience wrapper: package field
+no-unify consequences from one successful field run.
+-/
+theorem principalNoUnifyFieldRunBundleConsequences_of_success_via_masterConsequenceCapstoneSuite
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalNoUnifyFieldRunBundleConsequences st fuel env fs st' rf := by
+  refine {
+    core := principalCoreField_of_success_noUnify_via_masterConsequenceCapstoneSuite h_no h_ok
+    preconditionedAny := ?_
+    preconditioned := ?_
+    preconditionedAnyIffCore := ?_
+    preconditionedIffCore := ?_
+    hookIrrelevant := ?_
+  }
+  · intro h_app h_proj
+    exact principalPreconditionedField_anyHooks_of_success_noUnify_via_masterConsequenceCapstoneSuite
+      h_no h_ok h_app h_proj
+  · intro h_hooks
+    exact principalPreconditionedField_of_success_noUnify_via_masterConsequenceCapstoneSuite
+      h_no h_ok h_hooks
+  · intro h_app h_proj
+    exact principalPreconditionedCoreIffField_anyHooks_of_success_noUnify_via_masterConsequenceCapstoneSuite
+      h_no h_ok h_app h_proj
+  · intro h_hooks
+    exact principalPreconditionedCoreIffField_of_success_noUnify_via_masterConsequenceCapstoneSuite
+      h_no h_ok h_hooks
+  · intro h_app₁ h_proj₁ h_app₂ h_proj₂
+    exact principalPreconditionedField_hookIrrelevant_of_success_noUnify_via_masterConsequenceCapstoneSuite
+      h_no h_ok
+
+/--
 One-hop projection: arbitrary-success all-hooks expression run-bundle from the
 master run-bundle consequence suite.
 -/
