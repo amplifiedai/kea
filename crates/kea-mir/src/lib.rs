@@ -450,18 +450,42 @@ fn schedule_trailing_releases_after_last_use(function: &mut MirFunction) {
 
 fn elide_adjacent_retain_release_pairs(function: &mut MirFunction) {
     for block in &mut function.blocks {
-        let mut rebuilt = Vec::with_capacity(block.instructions.len());
+        let mut instructions = block.instructions.clone();
         let mut idx = 0usize;
-        while idx < block.instructions.len() {
-            if idx + 1 < block.instructions.len()
-                && let MirInst::Retain { value: retained } = &block.instructions[idx]
-                && let MirInst::Release { value: released } = &block.instructions[idx + 1]
+        while idx < instructions.len() {
+            let Some(retained) = (match &instructions[idx] {
+                MirInst::Retain { value } => Some(value.clone()),
+                _ => None,
+            }) else {
+                idx += 1;
+                continue;
+            };
+            let mut probe = idx + 1;
+            while probe < instructions.len() && matches!(instructions[probe], MirInst::Nop) {
+                probe += 1;
+            }
+            if probe < instructions.len()
+                && matches!(&instructions[probe], MirInst::Release { value } if *value == retained)
+            {
+                instructions.remove(probe);
+                instructions.remove(idx);
+                continue;
+            }
+            idx += 1;
+        }
+
+        let mut rebuilt = Vec::with_capacity(instructions.len());
+        let mut idx = 0usize;
+        while idx < instructions.len() {
+            if idx + 1 < instructions.len()
+                && let MirInst::Retain { value: retained } = &instructions[idx]
+                && let MirInst::Release { value: released } = &instructions[idx + 1]
                 && retained == released
             {
                 idx += 2;
                 continue;
             }
-            rebuilt.push(block.instructions[idx].clone());
+            rebuilt.push(instructions[idx].clone());
             idx += 1;
         }
         block.instructions = rebuilt;
@@ -5929,6 +5953,54 @@ mod tests {
                 MirInst::Nop,
             ],
             "adjacent retain/release pair should be removed"
+        );
+    }
+
+    #[test]
+    fn elide_adjacent_retain_release_pairs_removes_nop_separated_churn() {
+        let mut function = MirFunction {
+            name: "main".to_string(),
+            signature: MirFunctionSignature {
+                params: vec![],
+                ret: Type::Unit,
+                effects: EffectRow::pure(),
+            },
+            entry: MirBlockId(0),
+            blocks: vec![MirBlock {
+                id: MirBlockId(0),
+                params: vec![],
+                instructions: vec![
+                    MirInst::Const {
+                        dest: MirValueId(0),
+                        literal: MirLiteral::Int(7),
+                    },
+                    MirInst::Retain {
+                        value: MirValueId(0),
+                    },
+                    MirInst::Nop,
+                    MirInst::Nop,
+                    MirInst::Release {
+                        value: MirValueId(0),
+                    },
+                ],
+                terminator: MirTerminator::Return {
+                    value: Some(MirValueId(0)),
+                },
+            }],
+        };
+
+        elide_adjacent_retain_release_pairs(&mut function);
+        assert_eq!(
+            function.blocks[0].instructions,
+            vec![
+                MirInst::Const {
+                    dest: MirValueId(0),
+                    literal: MirLiteral::Int(7),
+                },
+                MirInst::Nop,
+                MirInst::Nop,
+            ],
+            "nop-separated retain/release pair should be removed"
         );
     }
 
