@@ -1025,11 +1025,17 @@ type RecordArm<'a> = (
 );
 
 type RecordCasePatternInfo = (
-    String,
+    RecordCaseCarrier,
     Option<String>,
     Vec<RecordFieldBind>,
     Vec<RecordFieldCheck>,
 );
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum RecordCaseCarrier {
+    Named(String),
+    Anonymous,
+}
 
 #[allow(clippy::too_many_arguments)]
 fn lower_bool_case(
@@ -1621,7 +1627,7 @@ fn lower_record_case(
 
     let mut record_arms: Vec<RecordArm<'_>> = Vec::new();
     let mut fallback_arms: Vec<RecordFallbackArm<'_>> = Vec::new();
-    let mut record_name: Option<String> = None;
+    let mut record_carrier: Option<RecordCaseCarrier> = None;
     for arm in arms {
         match &arm.pattern.node {
             PatternKind::Wildcard => fallback_arms.push(RecordFallbackArm::Wild {
@@ -1634,11 +1640,11 @@ fn lower_record_case(
                 guard: arm.guard.as_deref(),
             }),
             pattern => {
-                let (pattern_record_name, bind_name, field_binds, field_checks) =
+                let (pattern_record_carrier, bind_name, field_binds, field_checks) =
                     record_case_pattern_info_from_pattern(pattern)?;
-                match &record_name {
-                    None => record_name = Some(pattern_record_name),
-                    Some(existing) if existing == &pattern_record_name => {}
+                match &record_carrier {
+                    None => record_carrier = Some(pattern_record_carrier),
+                    Some(existing) if existing == &pattern_record_carrier => {}
                     _ => return None,
                 }
                 record_arms.push((
@@ -2305,19 +2311,56 @@ fn record_case_pattern_info_from_pattern(pattern: &PatternKind) -> Option<Record
                     _ => return None,
                 }
             }
-            Some((name.clone(), None, binds, checks))
+            Some((RecordCaseCarrier::Named(name.clone()), None, binds, checks))
+        }
+        PatternKind::AnonRecord { fields, .. } => {
+            let mut seen_fields = BTreeSet::new();
+            let mut binds = Vec::new();
+            let mut checks = Vec::new();
+            for (field_name, field_pattern) in fields {
+                if !seen_fields.insert(field_name.clone()) {
+                    return None;
+                }
+                match &field_pattern.node {
+                    PatternKind::Wildcard => {}
+                    PatternKind::Var(bind_name) => {
+                        if binds.iter().any(|bind: &RecordFieldBind| bind.name == *bind_name) {
+                            return None;
+                        }
+                        binds.push(RecordFieldBind {
+                            name: bind_name.clone(),
+                            field: field_name.clone(),
+                            field_ty: Type::Dynamic,
+                        });
+                    }
+                    PatternKind::Lit(lit @ Lit::Int(_))
+                    | PatternKind::Lit(lit @ Lit::Float(_))
+                    | PatternKind::Lit(lit @ Lit::Bool(_)) => checks.push(RecordFieldCheck {
+                        field: field_name.clone(),
+                        field_ty: literal_case_type(literal_case_value_from_lit(lit)?),
+                        expected: literal_case_value_from_lit(lit)?,
+                    }),
+                    _ => return None,
+                }
+            }
+            Some((RecordCaseCarrier::Anonymous, None, binds, checks))
         }
         PatternKind::Or(patterns) => {
-            let mut record_name: Option<String> = None;
+            let mut record_carrier: Option<RecordCaseCarrier> = None;
             let mut shared_bind_name: Option<String> = None;
             let mut shared_field_binds: Option<Vec<RecordFieldBind>> = None;
             let mut shared_field_checks: Option<Vec<RecordFieldCheck>> = None;
             for branch in patterns {
-                let (branch_record_name, branch_bind_name, branch_field_binds, branch_field_checks) =
+                let (
+                    branch_record_carrier,
+                    branch_bind_name,
+                    branch_field_binds,
+                    branch_field_checks,
+                ) =
                     record_case_pattern_info_from_pattern(&branch.node)?;
-                match &record_name {
-                    None => record_name = Some(branch_record_name),
-                    Some(existing) if existing == &branch_record_name => {}
+                match &record_carrier {
+                    None => record_carrier = Some(branch_record_carrier),
+                    Some(existing) if existing == &branch_record_carrier => {}
                     _ => return None,
                 }
                 match &shared_field_binds {
@@ -2340,14 +2383,14 @@ fn record_case_pattern_info_from_pattern(pattern: &PatternKind) -> Option<Record
                 }
             }
             Some((
-                record_name?,
+                record_carrier?,
                 shared_bind_name,
                 shared_field_binds.unwrap_or_default(),
                 shared_field_checks.unwrap_or_default(),
             ))
         }
         PatternKind::As { pattern, name } => {
-            let (record_name, inner_bind_name, inner_field_binds, inner_field_checks) =
+            let (record_carrier, inner_bind_name, inner_field_binds, inner_field_checks) =
                 record_case_pattern_info_from_pattern(&pattern.node)?;
             if inner_bind_name.is_some() {
                 return None;
@@ -2359,7 +2402,7 @@ fn record_case_pattern_info_from_pattern(pattern: &PatternKind) -> Option<Record
                 return None;
             }
             Some((
-                record_name,
+                record_carrier,
                 Some(name.node.clone()),
                 inner_field_binds,
                 inner_field_checks,
@@ -2942,6 +2985,50 @@ mod tests {
         } = &condition.kind
         else {
             panic!("expected record case condition to compare field with literal");
+        };
+        assert!(matches!(
+            left.kind,
+            HirExprKind::FieldAccess { ref field, .. } if field == "age"
+        ));
+    }
+
+    #[test]
+    fn lower_function_anon_record_pattern_case_desugars_to_if_chain() {
+        let module = parse_module_from_text(
+            "fn pick(u: { age: Int, score: Int }) -> Int\n  case u\n    #{ age: 7, .. } -> 1\n    _ -> 0",
+        );
+        let mut env = TypeEnv::new();
+        env.bind(
+            "pick".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::pure(
+                vec![Type::AnonRecord(kea_types::RowType::closed(vec![
+                    (Label::new("age"), Type::Int),
+                    (Label::new("score"), Type::Int),
+                ]))],
+                Type::Int,
+            ))),
+        );
+
+        let lowered = lower_module(&module, &env);
+        let function = lowered
+            .declarations
+            .iter()
+            .find_map(|decl| match decl {
+                HirDecl::Function(function) if function.name == "pick" => Some(function),
+                _ => None,
+            })
+            .expect("expected lowered pick function");
+
+        let HirExprKind::If { condition, .. } = &function.body.kind else {
+            panic!("expected anon record case to lower to if expression");
+        };
+        let HirExprKind::Binary {
+            op: BinOp::Eq,
+            left,
+            ..
+        } = &condition.kind
+        else {
+            panic!("expected anon record case condition to compare field with literal");
         };
         assert!(matches!(
             left.kind,
