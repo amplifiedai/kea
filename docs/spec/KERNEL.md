@@ -1618,11 +1618,31 @@ for x in xs
   IO.println(x.show())
 ```
 
-`for x in xs` desugars to `Enumerable.to_seq(xs)` followed by
-sequential consumption. The body has type `Unit`. `for` is a statement,
-not an expression — it always returns `Unit`.
+`for x in xs` requires `xs: T` where `T: Iterable`. The compiler
+desugars to a tail-recursive traversal of the iterator:
+
+```
+-- compiler-internal desugaring (not surface syntax):
+let iter = Iterable.iter(xs)
+-- recursive: pull next element, run body, continue
+fn __for_loop(it) =
+  case Iterator.next(it)
+    None -> ()
+    Some (x, rest) ->
+      <body using x>
+      __for_loop(rest)
+__for_loop(iter)
+```
+
+The body has type `Unit`. `for` is a statement, not an expression —
+it always returns `Unit`. The recursive call is in tail position
+and compiles to a loop.
 
 For collecting results, use `.map()` or `.fold()` instead of `for`.
+
+`for` requires the `Iterable` and `Iterator` traits (landing in 0g).
+Until then, `for` is not available — use explicit recursion or
+`.map()`/`.fold()` on lists.
 
 ### 10.6 With Expressions (Callback Flattening)
 
@@ -1775,16 +1795,20 @@ while condition
   body
 ```
 
-`while` is syntactic sugar for tail-recursive iteration. The above
-desugars to:
+`while` is syntactic sugar for tail-recursive iteration. The
+compiler desugars to:
 
-```kea
-let rec loop () =
-  if condition
-    body
-    loop ()
-loop ()
 ```
+-- compiler-internal desugaring (not surface syntax):
+fn __while_loop() =
+  if condition
+    <body>
+    __while_loop()
+__while_loop()
+```
+
+The recursive call is in tail position and compiles to a machine
+loop. No stack growth.
 
 `while` has type `Unit`. It is a statement, not an expression.
 For accumulating results, use explicit recursion or `.fold()`.
