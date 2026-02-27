@@ -118,7 +118,7 @@ trait Recipe
   type Input    -- StableHIR node type (row-polymorphic)
   type Output   -- transformed IR or target code
   fn validate(_ input: Self.Input) -[TypeCheck, Diagnose]> Result(Self.Input, Diag)
-  fn transform(_ input: Self.Input) -[Lower]> Self.Output
+  fn transform(_ input: Self.Input) -> Self.Output
 ```
 
 Both use decomposed compilation effects. Both produce diagnostics

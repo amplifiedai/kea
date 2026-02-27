@@ -604,20 +604,35 @@ trait Grammar
   type Out
   type Err
 
-  fn parse(_ src: String) -[Compile]> Result(Self.Ast, Self.Err)
-  fn check(_ ast: Self.Ast, _ ctx: GrammarCtx) -[Compile]> Result(Typed(Self.Out), Diag)
-  fn lower(_ typed: Typed(Self.Out)) -[Compile]> LoweredExpr
+  fn parse(_ src: String) -[Parse]> Result(Self.Ast, Self.Err)
+  fn check(_ ast: Self.Ast) -[TypeCheck]> Result(Typed(Self.Out), Diag)
+  fn lower(_ typed: Typed(Self.Out)) -[Lower]> LoweredExpr
 ```
 
-`embed <Grammar> { ... }` invokes this trait at compile time. The
-grammar parses its input, type-checks it (with access to the host
-type system via `GrammarCtx`), and lowers to normal Kea IR. At
-runtime, there is no grammar machinery. The abstraction compiles
+`embed <Grammar> { ... }` invokes this trait at compile time. Each
+method declares exactly the compilation effects it needs:
+
+- **`parse`** runs under `Parse` — it can report parse errors and
+  track source spans, but cannot access the host type system.
+- **`check`** runs under `TypeCheck` — it can resolve host bindings,
+  unify types across the grammar boundary, and inspect the host
+  scope. There is no `GrammarCtx` parameter — the `TypeCheck` effect
+  *is* the context. `TypeCheck.resolve_binding("user")` replaces
+  what an earlier design would have written as `ctx.resolve_binding("user")`.
+  The handler — the host compiler's type checker — provides the
+  implementation.
+- **`lower`** runs under `Lower` — it produces Kea IR and can
+  generate fresh names, but cannot invoke the type checker or parser.
+
+At runtime, there is no grammar machinery. The abstraction compiles
 away completely.
 
 This is a typed macro system — but one where grammar implementations
-run under `Compile` (not `IO`), produce typed IR (not token streams),
-and are formally verifiable (because grammar ASTs are algebraic types).
+run under granular compilation effects (not `IO`), produce typed IR
+(not token streams), and are formally verifiable (because grammar
+ASTs are algebraic types). The effect decomposition means a grammar's
+`parse` method provably cannot access the type system, and its
+`lower` method provably cannot re-parse source.
 
 ### Why this is remarkable
 
@@ -666,29 +681,31 @@ compiler is not special — it's another grammar consumer.
 
 **Interpolation is typed substitution.** `{expr}` in an `embed`
 block is not string interpolation. The grammar's `check` step
-has access to the host type checker. `html { <div class={42}> }`
-is a type error: `class` expects `String`, not `Int`. SQL
-interpolation compiles to parameterised queries — injection is
-structurally impossible. Template props are checked against
-component signatures at compile time. All at zero runtime cost.
+uses `TypeCheck.resolve_binding` and `TypeCheck.unify` to validate
+interpolated expressions against the grammar's type rules.
+`html { <div class={42}> }` is a type error: `class` expects
+`String`, not `Int`. SQL interpolation compiles to parameterised
+queries — injection is structurally impossible. Template props are
+checked against component signatures at compile time. All at zero
+runtime cost.
 
 **Restricted sublanguages are grammars.** KERNEL §15.2 defines
 subsets of Kea for GPU/FPGA/SQL lowering — no closures, no
 recursion, no heap. A `@gpu` recipe validates that code conforms
-to a restricted grammar, then lowers through a domain-specific
-backend (MLIR, StableHLO). The Grammar trait's `check` step
-validates the restriction. The `lower` step produces target code.
-Same mechanism as HTML templates.
+to a restricted grammar (under `TypeCheck`), then lowers through
+a domain-specific backend (MLIR, StableHLO) under `Lower`. The
+Grammar trait's `check` step validates the restriction. The
+`lower` step produces target code. Same mechanism as HTML templates.
 
 **Compile-time type computation.** Because `check` runs under
-`Compile` with access to `GrammarCtx`, grammars can compute types
-from their content. A SQL grammar can introspect a database schema
-at compile time and produce a return type that is the exact row
-type of the selected columns — `{ name: String, age: Int }`, not
-`Result<Row, Error>`. An einsum grammar can verify tensor
-dimensions at compile time. Component DSLs can check prop types
-against component signatures. The grammar knows the types at every
-position in its content.
+`TypeCheck`, grammars can compute types from their content. A SQL
+grammar can use `TypeCheck.resolve_binding` to introspect a
+database schema at compile time and produce a return type that is
+the exact row type of the selected columns —
+`{ name: String, age: Int }`, not `Result<Row, Error>`. An einsum
+grammar can verify tensor dimensions at compile time. Component
+DSLs can check prop types against component signatures. The grammar
+knows the types at every position in its content.
 
 ### What this replaces
 
@@ -698,17 +715,20 @@ Lisp macros (no types). Zig comptime (no extensibility via row
 polymorphism).
 
 Kea's typed grammar interface is the first system that is
-simultaneously type-safe, effect-safe, extensible via row
-polymorphism, and zero-cost. It's also what makes the self-hosting
-compiler a natural expression of the language rather than a
-separate privileged program.
+simultaneously type-safe, effect-safe (with granular compilation
+effects proving phase separation), extensible via row polymorphism,
+and zero-cost. It's also what makes the self-hosting compiler a
+natural expression of the language rather than a separate privileged
+program.
 
 Each piece of this design has prior art: Turnstile for typed macros,
 Trees that Grow for extensible ASTs, Koka for row-polymorphic effects,
 CompCert for verified multi-IR pipelines. What's new is the synthesis:
 one row-polymorphic type mechanism unifying user DSLs, compiler passes,
 and backend lowering under a shared capability-bounded contract with
-explicit IR stability tiers. Novel synthesis, not first-ever claims.
+explicit IR stability tiers and granular compilation effects (`Parse`,
+`TypeCheck`, `Lower`, `Diagnose`). Novel synthesis, not first-ever
+claims.
 
 These are Phase 1-2 capabilities. 0d remains Rust HIR/MIR bootstrap.
 See [typed-grammar-interface](../BRIEFS/design/typed-grammar-interface.md)
