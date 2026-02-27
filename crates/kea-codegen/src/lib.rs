@@ -364,6 +364,7 @@ fn compile_into_module<M: Module>(
     let mut requires_io_stdout = false;
     let mut requires_io_stderr = false;
     let mut requires_clock_time = false;
+    let mut requires_rand_int = false;
     let mut requires_string_concat = false;
     let mut requires_free = false;
     for function in &mir.functions {
@@ -430,6 +431,21 @@ fn compile_into_module<M: Module>(
             })
         }) {
             requires_clock_time = true;
+        }
+        if function.blocks.iter().any(|block| {
+            block.instructions.iter().any(|inst| {
+                matches!(
+                    inst,
+                    MirInst::EffectOp {
+                        class: MirEffectOpClass::Direct,
+                        effect,
+                        operation,
+                        ..
+                    } if effect == "Rand" && operation == "int"
+                )
+            })
+        }) {
+            requires_rand_int = true;
         }
         if function.blocks.iter().any(|block| {
             block.instructions.iter().any(|inst| {
@@ -585,6 +601,20 @@ fn compile_into_module<M: Module>(
         None
     };
 
+    let rand_func_id = if requires_rand_int {
+        let mut signature = module.make_signature();
+        signature.returns.push(AbiParam::new(types::I32));
+        Some(
+            module
+                .declare_function("rand", Linkage::Import, &signature)
+                .map_err(|detail| CodegenError::Module {
+                    detail: detail.to_string(),
+                })?,
+        )
+    } else {
+        None
+    };
+
     let strlen_func_id = if requires_string_concat || requires_io_stderr {
         let ptr_ty = module.target_config().pointer_type();
         let mut signature = module.make_signature();
@@ -719,6 +749,7 @@ fn compile_into_module<M: Module>(
                     stdout_func_id,
                     write_func_id,
                     time_func_id,
+                    rand_func_id,
                     strlen_func_id,
                     memcpy_func_id,
                     runtime_signatures: &runtime_signatures,
@@ -1135,6 +1166,7 @@ struct LowerInstCtx<'a> {
     stdout_func_id: Option<FuncId>,
     write_func_id: Option<FuncId>,
     time_func_id: Option<FuncId>,
+    rand_func_id: Option<FuncId>,
     strlen_func_id: Option<FuncId>,
     memcpy_func_id: Option<FuncId>,
     runtime_signatures: &'a BTreeMap<String, RuntimeFunctionSig>,
@@ -1758,6 +1790,35 @@ fn lower_instruction<M: Module>(
                                 detail: "time call returned no value".to_string(),
                             })?;
                         values.insert(dest.clone(), coerce_value_to_clif_type(builder, timestamp, ptr_ty));
+                    }
+                    Ok(false)
+                } else if effect == "Rand" && operation == "int" {
+                    if !args.is_empty() {
+                        return Err(CodegenError::UnsupportedMir {
+                            function: function_name.to_string(),
+                            detail: "Rand.int expects no arguments".to_string(),
+                        });
+                    }
+                    let rand_func_id = ctx
+                        .rand_func_id
+                        .ok_or_else(|| CodegenError::UnsupportedMir {
+                            function: function_name.to_string(),
+                            detail: "Rand.int lowering requires imported `rand` symbol"
+                                .to_string(),
+                        })?;
+                    let rand_ref = module.declare_func_in_func(rand_func_id, builder.func);
+                    let rand_call = builder.ins().call(rand_ref, &[]);
+                    if let Some(dest) = result {
+                        let raw = builder
+                            .inst_results(rand_call)
+                            .first()
+                            .copied()
+                            .ok_or_else(|| CodegenError::UnsupportedMir {
+                                function: function_name.to_string(),
+                                detail: "rand call returned no value".to_string(),
+                            })?;
+                        let as_i64 = coerce_value_to_clif_type(builder, raw, types::I64);
+                        values.insert(dest.clone(), as_i64);
                     }
                     Ok(false)
                 } else {
@@ -2938,6 +2999,35 @@ mod tests {
                         class: MirEffectOpClass::Direct,
                         effect: "Clock".to_string(),
                         operation: "monotonic".to_string(),
+                        args: vec![],
+                        result: Some(MirValueId(0)),
+                    }],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirValueId(0)),
+                    },
+                }],
+            }],
+            layouts: MirLayoutCatalog::default(),
+        }
+    }
+
+    fn sample_rand_int_module() -> MirModule {
+        MirModule {
+            functions: vec![MirFunction {
+                name: "rand_int".to_string(),
+                signature: MirFunctionSignature {
+                    params: vec![],
+                    ret: Type::Int,
+                    effects: EffectRow::closed(vec![(Label::new("Rand"), Type::Unit)]),
+                },
+                entry: MirBlockId(0),
+                blocks: vec![MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions: vec![MirInst::EffectOp {
+                        class: MirEffectOpClass::Direct,
+                        effect: "Rand".to_string(),
+                        operation: "int".to_string(),
                         args: vec![],
                         result: Some(MirValueId(0)),
                     }],
@@ -4475,6 +4565,20 @@ mod tests {
         let artifact = backend
             .compile_module(&module, &manifest, &BackendConfig::default())
             .expect("Clock.monotonic lowering should compile");
+
+        assert_eq!(artifact.stats.per_function.len(), 1);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn cranelift_backend_compiles_rand_int_effect_op_module() {
+        let module = sample_rand_int_module();
+        let manifest = default_abi_manifest(&module);
+        let backend = CraneliftBackend;
+
+        let artifact = backend
+            .compile_module(&module, &manifest, &BackendConfig::default())
+            .expect("Rand.int lowering should compile");
 
         assert_eq!(artifact.stats.per_function.len(), 1);
     }

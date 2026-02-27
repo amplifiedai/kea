@@ -1701,6 +1701,28 @@ impl FunctionLoweringCtx {
             return result;
         }
         if let HirExprKind::Var(name) = &func.kind
+            && !capture_fail_result
+            && name == "Rand.int"
+        {
+            let mut lowered_args = Vec::with_capacity(args.len());
+            for arg in args {
+                lowered_args.push(self.lower_expr(arg)?);
+            }
+            let result = if expr.ty == Type::Unit {
+                None
+            } else {
+                Some(self.new_value())
+            };
+            self.emit_inst(MirInst::EffectOp {
+                class: MirEffectOpClass::Direct,
+                effect: "Rand".to_string(),
+                operation: "int".to_string(),
+                args: lowered_args,
+                result: result.clone(),
+            });
+            return result;
+        }
+        if let HirExprKind::Var(name) = &func.kind
             && name == "Fail.fail"
             && !capture_fail_result
         {
@@ -3884,6 +3906,55 @@ mod tests {
                 result: Some(_),
                 ..
             } if effect == "Clock" && operation == "monotonic" && lowered_args.is_empty()
+        ));
+    }
+
+    #[test]
+    fn lower_hir_module_lowers_rand_int_call_to_direct_effect_op_with_result() {
+        let hir = HirModule {
+            declarations: vec![HirDecl::Function(HirFunction {
+                name: "rand_tick".to_string(),
+                params: vec![],
+                body: HirExpr {
+                    kind: HirExprKind::Call {
+                        func: Box::new(HirExpr {
+                            kind: HirExprKind::Var("Rand.int".to_string()),
+                            ty: Type::Function(FunctionType::with_effects(
+                                vec![],
+                                Type::Int,
+                                EffectRow::closed(vec![(Label::new("Rand"), Type::Unit)]),
+                            )),
+                            span: kea_ast::Span::synthetic(),
+                        }),
+                        args: vec![],
+                    },
+                    ty: Type::Int,
+                    span: kea_ast::Span::synthetic(),
+                },
+                ty: Type::Function(FunctionType::with_effects(
+                    vec![],
+                    Type::Int,
+                    EffectRow::closed(vec![(Label::new("Rand"), Type::Unit)]),
+                )),
+                effects: EffectRow::closed(vec![(Label::new("Rand"), Type::Unit)]),
+                span: kea_ast::Span::synthetic(),
+            })],
+        };
+
+        let mir = lower_hir_module(&hir);
+        let function = &mir.functions[0];
+        assert_eq!(function.blocks.len(), 1);
+        assert_eq!(function.blocks[0].instructions.len(), 1);
+        assert!(matches!(
+            function.blocks[0].instructions[0],
+            MirInst::EffectOp {
+                class: MirEffectOpClass::Direct,
+                ref effect,
+                ref operation,
+                args: ref lowered_args,
+                result: Some(_),
+                ..
+            } if effect == "Rand" && operation == "int" && lowered_args.is_empty()
         ));
     }
 
