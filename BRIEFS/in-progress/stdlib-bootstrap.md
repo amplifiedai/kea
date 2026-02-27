@@ -458,6 +458,26 @@ handle Server.listen(8080, stack)
 shutdown is an expected exit path. The effect signature documents
 that the server can be shut down, and the handler determines how.
 
+## Blocked: Tier-0 List Runtime Prerequisites
+
+`List` remains blocked in the real stdlib until compiled runtime
+support for heap-linked carriers is present. This is a runtime/codegen
+gate, not a module-system gate.
+
+Required before `stdlib/list.kea` lands:
+
+- Heap allocation + layout for recursive linked nodes (`List A` carrier).
+- Recursive payload load/store on compiled path for `Option (A, List A)`.
+- Pattern matching over recursive list nodes on compiled path.
+- Retain/release correctness for list node lifetimes under updates/traversal.
+
+Blocked coverage policy until then:
+
+- Keep an explicit regression that `use List` from repo stdlib fails with
+  `module \`List\` not found` (prevents fake/placeholder List modules).
+- When runtime support lands, replace that regression with execute-path tests
+  for real `List` functions (`map`, `fold`, `length`) and remove the blocked gate.
+
 ---
 
 ## Open Questions
@@ -492,4 +512,5 @@ that the server can be shut down, and the handler determines how.
 - 2026-02-27 20:17: Added `Option` predicate helpers in `stdlib/option.kea` (`is_some`, `is_none`) using `None` + wildcard branches, which is correct for current mixed Option runtime representation (unit variant immediate tag, payload variant boxed) without relying on unsupported payload-tag fast paths.
 - 2026-02-27 20:24: Added `stdlib/result.kea` with Tier-0 helper surface (`unwrap_or`, `is_ok`, `is_err`) and execute-path integration regression `compile_and_execute_real_stdlib_result_helpers_exit_code` (`use Result` from repo stdlib).
 - 2026-02-27 20:24: Fixed Result helper runtime divergence by marking `Result`-typed parameters as sum-tag eligible in MIR lowering (`lower_hir_function` param seeding), enabling constructor-tag checks to lower through `SumTagLoad` rewrites for pointer-backed `Result` values while leaving `Option` mixed-representation handling unchanged.
-- **Next:** start Tier-0 collection coverage that is still runtime-blocked (`List` heap carrier) by landing explicit blocked tests/docs for list runtime prerequisites, then continue non-list stdlib surface (Result/Text/Order utilities) with execute-path regressions only on currently supported runtime shapes.
+- 2026-02-27 20:47: Added explicit blocked List runtime gate in both docs and tests. New section “Blocked: Tier-0 List Runtime Prerequisites” now defines the exact runtime/codegen requirements for landing `stdlib/list.kea`. Added CLI regression `compile_project_reports_list_module_blocked_until_heap_runtime` that asserts `use List` fails with `module \`List\` not found` until real heap-list support lands (prevents placeholder/fake List modules from silently entering stdlib).
+- **Next:** continue non-list Tier-0 surface expansion with execute-path regressions (Result/Text/Order helpers) while keeping the List blocked gate in place until heap-linked runtime support is implemented.
