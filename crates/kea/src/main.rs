@@ -692,6 +692,62 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn compile_jit_and_aot_exit_code_parity_corpus() {
+        let cases = [
+            (
+                "fn main() -> Int\n  let x = 40\n  x + 2\n",
+                42,
+            ),
+            (
+                "record User\n  age: Int\n\nfn main() -> Int\n  let u = User { age: 41 }\n  u.age + 1\n",
+                42,
+            ),
+            (
+                "type Maybe a = Just(a) | Nothing\n\nfn main() -> Int\n  case Just(41)\n    Just(n) -> n + 1\n    Nothing -> 0\n",
+                42,
+            ),
+            (
+                "fn apply(f: fn(Int) -> Int, x: Int) -> Int\n  f(x)\n\nfn main() -> Int\n  apply(|x| -> x + 1, 41)\n",
+                42,
+            ),
+            (
+                "effect Fail\n  fn fail(err: Int) -> Never\n\nfn f() -[Fail Int]> Int\n  fail 7\n\nfn main() -> Int\n  let r = catch f()\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
+                7,
+            ),
+        ];
+
+        for (idx, (source, expected_exit)) in cases.iter().enumerate() {
+            let name = format!("kea-cli-jit-aot-parity-{idx}");
+            let source_path = write_temp_source(source, &name, "kea");
+
+            let jit = run_file(&source_path)
+                .unwrap_or_else(|err| panic!("jit run should succeed for parity case {idx}: {err}"));
+            assert_eq!(
+                jit.exit_code, *expected_exit,
+                "jit exit mismatch for parity case {idx}"
+            );
+
+            let output_path = temp_artifact_path(&name, "bin");
+            let compiled = compile_file(&source_path, CodegenMode::Aot)
+                .unwrap_or_else(|err| panic!("aot compile should work for parity case {idx}: {err}"));
+            link_object_bytes(&compiled.object, &output_path).expect("link should work");
+
+            let status = std::process::Command::new(&output_path)
+                .status()
+                .expect("aot executable should run");
+            assert_eq!(
+                status.code(),
+                Some(*expected_exit),
+                "aot exit mismatch for parity case {idx}"
+            );
+
+            let _ = std::fs::remove_file(source_path);
+            let _ = std::fs::remove_file(output_path);
+        }
+    }
+
+    #[test]
     fn compile_and_execute_higher_order_function_pointer_exit_code() {
         let source_path = write_temp_source(
             "fn inc(n: Int) -> Int\n  n + 1\n\nfn apply_twice(f: fn(Int) -> Int, x: Int) -> Int\n  f(f(x))\n\nfn main() -> Int\n  apply_twice(inc, 41)\n",
