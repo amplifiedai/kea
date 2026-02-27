@@ -1696,8 +1696,8 @@ impl FunctionLoweringCtx {
             HirExprKind::Handle {
                 expr: handled,
                 clauses,
-                then_clause: _,
-            } => self.lower_handle_expr(handled, clauses),
+                then_clause,
+            } => self.lower_handle_expr(expr, handled, clauses, then_clause.as_deref()),
             HirExprKind::Resume { value } => self.lower_expr(value),
             HirExprKind::Let { pattern, value } => {
                 if let (HirPattern::Var(name), HirExprKind::Lambda { params, body }) =
@@ -1778,8 +1778,10 @@ impl FunctionLoweringCtx {
 
     fn lower_handle_expr(
         &mut self,
+        handle_expr: &HirExpr,
         handled: &HirExpr,
         clauses: &[HirHandleClause],
+        then_clause: Option<&HirExpr>,
     ) -> Option<MirValueId> {
         let target_effect = clauses.first()?.effect.clone();
         if clauses.iter().any(|clause| clause.effect != target_effect) {
@@ -1893,7 +1895,67 @@ impl FunctionLoweringCtx {
             effect: target_effect,
         });
         self.emit_inst(MirInst::Release { value: cell });
-        result
+        let Some(then_expr) = then_clause else {
+            return result;
+        };
+        if self.current_block().terminator.is_some() {
+            return None;
+        }
+
+        let handled_value = if let Some(value) = result {
+            value
+        } else if handled.ty == Type::Unit {
+            let unit = self.new_value();
+            self.emit_inst(MirInst::Const {
+                dest: unit.clone(),
+                literal: MirLiteral::Unit,
+            });
+            unit
+        } else {
+            self.emit_inst(MirInst::Unsupported {
+                detail: "handle expression then-clause expected a value, but handled body produced none".to_string(),
+            });
+            return None;
+        };
+
+        if let HirExprKind::Lambda { params, body } = &then_expr.kind {
+            if params.len() != 1 {
+                self.emit_inst(MirInst::Unsupported {
+                    detail: "handle then-clause lambda must accept exactly one parameter".to_string(),
+                });
+                return None;
+            }
+            let incoming_scope = self.snapshot_var_scope();
+            if let Some(param_name) = &params[0].name {
+                self.vars.insert(param_name.clone(), handled_value);
+                self.var_types.insert(param_name.clone(), handled.ty.clone());
+            }
+            let lowered = self.lower_expr(body);
+            self.restore_var_scope(&incoming_scope);
+            return lowered;
+        }
+
+        let callee = self.lower_expr(then_expr)?;
+        let call_result = if handle_expr.ty == Type::Unit {
+            None
+        } else {
+            Some(self.new_value())
+        };
+        self.emit_inst(MirInst::Call {
+            callee: MirCallee::Value(callee),
+            args: vec![handled_value],
+            arg_types: vec![handled.ty.clone()],
+            result: call_result.clone(),
+            ret_type: handle_expr.ty.clone(),
+            callee_fail_result_abi: false,
+            capture_fail_result: false,
+            cc_manifest_id: "default".to_string(),
+        });
+        if let (Some(dest), Type::Sum(sum_ty)) = (&call_result, &handle_expr.ty) {
+            self.sum_value_types
+                .insert(dest.clone(), sum_ty.name.clone());
+        }
+        call_result
     }
 
     fn lower_call_expr(
