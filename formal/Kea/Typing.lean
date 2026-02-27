@@ -14983,8 +14983,8 @@ theorem principalNoUnifyExprAllHooksCapstone_of_success_via_masterConsequenceCap
     (h_no : NoUnifyBranchesExpr e)
     (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
     PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty :=
-  principalNoUnifyExprAllHooksCapstone_via_masterConsequenceCapstone_from_cross_route_slices
-    h_no h_ok
+  (principalNoUnifyExprAllHooksRouteSurface_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok).capstone
 
 /--
 No-unify naming-parity alias: field all-hooks capstone on the
@@ -14996,8 +14996,8 @@ theorem principalNoUnifyFieldAllHooksCapstone_of_success_via_masterConsequenceCa
     (h_no : NoUnifyBranchesFields fs)
     (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
     PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
-  principalNoUnifyFieldAllHooksCapstone_via_masterConsequenceCapstone_from_cross_route_slices
-    h_no h_ok
+  (principalNoUnifyFieldAllHooksRouteSurface_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok).capstone
 
 /--
 No-unify naming-parity alias: bundled-hook variant for expression all-hooks
@@ -15597,8 +15597,8 @@ theorem principalNoUnifyExprAllHooksCapstone_of_success_via_masterRunBundleConse
     (h_no : NoUnifyBranchesExpr e)
     (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
     PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty :=
-  principalNoUnifyExprAllHooksCapstone_via_masterRunBundleConsequence_from_cross_route_slices
-    h_no h_ok
+  (principalNoUnifyExprAllHooksRouteSurface_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok).capstone
 
 /--
 No-unify naming-parity alias: field all-hooks capstone on the
@@ -15610,8 +15610,8 @@ theorem principalNoUnifyFieldAllHooksCapstone_of_success_via_masterRunBundleCons
     (h_no : NoUnifyBranchesFields fs)
     (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
     PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
-  principalNoUnifyFieldAllHooksCapstone_via_masterRunBundleConsequence_from_cross_route_slices
-    h_no h_ok
+  (principalNoUnifyFieldAllHooksRouteSurface_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok).capstone
 
 /--
 No-unify naming-parity alias: bundled-hook variant for expression all-hooks
