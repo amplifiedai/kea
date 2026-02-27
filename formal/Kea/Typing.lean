@@ -9498,6 +9498,64 @@ theorem principalBoundaryMasterSuite_noUnifyToGeneralAllHooks_irrelevance_field_
     h_suite h_no h_ok).hookIrrelevant
 
 /--
+One-hop projection: no-unify-as-general expression capstone from the top-level
+master suite via the consequence-suite aggregate.
+-/
+theorem principalBoundaryMasterSuite_noUnifyAllHooks_expr_as_general_via_consequenceSuite
+    (h_suite : PrincipalBoundaryMasterSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty :=
+  principalBoundaryMasterSuite_noUnifyToGeneralAllHooks_expr_via_consequenceSuite
+    h_suite h_no h_ok
+
+/--
+One-hop projection: no-unify-as-general field capstone from the top-level
+master suite via the consequence-suite aggregate.
+-/
+theorem principalBoundaryMasterSuite_noUnifyAllHooks_field_as_general_via_consequenceSuite
+    (h_suite : PrincipalBoundaryMasterSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
+  principalBoundaryMasterSuite_noUnifyToGeneralAllHooks_field_via_consequenceSuite
+    h_suite h_no h_ok
+
+/--
+One-hop projection: no-unify-as-general expression run-bundle from the
+top-level master suite via the consequence-suite aggregate.
+-/
+theorem principalBoundaryMasterSuite_noUnifyAllHooks_runBundle_expr_as_general_via_consequenceSuite
+    (h_suite : PrincipalBoundaryMasterSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty :=
+  principalBoundaryMasterRunBundleSuite_noUnifyToGeneral_expr
+    (principalBoundaryMasterSuite_runBundleConsequenceSuite h_suite).runBundles
+    h_no h_ok
+
+/--
+One-hop projection: no-unify-as-general field run-bundle from the top-level
+master suite via the consequence-suite aggregate.
+-/
+theorem principalBoundaryMasterSuite_noUnifyAllHooks_runBundle_field_as_general_via_consequenceSuite
+    (h_suite : PrincipalBoundaryMasterSuite)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf :=
+  principalBoundaryMasterRunBundleSuite_noUnifyToGeneral_field
+    (principalBoundaryMasterSuite_runBundleConsequenceSuite h_suite).runBundles
+    h_no h_ok
+
+/--
 One-hop projection: arbitrary-success all-hooks expression run-bundle from the
 top-level master suite via the consequence-suite aggregate.
 -/
