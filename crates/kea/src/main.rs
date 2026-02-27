@@ -2085,6 +2085,40 @@ mod tests {
     }
 
     #[test]
+    fn compile_and_reject_non_tail_resumptive_clause_body_with_effects() {
+        let source_path = write_temp_source(
+            "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\neffect Log\n  fn log(msg: Int) -> Unit\n\nfn f() -[State Int, Log]> Int\n  State.get()\n\nfn run_state() -[Log]> Int\n  handle f()\n    State.get() ->\n      Log.log(1)\n      resume 0\n    State.put(next) -> resume ()\n\nfn main() -> Int\n  handle run_state()\n    Log.log(msg) -> resume ()\n",
+            "kea-cli-reject-non-tail-resumptive-handler-clause",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject non-tail-resumptive clause");
+        assert!(
+            err.contains("must be tail-resumptive (`resume ...`) for compiled lowering"),
+            "expected tail-resumptive rejection, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_reject_partial_handler_clause_set_for_effect() {
+        let source_path = write_temp_source(
+            "effect Counter\n  fn read() -> Int\n  fn write(next: Int) -> Unit\n\nfn g() -[Counter]> Int\n  Counter.write(1)\n  Counter.read()\n\nfn main() -> Int\n  handle g()\n    Counter.read() -> resume 0\n",
+            "kea-cli-reject-partial-effect-handler-clauses",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject missing effect clauses");
+        assert!(
+            err.contains("handler for `Counter` is missing clause(s): write"),
+            "expected missing clause rejection, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_catch_fail_result_case_exit_code() {
         let source_path = write_temp_source(
             "effect Fail\n  fn fail(err: Int) -> Never\n\nfn f() -[Fail Int]> Int\n  fail 7\n\nfn main() -> Int\n  let r = catch f()\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
