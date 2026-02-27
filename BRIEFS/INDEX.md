@@ -24,6 +24,7 @@ that apply across multiple implementation phases. Ignoring them means rework.
 ## Active
 
 Work in progress right now. Each entry should have a `## Progress` section in its brief.
+- **[Stdlib bootstrap](in-progress/stdlib-bootstrap.md)** — Active. Tier-0 bootstrap started with real repo stdlib modules (`prelude`, `option`, intrinsic-backed `text`) and execute-path module-system coverage; remaining Tier-0 pure modules (`int`, `float`, `order`, `eq`, `ord`, `show`) are next, while heap-list `List` stays explicitly blocked on runtime/list-lowering support.
 - **[Benchmark infrastructure](in-progress/benchmark-infrastructure.md)** — Active. `divan` harness is in-tree (`kea-bench` + `AllocProfiler`) with lex/parse/infer/lower/codegen workload baselines plus string/allocation variants; stable artifacts are exported (`raw/csv/json/meta`), repeat-run variance summaries are generated (`bench:variance`), CI Stage A publishes baseline+variance artifacts, CodSpeed CI is wired via `codspeed-divan-compat` using OIDC auth, whole-program corpus tooling (`benchmarks/programs` + `bench:programs`) is bootstrapped with no-shell/inner-iteration execution for lower noise, whole-program variance summaries are automated, benchmark workflows now use cache-friendly stable target dirs (`KEA_AGENT_TARGET_DIR=target/ci-*`), non-blocking Stage B regression checks remain for full-matrix calibration, and stable benchmark classes run in dedicated blocking Stage B lanes.
 - **[Lean formalization](in-progress/lean-formalization.md)** — Active. Phase 1 kickoff started from the Rill Lean baseline; next is Kea effect-row alignment in core modules/proofs.
 
@@ -51,7 +52,7 @@ Designed and approved. Ready to pick up. Ordered by execution sequence per ROADM
 
 ### Phase 0d1: Module System + Stdlib Tier 0 (after 0d)
 
-6. **[Stdlib bootstrap](todo/stdlib-bootstrap.md)** — Incremental stdlib written in Kea from day one. Tier 0 (pure: Option, Result, List, String, Eq, Ord, Show) lands with 0d1. Each subsequent phase delivers its stdlib tier.
+*(in progress — see Active section)*
 
 ### Phase 0e: Runtime Effects + Stdlib Tier 1 (after 0d1)
 

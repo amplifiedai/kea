@@ -1,11 +1,11 @@
 # Brief: Incremental Stdlib Bootstrap
 
-**Status:** ready
+**Status:** active
 **Priority:** v1-critical
 **Depends on:** 0d1-module-system (needs multi-file compilation)
 **Blocks:** Phase 1 (self-hosting requires working stdlib)
 **Also read before implementing:**
-- [0d1-module-system](0d1-module-system.md) — module loading, prelude, intrinsics
+- [0d1-module-system](../done/0d1-module-system.md) — module loading, prelude, intrinsics
 - [KERNEL §1-2](../../docs/spec/KERNEL.md) — primitive types, collection types, structs
 - [KERNEL §5](../../docs/spec/KERNEL.md) — effects, Fail, catch, ?
 - [KERNEL Appendix C](../../docs/spec/KERNEL.md) — prelude traits
@@ -467,3 +467,8 @@ that the server can be shut down, and the handler determines how.
 - Should the stdlib directory structure be flat (`stdlib/list.kea`)
   or nested (`stdlib/collections/list.kea`)? (Proposal: flat for
   Tier 0-1, introduce nesting in Tier 2-3 as the stdlib grows.)
+
+## Progress
+- 2026-02-27 18:20: Bootstrapped initial real stdlib repository modules while closing 0d1: added `stdlib/prelude.kea`, `stdlib/option.kea`, and `stdlib/text.kea` (`Text.length` is intrinsic-backed via `@intrinsic("strlen")`). Added execute-path integration coverage through the module system (`Option.unwrap_or` + `Text.length`) plus real prelude autoload coverage against repo `stdlib/`.
+- 2026-02-27 18:41: Explicitly deferred heap-list Tier 0 implementation from 0d1 closeout after validating current 0d codegen cannot lower builtin heap-list carriers (`List(Int)` runtime lowering gap). `List` lands in this brief once list runtime shape (linked-list carrier lowering) is available; do not ship placeholder/fake `List.map` implementations.
+- **Next:** implement remaining Tier 0 pure stdlib modules that are codegen-safe now (`int`, `float`, `order`, `eq`, `ord`, `show`) and add tier tests; separately track list runtime dependency for `list.kea` with honest blocked status until runtime support lands.
