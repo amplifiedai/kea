@@ -20332,3 +20332,757 @@ theorem inferFieldsUnify_sound_preconditioned_hasTypeU_from_resolved_bundle
   let h_hooks : UnifyHookPremisesU := unifyHookPremisesU_of_resolved h_resolved
   exact inferFieldsUnify_sound_preconditioned_hasTypeU_direct
     h_hooks.1 h_hooks.2 st fuel env fs st' rf h_ok
+
+/--
+Surface-layer naming-parity wrappers for no-unify cross-route success APIs.
+These mirror the existing `...from_cross_route_slices` families under
+explicit `...from_cross_route_surface_slices` theorem names.
+-/
+theorem principalNoUnifyCoreExpr_of_success_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalTypingSliceCore env e ty :=
+  principalCoreExpr_of_success_noUnify_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok
+
+theorem principalNoUnifyCoreExpr_of_success_via_masterConsequenceCapstone_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_seed : UnifyHookPremises) :
+    PrincipalTypingSliceCore env e ty :=
+  principalNoUnifyCoreExpr_of_success_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok
+
+theorem principalNoUnifyCoreExpr_of_success_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalTypingSliceCore env e ty :=
+  principalCoreExpr_of_success_noUnify_via_masterRunBundleConsequence_from_cross_route_slices
+    h_no h_ok
+
+theorem principalNoUnifyCoreExpr_of_success_via_masterRunBundleConsequence_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_seed : UnifyHookPremises) :
+    PrincipalTypingSliceCore env e ty :=
+  principalNoUnifyCoreExpr_of_success_via_masterRunBundleConsequence_from_cross_route_slices
+    h_no h_ok
+
+theorem principalNoUnifyCoreField_of_success_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalFieldTypingSliceCore env fs rf :=
+  principalCoreField_of_success_noUnify_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok
+
+theorem principalNoUnifyCoreField_of_success_via_masterConsequenceCapstone_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_seed : UnifyHookPremises) :
+    PrincipalFieldTypingSliceCore env fs rf :=
+  principalNoUnifyCoreField_of_success_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok
+
+theorem principalNoUnifyCoreField_of_success_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalFieldTypingSliceCore env fs rf :=
+  principalCoreField_of_success_noUnify_via_masterRunBundleConsequence_from_cross_route_slices
+    h_no h_ok
+
+theorem principalNoUnifyCoreField_of_success_via_masterRunBundleConsequence_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_seed : UnifyHookPremises) :
+    PrincipalFieldTypingSliceCore env fs rf :=
+  principalNoUnifyCoreField_of_success_via_masterRunBundleConsequence_from_cross_route_slices
+    h_no h_ok
+
+theorem principalNoUnifyExprAllHooksCapstone_of_success_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty :=
+  principalNoUnifyExprAllHooksCapstone_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok
+
+theorem principalNoUnifyExprAllHooksCapstone_of_success_via_masterConsequenceCapstone_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_seed : UnifyHookPremises) :
+    PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty :=
+  principalNoUnifyExprAllHooksCapstone_of_success_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok
+
+theorem principalNoUnifyExprAllHooksCapstone_of_success_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty :=
+  principalNoUnifyExprAllHooksCapstone_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok
+
+theorem principalNoUnifyExprAllHooksCapstone_of_success_via_masterRunBundleConsequence_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_seed : UnifyHookPremises) :
+    PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty :=
+  principalNoUnifyExprAllHooksCapstone_of_success_via_masterRunBundleConsequence_from_cross_route_slices
+    h_no h_ok
+
+theorem principalNoUnifyExprRunBundleConsequences_of_success_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalNoUnifyExprRunBundleConsequences st fuel env e st' ty :=
+  principalNoUnifyExprRunBundleConsequences_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok
+
+theorem principalNoUnifyExprRunBundleConsequences_of_success_via_masterConsequenceCapstone_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_seed : UnifyHookPremises) :
+    PrincipalNoUnifyExprRunBundleConsequences st fuel env e st' ty :=
+  principalNoUnifyExprRunBundleConsequences_of_success_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok
+
+theorem principalNoUnifyExprRunBundleConsequences_of_success_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalNoUnifyExprRunBundleConsequences st fuel env e st' ty :=
+  principalNoUnifyExprRunBundleConsequences_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok
+
+theorem principalNoUnifyExprRunBundleConsequences_of_success_via_masterRunBundleConsequence_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_seed : UnifyHookPremises) :
+    PrincipalNoUnifyExprRunBundleConsequences st fuel env e st' ty :=
+  principalNoUnifyExprRunBundleConsequences_of_success_via_masterRunBundleConsequence_from_cross_route_slices
+    h_no h_ok
+
+theorem principalNoUnifyFieldAllHooksCapstone_of_success_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
+  principalNoUnifyFieldAllHooksCapstone_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok
+
+theorem principalNoUnifyFieldAllHooksCapstone_of_success_via_masterConsequenceCapstone_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_seed : UnifyHookPremises) :
+    PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
+  principalNoUnifyFieldAllHooksCapstone_of_success_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok
+
+theorem principalNoUnifyFieldAllHooksCapstone_of_success_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
+  principalNoUnifyFieldAllHooksCapstone_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok
+
+theorem principalNoUnifyFieldAllHooksCapstone_of_success_via_masterRunBundleConsequence_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_seed : UnifyHookPremises) :
+    PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
+  principalNoUnifyFieldAllHooksCapstone_of_success_via_masterRunBundleConsequence_from_cross_route_slices
+    h_no h_ok
+
+theorem principalNoUnifyFieldRunBundleConsequences_of_success_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalNoUnifyFieldRunBundleConsequences st fuel env fs st' rf :=
+  principalNoUnifyFieldRunBundleConsequences_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok
+
+theorem principalNoUnifyFieldRunBundleConsequences_of_success_via_masterConsequenceCapstone_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_seed : UnifyHookPremises) :
+    PrincipalNoUnifyFieldRunBundleConsequences st fuel env fs st' rf :=
+  principalNoUnifyFieldRunBundleConsequences_of_success_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok
+
+theorem principalNoUnifyFieldRunBundleConsequences_of_success_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalNoUnifyFieldRunBundleConsequences st fuel env fs st' rf :=
+  principalNoUnifyFieldRunBundleConsequences_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok
+
+theorem principalNoUnifyFieldRunBundleConsequences_of_success_via_masterRunBundleConsequence_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_seed : UnifyHookPremises) :
+    PrincipalNoUnifyFieldRunBundleConsequences st fuel env fs st' rf :=
+  principalNoUnifyFieldRunBundleConsequences_of_success_via_masterRunBundleConsequence_from_cross_route_slices
+    h_no h_ok
+
+theorem principalNoUnifyPreconditionedCoreIffExpr_anyHooks_of_success_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    ∀ h_app h_proj,
+      (PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty
+        ↔ PrincipalTypingSliceCore env e ty) :=
+  principalPreconditionedCoreIffExpr_anyHooks_of_success_noUnify_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok
+
+theorem principalNoUnifyPreconditionedCoreIffExpr_anyHooks_of_success_via_masterConsequenceCapstone_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_seed : UnifyHookPremises) :
+    ∀ h_app h_proj,
+      (PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty
+        ↔ PrincipalTypingSliceCore env e ty) :=
+  principalNoUnifyPreconditionedCoreIffExpr_anyHooks_of_success_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok
+
+theorem principalNoUnifyPreconditionedCoreIffExpr_anyHooks_of_success_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    ∀ h_app h_proj,
+      (PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty
+        ↔ PrincipalTypingSliceCore env e ty) :=
+  principalPreconditionedCoreIffExpr_anyHooks_of_success_noUnify_via_masterRunBundleConsequence_from_cross_route_slices
+    h_no h_ok
+
+theorem principalNoUnifyPreconditionedCoreIffExpr_anyHooks_of_success_via_masterRunBundleConsequence_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_seed : UnifyHookPremises) :
+    ∀ h_app h_proj,
+      (PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty
+        ↔ PrincipalTypingSliceCore env e ty) :=
+  principalNoUnifyPreconditionedCoreIffExpr_anyHooks_of_success_via_masterRunBundleConsequence_from_cross_route_slices
+    h_no h_ok
+
+theorem principalNoUnifyPreconditionedCoreIffExpr_of_success_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_hooks : UnifyHookPremises) :
+    (PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty
+      ↔ PrincipalTypingSliceCore env e ty) :=
+  principalNoUnifyPreconditionedCoreIffExpr_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok h_hooks
+
+theorem principalNoUnifyPreconditionedCoreIffExpr_of_success_via_masterConsequenceCapstone_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_hooks : UnifyHookPremises) :
+    (PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty
+      ↔ PrincipalTypingSliceCore env e ty) :=
+  principalNoUnifyPreconditionedCoreIffExpr_of_success_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok h_hooks
+
+theorem principalNoUnifyPreconditionedCoreIffExpr_of_success_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_hooks : UnifyHookPremises) :
+    (PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty
+      ↔ PrincipalTypingSliceCore env e ty) :=
+  principalNoUnifyPreconditionedCoreIffExpr_via_masterRunBundleConsequence_from_cross_route_slices
+    h_no h_ok h_hooks
+
+theorem principalNoUnifyPreconditionedCoreIffExpr_of_success_via_masterRunBundleConsequence_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_hooks : UnifyHookPremises) :
+    (PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty
+      ↔ PrincipalTypingSliceCore env e ty) :=
+  principalNoUnifyPreconditionedCoreIffExpr_of_success_via_masterRunBundleConsequence_from_cross_route_slices
+    h_no h_ok h_hooks
+
+theorem principalNoUnifyPreconditionedCoreIffField_anyHooks_of_success_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    ∀ h_app h_proj,
+      (PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf
+        ↔ PrincipalFieldTypingSliceCore env fs rf) :=
+  principalPreconditionedCoreIffField_anyHooks_of_success_noUnify_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok
+
+theorem principalNoUnifyPreconditionedCoreIffField_anyHooks_of_success_via_masterConsequenceCapstone_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_seed : UnifyHookPremises) :
+    ∀ h_app h_proj,
+      (PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf
+        ↔ PrincipalFieldTypingSliceCore env fs rf) :=
+  principalNoUnifyPreconditionedCoreIffField_anyHooks_of_success_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok
+
+theorem principalNoUnifyPreconditionedCoreIffField_anyHooks_of_success_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    ∀ h_app h_proj,
+      (PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf
+        ↔ PrincipalFieldTypingSliceCore env fs rf) :=
+  principalPreconditionedCoreIffField_anyHooks_of_success_noUnify_via_masterRunBundleConsequence_from_cross_route_slices
+    h_no h_ok
+
+theorem principalNoUnifyPreconditionedCoreIffField_anyHooks_of_success_via_masterRunBundleConsequence_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_seed : UnifyHookPremises) :
+    ∀ h_app h_proj,
+      (PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf
+        ↔ PrincipalFieldTypingSliceCore env fs rf) :=
+  principalNoUnifyPreconditionedCoreIffField_anyHooks_of_success_via_masterRunBundleConsequence_from_cross_route_slices
+    h_no h_ok
+
+theorem principalNoUnifyPreconditionedCoreIffField_of_success_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_hooks : UnifyHookPremises) :
+    (PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSliceCore env fs rf) :=
+  principalNoUnifyPreconditionedCoreIffField_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok h_hooks
+
+theorem principalNoUnifyPreconditionedCoreIffField_of_success_via_masterConsequenceCapstone_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_hooks : UnifyHookPremises) :
+    (PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSliceCore env fs rf) :=
+  principalNoUnifyPreconditionedCoreIffField_of_success_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok h_hooks
+
+theorem principalNoUnifyPreconditionedCoreIffField_of_success_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_hooks : UnifyHookPremises) :
+    (PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSliceCore env fs rf) :=
+  principalNoUnifyPreconditionedCoreIffField_via_masterRunBundleConsequence_from_cross_route_slices
+    h_no h_ok h_hooks
+
+theorem principalNoUnifyPreconditionedCoreIffField_of_success_via_masterRunBundleConsequence_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_hooks : UnifyHookPremises) :
+    (PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSliceCore env fs rf) :=
+  principalNoUnifyPreconditionedCoreIffField_of_success_via_masterRunBundleConsequence_from_cross_route_slices
+    h_no h_ok h_hooks
+
+theorem principalNoUnifyPreconditionedExpr_anyHooks_of_success_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    ∀ h_app h_proj,
+      PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty :=
+  principalPreconditionedExpr_anyHooks_of_success_noUnify_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok
+
+theorem principalNoUnifyPreconditionedExpr_anyHooks_of_success_via_masterConsequenceCapstone_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_seed : UnifyHookPremises) :
+    ∀ h_app h_proj,
+      PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty :=
+  principalNoUnifyPreconditionedExpr_anyHooks_of_success_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok
+
+theorem principalNoUnifyPreconditionedExpr_anyHooks_of_success_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    ∀ h_app h_proj,
+      PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty :=
+  principalPreconditionedExpr_anyHooks_of_success_noUnify_via_masterRunBundleConsequence_from_cross_route_slices
+    h_no h_ok
+
+theorem principalNoUnifyPreconditionedExpr_anyHooks_of_success_via_masterRunBundleConsequence_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_seed : UnifyHookPremises) :
+    ∀ h_app h_proj,
+      PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty :=
+  principalNoUnifyPreconditionedExpr_anyHooks_of_success_via_masterRunBundleConsequence_from_cross_route_slices
+    h_no h_ok
+
+theorem principalNoUnifyPreconditionedExpr_hookIrrelevant_of_success_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+      ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) :=
+  principalNoUnifyPreconditionedExpr_hookIrrelevant_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok
+
+theorem principalNoUnifyPreconditionedExpr_hookIrrelevant_of_success_via_masterConsequenceCapstone_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_seed : UnifyHookPremises) :
+    (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+      ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) :=
+  principalNoUnifyPreconditionedExpr_hookIrrelevant_of_success_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok
+
+theorem principalNoUnifyPreconditionedExpr_hookIrrelevant_of_success_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+      ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) :=
+  principalNoUnifyPreconditionedExpr_hookIrrelevant_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok
+
+theorem principalNoUnifyPreconditionedExpr_hookIrrelevant_of_success_via_masterRunBundleConsequence_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_seed : UnifyHookPremises) :
+    (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+      ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty) :=
+  principalNoUnifyPreconditionedExpr_hookIrrelevant_of_success_via_masterRunBundleConsequence_from_cross_route_slices
+    h_no h_ok
+
+theorem principalNoUnifyPreconditionedExpr_of_success_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_hooks : UnifyHookPremises) :
+    PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty :=
+  principalNoUnifyPreconditionedExpr_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok h_hooks
+
+theorem principalNoUnifyPreconditionedExpr_of_success_via_masterConsequenceCapstone_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_hooks : UnifyHookPremises) :
+    PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty :=
+  principalNoUnifyPreconditionedExpr_of_success_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok h_hooks
+
+theorem principalNoUnifyPreconditionedExpr_of_success_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_hooks : UnifyHookPremises) :
+    PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty :=
+  principalNoUnifyPreconditionedExpr_via_masterRunBundleConsequence_from_cross_route_slices
+    h_no h_ok h_hooks
+
+theorem principalNoUnifyPreconditionedExpr_of_success_via_masterRunBundleConsequence_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_hooks : UnifyHookPremises) :
+    PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty :=
+  principalNoUnifyPreconditionedExpr_of_success_via_masterRunBundleConsequence_from_cross_route_slices
+    h_no h_ok h_hooks
+
+theorem principalNoUnifyPreconditionedField_anyHooks_of_success_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    ∀ h_app h_proj,
+      PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf :=
+  principalPreconditionedField_anyHooks_of_success_noUnify_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok
+
+theorem principalNoUnifyPreconditionedField_anyHooks_of_success_via_masterConsequenceCapstone_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_seed : UnifyHookPremises) :
+    ∀ h_app h_proj,
+      PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf :=
+  principalNoUnifyPreconditionedField_anyHooks_of_success_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok
+
+theorem principalNoUnifyPreconditionedField_anyHooks_of_success_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    ∀ h_app h_proj,
+      PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf :=
+  principalPreconditionedField_anyHooks_of_success_noUnify_via_masterRunBundleConsequence_from_cross_route_slices
+    h_no h_ok
+
+theorem principalNoUnifyPreconditionedField_anyHooks_of_success_via_masterRunBundleConsequence_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_seed : UnifyHookPremises) :
+    ∀ h_app h_proj,
+      PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf :=
+  principalNoUnifyPreconditionedField_anyHooks_of_success_via_masterRunBundleConsequence_from_cross_route_slices
+    h_no h_ok
+
+theorem principalNoUnifyPreconditionedField_hookIrrelevant_of_success_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
+  principalNoUnifyPreconditionedField_hookIrrelevant_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok
+
+theorem principalNoUnifyPreconditionedField_hookIrrelevant_of_success_via_masterConsequenceCapstone_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_seed : UnifyHookPremises) :
+    (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
+  principalNoUnifyPreconditionedField_hookIrrelevant_of_success_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok
+
+theorem principalNoUnifyPreconditionedField_hookIrrelevant_of_success_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
+  principalNoUnifyPreconditionedField_hookIrrelevant_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok
+
+theorem principalNoUnifyPreconditionedField_hookIrrelevant_of_success_via_masterRunBundleConsequence_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+    {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_seed : UnifyHookPremises) :
+    (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf) :=
+  principalNoUnifyPreconditionedField_hookIrrelevant_of_success_via_masterRunBundleConsequence_from_cross_route_slices
+    h_no h_ok
+
+theorem principalNoUnifyPreconditionedField_of_success_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_hooks : UnifyHookPremises) :
+    PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf :=
+  principalNoUnifyPreconditionedField_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok h_hooks
+
+theorem principalNoUnifyPreconditionedField_of_success_via_masterConsequenceCapstone_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_hooks : UnifyHookPremises) :
+    PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf :=
+  principalNoUnifyPreconditionedField_of_success_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok h_hooks
+
+theorem principalNoUnifyPreconditionedField_of_success_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_hooks : UnifyHookPremises) :
+    PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf :=
+  principalNoUnifyPreconditionedField_via_masterRunBundleConsequence_from_cross_route_slices
+    h_no h_ok h_hooks
+
+theorem principalNoUnifyPreconditionedField_of_success_via_masterRunBundleConsequence_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (h_hooks : UnifyHookPremises) :
+    PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf :=
+  principalNoUnifyPreconditionedField_of_success_via_masterRunBundleConsequence_from_cross_route_slices
+    h_no h_ok h_hooks
+
+theorem principalNoUnifyRunBundleExpr_of_success_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty :=
+  principalNoUnifyRunBundleExpr_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok
+
+theorem principalNoUnifyRunBundleExpr_of_success_via_masterConsequenceCapstone_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_seed : UnifyHookPremises) :
+    PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty :=
+  principalNoUnifyRunBundleExpr_of_success_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok
+
+theorem principalNoUnifyRunBundleExpr_of_success_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty :=
+  principalNoUnifyRunBundleExpr_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok
+
+theorem principalNoUnifyRunBundleExpr_of_success_via_masterRunBundleConsequence_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (_h_seed : UnifyHookPremises) :
+    PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty :=
+  principalNoUnifyRunBundleExpr_of_success_via_masterRunBundleConsequence_from_cross_route_slices
+    h_no h_ok
+
+theorem principalNoUnifyRunBundleField_of_success_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf :=
+  principalNoUnifyRunBundleField_via_masterConsequenceCapstone_from_cross_route_surface_slices
+    h_no h_ok
+
+theorem principalNoUnifyRunBundleField_of_success_via_masterConsequenceCapstone_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_seed : UnifyHookPremises) :
+    PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf :=
+  principalNoUnifyRunBundleField_of_success_via_masterConsequenceCapstone_from_cross_route_slices
+    h_no h_ok
+
+theorem principalNoUnifyRunBundleField_of_success_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none))) :
+    PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf :=
+  principalNoUnifyRunBundleField_via_masterRunBundleConsequence_from_cross_route_surface_slices
+    h_no h_ok
+
+theorem principalNoUnifyRunBundleField_of_success_via_masterRunBundleConsequence_from_cross_route_surface_slices_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {fs : CoreFields}
+    {st' : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok : inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)))
+    (_h_seed : UnifyHookPremises) :
+    PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf :=
+  principalNoUnifyRunBundleField_of_success_via_masterRunBundleConsequence_from_cross_route_slices
+    h_no h_ok
+
