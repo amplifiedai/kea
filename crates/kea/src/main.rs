@@ -522,6 +522,25 @@ mod tests {
     }
 
     #[test]
+    fn compile_and_execute_real_stdlib_text_helpers_exit_code() {
+        let project_dir = temp_workspace_project_dir("kea-cli-project-real-stdlib-text");
+        let src_dir = project_dir.join("src");
+        std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+
+        let app_path = src_dir.join("app.kea");
+        std::fs::write(
+            &app_path,
+            "use Text\n\nfn main() -> Int\n  if Text.is_empty(\"\") and Text.non_empty(\"kea\")\n    42\n  else\n    0\n",
+        )
+        .expect("app module write should succeed");
+
+        let run = run_file(&app_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_dir_all(project_dir);
+    }
+
+    #[test]
     fn compile_project_reports_list_module_blocked_until_heap_runtime() {
         let project_dir = temp_workspace_project_dir("kea-cli-project-real-stdlib-list-blocked");
         let src_dir = project_dir.join("src");

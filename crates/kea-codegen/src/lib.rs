@@ -1159,7 +1159,13 @@ fn collect_external_call_signatures<M: Module>(
     module: &M,
     mir: &MirModule,
 ) -> Result<BTreeMap<String, cranelift_codegen::ir::Signature>, CodegenError> {
-    let mut signatures: BTreeMap<String, (Vec<Type>, Type)> = BTreeMap::new();
+    let mut signatures: BTreeMap<
+        String,
+        (
+            Vec<cranelift::prelude::Type>,
+            Option<cranelift::prelude::Type>,
+        ),
+    > = BTreeMap::new();
 
     for function in &mir.functions {
         for block in &function.blocks {
@@ -1186,9 +1192,20 @@ fn collect_external_call_signatures<M: Module>(
                     });
                 }
 
+                let canonical_params = arg_types
+                    .iter()
+                    .map(clif_type)
+                    .collect::<Result<Vec<_>, _>>()?;
+                let canonical_ret = if *ret_type == Type::Unit {
+                    None
+                } else {
+                    Some(clif_type(ret_type)?)
+                };
+
                 match signatures.get(name) {
                     Some((existing_params, existing_ret))
-                        if existing_params != arg_types || existing_ret != ret_type =>
+                        if existing_params != &canonical_params
+                            || existing_ret != &canonical_ret =>
                     {
                         return Err(CodegenError::UnsupportedMir {
                             function: function.name.clone(),
@@ -1199,7 +1216,7 @@ fn collect_external_call_signatures<M: Module>(
                     }
                     Some(_) => {}
                     None => {
-                        signatures.insert(name.clone(), (arg_types.clone(), ret_type.clone()));
+                        signatures.insert(name.clone(), (canonical_params, canonical_ret));
                     }
                 }
             }
@@ -1210,10 +1227,10 @@ fn collect_external_call_signatures<M: Module>(
     for (name, (params, ret)) in signatures {
         let mut signature = module.make_signature();
         for param in params {
-            signature.params.push(AbiParam::new(clif_type(&param)?));
+            signature.params.push(AbiParam::new(param));
         }
-        if ret != Type::Unit {
-            signature.returns.push(AbiParam::new(clif_type(&ret)?));
+        if let Some(ret) = ret {
+            signature.returns.push(AbiParam::new(ret));
         }
         clif_signatures.insert(name, signature);
     }
