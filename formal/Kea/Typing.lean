@@ -868,6 +868,10 @@ def ProjResolvedShapeFromUnify : Prop :=
 def UnifyResolvedShapePremises : Prop :=
   AppResolvedShapeFromUnify ∧ ProjResolvedShapeFromUnify
 
+/-- Packaged `HasType` hook assumptions for recursive soundness. -/
+def UnifyHookPremises : Prop :=
+  AppUnifySoundHook ∧ ProjUnifySoundHook
+
 /-- Packaged `HasTypeU` hook assumptions for recursive soundness. -/
 def UnifyHookPremisesU : Prop :=
   AppUnifySoundHookU ∧ ProjUnifySoundHookU
@@ -3574,6 +3578,18 @@ theorem principalTypingSlicePreconditioned_of_success
     exact inferExpr_complete env e ty h_ty
 
 /--
+Bundle-entry variant of `principalTypingSlicePreconditioned_of_success`.
+-/
+theorem principalTypingSlicePreconditioned_of_success_from_bundle
+    (h_hooks : UnifyHookPremises)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty) :
+    PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty := by
+  exact principalTypingSlicePreconditioned_of_success
+    h_hooks.1 h_hooks.2 st fuel env e st' ty h_ok
+
+/--
 Hook-independent principal-typing bundle on the no-unify fragment.
 
 When `e` never executes app/proj unification branches, successful
@@ -3605,6 +3621,19 @@ theorem principalTypingSlicePreconditioned_of_success_no_unify
     injection h_alg' with h_eq
     exact h_eq.symm
   · exact h_no_unify.2
+
+/--
+Bundle-entry variant of `principalTypingSlicePreconditioned_of_success_no_unify`.
+-/
+theorem principalTypingSlicePreconditioned_of_success_no_unify_from_bundle
+    {st : UnifyState} {fuel : Nat} {env : TermEnv} {e : CoreExpr}
+    {st' : UnifyState} {ty : Ty}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok : inferExprUnify st fuel env e = .ok st' ty)
+    (h_hooks : UnifyHookPremises) :
+    PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty := by
+  exact principalTypingSlicePreconditioned_of_success_no_unify
+    h_no h_ok h_hooks.1 h_hooks.2
 
 /--
 `HasTypeU` lift of non-app/proj recursive soundness: on the fragment that never
