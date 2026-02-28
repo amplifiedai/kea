@@ -1673,7 +1673,7 @@ mod tests {
         let cases = [
             ("fn main() -> Int\n  let x = 40\n  x + 2\n", 42),
             (
-                "record User\n  age: Int\n\nfn main() -> Int\n  let u = User { age: 41 }\n  u.age + 1\n",
+                "struct User\n  age: Int\n\nfn main() -> Int\n  let u = User { age: 41 }\n  u.age + 1\n",
                 42,
             ),
             (
@@ -2279,7 +2279,7 @@ mod tests {
     #[test]
     fn compile_and_execute_refcount_allocation_churn_exit_code() {
         let source_path = write_temp_source(
-            "record Box\n  n: Int\n\nfn churn(i: Int, acc: Int) -> Int\n  if i == 0\n    acc\n  else\n    let b = Box { n: i }\n    churn(i - 1, acc + b.n - i)\n\nfn main() -> Int\n  churn(5000, 0)\n",
+            "struct Box\n  n: Int\n\nfn churn(i: Int, acc: Int) -> Int\n  if i == 0\n    acc\n  else\n    let b = Box { n: i }\n    churn(i - 1, acc + b.n - i)\n\nfn main() -> Int\n  churn(5000, 0)\n",
             "kea-cli-refcount-churn",
             "kea",
         );
@@ -2293,7 +2293,7 @@ mod tests {
     #[test]
     fn compile_emits_release_ops_for_allocation_churn_program() {
         let source_path = write_temp_source(
-            "record Box\n  n: Int\n\nfn churn(i: Int, acc: Int) -> Int\n  if i == 0\n    acc\n  else\n    let b = Box { n: i }\n    churn(i - 1, acc + b.n - i)\n\nfn main() -> Int\n  churn(1024, 0)\n",
+            "struct Box\n  n: Int\n\nfn churn(i: Int, acc: Int) -> Int\n  if i == 0\n    acc\n  else\n    let b = Box { n: i }\n    churn(i - 1, acc + b.n - i)\n\nfn main() -> Int\n  churn(1024, 0)\n",
             "kea-cli-refcount-stats",
             "kea",
         );
@@ -2365,7 +2365,7 @@ mod tests {
     #[test]
     fn compile_elides_linear_heap_alias_chain_retain_churn_in_stats() {
         let source_path = write_temp_source(
-            "record Box\n  n: Int\n\nfn main() -> Int\n  let b0 = Box { n: 1 }\n  let b1 = b0\n  let b2 = b1\n  let b3 = b2\n  b3.n\n",
+            "struct Box\n  n: Int\n\nfn main() -> Int\n  let b0 = Box { n: 1 }\n  let b1 = b0\n  let b2 = b1\n  let b3 = b2\n  b3.n\n",
             "kea-cli-linear-alias-chain-rc-fusion-stats",
             "kea",
         );
@@ -3092,7 +3092,7 @@ mod tests {
     #[test]
     fn compile_and_execute_record_pattern_case_exit_code() {
         let source_path = write_temp_source(
-            "record User\n  age: Int\n  score: Int\n\nfn main() -> Int\n  let user = User { age: 4, score: 9 }\n  case user\n    User { age: 4, .. } -> 6\n    _ -> 2\n",
+            "struct User\n  age: Int\n  score: Int\n\nfn main() -> Int\n  let user = User { age: 4, score: 9 }\n  case user\n    User { age: 4, .. } -> 6\n    _ -> 2\n",
             "kea-cli-record-pattern-case",
             "kea",
         );
@@ -3106,7 +3106,7 @@ mod tests {
     #[test]
     fn compile_and_execute_record_pattern_direct_expression_scrutinee_exit_code() {
         let source_path = write_temp_source(
-            "record User\n  age: Int\n\nfn main() -> Int\n  case User { age: 7 }\n    User { age: n } -> n\n",
+            "struct User\n  age: Int\n\nfn main() -> Int\n  case User { age: 7 }\n    User { age: n } -> n\n",
             "kea-cli-record-pattern-direct-scrutinee",
             "kea",
         );
@@ -3120,7 +3120,7 @@ mod tests {
     #[test]
     fn compile_and_execute_record_pattern_renamed_field_binding_exit_code() {
         let source_path = write_temp_source(
-            "record User\n  age: Int\n  score: Int\n\nfn main() -> Int\n  let user = User { age: 4, score: 9 }\n  case user\n    User { age: years, .. } -> years + 2\n    _ -> 0\n",
+            "struct User\n  age: Int\n  score: Int\n\nfn main() -> Int\n  let user = User { age: 4, score: 9 }\n  case user\n    User { age: years, .. } -> years + 2\n    _ -> 0\n",
             "kea-cli-record-pattern-rename-bind",
             "kea",
         );
@@ -3134,7 +3134,7 @@ mod tests {
     #[test]
     fn compile_and_execute_record_pattern_pun_binding_exit_code() {
         let source_path = write_temp_source(
-            "record User\n  age: Int\n  score: Int\n\nfn main() -> Int\n  let user = User { age: 4, score: 9 }\n  case user\n    User { age, .. } -> age + 3\n    _ -> 0\n",
+            "struct User\n  age: Int\n  score: Int\n\nfn main() -> Int\n  let user = User { age: 4, score: 9 }\n  case user\n    User { age, .. } -> age + 3\n    _ -> 0\n",
             "kea-cli-record-pattern-pun-bind",
             "kea",
         );
@@ -3148,7 +3148,7 @@ mod tests {
     #[test]
     fn compile_and_execute_record_pattern_guard_binding_exit_code() {
         let source_path = write_temp_source(
-            "record User\n  age: Int\n  score: Int\n\nfn main() -> Int\n  let user = User { age: 4, score: 9 }\n  case user\n    User { age: years, .. } when years == 4 -> years + 10\n    _ -> 0\n",
+            "struct User\n  age: Int\n  score: Int\n\nfn main() -> Int\n  let user = User { age: 4, score: 9 }\n  case user\n    User { age: years, .. } when years == 4 -> years + 10\n    _ -> 0\n",
             "kea-cli-record-pattern-guard-bind",
             "kea",
         );
@@ -3162,7 +3162,7 @@ mod tests {
     #[test]
     fn compile_and_execute_record_pattern_or_literal_exit_code() {
         let source_path = write_temp_source(
-            "record User\n  age: Int\n  score: Int\n\nfn main() -> Int\n  let user = User { age: 4, score: 9 }\n  case user\n    User { age: 3, .. } | User { age: 4, .. } -> 6\n    _ -> 2\n",
+            "struct User\n  age: Int\n  score: Int\n\nfn main() -> Int\n  let user = User { age: 4, score: 9 }\n  case user\n    User { age: 3, .. } | User { age: 4, .. } -> 6\n    _ -> 2\n",
             "kea-cli-record-pattern-or",
             "kea",
         );
@@ -3232,7 +3232,7 @@ mod tests {
     #[test]
     fn compile_and_execute_record_construct_and_field_access_exit_code() {
         let source_path = write_temp_source(
-            "record User\n  age: Int\n  score: Int\n\nfn main() -> Int\n  let user = User { age: 4, score: 9 }\n  user.age + user.score\n",
+            "struct User\n  age: Int\n  score: Int\n\nfn main() -> Int\n  let user = User { age: 4, score: 9 }\n  user.age + user.score\n",
             "kea-cli-record-init-field",
             "kea",
         );
@@ -3246,7 +3246,7 @@ mod tests {
     #[test]
     fn compile_and_execute_dot_method_dispatch_exit_code() {
         let source_path = write_temp_source(
-            "record User\n  age: Int\n\nfn inc(self: User) -> User\n  User { ..self, age: self.age + 1 }\n\nfn main() -> Int\n  let user = User { age: 41 }\n  user.inc().age\n",
+            "struct User\n  age: Int\n\nfn inc(self: User) -> User\n  self~{ age: self.age + 1 }\n\nfn main() -> Int\n  let user = User { age: 41 }\n  user.inc().age\n",
             "kea-cli-dot-method-dispatch",
             "kea",
         );
@@ -3260,7 +3260,7 @@ mod tests {
     #[test]
     fn compile_and_execute_dot_method_dispatch_on_field_access_receiver_exit_code() {
         let source_path = write_temp_source(
-            "record User\n  age: Int\n\nrecord Wrap\n  inner: User\n\nfn inc(self: User) -> User\n  User { ..self, age: self.age + 1 }\n\nfn main() -> Int\n  let wrapped = Wrap { inner: User { age: 41 } }\n  wrapped.inner.inc().age\n",
+            "struct User\n  age: Int\n\nstruct Wrap\n  inner: User\n\nfn inc(self: User) -> User\n  self~{ age: self.age + 1 }\n\nfn main() -> Int\n  let wrapped = Wrap { inner: User { age: 41 } }\n  wrapped.inner.inc().age\n",
             "kea-cli-dot-method-dispatch-field-receiver",
             "kea",
         );
@@ -3274,7 +3274,7 @@ mod tests {
     #[test]
     fn compile_and_execute_row_polymorphic_record_field_access_exit_code() {
         let source_path = write_temp_source(
-            "record User\n  age: Int\n  score: Int\n\nfn get_age(u: { age: Int | r }) -> Int\n  u.age\n\nfn main() -> Int\n  let user = User { age: 41, score: 1 }\n  get_age(user)\n",
+            "struct User\n  age: Int\n  score: Int\n\nfn get_age(u: { age: Int | r }) -> Int\n  u.age\n\nfn main() -> Int\n  let user = User { age: 41, score: 1 }\n  get_age(user)\n",
             "kea-cli-row-poly-record-field",
             "kea",
         );
@@ -3288,7 +3288,7 @@ mod tests {
     #[test]
     fn compile_and_execute_record_update_with_spread_exit_code() {
         let source_path = write_temp_source(
-            "record User\n  age: Int\n  score: Int\n\nfn main() -> Int\n  let user = User { age: 4, score: 9 }\n  let updated = User { ..user, age: user.age + 3 }\n  updated.age + updated.score\n",
+            "struct User\n  age: Int\n  score: Int\n\nfn main() -> Int\n  let user = User { age: 4, score: 9 }\n  let updated = user~{ age: user.age + 3 }\n  updated.age + updated.score\n",
             "kea-cli-record-update",
             "kea",
         );
@@ -3302,7 +3302,7 @@ mod tests {
     #[test]
     fn compile_and_execute_nested_record_update_chain_exit_code() {
         let source_path = write_temp_source(
-            "record User\n  age: Int\n  score: Int\n\nfn main() -> Int\n  let user = User { age: 4, score: 9 }\n  let updated = User { ..(User { ..user, age: user.age + 3 }), score: user.score + 4 }\n  updated.age + updated.score\n",
+            "struct User\n  age: Int\n  score: Int\n\nfn main() -> Int\n  let user = User { age: 4, score: 9 }\n  let updated = (user~{ age: user.age + 3 })~{ score: user.score + 4 }\n  updated.age + updated.score\n",
             "kea-cli-record-update-chain",
             "kea",
         );
@@ -3330,7 +3330,7 @@ mod tests {
     #[test]
     fn compile_and_execute_sum_payload_record_type_exit_code() {
         let source_path = write_temp_source(
-            "record User\n  age: Int\n\ntype Wrap = W(User) | N\n\nfn main() -> Int\n  case W(User { age: 7 })\n    W(u) -> u.age + 1\n    N -> 0\n",
+            "struct User\n  age: Int\n\ntype Wrap = W(User) | N\n\nfn main() -> Int\n  case W(User { age: 7 })\n    W(u) -> u.age + 1\n    N -> 0\n",
             "kea-cli-sum-record-payload",
             "kea",
         );
@@ -3344,7 +3344,7 @@ mod tests {
     #[test]
     fn compile_and_execute_sum_payload_record_pattern_exit_code() {
         let source_path = write_temp_source(
-            "record User\n  age: Int\n\ntype Wrap = W(User) | N\n\nfn main() -> Int\n  case W(User { age: 7 })\n    W(User { age: n }) -> n + 2\n    N -> 0\n",
+            "struct User\n  age: Int\n\ntype Wrap = W(User) | N\n\nfn main() -> Int\n  case W(User { age: 7 })\n    W(User { age: n }) -> n + 2\n    N -> 0\n",
             "kea-cli-sum-record-payload-pattern",
             "kea",
         );
@@ -3358,7 +3358,7 @@ mod tests {
     #[test]
     fn compile_and_execute_sum_payload_record_alias_type_exit_code() {
         let source_path = write_temp_source(
-            "record User\n  age: Int\n\nalias UserAlias = User\n\ntype Wrap = W(UserAlias) | N\n\nfn main() -> Int\n  case W(User { age: 7 })\n    W(u) -> u.age + 5\n    N -> 0\n",
+            "struct User\n  age: Int\n\nalias UserAlias = User\n\ntype Wrap = W(UserAlias) | N\n\nfn main() -> Int\n  case W(User { age: 7 })\n    W(u) -> u.age + 5\n    N -> 0\n",
             "kea-cli-sum-record-payload-alias",
             "kea",
         );

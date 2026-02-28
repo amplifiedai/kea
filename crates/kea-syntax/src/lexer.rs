@@ -364,6 +364,7 @@ impl<'src> Lexer<'src> {
                     self.emit(TokenKind::Percent, start, self.pos);
                 }
             }
+            b'~' => self.emit(TokenKind::Tilde, start, self.pos),
             b'(' => self.emit(TokenKind::LParen, start, self.pos),
             b')' => self.emit(TokenKind::RParen, start, self.pos),
             b'{' => {
@@ -482,6 +483,11 @@ impl<'src> Lexer<'src> {
                 if self.match_char(b'[') {
                     self.emit(TokenKind::HashBracket, start, self.pos);
                 } else if self.match_char(b'(') {
+                    self.warning(
+                        start,
+                        self.pos,
+                        "`#(...)` tuple syntax is deprecated; use `( ... )`",
+                    );
                     self.emit(TokenKind::HashParen, start, self.pos);
                 } else if self.match_char(b'{') {
                     self.emit(TokenKind::HashBrace, start, self.pos);
@@ -777,6 +783,7 @@ impl<'src> Lexer<'src> {
             "cond" => TokenKind::Cond,
             "true" => TokenKind::True,
             "false" => TokenKind::False,
+            "struct" => TokenKind::Struct,
             "record" => TokenKind::Record,
             "type" => TokenKind::TypeKw,
             "alias" => TokenKind::Alias,
@@ -816,6 +823,13 @@ impl<'src> Lexer<'src> {
             "assert_error" => TokenKind::AssertError,
             _ => TokenKind::Ident(text.to_string()),
         };
+        if matches!(kind, TokenKind::Record) {
+            self.warning(
+                start,
+                self.pos,
+                "`record` is deprecated; use `struct`",
+            );
+        }
         self.emit(kind, start, self.pos);
     }
 
@@ -1310,7 +1324,7 @@ mod tests {
     fn keywords() {
         assert_eq!(
             lex_kinds(
-                "let fn expr test property pub if when else case cond alias opaque deriving testing use effect forall borrow"
+                "let fn expr test property pub if when else case cond struct alias opaque deriving testing use effect forall borrow"
             ),
             vec![
                 TokenKind::Let,
@@ -1324,6 +1338,7 @@ mod tests {
                 TokenKind::Else,
                 TokenKind::Case,
                 TokenKind::Cond,
+                TokenKind::Struct,
                 TokenKind::Alias,
                 TokenKind::Opaque,
                 TokenKind::Deriving,
@@ -1414,7 +1429,7 @@ mod tests {
     #[test]
     fn delimiters_and_punctuation() {
         assert_eq!(
-            lex_kinds("( ) { } [ ] #[ #( #{ : :: , . | @ -> <- => .. ..= ="),
+            lex_kinds("( ) { } [ ] #[ #( #{ : :: , . | @ -> <- => .. ..= = ~"),
             vec![
                 TokenKind::LParen,
                 TokenKind::RParen,
@@ -1437,7 +1452,36 @@ mod tests {
                 TokenKind::DotDot,
                 TokenKind::DotDotEq,
                 TokenKind::Eq,
+                TokenKind::Tilde,
             ]
+        );
+    }
+
+    #[test]
+    fn record_keyword_warns_and_still_lexes() {
+        let (tokens, warnings) = lex("record User\n  name: String", FileId(0)).unwrap();
+        assert_eq!(tokens[0].kind, TokenKind::Record);
+        assert_eq!(warnings.len(), 1);
+        assert!(
+            warnings[0]
+                .message
+                .contains("`record` is deprecated; use `struct`"),
+            "got: {}",
+            warnings[0].message
+        );
+    }
+
+    #[test]
+    fn hash_tuple_syntax_warns_and_still_lexes() {
+        let (tokens, warnings) = lex("#(1, 2)", FileId(0)).unwrap();
+        assert_eq!(tokens[0].kind, TokenKind::HashParen);
+        assert_eq!(warnings.len(), 1);
+        assert!(
+            warnings[0]
+                .message
+                .contains("`#(...)` tuple syntax is deprecated; use `( ... )`"),
+            "got: {}",
+            warnings[0].message
         );
     }
 

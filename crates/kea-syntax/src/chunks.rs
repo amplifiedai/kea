@@ -20,12 +20,12 @@ pub struct Chunk {
 /// Classify a token stream as a declaration (vs expression).
 ///
 /// Returns `true` if the first significant token indicates a declaration:
-/// `fn`, `pub fn`, `record`, `pub record`, `type`, `pub type`,
+/// `fn`, `pub fn`, `struct`/`record`, `pub struct`/`pub record`, `type`, `pub type`,
 /// `alias`, `pub alias`, `opaque`, `pub opaque`, `trait`, `pub trait`, `impl`,
 /// `test`, or `import`.
 pub fn classify_as_declaration(tokens: &[crate::Token]) -> bool {
     // Skip newlines, doc comments, and leading #[...] blocks to find the
-    // first "significant" token. This ensures `/// doc\nrecord Foo { ... }`
+    // first "significant" token. This ensures `/// doc\nstruct Foo { ... }`
     // is correctly classified as a declaration even for malformed input.
     let mut iter = tokens
         .iter()
@@ -84,6 +84,7 @@ pub fn classify_as_declaration(tokens: &[crate::Token]) -> bool {
     let second = iter.next();
 
     matches!(first, Some(TokenKind::Import))
+        || matches!(first, Some(TokenKind::Struct))
         || matches!(first, Some(TokenKind::Record))
         || matches!(first, Some(TokenKind::TypeKw))
         || matches!(first, Some(TokenKind::Alias))
@@ -100,6 +101,7 @@ pub fn classify_as_declaration(tokens: &[crate::Token]) -> bool {
                 Some(
                     TokenKind::Fn
                         | TokenKind::ExprKw
+                        | TokenKind::Struct
                         | TokenKind::Record
                         | TokenKind::TypeKw
                         | TokenKind::Alias
@@ -140,7 +142,7 @@ fn line_ends_with_continuation(trimmed: &str) -> bool {
 /// Split source into chunks separated by blank lines at brace depth 0.
 ///
 /// Each chunk carries its byte offset in the original source.
-/// Declaration chunks (fn, record, type, trait, impl, import) can span
+/// Declaration chunks (fn, struct, type, trait, impl, import) can span
 /// multiple non-blank lines. Expression chunks are further split by
 /// newlines at depth 0 since each line is a standalone expression.
 pub fn split_chunks(source: &str) -> Vec<Chunk> {

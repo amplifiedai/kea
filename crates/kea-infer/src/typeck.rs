@@ -5403,6 +5403,9 @@ fn is_annotation_expr_pure(expr: &Expr) -> bool {
             fields.iter().all(|(_, v)| is_annotation_expr_pure(v))
                 && spread.as_ref().is_none_or(|e| is_annotation_expr_pure(e))
         }
+        ExprKind::Update { base, fields } => {
+            is_annotation_expr_pure(base) && fields.iter().all(|(_, v)| is_annotation_expr_pure(v))
+        }
         ExprKind::MapLiteral(entries) => entries
             .iter()
             .all(|(k, v)| is_annotation_expr_pure(k) && is_annotation_expr_pure(v)),
@@ -9325,6 +9328,24 @@ fn infer_expr_effect_row(
             }
             join_effect_rows_many(terms, constraints, next_effect_var)
         }
+        ExprKind::Update { base, fields } => {
+            let mut terms = Vec::with_capacity(fields.len() + 1);
+            terms.push(infer_expr_effect_row(
+                base,
+                env,
+                constraints,
+                next_effect_var,
+            ));
+            for (_, value) in fields {
+                terms.push(infer_expr_effect_row(
+                    value,
+                    env,
+                    constraints,
+                    next_effect_var,
+                ));
+            }
+            join_effect_rows_many(terms, constraints, next_effect_var)
+        }
 
         ExprKind::FieldAccess { expr, .. } => {
             infer_expr_effect_row(expr, env, constraints, next_effect_var)
@@ -12331,6 +12352,12 @@ fn collect_resume_usage(
                 );
             }
         }
+        ExprKind::Update { base, fields } => {
+            collect_resume_usage(base, inside_loop, inside_lambda, resume_count, diagnostics);
+            for (_, value) in fields {
+                collect_resume_usage(value, inside_loop, inside_lambda, resume_count, diagnostics);
+            }
+        }
         ExprKind::FieldAccess { expr, .. } => {
             collect_resume_usage(expr, inside_loop, inside_lambda, resume_count, diagnostics);
         }
@@ -14354,6 +14381,83 @@ fn infer_expr_bidir(
                         label: Label::new(name.node.clone()),
                     }),
                 );
+            }
+
+            record_ty
+        }
+
+        ExprKind::Update { base, fields } => {
+            let base_ty = infer_expr_bidir(base, env, unifier, records, traits, sum_types);
+            let resolved_base_ty = unifier.substitution.apply(&base_ty);
+            let (record_ty, record_row) = match resolved_base_ty {
+                Type::Record(rec) => {
+                    let ty = Type::Record(rec.clone());
+                    (ty, rec.row.clone())
+                }
+                other => {
+                    unifier.push_error(
+                        Diagnostic::error(
+                            Category::TypeMismatch,
+                            "functional update base must be a struct value",
+                        )
+                        .at(span_to_loc(base.span))
+                        .with_label(
+                            span_to_loc(base.span),
+                            format!("found `{other}`"),
+                        ),
+                    );
+                    return unifier.fresh_type();
+                }
+            };
+
+            let mut seen_labels = BTreeSet::new();
+            for (field_name, _) in fields.iter() {
+                if !seen_labels.insert(field_name.node.clone()) {
+                    unifier.push_error(
+                        Diagnostic::error(
+                            Category::TypeMismatch,
+                            format!(
+                                "duplicate field `{}` in functional update",
+                                field_name.node
+                            ),
+                        )
+                        .at(span_to_loc(field_name.span)),
+                    );
+                }
+            }
+
+            for (field_name, field_expr) in fields {
+                let label = Label::new(field_name.node.clone());
+                let inferred_field_ty = infer_expr_bidir(
+                    field_expr,
+                    env,
+                    unifier,
+                    records,
+                    traits,
+                    sum_types,
+                );
+                if let Some((_, expected_field_ty)) = record_row
+                    .fields
+                    .iter()
+                    .find(|(declared_label, _)| declared_label == &label)
+                {
+                    constrain_type_eq(
+                        unifier,
+                        &inferred_field_ty,
+                        expected_field_ty,
+                        &prov(Reason::RecordField {
+                            label: label.clone(),
+                        }),
+                    );
+                } else {
+                    unifier.push_error(
+                        Diagnostic::error(
+                            Category::TypeMismatch,
+                            format!("unknown field `{}` in functional update", field_name.node),
+                        )
+                        .at(span_to_loc(field_name.span)),
+                    );
+                }
             }
 
             record_ty

@@ -29,7 +29,7 @@ fn lexer_layout_snapshot_corpus() {
         ("if_else_block", "if ready\n  start()\nelse\n  wait()"),
         ("case_block", "case x\n  Some(v) -> v\n  _ -> 0"),
         ("cond_block", "cond\n  x > 0 -> x\n  _ -> 0"),
-        ("record_decl", "record User\n  name: String\n  age: Int"),
+        ("record_decl", "struct User\n  name: String\n  age: Int"),
         ("trait_decl", "trait Show\n  fn show(self) -> String"),
         (
             "impl_decl",
@@ -94,7 +94,7 @@ fn parser_snapshot_corpus() {
         ParseCase {
             name: "module_record_deriving",
             mode: ParseMode::Module,
-            source: "record Point\n  x: Int\n  y: Int\nderiving Eq, Display",
+            source: "struct Point\n  x: Int\n  y: Int\nderiving Eq, Display",
         },
         ParseCase {
             name: "module_type_named_variant",
@@ -134,7 +134,7 @@ fn parser_snapshot_corpus() {
         ParseCase {
             name: "module_mixed_decls",
             mode: ParseMode::Module,
-            source: "record Point\n  x: Float\n  y: Float\ntrait Additive\n  fn zero() -> Self\nimpl Additive for Point\n  fn zero() -> Int\n    0\nfn main() -> Int\n  1",
+            source: "struct Point\n  x: Float\n  y: Float\ntrait Additive\n  fn zero() -> Self\nimpl Additive for Point\n  fn zero() -> Int\n    0\nfn main() -> Int\n  1",
         },
         ParseCase {
             name: "expr_if_else",
@@ -144,7 +144,7 @@ fn parser_snapshot_corpus() {
         ParseCase {
             name: "expr_case_nested",
             mode: ParseMode::Expr,
-            source: "case x\n  Some(#(a, b)) -> a + b\n  _ -> 0",
+            source: "case x\n  Some((a, b)) -> a + b\n  _ -> 0",
         },
         ParseCase {
             name: "expr_cond",
@@ -174,7 +174,7 @@ fn parser_snapshot_corpus() {
         ParseCase {
             name: "expr_for_generators_guards_into",
             mode: ParseMode::Expr,
-            source: "for x in xs when x > 0, y in ys when y != x\n  #(x, y)\ninto Set",
+            source: "for x in xs when x > 0, y in ys when y != x\n  (x, y)\ninto Set",
         },
         ParseCase {
             name: "expr_use_binding",

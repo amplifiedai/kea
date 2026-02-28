@@ -210,7 +210,7 @@ Test(
 
 ## module_record_deriving
 source:
-|record·Point
+|struct·Point
 |··x:·Int
 |··y:·Int
 |deriving·Eq,·Display
@@ -639,7 +639,7 @@ Import(
 
 ## module_mixed_decls
 source:
-|record·Point
+|struct·Point
 |··x:·Float
 |··y:·Float
 |trait·Additive
@@ -836,7 +836,7 @@ If {
 ## expr_case_nested
 source:
 |case·x
-|··Some(#(a,·b))·->·a·+·b
+|··Some((a,·b))·->·a·+·b
 |··_·->·0
 status: ok
 Case {
@@ -1107,7 +1107,7 @@ Case {
 ## expr_for_generators_guards_into
 source:
 |for·x·in·xs·when·x·>·0,·y·in·ys·when·y·!=·x
-|··#(x,·y)
+|··(x,·y)
 |into·Set
 status: ok
 For(

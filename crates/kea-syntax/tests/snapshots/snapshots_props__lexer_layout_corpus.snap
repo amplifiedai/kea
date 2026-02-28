@@ -1,6 +1,6 @@
 ---
 source: crates/kea-syntax/tests/snapshots_props.rs
-assertion_line: 54
+assertion_line: 68
 expression: output
 ---
 ## fn_decl
@@ -104,12 +104,12 @@ warnings: []
 
 ## record_decl
 source:
-|record·User
+|struct·User
 |··name:·String
 |··age:·Int
 status: ok
 tokens:
-- Record
+- Struct
 - UpperIdent("User")
 - Newline
 - Indent

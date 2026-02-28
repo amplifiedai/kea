@@ -619,6 +619,12 @@ fn check_unique_moves_ast_expr(
                 check_unique_moves_ast_expr(base, state, diagnostics, borrow_param_map);
             }
         }
+        ExprKind::Update { base, fields } => {
+            check_unique_moves_ast_expr(base, state, diagnostics, borrow_param_map);
+            for (_, value) in fields {
+                check_unique_moves_ast_expr(value, state, diagnostics, borrow_param_map);
+            }
+        }
         ExprKind::FieldAccess { expr, .. }
         | ExprKind::YieldFrom { source: expr }
         | ExprKind::ControlSend { actor: expr, .. }
@@ -1919,6 +1925,47 @@ fn lower_expr(
                 }
             }
         }
+        ExprKind::Update { base, fields } => {
+            let lowered_base = lower_expr(
+                base,
+                None,
+                unit_variant_tags,
+                qualified_variant_tags,
+                pattern_variant_tags,
+                pattern_qualified_tags,
+                known_record_defs,
+            );
+            let lowered_fields = fields
+                .iter()
+                .map(|(field_name, field_value)| {
+                    (
+                        field_name.node.clone(),
+                        lower_expr(
+                            field_value,
+                            None,
+                            unit_variant_tags,
+                            qualified_variant_tags,
+                            pattern_variant_tags,
+                            pattern_qualified_tags,
+                            known_record_defs,
+                        ),
+                    )
+                })
+                .collect();
+            let record_type = match &lowered_base.ty {
+                Type::Record(record_ty) => record_ty.name.clone(),
+                _ => match &default_ty {
+                    Type::Record(record_ty) => record_ty.name.clone(),
+                    _ => String::new(),
+                },
+            };
+            // Empty record_type means "infer from base" in MIR lowering.
+            HirExprKind::RecordUpdate {
+                record_type,
+                base: Box::new(lowered_base),
+                fields: lowered_fields,
+            }
+        }
         ExprKind::Constructor { name, args } => {
             if args.is_empty() {
                 if let Some(tag) = unit_variant_tags.get(&name.node) {
@@ -2142,6 +2189,16 @@ fn lower_expr(
                 row: kea_types::RowType::empty_closed(),
             })
         }
+        ExprKind::Update { base, .. } => match &base.node {
+            ExprKind::Record { name, .. } if known_record_defs.contains(&name.node) => {
+                Type::Record(kea_types::RecordType {
+                    name: name.node.clone(),
+                    params: vec![],
+                    row: kea_types::RowType::empty_closed(),
+                })
+            }
+            _ => default_ty,
+        },
         _ => default_ty,
     };
 
@@ -3095,7 +3152,7 @@ fn lower_record_case(
         );
 
         let Some(condition) = condition else {
-            // Unconditional record arm shadows any later arm.
+            // Unconditional struct arm shadows any later arm.
             else_expr = Some(then_branch);
             continue;
         };
@@ -4093,7 +4150,7 @@ mod tests {
     #[test]
     fn lower_function_record_literal_stays_structured_hir() {
         let module = parse_module_from_text(
-            "record User\n  age: Int\n\nfn make_user() -> User\n  User { age: 42 }",
+            "struct User\n  age: Int\n\nfn make_user() -> User\n  User { age: 42 }",
         );
         let mut env = TypeEnv::new();
         env.bind(
@@ -4254,7 +4311,7 @@ mod tests {
     #[test]
     fn lower_function_record_update_stays_structured_hir() {
         let module = parse_module_from_text(
-            "record User\n  age: Int\n  score: Int\n\nfn tweak(u: User) -> User\n  User { ..u, age: u.age + 1 }",
+            "struct User\n  age: Int\n  score: Int\n\nfn tweak(u: User) -> User\n  u~{ age: u.age + 1 }",
         );
         let mut env = TypeEnv::new();
         let user_ty = Type::Record(kea_types::RecordType {
@@ -4465,7 +4522,7 @@ mod tests {
     #[test]
     fn lower_function_record_pattern_case_desugars_to_if_chain() {
         let module = parse_module_from_text(
-            "record User\n  age: Int\n  score: Int\n\nfn pick(u: User) -> Int\n  case u\n    User { age: 7, .. } -> 1\n    _ -> 0",
+            "struct User\n  age: Int\n  score: Int\n\nfn pick(u: User) -> Int\n  case u\n    User { age: 7, .. } -> 1\n    _ -> 0",
         );
         let mut env = TypeEnv::new();
         env.bind(
@@ -4494,7 +4551,7 @@ mod tests {
             .expect("expected lowered pick function");
 
         let HirExprKind::If { condition, .. } = &function.body.kind else {
-            panic!("expected record case to lower to if expression");
+            panic!("expected struct case to lower to if expression");
         };
         let HirExprKind::Binary {
             op: BinOp::Eq,
@@ -4502,7 +4559,7 @@ mod tests {
             ..
         } = &condition.kind
         else {
-            panic!("expected record case condition to compare field with literal");
+            panic!("expected struct case condition to compare field with literal");
         };
         assert!(matches!(
             left.kind,
@@ -4513,7 +4570,7 @@ mod tests {
     #[test]
     fn lower_function_record_pattern_field_binding_uses_field_access() {
         let module = parse_module_from_text(
-            "record User\n  age: Int\n  score: Int\n\nfn pick(u: User) -> Int\n  case u\n    User { age: years, .. } -> years\n    _ -> 0",
+            "struct User\n  age: Int\n  score: Int\n\nfn pick(u: User) -> Int\n  case u\n    User { age: years, .. } -> years\n    _ -> 0",
         );
         let mut env = TypeEnv::new();
         env.bind(
@@ -4542,7 +4599,7 @@ mod tests {
             .expect("expected lowered pick function");
 
         let HirExprKind::Block(exprs) = &function.body.kind else {
-            panic!("expected bound record case branch to emit binding block");
+            panic!("expected bound struct case branch to emit binding block");
         };
         let HirExprKind::Let { pattern, value } = &exprs[0].kind else {
             panic!("expected first branch expr to be let binding");
@@ -4557,7 +4614,7 @@ mod tests {
     #[test]
     fn lower_function_record_pattern_guard_binds_before_guard() {
         let module = parse_module_from_text(
-            "record User\n  age: Int\n  score: Int\n\nfn pick(u: User) -> Int\n  case u\n    User { age: years, .. } when years == 7 -> years\n    _ -> 0",
+            "struct User\n  age: Int\n  score: Int\n\nfn pick(u: User) -> Int\n  case u\n    User { age: years, .. } when years == 7 -> years\n    _ -> 0",
         );
         let mut env = TypeEnv::new();
         env.bind(
@@ -4586,10 +4643,10 @@ mod tests {
             .expect("expected lowered pick function");
 
         let HirExprKind::If { condition, .. } = &function.body.kind else {
-            panic!("expected guarded record case to lower to if expression");
+            panic!("expected guarded struct case to lower to if expression");
         };
         let HirExprKind::Block(exprs) = &condition.kind else {
-            panic!("expected record guard to evaluate inside binding block");
+            panic!("expected struct guard to evaluate inside binding block");
         };
         assert!(matches!(
             exprs.first().map(|expr| &expr.kind),
@@ -4603,7 +4660,7 @@ mod tests {
     #[test]
     fn lower_function_record_pattern_or_literals_desugar_to_if_chain() {
         let module = parse_module_from_text(
-            "record User\n  age: Int\n  score: Int\n\nfn pick(u: User) -> Int\n  case u\n    User { age: 3, .. } | User { age: 7, .. } -> 1\n    _ -> 0",
+            "struct User\n  age: Int\n  score: Int\n\nfn pick(u: User) -> Int\n  case u\n    User { age: 3, .. } | User { age: 7, .. } -> 1\n    _ -> 0",
         );
         let mut env = TypeEnv::new();
         env.bind(
@@ -4636,7 +4693,7 @@ mod tests {
             ..
         } = &function.body.kind
         else {
-            panic!("expected OR record case to lower to if chain");
+            panic!("expected OR struct case to lower to if chain");
         };
         assert!(matches!(else_branch.kind, HirExprKind::If { .. }));
     }
@@ -4669,7 +4726,7 @@ mod tests {
             .expect("expected lowered pick function");
 
         let HirExprKind::If { condition, .. } = &function.body.kind else {
-            panic!("expected anon record case to lower to if expression");
+            panic!("expected anon struct case to lower to if expression");
         };
         let HirExprKind::Binary {
             op: BinOp::Eq,
@@ -4677,7 +4734,7 @@ mod tests {
             ..
         } = &condition.kind
         else {
-            panic!("expected anon record case condition to compare field with literal");
+            panic!("expected anon struct case condition to compare field with literal");
         };
         assert!(matches!(
             left.kind,
@@ -5212,7 +5269,7 @@ mod tests {
     #[test]
     fn lower_function_payload_constructor_record_payload_pattern_binds_field() {
         let module = parse_module_from_text(
-            "record User\n  age: Int\n\ntype Wrap = W(User) | N\nfn pick(x: Wrap) -> Int\n  case x\n    W(User { age: n }) -> n + 1\n    N -> 0",
+            "struct User\n  age: Int\n\ntype Wrap = W(User) | N\nfn pick(x: Wrap) -> Int\n  case x\n    W(User { age: n }) -> n + 1\n    N -> 0",
         );
         let mut env = TypeEnv::new();
         env.bind(
@@ -5257,19 +5314,19 @@ mod tests {
             }
         };
         let HirExprKind::Block(exprs) = &then_branch.kind else {
-            panic!("expected constructor record payload branch to emit binding block");
+            panic!("expected constructor struct payload branch to emit binding block");
         };
         let HirExprKind::Let { pattern, value } = &exprs[0].kind else {
             panic!("expected first branch expression to be payload-field binding");
         };
         assert_eq!(pattern, &HirPattern::Var("n".to_string()));
         let HirExprKind::FieldAccess { expr, field } = &value.kind else {
-            panic!("expected record payload bind value to be FieldAccess");
+            panic!("expected struct payload bind value to be FieldAccess");
         };
         assert_eq!(field, "age");
         assert!(
             matches!(expr.kind, HirExprKind::SumPayloadAccess { .. }),
-            "expected record field access to read from sum payload"
+            "expected struct field access to read from sum payload"
         );
     }
 

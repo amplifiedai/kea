@@ -72,10 +72,12 @@ struct Parser {
     pos: usize,
     file: FileId,
     errors: Vec<Diagnostic>,
-    /// When true, `UpperIdent {` is NOT parsed as a named record literal.
+    /// When true, `UpperIdent {` is NOT parsed as a named struct literal.
     /// Used in case scrutinee position (same as Rust's struct-literal restriction).
     restrict_struct_literals: bool,
 }
+
+type UpdateFields = Vec<(Spanned<String>, Expr)>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum BlockDelimiter {
@@ -126,7 +128,7 @@ impl Parser {
         if self.check(&TokenKind::Use) || self.check(&TokenKind::Import) {
             if doc.is_some() {
                 self.error_at_current(
-                    "doc comments can only be attached to fn, type, alias, opaque, record, trait, or effect declarations",
+                    "doc comments can only be attached to fn, type, alias, opaque, struct, trait, or effect declarations",
                 );
             }
             if !annotations.is_empty() {
@@ -172,13 +174,16 @@ impl Parser {
             return self.type_def(public, start, doc, annotations);
         }
 
-        // record Name { field: Type, ... }
-        // pub record Name { field: Type, ... }
-        if self.check(&TokenKind::Record)
-            || (self.check(&TokenKind::Pub) && self.peek_is(|k| matches!(k, TokenKind::Record)))
+        // struct Name { field: Type, ... }
+        // pub struct Name { field: Type, ... }
+        // Legacy compatibility: `record` is still accepted during migration.
+        if self.check(&TokenKind::Struct)
+            || self.check(&TokenKind::Record)
+            || (self.check(&TokenKind::Pub)
+                && self.peek_is(|k| matches!(k, TokenKind::Struct | TokenKind::Record)))
         {
             let public = self.match_token(&TokenKind::Pub);
-            self.advance(); // consume 'record'
+            self.advance(); // consume 'struct' (or legacy 'record')
             return self.record_def(public, start, doc, annotations);
         }
 
@@ -213,7 +218,7 @@ impl Parser {
         if self.check(&TokenKind::Impl) {
             if doc.is_some() {
                 self.error_at_current(
-                    "doc comments can only be attached to fn, type, record, trait, or effect declarations",
+                    "doc comments can only be attached to fn, type, struct, trait, or effect declarations",
                 );
             }
             if !annotations.is_empty() {
@@ -252,18 +257,18 @@ impl Parser {
                 return self.fn_decl(public, start, doc, annotations);
             } else {
                 self.error_at_current(
-                    "expected 'fn', 'expr', 'type', 'alias', 'opaque', 'record', 'trait', or 'effect' after 'pub'",
+                    "expected 'fn', 'expr', 'type', 'alias', 'opaque', 'struct', 'trait', or 'effect' after 'pub'",
                 );
                 return None;
             }
         }
         if doc.is_some() {
             self.error_at_current(
-                "doc comments can only be attached to fn, type, alias, opaque, record, trait, or effect declarations",
+                "doc comments can only be attached to fn, type, alias, opaque, struct, trait, or effect declarations",
             );
         }
         self.error_at_current(
-            "expected declaration (fn, expr, test, pub fn, type, alias, opaque, record, trait, effect, impl, use, or import)",
+            "expected declaration (fn, expr, test, pub fn, type, alias, opaque, struct, trait, effect, impl, use, or import)",
         );
         // Skip to next newline to recover
         while !self.at_eof() && !self.check_newline() {
@@ -516,10 +521,10 @@ impl Parser {
         doc: Option<String>,
         annotations: Vec<Annotation>,
     ) -> Option<Decl> {
-        let name = self.expect_upper_ident("expected record name")?;
+        let name = self.expect_upper_ident("expected struct name")?;
         self.skip_newlines();
 
-        // Optional type parameters: record ApiResponse(t) { ... }
+        // Optional type parameters: struct ApiResponse(t) { ... }
         let mut params = Vec::new();
         if self.match_token(&TokenKind::LParen) {
             loop {
@@ -535,11 +540,11 @@ impl Parser {
 
         if self.check(&TokenKind::Deriving) {
             self.error_at_current(
-                "`deriving` must appear after the record body (`record Name { ... } deriving Eq`)",
+                "`deriving` must appear after the struct body (`struct Name { ... } deriving Eq`)",
             );
         }
         let mut derives = Vec::new();
-        let delimiter = self.expect_block_start("expected record body block after record name")?;
+        let delimiter = self.expect_block_start("expected struct body block after struct name")?;
         let mut fields = Vec::new();
         let mut field_annotations = Vec::new();
         self.skip_newlines();
@@ -551,7 +556,7 @@ impl Parser {
                 }
                 let anns = self.parse_annotations()?;
                 self.skip_newlines();
-                let field_name = self.expect_ident("expected field name in record definition")?;
+                let field_name = self.expect_ident("expected field name in struct definition")?;
                 self.expect(&TokenKind::Colon, "expected ':' after field name")?;
                 let field_type = self.type_annotation()?;
                 fields.push((field_name, field_type.node));
@@ -561,7 +566,7 @@ impl Parser {
             }
         }
         self.skip_newlines();
-        self.expect_block_end(delimiter, "expected end of record definition")?;
+        self.expect_block_end(delimiter, "expected end of struct definition")?;
         if self.check(&TokenKind::Deriving) {
             let mut post_derives = self.parse_deriving_clause()?;
             derives.append(&mut post_derives);
@@ -2112,8 +2117,46 @@ impl Parser {
             } else {
                 Some(Spanned::new(TypeAnnotation::Named(name_str), name.span))
             }
+        } else if self.match_token(&TokenKind::LParen) {
+            // Parenthesized type or tuple type: `(A)` / `(A, B, C)`.
+            let mut elems = Vec::new();
+            self.skip_newlines();
+            if self.check(&TokenKind::RParen) {
+                self.error_at_current("empty type parens are not supported; use `Unit`");
+                return None;
+            }
+            let first = self.type_annotation()?.node;
+            self.skip_newlines();
+            if self.match_token(&TokenKind::Comma) {
+                elems.push(first);
+                self.skip_newlines();
+                if !self.check(&TokenKind::RParen) {
+                    loop {
+                        self.skip_newlines();
+                        elems.push(self.type_annotation()?.node);
+                        self.skip_newlines();
+                        if !self.match_token(&TokenKind::Comma) {
+                            break;
+                        }
+                        self.skip_newlines();
+                        if self.check(&TokenKind::RParen) {
+                            break;
+                        }
+                    }
+                }
+                let end_span = self.current_span();
+                self.expect(&TokenKind::RParen, "expected ')' in tuple type")?;
+                Some(Spanned::new(
+                    TypeAnnotation::Tuple(elems),
+                    start.merge(end_span),
+                ))
+            } else {
+                let end_span = self.current_span();
+                self.expect(&TokenKind::RParen, "expected ')' in type group")?;
+                Some(Spanned::new(first, start.merge(end_span)))
+            }
         } else if self.match_token(&TokenKind::HashParen) {
-            // Tuple type: #(A, B, C)
+            // Legacy tuple type: `#(A, B, C)`.
             let mut elems = Vec::new();
             self.skip_newlines();
             if !self.check(&TokenKind::RParen) {
@@ -2122,6 +2165,10 @@ impl Parser {
                     elems.push(self.type_annotation()?.node);
                     self.skip_newlines();
                     if !self.match_token(&TokenKind::Comma) {
+                        break;
+                    }
+                    self.skip_newlines();
+                    if self.check(&TokenKind::RParen) {
                         break;
                     }
                 }
@@ -2250,6 +2297,7 @@ impl Parser {
                     | TokenKind::UpperIdent(_)
                     | TokenKind::Fn
                     | TokenKind::Forall
+                    | TokenKind::LParen
                     | TokenKind::LBracket
                     | TokenKind::LBrace
                     | TokenKind::HashParen
@@ -2310,6 +2358,19 @@ impl Parser {
             } else {
                 (self.advance(), false)
             };
+
+            if matches!(op_token.kind, TokenKind::Tilde) {
+                let (fields, end_span) = self.update_fields_expr()?;
+                let span = lhs.span.merge(end_span);
+                lhs = Spanned::new(
+                    ExprKind::Update {
+                        base: Box::new(lhs),
+                        fields,
+                    },
+                    span,
+                );
+                continue;
+            }
 
             self.skip_newlines();
             let rhs = self.pratt_expr(r_bp)?;
@@ -2571,7 +2632,7 @@ impl Parser {
             return self.yield_from_expr();
         }
 
-        // Tuple: #(exprs)
+        // Legacy tuple syntax: #(exprs)
         if self.check(&TokenKind::HashParen) {
             return self.tuple_expr();
         }
@@ -2591,7 +2652,7 @@ impl Parser {
             return self.list_expr();
         }
 
-        // Parenthesized expression or unit literal
+        // Parenthesized expression, tuple literal, or unit literal
         if self.check(&TokenKind::LParen) {
             if self.is_paren_lambda_start() {
                 self.error_at_current(
@@ -2605,21 +2666,41 @@ impl Parser {
                 let end = self.current_span();
                 return Some(Spanned::new(ExprKind::Lit(Lit::Unit), start.merge(end)));
             }
-            let inner = self.expression()?;
+            let first = self.expression()?;
             self.skip_newlines();
+            if self.match_token(&TokenKind::Comma) {
+                let mut elems = vec![first];
+                self.skip_newlines();
+                if !self.check(&TokenKind::RParen) {
+                    loop {
+                        elems.push(self.expression()?);
+                        self.skip_newlines();
+                        if !self.match_token(&TokenKind::Comma) {
+                            break;
+                        }
+                        self.skip_newlines();
+                        if self.check(&TokenKind::RParen) {
+                            break;
+                        }
+                    }
+                }
+                let end = self.current_span();
+                self.expect(&TokenKind::RParen, "expected ')' to close tuple")?;
+                return Some(Spanned::new(ExprKind::Tuple(elems), start.merge(end)));
+            }
             self.expect(&TokenKind::RParen, "expected ')'")?;
-            return Some(inner);
+            return Some(first);
         }
 
-        // Upper identifier: named record construction or constructor (Some, Ok, Err)
+        // Upper identifier: named struct construction or constructor (Some, Ok, Err)
         if let Some(TokenKind::UpperIdent(name)) = self.peek_kind() {
             let name = name.clone();
             self.advance();
             let name_spanned = Spanned::new(name, start);
-            // Named record construction: Name { field: val, ... }
+            // Named struct construction: Name { field: val, ... }
             // In case scrutinee position, disambiguate with look-ahead:
             // `Green { Red -> ... }` is case body, not named record.
-            // `User { name: "alice" } { ... }` is named record then case body.
+            // `User { name: "alice" } { ... }` is named struct then case body.
             if self.check(&TokenKind::LBrace)
                 && (!self.restrict_struct_literals || self.looks_like_record_after_brace())
             {
@@ -3441,7 +3522,7 @@ impl Parser {
             ));
         }
 
-        // Constructor or named record pattern: UpperIdent
+        // Constructor or named struct pattern: UpperIdent
         // Qualified constructor pattern: Type.Variant or Type.Variant(args)
         if let Some(TokenKind::UpperIdent(name)) = self.peek_kind() {
             let name = name.clone();
@@ -3463,7 +3544,7 @@ impl Parser {
             } else {
                 (name, None)
             };
-            // Named record pattern: Name { field, field: pat, .. }
+            // Named struct pattern: Name { field, field: pat, .. }
             if self.match_token(&TokenKind::LBrace) {
                 let mut fields = Vec::new();
                 let mut rest = false;
@@ -3477,7 +3558,7 @@ impl Parser {
                             break;
                         }
                         let field_name =
-                            self.expect_ident("expected field name in record pattern")?;
+                            self.expect_ident("expected field name in struct pattern")?;
                         let pat = if self.match_token(&TokenKind::Colon) {
                             self.skip_newlines();
                             self.pattern()?
@@ -3494,7 +3575,7 @@ impl Parser {
                 }
                 self.skip_newlines();
                 let end = self.current_span();
-                self.expect(&TokenKind::RBrace, "expected '}' to close record pattern")?;
+                self.expect(&TokenKind::RBrace, "expected '}' to close struct pattern")?;
                 return Some(Spanned::new(
                     PatternKind::Record { name, fields, rest },
                     start.merge(end),
@@ -3668,7 +3749,7 @@ impl Parser {
             return Some(Spanned::new(PatternKind::Tuple(pats), start.merge(end)));
         }
 
-        // Anonymous record pattern: #{ name, age } or #{ name: pat, .. }
+        // Anonymous struct pattern: #{ name, age } or #{ name: pat, .. }
         if self.check(&TokenKind::HashBrace) {
             self.advance(); // consume #{
             let mut fields = Vec::new();
@@ -3682,7 +3763,7 @@ impl Parser {
                         self.skip_newlines();
                         break;
                     }
-                    let field_name = self.expect_ident("expected field name in record pattern")?;
+                    let field_name = self.expect_ident("expected field name in struct pattern")?;
                     let pat = if self.match_token(&TokenKind::Colon) {
                         self.skip_newlines();
                         self.pattern()?
@@ -3699,7 +3780,7 @@ impl Parser {
             }
             self.skip_newlines();
             let end = self.current_span();
-            self.expect(&TokenKind::RBrace, "expected '}' to close record pattern")?;
+            self.expect(&TokenKind::RBrace, "expected '}' to close struct pattern")?;
             return Some(Spanned::new(
                 PatternKind::AnonRecord { fields, rest },
                 start.merge(end),
@@ -3713,15 +3794,38 @@ impl Parser {
             return Some(Spanned::new(PatternKind::Var(name), start));
         }
 
-        // Unit pattern: ()
+        // Unit / tuple / grouped pattern: (), (p), (p1, p2, ...)
         if self.check(&TokenKind::LParen) {
             self.advance();
+            self.skip_newlines();
             if self.match_token(&TokenKind::RParen) {
                 let end = self.current_span();
                 return Some(Spanned::new(PatternKind::Lit(Lit::Unit), start.merge(end)));
             }
-            self.error_at_current("expected ')' for unit pattern");
-            return None;
+            let first = self.pattern()?;
+            self.skip_newlines();
+            if self.match_token(&TokenKind::Comma) {
+                let mut pats = vec![first];
+                self.skip_newlines();
+                if !self.check(&TokenKind::RParen) {
+                    loop {
+                        pats.push(self.pattern()?);
+                        self.skip_newlines();
+                        if !self.match_token(&TokenKind::Comma) {
+                            break;
+                        }
+                        self.skip_newlines();
+                        if self.check(&TokenKind::RParen) {
+                            break;
+                        }
+                    }
+                }
+                let end = self.current_span();
+                self.expect(&TokenKind::RParen, "expected ')' to close tuple pattern")?;
+                return Some(Spanned::new(PatternKind::Tuple(pats), start.merge(end)));
+            }
+            self.expect(&TokenKind::RParen, "expected ')' after parenthesized pattern")?;
+            return Some(first);
         }
 
         self.error_at_current("expected pattern");
@@ -3848,7 +3952,7 @@ impl Parser {
         }
         self.skip_newlines();
         let end = self.current_span();
-        self.expect(&TokenKind::RBrace, "expected '}' to close record")?;
+        self.expect(&TokenKind::RBrace, "expected '}' to close struct literal")?;
         Some(Spanned::new(
             ExprKind::AnonRecord { fields, spread },
             start.merge(end),
@@ -4233,7 +4337,7 @@ impl Parser {
         }
         self.skip_newlines();
         let end = self.current_span();
-        self.expect(&TokenKind::RBrace, "expected '}' to close record")?;
+        self.expect(&TokenKind::RBrace, "expected '}' to close struct literal")?;
         Some(Spanned::new(
             ExprKind::Record {
                 name,
@@ -4242,6 +4346,44 @@ impl Parser {
             },
             start.merge(end),
         ))
+    }
+
+    fn update_fields_expr(&mut self) -> Option<(UpdateFields, Span)> {
+        self.skip_newlines();
+        self.expect(&TokenKind::LBrace, "expected '{' after '~' in update expression")?;
+
+        let mut fields = Vec::new();
+        self.skip_newlines();
+        if !self.check(&TokenKind::RBrace) {
+            loop {
+                self.skip_newlines();
+                if self.match_token(&TokenKind::DotDot) {
+                    self.error_at_current(
+                        "spread syntax is not supported after '~'; use `base~{ field: value }`",
+                    );
+                    let _ = self.expression();
+                    self.skip_newlines();
+                    if !self.match_token(&TokenKind::Comma) {
+                        break;
+                    }
+                    continue;
+                }
+
+                let field_name = self.expect_ident("expected field name in update expression")?;
+                self.expect(&TokenKind::Colon, "expected ':' after field name")?;
+                self.skip_newlines();
+                let value = self.expression()?;
+                fields.push((field_name, value));
+                self.skip_newlines();
+                if !self.match_token(&TokenKind::Comma) {
+                    break;
+                }
+            }
+        }
+        self.skip_newlines();
+        let end = self.current_span();
+        self.expect(&TokenKind::RBrace, "expected '}' to close update expression")?;
+        Some((fields, end))
     }
 
     fn list_expr(&mut self) -> Option<Expr> {
@@ -4530,6 +4672,9 @@ impl Parser {
                 Some((13, 14))
             }
             TokenKind::Star | TokenKind::Slash | TokenKind::Percent => Some((15, 16)),
+            // Functional update: `base~{ field: value }`.
+            // Binds tighter than comparisons but looser than postfix access/calls.
+            TokenKind::Tilde => Some((17, 18)),
             _ => None,
         }
     }
@@ -4545,84 +4690,36 @@ impl Parser {
     // -- Lambda detection --
 
     /// Lookahead to detect legacy `( ... ) ->` lambda syntax (including `() ->`).
-    ///
-    /// Heuristic: starting at `(`, check if the content looks like a param list
-    /// rather than a parenthesized expression. Signals:
-    /// - `() ->` — zero-arg lambda
-    /// - `( ident , ` — multiple params
-    /// - `( ident : ` — annotated param
-    /// - `( ident ) ->` — single-param lambda
-    /// - `( #( ` or `( #{ ` — destructuring param
-    /// - `( _ ` — wildcard param
+    /// Returns true only when a matching `)` is immediately followed by `->`
+    /// (ignoring newlines).
     fn is_paren_lambda_start(&self) -> bool {
-        let mut i = self.pos + 1; // past the opening (
-
-        // Skip newlines
-        while self
-            .tokens
-            .get(i)
-            .is_some_and(|t| t.kind == TokenKind::Newline)
-        {
-            i += 1;
-        }
-
-        // `() ->` — zero-arg lambda
-        if self
-            .tokens
-            .get(i)
-            .is_some_and(|t| t.kind == TokenKind::RParen)
-        {
-            return self
-                .tokens
-                .get(i + 1)
-                .is_some_and(|t| t.kind == TokenKind::Arrow);
-        }
-
-        // Destructuring patterns: `( #( ...` or `( #{ ...`
-        if self
-            .tokens
-            .get(i)
-            .is_some_and(|t| matches!(t.kind, TokenKind::HashParen | TokenKind::HashBrace))
-        {
-            return true;
-        }
-
-        // Wildcard `( _ ,` or `( _ )` or `( _ :`
-        if let Some(TokenKind::Ident(name)) = self.tokens.get(i).map(|t| &t.kind)
-            && name == "_"
-        {
-            return true;
-        }
-
-        // `( ident ...` — check what follows the ident
-        if let Some(TokenKind::Ident(_) | TokenKind::UpperIdent(_)) =
-            self.tokens.get(i).map(|t| &t.kind)
-        {
-            i += 1;
-            // Skip newlines
-            while self
-                .tokens
-                .get(i)
-                .is_some_and(|t| t.kind == TokenKind::Newline)
-            {
-                i += 1;
-            }
-            match self.tokens.get(i).map(|t| &t.kind) {
-                // `( ident ,` — multiple params
-                Some(TokenKind::Comma) => return true,
-                // `( ident :` — type annotation
-                Some(TokenKind::Colon) => return true,
-                // `( ident ) ->` — single-param lambda
-                Some(TokenKind::RParen) => {
-                    return self
-                        .tokens
-                        .get(i + 1)
-                        .is_some_and(|t| t.kind == TokenKind::Arrow);
+        let mut i = self.pos;
+        let mut depth = 0i32;
+        while let Some(tok) = self.tokens.get(i) {
+            match tok.kind {
+                TokenKind::LParen => depth += 1,
+                TokenKind::RParen => {
+                    depth -= 1;
+                    if depth == 0 {
+                        let mut j = i + 1;
+                        while self
+                            .tokens
+                            .get(j)
+                            .is_some_and(|t| t.kind == TokenKind::Newline)
+                        {
+                            j += 1;
+                        }
+                        return self
+                            .tokens
+                            .get(j)
+                            .is_some_and(|t| t.kind == TokenKind::Arrow);
+                    }
                 }
+                TokenKind::Eof => break,
                 _ => {}
             }
+            i += 1;
         }
-
         false
     }
 
@@ -4653,15 +4750,14 @@ impl Parser {
         matches!(self.peek_kind(), Some(TokenKind::Eof) | None)
     }
 
-    /// Look-ahead to decide if `{` starts a named record literal or case body.
+    /// Look-ahead to decide if `{` starts a named struct literal or case body.
     /// Called when `restrict_struct_literals` is true and we've seen `UpperIdent` at current pos
-    /// with `{` at `self.pos`. Returns true if content looks like record fields.
+    /// with `{` at `self.pos`. Returns true if content looks like struct fields.
     fn looks_like_record_after_brace(&self) -> bool {
         let t1 = self.tokens.get(self.pos + 1).map(|t| &t.kind);
         let t2 = self.tokens.get(self.pos + 2).map(|t| &t.kind);
         match (t1, t2) {
-            // `{ }` — empty record
-            (Some(TokenKind::RBrace), _) => true,
+            // `{ }` — empty struct             (Some(TokenKind::RBrace), _) => true,
             // `{ .. }` — spread
             (Some(TokenKind::DotDot), _) => true,
             // `{ ident: ... }` — explicit field assignment
@@ -4734,8 +4830,13 @@ impl Parser {
     fn skip_newlines_if_continuation(&mut self) {
         let saved = self.pos;
         self.skip_newlines();
-        // If the next token isn't an infix/postfix operator, restore position
-        if self.infix_bp().is_none() && self.postfix_bp().is_none() {
+        // Newline does not continue into call syntax (`f` newline `(x)`), because that
+        // creates ambiguous parses in indentation-delimited constructs like case arms.
+        // Keep continuation for infix operators and non-call postfix forms.
+        let continues = self.infix_bp().is_some()
+            || matches!(self.peek_kind(), Some(TokenKind::Dot | TokenKind::Question))
+            || self.check_ident("as");
+        if !continues {
             self.pos = saved;
         }
     }
@@ -5634,11 +5735,11 @@ mod tests {
         );
     }
 
-    // -- Tuple, list, anon record --
+    // -- Tuple, list, anon struct --
 
     #[test]
     fn parse_tuple() {
-        let expr = parse("#(1, 2, 3)");
+        let expr = parse("(1, 2, 3)");
         match &expr.node {
             ExprKind::Tuple(elems) => assert_eq!(elems.len(), 3),
             _ => panic!("expected Tuple"),
@@ -5647,11 +5748,17 @@ mod tests {
 
     #[test]
     fn parse_tuple_with_trailing_comma() {
-        let expr = parse("#(1, 2, 3,)");
+        let expr = parse("(1, 2, 3,)");
         match &expr.node {
             ExprKind::Tuple(elems) => assert_eq!(elems.len(), 3),
             _ => panic!("expected Tuple"),
         }
+    }
+
+    #[test]
+    fn parse_legacy_hash_tuple_still_supported() {
+        let expr = parse("#(1, 2, 3)");
+        assert!(matches!(expr.node, ExprKind::Tuple(_)));
     }
 
     #[test]
@@ -5812,7 +5919,7 @@ mod tests {
 
     #[test]
     fn parse_record_def() {
-        let module = parse_mod("record User\n  name: String\n  age: Int");
+        let module = parse_mod("struct User\n  name: String\n  age: Int");
         assert_eq!(module.declarations.len(), 1);
         match &module.declarations[0].node {
             DeclKind::RecordDef(def) => {
@@ -5823,6 +5930,18 @@ mod tests {
                 assert_eq!(def.fields[1].0.node, "age");
             }
             _ => panic!("expected RecordDef"),
+        }
+    }
+
+    #[test]
+    fn parse_legacy_record_keyword_still_parses() {
+        let module = parse_mod("record Legacy\n  x: Int");
+        match &module.declarations[0].node {
+            DeclKind::RecordDef(def) => {
+                assert_eq!(def.name.node, "Legacy");
+                assert_eq!(def.fields.len(), 1);
+            }
+            other => panic!("expected RecordDef, got {other:?}"),
         }
     }
 
@@ -5855,7 +5974,7 @@ mod tests {
     #[test]
     fn parse_record_field_annotations() {
         let module = parse_mod(
-            "record User\n  @rename(\"user_name\") name: String\n  @default(30) age: Int",
+            "struct User\n  @rename(\"user_name\") name: String\n  @default(30) age: Int",
         );
         match &module.declarations[0].node {
             DeclKind::RecordDef(def) => {
@@ -5865,7 +5984,7 @@ mod tests {
                 assert_eq!(def.field_annotations[1].len(), 1);
                 assert_eq!(def.field_annotations[1][0].name.node, "default");
             }
-            other => panic!("expected record declaration, got {other:?}"),
+            other => panic!("expected struct declaration, got {other:?}"),
         }
     }
 
@@ -5906,7 +6025,7 @@ mod tests {
 
     #[test]
     fn parse_pub_record_def() {
-        let module = parse_mod("pub record Point\n  x: Float\n  y: Float");
+        let module = parse_mod("pub struct Point\n  x: Float\n  y: Float");
         match &module.declarations[0].node {
             DeclKind::RecordDef(def) => {
                 assert!(def.public);
@@ -5919,7 +6038,7 @@ mod tests {
 
     #[test]
     fn parse_record_def_with_type_params() {
-        let module = parse_mod("record Box(t)\n  value: t");
+        let module = parse_mod("struct Box(t)\n  value: t");
         match &module.declarations[0].node {
             DeclKind::RecordDef(def) => {
                 assert_eq!(def.name.node, "Box");
@@ -6025,7 +6144,7 @@ mod tests {
 
     #[test]
     fn parse_record_def_with_derive() {
-        let module = parse_mod("record Point\n  x: Int\n  y: Int\nderiving Eq, Hash");
+        let module = parse_mod("struct Point\n  x: Int\n  y: Int\nderiving Eq, Hash");
         match &module.declarations[0].node {
             DeclKind::RecordDef(def) => {
                 assert_eq!(def.name.node, "Point");
@@ -6039,7 +6158,7 @@ mod tests {
 
     #[test]
     fn parse_record_single_field() {
-        let module = parse_mod("record Wrapper\n  value: Int");
+        let module = parse_mod("struct Wrapper\n  value: Int");
         match &module.declarations[0].node {
             DeclKind::RecordDef(def) => {
                 assert_eq!(def.fields.len(), 1);
@@ -6051,7 +6170,7 @@ mod tests {
 
     #[test]
     fn parse_record_trailing_comma() {
-        let module = parse_mod("record Pair\n  a: Int,\n  b: String,");
+        let module = parse_mod("struct Pair\n  a: Int,\n  b: String,");
         match &module.declarations[0].node {
             DeclKind::RecordDef(def) => {
                 assert_eq!(def.fields.len(), 2);
@@ -6062,7 +6181,7 @@ mod tests {
 
     #[test]
     fn parse_record_with_fn() {
-        let module = parse_mod("record Point\n  x: Float\n  y: Float\nfn origin() -> Int\n  0");
+        let module = parse_mod("struct Point\n  x: Float\n  y: Float\nfn origin() -> Int\n  0");
         assert_eq!(module.declarations.len(), 2);
         assert!(matches!(
             module.declarations[0].node,
@@ -6073,7 +6192,7 @@ mod tests {
 
     #[test]
     fn parse_record_multiline() {
-        let module = parse_mod("record User\n  name: String,\n  age: Int,\n  active: Bool");
+        let module = parse_mod("struct User\n  name: String,\n  age: Int,\n  active: Bool");
         match &module.declarations[0].node {
             DeclKind::RecordDef(def) => {
                 assert_eq!(def.fields.len(), 3);
@@ -6084,7 +6203,7 @@ mod tests {
 
     #[test]
     fn parse_record_multiline_indented() {
-        let module = parse_mod("record User\n  name: String\n  age: Int\n  active: Bool");
+        let module = parse_mod("struct User\n  name: String\n  age: Int\n  active: Bool");
         match &module.declarations[0].node {
             DeclKind::RecordDef(def) => {
                 assert_eq!(def.fields.len(), 3);
@@ -6095,7 +6214,7 @@ mod tests {
 
     #[test]
     fn parse_record_missing_brace() {
-        let errors = parse_mod_err("record User { name: String");
+        let errors = parse_mod_err("struct User { name: String");
         assert!(!errors.is_empty());
     }
 
@@ -6184,7 +6303,7 @@ mod tests {
     #[test]
     fn parse_doc_comments_for_type_record_trait() {
         let module = parse_mod(
-            "--| T docs\ntype T = A\n--| R docs\nrecord R\n  x: Int\n--| Tr docs\ntrait Tr\n  fn m() -> Int\n    0",
+            "--| T docs\ntype T = A\n--| R docs\nstruct R\n  x: Int\n--| Tr docs\ntrait Tr\n  fn m() -> Int\n    0",
         );
         match &module.declarations[0].node {
             DeclKind::TypeDef(def) => assert_eq!(def.doc.as_deref(), Some("T docs")),
@@ -6356,7 +6475,7 @@ mod tests {
 
     #[test]
     fn parse_case_tuple() {
-        let expr = parse("case p\n  #(0, y) -> y\n  #(x, _) -> x");
+        let expr = parse("case p\n  (0, y) -> y\n  (x, _) -> x");
         match &expr.node {
             ExprKind::Case { arms, .. } => {
                 assert_eq!(arms.len(), 2);
@@ -6375,7 +6494,7 @@ mod tests {
 
     #[test]
     fn parse_case_nested() {
-        let expr = parse("case x\n  Some(#(a, b)) -> a + b\n  _ -> 0");
+        let expr = parse("case x\n  Some((a, b)) -> a + b\n  _ -> 0");
         match &expr.node {
             ExprKind::Case { arms, .. } => {
                 assert_eq!(arms.len(), 2);
@@ -6431,7 +6550,7 @@ mod tests {
         }
     }
 
-    // -- Named record expressions --
+    // -- Named struct expressions --
 
     #[test]
     fn parse_named_record_expr() {
@@ -6489,6 +6608,33 @@ mod tests {
     }
 
     #[test]
+    fn parse_functional_update_expr() {
+        let expr = parse("base~{ age: 31, score: 9 }");
+        match &expr.node {
+            ExprKind::Update { base, fields } => {
+                assert!(matches!(&base.node, ExprKind::Var(name) if name == "base"));
+                assert_eq!(fields.len(), 2);
+                assert_eq!(fields[0].0.node, "age");
+                assert_eq!(fields[1].0.node, "score");
+            }
+            other => panic!("expected Update, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_functional_update_chain() {
+        let expr = parse("(base~{ age: 31 })~{ score: 9 }");
+        match &expr.node {
+            ExprKind::Update { base, fields } => {
+                assert_eq!(fields.len(), 1);
+                assert_eq!(fields[0].0.node, "score");
+                assert!(matches!(base.node, ExprKind::Update { .. }));
+            }
+            other => panic!("expected outer Update, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn parse_named_record_empty() {
         let expr = parse("Empty { }");
         match &expr.node {
@@ -6505,7 +6651,7 @@ mod tests {
         }
     }
 
-    // -- Named record patterns --
+    // -- Named struct patterns --
 
     #[test]
     fn parse_named_record_pattern() {
@@ -7386,7 +7532,7 @@ mod tests {
 
     #[test]
     fn parse_tuple_type_annotation_in_return() {
-        let m = parse_mod("fn swap(a: Int, b: String) -> #(String, Int)\n  #(b, a)");
+        let m = parse_mod("fn swap(a: Int, b: String) -> (String, Int)\n  (b, a)");
         match &m.declarations[0].node {
             DeclKind::Function(fd) => {
                 let ret = fd
@@ -7408,7 +7554,7 @@ mod tests {
 
     #[test]
     fn parse_tuple_type_annotation_in_param() {
-        let m = parse_mod("fn first(pair: #(Int, String)) -> Int\n  0");
+        let m = parse_mod("fn first(pair: (Int, String)) -> Int\n  0");
         match &m.declarations[0].node {
             DeclKind::Function(fd) => {
                 let ann = fd.params[0]
@@ -7430,7 +7576,7 @@ mod tests {
 
     #[test]
     fn parse_nested_tuple_type_annotation() {
-        let m = parse_mod("fn nested(x: #(#(Int, Bool), String)) -> #(#(Int, Bool), String)\n  x");
+        let m = parse_mod("fn nested(x: ((Int, Bool), String)) -> ((Int, Bool), String)\n  x");
         match &m.declarations[0].node {
             DeclKind::Function(fd) => {
                 // Check param annotation
@@ -7463,7 +7609,7 @@ mod tests {
     #[test]
     fn parse_tuple_type_in_generic_position() {
         let m =
-            parse_mod("fn wrap(x: List(#(Int, String))) -> Result(#(Int, String), Bool)\n  Ok(x)");
+            parse_mod("fn wrap(x: List((Int, String))) -> Result((Int, String), Bool)\n  Ok(x)");
         match &m.declarations[0].node {
             DeclKind::Function(fd) => {
                 let ann = fd.params[0].annotation.as_ref().expect("param annotation");
@@ -7486,7 +7632,7 @@ mod tests {
     #[test]
     fn parse_mixed_declarations() {
         let m = parse_mod(
-            "record Point\n  x: Float\n  y: Float\ntrait Additive\n  fn zero() -> Self\nimpl Additive for Point\n  fn zero() -> Int\n    0\nfn main() -> Int\n  1",
+            "struct Point\n  x: Float\n  y: Float\ntrait Additive\n  fn zero() -> Self\nimpl Additive for Point\n  fn zero() -> Int\n    0\nfn main() -> Int\n  1",
         );
         assert_eq!(m.declarations.len(), 4);
         assert!(matches!(m.declarations[0].node, DeclKind::RecordDef(_)));
@@ -7811,7 +7957,7 @@ mod tests {
 
     #[test]
     fn parse_record_deriving() {
-        let m = parse_mod("record Point\n  x: Int\n  y: Int\nderiving Eq, Display");
+        let m = parse_mod("struct Point\n  x: Int\n  y: Int\nderiving Eq, Display");
         match &m.declarations[0].node {
             DeclKind::RecordDef(def) => {
                 assert_eq!(def.name.node, "Point");
@@ -7826,13 +7972,13 @@ mod tests {
 
     #[test]
     fn parse_record_derive_attribute_is_rejected() {
-        let errs = parse_mod_err("#[derive(Eq)]\nrecord Point { x: Int }");
+        let errs = parse_mod_err("#[derive(Eq)]\nstruct Point { x: Int }");
         assert!(!errs.is_empty());
     }
 
     #[test]
     fn parse_record_pre_body_deriving_is_rejected() {
-        let errs = parse_mod_err("record Point deriving Eq { x: Int }");
+        let errs = parse_mod_err("struct Point deriving Eq { x: Int }");
         assert!(!errs.is_empty());
     }
 
@@ -8307,7 +8453,7 @@ mod tests {
 
     #[test]
     fn parse_for_generators_guards_and_into() {
-        let expr = parse("for x in xs when x > 0, y in ys when y != x\n  #(x, y)\ninto Set");
+        let expr = parse("for x in xs when x > 0, y in ys when y != x\n  (x, y)\ninto Set");
         match &expr.node {
             ExprKind::For(f) => {
                 assert_eq!(f.clauses.len(), 4);

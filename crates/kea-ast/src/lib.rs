@@ -187,6 +187,12 @@ pub enum ExprKind {
         spread: Option<Box<Expr>>,
     },
 
+    /// Functional update: `base~{ field: value }`.
+    Update {
+        base: Box<Expr>,
+        fields: Vec<(Spanned<String>, Expr)>,
+    },
+
     /// Anonymous record: `#{ name: "alice", age: 30 }` or `#{ ..base, x: 1 }`.
     AnonRecord {
         fields: Vec<(Spanned<String>, Expr)>,
@@ -613,7 +619,7 @@ pub enum DeclKind {
     /// Opaque type definition: `opaque UserId = Int`.
     OpaqueTypeDef(OpaqueTypeDef),
 
-    /// Record definition: `record User { name: String, age: Int }`.
+    /// Struct definition: `struct User { name: String, age: Int }`.
     RecordDef(RecordDef),
 
     /// Trait definition: `trait Additive { fn zero() -> Self  fn add(self, other: Self) -> Self }`.
@@ -1070,6 +1076,12 @@ fn collect_free_vars(
             }
             if let Some(s) = spread {
                 collect_free_vars(&s.node, free, bound);
+            }
+        }
+        ExprKind::Update { base, fields } => {
+            collect_free_vars(&base.node, free, bound);
+            for (_, e) in fields {
+                collect_free_vars(&e.node, free, bound);
             }
         }
         ExprKind::FieldAccess { expr, .. } => {
