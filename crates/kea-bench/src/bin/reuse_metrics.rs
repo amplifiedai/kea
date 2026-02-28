@@ -51,6 +51,55 @@ fn main() -> Int
   rotate(8, Point { x: 0 }).x
 "#;
 
+const RECURSIVE_CHURN_SOURCE: &str = r#"struct Box
+  n: Int
+
+fn churn(i: Int, acc: Int) -> Int
+  if i == 0
+    acc
+  else
+    let b = Box { n: i }
+    churn(i - 1, acc + b.n - i)
+
+fn main() -> Int
+  churn(128, 0)
+"#;
+
+const MIXED_JOIN_UNIT_SOURCE: &str = r#"struct Point
+  x: Int
+
+fn consume(flag: Bool, p: Point) -> Unit
+  let q = if flag
+    p
+  else
+    Point { x: 1 }
+  let out = Point { x: q.x + 1 }
+  ()
+
+fn main() -> Int
+  consume(true, Point { x: 0 })
+  consume(false, Point { x: 0 })
+  0
+"#;
+
+const LOOP_MIXED_UNIT_WALK_SOURCE: &str = r#"struct Point
+  x: Int
+
+fn walk(n: Int, p: Point) -> Unit
+  let cur = if n % 2 == 0
+    p
+  else
+    Point { x: p.x + 1 }
+  if n <= 0
+    ()
+  else
+    walk(n - 1, cur)
+
+fn main() -> Int
+  walk(64, Point { x: 0 })
+  0
+"#;
+
 fn main() {
     if let Err(err) = run() {
         eprintln!("{err}");
@@ -63,6 +112,9 @@ fn run() -> Result<(), String> {
         compile_kernel("record_build", RECORD_REUSE_SOURCE)?,
         compile_kernel("sum_build", SUM_REUSE_SOURCE)?,
         compile_kernel("loop_backedge_rotate", LOOP_BACKEDGE_REUSE_SOURCE)?,
+        compile_kernel("recursive_churn", RECURSIVE_CHURN_SOURCE)?,
+        compile_kernel("mixed_join_unit", MIXED_JOIN_UNIT_SOURCE)?,
+        compile_kernel("loop_mixed_unit_walk", LOOP_MIXED_UNIT_WALK_SOURCE)?,
     ];
     let total_reuse: usize = metrics.iter().map(|m| m.reuse_count).sum();
     let total_reuse_token_candidates: usize =
