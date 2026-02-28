@@ -37,6 +37,20 @@ fn main() -> Int
     Left(x) -> x
 "#;
 
+const LOOP_BACKEDGE_REUSE_SOURCE: &str = r#"struct Point
+  x: Int
+
+fn rotate(n: Int, p: Point) -> Point
+  if n <= 0
+    p
+  else
+    let next = Point { x: n }
+    rotate(n - 1, next)
+
+fn main() -> Int
+  rotate(8, Point { x: 0 }).x
+"#;
+
 fn main() {
     if let Err(err) = run() {
         eprintln!("{err}");
@@ -48,6 +62,7 @@ fn run() -> Result<(), String> {
     let metrics = vec![
         compile_kernel("record_build", RECORD_REUSE_SOURCE)?,
         compile_kernel("sum_build", SUM_REUSE_SOURCE)?,
+        compile_kernel("loop_backedge_rotate", LOOP_BACKEDGE_REUSE_SOURCE)?,
     ];
     let total_reuse: usize = metrics.iter().map(|m| m.reuse_count).sum();
     let total_reuse_token_candidates: usize =
@@ -145,20 +160,21 @@ fn render_metrics_json(
     let kernel_rows = metrics
         .iter()
         .map(|metric| {
-            let consumed_pct = if metric.reuse_token_candidate_count > 0 {
-                (metric.reuse_token_consumed_count as f64 / metric.reuse_token_candidate_count as f64)
-                    * 100.0
+            let total_token_opportunities =
+                metric.reuse_token_consumed_count + metric.reuse_token_candidate_count;
+            let coverage_pct = if total_token_opportunities > 0 {
+                (metric.reuse_token_consumed_count as f64 / total_token_opportunities as f64) * 100.0
             } else {
                 0.0
             };
             format!(
-                "    {{\"name\":\"{}\",\"reuse_count\":{},\"reuse_token_candidate_count\":{},\"reuse_token_produced_count\":{},\"reuse_token_consumed_count\":{},\"reuse_token_consumed_pct\":{:.3},\"alloc_count\":{},\"release_count\":{}}}",
+                "    {{\"name\":\"{}\",\"reuse_count\":{},\"reuse_token_candidate_count\":{},\"reuse_token_produced_count\":{},\"reuse_token_consumed_count\":{},\"reuse_token_coverage_pct\":{:.3},\"alloc_count\":{},\"release_count\":{}}}",
                 metric.name,
                 metric.reuse_count,
                 metric.reuse_token_candidate_count,
                 metric.reuse_token_produced_count,
                 metric.reuse_token_consumed_count,
-                consumed_pct,
+                coverage_pct,
                 metric.alloc_count,
                 metric.release_count
             )
@@ -166,13 +182,14 @@ fn render_metrics_json(
         .collect::<Vec<_>>()
         .join(",\n");
 
-    let total_consumed_pct = if total_reuse_token_candidates > 0 {
-        (total_reuse_token_consumed as f64 / total_reuse_token_candidates as f64) * 100.0
+    let total_token_opportunities = total_reuse_token_consumed + total_reuse_token_candidates;
+    let total_coverage_pct = if total_token_opportunities > 0 {
+        (total_reuse_token_consumed as f64 / total_token_opportunities as f64) * 100.0
     } else {
         0.0
     };
 
     format!(
-        "{{\n  \"kernels\": [\n{kernel_rows}\n  ],\n  \"totals\": {{\"reuse_count\": {total_reuse}, \"reuse_token_candidate_count\": {total_reuse_token_candidates}, \"reuse_token_produced_count\": {total_reuse_token_produced}, \"reuse_token_consumed_count\": {total_reuse_token_consumed}, \"reuse_token_consumed_pct\": {total_consumed_pct:.3}, \"alloc_count\": {total_alloc}, \"release_count\": {total_release}}}\n}}\n"
+        "{{\n  \"kernels\": [\n{kernel_rows}\n  ],\n  \"totals\": {{\"reuse_count\": {total_reuse}, \"reuse_token_candidate_count\": {total_reuse_token_candidates}, \"reuse_token_produced_count\": {total_reuse_token_produced}, \"reuse_token_consumed_count\": {total_reuse_token_consumed}, \"reuse_token_coverage_pct\": {total_coverage_pct:.3}, \"alloc_count\": {total_alloc}, \"release_count\": {total_release}}}\n}}\n"
     )
 }
