@@ -9733,3 +9733,38 @@ with decomposition helpers:
 **Impact**:
 - Reduces cross-module theorem wiring for downstream users that need both
   numeric and shape kernel invariants together.
+
+### 2026-02-28: top-level shape suite alias cleanup
+
+**Context**: Added explicit component aliases for top-level shape integration
+suites in `Kea/Properties/ShapeConstructorParity.lean`:
+- `ShapeConstDimKernelSuiteComponents`
+- `NumericShapeConstDimKernelSuiteComponents`
+
+and routed existing decomposition signatures (`..._as_components`,
+`..._as_components_of_components`, `..._iff_components`) through those aliases.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Signature/API cleanup only; no runtime semantic change.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Top-level shape and numeric+shape suite decomposition APIs now use explicit
+  component aliases for clearer theorem signatures.
+
+**Impact**:
+- Improves downstream readability and keeps top-level suite APIs consistent
+  with recently added alias-based decomposition layers.

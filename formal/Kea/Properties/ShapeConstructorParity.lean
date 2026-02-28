@@ -3828,6 +3828,14 @@ structure ShapeConstDimKernelSuite : Prop where
   rank1ShapeKernel : Rank1ShapeConstDimKernelSlice
   tensorShapeKernel : TensorConstShapeDimListKernelSlice
 
+/-- Explicit component tuple alias for `ShapeConstDimKernelSuite`. -/
+abbrev ShapeConstDimKernelSuiteComponents : Prop :=
+  DimKernelSuite ∧
+    DimConstKernelSlice ∧
+    DimConstListKernelSlice ∧
+    Rank1ShapeConstDimKernelSlice ∧
+    TensorConstShapeDimListKernelSlice
+
 /-- Canonical constant-shape shape/dimension kernel suite. -/
 theorem shapeConstDimKernelSuite : ShapeConstDimKernelSuite := by
   exact
@@ -3840,11 +3848,7 @@ theorem shapeConstDimKernelSuite : ShapeConstDimKernelSuite := by
 /-- Decompose the top-level shape/dimension suite into explicit components. -/
 theorem shapeConstDimKernelSuite_as_components
     (suite : ShapeConstDimKernelSuite) :
-    DimKernelSuite ∧
-      DimConstKernelSlice ∧
-      DimConstListKernelSlice ∧
-      Rank1ShapeConstDimKernelSlice ∧
-      TensorConstShapeDimListKernelSlice :=
+    ShapeConstDimKernelSuiteComponents :=
   ⟨suite.dimKernel, suite.scalarKernel, suite.dimListKernel,
     suite.rank1ShapeKernel, suite.tensorShapeKernel⟩
 
@@ -3864,27 +3868,14 @@ theorem shapeConstDimKernelSuite_of_components
 
 /-- Direct component-route decomposition for `ShapeConstDimKernelSuite`. -/
 theorem shapeConstDimKernelSuite_as_components_of_components
-    (h_comp :
-      DimKernelSuite ∧
-      DimConstKernelSlice ∧
-      DimConstListKernelSlice ∧
-      Rank1ShapeConstDimKernelSlice ∧
-      TensorConstShapeDimListKernelSlice) :
-    DimKernelSuite ∧
-      DimConstKernelSlice ∧
-      DimConstListKernelSlice ∧
-      Rank1ShapeConstDimKernelSlice ∧
-      TensorConstShapeDimListKernelSlice := by
+    (h_comp : ShapeConstDimKernelSuiteComponents) :
+    ShapeConstDimKernelSuiteComponents := by
   simpa using h_comp
 
 /-- `ShapeConstDimKernelSuite` is equivalent to its explicit component tuple. -/
 theorem shapeConstDimKernelSuite_iff_components :
     ShapeConstDimKernelSuite ↔
-      DimKernelSuite ∧
-      DimConstKernelSlice ∧
-      DimConstListKernelSlice ∧
-      Rank1ShapeConstDimKernelSlice ∧
-      TensorConstShapeDimListKernelSlice := by
+      ShapeConstDimKernelSuiteComponents := by
   constructor
   · intro suite
     exact shapeConstDimKernelSuite_as_components suite
@@ -3898,6 +3889,10 @@ structure NumericShapeConstDimKernelSuite : Prop where
   numericKernel : NumericConstructorKernelSuite
   shapeKernel : ShapeConstDimKernelSuite
 
+/-- Explicit component pair alias for `NumericShapeConstDimKernelSuite`. -/
+abbrev NumericShapeConstDimKernelSuiteComponents : Prop :=
+  NumericConstructorKernelSuite ∧ ShapeConstDimKernelSuite
+
 /-- Canonical numeric+shape kernel suite. -/
 theorem numericShapeConstDimKernelSuite : NumericShapeConstDimKernelSuite := by
   exact
@@ -3907,7 +3902,7 @@ theorem numericShapeConstDimKernelSuite : NumericShapeConstDimKernelSuite := by
 /-- Decompose the numeric+shape suite into explicit components. -/
 theorem numericShapeConstDimKernelSuite_as_components
     (suite : NumericShapeConstDimKernelSuite) :
-    NumericConstructorKernelSuite ∧ ShapeConstDimKernelSuite :=
+    NumericShapeConstDimKernelSuiteComponents :=
   ⟨suite.numericKernel, suite.shapeKernel⟩
 
 /-- Build the numeric+shape suite from explicit components. -/
@@ -3921,15 +3916,15 @@ theorem numericShapeConstDimKernelSuite_of_components
 /-- Direct components-route decomposition for
     `NumericShapeConstDimKernelSuite`. -/
 theorem numericShapeConstDimKernelSuite_as_components_of_components
-    (h_comp : NumericConstructorKernelSuite ∧ ShapeConstDimKernelSuite) :
-    NumericConstructorKernelSuite ∧ ShapeConstDimKernelSuite := by
+    (h_comp : NumericShapeConstDimKernelSuiteComponents) :
+    NumericShapeConstDimKernelSuiteComponents := by
   simpa using h_comp
 
 /-- `NumericShapeConstDimKernelSuite` is equivalent to its explicit component
     pair. -/
 theorem numericShapeConstDimKernelSuite_iff_components :
     NumericShapeConstDimKernelSuite ↔
-      NumericConstructorKernelSuite ∧ ShapeConstDimKernelSuite := by
+      NumericShapeConstDimKernelSuiteComponents := by
   constructor
   · intro suite
     exact numericShapeConstDimKernelSuite_as_components suite
