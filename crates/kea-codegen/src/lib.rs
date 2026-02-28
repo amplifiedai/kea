@@ -112,6 +112,8 @@ pub struct FunctionPassStats {
     pub release_count: usize,
     pub alloc_count: usize,
     pub reuse_count: usize,
+    pub reuse_token_produced_count: usize,
+    pub reuse_token_consumed_count: usize,
     pub reuse_token_candidate_count: usize,
     pub tail_self_call_count: usize,
     pub handler_enter_count: usize,
@@ -462,7 +464,9 @@ fn compile_into_module<M: Module>(
                     inst,
                     MirInst::RecordInit { .. }
                         | MirInst::RecordInitReuse { .. }
+                        | MirInst::RecordInitFromToken { .. }
                         | MirInst::SumInitReuse { .. }
+                        | MirInst::SumInitFromToken { .. }
                         | MirInst::ClosureInit { .. }
                         | MirInst::SumInit { .. }
                         | MirInst::Const {
@@ -511,8 +515,11 @@ fn compile_into_module<M: Module>(
                         requires_free = true;
                     }
                     MirInst::Release { .. }
+                    | MirInst::ReuseToken { .. }
                     | MirInst::RecordInitReuse { .. }
-                    | MirInst::SumInitReuse { .. } => {
+                    | MirInst::RecordInitFromToken { .. }
+                    | MirInst::SumInitReuse { .. }
+                    | MirInst::SumInitFromToken { .. } => {
                         requires_heap_alloc = true;
                         requires_free = true;
                     }
@@ -1652,6 +1659,9 @@ fn infer_mir_value_types(
                 }
                 | MirInst::RecordInitReuse {
                     dest, record_type, ..
+                }
+                | MirInst::RecordInitFromToken {
+                    dest, record_type, ..
                 } => {
                     value_types.insert(
                         dest.clone(),
@@ -1663,7 +1673,8 @@ fn infer_mir_value_types(
                     );
                 }
                 MirInst::SumInit { dest, sum_type, .. }
-                | MirInst::SumInitReuse { dest, sum_type, .. } => {
+                | MirInst::SumInitReuse { dest, sum_type, .. }
+                | MirInst::SumInitFromToken { dest, sum_type, .. } => {
                     value_types.insert(
                         dest.clone(),
                         Type::Sum(SumType {
@@ -1724,7 +1735,10 @@ fn infer_mir_value_types(
                 MirInst::Move { dest, src }
                 | MirInst::Borrow { dest, src }
                 | MirInst::TryClaim { dest, src }
-                | MirInst::Freeze { dest, src } => {
+                | MirInst::Freeze { dest, src }
+                | MirInst::ReuseToken {
+                    dest, source: src, ..
+                } => {
                     let ty = value_types.get(src).cloned().unwrap_or(Type::Dynamic);
                     value_types.insert(dest.clone(), ty);
                 }
@@ -2244,6 +2258,78 @@ fn lower_instruction<M: Module>(
             values.insert(dest.clone(), result_ptr);
             Ok(false)
         }
+        MirInst::RecordInitFromToken {
+            dest,
+            token,
+            record_type,
+            fields,
+        } => {
+            let layout = ctx.layout_plan.records.get(record_type).ok_or_else(|| {
+                CodegenError::UnsupportedMir {
+                    function: function_name.to_string(),
+                    detail: format!("record layout `{record_type}` not found"),
+                }
+            })?;
+            let ptr_ty = module.target_config().pointer_type();
+            let token_ptr = get_value(values, function_name, token)?;
+            let token_ptr = coerce_value_to_clif_type(builder, token_ptr, ptr_ty);
+
+            let reuse_block = builder.create_block();
+            let alloc_block = builder.create_block();
+            let join_block = builder.create_block();
+            builder.append_block_param(join_block, ptr_ty);
+
+            let has_token = builder.ins().icmp_imm(IntCC::NotEqual, token_ptr, 0);
+            builder
+                .ins()
+                .brif(has_token, reuse_block, &[], alloc_block, &[]);
+
+            builder.switch_to_block(reuse_block);
+            store_record_fields(
+                builder,
+                function_name,
+                layout,
+                record_type,
+                token_ptr,
+                fields,
+                values,
+            )?;
+            builder.ins().jump(join_block, &[token_ptr]);
+
+            builder.switch_to_block(alloc_block);
+            let fresh_ptr = allocate_heap_payload(
+                module,
+                builder,
+                function_name,
+                ctx.malloc_func_id,
+                layout.size_bytes,
+                &format!(
+                    "record allocation requested for `{record_type}` but malloc import was not declared"
+                ),
+            )?;
+            store_record_fields(
+                builder,
+                function_name,
+                layout,
+                record_type,
+                fresh_ptr,
+                fields,
+                values,
+            )?;
+            builder.ins().jump(join_block, &[fresh_ptr]);
+
+            builder.switch_to_block(join_block);
+            let result_ptr = builder
+                .block_params(join_block)
+                .first()
+                .copied()
+                .ok_or_else(|| CodegenError::UnsupportedMir {
+                    function: function_name.to_string(),
+                    detail: format!("record token-init join block missing result for `{record_type}`"),
+                })?;
+            values.insert(dest.clone(), result_ptr);
+            Ok(false)
+        }
         MirInst::SumInit {
             dest,
             sum_type,
@@ -2385,6 +2471,98 @@ fn lower_instruction<M: Module>(
                 .ok_or_else(|| CodegenError::UnsupportedMir {
                     function: function_name.to_string(),
                     detail: format!("sum reuse join block missing result for `{sum_type}`"),
+                })?;
+            values.insert(dest.clone(), result_ptr);
+            Ok(false)
+        }
+        MirInst::SumInitFromToken {
+            dest,
+            token,
+            sum_type,
+            variant,
+            tag,
+            fields,
+        } => {
+            let layout =
+                ctx.layout_plan
+                    .sums
+                    .get(sum_type)
+                    .ok_or_else(|| CodegenError::UnsupportedMir {
+                        function: function_name.to_string(),
+                        detail: format!("sum layout `{sum_type}` not found"),
+                    })?;
+            if layout.variant_field_counts.values().any(|count| *count == 0) {
+                return Err(CodegenError::UnsupportedMir {
+                    function: function_name.to_string(),
+                    detail: format!(
+                        "sum token-init for `{sum_type}` is not yet supported for unit/mixed variants"
+                    ),
+                });
+            }
+            let ptr_ty = module.target_config().pointer_type();
+            let token_ptr = get_value(values, function_name, token)?;
+            let token_ptr = coerce_value_to_clif_type(builder, token_ptr, ptr_ty);
+
+            let reuse_block = builder.create_block();
+            let alloc_block = builder.create_block();
+            let join_block = builder.create_block();
+            builder.append_block_param(join_block, ptr_ty);
+
+            let has_token = builder.ins().icmp_imm(IntCC::NotEqual, token_ptr, 0);
+            builder
+                .ins()
+                .brif(has_token, reuse_block, &[], alloc_block, &[]);
+
+            builder.switch_to_block(reuse_block);
+            store_sum_init_payload(
+                builder,
+                function_name,
+                layout,
+                SumInitSpec {
+                    sum_type,
+                    variant,
+                    tag: *tag,
+                    fields,
+                },
+                values,
+                token_ptr,
+            )?;
+            builder.ins().jump(join_block, &[token_ptr]);
+
+            builder.switch_to_block(alloc_block);
+            let fresh_ptr = allocate_heap_payload(
+                module,
+                builder,
+                function_name,
+                ctx.malloc_func_id,
+                layout.size_bytes,
+                &format!(
+                    "sum allocation requested for `{sum_type}` but malloc import was not declared"
+                ),
+            )?;
+            store_sum_init_payload(
+                builder,
+                function_name,
+                layout,
+                SumInitSpec {
+                    sum_type,
+                    variant,
+                    tag: *tag,
+                    fields,
+                },
+                values,
+                fresh_ptr,
+            )?;
+            builder.ins().jump(join_block, &[fresh_ptr]);
+
+            builder.switch_to_block(join_block);
+            let result_ptr = builder
+                .block_params(join_block)
+                .first()
+                .copied()
+                .ok_or_else(|| CodegenError::UnsupportedMir {
+                    function: function_name.to_string(),
+                    detail: format!("sum token-init join block missing result for `{sum_type}`"),
                 })?;
             values.insert(dest.clone(), result_ptr);
             Ok(false)
@@ -3324,6 +3502,52 @@ fn lower_instruction<M: Module>(
                 ctx.drop_func_ids,
                 ctx.free_func_id,
             )?;
+            Ok(false)
+        }
+        MirInst::ReuseToken { dest, source } => {
+            let ptr_ty = module.target_config().pointer_type();
+            let source_ptr = get_value(values, function_name, source)?;
+            let source_ptr = coerce_value_to_clif_type(builder, source_ptr, ptr_ty);
+
+            let unique_block = builder.create_block();
+            let release_block = builder.create_block();
+            let join_block = builder.create_block();
+            builder.append_block_param(join_block, ptr_ty);
+
+            let rc_ptr = builder.ins().iadd_imm(source_ptr, -8);
+            let rc_value = builder.ins().load(types::I64, MemFlags::new(), rc_ptr, 0);
+            let is_unique = builder.ins().icmp_imm(IntCC::Equal, rc_value, 1);
+            builder
+                .ins()
+                .brif(is_unique, unique_block, &[], release_block, &[]);
+
+            builder.switch_to_block(unique_block);
+            builder.ins().jump(join_block, &[source_ptr]);
+
+            builder.switch_to_block(release_block);
+            let source_ty = ctx.value_types.get(source);
+            emit_typed_release(
+                module,
+                builder,
+                function_name,
+                source_ptr,
+                source_ty,
+                ctx.drop_func_ids,
+                ctx.free_func_id,
+            )?;
+            let null_token = builder.ins().iconst(ptr_ty, 0);
+            builder.ins().jump(join_block, &[null_token]);
+
+            builder.switch_to_block(join_block);
+            let token_ptr = builder
+                .block_params(join_block)
+                .first()
+                .copied()
+                .ok_or_else(|| CodegenError::UnsupportedMir {
+                    function: function_name.to_string(),
+                    detail: "reuse-token join block missing token value".to_string(),
+                })?;
+            values.insert(dest.clone(), token_ptr);
             Ok(false)
         }
         MirInst::Move { dest, src }
@@ -4323,6 +4547,10 @@ fn collect_function_stats(function: &MirFunction) -> FunctionPassStats {
             match inst {
                 MirInst::Retain { .. } => stats.retain_count += 1,
                 MirInst::Release { .. } => stats.release_count += 1,
+                MirInst::ReuseToken { .. } => {
+                    stats.release_count += 1;
+                    stats.reuse_token_produced_count += 1;
+                }
                 MirInst::Call { .. } => {}
                 MirInst::HandlerEnter { .. } => stats.handler_enter_count += 1,
                 MirInst::HandlerExit { .. } => stats.handler_exit_count += 1,
@@ -4339,6 +4567,10 @@ fn collect_function_stats(function: &MirFunction) -> FunctionPassStats {
                 MirInst::SumInitReuse { .. } => {
                     stats.alloc_count += 1;
                     stats.reuse_count += 1;
+                }
+                MirInst::RecordInitFromToken { .. } | MirInst::SumInitFromToken { .. } => {
+                    stats.alloc_count += 1;
+                    stats.reuse_token_consumed_count += 1;
                 }
                 MirInst::CowUpdate { .. }
                 | MirInst::RecordInit { .. }
@@ -4452,8 +4684,11 @@ fn has_reachable_unfused_alloc_of_layout(
 
 fn inst_alloc_layout_key(inst: &MirInst) -> Option<String> {
     match inst {
-        MirInst::RecordInit { record_type, .. } => Some(format!("record:{record_type}")),
-        MirInst::SumInit { sum_type, .. } => Some(format!("sum:{sum_type}")),
+        MirInst::RecordInit { record_type, .. }
+        | MirInst::RecordInitFromToken { record_type, .. } => Some(format!("record:{record_type}")),
+        MirInst::SumInit { sum_type, .. } | MirInst::SumInitFromToken { sum_type, .. } => {
+            Some(format!("sum:{sum_type}"))
+        }
         _ => None,
     }
 }
@@ -4486,6 +4721,9 @@ fn infer_heap_layout_keys_for_stats(function: &MirFunction) -> BTreeMap<MirValue
                     }
                     | MirInst::RecordInitReuse {
                         dest, record_type, ..
+                    }
+                    | MirInst::RecordInitFromToken {
+                        dest, record_type, ..
                     } => {
                         let layout = format!("record:{record_type}");
                         if layout_keys.get(dest) != Some(&layout) {
@@ -4494,7 +4732,8 @@ fn infer_heap_layout_keys_for_stats(function: &MirFunction) -> BTreeMap<MirValue
                         }
                     }
                     MirInst::SumInit { dest, sum_type, .. }
-                    | MirInst::SumInitReuse { dest, sum_type, .. } => {
+                    | MirInst::SumInitReuse { dest, sum_type, .. }
+                    | MirInst::SumInitFromToken { dest, sum_type, .. } => {
                         let layout = format!("sum:{sum_type}");
                         if layout_keys.get(dest) != Some(&layout) {
                             layout_keys.insert(dest.clone(), layout);
@@ -4504,7 +4743,10 @@ fn infer_heap_layout_keys_for_stats(function: &MirFunction) -> BTreeMap<MirValue
                     MirInst::Move { dest, src }
                     | MirInst::Borrow { dest, src }
                     | MirInst::TryClaim { dest, src }
-                    | MirInst::Freeze { dest, src } => {
+                    | MirInst::Freeze { dest, src }
+                    | MirInst::ReuseToken {
+                        dest, source: src, ..
+                    } => {
                         if let Some(layout) = layout_keys.get(src).cloned()
                             && layout_keys.get(dest) != Some(&layout)
                         {
@@ -5677,6 +5919,69 @@ mod tests {
                     ],
                     terminator: MirTerminator::Return {
                         value: Some(MirValueId(4)),
+                    },
+                }],
+            }],
+            layouts: MirLayoutCatalog {
+                records: vec![MirRecordLayout {
+                    name: "User".to_string(),
+                    fields: vec![MirRecordFieldLayout {
+                        name: "age".to_string(),
+                        annotation: kea_ast::TypeAnnotation::Named("Int".to_string()),
+                    }],
+                }],
+                sums: vec![],
+            },
+        }
+    }
+
+    fn sample_record_init_from_token_and_load_main_module() -> MirModule {
+        MirModule {
+            functions: vec![MirFunction {
+                name: "main".to_string(),
+                signature: MirFunctionSignature {
+                    params: vec![],
+                    ret: Type::Int,
+                    effects: EffectRow::pure(),
+                },
+                entry: MirBlockId(0),
+                blocks: vec![MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: MirValueId(0),
+                            literal: MirLiteral::Int(42),
+                        },
+                        MirInst::RecordInit {
+                            dest: MirValueId(1),
+                            record_type: "User".to_string(),
+                            fields: vec![("age".to_string(), MirValueId(0))],
+                        },
+                        MirInst::ReuseToken {
+                            dest: MirValueId(2),
+                            source: MirValueId(1),
+                        },
+                        MirInst::Const {
+                            dest: MirValueId(3),
+                            literal: MirLiteral::Int(7),
+                        },
+                        MirInst::RecordInitFromToken {
+                            dest: MirValueId(4),
+                            token: MirValueId(2),
+                            record_type: "User".to_string(),
+                            fields: vec![("age".to_string(), MirValueId(3))],
+                        },
+                        MirInst::RecordFieldLoad {
+                            dest: MirValueId(5),
+                            record: MirValueId(4),
+                            record_type: "User".to_string(),
+                            field: "age".to_string(),
+                            field_ty: Type::Int,
+                        },
+                    ],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirValueId(5)),
                     },
                 }],
             }],
@@ -6945,6 +7250,18 @@ mod tests {
     }
 
     #[test]
+    fn collect_pass_stats_counts_reuse_token_flow_ops() {
+        let module = sample_record_init_from_token_and_load_main_module();
+        let stats = collect_pass_stats(&module);
+
+        assert_eq!(stats.per_function.len(), 1);
+        let function = &stats.per_function[0];
+        assert_eq!(function.reuse_token_produced_count, 1);
+        assert_eq!(function.reuse_token_consumed_count, 1);
+        assert_eq!(function.reuse_token_candidate_count, 0);
+    }
+
+    #[test]
     fn collect_pass_stats_counts_tail_self_calls() {
         let module = sample_tail_recursive_module();
         let stats = collect_pass_stats(&module);
@@ -7436,6 +7753,14 @@ mod tests {
     #[test]
     fn cranelift_backend_executes_record_init_reuse_and_field_load() {
         let module = sample_record_init_reuse_and_load_main_module();
+        let exit_code =
+            execute_mir_main_jit(&module, &BackendConfig::default()).expect("main should execute");
+        assert_eq!(exit_code, 7);
+    }
+
+    #[test]
+    fn cranelift_backend_executes_record_init_from_token_and_field_load() {
+        let module = sample_record_init_from_token_and_load_main_module();
         let exit_code =
             execute_mir_main_jit(&module, &BackendConfig::default()).expect("main should execute");
         assert_eq!(exit_code, 7);

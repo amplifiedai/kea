@@ -115,6 +115,16 @@ pub enum MirInst {
         record_type: String,
         fields: Vec<(String, MirValueId)>,
     },
+    ReuseToken {
+        dest: MirValueId,
+        source: MirValueId,
+    },
+    RecordInitFromToken {
+        dest: MirValueId,
+        token: MirValueId,
+        record_type: String,
+        fields: Vec<(String, MirValueId)>,
+    },
     SumInit {
         dest: MirValueId,
         sum_type: String,
@@ -125,6 +135,14 @@ pub enum MirInst {
     SumInitReuse {
         dest: MirValueId,
         source: MirValueId,
+        sum_type: String,
+        variant: String,
+        tag: u32,
+        fields: Vec<MirValueId>,
+    },
+    SumInitFromToken {
+        dest: MirValueId,
+        token: MirValueId,
         sum_type: String,
         variant: String,
         tag: u32,
@@ -340,8 +358,11 @@ impl MirInst {
                 | MirInst::Freeze { .. }
                 | MirInst::RecordInit { .. }
                 | MirInst::RecordInitReuse { .. }
+                | MirInst::ReuseToken { .. }
+                | MirInst::RecordInitFromToken { .. }
                 | MirInst::SumInit { .. }
                 | MirInst::SumInitReuse { .. }
+                | MirInst::SumInitFromToken { .. }
                 | MirInst::ClosureInit { .. }
                 | MirInst::SumTagLoad { .. }
                 | MirInst::SumPayloadLoad { .. }
@@ -900,6 +921,9 @@ fn infer_heap_layout_keys(function: &MirFunction) -> BTreeMap<MirValueId, String
                 | MirInst::RecordInitReuse {
                     dest, record_type, ..
                 }
+                | MirInst::RecordInitFromToken {
+                    dest, record_type, ..
+                }
                 | MirInst::CowUpdate {
                     dest, record_type, ..
                 } => {
@@ -910,6 +934,14 @@ fn infer_heap_layout_keys(function: &MirFunction) -> BTreeMap<MirValueId, String
                 }
                 MirInst::SumInitReuse { dest, sum_type, .. } => {
                     keys.insert(dest.clone(), format!("sum:{sum_type}"));
+                }
+                MirInst::SumInitFromToken { dest, sum_type, .. } => {
+                    keys.insert(dest.clone(), format!("sum:{sum_type}"));
+                }
+                MirInst::ReuseToken { dest, source } => {
+                    if let Some(layout_key) = keys.get(source).cloned() {
+                        keys.insert(dest.clone(), layout_key);
+                    }
                 }
                 MirInst::Move { dest, src }
                 | MirInst::Borrow { dest, src }
@@ -1037,8 +1069,11 @@ fn inst_defined_value(inst: &MirInst) -> Option<&MirValueId> {
         | MirInst::Unary { dest, .. }
         | MirInst::RecordInit { dest, .. }
         | MirInst::RecordInitReuse { dest, .. }
+        | MirInst::ReuseToken { dest, .. }
+        | MirInst::RecordInitFromToken { dest, .. }
         | MirInst::SumInit { dest, .. }
         | MirInst::SumInitReuse { dest, .. }
+        | MirInst::SumInitFromToken { dest, .. }
         | MirInst::SumTagLoad { dest, .. }
         | MirInst::SumPayloadLoad { dest, .. }
         | MirInst::RecordFieldLoad { dest, .. }
@@ -1080,9 +1115,16 @@ fn inst_reads_value(inst: &MirInst, value: &MirValueId) -> bool {
         MirInst::RecordInitReuse { source, fields, .. } => {
             source == value || fields.iter().any(|(_, field)| field == value)
         }
+        MirInst::ReuseToken { source, .. } => source == value,
+        MirInst::RecordInitFromToken { token, fields, .. } => {
+            token == value || fields.iter().any(|(_, field)| field == value)
+        }
         MirInst::SumInit { fields, .. } => fields.iter().any(|field| field == value),
         MirInst::SumInitReuse { source, fields, .. } => {
             source == value || fields.iter().any(|field| field == value)
+        }
+        MirInst::SumInitFromToken { token, fields, .. } => {
+            token == value || fields.iter().any(|field| field == value)
         }
         MirInst::SumTagLoad { sum, .. } => sum == value,
         MirInst::SumPayloadLoad { sum, .. } => sum == value,
