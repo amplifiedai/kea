@@ -28647,6 +28647,25 @@ theorem principalBoundarySoundNoUnifyFullVerticalRoutes_viaRowPolyBundle_as_comp
       ∧ VerticalHookFreeUnifySlices :=
   ⟨h_routes.viaRowPolyBundle.exprNoUnify, h_routes.viaRowPolyBundle.fieldNoUnify, h_routes.viaRowPolyBundle.vertical⟩
 
+/-- Lift a full-vertical route-pair witness into the no-unify route-pair layer under no-unify premises. -/
+theorem principalBoundarySoundNoUnifyFullVerticalRoutes_of_fullVerticalRoutes
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_routes : PrincipalBoundarySoundFullVerticalRoutes st fuel env e fs stExpr ty stField rf)
+    (h_no_expr : NoUnifyBranchesExpr e)
+    (h_no_field : NoUnifyBranchesFields fs) :
+    PrincipalBoundarySoundNoUnifyFullVerticalRoutes st fuel env e fs stExpr ty stField rf := by
+  refine {
+    viaTypingSuite :=
+      principalBoundarySoundNoUnifyFullVerticalSuite_of_fullVerticalSuite
+        h_routes.viaTypingSuite h_no_expr h_no_field
+    viaRowPolyBundle :=
+      principalBoundarySoundNoUnifyFullVerticalSuite_of_fullVerticalSuite
+        h_routes.viaRowPolyBundle h_no_expr h_no_field
+  }
+
 /--
 Master route packaging for no-unify full+vertical surfaces:
 one witness carries both regular and dual no-unify route pairs.
@@ -28694,6 +28713,25 @@ theorem principalBoundarySoundNoUnifyFullVerticalMasterRoutes_of_success
     PrincipalBoundarySoundNoUnifyFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf :=
   principalBoundarySoundNoUnifyFullVerticalMasterRoutes_of_success_from_bundle
     (h_seed := ⟨h_app, h_proj⟩) h_no_expr h_no_field h_ok_expr h_ok_field
+
+/-- Lift full-vertical master routes into no-unify master routes under no-unify premises. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterRoutes_of_fullVerticalMasterRoutes
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_master : PrincipalBoundarySoundFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf)
+    (h_no_expr : NoUnifyBranchesExpr e)
+    (h_no_field : NoUnifyBranchesFields fs) :
+    PrincipalBoundarySoundNoUnifyFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf := by
+  refine {
+    regular :=
+      principalBoundarySoundNoUnifyFullVerticalRoutes_of_fullVerticalRoutes
+        h_master.regular h_no_expr h_no_field
+    dual :=
+      principalBoundarySoundNoUnifyFullVerticalRoutes_of_fullVerticalRoutes
+        h_master.dual h_no_expr h_no_field
+  }
 
 /-- Explicit row-poly route alias for no-unify full-vertical master-route construction. -/
 theorem principalBoundarySoundNoUnifyFullVerticalMasterRoutes_of_success_via_rowPolyBoundarySoundBundle
@@ -29166,6 +29204,20 @@ theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_success_from_b
     PrincipalBoundarySoundNoUnifyFullVerticalMasterSurface st fuel env e fs stExpr ty stField rf :=
   principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_success
     (h_app := h_seed.1) (h_proj := h_seed.2) h_no_expr h_no_field h_ok_expr h_ok_field
+
+/-- Lift full-vertical master routes into unified no-unify master surface under no-unify premises. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_fullVerticalMasterRoutes
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_master : PrincipalBoundarySoundFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf)
+    (h_no_expr : NoUnifyBranchesExpr e)
+    (h_no_field : NoUnifyBranchesFields fs) :
+    PrincipalBoundarySoundNoUnifyFullVerticalMasterSurface st fuel env e fs stExpr ty stField rf :=
+  principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_routes
+    (principalBoundarySoundNoUnifyFullVerticalMasterRoutes_of_fullVerticalMasterRoutes
+      h_master h_no_expr h_no_field)
 
 /-- Alias: build unified no-unify master surface via no-unify master routes from successful runs. -/
 theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_success_via_noUnifyMasterRoutes
