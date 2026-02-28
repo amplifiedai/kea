@@ -459,6 +459,7 @@ fn compile_into_module<M: Module>(
                 matches!(
                     inst,
                     MirInst::RecordInit { .. }
+                        | MirInst::RecordInitReuse { .. }
                         | MirInst::ClosureInit { .. }
                         | MirInst::SumInit { .. }
                         | MirInst::Const {
@@ -506,7 +507,10 @@ fn compile_into_module<M: Module>(
                         requires_heap_alloc = true;
                         requires_free = true;
                     }
-                    MirInst::Release { .. } => requires_free = true,
+                    MirInst::Release { .. } | MirInst::RecordInitReuse { .. } => {
+                        requires_heap_alloc = true;
+                        requires_free = true;
+                    }
                     MirInst::EffectOp {
                         class: MirEffectOpClass::ZeroResume,
                         effect,
@@ -1389,6 +1393,36 @@ fn lower_string_literal<M: Module>(
     Ok(out_ptr)
 }
 
+fn store_record_fields(
+    builder: &mut FunctionBuilder,
+    function_name: &str,
+    layout: &BackendRecordLayout,
+    record_type: &str,
+    base_ptr: Value,
+    fields: &[(String, MirValueId)],
+    values: &BTreeMap<MirValueId, Value>,
+) -> Result<(), CodegenError> {
+    for (field_name, field_value_id) in fields {
+        let field_value = get_value(values, function_name, field_value_id)?;
+        let offset = *layout.field_offsets.get(field_name).ok_or_else(|| {
+            CodegenError::UnsupportedMir {
+                function: function_name.to_string(),
+                detail: format!(
+                    "record layout `{record_type}` missing field `{field_name}` during init"
+                ),
+            }
+        })?;
+        let offset = i32::try_from(offset).map_err(|_| CodegenError::UnsupportedMir {
+            function: function_name.to_string(),
+            detail: format!("record field `{record_type}.{field_name}` offset does not fit i32"),
+        })?;
+        builder
+            .ins()
+            .store(MemFlags::new(), field_value, base_ptr, offset);
+    }
+    Ok(())
+}
+
 fn allocate_heap_payload(
     module: &mut impl Module,
     builder: &mut FunctionBuilder,
@@ -1543,6 +1577,9 @@ fn infer_mir_value_types(
                     value_types.insert(dest.clone(), ty);
                 }
                 MirInst::RecordInit {
+                    dest, record_type, ..
+                }
+                | MirInst::RecordInitReuse {
                     dest, record_type, ..
                 } => {
                     value_types.insert(
@@ -2039,27 +2076,100 @@ fn lower_instruction<M: Module>(
                     "record allocation requested for `{record_type}` but malloc import was not declared"
                 ),
             )?;
-            for (field_name, field_value_id) in fields {
-                let field_value = get_value(values, function_name, field_value_id)?;
-                let offset = *layout.field_offsets.get(field_name).ok_or_else(|| {
-                    CodegenError::UnsupportedMir {
-                        function: function_name.to_string(),
-                        detail: format!(
-                            "record layout `{record_type}` missing field `{field_name}` during init"
-                        ),
-                    }
-                })?;
-                let offset = i32::try_from(offset).map_err(|_| CodegenError::UnsupportedMir {
-                    function: function_name.to_string(),
-                    detail: format!(
-                        "record field `{record_type}.{field_name}` offset does not fit i32"
-                    ),
-                })?;
-                builder
-                    .ins()
-                    .store(MemFlags::new(), field_value, base_ptr, offset);
-            }
+            store_record_fields(
+                builder,
+                function_name,
+                layout,
+                record_type,
+                base_ptr,
+                fields,
+                values,
+            )?;
             values.insert(dest.clone(), base_ptr);
+            Ok(false)
+        }
+        MirInst::RecordInitReuse {
+            dest,
+            source,
+            record_type,
+            fields,
+        } => {
+            let layout = ctx.layout_plan.records.get(record_type).ok_or_else(|| {
+                CodegenError::UnsupportedMir {
+                    function: function_name.to_string(),
+                    detail: format!("record layout `{record_type}` not found"),
+                }
+            })?;
+            let ptr_ty = module.target_config().pointer_type();
+            let source_ptr = get_value(values, function_name, source)?;
+            let source_ptr = coerce_value_to_clif_type(builder, source_ptr, ptr_ty);
+
+            let unique_block = builder.create_block();
+            let alloc_block = builder.create_block();
+            let join_block = builder.create_block();
+            builder.append_block_param(join_block, ptr_ty);
+
+            let rc_ptr = builder.ins().iadd_imm(source_ptr, -8);
+            let rc_value = builder.ins().load(types::I64, MemFlags::new(), rc_ptr, 0);
+            let is_unique = builder.ins().icmp_imm(IntCC::Equal, rc_value, 1);
+            builder
+                .ins()
+                .brif(is_unique, unique_block, &[], alloc_block, &[]);
+
+            builder.switch_to_block(unique_block);
+            store_record_fields(
+                builder,
+                function_name,
+                layout,
+                record_type,
+                source_ptr,
+                fields,
+                values,
+            )?;
+            builder.ins().jump(join_block, &[source_ptr]);
+
+            builder.switch_to_block(alloc_block);
+            let source_ty = ctx.value_types.get(source);
+            emit_typed_release(
+                module,
+                builder,
+                function_name,
+                source_ptr,
+                source_ty,
+                ctx.drop_func_ids,
+                ctx.free_func_id,
+            )?;
+            let fresh_ptr = allocate_heap_payload(
+                module,
+                builder,
+                function_name,
+                ctx.malloc_func_id,
+                layout.size_bytes,
+                &format!(
+                    "record allocation requested for `{record_type}` but malloc import was not declared"
+                ),
+            )?;
+            store_record_fields(
+                builder,
+                function_name,
+                layout,
+                record_type,
+                fresh_ptr,
+                fields,
+                values,
+            )?;
+            builder.ins().jump(join_block, &[fresh_ptr]);
+
+            builder.switch_to_block(join_block);
+            let result_ptr = builder
+                .block_params(join_block)
+                .first()
+                .copied()
+                .ok_or_else(|| CodegenError::UnsupportedMir {
+                    function: function_name.to_string(),
+                    detail: format!("record reuse join block missing result for `{record_type}`"),
+                })?;
+            values.insert(dest.clone(), result_ptr);
             Ok(false)
         }
         MirInst::SumInit {
@@ -4078,6 +4188,7 @@ fn collect_function_stats(function: &MirFunction) -> FunctionPassStats {
                 },
                 MirInst::CowUpdate { .. }
                 | MirInst::RecordInit { .. }
+                | MirInst::RecordInitReuse { .. }
                 | MirInst::SumInit { .. }
                 | MirInst::ClosureInit { .. }
                 | MirInst::StateCellNew { .. } => stats.alloc_count += 1,
@@ -5169,6 +5280,65 @@ mod tests {
                     ],
                     terminator: MirTerminator::Return {
                         value: Some(MirValueId(2)),
+                    },
+                }],
+            }],
+            layouts: MirLayoutCatalog {
+                records: vec![MirRecordLayout {
+                    name: "User".to_string(),
+                    fields: vec![MirRecordFieldLayout {
+                        name: "age".to_string(),
+                        annotation: kea_ast::TypeAnnotation::Named("Int".to_string()),
+                    }],
+                }],
+                sums: vec![],
+            },
+        }
+    }
+
+    fn sample_record_init_reuse_and_load_main_module() -> MirModule {
+        MirModule {
+            functions: vec![MirFunction {
+                name: "main".to_string(),
+                signature: MirFunctionSignature {
+                    params: vec![],
+                    ret: Type::Int,
+                    effects: EffectRow::pure(),
+                },
+                entry: MirBlockId(0),
+                blocks: vec![MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: MirValueId(0),
+                            literal: MirLiteral::Int(42),
+                        },
+                        MirInst::RecordInit {
+                            dest: MirValueId(1),
+                            record_type: "User".to_string(),
+                            fields: vec![("age".to_string(), MirValueId(0))],
+                        },
+                        MirInst::Const {
+                            dest: MirValueId(2),
+                            literal: MirLiteral::Int(7),
+                        },
+                        MirInst::RecordInitReuse {
+                            dest: MirValueId(3),
+                            source: MirValueId(1),
+                            record_type: "User".to_string(),
+                            fields: vec![("age".to_string(), MirValueId(2))],
+                        },
+                        MirInst::RecordFieldLoad {
+                            dest: MirValueId(4),
+                            record: MirValueId(3),
+                            record_type: "User".to_string(),
+                            field: "age".to_string(),
+                            field_ty: Type::Int,
+                        },
+                    ],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirValueId(4)),
                     },
                 }],
             }],
@@ -6743,6 +6913,14 @@ mod tests {
             .compile_module(&module, &manifest, &config)
             .expect("record init + field load lowering should compile");
         assert!(!artifact.object.is_empty());
+    }
+
+    #[test]
+    fn cranelift_backend_executes_record_init_reuse_and_field_load() {
+        let module = sample_record_init_reuse_and_load_main_module();
+        let exit_code =
+            execute_mir_main_jit(&module, &BackendConfig::default()).expect("main should execute");
+        assert_eq!(exit_code, 7);
     }
 
     #[test]
