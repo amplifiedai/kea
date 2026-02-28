@@ -487,6 +487,39 @@ theorem numericConstructorKernelSuite : NumericConstructorKernelSuite := by
     { precision := precisionConstructorKernelSlice
       decimal := decimalConstDimKernelSlice }
 
+/-- Decompose the numeric constructor suite into explicit precision/decimal
+    components. -/
+theorem numericConstructorKernelSuite_as_components
+    (suite : NumericConstructorKernelSuite) :
+    PrecisionConstructorKernelSlice ∧ DecimalConstDimKernelSlice :=
+  ⟨suite.precision, suite.decimal⟩
+
+/-- Build the numeric constructor suite from explicit components. -/
+theorem numericConstructorKernelSuite_of_components
+    (precision : PrecisionConstructorKernelSlice)
+    (decimal : DecimalConstDimKernelSlice) :
+    NumericConstructorKernelSuite :=
+  { precision := precision
+    decimal := decimal }
+
+/-- Numeric constructor suite is equivalent to explicit precision/decimal
+    components. -/
+theorem numericConstructorKernelSuite_iff_components
+    (suite : NumericConstructorKernelSuite) :
+    NumericConstructorKernelSuite ↔
+      (PrecisionConstructorKernelSlice ∧ DecimalConstDimKernelSlice) := by
+  constructor
+  · intro h
+    exact numericConstructorKernelSuite_as_components h
+  · intro h_comp
+    exact numericConstructorKernelSuite_of_components h_comp.1 h_comp.2
+
+/-- Direct component-route decomposition for `NumericConstructorKernelSuite`. -/
+theorem numericConstructorKernelSuite_as_components_of_components
+    (h_comp : PrecisionConstructorKernelSlice ∧ DecimalConstDimKernelSlice) :
+    PrecisionConstructorKernelSlice ∧ DecimalConstDimKernelSlice := by
+  simpa using h_comp
+
 /-- Decimal and non-decimal types do not unify. -/
 theorem decimal_non_decimal_mismatch (st : UnifyState) :
     unify st 1

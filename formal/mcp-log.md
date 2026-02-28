@@ -9516,3 +9516,37 @@ This suite bundles:
 **Impact**:
 - Simplifies downstream theorem dependencies across WP7.2 and WP7.3 numeric
   parity surfaces.
+
+### 2026-02-28: numeric constructor suite decomposition parity
+
+**Context**: Added structural decomposition helpers for
+`NumericConstructorKernelSuite` in `Kea/Properties/DecimalParity.lean`:
+- `numericConstructorKernelSuite_as_components`
+- `numericConstructorKernelSuite_of_components`
+- `numericConstructorKernelSuite_iff_components`
+- `numericConstructorKernelSuite_as_components_of_components`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Structural API extension only; no runtime semantic change.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- The numeric package now supports one-step conversion between bundled and
+  explicit precision+decimal component forms.
+
+**Impact**:
+- Keeps numeric packaging aligned with the same decomposition contract style
+  used throughout shape/effect/catch suites.
