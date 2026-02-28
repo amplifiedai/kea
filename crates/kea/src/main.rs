@@ -180,14 +180,40 @@ fn link_object_bytes(object: &[u8], output: &Path) -> Result<(), String> {
         )
     })?;
 
+    let runtime_source = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("runtime")
+        .join("kea_aot_runtime.c");
+    let temp_runtime_object = std::env::temp_dir().join(format!(
+        "kea-build-runtime-{}-{timestamp}-{counter}.o",
+        std::process::id()
+    ));
+
+    let runtime_status = ProcessCommand::new("cc")
+        .arg("-c")
+        .arg(&runtime_source)
+        .arg("-o")
+        .arg(&temp_runtime_object)
+        .status()
+        .map_err(|err| format!("failed to compile AOT runtime shims: {err}"))?;
+
+    if !runtime_status.success() {
+        let _ = fs::remove_file(&temp_object);
+        return Err(format!(
+            "failed to compile AOT runtime shims from `{}` (exit status: {runtime_status})",
+            runtime_source.display()
+        ));
+    }
+
     let status = ProcessCommand::new("cc")
         .arg(&temp_object)
+        .arg(&temp_runtime_object)
         .arg("-o")
         .arg(output)
         .status()
         .map_err(|err| format!("failed to invoke linker `cc`: {err}"))?;
 
     let _ = fs::remove_file(&temp_object);
+    let _ = fs::remove_file(&temp_runtime_object);
 
     if !status.success() {
         return Err(format!(
@@ -1776,6 +1802,42 @@ mod tests {
 
         let _ = std::fs::remove_file(source_path);
         let _ = std::fs::remove_file(output_path);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn compile_build_and_execute_aot_io_read_write_file_exit_code() {
+        let io_file_path = std::env::temp_dir().join(format!(
+            "kea-cli-aot-io-read-write-{}.txt",
+            std::process::id()
+        ));
+        let io_missing_path = std::env::temp_dir().join(format!(
+            "kea-cli-aot-io-read-write-missing-{}.txt",
+            std::process::id()
+        ));
+        let io_file_literal = io_file_path.to_string_lossy().replace('\\', "\\\\");
+        let io_missing_literal = io_missing_path.to_string_lossy().replace('\\', "\\\\");
+        let source_path = write_temp_source(
+            &format!(
+                "effect IO\n  fn write_file(path: String, data: String) -> Unit\n  fn read_file(path: String) -> String\n\nfn main() -[IO]> Int\n  IO.write_file(\"{io_file_literal}\", \"hello-aot\")\n  let msg = IO.read_file(\"{io_file_literal}\")\n  let missing = IO.read_file(\"{io_missing_literal}\")\n  if msg != missing\n    1\n  else\n    0\n"
+            ),
+            "kea-cli-aot-io-read-write",
+            "kea",
+        );
+        let output_path = temp_artifact_path("kea-cli-aot-io-read-write", "bin");
+
+        let compiled =
+            compile_file(&source_path, CodegenMode::Aot).expect("aot compile should work");
+        link_object_bytes(&compiled.object, &output_path).expect("link should work");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("aot executable should run");
+        assert_eq!(status.code(), Some(1));
+
+        let _ = std::fs::remove_file(source_path);
+        let _ = std::fs::remove_file(output_path);
+        let _ = std::fs::remove_file(io_file_path);
     }
 
     #[test]
