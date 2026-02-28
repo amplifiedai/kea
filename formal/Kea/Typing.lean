@@ -4533,6 +4533,10 @@ structure PrincipalBoundaryBridgeSuite : Prop where
   noUnify : PrincipalNoUnifyBridgeSlices
   preconditionedCoreIff : PrincipalPreconditionedCoreIffSlices
 
+/-- Explicit component alias for `PrincipalBoundaryBridgeSuite`. -/
+abbrev PrincipalBoundaryBridgeSuiteComponents : Prop :=
+  PrincipalNoUnifyBridgeSlices ∧ PrincipalPreconditionedCoreIffSlices
+
 /-- The combined principal boundary bridge suite is fully proved. -/
 theorem principalBoundaryBridgeSuite_proved : PrincipalBoundaryBridgeSuite := by
   refine {
@@ -5888,6 +5892,12 @@ structure PrincipalPreconditionedAllHooksSuite : Prop where
   irrelevance : PrincipalPreconditionedHookIrrelevanceSlices
   runBundles : PrincipalPreconditionedAllHooksRunBundleSlices
 
+/-- Explicit component alias for `PrincipalPreconditionedAllHooksSuite`. -/
+abbrev PrincipalPreconditionedAllHooksSuiteComponents : Prop :=
+  PrincipalPreconditionedAllHooksCapstoneSlices
+    ∧ PrincipalPreconditionedHookIrrelevanceSlices
+    ∧ PrincipalPreconditionedAllHooksRunBundleSlices
+
 /-- The general all-hooks successful-run suite is fully proved. -/
 theorem principalPreconditionedAllHooksSuite_proved :
     PrincipalPreconditionedAllHooksSuite := by
@@ -6669,6 +6679,10 @@ structure PrincipalBoundaryVacuitySuite : Prop where
   noUnifyCapstones : PrincipalBoundaryNoUnifyCapstoneSlices
   hookIrrelevance : PrincipalPreconditionedHookIrrelevanceSlices
 
+/-- Explicit component alias for `PrincipalBoundaryVacuitySuite`. -/
+abbrev PrincipalBoundaryVacuitySuiteComponents : Prop :=
+  PrincipalBoundaryNoUnifyCapstoneSlices ∧ PrincipalPreconditionedHookIrrelevanceSlices
+
 /-- The principal vacuity suite is fully proved. -/
 theorem principalBoundaryVacuitySuite_proved : PrincipalBoundaryVacuitySuite := by
   refine {
@@ -7067,6 +7081,12 @@ structure PrincipalBoundaryNoUnifyAllHooksSuite : Prop where
   capstones : PrincipalBoundaryNoUnifyAllHooksCapstoneSlices
   runBundles : PrincipalBoundaryNoUnifyAllHooksRunBundleSlices
   irrelevance : PrincipalBoundaryNoUnifyAllHooksIrrelevanceSlices
+
+/-- Explicit component alias for `PrincipalBoundaryNoUnifyAllHooksSuite`. -/
+abbrev PrincipalBoundaryNoUnifyAllHooksSuiteComponents : Prop :=
+  PrincipalBoundaryNoUnifyAllHooksCapstoneSlices
+    ∧ PrincipalBoundaryNoUnifyAllHooksRunBundleSlices
+    ∧ PrincipalBoundaryNoUnifyAllHooksIrrelevanceSlices
 
 /-- The no-unify all-hooks suite is fully proved. -/
 theorem principalBoundaryNoUnifyAllHooksSuite_proved :
@@ -7897,6 +7917,12 @@ structure PrincipalNoUnifyToGeneralAllHooksSuite : Prop where
   runBundles : PrincipalNoUnifyToGeneralAllHooksRunBundleSlices
   irrelevance : PrincipalNoUnifyToGeneralAllHooksIrrelevanceSlices
 
+/-- Explicit component alias for `PrincipalNoUnifyToGeneralAllHooksSuite`. -/
+abbrev PrincipalNoUnifyToGeneralAllHooksSuiteComponents : Prop :=
+  PrincipalNoUnifyToGeneralAllHooksCapstoneSlices
+    ∧ PrincipalNoUnifyToGeneralAllHooksRunBundleSlices
+    ∧ PrincipalNoUnifyToGeneralAllHooksIrrelevanceSlices
+
 /--
 The no-unify-to-general all-hooks suite is fully proved.
 -/
@@ -8447,6 +8473,15 @@ structure PrincipalBoundaryMasterSuite : Prop where
   noUnifyHookedFromAllHooks : PrincipalBoundaryNoUnifyCapstoneSlices
   noUnifyToGeneralAllHooks : PrincipalNoUnifyToGeneralAllHooksSuite
 
+/-- Explicit component alias for `PrincipalBoundaryMasterSuite`. -/
+abbrev PrincipalBoundaryMasterSuiteComponents : Prop :=
+  PrincipalBoundaryBridgeSuite
+    ∧ PrincipalBoundaryVacuitySuite
+    ∧ PrincipalPreconditionedAllHooksSuite
+    ∧ PrincipalBoundaryNoUnifyAllHooksSuite
+    ∧ PrincipalBoundaryNoUnifyCapstoneSlices
+    ∧ PrincipalNoUnifyToGeneralAllHooksSuite
+
 /-- The principal boundary master suite is fully proved. -/
 theorem principalBoundaryMasterSuite_proved : PrincipalBoundaryMasterSuite := by
   refine {
@@ -8788,6 +8823,10 @@ structure PrincipalBoundaryMasterRunBundleSuite : Prop where
       NoUnifyBranchesFields fs →
       inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)) →
       PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf
+
+/-- Explicit component alias for `PrincipalBoundaryMasterRunBundleSuite`. -/
+abbrev PrincipalBoundaryMasterRunBundleSuiteComponents : Prop :=
+  PrincipalBoundaryMasterRunBundleSuite
 
 /--
 Construct the master run-bundle suite from a master principal-boundary suite.
@@ -9945,6 +9984,10 @@ structure PrincipalBoundaryMasterRunBundleConsequenceSuite : Prop where
   runBundles : PrincipalBoundaryMasterRunBundleSuite
   noUnifyConsequences : PrincipalNoUnifyRunBundleConsequenceSlices
 
+/-- Explicit component alias for `PrincipalBoundaryMasterRunBundleConsequenceSuite`. -/
+abbrev PrincipalBoundaryMasterRunBundleConsequenceSuiteComponents : Prop :=
+  PrincipalBoundaryMasterRunBundleSuite ∧ PrincipalNoUnifyRunBundleConsequenceSlices
+
 /--
 Construct the master run-bundle consequence suite from a master run-bundle
 suite.
@@ -10412,6 +10455,10 @@ structure PrincipalBoundaryMasterConsequenceCapstoneSuite : Prop where
       inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)) →
       (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
         ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf)
+
+/-- Explicit component alias for `PrincipalBoundaryMasterConsequenceCapstoneSuite`. -/
+abbrev PrincipalBoundaryMasterConsequenceCapstoneSuiteComponents : Prop :=
+  PrincipalBoundaryMasterConsequenceCapstoneSuite
 
 /--
 Construct the master consequence capstone suite from one top-level master
@@ -24782,6 +24829,11 @@ structure PrincipalBoundarySoundTypingRunBundleSuite
       inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)) →
       PrincipalBoundarySoundNoUnifyFieldTypingRunBundleRoutes st fuel env fs st' rf
 
+/-- Explicit component alias for `PrincipalBoundarySoundTypingRunBundleSuite`. -/
+abbrev PrincipalBoundarySoundTypingRunBundleSuiteComponents
+    (h_app : AppUnifySoundHook) (h_proj : ProjUnifySoundHook) : Prop :=
+  PrincipalBoundarySoundTypingRunBundleSuite h_app h_proj
+
 /--
 Construct the boundary+sound typing+run-bundle-route suite directly from hook
 premises.
@@ -26368,6 +26420,19 @@ structure PrincipalBoundarySoundFullSuite
     NoUnifyBranchesFields fs →
     PrincipalBoundarySoundNoUnifyFieldFull st fuel env fs stField rf
 
+/-- Explicit component alias for `PrincipalBoundarySoundFullSuite`. -/
+abbrev PrincipalBoundarySoundFullSuiteComponents
+    (st : UnifyState) (fuel : Nat) (env : TermEnv)
+    (e : CoreExpr) (fs : CoreFields)
+    (stExpr : UnifyState) (ty : Ty)
+    (stField : UnifyState) (rf : RowFields) : Prop :=
+  PrincipalBoundarySoundExprFull st fuel env e stExpr ty
+    ∧ PrincipalBoundarySoundFieldFull st fuel env fs stField rf
+    ∧ (NoUnifyBranchesExpr e →
+        PrincipalBoundarySoundNoUnifyExprFull st fuel env e stExpr ty)
+    ∧ (NoUnifyBranchesFields fs →
+        PrincipalBoundarySoundNoUnifyFieldFull st fuel env fs stField rf)
+
 /--
 Build the full typing-suite capstone from successful expression and field runs
 on the direct boundary+sound typing-suite path.
@@ -26658,6 +26723,15 @@ structure PrincipalBoundarySoundFullVerticalSuite
     (stField : UnifyState) (rf : RowFields) : Prop where
   full : PrincipalBoundarySoundFullSuite st fuel env e fs stExpr ty stField rf
   vertical : VerticalHookFreeUnifySlices
+
+/-- Explicit component alias for `PrincipalBoundarySoundFullVerticalSuite`. -/
+abbrev PrincipalBoundarySoundFullVerticalSuiteComponents
+    (st : UnifyState) (fuel : Nat) (env : TermEnv)
+    (e : CoreExpr) (fs : CoreFields)
+    (stExpr : UnifyState) (ty : Ty)
+    (stField : UnifyState) (rf : RowFields) : Prop :=
+  PrincipalBoundarySoundFullSuite st fuel env e fs stExpr ty stField rf
+    ∧ VerticalHookFreeUnifySlices
 
 /--
 Build the full+vertical capstone from a row-poly boundary+sound bundle and
@@ -28838,6 +28912,16 @@ structure PrincipalBoundarySoundNoUnifyFullVerticalSuite
   exprNoUnify : PrincipalBoundarySoundNoUnifyExprFull st fuel env e stExpr ty
   fieldNoUnify : PrincipalBoundarySoundNoUnifyFieldFull st fuel env fs stField rf
   vertical : VerticalHookFreeUnifySlices
+
+/-- Explicit component alias for `PrincipalBoundarySoundNoUnifyFullVerticalSuite`. -/
+abbrev PrincipalBoundarySoundNoUnifyFullVerticalSuiteComponents
+    (st : UnifyState) (fuel : Nat) (env : TermEnv)
+    (e : CoreExpr) (fs : CoreFields)
+    (stExpr : UnifyState) (ty : Ty)
+    (stField : UnifyState) (rf : RowFields) : Prop :=
+  PrincipalBoundarySoundNoUnifyExprFull st fuel env e stExpr ty
+    ∧ PrincipalBoundarySoundNoUnifyFieldFull st fuel env fs stField rf
+    ∧ VerticalHookFreeUnifySlices
 
 /-- Convert the no-unify master capstone into the no-unify full+vertical suite surface. -/
 theorem principalBoundarySoundNoUnifyFullVerticalSuite_of_masterCapstone
