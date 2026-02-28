@@ -82,6 +82,39 @@ String with escapes
   (string))
 
 ==================
+Triple-quoted string
+==================
+
+"""hello world"""
+
+---
+
+(source_file
+  (triple_quoted_string))
+
+==================
+Triple-quoted string with escapes
+==================
+
+"""line\nbreak"""
+
+---
+
+(source_file
+  (triple_quoted_string))
+
+==================
+Triple-quoted string with embedded quotes
+==================
+
+"""she said "hello" to him"""
+
+---
+
+(source_file
+  (triple_quoted_string))
+
+==================
 Boolean literals
 ==================
 

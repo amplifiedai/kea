@@ -595,6 +595,7 @@ fn strip_test_decls_for_runner(module: &Module) -> (Module, Vec<RunnerTestCase>)
 
     (
         Module {
+            doc: module.doc.clone(),
             declarations,
             span: module.span,
         },
@@ -799,6 +800,7 @@ fn merge_modules_for_codegen(modules: &[(String, Module)]) -> Module {
     }
 
     Module {
+        doc: None,
         declarations,
         // Merged project modules may originate from different files.
         // Keep a synthetic span to avoid cross-file merge assertions.
@@ -1184,6 +1186,7 @@ fn expand_impl_methods_for_codegen(module: &Module) -> Module {
     }
 
     Module {
+        doc: module.doc.clone(),
         declarations,
         span: module.span,
     }

@@ -1,25 +1,28 @@
---| Text provides string helper operations.
---|
---| Use `Text.length` for byte length checks and predicate
---| helpers for empty/non-empty guards.
---| Return the number of bytes in a string.
---|
---|   Text.length("")       -- => 0
---|   Text.length("kea")    -- => 3
+doc
+  Text provides string helper operations.
+
+  Use `Text.length` for byte length checks and predicate
+  helpers for empty/non-empty guards.
+  Return the number of bytes in a string.
+
+    Text.length("")       -- => 0
+    Text.length("kea")    -- => 3
 @intrinsic("strlen")
 fn length(s: String) -> Int
   0
 
---| Return true when a string has length zero.
---|
---|   Text.is_empty("")      -- => true
---|   Text.is_empty("kea")   -- => false
+doc
+  Return true when a string has length zero.
+
+    Text.is_empty("")      -- => true
+    Text.is_empty("kea")   -- => false
 fn is_empty(s: String) -> Bool
   Text.length(s) == 0
 
---| Return true when a string is not empty.
---|
---|   Text.non_empty("")      -- => false
---|   Text.non_empty("kea")   -- => true
+doc
+  Return true when a string is not empty.
+
+    Text.non_empty("")      -- => false
+    Text.non_empty("kea")   -- => true
 fn non_empty(s: String) -> Bool
   not Text.is_empty(s)

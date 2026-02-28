@@ -1,80 +1,91 @@
---| Int provides helpers for integer arithmetic and bit operations.
---|
---| Prefer `Int.*` wrappers for readability at call sites, even
---| when methods exist directly on `Int`.
---| Return the absolute value of an integer.
---|
---|   Int.abs(-5)   -- => 5
---|   Int.abs(3)    -- => 3
+doc
+  Int provides helpers for integer arithmetic and bit operations.
+
+  Prefer `Int.*` wrappers for readability at call sites, even
+  when methods exist directly on `Int`.
+  Return the absolute value of an integer.
+
+    Int.abs(-5)   -- => 5
+    Int.abs(3)    -- => 3
 fn abs(x: Int) -> Int
   if x < 0
     -x
   else
     x
 
---| Return the smaller of two integers.
---|
---|   Int.min(2, 9)   -- => 2
+doc
+  Return the smaller of two integers.
+
+    Int.min(2, 9)   -- => 2
 fn min(x: Int, y: Int) -> Int
   if x < y
     x
   else
     y
 
---| Return the larger of two integers.
---|
---|   Int.max(2, 9)   -- => 9
+doc
+  Return the larger of two integers.
+
+    Int.max(2, 9)   -- => 9
 fn max(x: Int, y: Int) -> Int
   if x > y
     x
   else
     y
 
---| Clamp an integer into an inclusive range.
---|
---|   Int.clamp(12, 0, 10)   -- => 10
---|   Int.clamp(-1, 0, 10)   -- => 0
+doc
+  Clamp an integer into an inclusive range.
+
+    Int.clamp(12, 0, 10)   -- => 10
+    Int.clamp(-1, 0, 10)   -- => 0
 fn clamp(x: Int, low: Int, high: Int) -> Int
   Int.min(Int.max(x, low), high)
 
---| Compute bitwise AND for two integers.
---|
---|   Int.bit_and(42, 15)   -- => 10
+doc
+  Compute bitwise AND for two integers.
+
+    Int.bit_and(42, 15)   -- => 10
 fn bit_and(x: Int, y: Int) -> Int
   x.bit_and(y)
 
---| Compute bitwise OR for two integers.
---|
---|   Int.bit_or(8, 3)   -- => 11
+doc
+  Compute bitwise OR for two integers.
+
+    Int.bit_or(8, 3)   -- => 11
 fn bit_or(x: Int, y: Int) -> Int
   x.bit_or(y)
 
---| Compute bitwise XOR for two integers.
---|
---|   Int.bit_xor(12, 10)   -- => 6
+doc
+  Compute bitwise XOR for two integers.
+
+    Int.bit_xor(12, 10)   -- => 6
 fn bit_xor(x: Int, y: Int) -> Int
   x.bit_xor(y)
 
---| Compute bitwise NOT for an integer.
---|
---|   Int.bit_not(0)   -- => -1
+doc
+  Compute bitwise NOT for an integer.
+
+    Int.bit_not(0)   -- => -1
 fn bit_not(x: Int) -> Int
   x.bit_not()
 
---| Shift an integer left by a number of bits.
---|
---|   Int.shift_left(1, 3)   -- => 8
+doc
+  Shift an integer left by a number of bits.
+
+    Int.shift_left(1, 3)   -- => 8
 fn shift_left(x: Int, amount: Int) -> Int
   x.shift_left(amount)
 
---| Shift an integer right with sign extension.
---|
---|   Int.shift_right(-8, 1)   -- => -4
+doc
+  Shift an integer right with sign extension.
+
+    Int.shift_right(-8, 1)   -- => -4
 fn shift_right(x: Int, amount: Int) -> Int
   x.shift_right(amount)
 
---| Shift an integer right with zero fill.
---|
---|   Int.shift_right_unsigned(8, 1)   -- => 4
+doc
+  Shift an integer right with zero fill.
+
+    Int.shift_right_unsigned(8, 1)   -- => 4
 fn shift_right_unsigned(x: Int, amount: Int) -> Int
   x.shift_right_unsigned(amount)

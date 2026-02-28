@@ -1383,15 +1383,13 @@ fn effect_row_alias_expands_in_declared_effect_contract_validation() {
     fn_decl.effect_annotation = Some(sp(effect_row_annotation(vec![("DbEffects", None)], None)));
 
     let env = TypeEnv::new();
-    assert!(
-        validate_declared_fn_effect_with_env_and_records(
-            &fn_decl,
-            Effects::impure(),
-            &env,
-            &records
-        )
-        .is_ok()
-    );
+    assert!(validate_declared_fn_effect_with_env_and_records(
+        &fn_decl,
+        Effects::impure(),
+        &env,
+        &records
+    )
+    .is_ok());
 }
 
 #[test]
@@ -1414,15 +1412,13 @@ fn open_effect_row_alias_is_supported_in_contract_validation() {
     let mut fn_decl = make_fn_decl("f", vec![], lit_int(1));
     fn_decl.effect_annotation = Some(sp(effect_row_annotation(vec![("WithDb", None)], None)));
     let env = TypeEnv::new();
-    assert!(
-        validate_declared_fn_effect_with_env_and_records(
-            &fn_decl,
-            Effects::impure(),
-            &env,
-            &records
-        )
-        .is_ok()
-    );
+    assert!(validate_declared_fn_effect_with_env_and_records(
+        &fn_decl,
+        Effects::impure(),
+        &env,
+        &records
+    )
+    .is_ok());
 }
 
 #[test]
@@ -3601,7 +3597,10 @@ fn infer_tuple() {
 fn infer_tuple_numeric_field_access() {
     let expr = field_access(tuple(vec![lit_int(42), lit_str("hello")]), "1");
     let (ty, u) = infer(&expr);
-    assert!(!u.has_errors(), "tuple numeric field access should typecheck");
+    assert!(
+        !u.has_errors(),
+        "tuple numeric field access should typecheck"
+    );
     assert_eq!(ty, Type::String);
 }
 
@@ -7577,7 +7576,10 @@ fn handle_clause_completeness_ignores_non_operation_module_helpers() {
             make_effect_operation("get", vec![], TypeAnnotation::Named("S".to_string())),
             make_effect_operation(
                 "put",
-                vec![annotated_param("next", TypeAnnotation::Named("S".to_string()))],
+                vec![annotated_param(
+                    "next",
+                    TypeAnnotation::Named("S".to_string()),
+                )],
                 TypeAnnotation::Named("Unit".to_string()),
             ),
         ],
@@ -8706,18 +8708,16 @@ fn validate_trait_method_impl_contract_accepts_constrained_polymorphic_impl_anno
         ))),
         default: None,
     }];
-    assert!(
-        validate_trait_method_impl_contract(
-            "Runner",
-            "run",
-            s(),
-            Effects::pure_deterministic(),
-            Some(&impl_effect),
-            &params,
-            Some(&EffectAnnotation::Var("e".to_string())),
-        )
-        .is_ok()
-    );
+    assert!(validate_trait_method_impl_contract(
+        "Runner",
+        "run",
+        s(),
+        Effects::pure_deterministic(),
+        Some(&impl_effect),
+        &params,
+        Some(&EffectAnnotation::Var("e".to_string())),
+    )
+    .is_ok());
 }
 
 #[test]
@@ -8732,16 +8732,14 @@ fn validate_trait_method_impl_contract_with_env_accepts_exact_polymorphic_propag
     method.effect_annotation = Some(sp(EffectAnnotation::Var("impl_e".to_string())));
 
     let inferred = infer_fn_decl_effects(&method, &env);
-    assert!(
-        validate_trait_method_impl_contract_with_env(
-            "Runner",
-            &method,
-            inferred,
-            &env,
-            Some(&EffectAnnotation::Var("e".to_string())),
-        )
-        .is_ok()
-    );
+    assert!(validate_trait_method_impl_contract_with_env(
+        "Runner",
+        &method,
+        inferred,
+        &env,
+        Some(&EffectAnnotation::Var("e".to_string())),
+    )
+    .is_ok());
 }
 
 #[test]
@@ -8944,12 +8942,10 @@ fn trait_unknown_supertrait_errors() {
     };
     let result = traits.register_trait(&def, &records);
     assert!(result.is_err());
-    assert!(
-        result
-            .unwrap_err()
-            .message
-            .contains("unknown supertrait `Eq`"),
-    );
+    assert!(result
+        .unwrap_err()
+        .message
+        .contains("unknown supertrait `Eq`"),);
 }
 
 #[test]
@@ -8971,12 +8967,10 @@ fn trait_duplicate_supertrait_errors() {
     };
     let result = traits.register_trait(&def, &records);
     assert!(result.is_err());
-    assert!(
-        result
-            .unwrap_err()
-            .message
-            .contains("duplicate supertrait `Eq`")
-    );
+    assert!(result
+        .unwrap_err()
+        .message
+        .contains("duplicate supertrait `Eq`"));
 }
 
 #[test]
@@ -8995,12 +8989,10 @@ fn trait_self_supertrait_errors() {
     };
     let result = traits.register_trait(&def, &records);
     assert!(result.is_err());
-    assert!(
-        result
-            .unwrap_err()
-            .message
-            .contains("cannot inherit from itself")
-    );
+    assert!(result
+        .unwrap_err()
+        .message
+        .contains("cannot inherit from itself"));
 }
 
 #[test]
@@ -11050,11 +11042,9 @@ fn validate_where_clause_traits_reports_unknown_trait() {
     }];
     let diags = validate_where_clause_traits(&where_clause, &traits);
     assert_eq!(diags.len(), 1);
-    assert!(
-        diags[0]
-            .message
-            .contains("trait `UnknownTrait` is not defined")
-    );
+    assert!(diags[0]
+        .message
+        .contains("trait `UnknownTrait` is not defined"));
 }
 
 #[test]
@@ -11088,11 +11078,9 @@ fn validate_where_clause_traits_reports_ambiguous_multi_param_bound() {
     }];
     let diags = validate_where_clause_traits(&where_clause, &traits);
     assert_eq!(diags.len(), 1);
-    assert!(
-        diags[0]
-            .message
-            .contains("ambiguous bound `T`: trait `BiLike` has multiple type parameters")
-    );
+    assert!(diags[0]
+        .message
+        .contains("ambiguous bound `T`: trait `BiLike` has multiple type parameters"));
 }
 
 #[test]
@@ -11159,12 +11147,10 @@ fn seed_fn_where_type_params_reports_unknown_trait() {
     let mut unifier = Unifier::new();
     seed_fn_where_type_params(&fn_decl, &trait_registry, &mut unifier);
     assert!(unifier.has_errors());
-    assert!(
-        unifier
-            .errors()
-            .iter()
-            .any(|d| d.message.contains("trait `UnknownTrait` is not defined"))
-    );
+    assert!(unifier
+        .errors()
+        .iter()
+        .any(|d| d.message.contains("trait `UnknownTrait` is not defined")));
 }
 
 #[test]
@@ -11215,12 +11201,10 @@ fn seed_fn_where_type_params_registers_kinded_constructor_var() {
         panic!("F should be seeded as a type variable");
     };
     assert_eq!(unifier.type_var_kinds.get(&f_tv), Some(&Kind::Star));
-    assert!(
-        unifier
-            .trait_bounds
-            .get(&f_tv)
-            .is_some_and(|bounds| bounds.contains("Applicative"))
-    );
+    assert!(unifier
+        .trait_bounds
+        .get(&f_tv)
+        .is_some_and(|bounds| bounds.contains("Applicative")));
 }
 
 #[test]
@@ -11806,10 +11790,9 @@ fn trait_method_where_clause_errors_for_ambiguous_multi_param_bound() {
     let err = trait_registry
         .register_trait(&uses, &records)
         .expect_err("ambiguous where bound should fail registration");
-    assert!(
-        err.message
-            .contains("ambiguous bound `T`: trait `BiConstraint` has multiple type parameters")
-    );
+    assert!(err
+        .message
+        .contains("ambiguous bound `T`: trait `BiConstraint` has multiple type parameters"));
 }
 
 #[test]
@@ -13617,10 +13600,9 @@ fn impl_with_duplicate_associated_type_assignment_errors() {
         ],
     };
     let err = traits.register_trait_impl(&block).unwrap_err();
-    assert!(
-        err.message
-            .contains("duplicate associated type assignment `Item`")
-    );
+    assert!(err
+        .message
+        .contains("duplicate associated type assignment `Item`"));
 }
 
 #[test]
@@ -13652,10 +13634,9 @@ fn impl_missing_required_associated_type_errors() {
         where_clause: vec![],
     };
     let err = traits.register_trait_impl(&block).unwrap_err();
-    assert!(
-        err.message
-            .contains("missing associated type assignment `Item`")
-    );
+    assert!(err
+        .message
+        .contains("missing associated type assignment `Item`"));
 }
 
 #[test]
@@ -13939,10 +13920,9 @@ fn trait_default_projection_unknown_assoc_errors() {
         methods: vec![],
     };
     let err = traits.register_trait(&def, &records).unwrap_err();
-    assert!(
-        err.message
-            .contains("unknown associated type `Missing` referenced in `associated type default`")
-    );
+    assert!(err
+        .message
+        .contains("unknown associated type `Missing` referenced in `associated type default`"));
 }
 
 #[test]
@@ -13996,11 +13976,9 @@ fn impl_assignment_projection_unknown_assoc_errors() {
         ],
     };
     let err = traits.register_trait_impl(&block).unwrap_err();
-    assert!(
-        err.message.contains(
-            "unknown associated type `Missing` referenced in `associated type assignment`"
-        )
-    );
+    assert!(err
+        .message
+        .contains("unknown associated type `Missing` referenced in `associated type assignment`"));
 }
 
 #[test]
@@ -14028,10 +14006,9 @@ fn trait_fundep_unknown_symbol_errors() {
         methods: vec![],
     };
     let err = traits.register_trait(&def, &records).unwrap_err();
-    assert!(
-        err.message
-            .contains("functional dependency references unknown parameter or associated type")
-    );
+    assert!(err
+        .message
+        .contains("functional dependency references unknown parameter or associated type"));
 }
 
 #[test]
@@ -15118,6 +15095,7 @@ fn validate_module_fn_annotations_checks_trait_and_impl_methods() {
         where_clause: vec![],
     };
     let module = Module {
+        doc: None,
         declarations: vec![
             sp(DeclKind::TraitDef(trait_def)),
             sp(DeclKind::ImplBlock(impl_block)),
@@ -15141,6 +15119,7 @@ fn validate_module_fn_annotations_warns_on_legacy_effect_syntax() {
     volatile_fn.return_annotation = Some(sp(TypeAnnotation::Named("Int".to_string())));
     volatile_fn.effect_annotation = Some(sp(EffectAnnotation::Volatile));
     let module = Module {
+        doc: None,
         declarations: vec![
             sp(DeclKind::Function(impure_fn)),
             sp(DeclKind::Function(volatile_fn)),
@@ -15175,6 +15154,7 @@ fn validate_module_annotations_unknown_annotation_suggests_known_name() {
     fn_decl.return_annotation = Some(sp(TypeAnnotation::Named("Int".to_string())));
 
     let module = Module {
+        doc: None,
         declarations: vec![sp(DeclKind::Function(fn_decl))],
         span: s(),
     };
@@ -15193,6 +15173,7 @@ fn validate_module_annotations_intrinsic_function_annotation_is_allowed() {
     fn_decl.return_annotation = Some(sp(TypeAnnotation::Named("Int".to_string())));
 
     let module = Module {
+        doc: None,
         declarations: vec![sp(DeclKind::Function(fn_decl))],
         span: s(),
     };
@@ -15212,6 +15193,7 @@ fn validate_module_annotations_intrinsic_requires_string_literal_argument() {
     fn_decl.return_annotation = Some(sp(TypeAnnotation::Named("Int".to_string())));
 
     let module = Module {
+        doc: None,
         declarations: vec![sp(DeclKind::Function(fn_decl))],
         span: s(),
     };
@@ -15234,6 +15216,7 @@ fn validate_module_annotations_default_literal_type_mismatch_errors() {
     record.derives = vec![sp("Serialize".to_string())];
     record.field_annotations = vec![vec![ann("default", vec![ann_arg(lit_str("slow"))])]];
     let module = Module {
+        doc: None,
         declarations: vec![sp(DeclKind::RecordDef(record))],
         span: s(),
     };
@@ -15259,6 +15242,7 @@ fn validate_module_annotations_default_impure_argument_rejected() {
         vec![ann_arg(call(var("read_env"), vec![lit_str("TIMEOUT")]))],
     )]];
     let module = Module {
+        doc: None,
         declarations: vec![sp(DeclKind::RecordDef(record))],
         span: s(),
     };
@@ -15284,6 +15268,7 @@ fn validate_module_annotations_skip_if_option_guard_requires_optional_field() {
         vec![ann_arg(field_access(var("Option"), "is_none"))],
     )]];
     let module = Module {
+        doc: None,
         declarations: vec![sp(DeclKind::RecordDef(record))],
         span: s(),
     };
@@ -15305,6 +15290,7 @@ fn validate_module_annotations_serialization_without_derive_is_warning() {
     );
     record.field_annotations = vec![vec![ann("rename", vec![ann_arg(lit_str("apiKey"))])]];
     let module = Module {
+        doc: None,
         declarations: vec![sp(DeclKind::RecordDef(record))],
         span: s(),
     };
@@ -15312,11 +15298,9 @@ fn validate_module_annotations_serialization_without_derive_is_warning() {
     let diags = validate_module_annotations(&module);
     assert_eq!(diags.len(), 1);
     assert!(matches!(diags[0].severity, kea_diag::Severity::Warning));
-    assert!(
-        diags[0]
-            .message
-            .contains("annotation `@rename` has no effect without `deriving Serialize`")
-    );
+    assert!(diags[0]
+        .message
+        .contains("annotation `@rename` has no effect without `deriving Serialize`"));
 }
 
 #[test]
@@ -15445,7 +15429,11 @@ fn with_after_non_let_expression_emits_ordering_warning() {
     let mut unifier = Unifier::new();
     let ty = infer_and_resolve(&expr, &mut env, &mut unifier, &records, &traits, &sum_types);
 
-    assert!(!unifier.has_errors(), "unexpected errors: {:?}", unifier.errors());
+    assert!(
+        !unifier.has_errors(),
+        "unexpected errors: {:?}",
+        unifier.errors()
+    );
     assert_eq!(unifier.substitution.apply(&ty), Type::Int);
     assert!(
         unifier.errors().iter().any(|diag| {
@@ -15502,7 +15490,11 @@ fn with_after_let_expression_is_not_warned() {
     let mut unifier = Unifier::new();
     let ty = infer_and_resolve(&expr, &mut env, &mut unifier, &records, &traits, &sum_types);
 
-    assert!(!unifier.has_errors(), "unexpected errors: {:?}", unifier.errors());
+    assert!(
+        !unifier.has_errors(),
+        "unexpected errors: {:?}",
+        unifier.errors()
+    );
     assert_eq!(unifier.substitution.apply(&ty), Type::Int);
     assert!(
         !unifier

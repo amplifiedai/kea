@@ -1,45 +1,54 @@
---| IO provides file and console side effects.
---|
---| Keep direct side effects at boundaries by using `IO.*` in
---| entrypoints, handlers, and integration code.
+doc
+  IO provides file and console side effects.
+
+  Keep direct side effects at boundaries by using `IO.*` in
+  entrypoints, handlers, and integration code.
 effect IO
-  --| Write a string to stdout.
-  --|
-  --|   IO.stdout("hello")
+  doc
+    Write a string to stdout.
+
+      IO.stdout("hello")
   fn stdout(msg: String) -[IO]> Unit
-  --| Write a string to stderr.
-  --|
-  --|   IO.stderr("warning")
+  doc
+    Write a string to stderr.
+
+      IO.stderr("warning")
   fn stderr(msg: String) -[IO]> Unit
-  --| Write file contents to disk.
-  --|
-  --|   IO.write_file("out.txt", "data")
+  doc
+    Write file contents to disk.
+
+      IO.write_file("out.txt", "data")
   fn write_file(path: String, data: String) -[IO]> Unit
-  --| Read file contents from disk.
-  --|
-  --|   IO.read_file("out.txt")   -- => "data"
+  doc
+    Read file contents from disk.
+
+      IO.read_file("out.txt")   -- => "data"
   fn read_file(path: String) -[IO]> String
 
---| Write text to stdout.
---|
---|   IO.print("hello")
+doc
+  Write text to stdout.
+
+    IO.print("hello")
 fn print(msg: String) -[IO]> Unit
   IO.stdout(msg)
 
---| Write text plus a trailing newline to stdout.
---|
---|   IO.println("hello")
+doc
+  Write text plus a trailing newline to stdout.
+
+    IO.println("hello")
 fn println(msg: String) -[IO]> Unit
   IO.stdout(msg ++ "\n")
 
---| Write text to stderr.
---|
---|   IO.eprint("warning")
+doc
+  Write text to stderr.
+
+    IO.eprint("warning")
 fn eprint(msg: String) -[IO]> Unit
   IO.stderr(msg)
 
---| Write text plus a trailing newline to stderr.
---|
---|   IO.eprintln("warning")
+doc
+  Write text plus a trailing newline to stderr.
+
+    IO.eprintln("warning")
 fn eprintln(msg: String) -[IO]> Unit
   IO.stderr(msg ++ "\n")

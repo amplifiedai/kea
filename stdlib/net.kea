@@ -1,24 +1,29 @@
---| Net provides network connection operations.
---|
---| Keep raw networking at effect boundaries and isolate protocol
---| logic in pure functions where possible.
+doc
+  Net provides network connection operations.
+
+  Keep raw networking at effect boundaries and isolate protocol
+  logic in pure functions where possible.
 effect Net
-  --| Open a network connection.
-  --|
-  --|   Net.connect("127.0.0.1:9000")   -- => connection handle
+  doc
+    Open a network connection.
+
+      Net.connect("127.0.0.1:9000")   -- => connection handle
   fn connect(addr: String) -[Net]> Int
-  --| Send data on an open connection.
-  --|
-  --|   Net.send(conn, "ping")
+  doc
+    Send data on an open connection.
+
+      Net.send(conn, "ping")
   fn send(conn: Int, data: String) -[Net]> Unit
-  --| Receive data from a connection.
-  --|
-  --|   Net.recv(conn, 1024)   -- => bytes read (bootstrap shim)
+  doc
+    Receive data from a connection.
+
+      Net.recv(conn, 1024)   -- => bytes read (bootstrap shim)
   fn recv(conn: Int, size: Int) -[Net]> Int
 
---| Send a payload and then read a response size from the same connection.
---|
---|   Net.send_and_recv(conn, "ping", 4)   -- => 4
+doc
+  Send a payload and then read a response size from the same connection.
+
+    Net.send_and_recv(conn, "ping", 4)   -- => 4
 fn send_and_recv(conn: Int, data: String, size: Int) -[Net]> Int
   Net.send(conn, data)
   Net.recv(conn, size)
