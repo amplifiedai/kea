@@ -575,12 +575,17 @@ fn fuse_release_alloc_same_layout(function: &mut MirFunction, layouts: &MirLayou
 
 #[derive(Debug, Clone)]
 struct CrossBlockReuseRewrite {
-    pred_block_idx: usize,
-    release_inst_idx: usize,
+    release_sites: Vec<CrossBlockReleaseSite>,
     succ_block_idx: usize,
     succ_inst_idx: usize,
     source_param: MirValueId,
     candidate: ReuseInitCandidate,
+}
+
+#[derive(Debug, Clone)]
+struct CrossBlockReleaseSite {
+    pred_block_idx: usize,
+    release_inst_idx: usize,
 }
 
 fn fuse_release_alloc_cross_block_jump(function: &mut MirFunction, layouts: &MirLayoutCatalog) {
@@ -592,68 +597,89 @@ fn fuse_release_alloc_cross_block_jump(function: &mut MirFunction, layouts: &Mir
         .map(|(idx, block)| (block.id.clone(), idx))
         .collect::<BTreeMap<_, _>>();
 
-    let mut predecessor_counts = BTreeMap::<MirBlockId, usize>::new();
-    for block in &function.blocks {
+    let mut predecessors = BTreeMap::<MirBlockId, Vec<usize>>::new();
+    for (block_idx, block) in function.blocks.iter().enumerate() {
         if let MirTerminator::Jump { target, .. } = &block.terminator {
-            *predecessor_counts.entry(target.clone()).or_insert(0) += 1;
+            predecessors.entry(target.clone()).or_default().push(block_idx);
         }
     }
 
     let mut rewrites = Vec::new();
-    for (pred_block_idx, pred_block) in function.blocks.iter().enumerate() {
-        let release_inst_idx = pred_block.instructions.len().checked_sub(1);
-        let Some(release_inst_idx) = release_inst_idx else {
+    for (target, pred_block_indices) in predecessors {
+        let Some(succ_block_idx) = block_index_by_id.get(&target).copied() else {
             continue;
         };
-        let released_value = match &pred_block.instructions[release_inst_idx] {
-            MirInst::Release { value } => value.clone(),
-            _ => continue,
-        };
-        let MirTerminator::Jump { target, args } = &pred_block.terminator else {
-            continue;
-        };
-        if predecessor_counts.get(target).copied().unwrap_or(0) != 1 {
+        if pred_block_indices.is_empty() {
             continue;
         }
-        let Some(succ_block_idx) = block_index_by_id.get(target).copied() else {
-            continue;
-        };
-        if pred_block_idx == succ_block_idx {
+        if pred_block_indices.contains(&succ_block_idx) {
             continue;
         }
-        let Some(arg_pos) = args.iter().position(|arg| *arg == released_value) else {
-            continue;
-        };
-        let Some(source_param) = function.blocks[succ_block_idx]
-            .params
-            .get(arg_pos)
-            .map(|param| param.id.clone())
-        else {
-            continue;
-        };
-        let Some((succ_inst_idx, candidate)) = find_reuse_candidate_in_block(
-            &function.blocks[succ_block_idx],
-            &source_param,
-            layouts,
-            &layout_keys,
-        ) else {
-            continue;
-        };
+        let successor = &function.blocks[succ_block_idx];
+        for (arg_pos, param) in successor.params.iter().enumerate() {
+            let source_param = param.id.clone();
+            let Some((succ_inst_idx, candidate)) = find_reuse_candidate_in_block(
+                successor,
+                &source_param,
+                layouts,
+                &layout_keys,
+            ) else {
+                continue;
+            };
 
-        rewrites.push(CrossBlockReuseRewrite {
-            pred_block_idx,
-            release_inst_idx,
-            succ_block_idx,
-            succ_inst_idx,
-            source_param,
-            candidate,
-        });
+            let mut release_sites = Vec::new();
+            let mut all_predecessors_match = true;
+            for pred_block_idx in &pred_block_indices {
+                let pred_block = &function.blocks[*pred_block_idx];
+                let Some(release_inst_idx) = pred_block.instructions.len().checked_sub(1) else {
+                    all_predecessors_match = false;
+                    break;
+                };
+                let released_value = match &pred_block.instructions[release_inst_idx] {
+                    MirInst::Release { value } => value.clone(),
+                    _ => {
+                        all_predecessors_match = false;
+                        break;
+                    }
+                };
+                let MirTerminator::Jump { args, .. } = &pred_block.terminator else {
+                    all_predecessors_match = false;
+                    break;
+                };
+                let Some(incoming_value) = args.get(arg_pos) else {
+                    all_predecessors_match = false;
+                    break;
+                };
+                if *incoming_value != released_value {
+                    all_predecessors_match = false;
+                    break;
+                }
+                release_sites.push(CrossBlockReleaseSite {
+                    pred_block_idx: *pred_block_idx,
+                    release_inst_idx,
+                });
+            }
+            if !all_predecessors_match {
+                continue;
+            }
+
+            rewrites.push(CrossBlockReuseRewrite {
+                release_sites,
+                succ_block_idx,
+                succ_inst_idx,
+                source_param,
+                candidate,
+            });
+            break;
+        }
     }
 
     for rewrite in rewrites {
-        function.blocks[rewrite.pred_block_idx]
-            .instructions
-            .remove(rewrite.release_inst_idx);
+        for release_site in rewrite.release_sites {
+            function.blocks[release_site.pred_block_idx]
+                .instructions
+                .remove(release_site.release_inst_idx);
+        }
         let replacement = match rewrite.candidate {
             ReuseInitCandidate::Record {
                 dest,
@@ -7517,7 +7543,124 @@ mod tests {
     }
 
     #[test]
-    fn fuse_release_alloc_cross_block_jump_skips_multi_predecessor_successor() {
+    fn fuse_release_alloc_cross_block_jump_rewrites_join_when_all_predecessors_release() {
+        let layouts = MirLayoutCatalog {
+            records: vec![MirRecordLayout {
+                name: "Point".to_string(),
+                fields: vec![MirRecordFieldLayout {
+                    name: "x".to_string(),
+                    annotation: TypeAnnotation::Named("Int".to_string()),
+                }],
+            }],
+            sums: vec![],
+        };
+        let mut function = MirFunction {
+            name: "main".to_string(),
+            signature: MirFunctionSignature {
+                params: vec![],
+                ret: Type::Unit,
+                effects: EffectRow::pure(),
+            },
+            entry: MirBlockId(0),
+            blocks: vec![
+                MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: MirValueId(0),
+                            literal: MirLiteral::Int(1),
+                        },
+                        MirInst::RecordInit {
+                            dest: MirValueId(1),
+                            record_type: "Point".to_string(),
+                            fields: vec![("x".to_string(), MirValueId(0))],
+                        },
+                        MirInst::Release {
+                            value: MirValueId(1),
+                        },
+                    ],
+                    terminator: MirTerminator::Jump {
+                        target: MirBlockId(2),
+                        args: vec![MirValueId(1)],
+                    },
+                },
+                MirBlock {
+                    id: MirBlockId(1),
+                    params: vec![],
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: MirValueId(4),
+                            literal: MirLiteral::Int(2),
+                        },
+                        MirInst::RecordInit {
+                            dest: MirValueId(5),
+                            record_type: "Point".to_string(),
+                            fields: vec![("x".to_string(), MirValueId(4))],
+                        },
+                        MirInst::Release {
+                            value: MirValueId(5),
+                        },
+                    ],
+                    terminator: MirTerminator::Jump {
+                        target: MirBlockId(2),
+                        args: vec![MirValueId(5)],
+                    },
+                },
+                MirBlock {
+                    id: MirBlockId(2),
+                    params: vec![MirBlockParam {
+                        id: MirValueId(10),
+                        ty: Type::Record(RecordType {
+                            name: "Point".to_string(),
+                            params: vec![],
+                            row: RowType::closed(vec![(Label::new("x"), Type::Int)]),
+                        }),
+                    }],
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: MirValueId(2),
+                            literal: MirLiteral::Int(9),
+                        },
+                        MirInst::RecordInit {
+                            dest: MirValueId(3),
+                            record_type: "Point".to_string(),
+                            fields: vec![("x".to_string(), MirValueId(2))],
+                        },
+                    ],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirValueId(3)),
+                    },
+                },
+            ],
+        };
+
+        fuse_release_alloc_cross_block_jump(&mut function, &layouts);
+
+        assert!(
+            function.blocks[0]
+                .instructions
+                .iter()
+                .all(|inst| !matches!(inst, MirInst::Release { value } if *value == MirValueId(1)))
+        );
+        assert!(
+            function.blocks[1]
+                .instructions
+                .iter()
+                .all(|inst| !matches!(inst, MirInst::Release { value } if *value == MirValueId(5)))
+        );
+        assert!(matches!(
+            function.blocks[2].instructions[1],
+            MirInst::RecordInitReuse {
+                source: MirValueId(10),
+                record_type: ref name,
+                ..
+            } if name == "Point"
+        ));
+    }
+
+    #[test]
+    fn fuse_release_alloc_cross_block_jump_skips_when_any_predecessor_lacks_release() {
         let layouts = MirLayoutCatalog {
             records: vec![MirRecordLayout {
                 name: "Point".to_string(),
