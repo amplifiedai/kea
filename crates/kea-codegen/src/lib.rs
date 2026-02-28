@@ -111,6 +111,7 @@ pub struct FunctionPassStats {
     pub retain_count: usize,
     pub release_count: usize,
     pub alloc_count: usize,
+    pub reuse_count: usize,
     pub tail_self_call_count: usize,
     pub handler_enter_count: usize,
     pub handler_exit_count: usize,
@@ -4186,9 +4187,12 @@ fn collect_function_stats(function: &MirFunction) -> FunctionPassStats {
                     MirEffectOpClass::Dispatch => stats.effect_op_dispatch_count += 1,
                     MirEffectOpClass::ZeroResume => stats.effect_op_zero_resume_count += 1,
                 },
+                MirInst::RecordInitReuse { .. } => {
+                    stats.alloc_count += 1;
+                    stats.reuse_count += 1;
+                }
                 MirInst::CowUpdate { .. }
                 | MirInst::RecordInit { .. }
-                | MirInst::RecordInitReuse { .. }
                 | MirInst::SumInit { .. }
                 | MirInst::ClosureInit { .. }
                 | MirInst::StateCellNew { .. } => stats.alloc_count += 1,
@@ -6423,7 +6427,19 @@ mod tests {
         let function = &stats.per_function[0];
         assert_eq!(function.retain_count, 1);
         assert_eq!(function.release_count, 1);
+        assert_eq!(function.reuse_count, 0);
         assert_eq!(function.effect_op_direct_count, 1);
+    }
+
+    #[test]
+    fn collect_pass_stats_counts_record_reuse_ops() {
+        let module = sample_record_init_reuse_and_load_main_module();
+        let stats = collect_pass_stats(&module);
+
+        assert_eq!(stats.per_function.len(), 1);
+        let function = &stats.per_function[0];
+        assert_eq!(function.reuse_count, 1);
+        assert_eq!(function.alloc_count, 2);
     }
 
     #[test]
