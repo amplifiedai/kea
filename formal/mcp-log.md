@@ -8083,3 +8083,35 @@ typing route by adding `operationCallBundle_callTyping_of_typing`.
 **Impact**:
 - Tail resumptive direct-call theorem entrypoints are now symmetric across
   normalized and closed-aware route families.
+
+### 2026-02-28: normalized tail bundle now carries direct-call eligibility facet
+
+**Context**: Aligned normalized and closed-aware tail bundle contract shape in
+`TailResumptiveClassification` by extending `TailResumptiveBundle` with
+`directCallEquivalent_of_eligible` and lifting the corresponding
+`iff/of/as-components` decomposition APIs.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Bundle-shape extension and wrapper routing only.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Normalized tail bundle now packages direct-call eligibility consequences.
+- Decomposition APIs reflect the expanded bundle contract.
+
+**Impact**:
+- Tail bundle families are structurally symmetric across normalized and
+  closed-aware routes, reducing downstream route-specialization friction.
