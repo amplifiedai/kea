@@ -120,6 +120,7 @@ pub struct FunctionPassStats {
     pub reuse_token_produced_count: usize,
     pub reuse_token_consumed_count: usize,
     pub reuse_token_candidate_count: usize,
+    pub trmc_candidate_count: usize,
     pub tail_self_call_count: usize,
     pub handler_enter_count: usize,
     pub handler_exit_count: usize,
@@ -4714,8 +4715,126 @@ fn collect_function_stats(function: &MirFunction) -> FunctionPassStats {
     let layout_keys = infer_heap_layout_keys_for_stats(function);
     stats.reuse_token_candidate_count =
         collect_reuse_token_candidate_count(function, &layout_keys);
+    stats.trmc_candidate_count = collect_trmc_candidate_count(function);
 
     stats
+}
+
+fn collect_trmc_candidate_count(function: &MirFunction) -> usize {
+    function
+        .blocks
+        .iter()
+        .filter(|block| block_contains_trmc_candidate(function, block))
+        .count()
+}
+
+fn block_contains_trmc_candidate(function: &MirFunction, block: &kea_mir::MirBlock) -> bool {
+    let Some(return_value) = block_return_value(function, block) else {
+        return false;
+    };
+    for (idx, inst) in block.instructions.iter().enumerate().rev() {
+        let recursive_value = match inst {
+            MirInst::RecordInit { dest, fields, .. } if dest == &return_value => fields
+                .iter()
+                .find_map(|(_, value)| {
+                    inst_is_recursive_self_call_result(function, &block.instructions[..idx], value)
+                }),
+            MirInst::SumInit { dest, fields, .. } if dest == &return_value => fields
+                .iter()
+                .find_map(|value| {
+                    inst_is_recursive_self_call_result(function, &block.instructions[..idx], value)
+                }),
+            _ => None,
+        };
+        if recursive_value.is_some() {
+            return true;
+        }
+        if inst_defines_value(inst, &return_value) {
+            break;
+        }
+    }
+    false
+}
+
+fn block_return_value(function: &MirFunction, block: &kea_mir::MirBlock) -> Option<MirValueId> {
+    match &block.terminator {
+        MirTerminator::Return { value: Some(value) } => Some(value.clone()),
+        MirTerminator::Jump { target, args } => {
+            let target_block = function.blocks.iter().find(|candidate| candidate.id == *target)?;
+            if !target_block
+                .instructions
+                .iter()
+                .all(|inst| matches!(inst, MirInst::Nop))
+            {
+                return None;
+            }
+            let MirTerminator::Return {
+                value: Some(target_return_value),
+            } = &target_block.terminator
+            else {
+                return None;
+            };
+            let return_param_idx = target_block
+                .params
+                .iter()
+                .position(|param| &param.id == target_return_value)?;
+            args.get(return_param_idx).cloned()
+        }
+        _ => None,
+    }
+}
+
+fn inst_is_recursive_self_call_result(
+    function: &MirFunction,
+    prefix: &[MirInst],
+    value: &MirValueId,
+) -> Option<MirValueId> {
+    prefix.iter().rev().find_map(|inst| match inst {
+        MirInst::Call {
+            callee: MirCallee::Local(callee_name),
+            result: Some(result_value),
+            ..
+        } if callee_name == &function.name && result_value == value => Some(result_value.clone()),
+        _ => None,
+    })
+}
+
+fn inst_defines_value(inst: &MirInst, value: &MirValueId) -> bool {
+    match inst {
+        MirInst::Const { dest, .. }
+        | MirInst::Binary { dest, .. }
+        | MirInst::Unary { dest, .. }
+        | MirInst::RecordInit { dest, .. }
+        | MirInst::RecordInitReuse { dest, .. }
+        | MirInst::ReuseToken { dest, .. }
+        | MirInst::RecordInitFromToken { dest, .. }
+        | MirInst::SumInit { dest, .. }
+        | MirInst::SumInitReuse { dest, .. }
+        | MirInst::SumInitFromToken { dest, .. }
+        | MirInst::SumTagLoad { dest, .. }
+        | MirInst::SumPayloadLoad { dest, .. }
+        | MirInst::RecordFieldLoad { dest, .. }
+        | MirInst::FunctionRef { dest, .. }
+        | MirInst::ClosureInit { dest, .. }
+        | MirInst::ClosureCaptureLoad { dest, .. }
+        | MirInst::StateCellNew { dest, .. }
+        | MirInst::StateCellLoad { dest, .. }
+        | MirInst::Move { dest, .. }
+        | MirInst::Borrow { dest, .. }
+        | MirInst::TryClaim { dest, .. }
+        | MirInst::Freeze { dest, .. } => dest == value,
+        MirInst::StateCellStore { .. }
+        | MirInst::Retain { .. }
+        | MirInst::Release { .. }
+        | MirInst::CowUpdate { .. }
+        | MirInst::EffectOp { .. }
+        | MirInst::HandlerExit { .. }
+        | MirInst::Resume { .. }
+        | MirInst::Unsupported { .. }
+        | MirInst::Nop => false,
+        MirInst::Call { result, .. } => result.as_ref() == Some(value),
+        MirInst::HandlerEnter { .. } => false,
+    }
 }
 
 fn collect_reuse_token_candidate_count(
@@ -5605,6 +5724,51 @@ mod tests {
                     ],
                     terminator: MirTerminator::Return {
                         value: Some(MirValueId(1)),
+                    },
+                }],
+            }],
+            layouts: MirLayoutCatalog::default(),
+        }
+    }
+
+    fn sample_trmc_candidate_module() -> MirModule {
+        MirModule {
+            functions: vec![MirFunction {
+                name: "build".to_string(),
+                signature: MirFunctionSignature {
+                    params: vec![Type::Int],
+                    ret: Type::Dynamic,
+                    effects: EffectRow::pure(),
+                },
+                entry: MirBlockId(0),
+                blocks: vec![MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: MirValueId(1),
+                            literal: MirLiteral::Int(1),
+                        },
+                        MirInst::Call {
+                            callee: MirCallee::Local("build".to_string()),
+                            args: vec![MirValueId(0)],
+                            arg_types: vec![Type::Int],
+                            result: Some(MirValueId(2)),
+                            ret_type: Type::Dynamic,
+                            callee_fail_result_abi: false,
+                            capture_fail_result: false,
+                            cc_manifest_id: "default".to_string(),
+                        },
+                        MirInst::SumInit {
+                            dest: MirValueId(3),
+                            sum_type: "Chain".to_string(),
+                            variant: "Node".to_string(),
+                            tag: 1,
+                            fields: vec![MirValueId(1), MirValueId(2)],
+                        },
+                    ],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirValueId(3)),
                     },
                 }],
             }],
@@ -7383,6 +7547,16 @@ mod tests {
         assert_eq!(stats.per_function.len(), 1);
         let function = &stats.per_function[0];
         assert_eq!(function.tail_self_call_count, 1);
+    }
+
+    #[test]
+    fn collect_pass_stats_counts_trmc_candidates() {
+        let module = sample_trmc_candidate_module();
+        let stats = collect_pass_stats(&module);
+
+        assert_eq!(stats.per_function.len(), 1);
+        let function = &stats.per_function[0];
+        assert_eq!(function.trmc_candidate_count, 1);
     }
 
     #[test]

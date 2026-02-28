@@ -10,8 +10,19 @@ struct KernelMetric {
     reuse_token_candidate_count: usize,
     reuse_token_produced_count: usize,
     reuse_token_consumed_count: usize,
+    trmc_candidate_count: usize,
     alloc_count: usize,
     release_count: usize,
+}
+
+struct Totals {
+    reuse: usize,
+    reuse_token_candidates: usize,
+    reuse_token_produced: usize,
+    reuse_token_consumed: usize,
+    trmc_candidates: usize,
+    alloc: usize,
+    release: usize,
 }
 
 const RECORD_REUSE_SOURCE: &str = r#"struct Point
@@ -115,6 +126,20 @@ fn main() -> Int
   rewrite(true, Point { x: 0 }).x
 "#;
 
+const TRMC_CHAIN_SOURCE: &str = r#"type Chain = End | Node(Int, Chain)
+
+fn build(n: Int) -> Chain
+  if n <= 0
+    End
+  else
+    Node(n, build(n - 1))
+
+fn main() -> Int
+  case build(4)
+    End -> 0
+    Node(head, _) -> head
+"#;
+
 fn main() {
     if let Err(err) = run() {
         eprintln!("{err}");
@@ -131,6 +156,7 @@ fn run() -> Result<(), String> {
         compile_kernel("mixed_join_unit", MIXED_JOIN_UNIT_SOURCE)?,
         compile_kernel("loop_mixed_unit_walk", LOOP_MIXED_UNIT_WALK_SOURCE)?,
         compile_kernel("mixed_join_token", MIXED_JOIN_TOKEN_SOURCE)?,
+        compile_kernel("trmc_chain", TRMC_CHAIN_SOURCE)?,
     ];
     let total_reuse: usize = metrics.iter().map(|m| m.reuse_count).sum();
     let total_reuse_token_candidates: usize =
@@ -139,17 +165,17 @@ fn run() -> Result<(), String> {
         metrics.iter().map(|m| m.reuse_token_produced_count).sum();
     let total_reuse_token_consumed: usize =
         metrics.iter().map(|m| m.reuse_token_consumed_count).sum();
-    let total_alloc: usize = metrics.iter().map(|m| m.alloc_count).sum();
-    let total_release: usize = metrics.iter().map(|m| m.release_count).sum();
-    let json = render_metrics_json(
-        &metrics,
-        total_reuse,
-        total_reuse_token_candidates,
-        total_reuse_token_produced,
-        total_reuse_token_consumed,
-        total_alloc,
-        total_release,
-    );
+    let total_trmc_candidates: usize = metrics.iter().map(|m| m.trmc_candidate_count).sum();
+    let totals = Totals {
+        reuse: total_reuse,
+        reuse_token_candidates: total_reuse_token_candidates,
+        reuse_token_produced: total_reuse_token_produced,
+        reuse_token_consumed: total_reuse_token_consumed,
+        trmc_candidates: total_trmc_candidates,
+        alloc: metrics.iter().map(|m| m.alloc_count).sum(),
+        release: metrics.iter().map(|m| m.release_count).sum(),
+    };
+    let json = render_metrics_json(&metrics, &totals);
 
     if let Some(path) = std::env::args().nth(1) {
         let path = PathBuf::from(path);
@@ -197,6 +223,12 @@ fn compile_kernel(name: &'static str, source: &str) -> Result<KernelMetric, Stri
         .iter()
         .map(|f| f.reuse_token_consumed_count)
         .sum();
+    let trmc_candidate_count = artifact
+        .stats
+        .per_function
+        .iter()
+        .map(|f| f.trmc_candidate_count)
+        .sum();
     let alloc_count = artifact.stats.per_function.iter().map(|f| f.alloc_count).sum();
     let release_count = artifact
         .stats
@@ -211,20 +243,13 @@ fn compile_kernel(name: &'static str, source: &str) -> Result<KernelMetric, Stri
         reuse_token_candidate_count,
         reuse_token_produced_count,
         reuse_token_consumed_count,
+        trmc_candidate_count,
         alloc_count,
         release_count,
     })
 }
 
-fn render_metrics_json(
-    metrics: &[KernelMetric],
-    total_reuse: usize,
-    total_reuse_token_candidates: usize,
-    total_reuse_token_produced: usize,
-    total_reuse_token_consumed: usize,
-    total_alloc: usize,
-    total_release: usize,
-) -> String {
+fn render_metrics_json(metrics: &[KernelMetric], totals: &Totals) -> String {
     let kernel_rows = metrics
         .iter()
         .map(|metric| {
@@ -236,13 +261,14 @@ fn render_metrics_json(
                 0.0
             };
             format!(
-                "    {{\"name\":\"{}\",\"reuse_count\":{},\"reuse_token_candidate_count\":{},\"reuse_token_produced_count\":{},\"reuse_token_consumed_count\":{},\"reuse_token_coverage_pct\":{:.3},\"alloc_count\":{},\"release_count\":{}}}",
+                "    {{\"name\":\"{}\",\"reuse_count\":{},\"reuse_token_candidate_count\":{},\"reuse_token_produced_count\":{},\"reuse_token_consumed_count\":{},\"reuse_token_coverage_pct\":{:.3},\"trmc_candidate_count\":{},\"alloc_count\":{},\"release_count\":{}}}",
                 metric.name,
                 metric.reuse_count,
                 metric.reuse_token_candidate_count,
                 metric.reuse_token_produced_count,
                 metric.reuse_token_consumed_count,
                 coverage_pct,
+                metric.trmc_candidate_count,
                 metric.alloc_count,
                 metric.release_count
             )
@@ -250,14 +276,22 @@ fn render_metrics_json(
         .collect::<Vec<_>>()
         .join(",\n");
 
-    let total_token_opportunities = total_reuse_token_consumed + total_reuse_token_candidates;
+    let total_token_opportunities =
+        totals.reuse_token_consumed + totals.reuse_token_candidates;
     let total_coverage_pct = if total_token_opportunities > 0 {
-        (total_reuse_token_consumed as f64 / total_token_opportunities as f64) * 100.0
+        (totals.reuse_token_consumed as f64 / total_token_opportunities as f64) * 100.0
     } else {
         0.0
     };
 
     format!(
-        "{{\n  \"kernels\": [\n{kernel_rows}\n  ],\n  \"totals\": {{\"reuse_count\": {total_reuse}, \"reuse_token_candidate_count\": {total_reuse_token_candidates}, \"reuse_token_produced_count\": {total_reuse_token_produced}, \"reuse_token_consumed_count\": {total_reuse_token_consumed}, \"reuse_token_coverage_pct\": {total_coverage_pct:.3}, \"alloc_count\": {total_alloc}, \"release_count\": {total_release}}}\n}}\n"
+        "{{\n  \"kernels\": [\n{kernel_rows}\n  ],\n  \"totals\": {{\"reuse_count\": {}, \"reuse_token_candidate_count\": {}, \"reuse_token_produced_count\": {}, \"reuse_token_consumed_count\": {}, \"reuse_token_coverage_pct\": {total_coverage_pct:.3}, \"trmc_candidate_count\": {}, \"alloc_count\": {}, \"release_count\": {}}}\n}}\n",
+        totals.reuse,
+        totals.reuse_token_candidates,
+        totals.reuse_token_produced,
+        totals.reuse_token_consumed,
+        totals.trmc_candidates,
+        totals.alloc,
+        totals.release
     )
 }
