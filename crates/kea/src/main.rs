@@ -2748,6 +2748,20 @@ mod tests {
     }
 
     #[test]
+    fn compile_and_execute_generic_two_getter_tail_handler_exit_code() {
+        let source_path = write_temp_source(
+            "effect Foo\n  fn a() -> Int\n  fn b() -> Int\n\nfn body() -[Foo]> Int\n  Foo.a() + Foo.b()\n\nfn main() -> Int\n  handle body()\n    Foo.a() -> resume 10\n    Foo.b() -> resume 2\n",
+            "kea-cli-generic-two-getter-tail-handler",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("generic two-getter handler run should succeed");
+        assert_eq!(run.exit_code, 12);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_nested_handlers_for_different_effects_exit_code() {
         let source_path = write_temp_source(
             "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\neffect Log\n  fn log(msg: Int) -> Unit\n\nfn count_with_log(n: Int) -[State Int, Log]> Int\n  let i = State.get()\n  Log.log(i)\n  if i >= n\n    i\n  else\n    State.put(i + 1)\n    count_with_log(n)\n\nfn run_state(n: Int) -[Log]> Int\n  handle count_with_log(n)\n    State.get() -> resume 0\n    State.put(next) -> resume ()\n\nfn main() -> Int\n  handle run_state(4)\n    Log.log(msg) -> resume ()\n",
