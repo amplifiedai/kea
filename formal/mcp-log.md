@@ -9370,3 +9370,43 @@ constructor-level rejection equivalence:
 **Impact**:
 - Decimal theorem consumers can prove both accept/reject outcomes from the same
   constructor-BEq boundary without manual case splits.
+
+### 2026-02-28: package-level shape duals in rank-1/arbitrary-rank suites
+
+**Context**: Promoted recently added shape failure/decision dual lemmas into
+the packaged suite APIs in `Kea/Properties/ShapeConstructorParity.lean`:
+- `Rank1ShapeConstDimKernelSlice` now includes
+  `fixedSizeList_err_iff_dim_kernel_none`,
+  `fixedSizeList_decision_of_dim_kernel_none`,
+  `tensor_rank1_err_iff_dim_kernel_none`,
+  `tensor_rank1_decision_of_dim_kernel_none`.
+- `TensorConstShapeDimListKernelSlice` now includes
+  `err_iff_dim_list_kernel_none_any_elem`,
+  `decision_of_dim_list_kernel_none_any_elem`,
+  `err_iff_dim_list_kernel_none`,
+  `decision_of_dim_list_kernel_none`.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Structure-level API extension only; no runtime semantic change.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Downstream users of rank-1 and arbitrary-rank shape packages can consume
+  success, rejection, and decision contracts from one packaged witness surface.
+
+**Impact**:
+- Reduces theorem-call friction and avoids unpacking into standalone lemmas for
+  failure-side and decision-side reasoning in WP7.4 consumers.
