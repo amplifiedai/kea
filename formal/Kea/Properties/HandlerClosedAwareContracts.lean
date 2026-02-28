@@ -340,6 +340,32 @@ theorem closedAwareCoreBundle_of_classification
   · intro h_case
     exact resultEffectsCoreClosedAware_eq_normalized_of_present_or_open c h_case
 
+theorem closedAwareCoreBundle_as_components_of_classification
+    (c : HandleClauseContract) :
+    (RowFields.has (EffectRow.fields c.exprEffects) c.handled = false →
+      EffectRow.rest c.exprEffects = none →
+        resultEffectsCoreClosedAware c = c.exprEffects)
+    ∧
+    ((RowFields.has (EffectRow.fields c.exprEffects) c.handled = true ∨
+        EffectRow.rest c.exprEffects ≠ none) →
+      resultEffectsCoreClosedAware c = HandleClauseContract.resultEffectsCore c) :=
+  closedAwareCoreBundle_as_components c
+    (closedAwareCoreBundle_of_classification c)
+
+theorem closedAwareCoreBundle_absentClosedNoop_of_classification
+    (c : HandleClauseContract) :
+    RowFields.has (EffectRow.fields c.exprEffects) c.handled = false →
+      EffectRow.rest c.exprEffects = none →
+        resultEffectsCoreClosedAware c = c.exprEffects :=
+  (closedAwareCoreBundle_of_classification c).absentClosedNoop
+
+theorem closedAwareCoreBundle_presentOrOpenNormalized_of_classification
+    (c : HandleClauseContract) :
+    (RowFields.has (EffectRow.fields c.exprEffects) c.handled = true ∨
+        EffectRow.rest c.exprEffects ≠ none) →
+      resultEffectsCoreClosedAware c = HandleClauseContract.resultEffectsCore c :=
+  (closedAwareCoreBundle_of_classification c).presentOrOpenNormalized
+
 /--
 Shared closed-aware entry bundle for Phase-2 handler theorem surfaces.
 -/
@@ -410,6 +436,29 @@ theorem closedAwareResultBundle_of_wellTyped
     legacyHandledRemoved :=
       HandleClauseContract.wellTypedSlice_implies_handled_removed c h_wt
   }
+
+theorem closedAwareResultBundle_as_components_of_wellTyped
+    (c : HandleClauseContract)
+    (h_wt : HandleClauseContract.wellTypedSlice c) :
+    (RowFields.has (EffectRow.fields (resultEffectsClosedAware c)) c.handled = false)
+    ∧
+    (EffectRow.rest (resultEffectsClosedAware c) = EffectRow.rest c.exprEffects)
+    ∧
+    (RowFields.has (EffectRow.fields (HandleClauseContract.resultEffects c)) c.handled = false) :=
+  closedAwareResultBundle_as_components c
+    (closedAwareResultBundle_of_wellTyped c h_wt)
+
+theorem closedAwareResultBundle_closedAwareHandledRemoved_of_wellTyped
+    (c : HandleClauseContract)
+    (h_wt : HandleClauseContract.wellTypedSlice c) :
+    RowFields.has (EffectRow.fields (resultEffectsClosedAware c)) c.handled = false :=
+  (closedAwareResultBundle_of_wellTyped c h_wt).closedAwareHandledRemoved
+
+theorem closedAwareResultBundle_closedAwareRowTailStable_of_wellTyped
+    (c : HandleClauseContract)
+    (h_wt : HandleClauseContract.wellTypedSlice c) :
+    EffectRow.rest (resultEffectsClosedAware c) = EffectRow.rest c.exprEffects :=
+  (closedAwareResultBundle_of_wellTyped c h_wt).closedAwareRowTailStable
 
 theorem wellTypedSlice_implies_handled_removed_legacy_via_closedAware
     (c : HandleClauseContract)
