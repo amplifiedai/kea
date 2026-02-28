@@ -568,7 +568,7 @@ impl fmt::Display for Type {
             Type::Set(inner) => write!(f, "Set({inner})"),
 
             Type::Tuple(elems) => {
-                write!(f, "#(")?;
+                write!(f, "(")?;
                 for (i, t) in elems.iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;
@@ -2518,7 +2518,7 @@ mod tests {
         assert_eq!(Type::Option(Box::new(Type::String)).to_string(), "String?");
         assert_eq!(
             Type::Tuple(vec![Type::Int, Type::String]).to_string(),
-            "#(Int, String)"
+            "(Int, String)"
         );
         assert_eq!(
             Type::Result(Box::new(Type::Int), Box::new(Type::String)).to_string(),

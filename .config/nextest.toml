@@ -1,0 +1,20 @@
+[profile.default]
+test-threads = 2
+failure-output = "immediate-final"
+success-output = "never"
+status-level = "pass"
+slow-timeout = { period = "120s" }
+
+[profile.fast]
+test-threads = 2
+failure-output = "immediate-final"
+success-output = "never"
+status-level = "pass"
+slow-timeout = { period = "60s" }
+
+[profile.soak]
+test-threads = 1
+failure-output = "immediate-final"
+success-output = "never"
+status-level = "pass"
+slow-timeout = { period = "300s" }
