@@ -174,7 +174,7 @@ pub enum ExprKind {
         annotation: Spanned<TypeAnnotation>,
     },
 
-    /// Tuple: `#(a, b, c)`.
+    /// Tuple: `(a, b, c)`.
     Tuple(Vec<Expr>),
 
     /// List: `[a, b, c]`.
@@ -326,7 +326,7 @@ pub enum PatternKind {
         rest: bool,
     },
 
-    /// Matches a tuple: `#(a, b)`.
+    /// Matches a tuple: `(a, b)`.
     Tuple(Vec<Pattern>),
 
     /// Matches a named record: `User { name, .. }`.
