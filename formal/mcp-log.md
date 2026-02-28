@@ -10361,3 +10361,38 @@ Also reran a route-structure scan and confirmed no remaining
 **Impact**:
 - Route-level theorem consumers can apply one decomposition pattern across
   consequence, capstone, run-bundle, irrelevance, and all-hooks-surface layers.
+
+### 2026-02-28: no-unify base all-hooks route-surface decomposition aliases
+
+**Context**: Added component aliases and structural decomposition APIs in
+`Kea/Typing.lean` for:
+- `PrincipalNoUnifyExprAllHooksRouteSurface`
+- `PrincipalNoUnifyFieldAllHooksRouteSurface`
+
+For each package: added `...Components` plus
+`..._{iff_components,of_components,as_components,as_components_of_components}`.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Structural API expansion only; no runtime semantic change.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Base no-unify all-hooks route surfaces now expose the same decomposition
+  contracts as their dual-master wrappers.
+
+**Impact**:
+- The no-unify route-surface layer is now consistently alias-driven from base
+  per-route witnesses up through cross-route coherence wrappers.
