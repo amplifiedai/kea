@@ -1966,6 +1966,37 @@
     }
 
     #[test]
+    fn compile_rejects_handle_without_operation_clauses() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  handle 1\n    then value -> value\n",
+            "kea-cli-handle-empty-clauses",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject empty handle clause set");
+        assert!(
+            err.contains("handle expression requires at least one operation clause"),
+            "expected empty-handle diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_mismatched_handler_target_is_noop_exit_code() {
+        let source_path = write_temp_source(
+            "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\neffect Log\n  fn log(msg: Int) -> Unit\n\nfn body() -[Log]> Int\n  Log.log(7)\n  42\n\nfn wrap() -[Log]> Int\n  handle body()\n    State.get() -> resume 0\n    State.put(next) -> resume ()\n\nfn main() -> Int\n  handle wrap()\n    Log.log(msg) -> resume ()\n",
+            "kea-cli-mismatched-handler-noop",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_with_binding_and_stacking_exit_code() {
         let source_path = write_temp_source(
             "fn with_value(value: Int, @with f: fn(Int) -> Int) -> Int\n  f(value)\n\nfn with_unit(@with f: fn() -> Int) -> Int\n  f()\n\nfn main() -> Int\n  with n <- with_value(40)\n  with with_unit\n  n + 2\n",
