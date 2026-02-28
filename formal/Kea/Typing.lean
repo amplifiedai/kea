@@ -29775,6 +29775,162 @@ theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_fullVerticalMa
   principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_fullVerticalMasterRoutes
     h_surface.routes h_no_expr h_no_field
 
+/--
+Combined full/no-unify master-surface package:
+one witness carries the general full master surface and its no-unify specialization.
+-/
+structure PrincipalBoundarySoundFullNoUnifyMasterSurfacePair
+    (st : UnifyState) (fuel : Nat) (env : TermEnv)
+    (e : CoreExpr) (fs : CoreFields)
+    (stExpr : UnifyState) (ty : Ty)
+    (stField : UnifyState) (rf : RowFields) : Prop where
+  full : PrincipalBoundarySoundFullVerticalMasterSurface st fuel env e fs stExpr ty stField rf
+  noUnify : PrincipalBoundarySoundNoUnifyFullVerticalMasterSurface st fuel env e fs stExpr ty stField rf
+
+/-- Build the combined full/no-unify package from explicit surface witnesses. -/
+theorem principalBoundarySoundFullNoUnifyMasterSurfacePair_of_surfaces
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_full : PrincipalBoundarySoundFullVerticalMasterSurface st fuel env e fs stExpr ty stField rf)
+    (h_no : PrincipalBoundarySoundNoUnifyFullVerticalMasterSurface st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundFullNoUnifyMasterSurfacePair st fuel env e fs stExpr ty stField rf := by
+  exact ⟨h_full, h_no⟩
+
+/-- Build the combined full/no-unify package from successful runs (split hooks). -/
+theorem principalBoundarySoundFullNoUnifyMasterSurfacePair_of_success
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_no_expr : NoUnifyBranchesExpr e)
+    (h_no_field : NoUnifyBranchesFields fs)
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundFullNoUnifyMasterSurfacePair st fuel env e fs stExpr ty stField rf := by
+  let h_full :
+      PrincipalBoundarySoundFullVerticalMasterSurface st fuel env e fs stExpr ty stField rf :=
+    principalBoundarySoundFullVerticalMasterSurface_of_success
+      (h_app := h_app) (h_proj := h_proj) h_ok_expr h_ok_field
+  refine {
+    full := h_full
+    noUnify :=
+      principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_fullVerticalMasterSurface
+        h_full h_no_expr h_no_field
+  }
+
+/-- Bundled-hook constructor for the combined full/no-unify package from successful runs. -/
+theorem principalBoundarySoundFullNoUnifyMasterSurfacePair_of_success_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_no_expr : NoUnifyBranchesExpr e)
+    (h_no_field : NoUnifyBranchesFields fs)
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundFullNoUnifyMasterSurfacePair st fuel env e fs stExpr ty stField rf :=
+  principalBoundarySoundFullNoUnifyMasterSurfacePair_of_success
+    (h_app := h_seed.1) (h_proj := h_seed.2) h_no_expr h_no_field h_ok_expr h_ok_field
+
+/-- One-hop projection: general full master surface from the combined package. -/
+theorem principalBoundarySoundFullNoUnifyMasterSurfacePair_full
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_pair : PrincipalBoundarySoundFullNoUnifyMasterSurfacePair st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundFullVerticalMasterSurface st fuel env e fs stExpr ty stField rf :=
+  h_pair.full
+
+/-- One-hop projection: no-unify master surface from the combined package. -/
+theorem principalBoundarySoundFullNoUnifyMasterSurfacePair_noUnify
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_pair : PrincipalBoundarySoundFullNoUnifyMasterSurfacePair st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundNoUnifyFullVerticalMasterSurface st fuel env e fs stExpr ty stField rf :=
+  h_pair.noUnify
+
+/-- Combined package is equivalent to explicit full/no-unify surface conjunction. -/
+theorem principalBoundarySoundFullNoUnifyMasterSurfacePair_iff_surfaces
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields} :
+    PrincipalBoundarySoundFullNoUnifyMasterSurfacePair st fuel env e fs stExpr ty stField rf
+      ↔ (PrincipalBoundarySoundFullVerticalMasterSurface st fuel env e fs stExpr ty stField rf
+          ∧ PrincipalBoundarySoundNoUnifyFullVerticalMasterSurface st fuel env e fs stExpr ty stField rf) := by
+  constructor
+  · intro h_pair
+    exact ⟨h_pair.full, h_pair.noUnify⟩
+  · intro h_surfaces
+    exact ⟨h_surfaces.1, h_surfaces.2⟩
+
+/-- One-hop full expression consequence from the combined package. -/
+theorem principalBoundarySoundFullNoUnifyMasterSurfacePair_expr
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_pair : PrincipalBoundarySoundFullNoUnifyMasterSurfacePair st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundExprFull st fuel env e stExpr ty :=
+  principalBoundarySoundFullVerticalMasterSurface_expr h_pair.full
+
+/-- One-hop full field consequence from the combined package. -/
+theorem principalBoundarySoundFullNoUnifyMasterSurfacePair_field
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_pair : PrincipalBoundarySoundFullNoUnifyMasterSurfacePair st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundFieldFull st fuel env fs stField rf :=
+  principalBoundarySoundFullVerticalMasterSurface_field h_pair.full
+
+/-- One-hop no-unify expression consequence from the combined package. -/
+theorem principalBoundarySoundFullNoUnifyMasterSurfacePair_noUnifyExpr
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_pair : PrincipalBoundarySoundFullNoUnifyMasterSurfacePair st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundNoUnifyExprFull st fuel env e stExpr ty :=
+  h_pair.noUnify.capstone.exprNoUnify
+
+/-- One-hop no-unify field consequence from the combined package. -/
+theorem principalBoundarySoundFullNoUnifyMasterSurfacePair_noUnifyField
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_pair : PrincipalBoundarySoundFullNoUnifyMasterSurfacePair st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundNoUnifyFieldFull st fuel env fs stField rf :=
+  h_pair.noUnify.capstone.fieldNoUnify
+
+/-- One-hop app vertical consequence from the combined package. -/
+theorem principalBoundarySoundFullNoUnifyMasterSurfacePair_vertical_app
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_pair : PrincipalBoundarySoundFullNoUnifyMasterSurfacePair st fuel env e fs stExpr ty stField rf) :
+    VerticalHookFreeAppSlice :=
+  principalBoundarySoundFullVerticalMasterSurface_vertical_app h_pair.full
+
+/-- One-hop projection vertical consequence from the combined package. -/
+theorem principalBoundarySoundFullNoUnifyMasterSurfacePair_vertical_proj
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_pair : PrincipalBoundarySoundFullNoUnifyMasterSurfacePair st fuel env e fs stExpr ty stField rf) :
+    VerticalHookFreeProjSlice :=
+  principalBoundarySoundFullVerticalMasterSurface_vertical_proj h_pair.full
+
 /-- Alias: build unified no-unify master surface via no-unify master routes from successful runs. -/
 theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_success_via_noUnifyMasterRoutes
     {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
