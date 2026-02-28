@@ -27908,6 +27908,31 @@ theorem principalBoundarySoundFullVerticalMasterCapstone_of_components
     PrincipalBoundarySoundFullVerticalMasterCapstone st fuel env e fs stExpr ty stField rf :=
   (principalBoundarySoundFullVerticalMasterCapstone_iff_components).2 h_comp
 
+/-- Direct component-route decomposition for `FullVerticalMasterCapstone`. -/
+theorem principalBoundarySoundFullVerticalMasterCapstone_as_components_of_components
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_comp :
+      PrincipalBoundarySoundExprFull st fuel env e stExpr ty
+        ∧ PrincipalBoundarySoundFieldFull st fuel env fs stField rf
+        ∧ (NoUnifyBranchesExpr e →
+            PrincipalBoundarySoundNoUnifyExprFull st fuel env e stExpr ty)
+        ∧ (NoUnifyBranchesFields fs →
+            PrincipalBoundarySoundNoUnifyFieldFull st fuel env fs stField rf)
+        ∧ VerticalHookFreeAppSlice
+        ∧ VerticalHookFreeProjSlice) :
+    PrincipalBoundarySoundExprFull st fuel env e stExpr ty
+      ∧ PrincipalBoundarySoundFieldFull st fuel env fs stField rf
+      ∧ (NoUnifyBranchesExpr e →
+          PrincipalBoundarySoundNoUnifyExprFull st fuel env e stExpr ty)
+      ∧ (NoUnifyBranchesFields fs →
+          PrincipalBoundarySoundNoUnifyFieldFull st fuel env fs stField rf)
+      ∧ VerticalHookFreeAppSlice
+      ∧ VerticalHookFreeProjSlice := by
+  simpa using h_comp
+
 /-- One-hop decomposition of `FullVerticalMasterCapstone` into explicit components. -/
 theorem principalBoundarySoundFullVerticalMasterCapstone_as_components
     {st : UnifyState} {fuel : Nat} {env : TermEnv}
@@ -28615,6 +28640,23 @@ theorem principalBoundarySoundNoUnifyFullVerticalMasterCapstone_of_components
         ∧ VerticalHookFreeProjSlice) :
     PrincipalBoundarySoundNoUnifyFullVerticalMasterCapstone st fuel env e fs stExpr ty stField rf :=
   (principalBoundarySoundNoUnifyFullVerticalMasterCapstone_iff_components).2 h_comp
+
+/-- Direct component-route decomposition for the no-unify master capstone. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterCapstone_as_components_of_components
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_comp :
+      PrincipalBoundarySoundNoUnifyExprFull st fuel env e stExpr ty
+        ∧ PrincipalBoundarySoundNoUnifyFieldFull st fuel env fs stField rf
+        ∧ VerticalHookFreeAppSlice
+        ∧ VerticalHookFreeProjSlice) :
+    PrincipalBoundarySoundNoUnifyExprFull st fuel env e stExpr ty
+      ∧ PrincipalBoundarySoundNoUnifyFieldFull st fuel env fs stField rf
+      ∧ VerticalHookFreeAppSlice
+      ∧ VerticalHookFreeProjSlice := by
+  simpa using h_comp
 
 /-- One-hop decomposition of the no-unify master capstone into explicit components. -/
 theorem principalBoundarySoundNoUnifyFullVerticalMasterCapstone_as_components

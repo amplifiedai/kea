@@ -3280,6 +3280,21 @@ theorem shapeConstDimKernelSuite_of_components
     rank1ShapeKernel := rank1ShapeKernel
     tensorShapeKernel := tensorShapeKernel }
 
+/-- Direct component-route decomposition for `ShapeConstDimKernelSuite`. -/
+theorem shapeConstDimKernelSuite_as_components_of_components
+    (h_comp :
+      DimKernelSuite ∧
+      DimConstKernelSlice ∧
+      DimConstListKernelSlice ∧
+      Rank1ShapeConstDimKernelSlice ∧
+      TensorConstShapeDimListKernelSlice) :
+    DimKernelSuite ∧
+      DimConstKernelSlice ∧
+      DimConstListKernelSlice ∧
+      Rank1ShapeConstDimKernelSlice ∧
+      TensorConstShapeDimListKernelSlice := by
+  simpa using h_comp
+
 /-- `ShapeConstDimKernelSuite` is equivalent to its explicit component tuple. -/
 theorem shapeConstDimKernelSuite_iff_components :
     ShapeConstDimKernelSuite ↔
