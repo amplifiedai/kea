@@ -8819,3 +8819,38 @@ contracts keyed by `unifyDimList` (any-element and `Int` wrappers).
 **Impact**:
 - Downstream shape/decimal bridge proofs can consume pointwise kernel contracts
   without re-threading per-theorem inputs across each tensor route.
+
+### 2026-02-28: top-level shape/dimension kernel suite packaging
+
+**Context**: Added `ShapeConstDimKernelSuite` and
+`shapeConstDimKernelSuite` in `ShapeConstructorParity` to package the three
+constant-shape kernel layers behind one witness:
+- `DimConstListKernelSlice`
+- `Rank1ShapeConstDimKernelSlice`
+- `TensorConstShapeDimListKernelSlice`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- This is a suite-level packaging step over existing proved packages.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Constant-shape dimension-kernel contracts now have a one-name suite witness
+  for downstream formal consumption.
+
+**Impact**:
+- WP7.4/7.2 call sites can import one aggregate theorem surface instead of
+  passing three separate package witnesses.

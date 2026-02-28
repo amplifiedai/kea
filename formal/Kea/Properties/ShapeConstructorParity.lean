@@ -3236,3 +3236,17 @@ theorem tensorConstShapeDimListKernelSlice : TensorConstShapeDimListKernelSlice 
   · intro st fuel shape1 shape2
     exact tensor_unify_const_shapes_match_decision
       st fuel shape1 shape2
+
+/-- Top-level packaged shape/dimension kernel suite for constant-shape
+    constructor routes. -/
+structure ShapeConstDimKernelSuite : Prop where
+  dimListKernel : DimConstListKernelSlice
+  rank1ShapeKernel : Rank1ShapeConstDimKernelSlice
+  tensorShapeKernel : TensorConstShapeDimListKernelSlice
+
+/-- Canonical constant-shape shape/dimension kernel suite. -/
+theorem shapeConstDimKernelSuite : ShapeConstDimKernelSuite := by
+  exact
+    { dimListKernel := dimConstListKernelSlice
+      rank1ShapeKernel := rank1ShapeConstDimKernelSlice
+      tensorShapeKernel := tensorConstShapeDimListKernelSlice }
