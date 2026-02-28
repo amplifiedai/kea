@@ -27977,6 +27977,69 @@ theorem principalBoundarySoundFullVerticalMasterCapstone_iff_fullVerticalSuite
     exact principalBoundarySoundFullVerticalMasterCapstone_of_fullVerticalSuite h_suite
 
 /--
+No-unify-specialized packaged consequence surface from
+`FullVerticalMasterCapstone`.
+-/
+structure PrincipalBoundarySoundNoUnifyFullVerticalMasterCapstone
+    (st : UnifyState) (fuel : Nat) (env : TermEnv)
+    (e : CoreExpr) (fs : CoreFields)
+    (stExpr : UnifyState) (ty : Ty)
+    (stField : UnifyState) (rf : RowFields) : Prop where
+  exprNoUnify : PrincipalBoundarySoundNoUnifyExprFull st fuel env e stExpr ty
+  fieldNoUnify : PrincipalBoundarySoundNoUnifyFieldFull st fuel env fs stField rf
+  verticalApp : VerticalHookFreeAppSlice
+  verticalProj : VerticalHookFreeProjSlice
+
+/-- Build the no-unify-specialized packaged capstone from a master-capstone witness. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterCapstone_of_masterCapstone
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_cap : PrincipalBoundarySoundFullVerticalMasterCapstone st fuel env e fs stExpr ty stField rf)
+    (h_no_expr : NoUnifyBranchesExpr e)
+    (h_no_field : NoUnifyBranchesFields fs) :
+    PrincipalBoundarySoundNoUnifyFullVerticalMasterCapstone st fuel env e fs stExpr ty stField rf := by
+  refine {
+    exprNoUnify := h_cap.noUnifyExpr h_no_expr
+    fieldNoUnify := h_cap.noUnifyField h_no_field
+    verticalApp := h_cap.verticalApp
+    verticalProj := h_cap.verticalProj
+  }
+
+/-- Hook-seeded constructor for the no-unify-specialized packaged capstone. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterCapstone_of_success
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_no_expr : NoUnifyBranchesExpr e)
+    (h_no_field : NoUnifyBranchesFields fs)
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundNoUnifyFullVerticalMasterCapstone st fuel env e fs stExpr ty stField rf :=
+  principalBoundarySoundNoUnifyFullVerticalMasterCapstone_of_masterCapstone
+    (principalBoundarySoundFullVerticalMasterCapstone_of_success
+      (h_app := h_app) (h_proj := h_proj) h_ok_expr h_ok_field)
+    h_no_expr h_no_field
+
+/-- Bundled-hook constructor for the no-unify-specialized packaged capstone. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterCapstone_of_success_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_no_expr : NoUnifyBranchesExpr e)
+    (h_no_field : NoUnifyBranchesFields fs)
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundNoUnifyFullVerticalMasterCapstone st fuel env e fs stExpr ty stField rf :=
+  principalBoundarySoundNoUnifyFullVerticalMasterCapstone_of_success
+    (h_app := h_seed.1) (h_proj := h_seed.2) h_no_expr h_no_field h_ok_expr h_ok_field
+
+/--
 The row-poly full+vertical capstone is equivalent to providing:
 - a full principal boundary soundness suite witness, and
 - a hook-free vertical app/projection slice witness.
