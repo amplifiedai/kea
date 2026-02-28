@@ -187,6 +187,76 @@ structure OperationCallBundle
     EffectRow.rest (performOperationEffects effects decl.label) =
       EffectRow.rest effects
 
+/-- Structural decomposition for operation-call bundle. -/
+theorem operationCallBundle_iff_components
+    (decl : EffectDecl)
+    (effects : EffectRow)
+    (opName : Label)
+    (argTy retTy : Ty) :
+    OperationCallBundle decl effects opName argTy retTy
+      ↔
+      operationDeclared decl opName
+      ∧ operationCallTyping decl opName argTy retTy
+      ∧
+      (RowFields.has
+          (EffectRow.fields (performOperationEffects effects decl.label))
+          decl.label = true)
+      ∧
+      (EffectRow.rest (performOperationEffects effects decl.label) =
+        EffectRow.rest effects) := by
+  constructor
+  · intro h_bundle
+    exact ⟨
+      h_bundle.declared,
+      h_bundle.callTyping,
+      h_bundle.effectAdded,
+      h_bundle.rowTailStable
+    ⟩
+  · intro h_comp
+    exact {
+      declared := h_comp.1
+      callTyping := h_comp.2.1
+      effectAdded := h_comp.2.2.1
+      rowTailStable := h_comp.2.2.2
+    }
+
+/-- Constructor helper for operation-call bundle decomposition. -/
+theorem operationCallBundle_of_components
+    (decl : EffectDecl)
+    (effects : EffectRow)
+    (opName : Label)
+    (argTy retTy : Ty)
+    (h_comp :
+      operationDeclared decl opName
+      ∧ operationCallTyping decl opName argTy retTy
+      ∧
+      (RowFields.has
+          (EffectRow.fields (performOperationEffects effects decl.label))
+          decl.label = true)
+      ∧
+      (EffectRow.rest (performOperationEffects effects decl.label) =
+        EffectRow.rest effects)) :
+    OperationCallBundle decl effects opName argTy retTy :=
+  (operationCallBundle_iff_components decl effects opName argTy retTy).2 h_comp
+
+/-- One-hop decomposition of operation-call bundle. -/
+theorem operationCallBundle_as_components
+    (decl : EffectDecl)
+    (effects : EffectRow)
+    (opName : Label)
+    (argTy retTy : Ty)
+    (h_bundle : OperationCallBundle decl effects opName argTy retTy) :
+    operationDeclared decl opName
+    ∧ operationCallTyping decl opName argTy retTy
+    ∧
+    (RowFields.has
+        (EffectRow.fields (performOperationEffects effects decl.label))
+        decl.label = true)
+    ∧
+    (EffectRow.rest (performOperationEffects effects decl.label) =
+      EffectRow.rest effects) :=
+  (operationCallBundle_iff_components decl effects opName argTy retTy).1 h_bundle
+
 theorem operationCallBundle_of_typing
     (decl : EffectDecl)
     (effects : EffectRow)

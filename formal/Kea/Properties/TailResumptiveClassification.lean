@@ -138,6 +138,43 @@ structure TailResumptiveBundle (c : HandleClauseContract) where
   resumeProvenance : HandleClauseContract.resumeProvenance c
   notInvalid : classifyClause c ≠ .invalid
 
+/-- Structural decomposition for tail-resumptive bundle. -/
+theorem tailResumptiveBundle_iff_components
+    (c : HandleClauseContract) :
+    TailResumptiveBundle c
+      ↔
+      (classifyClause c = .nonResumptive ∨ classifyClause c = .tailResumptive)
+      ∧ HandleClauseContract.resumeProvenance c
+      ∧ classifyClause c ≠ .invalid := by
+  constructor
+  · intro h_bundle
+    exact ⟨h_bundle.classification, h_bundle.resumeProvenance, h_bundle.notInvalid⟩
+  · intro h_comp
+    exact {
+      classification := h_comp.1
+      resumeProvenance := h_comp.2.1
+      notInvalid := h_comp.2.2
+    }
+
+/-- Constructor helper for tail-resumptive bundle decomposition. -/
+theorem tailResumptiveBundle_of_components
+    (c : HandleClauseContract)
+    (h_comp :
+      (classifyClause c = .nonResumptive ∨ classifyClause c = .tailResumptive)
+      ∧ HandleClauseContract.resumeProvenance c
+      ∧ classifyClause c ≠ .invalid) :
+    TailResumptiveBundle c :=
+  (tailResumptiveBundle_iff_components c).2 h_comp
+
+/-- One-hop decomposition of tail-resumptive bundle. -/
+theorem tailResumptiveBundle_as_components
+    (c : HandleClauseContract)
+    (h_bundle : TailResumptiveBundle c) :
+    (classifyClause c = .nonResumptive ∨ classifyClause c = .tailResumptive)
+    ∧ HandleClauseContract.resumeProvenance c
+    ∧ classifyClause c ≠ .invalid :=
+  (tailResumptiveBundle_iff_components c).1 h_bundle
+
 theorem tail_resumptive_bundle_of_wellTyped
     (c : HandleClauseContract)
     (h_wellTyped : HandleClauseContract.wellTypedSlice c) :
@@ -169,6 +206,47 @@ structure TailResumptiveClosedAwareBundle (c : HandleClauseContract) where
   directCallEquivalentClosedAware_of_eligible :
     tailResumptiveEligible c →
       directCallEquivalentClosedAware c
+
+/-- Structural decomposition for closed-aware tail-resumptive bundle. -/
+theorem tailResumptiveClosedAwareBundle_iff_components
+    (c : HandleClauseContract) :
+    TailResumptiveClosedAwareBundle c
+      ↔
+      (classifyClause c = .nonResumptive ∨ classifyClause c = .tailResumptive)
+      ∧ (classifyClause c ≠ .invalid)
+      ∧ (tailResumptiveEligible c → directCallEquivalentClosedAware c) := by
+  constructor
+  · intro h_bundle
+    exact ⟨
+      h_bundle.classification,
+      h_bundle.notInvalid,
+      h_bundle.directCallEquivalentClosedAware_of_eligible
+    ⟩
+  · intro h_comp
+    exact {
+      classification := h_comp.1
+      notInvalid := h_comp.2.1
+      directCallEquivalentClosedAware_of_eligible := h_comp.2.2
+    }
+
+/-- Constructor helper for closed-aware tail-resumptive bundle decomposition. -/
+theorem tailResumptiveClosedAwareBundle_of_components
+    (c : HandleClauseContract)
+    (h_comp :
+      (classifyClause c = .nonResumptive ∨ classifyClause c = .tailResumptive)
+      ∧ (classifyClause c ≠ .invalid)
+      ∧ (tailResumptiveEligible c → directCallEquivalentClosedAware c)) :
+    TailResumptiveClosedAwareBundle c :=
+  (tailResumptiveClosedAwareBundle_iff_components c).2 h_comp
+
+/-- One-hop decomposition of closed-aware tail-resumptive bundle. -/
+theorem tailResumptiveClosedAwareBundle_as_components
+    (c : HandleClauseContract)
+    (h_bundle : TailResumptiveClosedAwareBundle c) :
+    (classifyClause c = .nonResumptive ∨ classifyClause c = .tailResumptive)
+    ∧ (classifyClause c ≠ .invalid)
+    ∧ (tailResumptiveEligible c → directCallEquivalentClosedAware c) :=
+  (tailResumptiveClosedAwareBundle_iff_components c).1 h_bundle
 
 theorem tail_resumptive_closedAware_bundle_of_wellTyped
     (c : HandleClauseContract)

@@ -211,6 +211,67 @@ theorem effectHandlerCatchPairSuite_iff_capstone
     exact effectHandlerCatchPairSuite_of_capstone
       clause capability innerEffects okTy errTy loweredTy h_cap
 
+/-- Structural decomposition for coherent catch-pair suite. -/
+theorem effectHandlerCatchPairSuite_iff_components
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty) :
+    EffectHandlerCatchPairSuite clause capability innerEffects okTy errTy loweredTy
+      ↔
+      ∃ (h_cap :
+          EffectHandlerCapstoneSuite clause capability innerEffects okTy errTy loweredTy)
+        (h_cls :
+          EffectHandlerSuite clause capability innerEffects okTy errTy loweredTy),
+        h_cls =
+          effectHandlerSuite_of_capstoneSuite
+            clause capability innerEffects okTy errTy loweredTy h_cap := by
+  constructor
+  · intro h_pair
+    exact ⟨h_pair.capstone, h_pair.classifier, h_pair.classifierFromCapstone⟩
+  · intro h_comp
+    rcases h_comp with ⟨h_cap, h_cls, h_eq⟩
+    exact {
+      capstone := h_cap
+      classifier := h_cls
+      classifierFromCapstone := h_eq
+    }
+
+/-- Constructor helper for coherent catch-pair decomposition. -/
+theorem effectHandlerCatchPairSuite_of_components
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_comp :
+      ∃ (h_cap :
+          EffectHandlerCapstoneSuite clause capability innerEffects okTy errTy loweredTy)
+        (h_cls :
+          EffectHandlerSuite clause capability innerEffects okTy errTy loweredTy),
+        h_cls =
+          effectHandlerSuite_of_capstoneSuite
+            clause capability innerEffects okTy errTy loweredTy h_cap) :
+    EffectHandlerCatchPairSuite clause capability innerEffects okTy errTy loweredTy :=
+  (effectHandlerCatchPairSuite_iff_components
+    clause capability innerEffects okTy errTy loweredTy).2 h_comp
+
+/-- One-hop decomposition of coherent catch-pair suite into explicit components. -/
+theorem effectHandlerCatchPairSuite_as_components
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_pair : EffectHandlerCatchPairSuite clause capability innerEffects okTy errTy loweredTy) :
+    ∃ (h_cap :
+        EffectHandlerCapstoneSuite clause capability innerEffects okTy errTy loweredTy)
+      (h_cls :
+        EffectHandlerSuite clause capability innerEffects okTy errTy loweredTy),
+      h_cls =
+        effectHandlerSuite_of_capstoneSuite
+          clause capability innerEffects okTy errTy loweredTy h_cap :=
+  (effectHandlerCatchPairSuite_iff_components
+    clause capability innerEffects okTy errTy loweredTy).1 h_pair
+
 /--
 Master Phase-2 composition suite that combines:
 - coherent clause-level classifier+capstone catch aggregation
@@ -672,6 +733,29 @@ theorem effectHandlerSuite_closedAwareRowTailStable
       EffectRow.rest clause.exprEffects :=
   h_suite.closedAware.closedAwareRowTailStable
 
+/--
+One-hop projection: closed-aware result bundle decomposed into explicit
+handled-removal/row-tail/legacy facts from aggregate suite.
+-/
+theorem effectHandlerSuite_closedAware_as_components
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_suite : EffectHandlerSuite clause capability innerEffects okTy errTy loweredTy) :
+    (RowFields.has
+        (EffectRow.fields (HandlerClosedAwareContracts.resultEffectsClosedAware clause))
+        clause.handled = false)
+    ∧
+    (EffectRow.rest (HandlerClosedAwareContracts.resultEffectsClosedAware clause) =
+      EffectRow.rest clause.exprEffects)
+    ∧
+    (RowFields.has
+        (EffectRow.fields (HandleClauseContract.resultEffects clause))
+        clause.handled = false) :=
+  HandlerClosedAwareContracts.closedAwareResultBundle_as_components
+    clause h_suite.closedAware
+
 /-- One-hop projection: legacy handled-removal guarantee from aggregate suite. -/
 theorem effectHandlerSuite_legacyHandledRemoved
     (clause : HandleClauseContract)
@@ -694,6 +778,25 @@ theorem effectHandlerSuite_tailNotInvalid
     TailResumptiveClassification.classifyClause clause ≠
       TailResumptiveClassification.TailResumptiveClass.invalid :=
   h_suite.capabilityClosedAware.notInvalid
+
+/--
+One-hop projection: closed-aware tail-capability bundle decomposed into
+capability-presence + not-invalid classification facts from aggregate suite.
+-/
+theorem effectHandlerSuite_capabilityClosedAware_as_components
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_suite : EffectHandlerSuite clause capability innerEffects okTy errTy loweredTy) :
+    (RowFields.has
+        (EffectRow.fields (HandlerClosedAwareContracts.resultEffectsClosedAware clause))
+        capability = true)
+    ∧
+    (TailResumptiveClassification.classifyClause clause ≠
+      TailResumptiveClassification.TailResumptiveClass.invalid) :=
+  TailCapabilityComposition.tailCapabilityClosedAwareBundle_as_components
+    clause capability h_suite.capabilityClosedAware
 
 /-- One-hop projection: generic catch classifier branch from aggregate suite. -/
 theorem effectHandlerSuite_genericCatchClassifier
@@ -770,6 +873,29 @@ theorem effectHandlerCapstoneSuite_closedAwareRowTailStable
       EffectRow.rest clause.exprEffects :=
   h_suite.closedAware.closedAwareRowTailStable
 
+/--
+One-hop projection: closed-aware result bundle decomposed into explicit
+handled-removal/row-tail/legacy facts from capstone aggregate suite.
+-/
+theorem effectHandlerCapstoneSuite_closedAware_as_components
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_suite : EffectHandlerCapstoneSuite clause capability innerEffects okTy errTy loweredTy) :
+    (RowFields.has
+        (EffectRow.fields (HandlerClosedAwareContracts.resultEffectsClosedAware clause))
+        clause.handled = false)
+    ∧
+    (EffectRow.rest (HandlerClosedAwareContracts.resultEffectsClosedAware clause) =
+      EffectRow.rest clause.exprEffects)
+    ∧
+    (RowFields.has
+        (EffectRow.fields (HandleClauseContract.resultEffects clause))
+        clause.handled = false) :=
+  HandlerClosedAwareContracts.closedAwareResultBundle_as_components
+    clause h_suite.closedAware
+
 /-- One-hop projection: legacy handled-removal guarantee from capstone aggregate suite. -/
 theorem effectHandlerCapstoneSuite_legacyHandledRemoved
     (clause : HandleClauseContract)
@@ -792,6 +918,25 @@ theorem effectHandlerCapstoneSuite_tailNotInvalid
     TailResumptiveClassification.classifyClause clause ≠
       TailResumptiveClassification.TailResumptiveClass.invalid :=
   h_suite.capabilityClosedAware.notInvalid
+
+/--
+One-hop projection: closed-aware tail-capability bundle decomposed into
+capability-presence + not-invalid classification facts from capstone suite.
+-/
+theorem effectHandlerCapstoneSuite_capabilityClosedAware_as_components
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_suite : EffectHandlerCapstoneSuite clause capability innerEffects okTy errTy loweredTy) :
+    (RowFields.has
+        (EffectRow.fields (HandlerClosedAwareContracts.resultEffectsClosedAware clause))
+        capability = true)
+    ∧
+    (TailResumptiveClassification.classifyClause clause ≠
+      TailResumptiveClassification.TailResumptiveClass.invalid) :=
+  TailCapabilityComposition.tailCapabilityClosedAwareBundle_as_components
+    clause capability h_suite.capabilityClosedAware
 
 /-- One-hop projection: generic catch capstone branch from capstone aggregate suite. -/
 theorem effectHandlerCapstoneSuite_genericCatchCapstone
@@ -841,6 +986,23 @@ theorem effectHandlerCatchPairSuite_classifier
     EffectHandlerSuite clause capability innerEffects okTy errTy loweredTy :=
   h_pair.classifier
 
+/--
+One-hop projection: classifier aggregate witness decomposed into explicit
+closed-aware/capability/catch-classifier components from coherent pair suite.
+-/
+theorem effectHandlerCatchPairSuite_classifier_as_components
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_pair : EffectHandlerCatchPairSuite clause capability innerEffects okTy errTy loweredTy) :
+    HandlerClosedAwareContracts.ClosedAwareResultBundle clause
+      ∧ TailCapabilityComposition.TailCapabilityClosedAwareBundle clause capability
+      ∧ CatchInteroperabilitySuite.CatchClassifierInteropSuite
+          clause innerEffects okTy errTy loweredTy :=
+  effectHandlerSuite_as_components
+    clause capability innerEffects okTy errTy loweredTy h_pair.classifier
+
 /-- One-hop projection: capstone aggregate witness from coherent pair suite. -/
 theorem effectHandlerCatchPairSuite_capstone
     (clause : HandleClauseContract)
@@ -850,6 +1012,23 @@ theorem effectHandlerCatchPairSuite_capstone
     (h_pair : EffectHandlerCatchPairSuite clause capability innerEffects okTy errTy loweredTy) :
     EffectHandlerCapstoneSuite clause capability innerEffects okTy errTy loweredTy :=
   h_pair.capstone
+
+/--
+One-hop projection: capstone aggregate witness decomposed into explicit
+closed-aware/capability/catch-capstone components from coherent pair suite.
+-/
+theorem effectHandlerCatchPairSuite_capstone_as_components
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_pair : EffectHandlerCatchPairSuite clause capability innerEffects okTy errTy loweredTy) :
+    HandlerClosedAwareContracts.ClosedAwareResultBundle clause
+      ∧ TailCapabilityComposition.TailCapabilityClosedAwareBundle clause capability
+      ∧ CatchInteroperabilitySuite.CatchCapstoneInteropSuite
+          clause innerEffects okTy errTy loweredTy :=
+  effectHandlerCapstoneSuite_as_components
+    clause capability innerEffects okTy errTy loweredTy h_pair.capstone
 
 /-- One-hop projection: coherence equation from coherent pair suite. -/
 theorem effectHandlerCatchPairSuite_classifierFromCapstone
@@ -942,6 +1121,98 @@ theorem effectHandlerCompositionSuite_catchPair
     EffectHandlerCatchPairSuite clause capability innerEffects okTy errTy loweredTy :=
   h_suite.catchPair
 
+/-- One-hop projection: classifier aggregate witness from master composition suite. -/
+theorem effectHandlerCompositionSuite_classifier
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    EffectHandlerSuite clause capability innerEffects okTy errTy loweredTy :=
+  effectHandlerCatchPairSuite_classifier
+    clause capability innerEffects okTy errTy loweredTy h_suite.catchPair
+
+/--
+One-hop projection: classifier aggregate witness decomposed into explicit
+closed-aware/capability/catch-classifier components from master composition
+suite.
+-/
+theorem effectHandlerCompositionSuite_classifier_as_components
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    HandlerClosedAwareContracts.ClosedAwareResultBundle clause
+      ∧ TailCapabilityComposition.TailCapabilityClosedAwareBundle clause capability
+      ∧ CatchInteroperabilitySuite.CatchClassifierInteropSuite
+          clause innerEffects okTy errTy loweredTy :=
+  effectHandlerSuite_as_components
+    clause capability innerEffects okTy errTy loweredTy
+    (effectHandlerCompositionSuite_classifier
+      clause capability innerEffects okTy errTy loweredTy outerHandler h_suite)
+
+/-- One-hop projection: capstone aggregate witness from master composition suite. -/
+theorem effectHandlerCompositionSuite_capstone
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    EffectHandlerCapstoneSuite clause capability innerEffects okTy errTy loweredTy :=
+  effectHandlerCatchPairSuite_capstone
+    clause capability innerEffects okTy errTy loweredTy h_suite.catchPair
+
+/--
+One-hop projection: capstone aggregate witness decomposed into explicit
+closed-aware/capability/catch-capstone components from master composition
+suite.
+-/
+theorem effectHandlerCompositionSuite_capstone_as_components
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    HandlerClosedAwareContracts.ClosedAwareResultBundle clause
+      ∧ TailCapabilityComposition.TailCapabilityClosedAwareBundle clause capability
+      ∧ CatchInteroperabilitySuite.CatchCapstoneInteropSuite
+          clause innerEffects okTy errTy loweredTy :=
+  effectHandlerCapstoneSuite_as_components
+    clause capability innerEffects okTy errTy loweredTy
+    (effectHandlerCompositionSuite_capstone
+      clause capability innerEffects okTy errTy loweredTy outerHandler h_suite)
+
+/--
+One-hop projection: coherent catch-pair decomposed into explicit capstone,
+classifier, and coherence equation from master composition suite.
+-/
+theorem effectHandlerCompositionSuite_catchPair_as_components
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    ∃ (h_cap :
+        EffectHandlerCapstoneSuite clause capability innerEffects okTy errTy loweredTy)
+      (h_cls :
+        EffectHandlerSuite clause capability innerEffects okTy errTy loweredTy),
+      h_cls =
+        effectHandlerSuite_of_capstoneSuite
+          clause capability innerEffects okTy errTy loweredTy h_cap :=
+  effectHandlerCatchPairSuite_as_components
+    clause capability innerEffects okTy errTy loweredTy h_suite.catchPair
+
 /-- One-hop projection: nested closed-aware witness from master composition suite. -/
 theorem effectHandlerCompositionSuite_nestedClosedAware
     (clause : HandleClauseContract)
@@ -957,6 +1228,41 @@ theorem effectHandlerCompositionSuite_nestedClosedAware
       outerHandler
       clause.handled :=
   h_suite.nestedClosedAware
+
+/--
+One-hop projection: nested closed-aware witness decomposed into explicit
+handled-removal and row-tail-stability facts from master composition suite.
+-/
+theorem effectHandlerCompositionSuite_nestedClosedAware_as_components
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    (RowFields.has
+        (EffectRow.fields
+          (NestedHandlerCompositionContracts.nestedComposeClosedAware
+            clause.exprEffects
+            clause.handlerEffects
+            outerHandler
+            clause.handled))
+        clause.handled = false)
+    ∧
+    (EffectRow.rest
+        (NestedHandlerCompositionContracts.nestedComposeClosedAware
+          clause.exprEffects
+          clause.handlerEffects
+          outerHandler
+          clause.handled) =
+      EffectRow.rest clause.exprEffects) :=
+  NestedHandlerCompositionContracts.nestedHandlerClosedAwareBundle_as_components
+    clause.exprEffects
+    clause.handlerEffects
+    outerHandler
+    clause.handled
+    h_suite.nestedClosedAware
 
 /-- One-hop projection: nested handled-removal guarantee from master composition suite. -/
 theorem effectHandlerCompositionSuite_nestedHandledRemoved
@@ -1116,6 +1422,31 @@ theorem effectHandlerCompositionSuite_closedAwareRowTailStable
   effectHandlerCapstoneSuite_closedAwareRowTailStable
     clause capability innerEffects okTy errTy loweredTy h_suite.catchPair.capstone
 
+/--
+One-hop projection: closed-aware result bundle decomposed into explicit
+handled-removal/row-tail/legacy facts from master composition suite.
+-/
+theorem effectHandlerCompositionSuite_closedAware_as_components
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    (RowFields.has
+        (EffectRow.fields (HandlerClosedAwareContracts.resultEffectsClosedAware clause))
+        clause.handled = false)
+    ∧
+    (EffectRow.rest (HandlerClosedAwareContracts.resultEffectsClosedAware clause) =
+      EffectRow.rest clause.exprEffects)
+    ∧
+    (RowFields.has
+        (EffectRow.fields (HandleClauseContract.resultEffects clause))
+        clause.handled = false) :=
+  effectHandlerCapstoneSuite_closedAware_as_components
+    clause capability innerEffects okTy errTy loweredTy h_suite.catchPair.capstone
+
 /-- One-hop projection: clause legacy handled-removal from master composition suite. -/
 theorem effectHandlerCompositionSuite_legacyHandledRemoved
     (clause : HandleClauseContract)
@@ -1143,6 +1474,28 @@ theorem effectHandlerCompositionSuite_tailNotInvalid
     TailResumptiveClassification.classifyClause clause ≠
       TailResumptiveClassification.TailResumptiveClass.invalid :=
   effectHandlerCapstoneSuite_tailNotInvalid
+    clause capability innerEffects okTy errTy loweredTy h_suite.catchPair.capstone
+
+/--
+One-hop projection: closed-aware tail-capability bundle decomposed into
+capability-presence + not-invalid classification facts from master composition
+suite.
+-/
+theorem effectHandlerCompositionSuite_capabilityClosedAware_as_components
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    (RowFields.has
+        (EffectRow.fields (HandlerClosedAwareContracts.resultEffectsClosedAware clause))
+        capability = true)
+    ∧
+    (TailResumptiveClassification.classifyClause clause ≠
+      TailResumptiveClassification.TailResumptiveClass.invalid) :=
+  effectHandlerCapstoneSuite_capabilityClosedAware_as_components
     clause capability innerEffects okTy errTy loweredTy h_suite.catchPair.capstone
 
 /-- One-hop projection: catch-pair coherence equation from master composition suite. -/
@@ -1190,6 +1543,52 @@ theorem effectHandlerCompositionSuite_nestedRowTail_eq_closedAwareRowTail
         exact effectHandlerCompositionSuite_closedAwareRowTailStable
           clause capability innerEffects okTy errTy loweredTy outerHandler h_suite
 
+/--
+Bridge wrapper: nested closed-aware composition agrees with normalized nested
+composition under explicit present/open branch assumptions for both stages.
+-/
+theorem effectHandlerCompositionSuite_nestedClosedAware_eq_nestedCompose_of_present_or_open
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (_h_suite :
+      EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler)
+    (h_inner_case :
+      RowFields.has (EffectRow.fields clause.exprEffects) clause.handled = true ∨
+        EffectRow.rest clause.exprEffects ≠ none)
+    (h_outer_case :
+      RowFields.has
+          (EffectRow.fields
+            (HandlerAbsentEffectNoop.handleComposeClosedAware
+              clause.exprEffects
+              clause.handlerEffects
+              clause.handled))
+          clause.handled = true ∨
+        EffectRow.rest
+          (HandlerAbsentEffectNoop.handleComposeClosedAware
+            clause.exprEffects
+            clause.handlerEffects
+            clause.handled) ≠ none) :
+    NestedHandlerCompositionContracts.nestedComposeClosedAware
+      clause.exprEffects
+      clause.handlerEffects
+      outerHandler
+      clause.handled =
+    NestedHandlerCompositionContracts.nestedCompose
+      clause.exprEffects
+      clause.handlerEffects
+      outerHandler
+      clause.handled :=
+  NestedHandlerCompositionContracts.nestedComposeClosedAware_eq_nestedCompose_of_present_or_open
+    clause.exprEffects
+    clause.handlerEffects
+    outerHandler
+    clause.handled
+    h_inner_case
+    h_outer_case
+
 /-- Coherence: nested same-target composition keeps handled label absent. -/
 theorem effectHandlerCompositionSuite_nestedHandledRemoved_coherent
     (clause : HandleClauseContract)
@@ -1224,6 +1623,2221 @@ theorem effectHandlerCompositionSuite_clauseHandledRemoved_coherent
       clause.handled = false :=
   effectHandlerCompositionSuite_closedAwareHandledRemoved
     clause capability innerEffects okTy errTy loweredTy outerHandler h_suite
+
+/--
+Named coherence bundle for the master composition layer that packages:
+- nested same-target handled-absence
+- clause-level closed-aware handled-absence
+- shared row-tail equality between nested and clause closed-aware outputs
+-/
+structure EffectHandlerNestedClauseCoherenceBundle
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow) : Prop where
+  nestedHandledRemoved :
+    RowFields.has
+      (EffectRow.fields
+        (NestedHandlerCompositionContracts.nestedComposeClosedAware
+          clause.exprEffects
+          clause.handlerEffects
+          outerHandler
+          clause.handled))
+      clause.handled = false
+  clauseHandledRemoved :
+    RowFields.has
+      (EffectRow.fields (HandlerClosedAwareContracts.resultEffectsClosedAware clause))
+      clause.handled = false
+  nestedRowTailEqClosedAwareRowTail :
+    EffectRow.rest
+      (NestedHandlerCompositionContracts.nestedComposeClosedAware
+        clause.exprEffects
+        clause.handlerEffects
+        outerHandler
+        clause.handled) =
+      EffectRow.rest (HandlerClosedAwareContracts.resultEffectsClosedAware clause)
+
+/-- Structural decomposition for the nested/clause coherence bundle. -/
+theorem effectHandlerNestedClauseCoherenceBundle_iff_components
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow) :
+    EffectHandlerNestedClauseCoherenceBundle
+      clause capability innerEffects okTy errTy loweredTy outerHandler
+      ↔
+      (RowFields.has
+          (EffectRow.fields
+            (NestedHandlerCompositionContracts.nestedComposeClosedAware
+              clause.exprEffects
+              clause.handlerEffects
+              outerHandler
+              clause.handled))
+          clause.handled = false)
+      ∧
+      (RowFields.has
+          (EffectRow.fields (HandlerClosedAwareContracts.resultEffectsClosedAware clause))
+          clause.handled = false)
+      ∧
+      (EffectRow.rest
+          (NestedHandlerCompositionContracts.nestedComposeClosedAware
+            clause.exprEffects
+            clause.handlerEffects
+            outerHandler
+            clause.handled) =
+        EffectRow.rest (HandlerClosedAwareContracts.resultEffectsClosedAware clause)) := by
+  constructor
+  · intro h_bundle
+    exact ⟨
+      h_bundle.nestedHandledRemoved,
+      h_bundle.clauseHandledRemoved,
+      h_bundle.nestedRowTailEqClosedAwareRowTail
+    ⟩
+  · intro h_comp
+    exact {
+      nestedHandledRemoved := h_comp.1
+      clauseHandledRemoved := h_comp.2.1
+      nestedRowTailEqClosedAwareRowTail := h_comp.2.2
+    }
+
+/-- Constructor helper for nested/clause coherence decomposition. -/
+theorem effectHandlerNestedClauseCoherenceBundle_of_components
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_comp :
+      (RowFields.has
+          (EffectRow.fields
+            (NestedHandlerCompositionContracts.nestedComposeClosedAware
+              clause.exprEffects
+              clause.handlerEffects
+              outerHandler
+              clause.handled))
+          clause.handled = false)
+      ∧
+      (RowFields.has
+          (EffectRow.fields (HandlerClosedAwareContracts.resultEffectsClosedAware clause))
+          clause.handled = false)
+      ∧
+      (EffectRow.rest
+          (NestedHandlerCompositionContracts.nestedComposeClosedAware
+            clause.exprEffects
+            clause.handlerEffects
+            outerHandler
+            clause.handled) =
+        EffectRow.rest (HandlerClosedAwareContracts.resultEffectsClosedAware clause))) :
+    EffectHandlerNestedClauseCoherenceBundle
+      clause capability innerEffects okTy errTy loweredTy outerHandler :=
+  (effectHandlerNestedClauseCoherenceBundle_iff_components
+    clause capability innerEffects okTy errTy loweredTy outerHandler).2 h_comp
+
+/-- Projection helper for nested/clause coherence decomposition. -/
+theorem effectHandlerNestedClauseCoherenceBundle_as_components
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_bundle :
+      EffectHandlerNestedClauseCoherenceBundle
+        clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    (RowFields.has
+        (EffectRow.fields
+          (NestedHandlerCompositionContracts.nestedComposeClosedAware
+            clause.exprEffects
+            clause.handlerEffects
+            outerHandler
+            clause.handled))
+        clause.handled = false)
+    ∧
+    (RowFields.has
+        (EffectRow.fields (HandlerClosedAwareContracts.resultEffectsClosedAware clause))
+        clause.handled = false)
+    ∧
+    (EffectRow.rest
+        (NestedHandlerCompositionContracts.nestedComposeClosedAware
+          clause.exprEffects
+          clause.handlerEffects
+          outerHandler
+          clause.handled) =
+      EffectRow.rest (HandlerClosedAwareContracts.resultEffectsClosedAware clause)) :=
+  (effectHandlerNestedClauseCoherenceBundle_iff_components
+    clause capability innerEffects okTy errTy loweredTy outerHandler).1 h_bundle
+
+/-- Build the named nested/clause coherence bundle from the master composition suite. -/
+theorem effectHandlerNestedClauseCoherenceBundle_of_compositionSuite
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    EffectHandlerNestedClauseCoherenceBundle
+      clause capability innerEffects okTy errTy loweredTy outerHandler := by
+  refine {
+    nestedHandledRemoved :=
+      effectHandlerCompositionSuite_nestedHandledRemoved_coherent
+        clause capability innerEffects okTy errTy loweredTy outerHandler h_suite
+    clauseHandledRemoved :=
+      effectHandlerCompositionSuite_clauseHandledRemoved_coherent
+        clause capability innerEffects okTy errTy loweredTy outerHandler h_suite
+    nestedRowTailEqClosedAwareRowTail :=
+      effectHandlerCompositionSuite_nestedRowTail_eq_closedAwareRowTail
+        clause capability innerEffects okTy errTy loweredTy outerHandler h_suite
+  }
+
+/-- One-hop projection: nested/clause coherence bundle from the master composition suite. -/
+theorem effectHandlerCompositionSuite_nestedClauseCoherenceBundle
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    EffectHandlerNestedClauseCoherenceBundle
+      clause capability innerEffects okTy errTy loweredTy outerHandler :=
+  effectHandlerNestedClauseCoherenceBundle_of_compositionSuite
+    clause capability innerEffects okTy errTy loweredTy outerHandler h_suite
+
+/-- One-hop projection: nested handled-absence from the named coherence bundle. -/
+theorem effectHandlerNestedClauseCoherenceBundle_nestedHandledRemoved
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_bundle :
+      EffectHandlerNestedClauseCoherenceBundle
+        clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    RowFields.has
+      (EffectRow.fields
+        (NestedHandlerCompositionContracts.nestedComposeClosedAware
+          clause.exprEffects
+          clause.handlerEffects
+          outerHandler
+          clause.handled))
+      clause.handled = false :=
+  h_bundle.nestedHandledRemoved
+
+/-- One-hop projection: clause closed-aware handled-absence from the named coherence bundle. -/
+theorem effectHandlerNestedClauseCoherenceBundle_clauseHandledRemoved
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_bundle :
+      EffectHandlerNestedClauseCoherenceBundle
+        clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    RowFields.has
+      (EffectRow.fields (HandlerClosedAwareContracts.resultEffectsClosedAware clause))
+      clause.handled = false :=
+  h_bundle.clauseHandledRemoved
+
+/-- One-hop projection: nested/clause row-tail equality from the named coherence bundle. -/
+theorem effectHandlerNestedClauseCoherenceBundle_nestedRowTailEqClosedAwareRowTail
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_bundle :
+      EffectHandlerNestedClauseCoherenceBundle
+        clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    EffectRow.rest
+      (NestedHandlerCompositionContracts.nestedComposeClosedAware
+        clause.exprEffects
+        clause.handlerEffects
+        outerHandler
+        clause.handled) =
+      EffectRow.rest (HandlerClosedAwareContracts.resultEffectsClosedAware clause) :=
+  h_bundle.nestedRowTailEqClosedAwareRowTail
+
+/--
+Master package that pairs the full composition suite with its derived
+nested/clause coherence bundle and records the derivation equation explicitly.
+-/
+structure EffectHandlerCompositionCoherenceSuite
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow) : Prop where
+  composition :
+    EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler
+  nestedClauseCoherence :
+    EffectHandlerNestedClauseCoherenceBundle
+      clause capability innerEffects okTy errTy loweredTy outerHandler
+  coherenceFromComposition :
+    nestedClauseCoherence =
+      effectHandlerCompositionSuite_nestedClauseCoherenceBundle
+        clause capability innerEffects okTy errTy loweredTy outerHandler composition
+
+/-- Build the master composition+coherence package from any composition witness. -/
+theorem effectHandlerCompositionCoherenceSuite_of_composition
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_comp :
+      EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    EffectHandlerCompositionCoherenceSuite
+      clause capability innerEffects okTy errTy loweredTy outerHandler := by
+  refine {
+    composition := h_comp
+    nestedClauseCoherence :=
+      effectHandlerCompositionSuite_nestedClauseCoherenceBundle
+        clause capability innerEffects okTy errTy loweredTy outerHandler h_comp
+    coherenceFromComposition := rfl
+  }
+
+/--
+Composition+coherence package is equivalent to just the composition witness,
+since the coherence bundle is canonically derived.
+-/
+theorem effectHandlerCompositionCoherenceSuite_iff_composition
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow) :
+    EffectHandlerCompositionCoherenceSuite
+      clause capability innerEffects okTy errTy loweredTy outerHandler
+      ↔ EffectHandlerCompositionSuite
+          clause capability innerEffects okTy errTy loweredTy outerHandler := by
+  constructor
+  · intro h_suite
+    exact h_suite.composition
+  · intro h_comp
+    exact effectHandlerCompositionCoherenceSuite_of_composition
+      clause capability innerEffects okTy errTy loweredTy outerHandler h_comp
+
+/--
+Explicit component decomposition for the composition+coherence package:
+composition witness, derived coherence witness, and coherence derivation
+equation.
+-/
+theorem effectHandlerCompositionCoherenceSuite_iff_components
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow) :
+    EffectHandlerCompositionCoherenceSuite
+      clause capability innerEffects okTy errTy loweredTy outerHandler
+      ↔
+      ∃ (h_comp :
+          EffectHandlerCompositionSuite
+            clause capability innerEffects okTy errTy loweredTy outerHandler)
+        (h_coh :
+          EffectHandlerNestedClauseCoherenceBundle
+            clause capability innerEffects okTy errTy loweredTy outerHandler),
+        h_coh =
+          effectHandlerCompositionSuite_nestedClauseCoherenceBundle
+            clause capability innerEffects okTy errTy loweredTy outerHandler h_comp := by
+  constructor
+  · intro h_suite
+    exact ⟨h_suite.composition, h_suite.nestedClauseCoherence, h_suite.coherenceFromComposition⟩
+  · intro h_parts
+    rcases h_parts with ⟨h_comp, h_coh, h_eq⟩
+    exact {
+      composition := h_comp
+      nestedClauseCoherence := h_coh
+      coherenceFromComposition := h_eq
+    }
+
+/-- Build the package from explicit components and their derivation equation. -/
+theorem effectHandlerCompositionCoherenceSuite_of_components
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_parts :
+      ∃ (h_comp :
+          EffectHandlerCompositionSuite
+            clause capability innerEffects okTy errTy loweredTy outerHandler)
+        (h_coh :
+          EffectHandlerNestedClauseCoherenceBundle
+            clause capability innerEffects okTy errTy loweredTy outerHandler),
+        h_coh =
+          effectHandlerCompositionSuite_nestedClauseCoherenceBundle
+            clause capability innerEffects okTy errTy loweredTy outerHandler h_comp) :
+    EffectHandlerCompositionCoherenceSuite
+      clause capability innerEffects okTy errTy loweredTy outerHandler :=
+  (effectHandlerCompositionCoherenceSuite_iff_components
+    clause capability innerEffects okTy errTy loweredTy outerHandler).2 h_parts
+
+/-- One-hop decomposition of the package into explicit components. -/
+theorem effectHandlerCompositionCoherenceSuite_as_components
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionCoherenceSuite
+        clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    ∃ (h_comp :
+        EffectHandlerCompositionSuite
+          clause capability innerEffects okTy errTy loweredTy outerHandler)
+      (h_coh :
+        EffectHandlerNestedClauseCoherenceBundle
+          clause capability innerEffects okTy errTy loweredTy outerHandler),
+      h_coh =
+        effectHandlerCompositionSuite_nestedClauseCoherenceBundle
+          clause capability innerEffects okTy errTy loweredTy outerHandler h_comp :=
+  (effectHandlerCompositionCoherenceSuite_iff_components
+    clause capability innerEffects okTy errTy loweredTy outerHandler).1 h_suite
+
+/-- Build the master package from premise-level capstone inputs and outer-absence. -/
+theorem effectHandlerCompositionCoherenceSuite_of_premises
+    (clause : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_cap_ne : capability ≠ clause.handled)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_admissible : FailResultContracts.catchAdmissible clause.exprEffects)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy)
+    (h_outer_abs :
+      RowFields.has (EffectRow.fields outerHandler) clause.handled = false) :
+    EffectHandlerCompositionCoherenceSuite
+      clause capability innerEffects okTy errTy loweredTy outerHandler := by
+  exact effectHandlerCompositionCoherenceSuite_of_composition
+    clause capability innerEffects okTy errTy loweredTy outerHandler
+    (effectHandlerCompositionSuite_of_premises
+      clause baseEffects capability innerEffects okTy errTy loweredTy outerHandler
+      h_wellTyped h_expr h_cap_ne h_failZero h_admissible h_clauseEffects h_lowered h_outer_abs)
+
+/-- Build the master package from Fail-presence evidence and outer-absence. -/
+theorem effectHandlerCompositionCoherenceSuite_of_fail_present
+    (clause : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_cap_ne : capability ≠ clause.handled)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_fail_present :
+      RowFields.has (EffectRow.fields clause.exprEffects) FailResultContracts.failLabel = true)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy)
+    (h_outer_abs :
+      RowFields.has (EffectRow.fields outerHandler) clause.handled = false) :
+    EffectHandlerCompositionCoherenceSuite
+      clause capability innerEffects okTy errTy loweredTy outerHandler := by
+  exact effectHandlerCompositionCoherenceSuite_of_composition
+    clause capability innerEffects okTy errTy loweredTy outerHandler
+    (effectHandlerCompositionSuite_of_fail_present
+      clause baseEffects capability innerEffects okTy errTy loweredTy outerHandler
+      h_wellTyped h_expr h_cap_ne h_failZero h_fail_present h_clauseEffects h_lowered h_outer_abs)
+
+/-- One-hop projection: composition witness from the master package. -/
+theorem effectHandlerCompositionCoherenceSuite_composition
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionCoherenceSuite
+        clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    EffectHandlerCompositionSuite
+      clause capability innerEffects okTy errTy loweredTy outerHandler :=
+  h_suite.composition
+
+/--
+One-hop projection: composition witness decomposed into explicit catch-pair and
+nested closed-aware components from the master composition+coherence package.
+-/
+theorem effectHandlerCompositionCoherenceSuite_composition_as_components
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionCoherenceSuite
+        clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    EffectHandlerCatchPairSuite clause capability innerEffects okTy errTy loweredTy
+      ∧ NestedHandlerCompositionContracts.NestedHandlerClosedAwareBundle
+          clause.exprEffects
+          clause.handlerEffects
+          outerHandler
+          clause.handled :=
+  effectHandlerCompositionSuite_as_components
+    clause capability innerEffects okTy errTy loweredTy outerHandler
+    h_suite.composition
+
+/--
+One-hop projection: composition witness decomposed into explicit capstone and
+nested closed-aware components from the master composition+coherence package.
+-/
+theorem effectHandlerCompositionCoherenceSuite_composition_as_capstone_and_nested
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionCoherenceSuite
+        clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    EffectHandlerCapstoneSuite clause capability innerEffects okTy errTy loweredTy
+      ∧ NestedHandlerCompositionContracts.NestedHandlerClosedAwareBundle
+          clause.exprEffects
+          clause.handlerEffects
+          outerHandler
+          clause.handled :=
+  effectHandlerCompositionSuite_as_capstone_and_nested
+    clause capability innerEffects okTy errTy loweredTy outerHandler
+    h_suite.composition
+
+/-- One-hop projection: coherent catch pair from the master composition+coherence package. -/
+theorem effectHandlerCompositionCoherenceSuite_catchPair
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionCoherenceSuite
+        clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    EffectHandlerCatchPairSuite clause capability innerEffects okTy errTy loweredTy :=
+  h_suite.composition.catchPair
+
+/--
+One-hop projection: coherent catch pair decomposed into explicit capstone,
+classifier, and coherence equation from the master package.
+-/
+theorem effectHandlerCompositionCoherenceSuite_catchPair_as_components
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionCoherenceSuite
+        clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    ∃ (h_cap :
+        EffectHandlerCapstoneSuite clause capability innerEffects okTy errTy loweredTy)
+      (h_cls :
+        EffectHandlerSuite clause capability innerEffects okTy errTy loweredTy),
+      h_cls =
+        effectHandlerSuite_of_capstoneSuite
+          clause capability innerEffects okTy errTy loweredTy h_cap :=
+  effectHandlerCatchPairSuite_as_components
+    clause capability innerEffects okTy errTy loweredTy
+    h_suite.composition.catchPair
+
+/-- One-hop projection: classifier aggregate witness from the master package. -/
+theorem effectHandlerCompositionCoherenceSuite_classifier
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionCoherenceSuite
+        clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    EffectHandlerSuite clause capability innerEffects okTy errTy loweredTy :=
+  effectHandlerCatchPairSuite_classifier
+    clause capability innerEffects okTy errTy loweredTy
+    h_suite.composition.catchPair
+
+/--
+One-hop projection: classifier aggregate witness decomposed into explicit
+closed-aware/capability/catch-classifier components from master
+composition+coherence package.
+-/
+theorem effectHandlerCompositionCoherenceSuite_classifier_as_components
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionCoherenceSuite
+        clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    HandlerClosedAwareContracts.ClosedAwareResultBundle clause
+      ∧ TailCapabilityComposition.TailCapabilityClosedAwareBundle clause capability
+      ∧ CatchInteroperabilitySuite.CatchClassifierInteropSuite
+          clause innerEffects okTy errTy loweredTy :=
+  effectHandlerSuite_as_components
+    clause capability innerEffects okTy errTy loweredTy
+    (effectHandlerCompositionCoherenceSuite_classifier
+      clause capability innerEffects okTy errTy loweredTy outerHandler h_suite)
+
+/-- One-hop projection: capstone aggregate witness from the master package. -/
+theorem effectHandlerCompositionCoherenceSuite_capstone
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionCoherenceSuite
+        clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    EffectHandlerCapstoneSuite clause capability innerEffects okTy errTy loweredTy :=
+  effectHandlerCatchPairSuite_capstone
+    clause capability innerEffects okTy errTy loweredTy
+    h_suite.composition.catchPair
+
+/--
+One-hop projection: capstone aggregate witness decomposed into explicit
+closed-aware/capability/catch-capstone components from master
+composition+coherence package.
+-/
+theorem effectHandlerCompositionCoherenceSuite_capstone_as_components
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionCoherenceSuite
+        clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    HandlerClosedAwareContracts.ClosedAwareResultBundle clause
+      ∧ TailCapabilityComposition.TailCapabilityClosedAwareBundle clause capability
+      ∧ CatchInteroperabilitySuite.CatchCapstoneInteropSuite
+          clause innerEffects okTy errTy loweredTy :=
+  effectHandlerCapstoneSuite_as_components
+    clause capability innerEffects okTy errTy loweredTy
+    (effectHandlerCompositionCoherenceSuite_capstone
+      clause capability innerEffects okTy errTy loweredTy outerHandler h_suite)
+
+/--
+One-hop projection: classifier-from-capstone coherence equation from the master
+composition+coherence package.
+-/
+theorem effectHandlerCompositionCoherenceSuite_classifierFromCapstone
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionCoherenceSuite
+        clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    h_suite.composition.catchPair.classifier =
+      effectHandlerSuite_of_capstoneSuite
+        clause capability innerEffects okTy errTy loweredTy
+        h_suite.composition.catchPair.capstone :=
+  effectHandlerCatchPairSuite_classifierFromCapstone
+    clause capability innerEffects okTy errTy loweredTy
+    h_suite.composition.catchPair
+
+/--
+One-hop projection: nested closed-aware witness from the master
+composition+coherence package.
+-/
+theorem effectHandlerCompositionCoherenceSuite_nestedClosedAware
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionCoherenceSuite
+        clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    NestedHandlerCompositionContracts.NestedHandlerClosedAwareBundle
+      clause.exprEffects
+      clause.handlerEffects
+      outerHandler
+      clause.handled :=
+  effectHandlerCompositionSuite_nestedClosedAware
+    clause capability innerEffects okTy errTy loweredTy outerHandler
+    h_suite.composition
+
+/--
+One-hop projection: nested closed-aware witness decomposed into explicit
+handled-removal and row-tail-stability facts from master
+composition+coherence package.
+-/
+theorem effectHandlerCompositionCoherenceSuite_nestedClosedAware_as_components
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionCoherenceSuite
+        clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    (RowFields.has
+        (EffectRow.fields
+          (NestedHandlerCompositionContracts.nestedComposeClosedAware
+            clause.exprEffects
+            clause.handlerEffects
+            outerHandler
+            clause.handled))
+        clause.handled = false)
+    ∧
+    (EffectRow.rest
+        (NestedHandlerCompositionContracts.nestedComposeClosedAware
+          clause.exprEffects
+          clause.handlerEffects
+          outerHandler
+          clause.handled) =
+      EffectRow.rest clause.exprEffects) :=
+  effectHandlerCompositionSuite_nestedClosedAware_as_components
+    clause capability innerEffects okTy errTy loweredTy outerHandler
+    h_suite.composition
+
+/--
+One-hop projection: nested row-tail stability with respect to expression
+effects from the master composition+coherence package.
+-/
+theorem effectHandlerCompositionCoherenceSuite_nestedRowTailStable
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionCoherenceSuite
+        clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    EffectRow.rest
+      (NestedHandlerCompositionContracts.nestedComposeClosedAware
+        clause.exprEffects
+        clause.handlerEffects
+        outerHandler
+        clause.handled) =
+      EffectRow.rest clause.exprEffects :=
+  effectHandlerCompositionSuite_nestedRowTailStable
+    clause capability innerEffects okTy errTy loweredTy outerHandler
+    h_suite.composition
+
+/-- One-hop projection: nested/clause coherence bundle from the master package. -/
+theorem effectHandlerCompositionCoherenceSuite_nestedClauseCoherence
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionCoherenceSuite
+        clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    EffectHandlerNestedClauseCoherenceBundle
+      clause capability innerEffects okTy errTy loweredTy outerHandler :=
+  h_suite.nestedClauseCoherence
+
+/--
+One-hop projection: nested/clause coherence bundle decomposed into explicit
+component facts from the master package.
+-/
+theorem effectHandlerCompositionCoherenceSuite_nestedClauseCoherence_as_components
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionCoherenceSuite
+        clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    (RowFields.has
+        (EffectRow.fields
+          (NestedHandlerCompositionContracts.nestedComposeClosedAware
+            clause.exprEffects
+            clause.handlerEffects
+            outerHandler
+            clause.handled))
+        clause.handled = false)
+    ∧
+    (RowFields.has
+        (EffectRow.fields (HandlerClosedAwareContracts.resultEffectsClosedAware clause))
+        clause.handled = false)
+    ∧
+    (EffectRow.rest
+        (NestedHandlerCompositionContracts.nestedComposeClosedAware
+          clause.exprEffects
+          clause.handlerEffects
+          outerHandler
+          clause.handled) =
+      EffectRow.rest (HandlerClosedAwareContracts.resultEffectsClosedAware clause)) :=
+  effectHandlerNestedClauseCoherenceBundle_as_components
+    clause capability innerEffects okTy errTy loweredTy outerHandler
+    h_suite.nestedClauseCoherence
+
+/--
+One-hop projection: closed-aware result bundle decomposed into explicit
+handled-removal/row-tail/legacy facts from master composition+coherence
+package.
+-/
+theorem effectHandlerCompositionCoherenceSuite_closedAware_as_components
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionCoherenceSuite
+        clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    (RowFields.has
+        (EffectRow.fields (HandlerClosedAwareContracts.resultEffectsClosedAware clause))
+        clause.handled = false)
+    ∧
+    (EffectRow.rest (HandlerClosedAwareContracts.resultEffectsClosedAware clause) =
+      EffectRow.rest clause.exprEffects)
+    ∧
+    (RowFields.has
+        (EffectRow.fields (HandleClauseContract.resultEffects clause))
+        clause.handled = false) :=
+  effectHandlerCompositionSuite_closedAware_as_components
+    clause capability innerEffects okTy errTy loweredTy outerHandler
+    h_suite.composition
+
+/-- One-hop projection: coherence derivation equation from the master package. -/
+theorem effectHandlerCompositionCoherenceSuite_coherenceFromComposition
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionCoherenceSuite
+        clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    h_suite.nestedClauseCoherence =
+      effectHandlerCompositionSuite_nestedClauseCoherenceBundle
+        clause capability innerEffects okTy errTy loweredTy outerHandler h_suite.composition :=
+  h_suite.coherenceFromComposition
+
+/-- One-hop projection: nested/clause row-tail equality from the master package. -/
+theorem effectHandlerCompositionCoherenceSuite_nestedRowTailEqClosedAwareRowTail
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionCoherenceSuite
+        clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    EffectRow.rest
+      (NestedHandlerCompositionContracts.nestedComposeClosedAware
+        clause.exprEffects
+        clause.handlerEffects
+        outerHandler
+        clause.handled) =
+      EffectRow.rest (HandlerClosedAwareContracts.resultEffectsClosedAware clause) :=
+  h_suite.nestedClauseCoherence.nestedRowTailEqClosedAwareRowTail
+
+/-- One-hop projection: nested handled-absence from the master package. -/
+theorem effectHandlerCompositionCoherenceSuite_nestedHandledRemoved
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionCoherenceSuite
+        clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    RowFields.has
+      (EffectRow.fields
+        (NestedHandlerCompositionContracts.nestedComposeClosedAware
+          clause.exprEffects
+          clause.handlerEffects
+          outerHandler
+          clause.handled))
+      clause.handled = false :=
+  h_suite.nestedClauseCoherence.nestedHandledRemoved
+
+/-- One-hop projection: clause closed-aware handled-absence from the master package. -/
+theorem effectHandlerCompositionCoherenceSuite_clauseHandledRemoved
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionCoherenceSuite
+        clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    RowFields.has
+      (EffectRow.fields (HandlerClosedAwareContracts.resultEffectsClosedAware clause))
+      clause.handled = false :=
+  h_suite.nestedClauseCoherence.clauseHandledRemoved
+
+/-- One-hop projection: generic catch classifier branch from the master package. -/
+theorem effectHandlerCompositionCoherenceSuite_genericCatchClassifier
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionCoherenceSuite
+        clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    CatchTypingBridge.CatchTypingCapstoneOutcome
+      clause
+      (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+      okTy
+      errTy
+      loweredTy
+      ∨ FailResultContracts.catchUnnecessary clause.exprEffects :=
+  effectHandlerCompositionSuite_genericCatchClassifier
+    clause capability innerEffects okTy errTy loweredTy outerHandler h_suite.composition
+
+/-- One-hop projection: higher-order catch classifier branch from the master package. -/
+theorem effectHandlerCompositionCoherenceSuite_higherCatchClassifier
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionCoherenceSuite
+        clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    HigherOrderCatchContracts.HigherOrderCatchCapstoneOutcome clause innerEffects okTy errTy loweredTy
+      ∨ FailResultContracts.catchUnnecessary innerEffects :=
+  effectHandlerCompositionSuite_higherCatchClassifier
+    clause capability innerEffects okTy errTy loweredTy outerHandler h_suite.composition
+
+/-- One-hop projection: generic catch capstone branch from the master package. -/
+theorem effectHandlerCompositionCoherenceSuite_genericCatchCapstone
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionCoherenceSuite
+        clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    CatchTypingBridge.CatchTypingCapstoneOutcome
+      clause
+      (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+      okTy
+      errTy
+      loweredTy :=
+  effectHandlerCompositionSuite_genericCatchCapstone
+    clause capability innerEffects okTy errTy loweredTy outerHandler h_suite.composition
+
+/-- One-hop projection: higher-order catch capstone branch from the master package. -/
+theorem effectHandlerCompositionCoherenceSuite_higherCatchCapstone
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionCoherenceSuite
+        clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    HigherOrderCatchContracts.HigherOrderCatchCapstoneOutcome clause innerEffects okTy errTy loweredTy :=
+  effectHandlerCompositionSuite_higherCatchCapstone
+    clause capability innerEffects okTy errTy loweredTy outerHandler h_suite.composition
+
+/-- One-hop projection: closed-aware capability preservation from the master package. -/
+theorem effectHandlerCompositionCoherenceSuite_closedAwareCapability
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionCoherenceSuite
+        clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    RowFields.has
+      (EffectRow.fields (HandlerClosedAwareContracts.resultEffectsClosedAware clause))
+      capability = true :=
+  effectHandlerCompositionSuite_closedAwareCapability
+    clause capability innerEffects okTy errTy loweredTy outerHandler h_suite.composition
+
+/-- One-hop projection: clause non-invalid tail classification from the master package. -/
+theorem effectHandlerCompositionCoherenceSuite_tailNotInvalid
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionCoherenceSuite
+        clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    TailResumptiveClassification.classifyClause clause ≠
+      TailResumptiveClassification.TailResumptiveClass.invalid :=
+  effectHandlerCompositionSuite_tailNotInvalid
+    clause capability innerEffects okTy errTy loweredTy outerHandler h_suite.composition
+
+/--
+One-hop projection: closed-aware tail-capability bundle decomposed into
+capability-presence + not-invalid classification facts from master
+composition+coherence package.
+-/
+theorem effectHandlerCompositionCoherenceSuite_capabilityClosedAware_as_components
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionCoherenceSuite
+        clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    (RowFields.has
+        (EffectRow.fields (HandlerClosedAwareContracts.resultEffectsClosedAware clause))
+        capability = true)
+    ∧
+    (TailResumptiveClassification.classifyClause clause ≠
+      TailResumptiveClassification.TailResumptiveClass.invalid) :=
+  effectHandlerCompositionSuite_capabilityClosedAware_as_components
+    clause capability innerEffects okTy errTy loweredTy outerHandler
+    h_suite.composition
+
+/--
+Bridge wrapper on the composition+coherence package: nested closed-aware
+composition agrees with normalized nested composition under explicit
+present/open branch assumptions for both stages.
+-/
+theorem effectHandlerCompositionCoherenceSuite_nestedClosedAware_eq_nestedCompose_of_present_or_open
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionCoherenceSuite
+        clause capability innerEffects okTy errTy loweredTy outerHandler)
+    (h_inner_case :
+      RowFields.has (EffectRow.fields clause.exprEffects) clause.handled = true ∨
+        EffectRow.rest clause.exprEffects ≠ none)
+    (h_outer_case :
+      RowFields.has
+          (EffectRow.fields
+            (HandlerAbsentEffectNoop.handleComposeClosedAware
+              clause.exprEffects
+              clause.handlerEffects
+              clause.handled))
+          clause.handled = true ∨
+        EffectRow.rest
+          (HandlerAbsentEffectNoop.handleComposeClosedAware
+            clause.exprEffects
+            clause.handlerEffects
+            clause.handled) ≠ none) :
+    NestedHandlerCompositionContracts.nestedComposeClosedAware
+      clause.exprEffects
+      clause.handlerEffects
+      outerHandler
+      clause.handled =
+    NestedHandlerCompositionContracts.nestedCompose
+      clause.exprEffects
+      clause.handlerEffects
+      outerHandler
+      clause.handled :=
+  effectHandlerCompositionSuite_nestedClosedAware_eq_nestedCompose_of_present_or_open
+    clause capability innerEffects okTy errTy loweredTy outerHandler
+    h_suite.composition
+    h_inner_case
+    h_outer_case
+
+/--
+Open-row corollary on composition suite: if the clause expression effect row is
+open, nested closed-aware composition agrees with normalized nested composition.
+-/
+theorem effectHandlerCompositionSuite_nestedClosedAware_eq_nestedCompose_of_open_expr_row
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (_h_suite :
+      EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler)
+    (h_open : EffectRow.rest clause.exprEffects ≠ none) :
+    NestedHandlerCompositionContracts.nestedComposeClosedAware
+      clause.exprEffects
+      clause.handlerEffects
+      outerHandler
+      clause.handled =
+    NestedHandlerCompositionContracts.nestedCompose
+      clause.exprEffects
+      clause.handlerEffects
+      outerHandler
+      clause.handled :=
+  NestedHandlerCompositionContracts.nestedComposeClosedAware_eq_nestedCompose_of_open_row
+    clause.exprEffects
+    clause.handlerEffects
+    outerHandler
+    clause.handled
+    h_open
+
+/--
+Direct premise-level bridge on the composition suite from open base row.
+-/
+theorem effectHandlerCompositionSuite_nestedClosedAware_eq_nestedCompose_of_open_base_row_of_premises
+    (clause : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_cap_ne : capability ≠ clause.handled)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_admissible : FailResultContracts.catchAdmissible clause.exprEffects)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy)
+    (h_outer_abs :
+      RowFields.has (EffectRow.fields outerHandler) clause.handled = false)
+    (h_base_open : EffectRow.rest baseEffects ≠ none) :
+    NestedHandlerCompositionContracts.nestedComposeClosedAware
+      clause.exprEffects
+      clause.handlerEffects
+      outerHandler
+      clause.handled =
+    NestedHandlerCompositionContracts.nestedCompose
+      clause.exprEffects
+      clause.handlerEffects
+      outerHandler
+      clause.handled := by
+  have h_open : EffectRow.rest clause.exprEffects ≠ none := by
+    rw [h_expr]
+    rw [EffectOperationTyping.performOperation_preserves_row_tail baseEffects capability]
+    exact h_base_open
+  exact effectHandlerCompositionSuite_nestedClosedAware_eq_nestedCompose_of_open_expr_row
+    clause capability innerEffects okTy errTy loweredTy outerHandler
+    (effectHandlerCompositionSuite_of_premises
+      clause baseEffects capability innerEffects okTy errTy loweredTy outerHandler
+      h_wellTyped h_expr h_cap_ne h_failZero h_admissible h_clauseEffects h_lowered h_outer_abs)
+    h_open
+
+/--
+Fail-presence variant of the open-base-row bridge on the composition suite.
+-/
+theorem effectHandlerCompositionSuite_nestedClosedAware_eq_nestedCompose_of_open_base_row_of_fail_present
+    (clause : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_cap_ne : capability ≠ clause.handled)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_fail_present :
+      RowFields.has (EffectRow.fields clause.exprEffects) FailResultContracts.failLabel = true)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy)
+    (h_outer_abs :
+      RowFields.has (EffectRow.fields outerHandler) clause.handled = false)
+    (h_base_open : EffectRow.rest baseEffects ≠ none) :
+    NestedHandlerCompositionContracts.nestedComposeClosedAware
+      clause.exprEffects
+      clause.handlerEffects
+      outerHandler
+      clause.handled =
+    NestedHandlerCompositionContracts.nestedCompose
+      clause.exprEffects
+      clause.handlerEffects
+      outerHandler
+      clause.handled := by
+  have h_open : EffectRow.rest clause.exprEffects ≠ none := by
+    rw [h_expr]
+    rw [EffectOperationTyping.performOperation_preserves_row_tail baseEffects capability]
+    exact h_base_open
+  exact effectHandlerCompositionSuite_nestedClosedAware_eq_nestedCompose_of_open_expr_row
+    clause capability innerEffects okTy errTy loweredTy outerHandler
+    (effectHandlerCompositionSuite_of_fail_present
+      clause baseEffects capability innerEffects okTy errTy loweredTy outerHandler
+      h_wellTyped h_expr h_cap_ne h_failZero h_fail_present h_clauseEffects h_lowered h_outer_abs)
+    h_open
+
+/--
+Open-row consequence on the composition suite: normalized nested composition
+also keeps the handled label absent.
+-/
+theorem effectHandlerCompositionSuite_nestedComposeHandledRemoved_of_open_expr_row
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_comp :
+      EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler)
+    (h_open : EffectRow.rest clause.exprEffects ≠ none) :
+    RowFields.has
+      (EffectRow.fields
+        (NestedHandlerCompositionContracts.nestedCompose
+          clause.exprEffects
+          clause.handlerEffects
+          outerHandler
+          clause.handled))
+      clause.handled = false := by
+  have h_closed :
+      RowFields.has
+        (EffectRow.fields
+          (NestedHandlerCompositionContracts.nestedComposeClosedAware
+            clause.exprEffects
+            clause.handlerEffects
+            outerHandler
+            clause.handled))
+        clause.handled = false :=
+    effectHandlerCompositionSuite_nestedHandledRemoved_coherent
+      clause capability innerEffects okTy errTy loweredTy outerHandler h_comp
+  have h_eq :
+      NestedHandlerCompositionContracts.nestedComposeClosedAware
+        clause.exprEffects
+        clause.handlerEffects
+        outerHandler
+        clause.handled =
+      NestedHandlerCompositionContracts.nestedCompose
+        clause.exprEffects
+        clause.handlerEffects
+        outerHandler
+        clause.handled :=
+    effectHandlerCompositionSuite_nestedClosedAware_eq_nestedCompose_of_open_expr_row
+      clause capability innerEffects okTy errTy loweredTy outerHandler h_comp h_open
+  simpa [h_eq] using h_closed
+
+/--
+Open-row consequence on the composition+coherence suite: normalized nested
+composition keeps the handled label absent.
+-/
+theorem effectHandlerCompositionCoherenceSuite_nestedComposeHandledRemoved_of_open_expr_row
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionCoherenceSuite
+        clause capability innerEffects okTy errTy loweredTy outerHandler)
+    (h_open : EffectRow.rest clause.exprEffects ≠ none) :
+    RowFields.has
+      (EffectRow.fields
+        (NestedHandlerCompositionContracts.nestedCompose
+          clause.exprEffects
+          clause.handlerEffects
+          outerHandler
+          clause.handled))
+      clause.handled = false :=
+  effectHandlerCompositionSuite_nestedComposeHandledRemoved_of_open_expr_row
+    clause capability innerEffects okTy errTy loweredTy outerHandler
+    h_suite.composition
+    h_open
+
+/--
+Open-row corollary on composition+coherence suite: if the clause expression
+effect row is open, nested closed-aware composition agrees with normalized
+nested composition.
+-/
+theorem effectHandlerCompositionCoherenceSuite_nestedClosedAware_eq_nestedCompose_of_open_expr_row
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionCoherenceSuite
+        clause capability innerEffects okTy errTy loweredTy outerHandler)
+    (h_open : EffectRow.rest clause.exprEffects ≠ none) :
+    NestedHandlerCompositionContracts.nestedComposeClosedAware
+      clause.exprEffects
+      clause.handlerEffects
+      outerHandler
+      clause.handled =
+    NestedHandlerCompositionContracts.nestedCompose
+      clause.exprEffects
+      clause.handlerEffects
+      outerHandler
+      clause.handled :=
+  effectHandlerCompositionSuite_nestedClosedAware_eq_nestedCompose_of_open_expr_row
+    clause capability innerEffects okTy errTy loweredTy outerHandler
+    h_suite.composition
+    h_open
+
+/--
+Direct premise-level open-row bridge: nested closed-aware composition agrees
+with normalized nested composition without explicit suite construction.
+-/
+theorem effectHandlerCompositionCoherenceSuite_nestedClosedAware_eq_nestedCompose_of_open_expr_row_of_premises
+    (clause : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_cap_ne : capability ≠ clause.handled)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_admissible : FailResultContracts.catchAdmissible clause.exprEffects)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy)
+    (h_outer_abs :
+      RowFields.has (EffectRow.fields outerHandler) clause.handled = false)
+    (h_open : EffectRow.rest clause.exprEffects ≠ none) :
+    NestedHandlerCompositionContracts.nestedComposeClosedAware
+      clause.exprEffects
+      clause.handlerEffects
+      outerHandler
+      clause.handled =
+    NestedHandlerCompositionContracts.nestedCompose
+      clause.exprEffects
+      clause.handlerEffects
+      outerHandler
+      clause.handled := by
+  exact effectHandlerCompositionCoherenceSuite_nestedClosedAware_eq_nestedCompose_of_open_expr_row
+    clause capability innerEffects okTy errTy loweredTy outerHandler
+    (effectHandlerCompositionCoherenceSuite_of_premises
+      clause baseEffects capability innerEffects okTy errTy loweredTy outerHandler
+      h_wellTyped h_expr h_cap_ne h_failZero h_admissible h_clauseEffects h_lowered h_outer_abs)
+    h_open
+
+/--
+Direct fail-presence entrypoint for the open-row nested bridge.
+-/
+theorem effectHandlerCompositionCoherenceSuite_nestedClosedAware_eq_nestedCompose_of_open_expr_row_of_fail_present
+    (clause : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_cap_ne : capability ≠ clause.handled)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_fail_present :
+      RowFields.has (EffectRow.fields clause.exprEffects) FailResultContracts.failLabel = true)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy)
+    (h_outer_abs :
+      RowFields.has (EffectRow.fields outerHandler) clause.handled = false)
+    (h_open : EffectRow.rest clause.exprEffects ≠ none) :
+    NestedHandlerCompositionContracts.nestedComposeClosedAware
+      clause.exprEffects
+      clause.handlerEffects
+      outerHandler
+      clause.handled =
+    NestedHandlerCompositionContracts.nestedCompose
+      clause.exprEffects
+      clause.handlerEffects
+      outerHandler
+      clause.handled := by
+  exact effectHandlerCompositionCoherenceSuite_nestedClosedAware_eq_nestedCompose_of_open_expr_row
+    clause capability innerEffects okTy errTy loweredTy outerHandler
+    (effectHandlerCompositionCoherenceSuite_of_fail_present
+      clause baseEffects capability innerEffects okTy errTy loweredTy outerHandler
+      h_wellTyped h_expr h_cap_ne h_failZero h_fail_present h_clauseEffects h_lowered h_outer_abs)
+    h_open
+
+/--
+Direct premise-level bridge from open base row:
+if `baseEffects` is open and `clause.exprEffects` is produced by one operation
+step from `baseEffects`, nested closed-aware composition agrees with normalized
+nested composition.
+-/
+theorem effectHandlerCompositionCoherenceSuite_nestedClosedAware_eq_nestedCompose_of_open_base_row_of_premises
+    (clause : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_cap_ne : capability ≠ clause.handled)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_admissible : FailResultContracts.catchAdmissible clause.exprEffects)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy)
+    (h_outer_abs :
+      RowFields.has (EffectRow.fields outerHandler) clause.handled = false)
+    (h_base_open : EffectRow.rest baseEffects ≠ none) :
+    NestedHandlerCompositionContracts.nestedComposeClosedAware
+      clause.exprEffects
+      clause.handlerEffects
+      outerHandler
+      clause.handled =
+    NestedHandlerCompositionContracts.nestedCompose
+      clause.exprEffects
+      clause.handlerEffects
+      outerHandler
+      clause.handled := by
+  have h_open : EffectRow.rest clause.exprEffects ≠ none := by
+    rw [h_expr]
+    rw [EffectOperationTyping.performOperation_preserves_row_tail baseEffects capability]
+    exact h_base_open
+  exact effectHandlerCompositionCoherenceSuite_nestedClosedAware_eq_nestedCompose_of_open_expr_row_of_premises
+    clause baseEffects capability innerEffects okTy errTy loweredTy outerHandler
+    h_wellTyped h_expr h_cap_ne h_failZero h_admissible h_clauseEffects h_lowered h_outer_abs h_open
+
+/--
+Fail-presence variant of the open-base-row bridge entrypoint.
+-/
+theorem effectHandlerCompositionCoherenceSuite_nestedClosedAware_eq_nestedCompose_of_open_base_row_of_fail_present
+    (clause : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_cap_ne : capability ≠ clause.handled)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_fail_present :
+      RowFields.has (EffectRow.fields clause.exprEffects) FailResultContracts.failLabel = true)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy)
+    (h_outer_abs :
+      RowFields.has (EffectRow.fields outerHandler) clause.handled = false)
+    (h_base_open : EffectRow.rest baseEffects ≠ none) :
+    NestedHandlerCompositionContracts.nestedComposeClosedAware
+      clause.exprEffects
+      clause.handlerEffects
+      outerHandler
+      clause.handled =
+    NestedHandlerCompositionContracts.nestedCompose
+      clause.exprEffects
+      clause.handlerEffects
+      outerHandler
+      clause.handled := by
+  have h_open : EffectRow.rest clause.exprEffects ≠ none := by
+    rw [h_expr]
+    rw [EffectOperationTyping.performOperation_preserves_row_tail baseEffects capability]
+    exact h_base_open
+  exact effectHandlerCompositionCoherenceSuite_nestedClosedAware_eq_nestedCompose_of_open_expr_row_of_fail_present
+    clause baseEffects capability innerEffects okTy errTy loweredTy outerHandler
+    h_wellTyped h_expr h_cap_ne h_failZero h_fail_present h_clauseEffects h_lowered h_outer_abs h_open
+
+/--
+Named bundle for the open-row nested bridge surface.
+-/
+structure EffectHandlerNestedOpenRowBridgeBundle
+    (clause : HandleClauseContract)
+    (outerHandler : EffectRow) : Prop where
+  closedAwareEqNormalized :
+    NestedHandlerCompositionContracts.nestedComposeClosedAware
+      clause.exprEffects
+      clause.handlerEffects
+      outerHandler
+      clause.handled =
+    NestedHandlerCompositionContracts.nestedCompose
+      clause.exprEffects
+      clause.handlerEffects
+      outerHandler
+      clause.handled
+
+/-- Structural decomposition for the open-row bridge bundle. -/
+theorem effectHandlerNestedOpenRowBridgeBundle_iff_components
+    (clause : HandleClauseContract)
+    (outerHandler : EffectRow) :
+    EffectHandlerNestedOpenRowBridgeBundle clause outerHandler
+      ↔
+      (NestedHandlerCompositionContracts.nestedComposeClosedAware
+          clause.exprEffects
+          clause.handlerEffects
+          outerHandler
+          clause.handled =
+        NestedHandlerCompositionContracts.nestedCompose
+          clause.exprEffects
+          clause.handlerEffects
+          outerHandler
+          clause.handled) := by
+  constructor
+  · intro h_bundle
+    exact h_bundle.closedAwareEqNormalized
+  · intro h_comp
+    exact {
+      closedAwareEqNormalized := h_comp
+    }
+
+/-- Constructor helper for the open-row bridge bundle decomposition. -/
+theorem effectHandlerNestedOpenRowBridgeBundle_of_components
+    (clause : HandleClauseContract)
+    (outerHandler : EffectRow)
+    (h_comp :
+      NestedHandlerCompositionContracts.nestedComposeClosedAware
+        clause.exprEffects
+        clause.handlerEffects
+        outerHandler
+        clause.handled =
+      NestedHandlerCompositionContracts.nestedCompose
+        clause.exprEffects
+        clause.handlerEffects
+        outerHandler
+        clause.handled) :
+    EffectHandlerNestedOpenRowBridgeBundle clause outerHandler :=
+  (effectHandlerNestedOpenRowBridgeBundle_iff_components clause outerHandler).2 h_comp
+
+/-- Projection helper for the open-row bridge bundle decomposition. -/
+theorem effectHandlerNestedOpenRowBridgeBundle_as_components
+    (clause : HandleClauseContract)
+    (outerHandler : EffectRow)
+    (h_bundle : EffectHandlerNestedOpenRowBridgeBundle clause outerHandler) :
+    NestedHandlerCompositionContracts.nestedComposeClosedAware
+      clause.exprEffects
+      clause.handlerEffects
+      outerHandler
+      clause.handled =
+    NestedHandlerCompositionContracts.nestedCompose
+      clause.exprEffects
+      clause.handlerEffects
+      outerHandler
+      clause.handled :=
+  (effectHandlerNestedOpenRowBridgeBundle_iff_components clause outerHandler).1 h_bundle
+
+/-- Build the open-row bridge bundle from a composition-suite witness. -/
+theorem effectHandlerNestedOpenRowBridgeBundle_of_composition
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_comp :
+      EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler)
+    (h_open : EffectRow.rest clause.exprEffects ≠ none) :
+    EffectHandlerNestedOpenRowBridgeBundle clause outerHandler := by
+  exact {
+    closedAwareEqNormalized :=
+      effectHandlerCompositionSuite_nestedClosedAware_eq_nestedCompose_of_open_expr_row
+        clause capability innerEffects okTy errTy loweredTy outerHandler h_comp h_open
+  }
+
+/-- Build the open-row bridge bundle from a composition+coherence witness. -/
+theorem effectHandlerNestedOpenRowBridgeBundle_of_coherence
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionCoherenceSuite
+        clause capability innerEffects okTy errTy loweredTy outerHandler)
+    (h_open : EffectRow.rest clause.exprEffects ≠ none) :
+    EffectHandlerNestedOpenRowBridgeBundle clause outerHandler := by
+  exact {
+    closedAwareEqNormalized :=
+      effectHandlerCompositionCoherenceSuite_nestedClosedAware_eq_nestedCompose_of_open_expr_row
+        clause capability innerEffects okTy errTy loweredTy outerHandler h_suite h_open
+  }
+
+/--
+One-hop projection: open-row bridge bundle from a composition-suite witness.
+-/
+theorem effectHandlerCompositionSuite_nestedOpenRowBridgeBundle
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_comp :
+      EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler)
+    (h_open : EffectRow.rest clause.exprEffects ≠ none) :
+    EffectHandlerNestedOpenRowBridgeBundle clause outerHandler :=
+  effectHandlerNestedOpenRowBridgeBundle_of_composition
+    clause capability innerEffects okTy errTy loweredTy outerHandler h_comp h_open
+
+/--
+One-hop projection: open-row bridge bundle from a composition+coherence
+suite witness.
+-/
+theorem effectHandlerCompositionCoherenceSuite_nestedOpenRowBridgeBundle
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionCoherenceSuite
+        clause capability innerEffects okTy errTy loweredTy outerHandler)
+    (h_open : EffectRow.rest clause.exprEffects ≠ none) :
+    EffectHandlerNestedOpenRowBridgeBundle clause outerHandler :=
+  effectHandlerNestedOpenRowBridgeBundle_of_coherence
+    clause capability innerEffects okTy errTy loweredTy outerHandler h_suite h_open
+
+/-- Premise-level constructor for the open-row bridge bundle. -/
+theorem effectHandlerNestedOpenRowBridgeBundle_of_open_base_row_premises
+    (clause : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_cap_ne : capability ≠ clause.handled)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_admissible : FailResultContracts.catchAdmissible clause.exprEffects)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy)
+    (h_outer_abs :
+      RowFields.has (EffectRow.fields outerHandler) clause.handled = false)
+    (h_base_open : EffectRow.rest baseEffects ≠ none) :
+    EffectHandlerNestedOpenRowBridgeBundle clause outerHandler := by
+  exact {
+    closedAwareEqNormalized :=
+      effectHandlerCompositionCoherenceSuite_nestedClosedAware_eq_nestedCompose_of_open_base_row_of_premises
+        clause baseEffects capability innerEffects okTy errTy loweredTy outerHandler
+        h_wellTyped h_expr h_cap_ne h_failZero h_admissible h_clauseEffects h_lowered h_outer_abs h_base_open
+  }
+
+/-- Fail-presence variant of the premise-level open-row bridge bundle constructor. -/
+theorem effectHandlerNestedOpenRowBridgeBundle_of_open_base_row_fail_present
+    (clause : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_cap_ne : capability ≠ clause.handled)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_fail_present :
+      RowFields.has (EffectRow.fields clause.exprEffects) FailResultContracts.failLabel = true)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy)
+    (h_outer_abs :
+      RowFields.has (EffectRow.fields outerHandler) clause.handled = false)
+    (h_base_open : EffectRow.rest baseEffects ≠ none) :
+    EffectHandlerNestedOpenRowBridgeBundle clause outerHandler := by
+  exact {
+    closedAwareEqNormalized :=
+      effectHandlerCompositionCoherenceSuite_nestedClosedAware_eq_nestedCompose_of_open_base_row_of_fail_present
+        clause baseEffects capability innerEffects okTy errTy loweredTy outerHandler
+        h_wellTyped h_expr h_cap_ne h_failZero h_fail_present h_clauseEffects h_lowered h_outer_abs h_base_open
+  }
+
+/--
+Direct open-expr-row premise constructor for the open-row bridge bundle.
+-/
+theorem effectHandlerNestedOpenRowBridgeBundle_of_open_expr_row_premises
+    (clause : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_cap_ne : capability ≠ clause.handled)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_admissible : FailResultContracts.catchAdmissible clause.exprEffects)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy)
+    (h_outer_abs :
+      RowFields.has (EffectRow.fields outerHandler) clause.handled = false)
+    (h_open : EffectRow.rest clause.exprEffects ≠ none) :
+    EffectHandlerNestedOpenRowBridgeBundle clause outerHandler := by
+  exact {
+    closedAwareEqNormalized :=
+      effectHandlerCompositionCoherenceSuite_nestedClosedAware_eq_nestedCompose_of_open_expr_row_of_premises
+        clause baseEffects capability innerEffects okTy errTy loweredTy outerHandler
+        h_wellTyped h_expr h_cap_ne h_failZero h_admissible h_clauseEffects h_lowered h_outer_abs h_open
+  }
+
+/--
+Fail-presence variant of the direct open-expr-row premise constructor.
+-/
+theorem effectHandlerNestedOpenRowBridgeBundle_of_open_expr_row_fail_present
+    (clause : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_cap_ne : capability ≠ clause.handled)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_fail_present :
+      RowFields.has (EffectRow.fields clause.exprEffects) FailResultContracts.failLabel = true)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy)
+    (h_outer_abs :
+      RowFields.has (EffectRow.fields outerHandler) clause.handled = false)
+    (h_open : EffectRow.rest clause.exprEffects ≠ none) :
+    EffectHandlerNestedOpenRowBridgeBundle clause outerHandler := by
+  exact {
+    closedAwareEqNormalized :=
+      effectHandlerCompositionCoherenceSuite_nestedClosedAware_eq_nestedCompose_of_open_expr_row_of_fail_present
+        clause baseEffects capability innerEffects okTy errTy loweredTy outerHandler
+        h_wellTyped h_expr h_cap_ne h_failZero h_fail_present h_clauseEffects h_lowered h_outer_abs h_open
+  }
+
+/-- One-hop projection from the open-row bridge bundle. -/
+theorem effectHandlerNestedOpenRowBridgeBundle_closedAwareEqNormalized
+    (clause : HandleClauseContract)
+    (outerHandler : EffectRow)
+    (h_bundle : EffectHandlerNestedOpenRowBridgeBundle clause outerHandler) :
+    NestedHandlerCompositionContracts.nestedComposeClosedAware
+      clause.exprEffects
+      clause.handlerEffects
+      outerHandler
+      clause.handled =
+    NestedHandlerCompositionContracts.nestedCompose
+      clause.exprEffects
+      clause.handlerEffects
+      outerHandler
+      clause.handled :=
+  h_bundle.closedAwareEqNormalized
+
+/--
+Strengthened open-row consequence bundle:
+- closed-aware/normalized equality
+- handled-label absence on normalized nested composition
+-/
+structure EffectHandlerNestedOpenRowConsequenceBundle
+    (clause : HandleClauseContract)
+    (outerHandler : EffectRow) : Prop where
+  closedAwareEqNormalized :
+    NestedHandlerCompositionContracts.nestedComposeClosedAware
+      clause.exprEffects
+      clause.handlerEffects
+      outerHandler
+      clause.handled =
+    NestedHandlerCompositionContracts.nestedCompose
+      clause.exprEffects
+      clause.handlerEffects
+      outerHandler
+      clause.handled
+  normalizedHandledRemoved :
+    RowFields.has
+      (EffectRow.fields
+        (NestedHandlerCompositionContracts.nestedCompose
+          clause.exprEffects
+          clause.handlerEffects
+          outerHandler
+          clause.handled))
+      clause.handled = false
+
+/-- Structural decomposition for strengthened open-row consequence bundle. -/
+theorem effectHandlerNestedOpenRowConsequenceBundle_iff_components
+    (clause : HandleClauseContract)
+    (outerHandler : EffectRow) :
+    EffectHandlerNestedOpenRowConsequenceBundle clause outerHandler
+      ↔
+      (NestedHandlerCompositionContracts.nestedComposeClosedAware
+          clause.exprEffects
+          clause.handlerEffects
+          outerHandler
+          clause.handled =
+        NestedHandlerCompositionContracts.nestedCompose
+          clause.exprEffects
+          clause.handlerEffects
+          outerHandler
+          clause.handled)
+      ∧
+      (RowFields.has
+        (EffectRow.fields
+          (NestedHandlerCompositionContracts.nestedCompose
+            clause.exprEffects
+            clause.handlerEffects
+            outerHandler
+            clause.handled))
+        clause.handled = false) := by
+  constructor
+  · intro h_bundle
+    exact ⟨h_bundle.closedAwareEqNormalized, h_bundle.normalizedHandledRemoved⟩
+  · intro h_comp
+    exact {
+      closedAwareEqNormalized := h_comp.1
+      normalizedHandledRemoved := h_comp.2
+    }
+
+/-- Build strengthened open-row consequence bundle from explicit components. -/
+theorem effectHandlerNestedOpenRowConsequenceBundle_of_components
+    (clause : HandleClauseContract)
+    (outerHandler : EffectRow)
+    (h_comp :
+      (NestedHandlerCompositionContracts.nestedComposeClosedAware
+          clause.exprEffects
+          clause.handlerEffects
+          outerHandler
+          clause.handled =
+        NestedHandlerCompositionContracts.nestedCompose
+          clause.exprEffects
+          clause.handlerEffects
+          outerHandler
+          clause.handled)
+      ∧
+      (RowFields.has
+        (EffectRow.fields
+          (NestedHandlerCompositionContracts.nestedCompose
+            clause.exprEffects
+            clause.handlerEffects
+            outerHandler
+            clause.handled))
+        clause.handled = false)) :
+    EffectHandlerNestedOpenRowConsequenceBundle clause outerHandler :=
+  (effectHandlerNestedOpenRowConsequenceBundle_iff_components clause outerHandler).2 h_comp
+
+/-- One-hop decomposition of strengthened open-row consequence bundle. -/
+theorem effectHandlerNestedOpenRowConsequenceBundle_as_components
+    (clause : HandleClauseContract)
+    (outerHandler : EffectRow)
+    (h_bundle : EffectHandlerNestedOpenRowConsequenceBundle clause outerHandler) :
+    (NestedHandlerCompositionContracts.nestedComposeClosedAware
+        clause.exprEffects
+        clause.handlerEffects
+        outerHandler
+        clause.handled =
+      NestedHandlerCompositionContracts.nestedCompose
+        clause.exprEffects
+        clause.handlerEffects
+        outerHandler
+        clause.handled)
+    ∧
+    (RowFields.has
+      (EffectRow.fields
+        (NestedHandlerCompositionContracts.nestedCompose
+          clause.exprEffects
+          clause.handlerEffects
+          outerHandler
+          clause.handled))
+      clause.handled = false) :=
+  (effectHandlerNestedOpenRowConsequenceBundle_iff_components clause outerHandler).1 h_bundle
+
+/-- Build strengthened open-row consequence bundle from a composition witness. -/
+theorem effectHandlerNestedOpenRowConsequenceBundle_of_composition
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_comp :
+      EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler)
+    (h_open : EffectRow.rest clause.exprEffects ≠ none) :
+    EffectHandlerNestedOpenRowConsequenceBundle clause outerHandler := by
+  exact {
+    closedAwareEqNormalized :=
+      effectHandlerCompositionSuite_nestedClosedAware_eq_nestedCompose_of_open_expr_row
+        clause capability innerEffects okTy errTy loweredTy outerHandler h_comp h_open
+    normalizedHandledRemoved :=
+      effectHandlerCompositionSuite_nestedComposeHandledRemoved_of_open_expr_row
+        clause capability innerEffects okTy errTy loweredTy outerHandler h_comp h_open
+  }
+
+/-- Build strengthened open-row consequence bundle from a coherence witness. -/
+theorem effectHandlerNestedOpenRowConsequenceBundle_of_coherence
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionCoherenceSuite
+        clause capability innerEffects okTy errTy loweredTy outerHandler)
+    (h_open : EffectRow.rest clause.exprEffects ≠ none) :
+    EffectHandlerNestedOpenRowConsequenceBundle clause outerHandler := by
+  exact {
+    closedAwareEqNormalized :=
+      effectHandlerCompositionCoherenceSuite_nestedClosedAware_eq_nestedCompose_of_open_expr_row
+        clause capability innerEffects okTy errTy loweredTy outerHandler h_suite h_open
+    normalizedHandledRemoved :=
+      effectHandlerCompositionCoherenceSuite_nestedComposeHandledRemoved_of_open_expr_row
+        clause capability innerEffects okTy errTy loweredTy outerHandler h_suite h_open
+  }
+
+/--
+One-hop projection: strengthened open-row consequence bundle from a
+composition-suite witness.
+-/
+theorem effectHandlerCompositionSuite_nestedOpenRowConsequenceBundle
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_comp :
+      EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler)
+    (h_open : EffectRow.rest clause.exprEffects ≠ none) :
+    EffectHandlerNestedOpenRowConsequenceBundle clause outerHandler :=
+  effectHandlerNestedOpenRowConsequenceBundle_of_composition
+    clause capability innerEffects okTy errTy loweredTy outerHandler h_comp h_open
+
+/--
+One-hop projection: strengthened open-row consequence bundle from a
+composition+coherence suite witness.
+-/
+theorem effectHandlerCompositionCoherenceSuite_nestedOpenRowConsequenceBundle
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionCoherenceSuite
+        clause capability innerEffects okTy errTy loweredTy outerHandler)
+    (h_open : EffectRow.rest clause.exprEffects ≠ none) :
+    EffectHandlerNestedOpenRowConsequenceBundle clause outerHandler :=
+  effectHandlerNestedOpenRowConsequenceBundle_of_coherence
+    clause capability innerEffects okTy errTy loweredTy outerHandler h_suite h_open
+
+/-- Premise-level constructor for strengthened open-row consequence bundle. -/
+theorem effectHandlerNestedOpenRowConsequenceBundle_of_open_base_row_premises
+    (clause : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_cap_ne : capability ≠ clause.handled)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_admissible : FailResultContracts.catchAdmissible clause.exprEffects)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy)
+    (h_outer_abs :
+      RowFields.has (EffectRow.fields outerHandler) clause.handled = false)
+    (h_base_open : EffectRow.rest baseEffects ≠ none) :
+    EffectHandlerNestedOpenRowConsequenceBundle clause outerHandler := by
+  have h_comp :
+      EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler :=
+    effectHandlerCompositionSuite_of_premises
+      clause baseEffects capability innerEffects okTy errTy loweredTy outerHandler
+      h_wellTyped h_expr h_cap_ne h_failZero h_admissible h_clauseEffects h_lowered h_outer_abs
+  have h_open : EffectRow.rest clause.exprEffects ≠ none := by
+    rw [h_expr]
+    rw [EffectOperationTyping.performOperation_preserves_row_tail baseEffects capability]
+    exact h_base_open
+  exact effectHandlerNestedOpenRowConsequenceBundle_of_composition
+    clause capability innerEffects okTy errTy loweredTy outerHandler h_comp h_open
+
+/-- Fail-presence variant of premise-level strengthened open-row consequence bundle. -/
+theorem effectHandlerNestedOpenRowConsequenceBundle_of_open_base_row_fail_present
+    (clause : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_cap_ne : capability ≠ clause.handled)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_fail_present :
+      RowFields.has (EffectRow.fields clause.exprEffects) FailResultContracts.failLabel = true)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy)
+    (h_outer_abs :
+      RowFields.has (EffectRow.fields outerHandler) clause.handled = false)
+    (h_base_open : EffectRow.rest baseEffects ≠ none) :
+    EffectHandlerNestedOpenRowConsequenceBundle clause outerHandler := by
+  have h_comp :
+      EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler :=
+    effectHandlerCompositionSuite_of_fail_present
+      clause baseEffects capability innerEffects okTy errTy loweredTy outerHandler
+      h_wellTyped h_expr h_cap_ne h_failZero h_fail_present h_clauseEffects h_lowered h_outer_abs
+  have h_open : EffectRow.rest clause.exprEffects ≠ none := by
+    rw [h_expr]
+    rw [EffectOperationTyping.performOperation_preserves_row_tail baseEffects capability]
+    exact h_base_open
+  exact effectHandlerNestedOpenRowConsequenceBundle_of_composition
+    clause capability innerEffects okTy errTy loweredTy outerHandler h_comp h_open
+
+/--
+Direct open-expr-row premise constructor for strengthened open-row
+consequence bundle.
+-/
+theorem effectHandlerNestedOpenRowConsequenceBundle_of_open_expr_row_premises
+    (clause : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_cap_ne : capability ≠ clause.handled)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_admissible : FailResultContracts.catchAdmissible clause.exprEffects)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy)
+    (h_outer_abs :
+      RowFields.has (EffectRow.fields outerHandler) clause.handled = false)
+    (h_open : EffectRow.rest clause.exprEffects ≠ none) :
+    EffectHandlerNestedOpenRowConsequenceBundle clause outerHandler := by
+  exact {
+    closedAwareEqNormalized :=
+      effectHandlerCompositionCoherenceSuite_nestedClosedAware_eq_nestedCompose_of_open_expr_row_of_premises
+        clause baseEffects capability innerEffects okTy errTy loweredTy outerHandler
+        h_wellTyped h_expr h_cap_ne h_failZero h_admissible h_clauseEffects h_lowered h_outer_abs h_open
+    normalizedHandledRemoved :=
+      effectHandlerCompositionSuite_nestedComposeHandledRemoved_of_open_expr_row
+        clause capability innerEffects okTy errTy loweredTy outerHandler
+        (effectHandlerCompositionSuite_of_premises
+          clause baseEffects capability innerEffects okTy errTy loweredTy outerHandler
+          h_wellTyped h_expr h_cap_ne h_failZero h_admissible h_clauseEffects h_lowered h_outer_abs)
+        h_open
+  }
+
+/--
+Fail-presence variant of direct open-expr-row premise constructor for the
+strengthened open-row consequence bundle.
+-/
+theorem effectHandlerNestedOpenRowConsequenceBundle_of_open_expr_row_fail_present
+    (clause : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_cap_ne : capability ≠ clause.handled)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_fail_present :
+      RowFields.has (EffectRow.fields clause.exprEffects) FailResultContracts.failLabel = true)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy)
+    (h_outer_abs :
+      RowFields.has (EffectRow.fields outerHandler) clause.handled = false)
+    (h_open : EffectRow.rest clause.exprEffects ≠ none) :
+    EffectHandlerNestedOpenRowConsequenceBundle clause outerHandler := by
+  exact {
+    closedAwareEqNormalized :=
+      effectHandlerCompositionCoherenceSuite_nestedClosedAware_eq_nestedCompose_of_open_expr_row_of_fail_present
+        clause baseEffects capability innerEffects okTy errTy loweredTy outerHandler
+        h_wellTyped h_expr h_cap_ne h_failZero h_fail_present h_clauseEffects h_lowered h_outer_abs h_open
+    normalizedHandledRemoved :=
+      effectHandlerCompositionSuite_nestedComposeHandledRemoved_of_open_expr_row
+        clause capability innerEffects okTy errTy loweredTy outerHandler
+        (effectHandlerCompositionSuite_of_fail_present
+          clause baseEffects capability innerEffects okTy errTy loweredTy outerHandler
+          h_wellTyped h_expr h_cap_ne h_failZero h_fail_present h_clauseEffects h_lowered h_outer_abs)
+        h_open
+  }
+
+/-- One-hop projection: equality facet of strengthened open-row consequence bundle. -/
+theorem effectHandlerNestedOpenRowConsequenceBundle_closedAwareEqNormalized
+    (clause : HandleClauseContract)
+    (outerHandler : EffectRow)
+    (h_bundle : EffectHandlerNestedOpenRowConsequenceBundle clause outerHandler) :
+    NestedHandlerCompositionContracts.nestedComposeClosedAware
+      clause.exprEffects
+      clause.handlerEffects
+      outerHandler
+      clause.handled =
+    NestedHandlerCompositionContracts.nestedCompose
+      clause.exprEffects
+      clause.handlerEffects
+      outerHandler
+      clause.handled :=
+  h_bundle.closedAwareEqNormalized
+
+/-- One-hop projection: normalized handled-removal facet of strengthened bundle. -/
+theorem effectHandlerNestedOpenRowConsequenceBundle_normalizedHandledRemoved
+    (clause : HandleClauseContract)
+    (outerHandler : EffectRow)
+    (h_bundle : EffectHandlerNestedOpenRowConsequenceBundle clause outerHandler) :
+    RowFields.has
+      (EffectRow.fields
+        (NestedHandlerCompositionContracts.nestedCompose
+          clause.exprEffects
+          clause.handlerEffects
+          outerHandler
+          clause.handled))
+      clause.handled = false :=
+  h_bundle.normalizedHandledRemoved
+
+/--
+Build strengthened consequence bundle from a bridge bundle plus normalized
+handled-removal fact.
+-/
+theorem effectHandlerNestedOpenRowConsequenceBundle_of_bridge_and_normalizedHandledRemoved
+    (clause : HandleClauseContract)
+    (outerHandler : EffectRow)
+    (h_bridge : EffectHandlerNestedOpenRowBridgeBundle clause outerHandler)
+    (h_removed :
+      RowFields.has
+        (EffectRow.fields
+          (NestedHandlerCompositionContracts.nestedCompose
+            clause.exprEffects
+            clause.handlerEffects
+            outerHandler
+            clause.handled))
+        clause.handled = false) :
+    EffectHandlerNestedOpenRowConsequenceBundle clause outerHandler := by
+  exact {
+    closedAwareEqNormalized := h_bridge.closedAwareEqNormalized
+    normalizedHandledRemoved := h_removed
+  }
+
+/-- One-hop projection: recover bridge bundle from strengthened consequence bundle. -/
+theorem effectHandlerNestedOpenRowBridgeBundle_of_consequenceBundle
+    (clause : HandleClauseContract)
+    (outerHandler : EffectRow)
+    (h_bundle : EffectHandlerNestedOpenRowConsequenceBundle clause outerHandler) :
+    EffectHandlerNestedOpenRowBridgeBundle clause outerHandler := by
+  exact {
+    closedAwareEqNormalized := h_bundle.closedAwareEqNormalized
+  }
+
+/--
+Strengthened consequence bundle is equivalent to:
+- bridge bundle witness
+- normalized handled-removal fact
+-/
+theorem effectHandlerNestedOpenRowConsequenceBundle_iff_bridge_and_normalizedHandledRemoved
+    (clause : HandleClauseContract)
+    (outerHandler : EffectRow) :
+    EffectHandlerNestedOpenRowConsequenceBundle clause outerHandler
+      ↔
+      EffectHandlerNestedOpenRowBridgeBundle clause outerHandler
+      ∧
+      RowFields.has
+        (EffectRow.fields
+          (NestedHandlerCompositionContracts.nestedCompose
+            clause.exprEffects
+            clause.handlerEffects
+            outerHandler
+            clause.handled))
+        clause.handled = false := by
+  constructor
+  · intro h_bundle
+    exact ⟨
+      effectHandlerNestedOpenRowBridgeBundle_of_consequenceBundle clause outerHandler h_bundle,
+      h_bundle.normalizedHandledRemoved
+    ⟩
+  · intro h_comp
+    exact effectHandlerNestedOpenRowConsequenceBundle_of_bridge_and_normalizedHandledRemoved
+      clause
+      outerHandler
+      h_comp.1
+      h_comp.2
 
 end EffectHandlerContractSuite
 end Kea

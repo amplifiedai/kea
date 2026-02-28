@@ -280,6 +280,54 @@ structure ClosedAwareCoreBundle (c : HandleClauseContract) where
       EffectRow.rest c.exprEffects ≠ none) →
       resultEffectsCoreClosedAware c = HandleClauseContract.resultEffectsCore c
 
+/-- Structural decomposition for closed-aware core bundle. -/
+theorem closedAwareCoreBundle_iff_components
+    (c : HandleClauseContract) :
+    ClosedAwareCoreBundle c
+      ↔
+      (RowFields.has (EffectRow.fields c.exprEffects) c.handled = false →
+        EffectRow.rest c.exprEffects = none →
+          resultEffectsCoreClosedAware c = c.exprEffects)
+      ∧
+      ((RowFields.has (EffectRow.fields c.exprEffects) c.handled = true ∨
+          EffectRow.rest c.exprEffects ≠ none) →
+        resultEffectsCoreClosedAware c = HandleClauseContract.resultEffectsCore c) := by
+  constructor
+  · intro h_bundle
+    exact ⟨h_bundle.absentClosedNoop, h_bundle.presentOrOpenNormalized⟩
+  · intro h_comp
+    exact {
+      absentClosedNoop := h_comp.1
+      presentOrOpenNormalized := h_comp.2
+    }
+
+/-- Constructor helper for closed-aware core bundle decomposition. -/
+theorem closedAwareCoreBundle_of_components
+    (c : HandleClauseContract)
+    (h_comp :
+      (RowFields.has (EffectRow.fields c.exprEffects) c.handled = false →
+        EffectRow.rest c.exprEffects = none →
+          resultEffectsCoreClosedAware c = c.exprEffects)
+      ∧
+      ((RowFields.has (EffectRow.fields c.exprEffects) c.handled = true ∨
+          EffectRow.rest c.exprEffects ≠ none) →
+        resultEffectsCoreClosedAware c = HandleClauseContract.resultEffectsCore c)) :
+    ClosedAwareCoreBundle c :=
+  (closedAwareCoreBundle_iff_components c).2 h_comp
+
+/-- One-hop decomposition of closed-aware core bundle. -/
+theorem closedAwareCoreBundle_as_components
+    (c : HandleClauseContract)
+    (h_bundle : ClosedAwareCoreBundle c) :
+    (RowFields.has (EffectRow.fields c.exprEffects) c.handled = false →
+      EffectRow.rest c.exprEffects = none →
+        resultEffectsCoreClosedAware c = c.exprEffects)
+    ∧
+    ((RowFields.has (EffectRow.fields c.exprEffects) c.handled = true ∨
+        EffectRow.rest c.exprEffects ≠ none) →
+      resultEffectsCoreClosedAware c = HandleClauseContract.resultEffectsCore c) :=
+  (closedAwareCoreBundle_iff_components c).1 h_bundle
+
 theorem closedAwareCoreBundle_of_classification
     (c : HandleClauseContract) :
     ClosedAwareCoreBundle c := by
@@ -302,6 +350,53 @@ structure ClosedAwareResultBundle (c : HandleClauseContract) where
     EffectRow.rest (resultEffectsClosedAware c) = EffectRow.rest c.exprEffects
   legacyHandledRemoved :
     RowFields.has (EffectRow.fields (HandleClauseContract.resultEffects c)) c.handled = false
+
+/-- Structural decomposition for closed-aware result bundle. -/
+theorem closedAwareResultBundle_iff_components
+    (c : HandleClauseContract) :
+    ClosedAwareResultBundle c
+      ↔
+      (RowFields.has (EffectRow.fields (resultEffectsClosedAware c)) c.handled = false)
+      ∧
+      (EffectRow.rest (resultEffectsClosedAware c) = EffectRow.rest c.exprEffects)
+      ∧
+      (RowFields.has (EffectRow.fields (HandleClauseContract.resultEffects c)) c.handled = false) := by
+  constructor
+  · intro h_bundle
+    exact ⟨
+      h_bundle.closedAwareHandledRemoved,
+      h_bundle.closedAwareRowTailStable,
+      h_bundle.legacyHandledRemoved
+    ⟩
+  · intro h_comp
+    exact {
+      closedAwareHandledRemoved := h_comp.1
+      closedAwareRowTailStable := h_comp.2.1
+      legacyHandledRemoved := h_comp.2.2
+    }
+
+/-- Constructor helper for closed-aware result bundle decomposition. -/
+theorem closedAwareResultBundle_of_components
+    (c : HandleClauseContract)
+    (h_comp :
+      (RowFields.has (EffectRow.fields (resultEffectsClosedAware c)) c.handled = false)
+      ∧
+      (EffectRow.rest (resultEffectsClosedAware c) = EffectRow.rest c.exprEffects)
+      ∧
+      (RowFields.has (EffectRow.fields (HandleClauseContract.resultEffects c)) c.handled = false)) :
+    ClosedAwareResultBundle c :=
+  (closedAwareResultBundle_iff_components c).2 h_comp
+
+/-- One-hop decomposition of closed-aware result bundle. -/
+theorem closedAwareResultBundle_as_components
+    (c : HandleClauseContract)
+    (h_bundle : ClosedAwareResultBundle c) :
+    (RowFields.has (EffectRow.fields (resultEffectsClosedAware c)) c.handled = false)
+    ∧
+    (EffectRow.rest (resultEffectsClosedAware c) = EffectRow.rest c.exprEffects)
+    ∧
+    (RowFields.has (EffectRow.fields (HandleClauseContract.resultEffects c)) c.handled = false) :=
+  (closedAwareResultBundle_iff_components c).1 h_bundle
 
 theorem closedAwareResultBundle_of_wellTyped
     (c : HandleClauseContract)

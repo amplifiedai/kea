@@ -32,6 +32,45 @@ structure FailResultEquivalenceBundle (original lowered : Ty) where
     ∃ params eff okTy errTy,
       lowered = .functionEff params eff (.result okTy errTy)
 
+/-- Structural decomposition for fail-result equivalence bundle. -/
+theorem failResultEquivalenceBundle_iff_components
+    (original lowered : Ty) :
+    FailResultEquivalenceBundle original lowered
+      ↔
+      FailResultContracts.failResultFunctionEquivalent original lowered
+      ∧
+      (∃ params eff okTy errTy,
+        lowered = .functionEff params eff (.result okTy errTy)) := by
+  constructor
+  · intro h_bundle
+    exact ⟨h_bundle.equivalence, h_bundle.resultReturn⟩
+  · intro h_comp
+    exact {
+      equivalence := h_comp.1
+      resultReturn := h_comp.2
+    }
+
+/-- Constructor helper for fail-result equivalence bundle decomposition. -/
+theorem failResultEquivalenceBundle_of_components
+    (original lowered : Ty)
+    (h_comp :
+      FailResultContracts.failResultFunctionEquivalent original lowered
+      ∧
+      (∃ params eff okTy errTy,
+        lowered = .functionEff params eff (.result okTy errTy))) :
+    FailResultEquivalenceBundle original lowered :=
+  (failResultEquivalenceBundle_iff_components original lowered).2 h_comp
+
+/-- One-hop decomposition of fail-result equivalence bundle. -/
+theorem failResultEquivalenceBundle_as_components
+    (original lowered : Ty)
+    (h_bundle : FailResultEquivalenceBundle original lowered) :
+    FailResultContracts.failResultFunctionEquivalent original lowered
+    ∧
+    (∃ params eff okTy errTy,
+      lowered = .functionEff params eff (.result okTy errTy)) :=
+  (failResultEquivalenceBundle_iff_components original lowered).1 h_bundle
+
 theorem fail_result_equivalence_bundle
     (original lowered : Ty)
     (h_eqv : FailResultContracts.failResultFunctionEquivalent original lowered) :
