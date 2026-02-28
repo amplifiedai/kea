@@ -71,6 +71,10 @@ Designed and approved. Ready to pick up. Ordered by execution sequence per ROADM
 
 11. **[Error message quality](todo/0h-stdlib-errors.md)** — Row-diff error messages, effect provenance in diagnostics, stable error codes, snapshot tests. Not on critical path — runs in parallel with 0g.
 
+### Cross-phase: Syntax Migration (urgent, blocks correct stdlib/test authoring)
+
+14. **[Syntax migration: Rill to KERNEL Kea](todo/syntax-migration-rill-to-kea.md)** — Parser still uses Rill syntax (`record`, `{ ..base }` spread, `#(a, b)` tuples) instead of KERNEL-specified Kea syntax (`struct`, `base~{ field }` functional update, `(a, b)` tuples). Agents writing Kea code produce incorrect syntax because the parser accepts Rill forms. Must fix before more stdlib/test code is written.
+
 ### Cross-phase: Practical Language Gaps (0f through Phase 1)
 
 13. **[Practical language gaps](todo/practical-language-gaps.md)** — Layout intrinsics (`size_of`/`align_of`), bidirectional numeric literal inference, String/Bytes core operations, IO decomposition into Clock/Net/Rand, early-exit ergonomics assessment. Items land incrementally alongside 0f and 0g. No single phase — tracks what self-hosting needs that isn't covered by other briefs.
