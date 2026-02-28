@@ -9585,3 +9585,39 @@ This suite bundles:
 **Impact**:
 - Keeps WP7.2 precision package usage consistent with decomposition patterns
   across other formal suite layers.
+
+### 2026-02-28: decimal dim-kernel slice decomposition parity
+
+**Context**: Added structural decomposition helpers for
+`DecimalConstDimKernelSlice` in `Kea/Properties/DecimalParity.lean`, including
+an explicit component alias:
+- `DecimalConstDimKernelSliceComponents`
+- `decimalConstDimKernelSlice_as_components`
+- `decimalConstDimKernelSlice_of_components`
+- `decimalConstDimKernelSlice_iff_components`
+- `decimalConstDimKernelSlice_as_components_of_components`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Structural API extension only; no runtime semantic change.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Decimal dim-kernel package now supports one-step conversion between bundled
+  and explicit contract tuples.
+
+**Impact**:
+- Keeps WP7.3 decimal package usage aligned with decomposition patterns used by
+  precision, shape, and higher-level suite layers.

@@ -475,6 +475,105 @@ theorem decimalConstDimKernelSlice : DecimalConstDimKernelSlice := by
   · intro st fuel p1 p2 s1 s2
     exact decimal_unify_consts_decision_of_dim_kernel_none st fuel p1 p2 s1 s2
 
+/-- Explicit component contract tuple for `DecimalConstDimKernelSlice`. -/
+abbrev DecimalConstDimKernelSliceComponents : Prop :=
+  (∀ st fuel p1 p2 s1 s2,
+    unifyDim DimSubst.empty (fuel + 1) (.const p1) (.const p2) = some DimSubst.empty →
+    unifyDim DimSubst.empty (fuel + 1) (.const s1) (.const s2) = some DimSubst.empty →
+    unify st (fuel + 1)
+      (.decimal (.const p1) (.const s1))
+      (.decimal (.const p2) (.const s2))
+      = .ok st)
+  ∧
+  (∀ st fuel p1 p2 s1 s2,
+    unifyDim DimSubst.empty (fuel + 1) (.const p1) (.const p2) = none →
+    unify st (fuel + 1)
+      (.decimal (.const p1) (.const s1))
+      (.decimal (.const p2) (.const s2))
+      = .err "type mismatch")
+  ∧
+  (∀ st fuel p1 p2 s1 s2,
+    unifyDim DimSubst.empty (fuel + 1) (.const s1) (.const s2) = none →
+    unify st (fuel + 1)
+      (.decimal (.const p1) (.const s1))
+      (.decimal (.const p2) (.const s2))
+      = .err "type mismatch")
+  ∧
+  (∀ st fuel p1 p2 s1 s2,
+    (unifyDim DimSubst.empty (fuel + 1) (.const p1) (.const p2) = none ∨
+      unifyDim DimSubst.empty (fuel + 1) (.const s1) (.const s2) = none) →
+    unify st (fuel + 1)
+      (.decimal (.const p1) (.const s1))
+      (.decimal (.const p2) (.const s2))
+      = .err "type mismatch")
+  ∧
+  (∀ st fuel p1 p2 s1 s2,
+    unify st (fuel + 1)
+      (.decimal (.const p1) (.const s1))
+      (.decimal (.const p2) (.const s2))
+      = .ok st ↔
+    unifyDim DimSubst.empty (fuel + 1) (.const p1) (.const p2) = some DimSubst.empty ∧
+      unifyDim DimSubst.empty (fuel + 1) (.const s1) (.const s2) = some DimSubst.empty)
+  ∧
+  (∀ st fuel p1 p2 s1 s2,
+    unify st (fuel + 1)
+      (.decimal (.const p1) (.const s1))
+      (.decimal (.const p2) (.const s2))
+      = .err "type mismatch" ↔
+    (unifyDim DimSubst.empty (fuel + 1) (.const p1) (.const p2) = none ∨
+      unifyDim DimSubst.empty (fuel + 1) (.const s1) (.const s2) = none))
+  ∧
+  (∀ st fuel p1 p2 s1 s2,
+    unify st (fuel + 1)
+      (.decimal (.const p1) (.const s1))
+      (.decimal (.const p2) (.const s2))
+      =
+      if (unifyDim DimSubst.empty (fuel + 1) (.const p1) (.const p2) = none ∨
+          unifyDim DimSubst.empty (fuel + 1) (.const s1) (.const s2) = none)
+      then .err "type mismatch"
+      else .ok st)
+
+/-- Decompose `DecimalConstDimKernelSlice` into explicit component contracts. -/
+theorem decimalConstDimKernelSlice_as_components
+    (slice : DecimalConstDimKernelSlice) :
+    DecimalConstDimKernelSliceComponents :=
+  ⟨slice.success_of_dim_kernel_success,
+    slice.reject_of_prec_dim_kernel_none,
+    slice.reject_of_scale_dim_kernel_none,
+    slice.reject_of_dim_kernel_none,
+    slice.ok_iff_dim_kernel_success,
+    slice.err_iff_dim_kernel_none,
+    slice.decision_of_dim_kernel_none⟩
+
+/-- Build `DecimalConstDimKernelSlice` from explicit component contracts. -/
+theorem decimalConstDimKernelSlice_of_components
+    (h_comp : DecimalConstDimKernelSliceComponents) :
+    DecimalConstDimKernelSlice :=
+  { success_of_dim_kernel_success := h_comp.1
+    reject_of_prec_dim_kernel_none := h_comp.2.1
+    reject_of_scale_dim_kernel_none := h_comp.2.2.1
+    reject_of_dim_kernel_none := h_comp.2.2.2.1
+    ok_iff_dim_kernel_success := h_comp.2.2.2.2.1
+    err_iff_dim_kernel_none := h_comp.2.2.2.2.2.1
+    decision_of_dim_kernel_none := h_comp.2.2.2.2.2.2 }
+
+/-- `DecimalConstDimKernelSlice` is equivalent to its explicit component
+    contract tuple. -/
+theorem decimalConstDimKernelSlice_iff_components
+    (slice : DecimalConstDimKernelSlice) :
+    DecimalConstDimKernelSlice ↔ DecimalConstDimKernelSliceComponents := by
+  constructor
+  · intro h
+    exact decimalConstDimKernelSlice_as_components h
+  · intro h_comp
+    exact decimalConstDimKernelSlice_of_components h_comp
+
+/-- Direct components-route decomposition for `DecimalConstDimKernelSlice`. -/
+theorem decimalConstDimKernelSlice_as_components_of_components
+    (h_comp : DecimalConstDimKernelSliceComponents) :
+    DecimalConstDimKernelSliceComponents := by
+  simpa using h_comp
+
 /-- Packaged numeric constructor kernel suite:
     precision constructor contracts + decimal constant-dimension contracts. -/
 structure NumericConstructorKernelSuite : Prop where
