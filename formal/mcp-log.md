@@ -6116,3 +6116,32 @@ and phantom-IO regression family to ensure no runtime drift before continuing.
   effect-handler aggregate theorem surfaces.
 - Continuing formal Phase-2 packaging with this runtime-alignment checkpoint in
   place.
+
+### 2026-02-28: kea-mcp full library regression sweep (focused effect-row surface)
+
+**Context**: After landing additional `EffectHandlerContractSuite` aggregation
+and coherence lemmas, reran the full `kea-mcp` library test suite as a focused
+runtime sanity check before further formal packaging.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`crates/kea-mcp/src/lib.rs` unit tests).
+
+**Lean side**:
+- Current Phase-2 assumptions for active work:
+  - declared effect rows are preserved on effectful declarations,
+  - curried callback/call-chain propagation preserves residual effects,
+  - no phantom `IO` appears in pure/effect-specific paths.
+
+**Rust side**:
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+- Includes passing checks for:
+  - `type_check_effectful_function_keeps_declared_effect_row`
+  - `reset_session_does_not_leave_phantom_io_on_pure_functions`
+  - `type_check_{let_bound_call_result,direct_curried_call,curried_lambda_callback,curried_annotated_lambda_callback}_preserves_returned_callable_effect_row(s)`.
+
+**Classify**: Agreement (focused effect-row regression surface).
+
+**Outcome**:
+- No divergence found on the currently probed kea-mcp slice.
+- Continued formal-only theorem packaging on the effect/handler track.
