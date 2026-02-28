@@ -8180,3 +8180,44 @@ typing route by adding `operationCallBundle_callTyping_of_typing`.
 **Impact**:
 - Consumers no longer need to construct or destruct intermediate equivalence
   bundles manually on the common catch-typing premise path.
+
+### 2026-02-28: effect-handler suite constructor-route decomposition parity
+
+**Context**: Added explicit constructor-route decomposition wrappers in
+`EffectHandlerContractSuite` for premise/fail-present entrypoints:
+- `effectHandler{,Capstone}Suite_as_components_of_{premises,fail_present}`
+- `effectHandlerCatchPairSuite_as_components_of_{premises,fail_present}`
+- `effectHandlerCompositionSuite_as_components_of_{premises,fail_present}`
+- `effectHandlerCompositionCoherenceSuite_as_components_of_{premises,fail_present}`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type`.
+
+**Predict (Lean side)**:
+- Wrapper-only route parity expansion across suite constructor families.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: blocked by unrelated non-formal workspace compile errors
+  (`kea-syntax`/`kea-infer` compile failures: missing `Param.annotations`,
+  non-exhaustive `ExprKind::With` matches).
+- Ran fallback MCP probe binary:
+  `/tmp/kea-agent-targets/chris/019ca280-cb6c-72f3-9771-f519d3da1a94/debug/deps/kea_mcp-c086daa547f3e485 --nocapture`.
+- Fallback result: `10 passed; 0 failed`.
+
+**Classify**: Agreement on probed MCP slice; source-path precondition gap due
+external compile blocker.
+
+**Divergence**: none.
+
+**Outcome**:
+- Constructor-route decomposition parity wrappers landed across all major
+  EffectHandler suite layers.
+- Lean build and fallback MCP validation are green.
+
+**Impact**:
+- Premise/fail-present consumers can extract explicit suite components in one
+  step across handler aggregate, capstone, catch-pair, composition, and
+  composition-coherence layers.
