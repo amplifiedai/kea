@@ -9480,3 +9480,39 @@ contracts.
 **Impact**:
 - WP7.2 consumers can depend on one named precision kernel theorem surface
   instead of manually composing IntN/FloatN leaf contracts.
+
+### 2026-02-28: combined numeric constructor kernel suite
+
+**Context**: Extended `Kea/Properties/DecimalParity.lean` with a higher-level
+numeric package:
+- `NumericConstructorKernelSuite`
+- `numericConstructorKernelSuite`
+
+This suite bundles:
+- `PrecisionConstructorKernelSlice` (IntN/FloatN constructor contracts)
+- `DecimalConstDimKernelSlice` (decimal constant-dimension contracts)
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Aggregation layer only; no runtime semantic change.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Numeric constructor proof consumers can obtain precision+decimal contracts
+  through one named suite witness.
+
+**Impact**:
+- Simplifies downstream theorem dependencies across WP7.2 and WP7.3 numeric
+  parity surfaces.

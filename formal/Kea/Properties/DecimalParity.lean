@@ -8,6 +8,7 @@
 
 import Kea.Properties.UnifyReflexive
 import Kea.Dimensions
+import Kea.Properties.PrecisionLeafParity
 
 private theorem nat_beq_false_of_ne {a b : Nat} (h : a ≠ b) : (a == b) = false := by
   cases h_beq : (a == b) with
@@ -473,6 +474,18 @@ theorem decimalConstDimKernelSlice : DecimalConstDimKernelSlice := by
     exact decimal_unify_consts_err_iff_dim_kernel_none st fuel p1 p2 s1 s2
   · intro st fuel p1 p2 s1 s2
     exact decimal_unify_consts_decision_of_dim_kernel_none st fuel p1 p2 s1 s2
+
+/-- Packaged numeric constructor kernel suite:
+    precision constructor contracts + decimal constant-dimension contracts. -/
+structure NumericConstructorKernelSuite : Prop where
+  precision : PrecisionConstructorKernelSlice
+  decimal : DecimalConstDimKernelSlice
+
+/-- Canonical numeric constructor kernel suite. -/
+theorem numericConstructorKernelSuite : NumericConstructorKernelSuite := by
+  exact
+    { precision := precisionConstructorKernelSlice
+      decimal := decimalConstDimKernelSlice }
 
 /-- Decimal and non-decimal types do not unify. -/
 theorem decimal_non_decimal_mismatch (st : UnifyState) :
