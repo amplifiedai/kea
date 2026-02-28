@@ -10051,7 +10051,9 @@ fn pattern_is_irrefutable(pattern: &kea_ast::Pattern) -> bool {
         PatternKind::Record { fields, .. } | PatternKind::AnonRecord { fields, .. } => fields
             .iter()
             .all(|(_, field_pattern)| pattern_is_irrefutable(field_pattern)),
-        PatternKind::Lit(_) | PatternKind::Constructor { .. } => false,
+        PatternKind::Lit(_) | PatternKind::Constructor { .. } | PatternKind::Const { .. } => {
+            false
+        }
         PatternKind::Or(_) => false, // or-patterns are refutable
         PatternKind::As { pattern, .. } => pattern_is_irrefutable(pattern),
         // List patterns are refutable — [] doesn't match [1,2], [h,..t] doesn't match []
@@ -16587,7 +16589,25 @@ fn constrain_case_pattern_shape(
                 constrain_case_pattern_shape(rest_pat, &rest_ty, unifier, sum_types);
             }
         }
+        PatternKind::Const { .. } => {
+            // Type shape and Eq obligations for const patterns are validated in
+            // `infer_pattern` where the environment is available.
+        }
     }
+}
+
+fn resolve_const_pattern_type(
+    env: &TypeEnv,
+    qualifier: &str,
+    name: &str,
+    unifier: &mut Unifier,
+) -> Option<Type> {
+    let qualified_name = format!("{qualifier}.{name}");
+    if let Some(scheme) = env.lookup(&qualified_name) {
+        return Some(instantiate(scheme, unifier));
+    }
+    env.resolve_qualified(qualifier, name)
+        .map(|scheme| instantiate(scheme, unifier))
 }
 
 fn looks_like_module_name(name: &str) -> bool {
@@ -16701,6 +16721,22 @@ fn infer_pattern(
                 Lit::Unit => Type::Unit,
             };
             constrain_type_eq(unifier, &lit_ty, expected_ty, &prov);
+        }
+
+        PatternKind::Const { qualifier, name } => {
+            let Some(const_ty) = resolve_const_pattern_type(env, qualifier, name, unifier) else {
+                unifier.push_error(
+                    Diagnostic::error(
+                        Category::UndefinedName,
+                        format!("unknown const pattern `{qualifier}.{name}`"),
+                    )
+                    .at(span_to_loc(pattern.span))
+                    .with_help("declare the const field in the target struct/module before matching on it."),
+                );
+                return;
+            };
+            constrain_type_eq(unifier, &const_ty, expected_ty, &prov);
+            constrain_trait_obligation(unifier, &const_ty, "Eq", &prov);
         }
 
         PatternKind::Constructor {

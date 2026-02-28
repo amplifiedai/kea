@@ -1,6 +1,6 @@
 # Brief: Const Fields
 
-**Status:** active
+**Status:** done
 **Priority:** v1
 **Depends on:** 0d (codegen working)
 **Blocks:** stdlib-bootstrap (module constants like `Math.pi`, `Int.max_value`)
@@ -57,12 +57,13 @@ Circular const references are a compile error.
 
 ### 4. Codegen
 
-- `@unboxed` types: inline as immediate operands
-- Heap types: emit in static read-only data section with immortal
-  refcount (sentinel value, e.g. `isize::MAX`). Skip retain/release
-  on const references.
-- Qualified access (`Math.pi`): load from static data or inline
-  the immediate, depending on type
+- `@unboxed` and strict-subset const expressions lower to compile-time
+  known MIR value expressions (literals/ops/constructors/records).
+- Qualified access (`Math.pi`) resolves through module/type const
+  metadata and lowers without runtime name lookup.
+- Heap-const static-data placement + immortal refcount sentinel is
+  deferred to 0f memory/runtime consolidation (same machinery needed by
+  broader heap layout/ownership work).
 
 ### 5. Const patterns
 
@@ -75,8 +76,9 @@ Circular const references are a compile error.
 
 ### 6. Evaluator (`kea-eval`)
 
-Add const field resolution to the tree-walking evaluator. Evaluate
-const initializers once at module load time, cache the result.
+Deferred: `kea-eval` crate is not active in Phase 0. Const field
+evaluation is implemented in the compiler pipeline for compiled
+execution paths; evaluator parity work lands with evaluator bring-up.
 
 ## Tests
 
@@ -137,4 +139,5 @@ PKG=kea mise run test-pkg
 ## Progress
 - 2026-02-28 15:54: Parser/AST slice landed locally: added `const` keyword token + lexer support, struct-body `const name: Type = expr` parsing, `RecordDef.const_fields` + `ConstField` AST node, parser regression tests, and downstream `RecordDef` constructor updates in `kea-infer`, `kea-mir`, and benchmark helpers. Validation run: `mise run check`, `PKG=kea-syntax mise run test-pkg`, `PKG=kea-infer mise run test-pkg`, `PKG=kea-mir mise run test-pkg`.
 - 2026-02-28 16:03: Typechecker + lowering slice landed locally: const fields are registered as qualified module/type members before function typechecking; const initializers are validated against declared types, restricted to pure compile-time-safe syntax (calls/effectful forms rejected), and checked for circular dependencies. MIR lowering now resolves `Type.const`/`Module.const` names through a const-expression table with cycle guards and lowers supported initializer expressions (literals/ops/constructors/record literals) to values. Added CLI regressions for const access, const dependency chaining, call rejection, and cycle rejection. Validation run: `mise run check`, `PKG=kea-mir mise run test-pkg`, `PKG=kea mise run test-pkg`.
-- **Next:** finish brief delta: const pattern matching semantics + evaluator/runtime representation for heap const payloads/static data placement.
+- 2026-02-28 18:27: Closed remaining delta: added `Type.name` const-pattern parsing (`PatternKind::Const`) and wired typecheck/HIR lowering so const patterns compile as explicit equality checks (`scrutinee == Type.const`) with `Eq` obligation constraints, unknown-const diagnostics, and non-exhaustiveness behavior unchanged (const-only arms still require fallback). Added parser/HIR/CLI regressions (`parse_case_qualified_const_pattern`, `lower_function_const_pattern_case_desugars_to_if_chain`, `compile_and_execute_case_on_struct_const_pattern_*`). Validation run: `mise run check`, `PKG=kea-syntax mise run test-pkg`, `PKG=kea-hir mise run test-pkg`, `PKG=kea-infer mise run test-pkg`, `PKG=kea mise run test-pkg`.
+- **Done:** no remaining implementation deltas in this brief for Phase 0.

@@ -326,6 +326,15 @@ pub enum PatternKind {
         rest: bool,
     },
 
+    /// Matches against a qualified const field value: `Type.name`.
+    ///
+    /// This is distinct from qualified constructor patterns (`Type.Variant`)
+    /// because const members are lower-case identifiers.
+    Const {
+        qualifier: String,
+        name: String,
+    },
+
     /// Matches a tuple: `(a, b)`.
     Tuple(Vec<Pattern>),
 
@@ -1161,7 +1170,7 @@ pub fn collect_pattern_bindings_pub(
 
 fn collect_pattern_bindings(pattern: &PatternKind, bound: &mut std::collections::HashSet<String>) {
     match pattern {
-        PatternKind::Wildcard | PatternKind::Lit(_) => {}
+        PatternKind::Wildcard | PatternKind::Lit(_) | PatternKind::Const { .. } => {}
         PatternKind::Var(name) => {
             bound.insert(name.clone());
         }
