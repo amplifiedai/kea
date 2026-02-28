@@ -907,5 +907,91 @@ theorem higherOrderCatchBridgeLaws_generic_to_classification
       FailResultContracts.catchUnnecessary innerEffects) :=
   (h_laws.classificationIff).2 h_class
 
+/--
+Route higher-order capstone construction through packaged bridge laws and the
+generic catch capstone theorem.
+-/
+theorem higherOrderCatchTypingJudgment_capstone_of_premises_via_bridgeLaws
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_admissible : FailResultContracts.catchAdmissible clause.exprEffects)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (.cons (higherOrderParamType innerEffects okTy) .nil)
+          clause.exprEffects
+          okTy
+          errTy) :
+    HigherOrderCatchCapstoneOutcome clause innerEffects okTy errTy loweredTy := by
+  let h_laws :=
+    higherOrderCatchBridgeLaws_of_clauseEffects
+      clause innerEffects okTy errTy loweredTy h_clauseEffects
+  have h_generic :
+      CatchTypingBridge.CatchTypingCapstoneOutcome
+        clause
+        (.cons (higherOrderParamType innerEffects okTy) .nil)
+        okTy
+        errTy
+        loweredTy :=
+    CatchTypingBridge.catchTypingJudgment_capstone_of_premises
+      clause
+      (.cons (higherOrderParamType innerEffects okTy) .nil)
+      okTy
+      errTy
+      loweredTy
+      h_wellTyped
+      h_failZero
+      h_admissible
+      h_lowered
+  exact higherOrderCatchBridgeLaws_generic_to_capstone
+    clause innerEffects okTy errTy loweredTy h_laws h_generic
+
+/--
+Route higher-order classification through packaged bridge laws and the generic
+catch classifier theorem.
+-/
+theorem higherOrderCatchTypingJudgment_classify_of_premises_via_bridgeLaws
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (.cons (higherOrderParamType innerEffects okTy) .nil)
+          clause.exprEffects
+          okTy
+          errTy) :
+    HigherOrderCatchCapstoneOutcome clause innerEffects okTy errTy loweredTy ∨
+      FailResultContracts.catchUnnecessary innerEffects := by
+  let h_laws :=
+    higherOrderCatchBridgeLaws_of_clauseEffects
+      clause innerEffects okTy errTy loweredTy h_clauseEffects
+  have h_generic :
+      CatchTypingBridge.CatchTypingCapstoneOutcome
+        clause
+        (.cons (higherOrderParamType innerEffects okTy) .nil)
+        okTy
+        errTy
+        loweredTy
+        ∨ FailResultContracts.catchUnnecessary clause.exprEffects :=
+    CatchTypingBridge.catchTypingJudgment_classify_of_premises
+      clause
+      (.cons (higherOrderParamType innerEffects okTy) .nil)
+      okTy
+      errTy
+      loweredTy
+      h_wellTyped
+      h_failZero
+      h_lowered
+  exact higherOrderCatchBridgeLaws_generic_to_classification
+    clause innerEffects okTy errTy loweredTy h_laws h_generic
+
 end HigherOrderCatchContracts
 end Kea
