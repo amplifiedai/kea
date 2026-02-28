@@ -21,8 +21,8 @@ use cranelift_module::{FuncId, Linkage, Module};
 use cranelift_object::{ObjectBuilder, ObjectModule};
 use kea_hir::HirModule;
 use kea_mir::{
-    MirBinaryOp, MirCallee, MirEffectOpClass, MirFunction, MirInst, MirLiteral, MirModule,
-    MirTerminator, MirUnaryOp, MirValueId, lower_hir_module,
+    MirBinaryOp, MirBlockId, MirCallee, MirEffectOpClass, MirFunction, MirInst, MirLiteral,
+    MirModule, MirTerminator, MirUnaryOp, MirValueId, lower_hir_module,
 };
 use kea_types::{EffectRow, FloatWidth, IntWidth, RecordType, Signedness, SumType, Type};
 
@@ -112,6 +112,7 @@ pub struct FunctionPassStats {
     pub release_count: usize,
     pub alloc_count: usize,
     pub reuse_count: usize,
+    pub reuse_token_candidate_count: usize,
     pub tail_self_call_count: usize,
     pub handler_enter_count: usize,
     pub handler_exit_count: usize,
@@ -4364,7 +4365,192 @@ fn collect_function_stats(function: &MirFunction) -> FunctionPassStats {
         }
     }
 
+    let layout_keys = infer_heap_layout_keys_for_stats(function);
+    stats.reuse_token_candidate_count =
+        collect_reuse_token_candidate_count(function, &layout_keys);
+
     stats
+}
+
+fn collect_reuse_token_candidate_count(
+    function: &MirFunction,
+    layout_keys: &BTreeMap<MirValueId, String>,
+) -> usize {
+    let block_index_by_id = function
+        .blocks
+        .iter()
+        .enumerate()
+        .map(|(idx, block)| (block.id.clone(), idx))
+        .collect::<BTreeMap<_, _>>();
+
+    let mut count = 0;
+    for (block_idx, block) in function.blocks.iter().enumerate() {
+        for (inst_idx, inst) in block.instructions.iter().enumerate() {
+            let MirInst::Release { value } = inst else {
+                continue;
+            };
+            let Some(layout) = layout_keys.get(value) else {
+                continue;
+            };
+            if has_reachable_unfused_alloc_of_layout(
+                function,
+                &block_index_by_id,
+                block_idx,
+                inst_idx + 1,
+                layout,
+            ) {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+fn has_reachable_unfused_alloc_of_layout(
+    function: &MirFunction,
+    block_index_by_id: &BTreeMap<MirBlockId, usize>,
+    start_block_idx: usize,
+    start_inst_idx: usize,
+    target_layout: &str,
+) -> bool {
+    let mut stack = vec![(start_block_idx, start_inst_idx)];
+    let mut visited = BTreeSet::<(usize, usize)>::new();
+    while let Some((block_idx, inst_idx)) = stack.pop() {
+        if !visited.insert((block_idx, inst_idx)) {
+            continue;
+        }
+        let block = &function.blocks[block_idx];
+        for inst in block.instructions.iter().skip(inst_idx) {
+            if inst_alloc_layout_key(inst).is_some_and(|layout| layout == target_layout) {
+                return true;
+            }
+        }
+
+        match &block.terminator {
+            MirTerminator::Jump { target, .. } => {
+                if let Some(next_idx) = block_index_by_id.get(target).copied() {
+                    stack.push((next_idx, 0));
+                }
+            }
+            MirTerminator::Branch {
+                then_block,
+                else_block,
+                ..
+            } => {
+                if let Some(next_idx) = block_index_by_id.get(then_block).copied() {
+                    stack.push((next_idx, 0));
+                }
+                if let Some(next_idx) = block_index_by_id.get(else_block).copied() {
+                    stack.push((next_idx, 0));
+                }
+            }
+            MirTerminator::Return { .. } | MirTerminator::Unreachable => {}
+        }
+    }
+    false
+}
+
+fn inst_alloc_layout_key(inst: &MirInst) -> Option<String> {
+    match inst {
+        MirInst::RecordInit { record_type, .. } => Some(format!("record:{record_type}")),
+        MirInst::SumInit { sum_type, .. } => Some(format!("sum:{sum_type}")),
+        _ => None,
+    }
+}
+
+fn infer_heap_layout_keys_for_stats(function: &MirFunction) -> BTreeMap<MirValueId, String> {
+    let mut layout_keys = BTreeMap::new();
+    let block_index_by_id = function
+        .blocks
+        .iter()
+        .enumerate()
+        .map(|(idx, block)| (block.id.clone(), idx))
+        .collect::<BTreeMap<_, _>>();
+
+    for block in &function.blocks {
+        for param in &block.params {
+            if let Some(layout) = heap_layout_key_from_type(&param.ty) {
+                layout_keys.insert(param.id.clone(), layout);
+            }
+        }
+    }
+
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for block in &function.blocks {
+            for inst in &block.instructions {
+                match inst {
+                    MirInst::RecordInit {
+                        dest, record_type, ..
+                    }
+                    | MirInst::RecordInitReuse {
+                        dest, record_type, ..
+                    } => {
+                        let layout = format!("record:{record_type}");
+                        if layout_keys.get(dest) != Some(&layout) {
+                            layout_keys.insert(dest.clone(), layout);
+                            changed = true;
+                        }
+                    }
+                    MirInst::SumInit { dest, sum_type, .. }
+                    | MirInst::SumInitReuse { dest, sum_type, .. } => {
+                        let layout = format!("sum:{sum_type}");
+                        if layout_keys.get(dest) != Some(&layout) {
+                            layout_keys.insert(dest.clone(), layout);
+                            changed = true;
+                        }
+                    }
+                    MirInst::Move { dest, src }
+                    | MirInst::Borrow { dest, src }
+                    | MirInst::TryClaim { dest, src }
+                    | MirInst::Freeze { dest, src } => {
+                        if let Some(layout) = layout_keys.get(src).cloned()
+                            && layout_keys.get(dest) != Some(&layout)
+                        {
+                            layout_keys.insert(dest.clone(), layout);
+                            changed = true;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+
+            if let MirTerminator::Jump { target, args } = &block.terminator
+                && let Some(target_idx) = block_index_by_id.get(target).copied()
+            {
+                let target_block = &function.blocks[target_idx];
+                for (arg, param) in args.iter().zip(target_block.params.iter()) {
+                    match (
+                        layout_keys.get(arg).cloned(),
+                        layout_keys.get(&param.id).cloned(),
+                    ) {
+                        (Some(layout), None) => {
+                            layout_keys.insert(param.id.clone(), layout);
+                            changed = true;
+                        }
+                        (None, Some(layout)) => {
+                            layout_keys.insert(arg.clone(), layout);
+                            changed = true;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+
+    layout_keys
+}
+
+fn heap_layout_key_from_type(ty: &Type) -> Option<String> {
+    match ty {
+        Type::Record(record) => Some(format!("record:{}", record.name)),
+        Type::Sum(sum) => Some(format!("sum:{}", sum.name)),
+        Type::Option(_) => Some("sum:Option".to_string()),
+        Type::Result(_, _) => Some("sum:Result".to_string()),
+        _ => None,
+    }
 }
 
 pub fn default_abi_manifest(module: &MirModule) -> AbiManifest {
@@ -5493,6 +5679,86 @@ mod tests {
                         value: Some(MirValueId(4)),
                     },
                 }],
+            }],
+            layouts: MirLayoutCatalog {
+                records: vec![MirRecordLayout {
+                    name: "User".to_string(),
+                    fields: vec![MirRecordFieldLayout {
+                        name: "age".to_string(),
+                        annotation: kea_ast::TypeAnnotation::Named("Int".to_string()),
+                    }],
+                }],
+                sums: vec![],
+            },
+        }
+    }
+
+    fn sample_reuse_token_candidate_module() -> MirModule {
+        MirModule {
+            functions: vec![MirFunction {
+                name: "main".to_string(),
+                signature: MirFunctionSignature {
+                    params: vec![],
+                    ret: Type::Int,
+                    effects: EffectRow::pure(),
+                },
+                entry: MirBlockId(0),
+                blocks: vec![
+                    MirBlock {
+                        id: MirBlockId(0),
+                        params: vec![],
+                        instructions: vec![
+                            MirInst::Const {
+                                dest: MirValueId(0),
+                                literal: MirLiteral::Int(1),
+                            },
+                            MirInst::RecordInit {
+                                dest: MirValueId(1),
+                                record_type: "User".to_string(),
+                                fields: vec![("age".to_string(), MirValueId(0))],
+                            },
+                            MirInst::Release {
+                                value: MirValueId(1),
+                            },
+                        ],
+                        terminator: MirTerminator::Jump {
+                            target: MirBlockId(1),
+                            args: vec![MirValueId(1)],
+                        },
+                    },
+                    MirBlock {
+                        id: MirBlockId(1),
+                        params: vec![MirBlockParam {
+                            id: MirValueId(10),
+                            ty: Type::Record(RecordType {
+                                name: "User".to_string(),
+                                params: vec![],
+                                row: RowType::closed(vec![(Label::new("age"), Type::Int)]),
+                            }),
+                        }],
+                        instructions: vec![
+                            MirInst::Const {
+                                dest: MirValueId(2),
+                                literal: MirLiteral::Int(7),
+                            },
+                            MirInst::RecordInit {
+                                dest: MirValueId(3),
+                                record_type: "User".to_string(),
+                                fields: vec![("age".to_string(), MirValueId(2))],
+                            },
+                            MirInst::RecordFieldLoad {
+                                dest: MirValueId(4),
+                                record: MirValueId(3),
+                                record_type: "User".to_string(),
+                                field: "age".to_string(),
+                                field_ty: Type::Int,
+                            },
+                        ],
+                        terminator: MirTerminator::Return {
+                            value: Some(MirValueId(4)),
+                        },
+                    },
+                ],
             }],
             layouts: MirLayoutCatalog {
                 records: vec![MirRecordLayout {
@@ -6651,6 +6917,7 @@ mod tests {
         assert_eq!(function.retain_count, 1);
         assert_eq!(function.release_count, 1);
         assert_eq!(function.reuse_count, 0);
+        assert_eq!(function.reuse_token_candidate_count, 0);
         assert_eq!(function.effect_op_direct_count, 1);
     }
 
@@ -6662,7 +6929,19 @@ mod tests {
         assert_eq!(stats.per_function.len(), 1);
         let function = &stats.per_function[0];
         assert_eq!(function.reuse_count, 1);
+        assert_eq!(function.reuse_token_candidate_count, 0);
         assert_eq!(function.alloc_count, 2);
+    }
+
+    #[test]
+    fn collect_pass_stats_counts_reuse_token_candidates() {
+        let module = sample_reuse_token_candidate_module();
+        let stats = collect_pass_stats(&module);
+
+        assert_eq!(stats.per_function.len(), 1);
+        let function = &stats.per_function[0];
+        assert_eq!(function.reuse_count, 0);
+        assert_eq!(function.reuse_token_candidate_count, 1);
     }
 
     #[test]
