@@ -9445,3 +9445,38 @@ combined rejection, success iff, rejection iff, and decision contracts.
 **Impact**:
 - WP7.3 consumers can depend on one decimal kernel package instead of stitching
   multiple standalone lemmas.
+
+### 2026-02-28: packaged precision constructor kernel slice
+
+**Context**: Added a named precision package in
+`Kea/Properties/PrecisionLeafParity.lean`:
+- `PrecisionConstructorKernelSlice`
+- `precisionConstructorKernelSlice`
+
+It bundles IntN/FloatN constructor success iff, rejection iff, and decision
+contracts.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- API packaging only; no runtime semantic change.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Precision constructor unifier behavior is now available via a single package
+  witness aligned with other dim/shape/decimal packaging surfaces.
+
+**Impact**:
+- WP7.2 consumers can depend on one named precision kernel theorem surface
+  instead of manually composing IntN/FloatN leaf contracts.
