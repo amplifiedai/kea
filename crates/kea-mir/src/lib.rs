@@ -1758,8 +1758,14 @@ fn collect_function_dispatch_effects(
             .filter(|effect| effect != "Fail")
             .filter(|effect| !is_direct_capability_effect(effect))
             .collect::<Vec<_>>();
-        if !effects.is_empty() {
-            mapping.insert(function.name.clone(), effects);
+        let mut dispatch_ops = BTreeSet::new();
+        for effect in effects {
+            for op in effect_operations.values().filter(|op| op.effect == effect) {
+                dispatch_ops.insert(format!("{effect}.{}", op.operation));
+            }
+        }
+        if !dispatch_ops.is_empty() {
+            mapping.insert(function.name.clone(), dispatch_ops.into_iter().collect());
         }
     }
     mapping
@@ -2330,7 +2336,7 @@ struct FunctionLoweringCtx {
     intrinsic_symbols: BTreeMap<String, String>,
     effect_operations: BTreeMap<String, EffectOperationInfo>,
     known_function_dispatch_effects: BTreeMap<String, Vec<String>>,
-    active_effect_cells: BTreeMap<String, MirValueId>,
+    active_effect_cells: BTreeMap<(String, String), MirValueId>,
     active_effect_handlers: BTreeMap<String, ActiveEffectHandlerPlan>,
     lambda_factories: BTreeMap<String, LambdaFactoryTemplate>,
     var_record_types: BTreeMap<String, String>,
@@ -2387,7 +2393,7 @@ struct VarScope {
     var_types: BTreeMap<String, Type>,
     local_lambdas: BTreeMap<String, LocalLambda>,
     var_record_types: BTreeMap<String, String>,
-    active_effect_cells: BTreeMap<String, MirValueId>,
+    active_effect_cells: BTreeMap<(String, String), MirValueId>,
     active_effect_handlers: BTreeMap<String, ActiveEffectHandlerPlan>,
 }
 
@@ -2422,10 +2428,16 @@ impl FunctionLoweringCtx {
 
         let mut active_effect_cells = BTreeMap::new();
         let mut active_effect_handlers = BTreeMap::new();
-        for (idx, effect) in hidden_dispatch_effects.iter().enumerate() {
-            active_effect_cells.insert(effect.clone(), MirValueId((param_count + idx) as u32));
+        for (idx, dispatch_op_key) in hidden_dispatch_effects.iter().enumerate() {
+            let shared_cell = MirValueId((param_count + idx) as u32);
+            let Some((effect, operation)) = dispatch_op_key.split_once('.') else {
+                continue;
+            };
+            active_effect_cells.insert((effect.to_string(), operation.to_string()), shared_cell);
             if let Some(plan) = handler_plan_for_effect(effect_operations, effect) {
-                active_effect_handlers.insert(effect.clone(), plan);
+                active_effect_handlers
+                    .entry(effect.to_string())
+                    .or_insert(plan);
             }
         }
 
@@ -2835,6 +2847,12 @@ impl FunctionLoweringCtx {
         }
     }
 
+    fn lookup_effect_cell(&self, effect: &str, operation: &str) -> Option<MirValueId> {
+        self.active_effect_cells
+            .get(&(effect.to_string(), operation.to_string()))
+            .cloned()
+    }
+
     fn lower_expr(&mut self, expr: &HirExpr) -> Option<MirValueId> {
         match &expr.kind {
             HirExprKind::Lit(lit) => {
@@ -3185,7 +3203,8 @@ impl FunctionLoweringCtx {
             return None;
         }
         let mut plan = ActiveEffectHandlerPlan::default();
-        let mut initial_expr: Option<&HirExpr> = None;
+        let mut operation_initial_exprs: BTreeMap<String, Option<HirExpr>> = BTreeMap::new();
+        let mut has_store_clause = false;
         for clause in clauses
             .iter()
             .filter(|clause| clause.effect == target_effect)
@@ -3216,11 +3235,10 @@ impl FunctionLoweringCtx {
 
             match clause.args.len() {
                 0 => {
-                    if initial_expr.is_none() {
-                        initial_expr = Some(resume_value);
-                    }
                     plan.operation_lowering
                         .insert(clause.operation.clone(), HandlerCellOpLowering::LoadCell);
+                    operation_initial_exprs
+                        .insert(clause.operation.clone(), Some((*resume_value).clone()));
                 }
                 1 => {
                     if !matches!(resume_value.kind, HirExprKind::Lit(kea_ast::Lit::Unit)) {
@@ -3237,6 +3255,8 @@ impl FunctionLoweringCtx {
                         clause.operation.clone(),
                         HandlerCellOpLowering::StoreArgAndReturnUnit,
                     );
+                    operation_initial_exprs.insert(clause.operation.clone(), None);
+                    has_store_clause = true;
                 }
                 arity => {
                     self.emit_inst(MirInst::Unsupported {
@@ -3258,27 +3278,66 @@ impl FunctionLoweringCtx {
             return None;
         }
 
-        let initial = if let Some(initial_expr) = initial_expr {
-            self.lower_expr(initial_expr)?
-        } else {
-            let unit = self.new_value();
-            self.emit_inst(MirInst::Const {
-                dest: unit.clone(),
-                literal: MirLiteral::Unit,
+        let mut operation_cells: Vec<(String, MirValueId)> = Vec::new();
+        let mut release_cells: BTreeSet<MirValueId> = BTreeSet::new();
+        let shared_cell = if has_store_clause {
+            let initial = operation_initial_exprs
+                .values()
+                .find_map(|expr| expr.as_ref())
+                .and_then(|expr| self.lower_expr(expr))
+                .unwrap_or_else(|| {
+                    let unit = self.new_value();
+                    self.emit_inst(MirInst::Const {
+                        dest: unit.clone(),
+                        literal: MirLiteral::Unit,
+                    });
+                    unit
+                });
+            let cell = self.new_value();
+            self.emit_inst(MirInst::StateCellNew {
+                dest: cell.clone(),
+                initial,
             });
-            unit
+            Some(cell)
+        } else {
+            None
         };
-        let cell = self.new_value();
-        self.emit_inst(MirInst::StateCellNew {
-            dest: cell.clone(),
-            initial,
-        });
+        for operation in plan.operation_lowering.keys() {
+            let cell = if let Some(shared) = &shared_cell {
+                shared.clone()
+            } else {
+                let Some(Some(initial_expr)) = operation_initial_exprs.get(operation) else {
+                    self.emit_inst(MirInst::Unsupported {
+                        detail: format!(
+                            "missing initializer for handled operation `{target_effect}.{operation}`"
+                        ),
+                    });
+                    return None;
+                };
+                let initial = self.lower_expr(initial_expr)?;
+                let cell = self.new_value();
+                self.emit_inst(MirInst::StateCellNew {
+                    dest: cell.clone(),
+                    initial,
+                });
+                cell
+            };
+            if shared_cell.is_none() {
+                release_cells.insert(cell.clone());
+            }
+            operation_cells.push((operation.clone(), cell));
+        }
+        if let Some(shared) = &shared_cell {
+            release_cells.insert(shared.clone());
+        }
         self.emit_inst(MirInst::HandlerEnter {
             effect: target_effect.clone(),
         });
         let incoming_scope = self.snapshot_var_scope();
-        self.active_effect_cells
-            .insert(target_effect.clone(), cell.clone());
+        for (operation, cell) in &operation_cells {
+            self.active_effect_cells
+                .insert((target_effect.clone(), operation.clone()), cell.clone());
+        }
         self.active_effect_handlers
             .insert(target_effect.clone(), plan);
         let result = self.lower_expr(handled);
@@ -3286,7 +3345,9 @@ impl FunctionLoweringCtx {
         self.emit_inst(MirInst::HandlerExit {
             effect: target_effect,
         });
-        self.emit_inst(MirInst::Release { value: cell });
+        for cell in release_cells {
+            self.emit_inst(MirInst::Release { value: cell });
+        }
         let Some(then_expr) = then_clause else {
             return result;
         };
@@ -3578,7 +3639,7 @@ impl FunctionLoweringCtx {
         {
             let effect = op_info.effect;
             let operation = op_info.operation;
-            if let Some(cell) = self.active_effect_cells.get(&effect).cloned() {
+            if let Some(cell) = self.lookup_effect_cell(&effect, &operation) {
                 let Some(plan) = self.active_effect_handlers.get(&effect) else {
                     self.emit_inst(MirInst::Unsupported {
                         detail: format!(
@@ -3759,11 +3820,17 @@ impl FunctionLoweringCtx {
             arg_types.push(arg.ty.clone());
             lowered_args.push(self.lower_expr(arg)?);
         }
-        for effect in dispatch_effects {
-            let Some(cell) = self.active_effect_cells.get(&effect).cloned() else {
+        for dispatch_op_key in dispatch_effects {
+            let Some((effect, operation)) = dispatch_op_key.split_once('.') else {
+                self.emit_inst(MirInst::Unsupported {
+                    detail: format!("invalid dispatch operation key `{dispatch_op_key}`"),
+                });
+                return None;
+            };
+            let Some(cell) = self.lookup_effect_cell(effect, operation) else {
                 self.emit_inst(MirInst::Unsupported {
                     detail: format!(
-                        "missing active handler cell for effect `{effect}` in call lowering"
+                        "missing active handler cell for operation `{dispatch_op_key}` in call lowering"
                     ),
                 });
                 return None;
