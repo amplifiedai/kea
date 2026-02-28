@@ -967,6 +967,12 @@ theorem dimKernelSuite_of_components
     DimKernelSuite :=
   { scalar := scalar, list := list }
 
+/-- Direct component-route decomposition for `DimKernelSuite`. -/
+theorem dimKernelSuite_as_components_of_components
+    (h_comp : DimConstKernelSlice ∧ DimConstListKernelSlice) :
+    DimConstKernelSlice ∧ DimConstListKernelSlice := by
+  simpa using h_comp
+
 /-- `DimKernelSuite` is equivalent to its scalar/list component pair. -/
 theorem dimKernelSuite_iff_components :
     DimKernelSuite ↔ DimConstKernelSlice ∧ DimConstListKernelSlice := by

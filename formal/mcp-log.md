@@ -9023,3 +9023,47 @@ surface in `ShapeConstructorParity`:
 **Impact**:
 - WP7 shape/dimension consumers can discharge top-level suite assumptions via
   explicit component tuples without manual record destructuring.
+
+### 2026-02-28: corrected full-corpus components-route parity sweep
+
+**Context**: While validating the new dim/shape suites, reran components-route
+parity checks across all `formal/Kea` theorem/def names using corrected theorem
+name extraction and closed the newly surfaced gaps by adding:
+- `dimKernelSuite_as_components_of_components`
+- `shapeConstDimKernelSuite_as_components_of_components`
+- `principalBoundarySoundFullVerticalMasterCapstone_as_components_of_components`
+- `principalBoundarySoundNoUnifyFullVerticalMasterCapstone_as_components_of_components`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- These are wrapper-only theorem-route closures over existing component
+  conjunctions and decomposition APIs.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran corrected full-corpus parity scan:
+  `*_of_components` with matching `*_as_components`
+  requires `*_as_components_of_components`.
+- Initial scan surfaced four missing wrappers (the list above).
+- Added wrappers and reran the same scan.
+- Result: no remaining gaps.
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Components-route parity is now closed for the newly introduced dim/shape
+  suites and principal full-vertical master capstone surfaces.
+
+**Impact**:
+- Formal consumers can move from component constructor assumptions to explicit
+  component tuples in one theorem step across these layers, with full-corpus
+  parity checks now using corrected theorem-name extraction.
