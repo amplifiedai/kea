@@ -11,3 +11,10 @@ effect Net
   --|
   --|   Net.recv(conn, 1024)   -- => bytes read (bootstrap shim)
   fn recv(conn: Int, size: Int) -[Net]> Int
+
+--| Send a payload and then read a response size from the same connection.
+--|
+--|   Net.send_and_recv(conn, "ping", 4)   -- => 4
+fn send_and_recv(conn: Int, data: String, size: Int) -[Net]> Int
+  Net.send(conn, data)
+  Net.recv(conn, size)

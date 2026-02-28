@@ -7,3 +7,20 @@ effect Rand
   --|
   --|   Rand.int()   -- => implementation-defined
   fn int() -[Rand]> Int
+
+--| Generate a random integer in the inclusive range `[lo, hi]`.
+--|
+--| If `hi <= lo`, this returns `lo`.
+--|
+--|   Rand.int_between(10, 20)   -- => 10..20
+fn int_between(lo: Int, hi: Int) -[Rand]> Int
+  if hi <= lo
+    lo
+  else
+    let span = hi - lo + 1
+    let raw = Rand.int()
+    let non_negative = if raw < 0
+      0 - raw
+    else
+      raw
+    lo + (non_negative % span)

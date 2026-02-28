@@ -2299,7 +2299,10 @@ fn handler_plan_for_effect(
     if operation_lowering.is_empty() {
         None
     } else {
-        Some(ActiveEffectHandlerPlan { operation_lowering })
+        Some(ActiveEffectHandlerPlan {
+            operation_lowering,
+            callback_dispatch_effects: BTreeMap::new(),
+        })
     }
 }
 
@@ -3064,6 +3067,7 @@ enum HandlerCellOpLowering {
 #[derive(Debug, Clone, Default)]
 struct ActiveEffectHandlerPlan {
     operation_lowering: BTreeMap<String, HandlerCellOpLowering>,
+    callback_dispatch_effects: BTreeMap<String, Vec<String>>,
 }
 
 #[derive(Debug, Clone)]
@@ -4032,16 +4036,8 @@ impl FunctionLoweringCtx {
                             &self.effect_operations,
                             &mut callback_dispatch_ops,
                         );
-                        if !callback_dispatch_ops.is_empty() {
-                            self.emit_inst(MirInst::Unsupported {
-                                detail: format!(
-                                    "handler callback body for `{target_effect}.{}` uses unsupported dispatched effect operations: {}",
-                                    clause.operation,
-                                    callback_dispatch_ops.into_iter().collect::<Vec<_>>().join(", "),
-                                ),
-                            });
-                            return None;
-                        }
+                        let callback_dispatch_ops =
+                            callback_dispatch_ops.into_iter().collect::<Vec<_>>();
                         let callback_ty = Type::Function(FunctionType::with_effects(
                             vec![Type::Dynamic],
                             Type::Unit,
@@ -4073,6 +4069,10 @@ impl FunctionLoweringCtx {
                             clause.operation.clone(),
                             HandlerCellOpLowering::InvokeArgCallbackAndReturnUnit,
                         );
+                        if !callback_dispatch_ops.is_empty() {
+                            plan.callback_dispatch_effects
+                                .insert(clause.operation.clone(), callback_dispatch_ops);
+                        }
                         operation_initial_exprs.insert(clause.operation.clone(), None);
                         operation_callback_values.insert(clause.operation.clone(), callback_value);
                     } else {
@@ -4500,21 +4500,30 @@ impl FunctionLoweringCtx {
             let effect = op_info.effect;
             let operation = op_info.operation;
             if let Some(cell) = self.lookup_effect_cell(&effect, &operation) {
-                let Some(plan) = self.active_effect_handlers.get(&effect) else {
-                    self.emit_inst(MirInst::Unsupported {
-                        detail: format!(
-                            "missing handler operation plan for effect `{effect}` in call lowering"
-                        ),
-                    });
-                    return None;
-                };
-                let Some(lowering) = plan.operation_lowering.get(&operation).copied() else {
-                    self.emit_inst(MirInst::Unsupported {
-                        detail: format!(
-                            "missing handler operation plan for `{effect}.{operation}` in call lowering"
-                        ),
-                    });
-                    return None;
+                let (lowering, callback_dispatch_effects) = {
+                    let Some(plan) = self.active_effect_handlers.get(&effect) else {
+                        self.emit_inst(MirInst::Unsupported {
+                            detail: format!(
+                                "missing handler operation plan for effect `{effect}` in call lowering"
+                            ),
+                        });
+                        return None;
+                    };
+                    let Some(lowering) = plan.operation_lowering.get(&operation).copied() else {
+                        self.emit_inst(MirInst::Unsupported {
+                            detail: format!(
+                                "missing handler operation plan for `{effect}.{operation}` in call lowering"
+                            ),
+                        });
+                        return None;
+                    };
+                    (
+                        lowering,
+                        plan.callback_dispatch_effects
+                            .get(&operation)
+                            .cloned()
+                            .unwrap_or_default(),
+                    )
                 };
                 match lowering {
                     HandlerCellOpLowering::LoadCell => {
@@ -4559,10 +4568,36 @@ impl FunctionLoweringCtx {
                             return None;
                         }
                         let value = self.lower_expr(&args[0])?;
+                        let mut callback_args = vec![value];
+                        let mut callback_arg_types = vec![Type::Dynamic];
+                        for dispatch_op_key in &callback_dispatch_effects {
+                            let Some((dispatch_effect, dispatch_operation)) =
+                                dispatch_op_key.split_once('.')
+                            else {
+                                self.emit_inst(MirInst::Unsupported {
+                                    detail: format!(
+                                        "invalid callback dispatch operation key `{dispatch_op_key}`"
+                                    ),
+                                });
+                                return None;
+                            };
+                            let Some(dispatch_cell) =
+                                self.lookup_effect_cell(dispatch_effect, dispatch_operation)
+                            else {
+                                self.emit_inst(MirInst::Unsupported {
+                                    detail: format!(
+                                        "missing active handler cell for callback dispatch operation `{dispatch_op_key}` in call lowering"
+                                    ),
+                                });
+                                return None;
+                            };
+                            callback_args.push(dispatch_cell);
+                            callback_arg_types.push(Type::Dynamic);
+                        }
                         self.emit_inst(MirInst::Call {
                             callee: MirCallee::Value(cell),
-                            args: vec![value],
-                            arg_types: vec![Type::Dynamic],
+                            args: callback_args,
+                            arg_types: callback_arg_types,
                             result: None,
                             ret_type: Type::Unit,
                             callee_fail_result_abi: false,

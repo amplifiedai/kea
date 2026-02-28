@@ -1,3 +1,5 @@
+use IO
+
 effect Log
   --| Emit a debug-level message.
   --|
@@ -18,3 +20,24 @@ effect Log
   --|
   --|   Log.error("failed")
   fn error(msg: String) -> Unit
+
+--| Run `f` with `Log.*` routed to stdout.
+--|
+--|   Log.with_stdout_logger(|| ->
+--|     Log.info("ready")
+--|     7
+--|   )   -- => 7
+fn with_stdout_logger(f: fn() -[Log, e]> T) -[IO, e]> T
+  handle f()
+    Log.debug(msg) ->
+      IO.stdout(msg)
+      resume ()
+    Log.info(msg) ->
+      IO.stdout(msg)
+      resume ()
+    Log.warn(msg) ->
+      IO.stdout(msg)
+      resume ()
+    Log.error(msg) ->
+      IO.stdout(msg)
+      resume ()

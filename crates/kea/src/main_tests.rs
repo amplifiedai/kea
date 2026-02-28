@@ -384,6 +384,26 @@
 
     #[test]
     #[cfg(not(target_os = "windows"))]
+    fn compile_and_execute_real_stdlib_io_helpers_exit_code() {
+        let project_dir = temp_workspace_project_dir("kea-cli-project-real-stdlib-io-helpers");
+        let src_dir = project_dir.join("src");
+        std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+
+        let app_path = src_dir.join("app.kea");
+        std::fs::write(
+            &app_path,
+            "use IO\n\nfn main() -[IO]> Int\n  IO.print(\"a\")\n  IO.println(\"b\")\n  IO.eprint(\"c\")\n  IO.eprintln(\"d\")\n  1\n",
+        )
+        .expect("app module write should succeed");
+
+        let run = run_file(&app_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 1);
+
+        let _ = std::fs::remove_dir_all(project_dir);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
     fn compile_and_execute_real_stdlib_io_read_write_module_exit_code() {
         let project_dir = temp_workspace_project_dir("kea-cli-project-real-stdlib-io-read-write");
         let src_dir = project_dir.join("src");
@@ -431,6 +451,26 @@
 
     #[test]
     #[cfg(not(target_os = "windows"))]
+    fn compile_and_execute_real_stdlib_clock_helpers_exit_code() {
+        let project_dir = temp_workspace_project_dir("kea-cli-project-real-stdlib-clock-helpers");
+        let src_dir = project_dir.join("src");
+        std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+
+        let app_path = src_dir.join("app.kea");
+        std::fs::write(
+            &app_path,
+            "use Clock\n\nfn main() -[Clock]> Int\n  let start = Clock.monotonic()\n  if Clock.elapsed_since(start) >= 0\n    1\n  else\n    0\n",
+        )
+        .expect("app module write should succeed");
+
+        let run = run_file(&app_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 1);
+
+        let _ = std::fs::remove_dir_all(project_dir);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
     fn compile_and_execute_real_stdlib_rand_module_exit_code() {
         let project_dir = temp_workspace_project_dir("kea-cli-project-real-stdlib-rand");
         let src_dir = project_dir.join("src");
@@ -440,6 +480,26 @@
         std::fs::write(
             &app_path,
             "use Rand\n\nfn main() -[Rand]> Int\n  Rand.seed(123)\n  if Rand.int() >= 0\n    1\n  else\n    0\n",
+        )
+        .expect("app module write should succeed");
+
+        let run = run_file(&app_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 1);
+
+        let _ = std::fs::remove_dir_all(project_dir);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn compile_and_execute_real_stdlib_rand_helpers_exit_code() {
+        let project_dir = temp_workspace_project_dir("kea-cli-project-real-stdlib-rand-helpers");
+        let src_dir = project_dir.join("src");
+        std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+
+        let app_path = src_dir.join("app.kea");
+        std::fs::write(
+            &app_path,
+            "use Rand\n\nfn main() -[Rand]> Int\n  Rand.seed(123)\n  let n = Rand.int_between(10, 20)\n  if n >= 10 and n <= 20\n    1\n  else\n    0\n",
         )
         .expect("app module write should succeed");
 
@@ -472,6 +532,40 @@
             &app_path,
             format!(
                 "use Net\n\nfn main() -[Net]> Int\n  let c = Net.connect(\"{addr}\")\n  Net.send(c, \"ping\")\n  let n = Net.recv(c, 4)\n  if c >= 0 and n == 4\n    1\n  else\n    0\n"
+            ),
+        )
+        .expect("app module write should succeed");
+
+        let run = run_file(&app_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 1);
+        server.join().expect("net echo server should exit cleanly");
+
+        let _ = std::fs::remove_dir_all(project_dir);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn compile_and_execute_real_stdlib_net_helpers_exit_code() {
+        let project_dir = temp_workspace_project_dir("kea-cli-project-real-stdlib-net-helpers");
+        let src_dir = project_dir.join("src");
+        std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+        let listener =
+            std::net::TcpListener::bind("127.0.0.1:0").expect("listener bind should succeed");
+        let addr = listener.local_addr().expect("listener addr should resolve");
+        let server = std::thread::spawn(move || {
+            use std::io::{Read, Write};
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut buffer = [0u8; 16];
+                let read = stream.read(&mut buffer).unwrap_or(0);
+                let _ = stream.write_all(&buffer[..read.min(4)]);
+            }
+        });
+
+        let app_path = src_dir.join("app.kea");
+        std::fs::write(
+            &app_path,
+            format!(
+                "use Net\n\nfn main() -[Net]> Int\n  let c = Net.connect(\"{addr}\")\n  let n = Net.send_and_recv(c, \"ping\", 4)\n  if c >= 0 and n == 4\n    1\n  else\n    0\n"
             ),
         )
         .expect("app module write should succeed");
@@ -907,6 +1001,25 @@
 
         let run = run_file(&app_path).expect("run should succeed");
         assert_eq!(run.exit_code, 41);
+
+        let _ = std::fs::remove_dir_all(project_dir);
+    }
+
+    #[test]
+    fn compile_and_execute_real_stdlib_reader_helpers_exit_code() {
+        let project_dir = temp_workspace_project_dir("kea-cli-project-real-stdlib-reader-helpers");
+        let src_dir = project_dir.join("src");
+        std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+
+        let app_path = src_dir.join("app.kea");
+        std::fs::write(
+            &app_path,
+            "use Reader\n\nfn main() -> Int\n  Reader.with_reader(41, || -> Reader.asks(|x| -> x + 1))\n",
+        )
+        .expect("app module write should succeed");
+
+        let run = run_file(&app_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 42);
 
         let _ = std::fs::remove_dir_all(project_dir);
     }

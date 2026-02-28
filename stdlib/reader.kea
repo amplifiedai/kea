@@ -3,3 +3,16 @@ effect Reader R
   --|
   --|   Reader.ask()
   fn ask() -> R
+
+--| Run `f` with `Reader.ask()` bound to `env`.
+--|
+--|   Reader.with_reader(41, || -> Reader.ask() + 1)   -- => 42
+fn with_reader(env: R, f: fn() -[Reader R, e]> T) -[e]> T
+  handle f()
+    Reader.ask() -> resume env
+
+--| Read the environment and transform it with `f`.
+--|
+--|   Reader.with_reader(41, || -> Reader.asks(|x| -> x + 1))   -- => 42
+fn asks(f: fn(R) -> T) -[Reader R]> T
+  f(Reader.ask())

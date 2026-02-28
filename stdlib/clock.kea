@@ -7,3 +7,10 @@ effect Clock
   --|
   --|   Clock.monotonic()   -- => 123456789 (example)
   fn monotonic() -[Clock]> Int
+
+--| Measure elapsed monotonic ticks since `start`.
+--|
+--|   let start = Clock.monotonic()
+--|   Clock.elapsed_since(start)   -- => 0 or greater
+fn elapsed_since(start: Int) -[Clock]> Int
+  Clock.monotonic() - start
