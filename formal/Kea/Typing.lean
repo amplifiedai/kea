@@ -27757,6 +27757,75 @@ theorem principalBoundarySound_verticalProj_of_success_via_fullVerticalMasterRou
     (h_app := h_seed.1) (h_proj := h_seed.2) h_ok_expr h_ok_field
 
 /--
+Packaged direct consequence surface from the `FullVerticalMasterRoutes` layer.
+This bundles principal full surfaces and hook-free vertical consequences under
+one successful-run witness.
+-/
+structure PrincipalBoundarySoundFullVerticalMasterCapstone
+    (st : UnifyState) (fuel : Nat) (env : TermEnv)
+    (e : CoreExpr) (fs : CoreFields)
+    (stExpr : UnifyState) (ty : Ty)
+    (stField : UnifyState) (rf : RowFields) : Prop where
+  expr : PrincipalBoundarySoundExprFull st fuel env e stExpr ty
+  field : PrincipalBoundarySoundFieldFull st fuel env fs stField rf
+  noUnifyExpr :
+    NoUnifyBranchesExpr e →
+    PrincipalBoundarySoundNoUnifyExprFull st fuel env e stExpr ty
+  noUnifyField :
+    NoUnifyBranchesFields fs →
+    PrincipalBoundarySoundNoUnifyFieldFull st fuel env fs stField rf
+  verticalApp : VerticalHookFreeAppSlice
+  verticalProj : VerticalHookFreeProjSlice
+
+/-- Build the packaged `FullVerticalMasterCapstone` from an explicit master-routes witness. -/
+theorem principalBoundarySoundFullVerticalMasterCapstone_of_masterRoutes
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_master : PrincipalBoundarySoundFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundFullVerticalMasterCapstone st fuel env e fs stExpr ty stField rf := by
+  refine {
+    expr := principalBoundarySoundFullVerticalMasterRoutes_regular_expr h_master
+    field := principalBoundarySoundFullVerticalMasterRoutes_regular_field h_master
+    noUnifyExpr := ?_
+    noUnifyField := ?_
+    verticalApp := principalBoundarySoundFullVerticalMasterRoutes_regular_vertical_app h_master
+    verticalProj := principalBoundarySoundFullVerticalMasterRoutes_regular_vertical_proj h_master
+  }
+  · intro h_no
+    exact principalBoundarySoundFullVerticalMasterRoutes_regular_noUnifyExpr h_master h_no
+  · intro h_no
+    exact principalBoundarySoundFullVerticalMasterRoutes_regular_noUnifyField h_master h_no
+
+/-- Hook-seeded constructor for the packaged `FullVerticalMasterCapstone`. -/
+theorem principalBoundarySoundFullVerticalMasterCapstone_of_success
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundFullVerticalMasterCapstone st fuel env e fs stExpr ty stField rf :=
+  principalBoundarySoundFullVerticalMasterCapstone_of_masterRoutes
+    (principalBoundarySoundFullVerticalMasterRoutes_of_success
+      (h_app := h_app) (h_proj := h_proj) h_ok_expr h_ok_field)
+
+/-- Bundled-hook constructor for the packaged `FullVerticalMasterCapstone`. -/
+theorem principalBoundarySoundFullVerticalMasterCapstone_of_success_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundFullVerticalMasterCapstone st fuel env e fs stExpr ty stField rf :=
+  principalBoundarySoundFullVerticalMasterCapstone_of_success
+    (h_app := h_seed.1) (h_proj := h_seed.2) h_ok_expr h_ok_field
+
+/--
 The row-poly full+vertical capstone is equivalent to providing:
 - a full principal boundary soundness suite witness, and
 - a hook-free vertical app/projection slice witness.
