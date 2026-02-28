@@ -15,3 +15,27 @@ effect IO
   --|
   --|   IO.read_file("out.txt")   -- => "data"
   fn read_file(path: String) -[IO]> String
+
+--| Write text to stdout.
+--|
+--|   IO.print("hello")
+fn print(msg: String) -[IO]> Unit
+  IO.stdout(msg)
+
+--| Write text plus a trailing newline to stdout.
+--|
+--|   IO.println("hello")
+fn println(msg: String) -[IO]> Unit
+  IO.stdout(msg ++ "\n")
+
+--| Write text to stderr.
+--|
+--|   IO.eprint("warning")
+fn eprint(msg: String) -[IO]> Unit
+  IO.stderr(msg)
+
+--| Write text plus a trailing newline to stderr.
+--|
+--|   IO.eprintln("warning")
+fn eprintln(msg: String) -[IO]> Unit
+  IO.stderr(msg ++ "\n")
