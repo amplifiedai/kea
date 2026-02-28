@@ -3749,6 +3749,40 @@
     }
 
     #[test]
+    fn compile_rejects_impl_missing_required_trait_method() {
+        let source_path = write_temp_source(
+            "trait IncDec a\n  fn inc(x: a) -> a\n  fn dec(x: a) -> a\n\nInt as IncDec\n  fn inc(x: Int) -> Int\n    x + 1\n\nfn main() -> Int\n  0\n",
+            "kea-cli-trait-missing-method",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject impl missing trait method");
+        assert!(
+            err.contains("is missing method(s): `dec`"),
+            "expected missing-trait-method diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_rejects_impl_with_extra_non_trait_method() {
+        let source_path = write_temp_source(
+            "trait Inc a\n  fn inc(x: a) -> a\n\nInt as Inc\n  fn inc(x: Int) -> Int\n    x + 1\n  fn dec(x: Int) -> Int\n    x - 1\n\nfn main() -> Int\n  0\n",
+            "kea-cli-trait-extra-method",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject impl extra trait method");
+        assert!(
+            err.contains("has extra method(s) not in trait: `dec`"),
+            "expected extra-trait-method diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_bool_case_exit_code() {
         let source_path = write_temp_source(
             "fn main() -> Int\n  case true\n    true -> 3\n    false -> 8\n",

@@ -17,6 +17,7 @@ use kea_hir::{
 };
 use kea_infer::typeck::{
     RecordRegistry, SumTypeRegistry, TraitRegistry, TypeEnv, apply_where_clause,
+    concrete_method_types_from_decls,
     infer_and_resolve_in_context, infer_fn_decl_effect_row, register_builtin_int_bitwise_methods,
     register_effect_decl, register_fn_effect_signature, register_fn_signature, resolve_annotation,
     check_expr_in_context,
@@ -1357,6 +1358,16 @@ fn register_top_level_declarations(
             }
             DeclKind::ImplBlock(impl_block) => {
                 if let Err(diag) = traits.register_trait_impl_in_module(impl_block, &owner) {
+                    diagnostics.push(diag);
+                    return Err(format_diagnostics("impl registration failed", diagnostics));
+                }
+                let method_types = concrete_method_types_from_decls(
+                    &impl_block.type_name.node,
+                    &impl_block.methods,
+                    records,
+                );
+                if let Err(diag) = traits.add_impl_methods(method_types) {
+                    traits.rollback_last_impl();
                     diagnostics.push(diag);
                     return Err(format_diagnostics("impl registration failed", diagnostics));
                 }
