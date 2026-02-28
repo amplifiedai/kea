@@ -33,6 +33,50 @@ structure EffectHandlerSuite
     CatchInteroperabilitySuite.CatchClassifierInteropSuite
       clause innerEffects okTy errTy loweredTy
 
+/-- Aggregate suite is equivalent to explicit component bundles. -/
+theorem effectHandlerSuite_iff_components
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty) :
+    EffectHandlerSuite clause capability innerEffects okTy errTy loweredTy
+      ↔ (HandlerClosedAwareContracts.ClosedAwareResultBundle clause
+          ∧ TailCapabilityComposition.TailCapabilityClosedAwareBundle clause capability
+          ∧ CatchInteroperabilitySuite.CatchClassifierInteropSuite
+              clause innerEffects okTy errTy loweredTy) := by
+  constructor
+  · intro h_suite
+    exact ⟨h_suite.closedAware, h_suite.capabilityClosedAware, h_suite.catchInterop⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2.1, h_comp.2.2⟩
+
+/-- Build aggregate suite directly from explicit component bundles. -/
+theorem effectHandlerSuite_of_components
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_comp :
+      HandlerClosedAwareContracts.ClosedAwareResultBundle clause
+        ∧ TailCapabilityComposition.TailCapabilityClosedAwareBundle clause capability
+        ∧ CatchInteroperabilitySuite.CatchClassifierInteropSuite
+            clause innerEffects okTy errTy loweredTy) :
+    EffectHandlerSuite clause capability innerEffects okTy errTy loweredTy :=
+  (effectHandlerSuite_iff_components clause capability innerEffects okTy errTy loweredTy).2 h_comp
+
+/-- One-hop decomposition of aggregate suite into explicit component bundles. -/
+theorem effectHandlerSuite_as_components
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_suite : EffectHandlerSuite clause capability innerEffects okTy errTy loweredTy) :
+    HandlerClosedAwareContracts.ClosedAwareResultBundle clause
+      ∧ TailCapabilityComposition.TailCapabilityClosedAwareBundle clause capability
+      ∧ CatchInteroperabilitySuite.CatchClassifierInteropSuite
+          clause innerEffects okTy errTy loweredTy :=
+  (effectHandlerSuite_iff_components clause capability innerEffects okTy errTy loweredTy).1 h_suite
+
 /-- Build the aggregate suite from well-typed + catch premise inputs. -/
 theorem effectHandlerSuite_of_premises
     (clause : HandleClauseContract)
@@ -126,6 +170,40 @@ theorem effectHandlerSuite_closedAwareCapability
       (EffectRow.fields (HandlerClosedAwareContracts.resultEffectsClosedAware clause))
       capability = true :=
   h_suite.capabilityClosedAware.closedAwareResultCapability
+
+/-- One-hop projection: closed-aware row-tail stability from aggregate suite. -/
+theorem effectHandlerSuite_closedAwareRowTailStable
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_suite : EffectHandlerSuite clause capability innerEffects okTy errTy loweredTy) :
+    EffectRow.rest (HandlerClosedAwareContracts.resultEffectsClosedAware clause) =
+      EffectRow.rest clause.exprEffects :=
+  h_suite.closedAware.closedAwareRowTailStable
+
+/-- One-hop projection: legacy handled-removal guarantee from aggregate suite. -/
+theorem effectHandlerSuite_legacyHandledRemoved
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_suite : EffectHandlerSuite clause capability innerEffects okTy errTy loweredTy) :
+    RowFields.has
+      (EffectRow.fields (HandleClauseContract.resultEffects clause))
+      clause.handled = false :=
+  h_suite.closedAware.legacyHandledRemoved
+
+/-- One-hop projection: non-invalid tail classification from aggregate suite. -/
+theorem effectHandlerSuite_tailNotInvalid
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_suite : EffectHandlerSuite clause capability innerEffects okTy errTy loweredTy) :
+    TailResumptiveClassification.classifyClause clause ≠
+      TailResumptiveClassification.TailResumptiveClass.invalid :=
+  h_suite.capabilityClosedAware.notInvalid
 
 /-- One-hop projection: generic catch classifier branch from aggregate suite. -/
 theorem effectHandlerSuite_genericCatchClassifier
