@@ -9621,3 +9621,40 @@ an explicit component alias:
 **Impact**:
 - Keeps WP7.3 decimal package usage aligned with decomposition patterns used by
   precision, shape, and higher-level suite layers.
+
+### 2026-02-28: rank-1 shape slice decomposition parity
+
+**Context**: Added structural decomposition helpers for
+`Rank1ShapeConstDimKernelSlice` in
+`Kea/Properties/ShapeConstructorParity.lean`, including an explicit component
+alias:
+- `Rank1ShapeConstDimKernelSliceComponents`
+- `rank1ShapeConstDimKernelSlice_as_components`
+- `rank1ShapeConstDimKernelSlice_of_components`
+- `rank1ShapeConstDimKernelSlice_iff_components`
+- `rank1ShapeConstDimKernelSlice_as_components_of_components`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Structural API extension only; no runtime semantic change.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Rank-1 shape package now supports one-step conversion between bundled and
+  explicit contract tuples.
+
+**Impact**:
+- Keeps WP7.4 rank-1 package usage consistent with decomposition conventions
+  used across precision/decimal and top-level suite layers.
