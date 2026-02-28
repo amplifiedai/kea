@@ -84,6 +84,23 @@ theorem effectHandlerSuite_of_components
     EffectHandlerSuite clause capability innerEffects okTy errTy loweredTy :=
   (effectHandlerSuite_iff_components clause capability innerEffects okTy errTy loweredTy).2 h_comp
 
+theorem effectHandlerSuite_as_components_of_components
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_comp :
+      HandlerClosedAwareContracts.ClosedAwareResultBundle clause
+        ∧ TailCapabilityComposition.TailCapabilityClosedAwareBundle clause capability
+        ∧ CatchInteroperabilitySuite.CatchClassifierInteropSuite
+            clause innerEffects okTy errTy loweredTy) :
+    HandlerClosedAwareContracts.ClosedAwareResultBundle clause
+      ∧ TailCapabilityComposition.TailCapabilityClosedAwareBundle clause capability
+      ∧ CatchInteroperabilitySuite.CatchClassifierInteropSuite
+          clause innerEffects okTy errTy loweredTy :=
+  (effectHandlerSuite_iff_components clause capability innerEffects okTy errTy loweredTy).1
+    (effectHandlerSuite_of_components clause capability innerEffects okTy errTy loweredTy h_comp)
+
 /-- One-hop decomposition of aggregate suite into explicit component bundles. -/
 theorem effectHandlerSuite_as_components
     (clause : HandleClauseContract)
@@ -127,6 +144,24 @@ theorem effectHandlerCapstoneSuite_of_components
             clause innerEffects okTy errTy loweredTy) :
     EffectHandlerCapstoneSuite clause capability innerEffects okTy errTy loweredTy :=
   (effectHandlerCapstoneSuite_iff_components clause capability innerEffects okTy errTy loweredTy).2 h_comp
+
+theorem effectHandlerCapstoneSuite_as_components_of_components
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_comp :
+      HandlerClosedAwareContracts.ClosedAwareResultBundle clause
+        ∧ TailCapabilityComposition.TailCapabilityClosedAwareBundle clause capability
+        ∧ CatchInteroperabilitySuite.CatchCapstoneInteropSuite
+            clause innerEffects okTy errTy loweredTy) :
+    HandlerClosedAwareContracts.ClosedAwareResultBundle clause
+      ∧ TailCapabilityComposition.TailCapabilityClosedAwareBundle clause capability
+      ∧ CatchInteroperabilitySuite.CatchCapstoneInteropSuite
+          clause innerEffects okTy errTy loweredTy :=
+  (effectHandlerCapstoneSuite_iff_components clause capability innerEffects okTy errTy loweredTy).1
+    (effectHandlerCapstoneSuite_of_components
+      clause capability innerEffects okTy errTy loweredTy h_comp)
 
 /-- One-hop decomposition of capstone aggregate suite into explicit component bundles. -/
 theorem effectHandlerCapstoneSuite_as_components
@@ -255,6 +290,31 @@ theorem effectHandlerCatchPairSuite_of_components
   (effectHandlerCatchPairSuite_iff_components
     clause capability innerEffects okTy errTy loweredTy).2 h_comp
 
+theorem effectHandlerCatchPairSuite_as_components_of_components
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_comp :
+      ∃ (h_cap :
+          EffectHandlerCapstoneSuite clause capability innerEffects okTy errTy loweredTy)
+        (h_cls :
+          EffectHandlerSuite clause capability innerEffects okTy errTy loweredTy),
+        h_cls =
+          effectHandlerSuite_of_capstoneSuite
+            clause capability innerEffects okTy errTy loweredTy h_cap) :
+    ∃ (h_cap :
+        EffectHandlerCapstoneSuite clause capability innerEffects okTy errTy loweredTy)
+      (h_cls :
+        EffectHandlerSuite clause capability innerEffects okTy errTy loweredTy),
+      h_cls =
+        effectHandlerSuite_of_capstoneSuite
+          clause capability innerEffects okTy errTy loweredTy h_cap :=
+  (effectHandlerCatchPairSuite_iff_components
+    clause capability innerEffects okTy errTy loweredTy).1
+    (effectHandlerCatchPairSuite_of_components
+      clause capability innerEffects okTy errTy loweredTy h_comp)
+
 /-- One-hop decomposition of coherent catch-pair suite into explicit components. -/
 theorem effectHandlerCatchPairSuite_as_components
     (clause : HandleClauseContract)
@@ -329,6 +389,30 @@ theorem effectHandlerCompositionSuite_of_components
     EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler :=
   (effectHandlerCompositionSuite_iff_components
     clause capability innerEffects okTy errTy loweredTy outerHandler).2 h_comp
+
+theorem effectHandlerCompositionSuite_as_components_of_components
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_comp :
+      EffectHandlerCatchPairSuite clause capability innerEffects okTy errTy loweredTy
+        ∧ NestedHandlerCompositionContracts.NestedHandlerClosedAwareBundle
+            clause.exprEffects
+            clause.handlerEffects
+            outerHandler
+            clause.handled) :
+    EffectHandlerCatchPairSuite clause capability innerEffects okTy errTy loweredTy
+      ∧ NestedHandlerCompositionContracts.NestedHandlerClosedAwareBundle
+          clause.exprEffects
+          clause.handlerEffects
+          outerHandler
+          clause.handled :=
+  (effectHandlerCompositionSuite_iff_components
+    clause capability innerEffects okTy errTy loweredTy outerHandler).1
+    (effectHandlerCompositionSuite_of_components
+      clause capability innerEffects okTy errTy loweredTy outerHandler h_comp)
 
 /-- One-hop decomposition of master composition suite into explicit components. -/
 theorem effectHandlerCompositionSuite_as_components
@@ -3646,6 +3730,36 @@ theorem effectHandlerCompositionCoherenceSuite_of_components
       clause capability innerEffects okTy errTy loweredTy outerHandler :=
   (effectHandlerCompositionCoherenceSuite_iff_components
     clause capability innerEffects okTy errTy loweredTy outerHandler).2 h_parts
+
+theorem effectHandlerCompositionCoherenceSuite_as_components_of_components
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_parts :
+      ∃ (h_comp :
+          EffectHandlerCompositionSuite
+            clause capability innerEffects okTy errTy loweredTy outerHandler)
+        (h_coh :
+          EffectHandlerNestedClauseCoherenceBundle
+            clause capability innerEffects okTy errTy loweredTy outerHandler),
+        h_coh =
+          effectHandlerCompositionSuite_nestedClauseCoherenceBundle
+            clause capability innerEffects okTy errTy loweredTy outerHandler h_comp) :
+    ∃ (h_comp :
+        EffectHandlerCompositionSuite
+          clause capability innerEffects okTy errTy loweredTy outerHandler)
+      (h_coh :
+        EffectHandlerNestedClauseCoherenceBundle
+          clause capability innerEffects okTy errTy loweredTy outerHandler),
+      h_coh =
+        effectHandlerCompositionSuite_nestedClauseCoherenceBundle
+          clause capability innerEffects okTy errTy loweredTy outerHandler h_comp :=
+  (effectHandlerCompositionCoherenceSuite_iff_components
+    clause capability innerEffects okTy errTy loweredTy outerHandler).1
+    (effectHandlerCompositionCoherenceSuite_of_components
+      clause capability innerEffects okTy errTy loweredTy outerHandler h_parts)
 
 /-- One-hop decomposition of the package into explicit components. -/
 theorem effectHandlerCompositionCoherenceSuite_as_components
