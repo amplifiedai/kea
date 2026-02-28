@@ -405,6 +405,7 @@ pub fn lower_hir_module(module: &HirModule) -> MirModule {
     let known_function_dispatch_effects =
         collect_function_dispatch_effects(module, &effect_operations);
     let lambda_factories = collect_lambda_factory_templates(module, &known_functions);
+    let known_const_exprs = collect_const_field_exprs(module);
     let mut layouts = MirLayoutCatalog::default();
     for decl in &module.declarations {
         if let HirDecl::Raw(raw_decl) = decl {
@@ -421,6 +422,7 @@ pub fn lower_hir_module(module: &HirModule) -> MirModule {
                 &layouts,
                 &known_functions,
                 &known_function_types,
+                &known_const_exprs,
                 &intrinsic_symbols,
                 &effect_operations,
                 &known_function_dispatch_effects,
@@ -438,6 +440,22 @@ pub fn lower_hir_module(module: &HirModule) -> MirModule {
     }
 
     MirModule { functions, layouts }
+}
+
+fn collect_const_field_exprs(module: &HirModule) -> BTreeMap<String, AstExprKind> {
+    let mut exprs = BTreeMap::new();
+    for decl in &module.declarations {
+        let HirDecl::Raw(DeclKind::RecordDef(record)) = decl else {
+            continue;
+        };
+        for const_field in &record.const_fields {
+            exprs.insert(
+                format!("{}.{}", record.name.node, const_field.name.node),
+                const_field.value.node.clone(),
+            );
+        }
+    }
+    exprs
 }
 
 fn schedule_trailing_releases_after_last_use(function: &mut MirFunction) {
@@ -2212,6 +2230,7 @@ fn lower_hir_function(
     layouts: &MirLayoutCatalog,
     known_functions: &BTreeSet<String>,
     known_function_types: &BTreeMap<String, Type>,
+    known_const_exprs: &BTreeMap<String, AstExprKind>,
     intrinsic_symbols: &BTreeMap<String, String>,
     effect_operations: &BTreeMap<String, EffectOperationInfo>,
     known_function_dispatch_effects: &BTreeMap<String, Vec<String>>,
@@ -2240,6 +2259,7 @@ fn lower_hir_function(
         layouts,
         known_functions,
         known_function_types,
+        known_const_exprs,
         intrinsic_symbols,
         effect_operations,
         known_function_dispatch_effects,
@@ -2306,6 +2326,7 @@ struct FunctionLoweringCtx {
     local_lambdas: BTreeMap<String, LocalLambda>,
     known_functions: BTreeSet<String>,
     known_function_types: BTreeMap<String, Type>,
+    known_const_exprs: BTreeMap<String, AstExprKind>,
     intrinsic_symbols: BTreeMap<String, String>,
     effect_operations: BTreeMap<String, EffectOperationInfo>,
     known_function_dispatch_effects: BTreeMap<String, Vec<String>>,
@@ -2323,6 +2344,8 @@ struct FunctionLoweringCtx {
     next_lifted_lambda_id: u32,
     next_closure_entry_id: u32,
     next_value_id: u32,
+    const_lowering_stack: Vec<String>,
+    const_owner_stack: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -2377,6 +2400,7 @@ impl FunctionLoweringCtx {
         layouts: &MirLayoutCatalog,
         known_functions: &BTreeSet<String>,
         known_function_types: &BTreeMap<String, Type>,
+        known_const_exprs: &BTreeMap<String, AstExprKind>,
         intrinsic_symbols: &BTreeMap<String, String>,
         effect_operations: &BTreeMap<String, EffectOperationInfo>,
         known_function_dispatch_effects: &BTreeMap<String, Vec<String>>,
@@ -2420,6 +2444,7 @@ impl FunctionLoweringCtx {
             local_lambdas: BTreeMap::new(),
             known_functions: known_functions.clone(),
             known_function_types: known_function_types.clone(),
+            known_const_exprs: known_const_exprs.clone(),
             intrinsic_symbols: intrinsic_symbols.clone(),
             effect_operations: effect_operations.clone(),
             known_function_dispatch_effects: known_function_dispatch_effects.clone(),
@@ -2437,6 +2462,8 @@ impl FunctionLoweringCtx {
             next_lifted_lambda_id: 0,
             next_closure_entry_id: 0,
             next_value_id: (param_count + hidden_dispatch_effects.len()) as u32,
+            const_lowering_stack: Vec::new(),
+            const_owner_stack: Vec::new(),
         }
     }
 
@@ -2678,6 +2705,7 @@ impl FunctionLoweringCtx {
             &self.layouts,
             &known,
             &known_types,
+            &self.known_const_exprs,
             &self.intrinsic_symbols,
             &self.effect_operations,
             &self.known_function_dispatch_effects,
@@ -2823,6 +2851,9 @@ impl FunctionLoweringCtx {
                 }
                 if self.known_functions.contains(name) {
                     return self.lower_named_function_to_closure_value(name);
+                }
+                if let Some(const_expr) = self.known_const_exprs.get(name).cloned() {
+                    return self.lower_named_const_expr(name, &const_expr);
                 }
                 None
             }
@@ -3818,6 +3849,36 @@ impl FunctionLoweringCtx {
         }
     }
 
+    fn resolve_const_name_for_var(&self, name: &str) -> Option<String> {
+        if self.known_const_exprs.contains_key(name) {
+            return Some(name.to_string());
+        }
+        let owner = self.const_owner_stack.last()?;
+        let qualified = format!("{owner}.{name}");
+        self.known_const_exprs
+            .contains_key(&qualified)
+            .then_some(qualified)
+    }
+
+    fn lower_named_const_expr(&mut self, name: &str, raw_expr: &AstExprKind) -> Option<MirValueId> {
+        if self.const_lowering_stack.iter().any(|active| active == name) {
+            self.emit_inst(MirInst::Unsupported {
+                detail: format!("circular const reference detected while lowering `{name}`"),
+            });
+            return None;
+        }
+        self.const_lowering_stack.push(name.to_string());
+        if let Some((owner, _)) = name.rsplit_once('.') {
+            self.const_owner_stack.push(owner.to_string());
+        }
+        let lowered = self.lower_raw_ast_expr(raw_expr);
+        if name.contains('.') {
+            self.const_owner_stack.pop();
+        }
+        self.const_lowering_stack.pop();
+        lowered
+    }
+
     fn lower_raw_ast_expr(&mut self, raw_expr: &AstExprKind) -> Option<MirValueId> {
         match raw_expr {
             AstExprKind::Lit(lit) => {
@@ -3828,7 +3889,44 @@ impl FunctionLoweringCtx {
                 });
                 Some(dest)
             }
-            AstExprKind::Var(name) => self.vars.get(name).cloned(),
+            AstExprKind::Var(name) => {
+                if let Some(value) = self.vars.get(name) {
+                    return Some(value.clone());
+                }
+                let qualified = self.resolve_const_name_for_var(name)?;
+                let expr = self.known_const_exprs.get(&qualified)?.clone();
+                self.lower_named_const_expr(&qualified, &expr)
+            }
+            AstExprKind::FieldAccess { expr, field } => {
+                let AstExprKind::Var(owner) = &expr.node else {
+                    return None;
+                };
+                let qualified = format!("{owner}.{}", field.node);
+                let const_expr = self.known_const_exprs.get(&qualified)?.clone();
+                self.lower_named_const_expr(&qualified, &const_expr)
+            }
+            AstExprKind::UnaryOp { op, operand } => {
+                let operand = self.lower_raw_ast_expr(&operand.node)?;
+                let dest = self.new_value();
+                self.emit_inst(MirInst::Unary {
+                    dest: dest.clone(),
+                    op: lower_unaryop(op.node),
+                    operand,
+                });
+                Some(dest)
+            }
+            AstExprKind::BinaryOp { op, left, right } => {
+                let left = self.lower_raw_ast_expr(&left.node)?;
+                let right = self.lower_raw_ast_expr(&right.node)?;
+                let dest = self.new_value();
+                self.emit_inst(MirInst::Binary {
+                    dest: dest.clone(),
+                    op: lower_binop(op.node),
+                    left,
+                    right,
+                });
+                Some(dest)
+            }
             AstExprKind::AnonRecord { fields, spread } => {
                 if spread.is_some() {
                     return None;
