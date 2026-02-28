@@ -31342,6 +31342,379 @@ theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components_of_
       ∧ PrincipalBoundarySoundNoUnifyFullVerticalMasterCapstone st fuel env e fs stExpr ty stField rf := by
   simpa using h_comp
 
+/-- Direct route decomposition from `of_routes` into master-surface components. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components_of_routes
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_routes : PrincipalBoundarySoundNoUnifyFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundNoUnifyFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf
+      ∧ PrincipalBoundarySoundNoUnifyFullVerticalMasterCapstone st fuel env e fs stExpr ty stField rf := by
+  exact principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components
+    (principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_routes h_routes)
+
+/-- Direct route decomposition from `of_capstone` into master-surface components. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components_of_capstone
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_cap : PrincipalBoundarySoundNoUnifyFullVerticalMasterCapstone st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundNoUnifyFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf
+      ∧ PrincipalBoundarySoundNoUnifyFullVerticalMasterCapstone st fuel env e fs stExpr ty stField rf := by
+  exact principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components
+    (principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_capstone h_cap)
+
+/-- Direct route decomposition from `of_success` into master-surface components. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components_of_success
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_no_expr : NoUnifyBranchesExpr e)
+    (h_no_field : NoUnifyBranchesFields fs)
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundNoUnifyFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf
+      ∧ PrincipalBoundarySoundNoUnifyFullVerticalMasterCapstone st fuel env e fs stExpr ty stField rf := by
+  exact principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components
+    (principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_success
+      (h_app := h_app) (h_proj := h_proj)
+      h_no_expr h_no_field h_ok_expr h_ok_field)
+
+/-- Direct route decomposition from `of_success_from_bundle` into master-surface components. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components_of_success_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_no_expr : NoUnifyBranchesExpr e)
+    (h_no_field : NoUnifyBranchesFields fs)
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundNoUnifyFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf
+      ∧ PrincipalBoundarySoundNoUnifyFullVerticalMasterCapstone st fuel env e fs stExpr ty stField rf := by
+  exact principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components
+    (principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_success_from_bundle
+      h_seed h_no_expr h_no_field h_ok_expr h_ok_field)
+
+/-- Direct route decomposition from `of_success_via_dualConsequenceSlices` into master-surface components. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components_of_success_via_dualConsequenceSlices
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_no_expr : NoUnifyBranchesExpr e)
+    (h_no_field : NoUnifyBranchesFields fs)
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundNoUnifyFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf
+      ∧ PrincipalBoundarySoundNoUnifyFullVerticalMasterCapstone st fuel env e fs stExpr ty stField rf := by
+  exact principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components
+    (principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_success_via_dualConsequenceSlices
+      (h_app := h_app) (h_proj := h_proj) h_no_expr h_no_field h_ok_expr h_ok_field)
+
+/-- Direct route decomposition from `of_success_via_dualConsequenceSlices_from_bundle` into master-surface components. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components_of_success_via_dualConsequenceSlices_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_no_expr : NoUnifyBranchesExpr e)
+    (h_no_field : NoUnifyBranchesFields fs)
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundNoUnifyFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf
+      ∧ PrincipalBoundarySoundNoUnifyFullVerticalMasterCapstone st fuel env e fs stExpr ty stField rf := by
+  exact principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components
+    (principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_success_via_dualConsequenceSlices_from_bundle
+      h_seed h_no_expr h_no_field h_ok_expr h_ok_field)
+
+/-- Direct route decomposition from `of_success_via_fullVerticalMasterCapstone` into master-surface components. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components_of_success_via_fullVerticalMasterCapstone
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_no_expr : NoUnifyBranchesExpr e)
+    (h_no_field : NoUnifyBranchesFields fs)
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundNoUnifyFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf
+      ∧ PrincipalBoundarySoundNoUnifyFullVerticalMasterCapstone st fuel env e fs stExpr ty stField rf := by
+  exact principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components
+    (principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_success_via_fullVerticalMasterCapstone
+      (h_app := h_app) (h_proj := h_proj) h_no_expr h_no_field h_ok_expr h_ok_field)
+
+/-- Direct route decomposition from `of_success_via_fullVerticalMasterCapstone_from_bundle` into master-surface components. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components_of_success_via_fullVerticalMasterCapstone_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_no_expr : NoUnifyBranchesExpr e)
+    (h_no_field : NoUnifyBranchesFields fs)
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundNoUnifyFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf
+      ∧ PrincipalBoundarySoundNoUnifyFullVerticalMasterCapstone st fuel env e fs stExpr ty stField rf := by
+  exact principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components
+    (principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_success_via_fullVerticalMasterCapstone_from_bundle
+      h_seed h_no_expr h_no_field h_ok_expr h_ok_field)
+
+/-- Direct route decomposition from `of_success_via_fullVerticalMasterRoutes` into master-surface components. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components_of_success_via_fullVerticalMasterRoutes
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_no_expr : NoUnifyBranchesExpr e)
+    (h_no_field : NoUnifyBranchesFields fs)
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundNoUnifyFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf
+      ∧ PrincipalBoundarySoundNoUnifyFullVerticalMasterCapstone st fuel env e fs stExpr ty stField rf := by
+  exact principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components
+    (principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_success_via_fullVerticalMasterRoutes
+      (h_app := h_app) (h_proj := h_proj) h_no_expr h_no_field h_ok_expr h_ok_field)
+
+/-- Direct route decomposition from `of_success_via_fullVerticalMasterRoutes_from_bundle` into master-surface components. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components_of_success_via_fullVerticalMasterRoutes_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_no_expr : NoUnifyBranchesExpr e)
+    (h_no_field : NoUnifyBranchesFields fs)
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundNoUnifyFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf
+      ∧ PrincipalBoundarySoundNoUnifyFullVerticalMasterCapstone st fuel env e fs stExpr ty stField rf := by
+  exact principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components
+    (principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_success_via_fullVerticalMasterRoutes_from_bundle
+      h_seed h_no_expr h_no_field h_ok_expr h_ok_field)
+
+/-- Direct route decomposition from `of_success_via_noUnifyMasterCapstone` into master-surface components. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components_of_success_via_noUnifyMasterCapstone
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_no_expr : NoUnifyBranchesExpr e)
+    (h_no_field : NoUnifyBranchesFields fs)
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundNoUnifyFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf
+      ∧ PrincipalBoundarySoundNoUnifyFullVerticalMasterCapstone st fuel env e fs stExpr ty stField rf := by
+  exact principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components
+    (principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_success_via_noUnifyMasterCapstone
+      (h_app := h_app) (h_proj := h_proj) h_no_expr h_no_field h_ok_expr h_ok_field)
+
+/-- Direct route decomposition from `of_success_via_noUnifyMasterCapstone_from_bundle` into master-surface components. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components_of_success_via_noUnifyMasterCapstone_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_no_expr : NoUnifyBranchesExpr e)
+    (h_no_field : NoUnifyBranchesFields fs)
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundNoUnifyFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf
+      ∧ PrincipalBoundarySoundNoUnifyFullVerticalMasterCapstone st fuel env e fs stExpr ty stField rf := by
+  exact principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components
+    (principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_success_via_noUnifyMasterCapstone_from_bundle
+      h_seed h_no_expr h_no_field h_ok_expr h_ok_field)
+
+/-- Direct route decomposition from `of_success_via_noUnifyMasterRoutes` into master-surface components. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components_of_success_via_noUnifyMasterRoutes
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_no_expr : NoUnifyBranchesExpr e)
+    (h_no_field : NoUnifyBranchesFields fs)
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundNoUnifyFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf
+      ∧ PrincipalBoundarySoundNoUnifyFullVerticalMasterCapstone st fuel env e fs stExpr ty stField rf := by
+  exact principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components
+    (principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_success_via_noUnifyMasterRoutes
+      (h_app := h_app) (h_proj := h_proj) h_no_expr h_no_field h_ok_expr h_ok_field)
+
+/-- Direct route decomposition from `of_success_via_noUnifyMasterRoutes_from_bundle` into master-surface components. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components_of_success_via_noUnifyMasterRoutes_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_no_expr : NoUnifyBranchesExpr e)
+    (h_no_field : NoUnifyBranchesFields fs)
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundNoUnifyFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf
+      ∧ PrincipalBoundarySoundNoUnifyFullVerticalMasterCapstone st fuel env e fs stExpr ty stField rf := by
+  exact principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components
+    (principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_success_via_noUnifyMasterRoutes_from_bundle
+      h_seed h_no_expr h_no_field h_ok_expr h_ok_field)
+
+/-- Direct route decomposition from `of_success_via_rowPolyBoundarySoundBundle` into master-surface components. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components_of_success_via_rowPolyBoundarySoundBundle
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_no_expr : NoUnifyBranchesExpr e)
+    (h_no_field : NoUnifyBranchesFields fs)
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundNoUnifyFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf
+      ∧ PrincipalBoundarySoundNoUnifyFullVerticalMasterCapstone st fuel env e fs stExpr ty stField rf := by
+  exact principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components
+    (principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_success_via_rowPolyBoundarySoundBundle
+      (h_app := h_app) (h_proj := h_proj) h_no_expr h_no_field h_ok_expr h_ok_field)
+
+/-- Direct route decomposition from `of_success_via_rowPolyBoundarySoundBundle_from_bundle` into master-surface components. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components_of_success_via_rowPolyBoundarySoundBundle_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_no_expr : NoUnifyBranchesExpr e)
+    (h_no_field : NoUnifyBranchesFields fs)
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundNoUnifyFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf
+      ∧ PrincipalBoundarySoundNoUnifyFullVerticalMasterCapstone st fuel env e fs stExpr ty stField rf := by
+  exact principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components
+    (principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_success_via_rowPolyBoundarySoundBundle_from_bundle
+      h_seed h_no_expr h_no_field h_ok_expr h_ok_field)
+
+/-- Direct route decomposition from `of_success_via_typingRunBundleSuite` into master-surface components. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components_of_success_via_typingRunBundleSuite
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_no_expr : NoUnifyBranchesExpr e)
+    (h_no_field : NoUnifyBranchesFields fs)
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundNoUnifyFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf
+      ∧ PrincipalBoundarySoundNoUnifyFullVerticalMasterCapstone st fuel env e fs stExpr ty stField rf := by
+  exact principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components
+    (principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_success_via_typingRunBundleSuite
+      (h_app := h_app) (h_proj := h_proj) h_no_expr h_no_field h_ok_expr h_ok_field)
+
+/-- Direct route decomposition from `of_success_via_typingRunBundleSuite_from_bundle` into master-surface components. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components_of_success_via_typingRunBundleSuite_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_no_expr : NoUnifyBranchesExpr e)
+    (h_no_field : NoUnifyBranchesFields fs)
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundNoUnifyFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf
+      ∧ PrincipalBoundarySoundNoUnifyFullVerticalMasterCapstone st fuel env e fs stExpr ty stField rf := by
+  exact principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components
+    (principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_success_via_typingRunBundleSuite_from_bundle
+      h_seed h_no_expr h_no_field h_ok_expr h_ok_field)
+
+/-- Direct route decomposition from `of_fullVerticalMasterRoutes` into master-surface components. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components_of_fullVerticalMasterRoutes
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_master : PrincipalBoundarySoundFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf)
+    (h_no_expr : NoUnifyBranchesExpr e)
+    (h_no_field : NoUnifyBranchesFields fs) :
+    PrincipalBoundarySoundNoUnifyFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf
+      ∧ PrincipalBoundarySoundNoUnifyFullVerticalMasterCapstone st fuel env e fs stExpr ty stField rf := by
+  exact principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components
+    (principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_fullVerticalMasterRoutes
+      h_master h_no_expr h_no_field)
+
+/-- Direct route decomposition from `of_fullVerticalMasterSurface` into master-surface components. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components_of_fullVerticalMasterSurface
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_surface : PrincipalBoundarySoundFullVerticalMasterSurface st fuel env e fs stExpr ty stField rf)
+    (h_no_expr : NoUnifyBranchesExpr e)
+    (h_no_field : NoUnifyBranchesFields fs) :
+    PrincipalBoundarySoundNoUnifyFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf
+      ∧ PrincipalBoundarySoundNoUnifyFullVerticalMasterCapstone st fuel env e fs stExpr ty stField rf := by
+  exact principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components
+    (principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_fullVerticalMasterSurface
+      h_surface h_no_expr h_no_field)
+
+/-- Direct route decomposition from `of_masterCapstone` into master-surface components. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components_of_masterCapstone
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_cap : PrincipalBoundarySoundFullVerticalMasterCapstone st fuel env e fs stExpr ty stField rf)
+    (h_no_expr : NoUnifyBranchesExpr e)
+    (h_no_field : NoUnifyBranchesFields fs) :
+    PrincipalBoundarySoundNoUnifyFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf
+      ∧ PrincipalBoundarySoundNoUnifyFullVerticalMasterCapstone st fuel env e fs stExpr ty stField rf := by
+  exact principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components
+    (principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_masterCapstone
+      h_cap h_no_expr h_no_field)
+
+/-- Direct route decomposition from `of_fullVerticalSuite` into master-surface components. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components_of_fullVerticalSuite
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_suite : PrincipalBoundarySoundFullVerticalSuite st fuel env e fs stExpr ty stField rf)
+    (h_no_expr : NoUnifyBranchesExpr e)
+    (h_no_field : NoUnifyBranchesFields fs) :
+    PrincipalBoundarySoundNoUnifyFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf
+      ∧ PrincipalBoundarySoundNoUnifyFullVerticalMasterCapstone st fuel env e fs stExpr ty stField rf := by
+  exact principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components
+    (principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_fullVerticalSuite
+      h_suite h_no_expr h_no_field)
+
+/-- Direct route decomposition from `of_consequences` into master-surface components. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components_of_consequences
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_conseq :
+      PrincipalBoundarySoundNoUnifyExprFull st fuel env e stExpr ty
+        ∧ PrincipalBoundarySoundNoUnifyFieldFull st fuel env fs stField rf
+        ∧ VerticalHookFreeAppSlice
+        ∧ VerticalHookFreeProjSlice) :
+    PrincipalBoundarySoundNoUnifyFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf
+      ∧ PrincipalBoundarySoundNoUnifyFullVerticalMasterCapstone st fuel env e fs stExpr ty stField rf := by
+  exact principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components
+    (principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_consequences h_conseq)
+
 /-- Project a no-unify full+vertical suite witness from the unified no-unify master surface. -/
 theorem principalBoundarySoundNoUnifyFullVerticalSuite_of_noUnifyMasterSurface
     {st : UnifyState} {fuel : Nat} {env : TermEnv}
@@ -31375,6 +31748,18 @@ theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_noUnifyFullVer
     PrincipalBoundarySoundNoUnifyFullVerticalMasterSurface st fuel env e fs stExpr ty stField rf :=
   principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_capstone
     (principalBoundarySoundNoUnifyFullVerticalMasterCapstone_of_fullVerticalSuite h_suite)
+
+/-- Direct route decomposition from `of_noUnifyFullVerticalSuite` into master-surface components. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components_of_noUnifyFullVerticalSuite
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_suite : PrincipalBoundarySoundNoUnifyFullVerticalSuite st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundNoUnifyFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf
+      ∧ PrincipalBoundarySoundNoUnifyFullVerticalMasterCapstone st fuel env e fs stExpr ty stField rf := by
+  exact principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components
+    (principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_noUnifyFullVerticalSuite h_suite)
 
 /-- Unified no-unify master surface is equivalent to no-unify full+vertical suite surface. -/
 theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_iff_fullVerticalSuite
