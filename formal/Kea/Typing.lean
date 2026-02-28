@@ -9011,6 +9011,30 @@ structure PrincipalBoundaryMasterRunBundleSuite : Prop where
 abbrev PrincipalBoundaryMasterRunBundleSuiteComponents : Prop :=
   PrincipalBoundaryMasterRunBundleSuite
 
+/-- `PrincipalBoundaryMasterRunBundleSuite` is equivalent to its components alias. -/
+theorem principalBoundaryMasterRunBundleSuite_iff_components :
+    PrincipalBoundaryMasterRunBundleSuite
+      ↔ PrincipalBoundaryMasterRunBundleSuiteComponents := by
+  constructor <;> intro h <;> simpa [PrincipalBoundaryMasterRunBundleSuiteComponents] using h
+
+/-- Build `PrincipalBoundaryMasterRunBundleSuite` from components alias. -/
+theorem principalBoundaryMasterRunBundleSuite_of_components
+    (h_comp : PrincipalBoundaryMasterRunBundleSuiteComponents) :
+    PrincipalBoundaryMasterRunBundleSuite := by
+  simpa [PrincipalBoundaryMasterRunBundleSuiteComponents] using h_comp
+
+/-- Decompose `PrincipalBoundaryMasterRunBundleSuite` into components alias. -/
+theorem principalBoundaryMasterRunBundleSuite_as_components
+    (h_suite : PrincipalBoundaryMasterRunBundleSuite) :
+    PrincipalBoundaryMasterRunBundleSuiteComponents := by
+  simpa [PrincipalBoundaryMasterRunBundleSuiteComponents] using h_suite
+
+/-- Direct components-route decomposition for `PrincipalBoundaryMasterRunBundleSuite`. -/
+theorem principalBoundaryMasterRunBundleSuite_as_components_of_components
+    (h_comp : PrincipalBoundaryMasterRunBundleSuiteComponents) :
+    PrincipalBoundaryMasterRunBundleSuiteComponents := by
+  simpa using h_comp
+
 /--
 Construct the master run-bundle suite from a master principal-boundary suite.
 -/
@@ -10172,6 +10196,38 @@ abbrev PrincipalBoundaryMasterRunBundleConsequenceSuiteComponents : Prop :=
   PrincipalBoundaryMasterRunBundleSuite ∧ PrincipalNoUnifyRunBundleConsequenceSlices
 
 /--
+`PrincipalBoundaryMasterRunBundleConsequenceSuite` is equivalent to explicit
+run-bundle + consequence components.
+-/
+theorem principalBoundaryMasterRunBundleConsequenceSuite_iff_components :
+    PrincipalBoundaryMasterRunBundleConsequenceSuite
+      ↔ PrincipalBoundaryMasterRunBundleConsequenceSuiteComponents := by
+  constructor
+  · intro h_suite
+    exact ⟨h_suite.runBundles, h_suite.noUnifyConsequences⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2⟩
+
+/-- Build `PrincipalBoundaryMasterRunBundleConsequenceSuite` from components. -/
+theorem principalBoundaryMasterRunBundleConsequenceSuite_of_components
+    (h_comp : PrincipalBoundaryMasterRunBundleConsequenceSuiteComponents) :
+    PrincipalBoundaryMasterRunBundleConsequenceSuite :=
+  (principalBoundaryMasterRunBundleConsequenceSuite_iff_components).2 h_comp
+
+/-- Decompose `PrincipalBoundaryMasterRunBundleConsequenceSuite` into components. -/
+theorem principalBoundaryMasterRunBundleConsequenceSuite_as_components
+    (h_suite : PrincipalBoundaryMasterRunBundleConsequenceSuite) :
+    PrincipalBoundaryMasterRunBundleConsequenceSuiteComponents :=
+  (principalBoundaryMasterRunBundleConsequenceSuite_iff_components).1 h_suite
+
+/-- Direct components-route decomposition for run-bundle consequence suite. -/
+theorem principalBoundaryMasterRunBundleConsequenceSuite_as_components_of_components
+    (h_comp : PrincipalBoundaryMasterRunBundleConsequenceSuiteComponents) :
+    PrincipalBoundaryMasterRunBundleConsequenceSuiteComponents :=
+  (principalBoundaryMasterRunBundleConsequenceSuite_iff_components).1
+    (principalBoundaryMasterRunBundleConsequenceSuite_of_components h_comp)
+
+/--
 Construct the master run-bundle consequence suite from a master run-bundle
 suite.
 -/
@@ -10642,6 +10698,30 @@ structure PrincipalBoundaryMasterConsequenceCapstoneSuite : Prop where
 /-- Explicit component alias for `PrincipalBoundaryMasterConsequenceCapstoneSuite`. -/
 abbrev PrincipalBoundaryMasterConsequenceCapstoneSuiteComponents : Prop :=
   PrincipalBoundaryMasterConsequenceCapstoneSuite
+
+/-- `PrincipalBoundaryMasterConsequenceCapstoneSuite` equals its components alias. -/
+theorem principalBoundaryMasterConsequenceCapstoneSuite_iff_components :
+    PrincipalBoundaryMasterConsequenceCapstoneSuite
+      ↔ PrincipalBoundaryMasterConsequenceCapstoneSuiteComponents := by
+  constructor <;> intro h <;> simpa [PrincipalBoundaryMasterConsequenceCapstoneSuiteComponents] using h
+
+/-- Build `PrincipalBoundaryMasterConsequenceCapstoneSuite` from components alias. -/
+theorem principalBoundaryMasterConsequenceCapstoneSuite_of_components
+    (h_comp : PrincipalBoundaryMasterConsequenceCapstoneSuiteComponents) :
+    PrincipalBoundaryMasterConsequenceCapstoneSuite := by
+  simpa [PrincipalBoundaryMasterConsequenceCapstoneSuiteComponents] using h_comp
+
+/-- Decompose `PrincipalBoundaryMasterConsequenceCapstoneSuite` into alias. -/
+theorem principalBoundaryMasterConsequenceCapstoneSuite_as_components
+    (h_suite : PrincipalBoundaryMasterConsequenceCapstoneSuite) :
+    PrincipalBoundaryMasterConsequenceCapstoneSuiteComponents := by
+  simpa [PrincipalBoundaryMasterConsequenceCapstoneSuiteComponents] using h_suite
+
+/-- Direct components-route decomposition for consequence-capstone suite. -/
+theorem principalBoundaryMasterConsequenceCapstoneSuite_as_components_of_components
+    (h_comp : PrincipalBoundaryMasterConsequenceCapstoneSuiteComponents) :
+    PrincipalBoundaryMasterConsequenceCapstoneSuiteComponents := by
+  simpa using h_comp
 
 /--
 Construct the master consequence capstone suite from one top-level master
@@ -25017,6 +25097,35 @@ abbrev PrincipalBoundarySoundTypingRunBundleSuiteComponents
     (h_app : AppUnifySoundHook) (h_proj : ProjUnifySoundHook) : Prop :=
   PrincipalBoundarySoundTypingRunBundleSuite h_app h_proj
 
+/-- `PrincipalBoundarySoundTypingRunBundleSuite` equals its components alias. -/
+theorem principalBoundarySoundTypingRunBundleSuite_iff_components
+    (h_app : AppUnifySoundHook) (h_proj : ProjUnifySoundHook) :
+    PrincipalBoundarySoundTypingRunBundleSuite h_app h_proj
+      ↔ PrincipalBoundarySoundTypingRunBundleSuiteComponents h_app h_proj := by
+  constructor <;> intro h <;>
+    simpa [PrincipalBoundarySoundTypingRunBundleSuiteComponents] using h
+
+/-- Build typing+run-bundle suite from components alias. -/
+theorem principalBoundarySoundTypingRunBundleSuite_of_components
+    (h_app : AppUnifySoundHook) (h_proj : ProjUnifySoundHook)
+    (h_comp : PrincipalBoundarySoundTypingRunBundleSuiteComponents h_app h_proj) :
+    PrincipalBoundarySoundTypingRunBundleSuite h_app h_proj := by
+  simpa [PrincipalBoundarySoundTypingRunBundleSuiteComponents] using h_comp
+
+/-- Decompose typing+run-bundle suite into components alias. -/
+theorem principalBoundarySoundTypingRunBundleSuite_as_components
+    (h_app : AppUnifySoundHook) (h_proj : ProjUnifySoundHook)
+    (h_suite : PrincipalBoundarySoundTypingRunBundleSuite h_app h_proj) :
+    PrincipalBoundarySoundTypingRunBundleSuiteComponents h_app h_proj := by
+  simpa [PrincipalBoundarySoundTypingRunBundleSuiteComponents] using h_suite
+
+/-- Direct components-route decomposition for typing+run-bundle suite. -/
+theorem principalBoundarySoundTypingRunBundleSuite_as_components_of_components
+    (h_app : AppUnifySoundHook) (h_proj : ProjUnifySoundHook)
+    (h_comp : PrincipalBoundarySoundTypingRunBundleSuiteComponents h_app h_proj) :
+    PrincipalBoundarySoundTypingRunBundleSuiteComponents h_app h_proj := by
+  simpa using h_comp
+
 /--
 Construct the boundary+sound typing+run-bundle-route suite directly from hook
 premises.
@@ -26616,6 +26725,62 @@ abbrev PrincipalBoundarySoundFullSuiteComponents
     ∧ (NoUnifyBranchesFields fs →
         PrincipalBoundarySoundNoUnifyFieldFull st fuel env fs stField rf)
 
+/-- `PrincipalBoundarySoundFullSuite` is equivalent to explicit components. -/
+theorem principalBoundarySoundFullSuite_iff_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv)
+    (e : CoreExpr) (fs : CoreFields)
+    (stExpr : UnifyState) (ty : Ty)
+    (stField : UnifyState) (rf : RowFields) :
+    PrincipalBoundarySoundFullSuite st fuel env e fs stExpr ty stField rf
+      ↔ PrincipalBoundarySoundFullSuiteComponents
+          st fuel env e fs stExpr ty stField rf := by
+  constructor
+  · intro h_suite
+    exact ⟨h_suite.expr, h_suite.field, h_suite.noUnifyExpr, h_suite.noUnifyField⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2.1, h_comp.2.2.1, h_comp.2.2.2⟩
+
+/-- Build `PrincipalBoundarySoundFullSuite` from explicit components. -/
+theorem principalBoundarySoundFullSuite_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv)
+    (e : CoreExpr) (fs : CoreFields)
+    (stExpr : UnifyState) (ty : Ty)
+    (stField : UnifyState) (rf : RowFields)
+    (h_comp :
+      PrincipalBoundarySoundFullSuiteComponents
+        st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundFullSuite st fuel env e fs stExpr ty stField rf :=
+  (principalBoundarySoundFullSuite_iff_components
+    st fuel env e fs stExpr ty stField rf).2 h_comp
+
+/-- Decompose `PrincipalBoundarySoundFullSuite` into explicit components. -/
+theorem principalBoundarySoundFullSuite_as_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv)
+    (e : CoreExpr) (fs : CoreFields)
+    (stExpr : UnifyState) (ty : Ty)
+    (stField : UnifyState) (rf : RowFields)
+    (h_suite : PrincipalBoundarySoundFullSuite st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundFullSuiteComponents
+      st fuel env e fs stExpr ty stField rf :=
+  (principalBoundarySoundFullSuite_iff_components
+    st fuel env e fs stExpr ty stField rf).1 h_suite
+
+/-- Direct components-route decomposition for `PrincipalBoundarySoundFullSuite`. -/
+theorem principalBoundarySoundFullSuite_as_components_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv)
+    (e : CoreExpr) (fs : CoreFields)
+    (stExpr : UnifyState) (ty : Ty)
+    (stField : UnifyState) (rf : RowFields)
+    (h_comp :
+      PrincipalBoundarySoundFullSuiteComponents
+        st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundFullSuiteComponents
+      st fuel env e fs stExpr ty stField rf :=
+  (principalBoundarySoundFullSuite_iff_components
+    st fuel env e fs stExpr ty stField rf).1
+    (principalBoundarySoundFullSuite_of_components
+      st fuel env e fs stExpr ty stField rf h_comp)
+
 /--
 Build the full typing-suite capstone from successful expression and field runs
 on the direct boundary+sound typing-suite path.
@@ -26915,6 +27080,62 @@ abbrev PrincipalBoundarySoundFullVerticalSuiteComponents
     (stField : UnifyState) (rf : RowFields) : Prop :=
   PrincipalBoundarySoundFullSuite st fuel env e fs stExpr ty stField rf
     ∧ VerticalHookFreeUnifySlices
+
+/-- `PrincipalBoundarySoundFullVerticalSuite` is equivalent to explicit components. -/
+theorem principalBoundarySoundFullVerticalSuite_iff_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv)
+    (e : CoreExpr) (fs : CoreFields)
+    (stExpr : UnifyState) (ty : Ty)
+    (stField : UnifyState) (rf : RowFields) :
+    PrincipalBoundarySoundFullVerticalSuite st fuel env e fs stExpr ty stField rf
+      ↔ PrincipalBoundarySoundFullVerticalSuiteComponents
+          st fuel env e fs stExpr ty stField rf := by
+  constructor
+  · intro h_suite
+    exact ⟨h_suite.full, h_suite.vertical⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2⟩
+
+/-- Build `PrincipalBoundarySoundFullVerticalSuite` from explicit components. -/
+theorem principalBoundarySoundFullVerticalSuite_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv)
+    (e : CoreExpr) (fs : CoreFields)
+    (stExpr : UnifyState) (ty : Ty)
+    (stField : UnifyState) (rf : RowFields)
+    (h_comp :
+      PrincipalBoundarySoundFullVerticalSuiteComponents
+        st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundFullVerticalSuite st fuel env e fs stExpr ty stField rf :=
+  (principalBoundarySoundFullVerticalSuite_iff_components
+    st fuel env e fs stExpr ty stField rf).2 h_comp
+
+/-- Decompose `PrincipalBoundarySoundFullVerticalSuite` into explicit components. -/
+theorem principalBoundarySoundFullVerticalSuite_as_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv)
+    (e : CoreExpr) (fs : CoreFields)
+    (stExpr : UnifyState) (ty : Ty)
+    (stField : UnifyState) (rf : RowFields)
+    (h_suite : PrincipalBoundarySoundFullVerticalSuite st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundFullVerticalSuiteComponents
+      st fuel env e fs stExpr ty stField rf :=
+  (principalBoundarySoundFullVerticalSuite_iff_components
+    st fuel env e fs stExpr ty stField rf).1 h_suite
+
+/-- Direct components-route decomposition for `PrincipalBoundarySoundFullVerticalSuite`. -/
+theorem principalBoundarySoundFullVerticalSuite_as_components_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv)
+    (e : CoreExpr) (fs : CoreFields)
+    (stExpr : UnifyState) (ty : Ty)
+    (stField : UnifyState) (rf : RowFields)
+    (h_comp :
+      PrincipalBoundarySoundFullVerticalSuiteComponents
+        st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundFullVerticalSuiteComponents
+      st fuel env e fs stExpr ty stField rf :=
+  (principalBoundarySoundFullVerticalSuite_iff_components
+    st fuel env e fs stExpr ty stField rf).1
+    (principalBoundarySoundFullVerticalSuite_of_components
+      st fuel env e fs stExpr ty stField rf h_comp)
 
 /--
 Build the full+vertical capstone from a row-poly boundary+sound bundle and

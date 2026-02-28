@@ -10065,3 +10065,44 @@ surfaces.
 **Impact**:
 - Reduces manual record destructuring in downstream theorem routes and keeps
   principal-suite APIs aligned with the formal corpus decomposition style.
+
+### 2026-03-01: typing master-consequence and sound-suite decomposition rollout
+
+**Context**: Extended `Kea/Typing.lean` decomposition theorem coverage with
+`iff/of/as/as_components_of_components` families for:
+- `PrincipalBoundaryMasterRunBundleSuite`
+- `PrincipalBoundaryMasterRunBundleConsequenceSuite`
+- `PrincipalBoundaryMasterConsequenceCapstoneSuite`
+- `PrincipalBoundarySoundTypingRunBundleSuite`
+- `PrincipalBoundarySoundFullSuite`
+- `PrincipalBoundarySoundFullVerticalSuite`
+
+During implementation, an initial duplicate insertion attempted to redefine
+pre-existing `principalBoundarySoundNoUnifyFullVerticalSuite_*` decomposition
+theorems; this was removed so the canonical existing block remains the single
+source of truth.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Decomposition theorem expansion only; no runtime semantic change.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Master-consequence and sound-suite layers now have explicit components-route
+  reconstruction/projection APIs aligned with their `...SuiteComponents`.
+
+**Impact**:
+- Broadens theorem-surface consistency for higher-level principal package
+  layers while preserving existing no-unify full-vertical decomposition routes.
