@@ -315,6 +315,26 @@ theorem closedAwareCoreBundle_of_components
     ClosedAwareCoreBundle c :=
   (closedAwareCoreBundle_iff_components c).2 h_comp
 
+theorem closedAwareCoreBundle_as_components_of_components
+    (c : HandleClauseContract)
+    (h_comp :
+      (RowFields.has (EffectRow.fields c.exprEffects) c.handled = false →
+        EffectRow.rest c.exprEffects = none →
+          resultEffectsCoreClosedAware c = c.exprEffects)
+      ∧
+      ((RowFields.has (EffectRow.fields c.exprEffects) c.handled = true ∨
+          EffectRow.rest c.exprEffects ≠ none) →
+        resultEffectsCoreClosedAware c = HandleClauseContract.resultEffectsCore c)) :
+    (RowFields.has (EffectRow.fields c.exprEffects) c.handled = false →
+      EffectRow.rest c.exprEffects = none →
+        resultEffectsCoreClosedAware c = c.exprEffects)
+    ∧
+    ((RowFields.has (EffectRow.fields c.exprEffects) c.handled = true ∨
+        EffectRow.rest c.exprEffects ≠ none) →
+      resultEffectsCoreClosedAware c = HandleClauseContract.resultEffectsCore c) :=
+  (closedAwareCoreBundle_iff_components c).1
+    (closedAwareCoreBundle_of_components c h_comp)
+
 /-- One-hop decomposition of closed-aware core bundle. -/
 theorem closedAwareCoreBundle_as_components
     (c : HandleClauseContract)
@@ -412,6 +432,22 @@ theorem closedAwareResultBundle_of_components
       (RowFields.has (EffectRow.fields (HandleClauseContract.resultEffects c)) c.handled = false)) :
     ClosedAwareResultBundle c :=
   (closedAwareResultBundle_iff_components c).2 h_comp
+
+theorem closedAwareResultBundle_as_components_of_components
+    (c : HandleClauseContract)
+    (h_comp :
+      (RowFields.has (EffectRow.fields (resultEffectsClosedAware c)) c.handled = false)
+      ∧
+      (EffectRow.rest (resultEffectsClosedAware c) = EffectRow.rest c.exprEffects)
+      ∧
+      (RowFields.has (EffectRow.fields (HandleClauseContract.resultEffects c)) c.handled = false)) :
+    (RowFields.has (EffectRow.fields (resultEffectsClosedAware c)) c.handled = false)
+    ∧
+    (EffectRow.rest (resultEffectsClosedAware c) = EffectRow.rest c.exprEffects)
+    ∧
+    (RowFields.has (EffectRow.fields (HandleClauseContract.resultEffects c)) c.handled = false) :=
+  (closedAwareResultBundle_iff_components c).1
+    (closedAwareResultBundle_of_components c h_comp)
 
 /-- One-hop decomposition of closed-aware result bundle. -/
 theorem closedAwareResultBundle_as_components

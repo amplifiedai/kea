@@ -189,6 +189,20 @@ theorem tailResumptiveBundle_of_components
     TailResumptiveBundle c :=
   (tailResumptiveBundle_iff_components c).2 h_comp
 
+theorem tailResumptiveBundle_as_components_of_components
+    (c : HandleClauseContract)
+    (h_comp :
+      (classifyClause c = .nonResumptive ∨ classifyClause c = .tailResumptive)
+      ∧ HandleClauseContract.resumeProvenance c
+      ∧ classifyClause c ≠ .invalid
+      ∧ (tailResumptiveEligible c → directCallEquivalent c)) :
+    (classifyClause c = .nonResumptive ∨ classifyClause c = .tailResumptive)
+    ∧ HandleClauseContract.resumeProvenance c
+    ∧ classifyClause c ≠ .invalid
+    ∧ (tailResumptiveEligible c → directCallEquivalent c) :=
+  (tailResumptiveBundle_iff_components c).1
+    (tailResumptiveBundle_of_components c h_comp)
+
 /-- One-hop decomposition of tail-resumptive bundle. -/
 theorem tailResumptiveBundle_as_components
     (c : HandleClauseContract)
@@ -287,6 +301,18 @@ theorem tailResumptiveClosedAwareBundle_of_components
       ∧ (tailResumptiveEligible c → directCallEquivalentClosedAware c)) :
     TailResumptiveClosedAwareBundle c :=
   (tailResumptiveClosedAwareBundle_iff_components c).2 h_comp
+
+theorem tailResumptiveClosedAwareBundle_as_components_of_components
+    (c : HandleClauseContract)
+    (h_comp :
+      (classifyClause c = .nonResumptive ∨ classifyClause c = .tailResumptive)
+      ∧ (classifyClause c ≠ .invalid)
+      ∧ (tailResumptiveEligible c → directCallEquivalentClosedAware c)) :
+    (classifyClause c = .nonResumptive ∨ classifyClause c = .tailResumptive)
+    ∧ (classifyClause c ≠ .invalid)
+    ∧ (tailResumptiveEligible c → directCallEquivalentClosedAware c) :=
+  (tailResumptiveClosedAwareBundle_iff_components c).1
+    (tailResumptiveClosedAwareBundle_of_components c h_comp)
 
 /-- One-hop decomposition of closed-aware tail-resumptive bundle. -/
 theorem tailResumptiveClosedAwareBundle_as_components

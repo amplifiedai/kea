@@ -8452,3 +8452,45 @@ decomposition wrappers:
 **Impact**:
 - Phase-2 handler contract consumers can stay entirely on named route wrappers
   without manual bundle reconstruction before component extraction.
+
+### 2026-02-28: cross-module components-route wrapper parity sweep
+
+**Context**: Closed remaining cross-module parity gaps where bundles had
+`...Bundle_of_components` constructors but no direct
+`...Bundle_as_components_of_components` route wrappers.
+Added wrappers for:
+- `closedAware{Core,Result}Bundle`
+- `failResultEquivalenceBundle`
+- `nestedHandler{,ClosedAware}Bundle`
+- `operationCallBundle`
+- `tailCapability{,ClosedAware}Bundle`
+- `tailResumptive{,ClosedAware}Bundle`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Wrapper-only theorem routing from existing `iff_components` and
+  `of_components` surfaces.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran parity scan for all `*Bundle_of_*` vs `*Bundle_as_components_of_*`
+  theorem families in `formal/Kea/Properties/*.lean`.
+- Result: no missing `as_components_of` wrappers.
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Constructor-route decomposition parity is now closed across the current
+  closed-aware/tail/nested/operation/fail-result bundle layers.
+
+**Impact**:
+- Downstream proofs can consume component constructor assumptions through a
+  uniform one-hop `as_components_of_components` API across these modules.

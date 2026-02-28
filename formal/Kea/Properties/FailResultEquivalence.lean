@@ -61,6 +61,20 @@ theorem failResultEquivalenceBundle_of_components
     FailResultEquivalenceBundle original lowered :=
   (failResultEquivalenceBundle_iff_components original lowered).2 h_comp
 
+theorem failResultEquivalenceBundle_as_components_of_components
+    (original lowered : Ty)
+    (h_comp :
+      FailResultContracts.failResultFunctionEquivalent original lowered
+      ∧
+      (∃ params eff okTy errTy,
+        lowered = .functionEff params eff (.result okTy errTy))) :
+    FailResultContracts.failResultFunctionEquivalent original lowered
+    ∧
+    (∃ params eff okTy errTy,
+      lowered = .functionEff params eff (.result okTy errTy)) :=
+  (failResultEquivalenceBundle_iff_components original lowered).1
+    (failResultEquivalenceBundle_of_components original lowered h_comp)
+
 /-- One-hop decomposition of fail-result equivalence bundle. -/
 theorem failResultEquivalenceBundle_as_components
     (original lowered : Ty)

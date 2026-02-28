@@ -239,6 +239,33 @@ theorem operationCallBundle_of_components
     OperationCallBundle decl effects opName argTy retTy :=
   (operationCallBundle_iff_components decl effects opName argTy retTy).2 h_comp
 
+theorem operationCallBundle_as_components_of_components
+    (decl : EffectDecl)
+    (effects : EffectRow)
+    (opName : Label)
+    (argTy retTy : Ty)
+    (h_comp :
+      operationDeclared decl opName
+      ∧ operationCallTyping decl opName argTy retTy
+      ∧
+      (RowFields.has
+          (EffectRow.fields (performOperationEffects effects decl.label))
+          decl.label = true)
+      ∧
+      (EffectRow.rest (performOperationEffects effects decl.label) =
+        EffectRow.rest effects)) :
+    operationDeclared decl opName
+    ∧ operationCallTyping decl opName argTy retTy
+    ∧
+    (RowFields.has
+        (EffectRow.fields (performOperationEffects effects decl.label))
+        decl.label = true)
+    ∧
+    (EffectRow.rest (performOperationEffects effects decl.label) =
+      EffectRow.rest effects) :=
+  (operationCallBundle_iff_components decl effects opName argTy retTy).1
+    (operationCallBundle_of_components decl effects opName argTy retTy h_comp)
+
 /-- One-hop decomposition of operation-call bundle. -/
 theorem operationCallBundle_as_components
     (decl : EffectDecl)
