@@ -26876,6 +26876,36 @@ theorem principalBoundarySoundFullSuite_of_success_via_typingRunBundleSuite_from
   principalBoundarySoundFullSuite_of_success_via_typingRunBundleSuite
     (h_app := h_hooks.1) (h_proj := h_hooks.2) h_ok_expr h_ok_field
 
+/-- Direct route decomposition for typing-run-bundle full-suite constructor. -/
+theorem principalBoundarySoundFullSuite_as_components_of_success_via_typingRunBundleSuite
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundFullSuiteComponents st fuel env e fs stExpr ty stField rf := by
+  exact principalBoundarySoundFullSuite_as_components
+    st fuel env e fs stExpr ty stField rf
+    (principalBoundarySoundFullSuite_of_success_via_typingRunBundleSuite
+      (h_app := h_app) (h_proj := h_proj) h_ok_expr h_ok_field)
+
+/-- Direct route decomposition for bundled typing-run-bundle full-suite constructor. -/
+theorem principalBoundarySoundFullSuite_as_components_of_success_via_typingRunBundleSuite_from_bundle
+    (h_hooks : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundFullSuiteComponents st fuel env e fs stExpr ty stField rf := by
+  exact principalBoundarySoundFullSuite_as_components
+    st fuel env e fs stExpr ty stField rf
+    (principalBoundarySoundFullSuite_of_success_via_typingRunBundleSuite_from_bundle
+      h_hooks h_ok_expr h_ok_field)
+
 /-- One-hop projection: arbitrary-success expression full surface from the full suite. -/
 theorem principalBoundarySoundFullSuite_expr
     {st : UnifyState} {fuel : Nat} {env : TermEnv}
@@ -27056,6 +27086,37 @@ theorem principalBoundarySoundFullSuite_of_success_via_rowPolyBoundarySoundBundl
     (h_bundle := principalRowPolyBoundarySoundBundle_of_hook_bundle h_seed)
     h_ok_expr h_ok_field
 
+/-- Direct route decomposition for row-poly full-suite constructor. -/
+theorem principalBoundarySoundFullSuite_as_components_of_success_via_rowPolyBoundarySoundBundle
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    (h_bundle : PrincipalRowPolyBoundarySoundBundle h_app h_proj)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundFullSuiteComponents st fuel env e fs stExpr ty stField rf := by
+  exact principalBoundarySoundFullSuite_as_components
+    st fuel env e fs stExpr ty stField rf
+    (principalBoundarySoundFullSuite_of_success_via_rowPolyBoundarySoundBundle
+      h_bundle h_ok_expr h_ok_field)
+
+/-- Direct route decomposition for bundled row-poly full-suite constructor. -/
+theorem principalBoundarySoundFullSuite_as_components_of_success_via_rowPolyBoundarySoundBundle_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundFullSuiteComponents st fuel env e fs stExpr ty stField rf := by
+  exact principalBoundarySoundFullSuite_as_components
+    st fuel env e fs stExpr ty stField rf
+    (principalBoundarySoundFullSuite_of_success_via_rowPolyBoundarySoundBundle_from_bundle
+      h_seed h_ok_expr h_ok_field)
+
 /--
 Canonical hook-seeded constructor for the row-poly-boundary full-suite route.
 -/
@@ -27225,6 +27286,37 @@ theorem principalBoundarySoundFullVerticalSuite_of_success_via_rowPolyBoundarySo
     (h_bundle := principalRowPolyBoundarySoundBundle_of_hook_bundle h_seed)
     h_ok_expr h_ok_field
 
+/-- Direct route decomposition for row-poly full+vertical constructor. -/
+theorem principalBoundarySoundFullVerticalSuite_as_components_of_success_via_rowPolyBoundarySoundBundle
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    (h_bundle : PrincipalRowPolyBoundarySoundBundle h_app h_proj)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundFullVerticalSuiteComponents st fuel env e fs stExpr ty stField rf := by
+  exact principalBoundarySoundFullVerticalSuite_as_components
+    st fuel env e fs stExpr ty stField rf
+    (principalBoundarySoundFullVerticalSuite_of_success_via_rowPolyBoundarySoundBundle
+      h_bundle h_ok_expr h_ok_field)
+
+/-- Direct route decomposition for bundled row-poly full+vertical constructor. -/
+theorem principalBoundarySoundFullVerticalSuite_as_components_of_success_via_rowPolyBoundarySoundBundle_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundFullVerticalSuiteComponents st fuel env e fs stExpr ty stField rf := by
+  exact principalBoundarySoundFullVerticalSuite_as_components
+    st fuel env e fs stExpr ty stField rf
+    (principalBoundarySoundFullVerticalSuite_of_success_via_rowPolyBoundarySoundBundle_from_bundle
+      h_seed h_ok_expr h_ok_field)
+
 /--
 Canonical hook-seeded constructor for the row-poly full+vertical capstone.
 -/
@@ -27314,6 +27406,36 @@ theorem principalBoundarySoundFullVerticalSuite_of_success_via_typingRunBundleSu
     PrincipalBoundarySoundFullVerticalSuite st fuel env e fs stExpr ty stField rf :=
   principalBoundarySoundFullVerticalSuite_of_success_via_typingRunBundleSuite
     (h_app := h_seed.1) (h_proj := h_seed.2) h_ok_expr h_ok_field
+
+/-- Direct route decomposition for typing-run-bundle full+vertical constructor. -/
+theorem principalBoundarySoundFullVerticalSuite_as_components_of_success_via_typingRunBundleSuite
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundFullVerticalSuiteComponents st fuel env e fs stExpr ty stField rf := by
+  exact principalBoundarySoundFullVerticalSuite_as_components
+    st fuel env e fs stExpr ty stField rf
+    (principalBoundarySoundFullVerticalSuite_of_success_via_typingRunBundleSuite
+      (h_app := h_app) (h_proj := h_proj) h_ok_expr h_ok_field)
+
+/-- Direct route decomposition for bundled typing-run-bundle full+vertical constructor. -/
+theorem principalBoundarySoundFullVerticalSuite_as_components_of_success_via_typingRunBundleSuite_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundFullVerticalSuiteComponents st fuel env e fs stExpr ty stField rf := by
+  exact principalBoundarySoundFullVerticalSuite_as_components
+    st fuel env e fs stExpr ty stField rf
+    (principalBoundarySoundFullVerticalSuite_of_success_via_typingRunBundleSuite_from_bundle
+      h_seed h_ok_expr h_ok_field)
 
 /--
 Dual-routed direct hook-seeded constructor for full+vertical packaging via the
