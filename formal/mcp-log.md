@@ -8922,3 +8922,37 @@ arbitrary-rank tensor kernel layers together.
 **Impact**:
 - Downstream shape routes can import one suite witness for all constant-shape
   kernel dependencies, including scalar `unifyDim` contracts.
+
+### 2026-02-28: consolidated dimension-kernel suite and shape-suite wiring
+
+**Context**:
+1. Added `DimKernelSuite` / `dimKernelSuite` in `Kea/Dimensions.lean` to bundle
+   scalar (`DimConstKernelSlice`) + list (`DimConstListKernelSlice`) kernels.
+2. Extended `ShapeConstDimKernelSuite` / `shapeConstDimKernelSuite` to include
+   `dimKernel : DimKernelSuite` alongside existing fields.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Package-layer consolidation only; no semantic changes to existing kernel
+  contracts.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Dimension kernels now have a canonical suite witness.
+- Shape-suite consumers can import the dim stack through one dedicated field.
+
+**Impact**:
+- Reduces theorem plumbing in WP7.2/WP7.4 call sites by unifying scalar/list
+  kernel dependencies under a canonical suite route.
