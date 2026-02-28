@@ -5284,6 +5284,168 @@ theorem effectHandlerNestedOpenRowBridgeBundle_of_open_expr_row_fail_present
         h_wellTyped h_expr h_cap_ne h_failZero h_fail_present h_clauseEffects h_lowered h_outer_abs h_open
   }
 
+theorem effectHandlerNestedOpenRowBridgeBundle_as_components_of_open_base_row_premises
+    (clause : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_cap_ne : capability ≠ clause.handled)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_admissible : FailResultContracts.catchAdmissible clause.exprEffects)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy)
+    (h_outer_abs :
+      RowFields.has (EffectRow.fields outerHandler) clause.handled = false)
+    (h_base_open : EffectRow.rest baseEffects ≠ none) :
+    NestedHandlerCompositionContracts.nestedComposeClosedAware
+      clause.exprEffects
+      clause.handlerEffects
+      outerHandler
+      clause.handled =
+    NestedHandlerCompositionContracts.nestedCompose
+      clause.exprEffects
+      clause.handlerEffects
+      outerHandler
+      clause.handled :=
+  effectHandlerNestedOpenRowBridgeBundle_as_components clause outerHandler
+    (effectHandlerNestedOpenRowBridgeBundle_of_open_base_row_premises
+      clause baseEffects capability innerEffects okTy errTy loweredTy outerHandler
+      h_wellTyped h_expr h_cap_ne h_failZero h_admissible h_clauseEffects h_lowered h_outer_abs h_base_open)
+
+theorem effectHandlerNestedOpenRowBridgeBundle_as_components_of_open_base_row_fail_present
+    (clause : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_cap_ne : capability ≠ clause.handled)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_fail_present :
+      RowFields.has (EffectRow.fields clause.exprEffects) FailResultContracts.failLabel = true)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy)
+    (h_outer_abs :
+      RowFields.has (EffectRow.fields outerHandler) clause.handled = false)
+    (h_base_open : EffectRow.rest baseEffects ≠ none) :
+    NestedHandlerCompositionContracts.nestedComposeClosedAware
+      clause.exprEffects
+      clause.handlerEffects
+      outerHandler
+      clause.handled =
+    NestedHandlerCompositionContracts.nestedCompose
+      clause.exprEffects
+      clause.handlerEffects
+      outerHandler
+      clause.handled :=
+  effectHandlerNestedOpenRowBridgeBundle_as_components clause outerHandler
+    (effectHandlerNestedOpenRowBridgeBundle_of_open_base_row_fail_present
+      clause baseEffects capability innerEffects okTy errTy loweredTy outerHandler
+      h_wellTyped h_expr h_cap_ne h_failZero h_fail_present h_clauseEffects h_lowered h_outer_abs h_base_open)
+
+theorem effectHandlerNestedOpenRowBridgeBundle_as_components_of_open_expr_row_premises
+    (clause : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_cap_ne : capability ≠ clause.handled)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_admissible : FailResultContracts.catchAdmissible clause.exprEffects)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy)
+    (h_outer_abs :
+      RowFields.has (EffectRow.fields outerHandler) clause.handled = false)
+    (h_open : EffectRow.rest clause.exprEffects ≠ none) :
+    NestedHandlerCompositionContracts.nestedComposeClosedAware
+      clause.exprEffects
+      clause.handlerEffects
+      outerHandler
+      clause.handled =
+    NestedHandlerCompositionContracts.nestedCompose
+      clause.exprEffects
+      clause.handlerEffects
+      outerHandler
+      clause.handled :=
+  effectHandlerNestedOpenRowBridgeBundle_as_components clause outerHandler
+    (effectHandlerNestedOpenRowBridgeBundle_of_open_expr_row_premises
+      clause baseEffects capability innerEffects okTy errTy loweredTy outerHandler
+      h_wellTyped h_expr h_cap_ne h_failZero h_admissible h_clauseEffects h_lowered h_outer_abs h_open)
+
+theorem effectHandlerNestedOpenRowBridgeBundle_as_components_of_open_expr_row_fail_present
+    (clause : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_cap_ne : capability ≠ clause.handled)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_fail_present :
+      RowFields.has (EffectRow.fields clause.exprEffects) FailResultContracts.failLabel = true)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy)
+    (h_outer_abs :
+      RowFields.has (EffectRow.fields outerHandler) clause.handled = false)
+    (h_open : EffectRow.rest clause.exprEffects ≠ none) :
+    NestedHandlerCompositionContracts.nestedComposeClosedAware
+      clause.exprEffects
+      clause.handlerEffects
+      outerHandler
+      clause.handled =
+    NestedHandlerCompositionContracts.nestedCompose
+      clause.exprEffects
+      clause.handlerEffects
+      outerHandler
+      clause.handled :=
+  effectHandlerNestedOpenRowBridgeBundle_as_components clause outerHandler
+    (effectHandlerNestedOpenRowBridgeBundle_of_open_expr_row_fail_present
+      clause baseEffects capability innerEffects okTy errTy loweredTy outerHandler
+      h_wellTyped h_expr h_cap_ne h_failZero h_fail_present h_clauseEffects h_lowered h_outer_abs h_open)
+
 /-- One-hop projection from the open-row bridge bundle. -/
 theorem effectHandlerNestedOpenRowBridgeBundle_closedAwareEqNormalized
     (clause : HandleClauseContract)
@@ -5660,6 +5822,204 @@ theorem effectHandlerNestedOpenRowConsequenceBundle_of_open_expr_row_fail_presen
           h_wellTyped h_expr h_cap_ne h_failZero h_fail_present h_clauseEffects h_lowered h_outer_abs)
         h_open
   }
+
+theorem effectHandlerNestedOpenRowConsequenceBundle_as_components_of_open_base_row_premises
+    (clause : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_cap_ne : capability ≠ clause.handled)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_admissible : FailResultContracts.catchAdmissible clause.exprEffects)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy)
+    (h_outer_abs :
+      RowFields.has (EffectRow.fields outerHandler) clause.handled = false)
+    (h_base_open : EffectRow.rest baseEffects ≠ none) :
+    (NestedHandlerCompositionContracts.nestedComposeClosedAware
+        clause.exprEffects
+        clause.handlerEffects
+        outerHandler
+        clause.handled =
+      NestedHandlerCompositionContracts.nestedCompose
+        clause.exprEffects
+        clause.handlerEffects
+        outerHandler
+        clause.handled)
+    ∧
+    (RowFields.has
+      (EffectRow.fields
+        (NestedHandlerCompositionContracts.nestedCompose
+          clause.exprEffects
+          clause.handlerEffects
+          outerHandler
+          clause.handled))
+      clause.handled = false) :=
+  effectHandlerNestedOpenRowConsequenceBundle_as_components clause outerHandler
+    (effectHandlerNestedOpenRowConsequenceBundle_of_open_base_row_premises
+      clause baseEffects capability innerEffects okTy errTy loweredTy outerHandler
+      h_wellTyped h_expr h_cap_ne h_failZero h_admissible h_clauseEffects h_lowered h_outer_abs h_base_open)
+
+theorem effectHandlerNestedOpenRowConsequenceBundle_as_components_of_open_base_row_fail_present
+    (clause : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_cap_ne : capability ≠ clause.handled)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_fail_present :
+      RowFields.has (EffectRow.fields clause.exprEffects) FailResultContracts.failLabel = true)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy)
+    (h_outer_abs :
+      RowFields.has (EffectRow.fields outerHandler) clause.handled = false)
+    (h_base_open : EffectRow.rest baseEffects ≠ none) :
+    (NestedHandlerCompositionContracts.nestedComposeClosedAware
+        clause.exprEffects
+        clause.handlerEffects
+        outerHandler
+        clause.handled =
+      NestedHandlerCompositionContracts.nestedCompose
+        clause.exprEffects
+        clause.handlerEffects
+        outerHandler
+        clause.handled)
+    ∧
+    (RowFields.has
+      (EffectRow.fields
+        (NestedHandlerCompositionContracts.nestedCompose
+          clause.exprEffects
+          clause.handlerEffects
+          outerHandler
+          clause.handled))
+      clause.handled = false) :=
+  effectHandlerNestedOpenRowConsequenceBundle_as_components clause outerHandler
+    (effectHandlerNestedOpenRowConsequenceBundle_of_open_base_row_fail_present
+      clause baseEffects capability innerEffects okTy errTy loweredTy outerHandler
+      h_wellTyped h_expr h_cap_ne h_failZero h_fail_present h_clauseEffects h_lowered h_outer_abs h_base_open)
+
+theorem effectHandlerNestedOpenRowConsequenceBundle_as_components_of_open_expr_row_premises
+    (clause : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_cap_ne : capability ≠ clause.handled)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_admissible : FailResultContracts.catchAdmissible clause.exprEffects)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy)
+    (h_outer_abs :
+      RowFields.has (EffectRow.fields outerHandler) clause.handled = false)
+    (h_open : EffectRow.rest clause.exprEffects ≠ none) :
+    (NestedHandlerCompositionContracts.nestedComposeClosedAware
+        clause.exprEffects
+        clause.handlerEffects
+        outerHandler
+        clause.handled =
+      NestedHandlerCompositionContracts.nestedCompose
+        clause.exprEffects
+        clause.handlerEffects
+        outerHandler
+        clause.handled)
+    ∧
+    (RowFields.has
+      (EffectRow.fields
+        (NestedHandlerCompositionContracts.nestedCompose
+          clause.exprEffects
+          clause.handlerEffects
+          outerHandler
+          clause.handled))
+      clause.handled = false) :=
+  effectHandlerNestedOpenRowConsequenceBundle_as_components clause outerHandler
+    (effectHandlerNestedOpenRowConsequenceBundle_of_open_expr_row_premises
+      clause baseEffects capability innerEffects okTy errTy loweredTy outerHandler
+      h_wellTyped h_expr h_cap_ne h_failZero h_admissible h_clauseEffects h_lowered h_outer_abs h_open)
+
+theorem effectHandlerNestedOpenRowConsequenceBundle_as_components_of_open_expr_row_fail_present
+    (clause : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_cap_ne : capability ≠ clause.handled)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_fail_present :
+      RowFields.has (EffectRow.fields clause.exprEffects) FailResultContracts.failLabel = true)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy)
+    (h_outer_abs :
+      RowFields.has (EffectRow.fields outerHandler) clause.handled = false)
+    (h_open : EffectRow.rest clause.exprEffects ≠ none) :
+    (NestedHandlerCompositionContracts.nestedComposeClosedAware
+        clause.exprEffects
+        clause.handlerEffects
+        outerHandler
+        clause.handled =
+      NestedHandlerCompositionContracts.nestedCompose
+        clause.exprEffects
+        clause.handlerEffects
+        outerHandler
+        clause.handled)
+    ∧
+    (RowFields.has
+      (EffectRow.fields
+        (NestedHandlerCompositionContracts.nestedCompose
+          clause.exprEffects
+          clause.handlerEffects
+          outerHandler
+          clause.handled))
+      clause.handled = false) :=
+  effectHandlerNestedOpenRowConsequenceBundle_as_components clause outerHandler
+    (effectHandlerNestedOpenRowConsequenceBundle_of_open_expr_row_fail_present
+      clause baseEffects capability innerEffects okTy errTy loweredTy outerHandler
+      h_wellTyped h_expr h_cap_ne h_failZero h_fail_present h_clauseEffects h_lowered h_outer_abs h_open)
 
 /-- One-hop projection: equality facet of strengthened open-row consequence bundle. -/
 theorem effectHandlerNestedOpenRowConsequenceBundle_closedAwareEqNormalized

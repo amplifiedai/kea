@@ -8383,3 +8383,35 @@ composition+coherence layer:
 **Impact**:
 - Top-level coherence consumers can reach core package projections in one route
   step without explicit intermediate package threading.
+
+### 2026-02-28: open-row bundle route decomposition wrappers
+
+**Context**: Added direct route decomposition wrappers for open-row bridge and
+strengthened consequence bundles:
+- `effectHandlerNestedOpenRowBridgeBundle_as_components_of_open_{base,expr}_row_{premises,fail_present}`
+- `effectHandlerNestedOpenRowConsequenceBundle_as_components_of_open_{base,expr}_row_{premises,fail_present}`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Wrapper-only decomposition routing over existing open-row constructors.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Open-row premise/fail-present routes now expose direct component witnesses for
+  bridge equality and strengthened handled-removal consequences.
+
+**Impact**:
+- Open-row consumers can immediately consume component-level equalities and
+  handled-removal facts without explicit bundle unpacking.
