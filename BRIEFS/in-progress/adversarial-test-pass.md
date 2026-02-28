@@ -1,6 +1,6 @@
 # Brief: Adversarial Test Pass (0a–0e)
 
-**Status:** ready
+**Status:** active
 **Priority:** v1-critical
 **Depends on:** 0e (all phases under test must be implemented)
 **Blocks:** nothing directly, but de-risks everything downstream
@@ -296,3 +296,8 @@ is a feature.
       right span, suggest a fix where possible)
 - [ ] All tests pass in CI (`mise run check-full`)
 - [ ] Any bugs found are fixed with regression tests
+
+## Progress
+
+- 2026-03-01 04:26: Picked up brief, moved to `in-progress/`, and aligned INDEX status tracking (active + done updates).
+- **Next:** Land first adversarial tranche for 0a/0b/0c diagnostics (malformed interpolation, trait obligation/Show constraints, resume misuse) with regression snapshots and no-panics verification.

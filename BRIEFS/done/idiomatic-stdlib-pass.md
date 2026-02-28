@@ -1,6 +1,6 @@
 # Brief: Idiomatic Stdlib Pass
 
-**Status:** ready
+**Status:** done
 **Priority:** v1
 **Depends on:** stdlib-bootstrap Tier 0 blockers resolved
 **Blocks:** nothing directly, but establishes quality bar for all future stdlib

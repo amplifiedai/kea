@@ -29,6 +29,7 @@ Work in progress right now. Each entry should have a `## Progress` section in it
 - **[Memory model](in-progress/0f-memory-model.md)** — Active. Steps 1-2 (move checking, borrow checking) done. Step 3a (release scheduling, churn fusion, linear alias transfer) done. Step 6 (fixed-width integers, bitwise ops, numeric inference, layout intrinsics) largely done. **Step 3 expanded** with five new sub-steps based on Lean 4/Koka/Perceus research: 3b auto borrow inference, 3c drop specialisation, 3d reuse tokens (FBIP), 3e TRMC, 3f FIP verification. Next: Step 3b (auto borrow inference — single highest-impact optimisation).
 - **[Lean formalization](in-progress/lean-formalization.md)** — Active. Phase 1 kickoff started from the Rill Lean baseline; next is Kea effect-row alignment in core modules/proofs.
 - **[Practical language gaps](in-progress/practical-language-gaps.md)** — Active. Gaps 6-8 (IO decomposition, mutual recursion, enum keyword) are done; remaining high-priority work is Gaps 1-3 (layout intrinsics, numeric inference, string ops) for self-hosting.
+- **[Adversarial test pass](in-progress/adversarial-test-pass.md)** — Active. Systematic sad-path and edge-case coverage across phases 0a-0e is now in progress, starting with syntax/type/effect diagnostics that must never panic and should surface clear user-facing errors.
 
 ---
 
@@ -82,8 +83,8 @@ Designed and approved. Ready to pick up. Ordered by execution sequence per ROADM
 
 ### Parallel tracks
 
-14. **[Idiomatic stdlib pass](todo/idiomatic-stdlib-pass.md)** (after Tier 0 blockers, parallel) — Quality pass on all stdlib modules: Fail-over-Result signatures, Elixir/Rust-quality doc comments, naming consistency, remove Result monadic combinators. Establishes the quality bar for all future stdlib.
-15. **[Adversarial test pass](todo/adversarial-test-pass.md)** (0a–0e, parallel) — Systematic sad-path and edge-case coverage across all completed phases. Malformed syntax, type system edge cases, effect scoping violations, handler misuse, codegen correctness, runtime effect interactions. No compiler panics on any input.
+14. *(done)* **[Idiomatic stdlib pass](done/idiomatic-stdlib-pass.md)** — see Done section.
+15. *(active)* **[Adversarial test pass](in-progress/adversarial-test-pass.md)** — see Active section.
 7. **[Testing](todo/testing.md)** (Phase 0d through Phase 1) — `assert` (Fail) + `check` (Test effect) dual assertion model. Compiler-level expression capture, structural diff, effect-driven parallelism, property testing via `Gen` effect. Test runner portion starts with 0d. Benchmark harness is a 0d deliverable.
 8. **[Lean formalization](in-progress/lean-formalization.md)** (Phase 0c-0e parallel, active) — Migrate Rill's Lean 4 formalization into Kea, then prove Kea-specific effect handler properties (removal, resume linearity, Fail/Result equivalence).
 12. **[Algorithm gallery](todo/algorithm-gallery.md)** (Phase 0e through 0g, parallel) — Curated corpus of classic algorithms in `tests/algorithms/`. Exemplary code with doc comments, test blocks, and CI benchmarks. Validates language features per phase: Welford's (0e), FNV-1a + merge sort (0f early), quicksort + HAMT (0f mid-late), UTF-8 validation + KMP (0g).
@@ -135,6 +136,7 @@ Completed briefs. Kept for reference and design rationale.
 
 | Brief | Summary |
 |-------|---------|
+| [idiomatic-stdlib-pass](done/idiomatic-stdlib-pass.md) | Idiomatic quality sweep complete across stdlib modules: Fail-first signatures, Result role clarified as data representation, consistent naming/ordering, and Elixir/Rust-quality documentation patterns applied end-to-end. |
 | [syntax-migration](done/syntax-migration-rill-to-kea.md) | Rill→Kea syntax migration complete: `struct` (with `record` deprecated), `base~{ field }` functional update, `(a, b)` tuples (with `#()` deprecated), `%{}` map literals verified. |
 | [string-interpolation](done/string-interpolation.md) | KERNEL §1.6 landed with `{...}` interpolation, escaped braces (`{{`/`}}`), parser desugaring to `show(...)` + concat, and CLI/runtime regression coverage. |
 | [`with` syntax](done/with-syntax.md) | Callback-flattening sugar landed end-to-end: `with`/`with pat <- ...` parsing, `@with` parameter annotations, AST/HIR/typechecker desugaring, target validation diagnostics, block-order lint warning (`W0902`), and parser/infer/CLI regression coverage. |
