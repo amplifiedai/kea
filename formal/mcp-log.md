@@ -6145,3 +6145,1847 @@ runtime sanity check before further formal packaging.
 **Outcome**:
 - No divergence found on the currently probed kea-mcp slice.
 - Continued formal-only theorem packaging on the effect/handler track.
+
+### 2026-02-28: nested/clause coherence bundle packaging + MCP regression recheck
+
+**Context**: Extended `EffectHandlerContractSuite` with a named coherence bundle
+for nested same-target closed-aware outputs vs clause-level closed-aware
+outputs, then re-checked focused MCP runtime regressions before continuing.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- This step is theorem-surface packaging over existing proven lemmas:
+  - `effectHandlerCompositionSuite_nestedRowTail_eq_closedAwareRowTail`
+  - `effectHandlerCompositionSuite_nestedHandledRemoved_coherent`
+  - `effectHandlerCompositionSuite_clauseHandledRemoved_coherent`
+- Expected runtime behavior on the tracked effect-row regression family should
+  remain unchanged (no new semantic path introduced).
+
+**Probe (Rust side)**:
+- Ran: `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+- Includes:
+  - `type_check_effectful_function_keeps_declared_effect_row`
+  - `reset_session_does_not_leave_phantom_io_on_pure_functions`
+  - curried callable effect-row propagation checks (direct/let-bound/callback).
+
+**Classify**: Agreement.
+
+**Outcome**:
+- Added named bundle `EffectHandlerNestedClauseCoherenceBundle` and constructors/projections:
+  - `effectHandlerNestedClauseCoherenceBundle_of_compositionSuite`
+  - `effectHandlerCompositionSuite_nestedClauseCoherenceBundle`
+  - `effectHandlerNestedClauseCoherenceBundle_*` one-hop projections.
+- Verified `cd formal && lake build` passes.
+- Runtime regression slice stayed aligned; no new divergence observed.
+
+**Impact**:
+- Coherence contracts are now consumable from one theorem surface in Phase-2
+  composition proofs.
+- Updated tracking docs: `FORMAL.md` and `formal/ROADMAP.md`.
+
+### 2026-02-28: composition+coherence master package + MCP recheck
+
+**Context**: Lifted the nested/clause coherence layer into a master package over
+`EffectHandlerCompositionSuite`, then rechecked the active MCP regression slice.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- New surface is packaging-only over existing theorem paths:
+  - `EffectHandlerCompositionSuite` constructors/projections
+  - `EffectHandlerNestedClauseCoherenceBundle`
+- No runtime semantic shift expected; effect-row regression family should stay
+  stable.
+
+**Probe (Rust side)**:
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+- Includes effect-row propagation + phantom-IO guard tests:
+  - `type_check_effectful_function_keeps_declared_effect_row`
+  - `reset_session_does_not_leave_phantom_io_on_pure_functions`
+  - curried callback/direct-call residual-effect checks.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Added `EffectHandlerCompositionCoherenceSuite` in
+  `Kea/Properties/EffectHandlerContractSuite.lean` with:
+  - `..._of_composition`
+  - `..._iff_composition`
+  - `..._of_premises`
+  - `..._of_fail_present`
+  - one-hop composition/coherence projections.
+- `cd formal && lake build` passes.
+- Runtime regression slice remains aligned.
+
+**Impact**:
+- Phase-2 consumers now have a single named theorem surface that carries both
+  composition-level consequences and derived nested/clause coherence.
+
+### 2026-02-28: composition+coherence projection lift + MCP regression recheck
+
+**Context**: Extended `EffectHandlerCompositionCoherenceSuite` with direct
+one-hop projections for catch classifier/capstone outcomes and
+closed-aware capability/tail consequences, then reran the MCP regression slice.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- This is projection-surface expansion over existing composition theorems; no
+  algorithmic behavior changes are introduced.
+- Runtime effect-row regression checks should remain stable.
+
+**Probe (Rust side)**:
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+- Includes the effect-row/phantom-IO guards and curried residual-effect probes.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Added projection family on `EffectHandlerCompositionCoherenceSuite`:
+  - `..._genericCatchClassifier`
+  - `..._higherCatchClassifier`
+  - `..._genericCatchCapstone`
+  - `..._higherCatchCapstone`
+  - `..._closedAwareCapability`
+  - `..._tailNotInvalid`
+- Verified `cd formal && lake build` passes.
+- Runtime probe family remained aligned.
+
+**Impact**:
+- The new master package is now directly consumable for catch/capability/tail
+  outcomes without downcasting to raw `EffectHandlerCompositionSuite`.
+
+### 2026-02-28: nested closed-aware/normalized bridge theorem + MCP recheck
+
+**Context**: Added an explicit bridge theorem in
+`NestedHandlerCompositionContracts` for the case where both closed-aware stages
+take present/open branches, then rechecked the active MCP regression slice.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- New theorem (`nestedComposeClosedAware_eq_nestedCompose_of_present_or_open`)
+  is a branch-assumption bridge over existing closed-aware and normalized
+  definitions; no runtime behavior change is expected.
+- Existing effect-row probe family should remain stable.
+
+**Probe (Rust side)**:
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+- Includes effect-row preservation + no-phantom-IO + curried residual-effect
+  checks.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Added theorem
+  `nestedComposeClosedAware_eq_nestedCompose_of_present_or_open`.
+- Verified `cd formal && lake build` passes.
+- Runtime regression family remained aligned.
+
+**Impact**:
+- Nested handler proofs can now cite a direct closed-aware/normalized agreement
+  contract under explicit dual-stage branch assumptions.
+
+### 2026-02-28: suite-level nested bridge wrappers + MCP recheck
+
+**Context**: Lifted the new nested closed-aware/normalized bridge into
+`EffectHandlerContractSuite` so composition/coherence package consumers can
+access it without dropping to `NestedHandlerCompositionContracts`.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Wrapper-only theorem lift over existing contracts:
+  - `nestedComposeClosedAware_eq_nestedCompose_of_present_or_open`
+  - `EffectHandlerCompositionSuite`
+  - `EffectHandlerCompositionCoherenceSuite`
+- No runtime semantic changes expected.
+
+**Probe (Rust side)**:
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+- Includes the active effect-row regression family.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Added:
+  - `effectHandlerCompositionSuite_nestedClosedAware_eq_nestedCompose_of_present_or_open`
+  - `effectHandlerCompositionCoherenceSuite_nestedClosedAware_eq_nestedCompose_of_present_or_open`
+- Verified `cd formal && lake build` passes.
+- MCP regression remained stable.
+
+**Impact**:
+- Top-level Phase-2 suite APIs now expose nested branch-assumption bridge
+  contracts directly, reducing cross-module theorem plumbing.
+
+### 2026-02-28: open-row nested bridge corollary + suite wrappers (MCP recheck)
+
+**Context**: Added an open-row corollary for nested closed-aware/normalized
+agreement and lifted it through composition/coherence suite wrappers.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- If `EffectRow.rest effects ≠ none`, closed-aware no-op branch is unavailable
+  at both stages, so nested closed-aware composition should coincide with
+  normalized nested composition.
+- Wrapper lift is API-only; runtime behavior should remain unchanged.
+
+**Probe (Rust side)**:
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+- Active effect-row regression family remained green.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Added in `NestedHandlerCompositionContracts`:
+  - `nestedComposeClosedAware_eq_nestedCompose_of_open_row`
+- Added in `EffectHandlerContractSuite`:
+  - `effectHandlerCompositionSuite_nestedClosedAware_eq_nestedCompose_of_open_expr_row`
+  - `effectHandlerCompositionCoherenceSuite_nestedClosedAware_eq_nestedCompose_of_open_expr_row`
+- Verified `cd formal && lake build` passes.
+
+**Impact**:
+- Common open-row consumers can cite a branch-light corollary instead of
+  threading dual present/open premises.
+
+### 2026-02-28: composition+coherence component decomposition + MCP recheck
+
+**Context**: Added explicit decomposition APIs for
+`EffectHandlerCompositionCoherenceSuite` so downstream proofs can move between
+packaged and explicit component forms.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- This is package-structure refinement only (`iff/of/as_components`) over
+  existing composition/coherence surfaces; runtime behavior should not change.
+
+**Probe (Rust side)**:
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Added:
+  - `effectHandlerCompositionCoherenceSuite_iff_components`
+  - `effectHandlerCompositionCoherenceSuite_of_components`
+  - `effectHandlerCompositionCoherenceSuite_as_components`
+- Verified `cd formal && lake build` passes.
+- MCP regression family remains aligned.
+
+**Impact**:
+- Composition+coherence consumers can now use explicit component decomposition
+  without bespoke record destructuring/proof rewiring.
+
+### 2026-02-28: premise-level open-row bridge entrypoints + MCP recheck
+
+**Context**: Added direct premise-level entrypoints for the open-row nested
+closed-aware/normalized bridge on the coherence package.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- New theorems are constructor-route wrappers only:
+  - `..._of_premises`
+  - `..._of_fail_present`
+- No runtime semantic movement expected.
+
+**Probe (Rust side)**:
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Added:
+  - `effectHandlerCompositionCoherenceSuite_nestedClosedAware_eq_nestedCompose_of_open_expr_row_of_premises`
+  - `effectHandlerCompositionCoherenceSuite_nestedClosedAware_eq_nestedCompose_of_open_expr_row_of_fail_present`
+- Verified `cd formal && lake build` passes.
+- MCP regression surface remains aligned.
+
+**Impact**:
+- Raw Phase-2 premise call sites can discharge the open-row nested bridge in a
+  single theorem application.
+
+### 2026-02-28: composition-layer open-base-row entrypoints + MCP recheck
+
+**Context**: Added composition-suite counterparts for open-base-row bridge
+entrypoints so both composition and coherence layers expose one-step premise
+routes.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- New theorems are premise-routing wrappers over:
+  - `effectHandlerCompositionSuite_of_{premises,fail_present}`
+  - `effectHandlerCompositionSuite_nestedClosedAware_eq_nestedCompose_of_open_expr_row`
+  - `performOperation_preserves_row_tail`
+- No runtime behavior change expected.
+
+**Probe (Rust side)**:
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Added:
+  - `effectHandlerCompositionSuite_nestedClosedAware_eq_nestedCompose_of_open_base_row_of_premises`
+  - `effectHandlerCompositionSuite_nestedClosedAware_eq_nestedCompose_of_open_base_row_of_fail_present`
+- Verified `cd formal && lake build`, `mise run check`, and MCP regression pass.
+
+**Impact**:
+- Composition-level consumers now have parity with coherence-level one-step
+  open-base-row bridge entrypoints.
+
+### 2026-02-28: open-row bridge bundle packaging + MCP recheck
+
+**Context**: Added a named bundle for the open-row nested bridge surface with
+constructors across composition/coherence/premise routes.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- This step is theorem-surface packaging over established open-row bridge
+  contracts; runtime behavior should remain unchanged.
+
+**Probe (Rust side)**:
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Added `EffectHandlerNestedOpenRowBridgeBundle` with:
+  - `..._of_composition`
+  - `..._of_coherence`
+  - `..._of_open_base_row_premises`
+  - `..._of_open_base_row_fail_present`
+  - `..._closedAwareEqNormalized` projection
+- Verified `cd formal && lake build`, `mise run check`, and MCP regression pass.
+
+**Impact**:
+- Open-row nested bridge reasoning is now available as one named bundle API,
+  reducing route-specific theorem stitching.
+
+### 2026-02-28: open-expr-row bundle constructor parity + MCP recheck
+
+**Context**: Extended `EffectHandlerNestedOpenRowBridgeBundle` with direct
+open-expr-row premise constructors (admissible and fail-present paths).
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- This is constructor-route parity on the existing open-row bridge bundle.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Added:
+  - `effectHandlerNestedOpenRowBridgeBundle_of_open_expr_row_premises`
+  - `effectHandlerNestedOpenRowBridgeBundle_of_open_expr_row_fail_present`
+- Verified `cd formal && lake build`, `mise run check`, and MCP regression pass.
+
+**Impact**:
+- Bundle-entry parity now covers both base-row-open and expr-row-open premise
+  routes.
+
+### 2026-02-28: normalized handled-removal consequence wrappers + MCP recheck
+
+**Context**: Lifted open-row bridge equality into direct normalized-path
+handled-removal consequences on composition/coherence suite surfaces.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Under open-row bridge equality and existing closed-aware handled-removal,
+  normalized nested composition should inherit handled-label absence.
+- Runtime effect-row regression family should remain unchanged.
+
+**Probe (Rust side)**:
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Added:
+  - `effectHandlerCompositionSuite_nestedComposeHandledRemoved_of_open_expr_row`
+  - `effectHandlerCompositionCoherenceSuite_nestedComposeHandledRemoved_of_open_expr_row`
+- Verified `cd formal && lake build`, `mise run check`, and MCP regression pass.
+
+**Impact**:
+- The open-row bridge now has a direct handled-absence consequence on the
+  normalized nested path, reducing rewrite boilerplate in downstream proofs.
+
+### 2026-02-28: strengthened open-row consequence bundle + MCP recheck
+
+**Context**: Added a stronger open-row package that bundles both
+closed-aware/normalized equality and normalized handled-removal.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Packaging step over already-proved open-row equality and handled-removal
+  consequences should not alter runtime behavior.
+
+**Probe (Rust side)**:
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Added `EffectHandlerNestedOpenRowConsequenceBundle` with constructors:
+  - `..._of_composition`
+  - `..._of_coherence`
+  - `..._of_open_base_row_premises`
+  - `..._of_open_base_row_fail_present`
+- Added one-hop projections:
+  - `..._closedAwareEqNormalized`
+  - `..._normalizedHandledRemoved`
+- Verified `cd formal && lake build`, `mise run check`, and MCP regression pass.
+
+**Impact**:
+- Open-row nested reasoning now has a single citable consequence surface with
+  both equality and handled-removal facets.
+
+### 2026-02-28: strengthened bundle open-expr constructor parity + MCP recheck
+
+**Context**: Added direct open-expr-row premise constructors on
+`EffectHandlerNestedOpenRowConsequenceBundle` (admissible and fail-present).
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Constructor-route parity extension over existing consequence surfaces should
+  not affect runtime behavior.
+
+**Probe (Rust side)**:
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Added:
+  - `effectHandlerNestedOpenRowConsequenceBundle_of_open_expr_row_premises`
+  - `effectHandlerNestedOpenRowConsequenceBundle_of_open_expr_row_fail_present`
+- Verified `cd formal && lake build`, `mise run check`, and MCP regression pass.
+
+**Impact**:
+- Strengthened open-row consequence bundle now has constructor parity for both
+  open-base and open-expr premise routes.
+
+### 2026-02-28: consequence-bundle decomposition + blocked source probe fallback
+
+**Context**: Added structural decomposition APIs for
+`EffectHandlerNestedOpenRowConsequenceBundle`. During verification, source-based
+MCP regression build became blocked by an unrelated `kea-mir` compile error.
+
+**MCP tools used**: fallback prebuilt `kea_mcp` test binary
+(`/tmp/kea-agent-targets/.../kea_mcp-c086... --nocapture`) after source build
+path failure.
+
+**Predict (Lean side)**:
+- Decomposition (`iff/of/as_components`) is package-structure only.
+- No runtime semantic change expected on the active MCP regression family.
+
+**Probe (Rust side)**:
+- Source path attempt `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`
+  failed due unrelated compile error in `kea-mir`:
+  `&MirValueId == MirValueId` at `crates/kea-mir/src/lib.rs:1164`.
+- Fallback run of prebuilt kea-mcp test binary:
+  - Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement on probed MCP slice; source-build probe path blocked by
+external compile failure.
+
+**Divergence**: none.
+
+**Outcome**:
+- Added:
+  - `effectHandlerNestedOpenRowConsequenceBundle_iff_components`
+  - `effectHandlerNestedOpenRowConsequenceBundle_of_components`
+  - `effectHandlerNestedOpenRowConsequenceBundle_as_components`
+- `cd formal && lake build` remains green.
+- MCP regression evidence preserved via fallback binary while source probe path
+  is externally blocked.
+
+**Impact**:
+- Consequence bundle is structurally transparent.
+- Formal/MCP loop remains active with explicit blocked-path annotation.
+
+### 2026-02-28: bridge/consequence interoperability + blocked source probe fallback
+
+**Context**: Added direct interoperability wrappers between open-row
+bridge-only and strengthened consequence bundles, then re-ran verification.
+
+**MCP tools used**: fallback prebuilt `kea_mcp` test binary
+(`/tmp/kea-agent-targets/.../kea_mcp-c086... --nocapture`) after source probe
+build failure.
+
+**Predict (Lean side)**:
+- New theorems are bundle-conversion APIs over already proved facets.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Source path `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`
+  blocked by external `kea-mir` compile error at
+  `crates/kea-mir/src/lib.rs:1164` (`&MirValueId == MirValueId`).
+- Fallback prebuilt MCP test binary result: `10 passed; 0 failed`.
+
+**Classify**: Agreement on probed MCP slice; source-build probe path blocked by
+external compile failure.
+
+**Divergence**: none.
+
+**Outcome**:
+- Added:
+  - `effectHandlerNestedOpenRowConsequenceBundle_of_bridge_and_normalizedHandledRemoved`
+  - `effectHandlerNestedOpenRowBridgeBundle_of_consequenceBundle`
+- `cd formal && lake build` passes.
+- Fallback MCP regression stays green while source path remains blocked.
+
+**Impact**:
+- Open-row bundle interop is now explicit and one-hop.
+- Blocked source-probe status remains tracked without losing runtime evidence.
+
+### 2026-02-28: bridge/coherence decomposition parity + MCP recheck
+
+**Context**: Extended `Kea/Properties/EffectHandlerContractSuite.lean` with
+missing structural decomposition APIs so Phase-2 nested bundle surfaces share
+uniform `iff/of/as` consumption patterns.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Add decomposition helpers only; no semantic change to handler/effect
+  behavior is expected.
+- Existing MCP regression suite should remain stable.
+
+**Probe (Rust side)**:
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Added bridge bundle decomposition helpers:
+  - `effectHandlerNestedOpenRowBridgeBundle_iff_components`
+  - `effectHandlerNestedOpenRowBridgeBundle_of_components`
+  - `effectHandlerNestedOpenRowBridgeBundle_as_components`
+- Added nested/coherence bundle decomposition helpers:
+  - `effectHandlerNestedClauseCoherenceBundle_iff_components`
+  - `effectHandlerNestedClauseCoherenceBundle_of_components`
+  - `effectHandlerNestedClauseCoherenceBundle_as_components`
+- Verified `cd formal && lake build` and MCP regression pass.
+
+**Impact**:
+- Phase-2 contract bundles now expose consistent decomposition APIs across
+  nested bridge/coherence/consequence surfaces.
+
+### 2026-02-28: coherence-suite component projection parity + MCP recheck
+
+**Context**: Added a direct projection from
+`EffectHandlerCompositionCoherenceSuite` to decomposed nested/clause coherence
+facts, aligning suite-level consumption with the new coherence-bundle
+decomposition APIs.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- This is a theorem-surface projection over existing proved bundle fields.
+- Runtime behavior should be unchanged on the active effect-row regression
+  suite.
+
+**Probe (Rust side)**:
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Added
+  `effectHandlerCompositionCoherenceSuite_nestedClauseCoherence_as_components`.
+- Verified `cd formal && lake build` and MCP regression pass.
+
+**Impact**:
+- Coherence-suite consumers can now extract the full nested/clause fact triple
+  in one hop, without intermediate bundle-field destructuring.
+
+### 2026-02-28: catch-pair decomposition parity + MCP recheck
+
+**Context**: Added structural decomposition helpers for
+`EffectHandlerCatchPairSuite` to align pair-level packaging with other Phase-2
+bundle surfaces.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Theorems are packaging/decomposition only over existing pair fields.
+- Runtime behavior should remain unchanged on the active effect-row regression
+  suite.
+
+**Probe (Rust side)**:
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Added:
+  - `effectHandlerCatchPairSuite_iff_components`
+  - `effectHandlerCatchPairSuite_of_components`
+  - `effectHandlerCatchPairSuite_as_components`
+- Verified `cd formal && lake build` and MCP regression pass.
+
+**Impact**:
+- Catch-pair package now supports the same `iff/of/as` decomposition workflow
+  as the rest of the effect/handler contract stack.
+
+### 2026-02-28: composition catch-pair decomposition projection + blocked source probe fallback
+
+**Context**: Added a direct projection from `EffectHandlerCompositionSuite` to
+the decomposed catch-pair components so composition-level consumers can extract
+capstone/classifier coherence in one hop.
+
+**MCP tools used**: source probe attempted via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`; fallback
+prebuilt `kea_mcp` binary used after source-build failure.
+
+**Predict (Lean side)**:
+- Projection-only theorem (`effectHandlerCompositionSuite_catchPair_as_components`)
+  over existing `EffectHandlerCatchPairSuite` decomposition should not change
+  runtime semantics.
+
+**Probe (Rust side)**:
+- Source probe path failed due unrelated workspace compile errors in
+  `kea-codegen` (`cannot find type MirBlock`, `inst_defined_value` not found).
+- Fallback probe:
+  `/tmp/kea-agent-targets/chris/019ca280-cb6c-72f3-9771-f519d3da1a94/debug/deps/kea_mcp-c086daa547f3e485 --nocapture`
+  -> `10 passed; 0 failed`.
+
+**Classify**: Agreement on probed MCP slice; source-build probe path blocked by
+external compile failure.
+
+**Divergence**: none.
+
+**Outcome**:
+- Added `effectHandlerCompositionSuite_catchPair_as_components`.
+- Verified `cd formal && lake build` passes.
+- Maintained MCP loop via fallback probe while source path is blocked.
+
+**Impact**:
+- Composition-level theorem consumers can now unpack catch-pair coherence facts
+  without manual nested-field threading.
+
+### 2026-02-28: coherence-suite composition decomposition projection + MCP recheck
+
+**Context**: Added a one-hop projection from
+`EffectHandlerCompositionCoherenceSuite` to the decomposed composition witness
+(`catchPair ∧ nestedClosedAware`) so coherence-package users can consume
+composition structure directly.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Projection-only theorem over existing composition decomposition.
+- No runtime semantic shift expected.
+
+**Probe (Rust side)**:
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Added `effectHandlerCompositionCoherenceSuite_composition_as_components`.
+- Verified `cd formal && lake build` and source-path MCP regression pass.
+
+**Impact**:
+- Coherence-suite consumers can now extract composition structure in one hop
+  without manual `.composition` + secondary decomposition steps.
+
+### 2026-02-28: coherence-suite catch-layer one-hop projections + MCP recheck
+
+**Context**: Extended `EffectHandlerCompositionCoherenceSuite` with direct
+catch-layer projections so users can obtain pair/classifier/capstone witnesses
+without stepping through `composition` manually.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Projection-only additions over existing `EffectHandlerCompositionSuite` and
+  `EffectHandlerCatchPairSuite` consequences.
+- No runtime semantic changes expected.
+
+**Probe (Rust side)**:
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Added:
+  - `effectHandlerCompositionCoherenceSuite_catchPair`
+  - `effectHandlerCompositionCoherenceSuite_catchPair_as_components`
+  - `effectHandlerCompositionCoherenceSuite_classifier`
+  - `effectHandlerCompositionCoherenceSuite_capstone`
+  - `effectHandlerCompositionCoherenceSuite_classifierFromCapstone`
+- Verified `cd formal && lake build` and source-path MCP regression pass.
+
+**Impact**:
+- Master composition+coherence consumers now have complete one-hop access to
+  catch-layer artifacts (pair, classifier, capstone, and coherence equation).
+
+### 2026-02-28: coherence-suite capstone+nested decomposition projection + MCP recheck
+
+**Context**: Added a direct projection from
+`EffectHandlerCompositionCoherenceSuite` to capstone+nested composition
+components, mirroring the existing `EffectHandlerCompositionSuite` decomposition
+surface.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Projection-only theorem over existing `composition` field and
+  `effectHandlerCompositionSuite_as_capstone_and_nested`.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Added
+  `effectHandlerCompositionCoherenceSuite_composition_as_capstone_and_nested`.
+- Verified `cd formal && lake build` and source-path MCP regression pass.
+
+**Impact**:
+- Coherence-suite consumers can now project capstone+nested composition
+  components in one hop.
+
+### 2026-02-28: coherence-suite nested-route one-hop projections + MCP recheck
+
+**Context**: Added direct nested-route projections on
+`EffectHandlerCompositionCoherenceSuite` for nested closed-aware witness and
+nested row-tail stability, reducing dependence on manual composition lifting.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Projection-only additions over existing composition-level theorems.
+- No runtime semantic shift expected.
+
+**Probe (Rust side)**:
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Added:
+  - `effectHandlerCompositionCoherenceSuite_nestedClosedAware`
+  - `effectHandlerCompositionCoherenceSuite_nestedRowTailStable`
+- Verified `cd formal && lake build` and source-path MCP regression pass.
+
+**Impact**:
+- Coherence-suite users now have direct one-hop access to nested closed-aware
+  artifacts and row-tail stability w.r.t. expression effects.
+
+### 2026-02-28: suite-level open-row bundle projections + MCP recheck
+
+**Context**: Added direct open-row bundle projections from both composition and
+composition+coherence suites, so callers can obtain bridge/consequence bundles
+without re-invoking constructor theorems manually.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- New theorems are projection wrappers over existing bundle constructors and do
+  not alter semantic assumptions.
+- Runtime behavior should remain unchanged.
+
+**Probe (Rust side)**:
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Added:
+  - `effectHandlerCompositionSuite_nestedOpenRowBridgeBundle`
+  - `effectHandlerCompositionCoherenceSuite_nestedOpenRowBridgeBundle`
+  - `effectHandlerCompositionSuite_nestedOpenRowConsequenceBundle`
+  - `effectHandlerCompositionCoherenceSuite_nestedOpenRowConsequenceBundle`
+- Verified `cd formal && lake build` and source-path MCP regression pass.
+
+**Impact**:
+- Open-row bridge/consequence package consumption is now one-hop from both
+  master suite layers.
+
+### 2026-02-28: nested-handler bundle decomposition parity + MCP recheck
+
+**Context**: Added structural decomposition helpers for
+`NestedHandlerBundle` and `NestedHandlerClosedAwareBundle` in
+`Kea/Properties/NestedHandlerCompositionContracts.lean`.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- `iff/of/as` helpers are package-structure APIs over existing bundle fields.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Added:
+  - `nestedHandlerBundle_{iff_components,of_components,as_components}`
+  - `nestedHandlerClosedAwareBundle_{iff_components,of_components,as_components}`
+- Verified `cd formal && lake build` and source-path MCP regression pass.
+
+**Impact**:
+- Nested-handler package surfaces now match the decomposition API pattern used
+  across the Phase-2 effect/handler formal stack.
+
+### 2026-02-28: suite-level nested closed-aware decomposition projections + MCP recheck
+
+**Context**: Lifted the newly added nested closed-aware bundle decomposition
+surface into `EffectHandlerContractSuite` for both composition and
+composition+coherence package layers.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Projection-only wrappers over existing nested closed-aware bundle facts.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Added:
+  - `effectHandlerCompositionSuite_nestedClosedAware_as_components`
+  - `effectHandlerCompositionCoherenceSuite_nestedClosedAware_as_components`
+- Verified `cd formal && lake build` and source-path MCP regression pass.
+
+**Impact**:
+- Composition/coherence suite users can now extract nested closed-aware
+  handled-removal + row-tail stability in one hop.
+
+### 2026-02-28: tail bundle decomposition parity + MCP recheck
+
+**Context**: Added `iff/of/as` decomposition helpers for tail-resumptive and
+tail-capability bundles in:
+- `Kea/Properties/TailResumptiveClassification.lean`
+- `Kea/Properties/TailCapabilityComposition.lean`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- These are structural package APIs over existing theorem fields.
+- No runtime behavior change expected.
+
+**Probe (Rust side)**:
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Added:
+  - `tailResumptiveBundle_{iff_components,of_components,as_components}`
+  - `tailResumptiveClosedAwareBundle_{iff_components,of_components,as_components}`
+  - `tailCapabilityBundle_{iff_components,of_components,as_components}`
+  - `tailCapabilityClosedAwareBundle_{iff_components,of_components,as_components}`
+- Verified `cd formal && lake build` and source-path MCP regression pass.
+
+**Impact**:
+- Tail classification/capability package surfaces now align with the
+  decomposition API pattern used across the Phase-2 formal contract stack.
+
+### 2026-02-28: closed-aware handler bundle decomposition parity + MCP recheck
+
+**Context**: Added structural decomposition helpers for
+`ClosedAwareCoreBundle` and `ClosedAwareResultBundle` in
+`Kea/Properties/HandlerClosedAwareContracts.lean`.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- `iff/of/as` helpers are structural API additions over existing bundle fields.
+- No runtime behavior change expected.
+
+**Probe (Rust side)**:
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Added:
+  - `closedAwareCoreBundle_{iff_components,of_components,as_components}`
+  - `closedAwareResultBundle_{iff_components,of_components,as_components}`
+- Verified `cd formal && lake build` and source-path MCP regression pass.
+
+**Impact**:
+- Closed-aware branch/result package surfaces now share the same decomposition
+  contract style as the rest of the Phase-2 formal stack.
+
+### 2026-02-28: operation/fail bundle decomposition + blocked source probe fallback
+
+**Context**: Added decomposition helpers for:
+- `operationCallBundle_{iff_components,of_components,as_components}` in
+  `Kea/Properties/EffectOperationTyping.lean`
+- `failResultEquivalenceBundle_{iff_components,of_components,as_components}` in
+  `Kea/Properties/FailResultEquivalence.lean`
+
+**MCP tools used**: source probe attempt via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`; fallback
+prebuilt `kea_mcp` binary used after source-build failure.
+
+**Predict (Lean side)**:
+- Added theorems are package/decomposition surfaces over existing facts.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Source probe path failed due unrelated `kea-mir` compile errors
+  (`crates/kea-mir/src/lib.rs`, type mismatches on `MirValueId` use).
+- Fallback probe:
+  `/tmp/kea-agent-targets/chris/019ca280-cb6c-72f3-9771-f519d3da1a94/debug/deps/kea_mcp-c086daa547f3e485 --nocapture`
+  -> `10 passed; 0 failed`.
+
+**Classify**: Agreement on probed MCP slice; source-build probe path blocked by
+external compile failure.
+
+**Divergence**: none.
+
+**Outcome**:
+- Added operation/fail bundle decomposition theorem surfaces listed above.
+- Recovered Lean green with `cd formal && lake build`.
+- Maintained MCP loop via fallback binary while source path was blocked.
+
+**Impact**:
+- Operation/fail package layers now follow the same one-hop decomposition
+  contract style as the broader Phase-2 formal stack.
+
+### 2026-02-28: effect-handler closed-aware decomposition projections + MCP recheck
+
+**Context**: Added direct closed-aware decomposition projections on
+`EffectHandlerSuite` and `EffectHandlerCapstoneSuite` so callers can consume the
+full `ClosedAwareResultBundle` component triple in one hop.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Projection-only wrappers over existing `ClosedAwareResultBundle` field and its
+  decomposition theorem.
+- No runtime semantic shift expected.
+
+**Probe (Rust side)**:
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Added:
+  - `effectHandlerSuite_closedAware_as_components`
+  - `effectHandlerCapstoneSuite_closedAware_as_components`
+- Verified `cd formal && lake build` and source-path MCP regression pass.
+
+**Impact**:
+- Closed-aware result package components are now directly consumable from both
+  classifier and capstone aggregate suite surfaces.
+
+### 2026-02-28: composition-suite classifier/capstone one-hop projections + MCP recheck
+
+**Context**: Added direct `EffectHandlerCompositionSuite` one-hop projections to
+the classifier and capstone aggregate witnesses.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Pure projection wrappers over existing `catchPair` and pair-level
+  projections.
+- No runtime semantic shift expected.
+
+**Probe (Rust side)**:
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Added:
+  - `effectHandlerCompositionSuite_classifier`
+  - `effectHandlerCompositionSuite_capstone`
+- Verified `cd formal && lake build` and source-path MCP regression pass.
+
+**Impact**:
+- Composition-suite consumers can now access classifier/capstone aggregate
+  witnesses directly without manual `catchPair` projection.
+
+### 2026-02-28: composition/coherence closed-aware decomposition projections + MCP recheck
+
+**Context**: Added direct closed-aware decomposition wrappers on:
+- `EffectHandlerCompositionSuite`
+- `EffectHandlerCompositionCoherenceSuite`
+
+so both layers can emit the full `ClosedAwareResultBundle` component triple in
+one hop.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Pure wrapper/projection extension over existing capstone/coherence fields.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Added:
+  - `effectHandlerCompositionSuite_closedAware_as_components`
+  - `effectHandlerCompositionCoherenceSuite_closedAware_as_components`
+- Verified `cd formal && lake build` and source-path MCP regression pass.
+
+**Impact**:
+- Composition-level theorem consumers can now extract closed-aware
+  handled-removal/row-tail/legacy facts without descending to capstone fields.
+
+### 2026-02-28: classifier/capstone decomposition projections on composition layers + MCP recheck
+
+**Context**: Added direct classifier/capstone decomposition wrappers on:
+- `EffectHandlerCompositionSuite`
+- `EffectHandlerCompositionCoherenceSuite`
+
+to project `EffectHandlerSuite` and `EffectHandlerCapstoneSuite` component
+triples in one hop.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Projection-only additions over existing classifier/capstone one-hop theorem
+  surfaces.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Added:
+  - `effectHandlerCompositionSuite_{classifier_as_components,capstone_as_components}`
+  - `effectHandlerCompositionCoherenceSuite_{classifier_as_components,capstone_as_components}`
+- Verified `cd formal && lake build` and source-path MCP regression pass.
+
+**Impact**:
+- Classifier/capstone component bundles are now directly consumable from both
+  composition layers without intermediate projection chaining.
+
+### 2026-02-28: capability decomposition projections on aggregate suites + MCP recheck
+
+**Context**: Added one-hop decomposition wrappers for
+`TailCapabilityClosedAwareBundle` on:
+- `EffectHandlerSuite`
+- `EffectHandlerCapstoneSuite`
+
+to expose capability-presence + not-invalid facets directly.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Projection-only additions over existing `capabilityClosedAware` fields.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Added:
+  - `effectHandlerSuite_capabilityClosedAware_as_components`
+  - `effectHandlerCapstoneSuite_capabilityClosedAware_as_components`
+- Verified `cd formal && lake build` and source-path MCP regression pass.
+
+**Impact**:
+- Aggregate suite users can now consume closed-aware capability decomposition in
+  one hop without field-by-field projection.
+
+### 2026-02-28: capability decomposition projections on composition layers + MCP recheck
+
+**Context**: Added one-hop capability decomposition wrappers on:
+- `EffectHandlerCompositionSuite`
+- `EffectHandlerCompositionCoherenceSuite`
+
+to expose capability-presence + not-invalid facets directly from both
+composition layers.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Projection-only additions over existing capstone/coherence capability theorems.
+- No runtime semantic shift expected.
+
+**Probe (Rust side)**:
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Added:
+  - `effectHandlerCompositionSuite_capabilityClosedAware_as_components`
+  - `effectHandlerCompositionCoherenceSuite_capabilityClosedAware_as_components`
+- Verified `cd formal && lake build` and source-path MCP regression pass.
+
+**Impact**:
+- Capability decomposition is now one-hop across aggregate, composition, and
+  composition+coherence suite layers.
+
+### 2026-02-28: type-valued admissible-bundle decomposition parity + MCP recheck
+
+**Context**: Added structural decomposition APIs in
+`EffectPolymorphismSoundness` for type-valued admissible bundles:
+- `admissibleEffectPolyLoweringBundle_{as_components,of_components,iff_components}`
+- `admissibleEffectPolyHandlerBundle_{as_components,of_components,iff_components}`
+
+with `Nonempty`-framed `iff_components` theorems to keep decomposition
+statements in `Prop`.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- These are decomposition/constructor/projection APIs over existing capstone
+  witnesses.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Landed the new admissible bundle decomposition APIs.
+- Resolved a local Lean encoding issue (Prop-elimination into `Type`) by
+  making `_of_components` constructors `noncomputable def` with
+  `Classical.choose`.
+- Verified `cd formal && lake build` and source-path MCP regression pass.
+
+**Impact**:
+- Type-valued admissible effect-polymorphism bundles now match the project-wide
+  decomposition style without compromising Lean kernel constraints.
+
+### 2026-02-28: higher-order type-valued bundle decomposition parity + MCP recheck
+
+**Context**: Added structural decomposition APIs for
+`HigherOrderCatchBundle`:
+- `higherOrderCatchBundle_{as_components,of_components,iff_components}`
+
+again with `Nonempty`-framed `iff_components` to stay in `Prop`.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Pure decomposition/projection extension over existing
+  `higherOrderCatchTypingJudgment_bundle` semantics.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Landed higher-order type-valued bundle decomposition APIs listed above.
+- Verified `cd formal && lake build` and source-path MCP regression pass.
+
+**Impact**:
+- Higher-order catch bundle contracts now have one-hop decomposition parity with
+  the broader Phase-2 bundle surface.
+
+### 2026-02-28: catch-judgment bundle decomposition parity + MCP recheck
+
+**Context**: Added structural decomposition APIs in `CatchTypingBridge` for the
+type-valued judgment bundle:
+- `catchTypingJudgment_bundle_{as_components,of_components,iff_components}`
+
+with `Nonempty`-framed `iff_components` to keep decomposition in `Prop`.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- These are bundle-layer projection/reconstruction wrappers over existing
+  admissible-schema semantics.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Landed the three catch-judgment bundle decomposition APIs listed above.
+- Verified `cd formal && lake build` and source-path MCP regression pass.
+
+**Impact**:
+- `CatchTypingBridge` now has direct decomposition parity with the admissible
+  and higher-order type-valued bundle layers, keeping the whole catch stack on a
+  uniform one-hop bundle API style.
+
+### 2026-02-28: raw-premise full decomposition entrypoints for catch/higher-order bundles + MCP recheck
+
+**Context**: Added full decomposition convenience wrappers at raw-premise
+entrypoints:
+- `catchTypingJudgment_bundle_as_components_of_premises`
+- `higherOrderCatchTypingJudgment_bundle_as_components_of_premises`
+
+so premise-level call sites can extract full bundle component witnesses in one
+theorem step.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Pure wrapper additions over existing bundle + decomposition APIs.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Landed both raw-premise full decomposition wrappers listed above.
+- Verified `cd formal && lake build` and source-path MCP regression pass.
+
+**Impact**:
+- Premise-level catch/higher-order theorem consumers can now stay on one-step
+  full-component APIs, without manually constructing intermediate bundle values
+  before decomposition.
+
+### 2026-02-28: interop-suite premise-route decomposition wrappers + MCP recheck
+
+**Context**: Added direct premise/fail-present decomposition wrappers on
+`CatchInteroperabilitySuite`:
+- `catchClassifierInteropSuite_as_components_of_premises`
+- `catchCapstoneInteropSuite_as_components_of_premises`
+- `catchCapstoneInteropSuite_as_components_of_fail_present`
+
+to expose explicit interop component tuples directly from standard constructor
+routes.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- These are projection-only wrappers over existing interop suite constructors
+  and decomposition theorems.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Landed all three interop premise-route decomposition wrappers listed above.
+- Verified `cd formal && lake build` and source-path MCP regression pass.
+
+**Impact**:
+- Interop consumers can now stay on one-step premise/fail-present entry APIs and
+  still obtain explicit component tuples without manual suite-value threading.
+
+### 2026-02-28: effect-polymorphism premise-level bundle entry/decomposition wrappers + MCP recheck
+
+**Context**: Added premise-level bundle constructor/decomposition wrappers in
+`EffectPolymorphismSoundness`:
+- `admissibleEffectPolyFailLowering_bundle_of_premises`
+- `admissibleEffectPolyFailLowering_bundle_as_components_of_premises`
+- `admissibleEffectPolyHandler_bundle_of_premises`
+- `admissibleEffectPolyHandler_bundle_as_components_of_premises`
+
+to provide one-step named-bundle and full-component extraction from raw
+admissible premises.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Pure wrapper additions over existing admissible constructors and bundle
+  decomposition APIs.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Landed all four premise-level bundle wrapper theorems/defs listed above.
+- Verified `cd formal && lake build` and source-path MCP regression pass.
+
+**Impact**:
+- The base effect-polymorphism layer now matches catch/higher-order interop
+  layers in supporting direct premise-route bundle/component extraction.
+
+### 2026-02-28: fail-present bundle entry/decomposition wrappers for catch + higher-order layers + MCP recheck
+
+**Context**: Added runtime-admissible fail-present route wrappers:
+- `catchTypingJudgment_bundle_of_fail_present`
+- `catchTypingJudgment_bundle_as_components_of_fail_present`
+- `higherOrderCatchTypingJudgment_bundle_of_fail_present`
+- `higherOrderCatchTypingJudgment_bundle_as_components_of_fail_present`
+
+to align full bundle/component extraction with existing fail-present capstone
+entry routes.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Wrapper-only additions deriving admissibility from fail presence and routing
+  through existing premise-level bundle APIs.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Landed all four fail-present bundle wrappers listed above.
+- Verified `cd formal && lake build` and source-path MCP regression pass.
+
+**Impact**:
+- Catch and higher-order layers now support direct full bundle/component
+  extraction on the same fail-present runtime route used for admissible capstone
+  entrypoints.
+
+### 2026-02-28: classifier fail-present interop decomposition symmetry closure + MCP recheck
+
+**Context**: Added the missing classifier fail-present decomposition wrapper:
+- `catchClassifierInteropSuite_as_components_of_fail_present`
+
+to complete fail-present decomposition symmetry across capstone and classifier
+interop entry routes.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Projection-only wrapper over existing classifier fail-present constructor plus
+  suite decomposition theorem.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Landed `catchClassifierInteropSuite_as_components_of_fail_present`.
+- Verified `cd formal && lake build` and source-path MCP regression pass.
+
+**Impact**:
+- Fail-present interop decomposition wrappers are now symmetric across both
+  capstone and classifier entry surfaces.
+
+### 2026-02-28: base effect-polymorphism fail-present route parity + MCP recheck
+
+**Context**: Added direct fail-present route wrappers at the base admissible
+layer in `EffectPolymorphismSoundness`:
+- `admissibleEffectPolyFailLowering_sound_of_fail_present`
+- `admissibleEffectPolyFailLowering_bundle_of_fail_present`
+- `admissibleEffectPolyFailLowering_bundle_as_components_of_fail_present`
+- `admissibleEffectPolyHandlerSchema_sound_of_fail_present`
+- `admissibleEffectPolyHandler_bundle_of_fail_present`
+- `admissibleEffectPolyHandler_bundle_as_components_of_fail_present`
+
+so runtime-admissible (`Fail`-present) entrypoints map directly to both
+soundness and full bundle/component outputs.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Wrapper-only additions deriving admissibility from fail presence and routing
+  through existing admissible soundness/bundle APIs.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Landed all six fail-present base-layer wrappers listed above.
+- Verified `cd formal && lake build` and source-path MCP regression pass.
+
+**Impact**:
+- Fail-present route parity now spans base admissible, catch judgment,
+  higher-order specialization, and interop suite layers.
+
+### 2026-02-28: classifier-constructor interop decomposition wrappers + MCP recheck
+
+**Context**: Added classifier-route decomposition wrappers in
+`CatchInteroperabilitySuite`:
+- `catchClassifierInteropSuite_as_components_of_genericClassification`
+- `catchClassifierInteropSuite_as_components_of_higherClassification`
+- `catchClassifierInteropSuite_as_components_of_capstoneInteropSuite`
+
+to provide one-hop explicit component extraction from all major classifier
+constructor routes.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Projection-only wrappers over existing classifier constructors and the suite
+  decomposition theorem.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Landed all three classifier-route decomposition wrappers listed above.
+- Verified `cd formal && lake build` and source-path MCP regression pass.
+
+**Impact**:
+- `CatchInteroperabilitySuite` now has direct explicit-component wrappers across
+  premise/fail-present and classifier-constructor entry families.
+
+### 2026-02-28: fail-present classify/projection parity for catch and higher-order layers + MCP recheck
+
+**Context**: Added fail-present route wrappers to close classify/projection
+parity:
+- `CatchTypingBridge`:
+  `catchTypingJudgment_classify_of_fail_present`,
+  `catchTypingJudgment_bundle_{clauseFailRemoved,rowTailStable,preserves_nonFail,failRemoved}_of_fail_present`
+- `HigherOrderCatchContracts`:
+  `higherOrderCatchTypingJudgment_classify_of_fail_present`,
+  `higherOrderCatchTypingJudgment_bundle_{clauseFailRemoved,rowTailStable,preserves_nonFail,failRemoved}_of_fail_present`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Wrapper-only additions routing fail-present premises through existing
+  capstone/bundle surfaces.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Landed all fail-present classify/projection wrappers listed above.
+- Verified `cd formal && lake build` and source-path MCP regression pass.
+
+**Impact**:
+- Fail-present route parity now spans capstone, classify, and bundle-facet
+  entrypoints across both generic catch and higher-order catch layers.
+
+### 2026-02-28: catch-judgment premise-route bundle-facet parity closure + MCP recheck
+
+**Context**: Added the remaining premise-route bundle-facet wrappers in
+`CatchTypingBridge`:
+- `catchTypingJudgment_bundle_preserves_nonFail_of_premises`
+- `catchTypingJudgment_bundle_failRemoved_of_premises`
+
+to complete all four bundle facets (`clauseFailRemoved`, `rowTailStable`,
+`preservesNonFail`, `failRemoved`) on the raw-premise route.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Projection-only wrappers over existing premise bundle constructor.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Landed both premise-route facet wrappers listed above.
+- Verified `cd formal && lake build` and source-path MCP regression pass.
+
+**Impact**:
+- `CatchTypingBridge` premise-route bundle-facet API is now complete and
+  symmetric with its fail-present route.
+
+### 2026-02-28: interop constructor-route projection wrappers + MCP recheck
+
+**Context**: Added direct constructor-route projection wrappers in
+`CatchInteroperabilitySuite`:
+- `catchClassifierInteropSuite_{generic,higher,laws}_of_premises`
+- `catchCapstoneInteropSuite_{generic,higher,laws}_of_premises`
+- `catchCapstoneInteropSuite_{generic,higher,laws}_of_fail_present`
+- `catchClassifierInteropSuite_{generic,higher,laws}_of_fail_present`
+
+to provide one-step access to specific interop facets on standard constructor
+routes.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Projection-only wrappers over existing interop constructors.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Landed all constructor-route projection wrappers listed above.
+- Verified `cd formal && lake build` and source-path MCP regression pass.
+
+**Impact**:
+- Interop consumers can now directly project `generic`/`higher`/`laws` facets
+  from premise and fail-present routes without intermediate suite values.
+
+### 2026-02-28: source-path MCP probe blocked by unrelated syntax compile error; fallback probe executed
+
+**Context**: While re-running the MCP source probe, workspace compilation
+failed in a non-formal crate:
+- `crates/kea-syntax/src/parser.rs` (`E0382`, moved value `expr`).
+
+This is outside the formal workstream edits.
+
+**MCP tools used**:
+- Source path attempt: `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`
+- Fallback probe: prebuilt test binary
+  `/tmp/kea-agent-targets/chris/019ca280-cb6c-72f3-9771-f519d3da1a94/debug/deps/kea_mcp-c086daa547f3e485 --nocapture`
+
+**Predict (Lean side)**:
+- Formal theorem-surface additions are projection/wrapper-only.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Source path blocked by unrelated compile error above.
+- Fallback binary probe result: `10 passed; 0 failed`.
+
+**Classify**: Agreement on probed MCP slice; source-path precondition gap due
+external build blocker.
+
+**Divergence**: none.
+
+**Outcome**:
+- Continued MCP validation through fallback binary while source path remained
+blocked.
+- Kept Lean verification green (`cd formal && lake build`).
+
+**Impact**:
+- Formalization/MCP loop continuity preserved with explicit traceability despite
+an unrelated workspace compile blocker.
+
+### 2026-02-28: higher-order bridge-route fail-present parity + fallback MCP probe
+
+**Context**: Added fail-present wrappers on higher-order bridge-routed theorem
+families:
+- `higherOrderCatchTypingJudgment_capstone_of_fail_present_via_catchTypingBridge`
+- `higherOrderCatchTypingJudgment_classify_of_fail_present_via_catchTypingBridge`
+- `higherOrderCatchTypingJudgment_capstone_of_fail_present_via_bridgeLaws`
+- `higherOrderCatchTypingJudgment_classify_of_fail_present_via_bridgeLaws`
+
+so runtime-admissible routes are explicit on both bridge-entry families.
+
+**MCP tools used**:
+- Source path attempt: `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`
+- Fallback probe: prebuilt test binary
+  `/tmp/kea-agent-targets/chris/019ca280-cb6c-72f3-9771-f519d3da1a94/debug/deps/kea_mcp-c086daa547f3e485 --nocapture`
+
+**Predict (Lean side)**:
+- Wrapper-only additions over existing bridge and fail-present theorem surfaces.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Source path blocked by the same unrelated `kea-syntax` compile error (`E0382`
+  moved `expr` in `parser.rs`).
+- Fallback binary probe result: `10 passed; 0 failed`.
+
+**Classify**: Agreement on probed MCP slice; source-path precondition gap due
+external build blocker.
+
+**Divergence**: none.
+
+**Outcome**:
+- Landed all four higher-order bridge-route fail-present wrappers.
+- Verified `cd formal && lake build` and fallback MCP regression pass.
+
+**Impact**:
+- Higher-order catch fail-present route parity now covers direct, bridge-laws,
+  and catch-typing-bridge theorem entry layers.
+
+### 2026-02-28: classifier-constructor facet projection wrappers + MCP recheck
+
+**Context**: Added direct facet projection wrappers for classifier constructors
+in `CatchInteroperabilitySuite`:
+- `catchClassifierInteropSuite_{generic,higher,laws}_of_capstoneInteropSuite`
+- `catchClassifierInteropSuite_{generic,higher,laws}_of_genericClassification`
+- `catchClassifierInteropSuite_{generic,higher,laws}_of_higherClassification`
+
+so all classifier constructor routes provide one-step access to each facet.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Projection-only wrappers over existing classifier constructors.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Landed all nine classifier-constructor facet projection wrappers listed above.
+- Verified `cd formal && lake build` and source-path MCP regression pass.
+
+**Impact**:
+- Classifier interop constructor families now all expose direct `generic`,
+  `higher`, and `laws` projections in one hop.
+
+### 2026-02-28: fail-present parity on non-bundle core catch/higher-order surfaces + MCP recheck
+
+**Context**: Added fail-present wrappers on non-bundle theorem layers:
+- `CatchTypingBridge`:
+  `catchTypingJudgment_sound_of_fail_present`,
+  `catchTypingJudgment_rowTailStable_of_fail_present`,
+  `catchTypingJudgment_preserves_nonFail_of_fail_present`
+- `HigherOrderCatchContracts`:
+  `higherOrderCatchTypingJudgment_sound_of_fail_present`,
+  `higherOrderCatchTypingJudgment_admissibility_branch_of_fail_present`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Wrapper-only additions deriving admissibility from fail presence and routing
+  through existing premise-level core theorems.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Landed all five fail-present non-bundle wrappers listed above.
+- Verified `cd formal && lake build` and source-path MCP regression pass.
+
+**Impact**:
+- Fail-present route parity now spans both bundled and non-bundled core theorem
+  surfaces in generic catch and higher-order catch layers.
+
+### 2026-02-28: formal checkpoint verification loop before commit
+
+**Context**: Preparing a formal-only checkpoint commit for accumulated theorem
+surface expansion across effect-polymorphism, catch bridge, higher-order catch,
+and interoperability suites.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Wrapper/decomposition parity additions are proof-surface only.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Formal and MCP validation green at commit checkpoint.
+
+**Impact**:
+- Safe to checkpoint current formal parity expansion as a proof-stream commit.

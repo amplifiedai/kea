@@ -216,6 +216,67 @@ structure TailCapabilityBundle
     TailResumptiveClassification.classifyClause c ≠
       TailResumptiveClassification.TailResumptiveClass.invalid
 
+/-- Structural decomposition for tail-capability bundle. -/
+theorem tailCapabilityBundle_iff_components
+    (c : HandleClauseContract)
+    (capability : Label) :
+    TailCapabilityBundle c capability
+      ↔
+      (RowFields.has
+          (EffectRow.fields (HandleClauseContract.resultEffectsCore c))
+          capability = true)
+      ∧
+      (RowFields.has
+          (EffectRow.fields (HandleClauseContract.resultEffects c))
+          capability = true)
+      ∧
+      (TailResumptiveClassification.classifyClause c ≠
+        TailResumptiveClassification.TailResumptiveClass.invalid) := by
+  constructor
+  · intro h_bundle
+    exact ⟨h_bundle.coreCapability, h_bundle.resultCapability, h_bundle.notInvalid⟩
+  · intro h_comp
+    exact {
+      coreCapability := h_comp.1
+      resultCapability := h_comp.2.1
+      notInvalid := h_comp.2.2
+    }
+
+/-- Constructor helper for tail-capability bundle decomposition. -/
+theorem tailCapabilityBundle_of_components
+    (c : HandleClauseContract)
+    (capability : Label)
+    (h_comp :
+      (RowFields.has
+          (EffectRow.fields (HandleClauseContract.resultEffectsCore c))
+          capability = true)
+      ∧
+      (RowFields.has
+          (EffectRow.fields (HandleClauseContract.resultEffects c))
+          capability = true)
+      ∧
+      (TailResumptiveClassification.classifyClause c ≠
+        TailResumptiveClassification.TailResumptiveClass.invalid)) :
+    TailCapabilityBundle c capability :=
+  (tailCapabilityBundle_iff_components c capability).2 h_comp
+
+/-- One-hop decomposition of tail-capability bundle. -/
+theorem tailCapabilityBundle_as_components
+    (c : HandleClauseContract)
+    (capability : Label)
+    (h_bundle : TailCapabilityBundle c capability) :
+    (RowFields.has
+        (EffectRow.fields (HandleClauseContract.resultEffectsCore c))
+        capability = true)
+    ∧
+    (RowFields.has
+        (EffectRow.fields (HandleClauseContract.resultEffects c))
+        capability = true)
+    ∧
+    (TailResumptiveClassification.classifyClause c ≠
+      TailResumptiveClassification.TailResumptiveClass.invalid) :=
+  (tailCapabilityBundle_iff_components c capability).1 h_bundle
+
 theorem tailCapabilityBundle_of_wellTyped
     (c : HandleClauseContract)
     (baseEffects : EffectRow)
@@ -271,6 +332,54 @@ structure TailCapabilityClosedAwareBundle
   notInvalid :
     TailResumptiveClassification.classifyClause c ≠
       TailResumptiveClassification.TailResumptiveClass.invalid
+
+/-- Structural decomposition for closed-aware tail-capability bundle. -/
+theorem tailCapabilityClosedAwareBundle_iff_components
+    (c : HandleClauseContract)
+    (capability : Label) :
+    TailCapabilityClosedAwareBundle c capability
+      ↔
+      (RowFields.has
+          (EffectRow.fields (HandlerClosedAwareContracts.resultEffectsClosedAware c))
+          capability = true)
+      ∧
+      (TailResumptiveClassification.classifyClause c ≠
+        TailResumptiveClassification.TailResumptiveClass.invalid) := by
+  constructor
+  · intro h_bundle
+    exact ⟨h_bundle.closedAwareResultCapability, h_bundle.notInvalid⟩
+  · intro h_comp
+    exact {
+      closedAwareResultCapability := h_comp.1
+      notInvalid := h_comp.2
+    }
+
+/-- Constructor helper for closed-aware tail-capability bundle decomposition. -/
+theorem tailCapabilityClosedAwareBundle_of_components
+    (c : HandleClauseContract)
+    (capability : Label)
+    (h_comp :
+      (RowFields.has
+          (EffectRow.fields (HandlerClosedAwareContracts.resultEffectsClosedAware c))
+          capability = true)
+      ∧
+      (TailResumptiveClassification.classifyClause c ≠
+        TailResumptiveClassification.TailResumptiveClass.invalid)) :
+    TailCapabilityClosedAwareBundle c capability :=
+  (tailCapabilityClosedAwareBundle_iff_components c capability).2 h_comp
+
+/-- One-hop decomposition of closed-aware tail-capability bundle. -/
+theorem tailCapabilityClosedAwareBundle_as_components
+    (c : HandleClauseContract)
+    (capability : Label)
+    (h_bundle : TailCapabilityClosedAwareBundle c capability) :
+    (RowFields.has
+        (EffectRow.fields (HandlerClosedAwareContracts.resultEffectsClosedAware c))
+        capability = true)
+    ∧
+    (TailResumptiveClassification.classifyClause c ≠
+      TailResumptiveClassification.TailResumptiveClass.invalid) :=
+  (tailCapabilityClosedAwareBundle_iff_components c capability).1 h_bundle
 
 theorem tailCapabilityClosedAwareBundle_of_wellTyped
     (c : HandleClauseContract)

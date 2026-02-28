@@ -180,6 +180,93 @@ theorem catchClassifierInteropSuite_of_premises
   exact HigherOrderCatchContracts.higherOrderCatchBridgeLaws_generic_to_classification
     clause innerEffects okTy errTy loweredTy laws genericClassified
 
+theorem catchClassifierInteropSuite_generic_of_premises
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy) :
+    CatchTypingBridge.CatchTypingCapstoneOutcome
+      clause (higherOrderParams innerEffects okTy) okTy errTy loweredTy
+      ∨ FailResultContracts.catchUnnecessary clause.exprEffects := by
+  exact (catchClassifierInteropSuite_of_premises
+    clause innerEffects okTy errTy loweredTy
+    h_wellTyped h_failZero h_clauseEffects h_lowered).genericClassified
+
+theorem catchClassifierInteropSuite_higher_of_premises
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy) :
+    HigherOrderCatchContracts.HigherOrderCatchCapstoneOutcome clause innerEffects okTy errTy loweredTy
+      ∨ FailResultContracts.catchUnnecessary innerEffects := by
+  exact (catchClassifierInteropSuite_of_premises
+    clause innerEffects okTy errTy loweredTy
+    h_wellTyped h_failZero h_clauseEffects h_lowered).higherClassified
+
+theorem catchClassifierInteropSuite_laws_of_premises
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy) :
+    HigherOrderCatchContracts.HigherOrderCatchBridgeLaws clause innerEffects okTy errTy loweredTy := by
+  exact (catchClassifierInteropSuite_of_premises
+    clause innerEffects okTy errTy loweredTy
+    h_wellTyped h_failZero h_clauseEffects h_lowered).laws
+
+theorem catchClassifierInteropSuite_as_components_of_premises
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy) :
+    HigherOrderCatchContracts.HigherOrderCatchBridgeLaws clause innerEffects okTy errTy loweredTy
+      ∧ (CatchTypingBridge.CatchTypingCapstoneOutcome
+            clause (higherOrderParams innerEffects okTy) okTy errTy loweredTy
+            ∨ FailResultContracts.catchUnnecessary clause.exprEffects)
+      ∧ (HigherOrderCatchContracts.HigherOrderCatchCapstoneOutcome
+            clause innerEffects okTy errTy loweredTy
+            ∨ FailResultContracts.catchUnnecessary innerEffects) := by
+  exact catchClassifierInteropSuite_as_components
+    clause innerEffects okTy errTy loweredTy
+    (catchClassifierInteropSuite_of_premises
+      clause innerEffects okTy errTy loweredTy
+      h_wellTyped h_failZero h_clauseEffects h_lowered)
+
 /-- Build capstone interoperability suite from premise-level capstone inputs. -/
 theorem catchCapstoneInteropSuite_of_premises
     (clause : HandleClauseContract)
@@ -221,6 +308,93 @@ theorem catchCapstoneInteropSuite_of_premises
   exact HigherOrderCatchContracts.higherOrderCatchBridgeLaws_generic_to_capstone
     clause innerEffects okTy errTy loweredTy laws genericCapstone
 
+theorem catchCapstoneInteropSuite_generic_of_premises
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_admissible : FailResultContracts.catchAdmissible clause.exprEffects)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy) :
+    CatchTypingBridge.CatchTypingCapstoneOutcome
+      clause (higherOrderParams innerEffects okTy) okTy errTy loweredTy := by
+  exact (catchCapstoneInteropSuite_of_premises
+    clause innerEffects okTy errTy loweredTy
+    h_wellTyped h_failZero h_admissible h_clauseEffects h_lowered).genericCapstone
+
+theorem catchCapstoneInteropSuite_higher_of_premises
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_admissible : FailResultContracts.catchAdmissible clause.exprEffects)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy) :
+    HigherOrderCatchContracts.HigherOrderCatchCapstoneOutcome clause innerEffects okTy errTy loweredTy := by
+  exact (catchCapstoneInteropSuite_of_premises
+    clause innerEffects okTy errTy loweredTy
+    h_wellTyped h_failZero h_admissible h_clauseEffects h_lowered).higherCapstone
+
+theorem catchCapstoneInteropSuite_laws_of_premises
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_admissible : FailResultContracts.catchAdmissible clause.exprEffects)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy) :
+    HigherOrderCatchContracts.HigherOrderCatchBridgeLaws clause innerEffects okTy errTy loweredTy := by
+  exact (catchCapstoneInteropSuite_of_premises
+    clause innerEffects okTy errTy loweredTy
+    h_wellTyped h_failZero h_admissible h_clauseEffects h_lowered).laws
+
+theorem catchCapstoneInteropSuite_as_components_of_premises
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_admissible : FailResultContracts.catchAdmissible clause.exprEffects)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy) :
+    HigherOrderCatchContracts.HigherOrderCatchBridgeLaws clause innerEffects okTy errTy loweredTy
+      ∧ CatchTypingBridge.CatchTypingCapstoneOutcome
+          clause (higherOrderParams innerEffects okTy) okTy errTy loweredTy
+      ∧ HigherOrderCatchContracts.HigherOrderCatchCapstoneOutcome
+          clause innerEffects okTy errTy loweredTy := by
+  exact catchCapstoneInteropSuite_as_components
+    clause innerEffects okTy errTy loweredTy
+    (catchCapstoneInteropSuite_of_premises
+      clause innerEffects okTy errTy loweredTy
+      h_wellTyped h_failZero h_admissible h_clauseEffects h_lowered)
+
 /-- Capstone interoperability implies classifier interoperability by left-injection. -/
 theorem catchClassifierInteropSuite_of_capstoneInteropSuite
     (clause : HandleClauseContract)
@@ -233,6 +407,36 @@ theorem catchClassifierInteropSuite_of_capstoneInteropSuite
     genericClassified := Or.inl h_cap.genericCapstone
     higherClassified := Or.inl h_cap.higherCapstone
   }
+
+theorem catchClassifierInteropSuite_generic_of_capstoneInteropSuite
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_cap : CatchCapstoneInteropSuite clause innerEffects okTy errTy loweredTy) :
+    CatchTypingBridge.CatchTypingCapstoneOutcome
+      clause (higherOrderParams innerEffects okTy) okTy errTy loweredTy
+      ∨ FailResultContracts.catchUnnecessary clause.exprEffects := by
+  exact (catchClassifierInteropSuite_of_capstoneInteropSuite
+    clause innerEffects okTy errTy loweredTy h_cap).genericClassified
+
+theorem catchClassifierInteropSuite_higher_of_capstoneInteropSuite
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_cap : CatchCapstoneInteropSuite clause innerEffects okTy errTy loweredTy) :
+    HigherOrderCatchContracts.HigherOrderCatchCapstoneOutcome clause innerEffects okTy errTy loweredTy
+      ∨ FailResultContracts.catchUnnecessary innerEffects := by
+  exact (catchClassifierInteropSuite_of_capstoneInteropSuite
+    clause innerEffects okTy errTy loweredTy h_cap).higherClassified
+
+theorem catchClassifierInteropSuite_laws_of_capstoneInteropSuite
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_cap : CatchCapstoneInteropSuite clause innerEffects okTy errTy loweredTy) :
+    HigherOrderCatchContracts.HigherOrderCatchBridgeLaws clause innerEffects okTy errTy loweredTy := by
+  exact (catchClassifierInteropSuite_of_capstoneInteropSuite
+    clause innerEffects okTy errTy loweredTy h_cap).laws
 
 /-- Build capstone interoperability suite from direct Fail-presence evidence. -/
 theorem catchCapstoneInteropSuite_of_fail_present
@@ -258,6 +462,97 @@ theorem catchCapstoneInteropSuite_of_fail_present
     clause innerEffects okTy errTy loweredTy
     h_wellTyped h_failZero h_admissible h_clauseEffects h_lowered
 
+theorem catchCapstoneInteropSuite_generic_of_fail_present
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_fail_present :
+      RowFields.has (EffectRow.fields clause.exprEffects) FailResultContracts.failLabel = true)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy) :
+    CatchTypingBridge.CatchTypingCapstoneOutcome
+      clause (higherOrderParams innerEffects okTy) okTy errTy loweredTy := by
+  exact (catchCapstoneInteropSuite_of_fail_present
+    clause innerEffects okTy errTy loweredTy
+    h_wellTyped h_failZero h_fail_present h_clauseEffects h_lowered).genericCapstone
+
+theorem catchCapstoneInteropSuite_higher_of_fail_present
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_fail_present :
+      RowFields.has (EffectRow.fields clause.exprEffects) FailResultContracts.failLabel = true)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy) :
+    HigherOrderCatchContracts.HigherOrderCatchCapstoneOutcome clause innerEffects okTy errTy loweredTy := by
+  exact (catchCapstoneInteropSuite_of_fail_present
+    clause innerEffects okTy errTy loweredTy
+    h_wellTyped h_failZero h_fail_present h_clauseEffects h_lowered).higherCapstone
+
+theorem catchCapstoneInteropSuite_laws_of_fail_present
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_fail_present :
+      RowFields.has (EffectRow.fields clause.exprEffects) FailResultContracts.failLabel = true)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy) :
+    HigherOrderCatchContracts.HigherOrderCatchBridgeLaws clause innerEffects okTy errTy loweredTy := by
+  exact (catchCapstoneInteropSuite_of_fail_present
+    clause innerEffects okTy errTy loweredTy
+    h_wellTyped h_failZero h_fail_present h_clauseEffects h_lowered).laws
+
+theorem catchCapstoneInteropSuite_as_components_of_fail_present
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_fail_present :
+      RowFields.has (EffectRow.fields clause.exprEffects) FailResultContracts.failLabel = true)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy) :
+    HigherOrderCatchContracts.HigherOrderCatchBridgeLaws clause innerEffects okTy errTy loweredTy
+      ∧ CatchTypingBridge.CatchTypingCapstoneOutcome
+          clause (higherOrderParams innerEffects okTy) okTy errTy loweredTy
+      ∧ HigherOrderCatchContracts.HigherOrderCatchCapstoneOutcome
+          clause innerEffects okTy errTy loweredTy := by
+  exact catchCapstoneInteropSuite_as_components
+    clause innerEffects okTy errTy loweredTy
+    (catchCapstoneInteropSuite_of_fail_present
+      clause innerEffects okTy errTy loweredTy
+      h_wellTyped h_failZero h_fail_present h_clauseEffects h_lowered)
+
 /-- Build classifier interoperability suite from direct Fail-presence evidence. -/
 theorem catchClassifierInteropSuite_of_fail_present
     (clause : HandleClauseContract)
@@ -279,6 +574,101 @@ theorem catchClassifierInteropSuite_of_fail_present
   catchClassifierInteropSuite_of_capstoneInteropSuite
     clause innerEffects okTy errTy loweredTy
     (catchCapstoneInteropSuite_of_fail_present
+      clause innerEffects okTy errTy loweredTy
+      h_wellTyped h_failZero h_fail_present h_clauseEffects h_lowered)
+
+theorem catchClassifierInteropSuite_generic_of_fail_present
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_fail_present :
+      RowFields.has (EffectRow.fields clause.exprEffects) FailResultContracts.failLabel = true)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy) :
+    CatchTypingBridge.CatchTypingCapstoneOutcome
+      clause (higherOrderParams innerEffects okTy) okTy errTy loweredTy
+      ∨ FailResultContracts.catchUnnecessary clause.exprEffects := by
+  exact (catchClassifierInteropSuite_of_fail_present
+    clause innerEffects okTy errTy loweredTy
+    h_wellTyped h_failZero h_fail_present h_clauseEffects h_lowered).genericClassified
+
+theorem catchClassifierInteropSuite_higher_of_fail_present
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_fail_present :
+      RowFields.has (EffectRow.fields clause.exprEffects) FailResultContracts.failLabel = true)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy) :
+    HigherOrderCatchContracts.HigherOrderCatchCapstoneOutcome clause innerEffects okTy errTy loweredTy
+      ∨ FailResultContracts.catchUnnecessary innerEffects := by
+  exact (catchClassifierInteropSuite_of_fail_present
+    clause innerEffects okTy errTy loweredTy
+    h_wellTyped h_failZero h_fail_present h_clauseEffects h_lowered).higherClassified
+
+theorem catchClassifierInteropSuite_laws_of_fail_present
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_fail_present :
+      RowFields.has (EffectRow.fields clause.exprEffects) FailResultContracts.failLabel = true)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy) :
+    HigherOrderCatchContracts.HigherOrderCatchBridgeLaws clause innerEffects okTy errTy loweredTy := by
+  exact (catchClassifierInteropSuite_of_fail_present
+    clause innerEffects okTy errTy loweredTy
+    h_wellTyped h_failZero h_fail_present h_clauseEffects h_lowered).laws
+
+theorem catchClassifierInteropSuite_as_components_of_fail_present
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_fail_present :
+      RowFields.has (EffectRow.fields clause.exprEffects) FailResultContracts.failLabel = true)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy) :
+    HigherOrderCatchContracts.HigherOrderCatchBridgeLaws clause innerEffects okTy errTy loweredTy
+      ∧ (CatchTypingBridge.CatchTypingCapstoneOutcome
+            clause (higherOrderParams innerEffects okTy) okTy errTy loweredTy
+            ∨ FailResultContracts.catchUnnecessary clause.exprEffects)
+      ∧ (HigherOrderCatchContracts.HigherOrderCatchCapstoneOutcome
+            clause innerEffects okTy errTy loweredTy
+            ∨ FailResultContracts.catchUnnecessary innerEffects) := by
+  exact catchClassifierInteropSuite_as_components
+    clause innerEffects okTy errTy loweredTy
+    (catchClassifierInteropSuite_of_fail_present
       clause innerEffects okTy errTy loweredTy
       h_wellTyped h_failZero h_fail_present h_clauseEffects h_lowered)
 
@@ -304,6 +694,48 @@ theorem catchClassifierInteropSuite_of_genericClassification
   exact HigherOrderCatchContracts.higherOrderCatchBridgeLaws_generic_to_classification
     clause innerEffects okTy errTy loweredTy laws h_generic
 
+theorem catchClassifierInteropSuite_generic_of_genericClassification
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_generic :
+      CatchTypingBridge.CatchTypingCapstoneOutcome
+        clause (higherOrderParams innerEffects okTy) okTy errTy loweredTy
+        ∨ FailResultContracts.catchUnnecessary clause.exprEffects) :
+    CatchTypingBridge.CatchTypingCapstoneOutcome
+      clause (higherOrderParams innerEffects okTy) okTy errTy loweredTy
+      ∨ FailResultContracts.catchUnnecessary clause.exprEffects := by
+  exact (catchClassifierInteropSuite_of_genericClassification
+    clause innerEffects okTy errTy loweredTy h_clauseEffects h_generic).genericClassified
+
+theorem catchClassifierInteropSuite_higher_of_genericClassification
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_generic :
+      CatchTypingBridge.CatchTypingCapstoneOutcome
+        clause (higherOrderParams innerEffects okTy) okTy errTy loweredTy
+        ∨ FailResultContracts.catchUnnecessary clause.exprEffects) :
+    HigherOrderCatchContracts.HigherOrderCatchCapstoneOutcome clause innerEffects okTy errTy loweredTy
+      ∨ FailResultContracts.catchUnnecessary innerEffects := by
+  exact (catchClassifierInteropSuite_of_genericClassification
+    clause innerEffects okTy errTy loweredTy h_clauseEffects h_generic).higherClassified
+
+theorem catchClassifierInteropSuite_laws_of_genericClassification
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_generic :
+      CatchTypingBridge.CatchTypingCapstoneOutcome
+        clause (higherOrderParams innerEffects okTy) okTy errTy loweredTy
+        ∨ FailResultContracts.catchUnnecessary clause.exprEffects) :
+    HigherOrderCatchContracts.HigherOrderCatchBridgeLaws clause innerEffects okTy errTy loweredTy := by
+  exact (catchClassifierInteropSuite_of_genericClassification
+    clause innerEffects okTy errTy loweredTy h_clauseEffects h_generic).laws
+
 /-- Build classifier interoperability suite from a higher-order classifier outcome. -/
 theorem catchClassifierInteropSuite_of_higherClassification
     (clause : HandleClauseContract)
@@ -324,6 +756,103 @@ theorem catchClassifierInteropSuite_of_higherClassification
   }
   exact HigherOrderCatchContracts.higherOrderCatchBridgeLaws_classification_to_generic
     clause innerEffects okTy errTy loweredTy laws h_higher
+
+theorem catchClassifierInteropSuite_generic_of_higherClassification
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_higher :
+      HigherOrderCatchContracts.HigherOrderCatchCapstoneOutcome clause innerEffects okTy errTy loweredTy
+        ∨ FailResultContracts.catchUnnecessary innerEffects) :
+    CatchTypingBridge.CatchTypingCapstoneOutcome
+      clause (higherOrderParams innerEffects okTy) okTy errTy loweredTy
+      ∨ FailResultContracts.catchUnnecessary clause.exprEffects := by
+  exact (catchClassifierInteropSuite_of_higherClassification
+    clause innerEffects okTy errTy loweredTy h_clauseEffects h_higher).genericClassified
+
+theorem catchClassifierInteropSuite_higher_of_higherClassification
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_higher :
+      HigherOrderCatchContracts.HigherOrderCatchCapstoneOutcome clause innerEffects okTy errTy loweredTy
+        ∨ FailResultContracts.catchUnnecessary innerEffects) :
+    HigherOrderCatchContracts.HigherOrderCatchCapstoneOutcome clause innerEffects okTy errTy loweredTy
+      ∨ FailResultContracts.catchUnnecessary innerEffects := by
+  exact (catchClassifierInteropSuite_of_higherClassification
+    clause innerEffects okTy errTy loweredTy h_clauseEffects h_higher).higherClassified
+
+theorem catchClassifierInteropSuite_laws_of_higherClassification
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_higher :
+      HigherOrderCatchContracts.HigherOrderCatchCapstoneOutcome clause innerEffects okTy errTy loweredTy
+        ∨ FailResultContracts.catchUnnecessary innerEffects) :
+    HigherOrderCatchContracts.HigherOrderCatchBridgeLaws clause innerEffects okTy errTy loweredTy := by
+  exact (catchClassifierInteropSuite_of_higherClassification
+    clause innerEffects okTy errTy loweredTy h_clauseEffects h_higher).laws
+
+theorem catchClassifierInteropSuite_as_components_of_genericClassification
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_generic :
+      CatchTypingBridge.CatchTypingCapstoneOutcome
+        clause (higherOrderParams innerEffects okTy) okTy errTy loweredTy
+        ∨ FailResultContracts.catchUnnecessary clause.exprEffects) :
+    HigherOrderCatchContracts.HigherOrderCatchBridgeLaws clause innerEffects okTy errTy loweredTy
+      ∧ (CatchTypingBridge.CatchTypingCapstoneOutcome
+            clause (higherOrderParams innerEffects okTy) okTy errTy loweredTy
+            ∨ FailResultContracts.catchUnnecessary clause.exprEffects)
+      ∧ (HigherOrderCatchContracts.HigherOrderCatchCapstoneOutcome
+            clause innerEffects okTy errTy loweredTy
+            ∨ FailResultContracts.catchUnnecessary innerEffects) := by
+  exact catchClassifierInteropSuite_as_components
+    clause innerEffects okTy errTy loweredTy
+    (catchClassifierInteropSuite_of_genericClassification
+      clause innerEffects okTy errTy loweredTy h_clauseEffects h_generic)
+
+theorem catchClassifierInteropSuite_as_components_of_higherClassification
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_higher :
+      HigherOrderCatchContracts.HigherOrderCatchCapstoneOutcome clause innerEffects okTy errTy loweredTy
+        ∨ FailResultContracts.catchUnnecessary innerEffects) :
+    HigherOrderCatchContracts.HigherOrderCatchBridgeLaws clause innerEffects okTy errTy loweredTy
+      ∧ (CatchTypingBridge.CatchTypingCapstoneOutcome
+            clause (higherOrderParams innerEffects okTy) okTy errTy loweredTy
+            ∨ FailResultContracts.catchUnnecessary clause.exprEffects)
+      ∧ (HigherOrderCatchContracts.HigherOrderCatchCapstoneOutcome
+            clause innerEffects okTy errTy loweredTy
+            ∨ FailResultContracts.catchUnnecessary innerEffects) := by
+  exact catchClassifierInteropSuite_as_components
+    clause innerEffects okTy errTy loweredTy
+    (catchClassifierInteropSuite_of_higherClassification
+      clause innerEffects okTy errTy loweredTy h_clauseEffects h_higher)
+
+theorem catchClassifierInteropSuite_as_components_of_capstoneInteropSuite
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_cap : CatchCapstoneInteropSuite clause innerEffects okTy errTy loweredTy) :
+    HigherOrderCatchContracts.HigherOrderCatchBridgeLaws clause innerEffects okTy errTy loweredTy
+      ∧ (CatchTypingBridge.CatchTypingCapstoneOutcome
+            clause (higherOrderParams innerEffects okTy) okTy errTy loweredTy
+            ∨ FailResultContracts.catchUnnecessary clause.exprEffects)
+      ∧ (HigherOrderCatchContracts.HigherOrderCatchCapstoneOutcome
+            clause innerEffects okTy errTy loweredTy
+            ∨ FailResultContracts.catchUnnecessary innerEffects) := by
+  exact catchClassifierInteropSuite_as_components
+    clause innerEffects okTy errTy loweredTy
+    (catchClassifierInteropSuite_of_capstoneInteropSuite
+      clause innerEffects okTy errTy loweredTy h_cap)
 
 /-- One-hop projection: generic capstone branch from capstone interoperability suite. -/
 theorem catchCapstoneInteropSuite_generic

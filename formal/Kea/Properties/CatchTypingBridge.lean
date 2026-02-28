@@ -183,6 +183,31 @@ theorem catchTypingJudgment_sound_of_premises
     clause params okTy errTy loweredTy h_wellTyped h_failZero h_admissible h_lowered
   exact catchTypingJudgment_sound j
 
+theorem catchTypingJudgment_sound_of_fail_present
+    (clause : HandleClauseContract)
+    (params : TyList)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_fail_present :
+      RowFields.has (EffectRow.fields clause.exprEffects) FailResultContracts.failLabel = true)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType params clause.exprEffects okTy errTy) :
+    RowFields.has
+      (EffectRow.fields (HandleClauseContract.resultEffects clause))
+      FailResultContracts.failLabel = false ∧
+      ∃ loweredEffects,
+        loweredTy = .functionEff params loweredEffects (.result okTy errTy) ∧
+        EffectPolymorphismSoundness.rowTailStable clause.exprEffects loweredEffects ∧
+        EffectPolymorphismSoundness.labelsPreservedExcept
+          clause.exprEffects loweredEffects FailResultContracts.failLabel ∧
+        RowFields.has (EffectRow.fields loweredEffects) FailResultContracts.failLabel = false := by
+  have h_admissible : FailResultContracts.catchAdmissible clause.exprEffects :=
+    (FailResultContracts.catchAdmissible_iff_fail_present clause.exprEffects).2 h_fail_present
+  exact catchTypingJudgment_sound_of_premises
+    clause params okTy errTy loweredTy h_wellTyped h_failZero h_admissible h_lowered
+
 theorem catchTypingJudgment_capstone_of_premises
     (clause : HandleClauseContract)
     (params : TyList)
@@ -250,6 +275,24 @@ theorem catchTypingJudgment_classify_of_premises
       h_wellTyped h_failZero h_adm h_lowered
   · exact Or.inr h_unnecessary
 
+theorem catchTypingJudgment_classify_of_fail_present
+    (clause : HandleClauseContract)
+    (params : TyList)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_fail_present :
+      RowFields.has (EffectRow.fields clause.exprEffects) FailResultContracts.failLabel = true)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType params clause.exprEffects okTy errTy) :
+    CatchTypingCapstoneOutcome clause params okTy errTy loweredTy ∨
+      FailResultContracts.catchUnnecessary clause.exprEffects := by
+  exact Or.inl <|
+    catchTypingJudgment_capstone_of_fail_present
+      clause params okTy errTy loweredTy
+      h_wellTyped h_failZero h_fail_present h_lowered
+
 theorem catchTypingJudgment_rowTailStable_of_premises
     (clause : HandleClauseContract)
     (params : TyList)
@@ -266,6 +309,25 @@ theorem catchTypingJudgment_rowTailStable_of_premises
   let j := mkCatchTypingJudgment
     clause params okTy errTy loweredTy h_wellTyped h_failZero h_admissible h_lowered
   exact catchTypingJudgment_rowTailStable j
+
+theorem catchTypingJudgment_rowTailStable_of_fail_present
+    (clause : HandleClauseContract)
+    (params : TyList)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_fail_present :
+      RowFields.has (EffectRow.fields clause.exprEffects) FailResultContracts.failLabel = true)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType params clause.exprEffects okTy errTy) :
+    ∃ loweredEffects,
+      loweredTy = .functionEff params loweredEffects (.result okTy errTy) ∧
+      EffectPolymorphismSoundness.rowTailStable clause.exprEffects loweredEffects := by
+  have h_admissible : FailResultContracts.catchAdmissible clause.exprEffects :=
+    (FailResultContracts.catchAdmissible_iff_fail_present clause.exprEffects).2 h_fail_present
+  exact catchTypingJudgment_rowTailStable_of_premises
+    clause params okTy errTy loweredTy h_wellTyped h_failZero h_admissible h_lowered
 
 theorem catchTypingJudgment_preserves_nonFail_of_premises
     (clause : HandleClauseContract)
@@ -285,6 +347,26 @@ theorem catchTypingJudgment_preserves_nonFail_of_premises
     clause params okTy errTy loweredTy h_wellTyped h_failZero h_admissible h_lowered
   exact catchTypingJudgment_preserves_nonFail j
 
+theorem catchTypingJudgment_preserves_nonFail_of_fail_present
+    (clause : HandleClauseContract)
+    (params : TyList)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_fail_present :
+      RowFields.has (EffectRow.fields clause.exprEffects) FailResultContracts.failLabel = true)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType params clause.exprEffects okTy errTy) :
+    ∃ loweredEffects,
+      loweredTy = .functionEff params loweredEffects (.result okTy errTy) ∧
+      EffectPolymorphismSoundness.labelsPreservedExcept
+        clause.exprEffects loweredEffects FailResultContracts.failLabel := by
+  have h_admissible : FailResultContracts.catchAdmissible clause.exprEffects :=
+    (FailResultContracts.catchAdmissible_iff_fail_present clause.exprEffects).2 h_fail_present
+  exact catchTypingJudgment_preserves_nonFail_of_premises
+    clause params okTy errTy loweredTy h_wellTyped h_failZero h_admissible h_lowered
+
 abbrev CatchTypingBundle (j : CatchTypingJudgment) :=
   EffectPolymorphismSoundness.AdmissibleEffectPolyHandlerBundle
     (toAdmissibleEffectPolyHandlerSchema j)
@@ -294,6 +376,65 @@ noncomputable def catchTypingJudgment_bundle
     CatchTypingBundle j :=
   EffectPolymorphismSoundness.admissibleEffectPolyHandler_bundle
     (toAdmissibleEffectPolyHandlerSchema j)
+
+/--
+One-hop decomposition of the judgment-level type-valued bundle into explicit
+existential components.
+-/
+theorem catchTypingJudgment_bundle_as_components
+    (j : CatchTypingJudgment) :
+    RowFields.has
+      (EffectRow.fields (HandleClauseContract.resultEffects j.clause))
+      FailResultContracts.failLabel = false ∧
+      ∃ loweredEffects,
+        j.loweredTy = .functionEff j.params loweredEffects (.result j.okTy j.errTy) ∧
+        EffectPolymorphismSoundness.rowTailStable j.clause.exprEffects loweredEffects ∧
+        EffectPolymorphismSoundness.labelsPreservedExcept
+          j.clause.exprEffects loweredEffects FailResultContracts.failLabel ∧
+        RowFields.has (EffectRow.fields loweredEffects) FailResultContracts.failLabel = false := by
+  simpa [toAdmissibleEffectPolyHandlerSchema] using
+    EffectPolymorphismSoundness.admissibleEffectPolyHandlerBundle_as_components
+      (toAdmissibleEffectPolyHandlerSchema j)
+      (catchTypingJudgment_bundle j)
+
+/-- Constructor helper from explicit judgment-level bundle components. -/
+noncomputable def catchTypingJudgment_bundle_of_components
+    (j : CatchTypingJudgment)
+    (h_comp :
+      RowFields.has
+        (EffectRow.fields (HandleClauseContract.resultEffects j.clause))
+        FailResultContracts.failLabel = false ∧
+        ∃ loweredEffects,
+          j.loweredTy = .functionEff j.params loweredEffects (.result j.okTy j.errTy) ∧
+          EffectPolymorphismSoundness.rowTailStable j.clause.exprEffects loweredEffects ∧
+          EffectPolymorphismSoundness.labelsPreservedExcept
+            j.clause.exprEffects loweredEffects FailResultContracts.failLabel ∧
+          RowFields.has (EffectRow.fields loweredEffects) FailResultContracts.failLabel = false) :
+    CatchTypingBundle j := by
+  refine EffectPolymorphismSoundness.admissibleEffectPolyHandlerBundle_of_components
+    (toAdmissibleEffectPolyHandlerSchema j) ?_
+  simpa [toAdmissibleEffectPolyHandlerSchema] using h_comp
+
+/--
+Structural decomposition for the judgment-level type-valued bundle, phrased at
+`Nonempty` to stay in `Prop`.
+-/
+theorem catchTypingJudgment_bundle_iff_components
+    (j : CatchTypingJudgment) :
+    Nonempty (CatchTypingBundle j)
+      ↔
+      RowFields.has
+        (EffectRow.fields (HandleClauseContract.resultEffects j.clause))
+        FailResultContracts.failLabel = false ∧
+        ∃ loweredEffects,
+          j.loweredTy = .functionEff j.params loweredEffects (.result j.okTy j.errTy) ∧
+          EffectPolymorphismSoundness.rowTailStable j.clause.exprEffects loweredEffects ∧
+          EffectPolymorphismSoundness.labelsPreservedExcept
+            j.clause.exprEffects loweredEffects FailResultContracts.failLabel ∧
+          RowFields.has (EffectRow.fields loweredEffects) FailResultContracts.failLabel = false := by
+  simpa [CatchTypingBundle, toAdmissibleEffectPolyHandlerSchema] using
+    EffectPolymorphismSoundness.admissibleEffectPolyHandlerBundle_iff_components
+      (toAdmissibleEffectPolyHandlerSchema j)
 
 noncomputable def catchTypingJudgment_bundle_of_premises
     (clause : HandleClauseContract)
@@ -311,6 +452,75 @@ noncomputable def catchTypingJudgment_bundle_of_premises
   let j := mkCatchTypingJudgment
     clause params okTy errTy loweredTy h_wellTyped h_failZero h_admissible h_lowered
   exact catchTypingJudgment_bundle j
+
+theorem catchTypingJudgment_bundle_as_components_of_premises
+    (clause : HandleClauseContract)
+    (params : TyList)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_admissible : FailResultContracts.catchAdmissible clause.exprEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType params clause.exprEffects okTy errTy) :
+    RowFields.has
+      (EffectRow.fields (HandleClauseContract.resultEffects clause))
+      FailResultContracts.failLabel = false ∧
+      ∃ loweredEffects,
+        loweredTy = .functionEff params loweredEffects (.result okTy errTy) ∧
+        EffectPolymorphismSoundness.rowTailStable clause.exprEffects loweredEffects ∧
+        EffectPolymorphismSoundness.labelsPreservedExcept
+          clause.exprEffects loweredEffects FailResultContracts.failLabel ∧
+        RowFields.has (EffectRow.fields loweredEffects) FailResultContracts.failLabel = false := by
+  let j := mkCatchTypingJudgment
+    clause params okTy errTy loweredTy h_wellTyped h_failZero h_admissible h_lowered
+  simpa [j] using catchTypingJudgment_bundle_as_components j
+
+noncomputable def catchTypingJudgment_bundle_of_fail_present
+    (clause : HandleClauseContract)
+    (params : TyList)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_fail_present :
+      RowFields.has (EffectRow.fields clause.exprEffects) FailResultContracts.failLabel = true)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType params clause.exprEffects okTy errTy) :
+    CatchTypingBundle
+      (mkCatchTypingJudgment
+        clause params okTy errTy loweredTy h_wellTyped h_failZero
+        ((FailResultContracts.catchAdmissible_iff_fail_present clause.exprEffects).2 h_fail_present)
+        h_lowered) := by
+  let h_admissible : FailResultContracts.catchAdmissible clause.exprEffects :=
+    (FailResultContracts.catchAdmissible_iff_fail_present clause.exprEffects).2 h_fail_present
+  exact catchTypingJudgment_bundle_of_premises
+    clause params okTy errTy loweredTy h_wellTyped h_failZero h_admissible h_lowered
+
+theorem catchTypingJudgment_bundle_as_components_of_fail_present
+    (clause : HandleClauseContract)
+    (params : TyList)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_fail_present :
+      RowFields.has (EffectRow.fields clause.exprEffects) FailResultContracts.failLabel = true)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType params clause.exprEffects okTy errTy) :
+    RowFields.has
+      (EffectRow.fields (HandleClauseContract.resultEffects clause))
+      FailResultContracts.failLabel = false ∧
+      ∃ loweredEffects,
+        loweredTy = .functionEff params loweredEffects (.result okTy errTy) ∧
+        EffectPolymorphismSoundness.rowTailStable clause.exprEffects loweredEffects ∧
+        EffectPolymorphismSoundness.labelsPreservedExcept
+          clause.exprEffects loweredEffects FailResultContracts.failLabel ∧
+        RowFields.has (EffectRow.fields loweredEffects) FailResultContracts.failLabel = false := by
+  let h_admissible : FailResultContracts.catchAdmissible clause.exprEffects :=
+    (FailResultContracts.catchAdmissible_iff_fail_present clause.exprEffects).2 h_fail_present
+  exact catchTypingJudgment_bundle_as_components_of_premises
+    clause params okTy errTy loweredTy h_wellTyped h_failZero h_admissible h_lowered
 
 theorem catchTypingJudgment_bundle_clauseFailRemoved_of_premises
     (clause : HandleClauseContract)
@@ -346,6 +556,121 @@ theorem catchTypingJudgment_bundle_rowTailStable_of_premises
     clause params okTy errTy loweredTy h_wellTyped h_failZero h_admissible h_lowered
   exact EffectPolymorphismSoundness.admissibleEffectPolyHandler_bundle_rowTailStable
     (toAdmissibleEffectPolyHandlerSchema j)
+
+theorem catchTypingJudgment_bundle_preserves_nonFail_of_premises
+    (clause : HandleClauseContract)
+    (params : TyList)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_admissible : FailResultContracts.catchAdmissible clause.exprEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType params clause.exprEffects okTy errTy) :
+    EffectPolymorphismSoundness.labelsPreservedExcept
+      clause.exprEffects
+      (catchTypingJudgment_bundle_of_premises
+        clause params okTy errTy loweredTy h_wellTyped h_failZero h_admissible h_lowered).lowering.loweredEffects
+      FailResultContracts.failLabel := by
+  exact (catchTypingJudgment_bundle_of_premises
+    clause params okTy errTy loweredTy h_wellTyped h_failZero h_admissible h_lowered).lowering.preservesNonFail
+
+theorem catchTypingJudgment_bundle_failRemoved_of_premises
+    (clause : HandleClauseContract)
+    (params : TyList)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_admissible : FailResultContracts.catchAdmissible clause.exprEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType params clause.exprEffects okTy errTy) :
+    RowFields.has
+      (EffectRow.fields
+        (catchTypingJudgment_bundle_of_premises
+          clause params okTy errTy loweredTy h_wellTyped h_failZero h_admissible h_lowered).lowering.loweredEffects)
+      FailResultContracts.failLabel = false := by
+  exact (catchTypingJudgment_bundle_of_premises
+    clause params okTy errTy loweredTy h_wellTyped h_failZero h_admissible h_lowered).lowering.failRemoved
+
+theorem catchTypingJudgment_bundle_clauseFailRemoved_of_fail_present
+    (clause : HandleClauseContract)
+    (params : TyList)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_fail_present :
+      RowFields.has (EffectRow.fields clause.exprEffects) FailResultContracts.failLabel = true)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType params clause.exprEffects okTy errTy) :
+    RowFields.has
+      (EffectRow.fields (HandleClauseContract.resultEffects clause))
+      FailResultContracts.failLabel = false := by
+  exact (catchTypingJudgment_bundle_of_fail_present
+    clause params okTy errTy loweredTy
+    h_wellTyped h_failZero h_fail_present h_lowered).clauseFailRemoved
+
+theorem catchTypingJudgment_bundle_rowTailStable_of_fail_present
+    (clause : HandleClauseContract)
+    (params : TyList)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_fail_present :
+      RowFields.has (EffectRow.fields clause.exprEffects) FailResultContracts.failLabel = true)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType params clause.exprEffects okTy errTy) :
+    EffectPolymorphismSoundness.rowTailStable clause.exprEffects
+      (catchTypingJudgment_bundle_of_fail_present
+        clause params okTy errTy loweredTy
+        h_wellTyped h_failZero h_fail_present h_lowered).lowering.loweredEffects := by
+  exact (catchTypingJudgment_bundle_of_fail_present
+    clause params okTy errTy loweredTy
+    h_wellTyped h_failZero h_fail_present h_lowered).lowering.rowTailStable
+
+theorem catchTypingJudgment_bundle_preserves_nonFail_of_fail_present
+    (clause : HandleClauseContract)
+    (params : TyList)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_fail_present :
+      RowFields.has (EffectRow.fields clause.exprEffects) FailResultContracts.failLabel = true)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType params clause.exprEffects okTy errTy) :
+    EffectPolymorphismSoundness.labelsPreservedExcept
+      clause.exprEffects
+      (catchTypingJudgment_bundle_of_fail_present
+        clause params okTy errTy loweredTy
+        h_wellTyped h_failZero h_fail_present h_lowered).lowering.loweredEffects
+      FailResultContracts.failLabel := by
+  exact (catchTypingJudgment_bundle_of_fail_present
+    clause params okTy errTy loweredTy
+    h_wellTyped h_failZero h_fail_present h_lowered).lowering.preservesNonFail
+
+theorem catchTypingJudgment_bundle_failRemoved_of_fail_present
+    (clause : HandleClauseContract)
+    (params : TyList)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_fail_present :
+      RowFields.has (EffectRow.fields clause.exprEffects) FailResultContracts.failLabel = true)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType params clause.exprEffects okTy errTy) :
+    RowFields.has
+      (EffectRow.fields
+        (catchTypingJudgment_bundle_of_fail_present
+          clause params okTy errTy loweredTy
+          h_wellTyped h_failZero h_fail_present h_lowered).lowering.loweredEffects)
+      FailResultContracts.failLabel = false := by
+  exact (catchTypingJudgment_bundle_of_fail_present
+    clause params okTy errTy loweredTy
+    h_wellTyped h_failZero h_fail_present h_lowered).lowering.failRemoved
 
 theorem catchTypingJudgment_bundle_clauseFailRemoved
     (j : CatchTypingJudgment) :
