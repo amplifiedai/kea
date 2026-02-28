@@ -3254,3 +3254,43 @@ theorem shapeConstDimKernelSuite : ShapeConstDimKernelSuite := by
       dimListKernel := dimConstListKernelSlice
       rank1ShapeKernel := rank1ShapeConstDimKernelSlice
       tensorShapeKernel := tensorConstShapeDimListKernelSlice }
+
+/-- Decompose the top-level shape/dimension suite into explicit components. -/
+theorem shapeConstDimKernelSuite_as_components
+    (suite : ShapeConstDimKernelSuite) :
+    DimKernelSuite ∧
+      DimConstKernelSlice ∧
+      DimConstListKernelSlice ∧
+      Rank1ShapeConstDimKernelSlice ∧
+      TensorConstShapeDimListKernelSlice :=
+  ⟨suite.dimKernel, suite.scalarKernel, suite.dimListKernel,
+    suite.rank1ShapeKernel, suite.tensorShapeKernel⟩
+
+/-- Build the top-level shape/dimension suite from explicit components. -/
+theorem shapeConstDimKernelSuite_of_components
+    (dimKernel : DimKernelSuite)
+    (scalarKernel : DimConstKernelSlice)
+    (dimListKernel : DimConstListKernelSlice)
+    (rank1ShapeKernel : Rank1ShapeConstDimKernelSlice)
+    (tensorShapeKernel : TensorConstShapeDimListKernelSlice) :
+    ShapeConstDimKernelSuite :=
+  { dimKernel := dimKernel
+    scalarKernel := scalarKernel
+    dimListKernel := dimListKernel
+    rank1ShapeKernel := rank1ShapeKernel
+    tensorShapeKernel := tensorShapeKernel }
+
+/-- `ShapeConstDimKernelSuite` is equivalent to its explicit component tuple. -/
+theorem shapeConstDimKernelSuite_iff_components :
+    ShapeConstDimKernelSuite ↔
+      DimKernelSuite ∧
+      DimConstKernelSlice ∧
+      DimConstListKernelSlice ∧
+      Rank1ShapeConstDimKernelSlice ∧
+      TensorConstShapeDimListKernelSlice := by
+  constructor
+  · intro suite
+    exact shapeConstDimKernelSuite_as_components suite
+  · intro h
+    exact shapeConstDimKernelSuite_of_components
+      h.1 h.2.1 h.2.2.1 h.2.2.2.1 h.2.2.2.2

@@ -8989,3 +8989,37 @@ combined dimension suite in `Kea/Dimensions.lean`:
 **Impact**:
 - Downstream theorem consumers can move between suite assumptions and explicit
   scalar/list component pairs without manual record destructuring.
+
+### 2026-02-28: `ShapeConstDimKernelSuite` decomposition API parity
+
+**Context**: Added explicit top-level shape-suite decomposition/reconstruction
+surface in `ShapeConstructorParity`:
+- `shapeConstDimKernelSuite_as_components`
+- `shapeConstDimKernelSuite_of_components`
+- `shapeConstDimKernelSuite_iff_components`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Theorem API packaging only; no semantic changes to dimension or shape kernel
+  behavior.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Top-level shape suite now mirrors the corpus-wide `iff/of/as` decomposition
+  pattern.
+
+**Impact**:
+- WP7 shape/dimension consumers can discharge top-level suite assumptions via
+  explicit component tuples without manual record destructuring.
