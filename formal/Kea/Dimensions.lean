@@ -942,3 +942,14 @@ theorem dimConstListKernelSlice : DimConstListKernelSlice := by
     exact unifyDimList_consts_length_mismatch_none fuel xs ys h_len
   · intro fuel xs ys h_none
     exact unifyDimList_consts_none_implies_beq_false fuel xs ys h_none
+
+/-- Top-level dimension-kernel package combining scalar and list contracts. -/
+structure DimKernelSuite : Prop where
+  scalar : DimConstKernelSlice
+  list : DimConstListKernelSlice
+
+/-- Canonical dimension-kernel suite witness. -/
+theorem dimKernelSuite : DimKernelSuite := by
+  exact
+    { scalar := dimConstKernelSlice
+      list := dimConstListKernelSlice }
