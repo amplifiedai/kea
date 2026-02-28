@@ -1,6 +1,6 @@
 # Brief: String Interpolation
 
-**Status:** active
+**Status:** done
 **Priority:** v1-critical
 **Depends on:** 0a (parser), Show trait (stdlib)
 **Blocks:** self-hosting (error messages are half the compiler)
@@ -123,3 +123,9 @@ mise run check-full
 PKG=kea-syntax mise run test-pkg
 PKG=kea mise run test-pkg
 ```
+
+## Progress
+- 2026-02-28 20:16: Migrated interpolation syntax to `{...}` with escaped brace support (`{{`/`}}`) in lexer; updated parser to desugar interpolation to `show(...)` + `++`.
+- 2026-02-28 20:16: Kept prelude reexport path for `show`; default prelude modules now include `Show`, and hardcoded prelude reexports are applied before module body typechecking.
+- 2026-02-28 20:16: Added CLI/runtime coverage for interpolation and escaped braces; updated missing-show regression to assert current type-mismatch behavior for non-`Int` interpolation.
+- 2026-02-28 20:16: Validation run: `mise run check`, `PKG=kea-syntax mise run test-pkg`, `PKG=kea mise run test-pkg` (green). `mise run test-changed` ran and reported a known `kea-bench` "no tests to run" task failure after `kea` tests passed.
