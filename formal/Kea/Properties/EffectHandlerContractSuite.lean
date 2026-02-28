@@ -1011,5 +1011,92 @@ theorem effectHandlerCompositionSuite_catchLaws
   effectHandlerCatchPairSuite_catchLaws
     clause capability innerEffects okTy errTy loweredTy h_suite.catchPair
 
+/-- One-hop projection: clause closed-aware handled-removal from master composition suite. -/
+theorem effectHandlerCompositionSuite_closedAwareHandledRemoved
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    RowFields.has
+      (EffectRow.fields (HandlerClosedAwareContracts.resultEffectsClosedAware clause))
+      clause.handled = false :=
+  effectHandlerCapstoneSuite_closedAwareHandledRemoved
+    clause capability innerEffects okTy errTy loweredTy h_suite.catchPair.capstone
+
+/-- One-hop projection: clause closed-aware capability preservation from master composition suite. -/
+theorem effectHandlerCompositionSuite_closedAwareCapability
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    RowFields.has
+      (EffectRow.fields (HandlerClosedAwareContracts.resultEffectsClosedAware clause))
+      capability = true :=
+  effectHandlerCapstoneSuite_closedAwareCapability
+    clause capability innerEffects okTy errTy loweredTy h_suite.catchPair.capstone
+
+/-- One-hop projection: clause closed-aware row-tail stability from master composition suite. -/
+theorem effectHandlerCompositionSuite_closedAwareRowTailStable
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    EffectRow.rest (HandlerClosedAwareContracts.resultEffectsClosedAware clause) =
+      EffectRow.rest clause.exprEffects :=
+  effectHandlerCapstoneSuite_closedAwareRowTailStable
+    clause capability innerEffects okTy errTy loweredTy h_suite.catchPair.capstone
+
+/-- One-hop projection: clause legacy handled-removal from master composition suite. -/
+theorem effectHandlerCompositionSuite_legacyHandledRemoved
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    RowFields.has
+      (EffectRow.fields (HandleClauseContract.resultEffects clause))
+      clause.handled = false :=
+  effectHandlerCapstoneSuite_legacyHandledRemoved
+    clause capability innerEffects okTy errTy loweredTy h_suite.catchPair.capstone
+
+/-- One-hop projection: clause non-invalid tail classification from master composition suite. -/
+theorem effectHandlerCompositionSuite_tailNotInvalid
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    TailResumptiveClassification.classifyClause clause ≠
+      TailResumptiveClassification.TailResumptiveClass.invalid :=
+  effectHandlerCapstoneSuite_tailNotInvalid
+    clause capability innerEffects okTy errTy loweredTy h_suite.catchPair.capstone
+
+/-- One-hop projection: catch-pair coherence equation from master composition suite. -/
+theorem effectHandlerCompositionSuite_classifierFromCapstone
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    h_suite.catchPair.classifier =
+      effectHandlerSuite_of_capstoneSuite
+        clause capability innerEffects okTy errTy loweredTy h_suite.catchPair.capstone :=
+  h_suite.catchPair.classifierFromCapstone
+
 end EffectHandlerContractSuite
 end Kea
