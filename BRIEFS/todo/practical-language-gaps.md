@@ -182,6 +182,67 @@ need the same treatment.
 **Landing:** Already in progress (0e done for IO, stdlib-bootstrap
 covers the rest)
 
+## Gap 7: Mutual Recursion Across Type Definitions
+
+**Status:** KERNEL §11.4 specifies it. **Not implemented — confirmed broken.**
+
+`kea run` rejects mutually recursive types:
+
+```kea
+struct Wrapper
+  inner: HirExpr    -- ERROR: unknown type `HirExpr`
+  tag: Int
+
+type HirExpr = | Lit(Int) | Wrapped(Wrapper)
+```
+
+**Root cause:** `compiler.rs` registers records and sum types in
+separate sequential passes. Record field types are validated during
+registration, before sum types are registered. Any struct that
+references a sum type (or a struct defined after it) fails.
+
+**Fix:** Collect all type *names* (records + sum types) in a first
+pass before validating any field types. Then validate field types
+in a second pass when all names are known. This is the standard
+Haskell/OCaml approach.
+
+**Landing:** Before 0g. This is a self-hosting blocker — compiler
+IRs are mutually recursive by nature.
+
+## Gap 8: `enum` Keyword for Sum Types
+
+**Status:** KERNEL §3 uses `enum`. Parser uses Rill's `type = |`.
+
+The parser currently uses `type Foo = | A | B(Int)` (Rill/ML syntax).
+The KERNEL specifies `enum Foo` with indented variants (Kea syntax):
+
+```kea
+enum Option A
+  Some(A)
+  None
+
+enum Expr T
+  IntLit(Int)                   : Expr Int
+  BoolLit(Bool)                 : Expr Bool
+  If(Expr Bool, Expr T, Expr T) : Expr T
+```
+
+`enum` with indentation is consistent with `struct`, `trait`, and
+`effect` — all use keyword + name + indented body. `type = |`
+overloads the `type` keyword (also used for aliases) and needs
+explicit `|` delimiters that fight indentation-sensitive style.
+
+**Fix:** Add `enum` keyword to lexer. Parse `enum Name` + indented
+variants (one per line, optional payload). Remove `type = |` syntax
+entirely (not deprecated — removed). `type` remains for type aliases
+only.
+
+The `|` prefix on variants inside an `enum` block may be optionally
+allowed for visual consistency but should not be required.
+
+**Landing:** Before 0g (GADTs need the `enum` syntax with return
+type annotations).
+
 ## Non-Gaps (Things That Look Like Problems But Aren't)
 
 **Mutable local variables:** No `let mut`. Use `.fold()` for
@@ -209,5 +270,7 @@ via `@extern` FFI or a future `@simd` annotation. Not a v1 concern.
 - [ ] Bidirectional numeric literal inference passes type checker tests
 - [ ] String/Bytes operations sufficient for source text manipulation
 - [ ] `IO`/`Clock`/`Net`/`Rand` all have separate runtime handlers
+- [ ] Mutual recursion across type definitions works (struct ↔ enum)
+- [ ] `enum` keyword replaces `type = |` for sum types
 - [ ] Self-hosting compiler can read source, tokenize, parse, infer,
       and emit code — exercising all of the above
