@@ -28172,6 +28172,185 @@ theorem principalBoundarySoundNoUnifyFullVerticalSuite_of_success_from_bundle
   principalBoundarySoundNoUnifyFullVerticalSuite_of_success
     (h_app := h_seed.1) (h_proj := h_seed.2) h_no_expr h_no_field h_ok_expr h_ok_field
 
+/--
+Convert a full+vertical suite witness into the no-unify-specialized full+vertical suite
+using explicit no-unify branch premises.
+-/
+theorem principalBoundarySoundNoUnifyFullVerticalSuite_of_fullVerticalSuite
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_suite : PrincipalBoundarySoundFullVerticalSuite st fuel env e fs stExpr ty stField rf)
+    (h_no_expr : NoUnifyBranchesExpr e)
+    (h_no_field : NoUnifyBranchesFields fs) :
+    PrincipalBoundarySoundNoUnifyFullVerticalSuite st fuel env e fs stExpr ty stField rf := by
+  refine {
+    exprNoUnify := h_suite.full.noUnifyExpr h_no_expr
+    fieldNoUnify := h_suite.full.noUnifyField h_no_field
+    vertical := h_suite.vertical
+  }
+
+/-- Row-poly bundle route constructor for no-unify full+vertical suite. -/
+theorem principalBoundarySoundNoUnifyFullVerticalSuite_of_success_via_rowPolyBoundarySoundBundle
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_no_expr : NoUnifyBranchesExpr e)
+    (h_no_field : NoUnifyBranchesFields fs)
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundNoUnifyFullVerticalSuite st fuel env e fs stExpr ty stField rf :=
+  principalBoundarySoundNoUnifyFullVerticalSuite_of_fullVerticalSuite
+    (principalBoundarySoundFullVerticalSuite_of_success_via_rowPolyBoundarySoundBundle
+      (h_bundle := principalRowPolyBoundarySoundBundle_of_hooks h_app h_proj)
+      h_ok_expr h_ok_field)
+    h_no_expr h_no_field
+
+/-- Bundled row-poly bundle route constructor for no-unify full+vertical suite. -/
+theorem principalBoundarySoundNoUnifyFullVerticalSuite_of_success_via_rowPolyBoundarySoundBundle_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_no_expr : NoUnifyBranchesExpr e)
+    (h_no_field : NoUnifyBranchesFields fs)
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundNoUnifyFullVerticalSuite st fuel env e fs stExpr ty stField rf :=
+  principalBoundarySoundNoUnifyFullVerticalSuite_of_success_via_rowPolyBoundarySoundBundle
+    (h_app := h_seed.1) (h_proj := h_seed.2) h_no_expr h_no_field h_ok_expr h_ok_field
+
+/-- Proved row-poly bundle route constructor for no-unify full+vertical suite. -/
+theorem principalBoundarySoundNoUnifyFullVerticalSuite_of_success_via_rowPolyBoundarySoundBundle_proved
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_no_expr : NoUnifyBranchesExpr e)
+    (h_no_field : NoUnifyBranchesFields fs)
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundNoUnifyFullVerticalSuite st fuel env e fs stExpr ty stField rf :=
+  principalBoundarySoundNoUnifyFullVerticalSuite_of_success_via_rowPolyBoundarySoundBundle
+    (h_app := h_app) (h_proj := h_proj)
+    h_no_expr h_no_field h_ok_expr h_ok_field
+
+/-- Bundled proved row-poly bundle route constructor for no-unify full+vertical suite. -/
+theorem principalBoundarySoundNoUnifyFullVerticalSuite_of_success_via_rowPolyBoundarySoundBundle_proved_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_no_expr : NoUnifyBranchesExpr e)
+    (h_no_field : NoUnifyBranchesFields fs)
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundNoUnifyFullVerticalSuite st fuel env e fs stExpr ty stField rf :=
+  principalBoundarySoundNoUnifyFullVerticalSuite_of_success_via_rowPolyBoundarySoundBundle_proved
+    (h_app := h_seed.1) (h_proj := h_seed.2) h_no_expr h_no_field h_ok_expr h_ok_field
+
+/-- Dual-route row-poly bundle constructor for no-unify full+vertical suite. -/
+theorem principalBoundarySoundNoUnifyFullVerticalSuite_of_success_via_rowPolyBoundarySoundBundle_via_dualConsequenceSlices
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_no_expr : NoUnifyBranchesExpr e)
+    (h_no_field : NoUnifyBranchesFields fs)
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundNoUnifyFullVerticalSuite st fuel env e fs stExpr ty stField rf :=
+  principalBoundarySoundNoUnifyFullVerticalSuite_of_fullVerticalSuite
+    (principalBoundarySoundFullVerticalSuite_of_success_via_rowPolyBoundarySoundBundle_via_dualConsequenceSlices
+      (h_app := h_app) (h_proj := h_proj) h_ok_expr h_ok_field)
+    h_no_expr h_no_field
+
+/-- Bundled dual-route row-poly bundle constructor for no-unify full+vertical suite. -/
+theorem principalBoundarySoundNoUnifyFullVerticalSuite_of_success_via_rowPolyBoundarySoundBundle_via_dualConsequenceSlices_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_no_expr : NoUnifyBranchesExpr e)
+    (h_no_field : NoUnifyBranchesFields fs)
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundNoUnifyFullVerticalSuite st fuel env e fs stExpr ty stField rf :=
+  principalBoundarySoundNoUnifyFullVerticalSuite_of_success_via_rowPolyBoundarySoundBundle_via_dualConsequenceSlices
+    (h_app := h_seed.1) (h_proj := h_seed.2) h_no_expr h_no_field h_ok_expr h_ok_field
+
+/-- Typing-suite route constructor for no-unify full+vertical suite. -/
+theorem principalBoundarySoundNoUnifyFullVerticalSuite_of_success_via_typingRunBundleSuite
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_no_expr : NoUnifyBranchesExpr e)
+    (h_no_field : NoUnifyBranchesFields fs)
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundNoUnifyFullVerticalSuite st fuel env e fs stExpr ty stField rf :=
+  principalBoundarySoundNoUnifyFullVerticalSuite_of_fullVerticalSuite
+    (principalBoundarySoundFullVerticalSuite_of_success_via_typingRunBundleSuite
+      (h_app := h_app) (h_proj := h_proj) h_ok_expr h_ok_field)
+    h_no_expr h_no_field
+
+/-- Bundled typing-suite route constructor for no-unify full+vertical suite. -/
+theorem principalBoundarySoundNoUnifyFullVerticalSuite_of_success_via_typingRunBundleSuite_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_no_expr : NoUnifyBranchesExpr e)
+    (h_no_field : NoUnifyBranchesFields fs)
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundNoUnifyFullVerticalSuite st fuel env e fs stExpr ty stField rf :=
+  principalBoundarySoundNoUnifyFullVerticalSuite_of_success_via_typingRunBundleSuite
+    (h_app := h_seed.1) (h_proj := h_seed.2) h_no_expr h_no_field h_ok_expr h_ok_field
+
+/-- Dual-route typing-suite constructor for no-unify full+vertical suite. -/
+theorem principalBoundarySoundNoUnifyFullVerticalSuite_of_success_via_typingRunBundleSuite_via_dualConsequenceSlices
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_no_expr : NoUnifyBranchesExpr e)
+    (h_no_field : NoUnifyBranchesFields fs)
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundNoUnifyFullVerticalSuite st fuel env e fs stExpr ty stField rf :=
+  principalBoundarySoundNoUnifyFullVerticalSuite_of_fullVerticalSuite
+    (principalBoundarySoundFullVerticalSuite_of_success_via_typingRunBundleSuite_via_dualConsequenceSlices
+      (h_app := h_app) (h_proj := h_proj) h_ok_expr h_ok_field)
+    h_no_expr h_no_field
+
+/-- Bundled dual-route typing-suite constructor for no-unify full+vertical suite. -/
+theorem principalBoundarySoundNoUnifyFullVerticalSuite_of_success_via_typingRunBundleSuite_via_dualConsequenceSlices_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_no_expr : NoUnifyBranchesExpr e)
+    (h_no_field : NoUnifyBranchesFields fs)
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundNoUnifyFullVerticalSuite st fuel env e fs stExpr ty stField rf :=
+  principalBoundarySoundNoUnifyFullVerticalSuite_of_success_via_typingRunBundleSuite_via_dualConsequenceSlices
+    (h_app := h_seed.1) (h_proj := h_seed.2) h_no_expr h_no_field h_ok_expr h_ok_field
+
 /-- One-hop projection: no-unify expression full consequence from no-unify full+vertical suite. -/
 theorem principalBoundarySoundNoUnifyFullVerticalSuite_expr
     {st : UnifyState} {fuel : Nat} {env : TermEnv}
