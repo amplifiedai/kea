@@ -203,7 +203,52 @@ Implement @derive for Show, Eq, Ord, Encode, Decode on structs and
 enums. This is implementation machinery that depends on steps 1-3
 (GADTs, Eff kind, associated types, supertraits) being stable.
 
-### Step 5: Stdlib Tier 3 — Abstractions
+### Step 5: Existential Types
+
+Existential types allow abstracting over a concrete type that
+satisfies a trait bound, without knowing which type at the call
+site. KERNEL §6.6 mentions dynamic dispatch as opt-in; existentials
+are the mechanism.
+
+```kea
+fn format_all(_ items: List (any Show)) -> List String
+  items.map(|item| item.show())
+
+fn compile(_ module: MirModule, _ backend: any Backend) -> Bytes
+  backend.emit(module)
+```
+
+`any Show` means "some concrete type that implements Show." The
+caller can pass any `Show` implementor; the callee dispatches
+through the trait interface.
+
+**What transfers from Rill:**
+
+Rill has full existential support (`Type::Existential { bounds }`)
+in `rill-types/src/lib.rs:177-178`. The implementation covers:
+- Type representation: `any Trait` / `any (Trait1, Trait2)`
+- Unification: existentials unify with concrete types that satisfy
+  all bounds
+- Evaluation: runtime dispatch via evidence dictionaries
+- Sendability checking: existentials propagate bounds
+- Display: pretty-printing as `any Trait`
+- Tests: `display_existential`, sendability checks, integration tests
+
+Cannibalise from rill. The main work is:
+1. Parser: `any Trait` syntax in type position (check if already
+   parsed — rill-syntax has it)
+2. Type checker: existential unification, bound satisfaction
+3. Codegen: existentials require boxing + vtable/dictionary. At
+   monomorphic call sites the compiler can devirtualize. At
+   polymorphic sites, emit indirect call through trait evidence.
+4. Layout: existential values are pointer-sized (boxed value +
+   trait dictionary pointer), like Rust's `dyn Trait`
+
+**Not needed for Phase 1 self-hosting** — sum types work when you
+know all variants (backends). But existentials unblock the Phase 2
+plugin/extension story and make heterogeneous collections natural.
+
+### Step 6: Stdlib Tier 3 — Abstractions
 
 When 0g lands, the stdlib gains trait hierarchies, @derive recipes,
 and the abstractions that make the stdlib ergonomic. See

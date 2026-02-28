@@ -1262,6 +1262,19 @@ trait Show
 Trait methods use explicit `self` parameter. Static methods omit
 `self`. `Self` refers to the implementing type.
 
+**Default implementations.** Trait methods may provide a default
+body. Implementations may omit methods that have defaults:
+
+```kea
+trait Eq
+  fn eq(_ self: Self, _ other: Self) -> Bool
+  fn neq(_ self: Self, _ other: Self) -> Bool
+    not (self.eq(other))
+```
+
+An implementation of `Eq` need only provide `eq`; `neq` uses the
+default unless explicitly overridden.
+
 ### 6.2 Implementation
 
 ```kea
@@ -1270,9 +1283,9 @@ Point as Show
     "({self.x}, {self.y})"
 ```
 
-The syntax is `Type as Trait`. Within the block, all methods must
-be provided. Trait implementations are always separate blocks,
-outside the struct definition.
+The syntax is `Type as Trait`. All methods without default
+implementations must be provided. Trait implementations are
+always separate blocks, outside the struct definition.
 
 ### 6.3 Conditional Implementations
 
@@ -2049,6 +2062,23 @@ pub struct User
 ### 11.4 No Circular Dependencies
 
 Module imports form a DAG. Circular imports are a compile error.
+
+Within a module, all type definitions (structs, enums, type aliases)
+are mutually visible. No forward declarations or ordering constraints
+are required — the compiler resolves all type names within a module
+before checking definitions. Mutually recursive types are legal:
+
+```kea
+enum HirExpr
+  Let(String, HirExpr, HirExpr)
+  Match(HirExpr, List MatchArm)
+  Lit(Int)
+
+struct MatchArm
+  pattern: Pattern
+  guard: Option HirExpr
+  body: HirExpr
+```
 
 ### 11.5 Type Aliases
 
