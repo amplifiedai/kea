@@ -149,6 +149,9 @@ structure TailResumptiveBundle (c : HandleClauseContract) where
       classifyClause c = .tailResumptive
   resumeProvenance : HandleClauseContract.resumeProvenance c
   notInvalid : classifyClause c ≠ .invalid
+  directCallEquivalent_of_eligible :
+    tailResumptiveEligible c →
+      directCallEquivalent c
 
 /-- Structural decomposition for tail-resumptive bundle. -/
 theorem tailResumptiveBundle_iff_components
@@ -157,15 +160,22 @@ theorem tailResumptiveBundle_iff_components
       ↔
       (classifyClause c = .nonResumptive ∨ classifyClause c = .tailResumptive)
       ∧ HandleClauseContract.resumeProvenance c
-      ∧ classifyClause c ≠ .invalid := by
+      ∧ classifyClause c ≠ .invalid
+      ∧ (tailResumptiveEligible c → directCallEquivalent c) := by
   constructor
   · intro h_bundle
-    exact ⟨h_bundle.classification, h_bundle.resumeProvenance, h_bundle.notInvalid⟩
+    exact ⟨
+      h_bundle.classification,
+      h_bundle.resumeProvenance,
+      h_bundle.notInvalid,
+      h_bundle.directCallEquivalent_of_eligible
+    ⟩
   · intro h_comp
     exact {
       classification := h_comp.1
       resumeProvenance := h_comp.2.1
-      notInvalid := h_comp.2.2
+      notInvalid := h_comp.2.2.1
+      directCallEquivalent_of_eligible := h_comp.2.2.2
     }
 
 /-- Constructor helper for tail-resumptive bundle decomposition. -/
@@ -174,7 +184,8 @@ theorem tailResumptiveBundle_of_components
     (h_comp :
       (classifyClause c = .nonResumptive ∨ classifyClause c = .tailResumptive)
       ∧ HandleClauseContract.resumeProvenance c
-      ∧ classifyClause c ≠ .invalid) :
+      ∧ classifyClause c ≠ .invalid
+      ∧ (tailResumptiveEligible c → directCallEquivalent c)) :
     TailResumptiveBundle c :=
   (tailResumptiveBundle_iff_components c).2 h_comp
 
@@ -184,7 +195,8 @@ theorem tailResumptiveBundle_as_components
     (h_bundle : TailResumptiveBundle c) :
     (classifyClause c = .nonResumptive ∨ classifyClause c = .tailResumptive)
     ∧ HandleClauseContract.resumeProvenance c
-    ∧ classifyClause c ≠ .invalid :=
+    ∧ classifyClause c ≠ .invalid
+    ∧ (tailResumptiveEligible c → directCallEquivalent c) :=
   (tailResumptiveBundle_iff_components c).1 h_bundle
 
 theorem tail_resumptive_bundle_of_wellTyped
@@ -202,6 +214,9 @@ theorem tail_resumptive_bundle_of_wellTyped
     classification := h_class
     resumeProvenance := h_prov
     notInvalid := h_not_invalid
+    directCallEquivalent_of_eligible := by
+      intro h_eligible
+      exact tail_resumptive_direct_call_sound c h_eligible
   }
 
 theorem tail_resumptive_bundle_as_components_of_wellTyped
@@ -209,7 +224,8 @@ theorem tail_resumptive_bundle_as_components_of_wellTyped
     (h_wellTyped : HandleClauseContract.wellTypedSlice c) :
     (classifyClause c = .nonResumptive ∨ classifyClause c = .tailResumptive)
     ∧ HandleClauseContract.resumeProvenance c
-    ∧ classifyClause c ≠ .invalid :=
+    ∧ classifyClause c ≠ .invalid
+    ∧ (tailResumptiveEligible c → directCallEquivalent c) :=
   tailResumptiveBundle_as_components c
     (tail_resumptive_bundle_of_wellTyped c h_wellTyped)
 
@@ -328,7 +344,8 @@ theorem tail_resumptive_bundle_direct_call_of_eligible
     (h_wellTyped : HandleClauseContract.wellTypedSlice c)
     (h_eligible : tailResumptiveEligible c) :
     directCallEquivalent c :=
-  tail_resumptive_wellTyped_direct_call_sound c h_wellTyped h_eligible
+  (tail_resumptive_bundle_of_wellTyped c h_wellTyped).directCallEquivalent_of_eligible
+    h_eligible
 
 end TailResumptiveClassification
 end Kea
