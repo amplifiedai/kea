@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>keadocs design system preview</title>
+
+  <!-- Variable fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,700;1,7..72,400&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="../css/keadocs.css">
+
+  <style>
+    /* Preview-only styles */
+    .preview-section {
+      margin-bottom: 3rem;
+      padding-bottom: 2rem;
+      border-bottom: 1px solid var(--kd-border);
+    }
+    .preview-label {
+      font-family: var(--kd-font-mono);
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--kd-secondary);
+      margin-bottom: 0.5rem;
+    }
+    .preview-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr));
+      gap: 0.75rem;
+    }
+    .swatch {
+      aspect-ratio: 2 / 1;
+      display: flex;
+      align-items: flex-end;
+      padding: 0.4rem;
+      font-family: var(--kd-font-mono);
+      font-size: 0.65rem;
+    }
+  </style>
+</head>
+<body>
+
+<div class="kd-manuscript">
+
+  <!-- ===== Theme toggle ===== -->
+  <div style="text-align: right; margin-bottom: 1rem;">
+    <button class="kd-theme-toggle" onclick="toggleTheme()" aria-label="Toggle dark mode" id="themeBtn"></button>
+  </div>
+
+  <h1>keadocs design system</h1>
+  <p>preview of all components. open in a browser to validate.</p>
+
+  <!-- ===== Color palette ===== -->
+  <div class="preview-section">
+    <h2>color palette</h2>
+
+    <p class="preview-label">primary</p>
+    <div class="preview-grid">
+      <div class="swatch" style="background: var(--kd-olive); color: #fff;">olive</div>
+      <div class="swatch" style="background: var(--kd-scarlet); color: #fff;">scarlet</div>
+      <div class="swatch" style="background: var(--kd-teal); color: #fff;">teal</div>
+      <div class="swatch" style="background: var(--kd-gold); color: #000;">gold</div>
+    </div>
+
+    <p class="preview-label" style="margin-top: 1rem;">structural</p>
+    <div class="preview-grid">
+      <div class="swatch" style="background: var(--kd-ink); color: #fff;">ink</div>
+      <div class="swatch" style="background: var(--kd-slate); color: #fff;">slate</div>
+      <div class="swatch" style="background: var(--kd-secondary); color: #fff;">slate-light</div>
+      <div class="swatch" style="background: var(--kd-stone); color: #000;">stone</div>
+      <div class="swatch" style="background: var(--kd-bone); color: #000;">bone</div>
+      <div class="swatch" style="background: var(--kd-paper); color: #000; border: 1px solid var(--kd-border);">paper</div>
+    </div>
+  </div>
+
+  <!-- ===== Typography ===== -->
+  <div class="preview-section">
+    <h2>typography</h2>
+    <h1>h1 &mdash; the compiler knows what your functions do</h1>
+    <h2>h2 &mdash; algebraic effects with handlers</h2>
+    <h3>h3 &mdash; row polymorphism for records and effects</h3>
+    <p>Body text in Literata. Kea is a statically-typed functional programming language with algebraic effects, handlers, row polymorphism, and indentation-sensitive syntax. It compiles via Cranelift.</p>
+    <p>Inline code: <code>List.map(xs, f)</code>, <code>-[IO, Fail E]></code>, <code>Unique Buffer</code>.</p>
+  </div>
+
+  <!-- ===== Logo ===== -->
+  <div class="preview-section">
+    <h2>logo</h2>
+    <p style="font-size: 2.5rem;">
+      <span class="kd-logo"><span class="kd-logo__bracket">-[</span><span class="kd-logo__name">kea</span><span class="kd-logo__bracket">]></span></span>
+    </p>
+    <p style="font-size: 1.2rem; margin-top: 1rem;">
+      <span class="kd-logo"><span class="kd-logo__bracket">-[</span><span class="kd-logo__name">kea</span><span class="kd-logo__bracket">]></span></span>
+    </p>
+  </div>
+
+  <!-- ===== Navigation ===== -->
+  <div class="preview-section">
+    <h2>navigation</h2>
+
+    <p class="preview-label">kealang.org</p>
+    <nav class="kd-nav">
+      <span class="kd-nav__logo"><span class="kd-arrow">-[</span>kea<span class="kd-arrow">]></span></span>
+      <span class="kd-nav__sep">|</span>
+      <a href="#" class="kd-nav__link kd-nav__link--active">docs</a>
+      <a href="#" class="kd-nav__link">reference</a>
+      <a href="#" class="kd-nav__link">spec</a>
+      <a href="#" class="kd-nav__link">errors</a>
+      <a href="#" class="kd-nav__link">source</a>
+    </nav>
+
+    <p class="preview-label" style="margin-top: 1.5rem;">packages.kealang.org</p>
+    <nav class="kd-nav">
+      <span class="kd-nav__logo">kea-http</span>
+      <span style="color: var(--kd-secondary); font-family: var(--kd-font-mono); font-size: 0.78rem;">0.1.0</span>
+      <span class="kd-nav__sep">|</span>
+      <a href="#" class="kd-nav__link">guides</a>
+      <a href="#" class="kd-nav__link kd-nav__link--active">reference</a>
+      <a href="#" class="kd-nav__link">source</a>
+    </nav>
+  </div>
+
+  <!-- ===== Effect badges ===== -->
+  <div class="preview-section">
+    <h2>effect badges</h2>
+    <p>
+      <span class="kd-badge kd-badge--pure">-></span>
+      <span class="kd-badge kd-badge--io">IO</span>
+      <span class="kd-badge kd-badge--fail">Fail E</span>
+      <span class="kd-badge kd-badge--async">Send</span>
+      <span class="kd-badge kd-badge--async">Spawn</span>
+    </p>
+    <p style="margin-top: 0.5rem;">Badges appear in sidebars, search results, and tooltips.</p>
+  </div>
+
+  <!-- ===== Signature blocks ===== -->
+  <div class="preview-section">
+    <h2>signature blocks</h2>
+
+    <p class="preview-label">pure</p>
+    <div class="kd-sig">
+      <span class="kd-syn-keyword">fn</span> <span class="kd-syn-function">map</span>(<span class="kd-syn-param">_ self</span>: <span class="kd-syn-type">List</span> <span class="kd-syn-type">A</span>, <span class="kd-syn-param">_ f</span>: <span class="kd-syn-type">A</span> <span class="kd-syn-operator">-></span> <span class="kd-syn-type">B</span>) <span class="kd-syn-operator">-></span> <span class="kd-syn-type">List</span> <span class="kd-syn-type">B</span>
+    </div>
+
+    <p class="preview-label">effectful</p>
+    <div class="kd-sig kd-sig--effectful">
+      <span class="kd-syn-keyword">fn</span> <span class="kd-syn-function">load_config</span>(<span class="kd-syn-param">_ path</span>: <span class="kd-syn-type">String</span>) <span class="kd-arrow">-[</span><span class="kd-syn-type">IO</span><span class="kd-syn-operator">,</span> <span class="kd-syn-type">Fail</span> <span class="kd-syn-type">ConfigError</span><span class="kd-arrow">]></span> <span class="kd-syn-type">Config</span>
+    </div>
+
+    <p class="preview-label">effect-polymorphic</p>
+    <div class="kd-sig kd-sig--polymorphic">
+      <span class="kd-syn-keyword">fn</span> <span class="kd-syn-function">map</span>(<span class="kd-syn-param">_ self</span>: <span class="kd-syn-type">List</span> <span class="kd-syn-type">A</span>, <span class="kd-syn-param">_ f</span>: <span class="kd-syn-type">A</span> <span class="kd-arrow">-[</span><span class="kd-syn-param">e</span><span class="kd-arrow">]></span> <span class="kd-syn-type">B</span>) <span class="kd-arrow">-[</span><span class="kd-syn-param">e</span><span class="kd-arrow">]></span> <span class="kd-syn-type">List</span> <span class="kd-syn-type">B</span>
+    </div>
+  </div>
+
+  <!-- ===== Code block ===== -->
+  <div class="preview-section">
+    <h2>code block</h2>
+    <pre><code><span class="kd-syn-keyword">effect</span> <span class="kd-syn-type">Log</span>
+  <span class="kd-syn-keyword">fn</span> <span class="kd-syn-function">log</span>(<span class="kd-syn-param">_ level</span>: <span class="kd-syn-type">Level</span>, <span class="kd-syn-param">_ msg</span>: <span class="kd-syn-type">String</span>) <span class="kd-syn-operator">-></span> <span class="kd-syn-type">Unit</span>
+
+<span class="kd-syn-keyword">fn</span> <span class="kd-syn-function">with_stdout_logger</span>(<span class="kd-syn-param">_ f</span>: () <span class="kd-arrow">-[</span><span class="kd-syn-type">Log</span>, <span class="kd-syn-param">e</span><span class="kd-arrow">]></span> <span class="kd-syn-type">T</span>) <span class="kd-arrow">-[</span><span class="kd-syn-type">IO</span>, <span class="kd-syn-param">e</span><span class="kd-arrow">]></span> <span class="kd-syn-type">T</span>
+  <span class="kd-syn-keyword">handle</span> f()
+    <span class="kd-syn-type">Log</span>.<span class="kd-syn-function">log</span>(level, msg) <span class="kd-syn-operator">-></span>
+      <span class="kd-syn-type">IO</span>.<span class="kd-syn-function">stdout</span>(<span class="kd-syn-string">"[{level}] {msg}"</span>)
+      <span class="kd-syn-keyword">resume</span> ()</code></pre>
+  </div>
+
+  <!-- ===== Horizontal rules ===== -->
+  <div class="preview-section">
+    <h2>horizontal rules</h2>
+    <p class="preview-label">major (olive, thick)</p>
+    <hr class="kd-rule--major">
+    <p class="preview-label">section (ink, medium)</p>
+    <hr class="kd-rule--section">
+    <p class="preview-label">item (stone, thin)</p>
+    <hr class="kd-rule--item">
+    <p class="preview-label">reveal (scarlet, once per page)</p>
+    <hr class="kd-rule--reveal">
+  </div>
+
+  <!-- ===== Module listing (sidebar mock) ===== -->
+  <div class="preview-section">
+    <h2>sidebar (reference layout)</h2>
+    <div style="max-width: 14rem; border: 1px solid var(--kd-border); padding: 1rem;">
+      <div class="kd-sidebar__section">
+        <div class="kd-sidebar__heading">modules</div>
+        <a href="#" class="kd-sidebar__link kd-sidebar__link--active">
+          List <span class="kd-badge kd-badge--pure" style="margin-left: auto;">-></span>
+        </a>
+        <a href="#" class="kd-sidebar__link">
+          Option <span class="kd-badge kd-badge--pure" style="margin-left: auto;">-></span>
+        </a>
+        <a href="#" class="kd-sidebar__link">
+          Result <span class="kd-badge kd-badge--pure" style="margin-left: auto;">-></span>
+        </a>
+        <a href="#" class="kd-sidebar__link">
+          IO <span class="kd-badge kd-badge--io" style="margin-left: auto;">IO</span>
+        </a>
+        <a href="#" class="kd-sidebar__link">
+          Http <span class="kd-badge kd-badge--io" style="margin-left: auto;">Net</span>
+        </a>
+      </div>
+      <div class="kd-sidebar__section">
+        <div class="kd-sidebar__heading">functions</div>
+        <a href="#" class="kd-sidebar__link">map</a>
+        <a href="#" class="kd-sidebar__link">filter</a>
+        <a href="#" class="kd-sidebar__link">fold</a>
+        <a href="#" class="kd-sidebar__link">find</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Table ===== -->
+  <div class="preview-section">
+    <h2>table</h2>
+    <table>
+      <thead>
+        <tr><th>effect</th><th>compilation</th><th>overhead</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>IO</code></td><td>Direct runtime calls</td><td>zero</td></tr>
+        <tr><td><code>Fail E</code></td><td>Result-passing, branch-on-error</td><td>zero</td></tr>
+        <tr><td><code>State S</code></td><td>Tail-resumptive handler</td><td>direct call</td></tr>
+        <tr><td><code>Choose</code></td><td>General handler</td><td>continuation capture</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+<script>
+function toggleTheme() {
+  const html = document.documentElement;
+  const current = html.getAttribute('data-theme');
+  const next = current === 'dark' ? 'light' : 'dark';
+  html.setAttribute('data-theme', next);
+  localStorage.setItem('kd-theme', next);
+  updateToggle(next);
+}
+
+function updateToggle(theme) {
+  const btn = document.getElementById('themeBtn');
+  btn.textContent = theme === 'dark' ? '\u25CF' : '\u25CB';
+}
+
+(function() {
+  const saved = localStorage.getItem('kd-theme');
+  if (saved) {
+    document.documentElement.setAttribute('data-theme', saved);
+    updateToggle(saved);
+  } else {
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    updateToggle(prefersDark ? 'dark' : 'light');
+  }
+})();
+</script>
+
+</body>
+</html>
