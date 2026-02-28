@@ -264,7 +264,10 @@ via `@extern` FFI or a future `@simd` annotation. Not a v1 concern.
 - [ ] Bidirectional numeric literal inference passes type checker tests
 - [ ] String/Bytes operations sufficient for source text manipulation
 - [ ] `IO`/`Clock`/`Net`/`Rand` all have separate runtime handlers
-- [ ] Mutual recursion across type definitions works (struct ↔ enum)
-- [ ] `enum` keyword replaces `type = |` for sum types
+- [x] Mutual recursion across type definitions works (struct ↔ enum)
+- [x] `enum` keyword replaces `type = |` for sum types
 - [ ] Self-hosting compiler can read source, tokenize, parse, infer,
       and emit code — exercising all of the above
+
+## Progress
+- 2026-02-28 19:33: Implemented Gap 7 + Gap 8. Added `enum` keyword parsing and retired legacy `type = |` sum syntax, plus two-pass record/sum registration to support struct↔enum mutual recursion. Verified with `PKG=kea-syntax mise run test-pkg`, `PKG=kea mise run test-pkg`, and `mise run check-full`.

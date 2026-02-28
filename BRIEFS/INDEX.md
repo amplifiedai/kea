@@ -30,7 +30,7 @@ Work in progress right now. Each entry should have a `## Progress` section in it
 - **[Benchmark infrastructure](in-progress/benchmark-infrastructure.md)** — Active. `divan` harness is in-tree (`kea-bench` + `AllocProfiler`) with lex/parse/infer/lower/codegen workload baselines plus string/allocation variants; stable artifacts are exported (`raw/csv/json/meta`), repeat-run variance summaries are generated (`bench:variance`), CI Stage A publishes baseline+variance artifacts, CodSpeed CI is wired via `codspeed-divan-compat` using OIDC auth, whole-program corpus tooling (`benchmarks/programs` + `bench:programs`) is bootstrapped with no-shell/inner-iteration execution for lower noise, whole-program variance summaries are automated, benchmark workflows now use cache-friendly stable target dirs (`KEA_AGENT_TARGET_DIR=target/ci-*`), non-blocking Stage B regression checks remain for full-matrix calibration, and stable benchmark classes run in dedicated blocking Stage B lanes.
 - **[Lean formalization](in-progress/lean-formalization.md)** — Active. Phase 1 kickoff started from the Rill Lean baseline; next is Kea effect-row alignment in core modules/proofs.
 - **[String interpolation](in-progress/string-interpolation.md)** — Active. KERNEL §1.6 `"Hello, {expr}"` syntax. Desugars to `Show.show()` + concat. Blocks self-hosting (error messages are half the compiler).
-- **[Practical language gaps](in-progress/practical-language-gaps.md)** — Active. Gap 6 (IO decomposition) done. **Gaps 7+8 (mutual recursion + enum keyword) block 0g.** Gaps 1-3 (layout intrinsics, numeric inference, string ops) are high priority for self-hosting.
+- **[Practical language gaps](in-progress/practical-language-gaps.md)** — Active. Gaps 6-8 (IO decomposition, mutual recursion, enum keyword) are done; remaining high-priority work is Gaps 1-3 (layout intrinsics, numeric inference, string ops) for self-hosting.
 
 ---
 
@@ -96,7 +96,6 @@ Needs more design work. Briefs exist but aren't implementation-ready.
 
 ### Early tooling (parallel track, weeks 2-6)
 
-- **[Syntax grammars](in-progress/syntax-grammars.md)** — Active. Tree-sitter grammar (flat, no external scanner) generates cleanly, parses all 16 stdlib + 13/15 test files with zero ERROR nodes. Effect-aware highlight queries (`@keyword.effect`, `@type.effect`), TextMate grammar (`source.kea` scope, Linguist-ready), Neovim/Helix/VS Code editor configs landed.
 - **Formatter** (`kea fmt`) — indentation-sensitive language needs a formatter before serious code is written. Reuse rill-fmt's doc algebra + comment infra (~440 LOC transfers). Rewrite printer + rules for indent-sensitive output. Lands before 0g.
 - **Basic LSP** — hover types, go-to-def, diagnostics. Adapted from rill-lsp (protocol layer unchanged). Lands by 0d-0e.
 
@@ -136,6 +135,7 @@ Completed briefs. Kept for reference and design rationale.
 | [0b-type-system-core](done/0b-type-system-core.md) | Type checker migrated to row-native effect contracts/unification with lattice model deleted, legacy effect syntax deprecation-only, fail-row constraints enforced, and stable module namespace resolution scaffolding for builtin/source transitions. |
 | [0c-effect-handlers](done/0c-effect-handlers.md) | Effect declarations, `handle`/`resume` typing, and `fail`/`?`/`catch` desugaring landed with row-native effect removal checks and at-most-once resume enforcement. Follow-up tooling debt: add explicit MCP regressions for effect/handler query flows. |
 | [0a-lexer-parser](done/0a-lexer-parser.md) | Indentation-sensitive lexer/parser landed with indentation-only block parsing, snapshot corpora, and property tests for layout/error coherence. |
+| [syntax-grammars](done/syntax-grammars.md) | Tree-sitter grammar (flat, 8 GLR conflicts, parses 16 stdlib + 13/15 test files), effect-aware highlight queries, TextMate grammar (Linguist-ready), Neovim/Helix/VS Code editor configs, 35-test corpus. |
 | [bootstrap-infra](done/bootstrap-infra.md) | Cargo workspace, mise tasks, scripts, BRIEFS system, docs, .claude setup. Cannibalised from rill. |
 
 ---
