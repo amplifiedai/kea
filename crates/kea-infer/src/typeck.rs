@@ -13,9 +13,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use kea_ast::{
-    AliasDecl, Argument, BinOp, EffectDecl, Expr, ExprKind, FnDecl, ForClause, ForExpr, Lit,
-    OpaqueTypeDef, Param, ParamLabel, Pattern, PatternKind, RecordDef, Span, TypeAnnotation,
-    UnaryOp, free_vars,
+    AliasDecl, Argument, BinOp, EffectDecl, Expr, ExprKind, FnDecl, ForClause, ForExpr,
+    INTERP_SHOW_FN_NAME, Lit, OpaqueTypeDef, Param, ParamLabel, Pattern, PatternKind, RecordDef,
+    Span, TypeAnnotation, UnaryOp, free_vars,
 };
 use kea_types::{
     Dim, DimVarId, EffectRow, Effects, FunctionType, Kind, Label, Purity, RecordType, RowType,
@@ -12942,6 +12942,33 @@ fn infer_expr_bidir(
 
         // -- Function application --
         ExprKind::Call { func, args } => {
+            // String interpolation lowers to `__kea_interp_show(...)` in the parser.
+            // Type-check that helper as an explicit `Show` obligation so users see
+            // trait-bound diagnostics (`Foo does not implement Show`) instead of
+            // a concrete runtime helper mismatch (`expected Int`).
+            if let ExprKind::Var(name) = &func.node
+                && name == INTERP_SHOW_FN_NAME
+                && args.len() == 1
+            {
+                let arg_ty = infer_expr_bidir(
+                    &args[0].value,
+                    env,
+                    unifier,
+                    records,
+                    traits,
+                    sum_types,
+                );
+                constrain_trait_obligation(
+                    unifier,
+                    &arg_ty,
+                    "Show",
+                    &prov(Reason::TraitBound {
+                        trait_name: "Show".to_string(),
+                    }),
+                );
+                return Type::String;
+            }
+
             let (call_signature, bound_args) =
                 resolve_bound_call_args(func, args, expr.span, env, unifier);
             let unresolved_callee = matches!(
@@ -14258,8 +14285,15 @@ fn infer_expr_bidir(
         ExprKind::StringInterp(parts) => {
             for part in parts {
                 if let kea_ast::StringInterpPart::Expr(expr) = part {
-                    // Infer the expression type (any type is fine; displayed at runtime)
-                    infer_expr_bidir(expr, env, unifier, records, traits, sum_types);
+                    let part_ty = infer_expr_bidir(expr, env, unifier, records, traits, sum_types);
+                    constrain_trait_obligation(
+                        unifier,
+                        &part_ty,
+                        "Show",
+                        &prov(Reason::TraitBound {
+                            trait_name: "Show".to_string(),
+                        }),
+                    );
                 }
             }
             Type::String
@@ -16158,6 +16192,41 @@ fn check_expr_bidir(
             }
         }
         (ExprKind::Call { func, args }, _) => {
+            if let ExprKind::Var(name) = &func.node
+                && name == INTERP_SHOW_FN_NAME
+                && args.len() == 1
+            {
+                let arg_ty = infer_expr_bidir(
+                    &args[0].value,
+                    env,
+                    unifier,
+                    records,
+                    traits,
+                    sum_types,
+                );
+                constrain_trait_obligation(
+                    unifier,
+                    &arg_ty,
+                    "Show",
+                    &Provenance {
+                        span: expr.span,
+                        reason: Reason::TraitBound {
+                            trait_name: "Show".to_string(),
+                        },
+                    },
+                );
+                constrain_type_eq_with_nominal_boundary(
+                    unifier,
+                    expected,
+                    &Type::String,
+                    &Provenance {
+                        span: expr.span,
+                        reason: Reason::FunctionArg { param_index: 0 },
+                    },
+                );
+                return expected.clone();
+            }
+
             let (call_signature, bound_args) =
                 resolve_bound_call_args(func, args, expr.span, env, unifier);
             let unresolved_callee = matches!(

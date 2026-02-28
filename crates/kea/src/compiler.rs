@@ -381,6 +381,12 @@ impl ModuleResolver {
         for ancestor in entry.ancestors() {
             stdlib_roots.push(ancestor.join("stdlib"));
         }
+        if let Some(workspace_root) = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(Path::parent)
+        {
+            stdlib_roots.push(workspace_root.join("stdlib"));
+        }
 
         let mut source_roots = Vec::new();
         if let Some(src_root) = entry
@@ -434,13 +440,13 @@ impl ModuleResolver {
         }
         rel_path.set_extension("kea");
 
-        for root in &self.stdlib_roots {
+        for root in &self.source_roots {
             let candidate = root.join(&rel_path);
             if candidate.is_file() {
                 return Some(candidate);
             }
         }
-        for root in &self.source_roots {
+        for root in &self.stdlib_roots {
             let candidate = root.join(&rel_path);
             if candidate.is_file() {
                 return Some(candidate);
@@ -508,12 +514,12 @@ fn configured_prelude_modules() -> Vec<String> {
             .map(ToOwned::to_owned)
             .collect();
     }
-    vec!["Prelude".to_string()]
+    vec!["Prelude".to_string(), "Show".to_string()]
 }
 
 fn configured_prelude_reexports() -> Vec<(String, String)> {
     let configured = std::env::var("KEA_PRELUDE_REEXPORTS").unwrap_or_else(|_| {
-        "Order.Ordering,Option.Some,Option.None,Result.Ok,Result.Err".to_string()
+        "Order.Ordering,Option.Some,Option.None,Result.Ok,Result.Err,Show.show".to_string()
     });
     configured
         .split(',')
@@ -530,9 +536,7 @@ fn configured_prelude_reexports() -> Vec<(String, String)> {
 
 fn apply_hardcoded_prelude_reexports(env: &mut TypeEnv, traits: &TraitRegistry) {
     for (module_path, item_name) in configured_prelude_reexports() {
-        if env.lookup(&item_name).is_none()
-            && let Some(scheme) = env.resolve_qualified(&module_path, &item_name).cloned()
-        {
+        if let Some(scheme) = env.resolve_qualified(&module_path, &item_name).cloned() {
             env.bind(item_name.clone(), scheme);
             if let Some(signature) = env
                 .resolve_qualified_function_signature(&module_path, &item_name)
@@ -834,6 +838,11 @@ fn typecheck_loaded_modules(
 
         let imported_symbols =
             apply_module_imports(&expanded, &mut env, &traits, &mut diagnostics)?;
+
+        // String interpolation desugars to `show(...)` calls in the parser.
+        // Re-export hardcoded prelude symbols before typechecking module bodies
+        // so those calls resolve in user modules without explicit imports.
+        apply_hardcoded_prelude_reexports(&mut env, &traits);
 
         typecheck_functions(
             &expanded,

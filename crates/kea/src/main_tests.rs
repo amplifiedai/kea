@@ -1470,6 +1470,51 @@
     }
 
     #[test]
+    fn compile_and_execute_string_interpolation_exit_code() {
+        let source_path = write_temp_source(
+            "use Text\n\nfn main() -> Int\n  let x = 42\n  if Text.length(\"x is {x}\") == 7\n    1\n  else\n    0\n",
+            "kea-cli-string-interp-int",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 1);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_string_interpolation_with_escaped_braces_exit_code() {
+        let source_path = write_temp_source(
+            "use Text\n\nfn main() -> Int\n  let n = 7\n  if Text.length(\"n={n}, literal: {{ok}}\") == 18\n    1\n  else\n    0\n",
+            "kea-cli-string-interp-escaped-braces",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 1);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_rejects_string_interpolation_when_show_is_missing() {
+        let source_path = write_temp_source(
+            "struct Foo\n  x: Int\n\nfn main() -> Int\n  let f = Foo { x: 1 }\n  if \"{f}\" == \"\"\n    1\n  else\n    0\n",
+            "kea-cli-string-interp-missing-show",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject unsupported interpolation");
+        assert!(
+            err.contains("does not implement trait `Show`"),
+            "expected interpolation Show trait-bound error, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     #[cfg(not(target_os = "windows"))]
     fn compile_and_execute_io_stderr_unit_main_exit_code() {
         let source_path = write_temp_source(

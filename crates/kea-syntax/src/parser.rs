@@ -2535,41 +2535,8 @@ impl Parser {
         if let Some(TokenKind::StringInterp(parts)) = self.peek_kind() {
             let parts = parts.clone();
             self.advance();
-            let mut interp_parts = Vec::new();
-            for part in parts {
-                match part {
-                    crate::token::StringPart::Literal(s) => {
-                        interp_parts.push(StringInterpPart::Literal(s));
-                    }
-                    crate::token::StringPart::Expr(src) => {
-                        let tokens = match crate::lexer::lex_layout(&src, self.file) {
-                            Ok((t, _warnings)) => t,
-                            Err(diags) => {
-                                self.errors.extend(diags);
-                                return None;
-                            }
-                        };
-                        let mut sub = Parser::new(tokens, self.file);
-                        let expr = sub.expression();
-                        if !sub.errors.is_empty() {
-                            self.errors.extend(sub.errors);
-                            return None;
-                        }
-                        match expr {
-                            Some(e) => {
-                                interp_parts.push(StringInterpPart::Expr(Box::new(e)));
-                            }
-                            None => {
-                                self.error_at_current(
-                                    "expected expression in string interpolation",
-                                );
-                                return None;
-                            }
-                        }
-                    }
-                }
-            }
-            return Some(Spanned::new(ExprKind::StringInterp(interp_parts), start));
+            let parsed_parts = self.parse_string_interp_parts(parts)?;
+            return Some(self.desugar_string_interp(parsed_parts, start));
         }
 
         // Bool literals
@@ -2853,6 +2820,95 @@ impl Parser {
 
         self.error_at_current("expected expression");
         None
+    }
+
+    fn parse_string_interp_parts(
+        &mut self,
+        parts: Vec<crate::token::StringPart>,
+    ) -> Option<Vec<StringInterpPart>> {
+        let mut interp_parts = Vec::new();
+        for part in parts {
+            match part {
+                crate::token::StringPart::Literal(s) => {
+                    interp_parts.push(StringInterpPart::Literal(s));
+                }
+                crate::token::StringPart::Expr(src) => {
+                    let tokens = match crate::lexer::lex_layout(&src, self.file) {
+                        Ok((t, _warnings)) => t,
+                        Err(diags) => {
+                            self.errors.extend(diags);
+                            return None;
+                        }
+                    };
+                    let mut sub = Parser::new(tokens, self.file);
+                    let expr = sub.expression();
+                    sub.skip_newlines();
+                    if !sub.at_eof() {
+                        sub.error_at_current("unexpected token in string interpolation");
+                    }
+                    if !sub.errors.is_empty() {
+                        self.errors.extend(sub.errors);
+                        return None;
+                    }
+                    match expr {
+                        Some(e) => interp_parts.push(StringInterpPart::Expr(Box::new(e))),
+                        None => {
+                            self.error_at_current("expected expression in string interpolation");
+                            return None;
+                        }
+                    }
+                }
+            }
+        }
+        Some(interp_parts)
+    }
+
+    fn desugar_string_interp(&self, parts: Vec<StringInterpPart>, span: Span) -> Expr {
+        let mut segments: Vec<Expr> = Vec::new();
+
+        for part in parts {
+            match part {
+                StringInterpPart::Literal(s) => {
+                    if !s.is_empty() {
+                        segments.push(Spanned::new(ExprKind::Lit(Lit::String(s)), span));
+                    }
+                }
+                StringInterpPart::Expr(expr) => {
+                    let expr = *expr;
+                    let expr_span = expr.span;
+                    let show_func =
+                        Spanned::new(ExprKind::Var(INTERP_SHOW_FN_NAME.to_string()), expr_span);
+                    let show_call = Spanned::new(
+                        ExprKind::Call {
+                            func: Box::new(show_func),
+                            args: vec![Argument {
+                                label: None,
+                                value: expr,
+                            }],
+                        },
+                        expr_span,
+                    );
+                    segments.push(show_call);
+                }
+            }
+        }
+
+        let mut iter = segments.into_iter();
+        let mut acc = iter
+            .next()
+            .unwrap_or_else(|| Spanned::new(ExprKind::Lit(Lit::String(String::new())), span));
+        for next in iter {
+            let expr_span = acc.span.merge(next.span);
+            acc = Spanned::new(
+                ExprKind::BinaryOp {
+                    op: Spanned::new(BinOp::Concat, expr_span),
+                    left: Box::new(acc),
+                    right: Box::new(next),
+                },
+                expr_span,
+            );
+        }
+        acc
     }
 
     /// Parse `:name` — colon followed by a lowercase identifier.
@@ -5170,13 +5226,20 @@ mod tests {
 
     #[test]
     fn parse_string_interp_multiline_expr() {
-        let expr = parse("\"sum = ${1 +\n 2}\"");
+        let expr = parse("\"sum = {1 +\n 2}\"");
         match &expr.node {
-            ExprKind::StringInterp(parts) => {
-                assert!(matches!(parts[0], StringInterpPart::Literal(_)));
-                assert!(matches!(parts[1], StringInterpPart::Expr(_)));
+            ExprKind::BinaryOp { op, left, right } => {
+                assert_eq!(op.node, BinOp::Concat);
+                assert_eq!(left.node, ExprKind::Lit(Lit::String("sum = ".into())));
+                match &right.node {
+                    ExprKind::Call { func, args } => {
+                        assert_eq!(func.node, ExprKind::Var(INTERP_SHOW_FN_NAME.into()));
+                        assert_eq!(args.len(), 1);
+                    }
+                    other => panic!("expected show(...) call, got {other:?}"),
+                }
             }
-            other => panic!("expected StringInterp, got {other:?}"),
+            other => panic!("expected concat desugar, got {other:?}"),
         }
     }
 
