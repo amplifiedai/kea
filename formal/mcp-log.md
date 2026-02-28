@@ -9194,3 +9194,38 @@ variants (bundled + unbundled).
 - Downstream proofs can move from any currently exposed no-unify
   master-surface constructor route to explicit component tuples in one theorem
   step without manual intermediate reconstruction.
+
+### 2026-02-28: decimal dim-kernel failure/result characterization strengthening
+
+**Context**: Extended `Kea/Properties/DecimalParity.lean` with deeper
+dim-aware characterization lemmas for constant-dimension decimal unification:
+- `decimal_unify_consts_err_iff_dim_kernel_none`
+- `decimal_unify_consts_decision_of_dim_kernel_none`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- New lemmas should only strengthen characterization of existing decimal
+  behavior (no semantic runtime change), by routing rejection/success decisions
+  through `unifyDim` none/some outcomes.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Decimal constant-dimension unifier behavior is now explicitly split into:
+  success iff both dim-kernel checks succeed, and rejection iff either
+  dim-kernel check fails, with a direct if/then/else decision theorem.
+
+**Impact**:
+- WP7 decimal parity now has tighter dim-kernel-to-main-unifier contracts for
+  downstream theorem routing and MCP-facing explainability.
