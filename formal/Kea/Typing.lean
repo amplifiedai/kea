@@ -7182,6 +7182,35 @@ theorem principalBoundaryNoUnifyAllHooksSuite_proved :
     irrelevance := principalBoundaryNoUnifyAllHooksIrrelevanceSlices_proved
   }
 
+/-- `PrincipalBoundaryNoUnifyAllHooksSuite` is equivalent to explicit components. -/
+theorem principalBoundaryNoUnifyAllHooksSuite_iff_components :
+    PrincipalBoundaryNoUnifyAllHooksSuite
+      ↔ PrincipalBoundaryNoUnifyAllHooksSuiteComponents := by
+  constructor
+  · intro h_suite
+    exact ⟨h_suite.capstones, h_suite.runBundles, h_suite.irrelevance⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2.1, h_comp.2.2⟩
+
+/-- Build `PrincipalBoundaryNoUnifyAllHooksSuite` from explicit components. -/
+theorem principalBoundaryNoUnifyAllHooksSuite_of_components
+    (h_comp : PrincipalBoundaryNoUnifyAllHooksSuiteComponents) :
+    PrincipalBoundaryNoUnifyAllHooksSuite :=
+  (principalBoundaryNoUnifyAllHooksSuite_iff_components).2 h_comp
+
+/-- Decompose `PrincipalBoundaryNoUnifyAllHooksSuite` into explicit components. -/
+theorem principalBoundaryNoUnifyAllHooksSuite_as_components
+    (h_suite : PrincipalBoundaryNoUnifyAllHooksSuite) :
+    PrincipalBoundaryNoUnifyAllHooksSuiteComponents :=
+  (principalBoundaryNoUnifyAllHooksSuite_iff_components).1 h_suite
+
+/-- Direct components-route decomposition for `PrincipalBoundaryNoUnifyAllHooksSuite`. -/
+theorem principalBoundaryNoUnifyAllHooksSuite_as_components_of_components
+    (h_comp : PrincipalBoundaryNoUnifyAllHooksSuiteComponents) :
+    PrincipalBoundaryNoUnifyAllHooksSuiteComponents :=
+  (principalBoundaryNoUnifyAllHooksSuite_iff_components).1
+    (principalBoundaryNoUnifyAllHooksSuite_of_components h_comp)
+
 /-- One-hop expression all-hooks capstone projection from all-hooks suite. -/
 theorem principalBoundaryNoUnifyAllHooksSuite_capstone_expr
     (h_suite : PrincipalBoundaryNoUnifyAllHooksSuite)
@@ -8019,6 +8048,35 @@ theorem principalNoUnifyToGeneralAllHooksSuite_proved :
     irrelevance := principalNoUnifyToGeneralAllHooksIrrelevanceSlices_proved
   }
 
+/-- `PrincipalNoUnifyToGeneralAllHooksSuite` is equivalent to explicit components. -/
+theorem principalNoUnifyToGeneralAllHooksSuite_iff_components :
+    PrincipalNoUnifyToGeneralAllHooksSuite
+      ↔ PrincipalNoUnifyToGeneralAllHooksSuiteComponents := by
+  constructor
+  · intro h_suite
+    exact ⟨h_suite.capstones, h_suite.runBundles, h_suite.irrelevance⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2.1, h_comp.2.2⟩
+
+/-- Build `PrincipalNoUnifyToGeneralAllHooksSuite` from explicit components. -/
+theorem principalNoUnifyToGeneralAllHooksSuite_of_components
+    (h_comp : PrincipalNoUnifyToGeneralAllHooksSuiteComponents) :
+    PrincipalNoUnifyToGeneralAllHooksSuite :=
+  (principalNoUnifyToGeneralAllHooksSuite_iff_components).2 h_comp
+
+/-- Decompose `PrincipalNoUnifyToGeneralAllHooksSuite` into explicit components. -/
+theorem principalNoUnifyToGeneralAllHooksSuite_as_components
+    (h_suite : PrincipalNoUnifyToGeneralAllHooksSuite) :
+    PrincipalNoUnifyToGeneralAllHooksSuiteComponents :=
+  (principalNoUnifyToGeneralAllHooksSuite_iff_components).1 h_suite
+
+/-- Direct components-route decomposition for `PrincipalNoUnifyToGeneralAllHooksSuite`. -/
+theorem principalNoUnifyToGeneralAllHooksSuite_as_components_of_components
+    (h_comp : PrincipalNoUnifyToGeneralAllHooksSuiteComponents) :
+    PrincipalNoUnifyToGeneralAllHooksSuiteComponents :=
+  (principalNoUnifyToGeneralAllHooksSuite_iff_components).1
+    (principalNoUnifyToGeneralAllHooksSuite_of_components h_comp)
+
 /--
 One-hop expression capstone projection from no-unify-to-general all-hooks
 suite.
@@ -8577,6 +8635,46 @@ theorem principalBoundaryMasterSuite_proved : PrincipalBoundaryMasterSuite := by
     noUnifyHookedFromAllHooks := principalBoundaryNoUnifyCapstoneSlices_of_allHooksSuite
     noUnifyToGeneralAllHooks := principalNoUnifyToGeneralAllHooksSuite_proved_via_noUnifyAllHooks
   }
+
+/-- `PrincipalBoundaryMasterSuite` is equivalent to explicit components. -/
+theorem principalBoundaryMasterSuite_iff_components :
+    PrincipalBoundaryMasterSuite ↔ PrincipalBoundaryMasterSuiteComponents := by
+  constructor
+  · intro h_suite
+    exact ⟨h_suite.bridge, h_suite.vacuity, h_suite.allHooks,
+      h_suite.noUnifyAllHooks, h_suite.noUnifyHookedFromAllHooks,
+      h_suite.noUnifyToGeneralAllHooks⟩
+  · intro h_comp
+    rcases h_comp with
+      ⟨h_bridge, h_vacuity, h_allHooks, h_noUnifyAllHooks,
+        h_noUnifyHookedFromAllHooks, h_noUnifyToGeneralAllHooks⟩
+    exact {
+      bridge := h_bridge
+      vacuity := h_vacuity
+      allHooks := h_allHooks
+      noUnifyAllHooks := h_noUnifyAllHooks
+      noUnifyHookedFromAllHooks := h_noUnifyHookedFromAllHooks
+      noUnifyToGeneralAllHooks := h_noUnifyToGeneralAllHooks
+    }
+
+/-- Build `PrincipalBoundaryMasterSuite` from explicit components. -/
+theorem principalBoundaryMasterSuite_of_components
+    (h_comp : PrincipalBoundaryMasterSuiteComponents) :
+    PrincipalBoundaryMasterSuite :=
+  (principalBoundaryMasterSuite_iff_components).2 h_comp
+
+/-- Decompose `PrincipalBoundaryMasterSuite` into explicit components. -/
+theorem principalBoundaryMasterSuite_as_components
+    (h_suite : PrincipalBoundaryMasterSuite) :
+    PrincipalBoundaryMasterSuiteComponents :=
+  (principalBoundaryMasterSuite_iff_components).1 h_suite
+
+/-- Direct components-route decomposition for `PrincipalBoundaryMasterSuite`. -/
+theorem principalBoundaryMasterSuite_as_components_of_components
+    (h_comp : PrincipalBoundaryMasterSuiteComponents) :
+    PrincipalBoundaryMasterSuiteComponents :=
+  (principalBoundaryMasterSuite_iff_components).1
+    (principalBoundaryMasterSuite_of_components h_comp)
 
 /--
 One-hop expression successful-run preconditioned↔core equivalence from the

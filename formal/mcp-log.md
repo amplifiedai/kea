@@ -10029,3 +10029,39 @@ Each suite now has one-hop reconstruction/projection to/from its
 **Impact**:
 - Enables downstream route wrappers to consume these suites via explicit
   component aliases instead of direct record-field destructuring.
+
+### 2026-03-01: typing no-unify/master decomposition rollout
+
+**Context**: Extended `Kea/Typing.lean` suite decomposition APIs with
+`iff/of/as/as_components_of_components` theorem families for:
+- `PrincipalBoundaryNoUnifyAllHooksSuite`
+- `PrincipalNoUnifyToGeneralAllHooksSuite`
+- `PrincipalBoundaryMasterSuite`
+
+This continues the components-route decomposition rollout on principal suite
+surfaces.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Decomposition theorem expansion only; no runtime semantic change.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- No-unify/master principal suite bundles now support one-hop
+  reconstruction/projection via named component aliases.
+
+**Impact**:
+- Reduces manual record destructuring in downstream theorem routes and keeps
+  principal-suite APIs aligned with the formal corpus decomposition style.
