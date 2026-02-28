@@ -138,7 +138,7 @@ instructions (`popcnt`, `clz`, `ctz`) via Cranelift intrinsics.
 | `Set T`        | Unordered, persistent (HAMT). `T: Eq`      |
 | `(A, B, ...)`  | Tuples (2+ elements)                       |
 
-`List` has built-in literal syntax (§1.5). `Option` and `Result` are
+`List`, `Map`, and tuples have built-in literal syntax (§1.5). `Option` and `Result` are
 built-in enums with special compiler support for `None`/`Some`/`Ok`/`Err`
 constructors.
 
@@ -178,6 +178,26 @@ the `Fail E` effect annotation (§5). There are no exceptions.
 | `[]`                | `List A`      | Empty list                  |
 | `[1, 2, 3]`         | `List Int`    | List literal                |
 | `#{ x: 1, y: 2 }`  | `{ x: Int, y: Int }` | Anonymous record      |
+| `%{ "a" => 1 }`    | `Map String Int`      | Map literal           |
+| `%{}`               | `Map K V`             | Empty map             |
+
+### 1.5.1 Map Literals
+
+```kea
+let headers = %{ "Content-Type" => "text/html", "Accept" => "*/*" }
+let empty: Map String Int = %{}
+let counts = %{ "a" => 1, "b" => 2, "c" => 3 }
+```
+
+`%{ key => value, ... }` creates a `Map K V`. Keys and values are
+expressions. All keys must have the same type, all values must have
+the same type. `K` must satisfy `Eq`.
+
+Map literals desugar to `Map.from_list([(k1, v1), (k2, v2), ...])`.
+Duplicate keys are resolved by last-wins (later entries override
+earlier ones with the same key).
+
+`%{}` creates an empty map. Its type is inferred from context.
 
 ### 1.6 String Interpolation
 
@@ -371,7 +391,7 @@ struct Server
     fn html(_ status: Int, _ body: String) -> Server.Response
       Server.Response {
         status: status,
-        headers: Map.of([("Content-Type", "text/html")]),
+        headers: %{ "Content-Type" => "text/html" },
         body: Bytes.from_string(body),
       }
 
@@ -2775,6 +2795,7 @@ while   test   and   or   not
 (  )  grouping/tuple        ,  separator
 =  binding                  |  lambda parameter delimiter
 #{ }  anonymous record
+%{ }  map literal              =>  map key-value separator
 ```
 
 ## Appendix C: Prelude Traits
