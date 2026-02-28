@@ -1829,6 +1829,41 @@
     }
 
     #[test]
+    fn compile_rejects_unexpected_eof_mid_expression() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  1 +\n",
+            "kea-cli-unexpected-eof-mid-expr",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject unexpected EOF");
+        assert!(
+            err.contains("expected expression"),
+            "expected unexpected-EOF diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_reports_multiple_syntax_errors_in_single_function_body() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  let x =\n  let y =\n  x + y\n",
+            "kea-cli-multiple-syntax-errors",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject malformed function body");
+        let surfaced_error_count = err.match_indices("- error[").count();
+        assert!(
+            surfaced_error_count >= 2,
+            "expected at least two surfaced diagnostics, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_rejects_resume_outside_handler_clause() {
         let source_path = write_temp_source(
             "fn main() -> Int\n  resume 1\n",

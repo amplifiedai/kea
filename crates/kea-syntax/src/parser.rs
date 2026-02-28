@@ -6360,6 +6360,34 @@ mod tests {
     }
 
     #[test]
+    fn parse_module_recovers_to_later_valid_declaration() {
+        let tokens = lex_layout("wat\noops\nfn good() -> Int\n  1\n", FileId(0))
+            .expect("lex should succeed")
+            .0;
+        let mut parser = Parser::new(tokens, FileId(0));
+        let module = parser.module();
+        let errors = std::mem::take(&mut parser.errors);
+
+        assert!(
+            errors.len() >= 2,
+            "expected at least two top-level declaration errors, got {errors:?}"
+        );
+        assert!(
+            errors
+                .iter()
+                .any(|d| d.message.contains("expected declaration")),
+            "expected declaration recovery diagnostic, got {errors:?}"
+        );
+        assert!(
+            module.declarations.iter().any(|decl| matches!(
+                &decl.node,
+                DeclKind::Function(def) if def.name.node == "good"
+            )),
+            "expected parser recovery to keep later valid declaration, got {module:?}"
+        );
+    }
+
+    #[test]
     fn parse_record_def() {
         let module = parse_mod("struct User\n  name: String\n  age: Int");
         assert_eq!(module.declarations.len(), 1);
