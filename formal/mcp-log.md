@@ -10106,3 +10106,37 @@ source of truth.
 **Impact**:
 - Broadens theorem-surface consistency for higher-level principal package
   layers while preserving existing no-unify full-vertical decomposition routes.
+
+### 2026-03-01: typing suite route-level decomposition wrappers
+
+**Context**: Added one-hop `..._as_components_of_<route>` wrappers in
+`Kea/Typing.lean` for newly decomposed suite constructor routes:
+- `principalBoundaryMasterRunBundleSuite_as_components_of_master`
+- `principalBoundaryMasterRunBundleConsequenceSuite_as_components_of_{runBundleSuite,master,proved}`
+- `principalBoundaryMasterConsequenceCapstoneSuite_as_components_of_{master,proved}`
+- `principalBoundarySoundTypingRunBundleSuite_as_components_of_{hooks,hook_bundle}`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Route-wrapper theorem expansion only; no runtime semantic change.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Constructor routes on master/sound suite layers now have direct
+  component-tuple projection wrappers.
+
+**Impact**:
+- Reduces proof boilerplate by avoiding explicit intermediate suite threading
+  when a route starts from constructor-level assumptions.

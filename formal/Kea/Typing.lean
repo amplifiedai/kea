@@ -9068,6 +9068,13 @@ theorem principalBoundaryMasterRunBundleSuite_of_master
     exact principalBoundaryMasterSuite_noUnifyToGeneralAllHooks_runBundle_field
       h_suite h_no h_ok
 
+/-- Direct route decomposition from `of_master` into run-bundle suite components. -/
+theorem principalBoundaryMasterRunBundleSuite_as_components_of_master
+    (h_suite : PrincipalBoundaryMasterSuite) :
+    PrincipalBoundaryMasterRunBundleSuiteComponents :=
+  principalBoundaryMasterRunBundleSuite_as_components
+    (principalBoundaryMasterRunBundleSuite_of_master h_suite)
+
 /-- The master run-bundle suite is fully proved. -/
 theorem principalBoundaryMasterRunBundleSuite_proved :
     PrincipalBoundaryMasterRunBundleSuite :=
@@ -10240,6 +10247,13 @@ theorem principalBoundaryMasterRunBundleConsequenceSuite_of_runBundleSuite
   }
   exact principalNoUnifyRunBundleConsequenceSlices_proved
 
+/-- Direct route decomposition from `of_runBundleSuite` into explicit components. -/
+theorem principalBoundaryMasterRunBundleConsequenceSuite_as_components_of_runBundleSuite
+    (h_suite : PrincipalBoundaryMasterRunBundleSuite) :
+    PrincipalBoundaryMasterRunBundleConsequenceSuiteComponents :=
+  principalBoundaryMasterRunBundleConsequenceSuite_as_components
+    (principalBoundaryMasterRunBundleConsequenceSuite_of_runBundleSuite h_suite)
+
 /--
 Construct the master run-bundle consequence suite from a master principal
 boundary suite.
@@ -10250,11 +10264,24 @@ theorem principalBoundaryMasterRunBundleConsequenceSuite_of_master
   principalBoundaryMasterRunBundleConsequenceSuite_of_runBundleSuite
     (principalBoundaryMasterRunBundleSuite_of_master h_suite)
 
+/-- Direct route decomposition from `of_master` into explicit components. -/
+theorem principalBoundaryMasterRunBundleConsequenceSuite_as_components_of_master
+    (h_suite : PrincipalBoundaryMasterSuite) :
+    PrincipalBoundaryMasterRunBundleConsequenceSuiteComponents :=
+  principalBoundaryMasterRunBundleConsequenceSuite_as_components
+    (principalBoundaryMasterRunBundleConsequenceSuite_of_master h_suite)
+
 /-- The master run-bundle consequence suite is fully proved. -/
 theorem principalBoundaryMasterRunBundleConsequenceSuite_proved :
     PrincipalBoundaryMasterRunBundleConsequenceSuite :=
   principalBoundaryMasterRunBundleConsequenceSuite_of_master
     principalBoundaryMasterSuite_proved
+
+/-- Direct route decomposition from the proved consequence suite witness. -/
+theorem principalBoundaryMasterRunBundleConsequenceSuite_as_components_of_proved :
+    PrincipalBoundaryMasterRunBundleConsequenceSuiteComponents :=
+  principalBoundaryMasterRunBundleConsequenceSuite_as_components
+    principalBoundaryMasterRunBundleConsequenceSuite_proved
 
 /--
 One-hop projection: master run-bundle consequence suite from the top-level
@@ -10765,11 +10792,24 @@ theorem principalBoundaryMasterConsequenceCapstoneSuite_of_master
     exact principalBoundaryMasterSuite_noUnifyToGeneralAllHooks_irrelevance_field_via_consequenceSuite
       h_suite h_no h_ok
 
+/-- Direct route decomposition from `of_master` into capstone-suite components. -/
+theorem principalBoundaryMasterConsequenceCapstoneSuite_as_components_of_master
+    (h_suite : PrincipalBoundaryMasterSuite) :
+    PrincipalBoundaryMasterConsequenceCapstoneSuiteComponents :=
+  principalBoundaryMasterConsequenceCapstoneSuite_as_components
+    (principalBoundaryMasterConsequenceCapstoneSuite_of_master h_suite)
+
 /-- The master consequence capstone suite is fully proved. -/
 theorem principalBoundaryMasterConsequenceCapstoneSuite_proved :
     PrincipalBoundaryMasterConsequenceCapstoneSuite :=
   principalBoundaryMasterConsequenceCapstoneSuite_of_master
     principalBoundaryMasterSuite_proved
+
+/-- Direct route decomposition from the proved capstone-suite witness. -/
+theorem principalBoundaryMasterConsequenceCapstoneSuite_as_components_of_proved :
+    PrincipalBoundaryMasterConsequenceCapstoneSuiteComponents :=
+  principalBoundaryMasterConsequenceCapstoneSuite_as_components
+    principalBoundaryMasterConsequenceCapstoneSuite_proved
 
 /-- One-hop projection: master consequence capstone suite from master suite. -/
 theorem principalBoundaryMasterSuite_consequenceCapstoneSuite
@@ -25152,6 +25192,13 @@ theorem principalBoundarySoundTypingRunBundleSuite_of_hooks
     exact principalBoundarySoundNoUnifyFieldTypingRunBundleRoutes_of_success
       (h_app := h_app) (h_proj := h_proj) h_no h_ok
 
+/-- Direct route decomposition from `of_hooks` into typing-run-bundle components. -/
+theorem principalBoundarySoundTypingRunBundleSuite_as_components_of_hooks
+    (h_app : AppUnifySoundHook) (h_proj : ProjUnifySoundHook) :
+    PrincipalBoundarySoundTypingRunBundleSuiteComponents h_app h_proj :=
+  principalBoundarySoundTypingRunBundleSuite_as_components h_app h_proj
+    (principalBoundarySoundTypingRunBundleSuite_of_hooks h_app h_proj)
+
 /--
 Bundled-hook constructor for the boundary+sound typing+run-bundle-route suite.
 -/
@@ -25159,6 +25206,13 @@ theorem principalBoundarySoundTypingRunBundleSuite_of_hook_bundle
     (h_hooks : UnifyHookPremises) :
     PrincipalBoundarySoundTypingRunBundleSuite h_hooks.1 h_hooks.2 :=
   principalBoundarySoundTypingRunBundleSuite_of_hooks h_hooks.1 h_hooks.2
+
+/-- Direct route decomposition from bundled-hook typing-run-bundle constructor. -/
+theorem principalBoundarySoundTypingRunBundleSuite_as_components_of_hook_bundle
+    (h_hooks : UnifyHookPremises) :
+    PrincipalBoundarySoundTypingRunBundleSuiteComponents h_hooks.1 h_hooks.2 :=
+  principalBoundarySoundTypingRunBundleSuite_as_components h_hooks.1 h_hooks.2
+    (principalBoundarySoundTypingRunBundleSuite_of_hook_bundle h_hooks)
 
 /-- One-hop projection: arbitrary-success expression package from the typing-route suite. -/
 theorem principalBoundarySoundTypingRunBundleSuite_expr
