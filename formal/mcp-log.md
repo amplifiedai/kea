@@ -8574,3 +8574,41 @@ for:
 **Impact**:
 - Top-level catch/handler aggregate proofs can shift between suite constructors
   and explicit component tuples in one named theorem step.
+
+### 2026-02-28: effect-handler premise/fail-present `as_components` route parity
+
+**Context**: Closed remaining projection-route decomposition gaps by adding
+`..._as_components_of_{premises,fail_present}` wrappers for:
+- `effectHandlerCatchPairSuite_{classifier,capstone}`
+- `effectHandlerCompositionSuite_{classifier,capstone}`
+- `effectHandlerCompositionCoherenceSuite_{composition,catchPair,classifier,capstone}`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Wrapper-only theorem routing over existing projection theorems and
+  `..._as_components` decomposition surfaces.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran projection-route parity scan for theorem families with both
+  `*_of_{premises,fail_present}` and `*_as_components` bases.
+- Result: no missing `*_as_components_of_{premises,fail_present}` wrappers.
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Premise/fail-present route parity now extends through effect-handler
+  projection families down to explicit component tuple outputs.
+
+**Impact**:
+- Consumers can move from raw route assumptions to decomposed tuple facts in
+  one theorem step across classifier/capstone/composition/coherence layers.

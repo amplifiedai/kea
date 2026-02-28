@@ -2477,6 +2477,69 @@ theorem effectHandlerCatchPairSuite_classifier_of_fail_present
       clause baseEffects capability innerEffects okTy errTy loweredTy
       h_wellTyped h_expr h_cap_ne h_failZero h_fail_present h_clauseEffects h_lowered)
 
+theorem effectHandlerCatchPairSuite_classifier_as_components_of_premises
+    (clause : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_cap_ne : capability ≠ clause.handled)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_admissible : FailResultContracts.catchAdmissible clause.exprEffects)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy) :
+    HandlerClosedAwareContracts.ClosedAwareResultBundle clause
+      ∧ TailCapabilityComposition.TailCapabilityClosedAwareBundle clause capability
+      ∧ CatchInteroperabilitySuite.CatchClassifierInteropSuite
+          clause innerEffects okTy errTy loweredTy :=
+  effectHandlerSuite_as_components
+    clause capability innerEffects okTy errTy loweredTy
+    (effectHandlerCatchPairSuite_classifier_of_premises
+      clause baseEffects capability innerEffects okTy errTy loweredTy
+      h_wellTyped h_expr h_cap_ne h_failZero h_admissible h_clauseEffects h_lowered)
+
+theorem effectHandlerCatchPairSuite_classifier_as_components_of_fail_present
+    (clause : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_cap_ne : capability ≠ clause.handled)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_fail_present :
+      RowFields.has (EffectRow.fields clause.exprEffects) FailResultContracts.failLabel = true)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy) :
+    HandlerClosedAwareContracts.ClosedAwareResultBundle clause
+      ∧ TailCapabilityComposition.TailCapabilityClosedAwareBundle clause capability
+      ∧ CatchInteroperabilitySuite.CatchClassifierInteropSuite
+          clause innerEffects okTy errTy loweredTy :=
+  effectHandlerSuite_as_components
+    clause capability innerEffects okTy errTy loweredTy
+    (effectHandlerCatchPairSuite_classifier_of_fail_present
+      clause baseEffects capability innerEffects okTy errTy loweredTy
+      h_wellTyped h_expr h_cap_ne h_failZero h_fail_present h_clauseEffects h_lowered)
+
 theorem effectHandlerCatchPairSuite_capstone_of_premises
     (clause : HandleClauseContract)
     (baseEffects : EffectRow)
@@ -2531,6 +2594,69 @@ theorem effectHandlerCatchPairSuite_capstone_of_fail_present
   effectHandlerCatchPairSuite_capstone
     clause capability innerEffects okTy errTy loweredTy
     (effectHandlerCatchPairSuite_of_fail_present
+      clause baseEffects capability innerEffects okTy errTy loweredTy
+      h_wellTyped h_expr h_cap_ne h_failZero h_fail_present h_clauseEffects h_lowered)
+
+theorem effectHandlerCatchPairSuite_capstone_as_components_of_premises
+    (clause : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_cap_ne : capability ≠ clause.handled)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_admissible : FailResultContracts.catchAdmissible clause.exprEffects)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy) :
+    HandlerClosedAwareContracts.ClosedAwareResultBundle clause
+      ∧ TailCapabilityComposition.TailCapabilityClosedAwareBundle clause capability
+      ∧ CatchInteroperabilitySuite.CatchCapstoneInteropSuite
+          clause innerEffects okTy errTy loweredTy :=
+  effectHandlerCapstoneSuite_as_components
+    clause capability innerEffects okTy errTy loweredTy
+    (effectHandlerCatchPairSuite_capstone_of_premises
+      clause baseEffects capability innerEffects okTy errTy loweredTy
+      h_wellTyped h_expr h_cap_ne h_failZero h_admissible h_clauseEffects h_lowered)
+
+theorem effectHandlerCatchPairSuite_capstone_as_components_of_fail_present
+    (clause : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_cap_ne : capability ≠ clause.handled)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_fail_present :
+      RowFields.has (EffectRow.fields clause.exprEffects) FailResultContracts.failLabel = true)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy) :
+    HandlerClosedAwareContracts.ClosedAwareResultBundle clause
+      ∧ TailCapabilityComposition.TailCapabilityClosedAwareBundle clause capability
+      ∧ CatchInteroperabilitySuite.CatchCapstoneInteropSuite
+          clause innerEffects okTy errTy loweredTy :=
+  effectHandlerCapstoneSuite_as_components
+    clause capability innerEffects okTy errTy loweredTy
+    (effectHandlerCatchPairSuite_capstone_of_fail_present
       clause baseEffects capability innerEffects okTy errTy loweredTy
       h_wellTyped h_expr h_cap_ne h_failZero h_fail_present h_clauseEffects h_lowered)
 
@@ -2923,6 +3049,75 @@ theorem effectHandlerCompositionSuite_classifier_of_fail_present
       clause baseEffects capability innerEffects okTy errTy loweredTy outerHandler
       h_wellTyped h_expr h_cap_ne h_failZero h_fail_present h_clauseEffects h_lowered h_outer_abs)
 
+theorem effectHandlerCompositionSuite_classifier_as_components_of_premises
+    (clause : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_cap_ne : capability ≠ clause.handled)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_admissible : FailResultContracts.catchAdmissible clause.exprEffects)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy)
+    (h_outer_abs :
+      RowFields.has (EffectRow.fields outerHandler) clause.handled = false) :
+    HandlerClosedAwareContracts.ClosedAwareResultBundle clause
+      ∧ TailCapabilityComposition.TailCapabilityClosedAwareBundle clause capability
+      ∧ CatchInteroperabilitySuite.CatchClassifierInteropSuite
+          clause innerEffects okTy errTy loweredTy :=
+  effectHandlerSuite_as_components
+    clause capability innerEffects okTy errTy loweredTy
+    (effectHandlerCompositionSuite_classifier_of_premises
+      clause baseEffects capability innerEffects okTy errTy loweredTy outerHandler
+      h_wellTyped h_expr h_cap_ne h_failZero h_admissible h_clauseEffects h_lowered h_outer_abs)
+
+theorem effectHandlerCompositionSuite_classifier_as_components_of_fail_present
+    (clause : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_cap_ne : capability ≠ clause.handled)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_fail_present :
+      RowFields.has (EffectRow.fields clause.exprEffects) FailResultContracts.failLabel = true)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy)
+    (h_outer_abs :
+      RowFields.has (EffectRow.fields outerHandler) clause.handled = false) :
+    HandlerClosedAwareContracts.ClosedAwareResultBundle clause
+      ∧ TailCapabilityComposition.TailCapabilityClosedAwareBundle clause capability
+      ∧ CatchInteroperabilitySuite.CatchClassifierInteropSuite
+          clause innerEffects okTy errTy loweredTy :=
+  effectHandlerSuite_as_components
+    clause capability innerEffects okTy errTy loweredTy
+    (effectHandlerCompositionSuite_classifier_of_fail_present
+      clause baseEffects capability innerEffects okTy errTy loweredTy outerHandler
+      h_wellTyped h_expr h_cap_ne h_failZero h_fail_present h_clauseEffects h_lowered h_outer_abs)
+
 theorem effectHandlerCompositionSuite_capstone_of_premises
     (clause : HandleClauseContract)
     (baseEffects : EffectRow)
@@ -2983,6 +3178,75 @@ theorem effectHandlerCompositionSuite_capstone_of_fail_present
   effectHandlerCompositionSuite_capstone
     clause capability innerEffects okTy errTy loweredTy outerHandler
     (effectHandlerCompositionSuite_of_fail_present
+      clause baseEffects capability innerEffects okTy errTy loweredTy outerHandler
+      h_wellTyped h_expr h_cap_ne h_failZero h_fail_present h_clauseEffects h_lowered h_outer_abs)
+
+theorem effectHandlerCompositionSuite_capstone_as_components_of_premises
+    (clause : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_cap_ne : capability ≠ clause.handled)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_admissible : FailResultContracts.catchAdmissible clause.exprEffects)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy)
+    (h_outer_abs :
+      RowFields.has (EffectRow.fields outerHandler) clause.handled = false) :
+    HandlerClosedAwareContracts.ClosedAwareResultBundle clause
+      ∧ TailCapabilityComposition.TailCapabilityClosedAwareBundle clause capability
+      ∧ CatchInteroperabilitySuite.CatchCapstoneInteropSuite
+          clause innerEffects okTy errTy loweredTy :=
+  effectHandlerCapstoneSuite_as_components
+    clause capability innerEffects okTy errTy loweredTy
+    (effectHandlerCompositionSuite_capstone_of_premises
+      clause baseEffects capability innerEffects okTy errTy loweredTy outerHandler
+      h_wellTyped h_expr h_cap_ne h_failZero h_admissible h_clauseEffects h_lowered h_outer_abs)
+
+theorem effectHandlerCompositionSuite_capstone_as_components_of_fail_present
+    (clause : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_cap_ne : capability ≠ clause.handled)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_fail_present :
+      RowFields.has (EffectRow.fields clause.exprEffects) FailResultContracts.failLabel = true)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy)
+    (h_outer_abs :
+      RowFields.has (EffectRow.fields outerHandler) clause.handled = false) :
+    HandlerClosedAwareContracts.ClosedAwareResultBundle clause
+      ∧ TailCapabilityComposition.TailCapabilityClosedAwareBundle clause capability
+      ∧ CatchInteroperabilitySuite.CatchCapstoneInteropSuite
+          clause innerEffects okTy errTy loweredTy :=
+  effectHandlerCapstoneSuite_as_components
+    clause capability innerEffects okTy errTy loweredTy
+    (effectHandlerCompositionSuite_capstone_of_fail_present
       clause baseEffects capability innerEffects okTy errTy loweredTy outerHandler
       h_wellTyped h_expr h_cap_ne h_failZero h_fail_present h_clauseEffects h_lowered h_outer_abs)
 
@@ -4144,6 +4408,79 @@ theorem effectHandlerCompositionCoherenceSuite_composition_of_fail_present
       clause baseEffects capability innerEffects okTy errTy loweredTy outerHandler
       h_wellTyped h_expr h_cap_ne h_failZero h_fail_present h_clauseEffects h_lowered h_outer_abs)
 
+theorem effectHandlerCompositionCoherenceSuite_composition_as_components_of_premises
+    (clause : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_cap_ne : capability ≠ clause.handled)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_admissible : FailResultContracts.catchAdmissible clause.exprEffects)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy)
+    (h_outer_abs :
+      RowFields.has (EffectRow.fields outerHandler) clause.handled = false) :
+    EffectHandlerCatchPairSuite clause capability innerEffects okTy errTy loweredTy
+      ∧ NestedHandlerCompositionContracts.NestedHandlerClosedAwareBundle
+          clause.exprEffects
+          clause.handlerEffects
+          outerHandler
+          clause.handled :=
+  effectHandlerCompositionSuite_as_components
+    clause capability innerEffects okTy errTy loweredTy outerHandler
+    (effectHandlerCompositionCoherenceSuite_composition_of_premises
+      clause baseEffects capability innerEffects okTy errTy loweredTy outerHandler
+      h_wellTyped h_expr h_cap_ne h_failZero h_admissible h_clauseEffects h_lowered h_outer_abs)
+
+theorem effectHandlerCompositionCoherenceSuite_composition_as_components_of_fail_present
+    (clause : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_cap_ne : capability ≠ clause.handled)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_fail_present :
+      RowFields.has (EffectRow.fields clause.exprEffects) FailResultContracts.failLabel = true)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy)
+    (h_outer_abs :
+      RowFields.has (EffectRow.fields outerHandler) clause.handled = false) :
+    EffectHandlerCatchPairSuite clause capability innerEffects okTy errTy loweredTy
+      ∧ NestedHandlerCompositionContracts.NestedHandlerClosedAwareBundle
+          clause.exprEffects
+          clause.handlerEffects
+          outerHandler
+          clause.handled :=
+  effectHandlerCompositionSuite_as_components
+    clause capability innerEffects okTy errTy loweredTy outerHandler
+    (effectHandlerCompositionCoherenceSuite_composition_of_fail_present
+      clause baseEffects capability innerEffects okTy errTy loweredTy outerHandler
+      h_wellTyped h_expr h_cap_ne h_failZero h_fail_present h_clauseEffects h_lowered h_outer_abs)
+
 theorem effectHandlerCompositionCoherenceSuite_catchPair_of_premises
     (clause : HandleClauseContract)
     (baseEffects : EffectRow)
@@ -4204,6 +4541,81 @@ theorem effectHandlerCompositionCoherenceSuite_catchPair_of_fail_present
   effectHandlerCompositionCoherenceSuite_catchPair
     clause capability innerEffects okTy errTy loweredTy outerHandler
     (effectHandlerCompositionCoherenceSuite_of_fail_present
+      clause baseEffects capability innerEffects okTy errTy loweredTy outerHandler
+      h_wellTyped h_expr h_cap_ne h_failZero h_fail_present h_clauseEffects h_lowered h_outer_abs)
+
+theorem effectHandlerCompositionCoherenceSuite_catchPair_as_components_of_premises
+    (clause : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_cap_ne : capability ≠ clause.handled)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_admissible : FailResultContracts.catchAdmissible clause.exprEffects)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy)
+    (h_outer_abs :
+      RowFields.has (EffectRow.fields outerHandler) clause.handled = false) :
+    ∃ (h_cap :
+        EffectHandlerCapstoneSuite clause capability innerEffects okTy errTy loweredTy)
+      (h_cls :
+        EffectHandlerSuite clause capability innerEffects okTy errTy loweredTy),
+      h_cls =
+        effectHandlerSuite_of_capstoneSuite
+          clause capability innerEffects okTy errTy loweredTy h_cap :=
+  effectHandlerCatchPairSuite_as_components
+    clause capability innerEffects okTy errTy loweredTy
+    (effectHandlerCompositionCoherenceSuite_catchPair_of_premises
+      clause baseEffects capability innerEffects okTy errTy loweredTy outerHandler
+      h_wellTyped h_expr h_cap_ne h_failZero h_admissible h_clauseEffects h_lowered h_outer_abs)
+
+theorem effectHandlerCompositionCoherenceSuite_catchPair_as_components_of_fail_present
+    (clause : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_cap_ne : capability ≠ clause.handled)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_fail_present :
+      RowFields.has (EffectRow.fields clause.exprEffects) FailResultContracts.failLabel = true)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy)
+    (h_outer_abs :
+      RowFields.has (EffectRow.fields outerHandler) clause.handled = false) :
+    ∃ (h_cap :
+        EffectHandlerCapstoneSuite clause capability innerEffects okTy errTy loweredTy)
+      (h_cls :
+        EffectHandlerSuite clause capability innerEffects okTy errTy loweredTy),
+      h_cls =
+        effectHandlerSuite_of_capstoneSuite
+          clause capability innerEffects okTy errTy loweredTy h_cap :=
+  effectHandlerCatchPairSuite_as_components
+    clause capability innerEffects okTy errTy loweredTy
+    (effectHandlerCompositionCoherenceSuite_catchPair_of_fail_present
       clause baseEffects capability innerEffects okTy errTy loweredTy outerHandler
       h_wellTyped h_expr h_cap_ne h_failZero h_fail_present h_clauseEffects h_lowered h_outer_abs)
 
@@ -4270,6 +4682,75 @@ theorem effectHandlerCompositionCoherenceSuite_classifier_of_fail_present
       clause baseEffects capability innerEffects okTy errTy loweredTy outerHandler
       h_wellTyped h_expr h_cap_ne h_failZero h_fail_present h_clauseEffects h_lowered h_outer_abs)
 
+theorem effectHandlerCompositionCoherenceSuite_classifier_as_components_of_premises
+    (clause : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_cap_ne : capability ≠ clause.handled)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_admissible : FailResultContracts.catchAdmissible clause.exprEffects)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy)
+    (h_outer_abs :
+      RowFields.has (EffectRow.fields outerHandler) clause.handled = false) :
+    HandlerClosedAwareContracts.ClosedAwareResultBundle clause
+      ∧ TailCapabilityComposition.TailCapabilityClosedAwareBundle clause capability
+      ∧ CatchInteroperabilitySuite.CatchClassifierInteropSuite
+          clause innerEffects okTy errTy loweredTy :=
+  effectHandlerSuite_as_components
+    clause capability innerEffects okTy errTy loweredTy
+    (effectHandlerCompositionCoherenceSuite_classifier_of_premises
+      clause baseEffects capability innerEffects okTy errTy loweredTy outerHandler
+      h_wellTyped h_expr h_cap_ne h_failZero h_admissible h_clauseEffects h_lowered h_outer_abs)
+
+theorem effectHandlerCompositionCoherenceSuite_classifier_as_components_of_fail_present
+    (clause : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_cap_ne : capability ≠ clause.handled)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_fail_present :
+      RowFields.has (EffectRow.fields clause.exprEffects) FailResultContracts.failLabel = true)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy)
+    (h_outer_abs :
+      RowFields.has (EffectRow.fields outerHandler) clause.handled = false) :
+    HandlerClosedAwareContracts.ClosedAwareResultBundle clause
+      ∧ TailCapabilityComposition.TailCapabilityClosedAwareBundle clause capability
+      ∧ CatchInteroperabilitySuite.CatchClassifierInteropSuite
+          clause innerEffects okTy errTy loweredTy :=
+  effectHandlerSuite_as_components
+    clause capability innerEffects okTy errTy loweredTy
+    (effectHandlerCompositionCoherenceSuite_classifier_of_fail_present
+      clause baseEffects capability innerEffects okTy errTy loweredTy outerHandler
+      h_wellTyped h_expr h_cap_ne h_failZero h_fail_present h_clauseEffects h_lowered h_outer_abs)
+
 theorem effectHandlerCompositionCoherenceSuite_capstone_of_premises
     (clause : HandleClauseContract)
     (baseEffects : EffectRow)
@@ -4330,6 +4811,75 @@ theorem effectHandlerCompositionCoherenceSuite_capstone_of_fail_present
   effectHandlerCompositionCoherenceSuite_capstone
     clause capability innerEffects okTy errTy loweredTy outerHandler
     (effectHandlerCompositionCoherenceSuite_of_fail_present
+      clause baseEffects capability innerEffects okTy errTy loweredTy outerHandler
+      h_wellTyped h_expr h_cap_ne h_failZero h_fail_present h_clauseEffects h_lowered h_outer_abs)
+
+theorem effectHandlerCompositionCoherenceSuite_capstone_as_components_of_premises
+    (clause : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_cap_ne : capability ≠ clause.handled)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_admissible : FailResultContracts.catchAdmissible clause.exprEffects)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy)
+    (h_outer_abs :
+      RowFields.has (EffectRow.fields outerHandler) clause.handled = false) :
+    HandlerClosedAwareContracts.ClosedAwareResultBundle clause
+      ∧ TailCapabilityComposition.TailCapabilityClosedAwareBundle clause capability
+      ∧ CatchInteroperabilitySuite.CatchCapstoneInteropSuite
+          clause innerEffects okTy errTy loweredTy :=
+  effectHandlerCapstoneSuite_as_components
+    clause capability innerEffects okTy errTy loweredTy
+    (effectHandlerCompositionCoherenceSuite_capstone_of_premises
+      clause baseEffects capability innerEffects okTy errTy loweredTy outerHandler
+      h_wellTyped h_expr h_cap_ne h_failZero h_admissible h_clauseEffects h_lowered h_outer_abs)
+
+theorem effectHandlerCompositionCoherenceSuite_capstone_as_components_of_fail_present
+    (clause : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_cap_ne : capability ≠ clause.handled)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_fail_present :
+      RowFields.has (EffectRow.fields clause.exprEffects) FailResultContracts.failLabel = true)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy)
+    (h_outer_abs :
+      RowFields.has (EffectRow.fields outerHandler) clause.handled = false) :
+    HandlerClosedAwareContracts.ClosedAwareResultBundle clause
+      ∧ TailCapabilityComposition.TailCapabilityClosedAwareBundle clause capability
+      ∧ CatchInteroperabilitySuite.CatchCapstoneInteropSuite
+          clause innerEffects okTy errTy loweredTy :=
+  effectHandlerCapstoneSuite_as_components
+    clause capability innerEffects okTy errTy loweredTy
+    (effectHandlerCompositionCoherenceSuite_capstone_of_fail_present
       clause baseEffects capability innerEffects okTy errTy loweredTy outerHandler
       h_wellTyped h_expr h_cap_ne h_failZero h_fail_present h_clauseEffects h_lowered h_outer_abs)
 
