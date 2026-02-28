@@ -8147,3 +8147,36 @@ typing route by adding `operationCallBundle_callTyping_of_typing`.
 **Impact**:
 - Downstream proofs can consume closed-aware contracts directly from standard
   entry routes without intermediate bundle destructuring.
+
+### 2026-02-28: fail-result lowering/premise bundle-route decomposition parity
+
+**Context**: Added one-hop decomposition/projection wrappers in
+`FailResultEquivalence` for bundle constructor routes:
+- `lowerFailFunctionType_equivalence_bundle_as_components`
+- `catchTyping_fail_result_equivalence_bundle_as_components_of_premises`
+- `catchTyping_fail_result_equivalence_result_return_of_premises`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Route-wrapper expansion over existing fail-result equivalence bundle proofs.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Fail-result lowering and premise routes now expose direct component/result
+  witnesses in one hop from standard entrypoints.
+
+**Impact**:
+- Consumers no longer need to construct or destruct intermediate equivalence
+  bundles manually on the common catch-typing premise path.

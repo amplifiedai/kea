@@ -92,6 +92,22 @@ theorem lowerFailFunctionType_equivalence_bundle
     (FailResultContracts.lowerFailFunctionType params effects okTy errTy)
     (fail_result_equivalence params effects okTy errTy)
 
+theorem lowerFailFunctionType_equivalence_bundle_as_components
+    (params : TyList)
+    (effects : EffectRow)
+    (okTy errTy : Ty) :
+    FailResultContracts.failResultFunctionEquivalent
+      (.functionEff params effects okTy)
+      (FailResultContracts.lowerFailFunctionType params effects okTy errTy)
+    ∧
+    (∃ params' eff' okTy' errTy',
+      FailResultContracts.lowerFailFunctionType params effects okTy errTy =
+        .functionEff params' eff' (.result okTy' errTy')) :=
+  failResultEquivalenceBundle_as_components
+    (.functionEff params effects okTy)
+    (FailResultContracts.lowerFailFunctionType params effects okTy errTy)
+    (lowerFailFunctionType_equivalence_bundle params effects okTy errTy)
+
 theorem catchTyping_fail_result_equivalence_of_premises
     (clause : HandleClauseContract)
     (params : TyList)
@@ -139,6 +155,53 @@ theorem catchTyping_fail_result_equivalence_bundle_of_premises
     (catchTyping_fail_result_equivalence_of_premises
       clause params okTy errTy loweredTy
       h_wellTyped h_failZero h_admissible h_lowered)
+
+theorem catchTyping_fail_result_equivalence_bundle_as_components_of_premises
+    (clause : HandleClauseContract)
+    (params : TyList)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_admissible : FailResultContracts.catchAdmissible clause.exprEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          params
+          clause.exprEffects
+          okTy
+          errTy) :
+    FailResultContracts.failResultFunctionEquivalent
+      (.functionEff params clause.exprEffects okTy)
+      loweredTy
+    ∧
+    (∃ params' eff' okTy' errTy',
+      loweredTy = .functionEff params' eff' (.result okTy' errTy')) :=
+  failResultEquivalenceBundle_as_components
+    (.functionEff params clause.exprEffects okTy)
+    loweredTy
+    (catchTyping_fail_result_equivalence_bundle_of_premises
+      clause params okTy errTy loweredTy
+      h_wellTyped h_failZero h_admissible h_lowered)
+
+theorem catchTyping_fail_result_equivalence_result_return_of_premises
+    (clause : HandleClauseContract)
+    (params : TyList)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_admissible : FailResultContracts.catchAdmissible clause.exprEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          params
+          clause.exprEffects
+          okTy
+          errTy) :
+    ∃ params' eff' okTy' errTy',
+      loweredTy = .functionEff params' eff' (.result okTy' errTy') :=
+  (catchTyping_fail_result_equivalence_bundle_of_premises
+    clause params okTy errTy loweredTy
+    h_wellTyped h_failZero h_admissible h_lowered).resultReturn
 
 end FailResultEquivalence
 end Kea
