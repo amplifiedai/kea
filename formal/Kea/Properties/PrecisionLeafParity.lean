@@ -139,6 +139,55 @@ theorem floatN_unify_err_iff_constructor_beq_false
     rw [floatN_unify_decision st fuel w1 w2]
     simp [hbeq_false]
 
+/-- Packaged precision constructor unification contracts for IntN/FloatN. -/
+structure PrecisionConstructorKernelSlice : Prop where
+  intN_ok_iff_constructor_beq_true :
+    ∀ st fuel w1 w2 s1 s2,
+      unify st (fuel + 1) (.intN w1 s1) (.intN w2 s2) = .ok st ↔
+        (Ty.intN w1 s1 == Ty.intN w2 s2) = true
+  intN_err_iff_constructor_beq_false :
+    ∀ st fuel w1 w2 s1 s2,
+      unify st (fuel + 1) (.intN w1 s1) (.intN w2 s2) = .err "type mismatch" ↔
+        (Ty.intN w1 s1 == Ty.intN w2 s2) = false
+  intN_decision :
+    ∀ st fuel w1 w2 s1 s2,
+      unify st (fuel + 1) (.intN w1 s1) (.intN w2 s2) =
+        if (Ty.intN w1 s1 == Ty.intN w2 s2) then .ok st else .err "type mismatch"
+  floatN_ok_iff_constructor_beq_true :
+    ∀ st fuel w1 w2,
+      unify st (fuel + 1) (.floatN w1) (.floatN w2) = .ok st ↔
+        (Ty.floatN w1 == Ty.floatN w2) = true
+  floatN_err_iff_constructor_beq_false :
+    ∀ st fuel w1 w2,
+      unify st (fuel + 1) (.floatN w1) (.floatN w2) = .err "type mismatch" ↔
+        (Ty.floatN w1 == Ty.floatN w2) = false
+  floatN_decision :
+    ∀ st fuel w1 w2,
+      unify st (fuel + 1) (.floatN w1) (.floatN w2) =
+        if (Ty.floatN w1 == Ty.floatN w2) then .ok st else .err "type mismatch"
+
+/-- Canonical precision constructor kernel package. -/
+theorem precisionConstructorKernelSlice : PrecisionConstructorKernelSlice := by
+  refine
+    { intN_ok_iff_constructor_beq_true := ?_
+      intN_err_iff_constructor_beq_false := ?_
+      intN_decision := ?_
+      floatN_ok_iff_constructor_beq_true := ?_
+      floatN_err_iff_constructor_beq_false := ?_
+      floatN_decision := ?_ }
+  · intro st fuel w1 w2 s1 s2
+    exact intN_unify_ok_iff_constructor_beq_true st fuel w1 w2 s1 s2
+  · intro st fuel w1 w2 s1 s2
+    exact intN_unify_err_iff_constructor_beq_false st fuel w1 w2 s1 s2
+  · intro st fuel w1 w2 s1 s2
+    exact intN_unify_decision st fuel w1 w2 s1 s2
+  · intro st fuel w1 w2
+    exact floatN_unify_ok_iff_constructor_beq_true st fuel w1 w2
+  · intro st fuel w1 w2
+    exact floatN_unify_err_iff_constructor_beq_false st fuel w1 w2
+  · intro st fuel w1 w2
+    exact floatN_unify_decision st fuel w1 w2
+
 /-- Signedness mismatch on same width does not unify. -/
 theorem intN_signedness_mismatch
     (st : UnifyState) (fuel : Nat) :
