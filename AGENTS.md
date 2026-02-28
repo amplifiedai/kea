@@ -2,7 +2,7 @@
 
 Kea is a statically-typed functional programming language with algebraic effects, handlers, row polymorphism, and indentation-sensitive syntax. It compiles via Cranelift. The bootstrap compiler is implemented in Rust, cannibalising infrastructure from the [Rill](https://github.com/cigrainger/rill) project.
 
-**Read `docs/INDEX.md` for the complete documentation suite.** Key references: `docs/spec/KERNEL.md` (kernel specification), `docs/spec/CALL-SYNTAX.md` (method dispatch), `docs/spec/ROADMAP.md` (implementation plan). This document covers how to work on the codebase.
+**Read `docs/INDEX.md` for the complete documentation suite.** Key references: `docs/spec/KERNEL.md` (kernel specification), `docs/spec/CALL-SYNTAX.md` (method dispatch), `docs/spec/ROADMAP.md` (implementation plan), `docs/IDIOMS.md` (how to write idiomatic Kea). This document covers how to work on the codebase.
 
 ---
 
@@ -132,6 +132,7 @@ scripts/cargo-agent.sh test -p kea-eval --lib # Raw cargo with agent-scoped targ
 ### Kea Style
 
 These conventions apply to all `.kea` source: stdlib, examples, tests.
+**Read `docs/IDIOMS.md` for the full idioms guide.** Key principles: Fail over Result, effects as capabilities, handlers at the boundary, doc comments on every public function.
 
 - **Indentation-sensitive syntax.** No braces, no semicolons. Blocks are delimited by indentation (Python/Haskell style).
 - **Dot syntax for method calls.** `xs.map(f)` is sugar for `List.map(xs, f)`. Use Universal Method Syntax (UMS) — any function whose first parameter matches the receiver type can be called with dot syntax.
