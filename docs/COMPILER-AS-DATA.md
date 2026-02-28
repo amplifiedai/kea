@@ -518,10 +518,12 @@ The effect system adds three capabilities no other self-hosted
 compiler has:
 
 1. **Pure passes parallelise automatically.** `fn optimize(mir) ->
-   MirExpr` has no effects — the compiler knows it's safe to run
-   across functions in parallel. Sorbet achieves 100K lines/sec/core
-   this way, but through careful engineering. In Kea, it falls out
-   of the type system.
+   MirExpr` has no effects — `Par.map(module.functions, optimize)`
+   is type-checked safe. Not per-translation-unit (gcc) or
+   per-codegen-unit (rustc) — per *function*. Sorbet achieves 100K
+   lines/sec/core this way, but through engineering discipline. In
+   Kea, the effect system proves it and Unique T proves the data
+   doesn't alias.
 
 2. **Arena allocation via Alloc effect.** The parse phase allocates
    hundreds of thousands of AST nodes and discards them after

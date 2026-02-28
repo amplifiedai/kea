@@ -96,19 +96,94 @@ For the parse phase — hundreds of thousands of AST nodes discarded
 after lowering — arenas give 2-5x over general-purpose allocation
 from cache locality alone.
 
-## Effect-Tracked Parallelism
+## Type-Proven Parallel Compilation
 
-The effect system tells the compiler which of its own passes are pure:
+The compilation DAG has natural parallelism at every level:
 
-```kea
-fn optimize(_ mir: Unique MirExpr) -> Unique MirExpr   -- no effects = pure
+```
+Phase 1: Parse        — embarrassingly parallel (per file)
+Phase 2: Import DAG   — sequential but cheap (topological sort)
+Phase 3: Type check   — parallel per module (topo order), parallel per function within
+Phase 4: Lower        — parallel per module (after types resolved)
+Phase 5: Optimize     — embarrassingly parallel per function (PURE)
+Phase 6: Codegen      — embarrassingly parallel per function
 ```
 
-Pure passes can be parallelised across functions automatically. Sorbet
-(Ruby type checker) does exactly this — local type inference is a pure
-function per method, scaling linearly across cores, hitting 100K
-lines/sec/core. But Sorbet achieves this through careful engineering.
-In Kea, it falls out of the effect system.
+Three Kea features compound to make this zero-cost and type-checked:
+
+**1. Unique T = zero-cost task handoff.** When a parse task produces
+`Unique Ast`, sending it to the type-check task is a move. No cloning,
+no atomic RC, no shared state. The AST literally moves between tasks.
+
+**2. Pure passes = safe Par.** The optimise pass is `->` (pure). The
+effect system *proves* it's safe to run in parallel — no locks, no
+synchronisation, because the types prove there's nothing to synchronise
+over.
+
+**3. Par.map at function granularity.** Not per-translation-unit (gcc)
+or per-codegen-unit (rustc). Per function. Because effects prove purity
+and Unique proves non-aliasing at the function level.
+
+The full parallel pipeline:
+
+```kea
+fn compile_project(_ files: List String) -> List Bytes -[Spawn, IO]>
+  -- Phase 1: parse all files in parallel
+  let asts = Par.map(files, |path|
+    parse(read_file(path))        -- each returns Unique Ast
+  )
+
+  -- Phase 2: build import DAG, topological sort
+  let order = resolve_imports(asts)
+
+  -- Phase 3-4: type check + lower in dependency order
+  -- modules in the same topo level compile in parallel
+  let mirs = order.levels.flat_map(|level|
+    Par.map(level, |module|
+      lower(infer(module))        -- Unique flows through
+    )
+  )
+
+  -- Phase 5: optimize all functions across all modules (PURE)
+  let optimized = Par.map(mirs, |mir|
+    let fns = Par.map(mir.functions, |fn_body|
+      constant_fold(fn_body)
+        .then(dead_code_eliminate)
+        .then(inline_small)
+    )
+    mir~{ functions: fns }
+  )
+
+  -- Phase 6: codegen all functions in parallel
+  Par.map(optimized, codegen)
+```
+
+Every `Par.map` is type-checked safe. The effect signatures prove
+which phases are pure. The Unique types prove the data doesn't alias.
+The functional updates (`mir~{ functions: fns }`) are in-place when
+the input is unique (reuse analysis). No engineering discipline
+required — the compiler rejects unsafe parallelism at compile time.
+
+**Comparison with existing compilers:**
+
+| | rustc | gcc | Go | Kea |
+|---|---|---|---|---|
+| Parse | Sequential | Sequential | Parallel (per file) | Par (per file) |
+| Type check | Sequential | Sequential | Parallel (per pkg) | Par (per topo level, per fn within) |
+| Optimise | Sequential per CGU | Parallel per TU | Sequential | Par (per function, proven pure) |
+| Codegen | Parallel per CGU | Parallel per TU | Parallel | Par (per function) |
+| Safety proof | Engineering | Engineering | Engineering | Effect system + Unique T |
+| Data handoff | Arc/shared memory | Shared memory | Channels | Unique move (zero-cost) |
+
+Rustc parallelises codegen but not type checking. GCC parallelises
+across translation units but not within them. Go parallelises per
+package but uses a shared mutable symbol table with locks.
+
+Kea parallelises at the *function* granularity because the effect
+system proves which passes are pure and Unique T proves the data
+doesn't alias. This is the same insight that makes Sorbet fast (100K
+lines/sec/core for pure per-method type inference), but with a
+type-level guarantee instead of engineering discipline.
 
 ## Incremental Compilation via Query Effects
 
@@ -142,7 +217,7 @@ together, and nobody has an effect system that unifies them:
 |-----------|-----------|------------|
 | Reuse analysis | Koka, Lean | Unique T proves it statically, no runtime check |
 | Borrow inference | Lean | Effects give more information (pure = nothing escapes) |
-| Parallel passes | Sorbet | Effect system proves purity automatically |
+| Parallel compilation | Sorbet (per-method), Go (per-pkg) | Par per function with type-level safety proof (effects + Unique) |
 | Arena allocation | Every C compiler | Alloc effect makes it composable and safe |
 | Incremental queries | rust-analyzer | Query effect tracks dependencies in the type system |
 | Zero-RC IR pipeline | Nobody | Unique T through linear pipeline eliminates RC entirely |
