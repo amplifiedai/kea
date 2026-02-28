@@ -820,3 +820,62 @@ theorem unifyDimList_consts_none_implies_beq_false
             intro h_head_true
             have hxy_true : x = y := Nat.eq_of_beq_eq_true (by simpa [BEq.beq] using h_head_true)
             exact (hxy hxy_true).elim
+
+/-- Packaged constant-dimension kernel contracts for pointwise list unification. -/
+structure DimConstListKernelSlice : Prop where
+  some_iff_eq :
+    ∀ fuel xs ys,
+      unifyDimList DimSubst.empty (fuel + 1)
+        (xs.map Dim.const) (ys.map Dim.const) = some DimSubst.empty ↔ xs = ys
+  some_implies_empty :
+    ∀ fuel xs ys s',
+      unifyDimList DimSubst.empty (fuel + 1)
+        (xs.map Dim.const) (ys.map Dim.const) = some s' →
+        s' = DimSubst.empty
+  none_iff_ne :
+    ∀ fuel xs ys,
+      unifyDimList DimSubst.empty (fuel + 1)
+        (xs.map Dim.const) (ys.map Dim.const) = none ↔ xs ≠ ys
+  decision :
+    ∀ fuel xs ys,
+      unifyDimList DimSubst.empty (fuel + 1)
+        (xs.map Dim.const) (ys.map Dim.const) =
+        (if xs = ys then some DimSubst.empty else none)
+  head_const_mismatch_none :
+    ∀ fuel a b xs ys, a ≠ b →
+      unifyDimList DimSubst.empty (fuel + 1)
+        (.const a :: xs) (.const b :: ys) = none
+  length_mismatch_none :
+    ∀ fuel xs ys, xs.length ≠ ys.length →
+      unifyDimList DimSubst.empty (fuel + 1)
+        (xs.map Dim.const) (ys.map Dim.const) = none
+  none_implies_beq_false :
+    ∀ fuel xs ys,
+      unifyDimList DimSubst.empty (fuel + 1)
+        (xs.map Dim.const) (ys.map Dim.const) = none →
+        ((xs.map Dim.const) == (ys.map Dim.const)) = false
+
+/-- Reusable theorem package for constant-dimension list unification behavior. -/
+theorem dimConstListKernelSlice : DimConstListKernelSlice := by
+  refine
+    { some_iff_eq := ?_
+      some_implies_empty := ?_
+      none_iff_ne := ?_
+      decision := ?_
+      head_const_mismatch_none := ?_
+      length_mismatch_none := ?_
+      none_implies_beq_false := ?_ }
+  · intro fuel xs ys
+    exact unifyDimList_consts_some_iff_eq fuel xs ys
+  · intro fuel xs ys s' h_some
+    exact unifyDimList_consts_some_implies_empty fuel xs ys s' h_some
+  · intro fuel xs ys
+    exact unifyDimList_consts_none_iff_ne fuel xs ys
+  · intro fuel xs ys
+    exact unifyDimList_consts_decision fuel xs ys
+  · intro fuel a b xs ys h_ne
+    exact unifyDimList_head_const_mismatch_none fuel a b xs ys h_ne
+  · intro fuel xs ys h_len
+    exact unifyDimList_consts_length_mismatch_none fuel xs ys h_len
+  · intro fuel xs ys h_none
+    exact unifyDimList_consts_none_implies_beq_false fuel xs ys h_none

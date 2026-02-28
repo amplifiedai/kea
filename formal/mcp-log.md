@@ -8699,3 +8699,50 @@ fail-present wrappers for the catch-bridge theorem family:
 **Impact**:
 - Call sites can choose either admissibility-style or direct fail-label entry
   assumptions without losing one-hop equivalence/bundle/result-return APIs.
+
+### 2026-02-28: catch-judgment components-route closure and dim-kernel slice packaging
+
+**Context**: Continued the formal-only parity/compositional pass by (1) adding
+`catchTypingJudgment_bundle_as_components_of_components` in
+`CatchTypingBridge` to close the last local judgment-bundle constructor route,
+and (2) packaging constant dim-list kernel behavior in `Kea/Dimensions.lean`
+as `DimConstListKernelSlice` (`dimConstListKernelSlice`) for WP7.2 reuse.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- The catch-judgment addition is a theorem-route wrapper over existing
+  component assumptions; no semantic change expected.
+- `DimConstListKernelSlice` only repackages already-proved dim-kernel lemmas;
+  no runtime behavior change expected.
+
+**Probe (Rust side)**:
+- Re-ran generalized theorem-route parity scans across `formal/Kea` and
+  `formal/Kea/Properties`:
+  - `*_iff_components -> *_as_components_of_components`
+  - `*_of_<route>` (with `*_as_components` base)
+    `-> *_as_components_of_<route>`
+  - `_of_premises <-> _of_fail_present` and
+    `_as_components_of_premises <-> _as_components_of_fail_present`
+- Result: no remaining gaps found by the active scans.
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Catch-judgment bundle decomposition now has direct components-route closure.
+- Constant dim-list kernel contracts are available as one named package
+  (`DimConstListKernelSlice`) for downstream shape/decimal theorem consumption.
+
+**Impact**:
+- Phase-2 catch bundle consumers can stay on one-hop constructor->components
+  APIs without ad hoc tuple threading.
+- WP7.2 dim-aware theorem work can cite one stable kernel contract witness
+  instead of repeatedly expanding constant-list kernel lemmas.
