@@ -229,7 +229,6 @@ fn previous_line_continues_expression(tokens: &[Token], newline_idx: usize) -> b
             | TokenKind::Colon
             | TokenKind::ColonColon
             | TokenKind::Dot
-            | TokenKind::Pipe
     )
 }
 
@@ -1592,12 +1591,11 @@ mod tests {
     #[test]
     fn lambda_tokens() {
         assert_eq!(
-            lex_kinds("|x| -> x + 1"),
+            lex_kinds("|x| x + 1"),
             vec![
                 TokenKind::Pipe,
                 TokenKind::Ident("x".into()),
                 TokenKind::Pipe,
-                TokenKind::Arrow,
                 TokenKind::Ident("x".into()),
                 TokenKind::Plus,
                 TokenKind::Int(1),

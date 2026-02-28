@@ -1034,7 +1034,7 @@
         let app_path = src_dir.join("app.kea");
         std::fs::write(
             &app_path,
-            "use Reader\n\nfn main() -> Int\n  Reader.with_reader(41, || -> Reader.asks(|x| -> x + 1))\n",
+            "use Reader\n\nfn main() -> Int\n  Reader.with_reader(41, || Reader.asks(|x| x + 1))\n",
         )
         .expect("app module write should succeed");
 
@@ -1865,7 +1865,7 @@
     #[test]
     fn compile_rejects_resume_captured_by_lambda() {
         let source_path = write_temp_source(
-            "effect Ping\n  fn ask() -> Int\n\nfn run() -[Ping]> Int\n  Ping.ask()\n\nfn main() -> Int\n  handle run()\n    Ping.ask() ->\n      let k = |x| -> resume x\n      k(1)\n",
+            "effect Ping\n  fn ask() -> Int\n\nfn run() -[Ping]> Int\n  Ping.ask()\n\nfn main() -> Int\n  handle run()\n    Ping.ask() ->\n      let k = |x| resume x\n      k(1)\n",
             "kea-cli-resume-captured-lambda",
             "kea",
         );
@@ -2150,7 +2150,7 @@
                 42,
             ),
             (
-                "fn apply(f: fn(Int) -> Int, x: Int) -> Int\n  f(x)\n\nfn main() -> Int\n  apply(|x| -> x + 1, 41)\n",
+                "fn apply(f: fn(Int) -> Int, x: Int) -> Int\n  f(x)\n\nfn main() -> Int\n  apply(|x| x + 1, 41)\n",
                 42,
             ),
             (
@@ -2446,7 +2446,7 @@
     #[test]
     fn compile_rejects_unique_capture_then_reuse() {
         let source_path = write_temp_source(
-            "enum Unique a\n  Unique(a)\n\nfn consume(value: Unique Int) -> Int\n  case value\n    Unique(v) -> v\n\nfn main() -> Int\n  let u = Unique(7)\n  let f = || -> consume(u)\n  consume(u)\n",
+            "enum Unique a\n  Unique(a)\n\nfn consume(value: Unique Int) -> Int\n  case value\n    Unique(v) -> v\n\nfn main() -> Int\n  let u = Unique(7)\n  let f = || consume(u)\n  consume(u)\n",
             "kea-cli-unique-capture-then-reuse",
             "kea",
         );
@@ -2542,7 +2542,7 @@
     #[test]
     fn compile_rejects_capturing_borrow_parameter() {
         let source_path = write_temp_source(
-            "enum Unique a\n  Unique(a)\n\nfn leak_capture(borrow value: Unique Int) -> fn() -> Int\n  || ->\n    case value\n      Unique(v) -> v\n",
+            "enum Unique a\n  Unique(a)\n\nfn leak_capture(borrow value: Unique Int) -> fn() -> Int\n  ||\n    case value\n      Unique(v) -> v\n",
             "kea-cli-borrow-capture-escape-rejected",
             "kea",
         );
@@ -2748,7 +2748,7 @@
     #[test]
     fn compile_and_execute_higher_order_lambda_argument_exit_code() {
         let source_path = write_temp_source(
-            "fn apply(f: fn(Int) -> Int, x: Int) -> Int\n  f(x)\n\nfn main() -> Int\n  apply(|x| -> x + 1, 41)\n",
+            "fn apply(f: fn(Int) -> Int, x: Int) -> Int\n  f(x)\n\nfn main() -> Int\n  apply(|x| x + 1, 41)\n",
             "kea-cli-hof-lambda-arg",
             "kea",
         );
@@ -2762,7 +2762,7 @@
     #[test]
     fn compile_and_execute_direct_lambda_call_exit_code() {
         let source_path = write_temp_source(
-            "fn main() -> Int\n  (|x| -> x + 1)(41)\n",
+            "fn main() -> Int\n  (|x| x + 1)(41)\n",
             "kea-cli-direct-lambda-call",
             "kea",
         );
@@ -2960,7 +2960,7 @@
     #[test]
     fn compile_and_execute_let_bound_lambda_call_exit_code() {
         let source_path = write_temp_source(
-            "fn main() -> Int\n  let f = |x| -> x + 1\n  f(41)\n",
+            "fn main() -> Int\n  let f = |x| x + 1\n  f(41)\n",
             "kea-cli-let-lambda-call",
             "kea",
         );
@@ -2974,7 +2974,7 @@
     #[test]
     fn compile_and_execute_returned_capturing_lambda_call_exit_code() {
         let source_path = write_temp_source(
-            "fn make_adder(y: Int) -> fn(Int) -> Int\n  |x| -> x + y\n\nfn main() -> Int\n  let add2 = make_adder(2)\n  add2(40)\n",
+            "fn make_adder(y: Int) -> fn(Int) -> Int\n  |x| x + y\n\nfn main() -> Int\n  let add2 = make_adder(2)\n  add2(40)\n",
             "kea-cli-returned-capturing-lambda-call",
             "kea",
         );
@@ -2988,7 +2988,7 @@
     #[test]
     fn compile_and_execute_immediate_capturing_lambda_call_exit_code() {
         let source_path = write_temp_source(
-            "fn make_adder(y: Int) -> fn(Int) -> Int\n  |x| -> x + y\n\nfn main() -> Int\n  make_adder(2)(40)\n",
+            "fn make_adder(y: Int) -> fn(Int) -> Int\n  |x| x + y\n\nfn main() -> Int\n  make_adder(2)(40)\n",
             "kea-cli-immediate-capturing-lambda-call",
             "kea",
         );
@@ -3002,7 +3002,7 @@
     #[test]
     fn compile_and_execute_escaping_capturing_lambda_value_exit_code() {
         let source_path = write_temp_source(
-            "fn apply(f: fn(Int) -> Int, x: Int) -> Int\n  f(x)\n\nfn make_adder(y: Int) -> fn(Int) -> Int\n  |x| -> x + y\n\nfn main() -> Int\n  apply(make_adder(2), 40)\n",
+            "fn apply(f: fn(Int) -> Int, x: Int) -> Int\n  f(x)\n\nfn make_adder(y: Int) -> fn(Int) -> Int\n  |x| x + y\n\nfn main() -> Int\n  apply(make_adder(2), 40)\n",
             "kea-cli-escaping-capturing-lambda",
             "kea",
         );

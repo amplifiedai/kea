@@ -20,7 +20,7 @@ pub struct Chunk {
 /// Classify a token stream as a declaration (vs expression).
 ///
 /// Returns `true` if the first significant token indicates a declaration:
-/// `fn`, `pub fn`, `struct`/`record`, `pub struct`/`pub record`, `type`, `pub type`,
+/// `fn`, `pub fn`, `struct`/`record`, `pub struct`/`pub record`, `enum`, `pub enum`, `type`, `pub type`,
 /// `alias`, `pub alias`, `opaque`, `pub opaque`, `trait`, `pub trait`, `impl`,
 /// `test`, or `import`.
 pub fn classify_as_declaration(tokens: &[crate::Token]) -> bool {
@@ -85,6 +85,7 @@ pub fn classify_as_declaration(tokens: &[crate::Token]) -> bool {
 
     matches!(first, Some(TokenKind::Import))
         || matches!(first, Some(TokenKind::Struct))
+        || matches!(first, Some(TokenKind::Enum))
         || matches!(first, Some(TokenKind::TypeKw))
         || matches!(first, Some(TokenKind::Alias))
         || matches!(first, Some(TokenKind::Opaque))
@@ -101,6 +102,7 @@ pub fn classify_as_declaration(tokens: &[crate::Token]) -> bool {
                     TokenKind::Fn
                         | TokenKind::ExprKw
                         | TokenKind::Struct
+                        | TokenKind::Enum
                         | TokenKind::TypeKw
                         | TokenKind::Alias
                         | TokenKind::Opaque
@@ -140,7 +142,7 @@ fn line_ends_with_continuation(trimmed: &str) -> bool {
 /// Split source into chunks separated by blank lines at brace depth 0.
 ///
 /// Each chunk carries its byte offset in the original source.
-/// Declaration chunks (fn, struct, type, trait, impl, import) can span
+/// Declaration chunks (fn, struct, enum, type, trait, impl, import) can span
 /// multiple non-blank lines. Expression chunks are further split by
 /// newlines at depth 0 since each line is a standalone expression.
 pub fn split_chunks(source: &str) -> Vec<Chunk> {
@@ -334,10 +336,10 @@ mod tests {
 
     #[test]
     fn multiline_lambda_expression_not_split() {
-        let source = "let f = |x| ->\n  x + 1\nf(1)\n";
+        let source = "let f = |x|\n  x + 1\nf(1)\n";
         let chunks = split_chunks(source);
         assert_eq!(chunks.len(), 2);
-        assert!(chunks[0].text.contains("|x| ->"));
+        assert!(chunks[0].text.contains("|x|"));
         assert_eq!(chunks[1].text.trim(), "f(1)");
     }
 
