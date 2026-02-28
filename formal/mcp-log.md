@@ -10323,3 +10323,41 @@ For each package: added `...Components` plus
 **Impact**:
 - Cross-route no-unify proof chains can stay on one decomposition pattern from
   consequence slices through capstone slices.
+
+### 2026-02-28: dual-master no-unify run/irrelevance/surface route decomposition aliases
+
+**Context**: Added component aliases and structural decomposition APIs in
+`Kea/Typing.lean` for:
+- `PrincipalNoUnify{Expr,Field}AllHooksRunBundlesBothMasterConsequenceRoutes`
+- `PrincipalNoUnify{Expr,Field}HookIrrelevanceBothMasterConsequenceRoutes`
+- `PrincipalNoUnify{Expr,Field}AllHooksRouteSurfaceBothMasterConsequenceRoutes`
+
+For each package: added `...Components` plus
+`..._{iff_components,of_components,as_components,as_components_of_components}`.
+Also reran a route-structure scan and confirmed no remaining
+`structure ...Routes` without a `...Components` alias in `Kea/Typing.lean`.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Structural API expansion only; no runtime semantic change.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- The full dual-master no-unify cross-route stack now supports uniform
+  bundle<->components decomposition contracts.
+
+**Impact**:
+- Route-level theorem consumers can apply one decomposition pattern across
+  consequence, capstone, run-bundle, irrelevance, and all-hooks-surface layers.

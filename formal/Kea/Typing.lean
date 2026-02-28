@@ -13713,6 +13713,124 @@ structure PrincipalNoUnifyFieldAllHooksRunBundlesBothMasterConsequenceRoutes
   viaMasterRunBundleConsequence :
     PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf
 
+/-- Explicit component alias for `PrincipalNoUnifyExprAllHooksRunBundlesBothMasterConsequenceRoutes`. -/
+abbrev PrincipalNoUnifyExprAllHooksRunBundlesBothMasterConsequenceRoutesComponents
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty) : Prop :=
+  PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty ∧
+    PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty
+
+/-- `PrincipalNoUnifyExprAllHooksRunBundlesBothMasterConsequenceRoutes` is equivalent to explicit components. -/
+theorem principalNoUnifyExprAllHooksRunBundlesBothMasterConsequenceRoutes_iff_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty) :
+    PrincipalNoUnifyExprAllHooksRunBundlesBothMasterConsequenceRoutes
+      st fuel env e st' ty
+      ↔ PrincipalNoUnifyExprAllHooksRunBundlesBothMasterConsequenceRoutesComponents
+          st fuel env e st' ty := by
+  constructor
+  · intro h_routes
+    exact ⟨h_routes.viaMasterConsequenceCapstone, h_routes.viaMasterRunBundleConsequence⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2⟩
+
+/-- Build `PrincipalNoUnifyExprAllHooksRunBundlesBothMasterConsequenceRoutes` from explicit components. -/
+theorem principalNoUnifyExprAllHooksRunBundlesBothMasterConsequenceRoutes_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_comp :
+      PrincipalNoUnifyExprAllHooksRunBundlesBothMasterConsequenceRoutesComponents
+        st fuel env e st' ty) :
+    PrincipalNoUnifyExprAllHooksRunBundlesBothMasterConsequenceRoutes
+      st fuel env e st' ty :=
+  (principalNoUnifyExprAllHooksRunBundlesBothMasterConsequenceRoutes_iff_components
+    st fuel env e st' ty).2 h_comp
+
+/-- Decompose `PrincipalNoUnifyExprAllHooksRunBundlesBothMasterConsequenceRoutes` into explicit components. -/
+theorem principalNoUnifyExprAllHooksRunBundlesBothMasterConsequenceRoutes_as_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_routes :
+      PrincipalNoUnifyExprAllHooksRunBundlesBothMasterConsequenceRoutes
+        st fuel env e st' ty) :
+    PrincipalNoUnifyExprAllHooksRunBundlesBothMasterConsequenceRoutesComponents
+      st fuel env e st' ty :=
+  (principalNoUnifyExprAllHooksRunBundlesBothMasterConsequenceRoutes_iff_components
+    st fuel env e st' ty).1 h_routes
+
+/-- Direct components-route decomposition for `PrincipalNoUnifyExprAllHooksRunBundlesBothMasterConsequenceRoutes`. -/
+theorem principalNoUnifyExprAllHooksRunBundlesBothMasterConsequenceRoutes_as_components_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_comp :
+      PrincipalNoUnifyExprAllHooksRunBundlesBothMasterConsequenceRoutesComponents
+        st fuel env e st' ty) :
+    PrincipalNoUnifyExprAllHooksRunBundlesBothMasterConsequenceRoutesComponents
+      st fuel env e st' ty :=
+  (principalNoUnifyExprAllHooksRunBundlesBothMasterConsequenceRoutes_iff_components
+    st fuel env e st' ty).1
+    (principalNoUnifyExprAllHooksRunBundlesBothMasterConsequenceRoutes_of_components
+      st fuel env e st' ty h_comp)
+
+/-- Explicit component alias for `PrincipalNoUnifyFieldAllHooksRunBundlesBothMasterConsequenceRoutes`. -/
+abbrev PrincipalNoUnifyFieldAllHooksRunBundlesBothMasterConsequenceRoutesComponents
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields) : Prop :=
+  PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf ∧
+    PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf
+
+/-- `PrincipalNoUnifyFieldAllHooksRunBundlesBothMasterConsequenceRoutes` is equivalent to explicit components. -/
+theorem principalNoUnifyFieldAllHooksRunBundlesBothMasterConsequenceRoutes_iff_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields) :
+    PrincipalNoUnifyFieldAllHooksRunBundlesBothMasterConsequenceRoutes
+      st fuel env fs st' rf
+      ↔ PrincipalNoUnifyFieldAllHooksRunBundlesBothMasterConsequenceRoutesComponents
+          st fuel env fs st' rf := by
+  constructor
+  · intro h_routes
+    exact ⟨h_routes.viaMasterConsequenceCapstone, h_routes.viaMasterRunBundleConsequence⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2⟩
+
+/-- Build `PrincipalNoUnifyFieldAllHooksRunBundlesBothMasterConsequenceRoutes` from explicit components. -/
+theorem principalNoUnifyFieldAllHooksRunBundlesBothMasterConsequenceRoutes_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_comp :
+      PrincipalNoUnifyFieldAllHooksRunBundlesBothMasterConsequenceRoutesComponents
+        st fuel env fs st' rf) :
+    PrincipalNoUnifyFieldAllHooksRunBundlesBothMasterConsequenceRoutes
+      st fuel env fs st' rf :=
+  (principalNoUnifyFieldAllHooksRunBundlesBothMasterConsequenceRoutes_iff_components
+    st fuel env fs st' rf).2 h_comp
+
+/-- Decompose `PrincipalNoUnifyFieldAllHooksRunBundlesBothMasterConsequenceRoutes` into explicit components. -/
+theorem principalNoUnifyFieldAllHooksRunBundlesBothMasterConsequenceRoutes_as_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_routes :
+      PrincipalNoUnifyFieldAllHooksRunBundlesBothMasterConsequenceRoutes
+        st fuel env fs st' rf) :
+    PrincipalNoUnifyFieldAllHooksRunBundlesBothMasterConsequenceRoutesComponents
+      st fuel env fs st' rf :=
+  (principalNoUnifyFieldAllHooksRunBundlesBothMasterConsequenceRoutes_iff_components
+    st fuel env fs st' rf).1 h_routes
+
+/-- Direct components-route decomposition for `PrincipalNoUnifyFieldAllHooksRunBundlesBothMasterConsequenceRoutes`. -/
+theorem principalNoUnifyFieldAllHooksRunBundlesBothMasterConsequenceRoutes_as_components_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_comp :
+      PrincipalNoUnifyFieldAllHooksRunBundlesBothMasterConsequenceRoutesComponents
+        st fuel env fs st' rf) :
+    PrincipalNoUnifyFieldAllHooksRunBundlesBothMasterConsequenceRoutesComponents
+      st fuel env fs st' rf :=
+  (principalNoUnifyFieldAllHooksRunBundlesBothMasterConsequenceRoutes_iff_components
+    st fuel env fs st' rf).1
+    (principalNoUnifyFieldAllHooksRunBundlesBothMasterConsequenceRoutes_of_components
+      st fuel env fs st' rf h_comp)
+
 /--
 Cross-route coherence constructor: successful no-unify field runs yield
 all-hooks run bundles on both master consequence routes.
@@ -13975,6 +14093,136 @@ structure PrincipalNoUnifyFieldHookIrrelevanceBothMasterConsequenceRoutes
       {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook},
       (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
         ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf)
+
+/-- Explicit component alias for `PrincipalNoUnifyExprHookIrrelevanceBothMasterConsequenceRoutes`. -/
+abbrev PrincipalNoUnifyExprHookIrrelevanceBothMasterConsequenceRoutesComponents
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty) : Prop :=
+  (∀ {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+      {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook},
+      (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+        ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty)) ∧
+    (∀ {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+      {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook},
+      (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+        ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty))
+
+/-- `PrincipalNoUnifyExprHookIrrelevanceBothMasterConsequenceRoutes` is equivalent to explicit components. -/
+theorem principalNoUnifyExprHookIrrelevanceBothMasterConsequenceRoutes_iff_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty) :
+    PrincipalNoUnifyExprHookIrrelevanceBothMasterConsequenceRoutes
+      st fuel env e st' ty
+      ↔ PrincipalNoUnifyExprHookIrrelevanceBothMasterConsequenceRoutesComponents
+          st fuel env e st' ty := by
+  constructor
+  · intro h_routes
+    exact ⟨h_routes.viaMasterConsequenceCapstone, h_routes.viaMasterRunBundleConsequence⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2⟩
+
+/-- Build `PrincipalNoUnifyExprHookIrrelevanceBothMasterConsequenceRoutes` from explicit components. -/
+theorem principalNoUnifyExprHookIrrelevanceBothMasterConsequenceRoutes_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_comp :
+      PrincipalNoUnifyExprHookIrrelevanceBothMasterConsequenceRoutesComponents
+        st fuel env e st' ty) :
+    PrincipalNoUnifyExprHookIrrelevanceBothMasterConsequenceRoutes
+      st fuel env e st' ty :=
+  (principalNoUnifyExprHookIrrelevanceBothMasterConsequenceRoutes_iff_components
+    st fuel env e st' ty).2 h_comp
+
+/-- Decompose `PrincipalNoUnifyExprHookIrrelevanceBothMasterConsequenceRoutes` into explicit components. -/
+theorem principalNoUnifyExprHookIrrelevanceBothMasterConsequenceRoutes_as_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_routes :
+      PrincipalNoUnifyExprHookIrrelevanceBothMasterConsequenceRoutes
+        st fuel env e st' ty) :
+    PrincipalNoUnifyExprHookIrrelevanceBothMasterConsequenceRoutesComponents
+      st fuel env e st' ty :=
+  (principalNoUnifyExprHookIrrelevanceBothMasterConsequenceRoutes_iff_components
+    st fuel env e st' ty).1 h_routes
+
+/-- Direct components-route decomposition for `PrincipalNoUnifyExprHookIrrelevanceBothMasterConsequenceRoutes`. -/
+theorem principalNoUnifyExprHookIrrelevanceBothMasterConsequenceRoutes_as_components_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_comp :
+      PrincipalNoUnifyExprHookIrrelevanceBothMasterConsequenceRoutesComponents
+        st fuel env e st' ty) :
+    PrincipalNoUnifyExprHookIrrelevanceBothMasterConsequenceRoutesComponents
+      st fuel env e st' ty :=
+  (principalNoUnifyExprHookIrrelevanceBothMasterConsequenceRoutes_iff_components
+    st fuel env e st' ty).1
+    (principalNoUnifyExprHookIrrelevanceBothMasterConsequenceRoutes_of_components
+      st fuel env e st' ty h_comp)
+
+/-- Explicit component alias for `PrincipalNoUnifyFieldHookIrrelevanceBothMasterConsequenceRoutes`. -/
+abbrev PrincipalNoUnifyFieldHookIrrelevanceBothMasterConsequenceRoutesComponents
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields) : Prop :=
+  (∀ {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+      {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook},
+      (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+        ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf)) ∧
+    (∀ {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+      {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook},
+      (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+        ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf))
+
+/-- `PrincipalNoUnifyFieldHookIrrelevanceBothMasterConsequenceRoutes` is equivalent to explicit components. -/
+theorem principalNoUnifyFieldHookIrrelevanceBothMasterConsequenceRoutes_iff_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields) :
+    PrincipalNoUnifyFieldHookIrrelevanceBothMasterConsequenceRoutes
+      st fuel env fs st' rf
+      ↔ PrincipalNoUnifyFieldHookIrrelevanceBothMasterConsequenceRoutesComponents
+          st fuel env fs st' rf := by
+  constructor
+  · intro h_routes
+    exact ⟨h_routes.viaMasterConsequenceCapstone, h_routes.viaMasterRunBundleConsequence⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2⟩
+
+/-- Build `PrincipalNoUnifyFieldHookIrrelevanceBothMasterConsequenceRoutes` from explicit components. -/
+theorem principalNoUnifyFieldHookIrrelevanceBothMasterConsequenceRoutes_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_comp :
+      PrincipalNoUnifyFieldHookIrrelevanceBothMasterConsequenceRoutesComponents
+        st fuel env fs st' rf) :
+    PrincipalNoUnifyFieldHookIrrelevanceBothMasterConsequenceRoutes
+      st fuel env fs st' rf :=
+  (principalNoUnifyFieldHookIrrelevanceBothMasterConsequenceRoutes_iff_components
+    st fuel env fs st' rf).2 h_comp
+
+/-- Decompose `PrincipalNoUnifyFieldHookIrrelevanceBothMasterConsequenceRoutes` into explicit components. -/
+theorem principalNoUnifyFieldHookIrrelevanceBothMasterConsequenceRoutes_as_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_routes :
+      PrincipalNoUnifyFieldHookIrrelevanceBothMasterConsequenceRoutes
+        st fuel env fs st' rf) :
+    PrincipalNoUnifyFieldHookIrrelevanceBothMasterConsequenceRoutesComponents
+      st fuel env fs st' rf :=
+  (principalNoUnifyFieldHookIrrelevanceBothMasterConsequenceRoutes_iff_components
+    st fuel env fs st' rf).1 h_routes
+
+/-- Direct components-route decomposition for `PrincipalNoUnifyFieldHookIrrelevanceBothMasterConsequenceRoutes`. -/
+theorem principalNoUnifyFieldHookIrrelevanceBothMasterConsequenceRoutes_as_components_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_comp :
+      PrincipalNoUnifyFieldHookIrrelevanceBothMasterConsequenceRoutesComponents
+        st fuel env fs st' rf) :
+    PrincipalNoUnifyFieldHookIrrelevanceBothMasterConsequenceRoutesComponents
+      st fuel env fs st' rf :=
+  (principalNoUnifyFieldHookIrrelevanceBothMasterConsequenceRoutes_iff_components
+    st fuel env fs st' rf).1
+    (principalNoUnifyFieldHookIrrelevanceBothMasterConsequenceRoutes_of_components
+      st fuel env fs st' rf h_comp)
 
 /--
 Cross-route coherence constructor: successful no-unify field runs yield
@@ -14260,6 +14508,124 @@ structure PrincipalNoUnifyFieldAllHooksRouteSurfaceBothMasterConsequenceRoutes
     PrincipalNoUnifyFieldAllHooksRouteSurface st fuel env fs st' rf
   viaMasterRunBundleConsequence :
     PrincipalNoUnifyFieldAllHooksRouteSurface st fuel env fs st' rf
+
+/-- Explicit component alias for `PrincipalNoUnifyExprAllHooksRouteSurfaceBothMasterConsequenceRoutes`. -/
+abbrev PrincipalNoUnifyExprAllHooksRouteSurfaceBothMasterConsequenceRoutesComponents
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty) : Prop :=
+  PrincipalNoUnifyExprAllHooksRouteSurface st fuel env e st' ty ∧
+    PrincipalNoUnifyExprAllHooksRouteSurface st fuel env e st' ty
+
+/-- `PrincipalNoUnifyExprAllHooksRouteSurfaceBothMasterConsequenceRoutes` is equivalent to explicit components. -/
+theorem principalNoUnifyExprAllHooksRouteSurfaceBothMasterConsequenceRoutes_iff_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty) :
+    PrincipalNoUnifyExprAllHooksRouteSurfaceBothMasterConsequenceRoutes
+      st fuel env e st' ty
+      ↔ PrincipalNoUnifyExprAllHooksRouteSurfaceBothMasterConsequenceRoutesComponents
+          st fuel env e st' ty := by
+  constructor
+  · intro h_routes
+    exact ⟨h_routes.viaMasterConsequenceCapstone, h_routes.viaMasterRunBundleConsequence⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2⟩
+
+/-- Build `PrincipalNoUnifyExprAllHooksRouteSurfaceBothMasterConsequenceRoutes` from explicit components. -/
+theorem principalNoUnifyExprAllHooksRouteSurfaceBothMasterConsequenceRoutes_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_comp :
+      PrincipalNoUnifyExprAllHooksRouteSurfaceBothMasterConsequenceRoutesComponents
+        st fuel env e st' ty) :
+    PrincipalNoUnifyExprAllHooksRouteSurfaceBothMasterConsequenceRoutes
+      st fuel env e st' ty :=
+  (principalNoUnifyExprAllHooksRouteSurfaceBothMasterConsequenceRoutes_iff_components
+    st fuel env e st' ty).2 h_comp
+
+/-- Decompose `PrincipalNoUnifyExprAllHooksRouteSurfaceBothMasterConsequenceRoutes` into explicit components. -/
+theorem principalNoUnifyExprAllHooksRouteSurfaceBothMasterConsequenceRoutes_as_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_routes :
+      PrincipalNoUnifyExprAllHooksRouteSurfaceBothMasterConsequenceRoutes
+        st fuel env e st' ty) :
+    PrincipalNoUnifyExprAllHooksRouteSurfaceBothMasterConsequenceRoutesComponents
+      st fuel env e st' ty :=
+  (principalNoUnifyExprAllHooksRouteSurfaceBothMasterConsequenceRoutes_iff_components
+    st fuel env e st' ty).1 h_routes
+
+/-- Direct components-route decomposition for `PrincipalNoUnifyExprAllHooksRouteSurfaceBothMasterConsequenceRoutes`. -/
+theorem principalNoUnifyExprAllHooksRouteSurfaceBothMasterConsequenceRoutes_as_components_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_comp :
+      PrincipalNoUnifyExprAllHooksRouteSurfaceBothMasterConsequenceRoutesComponents
+        st fuel env e st' ty) :
+    PrincipalNoUnifyExprAllHooksRouteSurfaceBothMasterConsequenceRoutesComponents
+      st fuel env e st' ty :=
+  (principalNoUnifyExprAllHooksRouteSurfaceBothMasterConsequenceRoutes_iff_components
+    st fuel env e st' ty).1
+    (principalNoUnifyExprAllHooksRouteSurfaceBothMasterConsequenceRoutes_of_components
+      st fuel env e st' ty h_comp)
+
+/-- Explicit component alias for `PrincipalNoUnifyFieldAllHooksRouteSurfaceBothMasterConsequenceRoutes`. -/
+abbrev PrincipalNoUnifyFieldAllHooksRouteSurfaceBothMasterConsequenceRoutesComponents
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields) : Prop :=
+  PrincipalNoUnifyFieldAllHooksRouteSurface st fuel env fs st' rf ∧
+    PrincipalNoUnifyFieldAllHooksRouteSurface st fuel env fs st' rf
+
+/-- `PrincipalNoUnifyFieldAllHooksRouteSurfaceBothMasterConsequenceRoutes` is equivalent to explicit components. -/
+theorem principalNoUnifyFieldAllHooksRouteSurfaceBothMasterConsequenceRoutes_iff_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields) :
+    PrincipalNoUnifyFieldAllHooksRouteSurfaceBothMasterConsequenceRoutes
+      st fuel env fs st' rf
+      ↔ PrincipalNoUnifyFieldAllHooksRouteSurfaceBothMasterConsequenceRoutesComponents
+          st fuel env fs st' rf := by
+  constructor
+  · intro h_routes
+    exact ⟨h_routes.viaMasterConsequenceCapstone, h_routes.viaMasterRunBundleConsequence⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2⟩
+
+/-- Build `PrincipalNoUnifyFieldAllHooksRouteSurfaceBothMasterConsequenceRoutes` from explicit components. -/
+theorem principalNoUnifyFieldAllHooksRouteSurfaceBothMasterConsequenceRoutes_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_comp :
+      PrincipalNoUnifyFieldAllHooksRouteSurfaceBothMasterConsequenceRoutesComponents
+        st fuel env fs st' rf) :
+    PrincipalNoUnifyFieldAllHooksRouteSurfaceBothMasterConsequenceRoutes
+      st fuel env fs st' rf :=
+  (principalNoUnifyFieldAllHooksRouteSurfaceBothMasterConsequenceRoutes_iff_components
+    st fuel env fs st' rf).2 h_comp
+
+/-- Decompose `PrincipalNoUnifyFieldAllHooksRouteSurfaceBothMasterConsequenceRoutes` into explicit components. -/
+theorem principalNoUnifyFieldAllHooksRouteSurfaceBothMasterConsequenceRoutes_as_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_routes :
+      PrincipalNoUnifyFieldAllHooksRouteSurfaceBothMasterConsequenceRoutes
+        st fuel env fs st' rf) :
+    PrincipalNoUnifyFieldAllHooksRouteSurfaceBothMasterConsequenceRoutesComponents
+      st fuel env fs st' rf :=
+  (principalNoUnifyFieldAllHooksRouteSurfaceBothMasterConsequenceRoutes_iff_components
+    st fuel env fs st' rf).1 h_routes
+
+/-- Direct components-route decomposition for `PrincipalNoUnifyFieldAllHooksRouteSurfaceBothMasterConsequenceRoutes`. -/
+theorem principalNoUnifyFieldAllHooksRouteSurfaceBothMasterConsequenceRoutes_as_components_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_comp :
+      PrincipalNoUnifyFieldAllHooksRouteSurfaceBothMasterConsequenceRoutesComponents
+        st fuel env fs st' rf) :
+    PrincipalNoUnifyFieldAllHooksRouteSurfaceBothMasterConsequenceRoutesComponents
+      st fuel env fs st' rf :=
+  (principalNoUnifyFieldAllHooksRouteSurfaceBothMasterConsequenceRoutes_iff_components
+    st fuel env fs st' rf).1
+    (principalNoUnifyFieldAllHooksRouteSurfaceBothMasterConsequenceRoutes_of_components
+      st fuel env fs st' rf h_comp)
 
 /--
 Cross-route coherence constructor: successful no-unify expression runs export
