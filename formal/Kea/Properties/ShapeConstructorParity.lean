@@ -3346,6 +3346,135 @@ theorem rank1ShapeConstDimKernelSlice : Rank1ShapeConstDimKernelSlice := by
   · intro st fuel d1 d2
     exact tensor_rank1_unify_consts_decision_of_dim_kernel_none st fuel d1 d2
 
+/-- Explicit component contract tuple for `Rank1ShapeConstDimKernelSlice`. -/
+abbrev Rank1ShapeConstDimKernelSliceComponents : Prop :=
+  (∀ st fuel d1 d2,
+    unify st (fuel + 1)
+      (.fixedSizeList .int (.const d1))
+      (.fixedSizeList .int (.const d2))
+      = .ok st ↔
+      unifyDim DimSubst.empty (fuel + 1) (.const d1) (.const d2) = some DimSubst.empty)
+  ∧
+  (∀ st fuel d1 d2,
+    unify st (fuel + 1)
+      (.fixedSizeList .int (.const d1))
+      (.fixedSizeList .int (.const d2))
+      =
+      (match unifyDim DimSubst.empty (fuel + 1) (.const d1) (.const d2) with
+       | some _ => .ok st
+       | none => .err "type mismatch"))
+  ∧
+  (∀ st fuel d1 d2,
+    unifyDim DimSubst.empty (fuel + 1) (.const d1) (.const d2) = none →
+    unify st (fuel + 1)
+      (.fixedSizeList .int (.const d1))
+      (.fixedSizeList .int (.const d2))
+      = .err "type mismatch")
+  ∧
+  (∀ st fuel d1 d2,
+    unify st (fuel + 1)
+      (.fixedSizeList .int (.const d1))
+      (.fixedSizeList .int (.const d2))
+      = .err "type mismatch" ↔
+    unifyDim DimSubst.empty (fuel + 1) (.const d1) (.const d2) = none)
+  ∧
+  (∀ st fuel d1 d2,
+    unify st (fuel + 1)
+      (.fixedSizeList .int (.const d1))
+      (.fixedSizeList .int (.const d2))
+      =
+      if unifyDim DimSubst.empty (fuel + 1) (.const d1) (.const d2) = none
+      then .err "type mismatch"
+      else .ok st)
+  ∧
+  (∀ st fuel d1 d2,
+    unify st (fuel + 1)
+      (.tensor .int [Dim.const d1])
+      (.tensor .int [Dim.const d2])
+      = .ok st ↔
+      unifyDim DimSubst.empty (fuel + 1) (.const d1) (.const d2) = some DimSubst.empty)
+  ∧
+  (∀ st fuel d1 d2,
+    unify st (fuel + 1)
+      (.tensor .int [Dim.const d1])
+      (.tensor .int [Dim.const d2])
+      =
+      (match unifyDim DimSubst.empty (fuel + 1) (.const d1) (.const d2) with
+       | some _ => .ok st
+       | none => .err "type mismatch"))
+  ∧
+  (∀ st fuel d1 d2,
+    unifyDim DimSubst.empty (fuel + 1) (.const d1) (.const d2) = none →
+    unify st (fuel + 1)
+      (.tensor .int [Dim.const d1])
+      (.tensor .int [Dim.const d2])
+      = .err "type mismatch")
+  ∧
+  (∀ st fuel d1 d2,
+    unify st (fuel + 1)
+      (.tensor .int [Dim.const d1])
+      (.tensor .int [Dim.const d2])
+      = .err "type mismatch" ↔
+    unifyDim DimSubst.empty (fuel + 1) (.const d1) (.const d2) = none)
+  ∧
+  (∀ st fuel d1 d2,
+    unify st (fuel + 1)
+      (.tensor .int [Dim.const d1])
+      (.tensor .int [Dim.const d2])
+      =
+      if unifyDim DimSubst.empty (fuel + 1) (.const d1) (.const d2) = none
+      then .err "type mismatch"
+      else .ok st)
+
+/-- Decompose `Rank1ShapeConstDimKernelSlice` into explicit component
+    contracts. -/
+theorem rank1ShapeConstDimKernelSlice_as_components
+    (slice : Rank1ShapeConstDimKernelSlice) :
+    Rank1ShapeConstDimKernelSliceComponents :=
+  ⟨slice.fixedSizeList_ok_iff_dim_kernel_success,
+    slice.fixedSizeList_match_decision,
+    slice.fixedSizeList_reject_of_dim_kernel_none,
+    slice.fixedSizeList_err_iff_dim_kernel_none,
+    slice.fixedSizeList_decision_of_dim_kernel_none,
+    slice.tensor_rank1_ok_iff_dim_kernel_success,
+    slice.tensor_rank1_match_decision,
+    slice.tensor_rank1_reject_of_dim_kernel_none,
+    slice.tensor_rank1_err_iff_dim_kernel_none,
+    slice.tensor_rank1_decision_of_dim_kernel_none⟩
+
+/-- Build `Rank1ShapeConstDimKernelSlice` from explicit component contracts. -/
+theorem rank1ShapeConstDimKernelSlice_of_components
+    (h_comp : Rank1ShapeConstDimKernelSliceComponents) :
+    Rank1ShapeConstDimKernelSlice :=
+  { fixedSizeList_ok_iff_dim_kernel_success := h_comp.1
+    fixedSizeList_match_decision := h_comp.2.1
+    fixedSizeList_reject_of_dim_kernel_none := h_comp.2.2.1
+    fixedSizeList_err_iff_dim_kernel_none := h_comp.2.2.2.1
+    fixedSizeList_decision_of_dim_kernel_none := h_comp.2.2.2.2.1
+    tensor_rank1_ok_iff_dim_kernel_success := h_comp.2.2.2.2.2.1
+    tensor_rank1_match_decision := h_comp.2.2.2.2.2.2.1
+    tensor_rank1_reject_of_dim_kernel_none := h_comp.2.2.2.2.2.2.2.1
+    tensor_rank1_err_iff_dim_kernel_none := h_comp.2.2.2.2.2.2.2.2.1
+    tensor_rank1_decision_of_dim_kernel_none := h_comp.2.2.2.2.2.2.2.2.2 }
+
+/-- `Rank1ShapeConstDimKernelSlice` is equivalent to its explicit component
+    contract tuple. -/
+theorem rank1ShapeConstDimKernelSlice_iff_components
+    (slice : Rank1ShapeConstDimKernelSlice) :
+    Rank1ShapeConstDimKernelSlice ↔ Rank1ShapeConstDimKernelSliceComponents := by
+  constructor
+  · intro h
+    exact rank1ShapeConstDimKernelSlice_as_components h
+  · intro h_comp
+    exact rank1ShapeConstDimKernelSlice_of_components h_comp
+
+/-- Direct components-route decomposition for
+    `Rank1ShapeConstDimKernelSlice`. -/
+theorem rank1ShapeConstDimKernelSlice_as_components_of_components
+    (h_comp : Rank1ShapeConstDimKernelSliceComponents) :
+    Rank1ShapeConstDimKernelSliceComponents := by
+  simpa using h_comp
+
 /-- Packaged arbitrary-rank tensor constant-shape contracts keyed by the
     pointwise dim-list kernel. -/
 structure TensorConstShapeDimListKernelSlice : Prop where
