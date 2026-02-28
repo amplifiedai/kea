@@ -3048,3 +3048,74 @@ theorem tensor_rank1_unify_consts_match_decision
       subst hs_empty
       have h_ok := tensor_rank1_unify_consts_of_dim_kernel_success st fuel d1 d2 h_dim
       simp [h_ok]
+
+/-- Packaged rank-1 shape constructor contracts keyed by the scalar dim-kernel. -/
+structure Rank1ShapeConstDimKernelSlice : Prop where
+  fixedSizeList_ok_iff_dim_kernel_success :
+    ∀ st fuel d1 d2,
+      unify st (fuel + 1)
+        (.fixedSizeList .int (.const d1))
+        (.fixedSizeList .int (.const d2))
+        = .ok st ↔
+        unifyDim DimSubst.empty (fuel + 1) (.const d1) (.const d2) = some DimSubst.empty
+  fixedSizeList_match_decision :
+    ∀ st fuel d1 d2,
+      unify st (fuel + 1)
+        (.fixedSizeList .int (.const d1))
+        (.fixedSizeList .int (.const d2))
+        =
+        (match unifyDim DimSubst.empty (fuel + 1) (.const d1) (.const d2) with
+         | some _ => .ok st
+         | none => .err "type mismatch")
+  fixedSizeList_reject_of_dim_kernel_none :
+    ∀ st fuel d1 d2,
+      unifyDim DimSubst.empty (fuel + 1) (.const d1) (.const d2) = none →
+      unify st (fuel + 1)
+        (.fixedSizeList .int (.const d1))
+        (.fixedSizeList .int (.const d2))
+        = .err "type mismatch"
+  tensor_rank1_ok_iff_dim_kernel_success :
+    ∀ st fuel d1 d2,
+      unify st (fuel + 1)
+        (.tensor .int [Dim.const d1])
+        (.tensor .int [Dim.const d2])
+        = .ok st ↔
+        unifyDim DimSubst.empty (fuel + 1) (.const d1) (.const d2) = some DimSubst.empty
+  tensor_rank1_match_decision :
+    ∀ st fuel d1 d2,
+      unify st (fuel + 1)
+        (.tensor .int [Dim.const d1])
+        (.tensor .int [Dim.const d2])
+        =
+        (match unifyDim DimSubst.empty (fuel + 1) (.const d1) (.const d2) with
+         | some _ => .ok st
+         | none => .err "type mismatch")
+  tensor_rank1_reject_of_dim_kernel_none :
+    ∀ st fuel d1 d2,
+      unifyDim DimSubst.empty (fuel + 1) (.const d1) (.const d2) = none →
+      unify st (fuel + 1)
+        (.tensor .int [Dim.const d1])
+        (.tensor .int [Dim.const d2])
+        = .err "type mismatch"
+
+/-- Canonical rank-1 shape/dim-kernel contract package for downstream reuse. -/
+theorem rank1ShapeConstDimKernelSlice : Rank1ShapeConstDimKernelSlice := by
+  refine
+    { fixedSizeList_ok_iff_dim_kernel_success := ?_
+      fixedSizeList_match_decision := ?_
+      fixedSizeList_reject_of_dim_kernel_none := ?_
+      tensor_rank1_ok_iff_dim_kernel_success := ?_
+      tensor_rank1_match_decision := ?_
+      tensor_rank1_reject_of_dim_kernel_none := ?_ }
+  · intro st fuel d1 d2
+    exact fixedSizeList_unify_consts_ok_iff_dim_kernel_success st fuel d1 d2
+  · intro st fuel d1 d2
+    exact fixedSizeList_unify_consts_match_decision st fuel d1 d2
+  · intro st fuel d1 d2 h_none
+    exact fixedSizeList_unify_consts_reject_of_dim_kernel_none st fuel d1 d2 h_none
+  · intro st fuel d1 d2
+    exact tensor_rank1_unify_consts_ok_iff_dim_kernel_success st fuel d1 d2
+  · intro st fuel d1 d2
+    exact tensor_rank1_unify_consts_match_decision st fuel d1 d2
+  · intro st fuel d1 d2 h_none
+    exact tensor_rank1_unify_consts_reject_of_dim_kernel_none st fuel d1 d2 h_none
