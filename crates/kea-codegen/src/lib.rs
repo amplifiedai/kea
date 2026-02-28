@@ -24,7 +24,7 @@ use kea_mir::{
     MirBinaryOp, MirCallee, MirEffectOpClass, MirFunction, MirInst, MirLiteral, MirModule,
     MirTerminator, MirUnaryOp, MirValueId, lower_hir_module,
 };
-use kea_types::{EffectRow, FloatWidth, IntWidth, Signedness, Type};
+use kea_types::{EffectRow, FloatWidth, IntWidth, RecordType, Signedness, SumType, Type};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BackendConfig {
@@ -588,6 +588,8 @@ fn compile_into_module<M: Module>(
         None
     };
 
+    let drop_func_ids = declare_drop_functions(module, layout_plan, requires_free)?;
+
     let stdout_func_id = if requires_io_stdout {
         let ptr_ty = module.target_config().pointer_type();
         let mut signature = module.make_signature();
@@ -782,6 +784,10 @@ fn compile_into_module<M: Module>(
         None
     };
 
+    if requires_free {
+        define_drop_functions(module, layout_plan, &drop_func_ids, free_func_id)?;
+    }
+
     let mut builder_context = FunctionBuilderContext::new();
 
     for function in &mir.functions {
@@ -831,6 +837,7 @@ fn compile_into_module<M: Module>(
                     function: function.name.clone(),
                 }
             })?;
+            let value_types = infer_mir_value_types(function, layout_plan);
 
             for block in &function.blocks {
                 let clif_block =
@@ -891,6 +898,8 @@ fn compile_into_module<M: Module>(
                     net_recv_func_id,
                     strlen_func_id,
                     memcpy_func_id,
+                    drop_func_ids: &drop_func_ids,
+                    value_types: &value_types,
                     runtime_signatures: &runtime_signatures,
                     current_runtime_sig,
                 };
@@ -1440,6 +1449,229 @@ fn allocate_heap_payload_dynamic(
     Ok(builder.ins().iadd_imm(raw_ptr, 8))
 }
 
+fn is_managed_heap_type(ty: &Type) -> bool {
+    matches!(
+        ty,
+        Type::String | Type::Record(_) | Type::Sum(_) | Type::Option(_) | Type::Result(_, _)
+    )
+}
+
+fn drop_sum_name_for_type(ty: &Type) -> Option<&str> {
+    match ty {
+        Type::Sum(sum) => Some(sum.name.as_str()),
+        Type::Option(_) => Some("Option"),
+        Type::Result(_, _) => Some("Result"),
+        _ => None,
+    }
+}
+
+fn drop_function_for_type(ty: &Type, drop_func_ids: &DropFunctionIds) -> Option<FuncId> {
+    match ty {
+        Type::Record(record) => drop_func_ids.records.get(record.name.as_str()).copied(),
+        _ => drop_sum_name_for_type(ty)
+            .and_then(|name| drop_func_ids.sums.get(name))
+            .copied(),
+    }
+}
+
+fn sum_type_has_immediate_variants(ty: &Type, layout_plan: &BackendLayoutPlan) -> bool {
+    drop_sum_name_for_type(ty)
+        .and_then(|name| layout_plan.sums.get(name))
+        .is_some_and(|layout| layout.variant_field_counts.values().any(|count| *count == 0))
+}
+
+fn mangle_drop_symbol(prefix: &str, name: &str) -> String {
+    let mut out = String::with_capacity(prefix.len() + name.len() + 8);
+    out.push_str(prefix);
+    out.push_str("__");
+    for ch in name.chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch);
+        } else {
+            out.push('_');
+        }
+    }
+    out
+}
+
+fn infer_mir_value_types(
+    function: &MirFunction,
+    layout_plan: &BackendLayoutPlan,
+) -> BTreeMap<MirValueId, Type> {
+    let mut value_types = BTreeMap::new();
+
+    for (index, param_ty) in function.signature.params.iter().enumerate() {
+        value_types.insert(MirValueId(index as u32), param_ty.clone());
+    }
+
+    for block in &function.blocks {
+        for param in &block.params {
+            value_types.insert(param.id.clone(), param.ty.clone());
+        }
+        for inst in &block.instructions {
+            match inst {
+                MirInst::Const { dest, literal } => {
+                    let ty = match literal {
+                        MirLiteral::Int(_) => Type::Int,
+                        MirLiteral::Float(_) => Type::Float,
+                        MirLiteral::Bool(_) => Type::Bool,
+                        MirLiteral::String(_) => Type::String,
+                        MirLiteral::Unit => Type::Unit,
+                    };
+                    value_types.insert(dest.clone(), ty);
+                }
+                MirInst::Binary { dest, op, left, .. } => {
+                    let ty = match op {
+                        MirBinaryOp::Eq
+                        | MirBinaryOp::Neq
+                        | MirBinaryOp::Lt
+                        | MirBinaryOp::Lte
+                        | MirBinaryOp::Gt
+                        | MirBinaryOp::Gte
+                        | MirBinaryOp::And
+                        | MirBinaryOp::Or => Type::Bool,
+                        MirBinaryOp::Concat => Type::String,
+                        _ => value_types.get(left).cloned().unwrap_or(Type::Int),
+                    };
+                    value_types.insert(dest.clone(), ty);
+                }
+                MirInst::Unary { dest, op, operand } => {
+                    let ty = match op {
+                        MirUnaryOp::Not => Type::Bool,
+                        _ => value_types.get(operand).cloned().unwrap_or(Type::Int),
+                    };
+                    value_types.insert(dest.clone(), ty);
+                }
+                MirInst::RecordInit {
+                    dest, record_type, ..
+                } => {
+                    value_types.insert(
+                        dest.clone(),
+                        Type::Record(RecordType {
+                            name: record_type.clone(),
+                            params: Vec::new(),
+                            row: kea_types::RowType::closed(Vec::new()),
+                        }),
+                    );
+                }
+                MirInst::SumInit { dest, sum_type, .. } => {
+                    value_types.insert(
+                        dest.clone(),
+                        Type::Sum(SumType {
+                            name: sum_type.clone(),
+                            type_args: Vec::new(),
+                            variants: Vec::new(),
+                        }),
+                    );
+                }
+                MirInst::SumTagLoad { dest, .. } => {
+                    value_types.insert(dest.clone(), Type::Int);
+                }
+                MirInst::SumPayloadLoad {
+                    dest,
+                    sum_type,
+                    variant,
+                    field_index,
+                    field_ty,
+                    ..
+                } => {
+                    let resolved = if *field_ty == Type::Dynamic {
+                        layout_plan
+                            .sums
+                            .get(sum_type)
+                            .and_then(|layout| layout.variant_field_types.get(variant))
+                            .and_then(|fields| fields.get(*field_index))
+                            .cloned()
+                            .unwrap_or(Type::Dynamic)
+                    } else {
+                        field_ty.clone()
+                    };
+                    value_types.insert(dest.clone(), resolved);
+                }
+                MirInst::RecordFieldLoad {
+                    dest,
+                    record_type,
+                    field,
+                    field_ty,
+                    ..
+                } => {
+                    let resolved = if *field_ty == Type::Dynamic {
+                        layout_plan
+                            .records
+                            .get(record_type)
+                            .and_then(|layout| layout.field_types.get(field))
+                            .cloned()
+                            .unwrap_or(Type::Dynamic)
+                    } else {
+                        field_ty.clone()
+                    };
+                    value_types.insert(dest.clone(), resolved);
+                }
+                MirInst::ClosureCaptureLoad {
+                    dest, capture_ty, ..
+                } => {
+                    value_types.insert(dest.clone(), capture_ty.clone());
+                }
+                MirInst::Move { dest, src }
+                | MirInst::Borrow { dest, src }
+                | MirInst::TryClaim { dest, src }
+                | MirInst::Freeze { dest, src } => {
+                    let ty = value_types.get(src).cloned().unwrap_or(Type::Dynamic);
+                    value_types.insert(dest.clone(), ty);
+                }
+                MirInst::CowUpdate {
+                    dest,
+                    target,
+                    record_type,
+                    ..
+                } => {
+                    let ty = value_types.get(target).cloned().unwrap_or_else(|| {
+                        Type::Record(RecordType {
+                            name: record_type.clone(),
+                            params: Vec::new(),
+                            row: kea_types::RowType::closed(Vec::new()),
+                        })
+                    });
+                    value_types.insert(dest.clone(), ty);
+                }
+                MirInst::Call {
+                    result: Some(dest),
+                    ret_type,
+                    ..
+                } => {
+                    value_types.insert(dest.clone(), ret_type.clone());
+                }
+                MirInst::StateCellLoad { dest, .. } => {
+                    value_types.insert(dest.clone(), Type::Dynamic);
+                }
+                MirInst::FunctionRef { dest, .. } | MirInst::ClosureInit { dest, .. } => {
+                    value_types.insert(dest.clone(), Type::Dynamic);
+                }
+                MirInst::EffectOp {
+                    result: Some(dest), ..
+                } => {
+                    value_types.insert(dest.clone(), Type::Dynamic);
+                }
+                MirInst::StateCellNew { dest, .. } => {
+                    value_types.insert(dest.clone(), Type::Dynamic);
+                }
+                MirInst::StateCellStore { .. }
+                | MirInst::Retain { .. }
+                | MirInst::Release { .. }
+                | MirInst::HandlerEnter { .. }
+                | MirInst::HandlerExit { .. }
+                | MirInst::Resume { .. }
+                | MirInst::Call { result: None, .. }
+                | MirInst::EffectOp { result: None, .. }
+                | MirInst::Unsupported { .. }
+                | MirInst::Nop => {}
+            }
+        }
+    }
+
+    value_types
+}
+
 struct LowerInstCtx<'a> {
     func_ids: &'a BTreeMap<String, FuncId>,
     external_func_ids: &'a BTreeMap<String, FuncId>,
@@ -1458,8 +1690,291 @@ struct LowerInstCtx<'a> {
     net_recv_func_id: Option<FuncId>,
     strlen_func_id: Option<FuncId>,
     memcpy_func_id: Option<FuncId>,
+    drop_func_ids: &'a DropFunctionIds,
+    value_types: &'a BTreeMap<MirValueId, Type>,
     runtime_signatures: &'a BTreeMap<String, RuntimeFunctionSig>,
     current_runtime_sig: &'a RuntimeFunctionSig,
+}
+
+fn emit_generic_release<M: Module>(
+    module: &mut M,
+    builder: &mut FunctionBuilder,
+    function_name: &str,
+    payload_ptr: Value,
+    free_func_id: Option<FuncId>,
+) -> Result<(), CodegenError> {
+    let free_func_id = free_func_id.ok_or_else(|| CodegenError::UnsupportedMir {
+        function: function_name.to_string(),
+        detail: "release lowering requires imported `free` symbol".to_string(),
+    })?;
+    let rc_ptr = builder.ins().iadd_imm(payload_ptr, -8);
+    let rc_value = builder.ins().load(types::I64, MemFlags::new(), rc_ptr, 0);
+    let next = builder.ins().iadd_imm(rc_value, -1);
+    builder.ins().store(MemFlags::new(), next, rc_ptr, 0);
+
+    let free_ref = module.declare_func_in_func(free_func_id, builder.func);
+    let free_block = builder.create_block();
+    let cont_block = builder.create_block();
+    let is_zero = builder.ins().icmp_imm(IntCC::Equal, next, 0);
+    builder
+        .ins()
+        .brif(is_zero, free_block, &[], cont_block, &[]);
+    builder.switch_to_block(free_block);
+    let _ = builder.ins().call(free_ref, &[rc_ptr]);
+    builder.ins().jump(cont_block, &[]);
+    builder.switch_to_block(cont_block);
+    Ok(())
+}
+
+fn emit_retain(builder: &mut FunctionBuilder, payload_ptr: Value) {
+    let rc_ptr = builder.ins().iadd_imm(payload_ptr, -8);
+    let rc_value = builder.ins().load(types::I64, MemFlags::new(), rc_ptr, 0);
+    let next = builder.ins().iadd_imm(rc_value, 1);
+    builder.ins().store(MemFlags::new(), next, rc_ptr, 0);
+}
+
+fn emit_typed_release<M: Module>(
+    module: &mut M,
+    builder: &mut FunctionBuilder,
+    function_name: &str,
+    payload_ptr: Value,
+    value_ty: Option<&Type>,
+    drop_func_ids: &DropFunctionIds,
+    free_func_id: Option<FuncId>,
+) -> Result<(), CodegenError> {
+    if let Some(ty) = value_ty
+        && is_managed_heap_type(ty)
+        && let Some(drop_func_id) = drop_function_for_type(ty, drop_func_ids)
+    {
+        let drop_ref = module.declare_func_in_func(drop_func_id, builder.func);
+        let _ = builder.ins().call(drop_ref, &[payload_ptr]);
+        return Ok(());
+    }
+
+    emit_generic_release(module, builder, function_name, payload_ptr, free_func_id)
+}
+
+fn declare_drop_functions<M: Module>(
+    module: &mut M,
+    layout_plan: &BackendLayoutPlan,
+    enabled: bool,
+) -> Result<DropFunctionIds, CodegenError> {
+    if !enabled {
+        return Ok(DropFunctionIds::default());
+    }
+    let ptr_ty = module.target_config().pointer_type();
+    let mut signature = module.make_signature();
+    signature.params.push(AbiParam::new(ptr_ty));
+
+    let mut drop_ids = DropFunctionIds::default();
+    for record_name in layout_plan.records.keys() {
+        let symbol = mangle_drop_symbol("__kea_drop_record", record_name);
+        let func_id = module
+            .declare_function(&symbol, Linkage::Local, &signature)
+            .map_err(|detail| CodegenError::Module {
+                detail: detail.to_string(),
+            })?;
+        drop_ids.records.insert(record_name.clone(), func_id);
+    }
+    for sum_name in layout_plan.sums.keys() {
+        let symbol = mangle_drop_symbol("__kea_drop_sum", sum_name);
+        let func_id = module
+            .declare_function(&symbol, Linkage::Local, &signature)
+            .map_err(|detail| CodegenError::Module {
+                detail: detail.to_string(),
+            })?;
+        drop_ids.sums.insert(sum_name.clone(), func_id);
+    }
+    Ok(drop_ids)
+}
+
+fn define_record_drop_function<M: Module>(
+    module: &mut M,
+    type_name: &str,
+    _layout: &BackendRecordLayout,
+    drop_func_ids: &DropFunctionIds,
+    free_func_id: Option<FuncId>,
+) -> Result<(), CodegenError> {
+    let func_id = *drop_func_ids
+        .records
+        .get(type_name)
+        .ok_or_else(|| CodegenError::UnsupportedMir {
+            function: type_name.to_string(),
+            detail: format!("missing declared drop function for record `{type_name}`"),
+        })?;
+
+    let mut context = module.make_context();
+    let ptr_ty = module.target_config().pointer_type();
+    context.func.signature.params.push(AbiParam::new(ptr_ty));
+
+    let mut builder_context = FunctionBuilderContext::new();
+    let mut builder = FunctionBuilder::new(&mut context.func, &mut builder_context);
+    let entry = builder.create_block();
+    let unique_block = builder.create_block();
+    let free_block = builder.create_block();
+    let ret_block = builder.create_block();
+    builder.append_block_params_for_function_params(entry);
+    builder.switch_to_block(entry);
+
+    let payload_ptr = builder
+        .block_params(entry)
+        .first()
+        .copied()
+        .ok_or_else(|| CodegenError::UnsupportedMir {
+            function: type_name.to_string(),
+            detail: "drop function missing payload parameter".to_string(),
+        })?;
+    let rc_ptr = builder.ins().iadd_imm(payload_ptr, -8);
+    let rc_value = builder.ins().load(types::I64, MemFlags::new(), rc_ptr, 0);
+    let next = builder.ins().iadd_imm(rc_value, -1);
+    builder.ins().store(MemFlags::new(), next, rc_ptr, 0);
+    let is_zero = builder.ins().icmp_imm(IntCC::Equal, next, 0);
+    builder
+        .ins()
+        .brif(is_zero, unique_block, &[], ret_block, &[]);
+
+    builder.switch_to_block(unique_block);
+    builder.ins().jump(free_block, &[]);
+
+    builder.switch_to_block(free_block);
+    let free_func_id = free_func_id.ok_or_else(|| CodegenError::UnsupportedMir {
+        function: type_name.to_string(),
+        detail: "drop lowering requires imported `free` symbol".to_string(),
+    })?;
+    let free_ref = module.declare_func_in_func(free_func_id, builder.func);
+    let _ = builder.ins().call(free_ref, &[rc_ptr]);
+    builder.ins().jump(ret_block, &[]);
+
+    builder.switch_to_block(ret_block);
+    builder.ins().return_(&[]);
+    builder.seal_all_blocks();
+    builder.finalize();
+
+    module
+        .define_function(func_id, &mut context)
+        .map_err(|detail| CodegenError::Module {
+            detail: format!("{detail:?}"),
+        })?;
+    module.clear_context(&mut context);
+    Ok(())
+}
+
+fn define_sum_drop_function<M: Module>(
+    module: &mut M,
+    type_name: &str,
+    layout: &BackendSumLayout,
+    drop_func_ids: &DropFunctionIds,
+    free_func_id: Option<FuncId>,
+) -> Result<(), CodegenError> {
+    let func_id = *drop_func_ids
+        .sums
+        .get(type_name)
+        .ok_or_else(|| CodegenError::UnsupportedMir {
+            function: type_name.to_string(),
+            detail: format!("missing declared drop function for sum `{type_name}`"),
+        })?;
+
+    let mut context = module.make_context();
+    let ptr_ty = module.target_config().pointer_type();
+    context.func.signature.params.push(AbiParam::new(ptr_ty));
+
+    let mut builder_context = FunctionBuilderContext::new();
+    let mut builder = FunctionBuilder::new(&mut context.func, &mut builder_context);
+    let entry = builder.create_block();
+    let unique_block = builder.create_block();
+    let free_block = builder.create_block();
+    let ret_block = builder.create_block();
+    builder.append_block_params_for_function_params(entry);
+    builder.switch_to_block(entry);
+
+    let payload_ptr = builder
+        .block_params(entry)
+        .first()
+        .copied()
+        .ok_or_else(|| CodegenError::UnsupportedMir {
+            function: type_name.to_string(),
+            detail: "drop function missing payload parameter".to_string(),
+        })?;
+    let has_unit_variant = layout.variant_field_counts.values().any(|count| *count == 0);
+    let has_payload_variant = layout.variant_field_counts.values().any(|count| *count > 0);
+    if has_unit_variant && !has_payload_variant {
+        builder.ins().return_(&[]);
+        builder.seal_all_blocks();
+        builder.finalize();
+        module
+            .define_function(func_id, &mut context)
+            .map_err(|detail| CodegenError::Module {
+                detail: format!("{detail:?}"),
+            })?;
+        module.clear_context(&mut context);
+        return Ok(());
+    }
+    if has_unit_variant && has_payload_variant {
+        let pointer_block = builder.create_block();
+        let max_tag = i64::try_from(layout.variant_field_counts.len())
+            .map_err(|_| CodegenError::UnsupportedMir {
+                function: type_name.to_string(),
+                detail: format!("sum `{type_name}` has invalid mixed-variant tag cardinality"),
+            })?
+            - 1;
+        let max_tag_value = builder.ins().iconst(ptr_ty, max_tag);
+        let is_immediate =
+            builder
+                .ins()
+                .icmp(IntCC::UnsignedLessThanOrEqual, payload_ptr, max_tag_value);
+        builder
+            .ins()
+            .brif(is_immediate, ret_block, &[], pointer_block, &[]);
+        builder.switch_to_block(pointer_block);
+    }
+    let rc_ptr = builder.ins().iadd_imm(payload_ptr, -8);
+    let rc_value = builder.ins().load(types::I64, MemFlags::new(), rc_ptr, 0);
+    let next = builder.ins().iadd_imm(rc_value, -1);
+    builder.ins().store(MemFlags::new(), next, rc_ptr, 0);
+    let is_zero = builder.ins().icmp_imm(IntCC::Equal, next, 0);
+    builder
+        .ins()
+        .brif(is_zero, unique_block, &[], ret_block, &[]);
+
+    builder.switch_to_block(unique_block);
+    builder.ins().jump(free_block, &[]);
+
+    builder.switch_to_block(free_block);
+    let free_func_id = free_func_id.ok_or_else(|| CodegenError::UnsupportedMir {
+        function: type_name.to_string(),
+        detail: "drop lowering requires imported `free` symbol".to_string(),
+    })?;
+    let free_ref = module.declare_func_in_func(free_func_id, builder.func);
+    let _ = builder.ins().call(free_ref, &[rc_ptr]);
+    builder.ins().jump(ret_block, &[]);
+
+    builder.switch_to_block(ret_block);
+    builder.ins().return_(&[]);
+    builder.seal_all_blocks();
+    builder.finalize();
+
+    module
+        .define_function(func_id, &mut context)
+        .map_err(|detail| CodegenError::Module {
+            detail: format!("{detail:?}"),
+        })?;
+    module.clear_context(&mut context);
+    Ok(())
+}
+
+fn define_drop_functions<M: Module>(
+    module: &mut M,
+    layout_plan: &BackendLayoutPlan,
+    drop_func_ids: &DropFunctionIds,
+    free_func_id: Option<FuncId>,
+) -> Result<(), CodegenError> {
+    for (record_name, layout) in &layout_plan.records {
+        define_record_drop_function(module, record_name, layout, drop_func_ids, free_func_id)?;
+    }
+    for (sum_name, layout) in &layout_plan.sums {
+        define_sum_drop_function(module, sum_name, layout, drop_func_ids, free_func_id)?;
+    }
+    Ok(())
 }
 
 fn lower_instruction<M: Module>(
@@ -1754,6 +2269,13 @@ fn lower_instruction<M: Module>(
             let value = builder
                 .ins()
                 .load(value_ty, MemFlags::new(), base, payload_offset);
+            if is_managed_heap_type(field_ty)
+                && !sum_type_has_immediate_variants(field_ty, ctx.layout_plan)
+            {
+                let ptr_ty = module.target_config().pointer_type();
+                let payload_ptr = coerce_value_to_clif_type(builder, value, ptr_ty);
+                emit_retain(builder, payload_ptr);
+            }
             values.insert(dest.clone(), value);
             Ok(false)
         }
@@ -1793,6 +2315,13 @@ fn lower_instruction<M: Module>(
             };
             let value_ty = clif_type(&resolved_field_ty)?;
             let value = builder.ins().load(value_ty, MemFlags::new(), addr, 0);
+            if is_managed_heap_type(&resolved_field_ty)
+                && !sum_type_has_immediate_variants(&resolved_field_ty, ctx.layout_plan)
+            {
+                let ptr_ty = module.target_config().pointer_type();
+                let payload_ptr = coerce_value_to_clif_type(builder, value, ptr_ty);
+                emit_retain(builder, payload_ptr);
+            }
             values.insert(dest.clone(), value);
             Ok(false)
         }
@@ -2522,38 +3051,23 @@ fn lower_instruction<M: Module>(
             let ptr_ty = module.target_config().pointer_type();
             let payload_ptr = get_value(values, function_name, value)?;
             let payload_ptr = coerce_value_to_clif_type(builder, payload_ptr, ptr_ty);
-            let rc_ptr = builder.ins().iadd_imm(payload_ptr, -8);
-            let rc_value = builder.ins().load(types::I64, MemFlags::new(), rc_ptr, 0);
-            let next = builder.ins().iadd_imm(rc_value, 1);
-            builder.ins().store(MemFlags::new(), next, rc_ptr, 0);
+            emit_retain(builder, payload_ptr);
             Ok(false)
         }
         MirInst::Release { value } => {
             let ptr_ty = module.target_config().pointer_type();
             let payload_ptr = get_value(values, function_name, value)?;
             let payload_ptr = coerce_value_to_clif_type(builder, payload_ptr, ptr_ty);
-            let rc_ptr = builder.ins().iadd_imm(payload_ptr, -8);
-            let rc_value = builder.ins().load(types::I64, MemFlags::new(), rc_ptr, 0);
-            let next = builder.ins().iadd_imm(rc_value, -1);
-            builder.ins().store(MemFlags::new(), next, rc_ptr, 0);
-
-            let free_func_id = ctx
-                .free_func_id
-                .ok_or_else(|| CodegenError::UnsupportedMir {
-                    function: function_name.to_string(),
-                    detail: "release lowering requires imported `free` symbol".to_string(),
-                })?;
-            let free_ref = module.declare_func_in_func(free_func_id, builder.func);
-            let free_block = builder.create_block();
-            let cont_block = builder.create_block();
-            let is_zero = builder.ins().icmp_imm(IntCC::Equal, next, 0);
-            builder
-                .ins()
-                .brif(is_zero, free_block, &[], cont_block, &[]);
-            builder.switch_to_block(free_block);
-            let _ = builder.ins().call(free_ref, &[rc_ptr]);
-            builder.ins().jump(cont_block, &[]);
-            builder.switch_to_block(cont_block);
+            let value_ty = ctx.value_types.get(value);
+            emit_typed_release(
+                module,
+                builder,
+                function_name,
+                payload_ptr,
+                value_ty,
+                ctx.drop_func_ids,
+                ctx.free_func_id,
+            )?;
             Ok(false)
         }
         MirInst::Move { dest, src }
@@ -3286,6 +3800,13 @@ struct BackendSumLayout {
     max_payload_fields: u32,
     variant_tags: BTreeMap<String, u32>,
     variant_field_counts: BTreeMap<String, u32>,
+    variant_field_types: BTreeMap<String, Vec<Type>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+struct DropFunctionIds {
+    records: BTreeMap<String, FuncId>,
+    sums: BTreeMap<String, FuncId>,
 }
 
 fn align_up(value: u32, align: u32) -> u32 {
@@ -3300,25 +3821,85 @@ fn align_up(value: u32, align: u32) -> u32 {
     }
 }
 
+fn annotation_to_backend_type(
+    annotation: &kea_ast::TypeAnnotation,
+    record_names: &BTreeSet<String>,
+    sum_names: &BTreeSet<String>,
+) -> Type {
+    match annotation {
+        kea_ast::TypeAnnotation::Named(name) => match name.as_str() {
+            "Int" => Type::Int,
+            "Float" => Type::Float,
+            "Bool" => Type::Bool,
+            "String" => Type::String,
+            "Unit" => Type::Unit,
+            _ if record_names.contains(name) => Type::Record(RecordType {
+                name: name.clone(),
+                params: Vec::new(),
+                row: kea_types::RowType::closed(Vec::new()),
+            }),
+            _ if sum_names.contains(name) => Type::Sum(SumType {
+                name: name.clone(),
+                type_args: Vec::new(),
+                variants: Vec::new(),
+            }),
+            _ => Type::Dynamic,
+        },
+        kea_ast::TypeAnnotation::Applied(name, args) => {
+            if name == "Option" && args.len() == 1 {
+                let inner = annotation_to_backend_type(&args[0], record_names, sum_names);
+                Type::Option(Box::new(inner))
+            } else if name == "Result" && args.len() == 2 {
+                let ok_ty = annotation_to_backend_type(&args[0], record_names, sum_names);
+                let err_ty = annotation_to_backend_type(&args[1], record_names, sum_names);
+                Type::Result(Box::new(ok_ty), Box::new(err_ty))
+            } else if record_names.contains(name) {
+                Type::Record(RecordType {
+                    name: name.clone(),
+                    params: Vec::new(),
+                    row: kea_types::RowType::closed(Vec::new()),
+                })
+            } else if sum_names.contains(name) {
+                Type::Sum(SumType {
+                    name: name.clone(),
+                    type_args: Vec::new(),
+                    variants: Vec::new(),
+                })
+            } else {
+                Type::Dynamic
+            }
+        }
+        kea_ast::TypeAnnotation::Optional(inner) => Type::Option(Box::new(
+            annotation_to_backend_type(inner, record_names, sum_names),
+        )),
+        _ => Type::Dynamic,
+    }
+}
+
 fn plan_layout_catalog(module: &MirModule) -> Result<BackendLayoutPlan, CodegenError> {
     const WORD_BYTES: u32 = 8;
     const TAG_BYTES: u32 = 4;
 
     let mut plan = BackendLayoutPlan::default();
+    let record_names: BTreeSet<String> = module
+        .layouts
+        .records
+        .iter()
+        .map(|record| record.name.clone())
+        .collect();
+    let sum_names: BTreeSet<String> = module
+        .layouts
+        .sums
+        .iter()
+        .map(|sum| sum.name.clone())
+        .collect();
 
     for record in &module.layouts.records {
         let mut field_offsets = BTreeMap::new();
         let mut field_types = BTreeMap::new();
         for (idx, field) in record.fields.iter().enumerate() {
             field_offsets.insert(field.name.clone(), idx as u32 * WORD_BYTES);
-            let field_ty = match &field.annotation {
-                kea_ast::TypeAnnotation::Named(name) if name == "Int" => Type::Int,
-                kea_ast::TypeAnnotation::Named(name) if name == "Float" => Type::Float,
-                kea_ast::TypeAnnotation::Named(name) if name == "Bool" => Type::Bool,
-                kea_ast::TypeAnnotation::Named(name) if name == "String" => Type::String,
-                kea_ast::TypeAnnotation::Named(name) if name == "Unit" => Type::Unit,
-                _ => Type::Dynamic,
-            };
+            let field_ty = annotation_to_backend_type(&field.annotation, &record_names, &sum_names);
             field_types.insert(field.name.clone(), field_ty);
         }
         let size_bytes = record.fields.len() as u32 * WORD_BYTES;
@@ -3336,6 +3917,7 @@ fn plan_layout_catalog(module: &MirModule) -> Result<BackendLayoutPlan, CodegenE
     for sum in &module.layouts.sums {
         let mut variant_tags = BTreeMap::new();
         let mut variant_field_counts = BTreeMap::new();
+        let mut variant_field_types = BTreeMap::new();
         let max_payload_fields = sum
             .variants
             .iter()
@@ -3345,6 +3927,12 @@ fn plan_layout_catalog(module: &MirModule) -> Result<BackendLayoutPlan, CodegenE
         for variant in &sum.variants {
             variant_tags.insert(variant.name.clone(), variant.tag);
             variant_field_counts.insert(variant.name.clone(), variant.fields.len() as u32);
+            let fields = variant
+                .fields
+                .iter()
+                .map(|field| annotation_to_backend_type(&field.annotation, &record_names, &sum_names))
+                .collect::<Vec<_>>();
+            variant_field_types.insert(variant.name.clone(), fields);
         }
         let payload_offset = align_up(TAG_BYTES, WORD_BYTES);
         let size_bytes = payload_offset + max_payload_fields * WORD_BYTES;
@@ -3358,6 +3946,7 @@ fn plan_layout_catalog(module: &MirModule) -> Result<BackendLayoutPlan, CodegenE
                 max_payload_fields,
                 variant_tags,
                 variant_field_counts,
+                variant_field_types,
             },
         );
     }
@@ -5391,6 +5980,9 @@ mod tests {
         assert_eq!(user.field_offsets.get("name"), Some(&0));
         assert_eq!(user.field_offsets.get("age"), Some(&8));
         assert_eq!(user.field_offsets.get("active"), Some(&16));
+        assert_eq!(user.field_types.get("name"), Some(&Type::String));
+        assert_eq!(user.field_types.get("age"), Some(&Type::Int));
+        assert_eq!(user.field_types.get("active"), Some(&Type::Bool));
     }
 
     #[test]
@@ -5435,6 +6027,88 @@ mod tests {
         assert_eq!(result.variant_tags.get("Err"), Some(&1));
         assert_eq!(result.variant_field_counts.get("Ok"), Some(&1));
         assert_eq!(result.variant_field_counts.get("Err"), Some(&2));
+        assert_eq!(
+            result.variant_field_types.get("Ok"),
+            Some(&vec![Type::Int])
+        );
+        assert_eq!(
+            result.variant_field_types.get("Err"),
+            Some(&vec![Type::Int, Type::String])
+        );
+    }
+
+    #[test]
+    fn infer_mir_value_types_resolves_dynamic_sum_payload_from_layout() {
+        let module = MirModule {
+            functions: vec![MirFunction {
+                name: "payload".to_string(),
+                signature: MirFunctionSignature {
+                    params: vec![Type::Sum(SumType {
+                        name: "MaybeText".to_string(),
+                        type_args: vec![],
+                        variants: vec![
+                            ("Some".to_string(), vec![Type::String]),
+                            ("None".to_string(), vec![]),
+                        ],
+                    })],
+                    ret: Type::String,
+                    effects: EffectRow::pure(),
+                },
+                entry: MirBlockId(0),
+                blocks: vec![MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions: vec![MirInst::SumPayloadLoad {
+                        dest: MirValueId(1),
+                        sum: MirValueId(0),
+                        sum_type: "MaybeText".to_string(),
+                        variant: "Some".to_string(),
+                        field_index: 0,
+                        field_ty: Type::Dynamic,
+                    }],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirValueId(1)),
+                    },
+                }],
+            }],
+            layouts: MirLayoutCatalog {
+                records: vec![],
+                sums: vec![MirSumLayout {
+                    name: "MaybeText".to_string(),
+                    variants: vec![
+                        MirVariantLayout {
+                            name: "Some".to_string(),
+                            tag: 0,
+                            fields: vec![MirVariantFieldLayout {
+                                name: None,
+                                annotation: kea_ast::TypeAnnotation::Named("String".to_string()),
+                            }],
+                        },
+                        MirVariantLayout {
+                            name: "None".to_string(),
+                            tag: 1,
+                            fields: vec![],
+                        },
+                    ],
+                }],
+            },
+        };
+        let plan = plan_layout_catalog(&module).expect("layout planning should succeed");
+        let function = &module.functions[0];
+        let value_types = infer_mir_value_types(function, &plan);
+
+        assert_eq!(
+            value_types.get(&MirValueId(0)),
+            Some(&Type::Sum(SumType {
+                name: "MaybeText".to_string(),
+                type_args: vec![],
+                variants: vec![
+                    ("Some".to_string(), vec![Type::String]),
+                    ("None".to_string(), vec![]),
+                ],
+            }))
+        );
+        assert_eq!(value_types.get(&MirValueId(1)), Some(&Type::String));
     }
 
     #[test]
