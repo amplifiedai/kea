@@ -237,6 +237,69 @@ theorem unifyDim_const_var_binds
   unfold unifyDim
   simp [applyDimSubst, h_unbound, bindDimVar, occursInDim, DimSubst.extend]
 
+/-- Packaged scalar-dimension kernel contracts for `unifyDim`. -/
+structure DimConstKernelSlice : Prop where
+  of_beq_true :
+    ∀ s fuel a b,
+      (applyDimSubst s (fuel + 1) a == applyDimSubst s (fuel + 1) b) = true →
+      unifyDim s (fuel + 1) a b = some s
+  const_decision :
+    ∀ s fuel a b,
+      unifyDim s (fuel + 1) (.const a) (.const b) =
+        (if a == b then some s else none)
+  const_some_iff_eq :
+    ∀ s fuel a b,
+      unifyDim s (fuel + 1) (.const a) (.const b) = some s ↔ a = b
+  const_none_iff_ne :
+    ∀ s fuel a b,
+      unifyDim s (fuel + 1) (.const a) (.const b) = none ↔ a ≠ b
+  const_some_implies_empty :
+    ∀ fuel a b s',
+      unifyDim DimSubst.empty (fuel + 1) (.const a) (.const b) = some s' →
+      s' = DimSubst.empty
+  const_mismatch :
+    ∀ s fuel a b,
+      a ≠ b →
+      unifyDim s (fuel + 1) (.const a) (.const b) = none
+  var_const_binds :
+    ∀ s fuel v n,
+      s.map v = none →
+      unifyDim s (fuel + 1) (.var v) (.const n) =
+        some (DimSubst.extend s v (.const n))
+  const_var_binds :
+    ∀ s fuel n v,
+      s.map v = none →
+      unifyDim s (fuel + 1) (.const n) (.var v) =
+        some (DimSubst.extend s v (.const n))
+
+/-- Canonical scalar-dimension kernel theorem package. -/
+theorem dimConstKernelSlice : DimConstKernelSlice := by
+  refine
+    { of_beq_true := ?_
+      const_decision := ?_
+      const_some_iff_eq := ?_
+      const_none_iff_ne := ?_
+      const_some_implies_empty := ?_
+      const_mismatch := ?_
+      var_const_binds := ?_
+      const_var_binds := ?_ }
+  · intro s fuel a b h_eq
+    exact unifyDim_of_beq_true s fuel a b h_eq
+  · intro s fuel a b
+    exact unifyDim_const_decision s fuel a b
+  · intro s fuel a b
+    exact unifyDim_const_some_iff_eq s fuel a b
+  · intro s fuel a b
+    exact unifyDim_const_none_iff_ne s fuel a b
+  · intro fuel a b s' h_some
+    exact unifyDim_const_some_implies_empty fuel a b s' h_some
+  · intro s fuel a b h_ne
+    exact unifyDim_const_mismatch s fuel a b h_ne
+  · intro s fuel v n h_unbound
+    exact unifyDim_var_const_binds s fuel v n h_unbound
+  · intro s fuel n v h_unbound
+    exact unifyDim_const_var_binds s fuel n v h_unbound
+
 /-- Dimension variables have no free vars after substituting with constants. -/
 theorem freeDimVars_applyDimSubst_ground
     (s : DimSubst) (h_ground : DimSubst.GroundRange s) (fuel : Nat) (v : DimVarId)
