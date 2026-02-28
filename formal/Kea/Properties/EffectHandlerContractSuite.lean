@@ -3322,6 +3322,58 @@ theorem effectHandlerNestedClauseCoherenceBundle_of_components
   (effectHandlerNestedClauseCoherenceBundle_iff_components
     clause capability innerEffects okTy errTy loweredTy outerHandler).2 h_comp
 
+theorem effectHandlerNestedClauseCoherenceBundle_as_components_of_components
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_comp :
+      (RowFields.has
+          (EffectRow.fields
+            (NestedHandlerCompositionContracts.nestedComposeClosedAware
+              clause.exprEffects
+              clause.handlerEffects
+              outerHandler
+              clause.handled))
+          clause.handled = false)
+      ∧
+      (RowFields.has
+          (EffectRow.fields (HandlerClosedAwareContracts.resultEffectsClosedAware clause))
+          clause.handled = false)
+      ∧
+      (EffectRow.rest
+          (NestedHandlerCompositionContracts.nestedComposeClosedAware
+            clause.exprEffects
+            clause.handlerEffects
+            outerHandler
+            clause.handled) =
+        EffectRow.rest (HandlerClosedAwareContracts.resultEffectsClosedAware clause))) :
+    (RowFields.has
+        (EffectRow.fields
+          (NestedHandlerCompositionContracts.nestedComposeClosedAware
+            clause.exprEffects
+            clause.handlerEffects
+            outerHandler
+            clause.handled))
+        clause.handled = false)
+    ∧
+    (RowFields.has
+        (EffectRow.fields (HandlerClosedAwareContracts.resultEffectsClosedAware clause))
+        clause.handled = false)
+    ∧
+    (EffectRow.rest
+        (NestedHandlerCompositionContracts.nestedComposeClosedAware
+          clause.exprEffects
+          clause.handlerEffects
+          outerHandler
+          clause.handled) =
+      EffectRow.rest (HandlerClosedAwareContracts.resultEffectsClosedAware clause)) :=
+  (effectHandlerNestedClauseCoherenceBundle_iff_components
+    clause capability innerEffects okTy errTy loweredTy outerHandler).1
+    (effectHandlerNestedClauseCoherenceBundle_of_components
+      clause capability innerEffects okTy errTy loweredTy outerHandler h_comp)
+
 /-- Projection helper for nested/clause coherence decomposition. -/
 theorem effectHandlerNestedClauseCoherenceBundle_as_components
     (clause : HandleClauseContract)
@@ -3377,6 +3429,39 @@ theorem effectHandlerNestedClauseCoherenceBundle_of_compositionSuite
       effectHandlerCompositionSuite_nestedRowTail_eq_closedAwareRowTail
         clause capability innerEffects okTy errTy loweredTy outerHandler h_suite
   }
+
+theorem effectHandlerNestedClauseCoherenceBundle_as_components_of_compositionSuite
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    (RowFields.has
+        (EffectRow.fields
+          (NestedHandlerCompositionContracts.nestedComposeClosedAware
+            clause.exprEffects
+            clause.handlerEffects
+            outerHandler
+            clause.handled))
+        clause.handled = false)
+    ∧
+    (RowFields.has
+        (EffectRow.fields (HandlerClosedAwareContracts.resultEffectsClosedAware clause))
+        clause.handled = false)
+    ∧
+    (EffectRow.rest
+        (NestedHandlerCompositionContracts.nestedComposeClosedAware
+          clause.exprEffects
+          clause.handlerEffects
+          outerHandler
+          clause.handled) =
+      EffectRow.rest (HandlerClosedAwareContracts.resultEffectsClosedAware clause)) :=
+  effectHandlerNestedClauseCoherenceBundle_as_components
+    clause capability innerEffects okTy errTy loweredTy outerHandler
+    (effectHandlerNestedClauseCoherenceBundle_of_compositionSuite
+      clause capability innerEffects okTy errTy loweredTy outerHandler h_suite)
 
 /-- One-hop projection: nested/clause coherence bundle from the master composition suite. -/
 theorem effectHandlerCompositionSuite_nestedClauseCoherenceBundle
@@ -5056,6 +5141,33 @@ theorem effectHandlerNestedOpenRowBridgeBundle_of_components
     EffectHandlerNestedOpenRowBridgeBundle clause outerHandler :=
   (effectHandlerNestedOpenRowBridgeBundle_iff_components clause outerHandler).2 h_comp
 
+theorem effectHandlerNestedOpenRowBridgeBundle_as_components_of_components
+    (clause : HandleClauseContract)
+    (outerHandler : EffectRow)
+    (h_comp :
+      NestedHandlerCompositionContracts.nestedComposeClosedAware
+        clause.exprEffects
+        clause.handlerEffects
+        outerHandler
+        clause.handled =
+      NestedHandlerCompositionContracts.nestedCompose
+        clause.exprEffects
+        clause.handlerEffects
+        outerHandler
+        clause.handled) :
+    NestedHandlerCompositionContracts.nestedComposeClosedAware
+      clause.exprEffects
+      clause.handlerEffects
+      outerHandler
+      clause.handled =
+    NestedHandlerCompositionContracts.nestedCompose
+      clause.exprEffects
+      clause.handlerEffects
+      outerHandler
+      clause.handled :=
+  (effectHandlerNestedOpenRowBridgeBundle_iff_components clause outerHandler).1
+    (effectHandlerNestedOpenRowBridgeBundle_of_components clause outerHandler h_comp)
+
 /-- Projection helper for the open-row bridge bundle decomposition. -/
 theorem effectHandlerNestedOpenRowBridgeBundle_as_components
     (clause : HandleClauseContract)
@@ -5090,6 +5202,29 @@ theorem effectHandlerNestedOpenRowBridgeBundle_of_composition
         clause capability innerEffects okTy errTy loweredTy outerHandler h_comp h_open
   }
 
+theorem effectHandlerNestedOpenRowBridgeBundle_as_components_of_composition
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_comp :
+      EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler)
+    (h_open : EffectRow.rest clause.exprEffects ≠ none) :
+    NestedHandlerCompositionContracts.nestedComposeClosedAware
+      clause.exprEffects
+      clause.handlerEffects
+      outerHandler
+      clause.handled =
+    NestedHandlerCompositionContracts.nestedCompose
+      clause.exprEffects
+      clause.handlerEffects
+      outerHandler
+      clause.handled :=
+  effectHandlerNestedOpenRowBridgeBundle_as_components clause outerHandler
+    (effectHandlerNestedOpenRowBridgeBundle_of_composition
+      clause capability innerEffects okTy errTy loweredTy outerHandler h_comp h_open)
+
 /-- Build the open-row bridge bundle from a composition+coherence witness. -/
 theorem effectHandlerNestedOpenRowBridgeBundle_of_coherence
     (clause : HandleClauseContract)
@@ -5107,6 +5242,30 @@ theorem effectHandlerNestedOpenRowBridgeBundle_of_coherence
       effectHandlerCompositionCoherenceSuite_nestedClosedAware_eq_nestedCompose_of_open_expr_row
         clause capability innerEffects okTy errTy loweredTy outerHandler h_suite h_open
   }
+
+theorem effectHandlerNestedOpenRowBridgeBundle_as_components_of_coherence
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionCoherenceSuite
+        clause capability innerEffects okTy errTy loweredTy outerHandler)
+    (h_open : EffectRow.rest clause.exprEffects ≠ none) :
+    NestedHandlerCompositionContracts.nestedComposeClosedAware
+      clause.exprEffects
+      clause.handlerEffects
+      outerHandler
+      clause.handled =
+    NestedHandlerCompositionContracts.nestedCompose
+      clause.exprEffects
+      clause.handlerEffects
+      outerHandler
+      clause.handled :=
+  effectHandlerNestedOpenRowBridgeBundle_as_components clause outerHandler
+    (effectHandlerNestedOpenRowBridgeBundle_of_coherence
+      clause capability innerEffects okTy errTy loweredTy outerHandler h_suite h_open)
 
 /--
 One-hop projection: open-row bridge bundle from a composition-suite witness.
@@ -5553,6 +5712,51 @@ theorem effectHandlerNestedOpenRowConsequenceBundle_of_components
     EffectHandlerNestedOpenRowConsequenceBundle clause outerHandler :=
   (effectHandlerNestedOpenRowConsequenceBundle_iff_components clause outerHandler).2 h_comp
 
+theorem effectHandlerNestedOpenRowConsequenceBundle_as_components_of_components
+    (clause : HandleClauseContract)
+    (outerHandler : EffectRow)
+    (h_comp :
+      (NestedHandlerCompositionContracts.nestedComposeClosedAware
+          clause.exprEffects
+          clause.handlerEffects
+          outerHandler
+          clause.handled =
+        NestedHandlerCompositionContracts.nestedCompose
+          clause.exprEffects
+          clause.handlerEffects
+          outerHandler
+          clause.handled)
+      ∧
+      (RowFields.has
+        (EffectRow.fields
+          (NestedHandlerCompositionContracts.nestedCompose
+            clause.exprEffects
+            clause.handlerEffects
+            outerHandler
+            clause.handled))
+        clause.handled = false)) :
+    (NestedHandlerCompositionContracts.nestedComposeClosedAware
+        clause.exprEffects
+        clause.handlerEffects
+        outerHandler
+        clause.handled =
+      NestedHandlerCompositionContracts.nestedCompose
+        clause.exprEffects
+        clause.handlerEffects
+        outerHandler
+        clause.handled)
+    ∧
+    (RowFields.has
+      (EffectRow.fields
+        (NestedHandlerCompositionContracts.nestedCompose
+          clause.exprEffects
+          clause.handlerEffects
+          outerHandler
+          clause.handled))
+      clause.handled = false) :=
+  (effectHandlerNestedOpenRowConsequenceBundle_iff_components clause outerHandler).1
+    (effectHandlerNestedOpenRowConsequenceBundle_of_components clause outerHandler h_comp)
+
 /-- One-hop decomposition of strengthened open-row consequence bundle. -/
 theorem effectHandlerNestedOpenRowConsequenceBundle_as_components
     (clause : HandleClauseContract)
@@ -5599,6 +5803,38 @@ theorem effectHandlerNestedOpenRowConsequenceBundle_of_composition
         clause capability innerEffects okTy errTy loweredTy outerHandler h_comp h_open
   }
 
+theorem effectHandlerNestedOpenRowConsequenceBundle_as_components_of_composition
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_comp :
+      EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler)
+    (h_open : EffectRow.rest clause.exprEffects ≠ none) :
+    (NestedHandlerCompositionContracts.nestedComposeClosedAware
+        clause.exprEffects
+        clause.handlerEffects
+        outerHandler
+        clause.handled =
+      NestedHandlerCompositionContracts.nestedCompose
+        clause.exprEffects
+        clause.handlerEffects
+        outerHandler
+        clause.handled)
+    ∧
+    (RowFields.has
+      (EffectRow.fields
+        (NestedHandlerCompositionContracts.nestedCompose
+          clause.exprEffects
+          clause.handlerEffects
+          outerHandler
+          clause.handled))
+      clause.handled = false) :=
+  effectHandlerNestedOpenRowConsequenceBundle_as_components clause outerHandler
+    (effectHandlerNestedOpenRowConsequenceBundle_of_composition
+      clause capability innerEffects okTy errTy loweredTy outerHandler h_comp h_open)
+
 /-- Build strengthened open-row consequence bundle from a coherence witness. -/
 theorem effectHandlerNestedOpenRowConsequenceBundle_of_coherence
     (clause : HandleClauseContract)
@@ -5619,6 +5855,39 @@ theorem effectHandlerNestedOpenRowConsequenceBundle_of_coherence
       effectHandlerCompositionCoherenceSuite_nestedComposeHandledRemoved_of_open_expr_row
         clause capability innerEffects okTy errTy loweredTy outerHandler h_suite h_open
   }
+
+theorem effectHandlerNestedOpenRowConsequenceBundle_as_components_of_coherence
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionCoherenceSuite
+        clause capability innerEffects okTy errTy loweredTy outerHandler)
+    (h_open : EffectRow.rest clause.exprEffects ≠ none) :
+    (NestedHandlerCompositionContracts.nestedComposeClosedAware
+        clause.exprEffects
+        clause.handlerEffects
+        outerHandler
+        clause.handled =
+      NestedHandlerCompositionContracts.nestedCompose
+        clause.exprEffects
+        clause.handlerEffects
+        outerHandler
+        clause.handled)
+    ∧
+    (RowFields.has
+      (EffectRow.fields
+        (NestedHandlerCompositionContracts.nestedCompose
+          clause.exprEffects
+          clause.handlerEffects
+          outerHandler
+          clause.handled))
+      clause.handled = false) :=
+  effectHandlerNestedOpenRowConsequenceBundle_as_components clause outerHandler
+    (effectHandlerNestedOpenRowConsequenceBundle_of_coherence
+      clause capability innerEffects okTy errTy loweredTy outerHandler h_suite h_open)
 
 /--
 One-hop projection: strengthened open-row consequence bundle from a
@@ -6076,6 +6345,42 @@ theorem effectHandlerNestedOpenRowConsequenceBundle_of_bridge_and_normalizedHand
     normalizedHandledRemoved := h_removed
   }
 
+theorem effectHandlerNestedOpenRowConsequenceBundle_as_components_of_bridge_and_normalizedHandledRemoved
+    (clause : HandleClauseContract)
+    (outerHandler : EffectRow)
+    (h_bridge : EffectHandlerNestedOpenRowBridgeBundle clause outerHandler)
+    (h_removed :
+      RowFields.has
+        (EffectRow.fields
+          (NestedHandlerCompositionContracts.nestedCompose
+            clause.exprEffects
+            clause.handlerEffects
+            outerHandler
+            clause.handled))
+        clause.handled = false) :
+    (NestedHandlerCompositionContracts.nestedComposeClosedAware
+        clause.exprEffects
+        clause.handlerEffects
+        outerHandler
+        clause.handled =
+      NestedHandlerCompositionContracts.nestedCompose
+        clause.exprEffects
+        clause.handlerEffects
+        outerHandler
+        clause.handled)
+    ∧
+    (RowFields.has
+      (EffectRow.fields
+        (NestedHandlerCompositionContracts.nestedCompose
+          clause.exprEffects
+          clause.handlerEffects
+          outerHandler
+          clause.handled))
+      clause.handled = false) :=
+  effectHandlerNestedOpenRowConsequenceBundle_as_components clause outerHandler
+    (effectHandlerNestedOpenRowConsequenceBundle_of_bridge_and_normalizedHandledRemoved
+      clause outerHandler h_bridge h_removed)
+
 /-- One-hop projection: recover bridge bundle from strengthened consequence bundle. -/
 theorem effectHandlerNestedOpenRowBridgeBundle_of_consequenceBundle
     (clause : HandleClauseContract)
@@ -6085,6 +6390,23 @@ theorem effectHandlerNestedOpenRowBridgeBundle_of_consequenceBundle
   exact {
     closedAwareEqNormalized := h_bundle.closedAwareEqNormalized
   }
+
+theorem effectHandlerNestedOpenRowBridgeBundle_as_components_of_consequenceBundle
+    (clause : HandleClauseContract)
+    (outerHandler : EffectRow)
+    (h_bundle : EffectHandlerNestedOpenRowConsequenceBundle clause outerHandler) :
+    NestedHandlerCompositionContracts.nestedComposeClosedAware
+      clause.exprEffects
+      clause.handlerEffects
+      outerHandler
+      clause.handled =
+    NestedHandlerCompositionContracts.nestedCompose
+      clause.exprEffects
+      clause.handlerEffects
+      outerHandler
+      clause.handled :=
+  effectHandlerNestedOpenRowBridgeBundle_as_components clause outerHandler
+    (effectHandlerNestedOpenRowBridgeBundle_of_consequenceBundle clause outerHandler h_bundle)
 
 /--
 Strengthened consequence bundle is equivalent to:

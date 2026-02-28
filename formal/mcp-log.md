@@ -8415,3 +8415,40 @@ strengthened consequence bundles:
 **Impact**:
 - Open-row consumers can immediately consume component-level equalities and
   handled-removal facts without explicit bundle unpacking.
+
+### 2026-02-28: handler local bundle constructor/decomposition route parity
+
+**Context**: Completed local `...Bundle_of_*` to `...Bundle_as_components_of_*`
+parity in `EffectHandlerContractSuite` by adding the remaining route
+decomposition wrappers:
+- `effectHandlerNestedClauseCoherenceBundle_as_components_of_components`
+- `effectHandlerNestedClauseCoherenceBundle_as_components_of_compositionSuite`
+- `effectHandlerNestedOpenRowBridgeBundle_as_components_of_{components,composition,coherence,consequenceBundle}`
+- `effectHandlerNestedOpenRowConsequenceBundle_as_components_of_{components,composition,coherence,bridge_and_normalizedHandledRemoved}`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Wrapper-only theorem routing from existing bundle constructors/projections.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Remaining local route decomposition gaps in the handler aggregate module are
+  closed.
+- The open-row bridge/consequence and nested-clause coherence routes now have
+  symmetric one-hop `as_components_of_*` APIs.
+
+**Impact**:
+- Phase-2 handler contract consumers can stay entirely on named route wrappers
+  without manual bundle reconstruction before component extraction.
