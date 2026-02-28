@@ -6,7 +6,7 @@
   (effect_declaration)
   (trait_definition)
   (impl_block)
-  (record_definition)
+  (struct_definition)
   (type_definition)
   (test_declaration)
   (case_expression)
