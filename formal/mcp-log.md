@@ -9993,3 +9993,39 @@ and observed an empty result set (no remaining missing aliases).
 **Impact**:
 - Establishes a uniform named component-alias layer across principal and
   effect-handler suite surfaces for downstream decomposition API work.
+
+### 2026-03-01: typing bridge-cluster decomposition rollout
+
+**Context**: Added `iff/of/as/as_components_of_components` decomposition
+theorem families in `Kea/Typing.lean` for:
+- `PrincipalBoundaryBridgeSuite`
+- `PrincipalPreconditionedAllHooksSuite`
+- `PrincipalBoundaryVacuitySuite`
+
+Each suite now has one-hop reconstruction/projection to/from its
+`...SuiteComponents` alias.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Pure decomposition-layer expansion; no runtime semantic change.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Principal bridge-cluster suites now expose named `iff/of/as` decomposition
+  APIs aligned with the broader suite-package theorem style.
+
+**Impact**:
+- Enables downstream route wrappers to consume these suites via explicit
+  component aliases instead of direct record-field destructuring.

@@ -4544,6 +4544,34 @@ theorem principalBoundaryBridgeSuite_proved : PrincipalBoundaryBridgeSuite := by
     preconditionedCoreIff := principalPreconditionedCoreIffSlices_proved
   }
 
+/-- `PrincipalBoundaryBridgeSuite` is equivalent to its explicit components. -/
+theorem principalBoundaryBridgeSuite_iff_components :
+    PrincipalBoundaryBridgeSuite ↔ PrincipalBoundaryBridgeSuiteComponents := by
+  constructor
+  · intro h_suite
+    exact ⟨h_suite.noUnify, h_suite.preconditionedCoreIff⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2⟩
+
+/-- Build `PrincipalBoundaryBridgeSuite` from explicit components. -/
+theorem principalBoundaryBridgeSuite_of_components
+    (h_comp : PrincipalBoundaryBridgeSuiteComponents) :
+    PrincipalBoundaryBridgeSuite :=
+  (principalBoundaryBridgeSuite_iff_components).2 h_comp
+
+/-- Decompose `PrincipalBoundaryBridgeSuite` into explicit components. -/
+theorem principalBoundaryBridgeSuite_as_components
+    (h_suite : PrincipalBoundaryBridgeSuite) :
+    PrincipalBoundaryBridgeSuiteComponents :=
+  (principalBoundaryBridgeSuite_iff_components).1 h_suite
+
+/-- Direct components-route decomposition for `PrincipalBoundaryBridgeSuite`. -/
+theorem principalBoundaryBridgeSuite_as_components_of_components
+    (h_comp : PrincipalBoundaryBridgeSuiteComponents) :
+    PrincipalBoundaryBridgeSuiteComponents :=
+  (principalBoundaryBridgeSuite_iff_components).1
+    (principalBoundaryBridgeSuite_of_components h_comp)
+
 /-- One-hop expression no-unify bridge projection from the suite. -/
 theorem principalBoundaryBridgeSuite_noUnify_expr
     (h_suite : PrincipalBoundaryBridgeSuite)
@@ -5908,6 +5936,35 @@ theorem principalPreconditionedAllHooksSuite_proved :
     runBundles := principalPreconditionedAllHooksRunBundleSlices_proved
   }
 
+/-- `PrincipalPreconditionedAllHooksSuite` is equivalent to explicit components. -/
+theorem principalPreconditionedAllHooksSuite_iff_components :
+    PrincipalPreconditionedAllHooksSuite
+      ↔ PrincipalPreconditionedAllHooksSuiteComponents := by
+  constructor
+  · intro h_suite
+    exact ⟨h_suite.capstones, h_suite.irrelevance, h_suite.runBundles⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2.1, h_comp.2.2⟩
+
+/-- Build `PrincipalPreconditionedAllHooksSuite` from explicit components. -/
+theorem principalPreconditionedAllHooksSuite_of_components
+    (h_comp : PrincipalPreconditionedAllHooksSuiteComponents) :
+    PrincipalPreconditionedAllHooksSuite :=
+  (principalPreconditionedAllHooksSuite_iff_components).2 h_comp
+
+/-- Decompose `PrincipalPreconditionedAllHooksSuite` into explicit components. -/
+theorem principalPreconditionedAllHooksSuite_as_components
+    (h_suite : PrincipalPreconditionedAllHooksSuite) :
+    PrincipalPreconditionedAllHooksSuiteComponents :=
+  (principalPreconditionedAllHooksSuite_iff_components).1 h_suite
+
+/-- Direct components-route decomposition for `PrincipalPreconditionedAllHooksSuite`. -/
+theorem principalPreconditionedAllHooksSuite_as_components_of_components
+    (h_comp : PrincipalPreconditionedAllHooksSuiteComponents) :
+    PrincipalPreconditionedAllHooksSuiteComponents :=
+  (principalPreconditionedAllHooksSuite_iff_components).1
+    (principalPreconditionedAllHooksSuite_of_components h_comp)
+
 /-- One-hop expression capstone projection from general all-hooks suite. -/
 theorem principalPreconditionedAllHooksSuite_capstone_expr
     (h_suite : PrincipalPreconditionedAllHooksSuite)
@@ -6689,6 +6746,34 @@ theorem principalBoundaryVacuitySuite_proved : PrincipalBoundaryVacuitySuite := 
     noUnifyCapstones := principalBoundaryNoUnifyCapstoneSlices_proved
     hookIrrelevance := principalPreconditionedHookIrrelevanceSlices_proved
   }
+
+/-- `PrincipalBoundaryVacuitySuite` is equivalent to its explicit components. -/
+theorem principalBoundaryVacuitySuite_iff_components :
+    PrincipalBoundaryVacuitySuite ↔ PrincipalBoundaryVacuitySuiteComponents := by
+  constructor
+  · intro h_suite
+    exact ⟨h_suite.noUnifyCapstones, h_suite.hookIrrelevance⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2⟩
+
+/-- Build `PrincipalBoundaryVacuitySuite` from explicit components. -/
+theorem principalBoundaryVacuitySuite_of_components
+    (h_comp : PrincipalBoundaryVacuitySuiteComponents) :
+    PrincipalBoundaryVacuitySuite :=
+  (principalBoundaryVacuitySuite_iff_components).2 h_comp
+
+/-- Decompose `PrincipalBoundaryVacuitySuite` into explicit components. -/
+theorem principalBoundaryVacuitySuite_as_components
+    (h_suite : PrincipalBoundaryVacuitySuite) :
+    PrincipalBoundaryVacuitySuiteComponents :=
+  (principalBoundaryVacuitySuite_iff_components).1 h_suite
+
+/-- Direct components-route decomposition for `PrincipalBoundaryVacuitySuite`. -/
+theorem principalBoundaryVacuitySuite_as_components_of_components
+    (h_comp : PrincipalBoundaryVacuitySuiteComponents) :
+    PrincipalBoundaryVacuitySuiteComponents :=
+  (principalBoundaryVacuitySuite_iff_components).1
+    (principalBoundaryVacuitySuite_of_components h_comp)
 
 /-- One-hop expression no-unify capstone projection from vacuity suite. -/
 theorem principalBoundaryVacuitySuite_noUnify_expr
