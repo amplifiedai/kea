@@ -8854,3 +8854,38 @@ constant-shape kernel layers behind one witness:
 **Impact**:
 - WP7.4/7.2 call sites can import one aggregate theorem surface instead of
   passing three separate package witnesses.
+
+### 2026-02-28: scalar dim-kernel package in `Kea/Dimensions`
+
+**Context**: Added scalar `unifyDim` package artifacts:
+- `DimConstKernelSlice`
+- `dimConstKernelSlice`
+
+This bundles BEq-driven success, constant decision/equivalence/mismatch,
+empty-substitution closure, and var/const binding routes into one theorem
+surface.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Pure packaging over already-proved scalar dim-kernel lemmas.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Scalar dim-kernel consequences now have a stable one-name witness.
+
+**Impact**:
+- WP7.2 and shape bridge modules can depend on scalar kernel behavior through
+  one package instead of repeatedly threading individual `unifyDim` lemmas.
