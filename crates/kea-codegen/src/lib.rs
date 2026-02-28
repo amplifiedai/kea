@@ -12,6 +12,7 @@ use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::os::raw::c_char;
 use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use cranelift::prelude::{
     AbiParam, Configurable, FunctionBuilder, FunctionBuilderContext, InstBuilder, Value, types,
@@ -445,6 +446,20 @@ unsafe extern "C" fn kea_io_read_file_stub(path: *const c_char) -> *const c_char
     }
 }
 
+unsafe extern "C" fn kea_clock_now_stub() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos() as i64)
+        .unwrap_or(0)
+}
+
+unsafe extern "C" fn kea_clock_monotonic_stub() -> i64 {
+    static START: OnceLock<Instant> = OnceLock::new();
+    let start = START.get_or_init(Instant::now);
+    let nanos = start.elapsed().as_nanos() as i64;
+    if nanos <= 0 { 1 } else { nanos }
+}
+
 #[derive(Default)]
 struct NetRuntimeState {
     next_id: i64,
@@ -467,6 +482,8 @@ fn register_jit_runtime_symbols(builder: &mut JITBuilder) {
     builder.symbol("__kea_net_recv", kea_net_recv_stub as *const u8);
     builder.symbol("__kea_io_write_file", kea_io_write_file_stub as *const u8);
     builder.symbol("__kea_io_read_file", kea_io_read_file_stub as *const u8);
+    builder.symbol("__kea_clock_now", kea_clock_now_stub as *const u8);
+    builder.symbol("__kea_clock_monotonic", kea_clock_monotonic_stub as *const u8);
 }
 
 fn compile_with_jit(
@@ -526,7 +543,8 @@ fn compile_into_module<M: Module>(
     let mut requires_io_stderr = false;
     let mut requires_io_read_file = false;
     let mut requires_io_write_file = false;
-    let mut requires_clock_time = false;
+    let mut requires_clock_now = false;
+    let mut requires_clock_monotonic = false;
     let mut requires_rand_int = false;
     let mut requires_rand_seed = false;
     let mut requires_net_connect = false;
@@ -576,7 +594,8 @@ fn compile_into_module<M: Module>(
                             ("IO", "stderr") => requires_io_stderr = true,
                             ("IO", "read_file") => requires_io_read_file = true,
                             ("IO", "write_file") => requires_io_write_file = true,
-                            ("Clock", "now" | "monotonic") => requires_clock_time = true,
+                            ("Clock", "now") => requires_clock_now = true,
+                            ("Clock", "monotonic") => requires_clock_monotonic = true,
                             ("Rand", "int") => requires_rand_int = true,
                             ("Rand", "seed") => requires_rand_seed = true,
                             ("Net", "connect") => requires_net_connect = true,
@@ -755,14 +774,26 @@ fn compile_into_module<M: Module>(
         None
     };
 
-    let time_func_id = if requires_clock_time {
-        let ptr_ty = module.target_config().pointer_type();
+    let clock_now_func_id = if requires_clock_now {
         let mut signature = module.make_signature();
-        signature.params.push(AbiParam::new(ptr_ty));
-        signature.returns.push(AbiParam::new(ptr_ty));
+        signature.returns.push(AbiParam::new(types::I64));
         Some(
             module
-                .declare_function("time", Linkage::Import, &signature)
+                .declare_function("__kea_clock_now", Linkage::Import, &signature)
+                .map_err(|detail| CodegenError::Module {
+                    detail: detail.to_string(),
+                })?,
+        )
+    } else {
+        None
+    };
+
+    let clock_monotonic_func_id = if requires_clock_monotonic {
+        let mut signature = module.make_signature();
+        signature.returns.push(AbiParam::new(types::I64));
+        Some(
+            module
+                .declare_function("__kea_clock_monotonic", Linkage::Import, &signature)
                 .map_err(|detail| CodegenError::Module {
                     detail: detail.to_string(),
                 })?,
@@ -988,7 +1019,8 @@ fn compile_into_module<M: Module>(
                     write_func_id,
                     io_write_file_func_id,
                     io_read_file_func_id,
-                    time_func_id,
+                    clock_now_func_id,
+                    clock_monotonic_func_id,
                     rand_func_id,
                     srand_func_id,
                     net_connect_func_id,
@@ -1887,7 +1919,8 @@ struct LowerInstCtx<'a> {
     write_func_id: Option<FuncId>,
     io_write_file_func_id: Option<FuncId>,
     io_read_file_func_id: Option<FuncId>,
-    time_func_id: Option<FuncId>,
+    clock_now_func_id: Option<FuncId>,
+    clock_monotonic_func_id: Option<FuncId>,
     rand_func_id: Option<FuncId>,
     srand_func_id: Option<FuncId>,
     net_connect_func_id: Option<FuncId>,
@@ -3300,31 +3333,30 @@ fn lower_instruction<M: Module>(
                             detail: format!("Clock.{operation} expects no arguments"),
                         });
                     }
-                    let time_func_id =
-                        ctx.time_func_id
-                            .ok_or_else(|| CodegenError::UnsupportedMir {
-                                function: function_name.to_string(),
-                                detail: format!(
-                                    "Clock.{operation} lowering requires imported `time` symbol"
-                                ),
-                            })?;
-                    let time_ref = module.declare_func_in_func(time_func_id, builder.func);
-                    let ptr_ty = module.target_config().pointer_type();
-                    let null_ptr = builder.ins().iconst(ptr_ty, 0);
-                    let time_call = builder.ins().call(time_ref, &[null_ptr]);
+                    let clock_func_id = match operation.as_str() {
+                        "now" => ctx.clock_now_func_id,
+                        "monotonic" => ctx.clock_monotonic_func_id,
+                        _ => None,
+                    }
+                    .ok_or_else(|| CodegenError::UnsupportedMir {
+                        function: function_name.to_string(),
+                        detail: format!(
+                            "Clock.{operation} lowering requires imported clock runtime symbol"
+                        ),
+                    })?;
+                    let clock_ref = module.declare_func_in_func(clock_func_id, builder.func);
+                    let clock_call = builder.ins().call(clock_ref, &[]);
                     if let Some(dest) = result {
                         let timestamp = builder
-                            .inst_results(time_call)
+                            .inst_results(clock_call)
                             .first()
                             .copied()
                             .ok_or_else(|| CodegenError::UnsupportedMir {
                                 function: function_name.to_string(),
-                                detail: "time call returned no value".to_string(),
+                                detail: format!("Clock.{operation} call returned no value"),
                             })?;
-                        values.insert(
-                            dest.clone(),
-                            coerce_value_to_clif_type(builder, timestamp, ptr_ty),
-                        );
+                        let ptr_ty = module.target_config().pointer_type();
+                        values.insert(dest.clone(), coerce_value_to_clif_type(builder, timestamp, ptr_ty));
                     }
                     Ok(false)
                 } else if effect == "Rand" && matches!(operation.as_str(), "int" | "seed") {

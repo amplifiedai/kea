@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #ifndef _WIN32
 #include <netdb.h>
@@ -159,5 +160,29 @@ int64_t __kea_net_recv(int64_t conn, int64_t size) {
   ssize_t received = recv((int)conn, buffer, (size_t)size, 0);
   free(buffer);
   return received < 0 ? -1 : (int64_t)received;
+#endif
+}
+
+int64_t __kea_clock_now(void) {
+#ifdef _WIN32
+  return -1;
+#else
+  struct timespec ts;
+  if (clock_gettime(CLOCK_REALTIME, &ts) != 0) {
+    return -1;
+  }
+  return (int64_t)ts.tv_sec * 1000000000LL + (int64_t)ts.tv_nsec;
+#endif
+}
+
+int64_t __kea_clock_monotonic(void) {
+#ifdef _WIN32
+  return -1;
+#else
+  struct timespec ts;
+  if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) {
+    return -1;
+  }
+  return (int64_t)ts.tv_sec * 1000000000LL + (int64_t)ts.tv_nsec;
 #endif
 }

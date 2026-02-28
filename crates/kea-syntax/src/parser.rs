@@ -2833,7 +2833,7 @@ impl Parser {
             self.errors.push(
                 Diagnostic::error(
                     Category::Syntax,
-                    "`$` placeholder expressions are not supported",
+                    "`$` placeholder expressions are not yet implemented",
                 )
                 .at(SourceLocation {
                     file_id: self.file.0,
