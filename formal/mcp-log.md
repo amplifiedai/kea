@@ -8320,3 +8320,34 @@ external compile blocker.
 **Impact**:
 - Coherent pair consumers can stay on raw route assumptions while extracting
   top-level pair consequences in one theorem step.
+
+### 2026-02-28: composition-suite premise/fail-present projection wrappers
+
+**Context**: Added direct premise/fail-present route projection wrappers on the
+master composition layer:
+- `effectHandlerCompositionSuite_{classifier,capstone,catchLaws}_of_{premises,fail_present}`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Wrapper-only routing from existing composition constructors/projections.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Composition routes now directly expose classifier/capstone/law projections
+  from premise/fail-present assumptions.
+
+**Impact**:
+- Outer-handler composition consumers can extract top-level catch consequences
+  in one route step without threading intermediate suite values.
