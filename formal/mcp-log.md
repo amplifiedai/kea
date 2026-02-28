@@ -8221,3 +8221,34 @@ external compile blocker.
 - Premise/fail-present consumers can extract explicit suite components in one
   step across handler aggregate, capstone, catch-pair, composition, and
   composition-coherence layers.
+
+### 2026-02-28: effect-handler suite premise/fail-present facet wrappers
+
+**Context**: Added direct premise/fail-present route projection wrappers on the
+`EffectHandlerSuite` layer:
+- `effectHandlerSuite_{closedAwareHandledRemoved,closedAwareCapability,closedAwareRowTailStable,legacyHandledRemoved,tailNotInvalid,genericCatchClassifier,higherCatchClassifier,catchLaws}_of_{premises,fail_present}`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Wrapper-only theorem routing from existing suite constructors/projections.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- All key `EffectHandlerSuite` consequences are now directly reachable from
+  premise/fail-present constructor routes.
+
+**Impact**:
+- Callers can stay on raw premise routes without intermediate suite values when
+  consuming closed-aware, tail, and catch-classifier consequences.
