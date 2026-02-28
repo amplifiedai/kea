@@ -46,6 +46,100 @@ structure CatchCapstoneInteropSuite
   higherCapstone :
     HigherOrderCatchContracts.HigherOrderCatchCapstoneOutcome clause innerEffects okTy errTy loweredTy
 
+/-- Classifier interoperability suite is equivalent to explicit component fields. -/
+theorem catchClassifierInteropSuite_iff_components
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty) :
+    CatchClassifierInteropSuite clause innerEffects okTy errTy loweredTy
+      ↔ (HigherOrderCatchContracts.HigherOrderCatchBridgeLaws clause innerEffects okTy errTy loweredTy
+          ∧ (CatchTypingBridge.CatchTypingCapstoneOutcome
+                clause (higherOrderParams innerEffects okTy) okTy errTy loweredTy
+                ∨ FailResultContracts.catchUnnecessary clause.exprEffects)
+          ∧ (HigherOrderCatchContracts.HigherOrderCatchCapstoneOutcome
+                clause innerEffects okTy errTy loweredTy
+                ∨ FailResultContracts.catchUnnecessary innerEffects)) := by
+  constructor
+  · intro h_suite
+    exact ⟨h_suite.laws, h_suite.genericClassified, h_suite.higherClassified⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2.1, h_comp.2.2⟩
+
+/-- Build classifier interoperability suite from explicit components. -/
+theorem catchClassifierInteropSuite_of_components
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_comp :
+      HigherOrderCatchContracts.HigherOrderCatchBridgeLaws clause innerEffects okTy errTy loweredTy
+        ∧ (CatchTypingBridge.CatchTypingCapstoneOutcome
+              clause (higherOrderParams innerEffects okTy) okTy errTy loweredTy
+              ∨ FailResultContracts.catchUnnecessary clause.exprEffects)
+        ∧ (HigherOrderCatchContracts.HigherOrderCatchCapstoneOutcome
+              clause innerEffects okTy errTy loweredTy
+              ∨ FailResultContracts.catchUnnecessary innerEffects)) :
+    CatchClassifierInteropSuite clause innerEffects okTy errTy loweredTy :=
+  (catchClassifierInteropSuite_iff_components clause innerEffects okTy errTy loweredTy).2 h_comp
+
+/-- One-hop decomposition of classifier interoperability suite into explicit components. -/
+theorem catchClassifierInteropSuite_as_components
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_suite : CatchClassifierInteropSuite clause innerEffects okTy errTy loweredTy) :
+    HigherOrderCatchContracts.HigherOrderCatchBridgeLaws clause innerEffects okTy errTy loweredTy
+      ∧ (CatchTypingBridge.CatchTypingCapstoneOutcome
+            clause (higherOrderParams innerEffects okTy) okTy errTy loweredTy
+            ∨ FailResultContracts.catchUnnecessary clause.exprEffects)
+      ∧ (HigherOrderCatchContracts.HigherOrderCatchCapstoneOutcome
+            clause innerEffects okTy errTy loweredTy
+            ∨ FailResultContracts.catchUnnecessary innerEffects) :=
+  (catchClassifierInteropSuite_iff_components clause innerEffects okTy errTy loweredTy).1 h_suite
+
+/-- Capstone interoperability suite is equivalent to explicit component fields. -/
+theorem catchCapstoneInteropSuite_iff_components
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty) :
+    CatchCapstoneInteropSuite clause innerEffects okTy errTy loweredTy
+      ↔ (HigherOrderCatchContracts.HigherOrderCatchBridgeLaws clause innerEffects okTy errTy loweredTy
+          ∧ CatchTypingBridge.CatchTypingCapstoneOutcome
+              clause (higherOrderParams innerEffects okTy) okTy errTy loweredTy
+          ∧ HigherOrderCatchContracts.HigherOrderCatchCapstoneOutcome
+              clause innerEffects okTy errTy loweredTy) := by
+  constructor
+  · intro h_suite
+    exact ⟨h_suite.laws, h_suite.genericCapstone, h_suite.higherCapstone⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2.1, h_comp.2.2⟩
+
+/-- Build capstone interoperability suite from explicit components. -/
+theorem catchCapstoneInteropSuite_of_components
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_comp :
+      HigherOrderCatchContracts.HigherOrderCatchBridgeLaws clause innerEffects okTy errTy loweredTy
+        ∧ CatchTypingBridge.CatchTypingCapstoneOutcome
+            clause (higherOrderParams innerEffects okTy) okTy errTy loweredTy
+        ∧ HigherOrderCatchContracts.HigherOrderCatchCapstoneOutcome
+            clause innerEffects okTy errTy loweredTy) :
+    CatchCapstoneInteropSuite clause innerEffects okTy errTy loweredTy :=
+  (catchCapstoneInteropSuite_iff_components clause innerEffects okTy errTy loweredTy).2 h_comp
+
+/-- One-hop decomposition of capstone interoperability suite into explicit components. -/
+theorem catchCapstoneInteropSuite_as_components
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_suite : CatchCapstoneInteropSuite clause innerEffects okTy errTy loweredTy) :
+    HigherOrderCatchContracts.HigherOrderCatchBridgeLaws clause innerEffects okTy errTy loweredTy
+      ∧ CatchTypingBridge.CatchTypingCapstoneOutcome
+          clause (higherOrderParams innerEffects okTy) okTy errTy loweredTy
+      ∧ HigherOrderCatchContracts.HigherOrderCatchCapstoneOutcome
+          clause innerEffects okTy errTy loweredTy :=
+  (catchCapstoneInteropSuite_iff_components clause innerEffects okTy errTy loweredTy).1 h_suite
+
 /-- Build classifier interoperability suite from premise-level classifier inputs. -/
 theorem catchClassifierInteropSuite_of_premises
     (clause : HandleClauseContract)
@@ -250,6 +344,15 @@ theorem catchCapstoneInteropSuite_higher
     HigherOrderCatchContracts.HigherOrderCatchCapstoneOutcome clause innerEffects okTy errTy loweredTy :=
   h_suite.higherCapstone
 
+/-- One-hop projection: packaged bridge laws from capstone interoperability suite. -/
+theorem catchCapstoneInteropSuite_laws
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_suite : CatchCapstoneInteropSuite clause innerEffects okTy errTy loweredTy) :
+    HigherOrderCatchContracts.HigherOrderCatchBridgeLaws clause innerEffects okTy errTy loweredTy :=
+  h_suite.laws
+
 /-- One-hop projection: generic classifier branch from classifier interoperability suite. -/
 theorem catchClassifierInteropSuite_generic
     (clause : HandleClauseContract)
@@ -270,6 +373,15 @@ theorem catchClassifierInteropSuite_higher
     HigherOrderCatchContracts.HigherOrderCatchCapstoneOutcome clause innerEffects okTy errTy loweredTy
       ∨ FailResultContracts.catchUnnecessary innerEffects :=
   h_suite.higherClassified
+
+/-- One-hop projection: packaged bridge laws from classifier interoperability suite. -/
+theorem catchClassifierInteropSuite_laws
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_suite : CatchClassifierInteropSuite clause innerEffects okTy errTy loweredTy) :
+    HigherOrderCatchContracts.HigherOrderCatchBridgeLaws clause innerEffects okTy errTy loweredTy :=
+  h_suite.laws
 
 end CatchInteroperabilitySuite
 end Kea
