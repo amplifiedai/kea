@@ -48,12 +48,15 @@ fn lexer_layout_snapshot_corpus() {
         ("import_named", "import Kea.Core.{read_csv, write_csv}"),
         (
             "type_deriving",
-            "type Result(a, e) = | Ok(a) | Err(e) deriving Eq",
+            "enum Result(a, e)\n  Ok(a)\n  Err(e)\nderiving Eq",
         ),
         ("anon_record", "#{ ..base, retries: 3, timeout: 30 }"),
         ("record_pattern", "case x\n  User { name, .. } -> name"),
-        ("string_interp", "\"hello ${name}, total: ${1 + 2}\""),
-        ("bare_brace_warning", "\"hello {name}\""),
+        ("string_interp", "\"hello {name}, total: {1 + 2}\""),
+        (
+            "escaped_braces",
+            "\"literal braces: {{not interpolated}}\"",
+        ),
         ("tab_indent_error", "fn bad() -> Int\n\t1"),
     ];
 
@@ -99,7 +102,7 @@ fn parser_snapshot_corpus() {
         ParseCase {
             name: "module_type_named_variant",
             mode: ParseMode::Module,
-            source: "type Event = | User(id: Int, name: String)",
+            source: "enum Event\n  User(id: Int, name: String)",
         },
         ParseCase {
             name: "module_alias_parametric",
@@ -154,7 +157,7 @@ fn parser_snapshot_corpus() {
         ParseCase {
             name: "expr_lambda",
             mode: ParseMode::Expr,
-            source: "|x| -> x + 1",
+            source: "|x| x + 1",
         },
         ParseCase {
             name: "expr_anon_record_spread",

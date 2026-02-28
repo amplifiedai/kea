@@ -2458,7 +2458,7 @@ impl Parser {
             .is_some_and(|token| token.kind == TokenKind::Arrow)
             && matches!(self.peek_kind(), Some(TokenKind::Ident(_)))
         {
-            self.error_at_current("bare lambda syntax is not supported; use `|x| -> expr`");
+            self.error_at_current("bare lambda syntax is not supported; use `|x| expr`");
             return None;
         }
         self.pratt_expr(0)
@@ -2758,7 +2758,7 @@ impl Parser {
         if self.check(&TokenKind::LParen) {
             if self.is_paren_lambda_start() {
                 self.error_at_current(
-                    "parenthesized lambda syntax is not supported; use `|x| -> expr`",
+                    "parenthesized lambda syntax is not supported; use `|x| expr`",
                 );
                 return None;
             }
@@ -4032,7 +4032,7 @@ impl Parser {
         None
     }
 
-    /// Parse pipe-delimited lambda: `|x| -> expr`, `|x, y| -> expr`, `|| -> expr`.
+    /// Parse pipe-delimited lambda: `|x| expr`, `|x, y| expr`, `|| expr`.
     fn lambda_pipe(&mut self) -> Option<Expr> {
         let start = self.current_span();
         self.expect(
@@ -4066,10 +4066,6 @@ impl Parser {
         }
         self.skip_newlines();
         self.expect(&TokenKind::Pipe, "expected '|' after lambda parameters")?;
-        self.expect(
-            &TokenKind::Arrow,
-            "expected '->' after lambda parameter list",
-        )?;
         self.skip_newlines();
         let body = self.lambda_body()?;
 
@@ -5985,7 +5981,7 @@ mod tests {
 
     #[test]
     fn parse_lambda() {
-        let expr = parse("|x| -> x + 1");
+        let expr = parse("|x| x + 1");
         match &expr.node {
             ExprKind::Lambda { params, body, .. } => {
                 assert_eq!(params.len(), 1);
@@ -6001,7 +5997,7 @@ mod tests {
 
     #[test]
     fn parse_multi_param_lambda() {
-        let expr = parse("|x, y| -> x + y");
+        let expr = parse("|x, y| x + y");
         match &expr.node {
             ExprKind::Lambda { params, .. } => {
                 assert_eq!(params.len(), 2);
@@ -6014,7 +6010,7 @@ mod tests {
 
     #[test]
     fn parse_lambda_with_existential_annotation() {
-        let expr = parse("|x: any (Show, Eq) where Item = Int| -> x");
+        let expr = parse("|x: any (Show, Eq) where Item = Int| x");
         match &expr.node {
             ExprKind::Lambda { params, .. } => {
                 assert_eq!(params.len(), 1);
@@ -6037,7 +6033,7 @@ mod tests {
 
     #[test]
     fn parse_lambda_with_indented_block_body() {
-        let expr = parse("|x| ->\n  let y = x + 1\n  y");
+        let expr = parse("|x|\n  let y = x + 1\n  y");
         match &expr.node {
             ExprKind::Lambda { body, .. } => {
                 assert!(matches!(body.node, ExprKind::Block(_)));
@@ -6048,7 +6044,7 @@ mod tests {
 
     #[test]
     fn parse_zero_param_lambda() {
-        let expr = parse("|| -> 42");
+        let expr = parse("|| 42");
         match &expr.node {
             ExprKind::Lambda { params, body, .. } => {
                 assert!(params.is_empty());

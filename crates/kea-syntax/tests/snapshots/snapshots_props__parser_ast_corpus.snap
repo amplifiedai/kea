@@ -1,6 +1,6 @@
 ---
 source: crates/kea-syntax/tests/snapshots_props.rs
-assertion_line: 224
+assertion_line: 227
 expression: output
 ---
 ## module_fn_decl
@@ -263,7 +263,8 @@ RecordDef(
 
 ## module_type_named_variant
 source:
-|type·Event·=·|·User(id:·Int,·name:·String)
+|enum·Event
+|··User(id:·Int,·name:·String)
 status: ok
 TypeDef(
     TypeDef {
@@ -972,7 +973,7 @@ Cond {
 
 ## expr_lambda
 source:
-||x|·->·x·+·1
+||x|·x·+·1
 status: ok
 Lambda {
     params: [

@@ -1,6 +1,5 @@
 ---
 source: crates/kea-syntax/tests/snapshots_props.rs
-assertion_line: 68
 expression: output
 ---
 ## fn_decl
@@ -277,27 +276,32 @@ warnings: []
 
 ## type_deriving
 source:
-|type·Result(a,·e)·=·|·Ok(a)·|·Err(e)·deriving·Eq
+|enum·Result(a,·e)
+|··Ok(a)
+|··Err(e)
+|deriving·Eq
 status: ok
 tokens:
-- TypeKw
+- Enum
 - UpperIdent("Result")
 - LParen
 - Ident("a")
 - Comma
 - Ident("e")
 - RParen
-- Eq
-- Pipe
+- Newline
+- Indent
 - UpperIdent("Ok")
 - LParen
 - Ident("a")
 - RParen
-- Pipe
+- Newline
 - UpperIdent("Err")
 - LParen
 - Ident("e")
 - RParen
+- Newline
+- Dedent
 - Deriving
 - UpperIdent("Eq")
 - Eof
@@ -347,22 +351,21 @@ warnings: []
 
 ## string_interp
 source:
-|"hello·${name},·total:·${1·+·2}"
+|"hello·{name},·total:·{1·+·2}"
 status: ok
 tokens:
 - StringInterp([Literal("hello "), Expr("name"), Literal(", total: "), Expr("1 + 2")])
 - Eof
 warnings: []
 
-## bare_brace_warning
+## escaped_braces
 source:
-|"hello·{name}"
+|"literal·braces:·{{not·interpolated}}"
 status: ok
 tokens:
-- String("hello {name}")
+- String("literal braces: {not interpolated}")
 - Eof
-warnings:
-- Warning E0006 @7..13: did you mean ${name}? Use ${name} for interpolation, or \{ for a literal brace
+warnings: []
 
 ## tab_indent_error
 source:

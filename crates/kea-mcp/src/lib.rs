@@ -576,7 +576,7 @@ mod tests {
     #[test]
     fn type_check_let_bound_call_result_preserves_returned_callable_effect_row() {
         let server = KeaMcpServer::new();
-        let code = "effect Emit\n  fn emit(val: Int) -> Unit\n\nfn make_emitter() -> fn(Int) -[Emit]> Unit\n  |x: Int| -> Emit.emit(x)\n\nfn trap() -> Unit\n  let f = make_emitter()\n  f(42)";
+        let code = "effect Emit\n  fn emit(val: Int) -> Unit\n\nfn make_emitter() -> fn(Int) -[Emit]> Unit\n  |x: Int| Emit.emit(x)\n\nfn trap() -> Unit\n  let f = make_emitter()\n  f(42)";
         let value = parse_json(&server.handle_type_check(code));
         assert_eq!(value["status"], "ok", "type_check response: {value}");
 
@@ -616,7 +616,7 @@ mod tests {
     #[test]
     fn type_check_curried_lambda_callback_propagates_effect_rows() {
         let server = KeaMcpServer::new();
-        let code = "effect Log\n  fn log(msg: Int) -> Unit\n\nfn trap() -[Log]> Unit\n  let apply = |f| -> |x| -> f(x)\n  let logger = |y: Int| -> Log.log(y)\n  apply(logger)(42)";
+        let code = "effect Log\n  fn log(msg: Int) -> Unit\n\nfn trap() -[Log]> Unit\n  let apply = |f| |x| f(x)\n  let logger = |y: Int| Log.log(y)\n  apply(logger)(42)";
         let value = parse_json(&server.handle_type_check(code));
         assert_eq!(value["status"], "ok", "type_check response: {value}");
 
@@ -636,7 +636,7 @@ mod tests {
     #[test]
     fn type_check_curried_annotated_lambda_callback_uses_effect_row_contract() {
         let server = KeaMcpServer::new();
-        let code = "effect Log\n  fn log(msg: Int) -> Unit\n\nfn trap() -[Log]> Unit\n  let apply = |f: fn(Int) -[Log]> Unit| -> |x: Int| -> f(x)\n  let logger = |y: Int| -> Log.log(y)\n  apply(logger)(42)";
+        let code = "effect Log\n  fn log(msg: Int) -> Unit\n\nfn trap() -[Log]> Unit\n  let apply = |f: fn(Int) -[Log]> Unit| |x: Int| f(x)\n  let logger = |y: Int| Log.log(y)\n  apply(logger)(42)";
         let value = parse_json(&server.handle_type_check(code));
         assert_eq!(value["status"], "ok", "type_check response: {value}");
 
