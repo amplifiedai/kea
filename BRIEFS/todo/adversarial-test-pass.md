@@ -1,0 +1,222 @@
+# Brief: Adversarial Test Pass (0a–0e)
+
+**Status:** ready
+**Priority:** v1-critical
+**Depends on:** 0e (all phases under test must be implemented)
+**Blocks:** nothing directly, but de-risks everything downstream
+
+## Motivation
+
+Phases 0a–0e were built at pace. The happy paths work and have
+regression coverage. But adversarial inputs — malformed syntax,
+type system edge cases, effect scoping violations, handler
+misuse — are underrepresented. These are exactly the inputs real
+users will produce, and exactly the inputs that expose unsound
+codegen, panics in the compiler, or misleading error messages.
+
+This brief is a focused test-writing effort. No implementation
+changes unless a test reveals a bug (then fix it and add the
+regression test).
+
+## Approach
+
+Write `.kea` test files and Rust unit tests. Each test targets a
+specific sad path. Tests should be snapshot-tested where the output
+is an error message (verify the message is helpful, not just that
+it errors). Tests that should compile-and-run verify the output.
+
+Organise by phase. Within each phase, organise by attack surface.
+
+## Phase 0a: Syntax
+
+### Indentation edge cases
+- Mixed tabs and spaces in the same block
+- Trailing whitespace after dedent
+- Empty block body (e.g. `fn foo() -> Int` with nothing indented)
+- Zero-width or unusual Unicode in identifiers
+- Block nesting 10+ levels deep
+- Expression that spans 5+ continuation lines
+- Indentation after blank lines (does the layout engine recover?)
+- CRLF vs LF line endings
+
+### Malformed inputs
+- Unclosed string literal (no terminating `"`)
+- Unterminated string interpolation `"hello {`
+- Nested interpolation `"hello {"world {x}"}"`
+- String with only escape sequences `"\n\t\\"`
+- Unexpected EOF in every position: mid-expression, mid-type
+  annotation, mid-pattern, mid-handler clause
+- Garbage after a valid top-level declaration
+- Empty file
+- File with only comments
+- File with only whitespace
+
+### Parser recovery
+- Error in first declaration — does the parser find the second?
+- Two consecutive syntax errors — are both reported?
+- Error inside a `case` arm — does parsing continue for later arms?
+- Mismatched parens/brackets at various nesting depths
+
+### Keywords as identifiers
+- Using `fn`, `let`, `case`, `handle`, `resume`, `fail`, `catch`,
+  `effect`, `trait`, `enum`, `struct`, `with`, `for`, `while`,
+  `true`, `false`, `not`, `and`, `or` as variable names
+- Using keywords in field names, type names, module names
+
+## Phase 0b: Type System
+
+### Unification edge cases
+- Infinite type: `let f = f` or `fn f(x) -> f(f(x))`
+- Conflicting field types in record unification
+- Row variable escaping its scope
+- Deeply nested generic types (5+ levels of `Option Option Option ...`)
+- Type annotation contradicts inferred type
+
+### Trait coherence
+- Duplicate `impl Show for Int` — should error
+- Orphan impl: impl a foreign trait for a foreign type
+- Ambiguous method: two traits with same method name, both in scope
+- Trait method with wrong number of parameters
+- Trait method with wrong return type
+- Missing required methods in impl block (no default)
+- Extra methods in impl block (not in trait)
+
+### Error message quality
+- Do unification errors ever show `?t42` or similar internal variables?
+- Record field mismatch: does the error say which field?
+- Function arity mismatch: does it say expected vs got?
+- Type mismatch in deeply nested expression: does it point to the
+  right span?
+
+### Edge cases
+- Mutually recursive types (struct ↔ enum) — recently fixed, stress test
+- Type alias cycles: `type A = B; type B = A`
+- Type alias to nonexistent type
+- Generic function instantiated with wrong number of type args
+- Unused type parameters (should this warn?)
+- Shadowing a type name with a variable name
+
+## Phase 0c: Effect Declarations and Typing
+
+### Handler scoping
+- Effect used outside any handler — should error with clear message
+- Nested handlers for the same effect — inner should shadow outer
+- Handler that handles an effect not in the body's effect row
+- Handler with no clauses (empty handler block)
+- Effect operation called with wrong number/type of arguments
+
+### Resume linearity
+- `resume` called twice in same handler clause — must error
+- `resume` called in both branches of an `if` — must error (or is
+  this okay? at-most-once means exactly one path resumes)
+- `resume` not called at all (zero-resume) — only valid for
+  Fail-like effects. Should warn or error for others?
+- `resume` called outside a handler clause — must error
+- `resume` used as a value (passed to a function, stored in a let)
+
+### Effect row interactions
+- Function with `-[IO, IO]>` — duplicate effect in row
+- Function with `-[Fail String, Fail Int]>` — same effect,
+  different type params
+- Polymorphic effect tail: `fn f(g: () -[e]> Int) -[IO, e]> Int`
+  — does `e` unify correctly?
+- Handler removes one effect, leaves others — is the result row
+  correct?
+- Chaining functions with different effect rows — do they compose?
+
+### Fail / catch / ? interactions
+- `catch` with no `fail` in body — should work (catch is a no-op)
+- `?` on a non-Fail expression — should error
+- `fail` with wrong type for enclosing `catch` — type mismatch
+- Nested `catch` — inner catch handles inner fail
+- `fail` inside a handler clause — which Fail does it target?
+
+## Phase 0d: Codegen
+
+### Pattern matching
+- Non-exhaustive `case` — missing a variant
+- Overlapping patterns — first match wins, no warning needed but
+  verify semantics
+- Nested pattern matching: `case x` where x is `Some(Some(y))`
+- Wildcard in various positions
+- Pattern match on unit `()`
+- Pattern match on boolean with only `true` arm
+
+### Closure correctness
+- Closure capturing a variable that's used after the closure
+- Closure capturing a variable from 3+ scopes up
+- Recursive closure (closure that calls itself via a let binding)
+- Closure returned from a function — does the captured env survive?
+- Multiple closures capturing the same variable
+
+### RC edge cases
+- Deeply nested structure (tree 100 levels deep) — does drop work
+  without stack overflow?
+- Functional update chain: `x~{a: 1}~{b: 2}~{c: 3}` — allocation count
+- Large enum variant — does layout work correctly?
+- Zero-field struct — does it allocate?
+
+### Arithmetic / overflow
+- Integer overflow (max int + 1)
+- Division by zero
+- Modulo by zero
+- Negative modulo
+
+## Phase 0e: Runtime Effects
+
+### Handler nesting
+- 10+ nested handlers — does it work?
+- Same effect handled at 3 different nesting levels — correct
+  dispatch?
+- Handler inside a handler clause (handler in the resume path)
+- Removing a handler and re-adding it at a different level
+
+### Fail + other effects
+- `fail` inside a `State` handler — state is rolled back? Or not?
+  (Kea doesn't have transactional rollback — verify)
+- `fail` inside a handler's `then` clause — propagates to outer?
+- `catch` wrapping a handler — handler result is the catch result
+- `?` inside a handler clause body
+
+### Tail-resumptive classification
+- Handler clause where resume is in tail position — should be
+  classified as tail-resumptive
+- Handler clause where resume is NOT in tail position (e.g.
+  `let x = resume(v); x + 1`) — not tail-resumptive
+- Handler clause that branches: resume in one branch, not the other
+- Handler clause with resume inside a closure — not tail-resumptive
+
+### State effect stress
+- State with large state value (deeply nested struct)
+- State.put followed immediately by State.get — round-trips?
+- Multiple State effects with different type params in same scope
+
+### IO correctness
+- IO.stdout with empty string
+- IO.stdout with very long string (10KB+)
+- IO.read_file on nonexistent file — should fail cleanly, not panic
+
+## Process
+
+This is a parallelisable brief. Multiple agents can work on
+different phases simultaneously. Each phase section is independent.
+
+For each test:
+1. Write the `.kea` test file or Rust test
+2. Run it — verify it produces the expected output/error
+3. If it panics or produces a wrong/misleading result, fix the bug
+4. Add the test to the regression suite
+5. If the error message is bad, improve it
+
+Snapshot test error messages where possible — error message quality
+is a feature.
+
+## Definition of Done
+
+- [ ] Every bullet point above has at least one test
+- [ ] No compiler panics on any adversarial input (errors are fine,
+      panics are not)
+- [ ] Error messages for common mistakes are helpful (point to the
+      right span, suggest a fix where possible)
+- [ ] All tests pass in CI (`mise run check-full`)
+- [ ] Any bugs found are fixed with regression tests
