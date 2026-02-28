@@ -7,6 +7,7 @@ use kea_codegen::CodegenMode;
 struct KernelMetric {
     name: &'static str,
     reuse_count: usize,
+    reuse_token_candidate_count: usize,
     alloc_count: usize,
     release_count: usize,
 }
@@ -47,9 +48,17 @@ fn run() -> Result<(), String> {
         compile_kernel("sum_build", SUM_REUSE_SOURCE)?,
     ];
     let total_reuse: usize = metrics.iter().map(|m| m.reuse_count).sum();
+    let total_reuse_token_candidates: usize =
+        metrics.iter().map(|m| m.reuse_token_candidate_count).sum();
     let total_alloc: usize = metrics.iter().map(|m| m.alloc_count).sum();
     let total_release: usize = metrics.iter().map(|m| m.release_count).sum();
-    let json = render_metrics_json(&metrics, total_reuse, total_alloc, total_release);
+    let json = render_metrics_json(
+        &metrics,
+        total_reuse,
+        total_reuse_token_candidates,
+        total_alloc,
+        total_release,
+    );
 
     if let Some(path) = std::env::args().nth(1) {
         let path = PathBuf::from(path);
@@ -79,6 +88,12 @@ fn compile_kernel(name: &'static str, source: &str) -> Result<KernelMetric, Stri
         .iter()
         .map(|f| f.reuse_count)
         .sum();
+    let reuse_token_candidate_count = artifact
+        .stats
+        .per_function
+        .iter()
+        .map(|f| f.reuse_token_candidate_count)
+        .sum();
     let alloc_count = artifact.stats.per_function.iter().map(|f| f.alloc_count).sum();
     let release_count = artifact
         .stats
@@ -90,6 +105,7 @@ fn compile_kernel(name: &'static str, source: &str) -> Result<KernelMetric, Stri
     Ok(KernelMetric {
         name,
         reuse_count,
+        reuse_token_candidate_count,
         alloc_count,
         release_count,
     })
@@ -98,6 +114,7 @@ fn compile_kernel(name: &'static str, source: &str) -> Result<KernelMetric, Stri
 fn render_metrics_json(
     metrics: &[KernelMetric],
     total_reuse: usize,
+    total_reuse_token_candidates: usize,
     total_alloc: usize,
     total_release: usize,
 ) -> String {
@@ -105,14 +122,18 @@ fn render_metrics_json(
         .iter()
         .map(|metric| {
             format!(
-                "    {{\"name\":\"{}\",\"reuse_count\":{},\"alloc_count\":{},\"release_count\":{}}}",
-                metric.name, metric.reuse_count, metric.alloc_count, metric.release_count
+                "    {{\"name\":\"{}\",\"reuse_count\":{},\"reuse_token_candidate_count\":{},\"alloc_count\":{},\"release_count\":{}}}",
+                metric.name,
+                metric.reuse_count,
+                metric.reuse_token_candidate_count,
+                metric.alloc_count,
+                metric.release_count
             )
         })
         .collect::<Vec<_>>()
         .join(",\n");
 
     format!(
-        "{{\n  \"kernels\": [\n{kernel_rows}\n  ],\n  \"totals\": {{\"reuse_count\": {total_reuse}, \"alloc_count\": {total_alloc}, \"release_count\": {total_release}}}\n}}\n"
+        "{{\n  \"kernels\": [\n{kernel_rows}\n  ],\n  \"totals\": {{\"reuse_count\": {total_reuse}, \"reuse_token_candidate_count\": {total_reuse_token_candidates}, \"alloc_count\": {total_alloc}, \"release_count\": {total_release}}}\n}}\n"
     )
 }
