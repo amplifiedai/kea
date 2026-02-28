@@ -1370,6 +1370,7 @@ fn clif_type(ty: &Type) -> Result<cranelift::prelude::Type, CodegenError> {
         // opaque machine-word handles until full aggregate lowering lands.
         Type::Record(_)
         | Type::AnonRecord(_)
+        | Type::Tuple(_)
         | Type::Sum(_)
         | Type::Option(_)
         | Type::Result(_, _)
@@ -1679,7 +1680,12 @@ fn allocate_heap_payload_dynamic(
 fn is_managed_heap_type(ty: &Type) -> bool {
     matches!(
         ty,
-        Type::String | Type::Record(_) | Type::Sum(_) | Type::Option(_) | Type::Result(_, _)
+        Type::String
+            | Type::Record(_)
+            | Type::Tuple(_)
+            | Type::Sum(_)
+            | Type::Option(_)
+            | Type::Result(_, _)
     )
 }
 

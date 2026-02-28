@@ -2277,6 +2277,9 @@ fn collect_effect_operations(module: &HirModule) -> BTreeMap<String, EffectOpera
 fn handler_cell_lowering_for_operation(op: &EffectOperationInfo) -> Option<HandlerCellOpLowering> {
     match (op.arity, op.returns_unit) {
         (0, _) => Some(HandlerCellOpLowering::LoadCell),
+        (1, true) if op.effect == "Log" => {
+            Some(HandlerCellOpLowering::InvokeArgCallbackAndReturnUnit)
+        }
         (1, true) => Some(HandlerCellOpLowering::StoreArgAndReturnUnit),
         _ => None,
     }
@@ -2786,9 +2789,26 @@ fn collect_anon_record_layouts_from_expr(
                 collect_anon_record_layouts_from_expr(field_expr, layouts, known);
             }
         }
-        HirExprKind::SumConstructor { fields, .. } | HirExprKind::Tuple(fields) => {
+        HirExprKind::SumConstructor { fields, .. } => {
             for field_expr in fields {
                 collect_anon_record_layouts_from_expr(field_expr, layouts, known);
+            }
+        }
+        HirExprKind::Tuple(fields) => {
+            for field_expr in fields {
+                collect_anon_record_layouts_from_expr(field_expr, layouts, known);
+            }
+            let layout_name = tuple_layout_name(fields.len());
+            if known.insert(layout_name.clone()) {
+                layouts.records.push(MirRecordLayout {
+                    name: layout_name,
+                    fields: (0..fields.len())
+                        .map(|index| MirRecordFieldLayout {
+                            name: index.to_string(),
+                            annotation: TypeAnnotation::Named("Dynamic".to_string()),
+                        })
+                        .collect(),
+                });
             }
         }
         HirExprKind::SumPayloadAccess { expr, .. }
@@ -2882,6 +2902,10 @@ fn anon_record_layout_name(fields: &BTreeSet<String>) -> String {
             fields.iter().cloned().collect::<Vec<_>>().join("$")
         )
     }
+}
+
+fn tuple_layout_name(arity: usize) -> String {
+    format!("__Tuple${arity}")
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -3034,6 +3058,7 @@ struct CapturedBinding {
 enum HandlerCellOpLowering {
     LoadCell,
     StoreArgAndReturnUnit,
+    InvokeArgCallbackAndReturnUnit,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -3717,6 +3742,7 @@ impl FunctionLoweringCtx {
                 let record_type = match &base.ty {
                     Type::Record(record_ty) => Some(record_ty.name.clone()),
                     Type::AnonRecord(row) => self.infer_unique_record_type_for_row(row),
+                    Type::Tuple(items) => Some(tuple_layout_name(items.len())),
                     _ => match &base.kind {
                         HirExprKind::Var(name) => self.var_record_types.get(name).cloned(),
                         HirExprKind::Call { func, .. } => self.infer_record_type_from_call(func),
@@ -3856,7 +3882,23 @@ impl FunctionLoweringCtx {
             HirExprKind::Lambda { params, body } => {
                 self.lower_lambda_to_closure_value(expr, params, body, None)
             }
-            HirExprKind::Tuple(_) | HirExprKind::Raw(_) => match &expr.kind {
+            HirExprKind::Tuple(items) => {
+                let mut lowered_fields = Vec::with_capacity(items.len());
+                for (index, item) in items.iter().enumerate() {
+                    let field_value = self.lower_expr(item)?;
+                    lowered_fields.push((index.to_string(), field_value));
+                }
+                let dest = self.new_value();
+                let record_type = tuple_layout_name(items.len());
+                self.emit_inst(MirInst::RecordInit {
+                    dest: dest.clone(),
+                    record_type: record_type.clone(),
+                    fields: lowered_fields,
+                });
+                self.record_value_types.insert(dest.clone(), record_type);
+                Some(dest)
+            }
+            HirExprKind::Raw(_) => match &expr.kind {
                 HirExprKind::Raw(raw_expr) => self.lower_raw_ast_expr(raw_expr),
                 _ => None,
             },
@@ -3870,6 +3912,47 @@ impl FunctionLoweringCtx {
         clauses: &[HirHandleClause],
         then_clause: Option<&HirExpr>,
     ) -> Option<MirValueId> {
+        fn strip_tail_resume_unit_body(body: &HirExpr) -> Option<HirExpr> {
+            match &body.kind {
+                HirExprKind::Resume { value } => {
+                    if matches!(value.kind, HirExprKind::Lit(kea_ast::Lit::Unit)) {
+                        Some(HirExpr {
+                            kind: HirExprKind::Lit(kea_ast::Lit::Unit),
+                            ty: Type::Unit,
+                            span: body.span,
+                        })
+                    } else {
+                        None
+                    }
+                }
+                HirExprKind::Block(exprs) => {
+                    let last = exprs.last()?;
+                    let HirExprKind::Resume { value } = &last.kind else {
+                        return None;
+                    };
+                    if !matches!(value.kind, HirExprKind::Lit(kea_ast::Lit::Unit)) {
+                        return None;
+                    }
+                    let mut prefix = exprs
+                        .iter()
+                        .take(exprs.len().saturating_sub(1))
+                        .cloned()
+                        .collect::<Vec<_>>();
+                    prefix.push(HirExpr {
+                        kind: HirExprKind::Lit(kea_ast::Lit::Unit),
+                        ty: Type::Unit,
+                        span: body.span,
+                    });
+                    Some(HirExpr {
+                        kind: HirExprKind::Block(prefix),
+                        ty: Type::Unit,
+                        span: body.span,
+                    })
+                }
+                _ => None,
+            }
+        }
+
         let target_effect = clauses.first()?.effect.clone();
         if clauses.iter().any(|clause| clause.effect != target_effect) {
             self.emit_inst(MirInst::Unsupported {
@@ -3881,25 +3964,12 @@ impl FunctionLoweringCtx {
         }
         let mut plan = ActiveEffectHandlerPlan::default();
         let mut operation_initial_exprs: BTreeMap<String, Option<HirExpr>> = BTreeMap::new();
+        let mut operation_callback_values: BTreeMap<String, MirValueId> = BTreeMap::new();
         let mut has_store_clause = false;
         for clause in clauses
             .iter()
             .filter(|clause| clause.effect == target_effect)
         {
-            let resume_value = match &clause.body.kind {
-                HirExprKind::Resume { value } => value.as_ref(),
-                _ => {
-                    self.emit_inst(MirInst::Unsupported {
-                        detail: format!(
-                            "handler clause `{target_effect}.{} {}`",
-                            clause.operation,
-                            "must be tail-resumptive (`resume ...`) for compiled lowering"
-                        ),
-                    });
-                    return None;
-                }
-            };
-
             if plan.operation_lowering.contains_key(&clause.operation) {
                 self.emit_inst(MirInst::Unsupported {
                     detail: format!(
@@ -3912,28 +3982,130 @@ impl FunctionLoweringCtx {
 
             match clause.args.len() {
                 0 => {
+                    let resume_value = match &clause.body.kind {
+                        HirExprKind::Resume { value } => value.as_ref(),
+                        _ => {
+                            self.emit_inst(MirInst::Unsupported {
+                                detail: format!(
+                                    "handler clause `{target_effect}.{} {}`",
+                                    clause.operation,
+                                    "must be tail-resumptive (`resume ...`) for compiled lowering"
+                                ),
+                            });
+                            return None;
+                        }
+                    };
                     plan.operation_lowering
                         .insert(clause.operation.clone(), HandlerCellOpLowering::LoadCell);
                     operation_initial_exprs
                         .insert(clause.operation.clone(), Some((*resume_value).clone()));
                 }
                 1 => {
-                    if !matches!(resume_value.kind, HirExprKind::Lit(kea_ast::Lit::Unit)) {
-                        self.emit_inst(MirInst::Unsupported {
-                            detail: format!(
-                                "single-argument handler clause `{target_effect}.{} {}`",
-                                clause.operation,
-                                "must use `resume ()` for compiled lowering"
-                            ),
-                        });
-                        return None;
+                    if target_effect == "Log" {
+                        let Some(callback_body) = strip_tail_resume_unit_body(&clause.body) else {
+                            self.emit_inst(MirInst::Unsupported {
+                                detail: format!(
+                                    "single-argument handler clause `{target_effect}.{} {}`",
+                                    clause.operation,
+                                    "must end with `resume ()` for compiled lowering"
+                                ),
+                            });
+                            return None;
+                        };
+                        let Some(HirPattern::Var(arg_name)) = clause.args.first() else {
+                            self.emit_inst(MirInst::Unsupported {
+                                detail: format!(
+                                    "single-argument handler clause `{target_effect}.{} {}`",
+                                    clause.operation,
+                                    "requires a simple variable argument pattern"
+                                ),
+                            });
+                            return None;
+                        };
+                        let callback_param = kea_hir::HirParam {
+                            name: Some(arg_name.clone()),
+                            span: clause.span,
+                        };
+                        let mut callback_dispatch_ops = BTreeSet::new();
+                        collect_hir_dispatch_effect_ops(
+                            &callback_body,
+                            &self.effect_operations,
+                            &mut callback_dispatch_ops,
+                        );
+                        if !callback_dispatch_ops.is_empty() {
+                            self.emit_inst(MirInst::Unsupported {
+                                detail: format!(
+                                    "handler callback body for `{target_effect}.{}` uses unsupported dispatched effect operations: {}",
+                                    clause.operation,
+                                    callback_dispatch_ops.into_iter().collect::<Vec<_>>().join(", "),
+                                ),
+                            });
+                            return None;
+                        }
+                        let callback_ty = Type::Function(FunctionType::with_effects(
+                            vec![Type::Dynamic],
+                            Type::Unit,
+                            EffectRow::pure(),
+                        ));
+                        let callback_lambda = HirExpr {
+                            kind: HirExprKind::Lambda {
+                                params: vec![callback_param.clone()],
+                                body: Box::new(callback_body.clone()),
+                            },
+                            ty: callback_ty.clone(),
+                            span: clause.span,
+                        };
+                        let Some(callback_value) = self.lower_lambda_to_closure_value(
+                            &callback_lambda,
+                            std::slice::from_ref(&callback_param),
+                            &callback_body,
+                            Some(&callback_ty),
+                        ) else {
+                            self.emit_inst(MirInst::Unsupported {
+                                detail: format!(
+                                    "failed to lower handler callback body for `{target_effect}.{}`",
+                                    clause.operation
+                                ),
+                            });
+                            return None;
+                        };
+                        plan.operation_lowering.insert(
+                            clause.operation.clone(),
+                            HandlerCellOpLowering::InvokeArgCallbackAndReturnUnit,
+                        );
+                        operation_initial_exprs.insert(clause.operation.clone(), None);
+                        operation_callback_values.insert(clause.operation.clone(), callback_value);
+                    } else {
+                        let resume_value = match &clause.body.kind {
+                            HirExprKind::Resume { value } => value.as_ref(),
+                            _ => {
+                                self.emit_inst(MirInst::Unsupported {
+                                    detail: format!(
+                                        "handler clause `{target_effect}.{} {}`",
+                                        clause.operation,
+                                        "must be tail-resumptive (`resume ...`) for compiled lowering"
+                                    ),
+                                });
+                                return None;
+                            }
+                        };
+                        if !matches!(resume_value.kind, HirExprKind::Lit(kea_ast::Lit::Unit)) {
+                            self.emit_inst(MirInst::Unsupported {
+                                detail: format!(
+                                    "single-argument handler clause `{target_effect}.{} {}`",
+                                    clause.operation,
+                                    "must use `resume ()` for compiled lowering"
+                                ),
+                            });
+                            return None;
+                        }
+                        plan.operation_lowering.insert(
+                            clause.operation.clone(),
+                            HandlerCellOpLowering::StoreArgAndReturnUnit,
+                        );
+                        operation_initial_exprs.insert(clause.operation.clone(), None);
+                        has_store_clause = true;
                     }
-                    plan.operation_lowering.insert(
-                        clause.operation.clone(),
-                        HandlerCellOpLowering::StoreArgAndReturnUnit,
-                    );
-                    operation_initial_exprs.insert(clause.operation.clone(), None);
-                    has_store_clause = true;
                 }
                 arity => {
                     self.emit_inst(MirInst::Unsupported {
@@ -3980,7 +4152,9 @@ impl FunctionLoweringCtx {
             None
         };
         for operation in plan.operation_lowering.keys() {
-            let cell = if let Some(shared) = &shared_cell {
+            let cell = if let Some(callback) = operation_callback_values.get(operation) {
+                callback.clone()
+            } else if let Some(shared) = &shared_cell {
                 shared.clone()
             } else {
                 let Some(Some(initial_expr)) = operation_initial_exprs.get(operation) else {
@@ -4016,8 +4190,77 @@ impl FunctionLoweringCtx {
                 .insert((target_effect.clone(), operation.clone()), cell.clone());
         }
         self.active_effect_handlers
-            .insert(target_effect.clone(), plan);
+            .insert(target_effect.clone(), plan.clone());
         let result = self.lower_expr(handled);
+        self.restore_var_scope(&incoming_scope);
+        for (operation, cell) in &operation_cells {
+            self.active_effect_cells
+                .insert((target_effect.clone(), operation.clone()), cell.clone());
+        }
+        self.active_effect_handlers
+            .insert(target_effect.clone(), plan);
+
+        let mut lowered_result = result.clone();
+        if let Some(then_expr) = then_clause {
+            if self.current_block().terminator.is_none() {
+                let handled_value = if let Some(value) = result.clone() {
+                    value
+                } else if handled.ty == Type::Unit {
+                    let unit = self.new_value();
+                    self.emit_inst(MirInst::Const {
+                        dest: unit.clone(),
+                        literal: MirLiteral::Unit,
+                    });
+                    unit
+                } else {
+                    self.emit_inst(MirInst::Unsupported {
+                        detail: "handle expression then-clause expected a value, but handled body produced none".to_string(),
+                    });
+                    return None;
+                };
+
+                if let HirExprKind::Lambda { params, body } = &then_expr.kind {
+                    if params.len() != 1 {
+                        self.emit_inst(MirInst::Unsupported {
+                            detail: "handle then-clause lambda must accept exactly one parameter".to_string(),
+                        });
+                        return None;
+                    }
+                    let incoming_scope = self.snapshot_var_scope();
+                    if let Some(param_name) = &params[0].name {
+                        self.vars.insert(param_name.clone(), handled_value);
+                        self.var_types.insert(param_name.clone(), handled.ty.clone());
+                    }
+                    lowered_result = self.lower_expr(body);
+                    self.restore_var_scope(&incoming_scope);
+                } else {
+                    let callee = self.lower_expr(then_expr)?;
+                    let call_result = if handle_expr.ty == Type::Unit {
+                        None
+                    } else {
+                        Some(self.new_value())
+                    };
+                    self.emit_inst(MirInst::Call {
+                        callee: MirCallee::Value(callee),
+                        args: vec![handled_value],
+                        arg_types: vec![handled.ty.clone()],
+                        result: call_result.clone(),
+                        ret_type: handle_expr.ty.clone(),
+                        callee_fail_result_abi: false,
+                        capture_fail_result: false,
+                        cc_manifest_id: "default".to_string(),
+                    });
+                    if let (Some(dest), Type::Sum(sum_ty)) = (&call_result, &handle_expr.ty) {
+                        self.sum_value_types
+                            .insert(dest.clone(), sum_ty.name.clone());
+                    }
+                    lowered_result = call_result;
+                }
+            } else {
+                lowered_result = None;
+            }
+        }
+
         self.restore_var_scope(&incoming_scope);
         self.emit_inst(MirInst::HandlerExit {
             effect: target_effect,
@@ -4025,67 +4268,7 @@ impl FunctionLoweringCtx {
         for cell in release_cells {
             self.emit_inst(MirInst::Release { value: cell });
         }
-        let Some(then_expr) = then_clause else {
-            return result;
-        };
-        if self.current_block().terminator.is_some() {
-            return None;
-        }
-
-        let handled_value = if let Some(value) = result {
-            value
-        } else if handled.ty == Type::Unit {
-            let unit = self.new_value();
-            self.emit_inst(MirInst::Const {
-                dest: unit.clone(),
-                literal: MirLiteral::Unit,
-            });
-            unit
-        } else {
-            self.emit_inst(MirInst::Unsupported {
-                detail: "handle expression then-clause expected a value, but handled body produced none".to_string(),
-            });
-            return None;
-        };
-
-        if let HirExprKind::Lambda { params, body } = &then_expr.kind {
-            if params.len() != 1 {
-                self.emit_inst(MirInst::Unsupported {
-                    detail: "handle then-clause lambda must accept exactly one parameter".to_string(),
-                });
-                return None;
-            }
-            let incoming_scope = self.snapshot_var_scope();
-            if let Some(param_name) = &params[0].name {
-                self.vars.insert(param_name.clone(), handled_value);
-                self.var_types.insert(param_name.clone(), handled.ty.clone());
-            }
-            let lowered = self.lower_expr(body);
-            self.restore_var_scope(&incoming_scope);
-            return lowered;
-        }
-
-        let callee = self.lower_expr(then_expr)?;
-        let call_result = if handle_expr.ty == Type::Unit {
-            None
-        } else {
-            Some(self.new_value())
-        };
-        self.emit_inst(MirInst::Call {
-            callee: MirCallee::Value(callee),
-            args: vec![handled_value],
-            arg_types: vec![handled.ty.clone()],
-            result: call_result.clone(),
-            ret_type: handle_expr.ty.clone(),
-            callee_fail_result_abi: false,
-            capture_fail_result: false,
-            cc_manifest_id: "default".to_string(),
-        });
-        if let (Some(dest), Type::Sum(sum_ty)) = (&call_result, &handle_expr.ty) {
-            self.sum_value_types
-                .insert(dest.clone(), sum_ty.name.clone());
-        }
-        call_result
+        lowered_result
     }
 
     fn lower_call_expr(
@@ -4366,6 +4549,28 @@ impl FunctionLoweringCtx {
                         self.emit_inst(MirInst::StateCellStore { cell, value });
                         return None;
                     }
+                    HandlerCellOpLowering::InvokeArgCallbackAndReturnUnit => {
+                        if args.len() != 1 {
+                            self.emit_inst(MirInst::Unsupported {
+                                detail: format!(
+                                    "handled operation `{effect}.{operation}` expected 1 arg for callback lowering"
+                                ),
+                            });
+                            return None;
+                        }
+                        let value = self.lower_expr(&args[0])?;
+                        self.emit_inst(MirInst::Call {
+                            callee: MirCallee::Value(cell),
+                            args: vec![value],
+                            arg_types: vec![Type::Dynamic],
+                            result: None,
+                            ret_type: Type::Unit,
+                            callee_fail_result_abi: false,
+                            capture_fail_result: false,
+                            cc_manifest_id: "default".to_string(),
+                        });
+                        return None;
+                    }
                 }
             }
             let mut lowered_args = Vec::with_capacity(args.len());
@@ -4562,6 +4767,11 @@ impl FunctionLoweringCtx {
         {
             self.sum_value_types.insert(dest.clone(), sum_type);
         }
+        if let Some(dest) = &result
+            && let Some(record_type) = self.infer_record_type_from_type(&call_ret_type)
+        {
+            self.record_value_types.insert(dest.clone(), record_type);
+        }
         result
     }
 
@@ -4612,6 +4822,7 @@ impl FunctionLoweringCtx {
         match ty {
             Type::Record(record_ty) => Some(record_ty.name.clone()),
             Type::AnonRecord(row) => self.infer_unique_record_type_for_row(row),
+            Type::Tuple(items) => Some(tuple_layout_name(items.len())),
             _ => None,
         }
     }
@@ -5048,6 +5259,10 @@ impl FunctionLoweringCtx {
                         self.var_record_types.insert(name.clone(), record_type);
                     }
                 }
+                Type::Tuple(items) => {
+                    self.var_record_types
+                        .insert(name.clone(), tuple_layout_name(items.len()));
+                }
                 _ => {}
             }
         }
@@ -5195,6 +5410,7 @@ fn is_heap_managed_type(ty: &Type) -> bool {
         Type::String
             | Type::Record(_)
             | Type::AnonRecord(_)
+            | Type::Tuple(_)
             | Type::Result(_, _)
             | Type::Function(_)
             | Type::Opaque { .. }

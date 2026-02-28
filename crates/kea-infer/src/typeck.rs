@@ -277,6 +277,12 @@ pub struct TypeEnv {
     function_effect_signatures: BTreeMap<String, FunctionEffectSignature>,
     function_signatures: BTreeMap<String, FnSignature>,
     module_functions: BTreeMap<String, Vec<String>>,
+    /// Module path → declared effect operation names.
+    ///
+    /// This is distinct from `module_functions`: effect modules can also
+    /// define helper functions (for example `State.with_state`) that are not
+    /// effect operations and must not be required in handler clauses.
+    effect_operations: BTreeMap<String, BTreeSet<String>>,
     /// Module-scoped type schemes: full module path → (fn name → (scheme, effects)).
     /// Enables qualified access (`Math.sqrt`) without requiring bare name binding.
     module_type_schemes: BTreeMap<String, BTreeMap<String, (TypeScheme, Effects)>>,
@@ -365,6 +371,7 @@ impl TypeEnv {
             function_effect_signatures: BTreeMap::new(),
             function_signatures: BTreeMap::new(),
             module_functions: BTreeMap::new(),
+            effect_operations: BTreeMap::new(),
             module_type_schemes: BTreeMap::new(),
             module_item_visibility: BTreeMap::new(),
             module_structs: BTreeMap::new(),
@@ -456,6 +463,15 @@ impl TypeEnv {
             .entry(module.to_string())
             .or_default()
             .push(name.to_string());
+        self.ensure_module_alias_for_path(module);
+    }
+
+    /// Register a declared effect operation for a module path.
+    pub fn register_effect_operation(&mut self, module: &str, name: &str) {
+        self.effect_operations
+            .entry(module.to_string())
+            .or_default()
+            .insert(name.to_string());
         self.ensure_module_alias_for_path(module);
     }
 
@@ -741,6 +757,13 @@ impl TypeEnv {
         self.module_type_schemes
             .get(module_path)
             .map(|m| m.keys().cloned().collect())
+    }
+
+    /// Return declared effect operation names for a module (by full path).
+    pub fn effect_operation_names(&self, module_path: &str) -> Option<Vec<String>> {
+        self.effect_operations
+            .get(module_path)
+            .map(|ops| ops.iter().cloned().collect())
     }
 
     /// Look up a type scheme registered in a module by full path and name.
@@ -7769,6 +7792,7 @@ pub fn register_effect_decl(
         };
 
         env.register_module_function(&module_path, &op.name.node);
+        env.register_effect_operation(&module_path, &op.name.node);
         env.register_module_type_scheme(&module_path, &op.name.node, op_scheme, Effects::impure());
 
         let qualified_name = format!("{module_path}.{}", op.name.node);
@@ -9352,7 +9376,7 @@ fn infer_expr_effect_row(
                 .unwrap_or(Type::Unit);
             let rest = fresh_effect_var(next_effect_var);
             constraints.push(Constraint::RowEqual {
-                expected: RowType::open(vec![(handled_label, handled_payload)], rest),
+                expected: RowType::open(vec![(handled_label.clone(), handled_payload)], rest),
                 actual: handled_effects.row,
                 provenance: Provenance {
                     span: expr.span,
@@ -9361,7 +9385,48 @@ fn infer_expr_effect_row(
             });
 
             let passthrough = EffectRow::open(vec![], rest);
-            join_effect_rows(passthrough, body_effects, constraints, next_effect_var)
+            let body_without_handled = if body_effects.row.has(&handled_label) {
+                if body_effects.row.rest.is_none() {
+                    EffectRow::closed(
+                        body_effects
+                            .row
+                            .fields
+                            .iter()
+                            .filter(|(label, _)| label != &handled_label)
+                            .cloned()
+                            .collect(),
+                    )
+                } else {
+                    let body_payload = body_effects
+                        .row
+                        .fields
+                        .iter()
+                        .find(|(label, _)| label == &handled_label)
+                        .map(|(_, payload)| payload.clone())
+                        .unwrap_or(Type::Unit);
+                    let body_rest = fresh_effect_var(next_effect_var);
+                    constraints.push(Constraint::RowEqual {
+                        expected: RowType::open(
+                            vec![(handled_label.clone(), body_payload)],
+                            body_rest,
+                        ),
+                        actual: body_effects.row,
+                        provenance: Provenance {
+                            span: expr.span,
+                            reason: Reason::TypeAscription,
+                        },
+                    });
+                    EffectRow::open(vec![], body_rest)
+                }
+            } else {
+                body_effects
+            };
+            join_effect_rows(
+                passthrough,
+                body_without_handled,
+                constraints,
+                next_effect_var,
+            )
         }
 
         ExprKind::Resume { value } => {
@@ -12806,7 +12871,7 @@ fn infer_handle_expr_type(
         let expected = Type::Function(FunctionType {
             params: vec![handled_ty.clone()],
             ret: Box::new(out_ty.clone()),
-            effects: EffectRow::pure(),
+            effects: EffectRow::open(vec![], unifier.fresh_row_var()),
         });
         constrain_type_eq(
             unifier,
@@ -12982,7 +13047,7 @@ fn infer_handle_expr_type(
         clause_env.pop_scope();
     }
 
-    if let Some(all_ops) = env.module_function_names(&module_path) {
+    if let Some(all_ops) = env.effect_operation_names(&module_path) {
         let missing = all_ops
             .into_iter()
             .filter(|op| !seen_ops.contains(op))
@@ -13887,6 +13952,36 @@ fn infer_expr_bidir(
                     instantiate_opaque_target(name, params, records, Some(sum_types))
             {
                 return underlying;
+            }
+
+            if let Type::Tuple(items) = &resolved_obj_ty {
+                if let Ok(index) = field.node.parse::<usize>() {
+                    if let Some(item_ty) = items.get(index) {
+                        return item_ty.clone();
+                    }
+                    unifier.push_error(
+                        Diagnostic::error(
+                            Category::TypeError,
+                            format!(
+                                "tuple index `{index}` is out of bounds for tuple of length {}",
+                                items.len()
+                            ),
+                        )
+                        .at(span_to_loc(field.span)),
+                    );
+                    return unifier.fresh_type();
+                }
+                unifier.push_error(
+                    Diagnostic::error(
+                        Category::TypeError,
+                        format!(
+                            "tuple field access expects a numeric index, got `{}`",
+                            field.node
+                        ),
+                    )
+                    .at(span_to_loc(field.span)),
+                );
+                return unifier.fresh_type();
             }
 
             let field_ty = unifier.fresh_type();

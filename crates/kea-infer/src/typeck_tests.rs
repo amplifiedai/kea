@@ -3598,6 +3598,28 @@ fn infer_tuple() {
 }
 
 #[test]
+fn infer_tuple_numeric_field_access() {
+    let expr = field_access(tuple(vec![lit_int(42), lit_str("hello")]), "1");
+    let (ty, u) = infer(&expr);
+    assert!(!u.has_errors(), "tuple numeric field access should typecheck");
+    assert_eq!(ty, Type::String);
+}
+
+#[test]
+fn infer_tuple_numeric_field_access_reports_out_of_bounds() {
+    let expr = field_access(tuple(vec![lit_int(42), lit_str("hello")]), "2");
+    let (_ty, u) = infer(&expr);
+    assert!(u.has_errors(), "expected tuple index out-of-bounds error");
+    assert!(
+        u.errors()
+            .iter()
+            .any(|d| d.message.contains("tuple index `2` is out of bounds")),
+        "expected tuple index diagnostic, got {:?}",
+        u.errors()
+    );
+}
+
+#[test]
 fn infer_homogeneous_list() {
     // [1, 2, 3]  →  List(Int)
     let expr = list(vec![lit_int(1), lit_int(2), lit_int(3)]);
@@ -7536,6 +7558,65 @@ fn handle_requires_clauses_for_all_effect_operations() {
             .iter()
             .any(|d| d.message.contains("missing clause(s): close")),
         "expected missing operation clause diagnostic, got {:?}",
+        unifier.errors()
+    );
+}
+
+#[test]
+fn handle_clause_completeness_ignores_non_operation_module_helpers() {
+    let mut env = TypeEnv::new();
+    let records = RecordRegistry::new();
+    let sums = SumTypeRegistry::new();
+    let mut traits = TraitRegistry::new();
+    register_hkt_for_use_for_traits(&mut traits, &records);
+
+    let state = make_effect_decl(
+        "State",
+        vec!["S"],
+        vec![
+            make_effect_operation("get", vec![], TypeAnnotation::Named("S".to_string())),
+            make_effect_operation(
+                "put",
+                vec![annotated_param("next", TypeAnnotation::Named("S".to_string()))],
+                TypeAnnotation::Named("Unit".to_string()),
+            ),
+        ],
+    );
+    let diags = register_effect_decl(&state, &records, Some(&sums), &mut env);
+    assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+
+    // Regression: module helper functions such as `State.with_state` must not
+    // be treated as required effect-operation clauses.
+    env.register_module_function("Kea.State", "with_state");
+    env.register_module_type_scheme_exact(
+        "Kea.State",
+        "with_state",
+        TypeScheme::mono(Type::Function(FunctionType::pure(
+            vec![Type::Int],
+            Type::Int,
+        ))),
+    );
+
+    let handled = call(field_access(var("State"), "get"), vec![]);
+    let clauses = vec![
+        handle_clause("State", "get", vec![], resume(lit_int(0))),
+        handle_clause(
+            "State",
+            "put",
+            vec![sp(PatternKind::Var("next".to_string()))],
+            resume(lit_unit()),
+        ),
+    ];
+    let expr = handle_expr(handled, clauses, None);
+
+    let mut unifier = Unifier::new();
+    let _ = infer_and_resolve(&expr, &mut env, &mut unifier, &records, &traits, &sums);
+    assert!(
+        !unifier
+            .errors()
+            .iter()
+            .any(|d| d.message.contains("missing clause(s): with_state")),
+        "helper function should not be required as handler clause, got {:?}",
         unifier.errors()
     );
 }

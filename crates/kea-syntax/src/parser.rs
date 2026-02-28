@@ -4757,7 +4757,15 @@ impl Parser {
     fn parse_postfix(&mut self, lhs: Expr) -> Option<Expr> {
         if self.check(&TokenKind::Dot) {
             self.advance();
-            let member = self.expect_any_ident("expected field name after '.'")?;
+            let member = match self.peek_kind() {
+                Some(TokenKind::Int(value)) => {
+                    let span = self.current_span();
+                    let name = value.to_string();
+                    self.advance();
+                    Spanned::new(name, span)
+                }
+                _ => self.expect_any_ident("expected field name after '.'")?,
+            };
             let receiver = match lhs.node {
                 // Allow namespaced module-style access like `List.map` even though
                 // bare `List` parses as a nullary constructor elsewhere.
@@ -5594,6 +5602,18 @@ mod tests {
             ExprKind::FieldAccess { expr, field } => {
                 assert_eq!(expr.node, ExprKind::Var("r".into()));
                 assert_eq!(field.node, "name");
+            }
+            _ => panic!("expected FieldAccess"),
+        }
+    }
+
+    #[test]
+    fn parse_field_access_numeric_tuple_index() {
+        let expr = parse("pair.0");
+        match &expr.node {
+            ExprKind::FieldAccess { expr, field } => {
+                assert_eq!(expr.node, ExprKind::Var("pair".into()));
+                assert_eq!(field.node, "0");
             }
             _ => panic!("expected FieldAccess"),
         }
