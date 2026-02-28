@@ -29167,6 +29167,36 @@ theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_success_from_b
   principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_success
     (h_app := h_seed.1) (h_proj := h_seed.2) h_no_expr h_no_field h_ok_expr h_ok_field
 
+/-- Alias: build unified no-unify master surface via no-unify master routes from successful runs. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_success_via_noUnifyMasterRoutes
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_no_expr : NoUnifyBranchesExpr e)
+    (h_no_field : NoUnifyBranchesFields fs)
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundNoUnifyFullVerticalMasterSurface st fuel env e fs stExpr ty stField rf :=
+  principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_success
+    (h_app := h_app) (h_proj := h_proj) h_no_expr h_no_field h_ok_expr h_ok_field
+
+/-- Bundled alias for unified no-unify master surface via no-unify master routes. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_success_via_noUnifyMasterRoutes_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_no_expr : NoUnifyBranchesExpr e)
+    (h_no_field : NoUnifyBranchesFields fs)
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundNoUnifyFullVerticalMasterSurface st fuel env e fs stExpr ty stField rf :=
+  principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_success_from_bundle
+    h_seed h_no_expr h_no_field h_ok_expr h_ok_field
+
 /--
 Build unified no-unify master surface from the general full master capstone,
 using explicit no-unify branch premises.
@@ -29230,6 +29260,37 @@ theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_success_via_fu
   principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_success_via_fullVerticalMasterCapstone
     (h_app := h_seed.1) (h_proj := h_seed.2) h_no_expr h_no_field h_ok_expr h_ok_field
 
+/-- Build unified no-unify master surface via no-unify master capstone from successful runs. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_success_via_noUnifyMasterCapstone
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_no_expr : NoUnifyBranchesExpr e)
+    (h_no_field : NoUnifyBranchesFields fs)
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundNoUnifyFullVerticalMasterSurface st fuel env e fs stExpr ty stField rf :=
+  principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_capstone
+    (principalBoundarySoundNoUnifyFullVerticalMasterCapstone_of_success
+      (h_app := h_app) (h_proj := h_proj) h_no_expr h_no_field h_ok_expr h_ok_field)
+
+/-- Bundled constructor for unified no-unify master surface via no-unify master capstone. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_success_via_noUnifyMasterCapstone_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_no_expr : NoUnifyBranchesExpr e)
+    (h_no_field : NoUnifyBranchesFields fs)
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundNoUnifyFullVerticalMasterSurface st fuel env e fs stExpr ty stField rf :=
+  principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_success_via_noUnifyMasterCapstone
+    (h_app := h_seed.1) (h_proj := h_seed.2) h_no_expr h_no_field h_ok_expr h_ok_field
+
 /-- One-hop projection: no-unify master routes from unified no-unify master surface. -/
 theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_routes
     {st : UnifyState} {fuel : Nat} {env : TermEnv}
@@ -29289,6 +29350,34 @@ theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_vertical_proj
     (h_surface : PrincipalBoundarySoundNoUnifyFullVerticalMasterSurface st fuel env e fs stExpr ty stField rf) :
     VerticalHookFreeProjSlice :=
   h_surface.capstone.verticalProj
+
+/-- Unified no-unify master surface is equivalent to no-unify master-routes surface. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_iff_masterRoutes
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields} :
+    PrincipalBoundarySoundNoUnifyFullVerticalMasterSurface st fuel env e fs stExpr ty stField rf
+      ↔ PrincipalBoundarySoundNoUnifyFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf := by
+  constructor
+  · intro h_surface
+    exact h_surface.routes
+  · intro h_routes
+    exact principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_routes h_routes
+
+/-- Unified no-unify master surface is equivalent to no-unify master-capstone surface. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_iff_masterCapstone
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields} :
+    PrincipalBoundarySoundNoUnifyFullVerticalMasterSurface st fuel env e fs stExpr ty stField rf
+      ↔ PrincipalBoundarySoundNoUnifyFullVerticalMasterCapstone st fuel env e fs stExpr ty stField rf := by
+  constructor
+  · intro h_surface
+    exact h_surface.capstone
+  · intro h_cap
+    exact principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_capstone h_cap
 
 /-- Unified no-unify master surface decomposes to explicit routes + capstone components. -/
 theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_iff_components
