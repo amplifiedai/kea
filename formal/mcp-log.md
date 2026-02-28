@@ -9908,3 +9908,42 @@ and routed decomposition signatures through those aliases, including top-level
 **Impact**:
 - Keeps interop theorem signatures consistent with alias-based decomposition
   style already used by numeric/shape/dimension suite packages.
+
+### 2026-03-01: effect-handler suite alias cleanup
+
+**Context**: Added explicit component aliases in
+`Kea/Properties/EffectHandlerContractSuite.lean` for aggregate suites:
+- `EffectHandlerSuiteComponents`
+- `EffectHandlerCapstoneSuiteComponents`
+- `EffectHandlerCatchPairSuiteComponents`
+- `EffectHandlerCompositionSuiteComponents`
+- `EffectHandlerCompositionCoherenceSuiteComponents`
+
+and routed their decomposition signatures (`..._iff_components`,
+`..._of_components`, `..._as_components`, and selected route wrappers) through
+those aliases.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Signature/API cleanup only; no runtime semantic change.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Effect-handler aggregate suite decomposition APIs now use named component
+  aliases instead of inlined tuple/`∃` types.
+
+**Impact**:
+- Keeps top-level Phase-2 handler contract surfaces aligned with the same
+  alias-based decomposition style used across other packaged suite layers.
