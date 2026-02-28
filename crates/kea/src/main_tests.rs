@@ -1880,6 +1880,57 @@
     }
 
     #[test]
+    fn compile_rejects_resume_inside_loop_in_handler_clause() {
+        let source_path = write_temp_source(
+            "effect Ping\n  fn ask() -> Int\n\nfn run() -[Ping]> Int\n  Ping.ask()\n\nfn main() -> Int\n  handle run()\n    Ping.ask() ->\n      for x in [1]\n        resume x\n",
+            "kea-cli-resume-inside-loop",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject resume inside loops");
+        assert!(
+            err.contains("`resume` is not allowed inside loops in handler clauses"),
+            "expected resume-in-loop diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_rejects_resume_value_type_mismatch_in_handler_clause() {
+        let source_path = write_temp_source(
+            "effect Counter\n  fn next() -> Int\n\nfn run() -[Counter]> Int\n  Counter.next()\n\nfn main() -> Int\n  handle run()\n    Counter.next() -> resume \"bad\"\n",
+            "kea-cli-resume-type-mismatch",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject resume type mismatch");
+        assert!(
+            err.contains("type mismatch") && err.contains("Int") && err.contains("String"),
+            "expected resume type-mismatch diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_rejects_effect_operation_call_with_too_many_arguments() {
+        let source_path = write_temp_source(
+            "effect Counter\n  fn next() -> Int\n\nfn main() -[Counter]> Int\n  Counter.next(1)\n",
+            "kea-cli-effect-op-extra-arg",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject extra call arguments");
+        assert!(
+            err.contains("too many arguments: expected 0, got 1"),
+            "expected operation arity diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_with_binding_and_stacking_exit_code() {
         let source_path = write_temp_source(
             "fn with_value(value: Int, @with f: fn(Int) -> Int) -> Int\n  f(value)\n\nfn with_unit(@with f: fn() -> Int) -> Int\n  f()\n\nfn main() -> Int\n  with n <- with_value(40)\n  with with_unit\n  n + 2\n",

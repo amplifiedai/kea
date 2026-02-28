@@ -301,4 +301,5 @@ is a feature.
 
 - 2026-03-01 04:26: Picked up brief, moved to `in-progress/`, and aligned INDEX status tracking (active + done updates).
 - 2026-03-01 04:30: Landed first adversarial tranche in CLI integration tests: malformed interpolation (`{}` and unterminated `{`), Show-obligation diagnostic guard for interpolation, and resume misuse diagnostics (outside clause, multiple resumes, lambda capture). Also tightened parser diagnostics so empty interpolation reports `expected expression in string interpolation` instead of generic `expected expression`.
-- **Next:** Continue 0a malformed-input coverage (unexpected EOF positions, parser recovery across multiple declarations) and 0c handler-scoping violations (mismatched handled effect, empty handler block, wrong op arity).
+- 2026-03-01 10:31: Landed second adversarial tranche in CLI integration tests: resume-in-loop rejection, resume value type-mismatch diagnostics (`Int` vs `String`), and effect operation call arity diagnostics (`too many arguments: expected 0, got 1`). Verified with `mise run check` and `PKG=kea mise run test-pkg` (224/224 pass).
+- **Next:** Continue 0a malformed-input coverage (unexpected EOF positions, parser recovery across multiple declarations) and 0c handler-scoping violations (mismatched handled effect and empty handler block behavior).
