@@ -2,7 +2,12 @@ use Option
 use Result
 use Order
 use List
+use Show
 
+--| Prelude re-exports common modules for low-ceremony code.
+--|
+--| Importing Prelude makes frequently used types and helpers
+--| available without per-module `use` boilerplate.
 --| Small prelude smoke function for bootstrap wiring checks.
 --|
 --|   Prelude.ping()   -- => 7

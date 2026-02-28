@@ -1,3 +1,7 @@
+--| Int provides helpers for integer arithmetic and bit operations.
+--|
+--| Prefer `Int.*` wrappers for readability at call sites, even
+--| when methods exist directly on `Int`.
 --| Return the absolute value of an integer.
 --|
 --|   Int.abs(-5)   -- => 5

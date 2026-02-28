@@ -1,3 +1,7 @@
+--| State provides scoped mutable state via handlers.
+--|
+--| Use `State.with_state` to isolate mutation and return
+--| deterministic `(result, final_state)` values.
 effect State S
   --| Return the current state value.
   --|

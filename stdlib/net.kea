@@ -1,3 +1,7 @@
+--| Net provides network connection operations.
+--|
+--| Keep raw networking at effect boundaries and isolate protocol
+--| logic in pure functions where possible.
 effect Net
   --| Open a network connection.
   --|

@@ -12,3 +12,9 @@ test "Clock.monotonic_non_negative"
     Clock.now() -> resume 123
     Clock.monotonic() -> resume 456
   Test.assert(t == t)
+
+test "Clock.elapsed_since"
+  let elapsed = handle Clock.elapsed_since(100)
+    Clock.now() -> resume 123
+    Clock.monotonic() -> resume 145
+  Test.assert(elapsed >= 0)

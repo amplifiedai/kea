@@ -131,6 +131,7 @@
             "rand_tests.kea",
             "result_tests.kea",
             "show_tests.kea",
+            "test_tests.kea",
             "text_tests.kea",
         ];
         let mut case_files = std::fs::read_dir(&cases_dir)
@@ -1072,7 +1073,7 @@
         let app_path = src_dir.join("app.kea");
         std::fs::write(
             &app_path,
-            "fn inc(x: Int) -> Int\n  x + 1\n\nfn main() -> Int\n  let _ = Option.map(Some(1), inc)\n  let _ = Result.from_option(Some(2), 0)\n  let _ = Result.unwrap_or(Err(9), 4)\n  let _ = List.map(List.Cons(3, List.Nil), inc)\n  0\n",
+            "fn inc(x: Int) -> Int\n  x + 1\n\nfn main() -> Int\n  let _ = Option.map(Some(1), inc)\n  let _ = Result.from_option(Some(2), 0)\n  let _ = Result.unwrap_or(Err(9), 4)\n  let _ = List.map(List.Cons(3, List.Nil), inc)\n  let _ = Show.show(5)\n  0\n",
         )
         .expect("app module write should succeed");
 

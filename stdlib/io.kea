@@ -1,3 +1,7 @@
+--| IO provides file and console side effects.
+--|
+--| Keep direct side effects at boundaries by using `IO.*` in
+--| entrypoints, handlers, and integration code.
 effect IO
   --| Write a string to stdout.
   --|

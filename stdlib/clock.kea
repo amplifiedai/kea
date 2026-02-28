@@ -1,3 +1,7 @@
+--| Clock provides time-related capabilities.
+--|
+--| Use `Clock.now()` for wall-clock timestamps and
+--| `Clock.monotonic()` for elapsed-time measurements.
 effect Clock
   --| Return wall-clock epoch seconds.
   --|

@@ -10,3 +10,9 @@ test "Rand.seed_and_int_smoke"
     Rand.seed(seed) -> resume ()
     Rand.int() -> resume 7
   Test.assert(x == x)
+
+test "Rand.int_between"
+  let value = handle Rand.int_between(10, 20)
+    Rand.seed(seed) -> resume ()
+    Rand.int() -> resume 17
+  Test.assert(value >= 10 and value <= 20)

@@ -1,3 +1,7 @@
+--| Reader provides read-only environment passing via effects.
+--|
+--| Use `Reader.with_reader` at boundaries and `Reader.ask`/`asks`
+--| in business logic that depends on shared context.
 effect Reader R
   --| Read the current environment value.
   --|

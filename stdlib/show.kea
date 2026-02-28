@@ -1,3 +1,7 @@
+--| Show defines conversion of values to user-facing text.
+--|
+--| String interpolation relies on `Show.show`, so common types
+--| should provide stable, readable representations.
 trait Show a
   --| Convert a value to its string representation.
   --|
@@ -5,6 +9,9 @@ trait Show a
   fn show(x: a) -> String
 
 --| Convert a single decimal digit to a string.
+--|
+--|   Show.digit_to_string(0)   -- => "0"
+--|   Show.digit_to_string(9)   -- => "9"
 fn digit_to_string(digit: Int) -> String
   case digit
     0 -> "0"
@@ -19,6 +26,9 @@ fn digit_to_string(digit: Int) -> String
     _ -> "9"
 
 --| Convert a non-negative integer to decimal text.
+--|
+--|   Show.show_non_negative(0)    -- => "0"
+--|   Show.show_non_negative(42)   -- => "42"
 fn show_non_negative(x: Int) -> String
   if x < 10
     digit_to_string(x)
@@ -36,6 +46,9 @@ fn show_int(x: Int) -> String
     show_non_negative(x)
 
 --| Runtime helper used by parser interpolation desugaring.
+--|
+--|   Show.show(7)    -- => "7"
+--|   Show.show(-7)   -- => "-7"
 fn show(x: Int) -> String
   show_int(x)
 

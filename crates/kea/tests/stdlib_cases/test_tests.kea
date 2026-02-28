@@ -1,0 +1,5 @@
+use Test
+
+test "Test.assert_with_message"
+  Test.assert_with_message(true, "should not fail")
+  Test.assert(true)
