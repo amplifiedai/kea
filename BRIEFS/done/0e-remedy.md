@@ -1,9 +1,9 @@
 # Brief: 0e Post-Completion Remedy
 
-**Status:** active
+**Status:** done
 **Priority:** v1-critical
 **Depends on:** nothing (all issues are in shipped code)
-**Blocks:** 0g (advanced types cannot build on broken effect runtime), stdlib-bootstrap (IO/Net shims must work)
+**Blocks:** none
 
 ## Context
 
@@ -218,4 +218,5 @@ After Critical and High items:
 - 2026-02-28 16:18: High item 3 completed in `kea-codegen`: JIT runtime shims for capability effects now perform real host behavior instead of placeholders (`IO.write_file`/`IO.read_file` via `std::fs`, `Net.connect/send/recv` via `TcpStream` with a process-local connection table). Updated CLI regressions to validate real file/network behavior without relying on stub artifacts. Validation run: `mise run check`, `PKG=kea-codegen mise run test-pkg`, `PKG=kea mise run test-pkg`.
 - 2026-02-28 16:22: High item 2 completed via AOT runtime shim linkage in `kea build`: build now compiles and links `crates/kea/runtime/kea_aot_runtime.c` alongside emitted object code so imported `__kea_io_*` / `__kea_net_*` symbols resolve in standalone binaries. Added AOT execution regression `compile_build_and_execute_aot_io_read_write_file_exit_code` proving file IO capability calls work after link. Validation run: `mise run check`, `PKG=kea mise run test-pkg`, `mise run check-full`.
 - 2026-02-28 16:28: High item 4 + Medium item 5 completed. Clock direct-capability lowering now routes `Clock.now` and `Clock.monotonic` through explicit runtime symbols (`__kea_clock_now`, `__kea_clock_monotonic`) instead of the old shared `time()` path; JIT binds these to Rust host shims (monotonic based on `Instant`, realtime based on `SystemTime`) and AOT runtime shims now use `clock_gettime(CLOCK_REALTIME/CLOCK_MONOTONIC)`. Updated parser diagnostic wording for `$` placeholder expressions to "not yet implemented" per syntax-note guidance. Validation run: `mise run check`, `PKG=kea-syntax mise run test-pkg`, `PKG=kea-codegen mise run test-pkg`, `PKG=kea mise run test-pkg`.
-- **Next:** Item 6 is verified/no-change (`debug_assert` invariant). Remaining items 7-9 are non-blocking refactors; remedy brief is done-ready from a correctness standpoint.
+- 2026-02-28 17:37: Remaining no-delta refactors completed. Item 7: extracted the monolithic CLI test suite from `crates/kea/src/main.rs` into module file `crates/kea/src/main_tests.rs` (`#[cfg(test)] mod main_tests;`) so CLI entrypoint code is no longer test-bloated. Item 8: `run_test_file` now typechecks each test scenario once and reuses the compiled context for iteration loops (compile-once/execute-many). Item 9: `CompilationContext` now caches lowered `HirModule`, and `emit_object`/`execute_jit` consume cached HIR instead of lowering twice. Full validation run: `mise run check`, `PKG=kea mise run test-pkg`, `mise run check-full`.
+- **Next:** none — brief complete.
