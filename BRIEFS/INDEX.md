@@ -28,7 +28,6 @@ Work in progress right now. Each entry should have a `## Progress` section in it
 - **[Stdlib bootstrap](in-progress/stdlib-bootstrap.md)** — Active. Tier-0 bootstrap started with real repo stdlib modules (`prelude`, `option`, intrinsic-backed `text`) and execute-path module-system coverage; remaining Tier-0 pure modules (`int`, `float`, `order`, `eq`, `ord`, `show`) are next, while heap-list `List` stays explicitly blocked on runtime/list-lowering support.
 - **[Memory model](in-progress/0f-memory-model.md)** — Active. Steps 1-2 (move checking, borrow checking) done. Step 3a (release scheduling, churn fusion, linear alias transfer) done. Step 6 (fixed-width integers, bitwise ops, numeric inference, layout intrinsics) largely done. **Step 3 expanded** with five new sub-steps based on Lean 4/Koka/Perceus research: 3b auto borrow inference, 3c drop specialisation, 3d reuse tokens (FBIP), 3e TRMC, 3f FIP verification. Next: Step 3b (auto borrow inference — single highest-impact optimisation).
 - **[Lean formalization](in-progress/lean-formalization.md)** — Active. Phase 1 kickoff started from the Rill Lean baseline; next is Kea effect-row alignment in core modules/proofs.
-- **[String interpolation](in-progress/string-interpolation.md)** — Active. KERNEL §1.6 `"Hello, {expr}"` syntax. Desugars to `Show.show()` + concat. Blocks self-hosting (error messages are half the compiler).
 - **[Practical language gaps](in-progress/practical-language-gaps.md)** — Active. Gaps 6-8 (IO decomposition, mutual recursion, enum keyword) are done; remaining high-priority work is Gaps 1-3 (layout intrinsics, numeric inference, string ops) for self-hosting.
 
 ---
@@ -77,6 +76,10 @@ Designed and approved. Ready to pick up. Ordered by execution sequence per ROADM
 
 *(moved to Active — see above)*
 
+### Post-0e syntax
+
+13. **[`with` syntax](todo/with-syntax.md)** — Callback flattening sugar (KERNEL §10.6). Flat `with` stacking, `@with` annotation on params, desugars to nested closures. Pure front-end — no type system or codegen changes.
+
 ### Parallel tracks
 
 7. **[Testing](todo/testing.md)** (Phase 0d through Phase 1) — `assert` (Fail) + `check` (Test effect) dual assertion model. Compiler-level expression capture, structural diff, effect-driven parallelism, property testing via `Gen` effect. Test runner portion starts with 0d. Benchmark harness is a 0d deliverable.
@@ -124,6 +127,7 @@ Completed briefs. Kept for reference and design rationale.
 | Brief | Summary |
 |-------|---------|
 | [syntax-migration](done/syntax-migration-rill-to-kea.md) | Rill→Kea syntax migration complete: `struct` (with `record` deprecated), `base~{ field }` functional update, `(a, b)` tuples (with `#()` deprecated), `%{}` map literals verified. |
+| [string-interpolation](done/string-interpolation.md) | KERNEL §1.6 landed with `{...}` interpolation, escaped braces (`{{`/`}}`), parser desugaring to `show(...)` + concat, and CLI/runtime regression coverage. |
 | [0d-codegen-pure](done/0d-codegen-pure.md) | Pure-subset codegen landed end-to-end (HIR→MIR→Cranelift, JIT+AOT, closure/RC/runtime lowering coverage), with 0d punch-list closeout complete; evaluator-parity snapshot corpus is explicitly deferred and blocked on future `kea-eval` infrastructure. |
 | [0d1-module-system](done/0d1-module-system.md) | Module resolver/import DAG/prelude/matrix/compiler-API extraction are done, with real repo `stdlib/` modules in-tree and execute-path integration proving module imports plus intrinsic-backed stdlib calls (`Option.unwrap_or` + `Text.length`) end-to-end. Heap-list stdlib remains deferred to stdlib-bootstrap/runtime support. |
 | [0e-runtime-effects](done/0e-runtime-effects.md) | Runtime effects landed end-to-end: Fail/ZeroResume Result path, direct capability effects (IO/Net/Clock/Rand), tail-resumptive user handlers (`State`/`Log`/`Reader`) with nesting/scoping + `then`, pass-stat visibility, and benchmark + CI gates validated (`check-full`, regression benchmarks green). |
