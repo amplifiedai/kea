@@ -78,7 +78,7 @@ Designed and approved. Ready to pick up. Ordered by execution sequence per ROADM
 
 ### Post-0e syntax
 
-13. **[`with` syntax](todo/with-syntax.md)** — Callback flattening sugar (KERNEL §10.6). Flat `with` stacking, `@with` annotation on params, desugars to nested closures. Pure front-end — no type system or codegen changes.
+*(done — see Done section)*
 
 ### Parallel tracks
 
@@ -129,6 +129,7 @@ Completed briefs. Kept for reference and design rationale.
 |-------|---------|
 | [syntax-migration](done/syntax-migration-rill-to-kea.md) | Rill→Kea syntax migration complete: `struct` (with `record` deprecated), `base~{ field }` functional update, `(a, b)` tuples (with `#()` deprecated), `%{}` map literals verified. |
 | [string-interpolation](done/string-interpolation.md) | KERNEL §1.6 landed with `{...}` interpolation, escaped braces (`{{`/`}}`), parser desugaring to `show(...)` + concat, and CLI/runtime regression coverage. |
+| [`with` syntax](done/with-syntax.md) | Callback-flattening sugar landed end-to-end: `with`/`with pat <- ...` parsing, `@with` parameter annotations, AST/HIR/typechecker desugaring, target validation diagnostics, block-order lint warning (`W0902`), and parser/infer/CLI regression coverage. |
 | [0d-codegen-pure](done/0d-codegen-pure.md) | Pure-subset codegen landed end-to-end (HIR→MIR→Cranelift, JIT+AOT, closure/RC/runtime lowering coverage), with 0d punch-list closeout complete; evaluator-parity snapshot corpus is explicitly deferred and blocked on future `kea-eval` infrastructure. |
 | [0d1-module-system](done/0d1-module-system.md) | Module resolver/import DAG/prelude/matrix/compiler-API extraction are done, with real repo `stdlib/` modules in-tree and execute-path integration proving module imports plus intrinsic-backed stdlib calls (`Option.unwrap_or` + `Text.length`) end-to-end. Heap-list stdlib remains deferred to stdlib-bootstrap/runtime support. |
 | [0e-runtime-effects](done/0e-runtime-effects.md) | Runtime effects landed end-to-end: Fail/ZeroResume Result path, direct capability effects (IO/Net/Clock/Rand), tail-resumptive user handlers (`State`/`Log`/`Reader`) with nesting/scoping + `then`, pass-stat visibility, and benchmark + CI gates validated (`check-full`, regression benchmarks green). |

@@ -73,7 +73,7 @@ pub enum TokenKind {
     Int(i64),
     Float(f64),
     String(String),
-    /// String with interpolation: `"hello ${name}"`.
+    /// String with interpolation: `"hello {name}"`.
     StringInterp(Vec<StringPart>),
 
     // -- Identifiers --
@@ -98,6 +98,7 @@ pub enum TokenKind {
     False,
     NoneKw,
     Struct,
+    Enum,
     TypeKw,
     Alias,
     Opaque,
@@ -111,6 +112,7 @@ pub enum TokenKind {
     Deriving,
     Testing,
     Use,
+    With,
     And,
     Or,
     Not,

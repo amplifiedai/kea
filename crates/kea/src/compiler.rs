@@ -1236,8 +1236,18 @@ fn register_top_level_declarations(
         }
     }
 
-    // Pass 1: register type names that sum payloads may reference.
-    // This makes `type Wrap = W(User)` work regardless of declaration order.
+    let record_defs: Vec<&RecordDef> = module
+        .declarations
+        .iter()
+        .filter_map(|decl| match &decl.node {
+            DeclKind::RecordDef(def) => Some(def),
+            _ => None,
+        })
+        .collect();
+
+    // Pass 1: register non-sum type declarations.
+    // Alias/opaque definitions are recorded as annotations, and record names are
+    // seeded before field validation to support mutual recursion with enums.
     for decl in &module.declarations {
         match &decl.node {
             DeclKind::AliasDecl(alias) => {
@@ -1255,17 +1265,13 @@ fn register_top_level_declarations(
                     ));
                 }
             }
-            DeclKind::RecordDef(record) => {
-                if let Err(diag) = records.register(record) {
-                    diagnostics.push(diag);
-                    return Err(format_diagnostics(
-                        "record registration failed",
-                        diagnostics,
-                    ));
-                }
-            }
             _ => {}
         }
+    }
+
+    if let Err(diag) = records.register_names(&record_defs) {
+        diagnostics.push(diag);
+        return Err(format_diagnostics("record registration failed", diagnostics));
     }
 
     let type_defs: Vec<&TypeDef> = module
@@ -1277,7 +1283,20 @@ fn register_top_level_declarations(
         })
         .collect();
 
-    if let Err(diag) = sum_types.register_many(&type_defs, records) {
+    if let Err(diag) = sum_types.register_names(&type_defs) {
+        diagnostics.push(diag);
+        return Err(format_diagnostics(
+            "sum type registration failed",
+            diagnostics,
+        ));
+    }
+
+    if let Err(diag) = records.resolve_registered_fields(&record_defs, Some(sum_types)) {
+        diagnostics.push(diag);
+        return Err(format_diagnostics("record registration failed", diagnostics));
+    }
+
+    if let Err(diag) = sum_types.resolve_registered_variants(&type_defs, records) {
         diagnostics.push(diag);
         return Err(format_diagnostics(
             "sum type registration failed",
@@ -1437,6 +1456,7 @@ fn const_expr_references(
         | ExprKind::Cond { .. }
         | ExprKind::For(_)
         | ExprKind::Use(_)
+        | ExprKind::With { .. }
         | ExprKind::Handle { .. }
         | ExprKind::Resume { .. }
         | ExprKind::WhenGuard { .. }
@@ -1492,6 +1512,7 @@ fn const_expr_supported(expr: &Expr) -> bool {
         | ExprKind::Cond { .. }
         | ExprKind::For(_)
         | ExprKind::Use(_)
+        | ExprKind::With { .. }
         | ExprKind::Handle { .. }
         | ExprKind::Resume { .. }
         | ExprKind::WhenGuard { .. }

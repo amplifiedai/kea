@@ -164,14 +164,29 @@ impl Parser {
             return self.opaque_type_def(public, start, doc);
         }
 
-        // type Name = Variant1 | Variant2(Type) | ...
-        // pub type Name = Variant1 | Variant2(Type) | ...
+        // type Name = TypeAlias
+        // pub type Name = TypeAlias
         if self.check(&TokenKind::TypeKw)
             || (self.check(&TokenKind::Pub) && self.peek_is(|k| matches!(k, TokenKind::TypeKw)))
         {
             let public = self.match_token(&TokenKind::Pub);
+            if !annotations.is_empty() {
+                self.error_at_current("annotations are not supported on type alias declarations");
+            }
             self.advance(); // consume 'type'
-            return self.type_def(public, start, doc, annotations);
+            return self.alias_decl(public, start, doc);
+        }
+
+        // enum Name
+        //   Variant
+        //   Variant(Type)
+        // pub enum Name ...
+        if self.check(&TokenKind::Enum)
+            || (self.check(&TokenKind::Pub) && self.peek_is(|k| matches!(k, TokenKind::Enum)))
+        {
+            let public = self.match_token(&TokenKind::Pub);
+            self.advance(); // consume 'enum'
+            return self.enum_def(public, start, doc, annotations);
         }
 
         // struct Name { field: Type, ... }
@@ -267,7 +282,7 @@ impl Parser {
                 return self.fn_decl(public, start, doc, annotations);
             } else {
                 self.error_at_current(
-                    "expected 'fn', 'expr', 'type', 'alias', 'opaque', 'struct', 'trait', or 'effect' after 'pub'",
+                    "expected 'fn', 'expr', 'enum', 'type', 'alias', 'opaque', 'struct', 'trait', or 'effect' after 'pub'",
                 );
                 return None;
             }
@@ -278,7 +293,7 @@ impl Parser {
             );
         }
         self.error_at_current(
-            "expected declaration (fn, expr, test, pub fn, type, alias, opaque, struct, trait, effect, Type as Trait impl, use, or import)",
+            "expected declaration (fn, expr, test, pub fn, enum, type, alias, opaque, struct, trait, effect, Type as Trait impl, use, or import)",
         );
         // Skip to next newline to recover
         while !self.at_eof() && !self.check_newline() {
@@ -303,6 +318,10 @@ impl Parser {
             Some(TokenKind::Ident(_)) => self.expect_ident("expected annotation name after '@'")?,
             Some(TokenKind::UpperIdent(_)) => {
                 self.expect_upper_ident("expected annotation name after '@'")?
+            }
+            Some(TokenKind::With) => {
+                let tok = self.advance();
+                Spanned::new("with".to_string(), tok.span)
             }
             _ => {
                 self.error_at_current("expected annotation name after '@'");
@@ -618,8 +637,13 @@ impl Parser {
         ))
     }
 
-    /// Parse a sum type definition: `type Name = V1 | V2(T) | V3(T1, T2)`
-    fn type_def(
+    /// Parse an enum definition:
+    ///
+    /// `enum Name`
+    /// `  Variant`
+    /// `  Variant(Field)`
+    /// `  Variant(Field) : Name Param`
+    fn enum_def(
         &mut self,
         public: bool,
         start: Span,
@@ -630,8 +654,8 @@ impl Parser {
         self.skip_newlines();
 
         // Optional type parameters:
-        // - Parenthesized legacy form: `type Option(T) = ...`
-        // - Canonical bare form: `type Option t = ...`
+        // - Parenthesized form: `enum Option(T)`
+        // - Canonical bare form: `enum Option t`
         let mut params = Vec::new();
         if self.match_token(&TokenKind::LParen) {
             loop {
@@ -656,141 +680,71 @@ impl Parser {
 
         if self.check(&TokenKind::Deriving) {
             self.error_at_current(
-                "`deriving` must appear after variants (`type Name = A | B deriving Eq`)",
+                "`deriving` must appear after enum variants (`enum Name ... deriving Eq`)",
             );
         }
         let mut derives = Vec::new();
 
-        self.expect(&TokenKind::Eq, "expected '=' after type name")?;
-        self.skip_newlines();
-        let _ = self.match_token(&TokenKind::Indent);
-        self.skip_newlines();
-
-        // Optional leading pipe: type Color = | Red | Green | Blue
-        self.match_token(&TokenKind::Pipe);
-        self.skip_newlines();
-
-        // Parse variants separated by |
+        let delimiter = self.expect_block_start("expected enum body block after enum name")?;
         let mut variants = Vec::new();
-        loop {
-            self.skip_newlines();
-            let variant_annotations = self.parse_annotations()?;
-            self.skip_newlines();
-            let variant_name = match self.peek_kind() {
-                Some(TokenKind::UpperIdent(name)) => {
-                    let name = name.clone();
-                    let tok = self.advance();
-                    Spanned::new(name, tok.span)
-                }
-                Some(TokenKind::NoneKw) => {
-                    let tok = self.advance();
-                    Spanned::new("None".to_string(), tok.span)
-                }
-                _ => {
-                    self.error_at_current("expected variant name");
-                    return None;
-                }
-            };
-            let mut fields = Vec::new();
-            if self.match_token(&TokenKind::LParen) {
+        self.skip_newlines();
+        if !self.at_block_end(delimiter) {
+            loop {
                 self.skip_newlines();
-                if !self.check(&TokenKind::RParen) {
-                    // Named and positional variant fields cannot be mixed.
-                    let mut named_fields = None;
-                    loop {
-                        self.skip_newlines();
-                        let field_annotations = self.parse_annotations()?;
-                        self.skip_newlines();
-                        let is_named = matches!(
-                            (self.peek_kind(), self.peek_at(1).map(|tok| &tok.kind)),
-                            (Some(TokenKind::Ident(_)), Some(TokenKind::Colon))
-                        );
-                        match named_fields {
-                            Some(expected) if expected != is_named => {
-                                self.error_at_current(
-                                    "cannot mix named and positional fields in one variant",
-                                );
-                            }
-                            None => named_fields = Some(is_named),
-                            _ => {}
-                        }
-                        if is_named {
-                            let field_name = self.expect_ident("expected variant field name")?;
-                            self.skip_newlines();
-                            self.expect(
-                                &TokenKind::Colon,
-                                "expected ':' after variant field name",
-                            )?;
-                            self.skip_newlines();
-                            let field_ty = self.type_annotation()?;
-                            let span = field_name.span.merge(field_ty.span);
-                            fields.push(VariantField {
-                                annotations: field_annotations,
-                                name: Some(field_name),
-                                ty: field_ty,
-                                span,
-                            });
-                        } else {
-                            if !field_annotations.is_empty() {
-                                self.error_at_current(
-                                    "annotations on variant fields require named fields",
-                                );
-                            }
-                            let field_ty = self.type_annotation()?;
-                            fields.push(VariantField {
-                                annotations: Vec::new(),
-                                name: None,
-                                span: field_ty.span,
-                                ty: field_ty,
-                            });
-                        }
-                        self.skip_newlines();
-                        if !self.match_token(&TokenKind::Comma) {
-                            break;
-                        }
-                    }
+                if self.at_block_end(delimiter) {
+                    break;
                 }
-                self.expect(&TokenKind::RParen, "expected ')' after variant fields")?;
-            }
-            self.skip_newlines();
-            let mut where_clause = Vec::new();
-            if self.match_token(&TokenKind::Where) {
-                loop {
-                    self.skip_newlines();
-                    let type_var =
-                        self.expect_upper_ident("expected type variable in variant where clause")?;
-                    self.skip_newlines();
-                    self.expect(
-                        &TokenKind::Eq,
-                        "expected '=' in variant where-clause equality",
-                    )?;
-                    self.skip_newlines();
-                    let ty = self.type_annotation()?;
-                    where_clause.push(VariantWhereItem { type_var, ty });
-                    self.skip_newlines();
-                    if !self.match_token(&TokenKind::Comma) {
-                        break;
+
+                // Optional leading pipe per variant for visual alignment.
+                self.match_token(&TokenKind::Pipe);
+                self.skip_newlines();
+
+                let variant_annotations = self.parse_annotations()?;
+                self.skip_newlines();
+                let variant_name = match self.peek_kind() {
+                    Some(TokenKind::UpperIdent(name)) => {
+                        let name = name.clone();
+                        let tok = self.advance();
+                        Spanned::new(name, tok.span)
                     }
-                }
-            }
-            variants.push(TypeVariant {
-                annotations: variant_annotations,
-                name: variant_name,
-                fields,
-                where_clause,
-            });
-            self.skip_newlines();
-            let _ = self.match_token(&TokenKind::Indent);
-            self.skip_newlines();
-            if self.match_token(&TokenKind::Dedent) {
-                break;
-            }
-            if !self.match_token(&TokenKind::Pipe) {
-                break;
+                    Some(TokenKind::NoneKw) => {
+                        let tok = self.advance();
+                        Spanned::new("None".to_string(), tok.span)
+                    }
+                    _ => {
+                        self.error_at_current("expected variant name");
+                        return None;
+                    }
+                };
+
+                let fields = self.parse_variant_fields()?;
+
+                self.skip_newlines();
+                let mut where_clause = if self.match_token(&TokenKind::Colon) {
+                    self.skip_newlines();
+                    let return_ty = self.type_annotation()?;
+                    self.enum_variant_return_type_constraints(&name, &params, &return_ty)?
+                } else {
+                    Vec::new()
+                };
+
+                // Legacy, still supported in enum blocks for parity.
+                where_clause.extend(self.parse_variant_where_clause()?);
+
+                variants.push(TypeVariant {
+                    annotations: variant_annotations,
+                    name: variant_name,
+                    fields,
+                    where_clause,
+                });
+
+                self.skip_newlines();
+                let _ = self.match_token(&TokenKind::Comma);
             }
         }
+        self.skip_newlines();
+        self.expect_block_end(delimiter, "expected end of enum definition")?;
 
-        // Canonical form: `type Name = V1 | V2 deriving Eq, Display`.
         if self.check(&TokenKind::Deriving) {
             let mut post_derives = self.parse_deriving_clause()?;
             derives.append(&mut post_derives);
@@ -809,6 +763,133 @@ impl Parser {
             }),
             start.merge(end),
         ))
+    }
+
+    fn parse_variant_fields(&mut self) -> Option<Vec<VariantField>> {
+        let mut fields = Vec::new();
+        if self.match_token(&TokenKind::LParen) {
+            self.skip_newlines();
+            if !self.check(&TokenKind::RParen) {
+                // Named and positional variant fields cannot be mixed.
+                let mut named_fields = None;
+                loop {
+                    self.skip_newlines();
+                    let field_annotations = self.parse_annotations()?;
+                    self.skip_newlines();
+                    let is_named = matches!(
+                        (self.peek_kind(), self.peek_at(1).map(|tok| &tok.kind)),
+                        (Some(TokenKind::Ident(_)), Some(TokenKind::Colon))
+                    );
+                    match named_fields {
+                        Some(expected) if expected != is_named => {
+                            self.error_at_current(
+                                "cannot mix named and positional fields in one variant",
+                            );
+                        }
+                        None => named_fields = Some(is_named),
+                        _ => {}
+                    }
+                    if is_named {
+                        let field_name = self.expect_ident("expected variant field name")?;
+                        self.skip_newlines();
+                        self.expect(&TokenKind::Colon, "expected ':' after variant field name")?;
+                        self.skip_newlines();
+                        let field_ty = self.type_annotation()?;
+                        let span = field_name.span.merge(field_ty.span);
+                        fields.push(VariantField {
+                            annotations: field_annotations,
+                            name: Some(field_name),
+                            ty: field_ty,
+                            span,
+                        });
+                    } else {
+                        if !field_annotations.is_empty() {
+                            self.error_at_current(
+                                "annotations on variant fields require named fields",
+                            );
+                        }
+                        let field_ty = self.type_annotation()?;
+                        fields.push(VariantField {
+                            annotations: Vec::new(),
+                            name: None,
+                            span: field_ty.span,
+                            ty: field_ty,
+                        });
+                    }
+                    self.skip_newlines();
+                    if !self.match_token(&TokenKind::Comma) {
+                        break;
+                    }
+                }
+            }
+            self.expect(&TokenKind::RParen, "expected ')' after variant fields")?;
+        }
+        Some(fields)
+    }
+
+    fn parse_variant_where_clause(&mut self) -> Option<Vec<VariantWhereItem>> {
+        let mut where_clause = Vec::new();
+        self.skip_newlines();
+        if self.match_token(&TokenKind::Where) {
+            loop {
+                self.skip_newlines();
+                let type_var =
+                    self.expect_upper_ident("expected type variable in variant where clause")?;
+                self.skip_newlines();
+                self.expect(
+                    &TokenKind::Eq,
+                    "expected '=' in variant where-clause equality",
+                )?;
+                self.skip_newlines();
+                let ty = self.type_annotation()?;
+                where_clause.push(VariantWhereItem { type_var, ty });
+                self.skip_newlines();
+                if !self.match_token(&TokenKind::Comma) {
+                    break;
+                }
+            }
+        }
+        Some(where_clause)
+    }
+
+    fn enum_variant_return_type_constraints(
+        &mut self,
+        enum_name: &Spanned<String>,
+        params: &[String],
+        return_ty: &Spanned<TypeAnnotation>,
+    ) -> Option<Vec<VariantWhereItem>> {
+        let (returned_name, returned_args): (&str, Vec<TypeAnnotation>) = match &return_ty.node {
+            TypeAnnotation::Named(name) => (name.as_str(), Vec::new()),
+            TypeAnnotation::Applied(name, args) => (name.as_str(), args.clone()),
+            _ => {
+                self.error_at_current("enum variant return type must target the enclosing enum");
+                return None;
+            }
+        };
+
+        if returned_name != enum_name.node {
+            self.error_at_current(
+                "enum variant return type must target the enclosing enum name",
+            );
+            return None;
+        }
+
+        if returned_args.len() != params.len() {
+            self.error_at_current("enum variant return type argument arity mismatch");
+            return None;
+        }
+
+        let mut where_clause = Vec::new();
+        for (param, arg_ty) in params.iter().zip(returned_args) {
+            if matches!(&arg_ty, TypeAnnotation::Named(name) if name == param) {
+                continue;
+            }
+            where_clause.push(VariantWhereItem {
+                type_var: Spanned::new(param.clone(), return_ty.span),
+                ty: Spanned::new(arg_ty, return_ty.span),
+            });
+        }
+        Some(where_clause)
     }
 
     /// Parse `deriving` followed by a bare trait list.
@@ -1829,6 +1910,9 @@ impl Parser {
     }
 
     fn param_decl(&mut self) -> Option<Param> {
+        let annotations = self.parse_annotations()?;
+        self.skip_newlines();
+
         let label = if self.match_token(&TokenKind::Borrow) {
             self.skip_newlines();
             ParamLabel::Borrow
@@ -1871,6 +1955,7 @@ impl Parser {
         };
 
         Some(Param {
+            annotations,
             label,
             pattern,
             annotation,
@@ -2995,6 +3080,7 @@ impl Parser {
                     Spanned::new(
                         ExprKind::Lambda {
                             params: vec![Param {
+                                annotations: Vec::new(),
                                 label: ParamLabel::Implicit,
                                 pattern,
                                 annotation: None,
@@ -3147,6 +3233,7 @@ impl Parser {
         let then_expr = Spanned::new(
             ExprKind::Lambda {
                 params: vec![Param {
+                    annotations: Vec::new(),
                     label: ParamLabel::Implicit,
                     pattern: value_pat,
                     annotation: None,
@@ -3961,6 +4048,7 @@ impl Parser {
                     None
                 };
                 params.push(Param {
+                    annotations: Vec::new(),
                     label: ParamLabel::Implicit,
                     pattern,
                     annotation,
@@ -4067,7 +4155,7 @@ impl Parser {
         let mut end = value.span;
 
         // Optionally parse `with { ... }` config block
-        let config = if self.check_ident("with") {
+        let config = if self.check(&TokenKind::With) {
             self.advance(); // consume `with`
             let delimiter = self.expect_block_start("expected config block after `with`")?;
             let config = self.parse_spawn_config(delimiter)?;
@@ -4095,7 +4183,7 @@ impl Parser {
         let mut end = body.span;
         let mut buffer_size = 32usize;
 
-        if self.check_ident("with") {
+        if self.check(&TokenKind::With) {
             self.advance(); // consume `with`
             let delimiter = self.expect_block_start("expected config block after `with`")?;
             buffer_size = self.parse_stream_config(delimiter)?;
@@ -4578,6 +4666,15 @@ impl Parser {
         self.skip_newlines();
 
         while !self.at_block_end(delimiter) && !self.at_eof() {
+            if self.check(&TokenKind::With) {
+                let with_expr = self.with_expr_in_block(delimiter)?;
+                if exprs.is_empty() {
+                    return Some(with_expr);
+                }
+                let span = start.merge(with_expr.span);
+                exprs.push(with_expr);
+                return Some(Spanned::new(ExprKind::Block(exprs), span));
+            }
             let expr = self.expression()?;
             exprs.push(expr);
             // Expressions inside blocks are newline-delimited.
@@ -4593,6 +4690,66 @@ impl Parser {
             1 => Some(exprs.into_iter().next().unwrap()),
             _ => Some(Spanned::new(ExprKind::Block(exprs), span)),
         }
+    }
+
+    fn with_expr_in_block(&mut self, delimiter: BlockDelimiter) -> Option<Expr> {
+        let start = self.current_span();
+        self.expect(&TokenKind::With, "expected `with`")?;
+        self.skip_newlines();
+
+        let (binding, call) = if self.with_line_has_binding_arrow() {
+            let binding = self.pattern()?;
+            self.skip_newlines();
+            self.expect(&TokenKind::LeftArrow, "expected '<-' in `with` binding")?;
+            self.skip_newlines();
+            let call = self.expression()?;
+            (Some(binding), call)
+        } else {
+            (None, self.expression()?)
+        };
+
+        self.skip_newlines();
+        if self.at_block_end(delimiter) || self.at_eof() {
+            self.error_at_current("`with` must be followed by a body expression");
+            return None;
+        }
+        let body = self.block_body(delimiter)?;
+        let end = body.span;
+        Some(Spanned::new(
+            ExprKind::With {
+                call: Box::new(call),
+                binding,
+                body: Box::new(body),
+            },
+            start.merge(end),
+        ))
+    }
+
+    fn with_line_has_binding_arrow(&self) -> bool {
+        let mut idx = self.pos;
+        let mut depth: usize = 0;
+        while let Some(tok) = self.tokens.get(idx) {
+            match tok.kind {
+                TokenKind::Newline | TokenKind::Dedent | TokenKind::Eof if depth == 0 => {
+                    return false;
+                }
+                TokenKind::LParen
+                | TokenKind::LBracket
+                | TokenKind::LBrace
+                | TokenKind::HashBracket
+                | TokenKind::HashBrace
+                | TokenKind::PercentBrace => {
+                    depth += 1;
+                }
+                TokenKind::RParen | TokenKind::RBracket | TokenKind::RBrace => {
+                    depth = depth.saturating_sub(1);
+                }
+                TokenKind::LeftArrow if depth == 0 => return true,
+                _ => {}
+            }
+            idx += 1;
+        }
+        false
     }
 
     // -- Postfix operations --
@@ -6052,6 +6209,101 @@ mod tests {
         assert!(!errors.is_empty(), "brace blocks should be rejected");
     }
 
+    #[test]
+    fn parse_with_nonbinding_statement_in_block() {
+        let module = parse_mod("fn main() -> Int\n  with State.with_state(0)\n  1");
+        match &module.declarations[0].node {
+            DeclKind::Function(def) => match &def.body.node {
+                ExprKind::With {
+                    call,
+                    binding,
+                    body,
+                } => {
+                    assert!(binding.is_none());
+                    assert_eq!(body.node, ExprKind::Lit(Lit::Int(1)));
+                    match &call.node {
+                        ExprKind::Call { func, args } => {
+                            assert_eq!(args.len(), 1);
+                            match &func.node {
+                                ExprKind::FieldAccess { expr, field } => {
+                                    assert_eq!(expr.node, ExprKind::Var("State".into()));
+                                    assert_eq!(field.node, "with_state");
+                                }
+                                other => panic!("expected qualified callee, got {other:?}"),
+                            }
+                        }
+                        other => panic!("expected call in with head, got {other:?}"),
+                    }
+                }
+                other => panic!("expected With body, got {other:?}"),
+            },
+            other => panic!("expected fn declaration, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_with_binding_statement_in_block() {
+        let module =
+            parse_mod("fn main() -> Int\n  with conn <- Db.with_connection(cfg)\n  conn.id");
+        match &module.declarations[0].node {
+            DeclKind::Function(def) => match &def.body.node {
+                ExprKind::With {
+                    call,
+                    binding,
+                    body,
+                } => {
+                    let pattern = binding.as_ref().expect("expected binding pattern");
+                    assert_eq!(pattern.node.as_var(), Some("conn"));
+                    match &call.node {
+                        ExprKind::Call { func, args } => {
+                            assert_eq!(args.len(), 1);
+                            match &func.node {
+                                ExprKind::FieldAccess { expr, field } => {
+                                    assert_eq!(expr.node, ExprKind::Var("Db".into()));
+                                    assert_eq!(field.node, "with_connection");
+                                }
+                                other => panic!("expected qualified call head, got {other:?}"),
+                            }
+                        }
+                        other => panic!("expected call head, got {other:?}"),
+                    }
+                    assert!(matches!(body.node, ExprKind::FieldAccess { .. }));
+                }
+                other => panic!("expected With body, got {other:?}"),
+            },
+            other => panic!("expected fn declaration, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_with_after_let_keeps_let_before_with() {
+        let module = parse_mod(
+            "fn main() -> Int\n  let cfg = 7\n  with conn <- Db.with_connection(cfg)\n  conn",
+        );
+        match &module.declarations[0].node {
+            DeclKind::Function(def) => match &def.body.node {
+                ExprKind::Block(exprs) => {
+                    assert_eq!(exprs.len(), 2);
+                    assert!(matches!(exprs[0].node, ExprKind::Let { .. }));
+                    assert!(matches!(exprs[1].node, ExprKind::With { .. }));
+                }
+                other => panic!("expected block body, got {other:?}"),
+            },
+            other => panic!("expected fn declaration, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_with_requires_following_body() {
+        let errors = parse_mod_err("fn main() -> Int\n  with State.with_state(0)");
+        assert!(
+            errors
+                .iter()
+                .any(|d| d.message.contains("`with` must be followed by a body expression")),
+            "expected missing-with-body diagnostic, got {errors:?}"
+        );
+    }
+
     // -- Grouping --
 
     #[test]
@@ -6178,7 +6430,7 @@ mod tests {
     #[test]
     fn parse_type_and_variant_annotations() {
         let module =
-            parse_mod("@tagged(style: :internal) type Message = | @rename(\"txt\") Text(String)");
+            parse_mod("@tagged(style: :internal) enum Message\n  @rename(\"txt\") Text(String)");
         match &module.declarations[0].node {
             DeclKind::TypeDef(def) => {
                 assert_eq!(def.annotations.len(), 1);
@@ -6194,7 +6446,7 @@ mod tests {
     #[test]
     fn parse_named_variant_field_annotations() {
         let module = parse_mod(
-            "type Event = | User(@rename(\"user_id\") id: Int, @default(\"anon\") name: String)",
+            "enum Event\n  User(@rename(\"user_id\") id: Int, @default(\"anon\") name: String)",
         );
         match &module.declarations[0].node {
             DeclKind::TypeDef(def) => {
@@ -6425,6 +6677,19 @@ mod tests {
     }
 
     #[test]
+    fn parse_param_with_annotation_marker() {
+        let module = parse_mod("fn wrap(@with f: Int) -> Int\n  f");
+        match &module.declarations[0].node {
+            DeclKind::Function(def) => {
+                assert_eq!(def.params.len(), 1);
+                assert_eq!(def.params[0].annotations.len(), 1);
+                assert_eq!(def.params[0].annotations[0].name.node, "with");
+            }
+            other => panic!("expected function declaration, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn parse_fn_decl_named_assert() {
         let module = parse_mod("fn assert(value: Bool) -> Unit\n  ()");
         match &module.declarations[0].node {
@@ -6490,7 +6755,7 @@ mod tests {
     #[test]
     fn parse_doc_comments_for_type_record_trait() {
         let module = parse_mod(
-            "--| T docs\ntype T = A\n--| R docs\nstruct R\n  x: Int\n--| Tr docs\ntrait Tr\n  fn m() -> Int\n    0",
+            "--| T docs\nenum T\n  A\n--| R docs\nstruct R\n  x: Int\n--| Tr docs\ntrait Tr\n  fn m() -> Int\n    0",
         );
         match &module.declarations[0].node {
             DeclKind::TypeDef(def) => assert_eq!(def.doc.as_deref(), Some("T docs")),
@@ -8215,7 +8480,7 @@ mod tests {
 
     #[test]
     fn parse_type_deriving() {
-        let m = parse_mod("type Color = Red | Green | Blue deriving Eq");
+        let m = parse_mod("enum Color\n  Red\n  Green\n  Blue\nderiving Eq");
         match &m.declarations[0].node {
             DeclKind::TypeDef(def) => {
                 assert_eq!(def.name.node, "Color");
@@ -8229,13 +8494,19 @@ mod tests {
 
     #[test]
     fn parse_legacy_paren_deriving_is_rejected() {
-        let errs = parse_mod_err("type Color = Red | Green | Blue deriving(Eq)");
+        let errs = parse_mod_err("enum Color\n  Red\n  Green\n  Blue\nderiving(Eq)");
         assert!(!errs.is_empty());
     }
 
     #[test]
     fn parse_type_pre_variants_deriving_is_rejected() {
-        let errs = parse_mod_err("type Color deriving Eq = Red | Green | Blue");
+        let errs = parse_mod_err("enum Color deriving Eq\n  Red\n  Green\n  Blue");
+        assert!(!errs.is_empty());
+    }
+
+    #[test]
+    fn parse_legacy_type_sum_syntax_is_rejected() {
+        let errs = parse_mod_err("type Color = Red | Green");
         assert!(!errs.is_empty());
     }
 
@@ -9183,7 +9454,7 @@ mod tests {
 
     #[test]
     fn parse_type_def_simple() {
-        let module = parse_mod("type Color = Red | Green | Blue");
+        let module = parse_mod("enum Color\n  Red\n  Green\n  Blue");
         assert_eq!(module.declarations.len(), 1);
         match &module.declarations[0].node {
             DeclKind::TypeDef(def) => {
@@ -9202,7 +9473,7 @@ mod tests {
 
     #[test]
     fn parse_type_def_with_fields() {
-        let module = parse_mod("type Shape = Circle(Float) | Rectangle(Float, Float)");
+        let module = parse_mod("enum Shape\n  Circle(Float)\n  Rectangle(Float, Float)");
         match &module.declarations[0].node {
             DeclKind::TypeDef(def) => {
                 assert_eq!(def.name.node, "Shape");
@@ -9220,7 +9491,7 @@ mod tests {
 
     #[test]
     fn parse_type_def_with_named_variant_fields() {
-        let module = parse_mod("type Energy = Solar(capacity: Float, lat: Float, lon: Float)");
+        let module = parse_mod("enum Energy\n  Solar(capacity: Float, lat: Float, lon: Float)");
         match &module.declarations[0].node {
             DeclKind::TypeDef(def) => {
                 assert_eq!(def.variants.len(), 1);
@@ -9253,7 +9524,7 @@ mod tests {
 
     #[test]
     fn parse_type_def_rejects_mixed_named_and_positional_variant_fields() {
-        let errors = parse_mod_err("type Bad = Pair(left: Int, Int)");
+        let errors = parse_mod_err("enum Bad\n  Pair(left: Int, Int)");
         assert!(
             errors.iter().any(|d| {
                 d.message.contains("cannot mix named and positional fields")
@@ -9266,7 +9537,7 @@ mod tests {
     #[test]
     fn parse_type_def_variant_where_clause() {
         let module =
-            parse_mod("type Expr(T) = Lit(Int) where T = Int | IsZero(Expr(Int)) where T = Bool");
+            parse_mod("enum Expr(T)\n  Lit(Int) where T = Int\n  IsZero(Expr(Int)) where T = Bool");
         match &module.declarations[0].node {
             DeclKind::TypeDef(def) => {
                 assert_eq!(def.name.node, "Expr");
@@ -9293,7 +9564,7 @@ mod tests {
 
     #[test]
     fn parse_type_def_with_derive() {
-        let module = parse_mod("type Shape = Circle(Float) | Point deriving Eq, Hash");
+        let module = parse_mod("enum Shape\n  Circle(Float)\n  Point\nderiving Eq, Hash");
         match &module.declarations[0].node {
             DeclKind::TypeDef(def) => {
                 assert_eq!(def.name.node, "Shape");
@@ -9306,8 +9577,39 @@ mod tests {
     }
 
     #[test]
+    fn parse_enum_variant_gadt_return_annotation_maps_to_where_clause() {
+        let module = parse_mod(
+            "enum Expr T\n  IntLit(Int): Expr(Int)\n  BoolLit(Bool): Expr(Bool)\n  If(Expr(Bool), Expr(T), Expr(T)): Expr(T)",
+        );
+        match &module.declarations[0].node {
+            DeclKind::TypeDef(def) => {
+                assert_eq!(def.name.node, "Expr");
+                assert_eq!(def.params, vec!["T"]);
+                assert_eq!(def.variants.len(), 3);
+                assert_eq!(def.variants[0].where_clause.len(), 1);
+                assert_eq!(def.variants[0].where_clause[0].type_var.node, "T");
+                assert_eq!(
+                    def.variants[0].where_clause[0].ty.node,
+                    TypeAnnotation::Named("Int".to_string())
+                );
+                assert_eq!(def.variants[1].where_clause.len(), 1);
+                assert_eq!(def.variants[1].where_clause[0].type_var.node, "T");
+                assert_eq!(
+                    def.variants[1].where_clause[0].ty.node,
+                    TypeAnnotation::Named("Bool".to_string())
+                );
+                assert!(
+                    def.variants[2].where_clause.is_empty(),
+                    "identity return annotation should not add constraints"
+                );
+            }
+            other => panic!("expected TypeDef, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn parse_type_def_with_params() {
-        let module = parse_mod("type MyOption(T) = MySome(T) | MyNone");
+        let module = parse_mod("enum MyOption(T)\n  MySome(T)\n  MyNone");
         match &module.declarations[0].node {
             DeclKind::TypeDef(def) => {
                 assert_eq!(def.name.node, "MyOption");
@@ -9324,7 +9626,7 @@ mod tests {
 
     #[test]
     fn parse_type_def_with_bare_params() {
-        let module = parse_mod("type Option a = Some(a) | None");
+        let module = parse_mod("enum Option a\n  Some(a)\n  None");
         match &module.declarations[0].node {
             DeclKind::TypeDef(def) => {
                 assert_eq!(def.name.node, "Option");
@@ -9340,7 +9642,7 @@ mod tests {
 
     #[test]
     fn parse_pub_type_def() {
-        let module = parse_mod("pub type Direction = North | South | East | West");
+        let module = parse_mod("pub enum Direction\n  North\n  South\n  East\n  West");
         match &module.declarations[0].node {
             DeclKind::TypeDef(def) => {
                 assert!(def.public);
@@ -9353,7 +9655,7 @@ mod tests {
 
     #[test]
     fn parse_type_def_leading_pipe() {
-        let module = parse_mod("type Color =\n  | Red\n  | Green\n  | Blue");
+        let module = parse_mod("enum Color\n  | Red\n  | Green\n  | Blue");
         match &module.declarations[0].node {
             DeclKind::TypeDef(def) => {
                 assert_eq!(def.name.node, "Color");

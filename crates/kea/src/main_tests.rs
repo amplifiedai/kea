@@ -824,7 +824,7 @@
             .expect("prelude module write should succeed");
         std::fs::write(
             stdlib_dir.join("order.kea"),
-            "type Ordering = Less | Equal | Greater\n",
+            "enum Ordering\n  Less\n  Equal\n  Greater\n",
         )
         .expect("order module write should succeed");
         let app_path = src_dir.join("app.kea");
@@ -916,7 +916,7 @@
 
         std::fs::write(
             src_dir.join("list.kea"),
-            "type List = Empty | Item(Int)\n\nfn size(_ self: List) -> Int\n  1\n",
+            "enum List\n  Empty\n  Item(Int)\n\nfn size(_ self: List) -> Int\n  1\n",
         )
         .expect("list module write should succeed");
         let app_path = src_dir.join("app.kea");
@@ -950,7 +950,7 @@
 
         std::fs::write(
             src_dir.join("list.kea"),
-            "type List = Empty | Item(Int)\n\nfn size(xs: List) -> Int\n  case xs\n    Empty -> 0\n    Item(n) -> n + 8\n",
+            "enum List\n  Empty\n  Item(Int)\n\nfn size(xs: List) -> Int\n  case xs\n    Empty -> 0\n    Item(n) -> n + 8\n",
         )
         .expect("list module write should succeed");
         let app_path = src_dir.join("app.kea");
@@ -1355,8 +1355,8 @@
 
                     let mut imports = Vec::new();
                     let mut app_defs = Vec::new();
-                    let list_module_source = "type List = Empty | Item(Int)\n\nfn size(xs: List) -> Int\n  case xs\n    Empty -> 0\n    Item(n) -> n + 8\n";
-                    let app_module_source = "type App = Empty | Item(Int)\n\nfn size(xs: App) -> Int\n  case xs\n    Empty -> 0\n    Item(n) -> n + 8\n";
+                    let list_module_source = "enum List\n  Empty\n  Item(Int)\n\nfn size(xs: List) -> Int\n  case xs\n    Empty -> 0\n    Item(n) -> n + 8\n";
+                    let app_module_source = "enum App\n  Empty\n  Item(Int)\n\nfn size(xs: App) -> Int\n  case xs\n    Empty -> 0\n    Item(n) -> n + 8\n";
                     let module_qualifier = match relation {
                         MatrixModuleRelation::SameModule => "App".to_string(),
                         MatrixModuleRelation::CrossModule => "List".to_string(),
@@ -1515,6 +1515,68 @@
     }
 
     #[test]
+    fn compile_and_execute_with_binding_and_stacking_exit_code() {
+        let source_path = write_temp_source(
+            "fn with_value(value: Int, @with f: fn(Int) -> Int) -> Int\n  f(value)\n\nfn with_unit(@with f: fn() -> Int) -> Int\n  f()\n\nfn main() -> Int\n  with n <- with_value(40)\n  with with_unit\n  n + 2\n",
+            "kea-cli-with-binding-stacking",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_with_after_let_exit_code() {
+        let source_path = write_temp_source(
+            "fn with_value(value: Int, @with f: fn(Int) -> Int) -> Int\n  f(value)\n\nfn main() -> Int\n  let seed = 41\n  with n <- with_value(seed)\n  n + 1\n",
+            "kea-cli-with-after-let",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_rejects_with_when_target_is_not_marked_annotation() {
+        let source_path = write_temp_source(
+            "fn plain(f: fn() -> Int) -> Int\n  f()\n\nfn main() -> Int\n  with plain\n  0\n",
+            "kea-cli-with-missing-annotation",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject unannotated with target");
+        assert!(
+            err.contains("not marked `@with`"),
+            "expected @with validation diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_rejects_with_on_non_call_expression() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  with 42\n  0\n",
+            "kea-cli-with-non-call",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject non-call with head");
+        assert!(
+            err.contains("expected a direct named function call"),
+            "expected with-target shape diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     #[cfg(not(target_os = "windows"))]
     fn compile_and_execute_io_stderr_unit_main_exit_code() {
         let source_path = write_temp_source(
@@ -1548,7 +1610,7 @@
     #[cfg(not(target_os = "windows"))]
     fn compile_build_and_execute_aot_payload_constructor_case_exit_code() {
         let source_path = write_temp_source(
-            "type Flag = Yep(Int) | Nope\n\nfn main() -> Int\n  case Yep(1 + 6)\n    Yep(n) -> n\n    Nope -> 0\n",
+            "enum Flag\n  Yep(Int)\n  Nope\n\nfn main() -> Int\n  case Yep(1 + 6)\n    Yep(n) -> n\n    Nope -> 0\n",
             "kea-cli-aot-sum-case",
             "kea",
         );
@@ -1562,6 +1624,28 @@
             .status()
             .expect("aot executable should run");
         assert_eq!(status.code(), Some(7));
+
+        let _ = std::fs::remove_file(source_path);
+        let _ = std::fs::remove_file(output_path);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn compile_build_and_execute_aot_mutually_recursive_struct_enum_exit_code() {
+        let source_path = write_temp_source(
+            "struct MatchArm\n  body: HirExpr\n  tag: Int\n\nenum HirExpr\n  Lit(Int)\n  Match(HirExpr, MatchArm)\n\nfn depth(e: HirExpr) -> Int\n  case e\n    Lit(_) -> 0\n    Match(inner, _) -> 1 + depth(inner)\n\nfn main() -> Int\n  let arm = MatchArm { body: Lit(1), tag: 0 }\n  depth(Match(Lit(5), arm))\n",
+            "kea-cli-aot-mutual-recursive-type-defs",
+            "kea",
+        );
+        let output_path = temp_artifact_path("kea-cli-aot-mutual-recursive-type-defs", "bin");
+
+        let compiled = compile_file(&source_path, CodegenMode::Aot).expect("aot compile should work");
+        link_object_bytes(&compiled.object, &output_path).expect("link should work");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("aot executable should run");
+        assert_eq!(status.code(), Some(1));
 
         let _ = std::fs::remove_file(source_path);
         let _ = std::fs::remove_file(output_path);
@@ -1697,7 +1781,7 @@
                 42,
             ),
             (
-                "type Maybe a = Just(a) | Nothing\n\nfn main() -> Int\n  case Just(41)\n    Just(n) -> n + 1\n    Nothing -> 0\n",
+                "enum Maybe a\n  Just(a)\n  Nothing\n\nfn main() -> Int\n  case Just(41)\n    Just(n) -> n + 1\n    Nothing -> 0\n",
                 42,
             ),
             (
@@ -1963,7 +2047,7 @@
     #[test]
     fn compile_rejects_unique_use_after_move() {
         let source_path = write_temp_source(
-            "type Unique a = Unique(a)\n\nfn consume(value: Unique Int) -> Int\n  case value\n    Unique(v) -> v\n\nfn main() -> Int\n  let u = Unique(7)\n  let first = consume(u)\n  first + consume(u)\n",
+            "enum Unique a\n  Unique(a)\n\nfn consume(value: Unique Int) -> Int\n  case value\n    Unique(v) -> v\n\nfn main() -> Int\n  let u = Unique(7)\n  let first = consume(u)\n  first + consume(u)\n",
             "kea-cli-unique-use-after-move",
             "kea",
         );
@@ -1980,7 +2064,7 @@
     #[test]
     fn compile_rejects_unique_branch_move_mismatch() {
         let source_path = write_temp_source(
-            "type Unique a = Unique(a)\n\nfn consume(value: Unique Int) -> Int\n  case value\n    Unique(v) -> v\n\nfn main() -> Int\n  let u = Unique(7)\n  if true\n    consume(u)\n  else\n    0\n",
+            "enum Unique a\n  Unique(a)\n\nfn consume(value: Unique Int) -> Int\n  case value\n    Unique(v) -> v\n\nfn main() -> Int\n  let u = Unique(7)\n  if true\n    consume(u)\n  else\n    0\n",
             "kea-cli-unique-branch-move-mismatch",
             "kea",
         );
@@ -1997,7 +2081,7 @@
     #[test]
     fn compile_rejects_unique_capture_then_reuse() {
         let source_path = write_temp_source(
-            "type Unique a = Unique(a)\n\nfn consume(value: Unique Int) -> Int\n  case value\n    Unique(v) -> v\n\nfn main() -> Int\n  let u = Unique(7)\n  let f = || -> consume(u)\n  consume(u)\n",
+            "enum Unique a\n  Unique(a)\n\nfn consume(value: Unique Int) -> Int\n  case value\n    Unique(v) -> v\n\nfn main() -> Int\n  let u = Unique(7)\n  let f = || -> consume(u)\n  consume(u)\n",
             "kea-cli-unique-capture-then-reuse",
             "kea",
         );
@@ -2014,7 +2098,7 @@
     #[test]
     fn compile_and_execute_borrow_param_does_not_consume_caller_unique() {
         let source_path = write_temp_source(
-            "type Unique a = Unique(a)\n\nfn touch(borrow value: Unique Int) -> Int\n  1\n\nfn main() -> Int\n  let u = Unique(7)\n  let _ = touch(u)\n  let _ = touch(u)\n  7\n",
+            "enum Unique a\n  Unique(a)\n\nfn touch(borrow value: Unique Int) -> Int\n  1\n\nfn main() -> Int\n  let u = Unique(7)\n  let _ = touch(u)\n  let _ = touch(u)\n  7\n",
             "kea-cli-borrow-does-not-consume",
             "kea",
         );
@@ -2028,7 +2112,7 @@
     #[test]
     fn compile_and_execute_auto_borrow_inferred_param_does_not_consume_caller_unique() {
         let source_path = write_temp_source(
-            "type Unique a = Unique(a)\n\nfn touch(value: Unique Int) -> Int\n  1\n\nfn main() -> Int\n  let u = Unique(7)\n  let _ = touch(u)\n  let _ = touch(u)\n  7\n",
+            "enum Unique a\n  Unique(a)\n\nfn touch(value: Unique Int) -> Int\n  1\n\nfn main() -> Int\n  let u = Unique(7)\n  let _ = touch(u)\n  let _ = touch(u)\n  7\n",
             "kea-cli-auto-borrow-inferred-does-not-consume",
             "kea",
         );
@@ -2042,7 +2126,7 @@
     #[test]
     fn compile_rejects_auto_borrow_inference_for_consuming_parameter() {
         let source_path = write_temp_source(
-            "type Unique a = Unique(a)\n\nfn take(value: Unique Int) -> Int\n  case value\n    Unique(v) -> v\n\nfn main() -> Int\n  let u = Unique(7)\n  let _ = take(u)\n  let _ = take(u)\n  0\n",
+            "enum Unique a\n  Unique(a)\n\nfn take(value: Unique Int) -> Int\n  case value\n    Unique(v) -> v\n\nfn main() -> Int\n  let u = Unique(7)\n  let _ = take(u)\n  let _ = take(u)\n  0\n",
             "kea-cli-auto-borrow-does-not-infer-consuming-param",
             "kea",
         );
@@ -2059,7 +2143,7 @@
     #[test]
     fn compile_rejects_consuming_borrow_parameter_in_callee() {
         let source_path = write_temp_source(
-            "type Unique a = Unique(a)\n\nfn take(value: Unique Int) -> Int\n  case value\n    Unique(v) -> v\n\nfn bad(borrow value: Unique Int) -> Int\n  take(value)\n",
+            "enum Unique a\n  Unique(a)\n\nfn take(value: Unique Int) -> Int\n  case value\n    Unique(v) -> v\n\nfn bad(borrow value: Unique Int) -> Int\n  take(value)\n",
             "kea-cli-borrow-callee-consume-rejected",
             "kea",
         );
@@ -2076,7 +2160,7 @@
     #[test]
     fn compile_rejects_returning_borrow_parameter() {
         let source_path = write_temp_source(
-            "type Unique a = Unique(a)\n\nfn leak(borrow value: Unique Int) -> Unique Int\n  value\n",
+            "enum Unique a\n  Unique(a)\n\nfn leak(borrow value: Unique Int) -> Unique Int\n  value\n",
             "kea-cli-borrow-return-escape-rejected",
             "kea",
         );
@@ -2093,7 +2177,7 @@
     #[test]
     fn compile_rejects_capturing_borrow_parameter() {
         let source_path = write_temp_source(
-            "type Unique a = Unique(a)\n\nfn leak_capture(borrow value: Unique Int) -> fn() -> Int\n  || ->\n    case value\n      Unique(v) -> v\n",
+            "enum Unique a\n  Unique(a)\n\nfn leak_capture(borrow value: Unique Int) -> fn() -> Int\n  || ->\n    case value\n      Unique(v) -> v\n",
             "kea-cli-borrow-capture-escape-rejected",
             "kea",
         );
@@ -2115,7 +2199,7 @@
 
         std::fs::write(
             src_dir.join("helper.kea"),
-            "type Unique a = Unique(a)\n\nfn new(x: Int) -> Unique Int\n  Unique(x)\n\nfn touch(borrow value: Unique Int) -> Int\n  1\n",
+            "enum Unique a\n  Unique(a)\n\nfn new(x: Int) -> Unique Int\n  Unique(x)\n\nfn touch(borrow value: Unique Int) -> Int\n  1\n",
         )
         .expect("helper module write should succeed");
         let app_path = src_dir.join("app.kea");
@@ -2139,7 +2223,7 @@
 
         std::fs::write(
             src_dir.join("helper.kea"),
-            "type Unique a = Unique(a)\n\nfn new(x: Int) -> Unique Int\n  Unique(x)\n\nfn touch(value: Unique Int) -> Int\n  1\n",
+            "enum Unique a\n  Unique(a)\n\nfn new(x: Int) -> Unique Int\n  Unique(x)\n\nfn touch(value: Unique Int) -> Int\n  1\n",
         )
         .expect("helper module write should succeed");
         let app_path = src_dir.join("app.kea");
@@ -2986,7 +3070,7 @@
     #[test]
     fn compile_and_execute_unit_enum_case_exit_code() {
         let source_path = write_temp_source(
-            "type Color = Red | Green\n\nfn main() -> Int\n  case Color.Red\n    Color.Red -> 1\n    Color.Green -> 2\n",
+            "enum Color\n  Red\n  Green\n\nfn main() -> Int\n  case Color.Red\n    Color.Red -> 1\n    Color.Green -> 2\n",
             "kea-cli-unit-enum-case",
             "kea",
         );
@@ -3014,7 +3098,7 @@
     #[test]
     fn compile_and_execute_unit_enum_or_pattern_case_exit_code() {
         let source_path = write_temp_source(
-            "type Color = Red | Green | Blue\n\nfn main() -> Int\n  case Color.Green\n    Color.Red | Color.Green -> 3\n    _ -> 8\n",
+            "enum Color\n  Red\n  Green\n  Blue\n\nfn main() -> Int\n  case Color.Green\n    Color.Red | Color.Green -> 3\n    _ -> 8\n",
             "kea-cli-unit-enum-or-case",
             "kea",
         );
@@ -3028,7 +3112,7 @@
     #[test]
     fn compile_and_execute_unqualified_unit_enum_case_exit_code() {
         let source_path = write_temp_source(
-            "type Color = Red | Green\n\nfn main() -> Int\n  case Red\n    Red -> 5\n    Green -> 9\n",
+            "enum Color\n  Red\n  Green\n\nfn main() -> Int\n  case Red\n    Red -> 5\n    Green -> 9\n",
             "kea-cli-unit-enum-unqualified-case",
             "kea",
         );
@@ -3084,7 +3168,7 @@
     #[test]
     fn compile_and_execute_unit_enum_guard_case_exit_code() {
         let source_path = write_temp_source(
-            "type Color = Red | Green\n\nfn main() -> Int\n  case Color.Red\n    Color.Red when true -> 4\n    _ -> 1\n",
+            "enum Color\n  Red\n  Green\n\nfn main() -> Int\n  case Color.Red\n    Color.Red when true -> 4\n    _ -> 1\n",
             "kea-cli-unit-enum-guard-case",
             "kea",
         );
@@ -3098,7 +3182,7 @@
     #[test]
     fn compile_and_execute_unit_enum_as_guard_case_exit_code() {
         let source_path = write_temp_source(
-            "type Color = Red | Green\n\nfn main() -> Int\n  case Color.Red\n    Color.Red as c when true -> 5\n    _ -> 1\n",
+            "enum Color\n  Red\n  Green\n\nfn main() -> Int\n  case Color.Red\n    Color.Red as c when true -> 5\n    _ -> 1\n",
             "kea-cli-unit-enum-as-guard-case",
             "kea",
         );
@@ -3126,7 +3210,7 @@
     #[test]
     fn compile_and_execute_unit_enum_or_guard_case_exit_code() {
         let source_path = write_temp_source(
-            "type Color = Red | Green | Blue\n\nfn main() -> Int\n  case Color.Red\n    Color.Red | Color.Green when true -> 7\n    _ -> 1\n",
+            "enum Color\n  Red\n  Green\n  Blue\n\nfn main() -> Int\n  case Color.Red\n    Color.Red | Color.Green when true -> 7\n    _ -> 1\n",
             "kea-cli-unit-enum-or-guard-case",
             "kea",
         );
@@ -3406,7 +3490,7 @@
     #[test]
     fn compile_and_execute_payload_constructor_exit_code() {
         let source_path = write_temp_source(
-            "type Flag = Yep(Int) | Nope\n\nfn make_flag() -> Flag\n  Yep(7)\n\nfn main() -> Int\n  let ignored = make_flag()\n  3\n",
+            "enum Flag\n  Yep(Int)\n  Nope\n\nfn make_flag() -> Flag\n  Yep(7)\n\nfn main() -> Int\n  let ignored = make_flag()\n  3\n",
             "kea-cli-sum-init",
             "kea",
         );
@@ -3418,9 +3502,23 @@
     }
 
     #[test]
+    fn compile_and_execute_mutually_recursive_struct_enum_exit_code() {
+        let source_path = write_temp_source(
+            "struct MatchArm\n  body: HirExpr\n  tag: Int\n\nenum HirExpr\n  Lit(Int)\n  Match(HirExpr, MatchArm)\n\nfn depth(e: HirExpr) -> Int\n  case e\n    Lit(_) -> 0\n    Match(inner, _) -> 1 + depth(inner)\n\nfn main() -> Int\n  let arm = MatchArm { body: Lit(1), tag: 0 }\n  depth(Match(Lit(5), arm))\n",
+            "kea-cli-jit-mutual-recursive-type-defs",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 1);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_sum_payload_record_type_exit_code() {
         let source_path = write_temp_source(
-            "struct User\n  age: Int\n\ntype Wrap = W(User) | N\n\nfn main() -> Int\n  case W(User { age: 7 })\n    W(u) -> u.age + 1\n    N -> 0\n",
+            "struct User\n  age: Int\n\nenum Wrap\n  W(User)\n  N\n\nfn main() -> Int\n  case W(User { age: 7 })\n    W(u) -> u.age + 1\n    N -> 0\n",
             "kea-cli-sum-record-payload",
             "kea",
         );
@@ -3434,7 +3532,7 @@
     #[test]
     fn compile_and_execute_sum_payload_record_pattern_exit_code() {
         let source_path = write_temp_source(
-            "struct User\n  age: Int\n\ntype Wrap = W(User) | N\n\nfn main() -> Int\n  case W(User { age: 7 })\n    W(User { age: n }) -> n + 2\n    N -> 0\n",
+            "struct User\n  age: Int\n\nenum Wrap\n  W(User)\n  N\n\nfn main() -> Int\n  case W(User { age: 7 })\n    W(User { age: n }) -> n + 2\n    N -> 0\n",
             "kea-cli-sum-record-payload-pattern",
             "kea",
         );
@@ -3448,7 +3546,7 @@
     #[test]
     fn compile_and_execute_sum_payload_record_alias_type_exit_code() {
         let source_path = write_temp_source(
-            "struct User\n  age: Int\n\nalias UserAlias = User\n\ntype Wrap = W(UserAlias) | N\n\nfn main() -> Int\n  case W(User { age: 7 })\n    W(u) -> u.age + 5\n    N -> 0\n",
+            "struct User\n  age: Int\n\nalias UserAlias = User\n\nenum Wrap\n  W(UserAlias)\n  N\n\nfn main() -> Int\n  case W(User { age: 7 })\n    W(u) -> u.age + 5\n    N -> 0\n",
             "kea-cli-sum-record-payload-alias",
             "kea",
         );
@@ -3462,7 +3560,7 @@
     #[test]
     fn compile_and_execute_payload_constructor_expression_arg_exit_code() {
         let source_path = write_temp_source(
-            "type Flag = Yep(Int) | Nope\n\nfn main() -> Int\n  case Yep(1 + 6)\n    Yep(n) -> n\n    Nope -> 0\n",
+            "enum Flag\n  Yep(Int)\n  Nope\n\nfn main() -> Int\n  case Yep(1 + 6)\n    Yep(n) -> n\n    Nope -> 0\n",
             "kea-cli-sum-init-expr-arg",
             "kea",
         );
@@ -3476,7 +3574,7 @@
     #[test]
     fn compile_and_execute_named_payload_constructor_labeled_args_exit_code() {
         let source_path = write_temp_source(
-            "type Pair = Pair(left: Int, right: Int)\n\nfn main() -> Int\n  case Pair(right: 1, left: 40)\n    Pair(left: a, right: b) -> a * 100 + b\n",
+            "enum Pair\n  Pair(left: Int, right: Int)\n\nfn main() -> Int\n  case Pair(right: 1, left: 40)\n    Pair(left: a, right: b) -> a * 100 + b\n",
             "kea-cli-sum-init-labeled-args",
             "kea",
         );
@@ -3490,7 +3588,7 @@
     #[test]
     fn compile_and_execute_qualified_payload_constructor_case_exit_code() {
         let source_path = write_temp_source(
-            "type Flag = Yep(Int) | Nope\n\nfn main() -> Int\n  case Flag.Yep(7)\n    Flag.Yep(n) -> n\n    Flag.Nope -> 0\n",
+            "enum Flag\n  Yep(Int)\n  Nope\n\nfn main() -> Int\n  case Flag.Yep(7)\n    Flag.Yep(n) -> n\n    Flag.Nope -> 0\n",
             "kea-cli-sum-init-qualified",
             "kea",
         );
@@ -3504,7 +3602,7 @@
     #[test]
     fn compile_and_execute_payload_constructor_case_exit_code() {
         let source_path = write_temp_source(
-            "type Flag = Yep(Int) | Nope\n\nfn main() -> Int\n  case Yep(7)\n    Yep(_) -> 11\n    Nope -> 0\n",
+            "enum Flag\n  Yep(Int)\n  Nope\n\nfn main() -> Int\n  case Yep(7)\n    Yep(_) -> 11\n    Nope -> 0\n",
             "kea-cli-sum-case",
             "kea",
         );
@@ -3532,7 +3630,7 @@
     #[test]
     fn compile_and_execute_payload_constructor_bound_case_exit_code() {
         let source_path = write_temp_source(
-            "type Flag = Yep(Int) | Nope\n\nfn main() -> Int\n  case Yep(7)\n    Yep(n) -> n + 1\n    Nope -> 0\n",
+            "enum Flag\n  Yep(Int)\n  Nope\n\nfn main() -> Int\n  case Yep(7)\n    Yep(n) -> n + 1\n    Nope -> 0\n",
             "kea-cli-sum-case-bind",
             "kea",
         );
@@ -3546,7 +3644,7 @@
     #[test]
     fn compile_and_execute_payload_constructor_as_case_exit_code() {
         let source_path = write_temp_source(
-            "type Flag = Yep(Int) | Nope\n\nfn main() -> Int\n  case Yep(7)\n    Yep(n) as whole -> n + 2\n    Nope -> 0\n",
+            "enum Flag\n  Yep(Int)\n  Nope\n\nfn main() -> Int\n  case Yep(7)\n    Yep(n) as whole -> n + 2\n    Nope -> 0\n",
             "kea-cli-sum-case-as",
             "kea",
         );
@@ -3560,7 +3658,7 @@
     #[test]
     fn compile_and_execute_payload_constructor_or_case_exit_code() {
         let source_path = write_temp_source(
-            "type Flag = Yep(Int) | Nope\n\nfn main() -> Int\n  case Yep(7)\n    Yep(n) | Yep(n) -> n + 3\n    Nope -> 0\n",
+            "enum Flag\n  Yep(Int)\n  Nope\n\nfn main() -> Int\n  case Yep(7)\n    Yep(n) | Yep(n) -> n + 3\n    Nope -> 0\n",
             "kea-cli-sum-case-or",
             "kea",
         );
@@ -3574,7 +3672,7 @@
     #[test]
     fn compile_and_execute_payload_constructor_or_across_variants_exit_code() {
         let source_path = write_temp_source(
-            "type Either = Left(Int) | Right(Int) | Nope\n\nfn main() -> Int\n  case Right(7)\n    Left(n) | Right(n) -> n + 4\n    Nope -> 0\n",
+            "enum Either\n  Left(Int)\n  Right(Int)\n  Nope\n\nfn main() -> Int\n  case Right(7)\n    Left(n) | Right(n) -> n + 4\n    Nope -> 0\n",
             "kea-cli-sum-case-or-variants",
             "kea",
         );
@@ -3588,7 +3686,7 @@
     #[test]
     fn compile_and_execute_payload_constructor_multi_bind_case_exit_code() {
         let source_path = write_temp_source(
-            "type Pair = Pair(Int, Int) | Nope\n\nfn main() -> Int\n  case Pair(4, 6)\n    Pair(a, b) -> a + b\n    Nope -> 0\n",
+            "enum Pair\n  Pair(Int, Int)\n  Nope\n\nfn main() -> Int\n  case Pair(4, 6)\n    Pair(a, b) -> a + b\n    Nope -> 0\n",
             "kea-cli-sum-case-multi-bind",
             "kea",
         );
@@ -3602,7 +3700,7 @@
     #[test]
     fn compile_and_execute_payload_constructor_literal_check_case_exit_code() {
         let source_path = write_temp_source(
-            "type Flag = Yep(Int) | Nope\n\nfn main() -> Int\n  case Yep(7)\n    Yep(7) -> 14\n    Nope -> 0\n",
+            "enum Flag\n  Yep(Int)\n  Nope\n\nfn main() -> Int\n  case Yep(7)\n    Yep(7) -> 14\n    Nope -> 0\n",
             "kea-cli-sum-case-literal-check",
             "kea",
         );
@@ -3616,7 +3714,7 @@
     #[test]
     fn compile_and_execute_payload_constructor_mixed_literal_bind_case_exit_code() {
         let source_path = write_temp_source(
-            "type Pair = Pair(Int, Int) | Nope\n\nfn main() -> Int\n  case Pair(1, 6)\n    Pair(1, b) -> b + 1\n    Nope -> 0\n",
+            "enum Pair\n  Pair(Int, Int)\n  Nope\n\nfn main() -> Int\n  case Pair(1, 6)\n    Pair(1, b) -> b + 1\n    Nope -> 0\n",
             "kea-cli-sum-case-mixed-literal-bind",
             "kea",
         );
@@ -3630,7 +3728,7 @@
     #[test]
     fn compile_and_execute_nested_payload_constructor_case_exit_code() {
         let source_path = write_temp_source(
-            "type Maybe a = Just(a) | Nothing\n\nfn main() -> Int\n  case Just(Just(7))\n    Just(Just(n)) -> n + 8\n    _ -> 0\n",
+            "enum Maybe a\n  Just(a)\n  Nothing\n\nfn main() -> Int\n  case Just(Just(7))\n    Just(Just(n)) -> n + 8\n    _ -> 0\n",
             "kea-cli-sum-case-nested-payload",
             "kea",
         );
@@ -3644,7 +3742,7 @@
     #[test]
     fn compile_and_execute_nested_or_payload_constructor_case_exit_code() {
         let source_path = write_temp_source(
-            "type Inner = A(Int) | B(Int)\ntype Outer = Wrap(Inner) | End\n\nfn main() -> Int\n  case Wrap(B(7))\n    Wrap(A(n) | B(n)) -> n + 12\n    _ -> 0\n",
+            "enum Inner\n  A(Int)\n  B(Int)\nenum Outer\n  Wrap(Inner)\n  End\n\nfn main() -> Int\n  case Wrap(B(7))\n    Wrap(A(n) | B(n)) -> n + 12\n    _ -> 0\n",
             "kea-cli-sum-case-nested-or-payload",
             "kea",
         );
@@ -3658,7 +3756,7 @@
     #[test]
     fn compile_and_execute_payload_constructor_as_guard_case_exit_code() {
         let source_path = write_temp_source(
-            "type Flag = Yep(Int) | Nope\n\nfn main() -> Int\n  case Yep(7)\n    Yep(n) as whole when n == 7 -> n + 5\n    Yep(_) -> 1\n    Nope -> 0\n",
+            "enum Flag\n  Yep(Int)\n  Nope\n\nfn main() -> Int\n  case Yep(7)\n    Yep(n) as whole when n == 7 -> n + 5\n    Yep(_) -> 1\n    Nope -> 0\n",
             "kea-cli-sum-case-as-guard",
             "kea",
         );
@@ -3672,7 +3770,7 @@
     #[test]
     fn compile_and_execute_payload_constructor_or_guard_across_variants_exit_code() {
         let source_path = write_temp_source(
-            "type Either = Left(Int) | Right(Int) | Nope\n\nfn main() -> Int\n  case Right(7)\n    Left(n) | Right(n) when n > 0 -> n + 6\n    Left(_) | Right(_) -> 1\n    Nope -> 0\n",
+            "enum Either\n  Left(Int)\n  Right(Int)\n  Nope\n\nfn main() -> Int\n  case Right(7)\n    Left(n) | Right(n) when n > 0 -> n + 6\n    Left(_) | Right(_) -> 1\n    Nope -> 0\n",
             "kea-cli-sum-case-or-guard-variants",
             "kea",
         );

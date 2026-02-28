@@ -1,6 +1,6 @@
 # Brief: `with` Syntax (Callback Flattening)
 
-**Status:** ready
+**Status:** done
 **Priority:** v1-critical
 **Depends on:** 0e (handler functions must work end-to-end)
 **Blocks:** ergonomic handler composition, stdlib `with_*` patterns
@@ -197,12 +197,16 @@ PKG=kea mise run test-pkg
 
 ## Definition of Done
 
-- [ ] `@with` annotation parses on function parameters
-- [ ] `with` keyword lexes
-- [ ] Non-binding `with expr` parses and desugars
-- [ ] Binding `with pattern <- expr` parses and desugars
-- [ ] `@with` validation emits clear error on misuse
-- [ ] Multiple stacked `with` statements work
-- [ ] `with` after `let` works (let bindings visible in with body)
-- [ ] Lint warns on `with` after non-with/non-let statements
-- [ ] Existing tests pass (no regressions)
+- [x] `@with` annotation parses on function parameters
+- [x] `with` keyword lexes
+- [x] Non-binding `with expr` parses and desugars
+- [x] Binding `with pattern <- expr` parses and desugars
+- [x] `@with` validation emits clear error on misuse
+- [x] Multiple stacked `with` statements work
+- [x] `with` after `let` works (let bindings visible in with body)
+- [x] Lint warns on `with` after non-with/non-let statements
+- [x] Existing tests pass (no regressions)
+
+## Progress
+- 2026-02-28 22:22: Activated brief, moved to `in-progress/`, and started implementation pass for parser/AST/typechecker/HIR integration.
+- 2026-02-28 22:38: Landed `with` end-to-end (`with` keyword/parser forms, `ExprKind::With`, HIR/typechecker desugaring, `@with` callback validation, block-order lint warning `W0902`, and CLI + infer regression tests). Validation passed: `PKG=kea-syntax mise run test-pkg`, `PKG=kea-infer mise run test-pkg`, `PKG=kea mise run test-pkg`, `mise run check`.

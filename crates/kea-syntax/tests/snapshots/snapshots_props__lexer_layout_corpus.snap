@@ -222,7 +222,7 @@ tokens:
 - Colon
 - Int(0)
 - RBrace
-- Ident("with")
+- With
 - Newline
 - Indent
 - Ident("mailbox_size")
@@ -247,7 +247,7 @@ tokens:
 - Int(1)
 - Newline
 - Dedent
-- Ident("with")
+- With
 - Newline
 - Indent
 - Ident("buffer")

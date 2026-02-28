@@ -15,7 +15,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use kea_ast::{
     AliasDecl, Argument, BinOp, EffectDecl, Expr, ExprKind, FnDecl, ForClause, ForExpr,
     INTERP_SHOW_FN_NAME, Lit, OpaqueTypeDef, Param, ParamLabel, Pattern, PatternKind, RecordDef,
-    Span, TypeAnnotation, UnaryOp, free_vars,
+    Span, Spanned, TypeAnnotation, UnaryOp, free_vars,
 };
 use kea_types::{
     Dim, DimVarId, EffectRow, Effects, FunctionType, Kind, Label, Purity, RecordType, RowType,
@@ -113,6 +113,8 @@ pub struct FnParamSignature {
     pub name: Option<String>,
     /// Call-site label. `None` means positional-only (`_` parameter).
     pub label: Option<String>,
+    /// Whether this parameter is annotated with `@with`.
+    pub with_callback: bool,
     /// Default expression evaluated at call site when omitted.
     pub default: Option<Expr>,
 }
@@ -131,6 +133,7 @@ impl FnSignature {
                 .map(|_| FnParamSignature {
                     name: None,
                     label: None,
+                    with_callback: false,
                     default: None,
                 })
                 .collect(),
@@ -1088,44 +1091,89 @@ impl RecordRegistry {
     ///
     /// Returns an error diagnostic if any field type annotation cannot be resolved.
     pub fn register(&mut self, def: &RecordDef) -> Result<(), Diagnostic> {
-        // Check for duplicate field names
-        let mut seen: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
-        for (name, _) in &def.fields {
-            if !seen.insert(&name.node) {
+        self.register_names(&[def])?;
+        self.resolve_registered_fields(&[def], None)
+    }
+
+    /// Pass 1 for record registration: reserve all record names.
+    ///
+    /// This allows record field types to reference later records and sum types
+    /// that will be registered in a subsequent pass.
+    pub fn register_names(&mut self, defs: &[&RecordDef]) -> Result<(), Diagnostic> {
+        if defs.is_empty() {
+            return Ok(());
+        }
+
+        let mut batch_names = BTreeSet::new();
+        for def in defs {
+            if self.records.contains_key(&def.name.node)
+                || self.aliases.contains_key(&def.name.node)
+                || self.opaques.contains_key(&def.name.node)
+            {
                 return Err(Diagnostic::error(
                     Category::TypeMismatch,
-                    format!(
-                        "duplicate field `{}` in record `{}`",
-                        name.node, def.name.node,
-                    ),
+                    format!("type `{}` is already defined", def.name.node),
                 )
                 .at(SourceLocation {
-                    file_id: name.span.file.0,
-                    start: name.span.start,
-                    end: name.span.end,
+                    file_id: def.name.span.file.0,
+                    start: def.name.span.start,
+                    end: def.name.span.end,
+                }));
+            }
+            if !batch_names.insert(def.name.node.clone()) {
+                return Err(Diagnostic::error(
+                    Category::TypeMismatch,
+                    format!("record `{}` is declared more than once", def.name.node),
+                )
+                .at(SourceLocation {
+                    file_id: def.name.span.file.0,
+                    start: def.name.span.start,
+                    end: def.name.span.end,
                 }));
             }
         }
 
-        let type_param_scope: BTreeMap<String, Type> = def
-            .params
-            .iter()
-            .enumerate()
-            .map(|(idx, name)| (name.clone(), Type::Var(TypeVarId(idx as u32))))
-            .collect();
+        // Seed placeholders. Field rows are resolved in pass 2.
+        for def in defs {
+            self.records.insert(
+                def.name.node.clone(),
+                RecordInfo {
+                    params: def.params.clone(),
+                    row: RowType::closed(Vec::new()),
+                    definition_span: Some(def.name.span),
+                    doc: def.doc.clone(),
+                    public: def.public,
+                },
+            );
+        }
 
-        let mut fields: Vec<(Label, Type)> = Vec::new();
-        for (name, ann) in &def.fields {
-            match resolve_annotation_with_type_params(ann, &type_param_scope, self, None) {
-                Some(ty) => fields.push((Label::new(name.node.clone()), ty)),
-                None => {
+        Ok(())
+    }
+
+    /// Pass 2 for record registration: resolve field annotations now that all
+    /// type names are known.
+    pub fn resolve_registered_fields(
+        &mut self,
+        defs: &[&RecordDef],
+        sum_types: Option<&SumTypeRegistry>,
+    ) -> Result<(), Diagnostic> {
+        if defs.is_empty() {
+            return Ok(());
+        }
+
+        for def in defs {
+            // Check for duplicate field names.
+            let mut seen: BTreeSet<&str> = BTreeSet::new();
+            for (name, _) in &def.fields {
+                if !seen.insert(&name.node) {
+                    for rollback in defs {
+                        self.records.remove(&rollback.name.node);
+                    }
                     return Err(Diagnostic::error(
                         Category::TypeMismatch,
                         format!(
-                            "unknown type `{}` in field `{}` of record `{}`",
-                            annotation_display(ann),
-                            name.node,
-                            def.name.node,
+                            "duplicate field `{}` in record `{}`",
+                            name.node, def.name.node,
                         ),
                     )
                     .at(SourceLocation {
@@ -1135,18 +1183,56 @@ impl RecordRegistry {
                     }));
                 }
             }
+
+            let type_param_scope: BTreeMap<String, Type> = def
+                .params
+                .iter()
+                .enumerate()
+                .map(|(idx, name)| (name.clone(), Type::Var(TypeVarId(idx as u32))))
+                .collect();
+
+            let mut fields: Vec<(Label, Type)> = Vec::new();
+            for (name, ann) in &def.fields {
+                match resolve_annotation_with_type_params(ann, &type_param_scope, self, sum_types)
+                {
+                    Some(ty) => fields.push((Label::new(name.node.clone()), ty)),
+                    None => {
+                        for rollback in defs {
+                            self.records.remove(&rollback.name.node);
+                        }
+                        return Err(Diagnostic::error(
+                            Category::TypeMismatch,
+                            format!(
+                                "unknown type `{}` in field `{}` of record `{}`",
+                                annotation_display(ann),
+                                name.node,
+                                def.name.node,
+                            ),
+                        )
+                        .at(SourceLocation {
+                            file_id: name.span.file.0,
+                            start: name.span.start,
+                            end: name.span.end,
+                        }));
+                    }
+                }
+            }
+
+            // Commit immediately so later records in the same batch resolve
+            // references against concrete rows instead of placeholders.
+            let row = RowType::closed(fields);
+            self.records.insert(
+                def.name.node.clone(),
+                RecordInfo {
+                    params: def.params.clone(),
+                    row,
+                    definition_span: Some(def.name.span),
+                    doc: def.doc.clone(),
+                    public: def.public,
+                },
+            );
         }
-        let row = RowType::closed(fields);
-        self.records.insert(
-            def.name.node.clone(),
-            RecordInfo {
-                params: def.params.clone(),
-                row,
-                definition_span: Some(def.name.span),
-                doc: def.doc.clone(),
-                public: def.public,
-            },
-        );
+
         Ok(())
     }
 
@@ -1613,15 +1699,11 @@ impl SumTypeRegistry {
         self.register_many(&[def], records)
     }
 
-    /// Register a batch of sum type definitions in one pass.
+    /// Pass 1 for sum type registration: reserve all type names.
     ///
-    /// This supports self-recursive and mutually-recursive groups by first
-    /// seeding all names, then resolving variant fields.
-    pub fn register_many(
-        &mut self,
-        defs: &[&kea_ast::TypeDef],
-        records: &RecordRegistry,
-    ) -> Result<(), Diagnostic> {
+    /// This allows record fields and variant payloads to refer to sum types
+    /// declared later in the same module.
+    pub fn register_names(&mut self, defs: &[&kea_ast::TypeDef]) -> Result<(), Diagnostic> {
         if defs.is_empty() {
             return Ok(());
         }
@@ -1696,10 +1778,6 @@ impl SumTypeRegistry {
             }
         }
 
-        // Build type-dependency graph for recursion metadata.
-        let dependency_graph = build_type_dependency_graph(defs);
-        let component_map = strongly_connected_component_map(&dependency_graph);
-
         // Pass 1: seed all type names to allow recursive references.
         for def in defs {
             self.types.insert(
@@ -1715,7 +1793,32 @@ impl SumTypeRegistry {
             );
         }
 
-        // Pass 2: resolve all variant field types.
+        Ok(())
+    }
+
+    /// Pass 2 for sum type registration: resolve variant payload types and
+    /// commit recursion metadata.
+    pub fn resolve_registered_variants(
+        &mut self,
+        defs: &[&kea_ast::TypeDef],
+        records: &RecordRegistry,
+    ) -> Result<(), Diagnostic> {
+        if defs.is_empty() {
+            return Ok(());
+        }
+
+        let mut new_variant_to_type: Vec<(String, String)> = Vec::new();
+        for def in defs {
+            for variant in &def.variants {
+                new_variant_to_type.push((variant.name.node.clone(), def.name.node.clone()));
+            }
+        }
+
+        // Build type-dependency graph for recursion metadata.
+        let dependency_graph = build_type_dependency_graph(defs);
+        let component_map = strongly_connected_component_map(&dependency_graph);
+
+        // Resolve all variant field types.
         let mut resolved_variants: BTreeMap<String, Vec<VariantInfo>> = BTreeMap::new();
         for def in defs {
             let type_param_scope: BTreeMap<String, Type> = def
@@ -1871,6 +1974,19 @@ impl SumTypeRegistry {
         }
 
         Ok(())
+    }
+
+    /// Register a batch of sum type definitions in one pass.
+    ///
+    /// This supports self-recursive and mutually-recursive groups by first
+    /// seeding all names, then resolving variant fields.
+    pub fn register_many(
+        &mut self,
+        defs: &[&kea_ast::TypeDef],
+        records: &RecordRegistry,
+    ) -> Result<(), Diagnostic> {
+        self.register_names(defs)?;
+        self.resolve_registered_variants(defs, records)
     }
 
     /// Look up a sum type by name.
@@ -7373,6 +7489,7 @@ fn function_signature_from_params(params: &[Param]) -> FnSignature {
             .map(|param| FnParamSignature {
                 name: param.name().map(ToOwned::to_owned),
                 label: param.effective_label().map(ToOwned::to_owned),
+                with_callback: param.annotations.iter().any(|ann| ann.name.node == "with"),
                 default: param.default.clone(),
             })
             .collect(),
@@ -9109,6 +9226,15 @@ fn infer_expr_effect_row(
             infer_expr_effect_row(value, env, constraints, next_effect_var)
         }
 
+        ExprKind::With {
+            call,
+            binding,
+            body,
+        } => {
+            let lowered = desugar_with_expr(call, binding.as_ref(), body);
+            infer_expr_effect_row(&lowered, env, constraints, next_effect_var)
+        }
+
         ExprKind::Handle {
             expr: handled,
             clauses,
@@ -9947,6 +10073,7 @@ fn mk_lambda(param: &str, body: Expr, span: Span) -> Expr {
     kea_ast::Spanned::new(
         ExprKind::Lambda {
             params: vec![kea_ast::Param {
+                annotations: Vec::new(),
                 label: ParamLabel::Implicit,
                 pattern: kea_ast::Spanned::new(PatternKind::Var(param.to_string()), span),
                 annotation: None,
@@ -11423,6 +11550,137 @@ fn resolve_call_signature<'a>(func: &Expr, env: &'a TypeEnv) -> Option<&'a FnSig
     }
 }
 
+fn with_call_target_expr(call: &Expr) -> &Expr {
+    if let ExprKind::Call { func, .. } = &call.node {
+        func
+    } else {
+        call
+    }
+}
+
+fn with_call_target_name(call: &Expr) -> String {
+    match &with_call_target_expr(call).node {
+        ExprKind::Var(name) => name.clone(),
+        ExprKind::FieldAccess { expr, field } => {
+            if let ExprKind::Var(module_name) = &expr.node {
+                format!("{module_name}.{}", field.node)
+            } else {
+                field.node.clone()
+            }
+        }
+        _ => "this expression".to_string(),
+    }
+}
+
+fn resolve_with_call_signature<'a>(call: &Expr, env: &'a TypeEnv) -> Option<&'a FnSignature> {
+    resolve_call_signature(with_call_target_expr(call), env)
+}
+
+fn validate_with_target_annotation(call: &Expr, env: &TypeEnv, unifier: &mut Unifier) {
+    let target_name = with_call_target_name(call);
+    let Some(signature) = resolve_with_call_signature(call, env) else {
+        unifier.push_error(
+            Diagnostic::error(
+                Category::TypeMismatch,
+                "cannot use `with` here — expected a direct named function call",
+            )
+            .at(span_to_loc(call.span))
+            .with_help("`with` requires calling a named function whose last parameter is marked `@with`"),
+        );
+        return;
+    };
+
+    let Some(last_param) = signature.params.last() else {
+        unifier.push_error(
+            Diagnostic::error(
+                Category::TypeMismatch,
+                format!("cannot use `with` — `{target_name}` does not accept a callback parameter"),
+            )
+            .at(span_to_loc(call.span)),
+        );
+        return;
+    };
+
+    if !last_param.with_callback {
+        unifier.push_error(
+            Diagnostic::error(
+                Category::TypeMismatch,
+                format!("cannot use `with` — `{target_name}` is not marked `@with`"),
+            )
+            .at(span_to_loc(call.span))
+            .with_help("mark the callee's last parameter with `@with`"),
+        );
+    }
+}
+
+fn desugar_with_expr(call: &Expr, binding: Option<&Pattern>, body: &Expr) -> Expr {
+    let params = binding
+        .map(|pattern| {
+            vec![Param {
+                annotations: Vec::new(),
+                label: ParamLabel::Implicit,
+                pattern: pattern.clone(),
+                annotation: None,
+                default: None,
+            }]
+        })
+        .unwrap_or_default();
+
+    let lambda = Spanned::new(
+        ExprKind::Lambda {
+            params,
+            body: Box::new(body.clone()),
+            return_annotation: None,
+        },
+        body.span,
+    );
+
+    let (func, mut args) = if let ExprKind::Call { func, args } = &call.node {
+        ((**func).clone(), args.clone())
+    } else {
+        (call.clone(), Vec::new())
+    };
+    args.push(Argument {
+        label: None,
+        value: lambda,
+    });
+
+    Spanned::new(
+        ExprKind::Call {
+            func: Box::new(func),
+            args,
+        },
+        call.span.merge(body.span),
+    )
+}
+
+fn maybe_warn_with_ordering(exprs: &[Expr], unifier: &mut Unifier) {
+    let Some((with_idx, with_expr)) = exprs
+        .iter()
+        .enumerate()
+        .find(|(_, expr)| matches!(expr.node, ExprKind::With { .. }))
+    else {
+        return;
+    };
+
+    let has_non_let_prefix = exprs[..with_idx]
+        .iter()
+        .any(|expr| !matches!(expr.node, ExprKind::Let { .. } | ExprKind::With { .. }));
+    if !has_non_let_prefix {
+        return;
+    }
+
+    unifier.push_error(
+        Diagnostic::warning(
+            Category::TypeError,
+            "`with` should appear before non-`let` expressions in a block",
+        )
+        .at(span_to_loc(with_expr.span))
+        .with_help("move this `with` above preceding expressions, keeping only `let` bindings before it")
+        .with_code("W0902"),
+    );
+}
+
 fn resolve_bound_call_args(
     func: &Expr,
     args: &[Argument],
@@ -12191,6 +12449,20 @@ fn collect_resume_usage(
         ExprKind::Let { value, .. } => {
             collect_resume_usage(value, inside_loop, inside_lambda, resume_count, diagnostics);
         }
+        ExprKind::With {
+            call,
+            binding,
+            body,
+        } => {
+            let lowered = desugar_with_expr(call, binding.as_ref(), body);
+            collect_resume_usage(
+                &lowered,
+                inside_loop,
+                inside_lambda,
+                resume_count,
+                diagnostics,
+            );
+        }
         ExprKind::Lambda { body, .. } => {
             collect_resume_usage(body, inside_loop, true, resume_count, diagnostics);
         }
@@ -12940,6 +13212,16 @@ fn infer_expr_bidir(
             })
         }
 
+        ExprKind::With {
+            call,
+            binding,
+            body,
+        } => {
+            validate_with_target_annotation(call, env, unifier);
+            let lowered = desugar_with_expr(call, binding.as_ref(), body);
+            infer_expr_bidir(&lowered, env, unifier, records, traits, sum_types)
+        }
+
         // -- Function application --
         ExprKind::Call { func, args } => {
             // String interpolation lowers to `__kea_interp_show(...)` in the parser.
@@ -13596,6 +13878,7 @@ fn infer_expr_bidir(
             if exprs.is_empty() {
                 return Type::Unit;
             }
+            maybe_warn_with_ordering(exprs, unifier);
             env.push_scope();
             let mut last_ty = Type::Unit;
             let mut idx = 0usize;
@@ -16190,6 +16473,27 @@ fn check_expr_bidir(
                 }
                 _ => {}
             }
+        }
+        (
+            ExprKind::With {
+                call,
+                binding,
+                body,
+            },
+            _,
+        ) => {
+            validate_with_target_annotation(call, env, unifier);
+            let lowered = desugar_with_expr(call, binding.as_ref(), body);
+            return check_expr_bidir(
+                &lowered,
+                expected,
+                reason.clone(),
+                env,
+                unifier,
+                records,
+                traits,
+                sum_types,
+            );
         }
         (ExprKind::Call { func, args }, _) => {
             if let ExprKind::Var(name) = &func.node
