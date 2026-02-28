@@ -28040,6 +28040,53 @@ theorem principalBoundarySoundNoUnifyFullVerticalMasterCapstone_of_success_from_
     (h_app := h_seed.1) (h_proj := h_seed.2) h_no_expr h_no_field h_ok_expr h_ok_field
 
 /--
+No-unify master capstone is equivalent to an explicit conjunction of its
+no-unify and vertical components.
+-/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterCapstone_iff_components
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields} :
+    PrincipalBoundarySoundNoUnifyFullVerticalMasterCapstone st fuel env e fs stExpr ty stField rf
+      ↔ (PrincipalBoundarySoundNoUnifyExprFull st fuel env e stExpr ty
+          ∧ PrincipalBoundarySoundNoUnifyFieldFull st fuel env fs stField rf
+          ∧ VerticalHookFreeAppSlice
+          ∧ VerticalHookFreeProjSlice) := by
+  constructor
+  · intro h_cap
+    exact ⟨h_cap.exprNoUnify, h_cap.fieldNoUnify, h_cap.verticalApp, h_cap.verticalProj⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2.1, h_comp.2.2.1, h_comp.2.2.2⟩
+
+/-- Constructor helper from explicit components for the no-unify master capstone. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterCapstone_of_components
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_comp :
+      PrincipalBoundarySoundNoUnifyExprFull st fuel env e stExpr ty
+        ∧ PrincipalBoundarySoundNoUnifyFieldFull st fuel env fs stField rf
+        ∧ VerticalHookFreeAppSlice
+        ∧ VerticalHookFreeProjSlice) :
+    PrincipalBoundarySoundNoUnifyFullVerticalMasterCapstone st fuel env e fs stExpr ty stField rf :=
+  (principalBoundarySoundNoUnifyFullVerticalMasterCapstone_iff_components).2 h_comp
+
+/-- One-hop decomposition of the no-unify master capstone into explicit components. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterCapstone_as_components
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_cap : PrincipalBoundarySoundNoUnifyFullVerticalMasterCapstone st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundNoUnifyExprFull st fuel env e stExpr ty
+      ∧ PrincipalBoundarySoundNoUnifyFieldFull st fuel env fs stField rf
+      ∧ VerticalHookFreeAppSlice
+      ∧ VerticalHookFreeProjSlice :=
+  (principalBoundarySoundNoUnifyFullVerticalMasterCapstone_iff_components).1 h_cap
+
+/--
 The row-poly full+vertical capstone is equivalent to providing:
 - a full principal boundary soundness suite witness, and
 - a hook-free vertical app/projection slice witness.
