@@ -1,3 +1,7 @@
+--| Test provides assertion helpers for `test` declarations.
+--|
+--| Assertions fail via `Fail String`, which the test runner
+--| captures and reports per-case.
 effect Fail E
   --| Abort the current computation with an error payload.
   --|

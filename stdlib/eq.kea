@@ -1,3 +1,7 @@
+--| Eq defines structural equality for values.
+--|
+--| Implement `Eq` when two values of a type can be compared
+--| for equal or not-equal semantics.
 trait Eq a
   --| Return true when two values are equal.
   --|

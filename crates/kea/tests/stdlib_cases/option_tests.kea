@@ -19,6 +19,12 @@ test "Option.predicates"
   Test.assert(Option.is_some(Some(1)))
   Test.assert(Option.is_none(None))
 
+test "Option.or_else"
+  let some_kept = Option.or_else(Some(7), || -> Some(0))
+  Test.assert(Option.unwrap_or(some_kept, 0) == 7)
+  let none_fallback = Option.or_else(None, || -> Some(3))
+  Test.assert(Option.unwrap_or(none_fallback, 0) == 3)
+
 test "Option.unwrap.catch"
   let ok = catch Option.unwrap(Some(7))
   case ok

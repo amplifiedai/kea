@@ -1,3 +1,7 @@
+--| Float provides helpers for floating-point values.
+--|
+--| Keep float utilities explicit in this module to make
+--| call sites easy to scan and grep.
 --| Return the absolute value of a float.
 --|
 --|   Float.fabs(-3.5)   -- => 3.5

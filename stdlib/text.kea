@@ -1,3 +1,7 @@
+--| Text provides string helper operations.
+--|
+--| Use `Text.length` for byte length checks and predicate
+--| helpers for empty/non-empty guards.
 --| Return the number of bytes in a string.
 --|
 --|   Text.length("")       -- => 0

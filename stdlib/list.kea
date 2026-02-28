@@ -1,3 +1,7 @@
+--| List provides operations over immutable linked lists.
+--|
+--| Use `Cons(head, tail)` to build lists and `Nil` for empty.
+--| Most transformations are expressed with `map`, `filter`, and `fold`.
 enum List a
   Nil
   Cons(a, List a)

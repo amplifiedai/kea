@@ -1,3 +1,7 @@
+--| Rand provides pseudo-random number operations.
+--|
+--| Use `Rand.seed` to initialize deterministic runs in tests
+--| and `Rand.int_between` for bounded integer sampling.
 effect Rand
   --| Seed the random number generator.
   --|

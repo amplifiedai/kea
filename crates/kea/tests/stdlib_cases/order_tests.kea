@@ -5,3 +5,11 @@ test "Order.compare_int"
   Test.assert(Order.is_less(Order.compare_int(1, 2)))
   Test.assert(Order.is_equal(Order.compare_int(3, 3)))
   Test.assert(Order.is_greater(Order.compare_int(9, 2)))
+
+test "Order.reverse"
+  Test.assert(Order.reverse(Order.Less) == Order.Greater)
+  Test.assert(Order.reverse(Order.Equal) == Order.Equal)
+  Test.assert(Order.reverse(Order.Greater) == Order.Less)
+
+test "Order.reversed_less_is_greater"
+  Test.assert(Order.reversed_less_is_greater())

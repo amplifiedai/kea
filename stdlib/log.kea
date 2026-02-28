@@ -4,6 +4,10 @@ use State
 
 alias LogList = List String
 
+--| Log defines structured logging operations and handlers.
+--|
+--| Use `Log.with_stdout_logger` to route logs to console output,
+--| or `Log.with_collected_logs` to capture logs as pure data.
 effect Log
   --| Emit a debug-level message.
   --|
@@ -46,15 +50,29 @@ fn with_stdout_logger(f: fn() -[Log, e]> T) -[IO, e]> T
       IO.stdout(msg)
       resume ()
 
+--| Reverse `xs` into `acc`.
+--|
+--|   Log.reverse_logs_into(Cons("a", Nil), Nil)   -- => Cons("a", Nil)
+--|   Log.reverse_logs_into(Nil, Cons("z", Nil))   -- => Cons("z", Nil)
 fn reverse_logs_into(xs: LogList, acc: LogList) -> LogList
   case xs
     Nil -> acc
     Cons(x, rest) ->
       reverse_logs_into(rest, Cons(x, acc))
 
+--| Reverse a log list while preserving all messages.
+--|
+--|   Log.reverse_logs(Cons("a", Cons("b", Nil)))   -- => Cons("b", Cons("a", Nil))
+--|   Log.reverse_logs(Nil)                          -- => Nil
 fn reverse_logs(xs: LogList) -> LogList
   reverse_logs_into(xs, Nil)
 
+--| Run `f` while collecting emitted `Log.*` messages in reverse order.
+--|
+--|   Log.collect_logs(|| ->
+--|     Log.info("ready")
+--|     1
+--|   )
 fn collect_logs(f: fn() -[Log]> T) -[State LogList]> T
   handle f()
     Log.debug(msg) ->

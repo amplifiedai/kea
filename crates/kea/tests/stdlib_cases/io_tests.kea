@@ -5,3 +5,10 @@ test "IO.stdout_stderr_smoke"
   IO.stdout("stdout smoke")
   IO.stderr("stderr smoke")
   Test.assert(true)
+
+test "IO.print_variants_smoke"
+  IO.print("a")
+  IO.println("b")
+  IO.eprint("c")
+  IO.eprintln("d")
+  Test.assert(true)

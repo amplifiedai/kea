@@ -1,5 +1,9 @@
 use Order
 
+--| Ord defines total ordering comparisons.
+--|
+--| `Ord.compare` returns `Ordering` so callers can branch with
+--| `case` without re-running comparisons.
 trait Ord a
   --| Compare two values.
   --|
