@@ -8252,3 +8252,34 @@ external compile blocker.
 **Impact**:
 - Callers can stay on raw premise routes without intermediate suite values when
   consuming closed-aware, tail, and catch-classifier consequences.
+
+### 2026-02-28: effect-handler capstone premise/fail-present facet wrappers
+
+**Context**: Added direct premise/fail-present route projection wrappers on the
+`EffectHandlerCapstoneSuite` layer:
+- `effectHandlerCapstoneSuite_{closedAwareHandledRemoved,closedAwareCapability,closedAwareRowTailStable,legacyHandledRemoved,tailNotInvalid,genericCatchCapstone,higherCatchCapstone,catchLaws}_of_{premises,fail_present}`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Wrapper-only theorem routing from existing capstone constructors/projections.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- All key `EffectHandlerCapstoneSuite` consequences are now directly reachable
+  from premise/fail-present constructor routes.
+
+**Impact**:
+- Classifier and capstone aggregate layers now have symmetric one-step route
+  projection APIs for closed-aware, tail, and catch consequences.
