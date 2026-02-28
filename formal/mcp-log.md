@@ -9872,3 +9872,39 @@ through that alias.
 **Impact**:
 - Improves downstream readability and keeps dimension suite signatures
   consistent with alias-based decomposition patterns across the formal corpus.
+
+### 2026-03-01: catch interoperability suite alias cleanup
+
+**Context**: Added explicit component aliases in
+`Kea/Properties/CatchInteroperabilitySuite.lean`:
+- `CatchClassifierInteropSuiteComponents`
+- `CatchCapstoneInteropSuiteComponents`
+
+and routed decomposition signatures through those aliases, including top-level
+`iff/of/as` helpers and route wrappers
+`..._as_components_of_{premises,fail_present,genericClassification,higherClassification,capstoneInteropSuite}`.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Signature/API cleanup only; no runtime semantic change.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Catch interop suite decomposition APIs now use explicit component aliases
+  across both classifier and capstone layers.
+
+**Impact**:
+- Keeps interop theorem signatures consistent with alias-based decomposition
+  style already used by numeric/shape/dimension suite packages.
