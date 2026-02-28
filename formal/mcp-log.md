@@ -8532,3 +8532,45 @@ that already had noncomputable `..._of_components` defs by adding:
 - Call sites can use a consistent one-hop theorem route to explicit component
   tuples, independent of whether the underlying component constructor is a
   theorem or a noncomputable definition.
+
+### 2026-02-28: suite-level components-route parity closure
+
+**Context**: Closed remaining theorem-family parity gaps for suite-level
+constructor routes by adding direct `..._as_components_of_components` wrappers
+for:
+- `catchClassifierInteropSuite`
+- `catchCapstoneInteropSuite`
+- `effectHandlerSuite`
+- `effectHandlerCapstoneSuite`
+- `effectHandlerCatchPairSuite`
+- `effectHandlerCompositionSuite`
+- `effectHandlerCompositionCoherenceSuite`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Wrapper-only theorem routing over existing suite decomposition constructors.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran theorem-family parity scan for
+  `*_of_components -> *_as_components_of_components` across
+  `formal/Kea/Properties/*.lean`.
+- Result: no missing counterparts.
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Suite-level decomposition APIs now have the same constructor-route parity as
+  lower bundle layers.
+
+**Impact**:
+- Top-level catch/handler aggregate proofs can shift between suite constructors
+  and explicit component tuples in one named theorem step.
