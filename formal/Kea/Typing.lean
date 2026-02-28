@@ -27826,6 +27826,67 @@ theorem principalBoundarySoundFullVerticalMasterCapstone_of_success_from_bundle
     (h_app := h_seed.1) (h_proj := h_seed.2) h_ok_expr h_ok_field
 
 /--
+`FullVerticalMasterCapstone` is equivalent to an explicit conjunction of its
+principal/vertical component consequences.
+-/
+theorem principalBoundarySoundFullVerticalMasterCapstone_iff_components
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields} :
+    PrincipalBoundarySoundFullVerticalMasterCapstone st fuel env e fs stExpr ty stField rf
+      ↔ (PrincipalBoundarySoundExprFull st fuel env e stExpr ty
+          ∧ PrincipalBoundarySoundFieldFull st fuel env fs stField rf
+          ∧ (NoUnifyBranchesExpr e →
+              PrincipalBoundarySoundNoUnifyExprFull st fuel env e stExpr ty)
+          ∧ (NoUnifyBranchesFields fs →
+              PrincipalBoundarySoundNoUnifyFieldFull st fuel env fs stField rf)
+          ∧ VerticalHookFreeAppSlice
+          ∧ VerticalHookFreeProjSlice) := by
+  constructor
+  · intro h_cap
+    exact ⟨h_cap.expr, h_cap.field, h_cap.noUnifyExpr, h_cap.noUnifyField,
+      h_cap.verticalApp, h_cap.verticalProj⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2.1, h_comp.2.2.1, h_comp.2.2.2.1,
+      h_comp.2.2.2.2.1, h_comp.2.2.2.2.2⟩
+
+/-- Constructor helper from explicit component conjunction for `FullVerticalMasterCapstone`. -/
+theorem principalBoundarySoundFullVerticalMasterCapstone_of_components
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_comp :
+      PrincipalBoundarySoundExprFull st fuel env e stExpr ty
+        ∧ PrincipalBoundarySoundFieldFull st fuel env fs stField rf
+        ∧ (NoUnifyBranchesExpr e →
+            PrincipalBoundarySoundNoUnifyExprFull st fuel env e stExpr ty)
+        ∧ (NoUnifyBranchesFields fs →
+            PrincipalBoundarySoundNoUnifyFieldFull st fuel env fs stField rf)
+        ∧ VerticalHookFreeAppSlice
+        ∧ VerticalHookFreeProjSlice) :
+    PrincipalBoundarySoundFullVerticalMasterCapstone st fuel env e fs stExpr ty stField rf :=
+  (principalBoundarySoundFullVerticalMasterCapstone_iff_components).2 h_comp
+
+/-- One-hop decomposition of `FullVerticalMasterCapstone` into explicit components. -/
+theorem principalBoundarySoundFullVerticalMasterCapstone_as_components
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_cap : PrincipalBoundarySoundFullVerticalMasterCapstone st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundExprFull st fuel env e stExpr ty
+      ∧ PrincipalBoundarySoundFieldFull st fuel env fs stField rf
+      ∧ (NoUnifyBranchesExpr e →
+          PrincipalBoundarySoundNoUnifyExprFull st fuel env e stExpr ty)
+      ∧ (NoUnifyBranchesFields fs →
+          PrincipalBoundarySoundNoUnifyFieldFull st fuel env fs stField rf)
+      ∧ VerticalHookFreeAppSlice
+      ∧ VerticalHookFreeProjSlice :=
+  (principalBoundarySoundFullVerticalMasterCapstone_iff_components).1 h_cap
+
+/--
 The row-poly full+vertical capstone is equivalent to providing:
 - a full principal boundary soundness suite witness, and
 - a hook-free vertical app/projection slice witness.
