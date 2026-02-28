@@ -157,6 +157,47 @@ After all blockers + Tier 1:
 mise run check-full
 ```
 
+## Documentation Standard
+
+**Every public function gets Elixir/Rust-quality doc comments.**
+This is non-negotiable. The stdlib is most users' first contact
+with Kea — the docs ARE the language's first impression.
+
+Use `--|` doc comments. Follow the convention in the full brief
+(`stdlib-bootstrap.md` § Documentation and Testing Convention):
+
+```kea
+--| Return the first element that satisfies the predicate.
+--|
+--| Searches the list from left to right and returns `Some(element)`
+--| for the first match, or `None` if no element satisfies `pred`.
+--|
+--|   List.find([1, 2, 3, 4], |x| x > 2)   -- => Some(3)
+--|   List.find([1, 2, 3], |x| x > 10)      -- => None
+--|   List.find([], |_| true)                -- => None
+fn find(xs: List A, pred: A -> Bool) -> Option A
+```
+
+Rules:
+- **First line:** one sentence, what it does. Start with a verb.
+- **Body (if needed):** explain behavior, edge cases, failure modes.
+  Mention effects: if it's `-[Fail E]>`, document when/why it fails.
+- **Examples:** every function gets at least one. Show the common
+  case, an edge case, and the empty/None/error case. Use
+  module-qualified calls (`List.find`, not `find`).
+- **`-- => value`** shows expected result. These become executable
+  doctests when `kea test` gains doctest extraction.
+- **Document the types.** If the function is generic, the examples
+  should make the type parameters concrete so readers see real usage.
+
+Look at Elixir's `Enum` module or Rust's `Iterator` trait docs for
+the quality bar. Each function should be understandable without
+reading the source.
+
+**Do not skip docs to move faster.** Writing the doc comment takes
+30 seconds. Retrofitting docs across 50 functions takes a full
+session. Do it as you write each function.
+
 ## What NOT to do
 
 - Don't attempt Tier 2 (Vector, Map, Set) — blocked on 0f Ptr/@unsafe.
