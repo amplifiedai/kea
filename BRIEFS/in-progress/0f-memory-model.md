@@ -592,6 +592,33 @@ an allocation arena. The compiler knows the scope boundaries
 precisely from handler nesting. Requires: analysis that consecutive
 handlers don't have escaping references between them.
 
+**10. `with`-scope optimizations.**
+The `with` syntax (KERNEL §10.6) desugars to nested closures, but
+the flat preamble pattern (`with A; with B; with C; body`) gives
+the compiler a recognizable structure for several optimizations:
+
+- **Scope-bounded lifetimes:** `with conn <- Db.with_connection(config)`
+  guarantees `conn` is dead after the block. The handler owns
+  cleanup. This is exactly the information drop scheduling and
+  reuse analysis need — the resource provably doesn't escape.
+- **Unique propagation through handlers:** When a `with` handler
+  creates a `Unique` resource and passes it to the callback via
+  binding form, the compiler knows there's exactly one owner with
+  a bounded scope. No RC needed within the block.
+- **Stacked handler churn fusion:** Contiguous `with` handlers
+  that retain/release on entry/exit are candidates for fusion.
+  The compiler can see the full handler stack is contiguous and
+  elide intermediate retains across handler boundaries.
+- **Arena scope recognition:** `with_arena` is a `with` pattern —
+  the `with` scope boundary is exactly where bulk deallocation
+  happens. Recognizing the `with` preamble lets the compiler
+  identify arena-eligible scopes without special-casing.
+
+Note: the desugared form (nested closures) already gives the
+compiler the same information in principle. The optimization
+value is that `with` makes the pattern more recognizable and
+common — worth targeting specifically in MIR passes.
+
 **10. Dead allocation elimination.**
 If a pure function's return value is unused, the entire call and
 all its internal allocations can be eliminated. Effects make this
