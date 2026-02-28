@@ -2938,6 +2938,66 @@ theorem tensor_unify_const_shapes_ok_iff_dim_list_kernel_success_any_elem
     exact tensor_unify_const_shapes_of_dim_list_kernel_success_any_elem
       st fuel elemTy shape1 shape2 h_shape
 
+/-- Arbitrary-rank tensor constant-shape unifier rejection iff pointwise
+    dim-list kernel fails, for arbitrary shared inner element types. -/
+theorem tensor_unify_const_shapes_err_iff_dim_list_kernel_none_any_elem
+    (st : UnifyState) (fuel : Nat) (elemTy : Ty) (shape1 shape2 : List Nat) :
+    unify st (fuel + 1)
+      (.tensor elemTy (shape1.map Dim.const))
+      (.tensor elemTy (shape2.map Dim.const))
+      = .err "type mismatch" ↔
+      unifyDimList DimSubst.empty (fuel + 1)
+        (shape1.map Dim.const) (shape2.map Dim.const) = none := by
+  constructor
+  · intro h_err
+    cases h_shape :
+        unifyDimList DimSubst.empty (fuel + 1)
+          (shape1.map Dim.const) (shape2.map Dim.const) with
+    | none =>
+        exact h_shape
+    | some s' =>
+        have hs_empty : s' = DimSubst.empty :=
+          unifyDimList_consts_some_implies_empty fuel shape1 shape2 s' h_shape
+        subst hs_empty
+        have h_ok := tensor_unify_const_shapes_of_dim_list_kernel_success_any_elem
+          st fuel elemTy shape1 shape2 h_shape
+        rw [h_ok] at h_err
+        cases h_err
+  · intro h_shape
+    exact tensor_unify_const_shapes_reject_of_dim_list_kernel_none_any_elem
+      st fuel elemTy shape1 shape2 h_shape
+
+/-- Arbitrary-rank tensor constant-shape unifier result is decided by pointwise
+    dim-list-kernel failure, for arbitrary shared inner element types. -/
+theorem tensor_unify_const_shapes_decision_of_dim_list_kernel_none_any_elem
+    (st : UnifyState) (fuel : Nat) (elemTy : Ty) (shape1 shape2 : List Nat) :
+    unify st (fuel + 1)
+      (.tensor elemTy (shape1.map Dim.const))
+      (.tensor elemTy (shape2.map Dim.const))
+      =
+      if unifyDimList DimSubst.empty (fuel + 1)
+          (shape1.map Dim.const) (shape2.map Dim.const) = none
+      then .err "type mismatch"
+      else .ok st := by
+  by_cases h_none :
+      unifyDimList DimSubst.empty (fuel + 1)
+        (shape1.map Dim.const) (shape2.map Dim.const) = none
+  · have h_err := tensor_unify_const_shapes_reject_of_dim_list_kernel_none_any_elem
+      st fuel elemTy shape1 shape2 h_none
+    simp [h_none, h_err]
+  · cases h_shape :
+        unifyDimList DimSubst.empty (fuel + 1)
+          (shape1.map Dim.const) (shape2.map Dim.const) with
+    | none =>
+        contradiction
+    | some s' =>
+        have hs_empty : s' = DimSubst.empty :=
+          unifyDimList_consts_some_implies_empty fuel shape1 shape2 s' h_shape
+        subst hs_empty
+        have h_ok := tensor_unify_const_shapes_of_dim_list_kernel_success_any_elem
+          st fuel elemTy shape1 shape2 h_shape
+        simp [h_none, h_ok]
+
 /-- Arbitrary-rank tensor constant-shape unification follows exact pointwise
     dim-list-kernel match-decision behavior, for arbitrary shared inner
     element types. -/
@@ -2977,6 +3037,34 @@ theorem tensor_unify_const_shapes_ok_iff_dim_list_kernel_success
       unifyDimList DimSubst.empty (fuel + 1)
         (shape1.map Dim.const) (shape2.map Dim.const) = some DimSubst.empty := by
   exact tensor_unify_const_shapes_ok_iff_dim_list_kernel_success_any_elem
+    st fuel .int shape1 shape2
+
+/-- Arbitrary-rank tensor constant-shape unifier rejection iff pointwise
+    dim-list kernel fails. -/
+theorem tensor_unify_const_shapes_err_iff_dim_list_kernel_none
+    (st : UnifyState) (fuel : Nat) (shape1 shape2 : List Nat) :
+    unify st (fuel + 1)
+      (.tensor .int (shape1.map Dim.const))
+      (.tensor .int (shape2.map Dim.const))
+      = .err "type mismatch" ↔
+      unifyDimList DimSubst.empty (fuel + 1)
+        (shape1.map Dim.const) (shape2.map Dim.const) = none := by
+  exact tensor_unify_const_shapes_err_iff_dim_list_kernel_none_any_elem
+    st fuel .int shape1 shape2
+
+/-- Arbitrary-rank tensor constant-shape unifier result is decided by pointwise
+    dim-list-kernel failure. -/
+theorem tensor_unify_const_shapes_decision_of_dim_list_kernel_none
+    (st : UnifyState) (fuel : Nat) (shape1 shape2 : List Nat) :
+    unify st (fuel + 1)
+      (.tensor .int (shape1.map Dim.const))
+      (.tensor .int (shape2.map Dim.const))
+      =
+      if unifyDimList DimSubst.empty (fuel + 1)
+          (shape1.map Dim.const) (shape2.map Dim.const) = none
+      then .err "type mismatch"
+      else .ok st := by
+  exact tensor_unify_const_shapes_decision_of_dim_list_kernel_none_any_elem
     st fuel .int shape1 shape2
 
 /-- Arbitrary-rank tensor constant-shape unification follows exact pointwise

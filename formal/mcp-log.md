@@ -9299,3 +9299,41 @@ if/then/else decision duals:
 **Impact**:
 - WP7.4 scalar-kernel consumers can discharge constant-shape success/rejection
   from one-step dim-kernel predicates without bespoke case splits.
+
+### 2026-02-28: arbitrary-rank tensor dim-list failure/decision duals
+
+**Context**: Extended arbitrary-rank tensor constant-shape routes in
+`Kea/Properties/ShapeConstructorParity.lean` with explicit pointwise
+dim-list-kernel failure and decision duals:
+- `tensor_unify_const_shapes_err_iff_dim_list_kernel_none_any_elem`
+- `tensor_unify_const_shapes_decision_of_dim_list_kernel_none_any_elem`
+- `tensor_unify_const_shapes_err_iff_dim_list_kernel_none`
+- `tensor_unify_const_shapes_decision_of_dim_list_kernel_none`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- These lemmas should tighten arbitrary-rank shape bridge contracts while
+  preserving runtime semantics, by expressing rejection/decision directly from
+  `unifyDimList` none/some outcomes.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Arbitrary-rank tensor constant-shape routes now have explicit success-side
+  and failure-side iff contracts plus direct decision equations at both generic
+  inner-type and `.int` wrapper layers.
+
+**Impact**:
+- WP7.4 pointwise dim-list-kernel consumers can move between kernel outcomes
+  and unifier acceptance/rejection without ad-hoc branch proofs.
