@@ -8,6 +8,7 @@
 
 import Kea.Properties.UnifyReflexive
 import Kea.Dimensions
+import Kea.Properties.DecimalParity
 
 private theorem nat_beq_false_of_ne {a b : Nat} (h : a = b -> False) : (a == b) = false := by
   cases h_beq : (a == b) with
@@ -3890,3 +3891,47 @@ theorem shapeConstDimKernelSuite_iff_components :
   · intro h
     exact shapeConstDimKernelSuite_of_components
       h.1 h.2.1 h.2.2.1 h.2.2.2.1 h.2.2.2.2
+
+/-- Unified numeric+shape kernel suite:
+    combines numeric constructor contracts with constant-shape contracts. -/
+structure NumericShapeConstDimKernelSuite : Prop where
+  numericKernel : NumericConstructorKernelSuite
+  shapeKernel : ShapeConstDimKernelSuite
+
+/-- Canonical numeric+shape kernel suite. -/
+theorem numericShapeConstDimKernelSuite : NumericShapeConstDimKernelSuite := by
+  exact
+    { numericKernel := numericConstructorKernelSuite
+      shapeKernel := shapeConstDimKernelSuite }
+
+/-- Decompose the numeric+shape suite into explicit components. -/
+theorem numericShapeConstDimKernelSuite_as_components
+    (suite : NumericShapeConstDimKernelSuite) :
+    NumericConstructorKernelSuite ∧ ShapeConstDimKernelSuite :=
+  ⟨suite.numericKernel, suite.shapeKernel⟩
+
+/-- Build the numeric+shape suite from explicit components. -/
+theorem numericShapeConstDimKernelSuite_of_components
+    (numericKernel : NumericConstructorKernelSuite)
+    (shapeKernel : ShapeConstDimKernelSuite) :
+    NumericShapeConstDimKernelSuite :=
+  { numericKernel := numericKernel
+    shapeKernel := shapeKernel }
+
+/-- Direct components-route decomposition for
+    `NumericShapeConstDimKernelSuite`. -/
+theorem numericShapeConstDimKernelSuite_as_components_of_components
+    (h_comp : NumericConstructorKernelSuite ∧ ShapeConstDimKernelSuite) :
+    NumericConstructorKernelSuite ∧ ShapeConstDimKernelSuite := by
+  simpa using h_comp
+
+/-- `NumericShapeConstDimKernelSuite` is equivalent to its explicit component
+    pair. -/
+theorem numericShapeConstDimKernelSuite_iff_components :
+    NumericShapeConstDimKernelSuite ↔
+      NumericConstructorKernelSuite ∧ ShapeConstDimKernelSuite := by
+  constructor
+  · intro suite
+    exact numericShapeConstDimKernelSuite_as_components suite
+  · intro h
+    exact numericShapeConstDimKernelSuite_of_components h.1 h.2

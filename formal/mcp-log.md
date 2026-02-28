@@ -9695,3 +9695,41 @@ alias:
 **Impact**:
 - Keeps WP7.4 arbitrary-rank package usage consistent with decomposition
   conventions used across rank-1 and other suite layers.
+
+### 2026-02-28: unified numeric+shape kernel suite
+
+**Context**: Added a higher-level integrated package in
+`Kea/Properties/ShapeConstructorParity.lean`:
+- `NumericShapeConstDimKernelSuite`
+- `numericShapeConstDimKernelSuite`
+
+with decomposition helpers:
+- `numericShapeConstDimKernelSuite_as_components`
+- `numericShapeConstDimKernelSuite_of_components`
+- `numericShapeConstDimKernelSuite_iff_components`
+- `numericShapeConstDimKernelSuite_as_components_of_components`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Integration/packaging layer only; no runtime semantic change.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Numeric constructor and constant-shape contract packages are now available
+  through one integrated theorem suite surface.
+
+**Impact**:
+- Reduces cross-module theorem wiring for downstream users that need both
+  numeric and shape kernel invariants together.
