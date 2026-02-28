@@ -10042,6 +10042,130 @@ structure PrincipalNoUnifyFieldRunBundleConsequences
       (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
         ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf)
 
+/-- Explicit component alias for `PrincipalNoUnifyExprRunBundleConsequences`. -/
+abbrev PrincipalNoUnifyExprRunBundleConsequencesComponents
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty) : Prop :=
+  PrincipalTypingSliceCore env e ty ∧
+    (∀ h_app h_proj,
+      PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty) ∧
+    (∀ (h_hooks : UnifyHookPremises),
+      PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty) ∧
+    (∀ h_app h_proj,
+      (PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty
+        ↔ PrincipalTypingSliceCore env e ty)) ∧
+    (∀ (h_hooks : UnifyHookPremises),
+      (PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty
+        ↔ PrincipalTypingSliceCore env e ty)) ∧
+    (∀ {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+      {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook},
+      (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+        ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty))
+
+/-- `PrincipalNoUnifyExprRunBundleConsequences` is equivalent to explicit components. -/
+theorem principalNoUnifyExprRunBundleConsequences_iff_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty) :
+    PrincipalNoUnifyExprRunBundleConsequences st fuel env e st' ty
+      ↔ PrincipalNoUnifyExprRunBundleConsequencesComponents st fuel env e st' ty := by
+  constructor
+  · intro h_bundle
+    exact ⟨h_bundle.core, h_bundle.preconditionedAny, h_bundle.preconditioned,
+      h_bundle.preconditionedAnyIffCore, h_bundle.preconditionedIffCore, h_bundle.hookIrrelevant⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2.1, h_comp.2.2.1, h_comp.2.2.2.1, h_comp.2.2.2.2.1, h_comp.2.2.2.2.2⟩
+
+/-- Build `PrincipalNoUnifyExprRunBundleConsequences` from explicit components. -/
+theorem principalNoUnifyExprRunBundleConsequences_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_comp : PrincipalNoUnifyExprRunBundleConsequencesComponents st fuel env e st' ty) :
+    PrincipalNoUnifyExprRunBundleConsequences st fuel env e st' ty :=
+  (principalNoUnifyExprRunBundleConsequences_iff_components
+    st fuel env e st' ty).2 h_comp
+
+/-- Decompose `PrincipalNoUnifyExprRunBundleConsequences` into explicit components. -/
+theorem principalNoUnifyExprRunBundleConsequences_as_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_bundle : PrincipalNoUnifyExprRunBundleConsequences st fuel env e st' ty) :
+    PrincipalNoUnifyExprRunBundleConsequencesComponents st fuel env e st' ty :=
+  (principalNoUnifyExprRunBundleConsequences_iff_components
+    st fuel env e st' ty).1 h_bundle
+
+/-- Direct components-route decomposition for `PrincipalNoUnifyExprRunBundleConsequences`. -/
+theorem principalNoUnifyExprRunBundleConsequences_as_components_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_comp : PrincipalNoUnifyExprRunBundleConsequencesComponents st fuel env e st' ty) :
+    PrincipalNoUnifyExprRunBundleConsequencesComponents st fuel env e st' ty :=
+  (principalNoUnifyExprRunBundleConsequences_iff_components
+    st fuel env e st' ty).1
+    (principalNoUnifyExprRunBundleConsequences_of_components
+      st fuel env e st' ty h_comp)
+
+/-- Explicit component alias for `PrincipalNoUnifyFieldRunBundleConsequences`. -/
+abbrev PrincipalNoUnifyFieldRunBundleConsequencesComponents
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields) : Prop :=
+  PrincipalFieldTypingSliceCore env fs rf ∧
+    (∀ h_app h_proj,
+      PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf) ∧
+    (∀ (h_hooks : UnifyHookPremises),
+      PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf) ∧
+    (∀ h_app h_proj,
+      (PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf
+        ↔ PrincipalFieldTypingSliceCore env fs rf)) ∧
+    (∀ (h_hooks : UnifyHookPremises),
+      (PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf
+        ↔ PrincipalFieldTypingSliceCore env fs rf)) ∧
+    (∀ {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+      {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook},
+      (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+        ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf))
+
+/-- `PrincipalNoUnifyFieldRunBundleConsequences` is equivalent to explicit components. -/
+theorem principalNoUnifyFieldRunBundleConsequences_iff_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields) :
+    PrincipalNoUnifyFieldRunBundleConsequences st fuel env fs st' rf
+      ↔ PrincipalNoUnifyFieldRunBundleConsequencesComponents st fuel env fs st' rf := by
+  constructor
+  · intro h_bundle
+    exact ⟨h_bundle.core, h_bundle.preconditionedAny, h_bundle.preconditioned,
+      h_bundle.preconditionedAnyIffCore, h_bundle.preconditionedIffCore, h_bundle.hookIrrelevant⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2.1, h_comp.2.2.1, h_comp.2.2.2.1, h_comp.2.2.2.2.1, h_comp.2.2.2.2.2⟩
+
+/-- Build `PrincipalNoUnifyFieldRunBundleConsequences` from explicit components. -/
+theorem principalNoUnifyFieldRunBundleConsequences_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_comp : PrincipalNoUnifyFieldRunBundleConsequencesComponents st fuel env fs st' rf) :
+    PrincipalNoUnifyFieldRunBundleConsequences st fuel env fs st' rf :=
+  (principalNoUnifyFieldRunBundleConsequences_iff_components
+    st fuel env fs st' rf).2 h_comp
+
+/-- Decompose `PrincipalNoUnifyFieldRunBundleConsequences` into explicit components. -/
+theorem principalNoUnifyFieldRunBundleConsequences_as_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_bundle : PrincipalNoUnifyFieldRunBundleConsequences st fuel env fs st' rf) :
+    PrincipalNoUnifyFieldRunBundleConsequencesComponents st fuel env fs st' rf :=
+  (principalNoUnifyFieldRunBundleConsequences_iff_components
+    st fuel env fs st' rf).1 h_bundle
+
+/-- Direct components-route decomposition for `PrincipalNoUnifyFieldRunBundleConsequences`. -/
+theorem principalNoUnifyFieldRunBundleConsequences_as_components_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_comp : PrincipalNoUnifyFieldRunBundleConsequencesComponents st fuel env fs st' rf) :
+    PrincipalNoUnifyFieldRunBundleConsequencesComponents st fuel env fs st' rf :=
+  (principalNoUnifyFieldRunBundleConsequences_iff_components
+    st fuel env fs st' rf).1
+    (principalNoUnifyFieldRunBundleConsequences_of_components
+      st fuel env fs st' rf h_comp)
+
 /--
 Build packaged no-unify expression consequences from one successful no-unify run
 on the master-run-bundle-suite path.

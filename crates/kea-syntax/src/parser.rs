@@ -2918,6 +2918,10 @@ impl Parser {
                     interp_parts.push(StringInterpPart::Literal(s));
                 }
                 crate::token::StringPart::Expr(src) => {
+                    if src.trim().is_empty() {
+                        self.error_at_current("expected expression in string interpolation");
+                        return None;
+                    }
                     let tokens = match crate::lexer::lex_layout(&src, self.file) {
                         Ok((t, _warnings)) => t,
                         Err(diags) => {

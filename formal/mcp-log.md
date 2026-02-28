@@ -10396,3 +10396,38 @@ For each package: added `...Components` plus
 **Impact**:
 - The no-unify route-surface layer is now consistently alias-driven from base
   per-route witnesses up through cross-route coherence wrappers.
+
+### 2026-02-28: no-unify run-bundle consequence decomposition aliases
+
+**Context**: Added component aliases and structural decomposition APIs in
+`Kea/Typing.lean` for:
+- `PrincipalNoUnifyExprRunBundleConsequences`
+- `PrincipalNoUnifyFieldRunBundleConsequences`
+
+For each package: added `...Components` plus
+`..._{iff_components,of_components,as_components,as_components_of_components}`.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Structural API expansion only; no runtime semantic change.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- No-unify consequence bundles now expose explicit component reconstruction and
+  projection contracts.
+
+**Impact**:
+- Base consequence bundles and downstream all-hooks route surfaces can now be
+  composed through one uniform alias-based decomposition API.
