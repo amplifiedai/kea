@@ -196,6 +196,22 @@ theorem effectHandlerSuite_of_capstoneSuite
         clause innerEffects okTy errTy loweredTy h_cap.catchInteropCapstone
   }
 
+theorem effectHandlerSuite_as_components_of_capstoneSuite
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_cap :
+      EffectHandlerCapstoneSuite clause capability innerEffects okTy errTy loweredTy) :
+    HandlerClosedAwareContracts.ClosedAwareResultBundle clause
+      ∧ TailCapabilityComposition.TailCapabilityClosedAwareBundle clause capability
+      ∧ CatchInteroperabilitySuite.CatchClassifierInteropSuite
+          clause innerEffects okTy errTy loweredTy :=
+  effectHandlerSuite_as_components
+    clause capability innerEffects okTy errTy loweredTy
+    (effectHandlerSuite_of_capstoneSuite
+      clause capability innerEffects okTy errTy loweredTy h_cap)
+
 /--
 Coherent aggregate suite that carries both classifier-level and capstone-level
 catch interoperability witnesses for the same clause/capability surface.
@@ -230,6 +246,24 @@ theorem effectHandlerCatchPairSuite_of_capstone
         clause capability innerEffects okTy errTy loweredTy h_cap
     classifierFromCapstone := rfl
   }
+
+theorem effectHandlerCatchPairSuite_as_components_of_capstone
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_cap :
+      EffectHandlerCapstoneSuite clause capability innerEffects okTy errTy loweredTy) :
+    ∃ (h_cap' :
+        EffectHandlerCapstoneSuite clause capability innerEffects okTy errTy loweredTy)
+      (h_cls :
+        EffectHandlerSuite clause capability innerEffects okTy errTy loweredTy),
+      h_cls =
+        effectHandlerSuite_of_capstoneSuite
+          clause capability innerEffects okTy errTy loweredTy h_cap' := by
+  refine ⟨h_cap, ?_, rfl⟩
+  exact effectHandlerSuite_of_capstoneSuite
+    clause capability innerEffects okTy errTy loweredTy h_cap
 
 /-- Coherent pair suite is equivalent to its capstone aggregate witness. -/
 theorem effectHandlerCatchPairSuite_iff_capstone
@@ -474,6 +508,30 @@ theorem effectHandlerCompositionSuite_of_capstone_and_nested
     EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler :=
   (effectHandlerCompositionSuite_iff_capstone_and_nested
     clause capability innerEffects okTy errTy loweredTy outerHandler).2 h_comp
+
+theorem effectHandlerCompositionSuite_as_components_of_capstone_and_nested
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_comp :
+      EffectHandlerCapstoneSuite clause capability innerEffects okTy errTy loweredTy
+        ∧ NestedHandlerCompositionContracts.NestedHandlerClosedAwareBundle
+            clause.exprEffects
+            clause.handlerEffects
+            outerHandler
+            clause.handled) :
+    EffectHandlerCatchPairSuite clause capability innerEffects okTy errTy loweredTy
+      ∧ NestedHandlerCompositionContracts.NestedHandlerClosedAwareBundle
+          clause.exprEffects
+          clause.handlerEffects
+          outerHandler
+          clause.handled :=
+  effectHandlerCompositionSuite_as_components
+    clause capability innerEffects okTy errTy loweredTy outerHandler
+    (effectHandlerCompositionSuite_of_capstone_and_nested
+      clause capability innerEffects okTy errTy loweredTy outerHandler h_comp)
 
 /-- One-hop decomposition of master suite into direct capstone+nested components. -/
 theorem effectHandlerCompositionSuite_as_capstone_and_nested
@@ -908,6 +966,26 @@ theorem effectHandlerCompositionSuite_of_pair_outer_absent
         clause.handled
         h_outer_abs
   }
+
+theorem effectHandlerCompositionSuite_as_components_of_pair_outer_absent
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_pair : EffectHandlerCatchPairSuite clause capability innerEffects okTy errTy loweredTy)
+    (h_outer_abs :
+      RowFields.has (EffectRow.fields outerHandler) clause.handled = false) :
+    EffectHandlerCatchPairSuite clause capability innerEffects okTy errTy loweredTy
+      ∧ NestedHandlerCompositionContracts.NestedHandlerClosedAwareBundle
+          clause.exprEffects
+          clause.handlerEffects
+          outerHandler
+          clause.handled :=
+  effectHandlerCompositionSuite_as_components
+    clause capability innerEffects okTy errTy loweredTy outerHandler
+    (effectHandlerCompositionSuite_of_pair_outer_absent
+      clause capability innerEffects okTy errTy loweredTy outerHandler h_pair h_outer_abs)
 
 /-- Build master composition suite from premise-level capstone inputs and outer-absence. -/
 theorem effectHandlerCompositionSuite_of_premises
@@ -3917,6 +3995,27 @@ theorem effectHandlerCompositionCoherenceSuite_of_composition
         clause capability innerEffects okTy errTy loweredTy outerHandler h_comp
     coherenceFromComposition := rfl
   }
+
+theorem effectHandlerCompositionCoherenceSuite_as_components_of_composition
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_comp :
+      EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    ∃ (h_comp' :
+        EffectHandlerCompositionSuite
+          clause capability innerEffects okTy errTy loweredTy outerHandler)
+      (h_coh :
+        EffectHandlerNestedClauseCoherenceBundle
+          clause capability innerEffects okTy errTy loweredTy outerHandler),
+      h_coh =
+        effectHandlerCompositionSuite_nestedClauseCoherenceBundle
+          clause capability innerEffects okTy errTy loweredTy outerHandler h_comp' := by
+  refine ⟨h_comp, ?_, rfl⟩
+  exact effectHandlerCompositionSuite_nestedClauseCoherenceBundle
+    clause capability innerEffects okTy errTy loweredTy outerHandler h_comp
 
 /--
 Composition+coherence package is equivalent to just the composition witness,

@@ -8612,3 +8612,50 @@ for:
 **Impact**:
 - Consumers can move from raw route assumptions to decomposed tuple facts in
   one theorem step across classifier/capstone/composition/coherence layers.
+
+### 2026-02-28: generalized `of_route -> as_components_of_route` parity closure
+
+**Context**: Closed the last generalized route-parity gaps for theorem families
+with decomposition surfaces by adding wrappers for:
+- `effectHandlerSuite_as_components_of_capstoneSuite`
+- `effectHandlerCatchPairSuite_as_components_of_capstone`
+- `effectHandlerCompositionSuite_as_components_of_{capstone_and_nested,pair_outer_absent}`
+- `effectHandlerCompositionCoherenceSuite_as_components_of_composition`
+
+and then re-running a full scan across `formal/Kea/Properties/*.lean` for all
+`*_of_<route>` theorem names whose bases expose `*_as_components`.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Wrapper-only theorem routing from existing route constructors and
+  decomposition theorems.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran generalized route-parity scan:
+  `*_of_<route>` with `*_as_components` base implies
+  `*_as_components_of_<route>`.
+- Result: no missing wrappers.
+- During first build pass, hit a local Lean ordering blocker (new wrappers
+  referenced `..._as_components` before declaration).
+- Refactored those wrappers to route through local constructor facts directly
+  (no forward-reference dependency), then reran verification.
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement; temporary proof-structure blocker resolved locally.
+
+**Divergence**: none.
+
+**Outcome**:
+- Generalized decomposition-route parity is now closed for all current theorem
+  families with `as_components` surfaces.
+
+**Impact**:
+- Route-level theorem APIs are now uniformly one-hop from constructor routes to
+  explicit decomposition tuples across the full current Phase-2 stack.
