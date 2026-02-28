@@ -29,8 +29,23 @@ fn show_non_negative(x: Int) -> String
 --|
 --|   Show.show(0)     -- => "0"
 --|   Show.show(-42)   -- => "-42"
-fn show(x: Int) -> String
+fn show_int(x: Int) -> String
   if x < 0
     "-" ++ show_non_negative(0 - x)
   else
     show_non_negative(x)
+
+--| Runtime helper used by parser interpolation desugaring.
+fn show(x: Int) -> String
+  show_int(x)
+
+Int as Show
+  fn show(x: Int) -> String
+    show_int(x)
+
+Bool as Show
+  fn show(x: Bool) -> String
+    if x
+      "true"
+    else
+      "false"

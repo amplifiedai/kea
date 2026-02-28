@@ -114,6 +114,18 @@ theorem tail_resumptive_direct_call_sound_closedAware
   unfold directCallEquivalentClosedAware HandlerClosedAwareContracts.resultEffectsClosedAware
   simp [h_then_none]
 
+theorem tail_resumptive_wellTyped_direct_call_sound
+    (c : HandleClauseContract)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice c)
+    (h_eligible : tailResumptiveEligible c) :
+    directCallEquivalent c := by
+  have h_lin : ResumeUse.atMostOnce c.resumeUse :=
+    HandleClauseContract.wellTypedSlice_linearity c h_wellTyped
+  have _h_not_invalid : classifyClause c ≠ .invalid := by
+    simpa [classifyClause] using
+      (classifyResumeUse_not_invalid_of_atMostOnce c.resumeUse h_lin)
+  exact tail_resumptive_direct_call_sound c h_eligible
+
 theorem tail_resumptive_eligible_implies_resume_one
     (c : HandleClauseContract)
     (h_eligible : tailResumptiveEligible c) :
@@ -310,6 +322,13 @@ theorem tail_resumptive_closedAware_bundle_direct_call_of_eligible
     directCallEquivalentClosedAware c :=
   (tail_resumptive_closedAware_bundle_of_wellTyped c h_wellTyped).directCallEquivalentClosedAware_of_eligible
     h_eligible
+
+theorem tail_resumptive_bundle_direct_call_of_eligible
+    (c : HandleClauseContract)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice c)
+    (h_eligible : tailResumptiveEligible c) :
+    directCallEquivalent c :=
+  tail_resumptive_wellTyped_direct_call_sound c h_wellTyped h_eligible
 
 end TailResumptiveClassification
 end Kea

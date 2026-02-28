@@ -7,8 +7,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use kea_ast::{
-    Annotation, BinOp, CaseArm, DeclKind, Expr, ExprDecl, ExprKind, FnDecl, HandleClause, Lit,
-    Module, Param, Pattern, PatternKind, Span, TypeAnnotation, UnaryOp,
+    Annotation, BinOp, CaseArm, DeclKind, Expr, ExprDecl, ExprKind, FnDecl, HandleClause,
+    INTERP_SHOW_FN_NAME, Lit, Module, Param, Pattern, PatternKind, Span, TypeAnnotation, UnaryOp,
 };
 use kea_infer::typeck::TypeEnv;
 use kea_infer::{Category, Diagnostic, SourceLocation};
@@ -1780,7 +1780,27 @@ fn lower_expr(
             )),
         },
         ExprKind::Call { func, args } => {
-            if let ExprKind::FieldAccess {
+            if let ExprKind::Var(name) = &func.node
+                && name == INTERP_SHOW_FN_NAME
+                && args.len() == 1
+            {
+                HirExprKind::Call {
+                    func: Box::new(HirExpr {
+                        kind: HirExprKind::Var("show".to_string()),
+                        ty: Type::Dynamic,
+                        span: func.span,
+                    }),
+                    args: vec![lower_expr(
+                        &args[0].value,
+                        None,
+                        unit_variant_tags,
+                        qualified_variant_tags,
+                        pattern_variant_tags,
+                        pattern_qualified_tags,
+                        known_record_defs,
+                    )],
+                }
+            } else if let ExprKind::FieldAccess {
                 expr: qualifier,
                 field,
             } = &func.node

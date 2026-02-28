@@ -63,6 +63,13 @@ impl<T> Spanned<T> {
     }
 }
 
+/// Parser-internal helper name used for string interpolation desugaring.
+///
+/// Interpolation expressions desugar to calls of this symbol so type checking
+/// can enforce `Show` obligations before HIR lowering rewrites calls to
+/// runtime `show(...)`.
+pub const INTERP_SHOW_FN_NAME: &str = "__kea_interp_show";
+
 // ---------------------------------------------------------------------------
 // Literal values
 // ---------------------------------------------------------------------------
@@ -220,7 +227,7 @@ pub enum ExprKind {
     /// Atom literal: `:name`. A compile-time symbol.
     Atom(String),
 
-    /// String interpolation: `"hello ${name}"`.
+    /// String interpolation: `"hello {name}"`.
     StringInterp(Vec<StringInterpPart>),
 
     /// Map literal: `%{"key" => value}`.

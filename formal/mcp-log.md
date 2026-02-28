@@ -8052,3 +8052,34 @@ typing route by adding `operationCallBundle_callTyping_of_typing`.
 
 **Impact**:
 - Operation-call typing wrappers now align with full one-hop facet parity style.
+
+### 2026-02-28: normalized well-typed direct-call wrapper parity
+
+**Context**: Added normalized direct-call wrappers in
+`TailResumptiveClassification` to mirror the closed-aware route style:
+- `tail_resumptive_wellTyped_direct_call_sound`
+- `tail_resumptive_bundle_direct_call_of_eligible`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Wrapper-only route extension over existing eligibility/direct-call contracts.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Normalized direct-call route now has explicit well-typed and bundle wrappers.
+
+**Impact**:
+- Tail resumptive direct-call theorem entrypoints are now symmetric across
+  normalized and closed-aware route families.
