@@ -160,6 +160,56 @@ theorem effectHandlerSuite_of_capstoneSuite
         clause innerEffects okTy errTy loweredTy h_cap.catchInteropCapstone
   }
 
+/--
+Coherent aggregate suite that carries both classifier-level and capstone-level
+catch interoperability witnesses for the same clause/capability surface.
+-/
+structure EffectHandlerCatchPairSuite
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty) : Prop where
+  capstone :
+    EffectHandlerCapstoneSuite clause capability innerEffects okTy errTy loweredTy
+  classifier :
+    EffectHandlerSuite clause capability innerEffects okTy errTy loweredTy
+  classifierFromCapstone :
+    classifier =
+      effectHandlerSuite_of_capstoneSuite
+        clause capability innerEffects okTy errTy loweredTy capstone
+
+/-- Build coherent pair suite directly from a capstone aggregate witness. -/
+theorem effectHandlerCatchPairSuite_of_capstone
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_cap :
+      EffectHandlerCapstoneSuite clause capability innerEffects okTy errTy loweredTy) :
+    EffectHandlerCatchPairSuite clause capability innerEffects okTy errTy loweredTy := by
+  refine {
+    capstone := h_cap
+    classifier :=
+      effectHandlerSuite_of_capstoneSuite
+        clause capability innerEffects okTy errTy loweredTy h_cap
+    classifierFromCapstone := rfl
+  }
+
+/-- Coherent pair suite is equivalent to its capstone aggregate witness. -/
+theorem effectHandlerCatchPairSuite_iff_capstone
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty) :
+    EffectHandlerCatchPairSuite clause capability innerEffects okTy errTy loweredTy
+      ↔ EffectHandlerCapstoneSuite clause capability innerEffects okTy errTy loweredTy := by
+  constructor
+  · intro h_pair
+    exact h_pair.capstone
+  · intro h_cap
+    exact effectHandlerCatchPairSuite_of_capstone
+      clause capability innerEffects okTy errTy loweredTy h_cap
+
 /-- Build the aggregate suite from well-typed + catch premise inputs. -/
 theorem effectHandlerSuite_of_premises
     (clause : HandleClauseContract)
@@ -300,6 +350,65 @@ theorem effectHandlerCapstoneSuite_of_fail_present
         clause innerEffects okTy errTy loweredTy
         h_wellTyped h_failZero h_fail_present h_clauseEffects h_lowered
   }
+
+/-- Build coherent classifier+capstone pair suite from premise-level capstone inputs. -/
+theorem effectHandlerCatchPairSuite_of_premises
+    (clause : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_cap_ne : capability ≠ clause.handled)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_admissible : FailResultContracts.catchAdmissible clause.exprEffects)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy) :
+    EffectHandlerCatchPairSuite clause capability innerEffects okTy errTy loweredTy := by
+  exact effectHandlerCatchPairSuite_of_capstone
+    clause capability innerEffects okTy errTy loweredTy
+    (effectHandlerCapstoneSuite_of_premises
+      clause baseEffects capability innerEffects okTy errTy loweredTy
+      h_wellTyped h_expr h_cap_ne h_failZero h_admissible h_clauseEffects h_lowered)
+
+/-- Build coherent classifier+capstone pair suite from direct Fail-presence evidence. -/
+theorem effectHandlerCatchPairSuite_of_fail_present
+    (clause : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_cap_ne : capability ≠ clause.handled)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_fail_present :
+      RowFields.has (EffectRow.fields clause.exprEffects) FailResultContracts.failLabel = true)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy) :
+    EffectHandlerCatchPairSuite clause capability innerEffects okTy errTy loweredTy := by
+  exact effectHandlerCatchPairSuite_of_capstone
+    clause capability innerEffects okTy errTy loweredTy
+    (effectHandlerCapstoneSuite_of_fail_present
+      clause baseEffects capability innerEffects okTy errTy loweredTy
+      h_wellTyped h_expr h_cap_ne h_failZero h_fail_present h_clauseEffects h_lowered)
 
 /-- One-hop projection: closed-aware handled-removal guarantee from aggregate suite. -/
 theorem effectHandlerSuite_closedAwareHandledRemoved
@@ -494,6 +603,105 @@ theorem effectHandlerCapstoneSuite_catchLaws
     HigherOrderCatchContracts.HigherOrderCatchBridgeLaws clause innerEffects okTy errTy loweredTy :=
   CatchInteroperabilitySuite.catchCapstoneInteropSuite_laws
     clause innerEffects okTy errTy loweredTy h_suite.catchInteropCapstone
+
+/-- One-hop projection: classifier aggregate witness from coherent pair suite. -/
+theorem effectHandlerCatchPairSuite_classifier
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_pair : EffectHandlerCatchPairSuite clause capability innerEffects okTy errTy loweredTy) :
+    EffectHandlerSuite clause capability innerEffects okTy errTy loweredTy :=
+  h_pair.classifier
+
+/-- One-hop projection: capstone aggregate witness from coherent pair suite. -/
+theorem effectHandlerCatchPairSuite_capstone
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_pair : EffectHandlerCatchPairSuite clause capability innerEffects okTy errTy loweredTy) :
+    EffectHandlerCapstoneSuite clause capability innerEffects okTy errTy loweredTy :=
+  h_pair.capstone
+
+/-- One-hop projection: coherence equation from coherent pair suite. -/
+theorem effectHandlerCatchPairSuite_classifierFromCapstone
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_pair : EffectHandlerCatchPairSuite clause capability innerEffects okTy errTy loweredTy) :
+    h_pair.classifier =
+      effectHandlerSuite_of_capstoneSuite
+        clause capability innerEffects okTy errTy loweredTy h_pair.capstone :=
+  h_pair.classifierFromCapstone
+
+/-- One-hop projection: generic classifier branch from coherent pair suite. -/
+theorem effectHandlerCatchPairSuite_genericCatchClassifier
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_pair : EffectHandlerCatchPairSuite clause capability innerEffects okTy errTy loweredTy) :
+    CatchTypingBridge.CatchTypingCapstoneOutcome
+      clause
+      (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+      okTy
+      errTy
+      loweredTy
+      ∨ FailResultContracts.catchUnnecessary clause.exprEffects :=
+  effectHandlerSuite_genericCatchClassifier
+    clause capability innerEffects okTy errTy loweredTy h_pair.classifier
+
+/-- One-hop projection: higher-order classifier branch from coherent pair suite. -/
+theorem effectHandlerCatchPairSuite_higherCatchClassifier
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_pair : EffectHandlerCatchPairSuite clause capability innerEffects okTy errTy loweredTy) :
+    HigherOrderCatchContracts.HigherOrderCatchCapstoneOutcome clause innerEffects okTy errTy loweredTy
+      ∨ FailResultContracts.catchUnnecessary innerEffects :=
+  effectHandlerSuite_higherCatchClassifier
+    clause capability innerEffects okTy errTy loweredTy h_pair.classifier
+
+/-- One-hop projection: generic capstone branch from coherent pair suite. -/
+theorem effectHandlerCatchPairSuite_genericCatchCapstone
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_pair : EffectHandlerCatchPairSuite clause capability innerEffects okTy errTy loweredTy) :
+    CatchTypingBridge.CatchTypingCapstoneOutcome
+      clause
+      (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+      okTy
+      errTy
+      loweredTy :=
+  effectHandlerCapstoneSuite_genericCatchCapstone
+    clause capability innerEffects okTy errTy loweredTy h_pair.capstone
+
+/-- One-hop projection: higher-order capstone branch from coherent pair suite. -/
+theorem effectHandlerCatchPairSuite_higherCatchCapstone
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_pair : EffectHandlerCatchPairSuite clause capability innerEffects okTy errTy loweredTy) :
+    HigherOrderCatchContracts.HigherOrderCatchCapstoneOutcome clause innerEffects okTy errTy loweredTy :=
+  effectHandlerCapstoneSuite_higherCatchCapstone
+    clause capability innerEffects okTy errTy loweredTy h_pair.capstone
+
+/-- One-hop projection: catch bridge laws from coherent pair suite. -/
+theorem effectHandlerCatchPairSuite_catchLaws
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_pair : EffectHandlerCatchPairSuite clause capability innerEffects okTy errTy loweredTy) :
+    HigherOrderCatchContracts.HigherOrderCatchBridgeLaws clause innerEffects okTy errTy loweredTy :=
+  effectHandlerCapstoneSuite_catchLaws
+    clause capability innerEffects okTy errTy loweredTy h_pair.capstone
 
 end EffectHandlerContractSuite
 end Kea
