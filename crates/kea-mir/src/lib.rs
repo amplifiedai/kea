@@ -631,7 +631,7 @@ fn fuse_release_alloc_cross_block_jump(function: &mut MirFunction, layouts: &Mir
             let mut all_predecessors_match = true;
             for pred_block_idx in &pred_block_indices {
                 let pred_block = &function.blocks[*pred_block_idx];
-                let Some(release_inst_idx) = pred_block.instructions.len().checked_sub(1) else {
+                let Some(release_inst_idx) = find_trailing_release_idx(pred_block) else {
                     all_predecessors_match = false;
                     break;
                 };
@@ -708,6 +708,17 @@ fn fuse_release_alloc_cross_block_jump(function: &mut MirFunction, layouts: &Mir
         };
         function.blocks[rewrite.succ_block_idx].instructions[rewrite.succ_inst_idx] = replacement;
     }
+}
+
+fn find_trailing_release_idx(block: &MirBlock) -> Option<usize> {
+    for (idx, inst) in block.instructions.iter().enumerate().rev() {
+        match inst {
+            MirInst::Nop => continue,
+            MirInst::Release { .. } => return Some(idx),
+            _ => return None,
+        }
+    }
+    None
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -7543,6 +7554,97 @@ mod tests {
     }
 
     #[test]
+    fn fuse_release_alloc_cross_block_jump_rewrites_with_trailing_nops_after_release() {
+        let layouts = MirLayoutCatalog {
+            records: vec![MirRecordLayout {
+                name: "Point".to_string(),
+                fields: vec![MirRecordFieldLayout {
+                    name: "x".to_string(),
+                    annotation: TypeAnnotation::Named("Int".to_string()),
+                }],
+            }],
+            sums: vec![],
+        };
+        let mut function = MirFunction {
+            name: "main".to_string(),
+            signature: MirFunctionSignature {
+                params: vec![],
+                ret: Type::Unit,
+                effects: EffectRow::pure(),
+            },
+            entry: MirBlockId(0),
+            blocks: vec![
+                MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: MirValueId(0),
+                            literal: MirLiteral::Int(1),
+                        },
+                        MirInst::RecordInit {
+                            dest: MirValueId(1),
+                            record_type: "Point".to_string(),
+                            fields: vec![("x".to_string(), MirValueId(0))],
+                        },
+                        MirInst::Release {
+                            value: MirValueId(1),
+                        },
+                        MirInst::Nop,
+                        MirInst::Nop,
+                    ],
+                    terminator: MirTerminator::Jump {
+                        target: MirBlockId(1),
+                        args: vec![MirValueId(1)],
+                    },
+                },
+                MirBlock {
+                    id: MirBlockId(1),
+                    params: vec![MirBlockParam {
+                        id: MirValueId(10),
+                        ty: Type::Record(RecordType {
+                            name: "Point".to_string(),
+                            params: vec![],
+                            row: RowType::closed(vec![(Label::new("x"), Type::Int)]),
+                        }),
+                    }],
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: MirValueId(2),
+                            literal: MirLiteral::Int(9),
+                        },
+                        MirInst::RecordInit {
+                            dest: MirValueId(3),
+                            record_type: "Point".to_string(),
+                            fields: vec![("x".to_string(), MirValueId(2))],
+                        },
+                    ],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirValueId(3)),
+                    },
+                },
+            ],
+        };
+
+        fuse_release_alloc_cross_block_jump(&mut function, &layouts);
+
+        assert!(
+            function.blocks[0]
+                .instructions
+                .iter()
+                .all(|inst| !matches!(inst, MirInst::Release { value } if *value == MirValueId(1)))
+        );
+        assert!(matches!(
+            function.blocks[1].instructions[1],
+            MirInst::RecordInitReuse {
+                source: MirValueId(10),
+                record_type: ref name,
+                ..
+            } if name == "Point"
+        ));
+    }
+
+    #[test]
     fn fuse_release_alloc_cross_block_jump_rewrites_join_when_all_predecessors_release() {
         let layouts = MirLayoutCatalog {
             records: vec![MirRecordLayout {
@@ -7759,6 +7861,95 @@ mod tests {
         ));
         assert!(matches!(
             function.blocks[2].instructions[1],
+            MirInst::RecordInit { .. }
+        ));
+    }
+
+    #[test]
+    fn fuse_release_alloc_cross_block_jump_skips_when_non_nop_follows_release() {
+        let layouts = MirLayoutCatalog {
+            records: vec![MirRecordLayout {
+                name: "Point".to_string(),
+                fields: vec![MirRecordFieldLayout {
+                    name: "x".to_string(),
+                    annotation: TypeAnnotation::Named("Int".to_string()),
+                }],
+            }],
+            sums: vec![],
+        };
+        let mut function = MirFunction {
+            name: "main".to_string(),
+            signature: MirFunctionSignature {
+                params: vec![],
+                ret: Type::Unit,
+                effects: EffectRow::pure(),
+            },
+            entry: MirBlockId(0),
+            blocks: vec![
+                MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: MirValueId(0),
+                            literal: MirLiteral::Int(1),
+                        },
+                        MirInst::RecordInit {
+                            dest: MirValueId(1),
+                            record_type: "Point".to_string(),
+                            fields: vec![("x".to_string(), MirValueId(0))],
+                        },
+                        MirInst::Release {
+                            value: MirValueId(1),
+                        },
+                        MirInst::Const {
+                            dest: MirValueId(7),
+                            literal: MirLiteral::Int(0),
+                        },
+                    ],
+                    terminator: MirTerminator::Jump {
+                        target: MirBlockId(1),
+                        args: vec![MirValueId(1)],
+                    },
+                },
+                MirBlock {
+                    id: MirBlockId(1),
+                    params: vec![MirBlockParam {
+                        id: MirValueId(10),
+                        ty: Type::Record(RecordType {
+                            name: "Point".to_string(),
+                            params: vec![],
+                            row: RowType::closed(vec![(Label::new("x"), Type::Int)]),
+                        }),
+                    }],
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: MirValueId(2),
+                            literal: MirLiteral::Int(9),
+                        },
+                        MirInst::RecordInit {
+                            dest: MirValueId(3),
+                            record_type: "Point".to_string(),
+                            fields: vec![("x".to_string(), MirValueId(2))],
+                        },
+                    ],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirValueId(3)),
+                    },
+                },
+            ],
+        };
+
+        fuse_release_alloc_cross_block_jump(&mut function, &layouts);
+
+        assert!(matches!(
+            function.blocks[0].instructions[2],
+            MirInst::Release {
+                value: MirValueId(1)
+            }
+        ));
+        assert!(matches!(
+            function.blocks[1].instructions[1],
             MirInst::RecordInit { .. }
         ));
     }
