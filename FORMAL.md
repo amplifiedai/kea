@@ -369,6 +369,7 @@ This work starts by cannibalizing the existing Rill formal corpus and then exten
 - **Phase 2 (active):** Added packaged higher-order catch bridge laws (`HigherOrderCatchBridgeLaws`, `higherOrderCatchBridgeLaws_of_clauseEffects`) with one-hop capstone/classifier transport helpers (`higherOrderCatchBridgeLaws_*`), so downstream proofs can depend on one named interoperability contract rather than stitching multiple bridge lemmas.
 - **Phase 2 (active):** Added premise-level route wrappers through that packaged bridge-law surface (`higherOrderCatchTypingJudgment_{capstone,classify}_of_premises_via_bridgeLaws`), so higher-order premise consumers can stay on one interoperability API while reusing generic catch capstone/classifier proofs.
 - **Phase 2 (active):** Added `Kea/Properties/CatchInteroperabilitySuite.lean` and imported it in `Kea.lean`; it packages generic+higher-order catch interoperability at classifier/capstone levels (`CatchClassifierInteropSuite`, `CatchCapstoneInteropSuite`, premise constructors, capstone->classifier lift, and one-hop projections), giving a single entry surface for cross-layer catch reasoning.
+- **Phase 2 (active):** Extended `CatchInteroperabilitySuite` with practical constructors/projections (`..._of_fail_present`, `..._of_genericClassification`, `..._of_higherClassification`, `catchCapstoneInteropSuite_{generic,higher}`), so runtime-style Fail-presence and either-side classifier outcomes can be lifted directly into the shared interop suite.
 
 The formal workspace lives at [`formal/`](formal/).
 
