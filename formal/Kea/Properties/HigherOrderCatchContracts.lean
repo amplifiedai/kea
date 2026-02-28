@@ -524,5 +524,163 @@ theorem higherOrderCatchTypingJudgment_classify_of_premises
       h_wellTyped h_failZero h_admissible_clause h_clauseEffects h_lowered
   · exact Or.inr h_unnecessary
 
+/--
+Bridge generic catch capstone outcomes into the higher-order specialized
+capstone shape under the clause-effects identification.
+-/
+theorem higherOrderCatchCapstoneOutcome_of_catchTypingCapstoneOutcome
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_cap :
+      CatchTypingBridge.CatchTypingCapstoneOutcome
+        clause
+        (.cons (higherOrderParamType innerEffects okTy) .nil)
+        okTy
+        errTy
+        loweredTy) :
+    HigherOrderCatchCapstoneOutcome clause innerEffects okTy errTy loweredTy := by
+  rcases h_cap with
+    ⟨h_clause_removed, loweredEffects, h_ty, h_tail, h_preserve, h_removed, h_adm, h_not_unnecessary⟩
+  refine ⟨h_clause_removed, loweredEffects, h_ty, ?_, ?_, h_removed, ?_, ?_⟩
+  · simpa [EffectPolymorphismSoundness.rowTailStable, h_clauseEffects] using h_tail
+  · simpa [EffectPolymorphismSoundness.labelsPreservedExcept, h_clauseEffects] using h_preserve
+  · simpa [h_clauseEffects] using h_adm
+  · simpa [h_clauseEffects] using h_not_unnecessary
+
+/--
+Bridge higher-order specialized capstone outcomes into the generic catch
+capstone shape under the clause-effects identification.
+-/
+theorem higherOrderCatchCapstoneOutcome_to_catchTypingCapstoneOutcome
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_cap : HigherOrderCatchCapstoneOutcome clause innerEffects okTy errTy loweredTy) :
+    CatchTypingBridge.CatchTypingCapstoneOutcome
+      clause
+      (.cons (higherOrderParamType innerEffects okTy) .nil)
+      okTy
+      errTy
+      loweredTy := by
+  rcases h_cap with
+    ⟨h_clause_removed, loweredEffects, h_ty, h_tail, h_preserve, h_removed, h_adm, h_not_unnecessary⟩
+  refine ⟨h_clause_removed, loweredEffects, h_ty, ?_, ?_, h_removed, ?_, ?_⟩
+  · simpa [EffectPolymorphismSoundness.rowTailStable, h_clauseEffects] using h_tail
+  · simpa [EffectPolymorphismSoundness.labelsPreservedExcept, h_clauseEffects] using h_preserve
+  · simpa [h_clauseEffects] using h_adm
+  · simpa [h_clauseEffects] using h_not_unnecessary
+
+/--
+Specialized/generic capstone equivalence for higher-order catch under the
+clause-effects identification.
+-/
+theorem higherOrderCatchCapstoneOutcome_iff_catchTypingCapstoneOutcome
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_clauseEffects : clause.exprEffects = innerEffects) :
+    HigherOrderCatchCapstoneOutcome clause innerEffects okTy errTy loweredTy
+      ↔ CatchTypingBridge.CatchTypingCapstoneOutcome
+          clause
+          (.cons (higherOrderParamType innerEffects okTy) .nil)
+          okTy
+          errTy
+          loweredTy := by
+  constructor
+  · intro h_cap
+    exact higherOrderCatchCapstoneOutcome_to_catchTypingCapstoneOutcome
+      clause innerEffects okTy errTy loweredTy h_clauseEffects h_cap
+  · intro h_cap
+    exact higherOrderCatchCapstoneOutcome_of_catchTypingCapstoneOutcome
+      clause innerEffects okTy errTy loweredTy h_clauseEffects h_cap
+
+/--
+Route higher-order capstone construction explicitly through the generic
+`CatchTypingBridge` capstone theorem.
+-/
+theorem higherOrderCatchTypingJudgment_capstone_of_premises_via_catchTypingBridge
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_admissible : FailResultContracts.catchAdmissible clause.exprEffects)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (.cons (higherOrderParamType innerEffects okTy) .nil)
+          clause.exprEffects
+          okTy
+          errTy) :
+    HigherOrderCatchCapstoneOutcome clause innerEffects okTy errTy loweredTy := by
+  have h_cap :
+      CatchTypingBridge.CatchTypingCapstoneOutcome
+        clause
+        (.cons (higherOrderParamType innerEffects okTy) .nil)
+        okTy
+        errTy
+        loweredTy :=
+    CatchTypingBridge.catchTypingJudgment_capstone_of_premises
+      clause
+      (.cons (higherOrderParamType innerEffects okTy) .nil)
+      okTy
+      errTy
+      loweredTy
+      h_wellTyped
+      h_failZero
+      h_admissible
+      h_lowered
+  exact higherOrderCatchCapstoneOutcome_of_catchTypingCapstoneOutcome
+    clause innerEffects okTy errTy loweredTy h_clauseEffects h_cap
+
+/--
+Route higher-order classification explicitly through the generic
+`CatchTypingBridge` classifier theorem.
+-/
+theorem higherOrderCatchTypingJudgment_classify_of_premises_via_catchTypingBridge
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (.cons (higherOrderParamType innerEffects okTy) .nil)
+          clause.exprEffects
+          okTy
+          errTy) :
+    HigherOrderCatchCapstoneOutcome clause innerEffects okTy errTy loweredTy ∨
+      FailResultContracts.catchUnnecessary innerEffects := by
+  have h_class :
+      CatchTypingBridge.CatchTypingCapstoneOutcome
+        clause
+        (.cons (higherOrderParamType innerEffects okTy) .nil)
+        okTy
+        errTy
+        loweredTy
+        ∨ FailResultContracts.catchUnnecessary clause.exprEffects :=
+    CatchTypingBridge.catchTypingJudgment_classify_of_premises
+      clause
+      (.cons (higherOrderParamType innerEffects okTy) .nil)
+      okTy
+      errTy
+      loweredTy
+      h_wellTyped
+      h_failZero
+      h_lowered
+  cases h_class with
+  | inl h_cap =>
+      exact Or.inl
+        (higherOrderCatchCapstoneOutcome_of_catchTypingCapstoneOutcome
+          clause innerEffects okTy errTy loweredTy h_clauseEffects h_cap)
+  | inr h_unnecessary =>
+      exact Or.inr (by simpa [h_clauseEffects] using h_unnecessary)
+
 end HigherOrderCatchContracts
 end Kea
