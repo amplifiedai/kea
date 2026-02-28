@@ -892,6 +892,75 @@ pub fn collect_borrow_param_positions(
     out
 }
 
+fn diagnostics_report_borrow_consumption(diagnostics: &[Diagnostic], name: &str) -> bool {
+    let needle = format!("borrowed value `{name}` cannot be consumed");
+    diagnostics.iter().any(|diag| diag.message.contains(&needle))
+}
+
+/// Infer additional borrow parameter positions from typed HIR usage.
+///
+/// The inference is conservative and monotone:
+/// - starts from explicit `borrow` annotations (`base_map`)
+/// - only adds positions proven non-consuming by move-check simulation
+/// - iterates to a fixpoint so inferred borrow positions can propagate through
+///   call chains within the same module graph
+pub fn infer_auto_borrow_param_positions(
+    module: &HirModule,
+    base_map: &BTreeMap<String, BTreeSet<usize>>,
+) -> BTreeMap<String, BTreeSet<usize>> {
+    let mut inferred = base_map.clone();
+
+    let mut changed = true;
+    while changed {
+        changed = false;
+
+        for decl in &module.declarations {
+            let HirDecl::Function(function) = decl else {
+                continue;
+            };
+            let Type::Function(ft) = &function.ty else {
+                continue;
+            };
+
+            let mut borrowed_positions = inferred.get(&function.name).cloned().unwrap_or_default();
+
+            for (index, (param, param_ty)) in function.params.iter().zip(ft.params.iter()).enumerate() {
+                if borrowed_positions.contains(&index) || !is_unique_type(param_ty) {
+                    continue;
+                }
+                let Some(param_name) = param.name.as_deref() else {
+                    continue;
+                };
+
+                let mut trial_map = inferred.clone();
+                let mut trial_positions = borrowed_positions.clone();
+                trial_positions.insert(index);
+                trial_map.insert(function.name.clone(), trial_positions.clone());
+
+                let mut diagnostics = Vec::new();
+                let mut state = seed_unique_function_params(function, Some(&trial_positions));
+                check_unique_moves_expr(
+                    &function.body,
+                    &mut state,
+                    &mut diagnostics,
+                    &trial_map,
+                );
+
+                if !diagnostics_report_borrow_consumption(&diagnostics, param_name) {
+                    borrowed_positions.insert(index);
+                    changed = true;
+                }
+            }
+
+            if !borrowed_positions.is_empty() {
+                inferred.insert(function.name.clone(), borrowed_positions);
+            }
+        }
+    }
+
+    inferred
+}
+
 fn check_unique_moves_function(
     function: &HirFunction,
     borrow_param_map: &BorrowParamMap,

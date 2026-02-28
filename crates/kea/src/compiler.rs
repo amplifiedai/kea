@@ -12,7 +12,8 @@ use kea_codegen::{
 };
 use kea_diag::{Diagnostic, Severity, SourceLocation};
 use kea_hir::{
-    check_unique_moves_with_borrow_map, collect_borrow_param_positions, lower_module,
+    check_unique_moves_with_borrow_map, collect_borrow_param_positions,
+    infer_auto_borrow_param_positions, lower_module,
 };
 use kea_infer::typeck::{
     RecordRegistry, SumTypeRegistry, TraitRegistry, TypeEnv, apply_where_clause,
@@ -117,7 +118,8 @@ pub fn compile_module(source: &str, file_id: FileId) -> Result<CompilationContex
     )?;
 
     let hir = lower_module(&module, &env);
-    let borrow_param_map = collect_borrow_param_positions(&module, None);
+    let explicit_borrow_param_map = collect_borrow_param_positions(&module, None);
+    let borrow_param_map = infer_auto_borrow_param_positions(&hir, &explicit_borrow_param_map);
     diagnostics.extend(check_unique_moves_with_borrow_map(&hir, &borrow_param_map));
     if has_errors(&diagnostics) {
         return Err(format_diagnostics("move checking failed", &diagnostics));
@@ -321,7 +323,8 @@ pub fn process_module_in_env(
     }
 
     let hir = lower_module(module, env);
-    let borrow_param_map = collect_borrow_param_positions(module, None);
+    let explicit_borrow_param_map = collect_borrow_param_positions(module, None);
+    let borrow_param_map = infer_auto_borrow_param_positions(&hir, &explicit_borrow_param_map);
     diagnostics.extend(check_unique_moves_with_borrow_map(&hir, &borrow_param_map));
     if has_errors(&diagnostics) {
         return Err(diagnostics);
@@ -844,12 +847,18 @@ fn typecheck_loaded_modules(
             &expanded,
             Some(&loaded.module_path),
         ));
+        borrow_param_map = infer_auto_borrow_param_positions(&hir, &borrow_param_map);
         diagnostics.extend(check_unique_moves_with_borrow_map(&hir, &borrow_param_map));
         if has_errors(&diagnostics) {
             if !is_entry_module {
                 env.pop_scope();
             }
             return Err(format_diagnostics("move checking failed", &diagnostics));
+        }
+        for (name, positions) in &borrow_param_map {
+            if name.contains('.') {
+                qualified_borrow_param_map.insert(name.clone(), positions.clone());
+            }
         }
 
         if !is_entry_module {
