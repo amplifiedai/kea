@@ -8024,3 +8024,31 @@ wrapper parity from typing/well-typed entrypoints:
 **Impact**:
 - Typing/well-typed route consumers can now obtain bundle decompositions and
   facet projections in one theorem step, matching the broader phase-2 API style.
+
+### 2026-02-28: operation-call typing-route facet parity completion
+
+**Context**: Closed the remaining facet parity gap on the operation-call bundle
+typing route by adding `operationCallBundle_callTyping_of_typing`.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Projection-only wrapper over existing `OperationCallBundle`.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- `OperationCallBundle` typing-route projections now cover all bundle facets.
+
+**Impact**:
+- Operation-call typing wrappers now align with full one-hop facet parity style.
