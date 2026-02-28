@@ -8783,3 +8783,39 @@ one witness keyed by `unifyDim`.
 **Impact**:
 - Downstream WP7 shape/decimal proofs can cite one packaged witness instead of
   threading per-family kernel contracts independently.
+
+### 2026-02-28: arbitrary-rank tensor dim-list kernel package
+
+**Context**: Extended WP7.4 packaging by adding:
+- `TensorConstShapeDimListKernelSlice`
+- `tensorConstShapeDimListKernelSlice`
+
+in `ShapeConstructorParity`, bundling arbitrary-rank constant-shape tensor
+contracts keyed by `unifyDimList` (any-element and `Int` wrappers).
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- This is a pure packaging step over already-proved tensor const-shape lemmas
+  (`tensor_unify_const_shapes_*`).
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Arbitrary-rank tensor dim-list kernel consequences are now available through
+  one named theorem witness.
+
+**Impact**:
+- Downstream shape/decimal bridge proofs can consume pointwise kernel contracts
+  without re-threading per-theorem inputs across each tensor route.

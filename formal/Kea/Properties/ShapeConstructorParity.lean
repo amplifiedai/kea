@@ -3119,3 +3119,120 @@ theorem rank1ShapeConstDimKernelSlice : Rank1ShapeConstDimKernelSlice := by
     exact tensor_rank1_unify_consts_match_decision st fuel d1 d2
   · intro st fuel d1 d2 h_none
     exact tensor_rank1_unify_consts_reject_of_dim_kernel_none st fuel d1 d2 h_none
+
+/-- Packaged arbitrary-rank tensor constant-shape contracts keyed by the
+    pointwise dim-list kernel. -/
+structure TensorConstShapeDimListKernelSlice : Prop where
+  success_of_dim_list_kernel_success_any_elem :
+    ∀ st fuel elemTy shape1 shape2,
+      unifyDimList DimSubst.empty (fuel + 1)
+        (shape1.map Dim.const) (shape2.map Dim.const) = some DimSubst.empty →
+      unify st (fuel + 1)
+        (.tensor elemTy (shape1.map Dim.const))
+        (.tensor elemTy (shape2.map Dim.const))
+        = .ok st
+  reject_of_dim_list_kernel_none_any_elem :
+    ∀ st fuel elemTy shape1 shape2,
+      unifyDimList DimSubst.empty (fuel + 1)
+        (shape1.map Dim.const) (shape2.map Dim.const) = none →
+      unify st (fuel + 1)
+        (.tensor elemTy (shape1.map Dim.const))
+        (.tensor elemTy (shape2.map Dim.const))
+        = .err "type mismatch"
+  reject_of_ne_any_elem :
+    ∀ st fuel elemTy shape1 shape2,
+      shape1 ≠ shape2 →
+      unify st (fuel + 1)
+        (.tensor elemTy (shape1.map Dim.const))
+        (.tensor elemTy (shape2.map Dim.const))
+        = .err "type mismatch"
+  reject_of_length_mismatch :
+    ∀ st fuel shape1 shape2,
+      shape1.length ≠ shape2.length →
+      unify st (fuel + 1)
+        (.tensor .int (shape1.map Dim.const))
+        (.tensor .int (shape2.map Dim.const))
+        = .err "type mismatch"
+  reject_of_head_mismatch :
+    ∀ st fuel a b tail1 tail2,
+      a ≠ b →
+      unify st (fuel + 1)
+        (.tensor .int ((a :: tail1).map Dim.const))
+        (.tensor .int ((b :: tail2).map Dim.const))
+        = .err "type mismatch"
+  ok_iff_dim_list_kernel_success_any_elem :
+    ∀ st fuel elemTy shape1 shape2,
+      unify st (fuel + 1)
+        (.tensor elemTy (shape1.map Dim.const))
+        (.tensor elemTy (shape2.map Dim.const))
+        = .ok st ↔
+      unifyDimList DimSubst.empty (fuel + 1)
+        (shape1.map Dim.const) (shape2.map Dim.const) = some DimSubst.empty
+  match_decision_any_elem :
+    ∀ st fuel elemTy shape1 shape2,
+      unify st (fuel + 1)
+        (.tensor elemTy (shape1.map Dim.const))
+        (.tensor elemTy (shape2.map Dim.const))
+        =
+        (match unifyDimList DimSubst.empty (fuel + 1)
+            (shape1.map Dim.const) (shape2.map Dim.const) with
+         | some _ => .ok st
+         | none => .err "type mismatch")
+  ok_iff_dim_list_kernel_success :
+    ∀ st fuel shape1 shape2,
+      unify st (fuel + 1)
+        (.tensor .int (shape1.map Dim.const))
+        (.tensor .int (shape2.map Dim.const))
+        = .ok st ↔
+      unifyDimList DimSubst.empty (fuel + 1)
+        (shape1.map Dim.const) (shape2.map Dim.const) = some DimSubst.empty
+  match_decision :
+    ∀ st fuel shape1 shape2,
+      unify st (fuel + 1)
+        (.tensor .int (shape1.map Dim.const))
+        (.tensor .int (shape2.map Dim.const))
+        =
+        (match unifyDimList DimSubst.empty (fuel + 1)
+            (shape1.map Dim.const) (shape2.map Dim.const) with
+         | some _ => .ok st
+         | none => .err "type mismatch")
+
+/-- Canonical arbitrary-rank tensor constant-shape/dim-kernel package. -/
+theorem tensorConstShapeDimListKernelSlice : TensorConstShapeDimListKernelSlice := by
+  refine
+    { success_of_dim_list_kernel_success_any_elem := ?_
+      reject_of_dim_list_kernel_none_any_elem := ?_
+      reject_of_ne_any_elem := ?_
+      reject_of_length_mismatch := ?_
+      reject_of_head_mismatch := ?_
+      ok_iff_dim_list_kernel_success_any_elem := ?_
+      match_decision_any_elem := ?_
+      ok_iff_dim_list_kernel_success := ?_
+      match_decision := ?_ }
+  · intro st fuel elemTy shape1 shape2 h_shape
+    exact tensor_unify_const_shapes_of_dim_list_kernel_success_any_elem
+      st fuel elemTy shape1 shape2 h_shape
+  · intro st fuel elemTy shape1 shape2 h_shape
+    exact tensor_unify_const_shapes_reject_of_dim_list_kernel_none_any_elem
+      st fuel elemTy shape1 shape2 h_shape
+  · intro st fuel elemTy shape1 shape2 h_ne
+    exact tensor_unify_const_shapes_reject_of_ne_any_elem
+      st fuel elemTy shape1 shape2 h_ne
+  · intro st fuel shape1 shape2 h_len
+    exact tensor_unify_const_shapes_reject_of_length_mismatch
+      st fuel shape1 shape2 h_len
+  · intro st fuel a b tail1 tail2 h_head
+    exact tensor_unify_const_shapes_reject_of_head_mismatch
+      st fuel a b tail1 tail2 h_head
+  · intro st fuel elemTy shape1 shape2
+    exact tensor_unify_const_shapes_ok_iff_dim_list_kernel_success_any_elem
+      st fuel elemTy shape1 shape2
+  · intro st fuel elemTy shape1 shape2
+    exact tensor_unify_const_shapes_match_decision_any_elem
+      st fuel elemTy shape1 shape2
+  · intro st fuel shape1 shape2
+    exact tensor_unify_const_shapes_ok_iff_dim_list_kernel_success
+      st fuel shape1 shape2
+  · intro st fuel shape1 shape2
+    exact tensor_unify_const_shapes_match_decision
+      st fuel shape1 shape2
