@@ -72,6 +72,22 @@ theorem decimal_unify_ok_iff_constructor_beq_true
   · intro hbeq
     exact decimal_unify_of_constructor_beq_true st fuel p1 p2 s1 s2 hbeq
 
+/-- Decimal unifier rejection is equivalent to constructor-level BEq failure. -/
+theorem decimal_unify_err_iff_constructor_beq_false
+    (st : UnifyState) (fuel : Nat) (p1 p2 s1 s2 : Dim) :
+    unify st (fuel + 1) (.decimal p1 s1) (.decimal p2 s2) = .err "type mismatch" ↔
+      (Ty.decimal p1 s1 == Ty.decimal p2 s2) = false := by
+  constructor
+  · intro h_err
+    rw [decimal_unify_decision st fuel p1 p2 s1 s2] at h_err
+    cases hbeq : (Ty.decimal p1 s1 == Ty.decimal p2 s2) with
+    | true =>
+        simp [hbeq] at h_err
+    | false =>
+        simpa [hbeq]
+  · intro hbeq_false
+    exact decimal_unify_of_constructor_beq_false st fuel p1 p2 s1 s2 hbeq_false
+
 /-- Decimal precision mismatch (with equal scale) does not unify. -/
 theorem decimal_precision_mismatch
     (st : UnifyState) (fuel p1 p2 scale : Nat) (h : p1 ≠ p2) :

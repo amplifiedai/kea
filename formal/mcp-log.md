@@ -9337,3 +9337,36 @@ dim-list-kernel failure and decision duals:
 **Impact**:
 - WP7.4 pointwise dim-list-kernel consumers can move between kernel outcomes
   and unifier acceptance/rejection without ad-hoc branch proofs.
+
+### 2026-02-28: decimal constructor-level rejection dual
+
+**Context**: Extended `Kea/Properties/DecimalParity.lean` with the missing
+constructor-level rejection equivalence:
+- `decimal_unify_err_iff_constructor_beq_false`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- The new theorem should be a direct dual of the existing constructor-level
+  success equivalence (`decimal_unify_ok_iff_constructor_beq_true`) with no
+  runtime semantic change.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Decimal constructor unification now has explicit BEq-driven success and
+  rejection iff contracts.
+
+**Impact**:
+- Decimal theorem consumers can prove both accept/reject outcomes from the same
+  constructor-BEq boundary without manual case splits.
