@@ -100,6 +100,21 @@ fn main() -> Int
   0
 "#;
 
+const MIXED_JOIN_TOKEN_SOURCE: &str = r#"struct Point
+  x: Int
+
+fn rewrite(flag: Bool, p: Point) -> Point
+  let merged = if flag
+    let tmp = p
+    p
+  else
+    Point { x: 1 }
+  Point { x: 9 }
+
+fn main() -> Int
+  rewrite(true, Point { x: 0 }).x
+"#;
+
 fn main() {
     if let Err(err) = run() {
         eprintln!("{err}");
@@ -115,6 +130,7 @@ fn run() -> Result<(), String> {
         compile_kernel("recursive_churn", RECURSIVE_CHURN_SOURCE)?,
         compile_kernel("mixed_join_unit", MIXED_JOIN_UNIT_SOURCE)?,
         compile_kernel("loop_mixed_unit_walk", LOOP_MIXED_UNIT_WALK_SOURCE)?,
+        compile_kernel("mixed_join_token", MIXED_JOIN_TOKEN_SOURCE)?,
     ];
     let total_reuse: usize = metrics.iter().map(|m| m.reuse_count).sum();
     let total_reuse_token_candidates: usize =

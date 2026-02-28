@@ -431,6 +431,7 @@ pub fn lower_hir_module(module: &HirModule) -> MirModule {
         }
     }
     for function in &mut functions {
+        emit_reuse_tokens_for_trailing_release_alloc(function, &layouts);
         schedule_trailing_releases_after_last_use(function);
         elide_adjacent_retain_release_pairs(function);
         fuse_release_alloc_same_layout(function, &layouts);
@@ -1077,6 +1078,152 @@ fn emit_reuse_tokens_for_loop_backedge_joins(
             },
         };
         target_block.instructions[rewrite.target_inst_idx] = replacement;
+    }
+}
+
+fn emit_reuse_tokens_for_trailing_release_alloc(
+    function: &mut MirFunction,
+    layouts: &MirLayoutCatalog,
+) {
+    let layout_keys = infer_heap_layout_keys(function);
+    let mut next_value_id = next_fresh_value_id(function);
+
+    for block in &mut function.blocks {
+        let Some(release_idx) = find_trailing_release_idx(block) else {
+            continue;
+        };
+        let MirInst::Release {
+            value: released_value,
+        } = &block.instructions[release_idx]
+        else {
+            continue;
+        };
+        let released_value = released_value.clone();
+        let Some(release_layout) = layout_keys.get(&released_value) else {
+            continue;
+        };
+
+        let mut chosen: Option<ReuseProbe> = None;
+        for idx in 0..release_idx {
+            let candidate = match &block.instructions[idx] {
+                MirInst::RecordInit {
+                    dest,
+                    record_type,
+                    fields,
+                } => {
+                    let alloc_layout = format!("record:{record_type}");
+                    let layout_matches = alloc_layout == *release_layout;
+                    let layout_is_reusable = record_layout_is_reuse_eligible(layouts, record_type);
+                    let source_mentioned_in_fields = fields
+                        .iter()
+                        .any(|(_, field_value)| field_value == &released_value);
+                    if layout_matches && layout_is_reusable && !source_mentioned_in_fields {
+                        Some(ReuseInitCandidate::Record {
+                            dest: dest.clone(),
+                            record_type: record_type.clone(),
+                            fields: fields.clone(),
+                        })
+                    } else {
+                        None
+                    }
+                }
+                MirInst::SumInit {
+                    dest,
+                    sum_type,
+                    variant,
+                    tag,
+                    fields,
+                } => {
+                    let alloc_layout = format!("sum:{sum_type}");
+                    let layout_matches = alloc_layout == *release_layout;
+                    let layout_is_reusable = sum_layout_is_reuse_eligible(layouts, sum_type);
+                    let source_mentioned_in_fields =
+                        fields.iter().any(|field| field == &released_value);
+                    if layout_matches && layout_is_reusable && !source_mentioned_in_fields {
+                        Some(ReuseInitCandidate::Sum {
+                            dest: dest.clone(),
+                            sum_type: sum_type.clone(),
+                            variant: variant.clone(),
+                            tag: *tag,
+                            fields: fields.clone(),
+                        })
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            };
+            let Some(candidate) = candidate else {
+                continue;
+            };
+
+            let mut blocked = false;
+            for probe in idx + 1..release_idx {
+                let probe_inst = &block.instructions[probe];
+                if inst_reads_value(probe_inst, &released_value)
+                    || inst_defined_value(probe_inst).is_some_and(|dest| dest == &released_value)
+                    || probe_inst.is_memory_op()
+                {
+                    blocked = true;
+                    break;
+                }
+            }
+            if blocked {
+                continue;
+            }
+            chosen = Some((idx, candidate));
+            break;
+        }
+
+        let Some((candidate_idx, candidate)) = chosen else {
+            continue;
+        };
+
+        let token_value = MirValueId(next_value_id);
+        next_value_id = next_value_id.saturating_add(1);
+
+        let mut rewritten = Vec::with_capacity(block.instructions.len() + 1);
+        for (idx, inst) in block.instructions.iter().enumerate() {
+            if idx == release_idx {
+                continue;
+            }
+            if idx == candidate_idx {
+                rewritten.push(MirInst::ReuseToken {
+                    dest: token_value.clone(),
+                    source: released_value.clone(),
+                });
+                let tokenized_init = match &candidate {
+                    ReuseInitCandidate::Record {
+                        dest,
+                        record_type,
+                        fields,
+                    } => MirInst::RecordInitFromToken {
+                        dest: dest.clone(),
+                        token: token_value.clone(),
+                        record_type: record_type.clone(),
+                        fields: fields.clone(),
+                    },
+                    ReuseInitCandidate::Sum {
+                        dest,
+                        sum_type,
+                        variant,
+                        tag,
+                        fields,
+                    } => MirInst::SumInitFromToken {
+                        dest: dest.clone(),
+                        token: token_value.clone(),
+                        sum_type: sum_type.clone(),
+                        variant: variant.clone(),
+                        tag: *tag,
+                        fields: fields.clone(),
+                    },
+                };
+                rewritten.push(tokenized_init);
+                continue;
+            }
+            rewritten.push(inst.clone());
+        }
+        block.instructions = rewritten;
     }
 }
 
@@ -8860,6 +9007,73 @@ mod tests {
         };
         assert_eq!(block1_args.len(), 2);
         assert_eq!(block2_args.len(), 2);
+    }
+
+    #[test]
+    fn emit_reuse_tokens_for_trailing_release_alloc_rewrites_same_block_init() {
+        let layouts = MirLayoutCatalog {
+            records: vec![MirRecordLayout {
+                name: "Point".to_string(),
+                fields: vec![MirRecordFieldLayout {
+                    name: "x".to_string(),
+                    annotation: TypeAnnotation::Named("Int".to_string()),
+                }],
+            }],
+            sums: vec![],
+        };
+        let mut function = MirFunction {
+            name: "main".to_string(),
+            signature: MirFunctionSignature {
+                params: vec![Type::Record(RecordType {
+                    name: "Point".to_string(),
+                    params: vec![],
+                    row: RowType::closed(vec![(Label::new("x"), Type::Int)]),
+                })],
+                ret: Type::Record(RecordType {
+                    name: "Point".to_string(),
+                    params: vec![],
+                    row: RowType::closed(vec![(Label::new("x"), Type::Int)]),
+                }),
+                effects: EffectRow::pure(),
+            },
+            entry: MirBlockId(0),
+            blocks: vec![MirBlock {
+                id: MirBlockId(0),
+                params: vec![],
+                instructions: vec![
+                    MirInst::Const {
+                        dest: MirValueId(1),
+                        literal: MirLiteral::Int(9),
+                    },
+                    MirInst::RecordInit {
+                        dest: MirValueId(2),
+                        record_type: "Point".to_string(),
+                        fields: vec![("x".to_string(), MirValueId(1))],
+                    },
+                    MirInst::Release {
+                        value: MirValueId(0),
+                    },
+                ],
+                terminator: MirTerminator::Return {
+                    value: Some(MirValueId(2)),
+                },
+            }],
+        };
+
+        emit_reuse_tokens_for_trailing_release_alloc(&mut function, &layouts);
+
+        assert_eq!(function.blocks[0].instructions.len(), 3);
+        assert!(matches!(
+            function.blocks[0].instructions[1],
+            MirInst::ReuseToken {
+                source: MirValueId(0),
+                ..
+            }
+        ));
+        assert!(matches!(
+            function.blocks[0].instructions[2],
+            MirInst::RecordInitFromToken { .. }
+        ));
     }
 
     #[test]
