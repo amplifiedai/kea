@@ -32,6 +32,7 @@ import Kea.Properties.FailResultEquivalence
 import Kea.Properties.EffectPolymorphismSoundness
 import Kea.Properties.CatchTypingBridge
 import Kea.Properties.HigherOrderCatchContracts
+import Kea.Properties.CatchInteroperabilitySuite
 import Kea.Properties.WfUnify
 import Kea.Properties.WfUnifyExtends
 import Kea.Properties.UnifyReflexive
