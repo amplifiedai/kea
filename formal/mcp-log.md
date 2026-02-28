@@ -9107,3 +9107,46 @@ name extraction and closed the newly surfaced gaps by adding:
 **Impact**:
 - Capstone route assumptions now flow to explicit component tuples in one
   theorem step across all currently exposed master-capstone constructor routes.
+
+### 2026-02-28: no-unify full-vertical suite route decomposition parity
+
+**Context**: Closed generalized route wrappers for
+`principalBoundarySoundNoUnifyFullVerticalSuite` by adding
+`..._as_components_of_<route>` theorems across all currently exposed suite
+constructor routes (master-capstone/success families, row-poly and typing
+route variants including proved+dual forms, plus `of_noUnifyMasterSurface`).
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Wrapper-only theorem routing over existing suite constructors +
+  `..._as_components` decomposition surface.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- During first build pass, hit a local Lean wrapper-signature blocker:
+  three new wrappers omitted implicit hook arguments (`h_app`, `h_proj`) needed
+  by underlying `..._proved`/dual route constructors.
+- Patched those wrappers to carry and forward the implicit hook parameters.
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+- Re-ran corrected generalized route scan (`*_of_<route>` with
+  `*_as_components` base).
+- Result: no remaining `principalBoundarySoundNoUnifyFullVerticalSuite`
+  route-wrapper gaps.
+
+**Classify**: Agreement; local proof-signature blocker resolved.
+
+**Divergence**: none.
+
+**Outcome**:
+- No-unify full-vertical suite constructors now all have one-hop component-route
+  decomposition wrappers.
+
+**Impact**:
+- Downstream proofs can route from any current no-unify suite constructor path
+  to explicit component tuples without manual intermediate destructuring.
