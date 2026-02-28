@@ -9658,3 +9658,40 @@ alias:
 **Impact**:
 - Keeps WP7.4 rank-1 package usage consistent with decomposition conventions
   used across precision/decimal and top-level suite layers.
+
+### 2026-02-28: arbitrary-rank shape slice decomposition parity
+
+**Context**: Added structural decomposition helpers for
+`TensorConstShapeDimListKernelSlice` in
+`Kea/Properties/ShapeConstructorParity.lean`, including an explicit component
+alias:
+- `TensorConstShapeDimListKernelSliceComponents`
+- `tensorConstShapeDimListKernelSlice_as_components`
+- `tensorConstShapeDimListKernelSlice_of_components`
+- `tensorConstShapeDimListKernelSlice_iff_components`
+- `tensorConstShapeDimListKernelSlice_as_components_of_components`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Structural API extension only; no runtime semantic change.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Arbitrary-rank shape package now supports one-step conversion between bundled
+  and explicit contract tuples.
+
+**Impact**:
+- Keeps WP7.4 arbitrary-rank package usage consistent with decomposition
+  conventions used across rank-1 and other suite layers.
