@@ -2332,7 +2332,7 @@ pub enum DispatchSemantics {
     Send,
     /// Returns a value (not Self) → read-only query (call).
     CallPure,
-    /// Returns #(Self, T) → state update + reply (call).
+    /// Returns (Self, T) → state update + reply (call).
     CallWithState,
 }
 
@@ -2360,7 +2360,7 @@ pub struct ActorProtocol {
 ///
 /// Rules (KERNEL.md §13.5):
 /// - Returns `Self` (same named record) → `Send`
-/// - Returns `#(Self, T)` → `CallWithState`
+/// - Returns `(Self, T)` → `CallWithState`
 /// - Returns anything else → `CallPure`
 /// - Unresolved `Var(_)` → `CallPure` (safest default)
 ///
@@ -2375,7 +2375,7 @@ pub fn derive_dispatch_semantics(type_name: &str, return_type: &Type) -> Dispatc
         // in actor impls this still represents updated self state.
         Type::AnonRecord(_) => DispatchSemantics::Send,
 
-        // Returns #(Self, T) → CallWithState
+        // Returns (Self, T) → CallWithState
         Type::Tuple(elems)
             if elems.len() == 2
                 && matches!(&elems[0], Type::Record(first_rec) if first_rec.name == type_name) =>
@@ -14901,7 +14901,7 @@ fn infer_expr_bidir(
                         DispatchSemantics::Send => Type::Unit,
                         DispatchSemantics::CallPure => mp.return_type.clone(),
                         DispatchSemantics::CallWithState => {
-                            // return_type is #(Self, T), extract T
+                            // return_type is (Self, T), extract T
                             if let Type::Tuple(ref elems) = mp.return_type {
                                 if elems.len() == 2 {
                                     elems[1].clone()
@@ -18116,7 +18116,7 @@ fn annotation_display(ann: &TypeAnnotation) -> String {
         TypeAnnotation::EffectRow(row) => effect_row_annotation_label(row),
         TypeAnnotation::Tuple(elems) => {
             let elems_str: Vec<String> = elems.iter().map(annotation_display).collect();
-            format!("#({})", elems_str.join(", "))
+            format!("({})", elems_str.join(", "))
         }
         TypeAnnotation::Forall { type_vars, ty } => {
             format!(
