@@ -218,6 +218,25 @@ theorem nestedHandlerBundle_of_components
     NestedHandlerBundle effects innerHandler outerHandler target :=
   (nestedHandlerBundle_iff_components effects innerHandler outerHandler target).2 h_comp
 
+theorem nestedHandlerBundle_as_components_of_components
+    (effects innerHandler outerHandler : EffectRow)
+    (target : Label)
+    (h_comp :
+      (RowFields.has
+          (EffectRow.fields (nestedCompose effects innerHandler outerHandler target))
+          target = false)
+      ∧
+      (EffectRow.rest (nestedCompose effects innerHandler outerHandler target) =
+        EffectRow.rest effects)) :
+    (RowFields.has
+        (EffectRow.fields (nestedCompose effects innerHandler outerHandler target))
+        target = false)
+    ∧
+    (EffectRow.rest (nestedCompose effects innerHandler outerHandler target) =
+      EffectRow.rest effects) :=
+  (nestedHandlerBundle_iff_components effects innerHandler outerHandler target).1
+    (nestedHandlerBundle_of_components effects innerHandler outerHandler target h_comp)
+
 /-- One-hop decomposition of normalized nested handler bundle. -/
 theorem nestedHandlerBundle_as_components
     (effects innerHandler outerHandler : EffectRow)
@@ -276,6 +295,25 @@ theorem nestedHandlerClosedAwareBundle_of_components
         EffectRow.rest effects)) :
     NestedHandlerClosedAwareBundle effects innerHandler outerHandler target :=
   (nestedHandlerClosedAwareBundle_iff_components effects innerHandler outerHandler target).2 h_comp
+
+theorem nestedHandlerClosedAwareBundle_as_components_of_components
+    (effects innerHandler outerHandler : EffectRow)
+    (target : Label)
+    (h_comp :
+      (RowFields.has
+          (EffectRow.fields (nestedComposeClosedAware effects innerHandler outerHandler target))
+          target = false)
+      ∧
+      (EffectRow.rest (nestedComposeClosedAware effects innerHandler outerHandler target) =
+        EffectRow.rest effects)) :
+    (RowFields.has
+        (EffectRow.fields (nestedComposeClosedAware effects innerHandler outerHandler target))
+        target = false)
+    ∧
+    (EffectRow.rest (nestedComposeClosedAware effects innerHandler outerHandler target) =
+      EffectRow.rest effects) :=
+  (nestedHandlerClosedAwareBundle_iff_components effects innerHandler outerHandler target).1
+    (nestedHandlerClosedAwareBundle_of_components effects innerHandler outerHandler target h_comp)
 
 /-- One-hop decomposition of closed-aware nested handler bundle. -/
 theorem nestedHandlerClosedAwareBundle_as_components
