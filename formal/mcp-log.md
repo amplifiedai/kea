@@ -8494,3 +8494,41 @@ Added wrappers for:
 **Impact**:
 - Downstream proofs can consume component constructor assumptions through a
   uniform one-hop `as_components_of_components` API across these modules.
+
+### 2026-02-28: type-valued bundle components-route theorem parity closure
+
+**Context**: Closed the last theorem-side parity gaps for type-valued bundles
+that already had noncomputable `..._of_components` defs by adding:
+- `admissibleEffectPolyLoweringBundle_as_components_of_components`
+- `admissibleEffectPolyHandlerBundle_as_components_of_components`
+- `higherOrderCatchBundle_as_components_of_components`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Wrapper-only theorem routing over existing component constructors and
+  decomposition theorems.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran global `Bundle_iff_components` parity scan for
+  `..._as_components_of_components` wrappers.
+- Result: no missing wrappers.
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Theorem-facing component-route parity now closes across both Prop-valued and
+  type-valued bundle layers in the current Phase-2 stack.
+
+**Impact**:
+- Call sites can use a consistent one-hop theorem route to explicit component
+  tuples, independent of whether the underlying component constructor is a
+  theorem or a noncomputable definition.

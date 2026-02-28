@@ -398,6 +398,39 @@ theorem higherOrderCatchBundle_iff_components
   · intro h_comp
     exact ⟨higherOrderCatchBundle_of_components j h_comp⟩
 
+theorem higherOrderCatchBundle_as_components_of_components
+    (j : HigherOrderCatchTypingJudgment)
+    (h_comp :
+      RowFields.has
+        (EffectRow.fields (HandleClauseContract.resultEffects j.judgment.clause))
+        FailResultContracts.failLabel = false ∧
+        ∃ loweredEffects,
+          j.judgment.loweredTy =
+            .functionEff
+              (.cons (higherOrderParamType j.innerEffects j.judgment.okTy) .nil)
+              loweredEffects
+              (.result j.judgment.okTy j.judgment.errTy) ∧
+          EffectPolymorphismSoundness.rowTailStable j.innerEffects loweredEffects ∧
+          EffectPolymorphismSoundness.labelsPreservedExcept
+            j.innerEffects loweredEffects FailResultContracts.failLabel ∧
+          RowFields.has (EffectRow.fields loweredEffects) FailResultContracts.failLabel = false) :
+    RowFields.has
+      (EffectRow.fields (HandleClauseContract.resultEffects j.judgment.clause))
+      FailResultContracts.failLabel = false ∧
+      ∃ loweredEffects,
+        j.judgment.loweredTy =
+          .functionEff
+            (.cons (higherOrderParamType j.innerEffects j.judgment.okTy) .nil)
+            loweredEffects
+            (.result j.judgment.okTy j.judgment.errTy) ∧
+        EffectPolymorphismSoundness.rowTailStable j.innerEffects loweredEffects ∧
+        EffectPolymorphismSoundness.labelsPreservedExcept
+          j.innerEffects loweredEffects FailResultContracts.failLabel ∧
+        RowFields.has (EffectRow.fields loweredEffects) FailResultContracts.failLabel = false := by
+  classical
+  exact higherOrderCatchBundle_as_components j
+    (higherOrderCatchBundle_of_components j h_comp)
+
 noncomputable def higherOrderCatchTypingJudgment_bundle
     (j : HigherOrderCatchTypingJudgment) :
     HigherOrderCatchBundle j :=
