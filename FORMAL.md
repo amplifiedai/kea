@@ -365,6 +365,7 @@ This work starts by cannibalizing the existing Rill formal corpus and then exten
 - **Phase 2 (active):** Added higher-order practical entry wrappers (`higherOrderCatchTypingJudgment_capstone_of_fail_present`, `higherOrderCatchUnnecessary_of_fail_absent`) so call sites can start from direct Fail-label presence/absence evidence.
 - **Phase 2 (active):** Added a higher-order single-entry classifier (`higherOrderCatchTypingJudgment_classify_of_premises`) over `HigherOrderCatchCapstoneOutcome`, returning either full capstone consequences or the runtime-aligned `catchUnnecessary` branch without requiring an explicit admissibility premise.
 - **Phase 2 (active):** Added explicit higher-order<->generic catch capstone bridges (`higherOrderCatchCapstoneOutcome_{of,to}_catchTypingCapstoneOutcome`, `..._iff_...`) and route wrappers (`higherOrderCatchTypingJudgment_{capstone,classify}_of_premises_via_catchTypingBridge`) so specialization and generic bridge layers are now theorem-linked rather than parallel.
+- **Phase 2 (active):** Added classifier-level transport/equivalence between higher-order and generic catch layers (`higherOrderCatchClassification_of_catchTypingClassification`, `catchTypingClassification_of_higherOrderCatchClassification`, `higherOrderCatchClassification_iff_catchTypingClassification`) under clause-effect identification, completing bidirectional bridge coverage for both capstones and classified outcomes.
 
 The formal workspace lives at [`formal/`](formal/).
 
