@@ -8,6 +8,8 @@ struct KernelMetric {
     name: &'static str,
     reuse_count: usize,
     reuse_token_candidate_count: usize,
+    reuse_token_produced_count: usize,
+    reuse_token_consumed_count: usize,
     alloc_count: usize,
     release_count: usize,
 }
@@ -50,12 +52,18 @@ fn run() -> Result<(), String> {
     let total_reuse: usize = metrics.iter().map(|m| m.reuse_count).sum();
     let total_reuse_token_candidates: usize =
         metrics.iter().map(|m| m.reuse_token_candidate_count).sum();
+    let total_reuse_token_produced: usize =
+        metrics.iter().map(|m| m.reuse_token_produced_count).sum();
+    let total_reuse_token_consumed: usize =
+        metrics.iter().map(|m| m.reuse_token_consumed_count).sum();
     let total_alloc: usize = metrics.iter().map(|m| m.alloc_count).sum();
     let total_release: usize = metrics.iter().map(|m| m.release_count).sum();
     let json = render_metrics_json(
         &metrics,
         total_reuse,
         total_reuse_token_candidates,
+        total_reuse_token_produced,
+        total_reuse_token_consumed,
         total_alloc,
         total_release,
     );
@@ -94,6 +102,18 @@ fn compile_kernel(name: &'static str, source: &str) -> Result<KernelMetric, Stri
         .iter()
         .map(|f| f.reuse_token_candidate_count)
         .sum();
+    let reuse_token_produced_count = artifact
+        .stats
+        .per_function
+        .iter()
+        .map(|f| f.reuse_token_produced_count)
+        .sum();
+    let reuse_token_consumed_count = artifact
+        .stats
+        .per_function
+        .iter()
+        .map(|f| f.reuse_token_consumed_count)
+        .sum();
     let alloc_count = artifact.stats.per_function.iter().map(|f| f.alloc_count).sum();
     let release_count = artifact
         .stats
@@ -106,6 +126,8 @@ fn compile_kernel(name: &'static str, source: &str) -> Result<KernelMetric, Stri
         name,
         reuse_count,
         reuse_token_candidate_count,
+        reuse_token_produced_count,
+        reuse_token_consumed_count,
         alloc_count,
         release_count,
     })
@@ -115,17 +137,28 @@ fn render_metrics_json(
     metrics: &[KernelMetric],
     total_reuse: usize,
     total_reuse_token_candidates: usize,
+    total_reuse_token_produced: usize,
+    total_reuse_token_consumed: usize,
     total_alloc: usize,
     total_release: usize,
 ) -> String {
     let kernel_rows = metrics
         .iter()
         .map(|metric| {
+            let consumed_pct = if metric.reuse_token_candidate_count > 0 {
+                (metric.reuse_token_consumed_count as f64 / metric.reuse_token_candidate_count as f64)
+                    * 100.0
+            } else {
+                0.0
+            };
             format!(
-                "    {{\"name\":\"{}\",\"reuse_count\":{},\"reuse_token_candidate_count\":{},\"alloc_count\":{},\"release_count\":{}}}",
+                "    {{\"name\":\"{}\",\"reuse_count\":{},\"reuse_token_candidate_count\":{},\"reuse_token_produced_count\":{},\"reuse_token_consumed_count\":{},\"reuse_token_consumed_pct\":{:.3},\"alloc_count\":{},\"release_count\":{}}}",
                 metric.name,
                 metric.reuse_count,
                 metric.reuse_token_candidate_count,
+                metric.reuse_token_produced_count,
+                metric.reuse_token_consumed_count,
+                consumed_pct,
                 metric.alloc_count,
                 metric.release_count
             )
@@ -133,7 +166,13 @@ fn render_metrics_json(
         .collect::<Vec<_>>()
         .join(",\n");
 
+    let total_consumed_pct = if total_reuse_token_candidates > 0 {
+        (total_reuse_token_consumed as f64 / total_reuse_token_candidates as f64) * 100.0
+    } else {
+        0.0
+    };
+
     format!(
-        "{{\n  \"kernels\": [\n{kernel_rows}\n  ],\n  \"totals\": {{\"reuse_count\": {total_reuse}, \"reuse_token_candidate_count\": {total_reuse_token_candidates}, \"alloc_count\": {total_alloc}, \"release_count\": {total_release}}}\n}}\n"
+        "{{\n  \"kernels\": [\n{kernel_rows}\n  ],\n  \"totals\": {{\"reuse_count\": {total_reuse}, \"reuse_token_candidate_count\": {total_reuse_token_candidates}, \"reuse_token_produced_count\": {total_reuse_token_produced}, \"reuse_token_consumed_count\": {total_reuse_token_consumed}, \"reuse_token_consumed_pct\": {total_consumed_pct:.3}, \"alloc_count\": {total_alloc}, \"release_count\": {total_release}}}\n}}\n"
     )
 }
