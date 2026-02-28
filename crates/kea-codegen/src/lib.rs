@@ -6,8 +6,12 @@
 //! diagnostics, and machine-readable pass stats.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::ffi::{CStr, CString};
+use std::fs;
+use std::io::{Read, Write};
+use std::net::TcpStream;
 use std::os::raw::c_char;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
 
 use cranelift::prelude::{
     AbiParam, Configurable, FunctionBuilder, FunctionBuilderContext, InstBuilder, Value, types,
@@ -355,28 +359,106 @@ fn is_direct_capability_effect(effect: &str) -> bool {
 }
 
 unsafe extern "C" fn kea_net_connect_stub(addr: *const c_char) -> i64 {
-    if addr.is_null() { -1 } else { 1 }
+    if addr.is_null() {
+        return -1;
+    }
+    let Ok(addr) = (unsafe { CStr::from_ptr(addr) }).to_str() else {
+        return -1;
+    };
+    let Ok(stream) = TcpStream::connect(addr) else {
+        return -1;
+    };
+    let _ = stream.set_nodelay(true);
+    let Ok(mut runtime) = net_runtime().lock() else {
+        return -1;
+    };
+    let connection_id = runtime.next_id;
+    runtime.next_id = runtime.next_id.saturating_add(1);
+    runtime.connections.insert(connection_id, stream);
+    connection_id
 }
 
-unsafe extern "C" fn kea_net_send_stub(_conn: i64, _data: *const c_char) -> i8 {
-    0
+unsafe extern "C" fn kea_net_send_stub(conn: i64, data: *const c_char) -> i8 {
+    if data.is_null() {
+        return -1;
+    }
+    let payload = unsafe { CStr::from_ptr(data) }.to_bytes();
+    let Ok(mut runtime) = net_runtime().lock() else {
+        return -1;
+    };
+    let Some(stream) = runtime.connections.get_mut(&conn) else {
+        return -1;
+    };
+    match stream.write_all(payload) {
+        Ok(_) => 0,
+        Err(_) => -1,
+    }
 }
 
-unsafe extern "C" fn kea_net_recv_stub(_conn: i64, size: i64) -> i64 {
-    if size < 0 { 0 } else { size }
+unsafe extern "C" fn kea_net_recv_stub(conn: i64, size: i64) -> i64 {
+    if size <= 0 {
+        return 0;
+    }
+    let Ok(mut runtime) = net_runtime().lock() else {
+        return -1;
+    };
+    let Some(stream) = runtime.connections.get_mut(&conn) else {
+        return -1;
+    };
+    let mut buffer = vec![0u8; size as usize];
+    match stream.read(&mut buffer) {
+        Ok(read) => read as i64,
+        Err(_) => -1,
+    }
 }
 
-unsafe extern "C" fn kea_io_write_file_stub(_path: *const c_char, _data: *const c_char) -> i8 {
-    0
+unsafe extern "C" fn kea_io_write_file_stub(path: *const c_char, data: *const c_char) -> i8 {
+    if path.is_null() || data.is_null() {
+        return -1;
+    }
+    let Ok(path) = (unsafe { CStr::from_ptr(path) }).to_str() else {
+        return -1;
+    };
+    let bytes = unsafe { CStr::from_ptr(data) }.to_bytes();
+    match fs::write(path, bytes) {
+        Ok(_) => 0,
+        Err(_) => -1,
+    }
 }
 
 unsafe extern "C" fn kea_io_read_file_stub(path: *const c_char) -> *const c_char {
     static EMPTY: &[u8] = b"\0";
     if path.is_null() {
         EMPTY.as_ptr() as *const c_char
-    } else {
-        path
     }
+    else {
+        let Ok(path) = (unsafe { CStr::from_ptr(path) }).to_str() else {
+            return EMPTY.as_ptr() as *const c_char;
+        };
+        let Ok(contents) = fs::read_to_string(path) else {
+            return EMPTY.as_ptr() as *const c_char;
+        };
+        match CString::new(contents) {
+            Ok(cstring) => cstring.into_raw(),
+            Err(_) => EMPTY.as_ptr() as *const c_char,
+        }
+    }
+}
+
+#[derive(Default)]
+struct NetRuntimeState {
+    next_id: i64,
+    connections: BTreeMap<i64, TcpStream>,
+}
+
+fn net_runtime() -> &'static Mutex<NetRuntimeState> {
+    static RUNTIME: OnceLock<Mutex<NetRuntimeState>> = OnceLock::new();
+    RUNTIME.get_or_init(|| {
+        Mutex::new(NetRuntimeState {
+            next_id: 1,
+            connections: BTreeMap::new(),
+        })
+    })
 }
 
 fn register_jit_runtime_symbols(builder: &mut JITBuilder) {

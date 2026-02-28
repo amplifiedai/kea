@@ -560,17 +560,24 @@ mod tests {
         let project_dir = temp_workspace_project_dir("kea-cli-project-real-stdlib-io-read-write");
         let src_dir = project_dir.join("src");
         std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+        let io_file_path = project_dir.join("runtime-io.txt");
+        let io_missing_path = project_dir.join("runtime-io-missing.txt");
+        let io_file_literal = io_file_path.to_string_lossy().replace('\\', "\\\\");
+        let io_missing_literal = io_missing_path.to_string_lossy().replace('\\', "\\\\");
 
         let app_path = src_dir.join("app.kea");
         std::fs::write(
             &app_path,
-            "use IO\n\nfn main() -[IO]> Int\n  IO.write_file(\"tmp\", \"hello\")\n  let msg = IO.read_file(\"hello\")\n  IO.stdout(msg)\n  1\n",
+            format!(
+                "use IO\n\nfn main() -[IO]> Int\n  IO.write_file(\"{io_file_literal}\", \"hello\")\n  let msg = IO.read_file(\"{io_file_literal}\")\n  let missing = IO.read_file(\"{io_missing_literal}\")\n  if msg != missing\n    1\n  else\n    0\n"
+            ),
         )
         .expect("app module write should succeed");
 
         let run = run_file(&app_path).expect("run should succeed");
         assert_eq!(run.exit_code, 1);
 
+        let _ = std::fs::remove_file(io_file_path);
         let _ = std::fs::remove_dir_all(project_dir);
     }
 
@@ -620,16 +627,30 @@ mod tests {
         let project_dir = temp_workspace_project_dir("kea-cli-project-real-stdlib-net");
         let src_dir = project_dir.join("src");
         std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+        let listener =
+            std::net::TcpListener::bind("127.0.0.1:0").expect("listener bind should succeed");
+        let addr = listener.local_addr().expect("listener addr should resolve");
+        let server = std::thread::spawn(move || {
+            use std::io::{Read, Write};
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut buffer = [0u8; 16];
+                let read = stream.read(&mut buffer).unwrap_or(0);
+                let _ = stream.write_all(&buffer[..read.min(4)]);
+            }
+        });
 
         let app_path = src_dir.join("app.kea");
         std::fs::write(
             &app_path,
-            "use Net\n\nfn main() -[Net]> Int\n  let c = Net.connect(\"127.0.0.1:0\")\n  Net.send(c, \"ping\")\n  let n = Net.recv(c, 4)\n  if c >= 0 and n >= 0\n    1\n  else\n    0\n",
+            format!(
+                "use Net\n\nfn main() -[Net]> Int\n  let c = Net.connect(\"{addr}\")\n  Net.send(c, \"ping\")\n  let n = Net.recv(c, 4)\n  if c >= 0 and n == 4\n    1\n  else\n    0\n"
+            ),
         )
         .expect("app module write should succeed");
 
         let run = run_file(&app_path).expect("run should succeed");
         assert_eq!(run.exit_code, 1);
+        server.join().expect("net echo server should exit cleanly");
 
         let _ = std::fs::remove_dir_all(project_dir);
     }
@@ -682,8 +703,20 @@ mod tests {
     #[test]
     #[cfg(not(target_os = "windows"))]
     fn compile_and_execute_io_read_write_file_direct_effect_exit_code() {
+        let io_file_path = std::env::temp_dir().join(format!(
+            "kea-cli-io-read-write-direct-{}.txt",
+            std::process::id()
+        ));
+        let io_missing_path = std::env::temp_dir().join(format!(
+            "kea-cli-io-read-write-direct-missing-{}.txt",
+            std::process::id()
+        ));
+        let io_file_literal = io_file_path.to_string_lossy().replace('\\', "\\\\");
+        let io_missing_literal = io_missing_path.to_string_lossy().replace('\\', "\\\\");
         let source_path = write_temp_source(
-            "effect IO\n  fn stdout(msg: String) -> Unit\n  fn write_file(path: String, data: String) -> Unit\n  fn read_file(path: String) -> String\n\nfn main() -[IO]> Int\n  IO.write_file(\"tmp\", \"hello\")\n  let msg = IO.read_file(\"hello\")\n  IO.stdout(msg)\n  1\n",
+            &format!(
+                "effect IO\n  fn write_file(path: String, data: String) -> Unit\n  fn read_file(path: String) -> String\n\nfn main() -[IO]> Int\n  IO.write_file(\"{io_file_literal}\", \"hello\")\n  let msg = IO.read_file(\"{io_file_literal}\")\n  let missing = IO.read_file(\"{io_missing_literal}\")\n  if msg != missing\n    1\n  else\n    0\n"
+            ),
             "kea-cli-io-read-write-direct",
             "kea",
         );
@@ -692,19 +725,34 @@ mod tests {
         assert_eq!(run.exit_code, 1);
 
         let _ = std::fs::remove_file(source_path);
+        let _ = std::fs::remove_file(io_file_path);
     }
 
     #[test]
     #[cfg(not(target_os = "windows"))]
     fn compile_and_execute_net_direct_effect_exit_code() {
+        let listener =
+            std::net::TcpListener::bind("127.0.0.1:0").expect("listener bind should succeed");
+        let addr = listener.local_addr().expect("listener addr should resolve");
+        let server = std::thread::spawn(move || {
+            use std::io::{Read, Write};
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut buffer = [0u8; 16];
+                let read = stream.read(&mut buffer).unwrap_or(0);
+                let _ = stream.write_all(&buffer[..read.min(4)]);
+            }
+        });
         let source_path = write_temp_source(
-            "effect Net\n  fn connect(addr: String) -> Int\n  fn send(conn: Int, data: String) -> Unit\n  fn recv(conn: Int, size: Int) -> Int\n\nfn main() -[Net]> Int\n  let c = Net.connect(\"127.0.0.1:0\")\n  Net.send(c, \"ping\")\n  let n = Net.recv(c, 4)\n  if c >= 0 and n >= 0\n    1\n  else\n    0\n",
+            &format!(
+                "effect Net\n  fn connect(addr: String) -> Int\n  fn send(conn: Int, data: String) -> Unit\n  fn recv(conn: Int, size: Int) -> Int\n\nfn main() -[Net]> Int\n  let c = Net.connect(\"{addr}\")\n  Net.send(c, \"ping\")\n  let n = Net.recv(c, 4)\n  if c >= 0 and n == 4\n    1\n  else\n    0\n"
+            ),
             "kea-cli-net-direct",
             "kea",
         );
 
         let run = run_file(&source_path).expect("net-direct run should succeed");
         assert_eq!(run.exit_code, 1);
+        server.join().expect("net echo server should exit cleanly");
 
         let _ = std::fs::remove_file(source_path);
     }
