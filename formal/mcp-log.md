@@ -6084,3 +6084,35 @@ behavior already covered by preceding probes).
 - Fail/Result equivalence now has direct named theorem surfaces and a stable
   bundle contract, matching the Phase-2 capstone packaging style used across
   other tracks.
+
+### 2026-02-28: kea-mcp effect-row regression sanity (post-restart, focused)
+
+**Context**: While extending Phase-2 effect/handler aggregate suites in Lean,
+re-ran focused MCP-server-path checks for the known curried callback/effect-row
+and phantom-IO regression family to ensure no runtime drift before continuing.
+
+**MCP tools used**: `type_check` (via `kea-mcp` handler tests in
+`crates/kea-mcp/src/lib.rs`).
+
+**Lean side**:
+- Current Phase-2 aggregate proofs assume:
+  - curried callback paths preserve declared residual effects,
+  - annotated callback effect rows are respected,
+  - no phantom `IO` is introduced on pure/effect-specific paths.
+
+**Rust side**:
+- Ran:
+  - `./scripts/cargo-agent.sh test -p kea-mcp --lib curried -- --nocapture`
+    - `type_check_curried_lambda_callback_propagates_effect_rows` -> `ok`
+    - `type_check_curried_annotated_lambda_callback_uses_effect_row_contract` -> `ok`
+    - `type_check_direct_curried_call_preserves_returned_callable_effect_row` -> `ok`
+  - `./scripts/cargo-agent.sh test -p kea-mcp --lib effectful -- --nocapture`
+    - `type_check_effectful_function_keeps_declared_effect_row` -> `ok`
+
+**Classify**: Agreement (focused regression slice).
+
+**Outcome**:
+- No divergence found on the active regression family while landing the new
+  effect-handler aggregate theorem surfaces.
+- Continuing formal Phase-2 packaging with this runtime-alignment checkpoint in
+  place.
