@@ -257,7 +257,6 @@ fn update_delimiter_depth(kind: &TokenKind, depth: &mut usize) {
         | TokenKind::LBracket
         | TokenKind::LBrace
         | TokenKind::HashBracket
-        | TokenKind::HashParen
         | TokenKind::HashBrace
         | TokenKind::PercentBrace => *depth += 1,
         TokenKind::RParen | TokenKind::RBracket | TokenKind::RBrace => {
@@ -482,19 +481,12 @@ impl<'src> Lexer<'src> {
             b'#' => {
                 if self.match_char(b'[') {
                     self.emit(TokenKind::HashBracket, start, self.pos);
-                } else if self.match_char(b'(') {
-                    self.warning(
-                        start,
-                        self.pos,
-                        "`#(...)` tuple syntax is deprecated; use `( ... )`",
-                    );
-                    self.emit(TokenKind::HashParen, start, self.pos);
                 } else if self.match_char(b'{') {
                     self.emit(TokenKind::HashBrace, start, self.pos);
                 } else {
                     self.error(
                         start,
-                        "unexpected character '#'; expected '#[', '#(', or '#{'",
+                        "unexpected character '#'; expected '#[' or '#{'",
                     );
                 }
             }
@@ -784,7 +776,6 @@ impl<'src> Lexer<'src> {
             "true" => TokenKind::True,
             "false" => TokenKind::False,
             "struct" => TokenKind::Struct,
-            "record" => TokenKind::Record,
             "type" => TokenKind::TypeKw,
             "alias" => TokenKind::Alias,
             "opaque" => TokenKind::Opaque,
@@ -823,13 +814,6 @@ impl<'src> Lexer<'src> {
             "assert_error" => TokenKind::AssertError,
             _ => TokenKind::Ident(text.to_string()),
         };
-        if matches!(kind, TokenKind::Record) {
-            self.warning(
-                start,
-                self.pos,
-                "`record` is deprecated; use `struct`",
-            );
-        }
         self.emit(kind, start, self.pos);
     }
 
@@ -1429,7 +1413,7 @@ mod tests {
     #[test]
     fn delimiters_and_punctuation() {
         assert_eq!(
-            lex_kinds("( ) { } [ ] #[ #( #{ : :: , . | @ -> <- => .. ..= = ~"),
+            lex_kinds("( ) { } [ ] #[ #{ : :: , . | @ -> <- => .. ..= = ~"),
             vec![
                 TokenKind::LParen,
                 TokenKind::RParen,
@@ -1438,7 +1422,6 @@ mod tests {
                 TokenKind::LBracket,
                 TokenKind::RBracket,
                 TokenKind::HashBracket,
-                TokenKind::HashParen,
                 TokenKind::HashBrace,
                 TokenKind::Colon,
                 TokenKind::ColonColon,
@@ -1458,31 +1441,9 @@ mod tests {
     }
 
     #[test]
-    fn record_keyword_warns_and_still_lexes() {
-        let (tokens, warnings) = lex("record User\n  name: String", FileId(0)).unwrap();
-        assert_eq!(tokens[0].kind, TokenKind::Record);
-        assert_eq!(warnings.len(), 1);
-        assert!(
-            warnings[0]
-                .message
-                .contains("`record` is deprecated; use `struct`"),
-            "got: {}",
-            warnings[0].message
-        );
-    }
-
-    #[test]
-    fn hash_tuple_syntax_warns_and_still_lexes() {
-        let (tokens, warnings) = lex("#(1, 2)", FileId(0)).unwrap();
-        assert_eq!(tokens[0].kind, TokenKind::HashParen);
-        assert_eq!(warnings.len(), 1);
-        assert!(
-            warnings[0]
-                .message
-                .contains("`#(...)` tuple syntax is deprecated; use `( ... )`"),
-            "got: {}",
-            warnings[0].message
-        );
+    fn record_keyword_is_just_an_identifier() {
+        let tokens = lex_kinds("record");
+        assert_eq!(tokens, vec![TokenKind::Ident("record".to_string())]);
     }
 
     #[test]

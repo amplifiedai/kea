@@ -85,7 +85,6 @@ pub fn classify_as_declaration(tokens: &[crate::Token]) -> bool {
 
     matches!(first, Some(TokenKind::Import))
         || matches!(first, Some(TokenKind::Struct))
-        || matches!(first, Some(TokenKind::Record))
         || matches!(first, Some(TokenKind::TypeKw))
         || matches!(first, Some(TokenKind::Alias))
         || matches!(first, Some(TokenKind::Opaque))
@@ -102,7 +101,6 @@ pub fn classify_as_declaration(tokens: &[crate::Token]) -> bool {
                     TokenKind::Fn
                         | TokenKind::ExprKw
                         | TokenKind::Struct
-                        | TokenKind::Record
                         | TokenKind::TypeKw
                         | TokenKind::Alias
                         | TokenKind::Opaque

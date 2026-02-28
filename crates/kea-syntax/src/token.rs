@@ -98,7 +98,6 @@ pub enum TokenKind {
     False,
     NoneKw,
     Struct,
-    Record,
     TypeKw,
     Alias,
     Opaque,
@@ -167,7 +166,6 @@ pub enum TokenKind {
     LBracket,     // [
     RBracket,     // ]
     HashBracket,  // #[
-    HashParen,    // #(
     HashBrace,    // #{
     PercentBrace, // %{
 

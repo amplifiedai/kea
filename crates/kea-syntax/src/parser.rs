@@ -176,14 +176,12 @@ impl Parser {
 
         // struct Name { field: Type, ... }
         // pub struct Name { field: Type, ... }
-        // Legacy compatibility: `record` is still accepted during migration.
         if self.check(&TokenKind::Struct)
-            || self.check(&TokenKind::Record)
             || (self.check(&TokenKind::Pub)
-                && self.peek_is(|k| matches!(k, TokenKind::Struct | TokenKind::Record)))
+                && self.peek_is(|k| matches!(k, TokenKind::Struct)))
         {
             let public = self.match_token(&TokenKind::Pub);
-            self.advance(); // consume 'struct' (or legacy 'record')
+            self.advance(); // consume 'struct'
             return self.record_def(public, start, doc, annotations);
         }
 
@@ -2155,30 +2153,6 @@ impl Parser {
                 self.expect(&TokenKind::RParen, "expected ')' in type group")?;
                 Some(Spanned::new(first, start.merge(end_span)))
             }
-        } else if self.match_token(&TokenKind::HashParen) {
-            // Legacy tuple type: `#(A, B, C)`.
-            let mut elems = Vec::new();
-            self.skip_newlines();
-            if !self.check(&TokenKind::RParen) {
-                loop {
-                    self.skip_newlines();
-                    elems.push(self.type_annotation()?.node);
-                    self.skip_newlines();
-                    if !self.match_token(&TokenKind::Comma) {
-                        break;
-                    }
-                    self.skip_newlines();
-                    if self.check(&TokenKind::RParen) {
-                        break;
-                    }
-                }
-            }
-            let end_span = self.current_span();
-            self.expect(&TokenKind::RParen, "expected ')' in tuple type")?;
-            Some(Spanned::new(
-                TypeAnnotation::Tuple(elems),
-                start.merge(end_span),
-            ))
         } else if self.match_token(&TokenKind::LBrace) {
             // Row type annotation: `{ name: String, age: Int | r }`
             let mut fields = Vec::new();
@@ -2300,7 +2274,6 @@ impl Parser {
                     | TokenKind::LParen
                     | TokenKind::LBracket
                     | TokenKind::LBrace
-                    | TokenKind::HashParen
                     | TokenKind::Int(_)
             )
         )
@@ -2630,11 +2603,6 @@ impl Parser {
         }
         if self.check(&TokenKind::YieldFrom) {
             return self.yield_from_expr();
-        }
-
-        // Legacy tuple syntax: #(exprs)
-        if self.check(&TokenKind::HashParen) {
-            return self.tuple_expr();
         }
 
         // Anonymous record: #{field: val, ...}
@@ -3729,25 +3697,6 @@ impl Parser {
             ));
         }
 
-        // Tuple pattern: #(p1, p2, ...)
-        if self.check(&TokenKind::HashParen) {
-            self.advance(); // consume #(
-            let mut pats = Vec::new();
-            self.skip_newlines();
-            if !self.check(&TokenKind::RParen) {
-                loop {
-                    self.skip_newlines();
-                    pats.push(self.pattern()?);
-                    self.skip_newlines();
-                    if !self.match_token(&TokenKind::Comma) {
-                        break;
-                    }
-                }
-            }
-            let end = self.current_span();
-            self.expect(&TokenKind::RParen, "expected ')' to close tuple pattern")?;
-            return Some(Spanned::new(PatternKind::Tuple(pats), start.merge(end)));
-        }
 
         // Anonymous struct pattern: #{ name, age } or #{ name: pat, .. }
         if self.check(&TokenKind::HashBrace) {
@@ -3908,15 +3857,6 @@ impl Parser {
         } else {
             self.expression()
         }
-    }
-
-    fn tuple_expr(&mut self) -> Option<Expr> {
-        let start = self.current_span();
-        self.advance(); // consume #(
-        let elems = self.expr_list(&TokenKind::RParen)?;
-        let end = self.current_span();
-        self.expect(&TokenKind::RParen, "expected ')' to close tuple")?;
-        Some(Spanned::new(ExprKind::Tuple(elems), start.merge(end)))
     }
 
     fn anon_record_expr(&mut self) -> Option<Expr> {
@@ -4428,7 +4368,7 @@ impl Parser {
         loop {
             self.skip_newlines();
             // Allow trailing commas in expression lists:
-            // f(1, 2,), [1, 2,], Some(x,), #(1, 2,)
+            // f(1, 2,), [1, 2,], Some(x,), (1, 2,)
             if self.check(close) {
                 break;
             }
@@ -5756,8 +5696,8 @@ mod tests {
     }
 
     #[test]
-    fn parse_legacy_hash_tuple_still_supported() {
-        let expr = parse("#(1, 2, 3)");
+    fn parse_tuple_with_parens() {
+        let expr = parse("(1, 2, 3)");
         assert!(matches!(expr.node, ExprKind::Tuple(_)));
     }
 
@@ -5930,18 +5870,6 @@ mod tests {
                 assert_eq!(def.fields[1].0.node, "age");
             }
             _ => panic!("expected RecordDef"),
-        }
-    }
-
-    #[test]
-    fn parse_legacy_record_keyword_still_parses() {
-        let module = parse_mod("record Legacy\n  x: Int");
-        match &module.declarations[0].node {
-            DeclKind::RecordDef(def) => {
-                assert_eq!(def.name.node, "Legacy");
-                assert_eq!(def.fields.len(), 1);
-            }
-            other => panic!("expected RecordDef, got {other:?}"),
         }
     }
 
