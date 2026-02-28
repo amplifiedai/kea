@@ -7,9 +7,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use kea_ast::{
-    Annotation, Argument, BinOp, CaseArm, DeclKind, Expr, ExprDecl, ExprKind, FnDecl,
-    HandleClause, INTERP_SHOW_FN_NAME, Lit, Module, Param, ParamLabel, Pattern, PatternKind,
-    Span, Spanned, TypeAnnotation, UnaryOp,
+    Annotation, Argument, BinOp, CaseArm, DeclKind, EffectAnnotation, EffectRowAnnotation, Expr,
+    ExprDecl, ExprKind, FnDecl, HandleClause, INTERP_SHOW_FN_NAME, Lit, Module, Param, ParamLabel,
+    Pattern, PatternKind, Span, Spanned, TypeAnnotation, UnaryOp,
 };
 use kea_infer::typeck::TypeEnv;
 use kea_infer::{Category, Diagnostic, SourceLocation};
@@ -1655,6 +1655,7 @@ fn lower_function_with_variants(
     {
         fn_ty = function_type_from_decl_annotations(fn_decl, env)
     }
+    merge_function_param_effect_hints_from_annotations(fn_decl, &mut fn_ty);
 
     let (effects, ret_ty) = match &fn_ty {
         Type::Function(ft) => (ft.effects.clone(), ft.ret.as_ref().clone()),
@@ -1676,6 +1677,37 @@ fn lower_function_with_variants(
         ty: fn_ty,
         effects,
         span: fn_decl.span,
+    }
+}
+
+fn merge_function_param_effect_hints_from_annotations(fn_decl: &FnDecl, fn_ty: &mut Type) {
+    let Type::Function(ft) = fn_ty else {
+        return;
+    };
+    for (idx, param) in fn_decl.params.iter().enumerate() {
+        let Some(annotation) = &param.annotation else {
+            continue;
+        };
+        let Some(declared_effects) = function_effect_hint_from_annotation(&annotation.node) else {
+            continue;
+        };
+        if declared_effects.row.fields.is_empty() {
+            continue;
+        }
+        let Some(Type::Function(current_ft)) = ft.params.get_mut(idx) else {
+            continue;
+        };
+        if current_ft.effects.row.fields.is_empty() && current_ft.effects.row.rest.is_some() {
+            current_ft.effects = declared_effects;
+        }
+    }
+}
+
+fn function_effect_hint_from_annotation(annotation: &TypeAnnotation) -> Option<EffectRow> {
+    match annotation {
+        TypeAnnotation::FunctionWithEffect(_, effect, _) => Some(lower_effect_annotation(&effect.node)),
+        TypeAnnotation::Forall { ty, .. } => function_effect_hint_from_annotation(ty),
+        _ => None,
     }
 }
 
@@ -1723,13 +1755,39 @@ fn lower_type_annotation(annotation: &TypeAnnotation) -> Type {
             params.iter().map(lower_type_annotation).collect(),
             lower_type_annotation(ret),
         )),
-        TypeAnnotation::FunctionWithEffect(params, _, ret) => Type::Function(FunctionType {
+        TypeAnnotation::FunctionWithEffect(params, effect, ret) => Type::Function(FunctionType {
             params: params.iter().map(lower_type_annotation).collect(),
             ret: Box::new(lower_type_annotation(ret)),
-            effects: EffectRow::pure(),
+            effects: lower_effect_annotation(&effect.node),
         }),
         _ => Type::Dynamic,
     }
+}
+
+fn lower_effect_annotation(effect: &EffectAnnotation) -> EffectRow {
+    match effect {
+        EffectAnnotation::Pure => EffectRow::pure(),
+        EffectAnnotation::Row(row) => lower_effect_row_annotation(row),
+        // Keep fallback behavior conservative for non-row forms in HIR.
+        EffectAnnotation::Impure | EffectAnnotation::Volatile | EffectAnnotation::Var(_) => {
+            EffectRow::pure()
+        }
+    }
+}
+
+fn lower_effect_row_annotation(row: &EffectRowAnnotation) -> EffectRow {
+    let fields = row
+        .effects
+        .iter()
+        .map(|item| {
+            let payload = item
+                .payload
+                .as_ref()
+                .map_or(Type::Unit, |ty| lower_type_annotation(&TypeAnnotation::Named(ty.clone())));
+            (kea_types::Label::new(item.name.clone()), payload)
+        })
+        .collect::<Vec<_>>();
+    EffectRow::closed(fields)
 }
 
 fn lower_param(param: &Param) -> HirParam {
