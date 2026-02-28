@@ -271,6 +271,44 @@ theorem operationCallBundle_of_typing
     rowTailStable := performOperation_preserves_row_tail effects decl.label
   }
 
+theorem operationCallBundle_as_components_of_typing
+    (decl : EffectDecl)
+    (effects : EffectRow)
+    (opName : Label)
+    (argTy retTy : Ty)
+    (h_call : operationCallTyping decl opName argTy retTy) :
+    operationDeclared decl opName
+    ∧ operationCallTyping decl opName argTy retTy
+    ∧
+    (RowFields.has
+        (EffectRow.fields (performOperationEffects effects decl.label))
+        decl.label = true)
+    ∧
+    (EffectRow.rest (performOperationEffects effects decl.label) =
+      EffectRow.rest effects) := by
+  exact operationCallBundle_as_components
+    decl effects opName argTy retTy
+    (operationCallBundle_of_typing decl effects opName argTy retTy h_call)
+
+theorem operationCallBundle_declared_of_typing
+    (decl : EffectDecl)
+    (effects : EffectRow)
+    (opName : Label)
+    (argTy retTy : Ty)
+    (h_call : operationCallTyping decl opName argTy retTy) :
+    operationDeclared decl opName :=
+  (operationCallBundle_of_typing decl effects opName argTy retTy h_call).declared
+
+theorem operationCallBundle_rowTailStable_of_typing
+    (decl : EffectDecl)
+    (effects : EffectRow)
+    (opName : Label)
+    (argTy retTy : Ty)
+    (h_call : operationCallTyping decl opName argTy retTy) :
+    EffectRow.rest (performOperationEffects effects decl.label) =
+      EffectRow.rest effects :=
+  (operationCallBundle_of_typing decl effects opName argTy retTy h_call).rowTailStable
+
 theorem operationCallBundle_effectAdded_of_typing
     (decl : EffectDecl)
     (effects : EffectRow)

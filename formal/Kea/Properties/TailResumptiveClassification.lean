@@ -192,6 +192,27 @@ theorem tail_resumptive_bundle_of_wellTyped
     notInvalid := h_not_invalid
   }
 
+theorem tail_resumptive_bundle_as_components_of_wellTyped
+    (c : HandleClauseContract)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice c) :
+    (classifyClause c = .nonResumptive ∨ classifyClause c = .tailResumptive)
+    ∧ HandleClauseContract.resumeProvenance c
+    ∧ classifyClause c ≠ .invalid :=
+  tailResumptiveBundle_as_components c
+    (tail_resumptive_bundle_of_wellTyped c h_wellTyped)
+
+theorem tail_resumptive_bundle_classification_of_wellTyped
+    (c : HandleClauseContract)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice c) :
+    classifyClause c = .nonResumptive ∨ classifyClause c = .tailResumptive :=
+  (tail_resumptive_bundle_of_wellTyped c h_wellTyped).classification
+
+theorem tail_resumptive_bundle_resumeProvenance_of_wellTyped
+    (c : HandleClauseContract)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice c) :
+    HandleClauseContract.resumeProvenance c :=
+  (tail_resumptive_bundle_of_wellTyped c h_wellTyped).resumeProvenance
+
 theorem tail_resumptive_bundle_notInvalid
     (c : HandleClauseContract)
     (h_wellTyped : HandleClauseContract.wellTypedSlice c) :
@@ -260,6 +281,27 @@ theorem tail_resumptive_closedAware_bundle_of_wellTyped
       intro h_eligible
       exact tail_resumptive_direct_call_sound_closedAware c h_eligible
   }
+
+theorem tail_resumptive_closedAware_bundle_as_components_of_wellTyped
+    (c : HandleClauseContract)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice c) :
+    (classifyClause c = .nonResumptive ∨ classifyClause c = .tailResumptive)
+    ∧ (classifyClause c ≠ .invalid)
+    ∧ (tailResumptiveEligible c → directCallEquivalentClosedAware c) :=
+  tailResumptiveClosedAwareBundle_as_components c
+    (tail_resumptive_closedAware_bundle_of_wellTyped c h_wellTyped)
+
+theorem tail_resumptive_closedAware_bundle_classification_of_wellTyped
+    (c : HandleClauseContract)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice c) :
+    classifyClause c = .nonResumptive ∨ classifyClause c = .tailResumptive :=
+  (tail_resumptive_closedAware_bundle_of_wellTyped c h_wellTyped).classification
+
+theorem tail_resumptive_closedAware_bundle_notInvalid_of_wellTyped
+    (c : HandleClauseContract)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice c) :
+    classifyClause c ≠ .invalid :=
+  (tail_resumptive_closedAware_bundle_of_wellTyped c h_wellTyped).notInvalid
 
 theorem tail_resumptive_closedAware_bundle_direct_call_of_eligible
     (c : HandleClauseContract)
