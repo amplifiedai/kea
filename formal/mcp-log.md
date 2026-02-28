@@ -8889,3 +8889,36 @@ surface.
 **Impact**:
 - WP7.2 and shape bridge modules can depend on scalar kernel behavior through
   one package instead of repeatedly threading individual `unifyDim` lemmas.
+
+### 2026-02-28: extend top-level shape suite with scalar dim-kernel layer
+
+**Context**: Updated `ShapeConstDimKernelSuite`/`shapeConstDimKernelSuite` in
+`ShapeConstructorParity` to include the scalar kernel package field:
+- `scalarKernel : DimConstKernelSlice`
+
+The suite now packages scalar `unifyDim`, dim-list kernel, rank-1 shape, and
+arbitrary-rank tensor kernel layers together.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Suite-shape extension only; no semantic change in kernel theorems.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Top-level shape package now carries the full scalar+list+shape kernel stack.
+
+**Impact**:
+- Downstream shape routes can import one suite witness for all constant-shape
+  kernel dependencies, including scalar `unifyDim` contracts.

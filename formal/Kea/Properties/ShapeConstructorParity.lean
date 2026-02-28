@@ -3240,6 +3240,7 @@ theorem tensorConstShapeDimListKernelSlice : TensorConstShapeDimListKernelSlice 
 /-- Top-level packaged shape/dimension kernel suite for constant-shape
     constructor routes. -/
 structure ShapeConstDimKernelSuite : Prop where
+  scalarKernel : DimConstKernelSlice
   dimListKernel : DimConstListKernelSlice
   rank1ShapeKernel : Rank1ShapeConstDimKernelSlice
   tensorShapeKernel : TensorConstShapeDimListKernelSlice
@@ -3247,6 +3248,7 @@ structure ShapeConstDimKernelSuite : Prop where
 /-- Canonical constant-shape shape/dimension kernel suite. -/
 theorem shapeConstDimKernelSuite : ShapeConstDimKernelSuite := by
   exact
-    { dimListKernel := dimConstListKernelSlice
+    { scalarKernel := dimConstKernelSlice
+      dimListKernel := dimConstListKernelSlice
       rank1ShapeKernel := rank1ShapeConstDimKernelSlice
       tensorShapeKernel := tensorConstShapeDimListKernelSlice }
