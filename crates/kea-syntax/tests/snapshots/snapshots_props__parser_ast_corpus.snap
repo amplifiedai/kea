@@ -534,7 +534,7 @@ TraitDef(
 
 ## module_impl_where
 source:
-|impl·From·for·Int·where·Source·=·String
+|Int·as·From·where·Source·=·String
 |··fn·from(value)·->·Int
 |····0
 status: ok
@@ -644,7 +644,7 @@ source:
 |··y:·Float
 |trait·Additive
 |··fn·zero()·->·Self
-|impl·Additive·for·Point
+|Point·as·Additive
 |··fn·zero()·->·Int
 |····0
 |fn·main()·->·Int

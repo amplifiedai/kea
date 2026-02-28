@@ -656,7 +656,7 @@ mod tests {
 
         std::fs::write(
             stdlib_dir.join("prelude.kea"),
-            "trait Tinc a\n  fn tinc(x: a) -> a\n\nimpl Tinc for Int\n  fn tinc(x: Int) -> Int\n    x + 1\n",
+            "trait Tinc a\n  fn tinc(x: a) -> a\n\nInt as Tinc\n  fn tinc(x: Int) -> Int\n    x + 1\n",
         )
         .expect("prelude module write should succeed");
         let app_path = src_dir.join("app.kea");
@@ -1301,7 +1301,7 @@ mod tests {
                     match relation {
                         MatrixModuleRelation::SameModule => {
                             app_defs.push(
-                                "trait Tinc a\n  fn tinc(x: a) -> a\n\nimpl Tinc for Int\n  fn tinc(x: Int) -> Int\n    x + 1"
+                                "trait Tinc a\n  fn tinc(x: a) -> a\n\nInt as Tinc\n  fn tinc(x: Int) -> Int\n    x + 1"
                                     .to_string(),
                             );
                         }
@@ -1309,21 +1309,21 @@ mod tests {
                             MatrixImportState::Prelude => {
                                 std::fs::write(
                                     stdlib_dir.join("prelude.kea"),
-                                    "trait Tinc a\n  fn tinc(x: a) -> a\n\nimpl Tinc for Int\n  fn tinc(x: Int) -> Int\n    x + 1\n",
+                                    "trait Tinc a\n  fn tinc(x: a) -> a\n\nInt as Tinc\n  fn tinc(x: Int) -> Int\n    x + 1\n",
                                 )
                                 .expect("prelude write should succeed");
                             }
                             MatrixImportState::NotImported => {
                                 std::fs::write(
                                     src_dir.join("tinc.kea"),
-                                    "trait Tinc a\n  fn tinc(x: a) -> a\n\nimpl Tinc for Int\n  fn tinc(x: Int) -> Int\n    x + 1\n",
+                                    "trait Tinc a\n  fn tinc(x: a) -> a\n\nInt as Tinc\n  fn tinc(x: Int) -> Int\n    x + 1\n",
                                 )
                                 .expect("tinc write should succeed");
                             }
                             MatrixImportState::UseModule => {
                                 std::fs::write(
                                     src_dir.join("tinc.kea"),
-                                    "trait Tinc a\n  fn tinc(x: a) -> a\n\nimpl Tinc for Int\n  fn tinc(x: Int) -> Int\n    x + 1\n",
+                                    "trait Tinc a\n  fn tinc(x: a) -> a\n\nInt as Tinc\n  fn tinc(x: Int) -> Int\n    x + 1\n",
                                 )
                                 .expect("tinc write should succeed");
                                 imports.push("use Tinc".to_string());
@@ -1331,7 +1331,7 @@ mod tests {
                             MatrixImportState::UseModuleNamed => {
                                 std::fs::write(
                                     src_dir.join("tinc.kea"),
-                                    "trait Tinc a\n  fn tinc(x: a) -> a\n\nimpl Tinc for Int\n  fn tinc(x: Int) -> Int\n    x + 1\n",
+                                    "trait Tinc a\n  fn tinc(x: a) -> a\n\nInt as Tinc\n  fn tinc(x: Int) -> Int\n    x + 1\n",
                                 )
                                 .expect("tinc write should succeed");
                                 imports.push("use Tinc.{tinc}".to_string());
@@ -2836,7 +2836,7 @@ mod tests {
     #[test]
     fn compile_and_execute_trait_qualified_method_single_impl_exit_code() {
         let source_path = write_temp_source(
-            "trait Inc a\n  fn inc(x: a) -> a\n\nimpl Inc for Int\n  fn inc(x: Int) -> Int\n    x + 1\n\nfn main() -> Int\n  Inc.inc(41)\n",
+            "trait Inc a\n  fn inc(x: a) -> a\n\nInt as Inc\n  fn inc(x: Int) -> Int\n    x + 1\n\nfn main() -> Int\n  Inc.inc(41)\n",
             "kea-cli-trait-qualified-single-impl",
             "kea",
         );
@@ -2850,7 +2850,7 @@ mod tests {
     #[test]
     fn compile_and_execute_trait_qualified_method_ambiguous_impls_error() {
         let source_path = write_temp_source(
-            "trait Inc a\n  fn inc(x: a) -> a\n\nimpl Inc for Int\n  fn inc(x: Int) -> Int\n    x + 1\n\nimpl Inc for Float\n  fn inc(x: Float) -> Float\n    x + 1.0\n\nfn main() -> Int\n  Inc.inc(41)\n",
+            "trait Inc a\n  fn inc(x: a) -> a\n\nInt as Inc\n  fn inc(x: Int) -> Int\n    x + 1\n\nFloat as Inc\n  fn inc(x: Float) -> Float\n    x + 1.0\n\nfn main() -> Int\n  Inc.inc(41)\n",
             "kea-cli-trait-qualified-ambiguous-impls",
             "kea",
         );

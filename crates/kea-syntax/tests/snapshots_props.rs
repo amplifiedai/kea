@@ -33,7 +33,7 @@ fn lexer_layout_snapshot_corpus() {
         ("trait_decl", "trait Show\n  fn show(self) -> String"),
         (
             "impl_decl",
-            "impl Show for Int\n  fn show(self) -> String\n    \"int\"",
+            "Int as Show\n  fn show(self) -> String\n    \"int\"",
         ),
         ("for_expr", "for x in xs when x > 0\n  x + 1"),
         ("use_expr", "use value <- load()"),
@@ -124,7 +124,7 @@ fn parser_snapshot_corpus() {
         ParseCase {
             name: "module_impl_where",
             mode: ParseMode::Module,
-            source: "impl From for Int where Source = String\n  fn from(value) -> Int\n    0",
+            source: "Int as From where Source = String\n  fn from(value) -> Int\n    0",
         },
         ParseCase {
             name: "module_import_named_alias",
@@ -134,7 +134,7 @@ fn parser_snapshot_corpus() {
         ParseCase {
             name: "module_mixed_decls",
             mode: ParseMode::Module,
-            source: "struct Point\n  x: Float\n  y: Float\ntrait Additive\n  fn zero() -> Self\nimpl Additive for Point\n  fn zero() -> Int\n    0\nfn main() -> Int\n  1",
+            source: "struct Point\n  x: Float\n  y: Float\ntrait Additive\n  fn zero() -> Self\nPoint as Additive\n  fn zero() -> Int\n    0\nfn main() -> Int\n  1",
         },
         ParseCase {
             name: "expr_if_else",
