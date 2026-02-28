@@ -2658,6 +2658,53 @@ theorem fixedSizeList_unify_consts_ok_iff_dim_kernel_success
   · intro h_dim
     exact fixedSizeList_unify_consts_of_dim_kernel_success st fuel d1 d2 h_dim
 
+/-- Fixed-size-list constant-dimension unifier rejection iff dim-kernel fails. -/
+theorem fixedSizeList_unify_consts_err_iff_dim_kernel_none
+    (st : UnifyState) (fuel d1 d2 : Nat) :
+    unify st (fuel + 1)
+      (.fixedSizeList .int (.const d1))
+      (.fixedSizeList .int (.const d2))
+      = .err "type mismatch" ↔
+      unifyDim DimSubst.empty (fuel + 1) (.const d1) (.const d2) = none := by
+  constructor
+  · intro h_err
+    have h_dec := unifyDim_const_decision DimSubst.empty fuel d1 d2
+    cases hbeq : (d1 == d2) with
+    | true =>
+        have h_dim :
+            unifyDim DimSubst.empty (fuel + 1) (.const d1) (.const d2) = some DimSubst.empty := by
+          simpa [hbeq] using h_dec
+        have h_ok := (fixedSizeList_unify_consts_ok_iff_dim_kernel_success st fuel d1 d2).2 h_dim
+        rw [h_ok] at h_err
+        cases h_err
+    | false =>
+        simpa [hbeq] using h_dec
+  · intro h_dim
+    exact fixedSizeList_unify_consts_reject_of_dim_kernel_none st fuel d1 d2 h_dim
+
+/-- Fixed-size-list constant-dimension unifier result is decided by dim-kernel
+    failure. -/
+theorem fixedSizeList_unify_consts_decision_of_dim_kernel_none
+    (st : UnifyState) (fuel d1 d2 : Nat) :
+    unify st (fuel + 1)
+      (.fixedSizeList .int (.const d1))
+      (.fixedSizeList .int (.const d2))
+      =
+      if unifyDim DimSubst.empty (fuel + 1) (.const d1) (.const d2) = none
+      then .err "type mismatch"
+      else .ok st := by
+  cases h_dim :
+      unifyDim DimSubst.empty (fuel + 1) (.const d1) (.const d2) with
+  | none =>
+      have h_err := fixedSizeList_unify_consts_reject_of_dim_kernel_none st fuel d1 d2 h_dim
+      simp [h_dim, h_err]
+  | some s' =>
+      have hs_empty : s' = DimSubst.empty :=
+        unifyDim_const_some_implies_empty fuel d1 d2 s' h_dim
+      subst hs_empty
+      have h_ok := fixedSizeList_unify_consts_of_dim_kernel_success st fuel d1 d2 h_dim
+      simp [h_dim, h_ok]
+
 /-- Fixed-size-list constant-dimension unification follows exact
     dim-kernel match-decision behavior. -/
 theorem fixedSizeList_unify_consts_match_decision
@@ -3025,6 +3072,53 @@ theorem tensor_rank1_unify_consts_ok_iff_dim_kernel_success
         exact (h_not_none h_none).elim
   · intro h_dim
     exact tensor_rank1_unify_consts_of_dim_kernel_success st fuel d1 d2 h_dim
+
+/-- Rank-1 tensor constant-dimension unifier rejection iff dim-kernel fails. -/
+theorem tensor_rank1_unify_consts_err_iff_dim_kernel_none
+    (st : UnifyState) (fuel d1 d2 : Nat) :
+    unify st (fuel + 1)
+      (.tensor .int [Dim.const d1])
+      (.tensor .int [Dim.const d2])
+      = .err "type mismatch" ↔
+      unifyDim DimSubst.empty (fuel + 1) (.const d1) (.const d2) = none := by
+  constructor
+  · intro h_err
+    have h_dec := unifyDim_const_decision DimSubst.empty fuel d1 d2
+    cases hbeq : (d1 == d2) with
+    | true =>
+        have h_dim :
+            unifyDim DimSubst.empty (fuel + 1) (.const d1) (.const d2) = some DimSubst.empty := by
+          simpa [hbeq] using h_dec
+        have h_ok := (tensor_rank1_unify_consts_ok_iff_dim_kernel_success st fuel d1 d2).2 h_dim
+        rw [h_ok] at h_err
+        cases h_err
+    | false =>
+        simpa [hbeq] using h_dec
+  · intro h_dim
+    exact tensor_rank1_unify_consts_reject_of_dim_kernel_none st fuel d1 d2 h_dim
+
+/-- Rank-1 tensor constant-dimension unifier result is decided by dim-kernel
+    failure. -/
+theorem tensor_rank1_unify_consts_decision_of_dim_kernel_none
+    (st : UnifyState) (fuel d1 d2 : Nat) :
+    unify st (fuel + 1)
+      (.tensor .int [Dim.const d1])
+      (.tensor .int [Dim.const d2])
+      =
+      if unifyDim DimSubst.empty (fuel + 1) (.const d1) (.const d2) = none
+      then .err "type mismatch"
+      else .ok st := by
+  cases h_dim :
+      unifyDim DimSubst.empty (fuel + 1) (.const d1) (.const d2) with
+  | none =>
+      have h_err := tensor_rank1_unify_consts_reject_of_dim_kernel_none st fuel d1 d2 h_dim
+      simp [h_dim, h_err]
+  | some s' =>
+      have hs_empty : s' = DimSubst.empty :=
+        unifyDim_const_some_implies_empty fuel d1 d2 s' h_dim
+      subst hs_empty
+      have h_ok := tensor_rank1_unify_consts_of_dim_kernel_success st fuel d1 d2 h_dim
+      simp [h_dim, h_ok]
 
 /-- Rank-1 tensor constant-dimension unification follows exact dim-kernel
     match-decision behavior. -/

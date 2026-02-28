@@ -9263,3 +9263,39 @@ failure-side constructor-BEq characterizations:
 **Impact**:
 - Precision WP7 proofs can route both acceptance and rejection through one-step
   constructor-BEq equivalences without custom case analysis.
+
+### 2026-02-28: rank-1 shape scalar-kernel failure/decision duals
+
+**Context**: Extended scalar-kernel shape bridge routes in
+`Kea/Properties/ShapeConstructorParity.lean` with explicit failure and
+if/then/else decision duals:
+- `fixedSizeList_unify_consts_err_iff_dim_kernel_none`
+- `fixedSizeList_unify_consts_decision_of_dim_kernel_none`
+- `tensor_rank1_unify_consts_err_iff_dim_kernel_none`
+- `tensor_rank1_unify_consts_decision_of_dim_kernel_none`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- New lemmas should tighten scalar-kernel bridge characterization for rank-1
+  constant-shape routes without changing runtime semantics.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Fixed-size-list and rank-1 tensor scalar-kernel bridges now expose both
+  success-side and failure-side iff contracts plus direct decision equations.
+
+**Impact**:
+- WP7.4 scalar-kernel consumers can discharge constant-shape success/rejection
+  from one-step dim-kernel predicates without bespoke case splits.
