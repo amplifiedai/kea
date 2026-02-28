@@ -10288,3 +10288,38 @@ For each package: added `...Components` plus
 **Impact**:
 - Downstream route proofs can move between bundled witnesses and explicit
   components in one step without manual record destructuring.
+
+### 2026-02-28: dual-master no-unify consequence/capstone route decomposition aliases
+
+**Context**: Added component aliases and structural decomposition APIs in
+`Kea/Typing.lean` for:
+- `PrincipalNoUnify{Expr,Field}RunBundleConsequencesBothMasterConsequenceRoutes`
+- `PrincipalNoUnify{Expr,Field}AllHooksCapstonesBothMasterConsequenceRoutes`
+
+For each package: added `...Components` plus
+`..._{iff_components,of_components,as_components,as_components_of_components}`.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Structural API expansion only; no runtime semantic change.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Dual-master consequence/capstone coherence packages now expose explicit
+  component reconstruction/projection contracts.
+
+**Impact**:
+- Cross-route no-unify proof chains can stay on one decomposition pattern from
+  consequence slices through capstone slices.
