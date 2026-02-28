@@ -9947,3 +9947,49 @@ those aliases.
 **Impact**:
 - Keeps top-level Phase-2 handler contract surfaces aligned with the same
   alias-based decomposition style used across other packaged suite layers.
+
+### 2026-03-01: typing suite alias closure
+
+**Context**: Added `...SuiteComponents` aliases for all remaining principal
+suite structures in `Kea/Typing.lean`, including:
+- `PrincipalBoundaryBridgeSuiteComponents`
+- `PrincipalPreconditionedAllHooksSuiteComponents`
+- `PrincipalBoundaryVacuitySuiteComponents`
+- `PrincipalBoundaryNoUnifyAllHooksSuiteComponents`
+- `PrincipalNoUnifyToGeneralAllHooksSuiteComponents`
+- `PrincipalBoundaryMasterSuiteComponents`
+- `PrincipalBoundaryMasterRunBundleSuiteComponents`
+- `PrincipalBoundaryMasterRunBundleConsequenceSuiteComponents`
+- `PrincipalBoundaryMasterConsequenceCapstoneSuiteComponents`
+- `PrincipalBoundarySoundTypingRunBundleSuiteComponents`
+- `PrincipalBoundarySoundFullSuiteComponents`
+- `PrincipalBoundarySoundFullVerticalSuiteComponents`
+- `PrincipalBoundarySoundNoUnifyFullVerticalSuiteComponents`
+
+Also reran the suite-alias coverage scan:
+`comm -23 <(rg \"^structure ...Suite\" ...) <(rg \"^abbrev ...SuiteComponents\" ...)`
+and observed an empty result set (no remaining missing aliases).
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Signature/API surface expansion only; no runtime semantic change.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Global `*Suite` alias coverage is now closed for the current formal corpus.
+
+**Impact**:
+- Establishes a uniform named component-alias layer across principal and
+  effect-handler suite surfaces for downstream decomposition API work.
