@@ -287,6 +287,67 @@ theorem effectHandlerCompositionSuite_as_components
   (effectHandlerCompositionSuite_iff_components
     clause capability innerEffects okTy errTy loweredTy outerHandler).1 h_suite
 
+/-- Master composition suite is also equivalent to capstone+nested components directly. -/
+theorem effectHandlerCompositionSuite_iff_capstone_and_nested
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow) :
+    EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler
+      ↔ (EffectHandlerCapstoneSuite clause capability innerEffects okTy errTy loweredTy
+          ∧ NestedHandlerCompositionContracts.NestedHandlerClosedAwareBundle
+              clause.exprEffects
+              clause.handlerEffects
+              outerHandler
+              clause.handled) := by
+  constructor
+  · intro h_suite
+    exact ⟨h_suite.catchPair.capstone, h_suite.nestedClosedAware⟩
+  · intro h_comp
+    exact {
+      catchPair :=
+        effectHandlerCatchPairSuite_of_capstone
+          clause capability innerEffects okTy errTy loweredTy h_comp.1
+      nestedClosedAware := h_comp.2
+    }
+
+/-- Build master composition suite from direct capstone+nested components. -/
+theorem effectHandlerCompositionSuite_of_capstone_and_nested
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_comp :
+      EffectHandlerCapstoneSuite clause capability innerEffects okTy errTy loweredTy
+        ∧ NestedHandlerCompositionContracts.NestedHandlerClosedAwareBundle
+            clause.exprEffects
+            clause.handlerEffects
+            outerHandler
+            clause.handled) :
+    EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler :=
+  (effectHandlerCompositionSuite_iff_capstone_and_nested
+    clause capability innerEffects okTy errTy loweredTy outerHandler).2 h_comp
+
+/-- One-hop decomposition of master suite into direct capstone+nested components. -/
+theorem effectHandlerCompositionSuite_as_capstone_and_nested
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    EffectHandlerCapstoneSuite clause capability innerEffects okTy errTy loweredTy
+      ∧ NestedHandlerCompositionContracts.NestedHandlerClosedAwareBundle
+          clause.exprEffects
+          clause.handlerEffects
+          outerHandler
+          clause.handled :=
+  (effectHandlerCompositionSuite_iff_capstone_and_nested
+    clause capability innerEffects okTy errTy loweredTy outerHandler).1 h_suite
+
 /-- Build the aggregate suite from well-typed + catch premise inputs. -/
 theorem effectHandlerSuite_of_premises
     (clause : HandleClauseContract)
