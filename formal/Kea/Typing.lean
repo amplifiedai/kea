@@ -27596,6 +27596,166 @@ theorem principalBoundarySoundFullVerticalMasterRoutes_dual_as_full_and_vertical
       ∧ VerticalHookFreeUnifySlices :=
   ⟨h_master.dual.viaTypingSuite.full, h_master.dual.viaTypingSuite.vertical⟩
 
+/-- Direct expression full consequence wrapper via `FullVerticalMasterRoutes`. -/
+theorem principalBoundarySoundExprFull_of_success_via_fullVerticalMasterRoutes
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundExprFull st fuel env e stExpr ty :=
+  (principalBoundarySoundFullVerticalMasterRoutes_of_success
+      (h_app := h_app) (h_proj := h_proj) h_ok_expr h_ok_field).regular.viaTypingSuite.full.expr
+
+/-- Direct field full consequence wrapper via `FullVerticalMasterRoutes`. -/
+theorem principalBoundarySoundFieldFull_of_success_via_fullVerticalMasterRoutes
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundFieldFull st fuel env fs stField rf :=
+  (principalBoundarySoundFullVerticalMasterRoutes_of_success
+      (h_app := h_app) (h_proj := h_proj) h_ok_expr h_ok_field).regular.viaTypingSuite.full.field
+
+/-- Direct no-unify expression full consequence wrapper via `FullVerticalMasterRoutes`. -/
+theorem principalBoundarySoundNoUnifyExprFull_of_success_via_fullVerticalMasterRoutes
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundNoUnifyExprFull st fuel env e stExpr ty :=
+  (principalBoundarySoundFullVerticalMasterRoutes_of_success
+      (h_app := h_app) (h_proj := h_proj) h_ok_expr h_ok_field).regular.viaTypingSuite.full.noUnifyExpr h_no
+
+/-- Direct no-unify field full consequence wrapper via `FullVerticalMasterRoutes`. -/
+theorem principalBoundarySoundNoUnifyFieldFull_of_success_via_fullVerticalMasterRoutes
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundNoUnifyFieldFull st fuel env fs stField rf :=
+  (principalBoundarySoundFullVerticalMasterRoutes_of_success
+      (h_app := h_app) (h_proj := h_proj) h_ok_expr h_ok_field).regular.viaTypingSuite.full.noUnifyField h_no
+
+/-- Direct hook-free app vertical consequence wrapper via `FullVerticalMasterRoutes`. -/
+theorem principalBoundarySound_verticalApp_of_success_via_fullVerticalMasterRoutes
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    VerticalHookFreeAppSlice :=
+  (principalBoundarySoundFullVerticalMasterRoutes_of_success
+      (h_app := h_app) (h_proj := h_proj) h_ok_expr h_ok_field).regular.viaTypingSuite.vertical.1
+
+/-- Direct hook-free projection vertical consequence wrapper via `FullVerticalMasterRoutes`. -/
+theorem principalBoundarySound_verticalProj_of_success_via_fullVerticalMasterRoutes
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    VerticalHookFreeProjSlice :=
+  (principalBoundarySoundFullVerticalMasterRoutes_of_success
+      (h_app := h_app) (h_proj := h_proj) h_ok_expr h_ok_field).regular.viaTypingSuite.vertical.2
+
+/-- Bundled-hook alias for the direct expression full wrapper via `FullVerticalMasterRoutes`. -/
+theorem principalBoundarySoundExprFull_of_success_via_fullVerticalMasterRoutes_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundExprFull st fuel env e stExpr ty :=
+  principalBoundarySoundExprFull_of_success_via_fullVerticalMasterRoutes
+    (h_app := h_seed.1) (h_proj := h_seed.2) h_ok_expr h_ok_field
+
+/-- Bundled-hook alias for the direct field full wrapper via `FullVerticalMasterRoutes`. -/
+theorem principalBoundarySoundFieldFull_of_success_via_fullVerticalMasterRoutes_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundFieldFull st fuel env fs stField rf :=
+  principalBoundarySoundFieldFull_of_success_via_fullVerticalMasterRoutes
+    (h_app := h_seed.1) (h_proj := h_seed.2) h_ok_expr h_ok_field
+
+/-- Bundled-hook alias for the direct no-unify expression full wrapper via `FullVerticalMasterRoutes`. -/
+theorem principalBoundarySoundNoUnifyExprFull_of_success_via_fullVerticalMasterRoutes_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesExpr e)
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundNoUnifyExprFull st fuel env e stExpr ty :=
+  principalBoundarySoundNoUnifyExprFull_of_success_via_fullVerticalMasterRoutes
+    (h_app := h_seed.1) (h_proj := h_seed.2) h_no h_ok_expr h_ok_field
+
+/-- Bundled-hook alias for the direct no-unify field full wrapper via `FullVerticalMasterRoutes`. -/
+theorem principalBoundarySoundNoUnifyFieldFull_of_success_via_fullVerticalMasterRoutes_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_no : NoUnifyBranchesFields fs)
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundNoUnifyFieldFull st fuel env fs stField rf :=
+  principalBoundarySoundNoUnifyFieldFull_of_success_via_fullVerticalMasterRoutes
+    (h_app := h_seed.1) (h_proj := h_seed.2) h_no h_ok_expr h_ok_field
+
+/-- Bundled-hook alias for direct hook-free app vertical wrapper via `FullVerticalMasterRoutes`. -/
+theorem principalBoundarySound_verticalApp_of_success_via_fullVerticalMasterRoutes_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    VerticalHookFreeAppSlice :=
+  principalBoundarySound_verticalApp_of_success_via_fullVerticalMasterRoutes
+    (h_app := h_seed.1) (h_proj := h_seed.2) h_ok_expr h_ok_field
+
+/-- Bundled-hook alias for direct hook-free projection vertical wrapper via `FullVerticalMasterRoutes`. -/
+theorem principalBoundarySound_verticalProj_of_success_via_fullVerticalMasterRoutes_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    VerticalHookFreeProjSlice :=
+  principalBoundarySound_verticalProj_of_success_via_fullVerticalMasterRoutes
+    (h_app := h_seed.1) (h_proj := h_seed.2) h_ok_expr h_ok_field
+
 /--
 The row-poly full+vertical capstone is equivalent to providing:
 - a full principal boundary soundness suite witness, and
