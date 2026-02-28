@@ -300,4 +300,5 @@ is a feature.
 ## Progress
 
 - 2026-03-01 04:26: Picked up brief, moved to `in-progress/`, and aligned INDEX status tracking (active + done updates).
-- **Next:** Land first adversarial tranche for 0a/0b/0c diagnostics (malformed interpolation, trait obligation/Show constraints, resume misuse) with regression snapshots and no-panics verification.
+- 2026-03-01 04:30: Landed first adversarial tranche in CLI integration tests: malformed interpolation (`{}` and unterminated `{`), Show-obligation diagnostic guard for interpolation, and resume misuse diagnostics (outside clause, multiple resumes, lambda capture). Also tightened parser diagnostics so empty interpolation reports `expected expression in string interpolation` instead of generic `expected expression`.
+- **Next:** Continue 0a malformed-input coverage (unexpected EOF positions, parser recovery across multiple declarations) and 0c handler-scoping violations (mismatched handled effect, empty handler block, wrong op arity).

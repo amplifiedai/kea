@@ -1785,6 +1785,96 @@
             err.contains("does not implement trait `Show`"),
             "expected interpolation Show trait-bound error, got: {err}"
         );
+        assert!(
+            !err.contains("type mismatch"),
+            "interpolation errors should surface trait obligations, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_rejects_string_interpolation_when_expression_is_empty() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  let x = \"{}\"\n  if x == \"\"\n    1\n  else\n    0\n",
+            "kea-cli-string-interp-empty-expr",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject empty interpolation");
+        assert!(
+            err.contains("expected expression in string interpolation"),
+            "expected empty interpolation diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_rejects_unterminated_string_interpolation() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  let x = 1\n  if \"value={x\" == \"\"\n    1\n  else\n    0\n",
+            "kea-cli-string-interp-unterminated",
+            "kea",
+        );
+
+        let err =
+            run_file(&source_path).expect_err("run should reject unterminated interpolation");
+        assert!(
+            err.contains("unterminated interpolation in string"),
+            "expected unterminated interpolation diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_rejects_resume_outside_handler_clause() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  resume 1\n",
+            "kea-cli-resume-outside-handler",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject resume outside handler");
+        assert!(
+            err.contains("`resume` is only valid inside a matching handler clause"),
+            "expected resume-outside diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_rejects_handler_clause_that_resumes_multiple_times() {
+        let source_path = write_temp_source(
+            "effect Ping\n  fn ask() -> Int\n\nfn run() -[Ping]> Int\n  Ping.ask()\n\nfn main() -> Int\n  handle run()\n    Ping.ask() ->\n      if true\n        resume 1\n      else\n        resume 2\n",
+            "kea-cli-resume-multiple-times",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject multiple resumes");
+        assert!(
+            err.contains("handler clause may resume at most once"),
+            "expected at-most-once resume diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_rejects_resume_captured_by_lambda() {
+        let source_path = write_temp_source(
+            "effect Ping\n  fn ask() -> Int\n\nfn run() -[Ping]> Int\n  Ping.ask()\n\nfn main() -> Int\n  handle run()\n    Ping.ask() ->\n      let k = |x| -> resume x\n      k(1)\n",
+            "kea-cli-resume-captured-lambda",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject lambda-captured resume");
+        assert!(
+            err.contains("`resume` cannot be captured in a lambda"),
+            "expected lambda-captured resume diagnostic, got: {err}"
+        );
 
         let _ = std::fs::remove_file(source_path);
     }
