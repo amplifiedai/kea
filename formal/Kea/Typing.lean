@@ -29168,6 +29168,41 @@ theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_iff_components
   · intro h_comp
     exact ⟨h_comp.1, h_comp.2⟩
 
+/-- Project a no-unify full+vertical suite witness from the unified no-unify master surface. -/
+theorem principalBoundarySoundNoUnifyFullVerticalSuite_of_noUnifyMasterSurface
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_surface : PrincipalBoundarySoundNoUnifyFullVerticalMasterSurface st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundNoUnifyFullVerticalSuite st fuel env e fs stExpr ty stField rf :=
+  principalBoundarySoundNoUnifyFullVerticalSuite_of_masterCapstone h_surface.capstone
+
+/-- Lift a no-unify full+vertical suite witness into the unified no-unify master surface. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_noUnifyFullVerticalSuite
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_suite : PrincipalBoundarySoundNoUnifyFullVerticalSuite st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundNoUnifyFullVerticalMasterSurface st fuel env e fs stExpr ty stField rf :=
+  principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_capstone
+    (principalBoundarySoundNoUnifyFullVerticalMasterCapstone_of_fullVerticalSuite h_suite)
+
+/-- Unified no-unify master surface is equivalent to no-unify full+vertical suite surface. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_iff_fullVerticalSuite
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields} :
+    PrincipalBoundarySoundNoUnifyFullVerticalMasterSurface st fuel env e fs stExpr ty stField rf
+      ↔ PrincipalBoundarySoundNoUnifyFullVerticalSuite st fuel env e fs stExpr ty stField rf := by
+  constructor
+  · intro h_surface
+    exact principalBoundarySoundNoUnifyFullVerticalSuite_of_noUnifyMasterSurface h_surface
+  · intro h_suite
+    exact principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_noUnifyFullVerticalSuite h_suite
+
 /--
 The row-poly full+vertical capstone is equivalent to providing:
 - a full principal boundary soundness suite witness, and
