@@ -8351,3 +8351,35 @@ master composition layer:
 **Impact**:
 - Outer-handler composition consumers can extract top-level catch consequences
   in one route step without threading intermediate suite values.
+
+### 2026-02-28: composition+coherence premise/fail-present projection wrappers
+
+**Context**: Added direct premise/fail-present route projection wrappers on the
+composition+coherence layer:
+- `effectHandlerCompositionCoherenceSuite_{composition,catchPair,classifier,capstone}_of_{premises,fail_present}`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Wrapper-only routing from existing composition+coherence constructors and
+  one-hop projections.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Composition+coherence routes now directly expose composition/catch-pair and
+  classifier/capstone consequences from premise/fail-present assumptions.
+
+**Impact**:
+- Top-level coherence consumers can reach core package projections in one route
+  step without explicit intermediate package threading.
