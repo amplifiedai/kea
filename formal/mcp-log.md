@@ -10172,3 +10172,47 @@ source of truth.
 **Impact**:
 - Further reduces decomposition boilerplate in downstream principal-route
   theorem chains.
+
+### 2026-03-01: typing route-decomposition parity closure
+
+**Context**: Completed remaining route-level decomposition wrappers on
+`Kea/Typing.lean` for theorem bases exposing `*_as_components`, including:
+- dual-suite conversions:
+  - `principalNoUnifyToGeneralAllHooksSuite_as_components_of_noUnifyAllHooksSuite`
+  - `principalBoundaryNoUnifyAllHooksSuite_as_components_of_noUnifyToGeneralAllHooksSuite`
+  - `principalBoundaryBridgeSuite_as_components_of_dualConsequenceSlices`
+  - `principalBoundaryMasterSuite_as_components_of_dualConsequenceSlices`
+- row-poly proved/dual route families:
+  - `principalBoundarySoundFullSuite_as_components_of_success_via_rowPolyBoundarySoundBundle_{proved,proved_from_bundle,via_dualConsequenceSlices,via_dualConsequenceSlices_from_bundle}`
+  - `principalBoundarySoundFullVerticalSuite_as_components_of_masterCapstone`
+  - `principalBoundarySoundFullVerticalSuite_as_components_of_success_via_rowPolyBoundarySoundBundle_{proved,proved_from_bundle,via_dualConsequenceSlices,via_dualConsequenceSlices_from_bundle}`
+  - `principalBoundarySoundFullVerticalSuite_as_components_of_success_via_typingRunBundleSuite_via_dualConsequenceSlices{,_from_bundle}`
+
+Also reran a full theorem-surface parity scan for this pattern
+(`*_of_<route>` vs `*_as_components_of_<route>` when `*_as_components` exists)
+and observed an empty result set.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Route-wrapper theorem expansion only; no runtime semantic change.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Current typing principal/sound suite route decomposition parity is closed for
+  theorem bases with `*_as_components`.
+
+**Impact**:
+- Eliminates remaining one-hop decomposition gaps and stabilizes constructor
+  route consumption on explicit component aliases.
