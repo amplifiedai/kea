@@ -90,7 +90,9 @@ Designed and approved. Ready to pick up. Ordered by execution sequence per ROADM
 
 ### Phase 1: Self-Hosting Compiler
 
-16. **[Phase 1 self-hosting](todo/phase-1-self-hosting.md)** — Rewrite the compiler in Kea via pass-by-pass validation. 1a: FFI + Cranelift bindings. 1b: Compiler passes in Kea (lexer → parser → typechecker → MIR → codegen). 1c: Three-stage bootstrap, drop Rust. 1d: Compiler improvements (incremental via Query effect, parallel passes, arenas, error messages). Cranelift stays via FFI; native backend is Phase 2-3.
+16. **[Phase 1a: FFI](todo/phase-1a-ffi.md)** — Foreign function interface as a language feature. `@extern("c")`, `unsafe` blocks, `Ptr T` operations, `@link` for static linking, C type aliases, String/Bytes interop. Cranelift bindings (`cranelift.kea`) as validation. Sets the pattern for every C library integration.
+17. **[Phase 1b/1c: Compiler in Kea + Bootstrap](todo/phase-1bc-compiler-in-kea.md)** — Pass-by-pass translation of the compiler from Rust to Kea (lexer → parser → name resolution → type inference → MIR → optimisation → codegen → driver). Three-stage bootstrap proves correctness, drops Rust.
+18. **[Phase 1d: Compiler improvements](todo/phase-1d-compiler-improvements.md)** — Incremental compilation (Query effect, sub-100ms rebuilds), parallel passes (Par.map on pure passes), arena-scoped phases (Alloc effect), error message investment (row-diff, effect provenance, stable codes).
 
 ### Phase 2-3: Not yet briefed
 
@@ -174,11 +176,9 @@ Completed briefs. Kept for reference and design rationale.
                 │    └── 0g + @derive + STDLIB TIER 3 (abstractions)
                 │         (Foldable/Iterator/JSON/sorted collections as .kea)
                 │         │
-                │         └── Phase 1: self-hosting (BRIEFED)
-                │              1a: FFI + Cranelift bindings
-                │              1b: compiler in Kea, pass by pass
-                │              1c: three-stage bootstrap, drop Rust
-                │              1d: incremental, parallel, arenas, errors
+                │         └── Phase 1a: FFI + Cranelift bindings
+                │              └── Phase 1b/1c: compiler in Kea + bootstrap
+                │                   └── Phase 1d: incremental, parallel, arenas, errors
                 │
                 ├── 0h: error message quality (parallel, not blocking)
                 │
