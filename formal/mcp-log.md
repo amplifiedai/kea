@@ -9837,3 +9837,38 @@ and routed decomposition signatures (`..._as_components`,
 **Impact**:
 - Improves downstream readability and keeps precision suite signatures
   consistent with alias-based decomposition patterns across the formal corpus.
+
+### 2026-02-28: dimension kernel suite alias cleanup
+
+**Context**: Added an explicit component alias for `DimKernelSuite` in
+`Kea/Dimensions.lean`:
+- `DimKernelSuiteComponents`
+
+and routed decomposition signatures (`dimKernelSuite_as_components`,
+`dimKernelSuite_as_components_of_components`, `dimKernelSuite_iff_components`)
+through that alias.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Signature/API cleanup only; no runtime semantic change.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Dimension kernel suite decomposition APIs now use an explicit component alias,
+  aligning with other package layers.
+
+**Impact**:
+- Improves downstream readability and keeps dimension suite signatures
+  consistent with alias-based decomposition patterns across the formal corpus.

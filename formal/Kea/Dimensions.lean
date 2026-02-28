@@ -948,6 +948,10 @@ structure DimKernelSuite : Prop where
   scalar : DimConstKernelSlice
   list : DimConstListKernelSlice
 
+/-- Explicit component pair alias for `DimKernelSuite`. -/
+abbrev DimKernelSuiteComponents : Prop :=
+  DimConstKernelSlice ∧ DimConstListKernelSlice
+
 /-- Canonical dimension-kernel suite witness. -/
 theorem dimKernelSuite : DimKernelSuite := by
   exact
@@ -957,7 +961,7 @@ theorem dimKernelSuite : DimKernelSuite := by
 /-- Decompose a dimension-kernel suite into scalar/list components. -/
 theorem dimKernelSuite_as_components
     (suite : DimKernelSuite) :
-    DimConstKernelSlice ∧ DimConstListKernelSlice :=
+    DimKernelSuiteComponents :=
   ⟨suite.scalar, suite.list⟩
 
 /-- Build a dimension-kernel suite from scalar/list components. -/
@@ -969,13 +973,13 @@ theorem dimKernelSuite_of_components
 
 /-- Direct component-route decomposition for `DimKernelSuite`. -/
 theorem dimKernelSuite_as_components_of_components
-    (h_comp : DimConstKernelSlice ∧ DimConstListKernelSlice) :
-    DimConstKernelSlice ∧ DimConstListKernelSlice := by
+    (h_comp : DimKernelSuiteComponents) :
+    DimKernelSuiteComponents := by
   simpa using h_comp
 
 /-- `DimKernelSuite` is equivalent to its scalar/list component pair. -/
 theorem dimKernelSuite_iff_components :
-    DimKernelSuite ↔ DimConstKernelSlice ∧ DimConstListKernelSlice := by
+    DimKernelSuite ↔ DimKernelSuiteComponents := by
   constructor
   · intro suite
     exact dimKernelSuite_as_components suite
