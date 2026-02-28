@@ -682,5 +682,86 @@ theorem higherOrderCatchTypingJudgment_classify_of_premises_via_catchTypingBridg
   | inr h_unnecessary =>
       exact Or.inr (by simpa [h_clauseEffects] using h_unnecessary)
 
+/--
+Transport a generic catch classifier outcome to the higher-order classifier
+surface under the clause-effects identification.
+-/
+theorem higherOrderCatchClassification_of_catchTypingClassification
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_class :
+      CatchTypingBridge.CatchTypingCapstoneOutcome
+        clause
+        (.cons (higherOrderParamType innerEffects okTy) .nil)
+        okTy
+        errTy
+        loweredTy
+        ∨ FailResultContracts.catchUnnecessary clause.exprEffects) :
+    HigherOrderCatchCapstoneOutcome clause innerEffects okTy errTy loweredTy ∨
+      FailResultContracts.catchUnnecessary innerEffects := by
+  cases h_class with
+  | inl h_cap =>
+      exact Or.inl
+        (higherOrderCatchCapstoneOutcome_of_catchTypingCapstoneOutcome
+          clause innerEffects okTy errTy loweredTy h_clauseEffects h_cap)
+  | inr h_unnecessary =>
+      exact Or.inr (by simpa [h_clauseEffects] using h_unnecessary)
+
+/--
+Transport a higher-order classifier outcome to the generic catch classifier
+surface under the clause-effects identification.
+-/
+theorem catchTypingClassification_of_higherOrderCatchClassification
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_class :
+      HigherOrderCatchCapstoneOutcome clause innerEffects okTy errTy loweredTy ∨
+        FailResultContracts.catchUnnecessary innerEffects) :
+    CatchTypingBridge.CatchTypingCapstoneOutcome
+      clause
+      (.cons (higherOrderParamType innerEffects okTy) .nil)
+      okTy
+      errTy
+      loweredTy
+      ∨ FailResultContracts.catchUnnecessary clause.exprEffects := by
+  cases h_class with
+  | inl h_cap =>
+      exact Or.inl
+        (higherOrderCatchCapstoneOutcome_to_catchTypingCapstoneOutcome
+          clause innerEffects okTy errTy loweredTy h_clauseEffects h_cap)
+  | inr h_unnecessary =>
+      exact Or.inr (by simpa [h_clauseEffects] using h_unnecessary)
+
+/--
+Classifier-level equivalence between higher-order and generic catch surfaces
+under the clause-effects identification.
+-/
+theorem higherOrderCatchClassification_iff_catchTypingClassification
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_clauseEffects : clause.exprEffects = innerEffects) :
+    (HigherOrderCatchCapstoneOutcome clause innerEffects okTy errTy loweredTy ∨
+      FailResultContracts.catchUnnecessary innerEffects)
+      ↔
+    (CatchTypingBridge.CatchTypingCapstoneOutcome
+      clause
+      (.cons (higherOrderParamType innerEffects okTy) .nil)
+      okTy
+      errTy
+      loweredTy
+      ∨ FailResultContracts.catchUnnecessary clause.exprEffects) := by
+  constructor
+  · intro h_class
+    exact catchTypingClassification_of_higherOrderCatchClassification
+      clause innerEffects okTy errTy loweredTy h_clauseEffects h_class
+  · intro h_class
+    exact higherOrderCatchClassification_of_catchTypingClassification
+      clause innerEffects okTy errTy loweredTy h_clauseEffects h_class
+
 end HigherOrderCatchContracts
 end Kea
