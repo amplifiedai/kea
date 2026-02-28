@@ -1,0 +1,605 @@
+/*
+ * keadocs — Kea documentation design system
+ *
+ * Source of truth: docs/DESIGN-SYSTEM.md
+ * All variables use --kd- prefix.
+ *
+ * Three typefaces (variable fonts, loaded separately):
+ *   Syne         — display / headings
+ *   Literata     — body text
+ *   IBM Plex Mono — code
+ */
+
+/* ============================================================
+   1. Design tokens
+   ============================================================ */
+
+:root {
+  /* — Primary palette (kea plumage) — */
+  --kd-olive:        #4A5A2B;
+  --kd-scarlet:      #C8432B;
+  --kd-teal:         #2B6B6B;
+  --kd-gold:         #C4982B;
+
+  /* — Structural palette — */
+  --kd-ink:          #1C1A18;
+  --kd-slate:        #3A3632;
+  --kd-slate-light:  #7A7268;
+  --kd-stone:        #E8E2D8;
+  --kd-bone:         #F4F0E8;
+  --kd-paper:        #FAF8F4;
+
+  /* — Semantic mappings (light mode default) — */
+  --kd-bg:           var(--kd-paper);
+  --kd-surface:      var(--kd-bone);
+  --kd-elevated:     var(--kd-stone);
+  --kd-text:         var(--kd-slate);
+  --kd-heading:      var(--kd-ink);
+  --kd-secondary:    var(--kd-slate-light);
+  --kd-link:         var(--kd-teal);
+  --kd-link-hover:   var(--kd-scarlet);
+  --kd-effect:       var(--kd-scarlet);
+  --kd-code-bg:      var(--kd-bone);
+  --kd-code-border:  var(--kd-stone);
+  --kd-border:       var(--kd-stone);
+
+  /* — Typography — */
+  --kd-font-display: 'Syne', system-ui, sans-serif;
+  --kd-font-body:    'Literata', Georgia, serif;
+  --kd-font-mono:    'IBM Plex Mono', ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+
+  /* — Syntax highlighting — */
+  --kd-syn-keyword:    var(--kd-teal);
+  --kd-syn-type:       var(--kd-olive);
+  --kd-syn-effect:     var(--kd-scarlet);
+  --kd-syn-string:     #A68834;
+  --kd-syn-comment:    var(--kd-slate-light);
+  --kd-syn-function:   var(--kd-ink);
+  --kd-syn-operator:   var(--kd-slate-light);
+  --kd-syn-param:      var(--kd-slate);
+
+  /* — Signature block borders — */
+  --kd-sig-pure:       var(--kd-olive);
+  --kd-sig-effectful:  var(--kd-scarlet);
+  --kd-sig-polymorphic: var(--kd-teal);
+
+  /* — Effect badge colors — */
+  --kd-badge-io-bg:    var(--kd-olive);
+  --kd-badge-io-fg:    var(--kd-paper);
+  --kd-badge-fail-bg:  var(--kd-gold);
+  --kd-badge-fail-fg:  var(--kd-ink);
+  --kd-badge-async-bg: var(--kd-teal);
+  --kd-badge-async-fg: var(--kd-bone);
+  --kd-badge-pure-bg:  var(--kd-stone);
+  --kd-badge-pure-fg:  var(--kd-slate);
+}
+
+/* ============================================================
+   2. Dark mode
+   ============================================================ */
+
+[data-theme="dark"],
+.kd-dark {
+  --kd-bg:           #151311;
+  --kd-surface:      #1E1C19;
+  --kd-elevated:     #252220;
+  --kd-text:         #D0C8BE;
+  --kd-heading:      #FAF8F4;
+  --kd-secondary:    #8A8070;
+  --kd-link:         #4AADAD;
+  --kd-link-hover:   #E86040;
+  --kd-effect:       #E86040;
+  --kd-code-bg:      #1A1816;
+  --kd-code-border:  #252220;
+  --kd-border:       #252220;
+
+  --kd-syn-keyword:  #5EC4C4;
+  --kd-syn-type:     #8AAD50;
+  --kd-syn-effect:   #E86040;
+  --kd-syn-string:   #D4B85C;
+  --kd-syn-comment:  #8A8070;
+  --kd-syn-function: #FAF8F4;
+  --kd-syn-operator: #8A8070;
+  --kd-syn-param:    #D0C8BE;
+
+  --kd-sig-pure:      #6B8240;
+  --kd-sig-effectful:  #E05A3F;
+  --kd-sig-polymorphic: #3FA0A0;
+
+  --kd-badge-io-bg:   #3A4A20;
+  --kd-badge-io-fg:   #C8E090;
+  --kd-badge-fail-bg: #4A3818;
+  --kd-badge-fail-fg: #E8C860;
+  --kd-badge-async-bg:#1A4040;
+  --kd-badge-async-fg:#80D8D8;
+  --kd-badge-pure-bg: #252220;
+  --kd-badge-pure-fg: #8A8070;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --kd-bg:           #151311;
+    --kd-surface:      #1E1C19;
+    --kd-elevated:     #252220;
+    --kd-text:         #D0C8BE;
+    --kd-heading:      #FAF8F4;
+    --kd-secondary:    #8A8070;
+    --kd-link:         #4AADAD;
+    --kd-link-hover:   #E86040;
+    --kd-effect:       #E86040;
+    --kd-code-bg:      #1A1816;
+    --kd-code-border:  #252220;
+    --kd-border:       #252220;
+
+    --kd-syn-keyword:  #5EC4C4;
+    --kd-syn-type:     #8AAD50;
+    --kd-syn-effect:   #E86040;
+    --kd-syn-string:   #D4B85C;
+    --kd-syn-comment:  #8A8070;
+    --kd-syn-function: #FAF8F4;
+    --kd-syn-operator: #8A8070;
+    --kd-syn-param:    #D0C8BE;
+
+    --kd-sig-pure:      #6B8240;
+    --kd-sig-effectful:  #E05A3F;
+    --kd-sig-polymorphic: #3FA0A0;
+
+    --kd-badge-io-bg:   #3A4A20;
+    --kd-badge-io-fg:   #C8E090;
+    --kd-badge-fail-bg: #4A3818;
+    --kd-badge-fail-fg: #E8C860;
+    --kd-badge-async-bg:#1A4040;
+    --kd-badge-async-fg:#80D8D8;
+    --kd-badge-pure-bg: #252220;
+    --kd-badge-pure-fg: #8A8070;
+  }
+}
+
+/* ============================================================
+   3. Base reset and typography
+   ============================================================ */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 100%;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  background: var(--kd-bg);
+  color: var(--kd-text);
+  font-family: var(--kd-font-body);
+  font-size: 1.06rem;
+  line-height: 1.72;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* — Reading mode (book, landing) is default above.
+     Reference mode (API docs) overrides. — */
+.kd-reference body,
+body.kd-reference {
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+/* ============================================================
+   4. Headings — all lowercase, Syne display
+   ============================================================ */
+
+h1, h2, h3, h4, h5, h6,
+.kd-h1, .kd-h2, .kd-h3 {
+  font-family: var(--kd-font-display);
+  color: var(--kd-heading);
+  font-weight: 700;
+  text-transform: lowercase;
+  letter-spacing: -0.01em;
+}
+
+h1, .kd-h1 { font-size: 2.25rem; line-height: 1.15; margin-bottom: 1rem; }
+h2, .kd-h2 { font-size: 1.7rem;  line-height: 1.2;  margin-top: 2.5rem; margin-bottom: 0.75rem; }
+h3, .kd-h3 { font-size: 1.28rem; line-height: 1.3;  margin-top: 2rem;   margin-bottom: 0.5rem; }
+
+.kd-reference h1, .kd-reference .kd-h1 { font-size: 1.7rem; }
+.kd-reference h2, .kd-reference .kd-h2 { font-size: 1.28rem; }
+.kd-reference h3, .kd-reference .kd-h3 { font-size: 1.06rem; }
+
+/* ============================================================
+   5. Links
+   ============================================================ */
+
+a {
+  color: var(--kd-link);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+a:hover {
+  color: var(--kd-link-hover);
+}
+
+/* ============================================================
+   6. Inline code
+   ============================================================ */
+
+code {
+  font-family: var(--kd-font-mono);
+  font-size: 0.87em;
+  background: var(--kd-code-bg);
+  padding: 0.1em 0.35em;
+  border-radius: 2px;
+}
+
+.kd-reference code {
+  font-size: 0.85em;
+}
+
+/* ============================================================
+   7. Code blocks
+   ============================================================ */
+
+pre {
+  font-family: var(--kd-font-mono);
+  font-size: 0.86rem;
+  line-height: 1.7;
+  background: var(--kd-code-bg);
+  padding: 1rem 1.25rem;
+  overflow-x: auto;
+  border: 1px solid var(--kd-code-border);
+}
+
+pre code {
+  background: none;
+  padding: 0;
+  font-size: inherit;
+}
+
+.kd-reference pre {
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+
+/* ============================================================
+   8. Syntax highlighting classes
+   ============================================================ */
+
+.kd-syn-keyword  { color: var(--kd-syn-keyword); }
+.kd-syn-type     { color: var(--kd-syn-type); }
+.kd-syn-effect   { color: var(--kd-syn-effect); }
+.kd-syn-string   { color: var(--kd-syn-string); }
+.kd-syn-comment  { color: var(--kd-syn-comment); font-style: italic; }
+.kd-syn-function { color: var(--kd-syn-function); }
+.kd-syn-operator { color: var(--kd-syn-operator); }
+.kd-syn-param    { color: var(--kd-syn-param); }
+
+/* ============================================================
+   9. Signature blocks
+   ============================================================ */
+
+.kd-sig {
+  font-family: var(--kd-font-mono);
+  font-size: 0.9rem;
+  line-height: 1.55;
+  background: var(--kd-surface);
+  padding: 0.75rem 1rem;
+  border-left: 3px solid var(--kd-sig-pure);
+  margin: 1rem 0;
+}
+
+.kd-reference .kd-sig {
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
+.kd-sig--effectful {
+  border-left-color: var(--kd-sig-effectful);
+}
+
+.kd-sig--polymorphic {
+  border-left-color: var(--kd-sig-polymorphic);
+}
+
+/* ============================================================
+   10. Effect badges
+   ============================================================ */
+
+.kd-badge {
+  display: inline-block;
+  font-family: var(--kd-font-mono);
+  font-size: 0.65rem;
+  font-weight: 500;
+  line-height: 1;
+  padding: 0.2em 0.45em;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  vertical-align: middle;
+}
+
+.kd-badge--io {
+  background: var(--kd-badge-io-bg);
+  color: var(--kd-badge-io-fg);
+}
+
+.kd-badge--fail {
+  background: var(--kd-badge-fail-bg);
+  color: var(--kd-badge-fail-fg);
+}
+
+.kd-badge--async {
+  background: var(--kd-badge-async-bg);
+  color: var(--kd-badge-async-fg);
+}
+
+.kd-badge--pure {
+  background: var(--kd-badge-pure-bg);
+  color: var(--kd-badge-pure-fg);
+}
+
+/* ============================================================
+   11. Effect arrow coloring
+   ============================================================ */
+
+.kd-arrow {
+  color: var(--kd-effect);
+}
+
+.kd-arrow--pure {
+  color: var(--kd-syn-operator);
+}
+
+/* ============================================================
+   12. Horizontal rules (architectural)
+   ============================================================ */
+
+hr {
+  border: none;
+  margin: 2rem 0;
+}
+
+hr.kd-rule--major {
+  border-top: 3px solid var(--kd-olive);
+}
+
+hr.kd-rule--section {
+  border-top: 2px solid var(--kd-heading);
+}
+
+hr.kd-rule--item {
+  border-top: 1px solid var(--kd-border);
+}
+
+hr.kd-rule--reveal {
+  border-top: 2px solid var(--kd-scarlet);
+}
+
+/* ============================================================
+   13. Navigation bar
+   ============================================================ */
+
+.kd-nav {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  font-family: var(--kd-font-mono);
+  font-size: 0.82rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--kd-border);
+}
+
+.kd-nav__logo {
+  font-weight: 700;
+  color: var(--kd-heading);
+  white-space: nowrap;
+}
+
+.kd-nav__logo .kd-arrow {
+  color: var(--kd-effect);
+}
+
+.kd-nav__sep {
+  color: var(--kd-border);
+}
+
+.kd-nav__link {
+  color: var(--kd-secondary);
+  text-decoration: none;
+  padding-bottom: 0.3rem;
+}
+
+.kd-nav__link:hover {
+  color: var(--kd-heading);
+}
+
+.kd-nav__link--active {
+  color: var(--kd-heading);
+  border-bottom: 2px solid var(--kd-olive);
+}
+
+/* ============================================================
+   14. Manuscript layout (landing, book, spec)
+   ============================================================ */
+
+.kd-manuscript {
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+}
+
+/* ============================================================
+   15. Three-panel layout (API docs, package registry)
+   ============================================================ */
+
+.kd-panels {
+  display: grid;
+  grid-template-columns: 14rem 1fr 14rem;
+  gap: 0;
+  min-height: 100vh;
+}
+
+.kd-panels__sidebar {
+  font-family: var(--kd-font-mono);
+  font-size: 0.78rem;
+  padding: 1.5rem 1rem;
+  border-right: 1px solid var(--kd-border);
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+
+.kd-panels__main {
+  padding: 2rem 2.5rem;
+  max-width: 52rem;
+}
+
+.kd-panels__annotations {
+  font-size: 0.82rem;
+  color: var(--kd-secondary);
+  padding: 1.5rem 1rem;
+  border-left: 1px solid var(--kd-border);
+}
+
+.kd-reference .kd-panels__sidebar {
+  font-size: 0.75rem;
+}
+
+@media (max-width: 72rem) {
+  .kd-panels {
+    grid-template-columns: 1fr;
+  }
+  .kd-panels__sidebar {
+    position: static;
+    height: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--kd-border);
+  }
+  .kd-panels__annotations {
+    display: none;
+  }
+}
+
+/* ============================================================
+   16. Sidebar items
+   ============================================================ */
+
+.kd-sidebar__section {
+  margin-bottom: 1.5rem;
+}
+
+.kd-sidebar__heading {
+  font-family: var(--kd-font-display);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--kd-secondary);
+  margin-bottom: 0.5rem;
+}
+
+.kd-sidebar__link {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.2rem 0.5rem;
+  color: var(--kd-text);
+  text-decoration: none;
+}
+
+.kd-sidebar__link:hover {
+  color: var(--kd-heading);
+  background: var(--kd-surface);
+}
+
+.kd-sidebar__link--active {
+  color: var(--kd-heading);
+  background: var(--kd-surface);
+  border-left: 2px solid var(--kd-olive);
+  padding-left: calc(0.5rem - 2px);
+}
+
+/* ============================================================
+   17. Dark mode toggle
+   ============================================================ */
+
+.kd-theme-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: var(--kd-font-mono);
+  font-size: 0.9rem;
+  color: var(--kd-secondary);
+  padding: 0.2rem;
+}
+
+.kd-theme-toggle:hover {
+  color: var(--kd-heading);
+}
+
+/* ============================================================
+   18. Paragraphs and lists
+   ============================================================ */
+
+p {
+  margin-bottom: 1rem;
+}
+
+ul, ol {
+  margin-bottom: 1rem;
+  padding-left: 1.5rem;
+}
+
+li {
+  margin-bottom: 0.25rem;
+}
+
+/* ============================================================
+   19. Tables
+   ============================================================ */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+  margin: 1rem 0;
+}
+
+th {
+  font-family: var(--kd-font-mono);
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-align: left;
+  color: var(--kd-secondary);
+  border-bottom: 2px solid var(--kd-border);
+  padding: 0.5rem 0.75rem;
+}
+
+td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--kd-border);
+}
+
+/* ============================================================
+   20. Logo rendering
+   ============================================================ */
+
+.kd-logo {
+  font-family: var(--kd-font-mono);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.kd-logo__bracket {
+  color: var(--kd-effect);
+}
+
+.kd-logo__name {
+  color: var(--kd-heading);
+}
