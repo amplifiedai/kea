@@ -1821,6 +1821,125 @@
     }
 
     #[test]
+    fn compile_rejects_pipe_operator_syntax() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  x |> f\n",
+            "kea-cli-reject-pipe-operator",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject pipe syntax");
+        assert!(
+            err.contains("expected pattern"),
+            "expected no-pipe diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_rejects_coloncolon_namespace_syntax() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  List::length([])\n",
+            "kea-cli-reject-coloncolon",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject `::` namespace syntax");
+        assert!(
+            err.contains("expected expression"),
+            "expected no-coloncolon diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_rejects_legacy_derive_attribute_syntax() {
+        let source_path = write_temp_source(
+            "#[derive(Eq)]\nstruct Point\n  x: Int\n\nfn main() -> Int\n  0\n",
+            "kea-cli-reject-legacy-derive",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject legacy derive syntax");
+        assert!(
+            err.contains("legacy `#[derive(...)]` is not supported; use postfix `deriving Eq, Display`"),
+            "expected legacy derive diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_rejects_frame_literal_syntax() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  let _x = frame { x: [1, 2, 3] }\n  0\n",
+            "kea-cli-reject-frame-literal",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject frame literals");
+        assert!(
+            err.contains("`frame` literals are not supported in Kea v0"),
+            "expected frame-literal diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_rejects_sql_block_syntax() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  let _x = sql { SELECT 1 AS x }\n  0\n",
+            "kea-cli-reject-sql-block",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject sql blocks");
+        assert!(
+            err.contains("`sql { ... }` blocks are not supported in Kea v0"),
+            "expected sql-block diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_rejects_html_block_syntax() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  let _x = html { <h1>${:name}</h1> }\n  0\n",
+            "kea-cli-reject-html-block",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject html blocks");
+        assert!(
+            err.contains("`html { ... }` blocks are not supported in Kea v0"),
+            "expected html-block diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_rejects_markdown_block_syntax() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  let _x = markdown { # ${:title}\\n\\nCount: ${1} }\n  0\n",
+            "kea-cli-reject-markdown-block",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject markdown blocks");
+        assert!(
+            err.contains("`markdown { ... }` blocks are not supported in Kea v0"),
+            "expected markdown-block diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_rejects_string_interpolation_when_show_is_missing() {
         let source_path = write_temp_source(
             "struct Foo\n  x: Int\n\nfn main() -> Int\n  let f = Foo { x: 1 }\n  if \"{f}\" == \"\"\n    1\n  else\n    0\n",
@@ -3179,6 +3298,20 @@
     }
 
     #[test]
+    fn compile_and_execute_multiple_closures_capture_same_heap_value_exit_code() {
+        let source_path = write_temp_source(
+            "use List\n\nfn main() -> Int\n  let xs = List.Cons(1, List.Cons(2, List.Nil))\n  let f = || List.length(xs)\n  let g = || List.length(xs) + 1\n  f() + g()\n",
+            "kea-cli-multi-closure-shared-capture",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 5);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_fail_only_main_ok_path_exit_code() {
         let source_path = write_temp_source(
             "effect Fail\n  fn fail(err: Int) -> Never\n\nfn main() -[Fail]> Int\n  12\n",
@@ -3593,6 +3726,23 @@
         assert!(
             err.contains("unresolved qualified call target `Inc.inc`"),
             "expected unresolved qualified call target diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_rejects_duplicate_trait_impl_for_same_type() {
+        let source_path = write_temp_source(
+            "trait Inc a\n  fn inc(x: a) -> a\n\nInt as Inc\n  fn inc(x: Int) -> Int\n    x + 1\n\nInt as Inc\n  fn inc(x: Int) -> Int\n    x + 2\n\nfn main() -> Int\n  0\n",
+            "kea-cli-trait-duplicate-impl",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject duplicate trait impl");
+        assert!(
+            err.contains("already implemented") || err.contains("conflicting implementation"),
+            "expected duplicate impl coherence diagnostic, got: {err}"
         );
 
         let _ = std::fs::remove_file(source_path);
