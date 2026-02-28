@@ -243,7 +243,7 @@ fn collect(f: () -[Generate a, e]> Unit) -[e]> List a
   ...
 
 -- usage: for-comprehension via effects
-let evens = collect || ->
+let evens = collect ||
   for x in xs
     if x % 2 == 0
       Generate.yield(x * 2)
@@ -319,7 +319,7 @@ use. Benchmark comparison: HAMT Map within 5x of Rust HashMap for
 10K-entry lookup.
 
 **Tier 3:** @derive(Show, Eq, Ord) works on structs and enums.
-Foldable/Iterator enable `list.fold(0, |a, b| -> a + b)`. JSON
+Foldable/Iterator enable `list.fold(0, |a, b| a + b)`. JSON
 round-trips through Encode/Decode. HTTP server with row-polymorphic
 middleware composition — at least one middleware that adds a context
 field and one that adds an effect, composed together with correct
@@ -380,7 +380,7 @@ part. Middleware transforms the request's row type:
 -- Auth middleware: removes user requirement, adds Net + Fail AuthError
 fn auth(_ next: { user: User | r } -[e]> Response)
     -> { headers: Headers | r } -[Net, Fail AuthError, e]> Response
-  |req| ->
+  |req|
     let token = req.headers.get("Authorization")
       .ok_or(AuthError.missing_token())?
     let user = Auth.verify(token)?

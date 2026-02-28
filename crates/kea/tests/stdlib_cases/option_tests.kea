@@ -6,13 +6,13 @@ test "Option.unwrap_or"
   Test.assert(Option.unwrap_or(Some(7), 0) == 7)
 
 test "Option.map.and_then.filter"
-  let mapped = Option.map(Some(2), |x| -> x + 1)
+  let mapped = Option.map(Some(2), |x| x + 1)
   Test.assert(Option.unwrap_or(mapped, 0) == 3)
-  let chained = Option.and_then(Some(2), |x| -> Some(x + 3))
+  let chained = Option.and_then(Some(2), |x| Some(x + 3))
   Test.assert(Option.unwrap_or(chained, 0) == 5)
-  let filtered = Option.filter(Some(2), |x| -> x > 1)
+  let filtered = Option.filter(Some(2), |x| x > 1)
   Test.assert(Option.is_some(filtered))
-  let filtered_out = Option.filter(Some(0), |x| -> x > 1)
+  let filtered_out = Option.filter(Some(0), |x| x > 1)
   Test.assert(Option.is_none(filtered_out))
 
 test "Option.predicates"
@@ -20,9 +20,9 @@ test "Option.predicates"
   Test.assert(Option.is_none(None))
 
 test "Option.or_else"
-  let some_kept = Option.or_else(Some(7), || -> Some(0))
+  let some_kept = Option.or_else(Some(7), || Some(0))
   Test.assert(Option.unwrap_or(some_kept, 0) == 7)
-  let none_fallback = Option.or_else(None, || -> Some(3))
+  let none_fallback = Option.or_else(None, || Some(3))
   Test.assert(Option.unwrap_or(none_fallback, 0) == 3)
 
 test "Option.unwrap.catch"

@@ -85,7 +85,7 @@ struct Main
   fn main() -[IO]> Unit
     let resp = Http.get("https://api.example.com/data")
     let users = Json.decode(resp.body, List User).unwrap()
-    IO.stdout(users.map(|u| -> u.name).join(", "))
+    IO.stdout(users.map(|u| u.name).join(", "))
 ```
 
 First run: resolve, download, compile, cache, execute.

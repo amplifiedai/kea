@@ -166,7 +166,7 @@ function types). This brief adds:
   ```
   handle expr
     Fail.fail(error) -> Err(error)
-  then |value| -> Ok(value)
+  then |value| Ok(value)
   ```
 - Test: `?` operator works, `catch` converts effectful to Result
 

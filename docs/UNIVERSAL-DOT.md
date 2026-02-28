@@ -27,8 +27,8 @@ Kea keeps a single surface:
 
 ```kea
 users
-  .filter(|u| -> u.active)
-  .map(|u| -> u.name)
+  .filter(|u| u.active)
+  .map(|u| u.name)
   .sort()
   .take(10)
 ```

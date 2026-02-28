@@ -266,7 +266,7 @@ Create `crates/kea/` (the binary crate):
 - AOT: `kea build` produces a working binary
 - JIT: `kea run` executes correctly
 - Tail calls: self-recursive function doesn't overflow on large input
-- Lambda syntax: `|x| -> x * 2` parses, `(x) -> x * 2` is rejected
+- Lambda syntax: `|x| x * 2` parses, `(x) -> x * 2` is rejected
 - Deferred (blocked on `kea-eval`): snapshot parity tests comparing
   compiled output to evaluator output for the same programs
 
@@ -288,7 +288,7 @@ Create `crates/kea/` (the binary crate):
   but the harness must exist so 0e can add gates
 - Tail call optimization: self-recursive tail calls use `return_call`,
   no stack overflow on `factorial(100000)`
-- Lambda syntax matches KERNEL §10.3: `|x| -> expr`, not `(x) -> expr`
+- Lambda syntax matches KERNEL §10.3: `|x| expr`, not `(x) -> expr`
 - Parametric ADTs parse: `type Option a = Some(a) | None`
 - Row type annotations parse: `fn f(x: { name: String | r }) -> String`
 - Trait type parameters parse: `trait Show a`
@@ -382,7 +382,7 @@ the parser doesn't accept. They block writing real Kea programs.
 ### 1. Lambda syntax (KERNEL §10.3)
 
 **Current parser:** `(x) -> expr` and `(x, y) -> expr`
-**Spec:** `|x| -> expr` and `|a, b| -> a + b`
+**Spec:** `|x| expr` and `|a, b| a + b`
 
 The parser must be updated to match the spec. The `|...|` delimiter
 syntax is better:
@@ -391,7 +391,7 @@ syntax is better:
 - Consistent with Rust/Ruby convention for closures
 
 The `(x) -> expr` form should become a parse error (or at minimum a
-deprecation warning) once `|x| -> expr` is implemented.
+deprecation warning) once `|x| expr` is implemented.
 
 ### 2. Parametric ADTs — CRITICAL
 
@@ -493,8 +493,8 @@ effect Log
   fn log(msg: Int) -> Unit
 
 fn curried_test() -[Log]> Unit
-  let apply = |f| -> |x| -> f(x)
-  let logger = |y: Int| -> Log.log(y)
+  let apply = |f| |x| f(x)
+  let logger = |y: Int| Log.log(y)
   apply(logger)(42)
 ```
 
@@ -504,7 +504,7 @@ fn curried_test() -[Log]> Unit
 
 **Root cause (hypothesis):** When `apply` is inferred, its type is
 roughly `(f: a -[e]> b) -> (x: a) -[e]> b`. The inner lambda
-`|x| -> f(x)` captures `f` and calls it — `f`'s effect row `e`
+`|x| f(x)` captures `f` and calls it — `f`'s effect row `e`
 should propagate to the inner lambda's effect row and then to the
 outer call site. But the effect variable `e` appears to remain
 unconstrained (`e0`) after `apply(logger)` is called, even though
@@ -517,7 +517,7 @@ unconstrained (`e0`) after `apply(logger)` is called, even though
   `fn` type annotation is being fed into **record** row unification
   instead of **effect** row unification. This is a stronger signal
   than pure inference failure.
-- Inline lambda application `(|f| -> |x| -> f(x))(logger)(42)`
+- Inline lambda application `(|f| |x| f(x))(logger)(42)`
   doesn't parse (separate issue, low priority).
 
 **Likely location:** Two-part issue:
@@ -534,7 +534,7 @@ unconstrained (`e0`) after `apply(logger)` is called, even though
 2. **Unannotated curried case loses effect variable binding.**
    When `apply(logger)` is called, `logger`'s concrete `[Log]`
    effect should unify with `apply`'s effect variable `e`. The
-   returned closure `|x| -> f(x)` should then carry `[Log]` as
+   returned closure `|x| f(x)` should then carry `[Log]` as
    its effect. But `e` remains unconstrained (`e0`) — the
    unification of `logger`'s effect row with `apply`'s parameter
    type may not be reaching the effect variable in the returned
@@ -768,11 +768,11 @@ Resolved by:
 - 2026-02-26 20:22: Added explicit OR+guard regression coverage for both literal and unit-enum constructor arms (`0 | 1 when ...`, `Color.Red | Color.Green when ...`) in HIR and CLI tests to lock in combined condition lowering semantics.
 - 2026-02-26 20:24: Guarded fallback arms now stay on the lowered literal-case path when an eventual fallback exists: supports `n when ...` and `_ when ...` fallback arms with correct ordering against later unconditional fallbacks, plus HIR/CLI regressions.
 - 2026-02-26 20:28: OR-pattern aliasing widened: literal OR alternatives that bind the same `as` name (`0 as n | 1 as n`) now lower on the compiled path (including end-to-end CLI execution), while ambiguous mixed bindings still conservatively fallback.
-- 2026-02-26 20:47: Parser gap slice landed for KERNEL alignment: `|...| ->` lambdas enabled (legacy `(x) ->` rejected), inline `if .. then .. else` enabled, parametric ADT headers and trait bare type params parse, and row type annotations (`{ name: String | r }`) parse; corpus snapshots and parser tests updated.
+- 2026-02-26 20:47: Parser gap slice landed for KERNEL alignment: `|...|` lambdas enabled (legacy `(x) ->` rejected), inline `if .. then .. else` enabled, parametric ADT headers and trait bare type params parse, and row type annotations (`{ name: String | r }`) parse; corpus snapshots and parser tests updated.
 - 2026-02-26 20:47: Cranelift TCO slice landed for self-recursive tail calls: MIR tail-call detection now lowers to `return_call`, call-conv guarded for Apple AArch64 verifier constraints, and pass stats/regressions added for tail-self-call detection and release-prefix handling.
 - 2026-02-26 20:47: Phantom IO effect leak on higher-order calls fixed: unknown callable effects now infer as open rows (not forced `[IO]`), recursive lookup can read function effects through `forall` wrappers, and regression coverage added to block reintroduction.
 - 2026-02-26 21:25: Phantom IO closure-escape root cause fixed: let-bound call results now extract returned callable effect metadata from callee structural return types (`let f = make_emitter(); f(42)` preserves `Emit` instead of falling back to phantom `IO`), with new `kea-infer` and `kea-mcp` regression tests.
-- 2026-02-27 03:37: Curried higher-order effect propagation fixed for both reported failure modes: (1) annotated callback params no longer fail with spurious "missing field `Log`" from pure-only call unification, and (2) unannotated curried callback application now propagates concrete argument effect rows through `|f| -> |x| -> f(x)` chains; added paired `kea-infer` regressions and MCP integration regression coverage.
+- 2026-02-27 03:37: Curried higher-order effect propagation fixed for both reported failure modes: (1) annotated callback params no longer fail with spurious "missing field `Log`" from pure-only call unification, and (2) unannotated curried callback application now propagates concrete argument effect rows through `|f| |x| f(x)` chains; added paired `kea-infer` regressions and MCP integration regression coverage.
 - 2026-02-27 03:37: Parser call-syntax compatibility advanced for namespace qualification: lexer now tokenizes `::` (`ColonColon`), postfix parsing accepts `Module::fn(...)` alongside existing dot calls, and handler clause heads accept `Effect::op(...)`; added lexer + parser regressions (`List::map`, `Log::log(...)`) while preserving existing dot-form tests during transition.
 - 2026-02-26 21:04: Backend-neutral layout side-table slice landed in MIR: `lower_hir_module` now extracts record field-order metadata and sum variant-tag metadata from raw HIR declarations into `MirLayoutCatalog`, with regression tests proving declaration-order preservation for record fields and enum variant tags.
 - 2026-02-26 21:06: Codegen now validates MIR layout side-tables before backend lowering: duplicate type declarations, duplicate record fields, duplicate sum variants, and non-contiguous variant tags are rejected with explicit diagnostics, with targeted crate tests covering failure modes.
@@ -803,9 +803,9 @@ Resolved by:
 - 2026-02-27 09:50: `catch` compiled-path support landed end-to-end on the Fail Result ABI path: HIR recognizes catch-desugared handles as structured `Catch`, MIR marks caught calls with fail-result capture metadata (no generic handler runtime), and codegen captures Result handles directly for case analysis. Fixed a runtime ABI soundness bug where declared effect contracts (for example `-[Fail E]>`) were validated but not persisted in function runtime metadata, which caused pure-inferred fail-declared callees to mismatch `catch` capture expectations and segfault. Added CLI regressions for both `catch` Err and `catch` Ok paths.
 - 2026-02-27 10:04: String literal runtime lowering landed on the compiled path: Cranelift codegen now lowers `MirLiteral::String` by heap-allocating NUL-terminated bytes via the existing malloc-backed aggregate allocator and treating `String` as a pointer-handle ABI type (`I64`) in signatures/calls. Added `kea-codegen` regression `cranelift_backend_compiles_string_literal_module` and wired allocator detection so string-literal modules import malloc when needed.
 - 2026-02-27 10:09: `IO::stdout` now runs on the compiled path: MIR lowers qualified `IO::stdout(...)` calls to `EffectOp { class: Direct, effect: IO, operation: stdout }`, and Cranelift lowers that op to an imported `puts` call (with string-literal heap pointers). Added MIR + codegen regressions and a CLI end-to-end test (`compile_and_execute_io_stdout_unit_main_exit_code`), establishing `hello world` execution (`fn main() -[IO]> Unit\n  IO::stdout("hello world")`) with JIT exit code `0`.
-- 2026-02-27 10:13: Let-bound lambda calls now compile on the MIR path: local bindings of the shape `let f = |x| -> ...` are tracked as local lambda metadata and `f(args...)` is lowered by inlining the lambda body with argument bindings instead of emitting an unresolved local-function call. Added MIR regression (`lower_hir_module_inlines_let_bound_lambda_call`) and CLI end-to-end regression (`compile_and_execute_let_bound_lambda_call_exit_code`).
-- 2026-02-27 10:21: Higher-order lambda literals passed as call arguments now compile (`apply(|x| -> x + 1, 41)`): MIR lambda lifting now resolves lambda function types from known callee signatures when HIR expression types are still `Dynamic`, synthesizes typed lifted lambda functions (`FunctionRef`) with stable names, and routes them through existing indirect-call lowering. Added CLI regression `compile_and_execute_higher_order_lambda_argument_exit_code`.
-- 2026-02-27 10:33: Direct lambda-call expressions now compile on the MIR path (`(|x| -> x + 1)(41)`): `lower_call_expr` now inlines lambda-callee calls by binding parameters to lowered argument values in lexical scope and lowering the lambda body directly, avoiding dynamic function-ref fallback for this form. Added MIR regression `lower_hir_module_inlines_direct_lambda_call` and CLI regression `compile_and_execute_direct_lambda_call_exit_code`.
+- 2026-02-27 10:13: Let-bound lambda calls now compile on the MIR path: local bindings of the shape `let f = |x| ...` are tracked as local lambda metadata and `f(args...)` is lowered by inlining the lambda body with argument bindings instead of emitting an unresolved local-function call. Added MIR regression (`lower_hir_module_inlines_let_bound_lambda_call`) and CLI end-to-end regression (`compile_and_execute_let_bound_lambda_call_exit_code`).
+- 2026-02-27 10:21: Higher-order lambda literals passed as call arguments now compile (`apply(|x| x + 1, 41)`): MIR lambda lifting now resolves lambda function types from known callee signatures when HIR expression types are still `Dynamic`, synthesizes typed lifted lambda functions (`FunctionRef`) with stable names, and routes them through existing indirect-call lowering. Added CLI regression `compile_and_execute_higher_order_lambda_argument_exit_code`.
+- 2026-02-27 10:33: Direct lambda-call expressions now compile on the MIR path (`(|x| x + 1)(41)`): `lower_call_expr` now inlines lambda-callee calls by binding parameters to lowered argument values in lexical scope and lowering the lambda body directly, avoiding dynamic function-ref fallback for this form. Added MIR regression `lower_hir_module_inlines_direct_lambda_call` and CLI regression `compile_and_execute_direct_lambda_call_exit_code`.
 - 2026-02-27 10:37: Added source-level TCO regression coverage with deep self-tail recursion (`count(100000, 0)`): CLI test `compile_and_execute_tail_recursive_countdown_exit_code` validates compiled-path execution for large tail-recursive depth, complementing existing MIR/codegen tail-call detection/unit tests.
 - 2026-02-27 10:38: Row-polymorphic record field access now stays on the compiled path for concrete carriers (`fn get_age(u: { age: Int | r }) -> Int` with `User` call sites): MIR lowering now resolves `Type::AnonRecord` field loads/binds to a unique concrete record layout from the layout catalog when one unambiguous carrier matches the required field set, preventing missing-return/unsupported-op fallbacks. Added MIR regression `lower_hir_module_resolves_record_field_load_for_anon_record_param` and source-level CLI regression `compile_and_execute_row_polymorphic_record_field_access_exit_code`.
 - 2026-02-27 10:43: Capturing-lambda factory calls now stay on the compiled path for common pure patterns (`fn make_adder(y) -> fn(Int) -> Int; let f = make_adder(2); f(40)` and immediate call forms): MIR now detects function-returned lambda factories, binds capture arguments at call sites, and inlines the resulting local lambda body instead of emitting unresolved closure-pointer runtime paths. Lifted lambda lowering now includes in-scope captures as explicit leading parameters so generated helper functions compile deterministically even when closure conversion is deferred. Added MIR regression `lower_hir_module_inlines_let_bound_lambda_from_factory_call` and CLI regression `compile_and_execute_returned_capturing_lambda_call_exit_code`.
@@ -836,7 +836,7 @@ Resolved by:
 - 2026-02-27 12:33: Closed alias-mediated record payload lowering gap in constructor cases (`type Wrap = W(UserAlias) | N` where `alias UserAlias = User`). HIR variant field-type metadata now resolves monomorphic alias names while collecting constructor variant tags, so payload binds/checks retain concrete record types through alias indirection instead of degrading to `Dynamic` and falling off compiled path. Added CLI regression `compile_and_execute_sum_payload_record_alias_type_exit_code`; alias-backed record payload destructuring now executes end-to-end on compiled path.
 - 2026-02-27 12:46: Closed trait-qualified runtime call crash on compiled path: impl methods are now lifted into runtime function declarations during CLI pipeline expansion, with unique `Trait::method` names when only one impl exists (and disambiguated `Trait::Type::method` lifts when multiple impls exist). MIR call lowering now treats known qualified names as local callees (not external symbols) and emits `Unsupported` for unresolved qualified call targets instead of JIT-link panics. Added CLI regressions `compile_and_execute_trait_qualified_method_single_impl_exit_code` (green) and `compile_and_execute_trait_qualified_method_ambiguous_impls_error` (deterministic compile-time error).
 - 2026-02-27 13:15: Closure values now use a compiled runtime representation end-to-end on the pure path: MIR gained `ClosureInit` and `ClosureCaptureLoad`, lambda/top-level function values now lower to closure objects (`entry ptr + captures`), and indirect calls now dispatch through closure entry wrappers with hidden env-pointer ABI instead of raw function pointers. Codegen lowers closure allocation/load/call paths directly, including fail-result ABI compatibility for higher-order calls.
-- 2026-02-27 13:15: Closed the remaining let-bound source lambda regression in CLI flow (`let f = |x| -> ...; f(41)`): call lowering now materializes unresolved local lambda vars to typed closure values at call sites (using call-site arg/return typing when HIR leaves function vars dynamic), avoiding unresolved `MirCallee::Local("f")` and missing-return fallthrough. Updated MIR regressions and CLI regression expectations to lock closure-dispatch behavior (`compile_and_execute_let_bound_lambda_call_exit_code`, escaping capturing closures through `apply(make_adder(2), 40)` now compile and execute).
+- 2026-02-27 13:15: Closed the remaining let-bound source lambda regression in CLI flow (`let f = |x| ...; f(41)`): call lowering now materializes unresolved local lambda vars to typed closure values at call sites (using call-site arg/return typing when HIR leaves function vars dynamic), avoiding unresolved `MirCallee::Local("f")` and missing-return fallthrough. Updated MIR regressions and CLI regression expectations to lock closure-dispatch behavior (`compile_and_execute_let_bound_lambda_call_exit_code`, escaping capturing closures through `apply(make_adder(2), 40)` now compile and execute).
 - 2026-02-27 13:19: Runtime refcount ops are now active in codegen for existing MIR `Retain`/`Release`: `Retain` increments the heap-header counter, `Release` decrements and conditionally frees on zero via imported `free`, and module import planning now declares `free` whenever releases are present. Added JIT regression `cranelift_backend_executes_release_of_heap_value` to exercise real heap allocation + release on the compiled path.
 - 2026-02-27 13:22: Benchmark checkpoint after closure + refcount runtime slices: `mise run bench:regression` and `mise run bench:programs:regression` both pass with 0 failures against current Stage B baselines; worst micro delta is `lower_hir_to_mir(64)` at +12.76% (under 30% gate), and whole-program deltas remain negative (`alloc_chain -51.82%`, `case_chain -43.56%`, `fib -42.22%`).
 - 2026-02-27 13:25: MIR now emits scoped RC ops for dropped heap locals on the compiled path: block lowering snapshots/restores lexical scope, inserts `Release` for heap-managed bindings that go out of scope (except returned values), and emits `Retain` for heap alias rebindings (`let y = x`) so alias drops balance correctly. Added MIR regressions `lower_hir_module_releases_dropped_heap_locals_at_block_exit` and `lower_hir_module_retains_heap_var_aliases_before_binding`; `kea-mir`, `kea-codegen`, and `kea` CLI suites remain green.

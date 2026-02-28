@@ -463,7 +463,7 @@ test "ANF validation catches non-atomic let values"
       diagnostics = diagnostics ++ [msg]
       resume()
 
-  assert diagnostics.any(|d| -> d.contains("atomic"))
+  assert diagnostics.any(|d| d.contains("atomic"))
 ```
 
 ---

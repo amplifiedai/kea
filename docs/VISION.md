@@ -181,7 +181,7 @@ landscape.
 Four call forms cover every case (see CALL-SYNTAX.md):
 
 ```kea
-users.filter(|u| -> u.active)             -- method call (~90%)
+users.filter(|u| u.active)                -- method call (~90%)
 Point.origin()                             -- prefix call (~8%)
 widget.Drawable.render()                   -- qualified dispatch (~1%)
 text.String.replace("old", $, "new")      -- receiver placement (~1%)
@@ -192,8 +192,8 @@ with the effect signature visible at every step of the chain:
 
 ```kea
 users
-  .filter(|u| -> u.active)
-  .map(|u| -> u.name)
+  .filter(|u| u.active)
+  .map(|u| u.name)
   .sort()
   .take(10)
 ```
@@ -439,13 +439,13 @@ Test setup is function calls, not framework configuration:
 ```kea
 struct OrdersTest
   fn test_processing() -[Fail TestError]>
-    let (result, logs) = Logging.with_capture(|| ->
-      MockDb.with_test_data(test_data, || ->
+    let (result, logs) = Logging.with_capture(||
+      MockDb.with_test_data(test_data, ||
         Orders.process(test_order)
       )
     )
     assert result == Ok(expected_receipt)
-    assert logs.any(|l| -> l.contains("Processing order"))
+    assert logs.any(|l| l.contains("Processing order"))
 ```
 
 `Orders.process` has effects `[Log, Tx, Fail OrderError]`.

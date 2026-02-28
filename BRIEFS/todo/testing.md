@@ -54,9 +54,9 @@ operation that the handler resumes past.
 test "user validation checks all fields"
   let user = { name: "", age: -1, email: "bad" }
   let result = User.validate(user)
-  check result.errors.any(|e| -> e.field == "name")
-  check result.errors.any(|e| -> e.field == "age")
-  check result.errors.any(|e| -> e.field == "email")
+  check result.errors.any(|e| e.field == "name")
+  check result.errors.any(|e| e.field == "age")
+  check result.errors.any(|e| e.field == "email")
   -- all three checks run, all three failures reported
 ```
 
@@ -320,11 +320,11 @@ struct PropertyInfo
 ```
   user validation checks all fields ............ FAIL (2ms)
 
-    FAIL: check result.errors.any(|e| -> e.field == "name")
+    FAIL: check result.errors.any(|e| e.field == "name")
       result.errors = [{ field: "age", msg: "must be positive" }]
       src/user_test.kea:5
 
-    FAIL: check result.errors.any(|e| -> e.field == "email")
+    FAIL: check result.errors.any(|e| e.field == "email")
       result.errors = [{ field: "age", msg: "must be positive" }]
       src/user_test.kea:7
 

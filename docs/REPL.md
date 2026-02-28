@@ -183,7 +183,7 @@ The REPL annotates handler applications with what changed — which effects were
 The same computation can be run under different handlers. The REPL shows the effect transformation at each step:
 
 ```
-kea> let program = || -> Log.log(Info, "hello") ; IO.stdout("world")
+kea> let program = || Log.log(Info, "hello") ; IO.stdout("world")
 program : () -[Log, IO]> Unit
 
 kea> -- Try handler 1: silent logging
@@ -415,12 +415,12 @@ kea> :effects with_stdout_log(app)
 effects: [State Int, IO]
 -- Log handled, added IO (merged with existing IO)
 
-kea> :effects with_state(0, || -> with_stdout_log(app))
+kea> :effects with_state(0, || with_stdout_log(app))
 effects: [IO]
 -- State Int handled, Log handled via stdout
 
 kea> -- Now execute the fully handled computation
-kea> with_state(0, || -> with_stdout_log(app))
+kea> with_state(0, || with_stdout_log(app))
 [Info] starting
 count: 1
 : ((), 1)  effects: [IO]
@@ -471,7 +471,7 @@ Same computation, different handlers, different observable behaviour. This is ho
 For complex handler stacks, trace every effect operation as it's dispatched:
 
 ```
-kea> :trace_effects with_state(0, || -> with_stdout_log(app))
+kea> :trace_effects with_state(0, || with_stdout_log(app))
   [1] Log.log(Info, "starting")
       → handled by with_stdout_log → IO.stdout("[Info] starting")
       → IO handled by runtime
@@ -575,10 +575,10 @@ This is directly useful for understanding row polymorphism — you can test whet
 Check if a function accepts given arguments:
 
 ```
-kea> :accepts List.filter with [1, 2, 3] and (|x| -> x > 1)
-Yes: List.filter([1, 2, 3], |x| -> x > 1) : List Int  effects: []
+kea> :accepts List.filter with [1, 2, 3] and (|x| x > 1)
+Yes: List.filter([1, 2, 3], |x| x > 1) : List Int  effects: []
 
-kea> :accepts List.filter with "hello" and (|x| -> x > 1)
+kea> :accepts List.filter with "hello" and (|x| x > 1)
 No: expected List T, got String
 ```
 
@@ -687,7 +687,7 @@ kea> test_load_config()
 ```
 kea> fn prop_state_get_returns_last_put(_ seed: Int)
 ....   let value = Rand.random_int(seed, 0, 1000)
-....   with_state(0, || ->
+....   with_state(0, ||
 ....     State.put(value)
 ....     assert_eq(State.get(), value)
 ....   )
@@ -709,10 +709,10 @@ kea> :bench big_list.sort()  -- same thing via method syntax
 Useful for testing handler compilation performance — compare the same computation under different handler strategies:
 
 ```
-kea> :bench with_state(0, || -> state_heavy_computation())
+kea> :bench with_state(0, || state_heavy_computation())
   median: 45μs  p99: 67μs  iterations: 10000
 
-kea> :bench with_logged_state(0, || -> state_heavy_computation())
+kea> :bench with_logged_state(0, || state_heavy_computation())
   median: 1.2ms  p99: 1.8ms  iterations: 1000
 -- ~26x slower due to IO in handler
 ```

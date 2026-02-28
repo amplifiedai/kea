@@ -260,7 +260,7 @@ effect Compile
 struct Encode
   fn derive(_ ty: TypeInfo) -[Compile]> Unit
     let fields = Compile.fields(ty)
-    let encode_body = fields.map(|f| ->
+    let encode_body = fields.map(|f|
       FnCall("write_key", [StringLit(f.name)]),
       FnCall("encode", [FieldAccess("self", f.name)])
     )

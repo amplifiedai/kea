@@ -26,7 +26,7 @@ fn length(xs: List a) -> Int
 
 --| Transform each element in a list with a function.
 --|
---|   List.map(Cons(1, Nil), |x| -> x + 1)    -- => Cons(2, Nil)
+--|   List.map(Cons(1, Nil), |x| x + 1)    -- => Cons(2, Nil)
 fn map(xs: List a, f: fn(a) -> b) -> List b
   case xs
     Nil -> Nil
@@ -34,7 +34,7 @@ fn map(xs: List a, f: fn(a) -> b) -> List b
 
 --| Keep only list elements that satisfy a predicate.
 --|
---|   List.filter(Cons(1, Cons(2, Nil)), |x| -> x > 1)   -- => Cons(2, Nil)
+--|   List.filter(Cons(1, Cons(2, Nil)), |x| x > 1)   -- => Cons(2, Nil)
 fn filter(xs: List a, pred: fn(a) -> Bool) -> List a
   case xs
     Nil -> Nil
@@ -46,7 +46,7 @@ fn filter(xs: List a, pred: fn(a) -> Bool) -> List a
 
 --| Reduce a list from left to right.
 --|
---|   List.fold(Cons(1, Cons(2, Nil)), 0, |acc, x| -> acc + x)   -- => 3
+--|   List.fold(Cons(1, Cons(2, Nil)), 0, |acc, x| acc + x)   -- => 3
 fn fold(xs: List a, init: b, f: fn(b, a) -> b) -> b
   case xs
     Nil -> init

@@ -63,7 +63,7 @@ MsgPack.encode(value)   -- -> Bytes
   fn apply(_ self: Validated (A -> B) E, _ arg: Validated A E) -> Validated B E
 
   -- Compiler generates for @derive(Decode):
-  Validated.pure(|name, age, email| -> User { name, age, email })
+  Validated.pure(|name, age, email| User { name, age, email })
     |> .apply(read_field(reader, "name", String))
     |> .apply(read_field(reader, "age", Int))
     |> .apply(read_field(reader, "email", Option String))

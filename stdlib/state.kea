@@ -17,7 +17,7 @@ effect State S
 --|
 --| Returns `(result, final_state)` when `f` completes.
 --|
---|   State.with_state(0, || ->
+--|   State.with_state(0, ||
 --|     let n = State.get()
 --|     State.put(n + 1)
 --|     State.get()

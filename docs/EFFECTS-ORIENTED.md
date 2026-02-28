@@ -182,7 +182,7 @@ convention — it's a compiler guarantee:
 
 ```kea
 fn total(items: List Item) -> Int
-  items.map(|i| -> i.price * i.quantity).sum()
+  items.map(|i| i.price * i.quantity).sum()
 ```
 
 If someone adds a logging call inside `total`, the compiler
@@ -248,10 +248,10 @@ annotate it at call sites:
 
 ```kea
 -- pure: List(Int) -> List(Int)
-numbers.map(|n| -> n * 2)
+numbers.map(|n| n * 2)
 
 -- effectful: List(String) -[IO]> List(Bytes)
-paths.map(|p| -> IO.read_file(p))
+paths.map(|p| IO.read_file(p))
 ```
 
 This matters because higher-order functions are everywhere.
@@ -331,7 +331,7 @@ Middleware transforms both rows:
 ```kea
 fn auth(_ next: { user: User | r } -[e]> Response)
     -> { headers: Headers | r } -[Net, Fail AuthError, e]> Response
-  |req| ->
+  |req|
     let token = req.headers.get("Authorization")
       .ok_or(AuthError.missing_token())?
     let user = Auth.verify(token)?

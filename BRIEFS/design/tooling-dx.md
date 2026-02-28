@@ -151,9 +151,9 @@ let schema = validate(spec)       -- -[Fail E]>
 
 -- LSP code action: "Run 3 independent bindings in parallel"
 let (users, config, schema) = Par.all3(
-  || -> load_users(ids),
-  || -> parse_config(raw),
-  || -> validate(spec)
+  || load_users(ids),
+  || parse_config(raw),
+  || validate(spec)
 )
 ```
 
@@ -664,13 +664,13 @@ of transformation it is).
 (kea-debug) inspect reuse xs
   List(Int), refcount: 1
   Reuse analysis: ELIGIBLE (refcount proven == 1, Perceus drop-before-last-use)
-  Next mutation: xs.map(|x| -> x + 1)
+  Next mutation: xs.map(|x| x + 1)
     → will execute IN-PLACE (no allocation)
 
 (kea-debug) inspect reuse shared_xs
   List(Int), refcount: 3
   Reuse analysis: NOT ELIGIBLE (refcount > 1)
-  Next mutation: shared_xs.map(|x| -> x + 1)
+  Next mutation: shared_xs.map(|x| x + 1)
     → will COPY (new allocation, 24 bytes)
 ```
 

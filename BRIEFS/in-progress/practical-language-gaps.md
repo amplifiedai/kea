@@ -136,7 +136,7 @@ the user's choice via type aliases.
 **Option B: Just use `.find()` / `.fold()` / explicit recursion**
 
 ```kea
-let found = items.find(|item| -> item.matches(query))
+let found = items.find(|item| item.matches(query))
 ```
 
 Most "early exit" patterns are already covered by iterator methods.

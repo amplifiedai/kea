@@ -191,7 +191,7 @@ The compiler infers effects bottom-up. If you call a function with `IO`, your fu
 struct Math
 
   fn double_all(_ xs: List Int) -> List Int
-    xs.map(|x| -> x * 2)
+    xs.map(|x| x * 2)
     -- map's callback is pure, so double_all is pure
 ```
 
@@ -234,7 +234,7 @@ struct Pipeline
   fn load_and_transform(_ path: String) -[IO, Fail AppError]> List Transaction
     -- does IO (reads file), can fail (parse or IO errors)
     let raw = Csv.read(path)?
-    raw.map(|r| -> Pipeline.transform(r))
+    raw.map(|r| Pipeline.transform(r))
 ```
 
 Reading the signature tells you everything: `transform` is pure and total. `load_and_transform` does IO and might fail. No documentation required — the types *are* the documentation, and the compiler enforces them.
@@ -272,7 +272,7 @@ Now write generic functions over the capability:
 struct Validation
 
   fn validate_all(_ xs: List A) -[Fail ValidationError]> List A where A: Validatable
-    xs.map(|x| -> x.validate()?)
+    xs.map(|x| x.validate()?)
 ```
 
 `validate_all` works on any list of `Validatable` things. Transactions, orders, user profiles — write it once.
@@ -283,8 +283,8 @@ Traits compose. A type can implement many traits. Generic code can require multi
 struct Report
 
   fn summarise(_ items: List A) -> String where A: Show, A: Eq
-    let unique = items.filter(|a| -> items.count(|b| -> a == b) == 1)
-    unique.map(|a| -> a.show()).sort().join(", ")
+    let unique = items.filter(|a| items.count(|b| a == b) == 1)
+    unique.map(|a| a.show()).sort().join(", ")
 ```
 
 **Teaching point:** Traits are "interfaces" or "protocols." They describe what a type can do, not what it is. Your function says "I need something Validatable" instead of "I need a Transaction."

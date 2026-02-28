@@ -84,7 +84,7 @@ you still have the original value — nothing was mutated:
 
 ```kea
 -- Kea — failure doesn't corrupt anything
-let result = catch(|| ->
+let result = catch(||
   User.default()
     .with_name("Alice")
     .with_age(30)

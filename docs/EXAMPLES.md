@@ -68,7 +68,7 @@ JobQueue as Actor
         let status = if self.results.contains(id)
           then Done(result: self.results.get(id).unwrap())
           else if self.running.contains(id) then Running
-          else if self.pending.any(|j| -> j.id == Some(id)) then Pending
+          else if self.pending.any(|j| j.id == Some(id)) then Pending
           else Unknown
         reply(status)
         self
@@ -500,7 +500,7 @@ struct OrderService
     RateLimit.check_rate(order.customer_id, limit: 10)
 
     -- Check cache for prices
-    let prices = order.items.map(|item| ->
+    let prices = order.items.map(|item|
       match Cache.cache_get(item.sku)
         Some(price) ->
           Log.log(Debug, "Cache hit for {item.sku}")
@@ -515,7 +515,7 @@ struct OrderService
           price
     )
 
-    let total = prices.fold(0.0, |acc, p| -> acc + p)
+    let total = prices.fold(0.0, |acc, p| acc + p)
     let receipt_id = Tx.execute(
       "INSERT INTO receipts (order_id, total) VALUES (?, ?)",
       [Value.str(order.id), Value.float(total)],
@@ -535,11 +535,11 @@ struct Main
 
     -- Layer handlers from outermost to innermost:
     let result = catch
-      Logging.with_stdout(|| ->
-        Database.with_transaction(conn, || ->
-          with_state(Map.empty(), || ->
-            Caching.with_map_cache(|| ->
-              RateLimiter.with_rate_limit(cache_ref, || ->
+      Logging.with_stdout(||
+        Database.with_transaction(conn, ||
+          with_state(Map.empty(), ||
+            Caching.with_map_cache(||
+              RateLimiter.with_rate_limit(cache_ref, ||
                 OrderService.process_order(order)
               )
             )
@@ -602,7 +602,7 @@ match result
   Err(e) -> IO.stdout("Failed: {e.show()}")
 ```
 
-Each `with` wraps everything below it as a `|| ->` callback
+Each `with` wraps everything below it as a `||` callback
 passed as the last argument. This desugars to the nested form
 but reads flat. The `match` at the end is *outside* nothing —
 it's inside all five handlers, which is correct.
@@ -642,9 +642,9 @@ want to handle `RateLimited` differently from `DbError`, you
 pattern match on the `AppError` variants. This works but adds a
 layer of wrapping/unwrapping.
 
-**The `|| ->` lambda syntax for thunks.** Every handler takes
-`() -[effects]> T`, so you write `|| ->` a lot. It's two
-characters more than Haskell's `\() ->` but the `|| ->` with
+**The `||` lambda syntax for thunks.** Every handler takes
+`() -[effects]> T`, so you write `||` a lot. It's two
+characters more than Haskell's `\() ->` but the `||` with
 the empty param list between pipes reads oddly. Maybe just
 aesthetic, but it's frequent enough to notice.
 
@@ -667,11 +667,11 @@ struct Middlewares
     _ outer: Middleware B C,
     _ inner: Middleware A B,
   ) -> Middleware A C
-    |handler| -> outer(inner(handler))
+    |handler| outer(inner(handler))
 
   -- Timing middleware: adds IO for clock access
   fn timing() -> Middleware e (IO, e)
-    |next| -> |req| ->
+    |next| |req|
       let start = IO.clock_now()
       let resp = next(req)
       let elapsed = IO.clock_now() - start
@@ -679,7 +679,7 @@ struct Middlewares
 
   -- Auth middleware: adds Fail Unauthorized
   fn auth(_ secret: String) -> Middleware e (Fail Unauthorized, e)
-    |next| -> |req| ->
+    |next| |req|
       let token = req.headers.get("Authorization")
         .ok_or(Unauthorized { reason: "missing token" })?
       if not Token.verify(token, secret)

@@ -189,7 +189,7 @@ Wire it through to Cranelift:
 **Milestone:** First Kea program with error handling compiles
 and runs natively. This is the "hello world with errors" moment.
 
-Test: `fn main() -> Result(Int, String) = catch(|| -> ...)`
+Test: `fn main() -> Result(Int, String) = catch(|| ...)`
 produces correct Ok/Err values.
 
 ### Step 2: Capability-direct effects (Tier 1)
@@ -266,7 +266,7 @@ Handler clause classification (at MIR lowering time):
   for now ("non-tail-resumptive handlers not yet supported"),
   implement in Step 7
 
-**Benchmark immediately:** `with_state(0, || -> count_to(1_000_000))`
+**Benchmark immediately:** `with_state(0, || count_to(1_000_000))`
 vs equivalent pure parameter-passing code. Target: < 10x overhead
 for the unoptimized evidence path.
 
@@ -629,7 +629,7 @@ call is the last instruction before return. Can land in any 0e step.
 
 - **Handler inlining for statically known handlers:** Yes, as a
   follow-on optimisation after the basic handler compilation works.
-  When `with_state(0, || -> body)` is visible, inline the State
+  When `with_state(0, || body)` is visible, inline the State
   operations directly. This is a natural extension of evidence
   passing — if the evidence is a compile-time constant, inline it.
 

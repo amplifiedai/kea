@@ -27,12 +27,12 @@ do_work()
 
 Desugars to:
 ```kea
-Logging.with_stdout(|| ->
-  Config.with_map(settings, || ->
+Logging.with_stdout(||
+  Config.with_map(settings, ||
     do_work()))
 ```
 
-**Binding form** — handler yields a value via `|param| ->`:
+**Binding form** — handler yields a value via `|param|`:
 ```kea
 with conn <- Db.with_connection(config)
 with file <- File.with_open(path)
@@ -41,8 +41,8 @@ process(conn, file)
 
 Desugars to:
 ```kea
-Db.with_connection(config, |conn| ->
-  File.with_open(path, |file| ->
+Db.with_connection(config, |conn|
+  File.with_open(path, |file|
     process(conn, file)))
 ```
 
@@ -117,10 +117,10 @@ Desugar `With` nodes before type checking (in HIR lowering or as
 a parser post-pass). The transform is mechanical:
 
 **Non-binding:** `With { call, binding: None, body }` becomes
-`call` with an additional argument `|| -> body`.
+`call` with an additional argument `|| body`.
 
 **Binding:** `With { call, binding: Some(pat), body }` becomes
-`call` with an additional argument `|pat| -> body`.
+`call` with an additional argument `|pat| body`.
 
 After desugaring, there are no `With` nodes — the type checker,
 MIR, and codegen never see them. All existing inference and

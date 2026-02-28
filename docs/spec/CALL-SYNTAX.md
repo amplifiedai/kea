@@ -56,7 +56,7 @@ Resolution:
 This is the canonical style. 90% of code uses this form.
 
 ```kea
-users.filter(|u| -> u.active).map(|u| -> u.name).sort().take(10)
+users.filter(|u| u.active).map(|u| u.name).sort().take(10)
 ```
 
 **2. Qualified call (static/module)**
@@ -99,7 +99,7 @@ value.Show.show()
 value.Debug.show()
 
 -- Module qualification (generic function on a specific module):
-users.Enum.filter(|u| -> u.active)
+users.Enum.filter(|u| u.active)
 ```
 
 **Style rule:** Never use qualification in dot position when
@@ -253,7 +253,7 @@ or on a trait in scope.
   function definition.
 
 ```kea
-let f = |x| -> x * 2
+let f = |x| x * 2
 f(10)                    -- legal: f is a function-typed value
 
 let handler = router.get("/")

@@ -658,11 +658,11 @@ fn add(_ a: Int, _ b: Int) -> Int
 fn load(_ path: String) -[IO, Fail ConfigError]> Config
 
 -- Closures: everything inferred
-users.filter(|u| -> u.active)
-users.map(|u| -> u.name.to_uppercase())
+users.filter(|u| u.active)
+users.map(|u| u.name.to_uppercase())
 
 -- Closures CAN have annotations
-users.map(|u: User| -> u.name)
+users.map(|u: User| u.name)
 ```
 
 This means every `fn` is self-documenting — the signature
@@ -828,7 +828,7 @@ handled effect):
 ```kea
 handle expr
   E.operation(args) -> handler_body
-then |result| -> transform(result)
+then |result| transform(result)
 ```
 
 When `E` is performed: the handler body runs. Whether to
@@ -972,7 +972,7 @@ then `catch expr` has type `Result T E` with effects `{R...}`.
 -- catch expr desugars to:
 handle expr
   Fail.fail(error) -> Err(error)
-then |value| -> Ok(value)
+then |value| Ok(value)
 ```
 
 ### 5.9 Alloc: Arena-Scoped Allocation (Stdlib Effect)
@@ -1128,7 +1128,7 @@ type Wrap E_in E_out T = (() -[E_in]> T) -[E_out]> T
 
 fn compose_handlers(_ outer: Wrap E1 E2 T, _ inner: Wrap E2 E3 T)
   -> Wrap E1 E3 T
-  |f| -> outer(|| -> inner(f))
+  |f| outer(|| inner(f))
 ```
 
 This gives middleware composition without needing effect
@@ -1531,7 +1531,7 @@ existentially quantified and not referenced.
 
 ### 8.1 Hindley-Milner with Extensions
 
-- Let-generalisation: `let id = |x| -> x` gives `id` the type
+- Let-generalisation: `let id = |x| x` gives `id` the type
   `A -> A` (polymorphic).
 - Lambda-bound variables are monomorphic within the body.
 - Annotations on public functions are checked against inferred types.
@@ -1618,7 +1618,7 @@ methods also serves for explicit qualification:
 ```kea
 value.Show.show()               -- trait-qualified
 things.List.map(f)              -- module/struct-qualified
-users.Enum.filter(|u| -> u.active)  -- module-qualified
+users.Enum.filter(|u| u.active)  -- module-qualified
 ```
 
 **Dot is dot.** There is no separate namespace operator. PascalCase
@@ -1634,8 +1634,8 @@ the receiver at the `$` position:
 
 ```kea
 -- Default: receiver is first positional param
-users.filter(|u| -> u.active)
--- equivalent to: List.filter(users, |u| -> u.active)
+users.filter(|u| u.active)
+-- equivalent to: List.filter(users, |u| u.active)
 
 -- $ overrides receiver position
 text.String.replace("old", $, "new")
@@ -1670,8 +1670,8 @@ Method syntax provides left-to-right chaining without pipes:
 
 ```kea
 users
-  .filter(|u| -> u.active)
-  .map(|u| -> u.name)
+  .filter(|u| u.active)
+  .map(|u| u.name)
   .sort()
   .take(10)
 ```
@@ -1704,7 +1704,7 @@ or field has a function type, it may be called directly: `f(args)`.
 This is value application, not a bare function definition.
 
 ```kea
-let f = |x| -> x * 2
+let f = |x| x * 2
 f(10)                    -- legal: f is a function-typed value
 
 let handler = router.get("/")
@@ -1765,20 +1765,22 @@ parameters: `fn length(borrow _ self: Unique Buffer) -> Int`.
 ### 10.3 Lambdas
 
 ```kea
-let double = |x| -> x * 2
-let add = |a, b| -> a + b
+let double = |x| x * 2
+let add = |a, b| a + b
 ```
 
 Multi-line:
 
 ```kea
-let process = |item| ->
+let process = |item|
   let cleaned = item.clean()
   let validated = cleaned.validate()
   validated.transform()
 ```
 
-The body of a lambda is the indented block following `->`.
+The body of a lambda follows the parameter list. For single-line
+lambdas, the body is the rest of the expression. For multi-line
+lambdas, the body is the indented block.
 
 ### 10.4 If Expressions
 
@@ -1880,8 +1882,8 @@ IO.stdout(result.show())
 Desugars to:
 
 ```kea
-Logging.with_stdout(|| ->
-  Database.with_transaction(conn, || ->
+Logging.with_stdout(||
+  Database.with_transaction(conn, ||
     let result = catch OrderService.process_order(order)
     IO.stdout(result.show())
   )
@@ -1889,7 +1891,7 @@ Logging.with_stdout(|| ->
 ```
 
 Each `with expr` takes everything after it in the current block,
-wraps it in `|| ->`, and appends it as the last argument to `expr`.
+wraps it in `||`, and appends it as the last argument to `expr`.
 
 **Binding form:**
 
@@ -1902,15 +1904,15 @@ process(conn, file)
 Desugars to:
 
 ```kea
-Db.with_connection(config, |conn| ->
-  File.with_open(path, |file| ->
+Db.with_connection(config, |conn|
+  File.with_open(path, |file|
     process(conn, file)
   )
 )
 ```
 
 Each `with pattern <- expr` wraps everything after it in
-`|pattern| ->` and appends it as the last argument to `expr`.
+`|pattern|` and appends it as the last argument to `expr`.
 The pattern must be irrefutable (variable binding or destructuring
 that always succeeds). Refutable matching should use `case`
 inside the continuation.
