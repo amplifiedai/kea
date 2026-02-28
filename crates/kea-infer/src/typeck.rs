@@ -2210,7 +2210,7 @@ pub struct TraitInfo {
 pub struct ImplInfo {
     pub trait_name: String,
     pub type_name: String,
-    /// Type parameters declared in the impl header (`impl Show for List(t)`).
+    /// Type parameters declared in the impl header (`List(t) as Show`).
     pub type_params: Vec<String>,
     /// Trait bounds on impl type parameters (`t: Show`).
     pub param_bounds: BTreeMap<String, Vec<String>>,

@@ -147,15 +147,14 @@ warnings: []
 
 ## impl_decl
 source:
-|impl·Show·for·Int
+|Int·as·Show
 |··fn·show(self)·->·String
 |····"int"
 status: ok
 tokens:
-- Impl
-- UpperIdent("Show")
-- Ident("for")
 - UpperIdent("Int")
+- Ident("as")
+- UpperIdent("Show")
 - Newline
 - Indent
 - Fn

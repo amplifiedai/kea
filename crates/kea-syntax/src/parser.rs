@@ -211,8 +211,20 @@ impl Parser {
             return self.effect_decl(public, start, doc);
         }
 
-        // impl Trait for Type { methods }
-        // impl Type { methods }
+        // Type as Trait { methods }
+        if self.looks_like_type_as_trait_impl_header() {
+            if doc.is_some() {
+                self.error_at_current(
+                    "doc comments can only be attached to fn, type, struct, trait, or effect declarations",
+                );
+            }
+            if !annotations.is_empty() {
+                self.error_at_current("annotations are not allowed on impl blocks");
+            }
+            return self.impl_block_type_as(start);
+        }
+
+        // Legacy alias: impl Trait for Type { methods }
         if self.check(&TokenKind::Impl) {
             if doc.is_some() {
                 self.error_at_current(
@@ -266,7 +278,7 @@ impl Parser {
             );
         }
         self.error_at_current(
-            "expected declaration (fn, expr, test, pub fn, type, alias, opaque, struct, trait, effect, impl, use, or import)",
+            "expected declaration (fn, expr, test, pub fn, type, alias, opaque, struct, trait, effect, Type as Trait impl, use, or import)",
         );
         // Skip to next newline to recover
         while !self.at_eof() && !self.check_newline() {
@@ -1170,13 +1182,13 @@ impl Parser {
     }
 
     fn impl_block(&mut self, start: Span) -> Option<Decl> {
-        // impl Trait for Type { methods }
+        // Legacy alias: impl Trait for Type { methods }
         let trait_name = self.expect_upper_ident("expected trait name after 'impl'")?;
         self.skip_newlines();
 
         if !matches!(self.peek_kind(), Some(TokenKind::Ident(s)) if s == "for") {
             self.error_at_current(
-                "expected `for` in impl header (use `impl Trait for Type { ... }`)",
+                "expected `for` in legacy impl header (preferred syntax: `Type as Trait`)",
             );
             return None;
         }
@@ -1184,14 +1196,39 @@ impl Parser {
         self.skip_newlines();
         let type_name = self.expect_upper_ident("expected type name after 'for'")?;
         self.skip_newlines();
+        let type_params =
+            self.parse_impl_target_type_params("expected type parameter in impl header")?;
+        self.parse_impl_block_with_header(start, trait_name, type_name, type_params)
+    }
 
-        // Optional type parameters in impl header:
-        // impl Show for List(t) where t: Show { ... }
-        let type_params = if self.match_token(&TokenKind::LParen) {
+    fn impl_block_type_as(&mut self, start: Span) -> Option<Decl> {
+        // Canonical Kea syntax: Type as Trait
+        let type_name = self.expect_upper_ident("expected type name before `as` in impl header")?;
+        self.skip_newlines();
+        let type_params = self.parse_impl_target_type_params(
+            "expected type parameter before `as` in impl header",
+        )?;
+        self.skip_newlines();
+        if !self.check_ident("as") {
+            self.error_at_current("expected `as` in impl header (`Type as Trait`)");
+            return None;
+        }
+        self.advance(); // consume 'as'
+        self.skip_newlines();
+        let trait_name = self.expect_upper_ident("expected trait name after `as`")?;
+        self.skip_newlines();
+        self.parse_impl_block_with_header(start, trait_name, type_name, type_params)
+    }
+
+    fn parse_impl_target_type_params(
+        &mut self,
+        msg: &str,
+    ) -> Option<Vec<Spanned<String>>> {
+        if self.match_token(&TokenKind::LParen) {
             let mut params = Vec::new();
             loop {
                 self.skip_newlines();
-                let param = self.expect_ident("expected type parameter in impl header")?;
+                let param = self.expect_type_param_name(msg)?;
                 params.push(param);
                 self.skip_newlines();
                 if !self.match_token(&TokenKind::Comma) {
@@ -1202,12 +1239,26 @@ impl Parser {
                 &TokenKind::RParen,
                 "expected ')' after impl type parameters",
             )?;
-            params
-        } else {
-            Vec::new()
-        };
+            return Some(params);
+        }
 
-        // Parse optional where clause: `where Source = String, schema: Deserialize`
+        let mut params = Vec::new();
+        loop {
+            self.skip_newlines();
+            if self.check_ident("as") {
+                break;
+            }
+            match self.peek_kind() {
+                Some(TokenKind::Ident(_)) | Some(TokenKind::UpperIdent(_)) => {
+                    params.push(self.expect_type_param_name(msg)?);
+                }
+                _ => break,
+            }
+        }
+        Some(params)
+    }
+
+    fn parse_impl_where_clause_items(&mut self) -> Option<Vec<WhereItem>> {
         self.skip_newlines();
         let mut impl_where_clause: Vec<WhereItem> = Vec::new();
         if self.check(&TokenKind::Where) {
@@ -1253,7 +1304,17 @@ impl Parser {
                 }
             }
         }
+        Some(impl_where_clause)
+    }
 
+    fn parse_impl_block_with_header(
+        &mut self,
+        start: Span,
+        trait_name: Spanned<String>,
+        type_name: Spanned<String>,
+        type_params: Vec<Spanned<String>>,
+    ) -> Option<Decl> {
+        let impl_where_clause = self.parse_impl_where_clause_items()?;
         let delimiter = self.expect_block_start("expected impl body block after impl header")?;
         let mut methods: Vec<FnDecl> = Vec::new();
         self.skip_newlines();
@@ -4713,6 +4774,63 @@ impl Parser {
         }
     }
 
+    /// Look-ahead for `Type [params] as Trait` impl headers at declaration level.
+    fn looks_like_type_as_trait_impl_header(&self) -> bool {
+        if !matches!(self.peek_kind(), Some(TokenKind::UpperIdent(_))) {
+            return false;
+        }
+
+        let mut i = self.pos + 1;
+        while matches!(self.tokens.get(i).map(|t| &t.kind), Some(TokenKind::Newline)) {
+            i += 1;
+        }
+
+        if matches!(self.tokens.get(i).map(|t| &t.kind), Some(TokenKind::LParen)) {
+            i += 1;
+            let mut expect_name = true;
+            loop {
+                while matches!(self.tokens.get(i).map(|t| &t.kind), Some(TokenKind::Newline)) {
+                    i += 1;
+                }
+                match self.tokens.get(i).map(|t| &t.kind) {
+                    Some(TokenKind::Ident(_)) | Some(TokenKind::UpperIdent(_)) if expect_name => {
+                        expect_name = false;
+                        i += 1;
+                    }
+                    Some(TokenKind::Comma) if !expect_name => {
+                        expect_name = true;
+                        i += 1;
+                    }
+                    Some(TokenKind::RParen) if !expect_name => {
+                        i += 1;
+                        break;
+                    }
+                    _ => return false,
+                }
+            }
+            while matches!(self.tokens.get(i).map(|t| &t.kind), Some(TokenKind::Newline)) {
+                i += 1;
+            }
+            return matches!(
+                self.tokens.get(i).map(|t| &t.kind),
+                Some(TokenKind::Ident(name)) if name == "as"
+            );
+        }
+
+        loop {
+            while matches!(self.tokens.get(i).map(|t| &t.kind), Some(TokenKind::Newline)) {
+                i += 1;
+            }
+            match self.tokens.get(i).map(|t| &t.kind) {
+                Some(TokenKind::Ident(name)) if name == "as" => return true,
+                Some(TokenKind::Ident(_)) | Some(TokenKind::UpperIdent(_)) => {
+                    i += 1;
+                }
+                _ => return false,
+            }
+        }
+    }
+
     fn check(&self, kind: &TokenKind) -> bool {
         self.peek_kind()
             .is_some_and(|k| std::mem::discriminant(k) == std::mem::discriminant(kind))
@@ -6939,7 +7057,7 @@ mod tests {
     #[test]
     fn parse_impl_trait_for_type() {
         let m = parse_mod(
-            "impl Additive for Int\n  fn zero() -> Int\n    0\n  fn add(self, other) -> Int\n    self + other",
+            "Int as Additive\n  fn zero() -> Int\n    0\n  fn add(self, other) -> Int\n    self + other",
         );
         assert_eq!(m.declarations.len(), 1);
         match &m.declarations[0].node {
@@ -6958,7 +7076,7 @@ mod tests {
     #[test]
     fn parse_impl_trait_for_type_indented() {
         let m = parse_mod(
-            "impl Additive for Int\n  fn zero() -> Int\n    0\n  fn add(self, other) -> Int\n    self + other",
+            "Int as Additive\n  fn zero() -> Int\n    0\n  fn add(self, other) -> Int\n    self + other",
         );
         assert_eq!(m.declarations.len(), 1);
         match &m.declarations[0].node {
@@ -6972,9 +7090,22 @@ mod tests {
     }
 
     #[test]
+    fn parse_legacy_impl_alias_trait_for_type() {
+        let m = parse_mod("impl Additive for Int\n  fn zero() -> Int\n    0");
+        match &m.declarations[0].node {
+            DeclKind::ImplBlock(ib) => {
+                assert_eq!(ib.trait_name.node, "Additive");
+                assert_eq!(ib.type_name.node, "Int");
+                assert_eq!(ib.methods.len(), 1);
+            }
+            _ => panic!("expected ImplBlock"),
+        }
+    }
+
+    #[test]
     fn parse_impl_with_type_params() {
         let m = parse_mod(
-            "impl Show for List(t) where t: Show\n  fn show(self) -> String\n    \"list\"",
+            "List(t) as Show where t: Show\n  fn show(self) -> String\n    \"list\"",
         );
         match &m.declarations[0].node {
             DeclKind::ImplBlock(ib) => {
@@ -6997,9 +7128,25 @@ mod tests {
     }
 
     #[test]
+    fn parse_impl_with_space_separated_type_params() {
+        let m = parse_mod("Tree A as Show where A: Show\n  fn show(self) -> String\n    \"tree\"");
+        match &m.declarations[0].node {
+            DeclKind::ImplBlock(ib) => {
+                assert_eq!(ib.trait_name.node, "Show");
+                assert_eq!(ib.type_name.node, "Tree");
+                assert_eq!(ib.type_params.len(), 1);
+                assert_eq!(ib.type_params[0].node, "A");
+                assert_eq!(ib.where_clause.len(), 1);
+                assert_eq!(ib.methods.len(), 1);
+            }
+            _ => panic!("expected ImplBlock"),
+        }
+    }
+
+    #[test]
     fn parse_impl_with_multiple_type_params() {
         let m = parse_mod(
-            "impl Collectable for Map(k, v) where Element = Pair(k, v), k: Hashable\n  fn empty() -> Int\n    0",
+            "Map(k, v) as Collectable where Element = Pair(k, v), k: Hashable\n  fn empty() -> Int\n    0",
         );
         match &m.declarations[0].node {
             DeclKind::ImplBlock(ib) => {
@@ -7043,7 +7190,7 @@ mod tests {
 
     #[test]
     fn parse_impl_with_return_annotation() {
-        let m = parse_mod("impl Show for Bool\n  fn show(self) -> String\n    \"bool\"");
+        let m = parse_mod("Bool as Show\n  fn show(self) -> String\n    \"bool\"");
         match &m.declarations[0].node {
             DeclKind::ImplBlock(ib) => {
                 assert_eq!(ib.trait_name.node, "Show");
@@ -7056,7 +7203,7 @@ mod tests {
     #[test]
     fn parse_impl_separate_methods() {
         let m = parse_mod(
-            "impl Show for Bool\n  fn show(self) -> String\n    \"bool\"\n  fn to_int(self) -> Int\n    0",
+            "Bool as Show\n  fn show(self) -> String\n    \"bool\"\n  fn to_int(self) -> Int\n    0",
         );
         match &m.declarations[0].node {
             DeclKind::ImplBlock(ib) => {
@@ -7560,7 +7707,7 @@ mod tests {
     #[test]
     fn parse_mixed_declarations() {
         let m = parse_mod(
-            "struct Point\n  x: Float\n  y: Float\ntrait Additive\n  fn zero() -> Self\nimpl Additive for Point\n  fn zero() -> Int\n    0\nfn main() -> Int\n  1",
+            "struct Point\n  x: Float\n  y: Float\ntrait Additive\n  fn zero() -> Self\nPoint as Additive\n  fn zero() -> Int\n    0\nfn main() -> Int\n  1",
         );
         assert_eq!(m.declarations.len(), 4);
         assert!(matches!(m.declarations[0].node, DeclKind::RecordDef(_)));
@@ -7853,7 +8000,7 @@ mod tests {
     #[test]
     fn parse_impl_with_where_clause() {
         let m =
-            parse_mod("impl From for Int where Source = String\n  fn from(value) -> Int\n    0");
+            parse_mod("Int as From where Source = String\n  fn from(value) -> Int\n    0");
         match &m.declarations[0].node {
             DeclKind::ImplBlock(ib) => {
                 assert_eq!(ib.trait_name.node, "From");
@@ -7878,7 +8025,7 @@ mod tests {
     #[test]
     fn parse_impl_with_body_associated_type_is_rejected() {
         let errs = parse_mod_err(
-            "impl Actor for Counter {\n  type Control = Stop\n  fn handle(self) { self }\n}",
+            "Counter as Actor {\n  type Control = Stop\n  fn handle(self) { self }\n}",
         );
         assert!(!errs.is_empty());
     }

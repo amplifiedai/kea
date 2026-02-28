@@ -628,7 +628,7 @@ pub enum DeclKind {
     /// Effect declaration: `effect Log  fn log(msg: String) -> ()`.
     EffectDecl(EffectDecl),
 
-    /// Implementation block: `impl Additive for Int { ... }` or `impl Counter { ... }`.
+    /// Implementation block: `Int as Additive ...`.
     ImplBlock(ImplBlock),
 
     /// Module import: `use Module.{name1, name2}`.
@@ -869,7 +869,7 @@ pub struct EffectOperation {
     pub span: Span,
 }
 
-/// An implementation block: `impl Additive for Int { ... }`.
+/// An implementation block: `Int as Additive ...`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ImplBlock {
     pub trait_name: Spanned<String>,
