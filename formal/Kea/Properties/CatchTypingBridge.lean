@@ -436,6 +436,29 @@ theorem catchTypingJudgment_bundle_iff_components
     EffectPolymorphismSoundness.admissibleEffectPolyHandlerBundle_iff_components
       (toAdmissibleEffectPolyHandlerSchema j)
 
+theorem catchTypingJudgment_bundle_as_components_of_components
+    (j : CatchTypingJudgment)
+    (h_comp :
+      RowFields.has
+        (EffectRow.fields (HandleClauseContract.resultEffects j.clause))
+        FailResultContracts.failLabel = false ∧
+        ∃ loweredEffects,
+          j.loweredTy = .functionEff j.params loweredEffects (.result j.okTy j.errTy) ∧
+          EffectPolymorphismSoundness.rowTailStable j.clause.exprEffects loweredEffects ∧
+          EffectPolymorphismSoundness.labelsPreservedExcept
+            j.clause.exprEffects loweredEffects FailResultContracts.failLabel ∧
+          RowFields.has (EffectRow.fields loweredEffects) FailResultContracts.failLabel = false) :
+    RowFields.has
+      (EffectRow.fields (HandleClauseContract.resultEffects j.clause))
+      FailResultContracts.failLabel = false ∧
+      ∃ loweredEffects,
+        j.loweredTy = .functionEff j.params loweredEffects (.result j.okTy j.errTy) ∧
+        EffectPolymorphismSoundness.rowTailStable j.clause.exprEffects loweredEffects ∧
+        EffectPolymorphismSoundness.labelsPreservedExcept
+          j.clause.exprEffects loweredEffects FailResultContracts.failLabel ∧
+        RowFields.has (EffectRow.fields loweredEffects) FailResultContracts.failLabel = false := by
+  simpa using h_comp
+
 noncomputable def catchTypingJudgment_bundle_of_premises
     (clause : HandleClauseContract)
     (params : TyList)
