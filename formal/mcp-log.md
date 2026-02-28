@@ -10140,3 +10140,35 @@ source of truth.
 **Impact**:
 - Reduces proof boilerplate by avoiding explicit intermediate suite threading
   when a route starts from constructor-level assumptions.
+
+### 2026-03-01: boundary-sound full/full-vertical route decomposition wrappers
+
+**Context**: Added route-level `..._as_components_of_success_via_*` wrappers in
+`Kea/Typing.lean` for boundary-sound full and full-vertical constructors:
+- `principalBoundarySoundFullSuite_as_components_of_success_via_{typingRunBundleSuite,typingRunBundleSuite_from_bundle,rowPolyBoundarySoundBundle,rowPolyBoundarySoundBundle_from_bundle}`
+- `principalBoundarySoundFullVerticalSuite_as_components_of_success_via_{typingRunBundleSuite,typingRunBundleSuite_from_bundle,rowPolyBoundarySoundBundle,rowPolyBoundarySoundBundle_from_bundle}`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Wrapper-layer expansion only; no runtime semantic change.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Key boundary-sound full/full-vertical constructor routes now have one-hop
+  projection to explicit component aliases.
+
+**Impact**:
+- Further reduces decomposition boilerplate in downstream principal-route
+  theorem chains.
