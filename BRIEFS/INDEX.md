@@ -71,10 +71,6 @@ Designed and approved. Ready to pick up. Ordered by execution sequence per ROADM
 
 11. **[Error message quality](todo/0h-stdlib-errors.md)** — Row-diff error messages, effect provenance in diagnostics, stable error codes, snapshot tests. Not on critical path — runs in parallel with 0g.
 
-### Cross-phase: Syntax Migration (urgent, blocks correct stdlib/test authoring)
-
-14. **[Syntax migration: Rill to KERNEL Kea](todo/syntax-migration-rill-to-kea.md)** — Parser still uses Rill syntax (`record`, `{ ..base }` spread, `#(a, b)` tuples) instead of KERNEL-specified Kea syntax (`struct`, `base~{ field }` functional update, `(a, b)` tuples). Agents writing Kea code produce incorrect syntax because the parser accepts Rill forms. Must fix before more stdlib/test code is written.
-
 ### Cross-phase: Practical Language Gaps (0f through Phase 1)
 
 13. **[Practical language gaps](todo/practical-language-gaps.md)** — Layout intrinsics (`size_of`/`align_of`), bidirectional numeric literal inference, String/Bytes core operations, IO decomposition into Clock/Net/Rand, early-exit ergonomics assessment. Items land incrementally alongside 0f and 0g. No single phase — tracks what self-hosting needs that isn't covered by other briefs.
@@ -125,6 +121,7 @@ Completed briefs. Kept for reference and design rationale.
 
 | Brief | Summary |
 |-------|---------|
+| [syntax-migration](done/syntax-migration-rill-to-kea.md) | Rill→Kea syntax migration complete: `struct` (with `record` deprecated), `base~{ field }` functional update, `(a, b)` tuples (with `#()` deprecated), `%{}` map literals verified. |
 | [0d-codegen-pure](done/0d-codegen-pure.md) | Pure-subset codegen landed end-to-end (HIR→MIR→Cranelift, JIT+AOT, closure/RC/runtime lowering coverage), with 0d punch-list closeout complete; evaluator-parity snapshot corpus is explicitly deferred and blocked on future `kea-eval` infrastructure. |
 | [0d1-module-system](done/0d1-module-system.md) | Module resolver/import DAG/prelude/matrix/compiler-API extraction are done, with real repo `stdlib/` modules in-tree and execute-path integration proving module imports plus intrinsic-backed stdlib calls (`Option.unwrap_or` + `Text.length`) end-to-end. Heap-list stdlib remains deferred to stdlib-bootstrap/runtime support. |
 | [0e-runtime-effects](done/0e-runtime-effects.md) | Runtime effects landed end-to-end: Fail/ZeroResume Result path, direct capability effects (IO/Net/Clock/Rand), tail-resumptive user handlers (`State`/`Log`/`Reader`) with nesting/scoping + `then`, pass-stat visibility, and benchmark + CI gates validated (`check-full`, regression benchmarks green). |
