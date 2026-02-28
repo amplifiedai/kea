@@ -1159,5 +1159,71 @@ theorem effectHandlerCompositionSuite_classifierFromCapstone
         clause capability innerEffects okTy errTy loweredTy h_suite.catchPair.capstone :=
   h_suite.catchPair.classifierFromCapstone
 
+/-- Coherence: nested and closed-aware clause rows share the same row tail. -/
+theorem effectHandlerCompositionSuite_nestedRowTail_eq_closedAwareRowTail
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    EffectRow.rest
+      (NestedHandlerCompositionContracts.nestedComposeClosedAware
+        clause.exprEffects
+        clause.handlerEffects
+        outerHandler
+        clause.handled) =
+      EffectRow.rest (HandlerClosedAwareContracts.resultEffectsClosedAware clause) := by
+  calc
+    EffectRow.rest
+      (NestedHandlerCompositionContracts.nestedComposeClosedAware
+        clause.exprEffects
+        clause.handlerEffects
+        outerHandler
+        clause.handled)
+      = EffectRow.rest clause.exprEffects :=
+        effectHandlerCompositionSuite_nestedRowTailStable
+          clause capability innerEffects okTy errTy loweredTy outerHandler h_suite
+    _ = EffectRow.rest (HandlerClosedAwareContracts.resultEffectsClosedAware clause) := by
+        symm
+        exact effectHandlerCompositionSuite_closedAwareRowTailStable
+          clause capability innerEffects okTy errTy loweredTy outerHandler h_suite
+
+/-- Coherence: nested same-target composition keeps handled label absent. -/
+theorem effectHandlerCompositionSuite_nestedHandledRemoved_coherent
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    RowFields.has
+      (EffectRow.fields
+        (NestedHandlerCompositionContracts.nestedComposeClosedAware
+          clause.exprEffects
+          clause.handlerEffects
+          outerHandler
+          clause.handled))
+      clause.handled = false :=
+  effectHandlerCompositionSuite_nestedHandledRemoved
+    clause capability innerEffects okTy errTy loweredTy outerHandler h_suite
+
+/-- Coherence: clause closed-aware output also keeps handled label absent. -/
+theorem effectHandlerCompositionSuite_clauseHandledRemoved_coherent
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    RowFields.has
+      (EffectRow.fields (HandlerClosedAwareContracts.resultEffectsClosedAware clause))
+      clause.handled = false :=
+  effectHandlerCompositionSuite_closedAwareHandledRemoved
+    clause capability innerEffects okTy errTy loweredTy outerHandler h_suite
+
 end EffectHandlerContractSuite
 end Kea
