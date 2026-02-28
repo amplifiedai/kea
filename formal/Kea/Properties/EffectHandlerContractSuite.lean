@@ -1,6 +1,7 @@
 import Kea.Properties.HandlerClosedAwareContracts
 import Kea.Properties.TailCapabilityComposition
 import Kea.Properties.CatchInteroperabilitySuite
+import Kea.Properties.NestedHandlerCompositionContracts
 
 /-!
   Kea.Properties.EffectHandlerContractSuite
@@ -210,6 +211,82 @@ theorem effectHandlerCatchPairSuite_iff_capstone
     exact effectHandlerCatchPairSuite_of_capstone
       clause capability innerEffects okTy errTy loweredTy h_cap
 
+/--
+Master Phase-2 composition suite that combines:
+- coherent clause-level classifier+capstone catch aggregation
+- nested closed-aware same-target composition for an outer handler row
+-/
+structure EffectHandlerCompositionSuite
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow) : Prop where
+  catchPair :
+    EffectHandlerCatchPairSuite clause capability innerEffects okTy errTy loweredTy
+  nestedClosedAware :
+    NestedHandlerCompositionContracts.NestedHandlerClosedAwareBundle
+      clause.exprEffects
+      clause.handlerEffects
+      outerHandler
+      clause.handled
+
+/-- Master composition suite is equivalent to explicit pair+nested components. -/
+theorem effectHandlerCompositionSuite_iff_components
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow) :
+    EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler
+      ↔ (EffectHandlerCatchPairSuite clause capability innerEffects okTy errTy loweredTy
+          ∧ NestedHandlerCompositionContracts.NestedHandlerClosedAwareBundle
+              clause.exprEffects
+              clause.handlerEffects
+              outerHandler
+              clause.handled) := by
+  constructor
+  · intro h_suite
+    exact ⟨h_suite.catchPair, h_suite.nestedClosedAware⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2⟩
+
+/-- Build master composition suite from explicit pair+nested components. -/
+theorem effectHandlerCompositionSuite_of_components
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_comp :
+      EffectHandlerCatchPairSuite clause capability innerEffects okTy errTy loweredTy
+        ∧ NestedHandlerCompositionContracts.NestedHandlerClosedAwareBundle
+            clause.exprEffects
+            clause.handlerEffects
+            outerHandler
+            clause.handled) :
+    EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler :=
+  (effectHandlerCompositionSuite_iff_components
+    clause capability innerEffects okTy errTy loweredTy outerHandler).2 h_comp
+
+/-- One-hop decomposition of master composition suite into explicit components. -/
+theorem effectHandlerCompositionSuite_as_components
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    EffectHandlerCatchPairSuite clause capability innerEffects okTy errTy loweredTy
+      ∧ NestedHandlerCompositionContracts.NestedHandlerClosedAwareBundle
+          clause.exprEffects
+          clause.handlerEffects
+          outerHandler
+          clause.handled :=
+  (effectHandlerCompositionSuite_iff_components
+    clause capability innerEffects okTy errTy loweredTy outerHandler).1 h_suite
+
 /-- Build the aggregate suite from well-typed + catch premise inputs. -/
 theorem effectHandlerSuite_of_premises
     (clause : HandleClauseContract)
@@ -409,6 +486,95 @@ theorem effectHandlerCatchPairSuite_of_fail_present
     (effectHandlerCapstoneSuite_of_fail_present
       clause baseEffects capability innerEffects okTy errTy loweredTy
       h_wellTyped h_expr h_cap_ne h_failZero h_fail_present h_clauseEffects h_lowered)
+
+/-- Build master composition suite from explicit pair witness and outer-absence premise. -/
+theorem effectHandlerCompositionSuite_of_pair_outer_absent
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_pair : EffectHandlerCatchPairSuite clause capability innerEffects okTy errTy loweredTy)
+    (h_outer_abs :
+      RowFields.has (EffectRow.fields outerHandler) clause.handled = false) :
+    EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler := by
+  refine {
+    catchPair := h_pair
+    nestedClosedAware :=
+      NestedHandlerCompositionContracts.nested_handler_closedAware_bundle_of_outer_absent
+        clause.exprEffects
+        clause.handlerEffects
+        outerHandler
+        clause.handled
+        h_outer_abs
+  }
+
+/-- Build master composition suite from premise-level capstone inputs and outer-absence. -/
+theorem effectHandlerCompositionSuite_of_premises
+    (clause : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_cap_ne : capability ≠ clause.handled)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_admissible : FailResultContracts.catchAdmissible clause.exprEffects)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy)
+    (h_outer_abs :
+      RowFields.has (EffectRow.fields outerHandler) clause.handled = false) :
+    EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler := by
+  exact effectHandlerCompositionSuite_of_pair_outer_absent
+    clause capability innerEffects okTy errTy loweredTy outerHandler
+    (effectHandlerCatchPairSuite_of_premises
+      clause baseEffects capability innerEffects okTy errTy loweredTy
+      h_wellTyped h_expr h_cap_ne h_failZero h_admissible h_clauseEffects h_lowered)
+    h_outer_abs
+
+/-- Build master composition suite from Fail-presence evidence and outer-absence. -/
+theorem effectHandlerCompositionSuite_of_fail_present
+    (clause : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_cap_ne : capability ≠ clause.handled)
+    (h_failZero : FailResultContracts.failAsZeroResume clause)
+    (h_fail_present :
+      RowFields.has (EffectRow.fields clause.exprEffects) FailResultContracts.failLabel = true)
+    (h_clauseEffects : clause.exprEffects = innerEffects)
+    (h_lowered :
+      loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+          clause.exprEffects
+          okTy
+          errTy)
+    (h_outer_abs :
+      RowFields.has (EffectRow.fields outerHandler) clause.handled = false) :
+    EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler := by
+  exact effectHandlerCompositionSuite_of_pair_outer_absent
+    clause capability innerEffects okTy errTy loweredTy outerHandler
+    (effectHandlerCatchPairSuite_of_fail_present
+      clause baseEffects capability innerEffects okTy errTy loweredTy
+      h_wellTyped h_expr h_cap_ne h_failZero h_fail_present h_clauseEffects h_lowered)
+    h_outer_abs
 
 /-- One-hop projection: closed-aware handled-removal guarantee from aggregate suite. -/
 theorem effectHandlerSuite_closedAwareHandledRemoved
@@ -702,6 +868,148 @@ theorem effectHandlerCatchPairSuite_catchLaws
     HigherOrderCatchContracts.HigherOrderCatchBridgeLaws clause innerEffects okTy errTy loweredTy :=
   effectHandlerCapstoneSuite_catchLaws
     clause capability innerEffects okTy errTy loweredTy h_pair.capstone
+
+/-- One-hop projection: coherent catch pair from master composition suite. -/
+theorem effectHandlerCompositionSuite_catchPair
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    EffectHandlerCatchPairSuite clause capability innerEffects okTy errTy loweredTy :=
+  h_suite.catchPair
+
+/-- One-hop projection: nested closed-aware witness from master composition suite. -/
+theorem effectHandlerCompositionSuite_nestedClosedAware
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    NestedHandlerCompositionContracts.NestedHandlerClosedAwareBundle
+      clause.exprEffects
+      clause.handlerEffects
+      outerHandler
+      clause.handled :=
+  h_suite.nestedClosedAware
+
+/-- One-hop projection: nested handled-removal guarantee from master composition suite. -/
+theorem effectHandlerCompositionSuite_nestedHandledRemoved
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    RowFields.has
+      (EffectRow.fields
+        (NestedHandlerCompositionContracts.nestedComposeClosedAware
+          clause.exprEffects
+          clause.handlerEffects
+          outerHandler
+          clause.handled))
+      clause.handled = false :=
+  h_suite.nestedClosedAware.handledRemoved
+
+/-- One-hop projection: nested row-tail stability from master composition suite. -/
+theorem effectHandlerCompositionSuite_nestedRowTailStable
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    EffectRow.rest
+      (NestedHandlerCompositionContracts.nestedComposeClosedAware
+        clause.exprEffects
+        clause.handlerEffects
+        outerHandler
+        clause.handled) =
+      EffectRow.rest clause.exprEffects :=
+  h_suite.nestedClosedAware.rowTailStable
+
+/-- One-hop projection: generic classifier branch from master composition suite. -/
+theorem effectHandlerCompositionSuite_genericCatchClassifier
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    CatchTypingBridge.CatchTypingCapstoneOutcome
+      clause
+      (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+      okTy
+      errTy
+      loweredTy
+      ∨ FailResultContracts.catchUnnecessary clause.exprEffects :=
+  effectHandlerCatchPairSuite_genericCatchClassifier
+    clause capability innerEffects okTy errTy loweredTy h_suite.catchPair
+
+/-- One-hop projection: higher-order classifier branch from master composition suite. -/
+theorem effectHandlerCompositionSuite_higherCatchClassifier
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    HigherOrderCatchContracts.HigherOrderCatchCapstoneOutcome clause innerEffects okTy errTy loweredTy
+      ∨ FailResultContracts.catchUnnecessary innerEffects :=
+  effectHandlerCatchPairSuite_higherCatchClassifier
+    clause capability innerEffects okTy errTy loweredTy h_suite.catchPair
+
+/-- One-hop projection: generic capstone branch from master composition suite. -/
+theorem effectHandlerCompositionSuite_genericCatchCapstone
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    CatchTypingBridge.CatchTypingCapstoneOutcome
+      clause
+      (CatchInteroperabilitySuite.higherOrderParams innerEffects okTy)
+      okTy
+      errTy
+      loweredTy :=
+  effectHandlerCatchPairSuite_genericCatchCapstone
+    clause capability innerEffects okTy errTy loweredTy h_suite.catchPair
+
+/-- One-hop projection: higher-order capstone branch from master composition suite. -/
+theorem effectHandlerCompositionSuite_higherCatchCapstone
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    HigherOrderCatchContracts.HigherOrderCatchCapstoneOutcome clause innerEffects okTy errTy loweredTy :=
+  effectHandlerCatchPairSuite_higherCatchCapstone
+    clause capability innerEffects okTy errTy loweredTy h_suite.catchPair
+
+/-- One-hop projection: catch bridge laws from master composition suite. -/
+theorem effectHandlerCompositionSuite_catchLaws
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    HigherOrderCatchContracts.HigherOrderCatchBridgeLaws clause innerEffects okTy errTy loweredTy :=
+  effectHandlerCatchPairSuite_catchLaws
+    clause capability innerEffects okTy errTy loweredTy h_suite.catchPair
 
 end EffectHandlerContractSuite
 end Kea
