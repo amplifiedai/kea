@@ -486,6 +486,60 @@ for any other data.
 
 ---
 
+## The compiler optimises itself
+
+A compiler is the perfect workload for Perceus-style RC. Every pass
+is a tree transformation — pattern match on a node, construct a new
+node. When the IR is uniquely owned (Unique T through a linear
+pipeline), every transformation is zero-allocation: the old node's
+memory is reused for the new node via reuse tokens.
+
+Type the pipeline with Unique:
+
+```kea
+fn parse(_ src: String) -> Unique Ast -[Parse, Diagnose]>
+fn infer(_ ast: Unique Ast) -> Unique TypedAst -[TypeCheck, Diagnose]>
+fn lower(_ typed: Unique TypedAst) -> Unique MirExpr -[Lower]>
+fn optimize(_ mir: Unique MirExpr) -> Unique MirExpr   -- pure!
+fn codegen(_ mir: Unique MirExpr) -> Bytes -[Codegen]>
+```
+
+Zero RC overhead through the entire pipeline. No increments, no
+decrements, no COW checks. This isn't an optimisation — it's a
+type-level proof that the compiler never does unnecessary work.
+
+Lean 4 validates the approach. Their self-hosted compiler uses RC +
+destructive updates on unique values and spends only 17% of runtime
+on deallocation, vs OCaml's 90% in GC. And Lean doesn't even have
+Unique T as a type-level guarantee — they do it with runtime checks.
+Kea's Unique pipeline is strictly stronger.
+
+The effect system adds three capabilities no other self-hosted
+compiler has:
+
+1. **Pure passes parallelise automatically.** `fn optimize(mir) ->
+   MirExpr` has no effects — the compiler knows it's safe to run
+   across functions in parallel. Sorbet achieves 100K lines/sec/core
+   this way, but through careful engineering. In Kea, it falls out
+   of the type system.
+
+2. **Arena allocation via Alloc effect.** The parse phase allocates
+   hundreds of thousands of AST nodes and discards them after
+   lowering. `handle parse(src) with Alloc -> Arena.new(4096)` gives
+   bump allocation for the phase, bulk deallocation at handler exit.
+   2-5x from cache locality alone.
+
+3. **Incremental queries via Query effect.** Content-addressed hashing
+   on immutable IR nodes gives early cutoff: if a whitespace-only edit
+   doesn't change the AST hash, all downstream passes are skipped.
+   Rust-analyzer's Salsa does this with manual annotations. In Kea,
+   the Query effect *is* the annotation.
+
+See `BRIEFS/design/self-hosting-perf.md` for the full analysis,
+performance targets, and references.
+
+---
+
 ## When this lands
 
 This is Phase 1-2 work. Phase 0 builds the bootstrap compiler in
