@@ -24566,6 +24566,198 @@ structure PrincipalBoundarySoundNoUnifyFieldRunBundleRoutes
   runBundle : PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf
   consequences : PrincipalNoUnifyFieldRunBundleConsequences st fuel env fs st' rf
 
+/-- Explicit component alias for `PrincipalBoundarySoundExprRunBundleRoutes`. -/
+abbrev PrincipalBoundarySoundExprRunBundleRoutesComponents
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty) : Prop :=
+  PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty ∧
+    PrincipalExprRunBundleConsequences st fuel env e st' ty
+
+/-- `PrincipalBoundarySoundExprRunBundleRoutes` is equivalent to explicit components. -/
+theorem principalBoundarySoundExprRunBundleRoutes_iff_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty) :
+    PrincipalBoundarySoundExprRunBundleRoutes st fuel env e st' ty
+      ↔ PrincipalBoundarySoundExprRunBundleRoutesComponents st fuel env e st' ty := by
+  constructor
+  · intro h_routes
+    exact ⟨h_routes.runBundle, h_routes.consequences⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2⟩
+
+/-- Build `PrincipalBoundarySoundExprRunBundleRoutes` from explicit components. -/
+theorem principalBoundarySoundExprRunBundleRoutes_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_comp : PrincipalBoundarySoundExprRunBundleRoutesComponents st fuel env e st' ty) :
+    PrincipalBoundarySoundExprRunBundleRoutes st fuel env e st' ty :=
+  (principalBoundarySoundExprRunBundleRoutes_iff_components
+    st fuel env e st' ty).2 h_comp
+
+/-- Decompose `PrincipalBoundarySoundExprRunBundleRoutes` into explicit components. -/
+theorem principalBoundarySoundExprRunBundleRoutes_as_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_routes : PrincipalBoundarySoundExprRunBundleRoutes st fuel env e st' ty) :
+    PrincipalBoundarySoundExprRunBundleRoutesComponents st fuel env e st' ty :=
+  (principalBoundarySoundExprRunBundleRoutes_iff_components
+    st fuel env e st' ty).1 h_routes
+
+/-- Direct components-route decomposition for `PrincipalBoundarySoundExprRunBundleRoutes`. -/
+theorem principalBoundarySoundExprRunBundleRoutes_as_components_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_comp : PrincipalBoundarySoundExprRunBundleRoutesComponents st fuel env e st' ty) :
+    PrincipalBoundarySoundExprRunBundleRoutesComponents st fuel env e st' ty :=
+  (principalBoundarySoundExprRunBundleRoutes_iff_components
+    st fuel env e st' ty).1
+    (principalBoundarySoundExprRunBundleRoutes_of_components
+      st fuel env e st' ty h_comp)
+
+/-- Explicit component alias for `PrincipalBoundarySoundFieldRunBundleRoutes`. -/
+abbrev PrincipalBoundarySoundFieldRunBundleRoutesComponents
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields) : Prop :=
+  PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf ∧
+    PrincipalFieldRunBundleConsequences st fuel env fs st' rf
+
+/-- `PrincipalBoundarySoundFieldRunBundleRoutes` is equivalent to explicit components. -/
+theorem principalBoundarySoundFieldRunBundleRoutes_iff_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields) :
+    PrincipalBoundarySoundFieldRunBundleRoutes st fuel env fs st' rf
+      ↔ PrincipalBoundarySoundFieldRunBundleRoutesComponents st fuel env fs st' rf := by
+  constructor
+  · intro h_routes
+    exact ⟨h_routes.runBundle, h_routes.consequences⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2⟩
+
+/-- Build `PrincipalBoundarySoundFieldRunBundleRoutes` from explicit components. -/
+theorem principalBoundarySoundFieldRunBundleRoutes_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_comp : PrincipalBoundarySoundFieldRunBundleRoutesComponents st fuel env fs st' rf) :
+    PrincipalBoundarySoundFieldRunBundleRoutes st fuel env fs st' rf :=
+  (principalBoundarySoundFieldRunBundleRoutes_iff_components
+    st fuel env fs st' rf).2 h_comp
+
+/-- Decompose `PrincipalBoundarySoundFieldRunBundleRoutes` into explicit components. -/
+theorem principalBoundarySoundFieldRunBundleRoutes_as_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_routes : PrincipalBoundarySoundFieldRunBundleRoutes st fuel env fs st' rf) :
+    PrincipalBoundarySoundFieldRunBundleRoutesComponents st fuel env fs st' rf :=
+  (principalBoundarySoundFieldRunBundleRoutes_iff_components
+    st fuel env fs st' rf).1 h_routes
+
+/-- Direct components-route decomposition for `PrincipalBoundarySoundFieldRunBundleRoutes`. -/
+theorem principalBoundarySoundFieldRunBundleRoutes_as_components_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_comp : PrincipalBoundarySoundFieldRunBundleRoutesComponents st fuel env fs st' rf) :
+    PrincipalBoundarySoundFieldRunBundleRoutesComponents st fuel env fs st' rf :=
+  (principalBoundarySoundFieldRunBundleRoutes_iff_components
+    st fuel env fs st' rf).1
+    (principalBoundarySoundFieldRunBundleRoutes_of_components
+      st fuel env fs st' rf h_comp)
+
+/-- Explicit component alias for `PrincipalBoundarySoundNoUnifyExprRunBundleRoutes`. -/
+abbrev PrincipalBoundarySoundNoUnifyExprRunBundleRoutesComponents
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty) : Prop :=
+  PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty ∧
+    PrincipalNoUnifyExprRunBundleConsequences st fuel env e st' ty
+
+/-- `PrincipalBoundarySoundNoUnifyExprRunBundleRoutes` is equivalent to explicit components. -/
+theorem principalBoundarySoundNoUnifyExprRunBundleRoutes_iff_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty) :
+    PrincipalBoundarySoundNoUnifyExprRunBundleRoutes st fuel env e st' ty
+      ↔ PrincipalBoundarySoundNoUnifyExprRunBundleRoutesComponents st fuel env e st' ty := by
+  constructor
+  · intro h_routes
+    exact ⟨h_routes.runBundle, h_routes.consequences⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2⟩
+
+/-- Build `PrincipalBoundarySoundNoUnifyExprRunBundleRoutes` from explicit components. -/
+theorem principalBoundarySoundNoUnifyExprRunBundleRoutes_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_comp : PrincipalBoundarySoundNoUnifyExprRunBundleRoutesComponents st fuel env e st' ty) :
+    PrincipalBoundarySoundNoUnifyExprRunBundleRoutes st fuel env e st' ty :=
+  (principalBoundarySoundNoUnifyExprRunBundleRoutes_iff_components
+    st fuel env e st' ty).2 h_comp
+
+/-- Decompose `PrincipalBoundarySoundNoUnifyExprRunBundleRoutes` into explicit components. -/
+theorem principalBoundarySoundNoUnifyExprRunBundleRoutes_as_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_routes : PrincipalBoundarySoundNoUnifyExprRunBundleRoutes st fuel env e st' ty) :
+    PrincipalBoundarySoundNoUnifyExprRunBundleRoutesComponents st fuel env e st' ty :=
+  (principalBoundarySoundNoUnifyExprRunBundleRoutes_iff_components
+    st fuel env e st' ty).1 h_routes
+
+/-- Direct components-route decomposition for `PrincipalBoundarySoundNoUnifyExprRunBundleRoutes`. -/
+theorem principalBoundarySoundNoUnifyExprRunBundleRoutes_as_components_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_comp : PrincipalBoundarySoundNoUnifyExprRunBundleRoutesComponents st fuel env e st' ty) :
+    PrincipalBoundarySoundNoUnifyExprRunBundleRoutesComponents st fuel env e st' ty :=
+  (principalBoundarySoundNoUnifyExprRunBundleRoutes_iff_components
+    st fuel env e st' ty).1
+    (principalBoundarySoundNoUnifyExprRunBundleRoutes_of_components
+      st fuel env e st' ty h_comp)
+
+/-- Explicit component alias for `PrincipalBoundarySoundNoUnifyFieldRunBundleRoutes`. -/
+abbrev PrincipalBoundarySoundNoUnifyFieldRunBundleRoutesComponents
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields) : Prop :=
+  PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf ∧
+    PrincipalNoUnifyFieldRunBundleConsequences st fuel env fs st' rf
+
+/-- `PrincipalBoundarySoundNoUnifyFieldRunBundleRoutes` is equivalent to explicit components. -/
+theorem principalBoundarySoundNoUnifyFieldRunBundleRoutes_iff_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields) :
+    PrincipalBoundarySoundNoUnifyFieldRunBundleRoutes st fuel env fs st' rf
+      ↔ PrincipalBoundarySoundNoUnifyFieldRunBundleRoutesComponents st fuel env fs st' rf := by
+  constructor
+  · intro h_routes
+    exact ⟨h_routes.runBundle, h_routes.consequences⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2⟩
+
+/-- Build `PrincipalBoundarySoundNoUnifyFieldRunBundleRoutes` from explicit components. -/
+theorem principalBoundarySoundNoUnifyFieldRunBundleRoutes_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_comp : PrincipalBoundarySoundNoUnifyFieldRunBundleRoutesComponents st fuel env fs st' rf) :
+    PrincipalBoundarySoundNoUnifyFieldRunBundleRoutes st fuel env fs st' rf :=
+  (principalBoundarySoundNoUnifyFieldRunBundleRoutes_iff_components
+    st fuel env fs st' rf).2 h_comp
+
+/-- Decompose `PrincipalBoundarySoundNoUnifyFieldRunBundleRoutes` into explicit components. -/
+theorem principalBoundarySoundNoUnifyFieldRunBundleRoutes_as_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_routes : PrincipalBoundarySoundNoUnifyFieldRunBundleRoutes st fuel env fs st' rf) :
+    PrincipalBoundarySoundNoUnifyFieldRunBundleRoutesComponents st fuel env fs st' rf :=
+  (principalBoundarySoundNoUnifyFieldRunBundleRoutes_iff_components
+    st fuel env fs st' rf).1 h_routes
+
+/-- Direct components-route decomposition for `PrincipalBoundarySoundNoUnifyFieldRunBundleRoutes`. -/
+theorem principalBoundarySoundNoUnifyFieldRunBundleRoutes_as_components_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_comp : PrincipalBoundarySoundNoUnifyFieldRunBundleRoutesComponents st fuel env fs st' rf) :
+    PrincipalBoundarySoundNoUnifyFieldRunBundleRoutesComponents st fuel env fs st' rf :=
+  (principalBoundarySoundNoUnifyFieldRunBundleRoutes_iff_components
+    st fuel env fs st' rf).1
+    (principalBoundarySoundNoUnifyFieldRunBundleRoutes_of_components
+      st fuel env fs st' rf h_comp)
+
 /--
 Build the boundary+sound expression route pair from one arbitrary successful
 expression run.
@@ -24854,6 +25046,202 @@ structure PrincipalBoundarySoundNoUnifyFieldTypingRunBundleRoutes
   hasType : HasFieldsType env fs rf
   hasTypeU : HasFieldsTypeU env fs rf
   routes : PrincipalBoundarySoundNoUnifyFieldRunBundleRoutes st fuel env fs st' rf
+
+/-- Explicit component alias for `PrincipalBoundarySoundExprTypingRunBundleRoutes`. -/
+abbrev PrincipalBoundarySoundExprTypingRunBundleRoutesComponents
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty) : Prop :=
+  HasType env e ty ∧ HasTypeU env e ty ∧
+    PrincipalBoundarySoundExprRunBundleRoutes st fuel env e st' ty
+
+/-- `PrincipalBoundarySoundExprTypingRunBundleRoutes` is equivalent to explicit components. -/
+theorem principalBoundarySoundExprTypingRunBundleRoutes_iff_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty) :
+    PrincipalBoundarySoundExprTypingRunBundleRoutes st fuel env e st' ty
+      ↔ PrincipalBoundarySoundExprTypingRunBundleRoutesComponents st fuel env e st' ty := by
+  constructor
+  · intro h_pkg
+    exact ⟨h_pkg.hasType, h_pkg.hasTypeU, h_pkg.routes⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2.1, h_comp.2.2⟩
+
+/-- Build `PrincipalBoundarySoundExprTypingRunBundleRoutes` from explicit components. -/
+theorem principalBoundarySoundExprTypingRunBundleRoutes_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_comp : PrincipalBoundarySoundExprTypingRunBundleRoutesComponents st fuel env e st' ty) :
+    PrincipalBoundarySoundExprTypingRunBundleRoutes st fuel env e st' ty :=
+  (principalBoundarySoundExprTypingRunBundleRoutes_iff_components
+    st fuel env e st' ty).2 h_comp
+
+/-- Decompose `PrincipalBoundarySoundExprTypingRunBundleRoutes` into explicit components. -/
+theorem principalBoundarySoundExprTypingRunBundleRoutes_as_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_pkg : PrincipalBoundarySoundExprTypingRunBundleRoutes st fuel env e st' ty) :
+    PrincipalBoundarySoundExprTypingRunBundleRoutesComponents st fuel env e st' ty :=
+  (principalBoundarySoundExprTypingRunBundleRoutes_iff_components
+    st fuel env e st' ty).1 h_pkg
+
+/-- Direct components-route decomposition for `PrincipalBoundarySoundExprTypingRunBundleRoutes`. -/
+theorem principalBoundarySoundExprTypingRunBundleRoutes_as_components_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_comp : PrincipalBoundarySoundExprTypingRunBundleRoutesComponents st fuel env e st' ty) :
+    PrincipalBoundarySoundExprTypingRunBundleRoutesComponents st fuel env e st' ty :=
+  (principalBoundarySoundExprTypingRunBundleRoutes_iff_components
+    st fuel env e st' ty).1
+    (principalBoundarySoundExprTypingRunBundleRoutes_of_components
+      st fuel env e st' ty h_comp)
+
+/-- Explicit component alias for `PrincipalBoundarySoundFieldTypingRunBundleRoutes`. -/
+abbrev PrincipalBoundarySoundFieldTypingRunBundleRoutesComponents
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields) : Prop :=
+  HasFieldsType env fs rf ∧ HasFieldsTypeU env fs rf ∧
+    PrincipalBoundarySoundFieldRunBundleRoutes st fuel env fs st' rf
+
+/-- `PrincipalBoundarySoundFieldTypingRunBundleRoutes` is equivalent to explicit components. -/
+theorem principalBoundarySoundFieldTypingRunBundleRoutes_iff_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields) :
+    PrincipalBoundarySoundFieldTypingRunBundleRoutes st fuel env fs st' rf
+      ↔ PrincipalBoundarySoundFieldTypingRunBundleRoutesComponents st fuel env fs st' rf := by
+  constructor
+  · intro h_pkg
+    exact ⟨h_pkg.hasType, h_pkg.hasTypeU, h_pkg.routes⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2.1, h_comp.2.2⟩
+
+/-- Build `PrincipalBoundarySoundFieldTypingRunBundleRoutes` from explicit components. -/
+theorem principalBoundarySoundFieldTypingRunBundleRoutes_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_comp : PrincipalBoundarySoundFieldTypingRunBundleRoutesComponents st fuel env fs st' rf) :
+    PrincipalBoundarySoundFieldTypingRunBundleRoutes st fuel env fs st' rf :=
+  (principalBoundarySoundFieldTypingRunBundleRoutes_iff_components
+    st fuel env fs st' rf).2 h_comp
+
+/-- Decompose `PrincipalBoundarySoundFieldTypingRunBundleRoutes` into explicit components. -/
+theorem principalBoundarySoundFieldTypingRunBundleRoutes_as_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_pkg : PrincipalBoundarySoundFieldTypingRunBundleRoutes st fuel env fs st' rf) :
+    PrincipalBoundarySoundFieldTypingRunBundleRoutesComponents st fuel env fs st' rf :=
+  (principalBoundarySoundFieldTypingRunBundleRoutes_iff_components
+    st fuel env fs st' rf).1 h_pkg
+
+/-- Direct components-route decomposition for `PrincipalBoundarySoundFieldTypingRunBundleRoutes`. -/
+theorem principalBoundarySoundFieldTypingRunBundleRoutes_as_components_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_comp : PrincipalBoundarySoundFieldTypingRunBundleRoutesComponents st fuel env fs st' rf) :
+    PrincipalBoundarySoundFieldTypingRunBundleRoutesComponents st fuel env fs st' rf :=
+  (principalBoundarySoundFieldTypingRunBundleRoutes_iff_components
+    st fuel env fs st' rf).1
+    (principalBoundarySoundFieldTypingRunBundleRoutes_of_components
+      st fuel env fs st' rf h_comp)
+
+/-- Explicit component alias for `PrincipalBoundarySoundNoUnifyExprTypingRunBundleRoutes`. -/
+abbrev PrincipalBoundarySoundNoUnifyExprTypingRunBundleRoutesComponents
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty) : Prop :=
+  HasType env e ty ∧ HasTypeU env e ty ∧
+    PrincipalBoundarySoundNoUnifyExprRunBundleRoutes st fuel env e st' ty
+
+/-- `PrincipalBoundarySoundNoUnifyExprTypingRunBundleRoutes` is equivalent to explicit components. -/
+theorem principalBoundarySoundNoUnifyExprTypingRunBundleRoutes_iff_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty) :
+    PrincipalBoundarySoundNoUnifyExprTypingRunBundleRoutes st fuel env e st' ty
+      ↔ PrincipalBoundarySoundNoUnifyExprTypingRunBundleRoutesComponents st fuel env e st' ty := by
+  constructor
+  · intro h_pkg
+    exact ⟨h_pkg.hasType, h_pkg.hasTypeU, h_pkg.routes⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2.1, h_comp.2.2⟩
+
+/-- Build `PrincipalBoundarySoundNoUnifyExprTypingRunBundleRoutes` from explicit components. -/
+theorem principalBoundarySoundNoUnifyExprTypingRunBundleRoutes_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_comp :
+      PrincipalBoundarySoundNoUnifyExprTypingRunBundleRoutesComponents st fuel env e st' ty) :
+    PrincipalBoundarySoundNoUnifyExprTypingRunBundleRoutes st fuel env e st' ty :=
+  (principalBoundarySoundNoUnifyExprTypingRunBundleRoutes_iff_components
+    st fuel env e st' ty).2 h_comp
+
+/-- Decompose `PrincipalBoundarySoundNoUnifyExprTypingRunBundleRoutes` into explicit components. -/
+theorem principalBoundarySoundNoUnifyExprTypingRunBundleRoutes_as_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_pkg : PrincipalBoundarySoundNoUnifyExprTypingRunBundleRoutes st fuel env e st' ty) :
+    PrincipalBoundarySoundNoUnifyExprTypingRunBundleRoutesComponents st fuel env e st' ty :=
+  (principalBoundarySoundNoUnifyExprTypingRunBundleRoutes_iff_components
+    st fuel env e st' ty).1 h_pkg
+
+/-- Direct components-route decomposition for `PrincipalBoundarySoundNoUnifyExprTypingRunBundleRoutes`. -/
+theorem principalBoundarySoundNoUnifyExprTypingRunBundleRoutes_as_components_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_comp :
+      PrincipalBoundarySoundNoUnifyExprTypingRunBundleRoutesComponents st fuel env e st' ty) :
+    PrincipalBoundarySoundNoUnifyExprTypingRunBundleRoutesComponents st fuel env e st' ty :=
+  (principalBoundarySoundNoUnifyExprTypingRunBundleRoutes_iff_components
+    st fuel env e st' ty).1
+    (principalBoundarySoundNoUnifyExprTypingRunBundleRoutes_of_components
+      st fuel env e st' ty h_comp)
+
+/-- Explicit component alias for `PrincipalBoundarySoundNoUnifyFieldTypingRunBundleRoutes`. -/
+abbrev PrincipalBoundarySoundNoUnifyFieldTypingRunBundleRoutesComponents
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields) : Prop :=
+  HasFieldsType env fs rf ∧ HasFieldsTypeU env fs rf ∧
+    PrincipalBoundarySoundNoUnifyFieldRunBundleRoutes st fuel env fs st' rf
+
+/-- `PrincipalBoundarySoundNoUnifyFieldTypingRunBundleRoutes` is equivalent to explicit components. -/
+theorem principalBoundarySoundNoUnifyFieldTypingRunBundleRoutes_iff_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields) :
+    PrincipalBoundarySoundNoUnifyFieldTypingRunBundleRoutes st fuel env fs st' rf
+      ↔ PrincipalBoundarySoundNoUnifyFieldTypingRunBundleRoutesComponents st fuel env fs st' rf := by
+  constructor
+  · intro h_pkg
+    exact ⟨h_pkg.hasType, h_pkg.hasTypeU, h_pkg.routes⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2.1, h_comp.2.2⟩
+
+/-- Build `PrincipalBoundarySoundNoUnifyFieldTypingRunBundleRoutes` from explicit components. -/
+theorem principalBoundarySoundNoUnifyFieldTypingRunBundleRoutes_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_comp :
+      PrincipalBoundarySoundNoUnifyFieldTypingRunBundleRoutesComponents st fuel env fs st' rf) :
+    PrincipalBoundarySoundNoUnifyFieldTypingRunBundleRoutes st fuel env fs st' rf :=
+  (principalBoundarySoundNoUnifyFieldTypingRunBundleRoutes_iff_components
+    st fuel env fs st' rf).2 h_comp
+
+/-- Decompose `PrincipalBoundarySoundNoUnifyFieldTypingRunBundleRoutes` into explicit components. -/
+theorem principalBoundarySoundNoUnifyFieldTypingRunBundleRoutes_as_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_pkg : PrincipalBoundarySoundNoUnifyFieldTypingRunBundleRoutes st fuel env fs st' rf) :
+    PrincipalBoundarySoundNoUnifyFieldTypingRunBundleRoutesComponents st fuel env fs st' rf :=
+  (principalBoundarySoundNoUnifyFieldTypingRunBundleRoutes_iff_components
+    st fuel env fs st' rf).1 h_pkg
+
+/-- Direct components-route decomposition for `PrincipalBoundarySoundNoUnifyFieldTypingRunBundleRoutes`. -/
+theorem principalBoundarySoundNoUnifyFieldTypingRunBundleRoutes_as_components_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_comp :
+      PrincipalBoundarySoundNoUnifyFieldTypingRunBundleRoutesComponents st fuel env fs st' rf) :
+    PrincipalBoundarySoundNoUnifyFieldTypingRunBundleRoutesComponents st fuel env fs st' rf :=
+  (principalBoundarySoundNoUnifyFieldTypingRunBundleRoutes_iff_components
+    st fuel env fs st' rf).1
+    (principalBoundarySoundNoUnifyFieldTypingRunBundleRoutes_of_components
+      st fuel env fs st' rf h_comp)
 
 /--
 Build the boundary+sound expression typing route package from one arbitrary

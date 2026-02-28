@@ -477,6 +477,7 @@ This work starts by cannibalizing the existing Rill formal corpus and then exten
 - **Phase 2 (active):** Added strengthened open-row consequence packaging (`EffectHandlerNestedOpenRowConsequenceBundle`) carrying both bridge equality and normalized handled-removal, with constructors from composition/coherence/premise routes and one-hop projections.
 - **Phase 2 (active):** `EffectHandlerNestedOpenRowConsequenceBundle` now includes direct `open_expr_row` premise constructors (`..._of_open_expr_row_{premises,fail_present}`), completing constructor parity across open-row entry routes for the strengthened consequence surface.
 - **Phase 2 (active):** Added bridge/consequence interoperability wrappers (`effectHandlerNestedOpenRowConsequenceBundle_of_bridge_and_normalizedHandledRemoved`, `effectHandlerNestedOpenRowBridgeBundle_of_consequenceBundle`) so open-row APIs can move between equality-only and strengthened consequence bundles without manual reconstruction.
+- **Phase 2 (active):** `Kea/Typing.lean` now has explicit component aliases and structural decomposition APIs (`...Components`, `..._iff_components`, `..._of_components`, `..._as_components`, `..._as_components_of_components`) for boundary-sound run-route and typing-route bundles: `PrincipalBoundarySound{Expr,Field,NoUnifyExpr,NoUnifyField}RunBundleRoutes` and `PrincipalBoundarySound{Expr,Field,NoUnifyExpr,NoUnifyField}TypingRunBundleRoutes`.
 
 The formal workspace lives at [`formal/`](formal/).
 
