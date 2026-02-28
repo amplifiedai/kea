@@ -285,6 +285,94 @@ theorem decimal_unify_consts_ok_iff_dim_kernel_success
   · intro h_dim
     exact decimal_unify_consts_of_dim_kernel_success st fuel p1 p2 s1 s2 h_dim.1 h_dim.2
 
+/-- Decimal constant-dimension unifier rejects iff either dim-kernel check fails. -/
+theorem decimal_unify_consts_err_iff_dim_kernel_none
+    (st : UnifyState) (fuel p1 p2 s1 s2 : Nat) :
+    unify st (fuel + 1)
+      (.decimal (.const p1) (.const s1))
+      (.decimal (.const p2) (.const s2))
+      = .err "type mismatch" ↔
+      unifyDim DimSubst.empty (fuel + 1) (.const p1) (.const p2) = none ∨
+      unifyDim DimSubst.empty (fuel + 1) (.const s1) (.const s2) = none := by
+  constructor
+  · intro h_err
+    by_cases h_prec_none :
+        unifyDim DimSubst.empty (fuel + 1) (.const p1) (.const p2) = none
+    · exact Or.inl h_prec_none
+    · by_cases h_scale_none :
+          unifyDim DimSubst.empty (fuel + 1) (.const s1) (.const s2) = none
+      · exact Or.inr h_scale_none
+      · have hp_eq : p1 = p2 := by
+          by_contra hp_ne
+          exact h_prec_none
+            ((unifyDim_const_none_iff_ne DimSubst.empty fuel p1 p2).2 hp_ne)
+        have hs_eq : s1 = s2 := by
+          by_contra hs_ne
+          exact h_scale_none
+            ((unifyDim_const_none_iff_ne DimSubst.empty fuel s1 s2).2 hs_ne)
+        have h_prec_some :
+            unifyDim DimSubst.empty (fuel + 1) (.const p1) (.const p2) = some DimSubst.empty :=
+          (unifyDim_const_some_iff_eq DimSubst.empty fuel p1 p2).2 hp_eq
+        have h_scale_some :
+            unifyDim DimSubst.empty (fuel + 1) (.const s1) (.const s2) = some DimSubst.empty :=
+          (unifyDim_const_some_iff_eq DimSubst.empty fuel s1 s2).2 hs_eq
+        have h_ok := decimal_unify_consts_of_dim_kernel_success st fuel p1 p2 s1 s2
+          h_prec_some h_scale_some
+        rw [h_ok] at h_err
+        cases h_err
+  · intro h_none
+    exact decimal_unify_consts_reject_of_dim_kernel_none st fuel p1 p2 s1 s2 h_none
+
+/-- Decimal constant-dimension unifier result is decided by dim-kernel failure. -/
+theorem decimal_unify_consts_decision_of_dim_kernel_none
+    (st : UnifyState) (fuel p1 p2 s1 s2 : Nat) :
+    unify st (fuel + 1)
+      (.decimal (.const p1) (.const s1))
+      (.decimal (.const p2) (.const s2))
+      =
+      if (unifyDim DimSubst.empty (fuel + 1) (.const p1) (.const p2) = none ∨
+          unifyDim DimSubst.empty (fuel + 1) (.const s1) (.const s2) = none)
+      then .err "type mismatch"
+      else .ok st := by
+  by_cases h_none :
+      unifyDim DimSubst.empty (fuel + 1) (.const p1) (.const p2) = none ∨
+      unifyDim DimSubst.empty (fuel + 1) (.const s1) (.const s2) = none
+  · have h_err := decimal_unify_consts_reject_of_dim_kernel_none st fuel p1 p2 s1 s2 h_none
+    simp [h_none, h_err]
+  · have h_prec_some :
+      unifyDim DimSubst.empty (fuel + 1) (.const p1) (.const p2) = some DimSubst.empty := by
+      by_contra h_prec_not_some
+      have h_prec_dec := unifyDim_const_decision DimSubst.empty fuel p1 p2
+      cases hpb : (p1 == p2) with
+      | true =>
+          have h_prec_eq :
+              unifyDim DimSubst.empty (fuel + 1) (.const p1) (.const p2) = some DimSubst.empty := by
+            simpa [hpb] using h_prec_dec
+          exact h_prec_not_some h_prec_eq
+      | false =>
+          have h_prec_none :
+              unifyDim DimSubst.empty (fuel + 1) (.const p1) (.const p2) = none := by
+            simpa [hpb] using h_prec_dec
+          exact h_none (Or.inl h_prec_none)
+    have h_scale_some :
+      unifyDim DimSubst.empty (fuel + 1) (.const s1) (.const s2) = some DimSubst.empty := by
+      by_contra h_scale_not_some
+      have h_scale_dec := unifyDim_const_decision DimSubst.empty fuel s1 s2
+      cases hsb : (s1 == s2) with
+      | true =>
+          have h_scale_eq :
+              unifyDim DimSubst.empty (fuel + 1) (.const s1) (.const s2) = some DimSubst.empty := by
+            simpa [hsb] using h_scale_dec
+          exact h_scale_not_some h_scale_eq
+      | false =>
+          have h_scale_none :
+              unifyDim DimSubst.empty (fuel + 1) (.const s1) (.const s2) = none := by
+            simpa [hsb] using h_scale_dec
+          exact h_none (Or.inr h_scale_none)
+    have h_ok := decimal_unify_consts_of_dim_kernel_success st fuel p1 p2 s1 s2
+      h_prec_some h_scale_some
+    simp [h_none, h_ok]
+
 /-- Decimal and non-decimal types do not unify. -/
 theorem decimal_non_decimal_mismatch (st : UnifyState) :
     unify st 1
