@@ -201,17 +201,167 @@ Extend the move checker:
   not returned, not captured in closures)
 - Multiple borrows: OK as long as they're different values
 
-### Step 3: Reuse analysis (basic)
+### Step 3: Reuse analysis and memory optimisation pipeline
 
-MIR optimisation pass:
-- Identify values that are consumed (pattern matched, passed
-  to consuming function) and never referenced again
-- Insert drop-before-last-use to enable refcount to reach 1
-- Identify allocation + deallocation pairs of same-sized values
-  and fuse them (reuse token)
+This step has multiple sub-passes that build on each other. The agent
+has already landed 3a and parts of 3b. The remaining sub-steps are
+where the real performance wins come from.
 
-Start with obvious cases: linear use of a value (bound once,
-used once, consumed). Extend to more complex patterns later.
+#### Step 3a: Release scheduling and churn elimination (DONE)
+
+- `schedule_trailing_releases_after_last_use` — move block-exit
+  releases to each value's last in-block use position
+- `elide_adjacent_retain_release_pairs` — remove trivial and
+  non-interfering retain/release churn windows
+- Linear alias ownership transfer — `let t = s` skips retain
+  when `s` is linear-local and dead after the alias
+
+#### Step 3b: Auto borrow inference (Lean 4 style)
+
+**This is the single highest-impact optimisation.** Lean reports
+it eliminates the majority of inc/dec operations.
+
+Heuristic: if a function parameter is only *projected* (fields
+read, passed to other borrowed positions) and never stored,
+returned, or captured, it is automatically borrowed. No user
+annotation needed.
+
+Implementation:
+- Add an inference pass over typed HIR/MIR that classifies each
+  parameter as "borrowed" or "owned" based on its usage within
+  the function body
+- A parameter is auto-borrowed when:
+  - It is never returned or stored in a data structure
+  - It is never captured in a closure
+  - It is never passed to a consuming (non-borrow) parameter
+    of another function
+  - It is only used for field projection, method calls on
+    borrow params, or passed to other auto-borrow positions
+- Layer this on the existing `BorrowParamMap` infrastructure:
+  infer the map automatically for functions where the user
+  didn't annotate, then let explicit `borrow` override
+- Callers skip retain/release for auto-borrowed arguments
+- This is a **pure optimisation** — programs are correct without
+  it, auto-borrow just eliminates redundant RC operations
+
+**Impact:** Massive. Most function parameters in functional code
+are read-only. Lean's experience shows this is the #1 optimisation.
+**Effort:** Medium. The borrow machinery exists; need an inference pass.
+
+#### Step 3c: Drop specialization
+
+Instead of a generic recursive drop function, generate specialised
+drop code per type. When dropping a `Cons(head, tail)`, inline the
+uniqueness check: if unique, extract children, drop them, free the
+cell; if shared, just decrement.
+
+Implementation:
+- For each heap-allocated type, generate a type-specific drop
+  function during codegen
+- The drop function pattern-matches on the type's structure:
+  check refcount, if unique → extract fields, recursively drop
+  heap-typed fields, free the cell; if shared → decrement only
+- This avoids function-call overhead and lets the optimiser see
+  through drops — critical for reuse analysis to work well
+
+**Impact:** Moderate standalone, but *enables* reuse tokens and TRMC.
+**Effort:** Low-medium. It's code generation, not analysis.
+
+#### Step 3d: Reuse tokens (Perceus FBIP)
+
+The missing half of reuse analysis. When you pattern-match on
+`Cons(head, tail)` and construct a new `Cons(f(head), mapped_tail)`,
+the old cons cell's memory should be reused directly for the new
+one. Zero allocator calls.
+
+This is the FBIP (Functional But In-Place) paradigm from Perceus
+(Reinking et al. 2021). Tree maps, list maps, any recursive traversal
+that preserves structure — all become zero-allocation when the input
+is unique.
+
+Implementation:
+- MIR pass that pairs `Release` sites with `Alloc` sites of the
+  same layout (same size and alignment)
+- Emit a `ReuseToken` instruction: instead of freeing the old cell,
+  stash the pointer as a reuse token
+- At the `Alloc` site, check: if reuse token available, use it
+  (just overwrite fields); otherwise allocate fresh
+- The runtime check is: `if (token != null) { reuse } else { alloc }`
+- With drop specialisation (3c), the compiler can see that the
+  pattern match drops the scrutinee's cell, and the constructor
+  allocates one of the same layout → fuse them
+- Combined with Unique T: when the input is provably unique,
+  skip the runtime check entirely — unconditional reuse
+
+**Impact:** Huge for recursive data structure code. 1.8-4.3x
+speedup measured in Koka.
+**Effort:** Medium. Needs a MIR pass pairing releases with allocs.
+
+#### Step 3e: TRMC — Tail Recursion Modulo Context (Leijen, POPL 2023)
+
+Consider:
+```kea
+fn map(_ xs: List A, _ f: A -> B) -> List B
+  case xs
+    [] -> []
+    [h, ..t] -> [f(h), ..map(t, f)]
+```
+
+This isn't tail-recursive — it constructs `Cons` around the recursive
+call. TRMC transforms it to: allocate the Cons cell with a hole for
+the tail, then loop, filling in the hole on each iteration. Combined
+with reuse tokens (3d), `map` becomes a zero-allocation in-place loop
+when the input list is unique.
+
+Implementation:
+- MIR transformation pass that detects "tail call under constructor"
+  patterns: `Constructor(args..., recursive_call)`
+- Transform to: allocate constructor with uninitialised tail field,
+  loop with hole-filling
+- The hole is a `Ptr` to the uninitialised field — this is safe
+  because the partially-constructed value is not yet visible
+- Interacts with effect handlers: Leijen's POPL 2023 paper proves
+  soundness under non-linear control flow. Kea's at-most-once
+  resume constraint makes this simpler than general delimited
+  continuations
+
+**Impact:** Critical for idiomatic functional patterns (map, filter,
+flatMap, any structure-preserving traversal).
+**Effort:** Medium-high. Requires a MIR transformation pass.
+
+#### Step 3f: FIP verification (`@fip` annotation)
+
+Statically verify that a function over Unique values is fully
+in-place: zero allocation, zero deallocation, constant stack.
+Based on Koka's FP² work (Lorenzen et al., ICFP 2023).
+
+```kea
+@fip
+fn splay_insert(_ t: Unique Tree, _ k: Int) -> Unique Tree
+  -- compiler verifies: every input consumed exactly once,
+  -- every allocation reuses a dead input's memory
+```
+
+Implementation:
+- `@fip` annotation triggers a linear-fragment verification on MIR
+- Check: every Unique input is consumed exactly once
+- Check: every allocation has a matching reuse token from a dead input
+- Check: no net allocations or deallocations
+- If verification fails, emit a clear error explaining which
+  allocation couldn't be paired with a reuse
+- Can also infer `@fip` automatically for Unique-only functions
+  (diagnostic, not annotation — "this function is FIP")
+
+**Impact:** Gives users a *guarantee*, not just a hope, that their
+code is zero-alloc. Splay trees, finger trees, merge sort, quicksort
+— all verified FIP in Koka.
+**Effort:** Medium. The check is a linear-fragment verification on MIR.
+
+**Sequencing:** 3a → 3b → 3c → 3d → 3e → 3f. Each sub-step builds
+on the previous. 3a is done. 3b (auto borrow) is the next highest
+priority — it's the biggest single win. 3c (drop specialisation)
+enables 3d (reuse tokens). 3e (TRMC) and 3f (FIP) are the cutting-edge
+tier but proven sound in Koka/Lean.
 
 ### Step 4: Unsafe infrastructure
 
@@ -273,8 +423,10 @@ This is the 0e-dependent step. After handler compilation lands:
 - Escape checks at handler/Send/Spawn/borrow boundaries
 
 **Parallelism note:** Steps 1-3 are sequential (borrow extends
-move checking; reuse needs move info). Steps 4-6 are independent
-of 1-3 and of each other. Step 7 is blocked on 0e.
+move checking; reuse needs move info; auto borrow inference extends
+borrow; drop specialisation enables reuse tokens; TRMC and FIP
+build on reuse tokens). Steps 4-6 are independent of 1-3 and of
+each other. Step 7 is blocked on 0e.
 
 ## Testing
 
@@ -282,9 +434,18 @@ of 1-3 and of each other. Step 7 is blocked on 0e.
   works. Branch analysis correct.
 - Borrow: borrow params can read, can't escape. Multiple
   borrows OK.
-- Reuse analysis: verify in-place mutation happens when
-  expected (measure allocation count in test, not just
-  correctness)
+- Auto borrow inference: verify parameters inferred as borrowed
+  have zero retain/release. Verify storing/returning a param
+  prevents auto-borrow.
+- Drop specialisation: per-type drop functions generated, no
+  generic recursive drop calls
+- Reuse tokens: verify in-place mutation happens when expected
+  (measure allocation count in test). `map` on a unique list
+  should have zero net allocations.
+- TRMC: `map`, `filter` on lists compile to loops, not recursive
+  calls. Stack depth constant regardless of list length.
+- FIP: `@fip` annotation on splay insert/delete verifies. Removing
+  `@fip` from a function that allocates produces clear error.
 - Unique + CoW: functional update on Unique value is always
   in-place (no conditional check needed)
 - Unsafe: Ptr operations work in unsafe context, rejected
@@ -300,7 +461,11 @@ of 1-3 and of each other. Step 7 is blocked on 0e.
 
 - Unique T values enforce move semantics at compile time
 - borrow parameters prevent escaping and consuming
-- Basic reuse analysis elides some retain/release pairs
+- Auto borrow inference eliminates majority of RC ops on read-only params
+- Reuse tokens pair drops with allocs for zero-allocation recursive traversals
+- Drop specialisation generates per-type drop code
+- TRMC transforms structure-preserving recursion into loops
+- `@fip` verifies zero-alloc guarantee on Unique functions
 - unsafe blocks and @unsafe functions work
 - Ptr T operations work for FFI
 - @unboxed types compile to flat value-type layout
@@ -316,7 +481,11 @@ compiler reads types and picks the optimal memory strategy.
 | Class | Strategy | Benchmark gate |
 |-------|---------|----------------|
 | **Unique T** | No refcount ops, unconditional in-place mutation | Zero overhead vs raw pointer mutation |
+| **Auto-borrowed** (inferred read-only params) | No retain/release at call site | Zero RC ops for projected-only params |
 | **Reuse-hit** (refcount==1 proven by analysis) | Elide retain/release, in-place mutation | Within 10% of Unique for linear-use patterns |
+| **Reuse-token** (drop+alloc same layout fused) | Zero allocator calls for structure-preserving recursion | Zero net allocations for `map` on unique list |
+| **TRMC** (tail call under constructor) | Loop instead of recursive call + stack frame | Constant stack for `map`/`filter`/`flatMap` |
+| **@fip verified** | Statically proven zero-alloc | Compiler-verified, not benchmarked |
 | **@unboxed** | Flat value-type layout, passed in registers, no heap | Zero overhead vs C struct by-value |
 | **Refcounted** (general case) | Atomic or non-atomic refcount (effect-directed per 0d) | Baseline — this is the default |
 
@@ -499,4 +668,5 @@ Start them as soon as the design stabilizes from prototyping.
 - 2026-02-28 09:23: Extended Step 3 stats coverage from single-alias to chain-alias kernels: added CLI regression `compile_elides_linear_heap_alias_chain_retain_churn_in_stats` using a heap record alias chain (`b0 -> b1 -> b2 -> b3`) and asserting `retain_count == 0` with runtime semantic parity (`exit_code == 1`). This locks in that linear ownership transfer scales beyond one alias edge and remains observable-safe on compiled path. Verified with `PKG=kea mise run test-pkg` and `mise run check`.
 - 2026-02-28 09:31: Extended Step 3 linear-use ownership transfer from var-alias lets to record-update bases in MIR lowering. `RecordUpdate` now skips pre-claim `Retain` only when the base binding is linear-local to the current block, not referenced later, and not referenced by update field expressions; otherwise it conservatively keeps retain behavior. Added MIR regressions `lower_hir_module_transfers_linear_local_record_update_base_without_retain` and `lower_hir_module_keeps_retain_when_record_update_fields_read_base_binding`, plus updated safety plumbing tests remain green. Verified with `PKG=kea-mir mise run test-pkg`, `PKG=kea mise run test-pkg`, and `mise run check`.
 - 2026-02-28 09:36: Added benchmark harness coverage for Step 3 alias-transfer paths in `kea-bench`: new divan benches `lower_linear_heap_alias_chain_to_mir` and `compile_linear_heap_alias_chain_hir_jit`, backed by `build_linear_heap_alias_chain_hir_module(levels)`. This makes alias-churn optimization effects observable in benchmark artifacts (Stage A/Stage B regression workflows) instead of only unit/integration tests. Verified with `cargo test -p kea-bench --benches --no-run` and `mise run check`.
-- **Next:** continue Step 3 with additional linear-use candidate patterns beyond var aliases + record-update bases (e.g. single-use tuple/anon-record carriers), then add benchmark kernels for those new patterns to keep perf tracking aligned with optimization scope.
+- 2026-02-28: **Step 3 expanded** with five new sub-steps (3b-3f) based on Lean 4 / Koka / Perceus research. See the updated Step 3 section above for full details. Priority order: 3b (auto borrow inference) → 3c (drop specialisation) → 3d (reuse tokens) → 3e (TRMC) → 3f (FIP verification). These are where the real performance wins come from — the current churn elimination is necessary but not sufficient.
+- **Next:** Step 3b — auto borrow inference. This is the single highest-impact optimisation (Lean reports it eliminates the majority of inc/dec operations). Layer on existing `BorrowParamMap`: infer which params are read-only, skip retain/release for those at call sites. Then proceed to 3c (drop specialisation) which enables 3d (reuse tokens / Perceus FBIP).
