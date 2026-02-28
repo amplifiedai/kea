@@ -53,6 +53,28 @@ structure EffectHandlerCapstoneSuite
     CatchInteroperabilitySuite.CatchCapstoneInteropSuite
       clause innerEffects okTy errTy loweredTy
 
+/-- Explicit component alias for `EffectHandlerSuite`. -/
+abbrev EffectHandlerSuiteComponents
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty) : Prop :=
+  HandlerClosedAwareContracts.ClosedAwareResultBundle clause
+    ∧ TailCapabilityComposition.TailCapabilityClosedAwareBundle clause capability
+    ∧ CatchInteroperabilitySuite.CatchClassifierInteropSuite
+        clause innerEffects okTy errTy loweredTy
+
+/-- Explicit component alias for `EffectHandlerCapstoneSuite`. -/
+abbrev EffectHandlerCapstoneSuiteComponents
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty) : Prop :=
+  HandlerClosedAwareContracts.ClosedAwareResultBundle clause
+    ∧ TailCapabilityComposition.TailCapabilityClosedAwareBundle clause capability
+    ∧ CatchInteroperabilitySuite.CatchCapstoneInteropSuite
+        clause innerEffects okTy errTy loweredTy
+
 /-- Aggregate suite is equivalent to explicit component bundles. -/
 theorem effectHandlerSuite_iff_components
     (clause : HandleClauseContract)
@@ -60,10 +82,7 @@ theorem effectHandlerSuite_iff_components
     (innerEffects : EffectRow)
     (okTy errTy loweredTy : Ty) :
     EffectHandlerSuite clause capability innerEffects okTy errTy loweredTy
-      ↔ (HandlerClosedAwareContracts.ClosedAwareResultBundle clause
-          ∧ TailCapabilityComposition.TailCapabilityClosedAwareBundle clause capability
-          ∧ CatchInteroperabilitySuite.CatchClassifierInteropSuite
-              clause innerEffects okTy errTy loweredTy) := by
+      ↔ EffectHandlerSuiteComponents clause capability innerEffects okTy errTy loweredTy := by
   constructor
   · intro h_suite
     exact ⟨h_suite.closedAware, h_suite.capabilityClosedAware, h_suite.catchInterop⟩
@@ -77,10 +96,7 @@ theorem effectHandlerSuite_of_components
     (innerEffects : EffectRow)
     (okTy errTy loweredTy : Ty)
     (h_comp :
-      HandlerClosedAwareContracts.ClosedAwareResultBundle clause
-        ∧ TailCapabilityComposition.TailCapabilityClosedAwareBundle clause capability
-        ∧ CatchInteroperabilitySuite.CatchClassifierInteropSuite
-            clause innerEffects okTy errTy loweredTy) :
+      EffectHandlerSuiteComponents clause capability innerEffects okTy errTy loweredTy) :
     EffectHandlerSuite clause capability innerEffects okTy errTy loweredTy :=
   (effectHandlerSuite_iff_components clause capability innerEffects okTy errTy loweredTy).2 h_comp
 
@@ -90,14 +106,8 @@ theorem effectHandlerSuite_as_components_of_components
     (innerEffects : EffectRow)
     (okTy errTy loweredTy : Ty)
     (h_comp :
-      HandlerClosedAwareContracts.ClosedAwareResultBundle clause
-        ∧ TailCapabilityComposition.TailCapabilityClosedAwareBundle clause capability
-        ∧ CatchInteroperabilitySuite.CatchClassifierInteropSuite
-            clause innerEffects okTy errTy loweredTy) :
-    HandlerClosedAwareContracts.ClosedAwareResultBundle clause
-      ∧ TailCapabilityComposition.TailCapabilityClosedAwareBundle clause capability
-      ∧ CatchInteroperabilitySuite.CatchClassifierInteropSuite
-          clause innerEffects okTy errTy loweredTy :=
+      EffectHandlerSuiteComponents clause capability innerEffects okTy errTy loweredTy) :
+    EffectHandlerSuiteComponents clause capability innerEffects okTy errTy loweredTy :=
   (effectHandlerSuite_iff_components clause capability innerEffects okTy errTy loweredTy).1
     (effectHandlerSuite_of_components clause capability innerEffects okTy errTy loweredTy h_comp)
 
@@ -108,10 +118,7 @@ theorem effectHandlerSuite_as_components
     (innerEffects : EffectRow)
     (okTy errTy loweredTy : Ty)
     (h_suite : EffectHandlerSuite clause capability innerEffects okTy errTy loweredTy) :
-    HandlerClosedAwareContracts.ClosedAwareResultBundle clause
-      ∧ TailCapabilityComposition.TailCapabilityClosedAwareBundle clause capability
-      ∧ CatchInteroperabilitySuite.CatchClassifierInteropSuite
-          clause innerEffects okTy errTy loweredTy :=
+    EffectHandlerSuiteComponents clause capability innerEffects okTy errTy loweredTy :=
   (effectHandlerSuite_iff_components clause capability innerEffects okTy errTy loweredTy).1 h_suite
 
 /-- Capstone aggregate suite is equivalent to explicit component bundles. -/
@@ -121,10 +128,7 @@ theorem effectHandlerCapstoneSuite_iff_components
     (innerEffects : EffectRow)
     (okTy errTy loweredTy : Ty) :
     EffectHandlerCapstoneSuite clause capability innerEffects okTy errTy loweredTy
-      ↔ (HandlerClosedAwareContracts.ClosedAwareResultBundle clause
-          ∧ TailCapabilityComposition.TailCapabilityClosedAwareBundle clause capability
-          ∧ CatchInteroperabilitySuite.CatchCapstoneInteropSuite
-              clause innerEffects okTy errTy loweredTy) := by
+      ↔ EffectHandlerCapstoneSuiteComponents clause capability innerEffects okTy errTy loweredTy := by
   constructor
   · intro h_suite
     exact ⟨h_suite.closedAware, h_suite.capabilityClosedAware, h_suite.catchInteropCapstone⟩
@@ -138,10 +142,7 @@ theorem effectHandlerCapstoneSuite_of_components
     (innerEffects : EffectRow)
     (okTy errTy loweredTy : Ty)
     (h_comp :
-      HandlerClosedAwareContracts.ClosedAwareResultBundle clause
-        ∧ TailCapabilityComposition.TailCapabilityClosedAwareBundle clause capability
-        ∧ CatchInteroperabilitySuite.CatchCapstoneInteropSuite
-            clause innerEffects okTy errTy loweredTy) :
+      EffectHandlerCapstoneSuiteComponents clause capability innerEffects okTy errTy loweredTy) :
     EffectHandlerCapstoneSuite clause capability innerEffects okTy errTy loweredTy :=
   (effectHandlerCapstoneSuite_iff_components clause capability innerEffects okTy errTy loweredTy).2 h_comp
 
@@ -151,14 +152,8 @@ theorem effectHandlerCapstoneSuite_as_components_of_components
     (innerEffects : EffectRow)
     (okTy errTy loweredTy : Ty)
     (h_comp :
-      HandlerClosedAwareContracts.ClosedAwareResultBundle clause
-        ∧ TailCapabilityComposition.TailCapabilityClosedAwareBundle clause capability
-        ∧ CatchInteroperabilitySuite.CatchCapstoneInteropSuite
-            clause innerEffects okTy errTy loweredTy) :
-    HandlerClosedAwareContracts.ClosedAwareResultBundle clause
-      ∧ TailCapabilityComposition.TailCapabilityClosedAwareBundle clause capability
-      ∧ CatchInteroperabilitySuite.CatchCapstoneInteropSuite
-          clause innerEffects okTy errTy loweredTy :=
+      EffectHandlerCapstoneSuiteComponents clause capability innerEffects okTy errTy loweredTy) :
+    EffectHandlerCapstoneSuiteComponents clause capability innerEffects okTy errTy loweredTy :=
   (effectHandlerCapstoneSuite_iff_components clause capability innerEffects okTy errTy loweredTy).1
     (effectHandlerCapstoneSuite_of_components
       clause capability innerEffects okTy errTy loweredTy h_comp)
@@ -170,10 +165,7 @@ theorem effectHandlerCapstoneSuite_as_components
     (innerEffects : EffectRow)
     (okTy errTy loweredTy : Ty)
     (h_suite : EffectHandlerCapstoneSuite clause capability innerEffects okTy errTy loweredTy) :
-    HandlerClosedAwareContracts.ClosedAwareResultBundle clause
-      ∧ TailCapabilityComposition.TailCapabilityClosedAwareBundle clause capability
-      ∧ CatchInteroperabilitySuite.CatchCapstoneInteropSuite
-          clause innerEffects okTy errTy loweredTy :=
+    EffectHandlerCapstoneSuiteComponents clause capability innerEffects okTy errTy loweredTy :=
   (effectHandlerCapstoneSuite_iff_components clause capability innerEffects okTy errTy loweredTy).1 h_suite
 
 /--
@@ -203,10 +195,7 @@ theorem effectHandlerSuite_as_components_of_capstoneSuite
     (okTy errTy loweredTy : Ty)
     (h_cap :
       EffectHandlerCapstoneSuite clause capability innerEffects okTy errTy loweredTy) :
-    HandlerClosedAwareContracts.ClosedAwareResultBundle clause
-      ∧ TailCapabilityComposition.TailCapabilityClosedAwareBundle clause capability
-      ∧ CatchInteroperabilitySuite.CatchClassifierInteropSuite
-          clause innerEffects okTy errTy loweredTy :=
+    EffectHandlerSuiteComponents clause capability innerEffects okTy errTy loweredTy :=
   effectHandlerSuite_as_components
     clause capability innerEffects okTy errTy loweredTy
     (effectHandlerSuite_of_capstoneSuite
@@ -229,6 +218,20 @@ structure EffectHandlerCatchPairSuite
     classifier =
       effectHandlerSuite_of_capstoneSuite
         clause capability innerEffects okTy errTy loweredTy capstone
+
+/-- Explicit component alias for `EffectHandlerCatchPairSuite`. -/
+abbrev EffectHandlerCatchPairSuiteComponents
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty) : Prop :=
+  ∃ (h_cap :
+      EffectHandlerCapstoneSuite clause capability innerEffects okTy errTy loweredTy)
+    (h_cls :
+      EffectHandlerSuite clause capability innerEffects okTy errTy loweredTy),
+    h_cls =
+      effectHandlerSuite_of_capstoneSuite
+        clause capability innerEffects okTy errTy loweredTy h_cap
 
 /-- Build coherent pair suite directly from a capstone aggregate witness. -/
 theorem effectHandlerCatchPairSuite_of_capstone
@@ -254,13 +257,7 @@ theorem effectHandlerCatchPairSuite_as_components_of_capstone
     (okTy errTy loweredTy : Ty)
     (h_cap :
       EffectHandlerCapstoneSuite clause capability innerEffects okTy errTy loweredTy) :
-    ∃ (h_cap' :
-        EffectHandlerCapstoneSuite clause capability innerEffects okTy errTy loweredTy)
-      (h_cls :
-        EffectHandlerSuite clause capability innerEffects okTy errTy loweredTy),
-      h_cls =
-        effectHandlerSuite_of_capstoneSuite
-          clause capability innerEffects okTy errTy loweredTy h_cap' := by
+    EffectHandlerCatchPairSuiteComponents clause capability innerEffects okTy errTy loweredTy := by
   refine ⟨h_cap, ?_, rfl⟩
   exact effectHandlerSuite_of_capstoneSuite
     clause capability innerEffects okTy errTy loweredTy h_cap
@@ -287,14 +284,7 @@ theorem effectHandlerCatchPairSuite_iff_components
     (innerEffects : EffectRow)
     (okTy errTy loweredTy : Ty) :
     EffectHandlerCatchPairSuite clause capability innerEffects okTy errTy loweredTy
-      ↔
-      ∃ (h_cap :
-          EffectHandlerCapstoneSuite clause capability innerEffects okTy errTy loweredTy)
-        (h_cls :
-          EffectHandlerSuite clause capability innerEffects okTy errTy loweredTy),
-        h_cls =
-          effectHandlerSuite_of_capstoneSuite
-            clause capability innerEffects okTy errTy loweredTy h_cap := by
+      ↔ EffectHandlerCatchPairSuiteComponents clause capability innerEffects okTy errTy loweredTy := by
   constructor
   · intro h_pair
     exact ⟨h_pair.capstone, h_pair.classifier, h_pair.classifierFromCapstone⟩
@@ -313,13 +303,7 @@ theorem effectHandlerCatchPairSuite_of_components
     (innerEffects : EffectRow)
     (okTy errTy loweredTy : Ty)
     (h_comp :
-      ∃ (h_cap :
-          EffectHandlerCapstoneSuite clause capability innerEffects okTy errTy loweredTy)
-        (h_cls :
-          EffectHandlerSuite clause capability innerEffects okTy errTy loweredTy),
-        h_cls =
-          effectHandlerSuite_of_capstoneSuite
-            clause capability innerEffects okTy errTy loweredTy h_cap) :
+      EffectHandlerCatchPairSuiteComponents clause capability innerEffects okTy errTy loweredTy) :
     EffectHandlerCatchPairSuite clause capability innerEffects okTy errTy loweredTy :=
   (effectHandlerCatchPairSuite_iff_components
     clause capability innerEffects okTy errTy loweredTy).2 h_comp
@@ -330,20 +314,8 @@ theorem effectHandlerCatchPairSuite_as_components_of_components
     (innerEffects : EffectRow)
     (okTy errTy loweredTy : Ty)
     (h_comp :
-      ∃ (h_cap :
-          EffectHandlerCapstoneSuite clause capability innerEffects okTy errTy loweredTy)
-        (h_cls :
-          EffectHandlerSuite clause capability innerEffects okTy errTy loweredTy),
-        h_cls =
-          effectHandlerSuite_of_capstoneSuite
-            clause capability innerEffects okTy errTy loweredTy h_cap) :
-    ∃ (h_cap :
-        EffectHandlerCapstoneSuite clause capability innerEffects okTy errTy loweredTy)
-      (h_cls :
-        EffectHandlerSuite clause capability innerEffects okTy errTy loweredTy),
-      h_cls =
-        effectHandlerSuite_of_capstoneSuite
-          clause capability innerEffects okTy errTy loweredTy h_cap :=
+      EffectHandlerCatchPairSuiteComponents clause capability innerEffects okTy errTy loweredTy) :
+    EffectHandlerCatchPairSuiteComponents clause capability innerEffects okTy errTy loweredTy :=
   (effectHandlerCatchPairSuite_iff_components
     clause capability innerEffects okTy errTy loweredTy).1
     (effectHandlerCatchPairSuite_of_components
@@ -356,13 +328,7 @@ theorem effectHandlerCatchPairSuite_as_components
     (innerEffects : EffectRow)
     (okTy errTy loweredTy : Ty)
     (h_pair : EffectHandlerCatchPairSuite clause capability innerEffects okTy errTy loweredTy) :
-    ∃ (h_cap :
-        EffectHandlerCapstoneSuite clause capability innerEffects okTy errTy loweredTy)
-      (h_cls :
-        EffectHandlerSuite clause capability innerEffects okTy errTy loweredTy),
-      h_cls =
-        effectHandlerSuite_of_capstoneSuite
-          clause capability innerEffects okTy errTy loweredTy h_cap :=
+    EffectHandlerCatchPairSuiteComponents clause capability innerEffects okTy errTy loweredTy :=
   (effectHandlerCatchPairSuite_iff_components
     clause capability innerEffects okTy errTy loweredTy).1 h_pair
 
@@ -386,6 +352,20 @@ structure EffectHandlerCompositionSuite
       outerHandler
       clause.handled
 
+/-- Explicit component alias for `EffectHandlerCompositionSuite`. -/
+abbrev EffectHandlerCompositionSuiteComponents
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow) : Prop :=
+  EffectHandlerCatchPairSuite clause capability innerEffects okTy errTy loweredTy
+    ∧ NestedHandlerCompositionContracts.NestedHandlerClosedAwareBundle
+        clause.exprEffects
+        clause.handlerEffects
+        outerHandler
+        clause.handled
+
 /-- Master composition suite is equivalent to explicit pair+nested components. -/
 theorem effectHandlerCompositionSuite_iff_components
     (clause : HandleClauseContract)
@@ -394,12 +374,8 @@ theorem effectHandlerCompositionSuite_iff_components
     (okTy errTy loweredTy : Ty)
     (outerHandler : EffectRow) :
     EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler
-      ↔ (EffectHandlerCatchPairSuite clause capability innerEffects okTy errTy loweredTy
-          ∧ NestedHandlerCompositionContracts.NestedHandlerClosedAwareBundle
-              clause.exprEffects
-              clause.handlerEffects
-              outerHandler
-              clause.handled) := by
+      ↔ EffectHandlerCompositionSuiteComponents
+          clause capability innerEffects okTy errTy loweredTy outerHandler := by
   constructor
   · intro h_suite
     exact ⟨h_suite.catchPair, h_suite.nestedClosedAware⟩
@@ -414,12 +390,8 @@ theorem effectHandlerCompositionSuite_of_components
     (okTy errTy loweredTy : Ty)
     (outerHandler : EffectRow)
     (h_comp :
-      EffectHandlerCatchPairSuite clause capability innerEffects okTy errTy loweredTy
-        ∧ NestedHandlerCompositionContracts.NestedHandlerClosedAwareBundle
-            clause.exprEffects
-            clause.handlerEffects
-            outerHandler
-            clause.handled) :
+      EffectHandlerCompositionSuiteComponents
+        clause capability innerEffects okTy errTy loweredTy outerHandler) :
     EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler :=
   (effectHandlerCompositionSuite_iff_components
     clause capability innerEffects okTy errTy loweredTy outerHandler).2 h_comp
@@ -431,18 +403,10 @@ theorem effectHandlerCompositionSuite_as_components_of_components
     (okTy errTy loweredTy : Ty)
     (outerHandler : EffectRow)
     (h_comp :
-      EffectHandlerCatchPairSuite clause capability innerEffects okTy errTy loweredTy
-        ∧ NestedHandlerCompositionContracts.NestedHandlerClosedAwareBundle
-            clause.exprEffects
-            clause.handlerEffects
-            outerHandler
-            clause.handled) :
-    EffectHandlerCatchPairSuite clause capability innerEffects okTy errTy loweredTy
-      ∧ NestedHandlerCompositionContracts.NestedHandlerClosedAwareBundle
-          clause.exprEffects
-          clause.handlerEffects
-          outerHandler
-          clause.handled :=
+      EffectHandlerCompositionSuiteComponents
+        clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    EffectHandlerCompositionSuiteComponents
+      clause capability innerEffects okTy errTy loweredTy outerHandler :=
   (effectHandlerCompositionSuite_iff_components
     clause capability innerEffects okTy errTy loweredTy outerHandler).1
     (effectHandlerCompositionSuite_of_components
@@ -457,12 +421,8 @@ theorem effectHandlerCompositionSuite_as_components
     (outerHandler : EffectRow)
     (h_suite :
       EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler) :
-    EffectHandlerCatchPairSuite clause capability innerEffects okTy errTy loweredTy
-      ∧ NestedHandlerCompositionContracts.NestedHandlerClosedAwareBundle
-          clause.exprEffects
-          clause.handlerEffects
-          outerHandler
-          clause.handled :=
+    EffectHandlerCompositionSuiteComponents
+      clause capability innerEffects okTy errTy loweredTy outerHandler :=
   (effectHandlerCompositionSuite_iff_components
     clause capability innerEffects okTy errTy loweredTy outerHandler).1 h_suite
 
@@ -3977,6 +3937,23 @@ structure EffectHandlerCompositionCoherenceSuite
       effectHandlerCompositionSuite_nestedClauseCoherenceBundle
         clause capability innerEffects okTy errTy loweredTy outerHandler composition
 
+/-- Explicit component alias for `EffectHandlerCompositionCoherenceSuite`. -/
+abbrev EffectHandlerCompositionCoherenceSuiteComponents
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow) : Prop :=
+  ∃ (h_comp :
+      EffectHandlerCompositionSuite
+        clause capability innerEffects okTy errTy loweredTy outerHandler)
+    (h_coh :
+      EffectHandlerNestedClauseCoherenceBundle
+        clause capability innerEffects okTy errTy loweredTy outerHandler),
+    h_coh =
+      effectHandlerCompositionSuite_nestedClauseCoherenceBundle
+        clause capability innerEffects okTy errTy loweredTy outerHandler h_comp
+
 /-- Build the master composition+coherence package from any composition witness. -/
 theorem effectHandlerCompositionCoherenceSuite_of_composition
     (clause : HandleClauseContract)
@@ -4004,15 +3981,8 @@ theorem effectHandlerCompositionCoherenceSuite_as_components_of_composition
     (outerHandler : EffectRow)
     (h_comp :
       EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler) :
-    ∃ (h_comp' :
-        EffectHandlerCompositionSuite
-          clause capability innerEffects okTy errTy loweredTy outerHandler)
-      (h_coh :
-        EffectHandlerNestedClauseCoherenceBundle
-          clause capability innerEffects okTy errTy loweredTy outerHandler),
-      h_coh =
-        effectHandlerCompositionSuite_nestedClauseCoherenceBundle
-          clause capability innerEffects okTy errTy loweredTy outerHandler h_comp' := by
+    EffectHandlerCompositionCoherenceSuiteComponents
+      clause capability innerEffects okTy errTy loweredTy outerHandler := by
   refine ⟨h_comp, ?_, rfl⟩
   exact effectHandlerCompositionSuite_nestedClauseCoherenceBundle
     clause capability innerEffects okTy errTy loweredTy outerHandler h_comp
@@ -4051,16 +4021,8 @@ theorem effectHandlerCompositionCoherenceSuite_iff_components
     (outerHandler : EffectRow) :
     EffectHandlerCompositionCoherenceSuite
       clause capability innerEffects okTy errTy loweredTy outerHandler
-      ↔
-      ∃ (h_comp :
-          EffectHandlerCompositionSuite
-            clause capability innerEffects okTy errTy loweredTy outerHandler)
-        (h_coh :
-          EffectHandlerNestedClauseCoherenceBundle
-            clause capability innerEffects okTy errTy loweredTy outerHandler),
-        h_coh =
-          effectHandlerCompositionSuite_nestedClauseCoherenceBundle
-            clause capability innerEffects okTy errTy loweredTy outerHandler h_comp := by
+      ↔ EffectHandlerCompositionCoherenceSuiteComponents
+          clause capability innerEffects okTy errTy loweredTy outerHandler := by
   constructor
   · intro h_suite
     exact ⟨h_suite.composition, h_suite.nestedClauseCoherence, h_suite.coherenceFromComposition⟩
@@ -4080,15 +4042,8 @@ theorem effectHandlerCompositionCoherenceSuite_of_components
     (okTy errTy loweredTy : Ty)
     (outerHandler : EffectRow)
     (h_parts :
-      ∃ (h_comp :
-          EffectHandlerCompositionSuite
-            clause capability innerEffects okTy errTy loweredTy outerHandler)
-        (h_coh :
-          EffectHandlerNestedClauseCoherenceBundle
-            clause capability innerEffects okTy errTy loweredTy outerHandler),
-        h_coh =
-          effectHandlerCompositionSuite_nestedClauseCoherenceBundle
-            clause capability innerEffects okTy errTy loweredTy outerHandler h_comp) :
+      EffectHandlerCompositionCoherenceSuiteComponents
+        clause capability innerEffects okTy errTy loweredTy outerHandler) :
     EffectHandlerCompositionCoherenceSuite
       clause capability innerEffects okTy errTy loweredTy outerHandler :=
   (effectHandlerCompositionCoherenceSuite_iff_components
@@ -4101,24 +4056,10 @@ theorem effectHandlerCompositionCoherenceSuite_as_components_of_components
     (okTy errTy loweredTy : Ty)
     (outerHandler : EffectRow)
     (h_parts :
-      ∃ (h_comp :
-          EffectHandlerCompositionSuite
-            clause capability innerEffects okTy errTy loweredTy outerHandler)
-        (h_coh :
-          EffectHandlerNestedClauseCoherenceBundle
-            clause capability innerEffects okTy errTy loweredTy outerHandler),
-        h_coh =
-          effectHandlerCompositionSuite_nestedClauseCoherenceBundle
-            clause capability innerEffects okTy errTy loweredTy outerHandler h_comp) :
-    ∃ (h_comp :
-        EffectHandlerCompositionSuite
-          clause capability innerEffects okTy errTy loweredTy outerHandler)
-      (h_coh :
-        EffectHandlerNestedClauseCoherenceBundle
-          clause capability innerEffects okTy errTy loweredTy outerHandler),
-      h_coh =
-        effectHandlerCompositionSuite_nestedClauseCoherenceBundle
-          clause capability innerEffects okTy errTy loweredTy outerHandler h_comp :=
+      EffectHandlerCompositionCoherenceSuiteComponents
+        clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    EffectHandlerCompositionCoherenceSuiteComponents
+      clause capability innerEffects okTy errTy loweredTy outerHandler :=
   (effectHandlerCompositionCoherenceSuite_iff_components
     clause capability innerEffects okTy errTy loweredTy outerHandler).1
     (effectHandlerCompositionCoherenceSuite_of_components
@@ -4134,15 +4075,8 @@ theorem effectHandlerCompositionCoherenceSuite_as_components
     (h_suite :
       EffectHandlerCompositionCoherenceSuite
         clause capability innerEffects okTy errTy loweredTy outerHandler) :
-    ∃ (h_comp :
-        EffectHandlerCompositionSuite
-          clause capability innerEffects okTy errTy loweredTy outerHandler)
-      (h_coh :
-        EffectHandlerNestedClauseCoherenceBundle
-          clause capability innerEffects okTy errTy loweredTy outerHandler),
-      h_coh =
-        effectHandlerCompositionSuite_nestedClauseCoherenceBundle
-          clause capability innerEffects okTy errTy loweredTy outerHandler h_comp :=
+    EffectHandlerCompositionCoherenceSuiteComponents
+      clause capability innerEffects okTy errTy loweredTy outerHandler :=
   (effectHandlerCompositionCoherenceSuite_iff_components
     clause capability innerEffects okTy errTy loweredTy outerHandler).1 h_suite
 
