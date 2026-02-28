@@ -27226,6 +27226,27 @@ theorem principalBoundarySoundFullVerticalMasterRoutes_of_success
   principalBoundarySoundFullVerticalMasterRoutes_of_success_from_bundle
     (h_seed := ⟨h_app, h_proj⟩) h_ok_expr h_ok_field
 
+/--
+Build `FullVertical` master routes from an explicit row-poly boundary+sound
+bundle witness.
+-/
+theorem principalBoundarySoundFullVerticalMasterRoutes_of_success_via_rowPolyBoundarySoundBundle
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    (h_bundle : PrincipalRowPolyBoundarySoundBundle h_app h_proj)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf := by
+  refine {
+    regular := principalBoundarySoundFullVerticalRoutes_of_success
+      (h_bundle := h_bundle) h_ok_expr h_ok_field
+    dual := principalBoundarySoundFullVerticalRoutes_of_success_via_dualConsequenceSlices
+      (h_app := h_app) (h_proj := h_proj) h_ok_expr h_ok_field
+  }
+
 /-- One-hop projection: regular route pair from master `FullVertical` routes. -/
 theorem principalBoundarySoundFullVerticalMasterRoutes_regular
     {st : UnifyState} {fuel : Nat} {env : TermEnv}
@@ -27824,6 +27845,24 @@ theorem principalBoundarySoundFullVerticalMasterCapstone_of_success_from_bundle
     PrincipalBoundarySoundFullVerticalMasterCapstone st fuel env e fs stExpr ty stField rf :=
   principalBoundarySoundFullVerticalMasterCapstone_of_success
     (h_app := h_seed.1) (h_proj := h_seed.2) h_ok_expr h_ok_field
+
+/--
+Build the packaged `FullVerticalMasterCapstone` directly from an explicit
+row-poly boundary+sound bundle witness.
+-/
+theorem principalBoundarySoundFullVerticalMasterCapstone_of_success_via_rowPolyBoundarySoundBundle
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    (h_bundle : PrincipalRowPolyBoundarySoundBundle h_app h_proj)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundFullVerticalMasterCapstone st fuel env e fs stExpr ty stField rf :=
+  principalBoundarySoundFullVerticalMasterCapstone_of_masterRoutes
+    (principalBoundarySoundFullVerticalMasterRoutes_of_success_via_rowPolyBoundarySoundBundle
+      (h_bundle := h_bundle) h_ok_expr h_ok_field)
 
 /--
 `FullVerticalMasterCapstone` is equivalent to an explicit conjunction of its
