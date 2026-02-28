@@ -387,7 +387,92 @@ theorem decimal_unify_consts_decision_of_dim_kernel_none
           exact h_none (Or.inr h_scale_none)
     have h_ok := decimal_unify_consts_of_dim_kernel_success st fuel p1 p2 s1 s2
       h_prec_some h_scale_some
-    simp [h_none, h_ok]
+        simp [h_none, h_ok]
+
+/-- Packaged decimal constant-dimension contracts keyed by scalar dim-kernel
+    outcomes. -/
+structure DecimalConstDimKernelSlice : Prop where
+  success_of_dim_kernel_success :
+    ∀ st fuel p1 p2 s1 s2,
+      unifyDim DimSubst.empty (fuel + 1) (.const p1) (.const p2) = some DimSubst.empty →
+      unifyDim DimSubst.empty (fuel + 1) (.const s1) (.const s2) = some DimSubst.empty →
+      unify st (fuel + 1)
+        (.decimal (.const p1) (.const s1))
+        (.decimal (.const p2) (.const s2))
+        = .ok st
+  reject_of_prec_dim_kernel_none :
+    ∀ st fuel p1 p2 s1 s2,
+      unifyDim DimSubst.empty (fuel + 1) (.const p1) (.const p2) = none →
+      unify st (fuel + 1)
+        (.decimal (.const p1) (.const s1))
+        (.decimal (.const p2) (.const s2))
+        = .err "type mismatch"
+  reject_of_scale_dim_kernel_none :
+    ∀ st fuel p1 p2 s1 s2,
+      unifyDim DimSubst.empty (fuel + 1) (.const s1) (.const s2) = none →
+      unify st (fuel + 1)
+        (.decimal (.const p1) (.const s1))
+        (.decimal (.const p2) (.const s2))
+        = .err "type mismatch"
+  reject_of_dim_kernel_none :
+    ∀ st fuel p1 p2 s1 s2,
+      (unifyDim DimSubst.empty (fuel + 1) (.const p1) (.const p2) = none ∨
+        unifyDim DimSubst.empty (fuel + 1) (.const s1) (.const s2) = none) →
+      unify st (fuel + 1)
+        (.decimal (.const p1) (.const s1))
+        (.decimal (.const p2) (.const s2))
+        = .err "type mismatch"
+  ok_iff_dim_kernel_success :
+    ∀ st fuel p1 p2 s1 s2,
+      unify st (fuel + 1)
+        (.decimal (.const p1) (.const s1))
+        (.decimal (.const p2) (.const s2))
+        = .ok st ↔
+      unifyDim DimSubst.empty (fuel + 1) (.const p1) (.const p2) = some DimSubst.empty ∧
+        unifyDim DimSubst.empty (fuel + 1) (.const s1) (.const s2) = some DimSubst.empty
+  err_iff_dim_kernel_none :
+    ∀ st fuel p1 p2 s1 s2,
+      unify st (fuel + 1)
+        (.decimal (.const p1) (.const s1))
+        (.decimal (.const p2) (.const s2))
+        = .err "type mismatch" ↔
+      (unifyDim DimSubst.empty (fuel + 1) (.const p1) (.const p2) = none ∨
+        unifyDim DimSubst.empty (fuel + 1) (.const s1) (.const s2) = none)
+  decision_of_dim_kernel_none :
+    ∀ st fuel p1 p2 s1 s2,
+      unify st (fuel + 1)
+        (.decimal (.const p1) (.const s1))
+        (.decimal (.const p2) (.const s2))
+        =
+        if (unifyDim DimSubst.empty (fuel + 1) (.const p1) (.const p2) = none ∨
+            unifyDim DimSubst.empty (fuel + 1) (.const s1) (.const s2) = none)
+        then .err "type mismatch"
+        else .ok st
+
+/-- Canonical decimal constant-dimension dim-kernel package. -/
+theorem decimalConstDimKernelSlice : DecimalConstDimKernelSlice := by
+  refine
+    { success_of_dim_kernel_success := ?_
+      reject_of_prec_dim_kernel_none := ?_
+      reject_of_scale_dim_kernel_none := ?_
+      reject_of_dim_kernel_none := ?_
+      ok_iff_dim_kernel_success := ?_
+      err_iff_dim_kernel_none := ?_
+      decision_of_dim_kernel_none := ?_ }
+  · intro st fuel p1 p2 s1 s2 h_prec h_scale
+    exact decimal_unify_consts_of_dim_kernel_success st fuel p1 p2 s1 s2 h_prec h_scale
+  · intro st fuel p1 p2 s1 s2 h_prec
+    exact decimal_unify_consts_reject_of_prec_dim_kernel_none st fuel p1 p2 s1 s2 h_prec
+  · intro st fuel p1 p2 s1 s2 h_scale
+    exact decimal_unify_consts_reject_of_scale_dim_kernel_none st fuel p1 p2 s1 s2 h_scale
+  · intro st fuel p1 p2 s1 s2 h_none
+    exact decimal_unify_consts_reject_of_dim_kernel_none st fuel p1 p2 s1 s2 h_none
+  · intro st fuel p1 p2 s1 s2
+    exact decimal_unify_consts_ok_iff_dim_kernel_success st fuel p1 p2 s1 s2
+  · intro st fuel p1 p2 s1 s2
+    exact decimal_unify_consts_err_iff_dim_kernel_none st fuel p1 p2 s1 s2
+  · intro st fuel p1 p2 s1 s2
+    exact decimal_unify_consts_decision_of_dim_kernel_none st fuel p1 p2 s1 s2
 
 /-- Decimal and non-decimal types do not unify. -/
 theorem decimal_non_decimal_mismatch (st : UnifyState) :

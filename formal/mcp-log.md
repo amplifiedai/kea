@@ -9410,3 +9410,38 @@ the packaged suite APIs in `Kea/Properties/ShapeConstructorParity.lean`:
 **Impact**:
 - Reduces theorem-call friction and avoids unpacking into standalone lemmas for
   failure-side and decision-side reasoning in WP7.4 consumers.
+
+### 2026-02-28: packaged decimal constant-dimension kernel slice
+
+**Context**: Added a named decimal package in
+`Kea/Properties/DecimalParity.lean`:
+- `DecimalConstDimKernelSlice`
+- `decimalConstDimKernelSlice`
+
+It bundles decimal constant-dimension success, precision/scale rejection,
+combined rejection, success iff, rejection iff, and decision contracts.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- API packaging only; no runtime semantic change.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Decimal constant-dimension dim-kernel reasoning now has a single named
+  witness surface, aligned with existing dimension/shape package style.
+
+**Impact**:
+- WP7.3 consumers can depend on one decimal kernel package instead of stitching
+  multiple standalone lemmas.
