@@ -2554,6 +2554,92 @@ fn collect_hir_var_refs(expr: &HirExpr, refs: &mut BTreeSet<String>) {
     }
 }
 
+fn collect_hir_dispatch_effect_ops(
+    expr: &HirExpr,
+    effect_operations: &BTreeMap<String, EffectOperationInfo>,
+    out: &mut BTreeSet<String>,
+) {
+    match &expr.kind {
+        HirExprKind::Lit(_) | HirExprKind::Var(_) | HirExprKind::Raw(_) => {}
+        HirExprKind::Binary { left, right, .. } => {
+            collect_hir_dispatch_effect_ops(left, effect_operations, out);
+            collect_hir_dispatch_effect_ops(right, effect_operations, out);
+        }
+        HirExprKind::Unary { operand, .. } => {
+            collect_hir_dispatch_effect_ops(operand, effect_operations, out)
+        }
+        HirExprKind::If {
+            condition,
+            then_branch,
+            else_branch,
+        } => {
+            collect_hir_dispatch_effect_ops(condition, effect_operations, out);
+            collect_hir_dispatch_effect_ops(then_branch, effect_operations, out);
+            if let Some(else_expr) = else_branch {
+                collect_hir_dispatch_effect_ops(else_expr, effect_operations, out);
+            }
+        }
+        HirExprKind::Call { func, args } => {
+            if let HirExprKind::Var(name) = &func.kind
+                && let Some(op) = effect_operations.get(name)
+                && op.effect != "Fail"
+                && !is_direct_capability_effect(&op.effect)
+            {
+                out.insert(format!("{}.{}", op.effect, op.operation));
+            }
+            collect_hir_dispatch_effect_ops(func, effect_operations, out);
+            for arg in args {
+                collect_hir_dispatch_effect_ops(arg, effect_operations, out);
+            }
+        }
+        HirExprKind::Let { value, .. } => collect_hir_dispatch_effect_ops(value, effect_operations, out),
+        HirExprKind::Block(exprs) | HirExprKind::Tuple(exprs) => {
+            for item in exprs {
+                collect_hir_dispatch_effect_ops(item, effect_operations, out);
+            }
+        }
+        HirExprKind::Lambda { body, .. } => {
+            collect_hir_dispatch_effect_ops(body, effect_operations, out)
+        }
+        HirExprKind::RecordLit { fields, .. } => {
+            for (_, field_expr) in fields {
+                collect_hir_dispatch_effect_ops(field_expr, effect_operations, out);
+            }
+        }
+        HirExprKind::RecordUpdate { base, fields, .. } => {
+            collect_hir_dispatch_effect_ops(base, effect_operations, out);
+            for (_, field_expr) in fields {
+                collect_hir_dispatch_effect_ops(field_expr, effect_operations, out);
+            }
+        }
+        HirExprKind::FieldAccess { expr, .. } | HirExprKind::SumPayloadAccess { expr, .. } => {
+            collect_hir_dispatch_effect_ops(expr, effect_operations, out)
+        }
+        HirExprKind::SumConstructor { fields, .. } => {
+            for field_expr in fields {
+                collect_hir_dispatch_effect_ops(field_expr, effect_operations, out);
+            }
+        }
+        HirExprKind::Catch { expr } => collect_hir_dispatch_effect_ops(expr, effect_operations, out),
+        HirExprKind::Handle {
+            expr,
+            clauses,
+            then_clause,
+        } => {
+            collect_hir_dispatch_effect_ops(expr, effect_operations, out);
+            for clause in clauses {
+                collect_hir_dispatch_effect_ops(&clause.body, effect_operations, out);
+            }
+            if let Some(then_expr) = then_clause {
+                collect_hir_dispatch_effect_ops(then_expr, effect_operations, out);
+            }
+        }
+        HirExprKind::Resume { value } => {
+            collect_hir_dispatch_effect_ops(value, effect_operations, out)
+        }
+    }
+}
+
 fn block_tail_ref_sets(exprs: &[HirExpr]) -> Vec<BTreeSet<String>> {
     let mut suffix = vec![BTreeSet::new(); exprs.len() + 1];
     for idx in (0..exprs.len()).rev() {
@@ -3091,12 +3177,13 @@ impl FunctionLoweringCtx {
         target_name: String,
         capture_types: Vec<Type>,
         call_param_types: Vec<Type>,
+        dispatch_effects: Vec<String>,
         return_type: Type,
         effects: EffectRow,
         callee_fail_result_abi: bool,
     ) -> MirFunction {
         let mut instructions = Vec::new();
-        let mut next_value_id = 1 + call_param_types.len() as u32;
+        let mut next_value_id = 1 + call_param_types.len() as u32 + dispatch_effects.len() as u32;
         let closure_value = MirValueId(0);
 
         let mut call_args = Vec::new();
@@ -3119,6 +3206,10 @@ impl FunctionLoweringCtx {
             call_args.push(MirValueId(1 + idx as u32));
             call_arg_types.push(param_ty.clone());
         }
+        for dispatch_idx in 0..dispatch_effects.len() {
+            call_args.push(MirValueId(1 + call_param_types.len() as u32 + dispatch_idx as u32));
+            call_arg_types.push(Type::Dynamic);
+        }
 
         let call_result = if return_type == Type::Unit {
             None
@@ -3139,6 +3230,7 @@ impl FunctionLoweringCtx {
         let wrapper_signature = MirFunctionSignature {
             params: std::iter::once(Type::Dynamic)
                 .chain(call_param_types)
+                .chain((0..dispatch_effects.len()).map(|_| Type::Dynamic))
                 .collect(),
             ret: return_type,
             effects,
@@ -3195,11 +3287,17 @@ impl FunctionLoweringCtx {
             let entry_name = self.allocate_generated_closure_entry_name("named");
             let callee_fail_result_abi =
                 uses_fail_result_abi_from_type(&Type::Function(ft.clone()));
+            let dispatch_effects = self
+                .known_function_dispatch_effects
+                .get(name)
+                .cloned()
+                .unwrap_or_else(|| self.dispatch_effects_for_effect_row(&ft.effects));
             let wrapper = self.build_closure_entry_wrapper(
                 entry_name.clone(),
                 name.to_string(),
                 Vec::new(),
                 ft.params.clone(),
+                dispatch_effects,
                 ft.ret.as_ref().clone(),
                 ft.effects.clone(),
                 callee_fail_result_abi,
@@ -3280,6 +3378,16 @@ impl FunctionLoweringCtx {
         known.insert(lambda_name.clone());
         let mut known_types = self.known_function_types.clone();
         known_types.insert(lambda_name.clone(), lifted.ty.clone());
+        let mut lambda_dispatch_set = self
+            .dispatch_effects_for_effect_row(&resolved_fn_ty.effects)
+            .into_iter()
+            .collect::<BTreeSet<_>>();
+        collect_hir_dispatch_effect_ops(body, &self.effect_operations, &mut lambda_dispatch_set);
+        let lambda_dispatch_effects = lambda_dispatch_set.into_iter().collect::<Vec<_>>();
+        let mut known_dispatch_effects = self.known_function_dispatch_effects.clone();
+        if !lambda_dispatch_effects.is_empty() {
+            known_dispatch_effects.insert(lambda_name.clone(), lambda_dispatch_effects.clone());
+        }
         let lowered_functions = lower_hir_function(
             &lifted,
             &self.layouts,
@@ -3288,7 +3396,7 @@ impl FunctionLoweringCtx {
             &self.known_const_exprs,
             &self.intrinsic_symbols,
             &self.effect_operations,
-            &self.known_function_dispatch_effects,
+            &known_dispatch_effects,
             &self.lambda_factories,
         );
         for lowered in lowered_functions {
@@ -3302,6 +3410,7 @@ impl FunctionLoweringCtx {
             lambda_name,
             captures.iter().map(|(_, ty, _)| ty.clone()).collect(),
             resolved_fn_ty.params.clone(),
+            lambda_dispatch_effects,
             resolved_fn_ty.ret.as_ref().clone(),
             resolved_fn_ty.effects.clone(),
             callee_fail_result_abi,
@@ -4326,6 +4435,7 @@ impl FunctionLoweringCtx {
                 .get(name)
                 .cloned()
                 .unwrap_or_default(),
+            MirCallee::Value(_) => self.dispatch_effects_for_function_expr(func),
             _ => Vec::new(),
         };
 
@@ -4453,6 +4563,37 @@ impl FunctionLoweringCtx {
             self.sum_value_types.insert(dest.clone(), sum_type);
         }
         result
+    }
+
+    fn dispatch_effects_for_function_expr(&self, expr: &HirExpr) -> Vec<String> {
+        match &expr.ty {
+            Type::Function(ft) => self.dispatch_effects_for_effect_row(&ft.effects),
+            _ => {
+                if let HirExprKind::Var(name) = &expr.kind {
+                    if let Some(Type::Function(ft)) = self.var_types.get(name) {
+                        return self.dispatch_effects_for_effect_row(&ft.effects);
+                    }
+                    if let Some(Type::Function(ft)) = self.known_function_types.get(name) {
+                        return self.dispatch_effects_for_effect_row(&ft.effects);
+                    }
+                }
+                Vec::new()
+            }
+        }
+    }
+
+    fn dispatch_effects_for_effect_row(&self, effects: &EffectRow) -> Vec<String> {
+        let mut dispatch_ops = BTreeSet::new();
+        for (label, _) in &effects.row.fields {
+            let effect = label.as_str();
+            if effect == "Fail" || is_direct_capability_effect(effect) {
+                continue;
+            }
+            for op in self.effect_operations.values().filter(|op| op.effect == effect) {
+                dispatch_ops.insert(format!("{effect}.{}", op.operation));
+            }
+        }
+        dispatch_ops.into_iter().collect()
     }
 
     fn infer_record_type_from_call(&self, func: &HirExpr) -> Option<String> {

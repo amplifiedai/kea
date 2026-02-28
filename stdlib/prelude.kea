@@ -1,3 +1,8 @@
+use Option
+use Result
+use Order
+use List
+
 --| Small prelude smoke function for bootstrap wiring checks.
 --|
 --|   Prelude.ping()   -- => 7

@@ -1,21 +1,20 @@
+use Order
+
 trait Ord a
   --| Compare two values.
   --|
-  --|   Ord.compare(1, 2)   -- => -1
-  --|   Ord.compare(2, 2)   -- => 0
-  --|
-  --| TODO(0f): return `Ordering` once trait method annotations resolve
-  --| imported module types during trait registration.
-  fn compare(x: a, y: a) -> Int
+  --|   Ord.compare(1, 2)   -- => Less
+  --|   Ord.compare(2, 2)   -- => Equal
+  fn compare(x: a, y: a) -> Ordering
 
 --| Int ordering implementation for Ord.
 --|
---|   Ord.compare(1, 2)   -- => -1
---|   Ord.compare(3, 1)   -- => 1
-fn compare(x: Int, y: Int) -> Int
+--|   Ord.compare(1, 2)   -- => Less
+--|   Ord.compare(3, 1)   -- => Greater
+fn compare(x: Int, y: Int) -> Ordering
   if x < y
-    -1
+    Order.Less
   else if x > y
-    1
+    Order.Greater
   else
-    0
+    Order.Equal

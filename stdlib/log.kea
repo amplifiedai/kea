@@ -1,0 +1,20 @@
+effect Log
+  --| Emit a debug-level message.
+  --|
+  --|   Log.debug("starting")
+  fn debug(msg: String) -> Unit
+
+  --| Emit an info-level message.
+  --|
+  --|   Log.info("ready")
+  fn info(msg: String) -> Unit
+
+  --| Emit a warning-level message.
+  --|
+  --|   Log.warn("retrying")
+  fn warn(msg: String) -> Unit
+
+  --| Emit an error-level message.
+  --|
+  --|   Log.error("failed")
+  fn error(msg: String) -> Unit

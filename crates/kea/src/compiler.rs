@@ -731,36 +731,69 @@ fn collect_project_modules(entry: &Path) -> Result<Vec<LoadedModule>, String> {
 }
 
 fn merge_modules_for_codegen(modules: &[(String, Module)]) -> Module {
+    fn upsert_function_decl(
+        name: String,
+        decl: kea_ast::Decl,
+        declarations: &mut Vec<kea_ast::Decl>,
+        function_decl_indices: &mut BTreeMap<String, usize>,
+    ) {
+        if let Some(idx) = function_decl_indices.get(&name).copied() {
+            declarations[idx] = decl;
+            return;
+        }
+        function_decl_indices.insert(name, declarations.len());
+        declarations.push(decl);
+    }
+
     let mut declarations = Vec::new();
-    let mut seen_function_names = BTreeSet::new();
+    let mut function_decl_indices: BTreeMap<String, usize> = BTreeMap::new();
 
     for (module_path, module) in modules {
         for decl in &module.declarations {
-            if let DeclKind::Function(fn_decl) = &decl.node {
-                seen_function_names.insert(fn_decl.name.node.clone());
-            }
-            if let DeclKind::ExprFn(expr_decl) = &decl.node {
-                seen_function_names.insert(expr_decl.name.node.clone());
-            }
-            declarations.push(decl.clone());
             match &decl.node {
-                DeclKind::Function(fn_decl) if !fn_decl.name.node.contains('.') => {
+                DeclKind::Function(fn_decl) => {
+                    upsert_function_decl(
+                        fn_decl.name.node.clone(),
+                        decl.clone(),
+                        &mut declarations,
+                        &mut function_decl_indices,
+                    );
+
+                    if fn_decl.name.node.contains('.') {
+                        continue;
+                    }
+
                     let mut lifted = fn_decl.clone();
                     lifted.name.node = format!("{module_path}.{}", fn_decl.name.node);
-                    if seen_function_names.insert(lifted.name.node.clone()) {
-                        declarations
-                            .push(kea_ast::Spanned::new(DeclKind::Function(lifted), decl.span));
-                    }
+                    upsert_function_decl(
+                        lifted.name.node.clone(),
+                        kea_ast::Spanned::new(DeclKind::Function(lifted), decl.span),
+                        &mut declarations,
+                        &mut function_decl_indices,
+                    );
                 }
-                DeclKind::ExprFn(expr_decl) if !expr_decl.name.node.contains('.') => {
+                DeclKind::ExprFn(expr_decl) => {
+                    upsert_function_decl(
+                        expr_decl.name.node.clone(),
+                        decl.clone(),
+                        &mut declarations,
+                        &mut function_decl_indices,
+                    );
+
+                    if expr_decl.name.node.contains('.') {
+                        continue;
+                    }
+
                     let mut lifted = expr_decl.clone();
                     lifted.name.node = format!("{module_path}.{}", expr_decl.name.node);
-                    if seen_function_names.insert(lifted.name.node.clone()) {
-                        declarations
-                            .push(kea_ast::Spanned::new(DeclKind::ExprFn(lifted), decl.span));
-                    }
+                    upsert_function_decl(
+                        lifted.name.node.clone(),
+                        kea_ast::Spanned::new(DeclKind::ExprFn(lifted), decl.span),
+                        &mut declarations,
+                        &mut function_decl_indices,
+                    );
                 }
-                _ => {}
+                _ => declarations.push(decl.clone()),
             }
         }
     }
@@ -1308,7 +1341,12 @@ fn register_top_level_declarations(
     for decl in &module.declarations {
         match &decl.node {
             DeclKind::TraitDef(trait_def) => {
-                if let Err(diag) = traits.register_trait_with_owner(trait_def, records, &owner) {
+                if let Err(diag) = traits.register_trait_with_owner_and_sum_types(
+                    trait_def,
+                    records,
+                    Some(sum_types),
+                    &owner,
+                ) {
                     diagnostics.push(diag);
                     return Err(format_diagnostics("trait registration failed", diagnostics));
                 }
