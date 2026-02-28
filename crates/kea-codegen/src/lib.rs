@@ -1382,6 +1382,11 @@ fn clif_type(ty: &Type) -> Result<cranelift::prelude::Type, CodegenError> {
     }
 }
 
+const STATE_CELL_TYPE_MARKER: &str = "__kea_state_cell";
+const STATE_CELL_PAYLOAD_SIZE: u32 = 16;
+const STATE_CELL_VALUE_OFFSET: i32 = 0;
+const STATE_CELL_MANAGED_OFFSET: i32 = 8;
+
 fn clif_int_type(width: IntWidth) -> Result<cranelift::prelude::Type, CodegenError> {
     match width {
         IntWidth::I8 => Ok(types::I8),
@@ -1713,6 +1718,56 @@ fn sum_type_has_immediate_variants(ty: &Type, layout_plan: &BackendLayoutPlan) -
         .is_some_and(|layout| layout.variant_field_counts.values().any(|count| *count == 0))
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StateCellRcMode {
+    Never,
+    Always,
+    MixedSum { max_immediate_tag: i64 },
+}
+
+fn state_cell_rc_mode_for_type(ty: &Type, layout_plan: &BackendLayoutPlan) -> StateCellRcMode {
+    let Some(sum_name) = drop_sum_name_for_type(ty) else {
+        return if matches!(
+            ty,
+            Type::String
+                | Type::Record(_)
+                | Type::Tuple(_)
+                | Type::AnonRecord(_)
+                | Type::Function(_)
+                | Type::Opaque { .. }
+        ) {
+            StateCellRcMode::Always
+        } else {
+            StateCellRcMode::Never
+        };
+    };
+    let Some(layout) = layout_plan.sums.get(sum_name) else {
+        return if is_managed_heap_type(ty) {
+            StateCellRcMode::Always
+        } else {
+            StateCellRcMode::Never
+        };
+    };
+    let has_unit_variant = layout.variant_field_counts.values().any(|count| *count == 0);
+    let has_payload_variant = layout.variant_field_counts.values().any(|count| *count > 0);
+    if has_payload_variant && has_unit_variant {
+        let max_immediate_tag = i64::try_from(layout.variant_field_counts.len())
+            .ok()
+            .and_then(|len| len.checked_sub(1))
+            .unwrap_or(0);
+        StateCellRcMode::MixedSum { max_immediate_tag }
+    } else if has_payload_variant {
+        StateCellRcMode::Always
+    } else {
+        StateCellRcMode::Never
+    }
+}
+
+fn state_cell_rc_mode_for_value(value: &MirValueId, ctx: &LowerInstCtx<'_>) -> StateCellRcMode {
+    let ty = ctx.value_types.get(value).unwrap_or(&Type::Dynamic);
+    state_cell_rc_mode_for_type(ty, ctx.layout_plan)
+}
+
 fn mangle_drop_symbol(prefix: &str, name: &str) -> String {
     let mut out = String::with_capacity(prefix.len() + name.len() + 8);
     out.push_str(prefix);
@@ -1897,7 +1952,13 @@ fn infer_mir_value_types(
                     value_types.insert(dest.clone(), Type::Dynamic);
                 }
                 MirInst::StateCellNew { dest, .. } => {
-                    value_types.insert(dest.clone(), Type::Dynamic);
+                    value_types.insert(
+                        dest.clone(),
+                        Type::Opaque {
+                            name: STATE_CELL_TYPE_MARKER.to_string(),
+                            params: Vec::new(),
+                        },
+                    );
                 }
                 MirInst::StateCellStore { .. }
                 | MirInst::Retain { .. }
@@ -1976,6 +2037,94 @@ fn emit_retain(builder: &mut FunctionBuilder, payload_ptr: Value) {
     let rc_value = builder.ins().load(types::I64, MemFlags::new(), rc_ptr, 0);
     let next = builder.ins().iadd_imm(rc_value, 1);
     builder.ins().store(MemFlags::new(), next, rc_ptr, 0);
+}
+
+fn emit_retain_if_managed_flag(
+    builder: &mut FunctionBuilder,
+    payload_value: Value,
+    managed_flag: Value,
+    ptr_ty: cranelift::prelude::Type,
+) {
+    let retain_block = builder.create_block();
+    let cont_block = builder.create_block();
+    let is_managed = builder.ins().icmp_imm(IntCC::NotEqual, managed_flag, 0);
+    builder
+        .ins()
+        .brif(is_managed, retain_block, &[], cont_block, &[]);
+    builder.switch_to_block(retain_block);
+    let payload_ptr = coerce_value_to_clif_type(builder, payload_value, ptr_ty);
+    emit_retain(builder, payload_ptr);
+    builder.ins().jump(cont_block, &[]);
+    builder.switch_to_block(cont_block);
+}
+
+fn emit_release_if_managed_flag<M: Module>(
+    module: &mut M,
+    builder: &mut FunctionBuilder,
+    function_name: &str,
+    payload_value: Value,
+    managed_flag: Value,
+    ptr_ty: cranelift::prelude::Type,
+    free_func_id: Option<FuncId>,
+) -> Result<(), CodegenError> {
+    let release_block = builder.create_block();
+    let cont_block = builder.create_block();
+    let is_managed = builder.ins().icmp_imm(IntCC::NotEqual, managed_flag, 0);
+    builder
+        .ins()
+        .brif(is_managed, release_block, &[], cont_block, &[]);
+    builder.switch_to_block(release_block);
+    let payload_ptr = coerce_value_to_clif_type(builder, payload_value, ptr_ty);
+    emit_generic_release(module, builder, function_name, payload_ptr, free_func_id)?;
+    builder.ins().jump(cont_block, &[]);
+    builder.switch_to_block(cont_block);
+    Ok(())
+}
+
+fn emit_state_cell_flag_and_retain(
+    builder: &mut FunctionBuilder,
+    payload_value: Value,
+    rc_mode: StateCellRcMode,
+    ptr_ty: cranelift::prelude::Type,
+) -> Value {
+    match rc_mode {
+        StateCellRcMode::Never => builder.ins().iconst(types::I8, 0),
+        StateCellRcMode::Always => {
+            let payload_ptr = coerce_value_to_clif_type(builder, payload_value, ptr_ty);
+            emit_retain(builder, payload_ptr);
+            builder.ins().iconst(types::I8, 1)
+        }
+        StateCellRcMode::MixedSum { max_immediate_tag } => {
+            let immediate_block = builder.create_block();
+            let managed_block = builder.create_block();
+            let join_block = builder.create_block();
+            builder.append_block_param(join_block, types::I8);
+
+            let is_immediate = builder
+                .ins()
+                .icmp_imm(IntCC::UnsignedLessThanOrEqual, payload_value, max_immediate_tag);
+            builder
+                .ins()
+                .brif(is_immediate, immediate_block, &[], managed_block, &[]);
+
+            builder.switch_to_block(immediate_block);
+            let unmanaged = builder.ins().iconst(types::I8, 0);
+            builder.ins().jump(join_block, &[unmanaged]);
+
+            builder.switch_to_block(managed_block);
+            let payload_ptr = coerce_value_to_clif_type(builder, payload_value, ptr_ty);
+            emit_retain(builder, payload_ptr);
+            let managed = builder.ins().iconst(types::I8, 1);
+            builder.ins().jump(join_block, &[managed]);
+
+            builder.switch_to_block(join_block);
+            builder
+                .block_params(join_block)
+                .first()
+                .copied()
+                .unwrap_or_else(|| builder.ins().iconst(types::I8, 0))
+        }
+    }
 }
 
 fn emit_typed_release<M: Module>(
@@ -2960,6 +3109,8 @@ fn lower_instruction<M: Module>(
             Ok(false)
         }
         MirInst::StateCellNew { dest, initial } => {
+            let ptr_ty = module.target_config().pointer_type();
+            let initial_rc_mode = state_cell_rc_mode_for_value(initial, ctx);
             let initial = get_value(values, function_name, initial)?;
             let initial = coerce_value_to_clif_type(builder, initial, types::I64);
             let cell_ptr = allocate_heap_payload(
@@ -2967,10 +3118,27 @@ fn lower_instruction<M: Module>(
                 builder,
                 function_name,
                 ctx.malloc_func_id,
-                8,
+                STATE_CELL_PAYLOAD_SIZE,
                 "state cell allocation requested but malloc import was not declared",
             )?;
-            builder.ins().store(MemFlags::new(), initial, cell_ptr, 0);
+            let managed_flag = emit_state_cell_flag_and_retain(
+                builder,
+                initial,
+                initial_rc_mode,
+                ptr_ty,
+            );
+            builder.ins().store(
+                MemFlags::new(),
+                initial,
+                cell_ptr,
+                STATE_CELL_VALUE_OFFSET,
+            );
+            builder.ins().store(
+                MemFlags::new(),
+                managed_flag,
+                cell_ptr,
+                STATE_CELL_MANAGED_OFFSET,
+            );
             values.insert(dest.clone(), cell_ptr);
             Ok(false)
         }
@@ -2978,17 +3146,50 @@ fn lower_instruction<M: Module>(
             let ptr_ty = module.target_config().pointer_type();
             let cell_ptr = get_value(values, function_name, cell)?;
             let cell_ptr = coerce_value_to_clif_type(builder, cell_ptr, ptr_ty);
-            let value = builder.ins().load(types::I64, MemFlags::new(), cell_ptr, 0);
+            let value = builder
+                .ins()
+                .load(types::I64, MemFlags::new(), cell_ptr, STATE_CELL_VALUE_OFFSET);
+            let managed_flag = builder
+                .ins()
+                .load(types::I8, MemFlags::new(), cell_ptr, STATE_CELL_MANAGED_OFFSET);
+            emit_retain_if_managed_flag(builder, value, managed_flag, ptr_ty);
             values.insert(dest.clone(), value);
             Ok(false)
         }
         MirInst::StateCellStore { cell, value } => {
             let ptr_ty = module.target_config().pointer_type();
+            let rc_mode = state_cell_rc_mode_for_value(value, ctx);
             let cell_ptr = get_value(values, function_name, cell)?;
             let cell_ptr = coerce_value_to_clif_type(builder, cell_ptr, ptr_ty);
+            let previous = builder
+                .ins()
+                .load(types::I64, MemFlags::new(), cell_ptr, STATE_CELL_VALUE_OFFSET);
+            let previous_managed = builder
+                .ins()
+                .load(types::I8, MemFlags::new(), cell_ptr, STATE_CELL_MANAGED_OFFSET);
+            emit_release_if_managed_flag(
+                module,
+                builder,
+                function_name,
+                previous,
+                previous_managed,
+                ptr_ty,
+                ctx.free_func_id,
+            )?;
+
             let value = get_value(values, function_name, value)?;
             let value = coerce_value_to_clif_type(builder, value, types::I64);
-            builder.ins().store(MemFlags::new(), value, cell_ptr, 0);
+            let managed_flag =
+                emit_state_cell_flag_and_retain(builder, value, rc_mode, ptr_ty);
+            builder
+                .ins()
+                .store(MemFlags::new(), value, cell_ptr, STATE_CELL_VALUE_OFFSET);
+            builder.ins().store(
+                MemFlags::new(),
+                managed_flag,
+                cell_ptr,
+                STATE_CELL_MANAGED_OFFSET,
+            );
             Ok(false)
         }
         MirInst::Call {
@@ -3614,6 +3815,55 @@ fn lower_instruction<M: Module>(
             let payload_ptr = get_value(values, function_name, value)?;
             let payload_ptr = coerce_value_to_clif_type(builder, payload_ptr, ptr_ty);
             let value_ty = ctx.value_types.get(value);
+            if matches!(
+                value_ty,
+                Some(Type::Opaque { name, .. }) if name == STATE_CELL_TYPE_MARKER
+            ) {
+                let free_func_id = ctx.free_func_id.ok_or_else(|| CodegenError::UnsupportedMir {
+                    function: function_name.to_string(),
+                    detail: "state-cell release lowering requires imported `free` symbol"
+                        .to_string(),
+                })?;
+                let rc_ptr = builder.ins().iadd_imm(payload_ptr, -8);
+                let rc_value = builder.ins().load(types::I64, MemFlags::new(), rc_ptr, 0);
+                let next = builder.ins().iadd_imm(rc_value, -1);
+                builder.ins().store(MemFlags::new(), next, rc_ptr, 0);
+
+                let free_block = builder.create_block();
+                let cont_block = builder.create_block();
+                let is_zero = builder.ins().icmp_imm(IntCC::Equal, next, 0);
+                builder
+                    .ins()
+                    .brif(is_zero, free_block, &[], cont_block, &[]);
+
+                builder.switch_to_block(free_block);
+                let stored_value = builder.ins().load(
+                    types::I64,
+                    MemFlags::new(),
+                    payload_ptr,
+                    STATE_CELL_VALUE_OFFSET,
+                );
+                let stored_managed = builder.ins().load(
+                    types::I8,
+                    MemFlags::new(),
+                    payload_ptr,
+                    STATE_CELL_MANAGED_OFFSET,
+                );
+                emit_release_if_managed_flag(
+                    module,
+                    builder,
+                    function_name,
+                    stored_value,
+                    stored_managed,
+                    ptr_ty,
+                    ctx.free_func_id,
+                )?;
+                let free_ref = module.declare_func_in_func(free_func_id, builder.func);
+                let _ = builder.ins().call(free_ref, &[rc_ptr]);
+                builder.ins().jump(cont_block, &[]);
+                builder.switch_to_block(cont_block);
+                return Ok(false);
+            }
             emit_typed_release(
                 module,
                 builder,

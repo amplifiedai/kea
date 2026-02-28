@@ -987,6 +987,25 @@
     }
 
     #[test]
+    fn compile_and_execute_real_stdlib_log_with_collected_logs_exit_code() {
+        let project_dir = temp_workspace_project_dir("kea-cli-project-real-stdlib-log-collected");
+        let src_dir = project_dir.join("src");
+        std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+
+        let app_path = src_dir.join("app.kea");
+        std::fs::write(
+            &app_path,
+            "use Log\nuse List\n\nfn run() -[Log]> Int\n  Log.debug(\"d\")\n  Log.error(\"e\")\n  7\n\nfn main() -> Int\n  let pair = Log.with_collected_logs(run)\n  let value = pair.0\n  let logs = pair.1\n  if value == 7 and List.length(logs) == 2\n    42\n  else\n    0\n",
+        )
+        .expect("app module write should succeed");
+
+        let run = run_file(&app_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_dir_all(project_dir);
+    }
+
+    #[test]
     fn compile_and_execute_real_stdlib_reader_effect_module_exit_code() {
         let project_dir = temp_workspace_project_dir("kea-cli-project-real-stdlib-reader");
         let src_dir = project_dir.join("src");

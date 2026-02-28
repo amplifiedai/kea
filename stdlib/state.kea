@@ -8,3 +8,20 @@ effect State S
   --|
   --|   State.put(42)
   fn put(next: S) -> Unit
+
+--| Run `f` with mutable state initialized to `initial`.
+--|
+--| Returns `(result, final_state)` when `f` completes.
+--|
+--|   State.with_state(0, || ->
+--|     let n = State.get()
+--|     State.put(n + 1)
+--|     State.get()
+--|   )   -- => (1, 1)
+fn with_state(initial: S, f: fn() -[State S, e]> T) -[e]> (T, S)
+  let result = handle f()
+    State.get() -> resume initial
+    State.put(next) -> resume ()
+    then value ->
+      (value, State.get())
+  result

@@ -2299,10 +2299,7 @@ fn handler_plan_for_effect(
     if operation_lowering.is_empty() {
         None
     } else {
-        Some(ActiveEffectHandlerPlan {
-            operation_lowering,
-            callback_dispatch_effects: BTreeMap::new(),
-        })
+        Some(ActiveEffectHandlerPlan { operation_lowering })
     }
 }
 
@@ -3067,7 +3064,6 @@ enum HandlerCellOpLowering {
 #[derive(Debug, Clone, Default)]
 struct ActiveEffectHandlerPlan {
     operation_lowering: BTreeMap<String, HandlerCellOpLowering>,
-    callback_dispatch_effects: BTreeMap<String, Vec<String>>,
 }
 
 #[derive(Debug, Clone)]
@@ -3207,6 +3203,7 @@ impl FunctionLoweringCtx {
         capture_types: Vec<Type>,
         call_param_types: Vec<Type>,
         dispatch_effects: Vec<String>,
+        bound_dispatch_capture_types: Vec<Type>,
         return_type: Type,
         effects: EffectRow,
         callee_fail_result_abi: bool,
@@ -3217,6 +3214,7 @@ impl FunctionLoweringCtx {
 
         let mut call_args = Vec::new();
         let mut call_arg_types = Vec::new();
+        let mut bound_dispatch_args = Vec::new();
 
         for (idx, capture_ty) in capture_types.iter().enumerate() {
             let dest = MirValueId(next_value_id);
@@ -3230,6 +3228,17 @@ impl FunctionLoweringCtx {
             call_args.push(dest);
             call_arg_types.push(capture_ty.clone());
         }
+        for (idx, capture_ty) in bound_dispatch_capture_types.iter().enumerate() {
+            let dest = MirValueId(next_value_id);
+            next_value_id = next_value_id.saturating_add(1);
+            instructions.push(MirInst::ClosureCaptureLoad {
+                dest: dest.clone(),
+                closure: closure_value.clone(),
+                capture_index: capture_types.len() + idx,
+                capture_ty: capture_ty.clone(),
+            });
+            bound_dispatch_args.push(dest);
+        }
 
         for (idx, param_ty) in call_param_types.iter().enumerate() {
             call_args.push(MirValueId(1 + idx as u32));
@@ -3237,6 +3246,10 @@ impl FunctionLoweringCtx {
         }
         for dispatch_idx in 0..dispatch_effects.len() {
             call_args.push(MirValueId(1 + call_param_types.len() as u32 + dispatch_idx as u32));
+            call_arg_types.push(Type::Dynamic);
+        }
+        for dispatch_value in bound_dispatch_args {
+            call_args.push(dispatch_value);
             call_arg_types.push(Type::Dynamic);
         }
 
@@ -3327,6 +3340,7 @@ impl FunctionLoweringCtx {
                 Vec::new(),
                 ft.params.clone(),
                 dispatch_effects,
+                Vec::new(),
                 ft.ret.as_ref().clone(),
                 ft.effects.clone(),
                 callee_fail_result_abi,
@@ -3346,6 +3360,7 @@ impl FunctionLoweringCtx {
         params: &[kea_hir::HirParam],
         body: &HirExpr,
         expected_ty: Option<&Type>,
+        bind_dispatch_effects: bool,
     ) -> Option<MirValueId> {
         let resolved_fn_ty = match (&expr.ty, expected_ty) {
             (Type::Function(ft), _) => Some(ft.clone()),
@@ -3434,24 +3449,54 @@ impl FunctionLoweringCtx {
 
         let entry_name = self.allocate_generated_closure_entry_name("lambda");
         let callee_fail_result_abi = uses_fail_result_abi_from_type(&lifted.ty);
+        let mut wrapper_dispatch_effects = lambda_dispatch_effects;
+        let mut bound_dispatch_captures = Vec::new();
+        if bind_dispatch_effects {
+            for dispatch_op_key in &wrapper_dispatch_effects {
+                let Some((dispatch_effect, dispatch_operation)) = dispatch_op_key.split_once('.')
+                else {
+                    self.emit_inst(MirInst::Unsupported {
+                        detail: format!("invalid dispatch operation key `{dispatch_op_key}`"),
+                    });
+                    return None;
+                };
+                let Some(dispatch_cell) = self.lookup_effect_cell(dispatch_effect, dispatch_operation)
+                else {
+                    self.emit_inst(MirInst::Unsupported {
+                        detail: format!(
+                            "missing active handler cell for operation `{dispatch_op_key}` while binding lambda dispatch"
+                        ),
+                    });
+                    return None;
+                };
+                bound_dispatch_captures.push((dispatch_cell, Type::Dynamic));
+            }
+            wrapper_dispatch_effects = Vec::new();
+        }
         let wrapper = self.build_closure_entry_wrapper(
             entry_name.clone(),
             lambda_name,
             captures.iter().map(|(_, ty, _)| ty.clone()).collect(),
             resolved_fn_ty.params.clone(),
-            lambda_dispatch_effects,
+            wrapper_dispatch_effects,
+            bound_dispatch_captures
+                .iter()
+                .map(|(_, ty)| ty.clone())
+                .collect(),
             resolved_fn_ty.ret.as_ref().clone(),
             resolved_fn_ty.effects.clone(),
             callee_fail_result_abi,
         );
         self.register_generated_function(wrapper);
 
+        let mut all_captures = captures
+            .into_iter()
+            .map(|(_, ty, value)| (value, ty))
+            .collect::<Vec<_>>();
+        all_captures.extend(bound_dispatch_captures);
         self.emit_closure_value(
             entry_name,
-            captures
-                .into_iter()
-                .map(|(_, ty, value)| (value, ty))
-                .collect(),
+            all_captures,
         )
     }
 
@@ -3884,7 +3929,7 @@ impl FunctionLoweringCtx {
                 else_branch,
             } => self.lower_if(expr, condition, then_branch, else_branch.as_deref()),
             HirExprKind::Lambda { params, body } => {
-                self.lower_lambda_to_closure_value(expr, params, body, None)
+                self.lower_lambda_to_closure_value(expr, params, body, None, false)
             }
             HirExprKind::Tuple(items) => {
                 let mut lowered_fields = Vec::with_capacity(items.len());
@@ -4030,14 +4075,6 @@ impl FunctionLoweringCtx {
                             name: Some(arg_name.clone()),
                             span: clause.span,
                         };
-                        let mut callback_dispatch_ops = BTreeSet::new();
-                        collect_hir_dispatch_effect_ops(
-                            &callback_body,
-                            &self.effect_operations,
-                            &mut callback_dispatch_ops,
-                        );
-                        let callback_dispatch_ops =
-                            callback_dispatch_ops.into_iter().collect::<Vec<_>>();
                         let callback_ty = Type::Function(FunctionType::with_effects(
                             vec![Type::Dynamic],
                             Type::Unit,
@@ -4056,6 +4093,7 @@ impl FunctionLoweringCtx {
                             std::slice::from_ref(&callback_param),
                             &callback_body,
                             Some(&callback_ty),
+                            true,
                         ) else {
                             self.emit_inst(MirInst::Unsupported {
                                 detail: format!(
@@ -4069,10 +4107,6 @@ impl FunctionLoweringCtx {
                             clause.operation.clone(),
                             HandlerCellOpLowering::InvokeArgCallbackAndReturnUnit,
                         );
-                        if !callback_dispatch_ops.is_empty() {
-                            plan.callback_dispatch_effects
-                                .insert(clause.operation.clone(), callback_dispatch_ops);
-                        }
                         operation_initial_exprs.insert(clause.operation.clone(), None);
                         operation_callback_values.insert(clause.operation.clone(), callback_value);
                     } else {
@@ -4393,6 +4427,7 @@ impl FunctionLoweringCtx {
                 &local_lambda.params,
                 &local_lambda.body,
                 Some(&synthesized_expr.ty),
+                false,
             )?;
             self.restore_var_scope(&incoming_scope);
             materialized_local_lambda_callee = Some(closure_value);
@@ -4500,7 +4535,7 @@ impl FunctionLoweringCtx {
             let effect = op_info.effect;
             let operation = op_info.operation;
             if let Some(cell) = self.lookup_effect_cell(&effect, &operation) {
-                let (lowering, callback_dispatch_effects) = {
+                let lowering = {
                     let Some(plan) = self.active_effect_handlers.get(&effect) else {
                         self.emit_inst(MirInst::Unsupported {
                             detail: format!(
@@ -4517,13 +4552,7 @@ impl FunctionLoweringCtx {
                         });
                         return None;
                     };
-                    (
-                        lowering,
-                        plan.callback_dispatch_effects
-                            .get(&operation)
-                            .cloned()
-                            .unwrap_or_default(),
-                    )
+                    lowering
                 };
                 match lowering {
                     HandlerCellOpLowering::LoadCell => {
@@ -4568,36 +4597,10 @@ impl FunctionLoweringCtx {
                             return None;
                         }
                         let value = self.lower_expr(&args[0])?;
-                        let mut callback_args = vec![value];
-                        let mut callback_arg_types = vec![Type::Dynamic];
-                        for dispatch_op_key in &callback_dispatch_effects {
-                            let Some((dispatch_effect, dispatch_operation)) =
-                                dispatch_op_key.split_once('.')
-                            else {
-                                self.emit_inst(MirInst::Unsupported {
-                                    detail: format!(
-                                        "invalid callback dispatch operation key `{dispatch_op_key}`"
-                                    ),
-                                });
-                                return None;
-                            };
-                            let Some(dispatch_cell) =
-                                self.lookup_effect_cell(dispatch_effect, dispatch_operation)
-                            else {
-                                self.emit_inst(MirInst::Unsupported {
-                                    detail: format!(
-                                        "missing active handler cell for callback dispatch operation `{dispatch_op_key}` in call lowering"
-                                    ),
-                                });
-                                return None;
-                            };
-                            callback_args.push(dispatch_cell);
-                            callback_arg_types.push(Type::Dynamic);
-                        }
                         self.emit_inst(MirInst::Call {
                             callee: MirCallee::Value(cell),
-                            args: callback_args,
-                            arg_types: callback_arg_types,
+                            args: vec![value],
+                            arg_types: vec![Type::Dynamic],
                             result: None,
                             ret_type: Type::Unit,
                             callee_fail_result_abi: false,
@@ -4722,6 +4725,7 @@ impl FunctionLoweringCtx {
                     &local_lambda.params,
                     &local_lambda.body,
                     expected,
+                    false,
                 )?;
                 self.restore_var_scope(&incoming_scope);
                 arg_types.push(expected.cloned().unwrap_or(synthesized_ty));
@@ -4730,7 +4734,7 @@ impl FunctionLoweringCtx {
             }
             if let HirExprKind::Lambda { params, body } = &arg.kind {
                 let value =
-                    self.lower_lambda_to_closure_value(arg, params, body.as_ref(), expected)?;
+                    self.lower_lambda_to_closure_value(arg, params, body.as_ref(), expected, false)?;
                 arg_types.push(expected.cloned().unwrap_or_else(|| arg.ty.clone()));
                 lowered_args.push(value);
                 continue;
