@@ -30,3 +30,11 @@ Thumbs.db
 
 # sccache
 .sccache/
+
+# Tree-sitter generated artifacts
+tree-sitter-kea/src/parser.c
+tree-sitter-kea/src/grammar.json
+tree-sitter-kea/src/node-types.json
+tree-sitter-kea/src/tree_sitter/
+tree-sitter-kea/*.so
+tree-sitter-kea/*.dylib

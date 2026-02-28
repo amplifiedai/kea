@@ -3,9 +3,11 @@
   "name": "Kea",
   "scopeName": "source.kea",
   "fileTypes": ["kea"],
-  "firstLineMatch": "^(--|fn |effect |type |struct |use |trait |handle )",
+  "firstLineMatch": "^(doc |fn |effect |type |struct |use |trait |handle )",
   "patterns": [
+    { "include": "#doc-blocks" },
     { "include": "#comments" },
+    { "include": "#triple-strings" },
     { "include": "#strings" },
     { "include": "#effect-keywords" },
     { "include": "#keywords" },
@@ -18,15 +20,62 @@
     { "include": "#punctuation" }
   ],
   "repository": {
+    "doc-blocks": {
+      "patterns": [
+        {
+          "comment": "Inline doc: doc Some text here.",
+          "name": "comment.block.documentation.kea",
+          "match": "^(\\s*)(doc)\\b(.+)$",
+          "captures": {
+            "2": { "name": "keyword.other.documentation.kea" },
+            "3": { "name": "comment.block.documentation.kea" }
+          }
+        },
+        {
+          "comment": "Block doc: doc keyword followed by indented body lines",
+          "name": "comment.block.documentation.kea",
+          "begin": "^(\\s*)(doc)\\s*$",
+          "end": "^(?!\\1\\s+|\\s*$)",
+          "beginCaptures": {
+            "2": { "name": "keyword.other.documentation.kea" }
+          }
+        }
+      ]
+    },
     "comments": {
       "patterns": [
         {
-          "name": "comment.line.documentation.kea",
-          "match": "\\-\\-\\|.*$"
-        },
-        {
           "name": "comment.line.double-dash.kea",
           "match": "\\-\\-.*$"
+        }
+      ]
+    },
+    "triple-strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.triple.kea",
+          "begin": "\"\"\"",
+          "end": "\"\"\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.kea",
+              "match": "\\\\."
+            },
+            {
+              "name": "meta.embedded.expression.kea",
+              "begin": "\\{",
+              "end": "\\}",
+              "beginCaptures": {
+                "0": { "name": "punctuation.section.interpolation.begin.kea" }
+              },
+              "endCaptures": {
+                "0": { "name": "punctuation.section.interpolation.end.kea" }
+              },
+              "patterns": [
+                { "include": "$self" }
+              ]
+            }
+          ]
         }
       ]
     },
@@ -34,7 +83,7 @@
       "patterns": [
         {
           "name": "string.quoted.double.kea",
-          "begin": "\"",
+          "begin": "(?<!\")(\")((?!\"\"))",
           "end": "\"",
           "patterns": [
             {
@@ -43,7 +92,7 @@
             },
             {
               "name": "meta.embedded.expression.kea",
-              "begin": "\\$\\{",
+              "begin": "\\{",
               "end": "\\}",
               "beginCaptures": {
                 "0": { "name": "punctuation.section.interpolation.begin.kea" }
@@ -75,7 +124,7 @@
         },
         {
           "name": "keyword.declaration.kea",
-          "match": "\\b(fn|let|pub|type|struct|trait|impl|where|use|as|test|expr|effect)\\b"
+          "match": "\\b(fn|let|pub|type|struct|trait|impl|where|use|as|test|expr|effect|doc|import|alias|opaque)\\b"
         },
         {
           "name": "keyword.operator.logical.kea",

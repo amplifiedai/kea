@@ -1,0 +1,158 @@
+%YAML 1.2
+---
+name: Kea
+file_extensions:
+  - kea
+scope: source.kea
+first_line_match: '^(doc |fn |effect |type |struct |use |trait |handle )'
+
+contexts:
+  main:
+    - include: doc-blocks
+    - include: comments
+    - include: triple-strings
+    - include: strings
+    - include: effect-keywords
+    - include: keywords
+    - include: effect-arrows
+    - include: annotations
+    - include: numbers
+    - include: operators
+    - include: upper-identifiers
+    - include: identifiers
+    - include: punctuation
+
+  doc-blocks:
+    # Inline form: doc Some text here.
+    - match: '^\s*(doc)\b(.+)$'
+      captures:
+        1: keyword.other.documentation.kea
+        2: comment.block.documentation.kea
+    # Block form: doc\n  indented body lines
+    - match: '^\s*(doc)\s*$'
+      captures:
+        1: keyword.other.documentation.kea
+      push: doc-body
+
+  doc-body:
+    - match: '^\s*$'
+      scope: comment.block.documentation.kea
+    - match: '^\s\s+'
+      push:
+        - meta_scope: comment.block.documentation.kea
+        - match: '$'
+          pop: true
+    - match: '(?=\S)'
+      pop: true
+
+  comments:
+    - match: '--.*$'
+      scope: comment.line.double-dash.kea
+
+  triple-strings:
+    - match: '"""'
+      scope: punctuation.definition.string.begin.kea
+      push:
+        - meta_scope: string.quoted.triple.kea
+        - match: '"""'
+          scope: punctuation.definition.string.end.kea
+          pop: true
+        - match: '\\.'
+          scope: constant.character.escape.kea
+        - match: '\{'
+          scope: punctuation.section.interpolation.begin.kea
+          push:
+            - meta_scope: meta.embedded.expression.kea
+            - match: '\}'
+              scope: punctuation.section.interpolation.end.kea
+              pop: true
+            - include: main
+
+  strings:
+    - match: '"'
+      scope: punctuation.definition.string.begin.kea
+      push:
+        - meta_scope: string.quoted.double.kea
+        - match: '"'
+          scope: punctuation.definition.string.end.kea
+          pop: true
+        - match: '\\.'
+          scope: constant.character.escape.kea
+        - match: '\{'
+          scope: punctuation.section.interpolation.begin.kea
+          push:
+            - meta_scope: meta.embedded.expression.kea
+            - match: '\}'
+              scope: punctuation.section.interpolation.end.kea
+              pop: true
+            - include: main
+
+  effect-keywords:
+    - match: '\b(effect|handle|resume|fail|catch|then)\b'
+      scope: keyword.control.effect.kea
+
+  keywords:
+    - match: '\b(if|else|case|when|cond|for|in|while)\b'
+      scope: keyword.control.kea
+    - match: '\b(fn|let|pub|type|struct|trait|impl|where|use|as|test|expr|doc|import|alias|opaque)\b'
+      scope: keyword.declaration.kea
+    - match: '\b(and|or|not)\b'
+      scope: keyword.operator.logical.kea
+    - match: '\b(true|false)\b'
+      scope: constant.language.boolean.kea
+    - match: '\bNone\b'
+      scope: constant.language.none.kea
+
+  effect-arrows:
+    - match: '-\[([^\]]+)\]>'
+      captures:
+        0: keyword.operator.effect.kea
+        1: entity.name.type.effect.kea
+
+  annotations:
+    - match: '@([a-z_][a-zA-Z0-9_]*)(\([^)]*\))?'
+      captures:
+        1: entity.other.attribute-name.kea
+        2: meta.annotation.arguments.kea
+
+  numbers:
+    - match: '\b0[xX][0-9a-fA-F][0-9a-fA-F_]*\b'
+      scope: constant.numeric.hex.kea
+    - match: '\b0[bB][01][01_]*\b'
+      scope: constant.numeric.binary.kea
+    - match: '\b0[oO][0-7][0-7_]*\b'
+      scope: constant.numeric.octal.kea
+    - match: '\b[0-9][0-9_]*\.[0-9][0-9_]*([eE][+-]?[0-9]+)?\b'
+      scope: constant.numeric.float.kea
+    - match: '\b[0-9][0-9_]*\b'
+      scope: constant.numeric.integer.kea
+
+  operators:
+    - match: '\?'
+      scope: keyword.operator.effect.kea
+    - match: '->'
+      scope: keyword.operator.arrow.kea
+    - match: '==|!=|<=|>=|<|>'
+      scope: keyword.operator.comparison.kea
+    - match: '\+\+|<>|\+|-|\*|/|%'
+      scope: keyword.operator.arithmetic.kea
+    - match: '~'
+      scope: keyword.operator.update.kea
+    - match: '='
+      scope: keyword.operator.assignment.kea
+
+  upper-identifiers:
+    - match: '\b[A-Z][a-zA-Z0-9_]*\b'
+      scope: entity.name.type.kea
+
+  identifiers:
+    - match: '\b[a-z_][a-zA-Z0-9_]*\b'
+      scope: variable.other.kea
+
+  punctuation:
+    - match: '\$'
+      scope: punctuation.definition.receiver.kea
+    - match: '[,.:;|]'
+      scope: punctuation.separator.kea
+    - match: '[()\[\]{}]'
+      scope: punctuation.bracket.kea
