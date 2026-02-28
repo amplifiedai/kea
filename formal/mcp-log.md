@@ -9229,3 +9229,37 @@ dim-aware characterization lemmas for constant-dimension decimal unification:
 **Impact**:
 - WP7 decimal parity now has tighter dim-kernel-to-main-unifier contracts for
   downstream theorem routing and MCP-facing explainability.
+
+### 2026-02-28: precision constructor failure-side iff characterization
+
+**Context**: Extended `Kea/Properties/PrecisionLeafParity.lean` with explicit
+failure-side constructor-BEq characterizations:
+- `intN_unify_err_iff_constructor_beq_false`
+- `floatN_unify_err_iff_constructor_beq_false`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- These lemmas should strengthen precision-leaf proof surfaces without changing
+  runtime behavior, by making rejection paths explicit duals of existing
+  success-side iff contracts.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- IntN/FloatN now have explicit `ok ↔ beq=true` and `err ↔ beq=false`
+  theorem-level pairings for constructor unification.
+
+**Impact**:
+- Precision WP7 proofs can route both acceptance and rejection through one-step
+  constructor-BEq equivalences without custom case analysis.
