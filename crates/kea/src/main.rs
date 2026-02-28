@@ -2006,9 +2006,40 @@ mod tests {
     }
 
     #[test]
+    fn compile_and_execute_auto_borrow_inferred_param_does_not_consume_caller_unique() {
+        let source_path = write_temp_source(
+            "type Unique a = Unique(a)\n\nfn touch(value: Unique Int) -> Int\n  1\n\nfn main() -> Int\n  let u = Unique(7)\n  let _ = touch(u)\n  let _ = touch(u)\n  7\n",
+            "kea-cli-auto-borrow-inferred-does-not-consume",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("auto-borrow inferred call should not consume caller unique");
+        assert_eq!(run.exit_code, 7);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_rejects_auto_borrow_inference_for_consuming_parameter() {
+        let source_path = write_temp_source(
+            "type Unique a = Unique(a)\n\nfn take(value: Unique Int) -> Int\n  case value\n    Unique(v) -> v\n\nfn main() -> Int\n  let u = Unique(7)\n  let _ = take(u)\n  let _ = take(u)\n  0\n",
+            "kea-cli-auto-borrow-does-not-infer-consuming-param",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("consuming parameter must not be auto-borrowed");
+        assert!(
+            err.contains("use of moved value `u`"),
+            "expected moved-value diagnostic when auto-borrow should not apply, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_rejects_consuming_borrow_parameter_in_callee() {
         let source_path = write_temp_source(
-            "type Unique a = Unique(a)\n\nfn take(value: Unique Int) -> Int\n  1\n\nfn bad(borrow value: Unique Int) -> Int\n  take(value)\n",
+            "type Unique a = Unique(a)\n\nfn take(value: Unique Int) -> Int\n  case value\n    Unique(v) -> v\n\nfn bad(borrow value: Unique Int) -> Int\n  take(value)\n",
             "kea-cli-borrow-callee-consume-rejected",
             "kea",
         );
@@ -2075,6 +2106,31 @@ mod tests {
         .expect("app module write should succeed");
 
         let run = run_file(&app_path).expect("qualified borrow call should not consume unique");
+        assert_eq!(run.exit_code, 7);
+
+        let _ = std::fs::remove_dir_all(project_dir);
+    }
+
+    #[test]
+    fn compile_and_execute_qualified_auto_borrow_inferred_call_does_not_consume_unique() {
+        let project_dir = temp_project_dir("kea-cli-qualified-auto-borrow");
+        let src_dir = project_dir.join("src");
+        std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+
+        std::fs::write(
+            src_dir.join("helper.kea"),
+            "type Unique a = Unique(a)\n\nfn new(x: Int) -> Unique Int\n  Unique(x)\n\nfn touch(value: Unique Int) -> Int\n  1\n",
+        )
+        .expect("helper module write should succeed");
+        let app_path = src_dir.join("app.kea");
+        std::fs::write(
+            &app_path,
+            "use Helper\n\nfn main() -> Int\n  let u = Helper.new(7)\n  let _ = Helper.touch(u)\n  let _ = Helper.touch(u)\n  7\n",
+        )
+        .expect("app module write should succeed");
+
+        let run =
+            run_file(&app_path).expect("qualified auto-borrow inferred call should not consume unique");
         assert_eq!(run.exit_code, 7);
 
         let _ = std::fs::remove_dir_all(project_dir);
