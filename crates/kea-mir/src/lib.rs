@@ -431,6 +431,7 @@ pub fn lower_hir_module(module: &HirModule) -> MirModule {
         }
     }
     for function in &mut functions {
+        rewrite_trmc_descending_sum_chain(function);
         emit_reuse_tokens_for_trailing_release_alloc(function, &layouts);
         schedule_trailing_releases_after_last_use(function);
         elide_adjacent_retain_release_pairs(function);
@@ -441,6 +442,426 @@ pub fn lower_hir_module(module: &HirModule) -> MirModule {
     }
 
     MirModule { functions, layouts }
+}
+
+fn rewrite_trmc_descending_sum_chain(function: &mut MirFunction) {
+    if function.signature.params != vec![Type::Int] {
+        return;
+    }
+
+    let Some(entry_idx) = function
+        .blocks
+        .iter()
+        .position(|block| block.id == function.entry)
+    else {
+        return;
+    };
+    let (_condition_value, then_id, else_id) = match &function.blocks[entry_idx].terminator {
+        MirTerminator::Branch {
+            condition,
+            then_block,
+            else_block,
+        } => (condition.clone(), then_block.clone(), else_block.clone()),
+        _ => return,
+    };
+
+    let Some(then_idx) = function.blocks.iter().position(|block| block.id == then_id) else {
+        return;
+    };
+    let Some(else_idx) = function.blocks.iter().position(|block| block.id == else_id) else {
+        return;
+    };
+
+    let (
+        then_join_target,
+        then_value,
+        else_join_target,
+        else_value,
+    ) = match (
+        &function.blocks[then_idx].terminator,
+        &function.blocks[else_idx].terminator,
+    ) {
+        (
+            MirTerminator::Jump {
+                target: then_target,
+                args: then_args,
+            },
+            MirTerminator::Jump {
+                target: else_target,
+                args: else_args,
+            },
+        ) if then_args.len() == 1 && else_args.len() == 1 => (
+            then_target.clone(),
+            then_args[0].clone(),
+            else_target.clone(),
+            else_args[0].clone(),
+        ),
+        _ => return,
+    };
+    if then_join_target != else_join_target {
+        return;
+    }
+
+    let Some(join_idx) = function
+        .blocks
+        .iter()
+        .position(|block| block.id == then_join_target)
+    else {
+        return;
+    };
+    let join_block = &function.blocks[join_idx];
+    match (
+        join_block.params.as_slice(),
+        &join_block.terminator,
+        join_block.instructions.as_slice(),
+    ) {
+        (
+            [MirBlockParam { id, .. }],
+            MirTerminator::Return {
+                value: Some(return_value),
+            },
+            [MirInst::Nop],
+        ) if return_value == id => {}
+        _ => return,
+    }
+
+    let then_is_recursive = block_has_recursive_self_call(&function.blocks[then_idx], &function.name);
+    let else_is_recursive = block_has_recursive_self_call(&function.blocks[else_idx], &function.name);
+    if then_is_recursive == else_is_recursive {
+        return;
+    }
+    let (base_idx, recurse_idx, base_value, recurse_value) = if then_is_recursive {
+        (else_idx, then_idx, else_value, then_value)
+    } else {
+        (then_idx, else_idx, then_value, else_value)
+    };
+
+    let recurse_block = &function.blocks[recurse_idx];
+    let Some((call_idx, call_result, call_arg, constructor_idx, constructor)) =
+        find_recursive_constructor_pattern(recurse_block, &function.name, &recurse_value)
+    else {
+        return;
+    };
+
+    let pre_call = &recurse_block.instructions[..call_idx];
+    if !pre_call
+        .iter()
+        .all(|inst| matches!(inst, MirInst::Const { .. } | MirInst::Binary { .. } | MirInst::Nop))
+    {
+        return;
+    }
+    if !value_is_param_minus_one(pre_call, &call_arg, &MirValueId(0)) {
+        return;
+    }
+    if recurse_block.instructions[constructor_idx + 1..]
+        .iter()
+        .any(|inst| !matches!(inst, MirInst::Nop))
+    {
+        return;
+    }
+
+    let base_block = &function.blocks[base_idx];
+    let base_instructions = &base_block.instructions;
+    if !base_instructions
+        .iter()
+        .all(|inst| matches!(inst, MirInst::Const { .. } | MirInst::Unary { .. } | MirInst::Binary { .. } | MirInst::SumInit { .. } | MirInst::Nop))
+    {
+        return;
+    }
+
+    let mut next_value_id = next_fresh_value_id(function);
+    let loop_i = MirValueId(next_value_id);
+    next_value_id = next_value_id.saturating_add(1);
+    let loop_acc = MirValueId(next_value_id);
+    next_value_id = next_value_id.saturating_add(1);
+
+    let entry_id = function.entry.clone();
+    let loop_id = MirBlockId(entry_id.0.saturating_add(1));
+    let step_id = MirBlockId(entry_id.0.saturating_add(2));
+    let done_id = MirBlockId(entry_id.0.saturating_add(3));
+
+    let mut entry_remap = BTreeMap::new();
+    entry_remap.insert(MirValueId(0), MirValueId(0));
+    let mut entry_new_insts =
+        clone_insts_with_remap(base_instructions, &mut entry_remap, &mut next_value_id);
+    let Some(base_value_new) = remap_value(&entry_remap, &base_value) else {
+        return;
+    };
+    let one_value = MirValueId(next_value_id);
+    next_value_id = next_value_id.saturating_add(1);
+    entry_new_insts.push(MirInst::Const {
+        dest: one_value.clone(),
+        literal: MirLiteral::Int(1),
+    });
+    entry_new_insts.retain(|inst| !matches!(inst, MirInst::Nop));
+
+    let loop_condition = MirValueId(next_value_id);
+    next_value_id = next_value_id.saturating_add(1);
+    let loop_new_insts = vec![MirInst::Binary {
+        dest: loop_condition.clone(),
+        op: MirBinaryOp::Gt,
+        left: loop_i.clone(),
+        right: MirValueId(0),
+    }];
+
+    let recursive_sum = match constructor {
+        RecurseConstructorPattern::Sum {
+            sum_type,
+            variant,
+            tag,
+            fields,
+        } => {
+            let mut new_fields = Vec::with_capacity(fields.len());
+            for field in fields {
+                if field == *call_result {
+                    new_fields.push(loop_acc.clone());
+                } else if field == MirValueId(0) {
+                    new_fields.push(loop_i.clone());
+                } else {
+                    return;
+                }
+            }
+            MirInst::SumInit {
+                dest: MirValueId(next_value_id),
+                sum_type: sum_type.clone(),
+                variant: variant.clone(),
+                tag,
+                fields: new_fields,
+            }
+        }
+    };
+    let next_acc_value = match &recursive_sum {
+        MirInst::SumInit { dest, .. } => dest.clone(),
+        _ => return,
+    };
+    let next_i_value = MirValueId(next_value_id);
+    let step_new_insts = vec![recursive_sum, MirInst::Binary {
+        dest: next_i_value.clone(),
+        op: MirBinaryOp::Add,
+        left: loop_i.clone(),
+        right: one_value.clone(),
+    }];
+
+    function.blocks = vec![
+        MirBlock {
+            id: entry_id,
+            params: vec![],
+            instructions: entry_new_insts,
+            terminator: MirTerminator::Jump {
+                target: loop_id.clone(),
+                args: vec![one_value.clone(), base_value_new],
+            },
+        },
+        MirBlock {
+            id: loop_id.clone(),
+            params: vec![
+                MirBlockParam {
+                    id: loop_i.clone(),
+                    ty: Type::Int,
+                },
+                MirBlockParam {
+                    id: loop_acc.clone(),
+                    ty: function.signature.ret.clone(),
+                },
+            ],
+            instructions: loop_new_insts,
+            terminator: MirTerminator::Branch {
+                condition: loop_condition,
+                then_block: done_id.clone(),
+                else_block: step_id.clone(),
+            },
+        },
+        MirBlock {
+            id: step_id,
+            params: vec![],
+            instructions: step_new_insts,
+            terminator: MirTerminator::Jump {
+                target: loop_id.clone(),
+                args: vec![next_i_value, next_acc_value],
+            },
+        },
+        MirBlock {
+            id: done_id,
+            params: vec![],
+            instructions: vec![MirInst::Nop],
+            terminator: MirTerminator::Return {
+                value: Some(loop_acc),
+            },
+        },
+    ];
+}
+
+fn block_has_recursive_self_call(block: &MirBlock, function_name: &str) -> bool {
+    block.instructions.iter().any(|inst| {
+        matches!(
+            inst,
+            MirInst::Call {
+                callee: MirCallee::Local(name),
+                ..
+            } if name == function_name
+        )
+    })
+}
+
+enum RecurseConstructorPattern {
+    Sum {
+        sum_type: String,
+        variant: String,
+        tag: u32,
+        fields: Vec<MirValueId>,
+    },
+}
+
+fn find_recursive_constructor_pattern<'a>(
+    block: &'a MirBlock,
+    function_name: &str,
+    recurse_block_value: &MirValueId,
+) -> Option<(usize, &'a MirValueId, MirValueId, usize, RecurseConstructorPattern)> {
+    for (idx, inst) in block.instructions.iter().enumerate() {
+        let MirInst::Call {
+            callee: MirCallee::Local(name),
+            args,
+            result: Some(call_result),
+            ..
+        } = inst
+        else {
+            continue;
+        };
+        if name != function_name || args.len() != 1 {
+            continue;
+        }
+        let call_arg = args[0].clone();
+        for (next_idx, next_inst) in block.instructions.iter().enumerate().skip(idx + 1) {
+            if let MirInst::SumInit {
+                dest,
+                sum_type,
+                variant,
+                tag,
+                fields,
+            } = next_inst
+                && dest == recurse_block_value
+                && fields.iter().any(|field| field == call_result)
+            {
+                return Some((
+                    idx,
+                    call_result,
+                    call_arg,
+                    next_idx,
+                    RecurseConstructorPattern::Sum {
+                        sum_type: sum_type.clone(),
+                        variant: variant.clone(),
+                        tag: *tag,
+                        fields: fields.clone(),
+                    },
+                ));
+            }
+        }
+    }
+    None
+}
+
+fn value_is_param_minus_one(
+    pre_call: &[MirInst],
+    call_arg: &MirValueId,
+    param_value: &MirValueId,
+) -> bool {
+    let mut ones = BTreeSet::new();
+    for inst in pre_call {
+        if let MirInst::Const {
+            dest,
+            literal: MirLiteral::Int(1),
+        } = inst
+        {
+            ones.insert(dest.clone());
+        }
+    }
+    pre_call.iter().any(|inst| {
+        matches!(
+            inst,
+            MirInst::Binary {
+                dest,
+                op: MirBinaryOp::Sub,
+                left,
+                right,
+            } if dest == call_arg && left == param_value && ones.contains(right)
+        )
+    })
+}
+
+fn remap_value(remap: &BTreeMap<MirValueId, MirValueId>, value: &MirValueId) -> Option<MirValueId> {
+    remap.get(value).cloned().or_else(|| Some(value.clone()))
+}
+
+fn clone_insts_with_remap(
+    insts: &[MirInst],
+    remap: &mut BTreeMap<MirValueId, MirValueId>,
+    next_value_id: &mut u32,
+) -> Vec<MirInst> {
+    let mut out = Vec::with_capacity(insts.len());
+    for inst in insts {
+        let cloned = match inst {
+            MirInst::Const { dest, literal } => {
+                let new_dest = MirValueId(*next_value_id);
+                *next_value_id = next_value_id.saturating_add(1);
+                remap.insert(dest.clone(), new_dest.clone());
+                MirInst::Const {
+                    dest: new_dest,
+                    literal: literal.clone(),
+                }
+            }
+            MirInst::Binary {
+                dest,
+                op,
+                left,
+                right,
+            } => {
+                let new_dest = MirValueId(*next_value_id);
+                *next_value_id = next_value_id.saturating_add(1);
+                remap.insert(dest.clone(), new_dest.clone());
+                MirInst::Binary {
+                    dest: new_dest,
+                    op: *op,
+                    left: remap_value(remap, left).unwrap_or_else(|| left.clone()),
+                    right: remap_value(remap, right).unwrap_or_else(|| right.clone()),
+                }
+            }
+            MirInst::Unary { dest, op, operand } => {
+                let new_dest = MirValueId(*next_value_id);
+                *next_value_id = next_value_id.saturating_add(1);
+                remap.insert(dest.clone(), new_dest.clone());
+                MirInst::Unary {
+                    dest: new_dest,
+                    op: *op,
+                    operand: remap_value(remap, operand).unwrap_or_else(|| operand.clone()),
+                }
+            }
+            MirInst::SumInit {
+                dest,
+                sum_type,
+                variant,
+                tag,
+                fields,
+            } => {
+                let new_dest = MirValueId(*next_value_id);
+                *next_value_id = next_value_id.saturating_add(1);
+                remap.insert(dest.clone(), new_dest.clone());
+                MirInst::SumInit {
+                    dest: new_dest,
+                    sum_type: sum_type.clone(),
+                    variant: variant.clone(),
+                    tag: *tag,
+                    fields: fields
+                        .iter()
+                        .map(|field| remap_value(remap, field).unwrap_or_else(|| field.clone()))
+                        .collect(),
+                }
+            }
+            MirInst::Nop => MirInst::Nop,
+            _ => return Vec::new(),
+        };
+        out.push(cloned);
+    }
+    out
 }
 
 fn collect_const_field_exprs(module: &HirModule) -> BTreeMap<String, AstExprKind> {
@@ -9073,6 +9494,133 @@ mod tests {
         assert!(matches!(
             function.blocks[0].instructions[2],
             MirInst::RecordInitFromToken { .. }
+        ));
+    }
+
+    #[test]
+    fn rewrite_trmc_descending_sum_chain_rewrites_recursive_constructor_call() {
+        let mut function = MirFunction {
+            name: "build".to_string(),
+            signature: MirFunctionSignature {
+                params: vec![Type::Int],
+                ret: Type::Dynamic,
+                effects: EffectRow::pure(),
+            },
+            entry: MirBlockId(0),
+            blocks: vec![
+                MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: MirValueId(1),
+                            literal: MirLiteral::Int(0),
+                        },
+                        MirInst::Binary {
+                            dest: MirValueId(2),
+                            op: MirBinaryOp::Lte,
+                            left: MirValueId(0),
+                            right: MirValueId(1),
+                        },
+                    ],
+                    terminator: MirTerminator::Branch {
+                        condition: MirValueId(2),
+                        then_block: MirBlockId(1),
+                        else_block: MirBlockId(2),
+                    },
+                },
+                MirBlock {
+                    id: MirBlockId(1),
+                    params: vec![],
+                    instructions: vec![MirInst::SumInit {
+                        dest: MirValueId(3),
+                        sum_type: "Chain".to_string(),
+                        variant: "End".to_string(),
+                        tag: 0,
+                        fields: vec![],
+                    }],
+                    terminator: MirTerminator::Jump {
+                        target: MirBlockId(3),
+                        args: vec![MirValueId(3)],
+                    },
+                },
+                MirBlock {
+                    id: MirBlockId(2),
+                    params: vec![],
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: MirValueId(4),
+                            literal: MirLiteral::Int(1),
+                        },
+                        MirInst::Binary {
+                            dest: MirValueId(5),
+                            op: MirBinaryOp::Sub,
+                            left: MirValueId(0),
+                            right: MirValueId(4),
+                        },
+                        MirInst::Call {
+                            callee: MirCallee::Local("build".to_string()),
+                            args: vec![MirValueId(5)],
+                            arg_types: vec![Type::Int],
+                            result: Some(MirValueId(6)),
+                            ret_type: Type::Dynamic,
+                            callee_fail_result_abi: false,
+                            capture_fail_result: false,
+                            cc_manifest_id: "default".to_string(),
+                        },
+                        MirInst::SumInit {
+                            dest: MirValueId(7),
+                            sum_type: "Chain".to_string(),
+                            variant: "Node".to_string(),
+                            tag: 1,
+                            fields: vec![MirValueId(0), MirValueId(6)],
+                        },
+                    ],
+                    terminator: MirTerminator::Jump {
+                        target: MirBlockId(3),
+                        args: vec![MirValueId(7)],
+                    },
+                },
+                MirBlock {
+                    id: MirBlockId(3),
+                    params: vec![MirBlockParam {
+                        id: MirValueId(8),
+                        ty: Type::Dynamic,
+                    }],
+                    instructions: vec![MirInst::Nop],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirValueId(8)),
+                    },
+                },
+            ],
+        };
+
+        rewrite_trmc_descending_sum_chain(&mut function);
+
+        assert_eq!(function.blocks.len(), 4);
+        assert!(
+            function
+                .blocks
+                .iter()
+                .flat_map(|block| block.instructions.iter())
+                .all(|inst| !matches!(inst, MirInst::Call { .. })),
+            "rewrite should remove recursive call from constructor branch"
+        );
+        assert!(matches!(
+            function.blocks[0].terminator,
+            MirTerminator::Jump { .. }
+        ));
+        assert!(matches!(
+            function.blocks[1].terminator,
+            MirTerminator::Branch { .. }
+        ));
+        assert!(matches!(
+            function.blocks[2].terminator,
+            MirTerminator::Jump { .. }
+        ));
+        assert!(matches!(
+            function.blocks[3].terminator,
+            MirTerminator::Return { .. }
         ));
     }
 
