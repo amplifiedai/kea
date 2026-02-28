@@ -28141,6 +28141,103 @@ theorem principalBoundarySoundNoUnifyFullVerticalMasterCapstone_iff_fullVertical
   · intro h_suite
     exact principalBoundarySoundNoUnifyFullVerticalMasterCapstone_of_fullVerticalSuite h_suite
 
+/-- Hook-seeded constructor for the no-unify full+vertical suite surface from successful runs. -/
+theorem principalBoundarySoundNoUnifyFullVerticalSuite_of_success
+    {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_no_expr : NoUnifyBranchesExpr e)
+    (h_no_field : NoUnifyBranchesFields fs)
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundNoUnifyFullVerticalSuite st fuel env e fs stExpr ty stField rf :=
+  principalBoundarySoundNoUnifyFullVerticalSuite_of_masterCapstone
+    (principalBoundarySoundNoUnifyFullVerticalMasterCapstone_of_success
+      (h_app := h_app) (h_proj := h_proj) h_no_expr h_no_field h_ok_expr h_ok_field)
+
+/-- Bundled-hook constructor for the no-unify full+vertical suite surface from successful runs. -/
+theorem principalBoundarySoundNoUnifyFullVerticalSuite_of_success_from_bundle
+    (h_seed : UnifyHookPremises)
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_no_expr : NoUnifyBranchesExpr e)
+    (h_no_field : NoUnifyBranchesFields fs)
+    (h_ok_expr : inferExprUnify st fuel env e = .ok stExpr ty)
+    (h_ok_field : inferFieldsUnify st fuel env fs = .ok stField (.row (.mk rf none))) :
+    PrincipalBoundarySoundNoUnifyFullVerticalSuite st fuel env e fs stExpr ty stField rf :=
+  principalBoundarySoundNoUnifyFullVerticalSuite_of_success
+    (h_app := h_seed.1) (h_proj := h_seed.2) h_no_expr h_no_field h_ok_expr h_ok_field
+
+/-- One-hop projection: no-unify expression full consequence from no-unify full+vertical suite. -/
+theorem principalBoundarySoundNoUnifyFullVerticalSuite_expr
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_suite : PrincipalBoundarySoundNoUnifyFullVerticalSuite st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundNoUnifyExprFull st fuel env e stExpr ty :=
+  h_suite.exprNoUnify
+
+/-- One-hop projection: no-unify field full consequence from no-unify full+vertical suite. -/
+theorem principalBoundarySoundNoUnifyFullVerticalSuite_field
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_suite : PrincipalBoundarySoundNoUnifyFullVerticalSuite st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundNoUnifyFieldFull st fuel env fs stField rf :=
+  h_suite.fieldNoUnify
+
+/-- One-hop projection: hook-free vertical pair from no-unify full+vertical suite. -/
+theorem principalBoundarySoundNoUnifyFullVerticalSuite_vertical
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_suite : PrincipalBoundarySoundNoUnifyFullVerticalSuite st fuel env e fs stExpr ty stField rf) :
+    VerticalHookFreeUnifySlices :=
+  h_suite.vertical
+
+/-- One-hop projection: hook-free app vertical consequence from no-unify full+vertical suite. -/
+theorem principalBoundarySoundNoUnifyFullVerticalSuite_vertical_app
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_suite : PrincipalBoundarySoundNoUnifyFullVerticalSuite st fuel env e fs stExpr ty stField rf) :
+    VerticalHookFreeAppSlice :=
+  h_suite.vertical.1
+
+/-- One-hop projection: hook-free projection vertical consequence from no-unify full+vertical suite. -/
+theorem principalBoundarySoundNoUnifyFullVerticalSuite_vertical_proj
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_suite : PrincipalBoundarySoundNoUnifyFullVerticalSuite st fuel env e fs stExpr ty stField rf) :
+    VerticalHookFreeProjSlice :=
+  h_suite.vertical.2
+
+/-- No-unify full+vertical suite decomposes to explicit no-unify + vertical components. -/
+theorem principalBoundarySoundNoUnifyFullVerticalSuite_iff_components
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields} :
+    PrincipalBoundarySoundNoUnifyFullVerticalSuite st fuel env e fs stExpr ty stField rf
+      ↔ (PrincipalBoundarySoundNoUnifyExprFull st fuel env e stExpr ty
+          ∧ PrincipalBoundarySoundNoUnifyFieldFull st fuel env fs stField rf
+          ∧ VerticalHookFreeUnifySlices) := by
+  constructor
+  · intro h_suite
+    exact ⟨h_suite.exprNoUnify, h_suite.fieldNoUnify, h_suite.vertical⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2.1, h_comp.2.2⟩
+
 /--
 The row-poly full+vertical capstone is equivalent to providing:
 - a full principal boundary soundness suite witness, and
