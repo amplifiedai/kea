@@ -9802,3 +9802,38 @@ and routed decomposition signatures (`..._as_components`,
 **Impact**:
 - Improves downstream readability and keeps numeric suite signatures consistent
   with alias-based decomposition patterns across the formal corpus.
+
+### 2026-02-28: precision constructor suite alias cleanup
+
+**Context**: Added an explicit component alias for
+`PrecisionConstructorKernelSlice` in
+`Kea/Properties/PrecisionLeafParity.lean`:
+- `PrecisionConstructorKernelSliceComponents`
+
+and routed decomposition signatures (`..._as_components`,
+`..._as_components_of_components`, `..._iff_components`) through that alias.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Signature/API cleanup only; no runtime semantic change.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Precision constructor suite decomposition APIs now use an explicit component
+  alias, matching newer package layers.
+
+**Impact**:
+- Improves downstream readability and keeps precision suite signatures
+  consistent with alias-based decomposition patterns across the formal corpus.
