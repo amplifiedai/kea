@@ -9150,3 +9150,47 @@ route variants including proved+dual forms, plus `of_noUnifyMasterSurface`).
 **Impact**:
 - Downstream proofs can route from any current no-unify suite constructor path
   to explicit component tuples without manual intermediate destructuring.
+
+### 2026-02-28: no-unify full-vertical master-surface route decomposition parity
+
+**Context**: Closed generalized route wrappers for
+`principalBoundarySoundNoUnifyFullVerticalMasterSurface` by adding the
+remaining `..._as_components_of_<route>` theorem family for every exposed
+`..._of_<route>` constructor path, including all current `success_via_*`
+variants (bundled + unbundled).
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Wrapper-only theorem routing over existing unified master-surface constructor
+  routes and `..._as_components` decomposition.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran corrected route-parity scan for this family:
+  `principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_<route>` +
+  `..._as_components` base requires
+  `principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_components_of_<route>`.
+- Initial scan surfaced 14 missing wrappers, all in `success_via_*` route
+  families.
+- Added wrappers and reran the same scan.
+- Result: no remaining gaps for this theorem family.
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Unified no-unify master-surface constructor routes now all have one-hop
+  decomposition wrappers to explicit master-route + master-capstone components.
+
+**Impact**:
+- Downstream proofs can move from any currently exposed no-unify
+  master-surface constructor route to explicit component tuples in one theorem
+  step without manual intermediate reconstruction.
