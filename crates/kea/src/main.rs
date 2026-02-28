@@ -434,6 +434,69 @@ mod tests {
     }
 
     #[test]
+    fn compile_and_execute_struct_const_field_exit_code() {
+        let source_path = write_temp_source(
+            "struct Math\n  const pi: Int = 41\n\nfn main() -> Int\n  Math.pi + 1\n",
+            "kea-cli-const-field",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_struct_const_field_dependency_exit_code() {
+        let source_path = write_temp_source(
+            "struct Math\n  const pi: Int = 21\n  const tau: Int = pi * 2\n\nfn main() -> Int\n  Math.tau\n",
+            "kea-cli-const-field-deps",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_struct_const_field_rejects_function_calls() {
+        let source_path = write_temp_source(
+            "fn inc(x: Int) -> Int\n  x + 1\n\nstruct Math\n  const bad: Int = inc(1)\n\nfn main() -> Int\n  Math.bad\n",
+            "kea-cli-const-field-call-reject",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("const initializer calls should be rejected");
+        assert!(
+            err.contains("const initializer")
+                && err.contains("not supported yet"),
+            "expected const initializer rejection, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_struct_const_field_rejects_circular_reference() {
+        let source_path = write_temp_source(
+            "struct Loop\n  const a: Int = b + 1\n  const b: Int = a + 1\n\nfn main() -> Int\n  Loop.a\n",
+            "kea-cli-const-field-cycle-reject",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("circular const dependency should be rejected");
+        assert!(
+            err.contains("circular const dependency"),
+            "expected cycle error, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_prelude_module_without_explicit_use_exit_code() {
         let project_dir = temp_project_dir("kea-cli-project-prelude");
         let src_dir = project_dir.join("src");

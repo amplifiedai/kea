@@ -3,8 +3,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use kea_ast::{
-    DeclKind, ExprDecl, FileId, FnDecl, ImportItems, Module, Span, TestDecl, TypeAnnotation,
-    TypeDef,
+    DeclKind, Expr, ExprDecl, ExprKind, FileId, FnDecl, ImportItems, Module, RecordDef, Span,
+    TestDecl, TypeAnnotation, TypeDef,
 };
 use kea_codegen::{
     Backend, BackendConfig, CodegenMode, CraneliftBackend, PassStats, default_abi_manifest,
@@ -18,14 +18,15 @@ use kea_hir::{
 use kea_infer::typeck::{
     RecordRegistry, SumTypeRegistry, TraitRegistry, TypeEnv, apply_where_clause,
     infer_and_resolve_in_context, infer_fn_decl_effect_row, register_builtin_int_bitwise_methods,
-    register_effect_decl, register_fn_effect_signature, register_fn_signature,
+    register_effect_decl, register_fn_effect_signature, register_fn_signature, resolve_annotation,
+    check_expr_in_context,
     seed_fn_where_type_params_in_context, validate_declared_fn_effect_row_with_env_and_records,
     validate_module_annotations, validate_module_fn_annotations, validate_where_clause_traits,
 };
-use kea_infer::{Category, InferenceContext};
+use kea_infer::{Category, InferenceContext, Reason};
 use kea_mir::lower_hir_module;
 use kea_syntax::{lex_layout, parse_module};
-use kea_types::sanitize_type_display;
+use kea_types::{Type, TypeScheme, sanitize_type_display};
 
 #[derive(Debug)]
 pub struct CompilationContext {
@@ -1340,6 +1341,361 @@ fn register_top_level_declarations(
         }
     }
 
+    register_record_const_fields(module, env, records, traits, sum_types, diagnostics, module_path)?;
+
+    Ok(())
+}
+
+fn const_expr_references(
+    expr: &Expr,
+    owner: &str,
+    known: &BTreeSet<String>,
+    refs: &mut BTreeSet<String>,
+) {
+    match &expr.node {
+        ExprKind::Var(name) => {
+            if known.contains(name) {
+                refs.insert(name.clone());
+            }
+        }
+        ExprKind::FieldAccess { expr, field } => {
+            if let ExprKind::Var(qualifier) = &expr.node
+                && qualifier == owner
+                && known.contains(&field.node)
+            {
+                refs.insert(field.node.clone());
+            }
+            const_expr_references(expr, owner, known, refs);
+        }
+        ExprKind::Lit(_) | ExprKind::None | ExprKind::Atom(_) => {}
+        ExprKind::UnaryOp { operand, .. } => const_expr_references(operand, owner, known, refs),
+        ExprKind::BinaryOp { left, right, .. } => {
+            const_expr_references(left, owner, known, refs);
+            const_expr_references(right, owner, known, refs);
+        }
+        ExprKind::Tuple(items) | ExprKind::List(items) | ExprKind::Block(items) => {
+            for item in items {
+                const_expr_references(item, owner, known, refs);
+            }
+        }
+        ExprKind::Record { fields, spread, .. } | ExprKind::AnonRecord { fields, spread } => {
+            for (_, value) in fields {
+                const_expr_references(value, owner, known, refs);
+            }
+            if let Some(base) = spread {
+                const_expr_references(base, owner, known, refs);
+            }
+        }
+        ExprKind::Update { base, fields } => {
+            const_expr_references(base, owner, known, refs);
+            for (_, value) in fields {
+                const_expr_references(value, owner, known, refs);
+            }
+        }
+        ExprKind::Constructor { args, .. } => {
+            for arg in args {
+                const_expr_references(&arg.value, owner, known, refs);
+            }
+        }
+        ExprKind::StringInterp(parts) => {
+            for part in parts {
+                if let kea_ast::StringInterpPart::Expr(value) = part {
+                    const_expr_references(value, owner, known, refs);
+                }
+            }
+        }
+        ExprKind::Range { start, end, .. } => {
+            const_expr_references(start, owner, known, refs);
+            const_expr_references(end, owner, known, refs);
+        }
+        ExprKind::As { expr, .. } => const_expr_references(expr, owner, known, refs),
+        ExprKind::MapLiteral(entries) => {
+            for (key, value) in entries {
+                const_expr_references(key, owner, known, refs);
+                const_expr_references(value, owner, known, refs);
+            }
+        }
+        ExprKind::Call { .. }
+        | ExprKind::Lambda { .. }
+        | ExprKind::Let { .. }
+        | ExprKind::If { .. }
+        | ExprKind::Case { .. }
+        | ExprKind::Cond { .. }
+        | ExprKind::For(_)
+        | ExprKind::Use(_)
+        | ExprKind::Handle { .. }
+        | ExprKind::Resume { .. }
+        | ExprKind::WhenGuard { .. }
+        | ExprKind::Await { .. }
+        | ExprKind::Spawn { .. }
+        | ExprKind::StreamBlock { .. }
+        | ExprKind::Yield { .. }
+        | ExprKind::YieldFrom { .. }
+        | ExprKind::ActorSend { .. }
+        | ExprKind::ActorCall { .. }
+        | ExprKind::ControlSend { .. }
+        | ExprKind::Wildcard => {}
+    }
+}
+
+fn const_expr_supported(expr: &Expr) -> bool {
+    match &expr.node {
+        ExprKind::Lit(_) | ExprKind::None | ExprKind::Atom(_) | ExprKind::Var(_) => true,
+        ExprKind::UnaryOp { operand, .. } => const_expr_supported(operand),
+        ExprKind::BinaryOp { left, right, .. } => {
+            const_expr_supported(left) && const_expr_supported(right)
+        }
+        ExprKind::Tuple(items) | ExprKind::List(items) | ExprKind::Block(items) => {
+            items.iter().all(const_expr_supported)
+        }
+        ExprKind::Record { fields, spread, .. } | ExprKind::AnonRecord { fields, spread } => {
+            fields.iter().all(|(_, value)| const_expr_supported(value))
+                && spread
+                    .as_ref()
+                    .is_none_or(|base| const_expr_supported(base))
+        }
+        ExprKind::Update { base, fields } => {
+            const_expr_supported(base) && fields.iter().all(|(_, value)| const_expr_supported(value))
+        }
+        ExprKind::Constructor { args, .. } => args.iter().all(|arg| const_expr_supported(&arg.value)),
+        ExprKind::StringInterp(parts) => parts.iter().all(|part| match part {
+            kea_ast::StringInterpPart::Literal(_) => true,
+            kea_ast::StringInterpPart::Expr(value) => const_expr_supported(value),
+        }),
+        ExprKind::Range { start, end, .. } => {
+            const_expr_supported(start) && const_expr_supported(end)
+        }
+        ExprKind::As { expr, .. } => const_expr_supported(expr),
+        ExprKind::MapLiteral(entries) => entries
+            .iter()
+            .all(|(key, value)| const_expr_supported(key) && const_expr_supported(value)),
+        ExprKind::FieldAccess { expr, .. } => const_expr_supported(expr),
+        ExprKind::Call { .. }
+        | ExprKind::Lambda { .. }
+        | ExprKind::Let { .. }
+        | ExprKind::If { .. }
+        | ExprKind::Case { .. }
+        | ExprKind::Cond { .. }
+        | ExprKind::For(_)
+        | ExprKind::Use(_)
+        | ExprKind::Handle { .. }
+        | ExprKind::Resume { .. }
+        | ExprKind::WhenGuard { .. }
+        | ExprKind::Await { .. }
+        | ExprKind::Spawn { .. }
+        | ExprKind::StreamBlock { .. }
+        | ExprKind::Yield { .. }
+        | ExprKind::YieldFrom { .. }
+        | ExprKind::ActorSend { .. }
+        | ExprKind::ActorCall { .. }
+        | ExprKind::ControlSend { .. }
+        | ExprKind::Wildcard => false,
+    }
+}
+
+fn topo_sort_const_fields(def: &RecordDef) -> Result<Vec<String>, BTreeSet<String>> {
+    let mut deps: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    let known = def
+        .const_fields
+        .iter()
+        .map(|field| field.name.node.clone())
+        .collect::<BTreeSet<_>>();
+    for field in &def.const_fields {
+        let mut refs = BTreeSet::new();
+        const_expr_references(&field.value, &def.name.node, &known, &mut refs);
+        deps.insert(field.name.node.clone(), refs);
+    }
+
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum Mark {
+        Temp,
+        Perm,
+    }
+
+    fn visit(
+        name: &str,
+        deps: &BTreeMap<String, BTreeSet<String>>,
+        marks: &mut BTreeMap<String, Mark>,
+        stack: &mut Vec<String>,
+        order: &mut Vec<String>,
+    ) -> Result<(), BTreeSet<String>> {
+        if matches!(marks.get(name), Some(Mark::Perm)) {
+            return Ok(());
+        }
+        if matches!(marks.get(name), Some(Mark::Temp)) {
+            let start = stack
+                .iter()
+                .position(|item| item == name)
+                .unwrap_or(0);
+            return Err(stack[start..].iter().cloned().collect());
+        }
+
+        marks.insert(name.to_string(), Mark::Temp);
+        stack.push(name.to_string());
+        if let Some(children) = deps.get(name) {
+            for child in children {
+                visit(child, deps, marks, stack, order)?;
+            }
+        }
+        stack.pop();
+        marks.insert(name.to_string(), Mark::Perm);
+        order.push(name.to_string());
+        Ok(())
+    }
+
+    let mut marks = BTreeMap::new();
+    let mut order = Vec::new();
+    let mut stack = Vec::new();
+    for field in &def.const_fields {
+        visit(&field.name.node, &deps, &mut marks, &mut stack, &mut order)?;
+    }
+    Ok(order)
+}
+
+fn register_record_const_fields(
+    module: &Module,
+    env: &mut TypeEnv,
+    records: &RecordRegistry,
+    traits: &TraitRegistry,
+    sum_types: &SumTypeRegistry,
+    diagnostics: &mut Vec<Diagnostic>,
+    module_path: Option<&str>,
+) -> Result<(), String> {
+    for decl in &module.declarations {
+        let DeclKind::RecordDef(def) = &decl.node else {
+            continue;
+        };
+        if def.const_fields.is_empty() {
+            continue;
+        }
+
+        let mut const_types = BTreeMap::<String, Type>::new();
+        for const_field in &def.const_fields {
+            let Some(resolved) = resolve_annotation(&const_field.annotation, records, Some(sum_types))
+            else {
+                diagnostics.push(
+                    Diagnostic::error(
+                        Category::TypeError,
+                        format!(
+                            "unknown type annotation in const field `{}.{}`",
+                            def.name.node, const_field.name.node
+                        ),
+                    )
+                    .at(SourceLocation {
+                        file_id: const_field.name.span.file.0,
+                        start: const_field.name.span.start,
+                        end: const_field.name.span.end,
+                    }),
+                );
+                return Err(format_diagnostics(
+                    "const field registration failed",
+                    diagnostics,
+                ));
+            };
+            const_types.insert(const_field.name.node.clone(), resolved);
+        }
+
+        let order = match topo_sort_const_fields(def) {
+            Ok(order) => order,
+            Err(cycle) => {
+                diagnostics.push(
+                    Diagnostic::error(
+                        Category::TypeError,
+                        format!(
+                            "circular const dependency in `{}`: {}",
+                            def.name.node,
+                            cycle.into_iter().collect::<Vec<_>>().join(" -> ")
+                        ),
+                    )
+                    .at(SourceLocation {
+                        file_id: def.name.span.file.0,
+                        start: def.name.span.start,
+                        end: def.name.span.end,
+                    }),
+                );
+                return Err(format_diagnostics(
+                    "const field registration failed",
+                    diagnostics,
+                ));
+            }
+        };
+
+        for (const_name, const_ty) in &const_types {
+            let scheme = TypeScheme::mono(const_ty.clone());
+            env.bind(format!("{}.{}", def.name.node, const_name), scheme.clone());
+            if env.resolve_module_path_alias(&def.name.node).is_none() {
+                env.register_module_alias(&def.name.node, &def.name.node);
+            }
+            env.register_module_type_scheme_exact(&def.name.node, const_name, scheme.clone());
+            env.register_module_item_visibility(&def.name.node, const_name, def.public);
+            if let Some(module_path) = module_path
+                && module_struct_name(module_path) == def.name.node
+            {
+                env.register_module_type_scheme_exact(module_path, const_name, scheme.clone());
+                env.register_module_item_visibility(module_path, const_name, def.public);
+            }
+        }
+
+        env.push_scope();
+        for (const_name, const_ty) in &const_types {
+            env.bind(const_name.clone(), TypeScheme::mono(const_ty.clone()));
+        }
+
+        for const_name in order {
+            let Some(const_field) = def
+                .const_fields
+                .iter()
+                .find(|field| field.name.node == const_name)
+            else {
+                continue;
+            };
+            if !const_expr_supported(&const_field.value) {
+                diagnostics.push(
+                    Diagnostic::error(
+                        Category::TypeError,
+                        format!(
+                            "const initializer for `{}.{}` uses unsupported syntax; function calls and effectful constructs are not supported yet",
+                            def.name.node, const_field.name.node
+                        ),
+                    )
+                    .at(SourceLocation {
+                        file_id: const_field.value.span.file.0,
+                        start: const_field.value.span.start,
+                        end: const_field.value.span.end,
+                    }),
+                );
+                env.pop_scope();
+                return Err(format_diagnostics(
+                    "const field registration failed",
+                    diagnostics,
+                ));
+            }
+            let Some(expected) = const_types.get(&const_name) else {
+                continue;
+            };
+            let mut ctx = InferenceContext::new();
+            check_expr_in_context(
+                &const_field.value,
+                expected,
+                Reason::TypeAscription,
+                env,
+                &mut ctx,
+                records,
+                traits,
+                sum_types,
+            );
+            diagnostics.extend(ctx.errors().iter().cloned());
+            if ctx.has_errors() {
+                env.pop_scope();
+                return Err(format_diagnostics(
+                    "const field registration failed",
+                    diagnostics,
+                ));
+            }
+        }
+
+        env.pop_scope();
+    }
     Ok(())
 }
 
