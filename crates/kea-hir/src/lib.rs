@@ -2285,6 +2285,12 @@ enum LiteralCaseValue {
     Bool(bool),
 }
 
+#[derive(Debug, Clone, PartialEq)]
+enum LiteralCaseMatcher {
+    Literal(LiteralCaseValue),
+    Const { qualifier: String, name: String },
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ConstructorPayloadAccessStep {
     SumPayload {
@@ -2312,7 +2318,7 @@ struct ConstructorPayloadCheck {
 }
 
 type LiteralArm<'a> = (
-    LiteralCaseValue,
+    LiteralCaseMatcher,
     &'a Expr,
     Option<String>,
     Vec<ConstructorPayloadBind>,
@@ -2321,7 +2327,7 @@ type LiteralArm<'a> = (
 );
 
 type LiteralCasePatternInfo = (
-    Vec<LiteralCaseValue>,
+    Vec<LiteralCaseMatcher>,
     Option<String>,
     Vec<ConstructorPayloadBind>,
     Vec<ConstructorPayloadCheck>,
@@ -2614,10 +2620,20 @@ fn lower_literal_case(
 
     let has_true = literal_arms
         .iter()
-        .any(|(lit, _, _, _, _, _)| matches!(lit, LiteralCaseValue::Bool(true)));
+        .any(|(matcher, _, _, _, _, _)| {
+            matches!(
+                matcher,
+                LiteralCaseMatcher::Literal(LiteralCaseValue::Bool(true))
+            )
+        });
     let has_false = literal_arms
         .iter()
-        .any(|(lit, _, _, _, _, _)| matches!(lit, LiteralCaseValue::Bool(false)));
+        .any(|(matcher, _, _, _, _, _)| {
+            matches!(
+                matcher,
+                LiteralCaseMatcher::Literal(LiteralCaseValue::Bool(false))
+            )
+        });
     if fallback_arms.is_empty()
         && (has_true || has_false)
         && arms.iter().all(|arm| arm.guard.is_none())
@@ -2815,18 +2831,42 @@ fn lower_literal_case(
         return Some(lowered.kind);
     }
 
-    for (lit, body, bind_name, payload_binds, payload_checks, guard) in
+    for (matcher, body, bind_name, payload_binds, payload_checks, guard) in
         literal_arms.into_iter().rev()
     {
+        let rhs = match matcher {
+            LiteralCaseMatcher::Literal(lit) => HirExpr {
+                kind: HirExprKind::Lit(literal_case_lit(lit)),
+                ty: literal_case_type(lit),
+                span: scrutinee.span,
+            },
+            LiteralCaseMatcher::Const { qualifier, name } => {
+                let qualified_const = Expr {
+                    node: ExprKind::FieldAccess {
+                        expr: Box::new(kea_ast::Spanned::new(
+                            ExprKind::Var(qualifier),
+                            scrutinee.span,
+                        )),
+                        field: kea_ast::Spanned::new(name, scrutinee.span),
+                    },
+                    span: scrutinee.span,
+                };
+                lower_expr(
+                    &qualified_const,
+                    None,
+                    unit_variant_tags,
+                    qualified_variant_tags,
+                    pattern_variant_tags,
+                    pattern_qualified_tags,
+                    known_record_defs,
+                )
+            }
+        };
         let mut condition = HirExpr {
             kind: HirExprKind::Binary {
                 op: BinOp::Eq,
                 left: Box::new(scrutinee_expr.clone()),
-                right: Box::new(HirExpr {
-                    kind: HirExprKind::Lit(literal_case_lit(lit)),
-                    ty: literal_case_type(lit),
-                    span: scrutinee.span,
-                }),
+                right: Box::new(rhs),
             },
             ty: Type::Bool,
             span: scrutinee.span,
@@ -3255,7 +3295,16 @@ fn literal_case_values_from_pattern(
         PatternKind::Lit(lit @ Lit::Int(_))
         | PatternKind::Lit(lit @ Lit::Float(_))
         | PatternKind::Lit(lit @ Lit::Bool(_)) => Some((
-            vec![literal_case_value_from_lit(lit)?],
+            vec![LiteralCaseMatcher::Literal(literal_case_value_from_lit(lit)?)],
+            None,
+            Vec::new(),
+            Vec::new(),
+        )),
+        PatternKind::Const { qualifier, name } => Some((
+            vec![LiteralCaseMatcher::Const {
+                qualifier: qualifier.clone(),
+                name: name.clone(),
+            }],
             None,
             Vec::new(),
             Vec::new(),
@@ -3317,7 +3366,7 @@ fn literal_case_values_from_pattern(
                 )?;
             }
             Some((
-                vec![LiteralCaseValue::Int(meta.tag)],
+                vec![LiteralCaseMatcher::Literal(LiteralCaseValue::Int(meta.tag))],
                 None,
                 payload_binds,
                 payload_checks,
@@ -4586,6 +4635,51 @@ mod tests {
             panic!("expected chained int case lowering");
         };
         assert!(matches!(else_branch.kind, HirExprKind::If { .. }));
+    }
+
+    #[test]
+    fn lower_function_const_pattern_case_desugars_to_if_chain() {
+        let module = parse_module_from_text(
+            "struct Math\n  const answer: Int = 42\n\nfn classify(x: Int) -> Int\n  case x\n    Math.answer -> 1\n    _ -> 0",
+        );
+        let mut env = TypeEnv::new();
+        env.bind(
+            "classify".to_string(),
+            TypeScheme::mono(Type::Function(FunctionType::pure(
+                vec![Type::Int],
+                Type::Int,
+            ))),
+        );
+        env.bind("Math.answer".to_string(), TypeScheme::mono(Type::Int));
+
+        let lowered = lower_module(&module, &env);
+        let function = lowered
+            .declarations
+            .iter()
+            .find_map(|decl| match decl {
+                HirDecl::Function(function) if function.name == "classify" => Some(function),
+                _ => None,
+            })
+            .expect("expected lowered classify function");
+
+        let HirExprKind::If { condition, .. } = &function.body.kind else {
+            panic!("expected const-pattern case to lower to if expression");
+        };
+        let HirExprKind::Binary {
+            op: BinOp::Eq,
+            right,
+            ..
+        } = &condition.kind
+        else {
+            panic!("expected const-pattern condition to compare against const expression");
+        };
+        assert!(matches!(
+            right.kind,
+            HirExprKind::FieldAccess { ref field, .. } if field == "answer"
+        ) || matches!(
+            right.kind,
+            HirExprKind::Var(ref name) if name == "Math.answer"
+        ));
     }
 
     #[test]

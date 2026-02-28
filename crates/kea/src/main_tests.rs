@@ -294,6 +294,37 @@
     }
 
     #[test]
+    fn compile_and_execute_case_on_struct_const_pattern_exit_code() {
+        let source_path = write_temp_source(
+            "struct Math\n  const answer: Int = 42\n\nfn classify(x: Int) -> Int\n  case x\n    Math.answer -> 1\n    _ -> 0\n\nfn main() -> Int\n  classify(42)\n",
+            "kea-cli-const-field-pattern",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("const pattern case should run");
+        assert_eq!(run.exit_code, 1);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_case_on_struct_const_pattern_requires_fallback() {
+        let source_path = write_temp_source(
+            "struct Math\n  const answer: Int = 42\n\nfn classify(x: Int) -> Int\n  case x\n    Math.answer -> 1\n\nfn main() -> Int\n  classify(0)\n",
+            "kea-cli-const-field-pattern-non-exhaustive",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("const-only case should be non-exhaustive");
+        assert!(
+            err.contains("non-exhaustive"),
+            "expected non-exhaustive diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_prelude_module_without_explicit_use_exit_code() {
         let project_dir = temp_project_dir("kea-cli-project-prelude");
         let src_dir = project_dir.join("src");

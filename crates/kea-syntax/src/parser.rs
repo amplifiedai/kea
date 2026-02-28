@@ -3577,23 +3577,45 @@ impl Parser {
         if let Some(TokenKind::UpperIdent(name)) = self.peek_kind() {
             let name = name.clone();
             self.advance();
-            // Check for qualified constructor: Name.Variant
-            let (name, qualifier) = if self.check(&TokenKind::Dot)
-                && matches!(
-                    self.peek_at(1).map(|t| &t.kind),
-                    Some(TokenKind::UpperIdent(_))
-                ) {
-                self.advance(); // consume '.'
-                if let Some(TokenKind::UpperIdent(variant)) = self.peek_kind() {
-                    let variant = variant.clone();
-                    self.advance();
-                    (variant, Some(name))
-                } else {
-                    unreachable!()
+            // Qualified patterns:
+            // - Constructor: Type.Variant
+            // - Const field: Type.name
+            let (name, qualifier, const_field) = if self.check(&TokenKind::Dot) {
+                match self.peek_at(1).map(|t| &t.kind) {
+                    Some(TokenKind::UpperIdent(_)) => {
+                        self.advance(); // consume '.'
+                        if let Some(TokenKind::UpperIdent(variant)) = self.peek_kind() {
+                            let variant = variant.clone();
+                            self.advance();
+                            (variant, Some(name), None)
+                        } else {
+                            unreachable!()
+                        }
+                    }
+                    Some(TokenKind::Ident(_)) => {
+                        self.advance(); // consume '.'
+                        if let Some(TokenKind::Ident(field)) = self.peek_kind() {
+                            let field = field.clone();
+                            self.advance();
+                            (String::new(), None, Some((name, field)))
+                        } else {
+                            unreachable!()
+                        }
+                    }
+                    _ => (name, None, None),
                 }
             } else {
-                (name, None)
+                (name, None, None)
             };
+            if let Some((qualifier, field)) = const_field {
+                return Some(Spanned::new(
+                    PatternKind::Const {
+                        qualifier,
+                        name: field,
+                    },
+                    start,
+                ));
+            }
             // Named struct pattern: Name { field, field: pat, .. }
             if self.match_token(&TokenKind::LBrace) {
                 let mut fields = Vec::new();
@@ -6804,6 +6826,21 @@ mod tests {
                 _ => panic!("expected Record pattern"),
             },
             _ => panic!("expected Case"),
+        }
+    }
+
+    #[test]
+    fn parse_case_qualified_const_pattern() {
+        let expr = parse("case x\n  Color.red -> 1\n  _ -> 0");
+        match &expr.node {
+            ExprKind::Case { arms, .. } => {
+                assert_eq!(arms.len(), 2);
+                assert!(matches!(
+                    &arms[0].pattern.node,
+                    PatternKind::Const { qualifier, name } if qualifier == "Color" && name == "red"
+                ));
+            }
+            other => panic!("expected Case, got {other:?}"),
         }
     }
 
