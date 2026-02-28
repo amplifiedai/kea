@@ -228,6 +228,92 @@ Eq, Ord) works on structs and enums. This tier completes the
 self-hosting stdlib — the compiler has collections, IO, error
 handling, traits, serialization, and formatting.
 
+## Cross-Cutting: Error Message Quality
+
+**Every type feature in 0g ships with its error messages designed, not
+deferred to 0h.** Error messages are a first-class feature (CLAUDE.md).
+Deferring them means retrofitting, which always produces worse results.
+
+**Study Rill's diagnostic architecture first.** The rill codebase at
+`/Users/chris/Projects/rill` has a battle-tested error message system
+that transfers directly:
+
+- **`rill-diag/src/lib.rs`** (342 LOC) — `Diagnostic` struct decoupled
+  from rendering. Closed `Category` enum with stable error codes
+  (E0001-E00XX). Builder pattern: `Diagnostic::error(cat, msg).at(loc).with_help(fix)`.
+- **`BRIEFS/design/error-system.md`** (2,500 LOC) — comprehensive
+  design for how to build a complex type system with good errors
+  simultaneously. Constraint provenance: every type/effect constraint
+  carries its source location and human-readable reason through
+  unification. When unification fails, the error explains *why* the
+  constraint exists, not just *what* failed.
+- **`docs/PEDAGOGY.md`** — error message guidelines. Domain language,
+  not type theory. Actionable suggestions with concrete code. Theory
+  terms only in `note:` sections for library authors.
+- **Rendering pipeline** — same `Diagnostic` renders via ariadne (CLI),
+  JSON (MCP), LSP. Decoupled from error creation.
+
+The constraint provenance pattern is especially critical for effects:
+an effect constraint may travel through three function calls before
+surfacing as "unhandled effect." Without provenance, the error says
+"unhandled Log." With provenance: "unhandled Log — entered via
+`logger.info()` on line 12, which calls `Log.write` at logger.kea:42."
+
+kea-diag already has Rill's full pattern (closed `Category` enum,
+stable codes, builder, decoupled rendering). The 0g agent needs to
+add new categories for effect and advanced type errors:
+
+- `UnhandledEffect` (E0043) — effect in body not in signature
+- `UnnecessaryHandler` (E0044) — handler covers effect not performed
+- `KindMismatch` (E00XX) — `*` vs `Eff` kind confusion
+- `GadtRefinementFailure` (E00XX) — GADT arm body violates refinement
+- `MissingSupertraitImpl` (E00XX) — implements Ord but not Eq
+- `DeriveFailure` (E00XX) — @derive on field that lacks the trait
+
+Each category gets a stable code, description, example fix, and
+snapshot test — same pattern as existing categories in kea-diag.
+
+For each feature, the implementing agent must deliver:
+
+- **GADTs:** GADT refinement failure explains which constructor
+  introduced which type equality, and why the arm body doesn't
+  satisfy it. No exposed unification variables.
+- **Eff kind:** Kind mismatch between `*` and `Eff` explains "this
+  parameter is used as a type here but as an effect row there" with
+  source locations for both uses.
+- **Associated types:** When `T.Item` can't resolve because `T`'s
+  implementing type is unknown, explain what trait bound is missing
+  and where to add it.
+- **Supertraits:** Missing supertrait impl says "Point implements Ord
+  but not Eq; Ord requires Eq" — not "trait bound not satisfied."
+- **Deriving:** @derive failure on a field that doesn't implement the
+  trait explains which field, which trait, and suggests a manual impl.
+
+Row-diff errors (structural missing/extra for records and effects)
+should work for all new type features. Effect provenance (tracing
+where each effect enters the row) must work for Eff-kinded parameters.
+
+**Effect errors are both the biggest risk and biggest opportunity.**
+Effects are Kea's novel core — users will be learning them for the
+first time. Every effect error must teach, not just report:
+
+- When an effect is unhandled, show *where* it entered the effect row
+  (which call introduced it) and *how* to handle it (concrete code).
+- When a handler covers an effect not performed, say so — don't
+  silently accept dead handlers.
+- When effect rows don't unify, show the structural diff: "your
+  function performs [IO, Log, Fail E] but the caller expects [IO]
+  — unhandled: Log, Fail E."
+- When an Eff-kinded parameter is used where `*` is expected (or
+  vice versa), explain in concrete terms: "Server expects an effect
+  row here (like [IO, Log]), not a type (like Int)."
+
+These errors are Kea's chance to make effects feel approachable
+instead of academic. Get them right in 0g, not as 0h polish.
+
+Snapshot test every error category. See 0h brief for the full error
+message design language and examples.
+
 ## Testing
 
 - GADTs: refinement works, is branch-local, complex nested
@@ -240,6 +326,7 @@ handling, traits, serialization, and formatting.
   impl is clear error
 - Deriving: @derive(Show, Eq, Ord) works on structs and enums
 - Stdlib Tier 3: Foldable/Iterator enable collection abstractions
+- **Error messages: snapshot tests for every error category above**
 
 ## Definition of Done
 
@@ -250,7 +337,9 @@ handling, traits, serialization, and formatting.
 - @derive works for Show, Eq, Ord, Encode, Decode
 - Stdlib Tier 3 complete (Foldable, Iterator, JSON, sorted collections)
 - Stdlib sufficient for compiler self-hosting
-- `mise run check` passes
+- **Error messages: every new type feature has snapshot-tested diagnostics**
+- **No unification variables exposed in any error message**
+- `mise run check-full` passes
 
 ## Open Questions
 
