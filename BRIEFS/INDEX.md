@@ -88,9 +88,13 @@ Designed and approved. Ready to pick up. Ordered by execution sequence per ROADM
 8. **[Lean formalization](in-progress/lean-formalization.md)** (Phase 0c-0e parallel, active) — Migrate Rill's Lean 4 formalization into Kea, then prove Kea-specific effect handler properties (removal, resume linearity, Fail/Result equivalence).
 12. **[Algorithm gallery](todo/algorithm-gallery.md)** (Phase 0e through 0g, parallel) — Curated corpus of classic algorithms in `tests/algorithms/`. Exemplary code with doc comments, test blocks, and CI benchmarks. Validates language features per phase: Welford's (0e), FNV-1a + merge sort (0f early), quicksort + HAMT (0f mid-late), UTF-8 validation + KMP (0g).
 
-### Phase 1-3: Not yet briefed
+### Phase 1: Self-Hosting Compiler
 
-See ROADMAP.md for details. Briefs will be written as earlier phases complete.
+16. **[Phase 1 self-hosting](todo/phase-1-self-hosting.md)** — Rewrite the compiler in Kea via pass-by-pass validation. 1a: FFI + Cranelift bindings. 1b: Compiler passes in Kea (lexer → parser → typechecker → MIR → codegen). 1c: Three-stage bootstrap, drop Rust. 1d: Compiler improvements (incremental via Query effect, parallel passes, arenas, error messages). Cranelift stays via FFI; native backend is Phase 2-3.
+
+### Phase 2-3: Not yet briefed
+
+See ROADMAP.md for details. Briefs will be written as Phase 1 progresses.
 
 ---
 
@@ -170,8 +174,11 @@ Completed briefs. Kept for reference and design rationale.
                 │    └── 0g + @derive + STDLIB TIER 3 (abstractions)
                 │         (Foldable/Iterator/JSON/sorted collections as .kea)
                 │         │
-                │         └── Phase 1: self-hosting
-                │              (stdlib sufficient, compiler rewritten in Kea)
+                │         └── Phase 1: self-hosting (BRIEFED)
+                │              1a: FFI + Cranelift bindings
+                │              1b: compiler in Kea, pass by pass
+                │              1c: three-stage bootstrap, drop Rust
+                │              1d: incremental, parallel, arenas, errors
                 │
                 ├── 0h: error message quality (parallel, not blocking)
                 │
