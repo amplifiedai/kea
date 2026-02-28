@@ -78,6 +78,7 @@ fn lambda(params: &[&str], body: Expr) -> Expr {
         params: params
             .iter()
             .map(|name| Param {
+                annotations: Vec::new(),
                 label: ParamLabel::Implicit,
                 pattern: sp(PatternKind::Var(name.to_string())),
                 annotation: None,
@@ -4210,18 +4211,21 @@ fn infer_rank2_forall_parameter_allows_polymorphic_callback() {
     let apply_both = sp(ExprKind::Lambda {
         params: vec![
             Param {
+                annotations: Vec::new(),
                 label: ParamLabel::Implicit,
                 pattern: sp(PatternKind::Var("f".to_string())),
                 annotation: Some(sp(forall_id)),
                 default: None,
             },
             Param {
+                annotations: Vec::new(),
                 label: ParamLabel::Implicit,
                 pattern: sp(PatternKind::Var("x".to_string())),
                 annotation: Some(sp(TypeAnnotation::Named("Int".to_string()))),
                 default: None,
             },
             Param {
+                annotations: Vec::new(),
                 label: ParamLabel::Implicit,
                 pattern: sp(PatternKind::Var("y".to_string())),
                 annotation: Some(sp(TypeAnnotation::Named("String".to_string()))),
@@ -4261,12 +4265,14 @@ fn infer_rank2_forall_parameter_rejects_monomorphic_callback() {
     let apply = sp(ExprKind::Lambda {
         params: vec![
             Param {
+                annotations: Vec::new(),
                 label: ParamLabel::Implicit,
                 pattern: sp(PatternKind::Var("f".to_string())),
                 annotation: Some(sp(forall_id)),
                 default: None,
             },
             Param {
+                annotations: Vec::new(),
                 label: ParamLabel::Implicit,
                 pattern: sp(PatternKind::Var("x".to_string())),
                 annotation: Some(sp(TypeAnnotation::Named("Int".to_string()))),
@@ -4311,6 +4317,7 @@ fn infer_left_arg_application_rejects_monomorphic_callback_for_rank2_parameter()
 
     let use_poly = sp(ExprKind::Lambda {
         params: vec![Param {
+            annotations: Vec::new(),
             label: ParamLabel::Implicit,
             pattern: sp(PatternKind::Var("f".to_string())),
             annotation: Some(sp(forall_id)),
@@ -4355,6 +4362,7 @@ fn infer_left_arg_application_accepts_polymorphic_callback_for_rank2_parameter()
 
     let use_poly = sp(ExprKind::Lambda {
         params: vec![Param {
+            annotations: Vec::new(),
             label: ParamLabel::Implicit,
             pattern: sp(PatternKind::Var("f".to_string())),
             annotation: Some(sp(forall_id)),
@@ -4391,12 +4399,14 @@ fn infer_left_arg_application_call_rejects_monomorphic_callback_for_rank2_parame
     let use_poly_with = sp(ExprKind::Lambda {
         params: vec![
             Param {
+                annotations: Vec::new(),
                 label: ParamLabel::Implicit,
                 pattern: sp(PatternKind::Var("f".to_string())),
                 annotation: Some(sp(forall_id)),
                 default: None,
             },
             Param {
+                annotations: Vec::new(),
                 label: ParamLabel::Implicit,
                 pattern: sp(PatternKind::Var("x".to_string())),
                 annotation: Some(sp(TypeAnnotation::Named("Int".to_string()))),
@@ -4443,12 +4453,14 @@ fn infer_left_arg_application_call_accepts_polymorphic_callback_for_rank2_parame
     let use_poly_with = sp(ExprKind::Lambda {
         params: vec![
             Param {
+                annotations: Vec::new(),
                 label: ParamLabel::Implicit,
                 pattern: sp(PatternKind::Var("f".to_string())),
                 annotation: Some(sp(forall_id)),
                 default: None,
             },
             Param {
+                annotations: Vec::new(),
                 label: ParamLabel::Implicit,
                 pattern: sp(PatternKind::Var("x".to_string())),
                 annotation: Some(sp(TypeAnnotation::Named("Int".to_string()))),
@@ -5677,6 +5689,7 @@ fn annotation_resolves_precision_numeric_names() {
 fn infer_bare_decimal_annotation_is_not_erased_to_generic_var() {
     let expr = sp(ExprKind::Lambda {
         params: vec![Param {
+            annotations: Vec::new(),
             label: ParamLabel::Implicit,
             pattern: sp(PatternKind::Var("x".to_string())),
             annotation: Some(sp(TypeAnnotation::Named("Decimal".to_string()))),
@@ -5714,6 +5727,7 @@ fn infer_list_of_bare_decimal_annotation_typechecks() {
     let list_decimal_ann = TypeAnnotation::Applied("List".to_string(), vec![decimal_ann]);
     let expr = sp(ExprKind::Lambda {
         params: vec![Param {
+            annotations: Vec::new(),
             label: ParamLabel::Implicit,
             pattern: sp(PatternKind::Var("xs".to_string())),
             annotation: Some(sp(list_decimal_ann.clone())),
@@ -5751,6 +5765,7 @@ fn dim_literal_in_non_dim_constructor_emits_diagnostic() {
     let ann = TypeAnnotation::Applied("List".to_string(), vec![TypeAnnotation::DimLiteral(1)]);
     let expr = sp(ExprKind::Lambda {
         params: vec![Param {
+            annotations: Vec::new(),
             label: ParamLabel::Implicit,
             pattern: sp(PatternKind::Var("xs".to_string())),
             annotation: Some(sp(ann.clone())),
@@ -5793,6 +5808,7 @@ fn anon_record_arg_to_named_record_param_errors() {
             annotation: None,
             value: Box::new(sp(ExprKind::Lambda {
                 params: vec![kea_ast::Param {
+                    annotations: Vec::new(),
                     label: ParamLabel::Implicit,
                     pattern: sp(PatternKind::Var("u".to_string())),
                     annotation: Some(sp(TypeAnnotation::Named("User".into()))),
@@ -5850,6 +5866,7 @@ fn anon_record_var_arg_to_named_record_param_errors() {
             annotation: None,
             value: Box::new(sp(ExprKind::Lambda {
                 params: vec![kea_ast::Param {
+                    annotations: Vec::new(),
                     label: ParamLabel::Implicit,
                     pattern: sp(PatternKind::Var("u".to_string())),
                     annotation: Some(sp(TypeAnnotation::Named("User".into()))),
@@ -5983,6 +6000,7 @@ fn bare_record_annotation_creates_open_row() {
             annotation: None,
             value: Box::new(sp(ExprKind::Lambda {
                 params: vec![kea_ast::Param {
+                    annotations: Vec::new(),
                     label: ParamLabel::Implicit,
                     pattern: sp(PatternKind::Var("r".to_string())),
                     annotation: Some(sp(TypeAnnotation::Named("Record".into()))),
@@ -6028,6 +6046,7 @@ fn partial_type_op_wraps_record_fields_in_option() {
             annotation: None,
             value: Box::new(sp(ExprKind::Lambda {
                 params: vec![kea_ast::Param {
+                    annotations: Vec::new(),
                     label: ParamLabel::Implicit,
                     pattern: sp(PatternKind::Var("u".to_string())),
                     annotation: Some(sp(TypeAnnotation::Applied(
@@ -6079,6 +6098,7 @@ fn omit_type_op_drops_selected_fields() {
             annotation: None,
             value: Box::new(sp(ExprKind::Lambda {
                 params: vec![kea_ast::Param {
+                    annotations: Vec::new(),
                     label: ParamLabel::Implicit,
                     pattern: sp(PatternKind::Var("u".to_string())),
                     annotation: Some(sp(TypeAnnotation::Applied(
@@ -6141,6 +6161,7 @@ fn merge_type_op_prefers_right_field_types() {
             annotation: None,
             value: Box::new(sp(ExprKind::Lambda {
                 params: vec![kea_ast::Param {
+                    annotations: Vec::new(),
                     label: ParamLabel::Implicit,
                     pattern: sp(PatternKind::Var("r".to_string())),
                     annotation: Some(sp(TypeAnnotation::Applied(
@@ -6596,6 +6617,7 @@ fn make_trait_method(
         params: params
             .into_iter()
             .map(|(n, ann)| Param {
+                annotations: Vec::new(),
                 label: ParamLabel::Implicit,
                 pattern: sp(PatternKind::Var(n.to_string())),
                 annotation: ann.map(sp),
@@ -6659,6 +6681,7 @@ fn make_fn_decl(name: &str, params: Vec<&str>, body: Expr) -> FnDecl {
         params: params
             .into_iter()
             .map(|n| Param {
+                annotations: Vec::new(),
                 label: ParamLabel::Implicit,
                 pattern: sp(PatternKind::Var(n.to_string())),
                 annotation: None,
@@ -6757,6 +6780,7 @@ fn infer_fn_decl_effects_uses_pure_callback_param_annotation() {
         name: sp("apply".to_string()),
         doc: None,
         params: vec![Param {
+            annotations: Vec::new(),
             label: ParamLabel::Implicit,
             pattern: sp(PatternKind::Var("f".to_string())),
             annotation: Some(sp(TypeAnnotation::FunctionWithEffect(
@@ -6785,6 +6809,7 @@ fn infer_fn_decl_effects_uses_forall_wrapped_pure_callback_param_annotation() {
         name: sp("apply".to_string()),
         doc: None,
         params: vec![Param {
+            annotations: Vec::new(),
             label: ParamLabel::Implicit,
             pattern: sp(PatternKind::Var("f".to_string())),
             annotation: Some(sp(TypeAnnotation::Forall {
@@ -7751,6 +7776,7 @@ fn catch_over_higher_order_fail_parameter_is_accepted() {
 
     // Build: fn wrap(f: fn() -[Fail String]> Int) -> Result(Int, String) = catch f()
     let param = Param {
+        annotations: Vec::new(),
         label: ParamLabel::Implicit,
         pattern: sp(PatternKind::Var("f".to_string())),
         annotation: Some(sp(TypeAnnotation::FunctionWithEffect(
@@ -7853,6 +7879,7 @@ fn infer_fn_decl_effects_uses_volatile_callback_param_annotation() {
         name: sp("apply".to_string()),
         doc: None,
         params: vec![Param {
+            annotations: Vec::new(),
             label: ParamLabel::Implicit,
             pattern: sp(PatternKind::Var("f".to_string())),
             annotation: Some(sp(TypeAnnotation::FunctionWithEffect(
@@ -7881,6 +7908,7 @@ fn infer_fn_decl_effects_defaults_effect_var_callback_to_impure() {
         name: sp("apply".to_string()),
         doc: None,
         params: vec![Param {
+            annotations: Vec::new(),
             label: ParamLabel::Implicit,
             pattern: sp(PatternKind::Var("f".to_string())),
             annotation: Some(sp(TypeAnnotation::FunctionWithEffect(
@@ -7923,6 +7951,7 @@ fn infer_fn_decl_effects_propagate_nested_callback_constraints_for_pure_argument
         name: sp("drive".to_string()),
         doc: None,
         params: vec![Param {
+            annotations: Vec::new(),
             label: ParamLabel::Implicit,
             pattern: sp(PatternKind::Var("g".to_string())),
             annotation: Some(sp(TypeAnnotation::FunctionWithEffect(
@@ -7957,6 +7986,7 @@ fn infer_fn_decl_effects_propagate_nested_callback_constraints_for_impure_argume
         name: sp("drive".to_string()),
         doc: None,
         params: vec![Param {
+            annotations: Vec::new(),
             label: ParamLabel::Implicit,
             pattern: sp(PatternKind::Var("g".to_string())),
             annotation: Some(sp(TypeAnnotation::FunctionWithEffect(
@@ -8250,6 +8280,7 @@ fn infer_expr_effects_let_alias_lambda_preserves_callback_effect_constraints() {
     let mut env = TypeEnv::new();
     let apply_lambda = sp(ExprKind::Lambda {
         params: vec![Param {
+            annotations: Vec::new(),
             label: ParamLabel::Implicit,
             pattern: sp(PatternKind::Var("f".to_string())),
             annotation: Some(sp(TypeAnnotation::FunctionWithEffect(
@@ -8584,6 +8615,7 @@ fn validate_trait_method_impl_contract_rejects_missing_polymorphic_impl_annotati
 fn validate_trait_method_impl_contract_accepts_constrained_polymorphic_impl_annotation() {
     let impl_effect = sp(EffectAnnotation::Var("impl_e".to_string()));
     let params = vec![Param {
+        annotations: Vec::new(),
         label: ParamLabel::Implicit,
         pattern: sp(PatternKind::Var("f".to_string())),
         annotation: Some(sp(TypeAnnotation::FunctionWithEffect(
@@ -10899,6 +10931,7 @@ fn apply_where_clause_attaches_bounds() {
         name: sp("total".to_string()),
         doc: None,
         params: vec![Param {
+            annotations: Vec::new(),
             label: ParamLabel::Implicit,
             pattern: sp(PatternKind::Var("x".to_string())),
             annotation: None,
@@ -11026,6 +11059,7 @@ fn seed_fn_where_type_params_reports_unknown_trait() {
         name: sp("demo".to_string()),
         doc: None,
         params: vec![Param {
+            annotations: Vec::new(),
             label: ParamLabel::Implicit,
             pattern: sp(PatternKind::Var("x".to_string())),
             annotation: None,
@@ -11077,6 +11111,7 @@ fn seed_fn_where_type_params_registers_kinded_constructor_var() {
         name: sp("demo".to_string()),
         doc: None,
         params: vec![Param {
+            annotations: Vec::new(),
             label: ParamLabel::Implicit,
             pattern: sp(PatternKind::Var("xs".to_string())),
             annotation: None,
@@ -11138,6 +11173,7 @@ fn seed_fn_where_type_params_uses_matching_kind_for_multi_param_trait() {
         name: sp("demo".to_string()),
         doc: None,
         params: vec![Param {
+            annotations: Vec::new(),
             label: ParamLabel::Implicit,
             pattern: sp(PatternKind::Var("xs".to_string())),
             annotation: None,
@@ -11198,6 +11234,7 @@ fn seed_fn_where_type_params_uses_second_kind_when_bound_name_matches() {
         name: sp("demo".to_string()),
         doc: None,
         params: vec![Param {
+            annotations: Vec::new(),
             label: ParamLabel::Implicit,
             pattern: sp(PatternKind::Var("xs".to_string())),
             annotation: None,
@@ -11258,6 +11295,7 @@ fn seed_fn_where_type_params_errors_for_ambiguous_multi_param_trait_bound() {
         name: sp("demo".to_string()),
         doc: None,
         params: vec![Param {
+            annotations: Vec::new(),
             label: ParamLabel::Implicit,
             pattern: sp(PatternKind::Var("xs".to_string())),
             annotation: None,
@@ -11311,6 +11349,7 @@ fn fn_decl_annotations_support_constructor_application_type_vars() {
         name: sp("identity_list".to_string()),
         doc: None,
         params: vec![Param {
+            annotations: Vec::new(),
             label: ParamLabel::Implicit,
             pattern: sp(PatternKind::Var("items".to_string())),
             annotation: Some(sp(TypeAnnotation::Applied(
@@ -11392,6 +11431,7 @@ fn trait_method_annotations_support_constructor_type_params() {
         methods: vec![kea_ast::TraitMethod {
             name: sp("pure".to_string()),
             params: vec![Param {
+                annotations: Vec::new(),
                 label: ParamLabel::Implicit,
                 pattern: sp(PatternKind::Var("value".to_string())),
                 annotation: Some(sp(TypeAnnotation::Named("a".to_string()))),
@@ -11469,6 +11509,7 @@ fn trait_method_where_clause_propagates_kind_and_trait_bound() {
             name: sp("traverse".to_string()),
             params: vec![
                 Param {
+                    annotations: Vec::new(),
                     label: ParamLabel::Implicit,
                     pattern: sp(PatternKind::Var("value".to_string())),
                     annotation: Some(sp(TypeAnnotation::Applied(
@@ -11478,6 +11519,7 @@ fn trait_method_where_clause_propagates_kind_and_trait_bound() {
                     default: None,
                 },
                 Param {
+                    annotations: Vec::new(),
                     label: ParamLabel::Implicit,
                     pattern: sp(PatternKind::Var("f".to_string())),
                     annotation: Some(sp(TypeAnnotation::Function(
@@ -11597,6 +11639,7 @@ fn trait_method_where_clause_allows_matching_param_on_multi_param_trait() {
         methods: vec![kea_ast::TraitMethod {
             name: sp("keep".to_string()),
             params: vec![Param {
+                annotations: Vec::new(),
                 label: ParamLabel::Implicit,
                 pattern: sp(PatternKind::Var("value".to_string())),
                 annotation: Some(sp(TypeAnnotation::Named("G".to_string()))),
@@ -11661,6 +11704,7 @@ fn trait_method_where_clause_errors_for_ambiguous_multi_param_bound() {
         methods: vec![kea_ast::TraitMethod {
             name: sp("keep".to_string()),
             params: vec![Param {
+                annotations: Vec::new(),
                 label: ParamLabel::Implicit,
                 pattern: sp(PatternKind::Var("value".to_string())),
                 annotation: Some(sp(TypeAnnotation::Named("H".to_string()))),
@@ -11825,6 +11869,7 @@ fn trait_bound_enforcement_end_to_end() {
         name: sp("total".to_string()),
         doc: None,
         params: vec![Param {
+            annotations: Vec::new(),
             label: ParamLabel::Implicit,
             pattern: sp(PatternKind::Var("x".to_string())),
             annotation: None,
@@ -13068,6 +13113,7 @@ fn make_method_decl(
 
 fn self_param() -> Param {
     Param {
+        annotations: Vec::new(),
         label: ParamLabel::Implicit,
         pattern: sp(PatternKind::Var("self".to_string())),
         annotation: None,
@@ -13077,6 +13123,7 @@ fn self_param() -> Param {
 
 fn annotated_param(name: &str, ann: TypeAnnotation) -> Param {
     Param {
+        annotations: Vec::new(),
         label: ParamLabel::Implicit,
         pattern: sp(PatternKind::Var(name.to_string())),
         annotation: Some(sp(ann)),
@@ -14799,12 +14846,14 @@ fn validate_fn_decl_annotations_reports_missing_parameter_annotations() {
         doc: None,
         params: vec![
             Param {
+                annotations: Vec::new(),
                 label: ParamLabel::Implicit,
                 pattern: sp(PatternKind::Var("data".to_string())),
                 annotation: None,
                 default: None,
             },
             Param {
+                annotations: Vec::new(),
                 label: ParamLabel::Implicit,
                 pattern: sp(PatternKind::Var("threshold".to_string())),
                 annotation: None,
@@ -14833,6 +14882,7 @@ fn validate_fn_decl_annotations_public_requires_return_annotation() {
         name: sp("validate".to_string()),
         doc: None,
         params: vec![Param {
+            annotations: Vec::new(),
             label: ParamLabel::Implicit,
             pattern: sp(PatternKind::Var("value".to_string())),
             annotation: Some(sp(TypeAnnotation::Named("Int".to_string()))),
@@ -14859,6 +14909,7 @@ fn validate_fn_decl_annotations_allows_effect_var_in_function_type_annotation() 
         name: sp("apply".to_string()),
         doc: None,
         params: vec![Param {
+            annotations: Vec::new(),
             label: ParamLabel::Implicit,
             pattern: sp(PatternKind::Var("f".to_string())),
             annotation: Some(sp(TypeAnnotation::FunctionWithEffect(
@@ -14885,12 +14936,14 @@ fn validate_trait_method_annotations_allow_effect_var_in_function_type_annotatio
         name: sp("run".to_string()),
         params: vec![
             Param {
+                annotations: Vec::new(),
                 label: ParamLabel::Implicit,
                 pattern: sp(PatternKind::Var("self".to_string())),
                 annotation: None,
                 default: None,
             },
             Param {
+                annotations: Vec::new(),
                 label: ParamLabel::Implicit,
                 pattern: sp(PatternKind::Var("f".to_string())),
                 annotation: Some(sp(TypeAnnotation::FunctionWithEffect(
@@ -14927,12 +14980,14 @@ fn validate_module_fn_annotations_checks_trait_and_impl_methods() {
             name: sp("add".to_string()),
             params: vec![
                 Param {
+                    annotations: Vec::new(),
                     label: ParamLabel::Implicit,
                     pattern: sp(PatternKind::Var("self".to_string())),
                     annotation: None,
                     default: None,
                 },
                 Param {
+                    annotations: Vec::new(),
                     label: ParamLabel::Implicit,
                     pattern: sp(PatternKind::Var("other".to_string())),
                     annotation: None,
@@ -14958,12 +15013,14 @@ fn validate_module_fn_annotations_checks_trait_and_impl_methods() {
             doc: None,
             params: vec![
                 Param {
+                    annotations: Vec::new(),
                     label: ParamLabel::Implicit,
                     pattern: sp(PatternKind::Var("self".to_string())),
                     annotation: None,
                     default: None,
                 },
                 Param {
+                    annotations: Vec::new(),
                     label: ParamLabel::Implicit,
                     pattern: sp(PatternKind::Var("other".to_string())),
                     annotation: None,
@@ -15200,11 +15257,13 @@ fn labeled_arguments_bind_with_registered_function_signature() {
                     name: Some("x".to_string()),
                     label: None,
                     default: None,
+                    with_callback: false,
                 },
                 FnParamSignature {
                     name: Some("y".to_string()),
                     label: Some("y".to_string()),
                     default: None,
+                    with_callback: false,
                 },
             ],
         },
@@ -15260,6 +15319,117 @@ fn labeled_arguments_rejected_for_first_class_function_values() {
             .contains("labeled arguments require a direct named function call")),
         "expected labeled-call eligibility diagnostic, got {:?}",
         ctx.errors()
+    );
+}
+
+#[test]
+fn with_after_non_let_expression_emits_ordering_warning() {
+    let mut env = TypeEnv::new();
+    env.bind(
+        "with_unit".to_string(),
+        TypeScheme::mono(Type::Function(FunctionType {
+            params: vec![Type::Function(FunctionType {
+                params: vec![],
+                ret: Box::new(Type::Int),
+                effects: EffectRow::pure(),
+            })],
+            ret: Box::new(Type::Int),
+            effects: EffectRow::pure(),
+        })),
+    );
+    env.set_function_signature(
+        "with_unit".to_string(),
+        FnSignature {
+            params: vec![FnParamSignature {
+                name: Some("f".to_string()),
+                label: None,
+                default: None,
+                with_callback: true,
+            }],
+        },
+    );
+
+    let expr = block(vec![
+        lit_int(0),
+        sp(ExprKind::With {
+            call: Box::new(call(var("with_unit"), vec![])),
+            binding: None,
+            body: Box::new(lit_int(1)),
+        }),
+    ]);
+
+    let records = RecordRegistry::new();
+    let traits = TraitRegistry::new();
+    let sum_types = SumTypeRegistry::new();
+    let mut unifier = Unifier::new();
+    let ty = infer_and_resolve(&expr, &mut env, &mut unifier, &records, &traits, &sum_types);
+
+    assert!(!unifier.has_errors(), "unexpected errors: {:?}", unifier.errors());
+    assert_eq!(unifier.substitution.apply(&ty), Type::Int);
+    assert!(
+        unifier.errors().iter().any(|diag| {
+            matches!(diag.severity, kea_diag::Severity::Warning)
+                && diag.code.as_deref() == Some("W0902")
+                && diag
+                    .message
+                    .contains("`with` should appear before non-`let` expressions")
+        }),
+        "expected with-order warning, got {:?}",
+        unifier.errors()
+    );
+}
+
+#[test]
+fn with_after_let_expression_is_not_warned() {
+    let mut env = TypeEnv::new();
+    env.bind(
+        "with_unit".to_string(),
+        TypeScheme::mono(Type::Function(FunctionType {
+            params: vec![Type::Function(FunctionType {
+                params: vec![],
+                ret: Box::new(Type::Int),
+                effects: EffectRow::pure(),
+            })],
+            ret: Box::new(Type::Int),
+            effects: EffectRow::pure(),
+        })),
+    );
+    env.set_function_signature(
+        "with_unit".to_string(),
+        FnSignature {
+            params: vec![FnParamSignature {
+                name: Some("f".to_string()),
+                label: None,
+                default: None,
+                with_callback: true,
+            }],
+        },
+    );
+
+    let expr = block(vec![
+        let_bind("seed", lit_int(41)),
+        sp(ExprKind::With {
+            call: Box::new(call(var("with_unit"), vec![])),
+            binding: None,
+            body: Box::new(var("seed")),
+        }),
+    ]);
+
+    let records = RecordRegistry::new();
+    let traits = TraitRegistry::new();
+    let sum_types = SumTypeRegistry::new();
+    let mut unifier = Unifier::new();
+    let ty = infer_and_resolve(&expr, &mut env, &mut unifier, &records, &traits, &sum_types);
+
+    assert!(!unifier.has_errors(), "unexpected errors: {:?}", unifier.errors());
+    assert_eq!(unifier.substitution.apply(&ty), Type::Int);
+    assert!(
+        !unifier
+            .errors()
+            .iter()
+            .any(|diag| diag.code.as_deref() == Some("W0902")),
+        "did not expect with-order warning, got {:?}",
+        unifier.errors()
     );
 }
 

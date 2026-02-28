@@ -561,14 +561,21 @@ impl<'src> Lexer<'src> {
                         }
                     }
                 }
-                b'$' if self.match_char(b'{') => {
+                b'{' if self.match_char(b'{') => {
+                    current_lit.push('{');
+                }
+                b'}' if self.match_char(b'}') => {
+                    current_lit.push('}');
+                }
+                b'{' => {
                     has_interp = true;
                     if !current_lit.is_empty() {
                         parts.push(crate::token::StringPart::Literal(std::mem::take(
                             &mut current_lit,
                         )));
                     }
-                    // Collect expression text until matching '}'
+                    // Collect expression text until matching '}', honoring nested braces
+                    // and quoted string literals inside the interpolation.
                     let mut depth = 1u32;
                     let mut expr_text = String::new();
                     loop {
@@ -589,6 +596,22 @@ impl<'src> Lexer<'src> {
                                 }
                                 expr_text.push('}');
                             }
+                            b'"' | b'\'' => {
+                                let quote = c;
+                                expr_text.push(quote as char);
+                                while !self.is_at_end() {
+                                    let qc = self.advance();
+                                    expr_text.push(qc as char);
+                                    if qc == b'\\' && !self.is_at_end() {
+                                        let escaped = self.advance();
+                                        expr_text.push(escaped as char);
+                                        continue;
+                                    }
+                                    if qc == quote {
+                                        break;
+                                    }
+                                }
+                            }
                             _ => expr_text.push(c as char),
                         }
                     }
@@ -597,23 +620,6 @@ impl<'src> Lexer<'src> {
                 b'\n' => {
                     self.error(start, "unterminated string literal (newline in string)");
                     return;
-                }
-                b'{' => {
-                    // Warn if this looks like a missing $ interpolation
-                    if let Some(name) = self.looks_like_interpolation(self.pos - 1) {
-                        let brace_pos = self.pos - 1;
-                        let end_pos = self.pos + name.len() + 1; // } char
-                        self.warning(
-                            brace_pos,
-                            end_pos,
-                            format!(
-                                "did you mean ${{{name}}}? \
-                                 Use ${{{name}}} for interpolation, \
-                                 or \\{{ for a literal brace"
-                            ),
-                        );
-                    }
-                    current_lit.push('{');
                 }
                 _ => current_lit.push(ch as char),
             }
@@ -776,6 +782,7 @@ impl<'src> Lexer<'src> {
             "true" => TokenKind::True,
             "false" => TokenKind::False,
             "struct" => TokenKind::Struct,
+            "enum" => TokenKind::Enum,
             "type" => TokenKind::TypeKw,
             "alias" => TokenKind::Alias,
             "opaque" => TokenKind::Opaque,
@@ -789,6 +796,7 @@ impl<'src> Lexer<'src> {
             "deriving" => TokenKind::Deriving,
             "testing" => TokenKind::Testing,
             "use" => TokenKind::Use,
+            "with" => TokenKind::With,
             "and" => TokenKind::And,
             "or" => TokenKind::Or,
             "not" => TokenKind::Not,
@@ -962,8 +970,8 @@ impl<'src> Lexer<'src> {
 
     /// Collect raw template body text between braces.
     ///
-    /// Handles nested `${...}` interpolations and quoted strings inside
-    /// interpolations so braces in strings don't terminate early.
+    /// Handles nested braces and quoted strings so braces in strings don't
+    /// terminate early.
     fn scan_template_body(&mut self, brace_start: usize, kind: BlockBodyKind) {
         let body_start = self.pos;
         let mut depth: u32 = 1;
@@ -1126,43 +1134,6 @@ impl<'src> Lexer<'src> {
             );
     }
 
-    fn warning(&mut self, start: usize, end: usize, message: impl Into<String>) {
-        self.errors
-            .push(
-                Diagnostic::warning(Category::Syntax, message).at(kea_diag::SourceLocation {
-                    file_id: self.file.0,
-                    start: start as u32,
-                    end: end as u32,
-                }),
-            );
-    }
-
-    /// Check if position starts `{identifier}` pattern — likely missing `$` prefix.
-    fn looks_like_interpolation(&self, brace_pos: usize) -> Option<String> {
-        let after_brace = brace_pos + 1;
-        if after_brace >= self.source.len() {
-            return None;
-        }
-        // First char must be alphabetic or underscore
-        let first = self.source[after_brace];
-        if !first.is_ascii_alphabetic() && first != b'_' {
-            return None;
-        }
-        // Scan identifier chars
-        let mut end = after_brace + 1;
-        while end < self.source.len()
-            && (self.source[end].is_ascii_alphanumeric() || self.source[end] == b'_')
-        {
-            end += 1;
-        }
-        // Must be closed by }
-        if end < self.source.len() && self.source[end] == b'}' {
-            let name = std::str::from_utf8(&self.source[after_brace..end]).unwrap_or("?");
-            Some(name.to_string())
-        } else {
-            None
-        }
-    }
 }
 
 #[cfg(test)]
@@ -1273,9 +1244,9 @@ mod tests {
     }
 
     #[test]
-    fn string_interpolation_uses_dollar_brace() {
+    fn string_interpolation_uses_braces() {
         assert_eq!(
-            lex_kinds(r#""hello ${name}""#),
+            lex_kinds(r#""hello {name}""#),
             vec![TokenKind::StringInterp(vec![
                 crate::token::StringPart::Literal("hello ".into()),
                 crate::token::StringPart::Expr("name".into()),
@@ -1284,32 +1255,30 @@ mod tests {
     }
 
     #[test]
-    fn bare_brace_interpolation_warns() {
-        // {name} without $ should produce a warning, not an error
-        let (tokens, warnings) = lex(r#""hello {name}""#, FileId(0)).unwrap();
-        // Should still lex successfully as a plain string
-        assert_eq!(tokens[0].kind, TokenKind::String("hello {name}".into()));
-        // But with a warning
-        assert_eq!(warnings.len(), 1);
-        assert!(
-            warnings[0].message.contains("did you mean ${name}"),
-            "got: {}",
-            warnings[0].message
+    fn string_escaped_braces_are_literal() {
+        assert_eq!(
+            lex_kinds(r#""literal braces: {{not interpolated}}""#),
+            vec![TokenKind::String("literal braces: {not interpolated}".into())]
         );
     }
 
     #[test]
-    fn bare_brace_non_identifier_no_warning() {
-        // {1 + 2} shouldn't warn — doesn't look like a variable
-        let (_, warnings) = lex(r#""result: {1 + 2}""#, FileId(0)).unwrap();
-        assert!(warnings.is_empty());
+    fn string_interp_and_escaped_braces_mix() {
+        assert_eq!(
+            lex_kinds(r#""n={n}, literal: {{ok}}""#),
+            vec![TokenKind::StringInterp(vec![
+                crate::token::StringPart::Literal("n=".into()),
+                crate::token::StringPart::Expr("n".into()),
+                crate::token::StringPart::Literal(", literal: {ok}".into()),
+            ])]
+        );
     }
 
     #[test]
     fn keywords() {
         assert_eq!(
             lex_kinds(
-                "let fn expr test property pub if when else case cond struct alias opaque deriving testing use effect const forall borrow"
+                "let fn expr test property pub if when else case cond struct enum type alias opaque deriving testing use with effect const forall borrow"
             ),
             vec![
                 TokenKind::Let,
@@ -1324,11 +1293,14 @@ mod tests {
                 TokenKind::Case,
                 TokenKind::Cond,
                 TokenKind::Struct,
+                TokenKind::Enum,
+                TokenKind::TypeKw,
                 TokenKind::Alias,
                 TokenKind::Opaque,
                 TokenKind::Deriving,
                 TokenKind::Testing,
                 TokenKind::Use,
+                TokenKind::With,
                 TokenKind::Effect,
                 TokenKind::Const,
                 TokenKind::Forall,

@@ -1778,6 +1778,7 @@ proptest! {
 
         let expr: Expr = sp_ast(ExprKind::Lambda {
             params: vec![kea_ast::Param {
+                annotations: Vec::new(),
                 label: ParamLabel::Implicit,
                 pattern: sp_ast(PatternKind::Var("x".to_string())),
                 annotation: None,
@@ -2970,6 +2971,7 @@ proptest! {
             .iter()
             .enumerate()
             .map(|(idx, is_annotated)| Param {
+                annotations: Vec::new(),
                 label: ParamLabel::Implicit,
                 pattern: Spanned {
                     node: PatternKind::Var(format!("p{idx}")),

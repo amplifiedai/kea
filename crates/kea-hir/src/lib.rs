@@ -7,8 +7,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use kea_ast::{
-    Annotation, BinOp, CaseArm, DeclKind, Expr, ExprDecl, ExprKind, FnDecl, HandleClause,
-    INTERP_SHOW_FN_NAME, Lit, Module, Param, Pattern, PatternKind, Span, TypeAnnotation, UnaryOp,
+    Annotation, Argument, BinOp, CaseArm, DeclKind, Expr, ExprDecl, ExprKind, FnDecl,
+    HandleClause, INTERP_SHOW_FN_NAME, Lit, Module, Param, ParamLabel, Pattern, PatternKind,
+    Span, Spanned, TypeAnnotation, UnaryOp,
 };
 use kea_infer::typeck::TypeEnv;
 use kea_infer::{Category, Diagnostic, SourceLocation};
@@ -464,6 +465,47 @@ fn merge_case_arm_move_states(
     }
 }
 
+fn desugar_with_ast_expr(call: &Expr, binding: Option<&Pattern>, body: &Expr) -> Expr {
+    let params = binding
+        .map(|pattern| {
+            vec![Param {
+                annotations: Vec::new(),
+                label: ParamLabel::Implicit,
+                pattern: pattern.clone(),
+                annotation: None,
+                default: None,
+            }]
+        })
+        .unwrap_or_default();
+
+    let lambda = Spanned::new(
+        ExprKind::Lambda {
+            params,
+            body: Box::new(body.clone()),
+            return_annotation: None,
+        },
+        body.span,
+    );
+
+    let (func, mut args) = if let ExprKind::Call { func, args } = &call.node {
+        ((**func).clone(), args.clone())
+    } else {
+        (call.clone(), Vec::new())
+    };
+    args.push(Argument {
+        label: None,
+        value: lambda,
+    });
+
+    Spanned::new(
+        ExprKind::Call {
+            func: Box::new(func),
+            args,
+        },
+        call.span.merge(body.span),
+    )
+}
+
 fn check_unique_moves_ast_expr(
     expr: &Expr,
     state: &mut BTreeMap<String, MoveBindingState>,
@@ -486,6 +528,14 @@ fn check_unique_moves_ast_expr(
             {
                 state.insert(name.to_string(), MoveBindingState::default());
             }
+        }
+        ExprKind::With {
+            call,
+            binding,
+            body,
+        } => {
+            let lowered = desugar_with_ast_expr(call, binding.as_ref(), body);
+            check_unique_moves_ast_expr(&lowered, state, diagnostics, borrow_param_map);
         }
         ExprKind::Lambda { params, body, .. } => {
             let mut lambda_state = BTreeMap::new();
@@ -1356,7 +1406,7 @@ fn collect_variant_tags(
     }
 
     // Also expose module-qualified constructors (`Order.Less`) for sum types
-    // declared inside a module (`type Ordering = Less | ...` in `order.kea`).
+    // declared inside a module (`enum Ordering\n  Less\n  ...` in `order.kea`).
     let base_pattern_qualified = pattern_qualified.clone();
     let mut module_qualified_duplicates = BTreeSet::new();
     for (module_path, module_info) in env.module_struct_entries() {
@@ -1779,6 +1829,22 @@ fn lower_expr(
                 known_record_defs,
             )),
         },
+        ExprKind::With {
+            call,
+            binding,
+            body,
+        } => {
+            let lowered = desugar_with_ast_expr(call, binding.as_ref(), body);
+            return lower_expr(
+                &lowered,
+                ty_hint,
+                unit_variant_tags,
+                qualified_variant_tags,
+                pattern_variant_tags,
+                pattern_qualified_tags,
+                known_record_defs,
+            );
+        }
         ExprKind::Call { func, args } => {
             if let ExprKind::Var(name) = &func.node
                 && name == INTERP_SHOW_FN_NAME
@@ -4325,7 +4391,7 @@ mod tests {
     #[test]
     fn lower_function_payload_constructor_stays_structured_hir() {
         let module = parse_module_from_text(
-            "type Flag = Yep(Int) | Nope\n\nfn make_flag() -> Flag\n  Yep(1 + 2)",
+            "enum Flag\n  Yep(Int)\n  Nope\n\nfn make_flag() -> Flag\n  Yep(1 + 2)",
         );
         let mut env = TypeEnv::new();
         env.bind(
@@ -4368,7 +4434,7 @@ mod tests {
     #[test]
     fn lower_function_qualified_payload_constructor_stays_structured_hir() {
         let module = parse_module_from_text(
-            "type Flag = Yep(Int) | Nope\n\nfn make_flag() -> Flag\n  Flag.Yep(7)",
+            "enum Flag\n  Yep(Int)\n  Nope\n\nfn make_flag() -> Flag\n  Flag.Yep(7)",
         );
         let mut env = TypeEnv::new();
         env.bind(
@@ -4411,7 +4477,7 @@ mod tests {
     #[test]
     fn lower_function_named_payload_constructor_reorders_labeled_args() {
         let module = parse_module_from_text(
-            "type Pair = Pair(left: Int, right: Int)\n\nfn make_pair() -> Pair\n  Pair(right: 1, left: 40)",
+            "enum Pair\n  Pair(left: Int, right: Int)\n\nfn make_pair() -> Pair\n  Pair(right: 1, left: 40)",
         );
         let mut env = TypeEnv::new();
         env.bind(
@@ -5053,7 +5119,7 @@ mod tests {
     #[test]
     fn lower_function_unit_enum_case_desugars_through_literal_path() {
         let module = parse_module_from_text(
-            "type Color = Red | Green\nfn pick() -> Int\n  case Color.Red\n    Color.Red -> 1\n    Color.Green -> 2",
+            "enum Color\n  Red\n  Green\nfn pick() -> Int\n  case Color.Red\n    Color.Red -> 1\n    Color.Green -> 2",
         );
         let mut env = TypeEnv::new();
         env.bind(
@@ -5086,7 +5152,7 @@ mod tests {
     #[test]
     fn lower_function_payload_constructor_wildcard_case_desugars_to_if_chain() {
         let module = parse_module_from_text(
-            "type Flag = Yep(Int) | Nope\nfn pick(x: Flag) -> Int\n  case x\n    Yep(_) -> 1\n    Nope -> 0",
+            "enum Flag\n  Yep(Int)\n  Nope\nfn pick(x: Flag) -> Int\n  case x\n    Yep(_) -> 1\n    Nope -> 0",
         );
         let mut env = TypeEnv::new();
         env.bind(
@@ -5131,7 +5197,7 @@ mod tests {
     #[test]
     fn lower_function_payload_constructor_var_case_binds_payload_slot() {
         let module = parse_module_from_text(
-            "type Flag = Yep(Int) | Nope\nfn pick(x: Flag) -> Int\n  case x\n    Yep(n) -> n\n    Nope -> 0",
+            "enum Flag\n  Yep(Int)\n  Nope\nfn pick(x: Flag) -> Int\n  case x\n    Yep(n) -> n\n    Nope -> 0",
         );
         let mut env = TypeEnv::new();
         env.bind(
@@ -5188,7 +5254,7 @@ mod tests {
     #[test]
     fn lower_function_payload_constructor_as_case_binds_scrutinee_and_payload() {
         let module = parse_module_from_text(
-            "type Flag = Yep(Int) | Nope\nfn pick(x: Flag) -> Int\n  case x\n    Yep(n) as whole -> n\n    Nope -> 0",
+            "enum Flag\n  Yep(Int)\n  Nope\nfn pick(x: Flag) -> Int\n  case x\n    Yep(n) as whole -> n\n    Nope -> 0",
         );
         let mut env = TypeEnv::new();
         env.bind(
@@ -5254,7 +5320,7 @@ mod tests {
     #[test]
     fn lower_function_payload_constructor_multi_bind_case_binds_each_payload_slot() {
         let module = parse_module_from_text(
-            "type Pair = Pair(Int, Int) | Nope\nfn pick(x: Pair) -> Int\n  case x\n    Pair(a, b) -> a + b\n    Nope -> 0",
+            "enum Pair\n  Pair(Int, Int)\n  Nope\nfn pick(x: Pair) -> Int\n  case x\n    Pair(a, b) -> a + b\n    Nope -> 0",
         );
         let mut env = TypeEnv::new();
         env.bind(
@@ -5314,7 +5380,7 @@ mod tests {
     #[test]
     fn lower_function_payload_constructor_literal_arg_case_uses_payload_condition() {
         let module = parse_module_from_text(
-            "type Flag = Yep(Int) | Nope\nfn pick(x: Flag) -> Int\n  case x\n    Yep(7) -> 1\n    Nope -> 0",
+            "enum Flag\n  Yep(Int)\n  Nope\nfn pick(x: Flag) -> Int\n  case x\n    Yep(7) -> 1\n    Nope -> 0",
         );
         let mut env = TypeEnv::new();
         env.bind(
@@ -5354,7 +5420,7 @@ mod tests {
     #[test]
     fn lower_function_payload_constructor_nested_case_binds_nested_payload_slot() {
         let module = parse_module_from_text(
-            "type Maybe a = Just(a) | Nothing\nfn pick(x: Maybe Int) -> Int\n  case x\n    Just(Just(n)) -> n\n    _ -> 0",
+            "enum Maybe a\n  Just(a)\n  Nothing\nfn pick(x: Maybe Int) -> Int\n  case x\n    Just(Just(n)) -> n\n    _ -> 0",
         );
         let mut env = TypeEnv::new();
         env.bind(
@@ -5405,7 +5471,7 @@ mod tests {
     #[test]
     fn lower_function_payload_constructor_nested_or_case_stays_lowered() {
         let module = parse_module_from_text(
-            "type Inner = A(Int) | B(Int)\ntype Outer = Wrap(Inner) | End\nfn pick(x: Outer) -> Int\n  case x\n    Wrap(A(n) | B(n)) -> n + 1\n    _ -> 0",
+            "enum Inner\n  A(Int)\n  B(Int)\nenum Outer\n  Wrap(Inner)\n  End\nfn pick(x: Outer) -> Int\n  case x\n    Wrap(A(n) | B(n)) -> n + 1\n    _ -> 0",
         );
         let mut env = TypeEnv::new();
         env.bind(
@@ -5452,7 +5518,7 @@ mod tests {
     #[test]
     fn lower_function_payload_constructor_record_payload_pattern_binds_field() {
         let module = parse_module_from_text(
-            "struct User\n  age: Int\n\ntype Wrap = W(User) | N\nfn pick(x: Wrap) -> Int\n  case x\n    W(User { age: n }) -> n + 1\n    N -> 0",
+            "struct User\n  age: Int\n\nenum Wrap\n  W(User)\n  N\nfn pick(x: Wrap) -> Int\n  case x\n    W(User { age: n }) -> n + 1\n    N -> 0",
         );
         let mut env = TypeEnv::new();
         env.bind(
@@ -5516,7 +5582,7 @@ mod tests {
     #[test]
     fn lower_function_payload_constructor_or_case_keeps_shared_payload_binding() {
         let module = parse_module_from_text(
-            "type Flag = Yep(Int) | Nope\nfn pick(x: Flag) -> Int\n  case x\n    Yep(n) | Yep(n) -> n + 1\n    Nope -> 0",
+            "enum Flag\n  Yep(Int)\n  Nope\nfn pick(x: Flag) -> Int\n  case x\n    Yep(n) | Yep(n) -> n + 1\n    Nope -> 0",
         );
         let mut env = TypeEnv::new();
         env.bind(
@@ -5566,7 +5632,7 @@ mod tests {
     #[test]
     fn lower_function_payload_constructor_or_case_across_variants_keeps_binding() {
         let module = parse_module_from_text(
-            "type Either = Left(Int) | Right(Int) | Nope\nfn pick(x: Either) -> Int\n  case x\n    Left(n) | Right(n) -> n + 1\n    Nope -> 0",
+            "enum Either\n  Left(Int)\n  Right(Int)\n  Nope\nfn pick(x: Either) -> Int\n  case x\n    Left(n) | Right(n) -> n + 1\n    Nope -> 0",
         );
         let mut env = TypeEnv::new();
         env.bind(
@@ -5621,7 +5687,7 @@ mod tests {
     #[test]
     fn lower_function_payload_constructor_as_guard_binds_before_guard() {
         let module = parse_module_from_text(
-            "type Flag = Yep(Int) | Nope\nfn pick(x: Flag) -> Int\n  case x\n    Yep(n) as whole when n == 7 -> n + 1\n    Nope -> 0",
+            "enum Flag\n  Yep(Int)\n  Nope\nfn pick(x: Flag) -> Int\n  case x\n    Yep(n) as whole when n == 7 -> n + 1\n    Nope -> 0",
         );
         let mut env = TypeEnv::new();
         env.bind(
@@ -5688,7 +5754,7 @@ mod tests {
     #[test]
     fn lower_function_payload_constructor_or_guard_across_variants_stays_lowered() {
         let module = parse_module_from_text(
-            "type Either = Left(Int) | Right(Int) | Nope\nfn pick(x: Either) -> Int\n  case x\n    Left(n) | Right(n) when n > 0 -> n\n    Nope -> 0",
+            "enum Either\n  Left(Int)\n  Right(Int)\n  Nope\nfn pick(x: Either) -> Int\n  case x\n    Left(n) | Right(n) when n > 0 -> n\n    Nope -> 0",
         );
         let mut env = TypeEnv::new();
         env.bind(
@@ -5731,7 +5797,7 @@ mod tests {
     #[test]
     fn lower_function_unit_enum_case_literalized_scrutinee_avoids_setup_block() {
         let module = parse_module_from_text(
-            "type Color = Red | Green\nfn pick() -> Int\n  case Color.Red\n    Color.Red -> 1\n    _ -> 2",
+            "enum Color\n  Red\n  Green\nfn pick() -> Int\n  case Color.Red\n    Color.Red -> 1\n    _ -> 2",
         );
         let mut env = TypeEnv::new();
         env.bind(
@@ -5758,7 +5824,7 @@ mod tests {
     #[test]
     fn lower_function_unqualified_unit_enum_case_desugars_through_literal_path() {
         let module = parse_module_from_text(
-            "type Color = Red | Green\nfn pick() -> Int\n  case Red\n    Red -> 1\n    Green -> 2",
+            "enum Color\n  Red\n  Green\nfn pick() -> Int\n  case Red\n    Red -> 1\n    Green -> 2",
         );
         let mut env = TypeEnv::new();
         env.bind(
@@ -5889,7 +5955,7 @@ mod tests {
     #[test]
     fn lower_function_unit_enum_or_pattern_desugars_through_literal_path() {
         let module = parse_module_from_text(
-            "type Color = Red | Green | Blue\nfn pick() -> Int\n  case Color.Green\n    Color.Red | Color.Green -> 7\n    _ -> 1",
+            "enum Color\n  Red\n  Green\n  Blue\nfn pick() -> Int\n  case Color.Green\n    Color.Red | Color.Green -> 7\n    _ -> 1",
         );
         let mut env = TypeEnv::new();
         env.bind(
@@ -6025,7 +6091,7 @@ mod tests {
     #[test]
     fn lower_function_unit_enum_guard_desugars_to_and_condition() {
         let module = parse_module_from_text(
-            "type Color = Red | Green\nfn pick() -> Int\n  case Color.Red\n    Color.Red when true -> 1\n    _ -> 2",
+            "enum Color\n  Red\n  Green\nfn pick() -> Int\n  case Color.Red\n    Color.Red when true -> 1\n    _ -> 2",
         );
         let mut env = TypeEnv::new();
         env.bind(
@@ -6066,7 +6132,7 @@ mod tests {
     #[test]
     fn lower_function_unit_enum_as_guard_binds_before_guard() {
         let module = parse_module_from_text(
-            "type Color = Red | Green\nfn pick() -> Int\n  case Color.Red\n    Color.Red as c when true -> 1\n    _ -> 2",
+            "enum Color\n  Red\n  Green\nfn pick() -> Int\n  case Color.Red\n    Color.Red as c when true -> 1\n    _ -> 2",
         );
         let mut env = TypeEnv::new();
         env.bind(
@@ -6148,7 +6214,7 @@ mod tests {
     #[test]
     fn lower_function_unit_enum_or_guard_desugars_to_and_condition() {
         let module = parse_module_from_text(
-            "type Color = Red | Green | Blue\nfn pick() -> Int\n  case Color.Red\n    Color.Red | Color.Green when true -> 1\n    _ -> 2",
+            "enum Color\n  Red\n  Green\n  Blue\nfn pick() -> Int\n  case Color.Red\n    Color.Red | Color.Green when true -> 1\n    _ -> 2",
         );
         let mut env = TypeEnv::new();
         env.bind(

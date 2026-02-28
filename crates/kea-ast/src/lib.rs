@@ -139,6 +139,16 @@ pub enum ExprKind {
     /// Use expression: `use pattern <- expr` or `use <- expr`.
     Use(UseExpr),
 
+    /// `with call` / `with pattern <- call` callback-flattening sugar.
+    ///
+    /// Parser preserves this structured form so type checking can validate
+    /// `@with` constraints before lowering to explicit closure calls.
+    With {
+        call: Box<Expr>,
+        binding: Option<Pattern>,
+        body: Box<Expr>,
+    },
+
     /// Handle expression: `handle expr ...` with operation clauses and optional `then`.
     Handle {
         expr: Box<Expr>,
@@ -472,6 +482,7 @@ pub enum ParamLabel {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Param {
+    pub annotations: Vec<Annotation>,
     pub label: ParamLabel,
     pub pattern: Pattern,
     pub annotation: Option<Spanned<TypeAnnotation>>,
@@ -966,7 +977,7 @@ pub struct Module {
 /// Compute the set of free variable names in an expression.
 ///
 /// A variable is "free" if it is referenced (`Var`) but not bound by an
-/// enclosing `Let`, `Lambda`, or pattern match within the expression.
+/// enclosing `Let`, `Lambda`, `With`, or pattern match within the expression.
 ///
 /// This is useful for closure capture analysis — determining which
 /// environment bindings a function body actually depends on.
@@ -1051,6 +1062,18 @@ fn collect_free_vars(
         }
         ExprKind::Use(use_expr) => {
             collect_free_vars(&use_expr.rhs.node, free, bound);
+        }
+        ExprKind::With {
+            call,
+            binding,
+            body,
+        } => {
+            collect_free_vars(&call.node, free, bound);
+            let mut body_bound = bound.clone();
+            if let Some(pattern) = binding {
+                collect_pattern_bindings(&pattern.node, &mut body_bound);
+            }
+            collect_free_vars(&body.node, free, &mut body_bound);
         }
         ExprKind::Handle {
             expr,
@@ -1264,6 +1287,7 @@ mod tests {
         });
         let lambda = mk(ExprKind::Lambda {
             params: vec![Param {
+                annotations: Vec::new(),
                 label: ParamLabel::Implicit,
                 pattern: Spanned::new(PatternKind::Var("x".into()), Span::synthetic()),
                 annotation: None,
@@ -1313,6 +1337,7 @@ mod tests {
         // Now wrap in lambda
         let lambda = mk(ExprKind::Lambda {
             params: vec![Param {
+                annotations: Vec::new(),
                 label: ParamLabel::Implicit,
                 pattern: Spanned::new(PatternKind::Var("x".into()), Span::synthetic()),
                 annotation: None,
@@ -1338,6 +1363,7 @@ mod tests {
         });
         let inner_lambda = mk(ExprKind::Lambda {
             params: vec![Param {
+                annotations: Vec::new(),
                 label: ParamLabel::Implicit,
                 pattern: Spanned::new(PatternKind::Var("y".into()), Span::synthetic()),
                 annotation: None,
@@ -1348,6 +1374,7 @@ mod tests {
         });
         let outer_lambda = mk(ExprKind::Lambda {
             params: vec![Param {
+                annotations: Vec::new(),
                 label: ParamLabel::Implicit,
                 pattern: Spanned::new(PatternKind::Var("x".into()), Span::synthetic()),
                 annotation: None,
