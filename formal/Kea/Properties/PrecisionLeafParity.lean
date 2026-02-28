@@ -76,6 +76,24 @@ theorem intN_unify_ok_iff_constructor_beq_true
   · simp [hbeq]
   · simp [hbeq]
 
+/-- IntN unifier rejection is equivalent to constructor-level BEq failure. -/
+theorem intN_unify_err_iff_constructor_beq_false
+    (st : UnifyState) (fuel : Nat)
+    (w1 w2 : IntWidth) (s1 s2 : Signedness) :
+    unify st (fuel + 1) (.intN w1 s1) (.intN w2 s2) = .err "type mismatch" ↔
+      (Ty.intN w1 s1 == Ty.intN w2 s2) = false := by
+  constructor
+  · intro h_err
+    rw [intN_unify_decision st fuel w1 w2 s1 s2] at h_err
+    cases hbeq : (Ty.intN w1 s1 == Ty.intN w2 s2) with
+    | true =>
+        simp [hbeq] at h_err
+    | false =>
+        simpa [hbeq]
+  · intro hbeq_false
+    rw [intN_unify_decision st fuel w1 w2 s1 s2]
+    simp [hbeq_false]
+
 /-- FloatN unification is exactly decided by constructor-level BEq. -/
 theorem floatN_unify_decision
     (st : UnifyState) (fuel : Nat)
@@ -102,6 +120,24 @@ theorem floatN_unify_ok_iff_constructor_beq_true
   by_cases hbeq : (Ty.floatN w1 == Ty.floatN w2) = true
   · simp [hbeq]
   · simp [hbeq]
+
+/-- FloatN unifier rejection is equivalent to constructor-level BEq failure. -/
+theorem floatN_unify_err_iff_constructor_beq_false
+    (st : UnifyState) (fuel : Nat)
+    (w1 w2 : FloatWidth) :
+    unify st (fuel + 1) (.floatN w1) (.floatN w2) = .err "type mismatch" ↔
+      (Ty.floatN w1 == Ty.floatN w2) = false := by
+  constructor
+  · intro h_err
+    rw [floatN_unify_decision st fuel w1 w2] at h_err
+    cases hbeq : (Ty.floatN w1 == Ty.floatN w2) with
+    | true =>
+        simp [hbeq] at h_err
+    | false =>
+        simpa [hbeq]
+  · intro hbeq_false
+    rw [floatN_unify_decision st fuel w1 w2]
+    simp [hbeq_false]
 
 /-- Signedness mismatch on same width does not unify. -/
 theorem intN_signedness_mismatch
