@@ -225,6 +225,27 @@ theorem admissibleEffectPolyLoweringBundle_iff_components
     exact ⟨admissibleEffectPolyLoweringBundle_of_components
       params effects okTy errTy lowered h_comp⟩
 
+theorem admissibleEffectPolyLoweringBundle_as_components_of_components
+    (params : TyList)
+    (effects : EffectRow)
+    (okTy errTy lowered : Ty)
+    (h_comp :
+      ∃ loweredEffects,
+        lowered = .functionEff params loweredEffects (.result okTy errTy) ∧
+        rowTailStable effects loweredEffects ∧
+        labelsPreservedExcept effects loweredEffects FailResultContracts.failLabel ∧
+        RowFields.has (EffectRow.fields loweredEffects) FailResultContracts.failLabel = false) :
+    ∃ loweredEffects,
+      lowered = .functionEff params loweredEffects (.result okTy errTy) ∧
+      rowTailStable effects loweredEffects ∧
+      labelsPreservedExcept effects loweredEffects FailResultContracts.failLabel ∧
+      RowFields.has (EffectRow.fields loweredEffects) FailResultContracts.failLabel = false := by
+  classical
+  exact admissibleEffectPolyLoweringBundle_as_components
+    params effects okTy errTy lowered
+    (admissibleEffectPolyLoweringBundle_of_components
+      params effects okTy errTy lowered h_comp)
+
 noncomputable def admissibleEffectPolyFailLowering_bundle
     (c : AdmissibleEffectPolyFailLoweringContract) :
     AdmissibleEffectPolyLoweringBundle c.params c.effects c.okTy c.errTy c.lowered :=
@@ -614,6 +635,31 @@ theorem admissibleEffectPolyHandlerBundle_iff_components
     exact admissibleEffectPolyHandlerBundle_as_components s h_bundle
   · intro h_comp
     exact ⟨admissibleEffectPolyHandlerBundle_of_components s h_comp⟩
+
+theorem admissibleEffectPolyHandlerBundle_as_components_of_components
+    (s : AdmissibleEffectPolyHandlerSchema)
+    (h_comp :
+      RowFields.has
+        (EffectRow.fields (HandleClauseContract.resultEffects s.clause))
+        FailResultContracts.failLabel = false ∧
+        ∃ loweredEffects,
+          s.loweredTy = .functionEff s.params loweredEffects (.result s.okTy s.errTy) ∧
+          rowTailStable s.clause.exprEffects loweredEffects ∧
+          labelsPreservedExcept s.clause.exprEffects loweredEffects
+            FailResultContracts.failLabel ∧
+          RowFields.has (EffectRow.fields loweredEffects) FailResultContracts.failLabel = false) :
+    RowFields.has
+      (EffectRow.fields (HandleClauseContract.resultEffects s.clause))
+      FailResultContracts.failLabel = false ∧
+      ∃ loweredEffects,
+        s.loweredTy = .functionEff s.params loweredEffects (.result s.okTy s.errTy) ∧
+        rowTailStable s.clause.exprEffects loweredEffects ∧
+        labelsPreservedExcept s.clause.exprEffects loweredEffects
+          FailResultContracts.failLabel ∧
+        RowFields.has (EffectRow.fields loweredEffects) FailResultContracts.failLabel = false := by
+  classical
+  exact admissibleEffectPolyHandlerBundle_as_components s
+    (admissibleEffectPolyHandlerBundle_of_components s h_comp)
 
 noncomputable def admissibleEffectPolyHandler_bundle
     (s : AdmissibleEffectPolyHandlerSchema) :
