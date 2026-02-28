@@ -8,6 +8,7 @@ RAW_OUT="${OUT_DIR}/divan.raw.txt"
 CSV_OUT="${OUT_DIR}/divan.summary.csv"
 JSON_OUT="${OUT_DIR}/divan.summary.json"
 META_OUT="${OUT_DIR}/meta.json"
+REUSE_METRICS_OUT="${OUT_DIR}/reuse.metrics.json"
 TMP_ROWS="${OUT_DIR}/rows.tmp.csv"
 
 echo "Running benchmark harness..."
@@ -117,6 +118,10 @@ cat > "${META_OUT}" <<EOF
 }
 EOF
 
+# Export reuse-hit metrics from canonical compile kernels so benchmark
+# artifacts track whether reuse analysis is firing.
+./scripts/cargo-agent.sh run -p kea-bench --bin reuse_metrics -- "${REUSE_METRICS_OUT}" >/dev/null
+
 rm -f "${TMP_ROWS}"
 
 echo "Wrote:"
@@ -124,3 +129,4 @@ echo "  ${RAW_OUT}"
 echo "  ${CSV_OUT}"
 echo "  ${JSON_OUT}"
 echo "  ${META_OUT}"
+echo "  ${REUSE_METRICS_OUT}"
