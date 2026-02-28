@@ -188,6 +188,160 @@ theorem precisionConstructorKernelSlice : PrecisionConstructorKernelSlice := by
   · intro st fuel w1 w2
     exact floatN_unify_decision st fuel w1 w2
 
+/-- Decompose the precision constructor kernel slice into explicit contracts. -/
+theorem precisionConstructorKernelSlice_as_components
+    (slice : PrecisionConstructorKernelSlice) :
+    (∀ st fuel w1 w2 s1 s2,
+      unify st (fuel + 1) (.intN w1 s1) (.intN w2 s2) = .ok st ↔
+        (Ty.intN w1 s1 == Ty.intN w2 s2) = true)
+    ∧
+    (∀ st fuel w1 w2 s1 s2,
+      unify st (fuel + 1) (.intN w1 s1) (.intN w2 s2) = .err "type mismatch" ↔
+        (Ty.intN w1 s1 == Ty.intN w2 s2) = false)
+    ∧
+    (∀ st fuel w1 w2 s1 s2,
+      unify st (fuel + 1) (.intN w1 s1) (.intN w2 s2) =
+        if (Ty.intN w1 s1 == Ty.intN w2 s2) then .ok st else .err "type mismatch")
+    ∧
+    (∀ st fuel w1 w2,
+      unify st (fuel + 1) (.floatN w1) (.floatN w2) = .ok st ↔
+        (Ty.floatN w1 == Ty.floatN w2) = true)
+    ∧
+    (∀ st fuel w1 w2,
+      unify st (fuel + 1) (.floatN w1) (.floatN w2) = .err "type mismatch" ↔
+        (Ty.floatN w1 == Ty.floatN w2) = false)
+    ∧
+    (∀ st fuel w1 w2,
+      unify st (fuel + 1) (.floatN w1) (.floatN w2) =
+        if (Ty.floatN w1 == Ty.floatN w2) then .ok st else .err "type mismatch") :=
+  ⟨slice.intN_ok_iff_constructor_beq_true,
+    slice.intN_err_iff_constructor_beq_false,
+    slice.intN_decision,
+    slice.floatN_ok_iff_constructor_beq_true,
+    slice.floatN_err_iff_constructor_beq_false,
+    slice.floatN_decision⟩
+
+/-- Build the precision constructor kernel slice from explicit contracts. -/
+theorem precisionConstructorKernelSlice_of_components
+    (h_int_ok :
+      ∀ st fuel w1 w2 s1 s2,
+        unify st (fuel + 1) (.intN w1 s1) (.intN w2 s2) = .ok st ↔
+          (Ty.intN w1 s1 == Ty.intN w2 s2) = true)
+    (h_int_err :
+      ∀ st fuel w1 w2 s1 s2,
+        unify st (fuel + 1) (.intN w1 s1) (.intN w2 s2) = .err "type mismatch" ↔
+          (Ty.intN w1 s1 == Ty.intN w2 s2) = false)
+    (h_int_dec :
+      ∀ st fuel w1 w2 s1 s2,
+        unify st (fuel + 1) (.intN w1 s1) (.intN w2 s2) =
+          if (Ty.intN w1 s1 == Ty.intN w2 s2) then .ok st else .err "type mismatch")
+    (h_float_ok :
+      ∀ st fuel w1 w2,
+        unify st (fuel + 1) (.floatN w1) (.floatN w2) = .ok st ↔
+          (Ty.floatN w1 == Ty.floatN w2) = true)
+    (h_float_err :
+      ∀ st fuel w1 w2,
+        unify st (fuel + 1) (.floatN w1) (.floatN w2) = .err "type mismatch" ↔
+          (Ty.floatN w1 == Ty.floatN w2) = false)
+    (h_float_dec :
+      ∀ st fuel w1 w2,
+        unify st (fuel + 1) (.floatN w1) (.floatN w2) =
+          if (Ty.floatN w1 == Ty.floatN w2) then .ok st else .err "type mismatch") :
+    PrecisionConstructorKernelSlice :=
+  { intN_ok_iff_constructor_beq_true := h_int_ok
+    intN_err_iff_constructor_beq_false := h_int_err
+    intN_decision := h_int_dec
+    floatN_ok_iff_constructor_beq_true := h_float_ok
+    floatN_err_iff_constructor_beq_false := h_float_err
+    floatN_decision := h_float_dec }
+
+/-- Precision constructor kernel slice is equivalent to its explicit component
+    contract tuple. -/
+theorem precisionConstructorKernelSlice_iff_components
+    (slice : PrecisionConstructorKernelSlice) :
+    PrecisionConstructorKernelSlice ↔
+      ((∀ st fuel w1 w2 s1 s2,
+          unify st (fuel + 1) (.intN w1 s1) (.intN w2 s2) = .ok st ↔
+            (Ty.intN w1 s1 == Ty.intN w2 s2) = true)
+        ∧
+        (∀ st fuel w1 w2 s1 s2,
+          unify st (fuel + 1) (.intN w1 s1) (.intN w2 s2) = .err "type mismatch" ↔
+            (Ty.intN w1 s1 == Ty.intN w2 s2) = false)
+        ∧
+        (∀ st fuel w1 w2 s1 s2,
+          unify st (fuel + 1) (.intN w1 s1) (.intN w2 s2) =
+            if (Ty.intN w1 s1 == Ty.intN w2 s2) then .ok st else .err "type mismatch")
+        ∧
+        (∀ st fuel w1 w2,
+          unify st (fuel + 1) (.floatN w1) (.floatN w2) = .ok st ↔
+            (Ty.floatN w1 == Ty.floatN w2) = true)
+        ∧
+        (∀ st fuel w1 w2,
+          unify st (fuel + 1) (.floatN w1) (.floatN w2) = .err "type mismatch" ↔
+            (Ty.floatN w1 == Ty.floatN w2) = false)
+        ∧
+        (∀ st fuel w1 w2,
+          unify st (fuel + 1) (.floatN w1) (.floatN w2) =
+            if (Ty.floatN w1 == Ty.floatN w2) then .ok st else .err "type mismatch")) := by
+  constructor
+  · intro h
+    exact precisionConstructorKernelSlice_as_components h
+  · intro h_comp
+    exact precisionConstructorKernelSlice_of_components
+      h_comp.1 h_comp.2.1 h_comp.2.2.1 h_comp.2.2.2.1 h_comp.2.2.2.2.1 h_comp.2.2.2.2.2
+
+/-- Direct components-route decomposition for
+    `PrecisionConstructorKernelSlice`. -/
+theorem precisionConstructorKernelSlice_as_components_of_components
+    (h_comp :
+      (∀ st fuel w1 w2 s1 s2,
+        unify st (fuel + 1) (.intN w1 s1) (.intN w2 s2) = .ok st ↔
+          (Ty.intN w1 s1 == Ty.intN w2 s2) = true)
+      ∧
+      (∀ st fuel w1 w2 s1 s2,
+        unify st (fuel + 1) (.intN w1 s1) (.intN w2 s2) = .err "type mismatch" ↔
+          (Ty.intN w1 s1 == Ty.intN w2 s2) = false)
+      ∧
+      (∀ st fuel w1 w2 s1 s2,
+        unify st (fuel + 1) (.intN w1 s1) (.intN w2 s2) =
+          if (Ty.intN w1 s1 == Ty.intN w2 s2) then .ok st else .err "type mismatch")
+      ∧
+      (∀ st fuel w1 w2,
+        unify st (fuel + 1) (.floatN w1) (.floatN w2) = .ok st ↔
+          (Ty.floatN w1 == Ty.floatN w2) = true)
+      ∧
+      (∀ st fuel w1 w2,
+        unify st (fuel + 1) (.floatN w1) (.floatN w2) = .err "type mismatch" ↔
+          (Ty.floatN w1 == Ty.floatN w2) = false)
+      ∧
+      (∀ st fuel w1 w2,
+        unify st (fuel + 1) (.floatN w1) (.floatN w2) =
+          if (Ty.floatN w1 == Ty.floatN w2) then .ok st else .err "type mismatch")) :
+    (∀ st fuel w1 w2 s1 s2,
+      unify st (fuel + 1) (.intN w1 s1) (.intN w2 s2) = .ok st ↔
+        (Ty.intN w1 s1 == Ty.intN w2 s2) = true)
+    ∧
+    (∀ st fuel w1 w2 s1 s2,
+      unify st (fuel + 1) (.intN w1 s1) (.intN w2 s2) = .err "type mismatch" ↔
+        (Ty.intN w1 s1 == Ty.intN w2 s2) = false)
+    ∧
+    (∀ st fuel w1 w2 s1 s2,
+      unify st (fuel + 1) (.intN w1 s1) (.intN w2 s2) =
+        if (Ty.intN w1 s1 == Ty.intN w2 s2) then .ok st else .err "type mismatch")
+    ∧
+    (∀ st fuel w1 w2,
+      unify st (fuel + 1) (.floatN w1) (.floatN w2) = .ok st ↔
+        (Ty.floatN w1 == Ty.floatN w2) = true)
+    ∧
+    (∀ st fuel w1 w2,
+      unify st (fuel + 1) (.floatN w1) (.floatN w2) = .err "type mismatch" ↔
+        (Ty.floatN w1 == Ty.floatN w2) = false)
+    ∧
+    (∀ st fuel w1 w2,
+      unify st (fuel + 1) (.floatN w1) (.floatN w2) =
+        if (Ty.floatN w1 == Ty.floatN w2) then .ok st else .err "type mismatch") := by
+  simpa using h_comp
+
 /-- Signedness mismatch on same width does not unify. -/
 theorem intN_signedness_mismatch
     (st : UnifyState) (fuel : Nat) :

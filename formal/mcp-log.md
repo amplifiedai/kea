@@ -9550,3 +9550,38 @@ This suite bundles:
 **Impact**:
 - Keeps numeric packaging aligned with the same decomposition contract style
   used throughout shape/effect/catch suites.
+
+### 2026-02-28: precision constructor slice decomposition parity
+
+**Context**: Added structural decomposition helpers for
+`PrecisionConstructorKernelSlice` in
+`Kea/Properties/PrecisionLeafParity.lean`:
+- `precisionConstructorKernelSlice_as_components`
+- `precisionConstructorKernelSlice_of_components`
+- `precisionConstructorKernelSlice_iff_components`
+- `precisionConstructorKernelSlice_as_components_of_components`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Structural API extension only; no runtime semantic change.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Precision constructor package now supports one-step conversion between bundled
+  and explicit contract tuples.
+
+**Impact**:
+- Keeps WP7.2 precision package usage consistent with decomposition patterns
+  across other formal suite layers.
