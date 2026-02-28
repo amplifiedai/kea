@@ -1,35 +1,16 @@
+--| Result is Fail's data representation.
+--|
+--| Prefer `-[Fail E]> T` for fallible control flow.
+--| Use `Result(T, E)` when outcomes must be stored as data.
+--|
+--|   let results = items.map(|item| catch validate(item))
+--|   let config = Result.unwrap_or(catch load_config(), defaults)
+--|   let value = some_result?
 effect Fail E
   --| Abort the current computation with an error payload.
   --|
   --|   Fail.fail("boom")
   fn fail(error: E) -> Never
-
---| Transform the Ok value with a mapping function.
---|
---|   Result.map(Ok(2), |x| -> x + 1)   -- => Ok(3)
---|   Result.map(Err("x"), |x| -> x + 1) -- => Err("x")
-fn map(res: Result(a, e), f: fn(a) -> b) -> Result(b, e)
-  case res
-    Ok(value) -> Ok(f(value))
-    Err(err) -> Err(err)
-
---| Transform the Err value with a mapping function.
---|
---|   Result.map_err(Err(2), |x| -> x + 1)   -- => Err(3)
---|   Result.map_err(Ok(7), |x| -> x + 1)    -- => Ok(7)
-fn map_err(res: Result(a, e), f: fn(e) -> ferr) -> Result(a, ferr)
-  case res
-    Ok(value) -> Ok(value)
-    Err(err) -> Err(f(err))
-
---| Chain Result-producing computations on the Ok path.
---|
---|   Result.and_then(Ok(2), |x| -> Ok(x + 1))   -- => Ok(3)
---|   Result.and_then(Err("x"), |x| -> Ok(x + 1)) -- => Err("x")
-fn and_then(res: Result(a, e), f: fn(a) -> Result(b, e)) -> Result(b, e)
-  case res
-    Ok(value) -> f(value)
-    Err(err) -> Err(err)
 
 --| Convert an Option into a Result with a provided error value.
 --|
@@ -48,15 +29,6 @@ fn unwrap_or(res: Result(a, e), fallback: a) -> a
   case res
     Ok(value) -> value
     Err(_) -> fallback
-
---| Extract the Ok value or fail with the Err payload.
---|
---|   catch Result.unwrap(Ok(7))      -- => Ok(7)
---|   catch Result.unwrap(Err("x"))   -- => Err("x")
-fn unwrap(res: Result(a, e)) -> a
-  case res
-    Ok(value) -> value
-    Err(err) -> Fail.fail(err)
 
 --| Return true when a result is Ok.
 --|
