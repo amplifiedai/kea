@@ -1773,6 +1773,54 @@
     }
 
     #[test]
+    fn compile_and_execute_program_with_crlf_line_endings_exit_code() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\r\n  7\r\n",
+            "kea-cli-crlf-line-endings",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed with CRLF line endings");
+        assert_eq!(run.exit_code, 7);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_rejects_tabs_in_indentation() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n\t7\n",
+            "kea-cli-tabs-in-indentation",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject tabs in indentation");
+        assert!(
+            err.contains("tabs are not allowed in indentation"),
+            "expected tab-indentation diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_rejects_keyword_as_binding_name() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  let if = 1\n  if\n",
+            "kea-cli-keyword-binding-name",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject keyword binding names");
+        assert!(
+            err.contains("expected pattern"),
+            "expected keyword-as-binding parse diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_rejects_string_interpolation_when_show_is_missing() {
         let source_path = write_temp_source(
             "struct Foo\n  x: Int\n\nfn main() -> Int\n  let f = Foo { x: 1 }\n  if \"{f}\" == \"\"\n    1\n  else\n    0\n",
