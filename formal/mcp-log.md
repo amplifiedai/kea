@@ -8659,3 +8659,43 @@ and then re-running a full scan across `formal/Kea/Properties/*.lean` for all
 **Impact**:
 - Route-level theorem APIs are now uniformly one-hop from constructor routes to
   explicit decomposition tuples across the full current Phase-2 stack.
+
+### 2026-02-28: fail-result catch-bridge fail-present entry parity
+
+**Context**: Closed entrypoint asymmetry in `FailResultEquivalence` by adding
+fail-present wrappers for the catch-bridge theorem family:
+- `catchTyping_fail_result_equivalence_of_fail_present`
+- `catchTyping_fail_result_equivalence_bundle_of_fail_present`
+- `catchTyping_fail_result_equivalence_bundle_as_components_of_fail_present`
+- `catchTyping_fail_result_equivalence_result_return_of_fail_present`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Wrapper-only routing from existing premise-level catch-bridge theorems via
+  `catchAdmissible_iff_fail_present`.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran premise/fail-present parity scan for theorem families in
+  `formal/Kea/Properties/*.lean`.
+- Result: no missing `_of_fail_present` counterparts for current
+  `_of_premises` theorem bases.
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Fail-result catch-bridge entry surfaces are now symmetric across premise and
+  fail-present routes.
+
+**Impact**:
+- Call sites can choose either admissibility-style or direct fail-label entry
+  assumptions without losing one-hop equivalence/bundle/result-return APIs.
