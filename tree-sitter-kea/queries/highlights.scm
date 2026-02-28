@@ -4,7 +4,7 @@
 ; ── Keywords ─────────────────────────────────────────────────────
 
 ["let" "fn" "expr" "pub" "if" "else" "case" "when"
- "type" "trait" "impl" "where" "use" "as" "test"
+ "type" "struct" "trait" "impl" "where" "use" "as" "test"
  "for" "in" "while" "cond"] @keyword
 
 ; Effect keywords — distinct from regular keywords so themes
@@ -34,7 +34,7 @@
 (type_definition
   name: (upper_identifier) @type.definition)
 
-(record_definition
+(struct_definition
   name: (upper_identifier) @type.definition)
 
 (trait_definition
@@ -101,7 +101,7 @@
 
 ["+" "-" "*" "/" "%" "++" "<>"
  "==" "!=" "<" "<=" ">" ">="
- "=" "->"] @operator
+ "=" "->" "~"] @operator
 
 ; Try operator (effect sugar)
 (try_expression "?" @operator.effect)

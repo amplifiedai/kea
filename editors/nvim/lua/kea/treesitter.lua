@@ -28,7 +28,7 @@ function M.setup()
         files = { "src/parser.c" },
         branch = "main",
         generate_requires_npm = false,
-        requires_generate_from_grammar = false,
+        requires_generate_from_grammar = true,
       },
       filetype = "kea",
     }

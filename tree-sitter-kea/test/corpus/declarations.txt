@@ -61,22 +61,22 @@ type Color = Red | Green | Blue
     (variant name: (upper_identifier))))
 
 ==================
-Record definition
+Struct definition
 ==================
 
-record User
+struct User
   name: String
   age: Int
 
 ---
 
 (source_file
-  (record_definition
+  (struct_definition
     name: (upper_identifier)
-    (record_field
+    (struct_field
       name: (identifier)
       type: (named_type (upper_identifier)))
-    (record_field
+    (struct_field
       name: (identifier)
       type: (named_type (upper_identifier)))))
 

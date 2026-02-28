@@ -28,7 +28,7 @@ module.exports = grammar({
   conflicts: ($) => [
     [$.lambda_parameter, $.or_pattern],
     [$.pure_return_type, $.effect_function_type],
-    [$.record_field, $.effect_function_type],
+    [$.struct_field, $.effect_function_type],
     [$.type_constraint, $.effect_function_type],
     [$.effect_ref, $.constructor_expression],
     [$.named_type, $.applied_type],
@@ -53,7 +53,7 @@ module.exports = grammar({
         $.function_declaration,
         $.expr_declaration,
         $.type_definition,
-        $.record_definition,
+        $.struct_definition,
         $.trait_definition,
         $.impl_block,
         $.effect_declaration,
@@ -147,17 +147,17 @@ module.exports = grammar({
     _type_param: ($) =>
       choice($.identifier, $.upper_identifier),
 
-    record_definition: ($) =>
+    struct_definition: ($) =>
       prec.right(seq(
         repeat($.annotation),
         optional("pub"),
-        "record",
+        "struct",
         field("name", $.upper_identifier),
         repeat(field("param", $._type_param)),
-        repeat($.record_field),
+        repeat($.struct_field),
       )),
 
-    record_field: ($) =>
+    struct_field: ($) =>
       seq(
         repeat($.annotation),
         field("name", $.identifier),
@@ -246,7 +246,7 @@ module.exports = grammar({
         $.effect_function_type,
         $.fn_type,
         $.fn_effect_type,
-        $.record_type,
+        $.row_type,
         $.paren_type,
       ),
 
@@ -314,15 +314,15 @@ module.exports = grammar({
         field("return", $._type),
       )),
 
-    record_type: ($) =>
+    row_type: ($) =>
       seq(
         "{",
-        commaSep1($.record_type_field),
+        commaSep1($.row_type_field),
         optional(seq("|", field("tail", $.identifier))),
         "}",
       ),
 
-    record_type_field: ($) =>
+    row_type_field: ($) =>
       seq(field("name", $.identifier), ":", field("type", $._type)),
 
     paren_type: ($) => seq("(", $._type, ")"),
@@ -477,6 +477,7 @@ module.exports = grammar({
         $.call_expression,
         $.field_expression,
         $.try_expression,
+        $.functional_update,
       ),
 
     call_expression: ($) =>
@@ -511,7 +512,7 @@ module.exports = grammar({
         $.none,
         $.unit,
         $.list_expression,
-        $.record_expression,
+        $.struct_expression,
         $.receiver_placeholder,
         $.resume_expression,
         $.parenthesized_expression,
@@ -521,12 +522,20 @@ module.exports = grammar({
 
     list_expression: ($) => seq("[", commaSep($._expression), "]"),
 
-    record_expression: ($) =>
+    struct_expression: ($) =>
       prec(1, seq(
         field("type", $.upper_identifier),
         "{",
         commaSep($.field_init),
-        optional(seq("..", field("base", $._expression))),
+        "}",
+      )),
+
+    functional_update: ($) =>
+      prec(PREC.postfix, seq(
+        field("base", $._expression),
+        "~",
+        "{",
+        commaSep1($.field_init),
         "}",
       )),
 
@@ -552,7 +561,7 @@ module.exports = grammar({
         $.literal_pattern,
         $.constructor_pattern,
         $.list_pattern,
-        $.record_pattern,
+        $.struct_pattern,
         $.or_pattern,
         $.as_pattern,
         $.parenthesized_pattern,
@@ -579,7 +588,7 @@ module.exports = grammar({
         "]",
       )),
 
-    record_pattern: ($) =>
+    struct_pattern: ($) =>
       prec(-1, seq(
         optional(field("type", $.upper_identifier)),
         "{",

@@ -3,7 +3,7 @@
   "name": "Kea",
   "scopeName": "source.kea",
   "fileTypes": ["kea"],
-  "firstLineMatch": "^(--|fn |effect |type |use |trait |handle )",
+  "firstLineMatch": "^(--|fn |effect |type |struct |use |trait |handle )",
   "patterns": [
     { "include": "#comments" },
     { "include": "#strings" },
@@ -75,7 +75,7 @@
         },
         {
           "name": "keyword.declaration.kea",
-          "match": "\\b(fn|let|pub|type|trait|impl|where|use|as|test|record|expr|effect)\\b"
+          "match": "\\b(fn|let|pub|type|struct|trait|impl|where|use|as|test|expr|effect)\\b"
         },
         {
           "name": "keyword.operator.logical.kea",
@@ -156,6 +156,10 @@
         {
           "name": "keyword.operator.arithmetic.kea",
           "match": "\\+\\+|<>|\\+|-|\\*|/|%"
+        },
+        {
+          "name": "keyword.operator.update.kea",
+          "match": "~"
         },
         {
           "name": "keyword.operator.assignment.kea",
