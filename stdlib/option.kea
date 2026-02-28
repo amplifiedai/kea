@@ -1,3 +1,14 @@
+--| Option represents a value that may or may not be present.
+--|
+--| Use `Some(value)` for present values and `None` for absence.
+--| Pattern matching is the primary way to branch on an option:
+--|
+--|   case opt
+--|     Some(x) -> x
+--|     None -> fallback
+--|
+--| Use `Option.unwrap` only at boundaries where converting `None`
+--| into a `Fail` is the right behavior.
 effect Fail E
   --| Abort the current computation with an error payload.
   --|
