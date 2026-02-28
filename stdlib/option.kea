@@ -17,8 +17,8 @@ effect Fail E
 
 --| Transform an Option value with a mapping function.
 --|
---|   Option.map(Some(2), |x| -> x + 1)   -- => Some(3)
---|   Option.map(None, |x| -> x + 1)      -- => None
+--|   Option.map(Some(2), |x| x + 1)   -- => Some(3)
+--|   Option.map(None, |x| x + 1)      -- => None
 fn map(opt: Option a, f: fn(a) -> b) -> Option b
   case opt
     Some(value) -> Some(f(value))
@@ -26,8 +26,8 @@ fn map(opt: Option a, f: fn(a) -> b) -> Option b
 
 --| Chain Option-producing computations.
 --|
---|   Option.and_then(Some(2), |x| -> Some(x + 1))   -- => Some(3)
---|   Option.and_then(None, |x| -> Some(x + 1))      -- => None
+--|   Option.and_then(Some(2), |x| Some(x + 1))   -- => Some(3)
+--|   Option.and_then(None, |x| Some(x + 1))      -- => None
 fn and_then(opt: Option a, f: fn(a) -> Option b) -> Option b
   case opt
     Some(value) -> f(value)
@@ -35,8 +35,8 @@ fn and_then(opt: Option a, f: fn(a) -> Option b) -> Option b
 
 --| Return this option when Some; otherwise evaluate a fallback.
 --|
---|   Option.or_else(Some(7), || -> Some(0))   -- => Some(7)
---|   Option.or_else(None, || -> Some(0))      -- => Some(0)
+--|   Option.or_else(Some(7), || Some(0))   -- => Some(7)
+--|   Option.or_else(None, || Some(0))      -- => Some(0)
 fn or_else(opt: Option a, fallback: fn() -> Option a) -> Option a
   case opt
     Some(value) -> Some(value)
@@ -44,8 +44,8 @@ fn or_else(opt: Option a, fallback: fn() -> Option a) -> Option a
 
 --| Keep the value only when it satisfies the predicate.
 --|
---|   Option.filter(Some(2), |x| -> x > 1)   -- => Some(2)
---|   Option.filter(Some(0), |x| -> x > 1)   -- => None
+--|   Option.filter(Some(2), |x| x > 1)   -- => Some(2)
+--|   Option.filter(Some(0), |x| x > 1)   -- => None
 fn filter(opt: Option a, pred: fn(a) -> Bool) -> Option a
   case opt
     Some(value) ->

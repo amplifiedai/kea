@@ -445,7 +445,6 @@ module.exports = grammar({
         "|",
         commaSep($.lambda_parameter),
         "|",
-        "->",
         field("body", $._expression),
       )),
 

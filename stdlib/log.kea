@@ -31,7 +31,7 @@ effect Log
 
 --| Run `f` with `Log.*` routed to stdout.
 --|
---|   Log.with_stdout_logger(|| ->
+--|   Log.with_stdout_logger(||
 --|     Log.info("ready")
 --|     7
 --|   )   -- => 7
@@ -69,7 +69,7 @@ fn reverse_logs(xs: LogList) -> LogList
 
 --| Run `f` while collecting emitted `Log.*` messages in reverse order.
 --|
---|   Log.collect_logs(|| ->
+--|   Log.collect_logs(||
 --|     Log.info("ready")
 --|     1
 --|   )
@@ -92,12 +92,12 @@ fn collect_logs(f: fn() -[Log]> T) -[State LogList]> T
 --|
 --| Returns `(result, logs)` where `logs` preserves emission order.
 --|
---|   Log.with_collected_logs(|| ->
+--|   Log.with_collected_logs(||
 --|     Log.info("ready")
 --|     7
 --|   )   -- => (7, Cons("ready", Nil))
 fn with_collected_logs(f: fn() -[Log]> T) -> (T, LogList)
-  let pair = State.with_state(Nil, || ->
+  let pair = State.with_state(Nil, ||
     collect_logs(f)
   )
   let value = pair.0
