@@ -8115,3 +8115,35 @@ typing route by adding `operationCallBundle_callTyping_of_typing`.
 **Impact**:
 - Tail bundle families are structurally symmetric across normalized and
   closed-aware routes, reducing downstream route-specialization friction.
+
+### 2026-02-28: closed-aware classification/well-typed route projection parity
+
+**Context**: Expanded route-level parity in
+`HandlerClosedAwareContracts` by adding constructor-route wrappers:
+- `closedAwareCoreBundle_{as_components,absentClosedNoop,presentOrOpenNormalized}_of_classification`
+- `closedAwareResultBundle_{as_components,closedAwareHandledRemoved,closedAwareRowTailStable}_of_wellTyped`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Projection/decomposition wrappers over existing closed-aware bundles.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Closed-aware core/result bundles now expose full one-hop route wrappers from
+  classification and well-typed entrypoints.
+
+**Impact**:
+- Downstream proofs can consume closed-aware contracts directly from standard
+  entry routes without intermediate bundle destructuring.
