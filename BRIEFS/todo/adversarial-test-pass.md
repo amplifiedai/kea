@@ -196,6 +196,82 @@ Organise by phase. Within each phase, organise by attack surface.
 - IO.stdout with very long string (10KB+)
 - IO.read_file on nonexistent file — should fail cleanly, not panic
 
+## Wicked Problems
+
+These are cross-cutting stress tests that exercise multiple systems
+simultaneously. They're designed to surface unsoundness, not just
+missing error messages. Each one should either work correctly or
+produce a clear, non-panicking error.
+
+### Effect re-entrancy
+- Handler for `Fail` that resumes with a value which itself
+  triggers `Fail` — does the inner fail get caught by the same
+  handler or propagate outward?
+- Handler that performs an IO operation inside a resume path —
+  does the IO effect resolve correctly through the handler stack?
+- `State.put` inside a `State` handler clause — which State
+  is being modified?
+
+### Cross-boundary recursion
+- Mutually recursive functions where one is effectful (`-[IO]>`)
+  and the other is pure (`->`), calling each other. Does the
+  effect row narrow correctly at each call site?
+- Recursive function that installs a handler on each recursive
+  call — handler depth grows with recursion depth. Stack behavior?
+- Tail-recursive function inside a handler — does the tail call
+  optimisation still fire, or does the handler frame prevent it?
+
+### Handler + pattern matching interaction
+- Pattern match on a value returned from `resume` — does the
+  scrutinee's memory survive the handler continuation?
+- Handler clause that pattern-matches its operation argument,
+  then resumes conditionally — exhaustiveness checking across
+  the handler/resume boundary
+- `case` expression as the body of a handler's `then` clause
+
+### Closure + handler interaction
+- Closure that captures a variable bound inside a handler clause
+  — does it outlive the handler scope?
+- Closure created inside a handler body, returned from the handler,
+  called after the handler exits — does it still work?
+- Closure passed as an argument to `resume` — the closure captures
+  variables from the handler clause scope
+
+### Polymorphic effect stress
+- Effect row variable that unifies through 3+ levels of generic
+  function calls: `f` calls `g` calls `h`, each adding an effect
+- Function that takes a callback with a polymorphic effect row,
+  calls it inside a handler that partially satisfies the row
+- Generic function where the effect row depends on a type parameter
+  (e.g. `fn f(x: A) -[Fail A]> ...` — effect parameterised by
+  the value type)
+
+### Resource lifecycle
+- `with conn <- Db.with_connection(config)` where the body fails
+  — does cleanup run? (Once `with` is implemented)
+- Handler that allocates in its clause, resumes, and the resumed
+  code discards the result — is the allocation freed?
+- Functional update inside a handler clause: `state~{field: resume(v)}`
+  — does the update happen before or after the resume?
+
+### Pathological inputs
+- 1000-line `case` expression with 500 variants
+- Function with 50 parameters
+- Effect row with 20 effects
+- 100 nested `let` bindings
+- Deeply nested type: `Option Option Option ... Option Int` (20 levels)
+- Program with 100 top-level functions, all mutually recursive
+- String interpolation with 50 interpolated expressions
+
+### Soundness canaries
+- Construct a value of type `A`, try to use it as type `B` through
+  any pathway (handler resumption, polymorphic instantiation,
+  pattern match) — the type system must reject every attempt
+- Effect that declares operation returning `A`, handler clause that
+  resumes with `B` — must be a type error
+- Construct a `Unique T`, pass it through a handler boundary, use
+  it on both sides — must be rejected by move checker
+
 ## Process
 
 This is a parallelisable brief. Multiple agents can work on
