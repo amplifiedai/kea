@@ -29379,6 +29379,69 @@ theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_iff_masterCapston
   · intro h_cap
     exact principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_capstone h_cap
 
+/-- One-hop projection: regular no-unify route pair from unified no-unify master surface. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_regular_routes
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_surface : PrincipalBoundarySoundNoUnifyFullVerticalMasterSurface st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundNoUnifyFullVerticalRoutes st fuel env e fs stExpr ty stField rf :=
+  h_surface.routes.regular
+
+/-- One-hop projection: dual no-unify route pair from unified no-unify master surface. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_dual_routes
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_surface : PrincipalBoundarySoundNoUnifyFullVerticalMasterSurface st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundNoUnifyFullVerticalRoutes st fuel env e fs stExpr ty stField rf :=
+  h_surface.routes.dual
+
+/-- One-hop paired extraction: regular+dual no-unify route pairs from unified no-unify master surface. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_routes_pair
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_surface : PrincipalBoundarySoundNoUnifyFullVerticalMasterSurface st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundNoUnifyFullVerticalRoutes st fuel env e fs stExpr ty stField rf
+      ∧ PrincipalBoundarySoundNoUnifyFullVerticalRoutes st fuel env e fs stExpr ty stField rf :=
+  ⟨h_surface.routes.regular, h_surface.routes.dual⟩
+
+/-- One-hop paired extraction: regular+dual no-unify expr full consequences from unified surface. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_expr_pair
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_surface : PrincipalBoundarySoundNoUnifyFullVerticalMasterSurface st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundNoUnifyExprFull st fuel env e stExpr ty
+      ∧ PrincipalBoundarySoundNoUnifyExprFull st fuel env e stExpr ty :=
+  principalBoundarySoundNoUnifyFullVerticalMasterRoutes_expr_pair h_surface.routes
+
+/-- One-hop paired extraction: regular+dual no-unify field full consequences from unified surface. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_field_pair
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_surface : PrincipalBoundarySoundNoUnifyFullVerticalMasterSurface st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundNoUnifyFieldFull st fuel env fs stField rf
+      ∧ PrincipalBoundarySoundNoUnifyFieldFull st fuel env fs stField rf :=
+  principalBoundarySoundNoUnifyFullVerticalMasterRoutes_field_pair h_surface.routes
+
+/-- One-hop paired extraction: regular+dual vertical pairs from unified no-unify master surface. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_vertical_pair
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_surface : PrincipalBoundarySoundNoUnifyFullVerticalMasterSurface st fuel env e fs stExpr ty stField rf) :
+    VerticalHookFreeUnifySlices ∧ VerticalHookFreeUnifySlices :=
+  principalBoundarySoundNoUnifyFullVerticalMasterRoutes_vertical_pair h_surface.routes
+
 /-- Direct no-unify expr full consequence wrapper via unified no-unify master surface. -/
 theorem principalBoundarySoundNoUnifyExprFull_of_success_via_noUnifyMasterSurface
     {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
@@ -29498,6 +29561,51 @@ theorem principalBoundarySoundNoUnify_verticalProj_of_success_via_noUnifyMasterS
     VerticalHookFreeProjSlice :=
   principalBoundarySoundNoUnify_verticalProj_of_success_via_noUnifyMasterSurface
     (h_app := h_seed.1) (h_proj := h_seed.2) h_no_expr h_no_field h_ok_expr h_ok_field
+
+/-- Unified no-unify master surface is equivalent to explicit no-unify consequence conjunction. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_iff_consequences
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields} :
+    PrincipalBoundarySoundNoUnifyFullVerticalMasterSurface st fuel env e fs stExpr ty stField rf
+      ↔ (PrincipalBoundarySoundNoUnifyExprFull st fuel env e stExpr ty
+          ∧ PrincipalBoundarySoundNoUnifyFieldFull st fuel env fs stField rf
+          ∧ VerticalHookFreeAppSlice
+          ∧ VerticalHookFreeProjSlice) := by
+  constructor
+  · intro h_surface
+    exact principalBoundarySoundNoUnifyFullVerticalMasterCapstone_as_components h_surface.capstone
+  · intro h_conseq
+    exact principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_capstone
+      (principalBoundarySoundNoUnifyFullVerticalMasterCapstone_of_components h_conseq)
+
+/-- Constructor helper from explicit no-unify consequences for unified no-unify master surface. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_of_consequences
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_conseq :
+      PrincipalBoundarySoundNoUnifyExprFull st fuel env e stExpr ty
+        ∧ PrincipalBoundarySoundNoUnifyFieldFull st fuel env fs stField rf
+        ∧ VerticalHookFreeAppSlice
+        ∧ VerticalHookFreeProjSlice) :
+    PrincipalBoundarySoundNoUnifyFullVerticalMasterSurface st fuel env e fs stExpr ty stField rf :=
+  (principalBoundarySoundNoUnifyFullVerticalMasterSurface_iff_consequences).2 h_conseq
+
+/-- One-hop decomposition from unified no-unify master surface into explicit no-unify consequences. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_as_consequences
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_surface : PrincipalBoundarySoundNoUnifyFullVerticalMasterSurface st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundNoUnifyExprFull st fuel env e stExpr ty
+      ∧ PrincipalBoundarySoundNoUnifyFieldFull st fuel env fs stField rf
+      ∧ VerticalHookFreeAppSlice
+      ∧ VerticalHookFreeProjSlice :=
+  (principalBoundarySoundNoUnifyFullVerticalMasterSurface_iff_consequences).1 h_surface
 
 /-- Unified no-unify master surface decomposes to explicit routes + capstone components. -/
 theorem principalBoundarySoundNoUnifyFullVerticalMasterSurface_iff_components
