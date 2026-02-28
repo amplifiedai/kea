@@ -1324,6 +1324,20 @@ trait Iterator
   fn next(_ self: Self) -> Option (Self.Item, Self)
 ```
 
+Implementations assign the associated type with `where`:
+
+```kea
+List A as Iterator where Item = A
+  fn next(_ self: List A) -> Option (A, List A)
+    case self
+      [] -> Option.None
+      [head, ..tail] -> Option.Some (head, tail)
+```
+
+`Self.Item` resolves to the assigned type. When the implementing
+type is known, `Self.Item` is concrete. When polymorphic
+(`T: Iterator`), `T.Item` is abstract until `T` is instantiated.
+
 ### 6.6 Kind System
 
 Kea has two kinds:
@@ -1341,7 +1355,7 @@ on concrete types — `Self` is `List Int`, not `List`. This is
 Elixir's Enum protocol: any type implementing `Foldable` gets
 `fold`, `sum`, `find` via trait dispatch. What you can't write
 is `fn summarize(c: F Int) where F: Foldable` — abstracting
-over the container. You write `fn summarize(c: impl Foldable)`
+over the container. You write `fn summarize(c: any Foldable)`
 where the concrete type carries both container and element info.
 Container-specific operations like `map` are inherent methods
 (`List.map`, `Option.map`).
@@ -1397,6 +1411,40 @@ struct Point
 
 `@derive` invokes a compiler recipe that generates trait implementations
 from the type definition. The generated implementation must type-check.
+
+### 6.10 Existential Types
+
+`any Trait` denotes a value of some concrete type that implements
+`Trait`. The concrete type is erased — the caller may pass any
+conforming type, and the callee dispatches through the trait
+interface.
+
+```kea
+fn format_all(_ items: List (any Show)) -> List String
+  items.map(|item| item.show())
+
+fn run(_ task: any Runnable) -[IO]> Unit
+  task.run()
+```
+
+Multiple bounds use parenthesised syntax: `any (Show, Eq)`.
+
+**Representation.** An `any Trait` value is boxed: a pointer to
+the value plus a trait evidence dictionary. This is runtime dispatch
+— unlike generic type parameters with trait bounds (`T where T: Show`),
+which monomorphize to static dispatch.
+
+**When to use which:**
+- `fn show_it(_ x: T) -> String where T: Show` — monomorphized,
+  zero overhead, one concrete type per call site. Use when
+  performance matters or the concrete type is known.
+- `fn show_it(_ x: any Show) -> String` — boxed, runtime dispatch.
+  Use for heterogeneous collections or when the concrete type
+  varies at runtime.
+
+**Subtyping.** A value of concrete type `T` where `T` implements
+`Show` can be used where `any Show` is expected. This is implicit
+boxing — no explicit conversion syntax needed.
 
 ---
 
