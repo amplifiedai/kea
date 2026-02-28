@@ -434,6 +434,7 @@ pub fn lower_hir_module(module: &HirModule) -> MirModule {
         fuse_release_alloc_same_layout(function, &layouts);
         fuse_release_alloc_cross_block_jump(function, &layouts);
         emit_reuse_tokens_for_mixed_predecessor_joins(function, &layouts);
+        emit_reuse_tokens_for_loop_backedge_joins(function, &layouts);
     }
 
     MirModule { functions, layouts }
@@ -875,6 +876,155 @@ fn emit_reuse_tokens_for_mixed_predecessor_joins(
                     });
                 }
             }
+            if let MirTerminator::Jump { args, .. } = &mut pred_block.terminator {
+                args.push(pred_action.token_value.clone());
+            }
+        }
+
+        let target_block = &mut function.blocks[rewrite.target_block_idx];
+        target_block.params.push(rewrite.token_param.clone());
+        let replacement = match rewrite.candidate {
+            ReuseInitCandidate::Record {
+                dest,
+                record_type,
+                fields,
+            } => MirInst::RecordInitFromToken {
+                dest,
+                token: rewrite.token_param.id,
+                record_type,
+                fields,
+            },
+            ReuseInitCandidate::Sum {
+                dest,
+                sum_type,
+                variant,
+                tag,
+                fields,
+            } => MirInst::SumInitFromToken {
+                dest,
+                token: rewrite.token_param.id,
+                sum_type,
+                variant,
+                tag,
+                fields,
+            },
+        };
+        target_block.instructions[rewrite.target_inst_idx] = replacement;
+    }
+}
+
+fn emit_reuse_tokens_for_loop_backedge_joins(
+    function: &mut MirFunction,
+    layouts: &MirLayoutCatalog,
+) {
+    let layout_keys = infer_heap_layout_keys(function);
+    let block_index_by_id = function
+        .blocks
+        .iter()
+        .enumerate()
+        .map(|(idx, block)| (block.id.clone(), idx))
+        .collect::<BTreeMap<_, _>>();
+
+    let mut predecessors = BTreeMap::<MirBlockId, Vec<usize>>::new();
+    for (block_idx, block) in function.blocks.iter().enumerate() {
+        if let MirTerminator::Jump { target, .. } = &block.terminator {
+            predecessors.entry(target.clone()).or_default().push(block_idx);
+        }
+    }
+
+    let mut rewrites = Vec::new();
+    let mut next_value_id = next_fresh_value_id(function);
+    for (target, pred_block_indices) in predecessors {
+        let Some(target_block_idx) = block_index_by_id.get(&target).copied() else {
+            continue;
+        };
+        if target == function.entry {
+            continue;
+        }
+        if !pred_block_indices.contains(&target_block_idx) {
+            continue;
+        }
+
+        let target_block = &function.blocks[target_block_idx];
+        for (arg_pos, param) in target_block.params.iter().enumerate() {
+            let Some((target_inst_idx, candidate)) = find_reuse_candidate_in_block(
+                target_block,
+                &param.id,
+                layouts,
+                &layout_keys,
+            ) else {
+                continue;
+            };
+
+            let mut pred_actions = Vec::with_capacity(pred_block_indices.len());
+            let mut all_predecessors_tokenize = true;
+            for pred_block_idx in &pred_block_indices {
+                let pred_block = &function.blocks[*pred_block_idx];
+                let MirTerminator::Jump { args, .. } = &pred_block.terminator else {
+                    all_predecessors_tokenize = false;
+                    break;
+                };
+                let Some(incoming_value) = args.get(arg_pos).cloned() else {
+                    all_predecessors_tokenize = false;
+                    break;
+                };
+                let Some(release_inst_idx) = find_trailing_release_idx(pred_block) else {
+                    all_predecessors_tokenize = false;
+                    break;
+                };
+                let MirInst::Release { value } = &pred_block.instructions[release_inst_idx] else {
+                    all_predecessors_tokenize = false;
+                    break;
+                };
+                if *value != incoming_value {
+                    all_predecessors_tokenize = false;
+                    break;
+                }
+
+                let token_value = MirValueId(next_value_id);
+                next_value_id = next_value_id.saturating_add(1);
+                pred_actions.push(TokenFlowPredAction {
+                    pred_block_idx: *pred_block_idx,
+                    token_value,
+                    kind: TokenFlowPredActionKind::TokenizeRelease {
+                        release_inst_idx,
+                        source: incoming_value,
+                    },
+                });
+            }
+            if !all_predecessors_tokenize || pred_actions.is_empty() {
+                continue;
+            }
+
+            rewrites.push(TokenFlowRewrite {
+                target_block_idx,
+                target_inst_idx,
+                token_param: MirBlockParam {
+                    id: MirValueId(next_value_id),
+                    ty: Type::Dynamic,
+                },
+                candidate,
+                pred_actions,
+            });
+            next_value_id = next_value_id.saturating_add(1);
+            break;
+        }
+    }
+
+    for rewrite in rewrites {
+        for pred_action in &rewrite.pred_actions {
+            let pred_block = &mut function.blocks[pred_action.pred_block_idx];
+            let TokenFlowPredActionKind::TokenizeRelease {
+                release_inst_idx,
+                ref source,
+            } = pred_action.kind
+            else {
+                continue;
+            };
+            pred_block.instructions[release_inst_idx] = MirInst::ReuseToken {
+                dest: pred_action.token_value.clone(),
+                source: source.clone(),
+            };
             if let MirTerminator::Jump { args, .. } = &mut pred_block.terminator {
                 args.push(pred_action.token_value.clone());
             }
@@ -8408,6 +8558,141 @@ mod tests {
         };
         assert_eq!(block0_args.len(), 2);
         assert_eq!(block1_args.len(), 2);
+    }
+
+    #[test]
+    fn emit_reuse_tokens_for_loop_backedge_join_rewrites_all_releasing_predecessors() {
+        let layouts = MirLayoutCatalog {
+            records: vec![MirRecordLayout {
+                name: "Point".to_string(),
+                fields: vec![MirRecordFieldLayout {
+                    name: "x".to_string(),
+                    annotation: TypeAnnotation::Named("Int".to_string()),
+                }],
+            }],
+            sums: vec![],
+        };
+        let mut function = MirFunction {
+            name: "main".to_string(),
+            signature: MirFunctionSignature {
+                params: vec![],
+                ret: Type::Unit,
+                effects: EffectRow::pure(),
+            },
+            entry: MirBlockId(0),
+            blocks: vec![
+                MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: MirValueId(0),
+                            literal: MirLiteral::Int(1),
+                        },
+                        MirInst::RecordInit {
+                            dest: MirValueId(1),
+                            record_type: "Point".to_string(),
+                            fields: vec![("x".to_string(), MirValueId(0))],
+                        },
+                    ],
+                    terminator: MirTerminator::Jump {
+                        target: MirBlockId(1),
+                        args: vec![MirValueId(1)],
+                    },
+                },
+                MirBlock {
+                    id: MirBlockId(1),
+                    params: vec![MirBlockParam {
+                        id: MirValueId(10),
+                        ty: Type::Record(RecordType {
+                            name: "Point".to_string(),
+                            params: vec![],
+                            row: RowType::closed(vec![(Label::new("x"), Type::Int)]),
+                        }),
+                    }],
+                    instructions: vec![MirInst::Release {
+                        value: MirValueId(10),
+                    }],
+                    terminator: MirTerminator::Jump {
+                        target: MirBlockId(2),
+                        args: vec![MirValueId(10)],
+                    },
+                },
+                MirBlock {
+                    id: MirBlockId(2),
+                    params: vec![MirBlockParam {
+                        id: MirValueId(11),
+                        ty: Type::Record(RecordType {
+                            name: "Point".to_string(),
+                            params: vec![],
+                            row: RowType::closed(vec![(Label::new("x"), Type::Int)]),
+                        }),
+                    }],
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: MirValueId(2),
+                            literal: MirLiteral::Int(2),
+                        },
+                        MirInst::RecordInit {
+                            dest: MirValueId(3),
+                            record_type: "Point".to_string(),
+                            fields: vec![("x".to_string(), MirValueId(2))],
+                        },
+                        MirInst::Release {
+                            value: MirValueId(3),
+                        },
+                    ],
+                    terminator: MirTerminator::Jump {
+                        target: MirBlockId(2),
+                        args: vec![MirValueId(3)],
+                    },
+                },
+            ],
+        };
+
+        emit_reuse_tokens_for_mixed_predecessor_joins(&mut function, &layouts);
+        emit_reuse_tokens_for_loop_backedge_joins(&mut function, &layouts);
+
+        assert_eq!(function.blocks[2].params.len(), 2);
+        let token_param = function.blocks[2].params[1].id.clone();
+        assert!(matches!(
+            function.blocks[2].instructions[1],
+            MirInst::RecordInitFromToken {
+                token: ref t,
+                record_type: ref name,
+                ..
+            } if *t == token_param && name == "Point"
+        ));
+
+        assert!(matches!(
+            function.blocks[1].instructions[0],
+            MirInst::ReuseToken {
+                source: MirValueId(10),
+                ..
+            }
+        ));
+        assert!(matches!(
+            function.blocks[2].instructions[2],
+            MirInst::ReuseToken {
+                source: MirValueId(3),
+                ..
+            }
+        ));
+
+        let MirTerminator::Jump {
+            args: block1_args, ..
+        } = &function.blocks[1].terminator
+        else {
+            panic!("expected block1 jump terminator");
+        };
+        let MirTerminator::Jump {
+            args: block2_args, ..
+        } = &function.blocks[2].terminator
+        else {
+            panic!("expected block2 jump terminator");
+        };
+        assert_eq!(block1_args.len(), 2);
+        assert_eq!(block2_args.len(), 2);
     }
 
     #[test]
