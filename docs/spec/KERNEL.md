@@ -224,8 +224,8 @@ runtime error.
 ## 2. Structs
 
 Structs are product types with named fields. A struct block may also
-contain inherent methods (§2.8), nested struct/enum/type definitions
-(§2.9), and constructors.
+contain inherent methods (§2.8), const fields (§2.9), nested
+struct/enum/type definitions (§2.10), and constructors.
 
 ```kea
 struct Point
@@ -364,7 +364,83 @@ only mechanism for adding methods from outside the defining module.
 There are no standalone `fn Type.method()` declarations outside
 the struct block. All inherent methods live inside the struct.
 
-### 2.9 Nested Types
+### 2.9 Const Fields
+
+`const` fields are compile-time-known named values inside a struct.
+They have no runtime representation in the struct layout.
+
+```kea
+struct Math
+  const pi: Float = 3.14159265358979
+  const e: Float = 2.71828182845905
+  const tau: Float = 2.0 * pi
+
+  fn clamp(_ value: Float, min: Float, max: Float) -> Float
+    if value < min then min
+    else if value > max then max
+    else value
+```
+
+Const fields are accessed with normal qualified syntax: `Math.pi`,
+`Math.tau`. UMS does not apply — const fields are values, not
+methods.
+
+Structs with runtime fields may also have const fields:
+
+```kea
+struct Color
+  r: Int
+  g: Int
+  b: Int
+
+  const red: Color = Color { r: 255, g: 0, b: 0 }
+  const white: Color = Color { r: 255, g: 255, b: 255 }
+  const black: Color = Color { r: 0, g: 0, b: 0 }
+```
+
+**Module structs.** Singleton module structs (§2.7) may have `const`
+fields but not runtime fields. Const fields are the only field type
+allowed in a module struct.
+
+**Const expressions.** A `const` field's initializer must be a pure
+expression (type `->`, no effects). Semantically, any pure expression
+is const-eligible. The compiler may restrict the set of supported
+const expressions to a strict subset (literals, const references,
+constructors, primitive operations) and report a clear error for
+valid-but-unsupported expressions.
+
+**Const patterns.** Const values may appear in pattern position
+(§4.2). The compiler inlines the const value and generates a
+structural equality check:
+
+```kea
+case pixel_color
+  Color.red -> "danger"
+  Color.white -> "clean"
+  _ -> "other"
+```
+
+A const value used as a pattern must have a type that implements
+`Eq`. The pattern `Color.red` is equivalent to a guard
+`c when c == Color.red`, but the compiler may optimise it to a
+direct structural comparison when the const value is known.
+
+Const patterns are always qualified (`Type.name`) to distinguish
+them from variable bindings. An unqualified lowercase name in
+pattern position is always a binding, never a const lookup.
+
+**Memory representation.** For `@unboxed` types, const values are
+inlined as immediate operands — no allocation. `Math.pi` becomes a
+float literal in generated code.
+
+For heap-allocated types, const values are placed in static
+read-only memory with an immortal refcount (sentinel value, never
+decremented). Const references skip retain/release entirely. This
+means const values of heap types have zero RC cost — not because
+they have exactly one owner (`Unique`), but because they are
+immortal and need no ownership tracking.
+
+### 2.10 Nested Types
 
 Structs may contain nested struct, enum, and type alias definitions.
 Nested types are accessed via `Parent.Child` syntax.
@@ -495,6 +571,7 @@ pattern matching. All arms must have the same type.
 | `head :: tail`         | List cons                            |
 | `[]`                   | Empty list                           |
 | `42`, `"hello"`, `true`| Literal                              |
+| `Type.name`            | Const value (requires Eq, §2.9)      |
 | `name`                 | Variable binding                     |
 | `_`                    | Wildcard (matches anything, no bind) |
 
