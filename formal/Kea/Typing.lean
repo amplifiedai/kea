@@ -28087,6 +28087,61 @@ theorem principalBoundarySoundNoUnifyFullVerticalMasterCapstone_as_components
   (principalBoundarySoundNoUnifyFullVerticalMasterCapstone_iff_components).1 h_cap
 
 /--
+No-unify-specialized full+vertical suite surface.
+-/
+structure PrincipalBoundarySoundNoUnifyFullVerticalSuite
+    (st : UnifyState) (fuel : Nat) (env : TermEnv)
+    (e : CoreExpr) (fs : CoreFields)
+    (stExpr : UnifyState) (ty : Ty)
+    (stField : UnifyState) (rf : RowFields) : Prop where
+  exprNoUnify : PrincipalBoundarySoundNoUnifyExprFull st fuel env e stExpr ty
+  fieldNoUnify : PrincipalBoundarySoundNoUnifyFieldFull st fuel env fs stField rf
+  vertical : VerticalHookFreeUnifySlices
+
+/-- Convert the no-unify master capstone into the no-unify full+vertical suite surface. -/
+theorem principalBoundarySoundNoUnifyFullVerticalSuite_of_masterCapstone
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_cap : PrincipalBoundarySoundNoUnifyFullVerticalMasterCapstone st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundNoUnifyFullVerticalSuite st fuel env e fs stExpr ty stField rf := by
+  refine {
+    exprNoUnify := h_cap.exprNoUnify
+    fieldNoUnify := h_cap.fieldNoUnify
+    vertical := ⟨h_cap.verticalApp, h_cap.verticalProj⟩
+  }
+
+/-- Convert the no-unify full+vertical suite surface into the no-unify master capstone. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterCapstone_of_fullVerticalSuite
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields}
+    (h_suite : PrincipalBoundarySoundNoUnifyFullVerticalSuite st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundNoUnifyFullVerticalMasterCapstone st fuel env e fs stExpr ty stField rf := by
+  refine {
+    exprNoUnify := h_suite.exprNoUnify
+    fieldNoUnify := h_suite.fieldNoUnify
+    verticalApp := h_suite.vertical.1
+    verticalProj := h_suite.vertical.2
+  }
+
+/-- Equivalence between no-unify master-capstone and no-unify full+vertical suite surfaces. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterCapstone_iff_fullVerticalSuite
+    {st : UnifyState} {fuel : Nat} {env : TermEnv}
+    {e : CoreExpr} {fs : CoreFields}
+    {stExpr : UnifyState} {ty : Ty}
+    {stField : UnifyState} {rf : RowFields} :
+    PrincipalBoundarySoundNoUnifyFullVerticalMasterCapstone st fuel env e fs stExpr ty stField rf
+      ↔ PrincipalBoundarySoundNoUnifyFullVerticalSuite st fuel env e fs stExpr ty stField rf := by
+  constructor
+  · intro h_cap
+    exact principalBoundarySoundNoUnifyFullVerticalSuite_of_masterCapstone h_cap
+  · intro h_suite
+    exact principalBoundarySoundNoUnifyFullVerticalMasterCapstone_of_fullVerticalSuite h_suite
+
+/--
 The row-poly full+vertical capstone is equivalent to providing:
 - a full principal boundary soundness suite witness, and
 - a hook-free vertical app/projection slice witness.
