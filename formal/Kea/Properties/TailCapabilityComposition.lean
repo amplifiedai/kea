@@ -308,6 +308,42 @@ theorem tailCapabilityBundle_of_wellTyped
     notInvalid := h_not_invalid
   }
 
+theorem tailCapabilityBundle_as_components_of_wellTyped
+    (c : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice c)
+    (h_expr :
+      c.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_ne : capability ≠ c.handled) :
+    (RowFields.has
+        (EffectRow.fields (HandleClauseContract.resultEffectsCore c))
+        capability = true)
+    ∧
+    (RowFields.has
+        (EffectRow.fields (HandleClauseContract.resultEffects c))
+        capability = true)
+    ∧
+    (TailResumptiveClassification.classifyClause c ≠
+      TailResumptiveClassification.TailResumptiveClass.invalid) :=
+  tailCapabilityBundle_as_components c capability
+    (tailCapabilityBundle_of_wellTyped c baseEffects capability h_wellTyped h_expr h_ne)
+
+theorem tailCapabilityBundle_coreCapability_of_wellTyped
+    (c : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice c)
+    (h_expr :
+      c.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_ne : capability ≠ c.handled) :
+    RowFields.has
+      (EffectRow.fields (HandleClauseContract.resultEffectsCore c))
+      capability = true :=
+  (tailCapabilityBundle_of_wellTyped c baseEffects capability h_wellTyped h_expr h_ne).coreCapability
+
 theorem tailCapabilityBundle_resultCapability_of_wellTyped
     (c : HandleClauseContract)
     (baseEffects : EffectRow)
@@ -321,6 +357,19 @@ theorem tailCapabilityBundle_resultCapability_of_wellTyped
       (EffectRow.fields (HandleClauseContract.resultEffects c))
       capability = true :=
   (tailCapabilityBundle_of_wellTyped c baseEffects capability h_wellTyped h_expr h_ne).resultCapability
+
+theorem tailCapabilityBundle_notInvalid_of_wellTyped
+    (c : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice c)
+    (h_expr :
+      c.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_ne : capability ≠ c.handled) :
+    TailResumptiveClassification.classifyClause c ≠
+      TailResumptiveClassification.TailResumptiveClass.invalid :=
+  (tailCapabilityBundle_of_wellTyped c baseEffects capability h_wellTyped h_expr h_ne).notInvalid
 
 structure TailCapabilityClosedAwareBundle
     (c : HandleClauseContract)
@@ -406,6 +455,25 @@ theorem tailCapabilityClosedAwareBundle_of_wellTyped
     notInvalid := h_not_invalid
   }
 
+theorem tailCapabilityClosedAwareBundle_as_components_of_wellTyped
+    (c : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice c)
+    (h_expr :
+      c.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_ne : capability ≠ c.handled) :
+    (RowFields.has
+        (EffectRow.fields (HandlerClosedAwareContracts.resultEffectsClosedAware c))
+        capability = true)
+    ∧
+    (TailResumptiveClassification.classifyClause c ≠
+      TailResumptiveClassification.TailResumptiveClass.invalid) :=
+  tailCapabilityClosedAwareBundle_as_components c capability
+    (tailCapabilityClosedAwareBundle_of_wellTyped
+      c baseEffects capability h_wellTyped h_expr h_ne)
+
 theorem tailCapabilityClosedAwareBundle_resultCapability_of_wellTyped
     (c : HandleClauseContract)
     (baseEffects : EffectRow)
@@ -420,6 +488,20 @@ theorem tailCapabilityClosedAwareBundle_resultCapability_of_wellTyped
       capability = true :=
   (tailCapabilityClosedAwareBundle_of_wellTyped
     c baseEffects capability h_wellTyped h_expr h_ne).closedAwareResultCapability
+
+theorem tailCapabilityClosedAwareBundle_notInvalid_of_wellTyped
+    (c : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice c)
+    (h_expr :
+      c.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_ne : capability ≠ c.handled) :
+    TailResumptiveClassification.classifyClause c ≠
+      TailResumptiveClassification.TailResumptiveClass.invalid :=
+  (tailCapabilityClosedAwareBundle_of_wellTyped
+    c baseEffects capability h_wellTyped h_expr h_ne).notInvalid
 
 end TailCapabilityComposition
 end Kea

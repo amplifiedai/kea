@@ -7989,3 +7989,38 @@ and interoperability suites.
 
 **Impact**:
 - Safe to checkpoint current formal parity expansion as a proof-stream commit.
+
+### 2026-02-28: tail/operation well-typed constructor-route parity wrappers
+
+**Context**: Extended phase-2 tail and operation modules with constructor-route
+wrapper parity from typing/well-typed entrypoints:
+- `EffectOperationTyping`: `operationCallBundle_{as_components,declared,rowTailStable}_of_typing`
+- `TailResumptiveClassification`:
+  `tail_resumptive{,_closedAware}_bundle_{as_components,classification,notInvalid}_of_wellTyped`
+- `TailCapabilityComposition`:
+  `tailCapability{,ClosedAware}Bundle_{as_components,coreCapability,resultCapability,notInvalid}_of_wellTyped`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Wrapper-only theorem additions over existing bundle constructors.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- New constructor-route wrapper parity landed for operation/tail modules.
+- Lean and MCP checks both green after changes.
+
+**Impact**:
+- Typing/well-typed route consumers can now obtain bundle decompositions and
+  facet projections in one theorem step, matching the broader phase-2 API style.
