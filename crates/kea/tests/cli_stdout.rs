@@ -51,7 +51,7 @@ fn kea_run_prints_hello_world_stdout() {
 
 #[test]
 fn kea_run_allocation_churn_smoke_does_not_crash() {
-    let source = "record Box\n  n: Int\n\nfn churn(i: Int, acc: Int) -> Int\n  if i == 0\n    acc\n  else\n    let b = Box { n: i }\n    churn(i - 1, acc + b.n - i)\n\nfn main() -> Int\n  churn(5000, 0)\n";
+    let source = "struct Box\n  n: Int\n\nfn churn(i: Int, acc: Int) -> Int\n  if i == 0\n    acc\n  else\n    let b = Box { n: i }\n    churn(i - 1, acc + b.n - i)\n\nfn main() -> Int\n  churn(5000, 0)\n";
     let path = temp_source_path("kea-cli-churn");
     std::fs::write(&path, source).expect("temp source write should succeed");
 

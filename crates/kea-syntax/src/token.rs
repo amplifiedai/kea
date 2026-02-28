@@ -97,6 +97,7 @@ pub enum TokenKind {
     True,
     False,
     NoneKw,
+    Struct,
     Record,
     TypeKw,
     Alias,
@@ -140,6 +141,7 @@ pub enum TokenKind {
     Star,      // *
     Slash,     // /
     Percent,   // %
+    Tilde,     // ~
     EqEq,      // ==
     BangEq,    // !=
     Lt,        // <

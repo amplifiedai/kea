@@ -1954,19 +1954,33 @@ impl FunctionLoweringCtx {
                     }
                 }
 
+                let resolved_record_type = if record_type.is_empty() {
+                    match &flattened_base.ty {
+                        Type::Record(record_ty) => Some(record_ty.name.clone()),
+                        Type::AnonRecord(row) => self.infer_unique_record_type_for_row(row),
+                        _ => match &flattened_base.kind {
+                            HirExprKind::Var(name) => self.var_record_types.get(name).cloned(),
+                            HirExprKind::Call { func, .. } => self.infer_record_type_from_call(func),
+                            _ => self.record_value_types.get(&target).cloned(),
+                        },
+                    }?
+                } else {
+                    record_type.clone()
+                };
+
                 let dest = self.new_value();
                 let block_id = self.current_block.clone();
                 self.emit_inst(MirInst::CowUpdate {
                     dest: dest.clone(),
                     target: frozen,
-                    record_type: record_type.clone(),
+                    record_type: resolved_record_type.clone(),
                     updates,
                     unique_path: block_id.clone(),
                     copy_path: block_id,
                 });
                 self.emit_inst(MirInst::Release { value: target });
                 self.record_value_types
-                    .insert(dest.clone(), record_type.clone());
+                    .insert(dest.clone(), resolved_record_type);
                 Some(dest)
             }
             HirExprKind::SumConstructor {
