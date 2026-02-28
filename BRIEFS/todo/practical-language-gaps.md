@@ -194,7 +194,7 @@ guarantee that enables reuse analysis.
 
 **No HKTs:** Effects replace monadic composition. Collection traits
 work on concrete types. The `fn map(c: F Int) where F: Functor`
-pattern doesn't exist, but the Elixir-style `impl Foldable for List`
+pattern doesn't exist, but the Kea-style `List as Foldable`
 pattern covers real use cases. If self-hosting reveals genuine pain
 from missing HKTs, it can be added later — but the prediction is that
 effects remove 90% of the motivation.

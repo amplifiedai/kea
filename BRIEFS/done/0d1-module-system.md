@@ -259,7 +259,7 @@ method of the `List` struct, and UMS resolution finds it via the
 receiver type.
 
 **Trait impl visibility:** All impls are globally visible for
-bootstrap. When module A defines `impl Show for MyType`, that impl
+bootstrap. When module A defines `MyType as Show`, that impl
 is visible in module B regardless of imports. This matches Haskell's
 instance model. Orphan rules and visibility restrictions are
 deferred to post-bootstrap.

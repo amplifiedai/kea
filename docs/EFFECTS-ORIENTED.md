@@ -404,7 +404,7 @@ everywhere, applied to a new domain:
 |---|---|---|---|
 | Effects | handler: `[Log]` → `[IO]` | Run `[Log, State]` computation | Chain handlers until `[]` |
 | Middleware | auth: `{headers}` ⊢ `{user}` | Satisfy `{user, db, request_id}` | Compose until all fields provided |
-| Traits | `impl Show for List A where Show A` | `Show List(List Int)` | Resolve instances recursively |
+| Traits | `List A as Show where A: Show` | `Show List(List Int)` | Resolve instances recursively |
 
 All three are the same operation: given rules that transform
 rows, find a composition that satisfies a goal. Effect handlers

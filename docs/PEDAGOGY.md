@@ -256,7 +256,7 @@ trait Validatable
 Any type can implement it:
 
 ```kea
-impl Validatable for Transaction
+Transaction as Validatable
 
   fn validate(_ self: Transaction) -[Fail ValidationError]> Transaction
     if self.amount < 0.0

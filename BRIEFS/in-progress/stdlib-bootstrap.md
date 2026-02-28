@@ -122,7 +122,7 @@ functions. The Kea signatures provide the type; the runtime
 provides the implementation.
 
 **Traits have manual impls only.** `@derive` doesn't exist yet
-(lands in Tier 3). Every `impl Eq for MyType` is written by hand.
+(lands in Tier 3). Every `MyType as Eq` impl is written by hand.
 This is acceptable for a small stdlib.
 
 ### Tier 1: Effects (lands with 0e)
