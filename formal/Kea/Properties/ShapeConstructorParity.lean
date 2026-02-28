@@ -3644,6 +3644,180 @@ theorem tensorConstShapeDimListKernelSlice : TensorConstShapeDimListKernelSlice 
     exact tensor_unify_const_shapes_match_decision
       st fuel shape1 shape2
 
+/-- Explicit component contract tuple for
+    `TensorConstShapeDimListKernelSlice`. -/
+abbrev TensorConstShapeDimListKernelSliceComponents : Prop :=
+  (∀ st fuel elemTy shape1 shape2,
+    unifyDimList DimSubst.empty (fuel + 1)
+      (shape1.map Dim.const) (shape2.map Dim.const) = some DimSubst.empty →
+    unify st (fuel + 1)
+      (.tensor elemTy (shape1.map Dim.const))
+      (.tensor elemTy (shape2.map Dim.const))
+      = .ok st)
+  ∧
+  (∀ st fuel elemTy shape1 shape2,
+    unifyDimList DimSubst.empty (fuel + 1)
+      (shape1.map Dim.const) (shape2.map Dim.const) = none →
+    unify st (fuel + 1)
+      (.tensor elemTy (shape1.map Dim.const))
+      (.tensor elemTy (shape2.map Dim.const))
+      = .err "type mismatch")
+  ∧
+  (∀ st fuel elemTy shape1 shape2,
+    shape1 ≠ shape2 →
+    unify st (fuel + 1)
+      (.tensor elemTy (shape1.map Dim.const))
+      (.tensor elemTy (shape2.map Dim.const))
+      = .err "type mismatch")
+  ∧
+  (∀ st fuel shape1 shape2,
+    shape1.length ≠ shape2.length →
+    unify st (fuel + 1)
+      (.tensor .int (shape1.map Dim.const))
+      (.tensor .int (shape2.map Dim.const))
+      = .err "type mismatch")
+  ∧
+  (∀ st fuel a b tail1 tail2,
+    a ≠ b →
+    unify st (fuel + 1)
+      (.tensor .int ((a :: tail1).map Dim.const))
+      (.tensor .int ((b :: tail2).map Dim.const))
+      = .err "type mismatch")
+  ∧
+  (∀ st fuel elemTy shape1 shape2,
+    unify st (fuel + 1)
+      (.tensor elemTy (shape1.map Dim.const))
+      (.tensor elemTy (shape2.map Dim.const))
+      = .ok st ↔
+    unifyDimList DimSubst.empty (fuel + 1)
+      (shape1.map Dim.const) (shape2.map Dim.const) = some DimSubst.empty)
+  ∧
+  (∀ st fuel elemTy shape1 shape2,
+    unify st (fuel + 1)
+      (.tensor elemTy (shape1.map Dim.const))
+      (.tensor elemTy (shape2.map Dim.const))
+      = .err "type mismatch" ↔
+    unifyDimList DimSubst.empty (fuel + 1)
+      (shape1.map Dim.const) (shape2.map Dim.const) = none)
+  ∧
+  (∀ st fuel elemTy shape1 shape2,
+    unify st (fuel + 1)
+      (.tensor elemTy (shape1.map Dim.const))
+      (.tensor elemTy (shape2.map Dim.const))
+      =
+      if unifyDimList DimSubst.empty (fuel + 1)
+          (shape1.map Dim.const) (shape2.map Dim.const) = none
+      then .err "type mismatch"
+      else .ok st)
+  ∧
+  (∀ st fuel elemTy shape1 shape2,
+    unify st (fuel + 1)
+      (.tensor elemTy (shape1.map Dim.const))
+      (.tensor elemTy (shape2.map Dim.const))
+      =
+      (match unifyDimList DimSubst.empty (fuel + 1)
+          (shape1.map Dim.const) (shape2.map Dim.const) with
+       | some _ => .ok st
+       | none => .err "type mismatch"))
+  ∧
+  (∀ st fuel shape1 shape2,
+    unify st (fuel + 1)
+      (.tensor .int (shape1.map Dim.const))
+      (.tensor .int (shape2.map Dim.const))
+      = .ok st ↔
+    unifyDimList DimSubst.empty (fuel + 1)
+      (shape1.map Dim.const) (shape2.map Dim.const) = some DimSubst.empty)
+  ∧
+  (∀ st fuel shape1 shape2,
+    unify st (fuel + 1)
+      (.tensor .int (shape1.map Dim.const))
+      (.tensor .int (shape2.map Dim.const))
+      = .err "type mismatch" ↔
+    unifyDimList DimSubst.empty (fuel + 1)
+      (shape1.map Dim.const) (shape2.map Dim.const) = none)
+  ∧
+  (∀ st fuel shape1 shape2,
+    unify st (fuel + 1)
+      (.tensor .int (shape1.map Dim.const))
+      (.tensor .int (shape2.map Dim.const))
+      =
+      if unifyDimList DimSubst.empty (fuel + 1)
+          (shape1.map Dim.const) (shape2.map Dim.const) = none
+      then .err "type mismatch"
+      else .ok st)
+  ∧
+  (∀ st fuel shape1 shape2,
+    unify st (fuel + 1)
+      (.tensor .int (shape1.map Dim.const))
+      (.tensor .int (shape2.map Dim.const))
+      =
+      (match unifyDimList DimSubst.empty (fuel + 1)
+          (shape1.map Dim.const) (shape2.map Dim.const) with
+       | some _ => .ok st
+       | none => .err "type mismatch"))
+
+/-- Decompose `TensorConstShapeDimListKernelSlice` into explicit component
+    contracts. -/
+theorem tensorConstShapeDimListKernelSlice_as_components
+    (slice : TensorConstShapeDimListKernelSlice) :
+    TensorConstShapeDimListKernelSliceComponents :=
+  ⟨slice.success_of_dim_list_kernel_success_any_elem,
+    slice.reject_of_dim_list_kernel_none_any_elem,
+    slice.reject_of_ne_any_elem,
+    slice.reject_of_length_mismatch,
+    slice.reject_of_head_mismatch,
+    slice.ok_iff_dim_list_kernel_success_any_elem,
+    slice.err_iff_dim_list_kernel_none_any_elem,
+    slice.decision_of_dim_list_kernel_none_any_elem,
+    slice.match_decision_any_elem,
+    slice.ok_iff_dim_list_kernel_success,
+    slice.err_iff_dim_list_kernel_none,
+    slice.decision_of_dim_list_kernel_none,
+    slice.match_decision⟩
+
+/-- Build `TensorConstShapeDimListKernelSlice` from explicit component
+    contracts. -/
+theorem tensorConstShapeDimListKernelSlice_of_components
+    (h_comp : TensorConstShapeDimListKernelSliceComponents) :
+    TensorConstShapeDimListKernelSlice := by
+  rcases h_comp with
+    ⟨h_success_any, h_reject_none_any, h_reject_ne_any, h_reject_len,
+      h_reject_head, h_ok_iff_any, h_err_iff_any, h_dec_any, h_match_any,
+      h_ok_iff, h_err_iff, h_dec, h_match⟩
+  exact
+    { success_of_dim_list_kernel_success_any_elem := h_success_any
+      reject_of_dim_list_kernel_none_any_elem := h_reject_none_any
+      reject_of_ne_any_elem := h_reject_ne_any
+      reject_of_length_mismatch := h_reject_len
+      reject_of_head_mismatch := h_reject_head
+      ok_iff_dim_list_kernel_success_any_elem := h_ok_iff_any
+      err_iff_dim_list_kernel_none_any_elem := h_err_iff_any
+      decision_of_dim_list_kernel_none_any_elem := h_dec_any
+      match_decision_any_elem := h_match_any
+      ok_iff_dim_list_kernel_success := h_ok_iff
+      err_iff_dim_list_kernel_none := h_err_iff
+      decision_of_dim_list_kernel_none := h_dec
+      match_decision := h_match }
+
+/-- `TensorConstShapeDimListKernelSlice` is equivalent to its explicit
+    component contract tuple. -/
+theorem tensorConstShapeDimListKernelSlice_iff_components
+    (slice : TensorConstShapeDimListKernelSlice) :
+    TensorConstShapeDimListKernelSlice ↔
+      TensorConstShapeDimListKernelSliceComponents := by
+  constructor
+  · intro h
+    exact tensorConstShapeDimListKernelSlice_as_components h
+  · intro h_comp
+    exact tensorConstShapeDimListKernelSlice_of_components h_comp
+
+/-- Direct components-route decomposition for
+    `TensorConstShapeDimListKernelSlice`. -/
+theorem tensorConstShapeDimListKernelSlice_as_components_of_components
+    (h_comp : TensorConstShapeDimListKernelSliceComponents) :
+    TensorConstShapeDimListKernelSliceComponents := by
+  simpa using h_comp
+
 /-- Top-level packaged shape/dimension kernel suite for constant-shape
     constructor routes. -/
 structure ShapeConstDimKernelSuite : Prop where
