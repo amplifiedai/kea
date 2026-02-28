@@ -8956,3 +8956,36 @@ arbitrary-rank tensor kernel layers together.
 **Impact**:
 - Reduces theorem plumbing in WP7.2/WP7.4 call sites by unifying scalar/list
   kernel dependencies under a canonical suite route.
+
+### 2026-02-28: `DimKernelSuite` decomposition API parity
+
+**Context**: Added explicit decomposition/reconstruction theorems for the new
+combined dimension suite in `Kea/Dimensions.lean`:
+- `dimKernelSuite_as_components`
+- `dimKernelSuite_of_components`
+- `dimKernelSuite_iff_components`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Structural theorem API packaging only; no semantic changes to scalar/list
+  kernel behavior.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Dimension suite now matches the broader `iff/of/as` packaging style.
+
+**Impact**:
+- Downstream theorem consumers can move between suite assumptions and explicit
+  scalar/list component pairs without manual record destructuring.
