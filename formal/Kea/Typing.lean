@@ -27662,6 +27662,72 @@ structure PrincipalBoundarySoundFullVerticalRoutes
   viaRowPolyBundle :
     PrincipalBoundarySoundFullVerticalSuite st fuel env e fs stExpr ty stField rf
 
+/-- Explicit component alias for `PrincipalBoundarySoundFullVerticalRoutes`. -/
+abbrev PrincipalBoundarySoundFullVerticalRoutesComponents
+    (st : UnifyState) (fuel : Nat) (env : TermEnv)
+    (e : CoreExpr) (fs : CoreFields)
+    (stExpr : UnifyState) (ty : Ty)
+    (stField : UnifyState) (rf : RowFields) : Prop :=
+  PrincipalBoundarySoundFullVerticalSuite st fuel env e fs stExpr ty stField rf
+    ∧ PrincipalBoundarySoundFullVerticalSuite st fuel env e fs stExpr ty stField rf
+
+/-- `PrincipalBoundarySoundFullVerticalRoutes` is equivalent to explicit components. -/
+theorem principalBoundarySoundFullVerticalRoutes_iff_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv)
+    (e : CoreExpr) (fs : CoreFields)
+    (stExpr : UnifyState) (ty : Ty)
+    (stField : UnifyState) (rf : RowFields) :
+    PrincipalBoundarySoundFullVerticalRoutes st fuel env e fs stExpr ty stField rf
+      ↔ PrincipalBoundarySoundFullVerticalRoutesComponents
+          st fuel env e fs stExpr ty stField rf := by
+  constructor
+  · intro h_routes
+    exact ⟨h_routes.viaTypingSuite, h_routes.viaRowPolyBundle⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2⟩
+
+/-- Build `PrincipalBoundarySoundFullVerticalRoutes` from explicit components. -/
+theorem principalBoundarySoundFullVerticalRoutes_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv)
+    (e : CoreExpr) (fs : CoreFields)
+    (stExpr : UnifyState) (ty : Ty)
+    (stField : UnifyState) (rf : RowFields)
+    (h_comp :
+      PrincipalBoundarySoundFullVerticalRoutesComponents
+        st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundFullVerticalRoutes st fuel env e fs stExpr ty stField rf :=
+  (principalBoundarySoundFullVerticalRoutes_iff_components
+    st fuel env e fs stExpr ty stField rf).2 h_comp
+
+/-- Decompose `PrincipalBoundarySoundFullVerticalRoutes` into explicit components. -/
+theorem principalBoundarySoundFullVerticalRoutes_as_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv)
+    (e : CoreExpr) (fs : CoreFields)
+    (stExpr : UnifyState) (ty : Ty)
+    (stField : UnifyState) (rf : RowFields)
+    (h_routes :
+      PrincipalBoundarySoundFullVerticalRoutes st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundFullVerticalRoutesComponents
+      st fuel env e fs stExpr ty stField rf :=
+  (principalBoundarySoundFullVerticalRoutes_iff_components
+    st fuel env e fs stExpr ty stField rf).1 h_routes
+
+/-- Direct components-route decomposition for `PrincipalBoundarySoundFullVerticalRoutes`. -/
+theorem principalBoundarySoundFullVerticalRoutes_as_components_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv)
+    (e : CoreExpr) (fs : CoreFields)
+    (stExpr : UnifyState) (ty : Ty)
+    (stField : UnifyState) (rf : RowFields)
+    (h_comp :
+      PrincipalBoundarySoundFullVerticalRoutesComponents
+        st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundFullVerticalRoutesComponents
+      st fuel env e fs stExpr ty stField rf :=
+  (principalBoundarySoundFullVerticalRoutes_iff_components
+    st fuel env e fs stExpr ty stField rf).1
+    (principalBoundarySoundFullVerticalRoutes_of_components
+      st fuel env e fs stExpr ty stField rf h_comp)
+
 /--
 Construct `FullVertical` route-pair packaging from successful expression/field
 runs and a row-poly boundary+sound bundle.
@@ -28027,6 +28093,72 @@ structure PrincipalBoundarySoundFullVerticalMasterRoutes
     (stField : UnifyState) (rf : RowFields) : Prop where
   regular : PrincipalBoundarySoundFullVerticalRoutes st fuel env e fs stExpr ty stField rf
   dual : PrincipalBoundarySoundFullVerticalRoutes st fuel env e fs stExpr ty stField rf
+
+/-- Explicit component alias for `PrincipalBoundarySoundFullVerticalMasterRoutes`. -/
+abbrev PrincipalBoundarySoundFullVerticalMasterRoutesComponents
+    (st : UnifyState) (fuel : Nat) (env : TermEnv)
+    (e : CoreExpr) (fs : CoreFields)
+    (stExpr : UnifyState) (ty : Ty)
+    (stField : UnifyState) (rf : RowFields) : Prop :=
+  PrincipalBoundarySoundFullVerticalRoutes st fuel env e fs stExpr ty stField rf
+    ∧ PrincipalBoundarySoundFullVerticalRoutes st fuel env e fs stExpr ty stField rf
+
+/-- `PrincipalBoundarySoundFullVerticalMasterRoutes` is equivalent to explicit components. -/
+theorem principalBoundarySoundFullVerticalMasterRoutes_iff_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv)
+    (e : CoreExpr) (fs : CoreFields)
+    (stExpr : UnifyState) (ty : Ty)
+    (stField : UnifyState) (rf : RowFields) :
+    PrincipalBoundarySoundFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf
+      ↔ PrincipalBoundarySoundFullVerticalMasterRoutesComponents
+          st fuel env e fs stExpr ty stField rf := by
+  constructor
+  · intro h_master
+    exact ⟨h_master.regular, h_master.dual⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2⟩
+
+/-- Build `PrincipalBoundarySoundFullVerticalMasterRoutes` from explicit components. -/
+theorem principalBoundarySoundFullVerticalMasterRoutes_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv)
+    (e : CoreExpr) (fs : CoreFields)
+    (stExpr : UnifyState) (ty : Ty)
+    (stField : UnifyState) (rf : RowFields)
+    (h_comp :
+      PrincipalBoundarySoundFullVerticalMasterRoutesComponents
+        st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf :=
+  (principalBoundarySoundFullVerticalMasterRoutes_iff_components
+    st fuel env e fs stExpr ty stField rf).2 h_comp
+
+/-- Decompose `PrincipalBoundarySoundFullVerticalMasterRoutes` into explicit components. -/
+theorem principalBoundarySoundFullVerticalMasterRoutes_as_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv)
+    (e : CoreExpr) (fs : CoreFields)
+    (stExpr : UnifyState) (ty : Ty)
+    (stField : UnifyState) (rf : RowFields)
+    (h_master :
+      PrincipalBoundarySoundFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundFullVerticalMasterRoutesComponents
+      st fuel env e fs stExpr ty stField rf :=
+  (principalBoundarySoundFullVerticalMasterRoutes_iff_components
+    st fuel env e fs stExpr ty stField rf).1 h_master
+
+/-- Direct components-route decomposition for `PrincipalBoundarySoundFullVerticalMasterRoutes`. -/
+theorem principalBoundarySoundFullVerticalMasterRoutes_as_components_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv)
+    (e : CoreExpr) (fs : CoreFields)
+    (stExpr : UnifyState) (ty : Ty)
+    (stField : UnifyState) (rf : RowFields)
+    (h_comp :
+      PrincipalBoundarySoundFullVerticalMasterRoutesComponents
+        st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundFullVerticalMasterRoutesComponents
+      st fuel env e fs stExpr ty stField rf :=
+  (principalBoundarySoundFullVerticalMasterRoutes_iff_components
+    st fuel env e fs stExpr ty stField rf).1
+    (principalBoundarySoundFullVerticalMasterRoutes_of_components
+      st fuel env e fs stExpr ty stField rf h_comp)
 
 /-- Build `FullVertical` master routes from a bundled hook seed. -/
 theorem principalBoundarySoundFullVerticalMasterRoutes_of_success_from_bundle
@@ -30329,6 +30461,72 @@ structure PrincipalBoundarySoundNoUnifyFullVerticalRoutes
   viaRowPolyBundle :
     PrincipalBoundarySoundNoUnifyFullVerticalSuite st fuel env e fs stExpr ty stField rf
 
+/-- Explicit component alias for `PrincipalBoundarySoundNoUnifyFullVerticalRoutes`. -/
+abbrev PrincipalBoundarySoundNoUnifyFullVerticalRoutesComponents
+    (st : UnifyState) (fuel : Nat) (env : TermEnv)
+    (e : CoreExpr) (fs : CoreFields)
+    (stExpr : UnifyState) (ty : Ty)
+    (stField : UnifyState) (rf : RowFields) : Prop :=
+  PrincipalBoundarySoundNoUnifyFullVerticalSuite st fuel env e fs stExpr ty stField rf
+    ∧ PrincipalBoundarySoundNoUnifyFullVerticalSuite st fuel env e fs stExpr ty stField rf
+
+/-- `PrincipalBoundarySoundNoUnifyFullVerticalRoutes` is equivalent to explicit components. -/
+theorem principalBoundarySoundNoUnifyFullVerticalRoutes_iff_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv)
+    (e : CoreExpr) (fs : CoreFields)
+    (stExpr : UnifyState) (ty : Ty)
+    (stField : UnifyState) (rf : RowFields) :
+    PrincipalBoundarySoundNoUnifyFullVerticalRoutes st fuel env e fs stExpr ty stField rf
+      ↔ PrincipalBoundarySoundNoUnifyFullVerticalRoutesComponents
+          st fuel env e fs stExpr ty stField rf := by
+  constructor
+  · intro h_routes
+    exact ⟨h_routes.viaTypingSuite, h_routes.viaRowPolyBundle⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2⟩
+
+/-- Build `PrincipalBoundarySoundNoUnifyFullVerticalRoutes` from explicit components. -/
+theorem principalBoundarySoundNoUnifyFullVerticalRoutes_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv)
+    (e : CoreExpr) (fs : CoreFields)
+    (stExpr : UnifyState) (ty : Ty)
+    (stField : UnifyState) (rf : RowFields)
+    (h_comp :
+      PrincipalBoundarySoundNoUnifyFullVerticalRoutesComponents
+        st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundNoUnifyFullVerticalRoutes st fuel env e fs stExpr ty stField rf :=
+  (principalBoundarySoundNoUnifyFullVerticalRoutes_iff_components
+    st fuel env e fs stExpr ty stField rf).2 h_comp
+
+/-- Decompose `PrincipalBoundarySoundNoUnifyFullVerticalRoutes` into explicit components. -/
+theorem principalBoundarySoundNoUnifyFullVerticalRoutes_as_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv)
+    (e : CoreExpr) (fs : CoreFields)
+    (stExpr : UnifyState) (ty : Ty)
+    (stField : UnifyState) (rf : RowFields)
+    (h_routes :
+      PrincipalBoundarySoundNoUnifyFullVerticalRoutes st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundNoUnifyFullVerticalRoutesComponents
+      st fuel env e fs stExpr ty stField rf :=
+  (principalBoundarySoundNoUnifyFullVerticalRoutes_iff_components
+    st fuel env e fs stExpr ty stField rf).1 h_routes
+
+/-- Direct components-route decomposition for no-unify full+vertical routes. -/
+theorem principalBoundarySoundNoUnifyFullVerticalRoutes_as_components_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv)
+    (e : CoreExpr) (fs : CoreFields)
+    (stExpr : UnifyState) (ty : Ty)
+    (stField : UnifyState) (rf : RowFields)
+    (h_comp :
+      PrincipalBoundarySoundNoUnifyFullVerticalRoutesComponents
+        st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundNoUnifyFullVerticalRoutesComponents
+      st fuel env e fs stExpr ty stField rf :=
+  (principalBoundarySoundNoUnifyFullVerticalRoutes_iff_components
+    st fuel env e fs stExpr ty stField rf).1
+    (principalBoundarySoundNoUnifyFullVerticalRoutes_of_components
+      st fuel env e fs stExpr ty stField rf h_comp)
+
 /-- Build no-unify full+vertical route-pair packaging from successful runs. -/
 theorem principalBoundarySoundNoUnifyFullVerticalRoutes_of_success
     {h_app : AppUnifySoundHook} {h_proj : ProjUnifySoundHook}
@@ -30577,6 +30775,72 @@ structure PrincipalBoundarySoundNoUnifyFullVerticalMasterRoutes
     PrincipalBoundarySoundNoUnifyFullVerticalRoutes st fuel env e fs stExpr ty stField rf
   dual :
     PrincipalBoundarySoundNoUnifyFullVerticalRoutes st fuel env e fs stExpr ty stField rf
+
+/-- Explicit component alias for `PrincipalBoundarySoundNoUnifyFullVerticalMasterRoutes`. -/
+abbrev PrincipalBoundarySoundNoUnifyFullVerticalMasterRoutesComponents
+    (st : UnifyState) (fuel : Nat) (env : TermEnv)
+    (e : CoreExpr) (fs : CoreFields)
+    (stExpr : UnifyState) (ty : Ty)
+    (stField : UnifyState) (rf : RowFields) : Prop :=
+  PrincipalBoundarySoundNoUnifyFullVerticalRoutes st fuel env e fs stExpr ty stField rf
+    ∧ PrincipalBoundarySoundNoUnifyFullVerticalRoutes st fuel env e fs stExpr ty stField rf
+
+/-- `PrincipalBoundarySoundNoUnifyFullVerticalMasterRoutes` is equivalent to explicit components. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterRoutes_iff_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv)
+    (e : CoreExpr) (fs : CoreFields)
+    (stExpr : UnifyState) (ty : Ty)
+    (stField : UnifyState) (rf : RowFields) :
+    PrincipalBoundarySoundNoUnifyFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf
+      ↔ PrincipalBoundarySoundNoUnifyFullVerticalMasterRoutesComponents
+          st fuel env e fs stExpr ty stField rf := by
+  constructor
+  · intro h_master
+    exact ⟨h_master.regular, h_master.dual⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2⟩
+
+/-- Build `PrincipalBoundarySoundNoUnifyFullVerticalMasterRoutes` from explicit components. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterRoutes_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv)
+    (e : CoreExpr) (fs : CoreFields)
+    (stExpr : UnifyState) (ty : Ty)
+    (stField : UnifyState) (rf : RowFields)
+    (h_comp :
+      PrincipalBoundarySoundNoUnifyFullVerticalMasterRoutesComponents
+        st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundNoUnifyFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf :=
+  (principalBoundarySoundNoUnifyFullVerticalMasterRoutes_iff_components
+    st fuel env e fs stExpr ty stField rf).2 h_comp
+
+/-- Decompose `PrincipalBoundarySoundNoUnifyFullVerticalMasterRoutes` into explicit components. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterRoutes_as_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv)
+    (e : CoreExpr) (fs : CoreFields)
+    (stExpr : UnifyState) (ty : Ty)
+    (stField : UnifyState) (rf : RowFields)
+    (h_master :
+      PrincipalBoundarySoundNoUnifyFullVerticalMasterRoutes st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundNoUnifyFullVerticalMasterRoutesComponents
+      st fuel env e fs stExpr ty stField rf :=
+  (principalBoundarySoundNoUnifyFullVerticalMasterRoutes_iff_components
+    st fuel env e fs stExpr ty stField rf).1 h_master
+
+/-- Direct components-route decomposition for no-unify full+vertical master routes. -/
+theorem principalBoundarySoundNoUnifyFullVerticalMasterRoutes_as_components_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv)
+    (e : CoreExpr) (fs : CoreFields)
+    (stExpr : UnifyState) (ty : Ty)
+    (stField : UnifyState) (rf : RowFields)
+    (h_comp :
+      PrincipalBoundarySoundNoUnifyFullVerticalMasterRoutesComponents
+        st fuel env e fs stExpr ty stField rf) :
+    PrincipalBoundarySoundNoUnifyFullVerticalMasterRoutesComponents
+      st fuel env e fs stExpr ty stField rf :=
+  (principalBoundarySoundNoUnifyFullVerticalMasterRoutes_iff_components
+    st fuel env e fs stExpr ty stField rf).1
+    (principalBoundarySoundNoUnifyFullVerticalMasterRoutes_of_components
+      st fuel env e fs stExpr ty stField rf h_comp)
 
 /-- Build no-unify full+vertical master routes from a bundled hook seed. -/
 theorem principalBoundarySoundNoUnifyFullVerticalMasterRoutes_of_success_from_bundle

@@ -10216,3 +10216,40 @@ and observed an empty result set.
 **Impact**:
 - Eliminates remaining one-hop decomposition gaps and stabilizes constructor
   route consumption on explicit component aliases.
+
+### 2026-03-01: full-vertical route package decomposition aliases
+
+**Context**: Added route-package component aliases and structural decomposition
+APIs in `Kea/Typing.lean` for:
+- `PrincipalBoundarySoundFullVerticalRoutes`
+- `PrincipalBoundarySoundFullVerticalMasterRoutes`
+- `PrincipalBoundarySoundNoUnifyFullVerticalRoutes`
+- `PrincipalBoundarySoundNoUnifyFullVerticalMasterRoutes`
+
+For each package: added `...Components` alias plus
+`..._{iff_components,of_components,as_components,as_components_of_components}`.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Structural API expansion only; no runtime semantic change.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Full-vertical route packages now support the same alias-based decomposition
+  workflows already established on suite-level theorem surfaces.
+
+**Impact**:
+- Makes route-layer principal bundles uniformly reconstructible/projectable via
+  named component contracts.
