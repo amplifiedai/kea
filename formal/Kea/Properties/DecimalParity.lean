@@ -580,6 +580,10 @@ structure NumericConstructorKernelSuite : Prop where
   precision : PrecisionConstructorKernelSlice
   decimal : DecimalConstDimKernelSlice
 
+/-- Explicit component pair alias for `NumericConstructorKernelSuite`. -/
+abbrev NumericConstructorKernelSuiteComponents : Prop :=
+  PrecisionConstructorKernelSlice ∧ DecimalConstDimKernelSlice
+
 /-- Canonical numeric constructor kernel suite. -/
 theorem numericConstructorKernelSuite : NumericConstructorKernelSuite := by
   exact
@@ -590,7 +594,7 @@ theorem numericConstructorKernelSuite : NumericConstructorKernelSuite := by
     components. -/
 theorem numericConstructorKernelSuite_as_components
     (suite : NumericConstructorKernelSuite) :
-    PrecisionConstructorKernelSlice ∧ DecimalConstDimKernelSlice :=
+    NumericConstructorKernelSuiteComponents :=
   ⟨suite.precision, suite.decimal⟩
 
 /-- Build the numeric constructor suite from explicit components. -/
@@ -606,7 +610,7 @@ theorem numericConstructorKernelSuite_of_components
 theorem numericConstructorKernelSuite_iff_components
     (suite : NumericConstructorKernelSuite) :
     NumericConstructorKernelSuite ↔
-      (PrecisionConstructorKernelSlice ∧ DecimalConstDimKernelSlice) := by
+      NumericConstructorKernelSuiteComponents := by
   constructor
   · intro h
     exact numericConstructorKernelSuite_as_components h
@@ -615,8 +619,8 @@ theorem numericConstructorKernelSuite_iff_components
 
 /-- Direct component-route decomposition for `NumericConstructorKernelSuite`. -/
 theorem numericConstructorKernelSuite_as_components_of_components
-    (h_comp : PrecisionConstructorKernelSlice ∧ DecimalConstDimKernelSlice) :
-    PrecisionConstructorKernelSlice ∧ DecimalConstDimKernelSlice := by
+    (h_comp : NumericConstructorKernelSuiteComponents) :
+    NumericConstructorKernelSuiteComponents := by
   simpa using h_comp
 
 /-- Decimal and non-decimal types do not unify. -/
