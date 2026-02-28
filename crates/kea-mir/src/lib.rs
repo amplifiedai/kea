@@ -511,48 +511,77 @@ fn fuse_release_alloc_same_layout(function: &mut MirFunction, layouts: &MirLayou
         let mut instructions = Vec::with_capacity(block.instructions.len());
         let mut idx = 0usize;
         while idx < block.instructions.len() {
-            let candidate = match &block.instructions[idx] {
-                MirInst::Release { value } => {
-                    let probe = idx + 1;
-                    match block.instructions.get(probe) {
-                        Some(MirInst::RecordInit {
-                            dest,
-                            record_type,
-                            fields,
-                        }) => Some((value.clone(), dest.clone(), record_type.clone(), fields.clone())),
-                        _ => None,
-                    }
+            let released_value = match &block.instructions[idx] {
+                MirInst::Release { value } => value.clone(),
+                _ => {
+                    instructions.push(block.instructions[idx].clone());
+                    idx += 1;
+                    continue;
                 }
-                _ => None,
             };
-            let Some((released_value, reuse_dest, record_type, fields)) = candidate else {
+
+            let Some((probe, reuse_dest, record_type, fields)) =
+                find_record_reuse_probe(block, idx, &released_value, layouts, &layout_keys)
+            else {
                 instructions.push(block.instructions[idx].clone());
                 idx += 1;
                 continue;
             };
 
-            let release_layout = layout_keys.get(&released_value);
-            let alloc_layout = Some(format!("record:{record_type}"));
-            let layout_matches = release_layout == alloc_layout.as_ref();
-            let layout_is_reusable = record_layout_is_reuse_eligible(layouts, &record_type);
-            let source_mentioned_in_fields =
-                fields.iter().any(|(_, field_value)| *field_value == released_value);
-            if layout_matches && layout_is_reusable && !source_mentioned_in_fields {
-                instructions.push(MirInst::RecordInitReuse {
-                    dest: reuse_dest,
-                    source: released_value,
-                    record_type,
-                    fields,
-                });
-                idx += 2;
-                continue;
+            for inst in &block.instructions[idx + 1..probe] {
+                instructions.push(inst.clone());
             }
-
-            instructions.push(block.instructions[idx].clone());
-            idx += 1;
+            instructions.push(MirInst::RecordInitReuse {
+                dest: reuse_dest,
+                source: released_value,
+                record_type,
+                fields,
+            });
+            idx = probe + 1;
         }
         block.instructions = instructions;
     }
+}
+
+type RecordReuseProbe = (usize, MirValueId, String, Vec<(String, MirValueId)>);
+
+fn find_record_reuse_probe(
+    block: &MirBlock,
+    release_idx: usize,
+    released_value: &MirValueId,
+    layouts: &MirLayoutCatalog,
+    layout_keys: &BTreeMap<MirValueId, String>,
+) -> Option<RecordReuseProbe> {
+    let release_layout = layout_keys.get(released_value)?;
+    for probe in release_idx + 1..block.instructions.len() {
+        let inst = &block.instructions[probe];
+        if inst_reads_value(inst, released_value)
+            || inst_defined_value(inst).is_some_and(|dest| dest == released_value)
+        {
+            return None;
+        }
+        match inst {
+            MirInst::RecordInit {
+                dest,
+                record_type,
+                fields,
+            } => {
+                let alloc_layout = format!("record:{record_type}");
+                let layout_matches = alloc_layout == *release_layout;
+                let layout_is_reusable = record_layout_is_reuse_eligible(layouts, record_type);
+                let source_mentioned_in_fields = fields
+                    .iter()
+                    .any(|(_, field_value)| field_value == released_value);
+                if layout_matches && layout_is_reusable && !source_mentioned_in_fields {
+                    return Some((probe, dest.clone(), record_type.clone(), fields.clone()));
+                }
+                return None;
+            }
+            _ if inst.is_memory_op() => return None,
+            _ => {}
+        }
+    }
+    None
 }
 
 fn infer_heap_layout_keys(function: &MirFunction) -> BTreeMap<MirValueId, String> {
@@ -6806,6 +6835,143 @@ mod tests {
                 .iter()
                 .all(|inst| !matches!(inst, MirInst::RecordInitReuse { .. })),
             "managed-field records should not be fused into reuse init"
+        );
+    }
+
+    #[test]
+    fn fuse_release_alloc_same_layout_rewrites_non_adjacent_non_interfering_init() {
+        let layouts = MirLayoutCatalog {
+            records: vec![MirRecordLayout {
+                name: "Point".to_string(),
+                fields: vec![MirRecordFieldLayout {
+                    name: "x".to_string(),
+                    annotation: TypeAnnotation::Named("Int".to_string()),
+                }],
+            }],
+            sums: vec![],
+        };
+        let mut function = MirFunction {
+            name: "main".to_string(),
+            signature: MirFunctionSignature {
+                params: vec![],
+                ret: Type::Unit,
+                effects: EffectRow::pure(),
+            },
+            entry: MirBlockId(0),
+            blocks: vec![MirBlock {
+                id: MirBlockId(0),
+                params: vec![],
+                instructions: vec![
+                    MirInst::Const {
+                        dest: MirValueId(0),
+                        literal: MirLiteral::Int(1),
+                    },
+                    MirInst::RecordInit {
+                        dest: MirValueId(1),
+                        record_type: "Point".to_string(),
+                        fields: vec![("x".to_string(), MirValueId(0))],
+                    },
+                    MirInst::Release {
+                        value: MirValueId(1),
+                    },
+                    MirInst::Const {
+                        dest: MirValueId(2),
+                        literal: MirLiteral::Int(99),
+                    },
+                    MirInst::RecordInit {
+                        dest: MirValueId(3),
+                        record_type: "Point".to_string(),
+                        fields: vec![("x".to_string(), MirValueId(2))],
+                    },
+                ],
+                terminator: MirTerminator::Return {
+                    value: Some(MirValueId(3)),
+                },
+            }],
+        };
+
+        fuse_release_alloc_same_layout(&mut function, &layouts);
+
+        assert!(matches!(
+            function.blocks[0].instructions[2],
+            MirInst::Const {
+                dest: MirValueId(2),
+                literal: MirLiteral::Int(99)
+            }
+        ));
+        assert!(matches!(
+            function.blocks[0].instructions[3],
+            MirInst::RecordInitReuse {
+                source: MirValueId(1),
+                dest: MirValueId(3),
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn fuse_release_alloc_same_layout_stops_when_released_value_is_read_before_alloc() {
+        let layouts = MirLayoutCatalog {
+            records: vec![MirRecordLayout {
+                name: "Point".to_string(),
+                fields: vec![MirRecordFieldLayout {
+                    name: "x".to_string(),
+                    annotation: TypeAnnotation::Named("Int".to_string()),
+                }],
+            }],
+            sums: vec![],
+        };
+        let mut function = MirFunction {
+            name: "main".to_string(),
+            signature: MirFunctionSignature {
+                params: vec![],
+                ret: Type::Unit,
+                effects: EffectRow::pure(),
+            },
+            entry: MirBlockId(0),
+            blocks: vec![MirBlock {
+                id: MirBlockId(0),
+                params: vec![],
+                instructions: vec![
+                    MirInst::Const {
+                        dest: MirValueId(0),
+                        literal: MirLiteral::Int(1),
+                    },
+                    MirInst::RecordInit {
+                        dest: MirValueId(1),
+                        record_type: "Point".to_string(),
+                        fields: vec![("x".to_string(), MirValueId(0))],
+                    },
+                    MirInst::Release {
+                        value: MirValueId(1),
+                    },
+                    MirInst::RecordFieldLoad {
+                        dest: MirValueId(2),
+                        record: MirValueId(1),
+                        record_type: "Point".to_string(),
+                        field: "x".to_string(),
+                        field_ty: Type::Int,
+                    },
+                    MirInst::RecordInit {
+                        dest: MirValueId(3),
+                        record_type: "Point".to_string(),
+                        fields: vec![("x".to_string(), MirValueId(2))],
+                    },
+                ],
+                terminator: MirTerminator::Return {
+                    value: Some(MirValueId(3)),
+                },
+            }],
+        };
+
+        fuse_release_alloc_same_layout(&mut function, &layouts);
+
+        assert!(
+            function.blocks[0]
+                .instructions
+                .iter()
+                .all(|inst| !matches!(inst, MirInst::RecordInitReuse { .. })),
+            "released value use before alloc should block reuse fusion"
         );
     }
 
