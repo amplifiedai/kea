@@ -299,6 +299,15 @@ theorem operationCallBundle_declared_of_typing
     operationDeclared decl opName :=
   (operationCallBundle_of_typing decl effects opName argTy retTy h_call).declared
 
+theorem operationCallBundle_callTyping_of_typing
+    (decl : EffectDecl)
+    (effects : EffectRow)
+    (opName : Label)
+    (argTy retTy : Ty)
+    (h_call : operationCallTyping decl opName argTy retTy) :
+    operationCallTyping decl opName argTy retTy :=
+  (operationCallBundle_of_typing decl effects opName argTy retTy h_call).callTyping
+
 theorem operationCallBundle_rowTailStable_of_typing
     (decl : EffectDecl)
     (effects : EffectRow)
