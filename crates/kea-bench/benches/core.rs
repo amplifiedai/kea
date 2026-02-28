@@ -4,7 +4,7 @@ use std::sync::{Mutex, OnceLock};
 
 use divan::{AllocProfiler, Bencher};
 use kea::{compile_module, execute_jit};
-use kea_ast::{BinOp, DeclKind, FileId, Lit, Module, Span};
+use kea_ast::{BinOp, DeclKind, FileId, Lit, Module, RecordDef, Span, Spanned, TypeAnnotation};
 use kea_codegen::{BackendConfig, CraneliftBackend, compile_hir_module};
 use kea_hir::{HirDecl, HirExpr, HirExprKind, HirFunction, HirModule, HirPattern};
 use kea_infer::InferenceContext;
@@ -565,19 +565,36 @@ fn build_linear_heap_alias_chain_hir_module(levels: usize) -> HirModule {
         span,
     });
 
+    let box_record_decl = HirDecl::Raw(DeclKind::RecordDef(RecordDef {
+        public: true,
+        name: Spanned::new("Box".to_string(), span),
+        doc: None,
+        annotations: vec![],
+        params: vec![],
+        fields: vec![(
+            Spanned::new("n".to_string(), span),
+            TypeAnnotation::Named("Int".to_string()),
+        )],
+        field_annotations: vec![],
+        derives: vec![],
+    }));
+
     HirModule {
-        declarations: vec![HirDecl::Function(HirFunction {
-            name: "main".to_string(),
-            params: vec![],
-            body: HirExpr {
-                kind: HirExprKind::Block(exprs),
-                ty: Type::Int,
+        declarations: vec![
+            box_record_decl,
+            HirDecl::Function(HirFunction {
+                name: "main".to_string(),
+                params: vec![],
+                body: HirExpr {
+                    kind: HirExprKind::Block(exprs),
+                    ty: Type::Int,
+                    span,
+                },
+                ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
+                effects: EffectRow::pure(),
                 span,
-            },
-            ty: Type::Function(FunctionType::pure(vec![], Type::Int)),
-            effects: EffectRow::pure(),
-            span,
-        })],
+            }),
+        ],
     }
 }
 
