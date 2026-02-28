@@ -763,5 +763,149 @@ theorem higherOrderCatchClassification_iff_catchTypingClassification
     exact higherOrderCatchClassification_of_catchTypingClassification
       clause innerEffects okTy errTy loweredTy h_clauseEffects h_class
 
+/--
+Packaged bridge-law surface linking higher-order and generic catch outcomes
+under clause-effect identification.
+-/
+structure HigherOrderCatchBridgeLaws
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty) : Prop where
+  capstoneIff :
+    HigherOrderCatchCapstoneOutcome clause innerEffects okTy errTy loweredTy
+      ↔ CatchTypingBridge.CatchTypingCapstoneOutcome
+          clause
+          (.cons (higherOrderParamType innerEffects okTy) .nil)
+          okTy
+          errTy
+          loweredTy
+  classificationIff :
+    (HigherOrderCatchCapstoneOutcome clause innerEffects okTy errTy loweredTy ∨
+      FailResultContracts.catchUnnecessary innerEffects)
+      ↔
+    (CatchTypingBridge.CatchTypingCapstoneOutcome
+      clause
+      (.cons (higherOrderParamType innerEffects okTy) .nil)
+      okTy
+      errTy
+      loweredTy
+      ∨ FailResultContracts.catchUnnecessary clause.exprEffects)
+
+/-- Construct packaged higher-order catch bridge laws from clause-effect identification. -/
+theorem higherOrderCatchBridgeLaws_of_clauseEffects
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_clauseEffects : clause.exprEffects = innerEffects) :
+    HigherOrderCatchBridgeLaws clause innerEffects okTy errTy loweredTy := by
+  refine {
+    capstoneIff :=
+      higherOrderCatchCapstoneOutcome_iff_catchTypingCapstoneOutcome
+        clause innerEffects okTy errTy loweredTy h_clauseEffects
+    classificationIff :=
+      higherOrderCatchClassification_iff_catchTypingClassification
+        clause innerEffects okTy errTy loweredTy h_clauseEffects
+  }
+
+/-- One-hop projection: capstone equivalence from packaged higher-order catch bridge laws. -/
+theorem higherOrderCatchBridgeLaws_capstoneIff
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_laws : HigherOrderCatchBridgeLaws clause innerEffects okTy errTy loweredTy) :
+    HigherOrderCatchCapstoneOutcome clause innerEffects okTy errTy loweredTy
+      ↔ CatchTypingBridge.CatchTypingCapstoneOutcome
+          clause
+          (.cons (higherOrderParamType innerEffects okTy) .nil)
+          okTy
+          errTy
+          loweredTy :=
+  h_laws.capstoneIff
+
+/-- One-hop projection: classifier equivalence from packaged higher-order catch bridge laws. -/
+theorem higherOrderCatchBridgeLaws_classificationIff
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_laws : HigherOrderCatchBridgeLaws clause innerEffects okTy errTy loweredTy) :
+    (HigherOrderCatchCapstoneOutcome clause innerEffects okTy errTy loweredTy ∨
+      FailResultContracts.catchUnnecessary innerEffects)
+      ↔
+    (CatchTypingBridge.CatchTypingCapstoneOutcome
+      clause
+      (.cons (higherOrderParamType innerEffects okTy) .nil)
+      okTy
+      errTy
+      loweredTy
+      ∨ FailResultContracts.catchUnnecessary clause.exprEffects) :=
+  h_laws.classificationIff
+
+/-- Transport a higher-order capstone to generic form via packaged bridge laws. -/
+theorem higherOrderCatchBridgeLaws_capstone_to_generic
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_laws : HigherOrderCatchBridgeLaws clause innerEffects okTy errTy loweredTy)
+    (h_cap : HigherOrderCatchCapstoneOutcome clause innerEffects okTy errTy loweredTy) :
+    CatchTypingBridge.CatchTypingCapstoneOutcome
+      clause
+      (.cons (higherOrderParamType innerEffects okTy) .nil)
+      okTy
+      errTy
+      loweredTy :=
+  (h_laws.capstoneIff).1 h_cap
+
+/-- Transport a generic capstone to higher-order form via packaged bridge laws. -/
+theorem higherOrderCatchBridgeLaws_generic_to_capstone
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_laws : HigherOrderCatchBridgeLaws clause innerEffects okTy errTy loweredTy)
+    (h_cap :
+      CatchTypingBridge.CatchTypingCapstoneOutcome
+        clause
+        (.cons (higherOrderParamType innerEffects okTy) .nil)
+        okTy
+        errTy
+        loweredTy) :
+    HigherOrderCatchCapstoneOutcome clause innerEffects okTy errTy loweredTy :=
+  (h_laws.capstoneIff).2 h_cap
+
+/-- Transport a higher-order classifier to generic form via packaged bridge laws. -/
+theorem higherOrderCatchBridgeLaws_classification_to_generic
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_laws : HigherOrderCatchBridgeLaws clause innerEffects okTy errTy loweredTy)
+    (h_class :
+      HigherOrderCatchCapstoneOutcome clause innerEffects okTy errTy loweredTy ∨
+        FailResultContracts.catchUnnecessary innerEffects) :
+    (CatchTypingBridge.CatchTypingCapstoneOutcome
+      clause
+      (.cons (higherOrderParamType innerEffects okTy) .nil)
+      okTy
+      errTy
+      loweredTy
+      ∨ FailResultContracts.catchUnnecessary clause.exprEffects) :=
+  (h_laws.classificationIff).1 h_class
+
+/-- Transport a generic classifier to higher-order form via packaged bridge laws. -/
+theorem higherOrderCatchBridgeLaws_generic_to_classification
+    (clause : HandleClauseContract)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_laws : HigherOrderCatchBridgeLaws clause innerEffects okTy errTy loweredTy)
+    (h_class :
+      CatchTypingBridge.CatchTypingCapstoneOutcome
+        clause
+        (.cons (higherOrderParamType innerEffects okTy) .nil)
+        okTy
+        errTy
+        loweredTy
+        ∨ FailResultContracts.catchUnnecessary clause.exprEffects) :
+    (HigherOrderCatchCapstoneOutcome clause innerEffects okTy errTy loweredTy ∨
+      FailResultContracts.catchUnnecessary innerEffects) :=
+  (h_laws.classificationIff).2 h_class
+
 end HigherOrderCatchContracts
 end Kea
