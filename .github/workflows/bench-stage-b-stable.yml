@@ -28,7 +28,7 @@ jobs:
       - name: Run stable-class stage B regression check (blocking)
         env:
           DIVAN_SAMPLE_COUNT: "40"
-        run: ./scripts/bench-export.sh benchmark-results/regression-stable/latest && ./scripts/bench-threshold-check.sh benchmark-results/regression-stable/latest/divan.summary.csv benchmarks/baselines/microbench-thresholds-stable.csv benchmark-results/regression-stable/latest
+        run: ./scripts/bench-export.sh benchmark-results/regression-stable/latest && ./scripts/bench-threshold-check.sh benchmark-results/regression-stable/latest/divan.summary.csv benchmarks/baselines/microbench-thresholds-stable.csv benchmark-results/regression-stable/latest && ./scripts/bench-reuse-floor-check.sh benchmark-results/regression-stable/latest/reuse.metrics.json benchmarks/baselines/reuse-token-floors-stable.csv benchmark-results/regression-stable/latest
 
       - name: Publish stable regression summary
         if: always()
@@ -37,6 +37,11 @@ jobs:
             cat benchmark-results/regression-stable/latest/regression.summary.md >> "$GITHUB_STEP_SUMMARY"
           else
             echo "No stable regression summary produced." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -f benchmark-results/regression-stable/latest/reuse.regression.summary.md ]; then
+            cat benchmark-results/regression-stable/latest/reuse.regression.summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No stable reuse regression summary produced." >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Upload stable regression artifacts
