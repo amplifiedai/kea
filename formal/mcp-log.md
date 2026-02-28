@@ -8746,3 +8746,40 @@ as `DimConstListKernelSlice` (`dimConstListKernelSlice`) for WP7.2 reuse.
   APIs without ad hoc tuple threading.
 - WP7.2 dim-aware theorem work can cite one stable kernel contract witness
   instead of repeatedly expanding constant-list kernel lemmas.
+
+### 2026-02-28: rank-1 shape/dim kernel contract packaging
+
+**Context**: Added a reusable rank-1 shape constructor package in
+`ShapeConstructorParity`:
+- `Rank1ShapeConstDimKernelSlice`
+- `rank1ShapeConstDimKernelSlice`
+
+This packages fixed-size-list and rank-1 tensor constant-dimension contracts
+(`ok ↔ kernel-success`, decision behavior, and kernel-failure rejection) behind
+one witness keyed by `unifyDim`.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- This is theorem packaging over existing proved shape/dim lemmas.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Rank-1 fixed-size-list/tensor dim-kernel contracts are now consumable from
+  one named theorem package.
+
+**Impact**:
+- Downstream WP7 shape/decimal proofs can cite one packaged witness instead of
+  threading per-family kernel contracts independently.
