@@ -8283,3 +8283,40 @@ external compile blocker.
 **Impact**:
 - Classifier and capstone aggregate layers now have symmetric one-step route
   projection APIs for closed-aware, tail, and catch consequences.
+
+### 2026-02-28: catch-pair premise/fail-present projection wrappers
+
+**Context**: Added direct premise/fail-present route projection wrappers on the
+coherent pair layer:
+- `effectHandlerCatchPairSuite_{classifier,capstone,catchLaws}_of_{premises,fail_present}`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type`.
+
+**Predict (Lean side)**:
+- Wrapper-only routing from existing catch-pair constructors/projections.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: blocked by unrelated non-formal `kea-infer` compile failures
+  (`cannot find value \`sum_types\``, call-arity mismatch in
+  `resolve_annotation_with_self_assoc_and_params`).
+- Ran fallback MCP probe binary:
+  `/tmp/kea-agent-targets/chris/019ca280-cb6c-72f3-9771-f519d3da1a94/debug/deps/kea_mcp-c086daa547f3e485 --nocapture`.
+- Fallback result: `10 passed; 0 failed`.
+
+**Classify**: Agreement on probed MCP slice; source-path precondition gap due
+external compile blocker.
+
+**Divergence**: none.
+
+**Outcome**:
+- Catch-pair routes now expose direct classifier/capstone/law projections from
+  premise/fail-present assumptions.
+- Lean + fallback MCP validation green.
+
+**Impact**:
+- Coherent pair consumers can stay on raw route assumptions while extracting
+  top-level pair consequences in one theorem step.
