@@ -122,6 +122,14 @@ pub enum MirInst {
         tag: u32,
         fields: Vec<MirValueId>,
     },
+    SumInitReuse {
+        dest: MirValueId,
+        source: MirValueId,
+        sum_type: String,
+        variant: String,
+        tag: u32,
+        fields: Vec<MirValueId>,
+    },
     SumTagLoad {
         dest: MirValueId,
         sum: MirValueId,
@@ -333,6 +341,7 @@ impl MirInst {
                 | MirInst::RecordInit { .. }
                 | MirInst::RecordInitReuse { .. }
                 | MirInst::SumInit { .. }
+                | MirInst::SumInitReuse { .. }
                 | MirInst::ClosureInit { .. }
                 | MirInst::SumTagLoad { .. }
                 | MirInst::SumPayloadLoad { .. }
@@ -520,8 +529,8 @@ fn fuse_release_alloc_same_layout(function: &mut MirFunction, layouts: &MirLayou
                 }
             };
 
-            let Some((probe, reuse_dest, record_type, fields)) =
-                find_record_reuse_probe(block, idx, &released_value, layouts, &layout_keys)
+            let Some((probe, candidate)) =
+                find_reuse_probe(block, idx, &released_value, layouts, &layout_keys)
             else {
                 instructions.push(block.instructions[idx].clone());
                 idx += 1;
@@ -531,27 +540,63 @@ fn fuse_release_alloc_same_layout(function: &mut MirFunction, layouts: &MirLayou
             for inst in &block.instructions[idx + 1..probe] {
                 instructions.push(inst.clone());
             }
-            instructions.push(MirInst::RecordInitReuse {
-                dest: reuse_dest,
-                source: released_value,
-                record_type,
-                fields,
-            });
+            match candidate {
+                ReuseInitCandidate::Record {
+                    dest,
+                    record_type,
+                    fields,
+                } => instructions.push(MirInst::RecordInitReuse {
+                    dest,
+                    source: released_value.clone(),
+                    record_type,
+                    fields,
+                }),
+                ReuseInitCandidate::Sum {
+                    dest,
+                    sum_type,
+                    variant,
+                    tag,
+                    fields,
+                } => instructions.push(MirInst::SumInitReuse {
+                    dest,
+                    source: released_value.clone(),
+                    sum_type,
+                    variant,
+                    tag,
+                    fields,
+                }),
+            }
             idx = probe + 1;
         }
         block.instructions = instructions;
     }
 }
 
-type RecordReuseProbe = (usize, MirValueId, String, Vec<(String, MirValueId)>);
+#[derive(Debug, Clone, PartialEq)]
+enum ReuseInitCandidate {
+    Record {
+        dest: MirValueId,
+        record_type: String,
+        fields: Vec<(String, MirValueId)>,
+    },
+    Sum {
+        dest: MirValueId,
+        sum_type: String,
+        variant: String,
+        tag: u32,
+        fields: Vec<MirValueId>,
+    },
+}
 
-fn find_record_reuse_probe(
+type ReuseProbe = (usize, ReuseInitCandidate);
+
+fn find_reuse_probe(
     block: &MirBlock,
     release_idx: usize,
     released_value: &MirValueId,
     layouts: &MirLayoutCatalog,
     layout_keys: &BTreeMap<MirValueId, String>,
-) -> Option<RecordReuseProbe> {
+) -> Option<ReuseProbe> {
     let release_layout = layout_keys.get(released_value)?;
     for probe in release_idx + 1..block.instructions.len() {
         let inst = &block.instructions[probe];
@@ -573,7 +618,40 @@ fn find_record_reuse_probe(
                     .iter()
                     .any(|(_, field_value)| field_value == released_value);
                 if layout_matches && layout_is_reusable && !source_mentioned_in_fields {
-                    return Some((probe, dest.clone(), record_type.clone(), fields.clone()));
+                    return Some((
+                        probe,
+                        ReuseInitCandidate::Record {
+                            dest: dest.clone(),
+                            record_type: record_type.clone(),
+                            fields: fields.clone(),
+                        },
+                    ));
+                }
+                return None;
+            }
+            MirInst::SumInit {
+                dest,
+                sum_type,
+                variant,
+                tag,
+                fields,
+            } => {
+                let alloc_layout = format!("sum:{sum_type}");
+                let layout_matches = alloc_layout == *release_layout;
+                let layout_is_reusable = sum_layout_is_reuse_eligible(layouts, sum_type);
+                let source_mentioned_in_fields =
+                    fields.iter().any(|field_value| field_value == released_value);
+                if layout_matches && layout_is_reusable && !source_mentioned_in_fields {
+                    return Some((
+                        probe,
+                        ReuseInitCandidate::Sum {
+                            dest: dest.clone(),
+                            sum_type: sum_type.clone(),
+                            variant: variant.clone(),
+                            tag: *tag,
+                            fields: fields.clone(),
+                        },
+                    ));
                 }
                 return None;
             }
@@ -611,6 +689,9 @@ fn infer_heap_layout_keys(function: &MirFunction) -> BTreeMap<MirValueId, String
                     keys.insert(dest.clone(), format!("record:{record_type}"));
                 }
                 MirInst::SumInit { dest, sum_type, .. } => {
+                    keys.insert(dest.clone(), format!("sum:{sum_type}"));
+                }
+                MirInst::SumInitReuse { dest, sum_type, .. } => {
                     keys.insert(dest.clone(), format!("sum:{sum_type}"));
                 }
                 MirInst::Move { dest, src }
@@ -652,6 +733,24 @@ fn record_layout_is_reuse_eligible(layouts: &MirLayoutCatalog, record_type: &str
     layout
         .fields
         .iter()
+        .all(|field| !annotation_is_heap_managed(&field.annotation))
+}
+
+fn sum_layout_is_reuse_eligible(layouts: &MirLayoutCatalog, sum_type: &str) -> bool {
+    let Some(layout) = layouts.sums.iter().find(|layout| layout.name == sum_type) else {
+        return false;
+    };
+    if layout
+        .variants
+        .iter()
+        .any(|variant| variant.fields.is_empty())
+    {
+        return false;
+    }
+    layout
+        .variants
+        .iter()
+        .flat_map(|variant| &variant.fields)
         .all(|field| !annotation_is_heap_managed(&field.annotation))
 }
 
@@ -722,6 +821,7 @@ fn inst_defined_value(inst: &MirInst) -> Option<&MirValueId> {
         | MirInst::RecordInit { dest, .. }
         | MirInst::RecordInitReuse { dest, .. }
         | MirInst::SumInit { dest, .. }
+        | MirInst::SumInitReuse { dest, .. }
         | MirInst::SumTagLoad { dest, .. }
         | MirInst::SumPayloadLoad { dest, .. }
         | MirInst::RecordFieldLoad { dest, .. }
@@ -764,6 +864,9 @@ fn inst_reads_value(inst: &MirInst, value: &MirValueId) -> bool {
             source == value || fields.iter().any(|(_, field)| field == value)
         }
         MirInst::SumInit { fields, .. } => fields.iter().any(|field| field == value),
+        MirInst::SumInitReuse { source, fields, .. } => {
+            source == value || fields.iter().any(|field| field == value)
+        }
         MirInst::SumTagLoad { sum, .. } => sum == value,
         MirInst::SumPayloadLoad { sum, .. } => sum == value,
         MirInst::RecordFieldLoad { record, .. } => record == value,
@@ -6972,6 +7075,174 @@ mod tests {
                 .iter()
                 .all(|inst| !matches!(inst, MirInst::RecordInitReuse { .. })),
             "released value use before alloc should block reuse fusion"
+        );
+    }
+
+    #[test]
+    fn fuse_release_alloc_same_layout_rewrites_sum_init_to_sum_init_reuse() {
+        let layouts = MirLayoutCatalog {
+            records: vec![],
+            sums: vec![MirSumLayout {
+                name: "Pairish".to_string(),
+                variants: vec![
+                    MirVariantLayout {
+                        name: "Left".to_string(),
+                        tag: 0,
+                        fields: vec![MirVariantFieldLayout {
+                            name: None,
+                            annotation: TypeAnnotation::Named("Int".to_string()),
+                        }],
+                    },
+                    MirVariantLayout {
+                        name: "Right".to_string(),
+                        tag: 1,
+                        fields: vec![MirVariantFieldLayout {
+                            name: None,
+                            annotation: TypeAnnotation::Named("Int".to_string()),
+                        }],
+                    },
+                ],
+            }],
+        };
+        let mut function = MirFunction {
+            name: "main".to_string(),
+            signature: MirFunctionSignature {
+                params: vec![],
+                ret: Type::Unit,
+                effects: EffectRow::pure(),
+            },
+            entry: MirBlockId(0),
+            blocks: vec![MirBlock {
+                id: MirBlockId(0),
+                params: vec![],
+                instructions: vec![
+                    MirInst::Const {
+                        dest: MirValueId(0),
+                        literal: MirLiteral::Int(1),
+                    },
+                    MirInst::SumInit {
+                        dest: MirValueId(1),
+                        sum_type: "Pairish".to_string(),
+                        variant: "Left".to_string(),
+                        tag: 0,
+                        fields: vec![MirValueId(0)],
+                    },
+                    MirInst::Release {
+                        value: MirValueId(1),
+                    },
+                    MirInst::Const {
+                        dest: MirValueId(2),
+                        literal: MirLiteral::Int(2),
+                    },
+                    MirInst::SumInit {
+                        dest: MirValueId(3),
+                        sum_type: "Pairish".to_string(),
+                        variant: "Right".to_string(),
+                        tag: 1,
+                        fields: vec![MirValueId(2)],
+                    },
+                ],
+                terminator: MirTerminator::Return {
+                    value: Some(MirValueId(3)),
+                },
+            }],
+        };
+
+        fuse_release_alloc_same_layout(&mut function, &layouts);
+
+        assert!(
+            function.blocks[0]
+                .instructions
+                .iter()
+                .any(|inst| matches!(
+                    inst,
+                    MirInst::SumInitReuse {
+                        source,
+                        sum_type,
+                        variant,
+                        ..
+                    } if *source == MirValueId(1) && sum_type == "Pairish" && variant == "Right"
+                )),
+            "expected release+sum init pair to fuse into SumInitReuse: {:?}",
+            function.blocks[0].instructions
+        );
+    }
+
+    #[test]
+    fn fuse_release_alloc_same_layout_skips_sum_reuse_for_unit_mixed_layouts() {
+        let layouts = MirLayoutCatalog {
+            records: vec![],
+            sums: vec![MirSumLayout {
+                name: "Option".to_string(),
+                variants: vec![
+                    MirVariantLayout {
+                        name: "Some".to_string(),
+                        tag: 0,
+                        fields: vec![MirVariantFieldLayout {
+                            name: None,
+                            annotation: TypeAnnotation::Named("Int".to_string()),
+                        }],
+                    },
+                    MirVariantLayout {
+                        name: "None".to_string(),
+                        tag: 1,
+                        fields: vec![],
+                    },
+                ],
+            }],
+        };
+        let mut function = MirFunction {
+            name: "main".to_string(),
+            signature: MirFunctionSignature {
+                params: vec![],
+                ret: Type::Unit,
+                effects: EffectRow::pure(),
+            },
+            entry: MirBlockId(0),
+            blocks: vec![MirBlock {
+                id: MirBlockId(0),
+                params: vec![],
+                instructions: vec![
+                    MirInst::Const {
+                        dest: MirValueId(0),
+                        literal: MirLiteral::Int(1),
+                    },
+                    MirInst::SumInit {
+                        dest: MirValueId(1),
+                        sum_type: "Option".to_string(),
+                        variant: "Some".to_string(),
+                        tag: 0,
+                        fields: vec![MirValueId(0)],
+                    },
+                    MirInst::Release {
+                        value: MirValueId(1),
+                    },
+                    MirInst::Const {
+                        dest: MirValueId(2),
+                        literal: MirLiteral::Int(2),
+                    },
+                    MirInst::SumInit {
+                        dest: MirValueId(3),
+                        sum_type: "Option".to_string(),
+                        variant: "Some".to_string(),
+                        tag: 0,
+                        fields: vec![MirValueId(2)],
+                    },
+                ],
+                terminator: MirTerminator::Return {
+                    value: Some(MirValueId(3)),
+                },
+            }],
+        };
+
+        fuse_release_alloc_same_layout(&mut function, &layouts);
+
+        assert!(
+            function.blocks[0]
+                .instructions
+                .iter()
+                .all(|inst| !matches!(inst, MirInst::SumInitReuse { .. })),
+            "mixed unit/payload sum layouts should not be fused into SumInitReuse"
         );
     }
 
