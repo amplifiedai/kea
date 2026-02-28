@@ -855,6 +855,25 @@
     }
 
     #[test]
+    fn compile_and_execute_real_stdlib_state_with_state_helper_exit_code() {
+        let project_dir = temp_workspace_project_dir("kea-cli-project-real-stdlib-state-with-state");
+        let src_dir = project_dir.join("src");
+        std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+
+        let app_path = src_dir.join("app.kea");
+        std::fs::write(
+            &app_path,
+            "use State\n\nfn bump() -[State Int]> Int\n  let s = State.get()\n  State.put(s + 1)\n  State.get()\n\nfn main() -> Int\n  let pair = State.with_state(41, bump)\n  pair.0 + pair.1\n",
+        )
+        .expect("app module write should succeed");
+
+        let run = run_file(&app_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 84);
+
+        let _ = std::fs::remove_dir_all(project_dir);
+    }
+
+    #[test]
     fn compile_and_execute_real_stdlib_log_effect_module_exit_code() {
         let project_dir = temp_workspace_project_dir("kea-cli-project-real-stdlib-log");
         let src_dir = project_dir.join("src");
@@ -2940,6 +2959,48 @@
     }
 
     #[test]
+    fn compile_and_execute_effectful_generic_callback_return_exit_code() {
+        let source_path = write_temp_source(
+            "effect Reader C\n  fn ask() -> C\n\nfn with_reader(env: C, f: fn() -[Reader C]> T) -> T\n  handle f()\n    Reader.ask() -> resume env\n\nfn app() -[Reader Int]> Int\n  Reader.ask() + 1\n\nfn main() -> Int\n  with_reader(41, app)\n",
+            "kea-cli-effectful-generic-callback-return",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("effectful generic callback should run");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_log_side_effecting_handler_clause_exit_code() {
+        let source_path = write_temp_source(
+            "effect IO\n  fn stdout(msg: String) -> Unit\n\neffect Log\n  fn info(msg: String) -> Unit\n\nfn program() -[Log]> Int\n  Log.info(\"hello\")\n  7\n\nfn with_stdout_logger(f: fn() -[Log]> Int) -[IO]> Int\n  handle f()\n    Log.info(msg) ->\n      IO.stdout(msg)\n      resume ()\n\nfn main() -[IO]> Int\n  with_stdout_logger(program)\n",
+            "kea-cli-log-side-effecting-handler-clause",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("side-effecting log handler should run");
+        assert_eq!(run.exit_code, 7);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_handle_then_clause_reads_handled_state_exit_code() {
+        let source_path = write_temp_source(
+            "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn bump() -[State Int]> Int\n  let s = State.get()\n  State.put(s + 1)\n  State.get()\n\nfn main() -> Int\n  let result = handle bump()\n    State.get() -> resume 41\n    State.put(next) -> resume ()\n    then value ->\n      State.get()\n  result\n",
+            "kea-cli-handle-then-reads-state",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("handle then should read handled state");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_generic_two_op_tail_handler_exit_code() {
         let source_path = write_temp_source(
             "effect Counter\n  fn read() -> Int\n  fn write(next: Int) -> Unit\n\nfn count_to(n: Int) -[Counter]> Int\n  let i = Counter.read()\n  if i >= n\n    i\n  else\n    Counter.write(i + 1)\n    count_to(n)\n\nfn main() -> Int\n  handle count_to(6)\n    Counter.read() -> resume 0\n    Counter.write(next) -> resume ()\n",
@@ -3056,6 +3117,7 @@
 
         let _ = std::fs::remove_file(source_path);
     }
+
 
     #[test]
     fn compile_and_execute_catch_higher_order_fail_parameter_ok_exit_code() {
