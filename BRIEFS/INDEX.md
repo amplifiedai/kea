@@ -30,6 +30,7 @@ Work in progress right now. Each entry should have a `## Progress` section in it
 - **[Benchmark infrastructure](in-progress/benchmark-infrastructure.md)** — Active. `divan` harness is in-tree (`kea-bench` + `AllocProfiler`) with lex/parse/infer/lower/codegen workload baselines plus string/allocation variants; stable artifacts are exported (`raw/csv/json/meta`), repeat-run variance summaries are generated (`bench:variance`), CI Stage A publishes baseline+variance artifacts, CodSpeed CI is wired via `codspeed-divan-compat` using OIDC auth, whole-program corpus tooling (`benchmarks/programs` + `bench:programs`) is bootstrapped with no-shell/inner-iteration execution for lower noise, whole-program variance summaries are automated, benchmark workflows now use cache-friendly stable target dirs (`KEA_AGENT_TARGET_DIR=target/ci-*`), non-blocking Stage B regression checks remain for full-matrix calibration, and stable benchmark classes run in dedicated blocking Stage B lanes.
 - **[Lean formalization](in-progress/lean-formalization.md)** — Active. Phase 1 kickoff started from the Rill Lean baseline; next is Kea effect-row alignment in core modules/proofs.
 - **[String interpolation](in-progress/string-interpolation.md)** — Active. KERNEL §1.6 `"Hello, {expr}"` syntax. Desugars to `Show.show()` + concat. Blocks self-hosting (error messages are half the compiler).
+- **[Practical language gaps](in-progress/practical-language-gaps.md)** — Active. Gap 6 (IO decomposition) done. **Gaps 7+8 (mutual recursion + enum keyword) block 0g.** Gaps 1-3 (layout intrinsics, numeric inference, string ops) are high priority for self-hosting.
 
 ---
 
@@ -75,7 +76,7 @@ Designed and approved. Ready to pick up. Ordered by execution sequence per ROADM
 
 ### Cross-phase: Practical Language Gaps (0f through Phase 1)
 
-13. **[Practical language gaps](todo/practical-language-gaps.md)** — Layout intrinsics (`size_of`/`align_of`), bidirectional numeric literal inference, String/Bytes core operations, IO decomposition into Clock/Net/Rand, early-exit ergonomics assessment. Items land incrementally alongside 0f and 0g. No single phase — tracks what self-hosting needs that isn't covered by other briefs.
+*(moved to Active — see above)*
 
 ### Parallel tracks
 
