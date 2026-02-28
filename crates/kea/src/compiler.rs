@@ -13,7 +13,7 @@ use kea_codegen::{
 use kea_diag::{Diagnostic, Severity, SourceLocation};
 use kea_hir::{
     check_unique_moves_with_borrow_map, collect_borrow_param_positions,
-    infer_auto_borrow_param_positions, lower_module,
+    infer_auto_borrow_param_positions, lower_module, HirModule,
 };
 use kea_infer::typeck::{
     RecordRegistry, SumTypeRegistry, TraitRegistry, TypeEnv, apply_where_clause,
@@ -31,6 +31,7 @@ use kea_types::{Type, TypeScheme, sanitize_type_display};
 #[derive(Debug)]
 pub struct CompilationContext {
     pub module: Module,
+    pub hir: HirModule,
     pub type_env: TypeEnv,
     pub diagnostics: Vec<Diagnostic>,
 }
@@ -128,6 +129,7 @@ pub fn compile_module(source: &str, file_id: FileId) -> Result<CompilationContex
 
     Ok(CompilationContext {
         module,
+        hir,
         type_env: env,
         diagnostics,
     })
@@ -138,8 +140,7 @@ pub fn compile_project(entry: &Path) -> Result<CompilationContext, String> {
 }
 
 pub fn emit_object(ctx: &CompilationContext, mode: CodegenMode) -> Result<CompileResult, String> {
-    let hir = lower_module(&ctx.module, &ctx.type_env);
-    let mir = lower_hir_module(&hir);
+    let mir = lower_hir_module(&ctx.hir);
     let abi = default_abi_manifest(&mir);
 
     let backend = CraneliftBackend;
@@ -162,8 +163,7 @@ pub fn emit_object(ctx: &CompilationContext, mode: CodegenMode) -> Result<Compil
 }
 
 pub fn execute_jit(ctx: &CompilationContext) -> Result<RunResult, String> {
-    let hir = lower_module(&ctx.module, &ctx.type_env);
-    let exit_code = execute_hir_main_jit(&hir, &BackendConfig::default())
+    let exit_code = execute_hir_main_jit(&ctx.hir, &BackendConfig::default())
         .map_err(|err| format!("codegen failed: {err}"))?;
 
     Ok(RunResult {
@@ -238,27 +238,30 @@ pub fn run_test_file(input: &Path) -> Result<TestRunResult, String> {
             error: None,
         };
 
+        let compiled_ctx = match typecheck_loaded_modules(&scenario_modules, &entry_module_path) {
+            Ok(ctx) => ctx,
+            Err(err) => {
+                result.passed = false;
+                result.error = Some(err);
+                results.push(result);
+                continue;
+            }
+        };
+        result
+            .diagnostics
+            .extend(compiled_ctx.diagnostics.clone());
+
         for _ in 0..test.iterations {
-            match typecheck_loaded_modules(&scenario_modules, &entry_module_path) {
-                Ok(ctx) => {
-                    result.diagnostics.extend(ctx.diagnostics.clone());
-                    match execute_jit(&ctx) {
-                        Ok(run) => {
-                            result.diagnostics.extend(run.diagnostics);
-                            if run.exit_code != 0 {
-                                result.passed = false;
-                                result.error = Some(format!(
-                                    "test returned non-zero exit code {}",
-                                    run.exit_code
-                                ));
-                                break;
-                            }
-                        }
-                        Err(err) => {
-                            result.passed = false;
-                            result.error = Some(err);
-                            break;
-                        }
+            match execute_jit(&compiled_ctx) {
+                Ok(run) => {
+                    result.diagnostics.extend(run.diagnostics);
+                    if run.exit_code != 0 {
+                        result.passed = false;
+                        result.error = Some(format!(
+                            "test returned non-zero exit code {}",
+                            run.exit_code
+                        ));
+                        break;
                     }
                 }
                 Err(err) => {
@@ -903,8 +906,10 @@ fn typecheck_loaded_modules(
     apply_hardcoded_prelude_reexports(&mut env, &traits);
 
     let module = merge_modules_for_codegen(&typed_modules);
+    let hir = lower_module(&module, &env);
     Ok(CompilationContext {
         module,
+        hir,
         type_env: env,
         diagnostics,
     })
