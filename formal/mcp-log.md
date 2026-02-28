@@ -9067,3 +9067,43 @@ name extraction and closed the newly surfaced gaps by adding:
 - Formal consumers can move from component constructor assumptions to explicit
   component tuples in one theorem step across these layers, with full-corpus
   parity checks now using corrected theorem-name extraction.
+
+### 2026-02-28: generalized `of_route -> as_components_of_route` closure on master capstones
+
+**Context**: After the corrected full-corpus route scan surfaced remaining
+`*_of_<route>` wrappers for principal full-vertical master capstones, added:
+- `principalBoundarySoundFullVerticalMasterCapstone_as_components_of_{masterRoutes,success,success_from_bundle,success_via_rowPolyBoundarySoundBundle,fullVerticalSuite}`
+- `principalBoundarySoundNoUnifyFullVerticalMasterCapstone_as_components_of_{masterCapstone,success,success_from_bundle,fullVerticalSuite,noUnifyMasterRoutes_{regular,dual},noUnifyMasterRoutes}`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Wrapper-only theorem routing from existing route constructors and
+  capstone decomposition APIs.
+- No runtime semantic change expected.
+
+**Probe (Rust side)**:
+- Ran corrected full-corpus generalized route scan:
+  `*_of_<route>` + `*_as_components` base
+  requires `*_as_components_of_<route>`.
+- Initial scan surfaced 12 missing wrappers (the list above).
+- Added wrappers and reran the same scan.
+- Result: no remaining gaps.
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Generalized route parity is now closed on the principal full-vertical master
+  capstone layers.
+
+**Impact**:
+- Capstone route assumptions now flow to explicit component tuples in one
+  theorem step across all currently exposed master-capstone constructor routes.
