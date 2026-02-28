@@ -953,3 +953,25 @@ theorem dimKernelSuite : DimKernelSuite := by
   exact
     { scalar := dimConstKernelSlice
       list := dimConstListKernelSlice }
+
+/-- Decompose a dimension-kernel suite into scalar/list components. -/
+theorem dimKernelSuite_as_components
+    (suite : DimKernelSuite) :
+    DimConstKernelSlice ∧ DimConstListKernelSlice :=
+  ⟨suite.scalar, suite.list⟩
+
+/-- Build a dimension-kernel suite from scalar/list components. -/
+theorem dimKernelSuite_of_components
+    (scalar : DimConstKernelSlice)
+    (list : DimConstListKernelSlice) :
+    DimKernelSuite :=
+  { scalar := scalar, list := list }
+
+/-- `DimKernelSuite` is equivalent to its scalar/list component pair. -/
+theorem dimKernelSuite_iff_components :
+    DimKernelSuite ↔ DimConstKernelSlice ∧ DimConstListKernelSlice := by
+  constructor
+  · intro suite
+    exact dimKernelSuite_as_components suite
+  · intro h
+    exact dimKernelSuite_of_components h.1 h.2
