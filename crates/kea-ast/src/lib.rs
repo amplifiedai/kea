@@ -792,9 +792,18 @@ pub struct RecordDef {
     pub annotations: Vec<Annotation>,
     pub params: Vec<String>,
     pub fields: Vec<(Spanned<String>, TypeAnnotation)>,
+    pub const_fields: Vec<ConstField>,
     /// Per-field annotations aligned with `fields` by index.
     pub field_annotations: Vec<Vec<Annotation>>,
     pub derives: Vec<Spanned<String>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ConstField {
+    pub name: Spanned<String>,
+    pub annotation: TypeAnnotation,
+    pub value: Expr,
+    pub annotations: Vec<Annotation>,
 }
 
 /// A trait definition: `trait Orderable: Eq { fn compare(self, other: Self) -> Int }`.

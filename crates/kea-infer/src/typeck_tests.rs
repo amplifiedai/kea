@@ -572,6 +572,7 @@ fn make_record_def(name: &str, fields: Vec<(&str, TypeAnnotation)>) -> RecordDef
             .into_iter()
             .map(|(n, ann)| (sp(n.to_string()), ann))
             .collect(),
+        const_fields: vec![],
         field_annotations: vec![],
     }
 }
@@ -592,6 +593,7 @@ fn make_param_record_def(
             .into_iter()
             .map(|(n, ann)| (sp(n.to_string()), ann))
             .collect(),
+        const_fields: vec![],
         field_annotations: vec![],
     }
 }

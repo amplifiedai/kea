@@ -104,6 +104,7 @@ pub enum TokenKind {
     Impl,
     Trait,
     Effect,
+    Const,
     Forall,
     Where,
     Import,

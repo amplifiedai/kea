@@ -1513,6 +1513,7 @@ proptest! {
             params: vec![],
             derives: vec![],
             fields,
+            const_fields: vec![],
             field_annotations: vec![],
         };
 

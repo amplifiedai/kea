@@ -242,6 +242,7 @@ RecordDef(
                 ),
             ),
         ],
+        const_fields: [],
         field_annotations: [
             [],
             [],
@@ -677,6 +678,7 @@ RecordDef(
                 ),
             ),
         ],
+        const_fields: [],
         field_annotations: [
             [],
             [],

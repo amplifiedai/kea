@@ -556,6 +556,7 @@ impl Parser {
         let mut derives = Vec::new();
         let delimiter = self.expect_block_start("expected struct body block after struct name")?;
         let mut fields = Vec::new();
+        let mut const_fields = Vec::new();
         let mut field_annotations = Vec::new();
         self.skip_newlines();
         if !self.at_block_end(delimiter) {
@@ -566,6 +567,25 @@ impl Parser {
                 }
                 let anns = self.parse_annotations()?;
                 self.skip_newlines();
+                if self.match_token(&TokenKind::Const) {
+                    let const_name = self.expect_ident("expected const field name")?;
+                    self.expect(&TokenKind::Colon, "expected ':' after const field name")?;
+                    let const_ty = self.type_annotation()?;
+                    self.expect(&TokenKind::Eq, "expected '=' after const field type")?;
+                    let Some(const_value) = self.expression() else {
+                        self.error_at_current("expected const field initializer expression");
+                        return None;
+                    };
+                    const_fields.push(ConstField {
+                        name: const_name,
+                        annotation: const_ty.node,
+                        value: const_value,
+                        annotations: anns,
+                    });
+                    self.skip_newlines();
+                    let _ = self.match_token(&TokenKind::Comma);
+                    continue;
+                }
                 let field_name = self.expect_ident("expected field name in struct definition")?;
                 self.expect(&TokenKind::Colon, "expected ':' after field name")?;
                 let field_type = self.type_annotation()?;
@@ -590,6 +610,7 @@ impl Parser {
                 annotations,
                 params,
                 fields,
+                const_fields,
                 field_annotations,
                 derives,
             }),
@@ -6029,6 +6050,41 @@ mod tests {
                 assert_eq!(def.field_annotations[0][0].name.node, "rename");
                 assert_eq!(def.field_annotations[1].len(), 1);
                 assert_eq!(def.field_annotations[1][0].name.node, "default");
+            }
+            other => panic!("expected struct declaration, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_record_const_field() {
+        let module = parse_mod("struct Math\n  const scale: Float = 3.5\n  x: Float");
+        match &module.declarations[0].node {
+            DeclKind::RecordDef(def) => {
+                assert_eq!(def.const_fields.len(), 1);
+                assert_eq!(def.const_fields[0].name.node, "scale");
+                assert!(matches!(
+                    def.const_fields[0].annotation,
+                    TypeAnnotation::Named(ref name) if name == "Float"
+                ));
+                assert!(matches!(
+                    def.const_fields[0].value.node,
+                    ExprKind::Lit(Lit::Float(v)) if (v - 3.5).abs() < f64::EPSILON
+                ));
+                assert_eq!(def.fields.len(), 1);
+                assert_eq!(def.fields[0].0.node, "x");
+            }
+            other => panic!("expected struct declaration, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_record_const_field_annotations() {
+        let module = parse_mod("struct Math\n  @deprecated(\"use tau\") const scale: Float = 3.5");
+        match &module.declarations[0].node {
+            DeclKind::RecordDef(def) => {
+                assert_eq!(def.const_fields.len(), 1);
+                assert_eq!(def.const_fields[0].annotations.len(), 1);
+                assert_eq!(def.const_fields[0].annotations[0].name.node, "deprecated");
             }
             other => panic!("expected struct declaration, got {other:?}"),
         }
