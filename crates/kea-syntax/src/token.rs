@@ -189,9 +189,11 @@ pub enum TokenKind {
     /// Raw template body text collected between `markdown {` and matching `}`.
     MarkdownBody(String),
 
-    // -- Structural --
-    /// Doc comment line: `--| ...` (without the `--|` prefix).
-    DocComment(String),
+    // -- Documentation --
+    /// `doc` keyword.
+    Doc,
+    /// Doc body text (inline or block form).
+    DocBody(String),
     /// Increase in significant indentation level.
     Indent,
     /// Decrease in significant indentation level.

@@ -33,9 +33,13 @@ pub fn classify_as_declaration(tokens: &[crate::Token]) -> bool {
         .map(|t| &t.kind)
         .peekable();
 
-    // Skip leading doc comments.
-    while matches!(iter.peek(), Some(TokenKind::DocComment(_))) {
-        iter.next();
+    // Skip leading doc blocks (`doc` keyword + doc body).
+    while matches!(iter.peek(), Some(TokenKind::Doc)) {
+        iter.next(); // consume `doc`
+        // Skip the doc body token if present
+        if matches!(iter.peek(), Some(TokenKind::DocBody(_))) {
+            iter.next();
+        }
     }
 
     // Skip #[...] attribute blocks.

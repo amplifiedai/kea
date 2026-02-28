@@ -232,6 +232,43 @@ fn previous_line_continues_expression(tokens: &[Token], newline_idx: usize) -> b
     )
 }
 
+/// Strip whitespace from a triple-quoted string.
+///
+/// - Remove the first newline after opening `"""`
+/// - Remove the last newline (and any trailing spaces) before closing `"""`
+/// - Strip `indent` leading spaces from each remaining line
+fn strip_triple_string_whitespace(raw: &str, indent: usize) -> String {
+    let mut s = raw;
+    // Remove leading newline
+    if s.starts_with('\n') {
+        s = &s[1..];
+    } else if s.starts_with("\r\n") {
+        s = &s[2..];
+    }
+    // Remove trailing newline (and spaces before it on the last line)
+    if let Some(last_nl) = s.rfind('\n') {
+        let after = &s[last_nl + 1..];
+        if after.chars().all(|c| c == ' ') {
+            s = &s[..last_nl];
+        }
+    }
+    // Strip `indent` leading spaces from each line
+    s.lines()
+        .map(|line| {
+            if line.is_empty() {
+                String::new()
+            } else if line.len() >= indent && line[..indent].bytes().all(|b| b == b' ') {
+                line[indent..].to_string()
+            } else {
+                // Line has less indentation than the closing """ — keep as-is
+                // (could be an error, but be lenient)
+                line.trim_start().to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 fn line_start_offset(source: &str, offset: usize) -> usize {
     source[..offset]
         .rfind('\n')
@@ -394,30 +431,18 @@ impl<'src> Lexer<'src> {
                 if self.match_char(b'>') {
                     self.emit(TokenKind::Arrow, start, self.pos);
                 } else if self.match_char(b'-') {
-                    if self.match_char(b'|') {
-                        // Kea doc comment line: `--| ...`
-                        let content_start = self.pos;
-                        while self.peek() != Some(b'\n') && !self.is_at_end() {
-                            self.advance();
-                        }
-                        let raw = std::str::from_utf8(&self.source[content_start..self.pos])
-                            .expect("lexer source is guaranteed UTF-8");
-                        let content = raw.strip_prefix(' ').unwrap_or(raw).to_string();
-                        self.emit(TokenKind::DocComment(content), start, self.pos);
-                    } else {
-                        // Kea line comment: `-- ...`
-                        while self.peek() != Some(b'\n') && !self.is_at_end() {
-                            self.advance();
-                        }
-                        let comment_text = std::str::from_utf8(&self.source[start..self.pos])
-                            .expect("lexer source is guaranteed UTF-8")
-                            .to_string();
-                        self.pending_trivia.push(Trivia {
-                            kind: TriviaKind::LineComment,
-                            text: comment_text,
-                            span: Span::new(self.file, start as u32, self.pos as u32),
-                        });
+                    // Kea line comment: `-- ...`
+                    while self.peek() != Some(b'\n') && !self.is_at_end() {
+                        self.advance();
                     }
+                    let comment_text = std::str::from_utf8(&self.source[start..self.pos])
+                        .expect("lexer source is guaranteed UTF-8")
+                        .to_string();
+                    self.pending_trivia.push(Trivia {
+                        kind: TriviaKind::LineComment,
+                        text: comment_text,
+                        span: Span::new(self.file, start as u32, self.pos as u32),
+                    });
                 } else {
                     self.emit(TokenKind::Minus, start, self.pos);
                 }
@@ -511,7 +536,15 @@ impl<'src> Lexer<'src> {
             }
 
             // String literals
-            b'"' => self.scan_string(start),
+            b'"' => {
+                // Check for triple-quoted string """
+                if self.peek() == Some(b'"') && self.peek_next() == Some(b'"') {
+                    self.pos += 2; // consume the second and third "
+                    self.scan_triple_string(start);
+                } else {
+                    self.scan_string(start);
+                }
+            }
 
             // Numbers
             b'0'..=b'9' => self.scan_number(start),
@@ -631,6 +664,281 @@ impl<'src> Lexer<'src> {
             self.emit(TokenKind::StringInterp(parts), start, self.pos);
         } else {
             self.emit(TokenKind::String(current_lit), start, self.pos);
+        }
+    }
+
+    /// Scan a triple-quoted string `"""..."""`.
+    ///
+    /// Whitespace stripping: the closing `"""` indentation is the reference
+    /// level. All content lines are stripped of that many leading spaces.
+    /// The first newline after opening `"""` and the last newline before
+    /// closing `"""` are removed.
+    fn scan_triple_string(&mut self, start: usize) {
+        let mut has_interp = false;
+        let mut parts: Vec<crate::token::StringPart> = Vec::new();
+        let mut current_lit = String::new();
+
+        // Scan until closing """
+        loop {
+            if self.is_at_end() {
+                self.error(start, "unterminated triple-quoted string");
+                return;
+            }
+            let ch = self.advance();
+            match ch {
+                b'"' if self.peek() == Some(b'"') && self.peek_next() == Some(b'"') => {
+                    // Found closing """
+                    self.pos += 2;
+                    break;
+                }
+                b'\\' => {
+                    if self.is_at_end() {
+                        self.error(start, "unterminated triple-quoted string");
+                        return;
+                    }
+                    let esc = self.advance();
+                    match esc {
+                        b'n' => current_lit.push('\n'),
+                        b't' => current_lit.push('\t'),
+                        b'\\' => current_lit.push('\\'),
+                        b'"' => current_lit.push('"'),
+                        _ => {
+                            self.error(
+                                self.pos - 1,
+                                format!("unknown escape sequence '\\{}'", esc as char),
+                            );
+                        }
+                    }
+                }
+                b'{' if self.match_char(b'{') => {
+                    current_lit.push('{');
+                }
+                b'}' if self.match_char(b'}') => {
+                    current_lit.push('}');
+                }
+                b'{' => {
+                    has_interp = true;
+                    if !current_lit.is_empty() {
+                        parts.push(crate::token::StringPart::Literal(std::mem::take(
+                            &mut current_lit,
+                        )));
+                    }
+                    let mut depth = 1u32;
+                    let mut expr_text = String::new();
+                    loop {
+                        if self.is_at_end() {
+                            self.error(start, "unterminated interpolation in triple-quoted string");
+                            return;
+                        }
+                        let c = self.advance();
+                        match c {
+                            b'{' => {
+                                depth += 1;
+                                expr_text.push('{');
+                            }
+                            b'}' => {
+                                depth -= 1;
+                                if depth == 0 {
+                                    break;
+                                }
+                                expr_text.push('}');
+                            }
+                            b'"' | b'\'' => {
+                                let quote = c;
+                                expr_text.push(quote as char);
+                                while !self.is_at_end() {
+                                    let qc = self.advance();
+                                    expr_text.push(qc as char);
+                                    if qc == b'\\' && !self.is_at_end() {
+                                        let escaped = self.advance();
+                                        expr_text.push(escaped as char);
+                                        continue;
+                                    }
+                                    if qc == quote {
+                                        break;
+                                    }
+                                }
+                            }
+                            _ => expr_text.push(c as char),
+                        }
+                    }
+                    parts.push(crate::token::StringPart::Expr(expr_text));
+                }
+                _ => current_lit.push(ch as char),
+            }
+        }
+
+        // Apply whitespace stripping to the collected content.
+        // The closing """ indentation determines the base level to strip.
+        let closing_pos = self.pos; // just past the closing """
+        let closing_line_start = self.source[..closing_pos - 3]
+            .iter()
+            .rposition(|&b| b == b'\n')
+            .map_or(0, |p| p + 1);
+        let closing_indent = (closing_pos - 3) - closing_line_start;
+
+        if has_interp {
+            if !current_lit.is_empty() {
+                parts.push(crate::token::StringPart::Literal(current_lit));
+            }
+            // Apply stripping to literal parts
+            let stripped = self.strip_triple_string_parts(parts, closing_indent);
+            self.emit(TokenKind::StringInterp(stripped), start, self.pos);
+        } else {
+            // Non-interpolated: strip the whole string
+            let stripped = strip_triple_string_whitespace(&current_lit, closing_indent);
+            self.emit(TokenKind::String(stripped), start, self.pos);
+        }
+    }
+
+    /// Strip leading whitespace from literal parts of an interpolated triple-quoted string.
+    fn strip_triple_string_parts(
+        &self,
+        parts: Vec<crate::token::StringPart>,
+        indent: usize,
+    ) -> Vec<crate::token::StringPart> {
+        // Concatenate all parts to get the full raw text, then strip, then re-split.
+        // This is simpler than trying to strip across part boundaries.
+        let mut full = String::new();
+        let mut markers: Vec<(usize, String)> = Vec::new(); // (byte_offset, expr_text)
+
+        for part in &parts {
+            match part {
+                crate::token::StringPart::Literal(s) => full.push_str(s),
+                crate::token::StringPart::Expr(e) => {
+                    let placeholder = format!("\x00INTERP{}\x00", markers.len());
+                    markers.push((markers.len(), e.clone()));
+                    full.push_str(&placeholder);
+                }
+            }
+        }
+
+        let stripped = strip_triple_string_whitespace(&full, indent);
+
+        // Re-split into parts
+        let mut result = Vec::new();
+        let mut remaining = stripped.as_str();
+        for (idx, expr) in &markers {
+            let placeholder = format!("\x00INTERP{}\x00", idx);
+            if let Some(pos) = remaining.find(&placeholder) {
+                let before = &remaining[..pos];
+                if !before.is_empty() {
+                    result.push(crate::token::StringPart::Literal(before.to_string()));
+                }
+                result.push(crate::token::StringPart::Expr(expr.clone()));
+                remaining = &remaining[pos + placeholder.len()..];
+            }
+        }
+        if !remaining.is_empty() {
+            result.push(crate::token::StringPart::Literal(remaining.to_string()));
+        }
+        result
+    }
+
+    /// Scan a doc body after the `doc` keyword.
+    ///
+    /// Two forms:
+    /// - Inline: `doc Some text here.` (rest of line)
+    /// - Block: `doc\n  Indented text.\n  More text.` (indented block)
+    fn scan_doc_body(&mut self) {
+        let body_start = self.pos;
+
+        // Skip horizontal whitespace after `doc`
+        while self.peek() == Some(b' ') || self.peek() == Some(b'\t') {
+            self.advance();
+        }
+
+        if self.is_at_end() || self.peek() == Some(b'\n') {
+            // Block form: scan indented block as raw text
+            // Skip the newline
+            if self.peek() == Some(b'\n') {
+                self.advance();
+            }
+
+            // Determine the base indentation of the block
+            let block_start = self.pos;
+            let mut base_indent = 0u32;
+            while self.peek() == Some(b' ') {
+                base_indent += 1;
+                self.advance();
+            }
+
+            if base_indent == 0 {
+                // No indentation after doc — emit empty doc body
+                self.emit(TokenKind::DocBody(String::new()), body_start, self.pos);
+                return;
+            }
+
+            // Rewind to block_start and scan the full block
+            self.pos = block_start;
+            let mut lines = Vec::new();
+
+            loop {
+                // Check indentation of current line
+                let line_start = self.pos;
+                let mut indent = 0u32;
+                while self.peek() == Some(b' ') {
+                    indent += 1;
+                    self.advance();
+                }
+
+                // Empty line (just whitespace before newline) — keep as empty line in doc
+                if self.peek() == Some(b'\n') || self.is_at_end() {
+                    if self.is_at_end() {
+                        if !lines.is_empty() {
+                            break;
+                        }
+                        break;
+                    }
+                    lines.push(String::new());
+                    self.advance(); // consume newline
+                    continue;
+                }
+
+                // Line with less indentation than base — block is done
+                if indent < base_indent {
+                    self.pos = line_start; // put back
+                    break;
+                }
+
+                // Consume line content (preserving relative indentation)
+                let extra_indent = indent - base_indent;
+                let content_start = self.pos;
+                while self.peek() != Some(b'\n') && !self.is_at_end() {
+                    self.advance();
+                }
+                let raw_content = std::str::from_utf8(&self.source[content_start..self.pos])
+                    .expect("lexer source is guaranteed UTF-8");
+                let mut line = String::new();
+                for _ in 0..extra_indent {
+                    line.push(' ');
+                }
+                line.push_str(raw_content);
+                lines.push(line);
+
+                // Consume newline if present
+                if self.peek() == Some(b'\n') {
+                    self.advance();
+                }
+            }
+
+            // Trim trailing empty lines
+            while lines.last().is_some_and(|l| l.is_empty()) {
+                lines.pop();
+            }
+
+            let content = lines.join("\n");
+            self.emit(TokenKind::DocBody(content), body_start, self.pos);
+        } else {
+            // Inline form: rest of the line after `doc `
+            let content_start = self.pos;
+            while self.peek() != Some(b'\n') && !self.is_at_end() {
+                self.advance();
+            }
+            let content = std::str::from_utf8(&self.source[content_start..self.pos])
+                .expect("lexer source is guaranteed UTF-8")
+                .to_string();
+            self.emit(TokenKind::DocBody(content), body_start, self.pos);
         }
     }
 
@@ -799,6 +1107,11 @@ impl<'src> Lexer<'src> {
             "and" => TokenKind::And,
             "or" => TokenKind::Or,
             "not" => TokenKind::Not,
+            "doc" => {
+                self.emit(TokenKind::Doc, start, self.pos);
+                self.scan_doc_body();
+                return;
+            }
             "borrow" => TokenKind::Borrow,
             "in" => TokenKind::In,
             "nil" => {
@@ -1273,6 +1586,73 @@ mod tests {
         );
     }
 
+    // -- Triple-quoted strings --
+
+    #[test]
+    fn triple_quoted_string_basic() {
+        assert_eq!(
+            lex_kinds("\"\"\"hello\"\"\""),
+            vec![TokenKind::String("hello".into())]
+        );
+    }
+
+    #[test]
+    fn triple_quoted_string_multiline_strips_whitespace() {
+        // Closing """ at 2 spaces indent → strip 2 spaces from each line
+        let src = "\"\"\"\n  hello\n  world\n  \"\"\"";
+        assert_eq!(
+            lex_kinds(src),
+            vec![TokenKind::String("hello\nworld".into())]
+        );
+    }
+
+    #[test]
+    fn triple_quoted_string_preserves_relative_indent() {
+        let src = "\"\"\"\n  hello\n    indented\n  world\n  \"\"\"";
+        assert_eq!(
+            lex_kinds(src),
+            vec![TokenKind::String("hello\n  indented\nworld".into())]
+        );
+    }
+
+    #[test]
+    fn triple_quoted_string_with_interpolation() {
+        let src = "\"\"\"\n  hello {name}\n  \"\"\"";
+        assert_eq!(
+            lex_kinds(src),
+            vec![TokenKind::StringInterp(vec![
+                crate::token::StringPart::Literal("hello ".into()),
+                crate::token::StringPart::Expr("name".into()),
+            ])]
+        );
+    }
+
+    #[test]
+    fn triple_quoted_string_contains_quotes() {
+        // Single " inside triple-quoted string is fine
+        assert_eq!(
+            lex_kinds("\"\"\"she said \"hi\" today\"\"\""),
+            vec![TokenKind::String("she said \"hi\" today".into())]
+        );
+    }
+
+    #[test]
+    fn triple_quoted_string_contains_two_consecutive_quotes() {
+        // Two consecutive "" inside triple-quoted string is fine
+        assert_eq!(
+            lex_kinds("\"\"\"a\"\"b\"\"\""),
+            vec![TokenKind::String("a\"\"b".into())]
+        );
+    }
+
+    #[test]
+    fn triple_quoted_string_empty() {
+        assert_eq!(
+            lex_kinds("\"\"\"\"\"\""),
+            vec![TokenKind::String(String::new())]
+        );
+    }
+
     #[test]
     fn keywords() {
         assert_eq!(
@@ -1428,11 +1808,12 @@ mod tests {
     }
 
     #[test]
-    fn doc_comment_tokenized() {
+    fn doc_inline_tokenized() {
         assert_eq!(
-            lex_kinds("--| Adds two numbers\nfn add(x, y) { x + y }"),
+            lex_kinds("doc Adds two numbers.\nfn add(x, y) { x + y }"),
             vec![
-                TokenKind::DocComment("Adds two numbers".into()),
+                TokenKind::Doc,
+                TokenKind::DocBody("Adds two numbers.".into()),
                 TokenKind::Newline,
                 TokenKind::Fn,
                 TokenKind::Ident("add".into()),
@@ -1445,6 +1826,42 @@ mod tests {
                 TokenKind::Ident("x".into()),
                 TokenKind::Plus,
                 TokenKind::Ident("y".into()),
+                TokenKind::RBrace,
+            ]
+        );
+    }
+
+    #[test]
+    fn doc_block_tokenized() {
+        assert_eq!(
+            lex_kinds("doc\n  Block text.\n  More text.\nfn foo() { 1 }"),
+            vec![
+                TokenKind::Doc,
+                TokenKind::DocBody("Block text.\nMore text.".into()),
+                TokenKind::Fn,
+                TokenKind::Ident("foo".into()),
+                TokenKind::LParen,
+                TokenKind::RParen,
+                TokenKind::LBrace,
+                TokenKind::Int(1),
+                TokenKind::RBrace,
+            ]
+        );
+    }
+
+    #[test]
+    fn doc_block_preserves_relative_indent() {
+        assert_eq!(
+            lex_kinds("doc\n  Summary.\n\n    code_example()\nfn foo() { 1 }"),
+            vec![
+                TokenKind::Doc,
+                TokenKind::DocBody("Summary.\n\n  code_example()".into()),
+                TokenKind::Fn,
+                TokenKind::Ident("foo".into()),
+                TokenKind::LParen,
+                TokenKind::RParen,
+                TokenKind::LBrace,
+                TokenKind::Int(1),
                 TokenKind::RBrace,
             ]
         );
@@ -1839,11 +2256,11 @@ mod tests {
     }
 
     #[test]
-    fn trivia_doc_comment_is_token_not_trivia() {
-        // Doc comments should be tokens, not trivia entries
-        let tokens = lex_tokens("--| Docs\nfn foo() { 1 }");
-        assert_eq!(tokens[0].kind, TokenKind::DocComment("Docs".into()));
-        // The doc comment text comes from the token span, not trivia
+    fn trivia_doc_is_token_not_trivia() {
+        // Doc blocks should be tokens, not trivia entries
+        let tokens = lex_tokens("doc Docs here.\nfn foo() { 1 }");
+        assert_eq!(tokens[0].kind, TokenKind::Doc);
+        assert_eq!(tokens[1].kind, TokenKind::DocBody("Docs here.".into()));
         assert!(tokens[0].leading_trivia.is_empty());
     }
 
@@ -1969,8 +2386,8 @@ mod tests {
     }
 
     #[test]
-    fn trivia_round_trip_doc_comments() {
-        let source = "--| Adds two numbers\nfn add(x, y) -> Int { x + y }\n";
+    fn trivia_round_trip_doc_blocks() {
+        let source = "doc Adds two numbers.\nfn add(x, y) -> Int { x + y }\n";
         let tokens = lex_tokens(source);
         let reconstructed = crate::token::reconstruct_source(&tokens, source);
         assert_eq!(reconstructed, source);

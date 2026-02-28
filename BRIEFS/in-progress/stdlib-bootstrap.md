@@ -39,17 +39,18 @@ Writing the stdlib in Kea from day one serves three purposes:
 
 ## Documentation and Testing Convention
 
-**Every public stdlib function must have a `--|` doc comment.**
+**Every public stdlib function must have a `doc` comment.**
 This is a hard rule, not a nice-to-have. Doc comments are the
 stdlib's user-facing documentation and its future doctest suite.
 
 Convention:
 
 ```kea
---| Return the absolute value of an integer.
---|
---|   Int.abs(-5)   -- => 5
---|   Int.abs(3)    -- => 3
+doc
+  Return the absolute value of an integer.
+
+    Int.abs(-5)   -- => 5
+    Int.abs(3)    -- => 3
 fn abs(x: Int) -> Int
   if x < 0
     -x
@@ -59,7 +60,7 @@ fn abs(x: Int) -> Int
 
 Rules:
 - First line: one-sentence description of what the function does.
-- Then a blank `--|` line, followed by one or more examples.
+- Then a blank line (paragraph break), followed by one or more examples.
 - Examples use module-qualified calls (`Int.abs`, `List.map`) so
   they read the same way user code does.
 - `-- => value` shows the expected result. When `kea test` gains

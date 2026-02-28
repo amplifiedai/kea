@@ -56,20 +56,21 @@ effect-based error handling:
 Add a module-level doc comment explaining Result's role:
 
 ```kea
---| Result is Fail's data representation.
---|
---| Use `-[Fail E]> T` in function signatures, not `-> Result(T, E)`.
---| Result appears when you need to store or collect outcomes:
---|
---|   -- Collecting results from multiple operations:
---|   let results = items.map(|item| catch validate(item))
---|
---|   -- Choosing a default on failure:
---|   let config = Result.unwrap_or(catch load_config(), defaults)
---|
---| Use `?` to convert a Result back into a Fail:
---|
---|   let value = some_result?   -- fails if Err, continues if Ok
+doc
+  Result is Fail's data representation.
+
+  Use `-[Fail E]> T` in function signatures, not `-> Result(T, E)`.
+  Result appears when you need to store or collect outcomes:
+
+    -- Collecting results from multiple operations:
+    let results = items.map(|item| catch validate(item))
+
+    -- Choosing a default on failure:
+    let config = Result.unwrap_or(catch load_config(), defaults)
+
+  Use `?` to convert a Result back into a Fail:
+
+    let value = some_result?   -- fails if Err, continues if Ok
 ```
 
 ### Effect decomposition
@@ -82,7 +83,7 @@ operations use `Rand`.
 
 ## Pass 2: Documentation
 
-**Every public function must have a `--|` doc comment.** Follow
+**Every public function must have a `doc` comment.** Follow
 the standard in `docs/IDIOMS.md` §8 and `stdlib-bootstrap.md`
 § Documentation and Testing Convention.
 
@@ -95,22 +96,23 @@ Quality checklist per function:
 - [ ] Examples use `-- =>` for expected results
 - [ ] Effect signatures are explained ("fails with X when Y")
 
-**Module-level doc comments.** Each module gets a `--|` block at
+**Module-level doc comments.** Each module gets a `doc` block at
 the top explaining its purpose and key patterns:
 
 ```kea
---| Option represents a value that may or may not be present.
---|
---| Use `Some(value)` for present values and `None` for absent ones.
---| Pattern match to extract:
---|
---|   case opt
---|     Some(x) -> use(x)
---|     None -> fallback()
---|
---| Use `?` to propagate None as a Fail:
---|
---|   let x = opt?   -- fails if None
+doc
+  Option represents a value that may or may not be present.
+
+  Use `Some(value)` for present values and `None` for absent ones.
+  Pattern match to extract:
+
+    case opt
+      Some(x) -> use(x)
+      None -> fallback()
+
+  Use `?` to propagate None as a Fail:
+
+    let x = opt?   -- fails if None
 ```
 
 ## Pass 3: Naming and consistency
@@ -156,9 +158,9 @@ these become automated.
       appropriate
 - [ ] `result.kea` monadic combinators removed, module doc explains
       Result's role as Fail's data representation
-- [ ] Every public function has a `--|` doc comment meeting the
+- [ ] Every public function has a `doc` comment meeting the
       quality checklist
-- [ ] Every module has a module-level `--|` doc comment
+- [ ] Every module has a module-level `doc` comment
 - [ ] Naming is consistent across all modules
 - [ ] Parameter order follows subject-first convention
 - [ ] Effect signatures use specific capabilities (not catch-all IO)

@@ -172,6 +172,7 @@ the `Fail E` effect annotation (§5). There are no exceptions.
 | `3.14`, `-0.5`      | `Float`       | Must contain `.`            |
 | `true`, `false`     | `Bool`        |                             |
 | `"hello"`           | `String`      | Interpolation: `"{expr}"`   |
+| `"""..."""`         | `String`      | Multi-line, indent-stripped  |
 | `'a'`               | `Char`        |                             |
 | `()`                | `Unit`        | Unit                        |
 | `(a, b)`            | `(A, B)`      | Tuple (2+ elements)         |
@@ -211,13 +212,57 @@ Interpolation calls `Show.show` on the embedded expression. This is a
 typed feature: a missing `Show` instance is a compile error, not a
 runtime error.
 
-### 1.7 Comments
+### 1.6.1 Triple-Quoted Strings
+
+`"""..."""` creates multi-line strings with automatic indentation
+stripping:
+
+```kea
+let query = """
+  SELECT *
+  FROM users
+  WHERE active = true
+  """
+```
+
+**Whitespace rules (Swift/Kotlin style):**
+
+- The closing `"""` indentation sets the reference level
+- That many leading spaces are stripped from each content line
+- First newline after opening `"""` is removed
+- Last newline before closing `"""` is removed
+- Content lines must be indented at least as much as the closing `"""`
+
+Triple-quoted strings support the same `{expr}` interpolation and
+escape sequences as single-line strings.
+
+Single-line use is also valid: `"""hello"""`.
+
+### 1.7 Comments and Documentation
 
 - `--` begins a line comment. Everything after `--` to end of line is
   ignored.
-- `--|` begins a doc comment. Doc comments are attached to the
-  immediately following declaration and are available to tooling.
 - There are no block comments.
+
+**Doc blocks** use the `doc` keyword. Two forms:
+
+```kea
+-- Inline form (single line):
+doc Return true when the list has no elements.
+fn is_empty(xs: List a) -> Bool
+
+-- Block form (indented multi-line):
+doc
+  Reader provides read-only environment passing via effects.
+
+  Use `Reader.with_reader` at boundaries and `Reader.asks`
+  in business logic that depends on shared context.
+fn with_reader(env, f) -> a
+```
+
+Doc blocks are attached to the immediately following declaration and
+are available to tooling. A `doc` block at file scope before any
+declaration is a module-level doc.
 
 ---
 
@@ -2932,15 +2977,16 @@ keys, no casting, no `Any`.
 struct  enum  trait  effect  fn   let   const  case   if  then  else
 where   use   pub   as   self  Self   true   false  cond
 type    fail  catch  for  in  handle  resume  unsafe  borrow  with
-while   test   and   or   not
+while   test   and   or   not  doc  expr  import  impl  alias  opaque
 ```
 
-36 reserved words.
+42 reserved words.
 
 ## Appendix B: Tokens
 
 ```
--- line comment             --| doc comment
+-- line comment             doc  documentation keyword
+                            doc  (inline or block form)
 :  type annotation          :: list cons pattern
 -> pure arrow               -[e]> effectful arrow
 ~  functional update        $  receiver placement

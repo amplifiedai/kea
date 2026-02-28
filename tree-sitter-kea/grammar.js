@@ -21,7 +21,7 @@ const PREC = {
 module.exports = grammar({
   name: "kea",
 
-  extras: ($) => [/\s/, $.line_comment, $.doc_comment],
+  extras: ($) => [/\s/, $.line_comment],
 
   word: ($) => $.identifier,
 
@@ -46,9 +46,23 @@ module.exports = grammar({
         $._expression,
       ),
 
+    // ── Doc blocks ──────────────────────────────────────────────
+
+    doc_block: (_$) =>
+      prec.right(repeat1(token(seq("doc", /[ \t]+/, /[^\n]*/)))),
+
     // ── Declarations ──────────────────────────────────────────────
 
     _declaration: ($) =>
+      choice(
+        $.documented_declaration,
+        $._bare_declaration,
+      ),
+
+    documented_declaration: ($) =>
+      seq($.doc_block, $._bare_declaration),
+
+    _bare_declaration: ($) =>
       choice(
         $.function_declaration,
         $.expr_declaration,
@@ -234,7 +248,7 @@ module.exports = grammar({
       ),
 
     _annotation_arg: ($) =>
-      choice($.identifier, $.upper_identifier, $.string, $.integer),
+      choice($.identifier, $.upper_identifier, $.string, $.triple_quoted_string, $.integer),
 
     // ── Types ─────────────────────────────────────────────────────
 
@@ -507,6 +521,7 @@ module.exports = grammar({
         $.integer,
         $.float,
         $.string,
+        $.triple_quoted_string,
         $.boolean,
         $.none,
         $.unit,
@@ -571,7 +586,7 @@ module.exports = grammar({
     variable_pattern: ($) => prec(-1, $.identifier),
 
     literal_pattern: ($) =>
-      prec(-1, choice($.integer, $.float, $.string, $.boolean, $.none)),
+      prec(-1, choice($.integer, $.float, $.string, $.triple_quoted_string, $.boolean, $.none)),
 
     constructor_pattern: ($) =>
       prec(-1, seq(
@@ -640,6 +655,20 @@ module.exports = grammar({
         '"',
       )),
 
+    triple_quoted_string: (_$) =>
+      token(seq(
+        '"""',
+        repeat(choice(
+          /[^"\\]/,
+          /\\./,
+          // One quote not followed by two more
+          /"[^"]/,
+          // Two quotes not followed by a third
+          /""[^"]/,
+        )),
+        '"""',
+      )),
+
     boolean: (_$) => choice("true", "false"),
 
     none: (_$) => "None",
@@ -648,7 +677,6 @@ module.exports = grammar({
 
     line_comment: (_$) => token(prec(-1, seq("--", /[^\n|][^\n]*/))),
 
-    doc_comment: (_$) => token(seq("--|", /[^\n]*/)),
   },
 });
 

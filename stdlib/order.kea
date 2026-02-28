@@ -1,61 +1,68 @@
---| Order defines ordering values and helpers.
---|
---| Use `Ordering` with `case` for readable branching and avoid
---| ad-hoc integer sentinel values.
+doc
+  Order defines ordering values and helpers.
+
+  Use `Ordering` with `case` for readable branching and avoid
+  ad-hoc integer sentinel values.
 enum Ordering
   Less
   Equal
   Greater
 
---| Reverse an ordering value.
---|
---|   Order.reverse(Less)      -- => Greater
---|   Order.reverse(Equal)     -- => Equal
+doc
+  Reverse an ordering value.
+
+    Order.reverse(Less)      -- => Greater
+    Order.reverse(Equal)     -- => Equal
 fn reverse(value: Ordering) -> Ordering
   case value
     Less -> Greater
     Equal -> Equal
     Greater -> Less
 
---| Regression helper for reverse(Less).
---|
---|   Order.reversed_less_is_greater()   -- => true
+doc
+  Regression helper for reverse(Less).
+
+    Order.reversed_less_is_greater()   -- => true
 fn reversed_less_is_greater() -> Bool
   case reverse(Less)
     Greater -> true
     _ -> false
 
---| Return true when an ordering is Less.
---|
---|   Order.is_less(Less)      -- => true
---|   Order.is_less(Greater)   -- => false
+doc
+  Return true when an ordering is Less.
+
+    Order.is_less(Less)      -- => true
+    Order.is_less(Greater)   -- => false
 fn is_less(value: Ordering) -> Bool
   case value
     Less -> true
     _ -> false
 
---| Return true when an ordering is Equal.
---|
---|   Order.is_equal(Equal)   -- => true
---|   Order.is_equal(Less)    -- => false
+doc
+  Return true when an ordering is Equal.
+
+    Order.is_equal(Equal)   -- => true
+    Order.is_equal(Less)    -- => false
 fn is_equal(value: Ordering) -> Bool
   case value
     Equal -> true
     _ -> false
 
---| Return true when an ordering is Greater.
---|
---|   Order.is_greater(Greater)   -- => true
---|   Order.is_greater(Equal)     -- => false
+doc
+  Return true when an ordering is Greater.
+
+    Order.is_greater(Greater)   -- => true
+    Order.is_greater(Equal)     -- => false
 fn is_greater(value: Ordering) -> Bool
   case value
     Greater -> true
     _ -> false
 
---| Compare two integers and return an Ordering.
---|
---|   Order.compare_int(1, 2)   -- => Less
---|   Order.compare_int(3, 3)   -- => Equal
+doc
+  Compare two integers and return an Ordering.
+
+    Order.compare_int(1, 2)   -- => Less
+    Order.compare_int(3, 3)   -- => Equal
 fn compare_int(x: Int, y: Int) -> Ordering
   if x < y
     Less

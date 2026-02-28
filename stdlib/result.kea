@@ -1,48 +1,54 @@
---| Result is Fail's data representation.
---|
---| Prefer `-[Fail E]> T` for fallible control flow.
---| Use `Result(T, E)` when outcomes must be stored as data.
---|
---|   let results = items.map(|item| catch validate(item))
---|   let config = Result.unwrap_or(catch load_config(), defaults)
---|   let value = some_result?
+doc
+  Result is Fail's data representation.
+
+  Prefer `-[Fail E]> T` for fallible control flow.
+  Use `Result(T, E)` when outcomes must be stored as data.
+
+    let results = items.map(|item| catch validate(item))
+    let config = Result.unwrap_or(catch load_config(), defaults)
+    let value = some_result?
 effect Fail E
-  --| Abort the current computation with an error payload.
-  --|
-  --|   Fail.fail("boom")
+  doc
+    Abort the current computation with an error payload.
+
+      Fail.fail("boom")
   fn fail(error: E) -> Never
 
---| Convert an Option into a Result with a provided error value.
---|
---|   Result.from_option(Some(2), "missing")   -- => Ok(2)
---|   Result.from_option(None, "missing")      -- => Err("missing")
+doc
+  Convert an Option into a Result with a provided error value.
+
+    Result.from_option(Some(2), "missing")   -- => Ok(2)
+    Result.from_option(None, "missing")      -- => Err("missing")
 fn from_option(opt: Option a, err: e) -> Result(a, e)
   case opt
     Some(value) -> Ok(value)
     None -> Err(err)
 
---| Return the Ok value, or a fallback for Err.
---|
---|   Result.unwrap_or(Ok(5), 0)     -- => 5
---|   Result.unwrap_or(Err(5), 0)    -- => 0
+doc
+  Return the Ok value, or a fallback for Err.
+
+    Result.unwrap_or(Ok(5), 0)     -- => 5
+    Result.unwrap_or(Err(5), 0)    -- => 0
 fn unwrap_or(res: Result(a, e), fallback: a) -> a
   case res
     Ok(value) -> value
     Err(_) -> fallback
 
---| Return true when a result is Ok.
---|
---|   Result.is_ok(Ok(1))    -- => true
---|   Result.is_ok(Err(1))   -- => false
+doc
+  Return true when a result is Ok.
+
+    Result.is_ok(Ok(1))    -- => true
+    Result.is_ok(Err(1))   -- => false
 fn is_ok(res: Result(a, e)) -> Bool
   case res
     Err(_) -> false
     _ -> true
 
---| Return true when a result is Err.
---|
---|   Result.is_err(Ok(1))    -- => false
---|   Result.is_err(Err(1))   -- => true
+doc
+  Return true when a result is Err.
+
+    Result.is_err(Ok(1))    -- => false
+    Result.is_err(Err(1))   -- => true
 fn is_err(res: Result(a, e)) -> Bool
   case res
     Err(_) -> true

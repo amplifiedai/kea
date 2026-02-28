@@ -1,20 +1,23 @@
 use Order
 
---| Ord defines total ordering comparisons.
---|
---| `Ord.compare` returns `Ordering` so callers can branch with
---| `case` without re-running comparisons.
+doc
+  Ord defines total ordering comparisons.
+
+  `Ord.compare` returns `Ordering` so callers can branch with
+  `case` without re-running comparisons.
 trait Ord a
-  --| Compare two values.
-  --|
-  --|   Ord.compare(1, 2)   -- => Less
-  --|   Ord.compare(2, 2)   -- => Equal
+  doc
+    Compare two values.
+
+      Ord.compare(1, 2)   -- => Less
+      Ord.compare(2, 2)   -- => Equal
   fn compare(x: a, y: a) -> Ordering
 
---| Int ordering implementation for Ord.
---|
---|   Ord.compare(1, 2)   -- => Less
---|   Ord.compare(3, 1)   -- => Greater
+doc
+  Int ordering implementation for Ord.
+
+    Ord.compare(1, 2)   -- => Less
+    Ord.compare(3, 1)   -- => Greater
 fn compare(x: Int, y: Int) -> Ordering
   if x < y
     Order.Less

@@ -1,17 +1,20 @@
---| Show defines conversion of values to user-facing text.
---|
---| String interpolation relies on `Show.show`, so common types
---| should provide stable, readable representations.
+doc
+  Show defines conversion of values to user-facing text.
+
+  String interpolation relies on `Show.show`, so common types
+  should provide stable, readable representations.
 trait Show a
-  --| Convert a value to its string representation.
-  --|
-  --|   Show.show(5)    -- => "5"
+  doc
+    Convert a value to its string representation.
+
+      Show.show(5)    -- => "5"
   fn show(x: a) -> String
 
---| Convert a single decimal digit to a string.
---|
---|   Show.digit_to_string(0)   -- => "0"
---|   Show.digit_to_string(9)   -- => "9"
+doc
+  Convert a single decimal digit to a string.
+
+    Show.digit_to_string(0)   -- => "0"
+    Show.digit_to_string(9)   -- => "9"
 fn digit_to_string(digit: Int) -> String
   case digit
     0 -> "0"
@@ -25,30 +28,33 @@ fn digit_to_string(digit: Int) -> String
     8 -> "8"
     _ -> "9"
 
---| Convert a non-negative integer to decimal text.
---|
---|   Show.show_non_negative(0)    -- => "0"
---|   Show.show_non_negative(42)   -- => "42"
+doc
+  Convert a non-negative integer to decimal text.
+
+    Show.show_non_negative(0)    -- => "0"
+    Show.show_non_negative(42)   -- => "42"
 fn show_non_negative(x: Int) -> String
   if x < 10
     digit_to_string(x)
   else
     show_non_negative(x / 10) ++ digit_to_string(x % 10)
 
---| Int Show implementation for bootstrap.
---|
---|   Show.show(0)     -- => "0"
---|   Show.show(-42)   -- => "-42"
+doc
+  Int Show implementation for bootstrap.
+
+    Show.show(0)     -- => "0"
+    Show.show(-42)   -- => "-42"
 fn show_int(x: Int) -> String
   if x < 0
     "-" ++ show_non_negative(0 - x)
   else
     show_non_negative(x)
 
---| Runtime helper used by parser interpolation desugaring.
---|
---|   Show.show(7)    -- => "7"
---|   Show.show(-7)   -- => "-7"
+doc
+  Runtime helper used by parser interpolation desugaring.
+
+    Show.show(7)    -- => "7"
+    Show.show(-7)   -- => "-7"
 fn show(x: Int) -> String
   show_int(x)
 

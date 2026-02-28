@@ -1,20 +1,24 @@
---| Clock provides time-related capabilities.
---|
---| Use `Clock.now()` for wall-clock timestamps and
---| `Clock.monotonic()` for elapsed-time measurements.
+doc
+  Clock provides time-related capabilities.
+
+  Use `Clock.now()` for wall-clock timestamps and
+  `Clock.monotonic()` for elapsed-time measurements.
 effect Clock
-  --| Return wall-clock epoch seconds.
-  --|
-  --|   Clock.now()   -- => 1700000000 (example)
+  doc
+    Return wall-clock epoch seconds.
+
+      Clock.now()   -- => 1700000000 (example)
   fn now() -[Clock]> Int
-  --| Return a monotonic time reading.
-  --|
-  --|   Clock.monotonic()   -- => 123456789 (example)
+  doc
+    Return a monotonic time reading.
+
+      Clock.monotonic()   -- => 123456789 (example)
   fn monotonic() -[Clock]> Int
 
---| Measure elapsed monotonic ticks since `start`.
---|
---|   let start = Clock.monotonic()
---|   Clock.elapsed_since(start)   -- => 0 or greater
+doc
+  Measure elapsed monotonic ticks since `start`.
+
+    let start = Clock.monotonic()
+    Clock.elapsed_since(start)   -- => 0 or greater
 fn elapsed_since(start: Int) -[Clock]> Int
   Clock.monotonic() - start

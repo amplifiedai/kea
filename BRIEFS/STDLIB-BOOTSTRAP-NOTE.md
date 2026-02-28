@@ -163,18 +163,19 @@ mise run check-full
 This is non-negotiable. The stdlib is most users' first contact
 with Kea — the docs ARE the language's first impression.
 
-Use `--|` doc comments. Follow the convention in the full brief
+Use `doc` keyword syntax. Follow the convention in the full brief
 (`stdlib-bootstrap.md` § Documentation and Testing Convention):
 
 ```kea
---| Return the first element that satisfies the predicate.
---|
---| Searches the list from left to right and returns `Some(element)`
---| for the first match, or `None` if no element satisfies `pred`.
---|
---|   List.find([1, 2, 3, 4], |x| x > 2)   -- => Some(3)
---|   List.find([1, 2, 3], |x| x > 10)      -- => None
---|   List.find([], |_| true)                -- => None
+doc
+  Return the first element that satisfies the predicate.
+
+  Searches the list from left to right and returns `Some(element)`
+  for the first match, or `None` if no element satisfies `pred`.
+
+    List.find([1, 2, 3, 4], |x| x > 2)   -- => Some(3)
+    List.find([1, 2, 3], |x| x > 10)      -- => None
+    List.find([], |_| true)                -- => None
 fn find(xs: List A, pred: A -> Bool) -> Option A
 ```
 

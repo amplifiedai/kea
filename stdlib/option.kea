@@ -1,51 +1,57 @@
---| Option represents a value that may or may not be present.
---|
---| Use `Some(value)` for present values and `None` for absence.
---| Pattern matching is the primary way to branch on an option:
---|
---|   case opt
---|     Some(x) -> x
---|     None -> fallback
---|
---| Use `Option.unwrap` only at boundaries where converting `None`
---| into a `Fail` is the right behavior.
+doc
+  Option represents a value that may or may not be present.
+
+  Use `Some(value)` for present values and `None` for absence.
+  Pattern matching is the primary way to branch on an option:
+
+    case opt
+      Some(x) -> x
+      None -> fallback
+
+  Use `Option.unwrap` only at boundaries where converting `None`
+  into a `Fail` is the right behavior.
 effect Fail E
-  --| Abort the current computation with an error payload.
-  --|
-  --|   Fail.fail("boom")
+  doc
+    Abort the current computation with an error payload.
+
+      Fail.fail("boom")
   fn fail(error: E) -> Never
 
---| Transform an Option value with a mapping function.
---|
---|   Option.map(Some(2), |x| x + 1)   -- => Some(3)
---|   Option.map(None, |x| x + 1)      -- => None
+doc
+  Transform an Option value with a mapping function.
+
+    Option.map(Some(2), |x| x + 1)   -- => Some(3)
+    Option.map(None, |x| x + 1)      -- => None
 fn map(opt: Option a, f: fn(a) -> b) -> Option b
   case opt
     Some(value) -> Some(f(value))
     None -> None
 
---| Chain Option-producing computations.
---|
---|   Option.and_then(Some(2), |x| Some(x + 1))   -- => Some(3)
---|   Option.and_then(None, |x| Some(x + 1))      -- => None
+doc
+  Chain Option-producing computations.
+
+    Option.and_then(Some(2), |x| Some(x + 1))   -- => Some(3)
+    Option.and_then(None, |x| Some(x + 1))      -- => None
 fn and_then(opt: Option a, f: fn(a) -> Option b) -> Option b
   case opt
     Some(value) -> f(value)
     None -> None
 
---| Return this option when Some; otherwise evaluate a fallback.
---|
---|   Option.or_else(Some(7), || Some(0))   -- => Some(7)
---|   Option.or_else(None, || Some(0))      -- => Some(0)
+doc
+  Return this option when Some; otherwise evaluate a fallback.
+
+    Option.or_else(Some(7), || Some(0))   -- => Some(7)
+    Option.or_else(None, || Some(0))      -- => Some(0)
 fn or_else(opt: Option a, fallback: fn() -> Option a) -> Option a
   case opt
     Some(value) -> Some(value)
     None -> fallback()
 
---| Keep the value only when it satisfies the predicate.
---|
---|   Option.filter(Some(2), |x| x > 1)   -- => Some(2)
---|   Option.filter(Some(0), |x| x > 1)   -- => None
+doc
+  Keep the value only when it satisfies the predicate.
+
+    Option.filter(Some(2), |x| x > 1)   -- => Some(2)
+    Option.filter(Some(0), |x| x > 1)   -- => None
 fn filter(opt: Option a, pred: fn(a) -> Bool) -> Option a
   case opt
     Some(value) ->
@@ -55,37 +61,41 @@ fn filter(opt: Option a, pred: fn(a) -> Bool) -> Option a
         None
     None -> None
 
---| Return the value inside Some, or a fallback for None.
---|
---|   Option.unwrap_or(Some(7), 0)   -- => 7
---|   Option.unwrap_or(None, 0)      -- => 0
+doc
+  Return the value inside Some, or a fallback for None.
+
+    Option.unwrap_or(Some(7), 0)   -- => 7
+    Option.unwrap_or(None, 0)      -- => 0
 fn unwrap_or(opt: Option a, fallback: a) -> a
   case opt
     Some(value) -> value
     None -> fallback
 
---| Extract the value inside Some or fail when None.
---|
---|   catch Option.unwrap(Some(7))   -- => Ok(7)
---|   catch Option.unwrap(None)      -- => Err("Option.unwrap on None")
+doc
+  Extract the value inside Some or fail when None.
+
+    catch Option.unwrap(Some(7))   -- => Ok(7)
+    catch Option.unwrap(None)      -- => Err("Option.unwrap on None")
 fn unwrap(opt: Option a) -[Fail String]> a
   case opt
     Some(value) -> value
     None -> Fail.fail("Option.unwrap on None")
 
---| Return true when an option is Some.
---|
---|   Option.is_some(Some(1))   -- => true
---|   Option.is_some(None)      -- => false
+doc
+  Return true when an option is Some.
+
+    Option.is_some(Some(1))   -- => true
+    Option.is_some(None)      -- => false
 fn is_some(opt: Option a) -> Bool
   case opt
     None -> false
     _ -> true
 
---| Return true when an option is None.
---|
---|   Option.is_none(Some(1))   -- => false
---|   Option.is_none(None)      -- => true
+doc
+  Return true when an option is None.
+
+    Option.is_none(Some(1))   -- => false
+    Option.is_none(None)      -- => true
 fn is_none(opt: Option a) -> Bool
   case opt
     None -> true

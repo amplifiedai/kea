@@ -53,7 +53,7 @@ tests/algorithms/
 ```
 
 Each file contains:
-- `--|` doc comments explaining the algorithm and its complexity
+- `doc` comments explaining the algorithm and its complexity
 - The implementation
 - `test` blocks exercising correctness
 - A benchmark function callable from `kea-bench`
@@ -61,11 +61,12 @@ Each file contains:
 ### Example structure
 
 ```kea
---| Welford's online algorithm for computing running mean and
---| variance in a single pass. Numerically stable — avoids the
---| catastrophic cancellation of naive sum-of-squares.
---|
---| Complexity: O(n) time, O(1) space.
+doc
+  Welford's online algorithm for computing running mean and
+  variance in a single pass. Numerically stable — avoids the
+  catastrophic cancellation of naive sum-of-squares.
+
+  Complexity: O(n) time, O(1) space.
 
 fn welford(xs: List) -> (Float, Float)
   welford_step(xs, 0, 0.0, 0.0)
@@ -200,9 +201,9 @@ When GADTs and advanced pattern matching land:
 
 Gallery code is exemplary. It's what people read to learn Kea.
 
-- Every file has a module-level `--|` doc comment explaining
+- Every file has a module-level `doc` comment explaining
   the algorithm, its complexity, and when you'd use it.
-- Every function has a `--|` doc comment.
+- Every function has a `doc` comment.
 - Variable names are descriptive, not single-letter (except
   conventional: `n` for count, `i` for index, `xs` for list).
 - Prefer clarity over conciseness. Three clear lines over one

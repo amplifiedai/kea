@@ -37,23 +37,24 @@ patterns.
 **Add a module-level doc comment explaining Result's role:**
 
 ```kea
---| Result is Fail's data representation.
---|
---| Use `-[Fail E]> T` in function signatures, not `-> Result(T, E)`.
---| Result appears when you need to *store* or *collect* outcomes,
---| not as a control flow mechanism.
---|
---| Store outcomes:
---|
---|   let results = items.map(|item| catch validate(item))
---|
---| Choose a default:
---|
---|   let config = Result.unwrap_or(catch load_config(), defaults)
---|
---| Convert back to Fail with `?`:
---|
---|   let value = some_result?
+doc
+  Result is Fail's data representation.
+
+  Use `-[Fail E]> T` in function signatures, not `-> Result(T, E)`.
+  Result appears when you need to *store* or *collect* outcomes,
+  not as a control flow mechanism.
+
+  Store outcomes:
+
+    let results = items.map(|item| catch validate(item))
+
+  Choose a default:
+
+    let config = Result.unwrap_or(catch load_config(), defaults)
+
+  Convert back to Fail with `?`:
+
+    let value = some_result?
 ```
 
 ### 2. Audit every function signature
@@ -70,14 +71,15 @@ Go through every `.kea` file in `stdlib/`. For each function ask:
 **Every public function needs a doc comment that meets this bar:**
 
 ```kea
---| Fold a list from the left, accumulating a result.
---|
---| Applies `f` to each element and the running accumulator,
---| starting from `init`. Returns the final accumulator value.
---|
---|   List.fold([1, 2, 3], 0, |acc, x| acc + x)   -- => 6
---|   List.fold([], 10, |acc, x| acc + x)           -- => 10
---|   List.fold([1, 2, 3], "", |s, x| "{s}{x}")    -- => "123"
+doc
+  Fold a list from the left, accumulating a result.
+
+  Applies `f` to each element and the running accumulator,
+  starting from `init`. Returns the final accumulator value.
+
+    List.fold([1, 2, 3], 0, |acc, x| acc + x)   -- => 6
+    List.fold([], 10, |acc, x| acc + x)           -- => 10
+    List.fold([1, 2, 3], "", |s, x| "{s}{x}")    -- => "123"
 fn fold(xs: List A, init: B, f: fn(B, A) -> B) -> B
 ```
 
@@ -94,18 +96,19 @@ fn fold(xs: List A, init: B, f: fn(B, A) -> B) -> B
 **Every module gets a module-level doc comment** at the top:
 
 ```kea
---| List provides operations on linked lists.
---|
---| Lists are the core recursive data structure in Kea. Use `Cons`
---| to prepend and pattern matching to deconstruct:
---|
---|   let xs = Cons(1, Cons(2, Cons(3, Nil)))
---|   case xs
---|     Cons(head, tail) -> head   -- => 1
---|     Nil -> 0
---|
---| For indexed access and cache-friendly iteration, use `Vector`
---| (available in Tier 2).
+doc
+  List provides operations on linked lists.
+
+  Lists are the core recursive data structure in Kea. Use `Cons`
+  to prepend and pattern matching to deconstruct:
+
+    let xs = Cons(1, Cons(2, Cons(3, Nil)))
+    case xs
+      Cons(head, tail) -> head   -- => 1
+      Nil -> 0
+
+  For indexed access and cache-friendly iteration, use `Vector`
+  (available in Tier 2).
 ```
 
 ### 4. Naming consistency

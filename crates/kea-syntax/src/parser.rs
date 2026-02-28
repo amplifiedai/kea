@@ -101,6 +101,7 @@ impl Parser {
         let start = self.current_span();
         let mut declarations: Vec<Decl> = Vec::new();
         self.skip_newlines();
+
         while !self.at_eof() {
             if let Some(decl) = self.declaration() {
                 declarations.push(decl);
@@ -109,6 +110,7 @@ impl Parser {
         }
         let end = self.current_span();
         Module {
+            doc: None,
             declarations,
             span: start.merge(end),
         }
@@ -5132,18 +5134,22 @@ impl Parser {
         }
     }
 
-    /// Consume a leading `--|` doc-comment block and return normalized text.
+    /// Consume a `doc` block and return its body text.
     fn consume_doc_comment_block(&mut self) -> Option<String> {
-        let mut lines = Vec::new();
-        while let Some(TokenKind::DocComment(line)) = self.peek_kind() {
-            lines.push(line.clone());
-            self.advance();
+        if self.peek_kind() == Some(&TokenKind::Doc) {
+            self.advance(); // consume `doc`
             self.skip_newlines();
-        }
-        if lines.is_empty() {
-            None
+            if let Some(TokenKind::DocBody(content)) = self.peek_kind() {
+                let content = content.clone();
+                self.advance();
+                self.skip_newlines();
+                Some(content)
+            } else {
+                // `doc` keyword with no body
+                Some(String::new())
+            }
         } else {
-            Some(lines.join("\n"))
+            None
         }
     }
 
@@ -6751,7 +6757,7 @@ mod tests {
 
     #[test]
     fn parse_fn_doc_comment() {
-        let module = parse_mod("--| Adds two numbers.\nfn add(x, y) -> Int\n  x + y");
+        let module = parse_mod("doc Adds two numbers.\nfn add(x, y) -> Int\n  x + y");
         match &module.declarations[0].node {
             DeclKind::Function(f) => {
                 assert_eq!(f.name.node, "add");
@@ -6762,8 +6768,8 @@ mod tests {
     }
 
     #[test]
-    fn parse_multiline_doc_comment() {
-        let module = parse_mod("--| Summary.\n--|\n--| Details.\nfn f() -> Int\n  1");
+    fn parse_multiline_doc_block() {
+        let module = parse_mod("doc\n  Summary.\n\n  Details.\nfn f() -> Int\n  1");
         match &module.declarations[0].node {
             DeclKind::Function(f) => {
                 assert_eq!(f.doc.as_deref(), Some("Summary.\n\nDetails."));
@@ -6773,9 +6779,9 @@ mod tests {
     }
 
     #[test]
-    fn parse_doc_comments_for_type_record_trait() {
+    fn parse_doc_blocks_for_type_record_trait() {
         let module = parse_mod(
-            "--| T docs\nenum T\n  A\n--| R docs\nstruct R\n  x: Int\n--| Tr docs\ntrait Tr\n  fn m() -> Int\n    0",
+            "doc T docs\nenum T\n  A\ndoc R docs\nstruct R\n  x: Int\ndoc Tr docs\ntrait Tr\n  fn m() -> Int\n    0",
         );
         match &module.declarations[0].node {
             DeclKind::TypeDef(def) => assert_eq!(def.doc.as_deref(), Some("T docs")),
@@ -6791,16 +6797,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn parse_doc_comment_before_import_reports_error() {
-        let errors = parse_mod_err("--| doc\nimport Kea.IO");
-        assert!(
-            errors
-                .iter()
-                .any(|d| d.message.contains("doc comments can only be attached")),
-            "expected doc attachment error, got {errors:?}"
-        );
-    }
+    // Module-level doc blocks are deferred to a later phase.
+    // For now, a `doc` at file top attaches to the first declaration.
 
     #[test]
     fn parse_pub_fn() {
@@ -8249,7 +8247,7 @@ mod tests {
 
     #[test]
     fn parse_expr_with_doc_comment() {
-        let m = parse_mod("--| Doubles an integer.\nexpr double(x: Int) -> Int\n  x + x");
+        let m = parse_mod("doc Doubles an integer.\nexpr double(x: Int) -> Int\n  x + x");
         match &m.declarations[0].node {
             DeclKind::ExprFn(ed) => {
                 assert_eq!(ed.doc.as_deref(), Some("Doubles an integer."));

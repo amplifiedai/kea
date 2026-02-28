@@ -155,12 +155,12 @@ use Df.{DataFrame, Column, Expr, Schema}
 
 struct Df
 
-  --|  Read a CSV file into a DataFrame.
+  doc Read a CSV file into a DataFrame.
   fn read_csv(_ path: String) -[IO, Fail DfError]> DataFrame
     let bytes = IO.read_file(path)
     DataFrame.parse_csv(bytes)?
 
-  --|  Run a SQL query against registered tables.
+  doc Run a SQL query against registered tables.
   fn sql(_ query: String) -[IO, Fail DfError]> DataFrame
     -- desugars to DataFusion logical plan
     DataFrame.from_sql(query)?

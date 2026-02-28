@@ -66,7 +66,7 @@ can drop IO if the wrapped operation is demonstrably pure:
 fn c_abs(n: CInt) -[IO]> CInt
 
 struct Int
-  --| Return the absolute value.
+  doc Return the absolute value.
   fn abs(n: Int) -> Int
     -- We know c_abs is pure, so we handle IO at the wrapper level
     -- Actually, Int.abs should be a Kea intrinsic, not FFI.
@@ -86,7 +86,7 @@ with a lint warning.
 KERNEL §17.2-17.3 specify the unsafe boundary:
 
 ```kea
---| Open a SQLite database, returning a safe handle.
+doc Open a SQLite database, returning a safe handle.
 fn open(path: String) -[IO, Fail SqliteError]> Sqlite
   let db = unsafe Ptr.null()
   let rc = unsafe sqlite3_open(path.as_c_str(), Ptr.addr_of(db))
@@ -248,19 +248,21 @@ bindings wrap it with effects:
 ```kea
 struct Cranelift
 
-  --| A Cranelift compilation module.
-  --| Use `Cranelift.with_module` to create one.
+  doc
+    A Cranelift compilation module.
+    Use `Cranelift.with_module` to create one.
   type Module = Opaque    -- opaque C handle
 
-  --| Create a new compilation module, execute `f` with it,
-  --| and clean up resources when `f` completes.
+  doc
+    Create a new compilation module, execute `f` with it,
+    and clean up resources when `f` completes.
   fn with_module(f: (Module) -[e]> A) -[IO, Fail CraneliftError, e]> A
     let module = unsafe cranelift_module_new()
     let result = f(module)
     unsafe cranelift_module_free(module)
     result
 
-  --| Define a function in the module.
+  doc Define a function in the module.
   fn define_function(
     module: Module,
     name: String,
@@ -270,7 +272,7 @@ struct Cranelift
   ) -[IO, Fail CraneliftError]> FuncId
     -- ...
 
-  --| Finalize the module and emit machine code.
+  doc Finalize the module and emit machine code.
   fn emit(module: Module) -[IO, Fail CraneliftError]> Bytes
     -- ...
 ```
@@ -286,25 +288,28 @@ and raw `Ptr UInt8`:
 
 ```kea
 struct String
-  --| Convert to a null-terminated C string.
-  --| The returned pointer is valid until the String is dropped.
+  doc
+    Convert to a null-terminated C string.
+    The returned pointer is valid until the String is dropped.
   @unsafe
   fn as_c_str(s: String) -> Ptr UInt8
 
-  --| Create a String from a null-terminated C string.
-  --| Copies the data into a Kea-managed String.
+  doc
+    Create a String from a null-terminated C string.
+    Copies the data into a Kea-managed String.
   fn from_c_str(ptr: Ptr UInt8) -[IO]> String
 
 struct Bytes
-  --| Get a raw pointer to the byte data.
+  doc Get a raw pointer to the byte data.
   @unsafe
   fn as_ptr(b: Bytes) -> Ptr UInt8
 
-  --| Get the length in bytes.
+  doc Get the length in bytes.
   fn length(b: Bytes) -> Int
 
-  --| Create Bytes from a raw pointer and length.
-  --| Copies the data into Kea-managed memory.
+  doc
+    Create Bytes from a raw pointer and length.
+    Copies the data into Kea-managed memory.
   fn from_raw(ptr: Ptr UInt8, len: Int) -[IO]> Bytes
 ```
 

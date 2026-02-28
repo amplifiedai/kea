@@ -121,6 +121,83 @@ use Test
     module: (upper_identifier)))
 
 ==================
+Doc block on function
+==================
+
+doc Adds two integers together.
+fn add(x: Int, y: Int) -> Int
+  x
+
+---
+
+(source_file
+  (documented_declaration
+    (doc_block)
+    (function_declaration
+      name: (identifier)
+      (parameter_list
+        (parameter
+          pattern: (variable_pattern (identifier))
+          type: (named_type (upper_identifier)))
+        (parameter
+          pattern: (variable_pattern (identifier))
+          type: (named_type (upper_identifier))))
+      (pure_return_type
+        type: (named_type (upper_identifier)))
+      (identifier))))
+
+==================
+Multi-line doc block
+==================
+
+doc A user record.
+doc Contains name and age fields.
+struct User
+  name: String
+  age: Int
+
+---
+
+(source_file
+  (documented_declaration
+    (doc_block)
+    (struct_definition
+      name: (upper_identifier)
+      (struct_field
+        name: (identifier)
+        type: (named_type (upper_identifier)))
+      (struct_field
+        name: (identifier)
+        type: (named_type (upper_identifier))))))
+
+==================
+Doc block on effect
+==================
+
+doc Side-effectful I/O operations.
+effect IO
+  fn stdout(msg: String) -[IO]> Unit
+
+---
+
+(source_file
+  (documented_declaration
+    (doc_block)
+    (effect_declaration
+      name: (upper_identifier)
+      (function_declaration
+        name: (identifier)
+        (parameter_list
+          (parameter
+            pattern: (variable_pattern (identifier))
+            type: (named_type (upper_identifier))))
+        (effect_return_type
+          (effect_row
+            (effect_ref
+              name: (upper_identifier)))
+          type: (named_type (upper_identifier)))))))
+
+==================
 Test declaration
 ==================
 

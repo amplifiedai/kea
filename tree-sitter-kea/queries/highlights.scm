@@ -94,6 +94,7 @@
 (integer) @number
 (float) @number.float
 (string) @string
+(triple_quoted_string) @string
 (boolean) @boolean
 (none) @constant.builtin
 
@@ -132,4 +133,4 @@
 ; ── Comments ─────────────────────────────────────────────────────
 
 (line_comment) @comment
-(doc_comment) @comment.documentation
+(doc_block) @comment.documentation

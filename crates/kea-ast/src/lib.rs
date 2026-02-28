@@ -966,6 +966,8 @@ pub enum ImportItems {
 /// A complete source file / module.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Module {
+    /// Module-level documentation (a `doc` block at the top of the file).
+    pub doc: Option<String>,
     pub declarations: Vec<Decl>,
     pub span: Span,
 }

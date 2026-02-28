@@ -116,12 +116,13 @@ $          -- receiver placeholder in method chains
 ### Doc Comments
 
 ```
---| This is a doc comment.
---|
---|   example_call()   -- => expected
+doc
+  This is a doc comment.
+
+    example_call()   -- => expected
 ```
 
-`--|` prefix. Blank `--|` separates description from examples.
+`doc` keyword (inline `doc text` or block form with indented body).
 Regular comments: `-- comment`.
 
 ## Effect-Aware Highlighting — Design
@@ -280,7 +281,7 @@ pipe operator `|>`, map literals `%{`, anonymous records `#{}`.
 - `use` imports (replacing `import`)
 - `@annotation` syntax
 - Indentation-sensitive blocks (the big structural change)
-- `--|` doc comments
+- `doc` keyword doc comments
 - `while` loops
 - Hex/binary/octal literals with underscore separators
 
@@ -310,7 +311,7 @@ Write `highlights.scm` using the capture strategy above. Test against:
 
 Regex-based, targeting VS Code + GitHub Linguist. Priority patterns:
 
-1. Comments (`--`, `--|`)
+1. Comments (`--`) and doc blocks (`doc`)
 2. Strings (with escapes)
 3. Keywords (two groups: regular + effect-related)
 4. Effect arrows `-[...]>` (regex: `-\[.*?\]>`)
@@ -331,7 +332,7 @@ GIS raster format from kealib.org) — not a programming language,
 so no grammar conflict, but Linguist will need a content-based
 disambiguation heuristic. Include a first-line or keyword pattern
 that distinguishes Kea source from binary HDF5 files (e.g.
-presence of `fn `, `effect `, `type `, `use `, or `--|`).
+presence of `fn `, `effect `, `type `, `use `, or `doc `).
 
 ### Step 4: Editor configs
 

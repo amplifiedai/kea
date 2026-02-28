@@ -1,27 +1,31 @@
---| State provides scoped mutable state via handlers.
---|
---| Use `State.with_state` to isolate mutation and return
---| deterministic `(result, final_state)` values.
+doc
+  State provides scoped mutable state via handlers.
+
+  Use `State.with_state` to isolate mutation and return
+  deterministic `(result, final_state)` values.
 effect State S
-  --| Return the current state value.
-  --|
-  --|   State.get()
+  doc
+    Return the current state value.
+
+      State.get()
   fn get() -> S
 
-  --| Replace the current state value.
-  --|
-  --|   State.put(42)
+  doc
+    Replace the current state value.
+
+      State.put(42)
   fn put(next: S) -> Unit
 
---| Run `f` with mutable state initialized to `initial`.
---|
---| Returns `(result, final_state)` when `f` completes.
---|
---|   State.with_state(0, ||
---|     let n = State.get()
---|     State.put(n + 1)
---|     State.get()
---|   )   -- => (1, 1)
+doc
+  Run `f` with mutable state initialized to `initial`.
+
+  Returns `(result, final_state)` when `f` completes.
+
+    State.with_state(0, ||
+      let n = State.get()
+      State.put(n + 1)
+      State.get()
+    )   -- => (1, 1)
 fn with_state(initial: S, f: fn() -[State S, e]> T) -[e]> (T, S)
   let result = handle f()
     State.get() -> resume initial

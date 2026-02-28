@@ -249,19 +249,20 @@ fn load(path: String) -[IO, Fail AppError]> Config
     Fail.fail(e) -> fail AppError.config(e)
 ```
 
-## 8. Doc comments are not optional.
+## 8. Doc blocks are not optional.
 
-**Every public function gets a `--|` doc comment.**
+**Every public function gets a `doc` block.**
 
 ```kea
---| Find the first element satisfying the predicate.
---|
---| Returns `Some(element)` for the first match, or `None` if
---| no element matches. Searches left to right.
---|
---|   List.find([1, 2, 3], |x| x > 1)   -- => Some(2)
---|   List.find([1, 2], |x| x > 10)     -- => None
---|   List.find([], |_| true)            -- => None
+doc
+  Find the first element satisfying the predicate.
+
+  Returns `Some(element)` for the first match, or `None` if
+  no element matches. Searches left to right.
+
+    List.find([1, 2, 3], |x| x > 1)   -- => Some(2)
+    List.find([1, 2], |x| x > 10)     -- => None
+    List.find([], |_| true)            -- => None
 fn find(xs: List A, pred: A -> Bool) -> Option A
 ```
 
