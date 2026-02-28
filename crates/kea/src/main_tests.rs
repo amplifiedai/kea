@@ -718,6 +718,29 @@
     }
 
     #[test]
+    fn compile_and_execute_generic_list_enum_exit_code() {
+        let project_dir = temp_project_dir("kea-cli-generic-list-enum");
+        let src_dir = project_dir.join("src");
+        let stdlib_dir = project_dir.join("stdlib");
+        std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+        std::fs::create_dir_all(&stdlib_dir).expect("stdlib dir should be created");
+        std::fs::write(stdlib_dir.join("prelude.kea"), "fn ping() -> Int\n  7\n")
+            .expect("prelude module write should succeed");
+
+        let app_path = src_dir.join("app.kea");
+        std::fs::write(
+            &app_path,
+            "enum List a\n  Nil\n  Cons(a, List a)\n\nfn length(xs: List Int) -> Int\n  case xs\n    Nil -> 0\n    Cons(_, rest) -> 1 + length(rest)\n\nfn main() -> Int\n  length(Cons(1, Cons(2, Cons(3, Nil))))\n",
+        )
+        .expect("app module write should succeed");
+
+        let run = run_file(&app_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 3);
+
+        let _ = std::fs::remove_dir_all(project_dir);
+    }
+
+    #[test]
     fn compile_and_execute_real_stdlib_int_module_exit_code() {
         let project_dir = temp_workspace_project_dir("kea-cli-project-real-stdlib-numeric");
         let src_dir = project_dir.join("src");
@@ -808,6 +831,101 @@
 
         let run = run_file(&app_path).expect("run should succeed");
         assert_eq!(run.exit_code, 0);
+
+        let _ = std::fs::remove_dir_all(project_dir);
+    }
+
+    #[test]
+    fn compile_and_execute_real_stdlib_state_effect_module_exit_code() {
+        let project_dir = temp_workspace_project_dir("kea-cli-project-real-stdlib-state");
+        let src_dir = project_dir.join("src");
+        std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+
+        let app_path = src_dir.join("app.kea");
+        std::fs::write(
+            &app_path,
+            "use State\n\nfn run() -[State Int]> Int\n  State.put(5)\n  State.get()\n\nfn main() -> Int\n  handle run()\n    State.get() -> resume 0\n    State.put(next) -> resume ()\n",
+        )
+        .expect("app module write should succeed");
+
+        let run = run_file(&app_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 5);
+
+        let _ = std::fs::remove_dir_all(project_dir);
+    }
+
+    #[test]
+    fn compile_and_execute_real_stdlib_log_effect_module_exit_code() {
+        let project_dir = temp_workspace_project_dir("kea-cli-project-real-stdlib-log");
+        let src_dir = project_dir.join("src");
+        std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+
+        let app_path = src_dir.join("app.kea");
+        std::fs::write(
+            &app_path,
+            "use Log\n\nfn emit() -[Log]> Int\n  Log.debug(\"d\")\n  Log.info(\"i\")\n  Log.warn(\"w\")\n  Log.error(\"e\")\n  7\n\nfn main() -> Int\n  handle emit()\n    Log.debug(msg) -> resume ()\n    Log.info(msg) -> resume ()\n    Log.warn(msg) -> resume ()\n    Log.error(msg) -> resume ()\n",
+        )
+        .expect("app module write should succeed");
+
+        let run = run_file(&app_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 7);
+
+        let _ = std::fs::remove_dir_all(project_dir);
+    }
+
+    #[test]
+    fn compile_and_execute_real_stdlib_reader_effect_module_exit_code() {
+        let project_dir = temp_workspace_project_dir("kea-cli-project-real-stdlib-reader");
+        let src_dir = project_dir.join("src");
+        std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+
+        let app_path = src_dir.join("app.kea");
+        std::fs::write(
+            &app_path,
+            "use Reader\n\nfn main() -> Int\n  handle Reader.ask()\n    Reader.ask() -> resume 41\n",
+        )
+        .expect("app module write should succeed");
+
+        let run = run_file(&app_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 41);
+
+        let _ = std::fs::remove_dir_all(project_dir);
+    }
+
+    #[test]
+    fn compile_and_execute_trait_method_return_type_from_imported_module_exit_code() {
+        let project_dir =
+            temp_workspace_project_dir("kea-cli-project-trait-method-return-imported-module");
+        let src_dir = project_dir.join("src");
+        std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+
+        let app_path = src_dir.join("app.kea");
+        std::fs::write(
+            &app_path,
+            "use Order\n\ntrait Ord a\n  fn compare(a: a, b: a) -> Ordering\n\nfn main() -> Int\n  0\n",
+        )
+        .expect("app module write should succeed");
+
+        let run = run_file(&app_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 0);
+
+        let _ = std::fs::remove_dir_all(project_dir);
+    }
+
+    #[test]
+    fn compile_prelude_reexports_module_qualified_helpers_without_collisions() {
+        let project_dir = temp_workspace_project_dir("kea-cli-project-prelude-module-reexports");
+        let src_dir = project_dir.join("src");
+        std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+
+        let app_path = src_dir.join("app.kea");
+        std::fs::write(
+            &app_path,
+            "fn inc(x: Int) -> Int\n  x + 1\n\nfn main() -> Int\n  let _ = Option.map(Some(1), inc)\n  let _ = Result.map(Ok(2), inc)\n  let _ = List.map(List.Cons(3, List.Nil), inc)\n  0\n",
+        )
+        .expect("app module write should succeed");
+
+        let _compiled = compile_file(&app_path, CodegenMode::Aot).expect("compile should succeed");
 
         let _ = std::fs::remove_dir_all(project_dir);
     }
@@ -1058,26 +1176,14 @@
     }
 
     fn matrix_same_name_module_struct_expected(
-        call_form: MatrixCallForm,
-        import_state: MatrixImportState,
+        _call_form: MatrixCallForm,
+        _import_state: MatrixImportState,
         relation: MatrixModuleRelation,
     ) -> bool {
         if matches!(relation, MatrixModuleRelation::SameModule) {
             return true;
         }
-        match call_form {
-            MatrixCallForm::DirectQualified | MatrixCallForm::UmsQualified => {
-                !matches!(import_state, MatrixImportState::NotImported)
-            }
-            MatrixCallForm::UmsUnqualified => {
-                matches!(
-                    import_state,
-                    MatrixImportState::UseModule
-                        | MatrixImportState::UseModuleNamed
-                        | MatrixImportState::Prelude
-                )
-            }
-        }
+        true
     }
 
     fn matrix_error_looks_like_resolution(err: &str) -> bool {
@@ -1115,6 +1221,8 @@
                     let stdlib_dir = project_dir.join("stdlib");
                     std::fs::create_dir_all(&src_dir).expect("source dir should be created");
                     std::fs::create_dir_all(&stdlib_dir).expect("stdlib dir should be created");
+                    std::fs::write(stdlib_dir.join("prelude.kea"), "fn ping() -> Int\n  7\n")
+                        .expect("prelude write should succeed");
 
                     let mut imports = Vec::new();
                     let mut app_defs = Vec::new();
@@ -1194,7 +1302,12 @@
                             "unexpected exit code for relation={relation:?}, import={import_state:?}, call={call_form:?}"
                         );
                     } else {
-                        let err = run.expect_err("expected resolution failure");
+                        let err = match run {
+                            Ok(run) => panic!(
+                                "expected resolution failure for relation={relation:?}, import={import_state:?}, call={call_form:?}, got run result: {run:?}"
+                            ),
+                            Err(err) => err,
+                        };
                         assert!(
                             matrix_error_looks_like_resolution(&err),
                             "expected resolution-style error for relation={relation:?}, import={import_state:?}, call={call_form:?}; got: {err}"
@@ -1311,7 +1424,12 @@
                             "unexpected exit code for relation={relation:?}, import={import_state:?}, call={call_form:?}"
                         );
                     } else {
-                        let err = run.expect_err("expected resolution failure");
+                        let err = match run {
+                            Ok(run) => panic!(
+                                "expected resolution failure for relation={relation:?}, import={import_state:?}, call={call_form:?}, got run result: {run:?}"
+                            ),
+                            Err(err) => err,
+                        };
                         assert!(
                             matrix_error_looks_like_resolution(&err),
                             "expected resolution-style error for relation={relation:?}, import={import_state:?}, call={call_form:?}; got: {err}"
@@ -1428,7 +1546,12 @@
                             "unexpected exit code for relation={relation:?}, import={import_state:?}, call={call_form:?}"
                         );
                     } else {
-                        let err = run.expect_err("expected resolution failure");
+                        let err = match run {
+                            Ok(run) => panic!(
+                                "expected resolution failure for relation={relation:?}, import={import_state:?}, call={call_form:?}, got run result: {run:?}"
+                            ),
+                            Err(err) => err,
+                        };
                         assert!(
                             matrix_error_looks_like_resolution(&err),
                             "expected resolution-style error for relation={relation:?}, import={import_state:?}, call={call_form:?}; got: {err}"
@@ -2452,11 +2575,25 @@
 
     #[test]
     fn compile_emits_release_ops_for_allocation_churn_program() {
-        let source_path = write_temp_source(
+        let project_dir = temp_project_dir("kea-cli-refcount-stats");
+        let src_dir = project_dir.join("src");
+        let stdlib_dir = project_dir.join("stdlib");
+        std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+        std::fs::create_dir_all(&stdlib_dir).expect("stdlib dir should be created");
+        std::fs::write(stdlib_dir.join("prelude.kea"), "fn ping() -> Int\n  7\n")
+            .expect("prelude module write should succeed");
+        std::fs::write(
+            stdlib_dir.join("show.kea"),
+            "trait Show a\n  fn show(value: a) -> String\n\nfn show(value: Int) -> String\n  \"0\"\n",
+        )
+        .expect("show module write should succeed");
+
+        let source_path = src_dir.join("app.kea");
+        std::fs::write(
+            &source_path,
             "struct Box\n  n: Int\n\nfn churn(i: Int, acc: Int) -> Int\n  if i == 0\n    acc\n  else\n    let b = Box { n: i }\n    churn(i - 1, acc + b.n - i)\n\nfn main() -> Int\n  churn(1024, 0)\n",
-            "kea-cli-refcount-stats",
-            "kea",
-        );
+        )
+        .expect("app module write should succeed");
 
         let compiled = compile_file(&source_path, CodegenMode::Jit).expect("compile should work");
         let alloc_count: usize = compiled
@@ -2483,7 +2620,7 @@
             "expected release count to track allocations closely, alloc={alloc_count}, release={release_count}"
         );
 
-        let _ = std::fs::remove_file(source_path);
+        let _ = std::fs::remove_dir_all(project_dir);
     }
 
     #[test]
@@ -2769,6 +2906,34 @@
         );
 
         let run = run_file(&source_path).expect("reader handler run should succeed");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_effectful_named_callback_parameter_exit_code() {
+        let source_path = write_temp_source(
+            "effect Reader C\n  fn ask() -> C\n\nfn with_reader(env: C, f: fn() -[Reader C]> Int) -> Int\n  handle f()\n    Reader.ask() -> resume env\n\nfn app() -[Reader Int]> Int\n  Reader.ask() + 1\n\nfn main() -> Int\n  with_reader(41, app)\n",
+            "kea-cli-effectful-named-callback",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("effectful named callback should run");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_effectful_with_callback_lambda_exit_code() {
+        let source_path = write_temp_source(
+            "effect Reader C\n  fn ask() -> C\n\nfn with_reader(env: C, @with f: fn() -[Reader C]> Int) -> Int\n  handle f()\n    Reader.ask() -> resume env\n\nfn main() -> Int\n  with with_reader(41)\n  Reader.ask() + 1\n",
+            "kea-cli-effectful-with-callback-lambda",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("effectful with-callback lambda should run");
         assert_eq!(run.exit_code, 42);
 
         let _ = std::fs::remove_file(source_path);

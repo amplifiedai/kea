@@ -2857,6 +2857,7 @@ fn resolve_assoc_annotation_for_impl(
     resolve_annotation_with_self_assoc_and_params(
         ann,
         &empty_records,
+        None,
         &self_type,
         associated_types,
         &mut param_scope,
@@ -2899,7 +2900,7 @@ impl TraitRegistry {
         def: &kea_ast::TraitDef,
         records: &RecordRegistry,
     ) -> Result<(), Diagnostic> {
-        self.register_trait_with_owner(def, records, "repl:")
+        self.register_trait_with_owner_and_sum_types(def, records, None, "repl:")
     }
 
     /// Register a trait definition with an explicit owning module.
@@ -2907,6 +2908,17 @@ impl TraitRegistry {
         &mut self,
         def: &kea_ast::TraitDef,
         records: &RecordRegistry,
+        owner_module: &str,
+    ) -> Result<(), Diagnostic> {
+        self.register_trait_with_owner_and_sum_types(def, records, None, owner_module)
+    }
+
+    /// Register a trait definition with an explicit owning module and sum types.
+    pub fn register_trait_with_owner_and_sum_types(
+        &mut self,
+        def: &kea_ast::TraitDef,
+        records: &RecordRegistry,
+        sum_types: Option<&SumTypeRegistry>,
         owner_module: &str,
     ) -> Result<(), Diagnostic> {
         if self.traits.contains_key(&def.name.node) {
@@ -3093,6 +3105,7 @@ tie it to at least one function-typed parameter effect annotation",
                     match resolve_annotation_with_self_assoc_and_params(
                         &ann.node,
                         records,
+                        sum_types,
                         &self_type,
                         &assoc_type_placeholders,
                         &mut method_type_params,
@@ -3126,6 +3139,7 @@ tie it to at least one function-typed parameter effect annotation",
                 match resolve_annotation_with_self_assoc_and_params(
                     &ann.node,
                     records,
+                    sum_types,
                     &self_type,
                     &assoc_type_placeholders,
                     &mut method_type_params,
@@ -4516,7 +4530,7 @@ fn resolve_annotation_with_type_params(
                 return resolve_decimal_annotation(args);
             }
             match (name.as_str(), args.as_slice()) {
-                ("List", [elem]) => {
+                ("List", [elem]) if !has_named_type_definition("List", records, sum_types) => {
                     Some(Type::List(Box::new(resolve_annotation_with_type_params(
                         elem,
                         type_param_scope,
@@ -6364,6 +6378,17 @@ where
     }))
 }
 
+fn has_named_type_definition(
+    name: &str,
+    records: &RecordRegistry,
+    sum_types: Option<&SumTypeRegistry>,
+) -> bool {
+    records.lookup_alias(name).is_some()
+        || records.lookup_opaque(name).is_some()
+        || records.lookup(name).is_some()
+        || sum_types.and_then(|st| st.lookup(name)).is_some()
+}
+
 fn named_type_param_arity(
     name: &str,
     records: &RecordRegistry,
@@ -6824,9 +6849,11 @@ pub fn resolve_annotation(
                 return resolve_decimal_annotation(args);
             }
             match (name.as_str(), args.as_slice()) {
-                ("List", [elem]) => Some(Type::List(Box::new(resolve_annotation(
-                    elem, records, sum_types,
-                )?))),
+                ("List", [elem]) if !has_named_type_definition("List", records, sum_types) => {
+                    Some(Type::List(Box::new(resolve_annotation(
+                        elem, records, sum_types,
+                    )?)))
+                }
                 ("Option", [inner]) => Some(Type::Option(Box::new(resolve_annotation(
                     inner, records, sum_types,
                 )?))),
@@ -6999,9 +7026,11 @@ fn resolve_annotation_or_bare_df(
                 return resolve_decimal_annotation(args);
             }
             match (name.as_str(), args.as_slice()) {
-                ("List", [elem]) => Some(Type::List(Box::new(resolve_annotation_or_bare_df(
-                    elem, records, sum_types, unifier,
-                )?))),
+                ("List", [elem]) if !has_named_type_definition("List", records, sum_types) => {
+                    Some(Type::List(Box::new(resolve_annotation_or_bare_df(
+                        elem, records, sum_types, unifier,
+                    )?)))
+                }
                 ("Option", [inner]) => Some(Type::Option(Box::new(resolve_annotation_or_bare_df(
                     inner, records, sum_types, unifier,
                 )?))),
@@ -8705,7 +8734,16 @@ pub(crate) fn unify_effect_row_subsumption(
 fn type_annotation_has_effect_var(ann: &TypeAnnotation, target: &str) -> bool {
     match ann {
         TypeAnnotation::FunctionWithEffect(params, effect, ret) => {
-            let current_matches = effect_annotation_var_name(&effect.node) == Some(target);
+            let current_matches = match &effect.node {
+                kea_ast::EffectAnnotation::Var(name) => name == target,
+                kea_ast::EffectAnnotation::Row(row) => {
+                    row.rest.as_deref() == Some(target)
+                        || row.effects.iter().any(|item| {
+                            item.name == target || item.payload.as_deref() == Some(target)
+                        })
+                }
+                _ => false,
+            };
             current_matches
                 || params
                     .iter()
@@ -17808,7 +17846,7 @@ fn resolve_annotation_with_self(
     records: &RecordRegistry,
     self_type: &Type,
 ) -> Option<Type> {
-    resolve_annotation_with_self_and_assoc(ann, records, self_type, &BTreeMap::new())
+    resolve_annotation_with_self_and_assoc(ann, records, None, self_type, &BTreeMap::new())
 }
 
 /// Resolve a type annotation with `Self` and associated types in scope.
@@ -17817,6 +17855,7 @@ fn resolve_annotation_with_self(
 fn resolve_annotation_with_self_and_assoc(
     ann: &TypeAnnotation,
     records: &RecordRegistry,
+    sum_types: Option<&SumTypeRegistry>,
     self_type: &Type,
     assoc_types: &BTreeMap<String, Type>,
 ) -> Option<Type> {
@@ -17827,7 +17866,13 @@ fn resolve_annotation_with_self_and_assoc(
         }
         TypeAnnotation::Applied(name, args) => {
             if let Some(op_ty) = eval_record_type_op(name, args, |arg_ann| {
-                resolve_annotation_with_self_and_assoc(arg_ann, records, self_type, assoc_types)
+                resolve_annotation_with_self_and_assoc(
+                    arg_ann,
+                    records,
+                    sum_types,
+                    self_type,
+                    assoc_types,
+                )
             }) {
                 return Some(op_ty);
             }
@@ -17839,65 +17884,118 @@ fn resolve_annotation_with_self_and_assoc(
             }
             match (name.as_str(), args.as_slice()) {
                 ("Option", [inner]) => Some(Type::Option(Box::new(
-                    resolve_annotation_with_self_and_assoc(inner, records, self_type, assoc_types)?,
+                    resolve_annotation_with_self_and_assoc(
+                        inner,
+                        records,
+                        sum_types,
+                        self_type,
+                        assoc_types,
+                    )?,
                 ))),
                 ("Result", [ok, err]) => Some(Type::Result(
                     Box::new(resolve_annotation_with_self_and_assoc(
                         ok,
                         records,
+                        sum_types,
                         self_type,
                         assoc_types,
                     )?),
                     Box::new(resolve_annotation_with_self_and_assoc(
                         err,
                         records,
+                        sum_types,
                         self_type,
                         assoc_types,
                     )?),
                 )),
-                ("List", [inner]) => Some(Type::List(Box::new(
-                    resolve_annotation_with_self_and_assoc(inner, records, self_type, assoc_types)?,
-                ))),
+                ("List", [inner]) if !has_named_type_definition("List", records, sum_types) => {
+                    Some(Type::List(Box::new(resolve_annotation_with_self_and_assoc(
+                        inner,
+                        records,
+                        sum_types,
+                        self_type,
+                        assoc_types,
+                    )?)))
+                }
                 ("Map", [key, val]) => Some(Type::Map(
                     Box::new(resolve_annotation_with_self_and_assoc(
                         key,
                         records,
+                        sum_types,
                         self_type,
                         assoc_types,
                     )?),
                     Box::new(resolve_annotation_with_self_and_assoc(
                         val,
                         records,
+                        sum_types,
                         self_type,
                         assoc_types,
                     )?),
                 )),
                 ("Set", [inner]) => Some(Type::Set(Box::new(
-                    resolve_annotation_with_self_and_assoc(inner, records, self_type, assoc_types)?,
+                    resolve_annotation_with_self_and_assoc(
+                        inner,
+                        records,
+                        sum_types,
+                        self_type,
+                        assoc_types,
+                    )?,
                 ))),
                 ("Actor", [inner]) => Some(Type::Actor(Box::new(
-                    resolve_annotation_with_self_and_assoc(inner, records, self_type, assoc_types)?,
+                    resolve_annotation_with_self_and_assoc(
+                        inner,
+                        records,
+                        sum_types,
+                        self_type,
+                        assoc_types,
+                    )?,
                 ))),
                 ("Arc", [inner]) => Some(Type::Arc(Box::new(
-                    resolve_annotation_with_self_and_assoc(inner, records, self_type, assoc_types)?,
+                    resolve_annotation_with_self_and_assoc(
+                        inner,
+                        records,
+                        sum_types,
+                        self_type,
+                        assoc_types,
+                    )?,
                 ))),
                 ("Stream", [inner]) => Some(Type::Stream(Box::new(
-                    resolve_annotation_with_self_and_assoc(inner, records, self_type, assoc_types)?,
+                    resolve_annotation_with_self_and_assoc(
+                        inner,
+                        records,
+                        sum_types,
+                        self_type,
+                        assoc_types,
+                    )?,
                 ))),
                 ("Task", [inner]) => Some(Type::Task(Box::new(
-                    resolve_annotation_with_self_and_assoc(inner, records, self_type, assoc_types)?,
+                    resolve_annotation_with_self_and_assoc(
+                        inner,
+                        records,
+                        sum_types,
+                        self_type,
+                        assoc_types,
+                    )?,
                 ))),
                 ("Tagged", [inner_ann]) => Some(Type::Tagged {
                     inner: Box::new(resolve_annotation_with_self_and_assoc(
                         inner_ann,
                         records,
+                        sum_types,
                         self_type,
                         assoc_types,
                     )?),
                     tags: BTreeMap::new(),
                 }),
-                _ => resolve_named_type_application(name, args, records, None, |arg_ann| {
-                    resolve_annotation_with_self_and_assoc(arg_ann, records, self_type, assoc_types)
+                _ => resolve_named_type_application(name, args, records, sum_types, |arg_ann| {
+                    resolve_annotation_with_self_and_assoc(
+                        arg_ann,
+                        records,
+                        sum_types,
+                        self_type,
+                        assoc_types,
+                    )
                 }),
             }
         }
@@ -17905,7 +18003,13 @@ fn resolve_annotation_with_self_and_assoc(
             let resolved: Vec<Type> = elems
                 .iter()
                 .map(|elem| {
-                    resolve_annotation_with_self_and_assoc(elem, records, self_type, assoc_types)
+                    resolve_annotation_with_self_and_assoc(
+                        elem,
+                        records,
+                        sum_types,
+                        self_type,
+                        assoc_types,
+                    )
                 })
                 .collect::<Option<Vec<_>>>()?;
             Some(Type::Tuple(resolved))
@@ -17914,11 +18018,22 @@ fn resolve_annotation_with_self_and_assoc(
             let resolved_params: Vec<Type> = params
                 .iter()
                 .map(|param| {
-                    resolve_annotation_with_self_and_assoc(param, records, self_type, assoc_types)
+                    resolve_annotation_with_self_and_assoc(
+                        param,
+                        records,
+                        sum_types,
+                        self_type,
+                        assoc_types,
+                    )
                 })
                 .collect::<Option<Vec<_>>>()?;
-            let resolved_ret =
-                resolve_annotation_with_self_and_assoc(ret, records, self_type, assoc_types)?;
+            let resolved_ret = resolve_annotation_with_self_and_assoc(
+                ret,
+                records,
+                sum_types,
+                self_type,
+                assoc_types,
+            )?;
             Some(Type::Function(FunctionType {
                 params: resolved_params,
                 ret: Box::new(resolved_ret),
@@ -17929,11 +18044,22 @@ fn resolve_annotation_with_self_and_assoc(
             let resolved_params: Vec<Type> = params
                 .iter()
                 .map(|param| {
-                    resolve_annotation_with_self_and_assoc(param, records, self_type, assoc_types)
+                    resolve_annotation_with_self_and_assoc(
+                        param,
+                        records,
+                        sum_types,
+                        self_type,
+                        assoc_types,
+                    )
                 })
                 .collect::<Option<Vec<_>>>()?;
-            let resolved_ret =
-                resolve_annotation_with_self_and_assoc(ret, records, self_type, assoc_types)?;
+            let resolved_ret = resolve_annotation_with_self_and_assoc(
+                ret,
+                records,
+                sum_types,
+                self_type,
+                assoc_types,
+            )?;
             let effects = effect_annotation_to_compat_row(&effect.node, Some(records))
                 .unwrap_or_else(pure_effect_row);
             Some(Type::Function(FunctionType {
@@ -17943,8 +18069,13 @@ fn resolve_annotation_with_self_and_assoc(
             }))
         }
         TypeAnnotation::Optional(inner) => {
-            let resolved =
-                resolve_annotation_with_self_and_assoc(inner, records, self_type, assoc_types)?;
+            let resolved = resolve_annotation_with_self_and_assoc(
+                inner,
+                records,
+                sum_types,
+                self_type,
+                assoc_types,
+            )?;
             Some(Type::Option(Box::new(resolved)))
         }
         TypeAnnotation::Existential {
@@ -17954,8 +18085,14 @@ fn resolve_annotation_with_self_and_assoc(
             let resolved_assoc: Option<BTreeMap<String, Type>> = associated_types
                 .iter()
                 .map(|(name, ann)| {
-                    resolve_annotation_with_self_and_assoc(ann, records, self_type, assoc_types)
-                        .map(|ty| (name.clone(), ty))
+                    resolve_annotation_with_self_and_assoc(
+                        ann,
+                        records,
+                        sum_types,
+                        self_type,
+                        assoc_types,
+                    )
+                    .map(|ty| (name.clone(), ty))
                 })
                 .collect();
             Some(Type::Existential {
@@ -17963,7 +18100,7 @@ fn resolve_annotation_with_self_and_assoc(
                 associated_types: resolved_assoc?,
             })
         }
-        _ => resolve_annotation(ann, records, None),
+        _ => resolve_annotation(ann, records, sum_types),
     }
 }
 
@@ -17976,6 +18113,7 @@ fn resolve_annotation_with_self_and_assoc(
 fn resolve_annotation_with_self_assoc_and_params(
     ann: &TypeAnnotation,
     records: &RecordRegistry,
+    sum_types: Option<&SumTypeRegistry>,
     self_type: &Type,
     assoc_types: &BTreeMap<String, Type>,
     type_params: &mut BTreeMap<String, Type>,
@@ -17990,7 +18128,7 @@ fn resolve_annotation_with_self_assoc_and_params(
             if let Some(ty) = type_params.get(name) {
                 return Some(ty.clone());
             }
-            if let Some(ty) = resolve_annotation(ann, records, None) {
+            if let Some(ty) = resolve_annotation(ann, records, sum_types) {
                 return Some(ty);
             }
             if looks_like_type_var_name(name) {
@@ -18009,6 +18147,7 @@ fn resolve_annotation_with_self_assoc_and_params(
                         resolve_annotation_with_self_assoc_and_params(
                             arg_ann,
                             records,
+                            sum_types,
                             self_type,
                             assoc_types,
                             type_params,
@@ -18029,6 +18168,7 @@ fn resolve_annotation_with_self_assoc_and_params(
                         resolve_annotation_with_self_assoc_and_params(
                             arg_ann,
                             records,
+                            sum_types,
                             self_type,
                             assoc_types,
                             type_params,
@@ -18043,6 +18183,7 @@ fn resolve_annotation_with_self_assoc_and_params(
                 resolve_annotation_with_self_assoc_and_params(
                     arg_ann,
                     records,
+                    sum_types,
                     self_type,
                     assoc_types,
                     type_params,
@@ -18062,6 +18203,7 @@ fn resolve_annotation_with_self_assoc_and_params(
                     resolve_annotation_with_self_assoc_and_params(
                         inner,
                         records,
+                        sum_types,
                         self_type,
                         assoc_types,
                         type_params,
@@ -18072,6 +18214,7 @@ fn resolve_annotation_with_self_assoc_and_params(
                     Box::new(resolve_annotation_with_self_assoc_and_params(
                         ok,
                         records,
+                        sum_types,
                         self_type,
                         assoc_types,
                         type_params,
@@ -18080,26 +18223,31 @@ fn resolve_annotation_with_self_assoc_and_params(
                     Box::new(resolve_annotation_with_self_assoc_and_params(
                         err,
                         records,
+                        sum_types,
                         self_type,
                         assoc_types,
                         type_params,
                         placeholder_id,
                     )?),
                 )),
-                ("List", [inner]) => Some(Type::List(Box::new(
-                    resolve_annotation_with_self_assoc_and_params(
-                        inner,
-                        records,
-                        self_type,
-                        assoc_types,
-                        type_params,
-                        placeholder_id,
-                    )?,
-                ))),
+                ("List", [inner]) if !has_named_type_definition("List", records, sum_types) => {
+                    Some(Type::List(Box::new(
+                        resolve_annotation_with_self_assoc_and_params(
+                            inner,
+                            records,
+                            sum_types,
+                            self_type,
+                            assoc_types,
+                            type_params,
+                            placeholder_id,
+                        )?,
+                    )))
+                }
                 ("Map", [key, val]) => Some(Type::Map(
                     Box::new(resolve_annotation_with_self_assoc_and_params(
                         key,
                         records,
+                        sum_types,
                         self_type,
                         assoc_types,
                         type_params,
@@ -18108,6 +18256,7 @@ fn resolve_annotation_with_self_assoc_and_params(
                     Box::new(resolve_annotation_with_self_assoc_and_params(
                         val,
                         records,
+                        sum_types,
                         self_type,
                         assoc_types,
                         type_params,
@@ -18118,6 +18267,7 @@ fn resolve_annotation_with_self_assoc_and_params(
                     resolve_annotation_with_self_assoc_and_params(
                         inner,
                         records,
+                        sum_types,
                         self_type,
                         assoc_types,
                         type_params,
@@ -18128,6 +18278,7 @@ fn resolve_annotation_with_self_assoc_and_params(
                     resolve_annotation_with_self_assoc_and_params(
                         inner,
                         records,
+                        sum_types,
                         self_type,
                         assoc_types,
                         type_params,
@@ -18138,6 +18289,7 @@ fn resolve_annotation_with_self_assoc_and_params(
                     resolve_annotation_with_self_assoc_and_params(
                         inner,
                         records,
+                        sum_types,
                         self_type,
                         assoc_types,
                         type_params,
@@ -18148,6 +18300,7 @@ fn resolve_annotation_with_self_assoc_and_params(
                     resolve_annotation_with_self_assoc_and_params(
                         inner,
                         records,
+                        sum_types,
                         self_type,
                         assoc_types,
                         type_params,
@@ -18158,6 +18311,7 @@ fn resolve_annotation_with_self_assoc_and_params(
                     resolve_annotation_with_self_assoc_and_params(
                         inner,
                         records,
+                        sum_types,
                         self_type,
                         assoc_types,
                         type_params,
@@ -18168,6 +18322,7 @@ fn resolve_annotation_with_self_assoc_and_params(
                     inner: Box::new(resolve_annotation_with_self_assoc_and_params(
                         inner_ann,
                         records,
+                        sum_types,
                         self_type,
                         assoc_types,
                         type_params,
@@ -18179,6 +18334,7 @@ fn resolve_annotation_with_self_assoc_and_params(
                     let inner_ty = resolve_annotation_with_self_assoc_and_params(
                         inner,
                         records,
+                        sum_types,
                         self_type,
                         assoc_types,
                         type_params,
@@ -18193,10 +18349,11 @@ fn resolve_annotation_with_self_assoc_and_params(
                         ],
                     }))
                 }
-                _ => resolve_named_type_application(name, args, records, None, |arg_ann| {
+                _ => resolve_named_type_application(name, args, records, sum_types, |arg_ann| {
                     resolve_annotation_with_self_assoc_and_params(
                         arg_ann,
                         records,
+                        sum_types,
                         self_type,
                         assoc_types,
                         type_params,
@@ -18210,6 +18367,7 @@ fn resolve_annotation_with_self_assoc_and_params(
                 resolve_annotation_with_self_assoc_and_params(
                     field_ann,
                     records,
+                    sum_types,
                     self_type,
                     assoc_types,
                     type_params,
@@ -18225,6 +18383,7 @@ fn resolve_annotation_with_self_assoc_and_params(
                     resolve_annotation_with_self_assoc_and_params(
                         elem,
                         records,
+                        sum_types,
                         self_type,
                         assoc_types,
                         type_params,
@@ -18248,6 +18407,7 @@ fn resolve_annotation_with_self_assoc_and_params(
             let resolved = resolve_annotation_with_self_assoc_and_params(
                 ty,
                 records,
+                sum_types,
                 self_type,
                 assoc_types,
                 &mut scoped_params,
@@ -18271,6 +18431,7 @@ fn resolve_annotation_with_self_assoc_and_params(
                     resolve_annotation_with_self_assoc_and_params(
                         param,
                         records,
+                        sum_types,
                         self_type,
                         assoc_types,
                         type_params,
@@ -18281,6 +18442,7 @@ fn resolve_annotation_with_self_assoc_and_params(
             let resolved_ret = resolve_annotation_with_self_assoc_and_params(
                 ret,
                 records,
+                sum_types,
                 self_type,
                 assoc_types,
                 type_params,
@@ -18299,6 +18461,7 @@ fn resolve_annotation_with_self_assoc_and_params(
                     resolve_annotation_with_self_assoc_and_params(
                         param,
                         records,
+                        sum_types,
                         self_type,
                         assoc_types,
                         type_params,
@@ -18309,6 +18472,7 @@ fn resolve_annotation_with_self_assoc_and_params(
             let resolved_ret = resolve_annotation_with_self_assoc_and_params(
                 ret,
                 records,
+                sum_types,
                 self_type,
                 assoc_types,
                 type_params,
@@ -18326,6 +18490,7 @@ fn resolve_annotation_with_self_assoc_and_params(
             let resolved = resolve_annotation_with_self_assoc_and_params(
                 inner,
                 records,
+                sum_types,
                 self_type,
                 assoc_types,
                 type_params,
@@ -18343,6 +18508,7 @@ fn resolve_annotation_with_self_assoc_and_params(
                     resolve_annotation_with_self_assoc_and_params(
                         ann,
                         records,
+                        sum_types,
                         self_type,
                         assoc_types,
                         type_params,

@@ -1,0 +1,10 @@
+effect State S
+  --| Return the current state value.
+  --|
+  --|   State.get()
+  fn get() -> S
+
+  --| Replace the current state value.
+  --|
+  --|   State.put(42)
+  fn put(next: S) -> Unit

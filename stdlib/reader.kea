@@ -1,0 +1,5 @@
+effect Reader R
+  --| Read the current environment value.
+  --|
+  --|   Reader.ask()
+  fn ask() -> R

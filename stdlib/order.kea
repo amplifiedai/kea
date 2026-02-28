@@ -1,4 +1,7 @@
-type Ordering = Less | Equal | Greater
+enum Ordering
+  Less
+  Equal
+  Greater
 
 --| Reverse an ordering value.
 --|

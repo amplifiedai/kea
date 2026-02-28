@@ -1,7 +1,8 @@
 use Ord
+use Order
 use Test
 
 test "Ord.compare"
-  Test.assert(Ord.compare(1, 2) == -1)
-  Test.assert(Ord.compare(3, 3) == 0)
-  Test.assert(Ord.compare(4, 1) == 1)
+  Test.assert(Ord.compare(1, 2) == Order.Less)
+  Test.assert(Ord.compare(3, 3) == Order.Equal)
+  Test.assert(Ord.compare(4, 1) == Order.Greater)
