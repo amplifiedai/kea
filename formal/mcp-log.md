@@ -12620,3 +12620,47 @@ New theorem surface:
 **Impact**:
 - Aligns nested composition APIs with the new disjoint-target coherence layer,
   reducing cross-module theorem routing overhead.
+
+### 2026-03-02: named run-local canonical core-calculus consequence package
+
+**Context**: Extended `Kea/Eval.lean` with a named run-local canonical
+consequence surface so infer-success call sites can consume canonical
+soundness/progress/preservation facts via one theorem family.
+
+New theorem surface:
+- `CoreCalculusSoundnessConsequences`
+- `coreCalculusSoundnessConsequences_iff_components`
+- `coreCalculusSoundnessConsequences_of_components`
+- `coreCalculusSoundnessConsequences_as_components`
+- `coreCalculusSoundnessConsequences_as_components_of_components`
+- `coreCalculusSoundnessConsequences_of_inferUnify`
+- `coreCalculusSoundnessConsequences_of_inferUnify_from_hooks`
+- `coreCalculusSoundnessConsequences_as_components_of_inferUnify`
+- `coreCalculusSoundnessConsequences_as_components_of_inferUnify_from_hooks`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; this is theorem packaging and
+  constructor/decomposition routing over existing canonical infer-success
+  consequences.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Canonical run-local core-calculus consequences now have a stable named theorem
+  surface aligned with the standard `iff/of/as` decomposition API pattern.
+
+**Impact**:
+- Reduces theorem plumbing at infer-success call sites while keeping the
+  canonical soundness claim surface explicit.
