@@ -12955,3 +12955,46 @@ New theorem surface:
 **Impact**:
 - Further tightens evaluator soundness route interoperability and reduces
   call-site theorem chaining.
+
+### 2026-03-02: disjoint-target label-observational commutation capstone
+
+**Context**: Strengthened `Kea/Properties/HandlerEffectRemoval.lean` from
+disjoint-target consequence parity to explicit label-observational commutation
+under non-reintroduction assumptions.
+
+New theorem surface:
+- `RowFields.has_unionIdem_eq_or`
+- `RowFields.has_unionIdem_comm`
+- `RowFields.has_unionIdem_assoc`
+- `EffectRow.handleComposeTwoTargets_has_of_ne_targets`
+- `EffectRow.handleComposeTwoTargetsSwap_has_of_ne_targets`
+- `EffectRow.handleComposeTwoTargets_has_eq_swap_of_ne_targets`
+- `EffectRow.LabelObservationalEq`
+- `EffectRow.disjoint_handler_composition_labelObservationalEq_of_handler_absence`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; this extends theorem strength from
+  selected consequence projections to explicit label-observational equivalence.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- The disjoint-target composition order now has a direct theorem witness of
+  commutation at the label-observable effect-row level (plus row-tail
+  agreement).
+
+**Impact**:
+- Provides a stronger, citable coherence claim for independent handler
+  composition in the Phase-2 formal model.
