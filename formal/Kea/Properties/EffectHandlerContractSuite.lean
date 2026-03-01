@@ -9238,5 +9238,74 @@ theorem effectHandlerDisjointCompositionCoherenceSuite_rightTargetBAbsent_of_han
       h_handlerB_abs_targetA
       h_handlerB_abs_targetB)
 
+theorem effectHandlerDisjointCompositionCoherenceSuite_labelObservationalEq_of_handler_absence
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label)
+    (h_targets_ne : targetA ≠ targetB)
+    (h_handlerA_abs_targetA : RowFields.has (EffectRow.fields handlerA) targetA = false)
+    (h_handlerA_abs_targetB : RowFields.has (EffectRow.fields handlerA) targetB = false)
+    (h_handlerB_abs_targetA : RowFields.has (EffectRow.fields handlerB) targetA = false)
+    (h_handlerB_abs_targetB : RowFields.has (EffectRow.fields handlerB) targetB = false) :
+    EffectRow.LabelObservationalEq
+      (NestedHandlerCompositionContracts.nestedComposeDisjoint
+        effects handlerA handlerB targetA targetB)
+      (NestedHandlerCompositionContracts.nestedComposeDisjointSwap
+        effects handlerA handlerB targetA targetB) :=
+  NestedHandlerCompositionContracts.nestedHandlerDisjointLabelObservationalEq_of_handler_absence
+    effects handlerA handlerB targetA targetB
+    h_targets_ne
+    h_handlerA_abs_targetA
+    h_handlerA_abs_targetB
+    h_handlerB_abs_targetA
+    h_handlerB_abs_targetB
+
+theorem effectHandlerDisjointCompositionCoherenceSuite_restEq_of_handler_absence
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label)
+    (h_targets_ne : targetA ≠ targetB)
+    (h_handlerA_abs_targetA : RowFields.has (EffectRow.fields handlerA) targetA = false)
+    (h_handlerA_abs_targetB : RowFields.has (EffectRow.fields handlerA) targetB = false)
+    (h_handlerB_abs_targetA : RowFields.has (EffectRow.fields handlerB) targetA = false)
+    (h_handlerB_abs_targetB : RowFields.has (EffectRow.fields handlerB) targetB = false) :
+    EffectRow.rest
+      (NestedHandlerCompositionContracts.nestedComposeDisjoint
+        effects handlerA handlerB targetA targetB) =
+    EffectRow.rest
+      (NestedHandlerCompositionContracts.nestedComposeDisjointSwap
+        effects handlerA handlerB targetA targetB) :=
+  (effectHandlerDisjointCompositionCoherenceSuite_labelObservationalEq_of_handler_absence
+    effects handlerA handlerB targetA targetB
+    h_targets_ne
+    h_handlerA_abs_targetA
+    h_handlerA_abs_targetB
+    h_handlerB_abs_targetA
+    h_handlerB_abs_targetB).1
+
+theorem effectHandlerDisjointCompositionCoherenceSuite_hasEq_of_handler_absence
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB label : Label)
+    (h_targets_ne : targetA ≠ targetB)
+    (h_handlerA_abs_targetA : RowFields.has (EffectRow.fields handlerA) targetA = false)
+    (h_handlerA_abs_targetB : RowFields.has (EffectRow.fields handlerA) targetB = false)
+    (h_handlerB_abs_targetA : RowFields.has (EffectRow.fields handlerB) targetA = false)
+    (h_handlerB_abs_targetB : RowFields.has (EffectRow.fields handlerB) targetB = false) :
+    RowFields.has
+      (EffectRow.fields
+        (NestedHandlerCompositionContracts.nestedComposeDisjoint
+          effects handlerA handlerB targetA targetB))
+      label =
+    RowFields.has
+      (EffectRow.fields
+        (NestedHandlerCompositionContracts.nestedComposeDisjointSwap
+          effects handlerA handlerB targetA targetB))
+      label :=
+  (effectHandlerDisjointCompositionCoherenceSuite_labelObservationalEq_of_handler_absence
+    effects handlerA handlerB targetA targetB
+    h_targets_ne
+    h_handlerA_abs_targetA
+    h_handlerA_abs_targetB
+    h_handlerB_abs_targetA
+    h_handlerB_abs_targetB).2 label
+
 end EffectHandlerContractSuite
 end Kea
