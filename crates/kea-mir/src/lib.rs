@@ -2679,6 +2679,119 @@ fn collect_hir_var_refs(expr: &HirExpr, refs: &mut BTreeSet<String>) {
     }
 }
 
+/// Result of splitting a non-tail clause body at the Resume node.
+/// Pre-resume stmts + resume value become a tail-resumptive callback.
+/// Post-resume code runs inline after the handle expression returns.
+struct NonTailResumeSplit {
+    pre_resume_stmts: Vec<HirExpr>,
+    resume_value: HirExpr,
+    resume_binding: String,
+    post_resume_body: Vec<HirExpr>,
+    captured_bindings: Vec<String>,
+}
+
+/// Split a non-tail clause body at the `let x = resume val` point.
+/// Returns None if the body doesn't contain a splittable resume.
+fn split_non_tail_resume(body: &HirExpr) -> Option<NonTailResumeSplit> {
+    let HirExprKind::Block(exprs) = &body.kind else {
+        return None;
+    };
+    let resume_idx = exprs.iter().position(|e| {
+        matches!(
+            &e.kind,
+            HirExprKind::Let {
+                value,
+                pattern: HirPattern::Var(_),
+            } if matches!(value.kind, HirExprKind::Resume { .. })
+        )
+    })?;
+    let resume_expr = &exprs[resume_idx];
+    let HirExprKind::Let {
+        pattern: HirPattern::Var(binding_name),
+        value: resume_value_box,
+    } = &resume_expr.kind
+    else {
+        return None;
+    };
+    let HirExprKind::Resume { value } = &resume_value_box.kind else {
+        return None;
+    };
+
+    let pre_resume_stmts: Vec<HirExpr> = exprs[..resume_idx].to_vec();
+    let post_resume_body: Vec<HirExpr> = exprs[resume_idx + 1..].to_vec();
+    if post_resume_body.is_empty() {
+        return None;
+    }
+
+    let mut pre_bound = BTreeSet::new();
+    for stmt in &pre_resume_stmts {
+        if let HirExprKind::Let {
+            pattern: HirPattern::Var(name),
+            ..
+        } = &stmt.kind
+        {
+            pre_bound.insert(name.clone());
+        }
+    }
+    let mut post_refs = BTreeSet::new();
+    for expr in &post_resume_body {
+        collect_hir_var_refs(expr, &mut post_refs);
+    }
+    let captured_bindings: Vec<String> =
+        pre_bound.intersection(&post_refs).cloned().collect();
+
+    Some(NonTailResumeSplit {
+        pre_resume_stmts,
+        resume_value: value.as_ref().clone(),
+        resume_binding: binding_name.clone(),
+        post_resume_body,
+        captured_bindings,
+    })
+}
+
+/// Strip a tail-resumptive `resume ()` from a clause body, returning the
+/// side-effecting prefix with a unit literal at the end.
+fn strip_tail_resume_unit_body(body: &HirExpr) -> Option<HirExpr> {
+    match &body.kind {
+        HirExprKind::Resume { value } => {
+            if matches!(value.kind, HirExprKind::Lit(kea_ast::Lit::Unit)) {
+                Some(HirExpr {
+                    kind: HirExprKind::Lit(kea_ast::Lit::Unit),
+                    ty: Type::Unit,
+                    span: body.span,
+                })
+            } else {
+                None
+            }
+        }
+        HirExprKind::Block(exprs) => {
+            let last = exprs.last()?;
+            let HirExprKind::Resume { value } = &last.kind else {
+                return None;
+            };
+            if !matches!(value.kind, HirExprKind::Lit(kea_ast::Lit::Unit)) {
+                return None;
+            }
+            let mut prefix = exprs
+                .iter()
+                .take(exprs.len().saturating_sub(1))
+                .cloned()
+                .collect::<Vec<_>>();
+            prefix.push(HirExpr {
+                kind: HirExprKind::Lit(kea_ast::Lit::Unit),
+                ty: Type::Unit,
+                span: body.span,
+            });
+            Some(HirExpr {
+                kind: HirExprKind::Block(prefix),
+                ty: Type::Unit,
+                span: body.span,
+            })
+        }
+        _ => None,
+    }
+}
+
 fn synth_lambda_type(params: &[kea_hir::HirParam], body: &HirExpr) -> Type {
     let ret_ty = match &body.kind {
         HirExprKind::Lambda {
@@ -4211,119 +4324,6 @@ impl FunctionLoweringCtx {
         clauses: &[HirHandleClause],
         then_clause: Option<&HirExpr>,
     ) -> Option<MirValueId> {
-        /// Result of splitting a non-tail clause body at the Resume node.
-        /// Pre-resume stmts + resume value become a tail-resumptive callback.
-        /// Post-resume code runs inline after the handle expression returns.
-        struct NonTailResumeSplit {
-            pre_resume_stmts: Vec<HirExpr>,
-            resume_value: HirExpr,
-            resume_binding: String,
-            post_resume_body: Vec<HirExpr>,
-            captured_bindings: Vec<String>,
-        }
-
-        /// Split a non-tail clause body at the `let x = resume val` point.
-        /// Returns None if the body doesn't contain a splittable resume.
-        fn split_non_tail_resume(body: &HirExpr) -> Option<NonTailResumeSplit> {
-            let HirExprKind::Block(exprs) = &body.kind else {
-                return None;
-            };
-            // Find the Let binding whose value is a Resume
-            let resume_idx = exprs.iter().position(|e| {
-                matches!(
-                    &e.kind,
-                    HirExprKind::Let {
-                        value,
-                        pattern: HirPattern::Var(_),
-                    } if matches!(value.kind, HirExprKind::Resume { .. })
-                )
-            })?;
-            let resume_expr = &exprs[resume_idx];
-            let HirExprKind::Let {
-                pattern: HirPattern::Var(binding_name),
-                value: resume_value_box,
-            } = &resume_expr.kind
-            else {
-                return None;
-            };
-            let HirExprKind::Resume { value } = &resume_value_box.kind else {
-                return None;
-            };
-
-            let pre_resume_stmts: Vec<HirExpr> = exprs[..resume_idx].to_vec();
-            let post_resume_body: Vec<HirExpr> = exprs[resume_idx + 1..].to_vec();
-            if post_resume_body.is_empty() {
-                return None; // No code after resume — this is tail-resumptive
-            }
-
-            // Find captured bindings: vars bound in pre-resume that are referenced in post-resume
-            let mut pre_bound = BTreeSet::new();
-            for stmt in &pre_resume_stmts {
-                if let HirExprKind::Let {
-                    pattern: HirPattern::Var(name),
-                    ..
-                } = &stmt.kind
-                {
-                    pre_bound.insert(name.clone());
-                }
-            }
-            let mut post_refs = BTreeSet::new();
-            for expr in &post_resume_body {
-                collect_hir_var_refs(expr, &mut post_refs);
-            }
-            let captured_bindings: Vec<String> =
-                pre_bound.intersection(&post_refs).cloned().collect();
-
-            Some(NonTailResumeSplit {
-                pre_resume_stmts,
-                resume_value: value.as_ref().clone(),
-                resume_binding: binding_name.clone(),
-                post_resume_body,
-                captured_bindings,
-            })
-        }
-
-        fn strip_tail_resume_unit_body(body: &HirExpr) -> Option<HirExpr> {
-            match &body.kind {
-                HirExprKind::Resume { value } => {
-                    if matches!(value.kind, HirExprKind::Lit(kea_ast::Lit::Unit)) {
-                        Some(HirExpr {
-                            kind: HirExprKind::Lit(kea_ast::Lit::Unit),
-                            ty: Type::Unit,
-                            span: body.span,
-                        })
-                    } else {
-                        None
-                    }
-                }
-                HirExprKind::Block(exprs) => {
-                    let last = exprs.last()?;
-                    let HirExprKind::Resume { value } = &last.kind else {
-                        return None;
-                    };
-                    if !matches!(value.kind, HirExprKind::Lit(kea_ast::Lit::Unit)) {
-                        return None;
-                    }
-                    let mut prefix = exprs
-                        .iter()
-                        .take(exprs.len().saturating_sub(1))
-                        .cloned()
-                        .collect::<Vec<_>>();
-                    prefix.push(HirExpr {
-                        kind: HirExprKind::Lit(kea_ast::Lit::Unit),
-                        ty: Type::Unit,
-                        span: body.span,
-                    });
-                    Some(HirExpr {
-                        kind: HirExprKind::Block(prefix),
-                        ty: Type::Unit,
-                        span: body.span,
-                    })
-                }
-                _ => None,
-            }
-        }
-
         let target_effect = clauses.first()?.effect.clone();
         if clauses.iter().any(|clause| clause.effect != target_effect) {
             self.emit_inst(MirInst::Unsupported {
