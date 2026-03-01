@@ -10876,3 +10876,40 @@ with the primitive `linearityOk` clause premise.
 **Impact**:
 - Downstream proofs can choose either API shape (`linearityOk` or bundle) with
   no logical gap.
+
+### 2026-03-01: direct aggregate/capstone resume-at-most-once wrappers
+
+**Context**: Extended `Kea/Properties/EffectHandlerContractSuite.lean` with
+one-hop direct wrappers:
+- `effectHandlerSuite_resumeAtMostOnce_of_{premises,fail_present}`
+- `effectHandlerCapstoneSuite_resumeAtMostOnce_of_{premises,fail_present}`
+
+These provide direct `resume_at_most_once clause.resumeUse` consequences on the
+same aggregate/capstone premise routes as the new resume-linearity bundle
+wrappers.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No semantic change; wrappers should be immediate projections from
+  `wellTypedSlice` via the resume-linearity bundle bridge.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Aggregate and capstone entry routes now expose direct at-most-once clause
+  summary consequences in one theorem step.
+
+**Impact**:
+- Route-level consumers can use either packaged resume bundles or direct
+  `resume_at_most_once` conclusions without extra destructuring.
