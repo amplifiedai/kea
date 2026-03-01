@@ -12446,3 +12446,48 @@ New theorem surface:
 **Impact**:
 - Improves theorem ergonomics and keeps core-soundness API usage one-hop for
   both route families.
+
+### 2026-03-01: disjoint-target handler composition coherence surface
+
+**Context**: Extended `Kea/Properties/HandlerEffectRemoval.lean` beyond
+same-target nesting with an explicit two-target composition coherence layer for
+independent handlers.
+
+New theorem surface:
+- `handleComposeTwoTargets`
+- `handleComposeTwoTargetsSwap`
+- `handleComposeTwoTargets_preserves_row_tail`
+- `handleComposeTwoTargetsSwap_preserves_row_tail`
+- `handleComposeTwoTargets_targetA_absent`
+- `handleComposeTwoTargets_targetB_absent`
+- `handleComposeTwoTargetsSwap_targetA_absent`
+- `handleComposeTwoTargetsSwap_targetB_absent`
+- `DisjointHandlerCompositionCoherence`
+- `disjoint_handler_composition_coherence_of_handler_absence`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; this adds theorem-level coherence over
+  existing normalized handler composition semantics.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Handler-order coherence for disjoint targets is now formalized as a packaged
+  contract: both orders preserve row-tail openness and eliminate both handled
+  labels under explicit handler non-reintroduction assumptions.
+
+**Impact**:
+- Closes a practical composition-coherence gap in the Phase-2 handler model and
+  provides a direct theorem surface for multi-handler lowering arguments.
