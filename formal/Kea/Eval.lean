@@ -769,6 +769,144 @@ theorem coreProgressPreservationEvalFragmentFull_of_infer
   exact coreProgressPreservationEvalFragmentFull_of_hasType h_env h_ty h_frag
 
 /--
+Packaged core type-soundness surface for the executable full fragment under
+declarative typing.
+-/
+structure CoreTypeSoundnessEvalBundle
+    (tenv : TermEnv) (venv : ValueEnv) (e : CoreExpr) (ty : Ty) : Prop where
+  soundness :
+    ∃ v, eval venv e = some v ∧ ValueHasType v ty
+  progress :
+    ∃ v, eval venv e = some v
+  preservation :
+    ∀ v, eval venv e = some v → ValueHasType v ty
+
+/-- Explicit component alias for `CoreTypeSoundnessEvalBundle`. -/
+abbrev CoreTypeSoundnessEvalBundleComponents
+    (tenv : TermEnv) (venv : ValueEnv) (e : CoreExpr) (ty : Ty) : Prop :=
+  (∃ v, eval venv e = some v ∧ ValueHasType v ty) ∧
+    (∃ v, eval venv e = some v) ∧
+      (∀ v, eval venv e = some v → ValueHasType v ty)
+
+theorem coreTypeSoundnessEvalBundle_iff_components
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty} :
+    CoreTypeSoundnessEvalBundle tenv venv e ty ↔
+      CoreTypeSoundnessEvalBundleComponents tenv venv e ty := by
+  constructor
+  · intro h
+    exact ⟨h.soundness, h.progress, h.preservation⟩
+  · intro h
+    exact { soundness := h.1, progress := h.2.1, preservation := h.2.2 }
+
+theorem coreTypeSoundnessEvalBundle_of_components
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_comp : CoreTypeSoundnessEvalBundleComponents tenv venv e ty) :
+    CoreTypeSoundnessEvalBundle tenv venv e ty :=
+  (coreTypeSoundnessEvalBundle_iff_components).2 h_comp
+
+theorem coreTypeSoundnessEvalBundle_as_components
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_bundle : CoreTypeSoundnessEvalBundle tenv venv e ty) :
+    CoreTypeSoundnessEvalBundleComponents tenv venv e ty :=
+  (coreTypeSoundnessEvalBundle_iff_components).1 h_bundle
+
+theorem coreTypeSoundnessEvalBundle_as_components_of_components
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_comp : CoreTypeSoundnessEvalBundleComponents tenv venv e ty) :
+    CoreTypeSoundnessEvalBundleComponents tenv venv e ty :=
+  (coreTypeSoundnessEvalBundle_iff_components).1
+    ((coreTypeSoundnessEvalBundle_iff_components).2 h_comp)
+
+theorem coreTypeSoundnessEvalBundle_soundness
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_bundle : CoreTypeSoundnessEvalBundle tenv venv e ty) :
+    ∃ v, eval venv e = some v ∧ ValueHasType v ty :=
+  h_bundle.soundness
+
+theorem coreTypeSoundnessEvalBundle_progress
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_bundle : CoreTypeSoundnessEvalBundle tenv venv e ty) :
+    ∃ v, eval venv e = some v :=
+  h_bundle.progress
+
+theorem coreTypeSoundnessEvalBundle_preservation
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_bundle : CoreTypeSoundnessEvalBundle tenv venv e ty) :
+    ∀ v, eval venv e = some v → ValueHasType v ty :=
+  h_bundle.preservation
+
+theorem coreTypeSoundnessEvalBundle_of_hasType
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_env : EnvWellTyped tenv venv)
+    (h_ty : HasType tenv e ty)
+    (h_frag : EvalFragmentFull e) :
+    CoreTypeSoundnessEvalBundle tenv venv e ty := by
+  refine {
+    soundness := type_soundness_evalFragmentFull h_env h_ty h_frag
+    progress := eval_progress_evalFragmentFull h_env h_ty h_frag
+    preservation := ?_
+  }
+  intro v h_eval
+  exact eval_preservation_evalFragmentFull h_env h_ty h_frag h_eval
+
+theorem coreTypeSoundnessEvalBundle_of_infer
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_env : EnvWellTyped tenv venv)
+    (h_infer : inferExpr tenv e = some ty)
+    (h_frag : EvalFragmentFull e) :
+    CoreTypeSoundnessEvalBundle tenv venv e ty := by
+  have h_ty : HasType tenv e ty := inferExpr_sound tenv e ty h_infer
+  exact coreTypeSoundnessEvalBundle_of_hasType h_env h_ty h_frag
+
+theorem coreTypeSoundnessEvalBundle_as_components_of_hasType
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_env : EnvWellTyped tenv venv)
+    (h_ty : HasType tenv e ty)
+    (h_frag : EvalFragmentFull e) :
+    CoreTypeSoundnessEvalBundleComponents tenv venv e ty :=
+  coreTypeSoundnessEvalBundle_as_components
+    (coreTypeSoundnessEvalBundle_of_hasType h_env h_ty h_frag)
+
+theorem coreTypeSoundnessEvalBundle_as_components_of_infer
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_env : EnvWellTyped tenv venv)
+    (h_infer : inferExpr tenv e = some ty)
+    (h_frag : EvalFragmentFull e) :
+    CoreTypeSoundnessEvalBundleComponents tenv venv e ty :=
+  coreTypeSoundnessEvalBundle_as_components
+    (coreTypeSoundnessEvalBundle_of_infer h_env h_infer h_frag)
+
+theorem coreTypeSoundnessEvalBundle_iff_soundness_and_coreProgressPreservation
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty} :
+    CoreTypeSoundnessEvalBundle tenv venv e ty ↔
+      (∃ v, eval venv e = some v ∧ ValueHasType v ty)
+        ∧ CoreProgressPreservationEvalFragmentFull tenv venv e ty := by
+  constructor
+  · intro h_bundle
+    exact ⟨h_bundle.soundness, ⟨h_bundle.progress, h_bundle.preservation⟩⟩
+  · intro h_pair
+    exact {
+      soundness := h_pair.1
+      progress := h_pair.2.1
+      preservation := h_pair.2.2
+    }
+
+theorem coreTypeSoundnessEvalBundle_of_soundness_and_coreProgressPreservation
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_pair :
+      (∃ v, eval venv e = some v ∧ ValueHasType v ty)
+        ∧ CoreProgressPreservationEvalFragmentFull tenv venv e ty) :
+    CoreTypeSoundnessEvalBundle tenv venv e ty :=
+  (coreTypeSoundnessEvalBundle_iff_soundness_and_coreProgressPreservation).2 h_pair
+
+theorem coreTypeSoundnessEvalBundle_as_soundness_and_coreProgressPreservation
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_bundle : CoreTypeSoundnessEvalBundle tenv venv e ty) :
+    (∃ v, eval venv e = some v ∧ ValueHasType v ty)
+      ∧ CoreProgressPreservationEvalFragmentFull tenv venv e ty :=
+  (coreTypeSoundnessEvalBundle_iff_soundness_and_coreProgressPreservation).1 h_bundle
+
+/--
 Unification-threaded entrypoint to the same core progress+preservation pair.
 
 This bridges successful `inferExprUnify` runs (under bundled hook premises)
