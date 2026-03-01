@@ -4043,6 +4043,24 @@
     }
 
     #[test]
+    fn compile_and_reject_handler_clause_with_nested_handle_before_resume() {
+        let source_path = write_temp_source(
+            "effect Reader C\n  fn ask() -> C\n\nfn main() -> Int\n  handle Reader.ask()\n    Reader.ask() ->\n      let inner = handle Reader.ask()\n        Reader.ask() -> resume 2\n      resume inner\n",
+            "kea-cli-reject-nested-handle-before-resume",
+            "kea",
+        );
+
+        let err = run_file(&source_path)
+            .expect_err("run should reject non-tail handler clause with nested handle");
+        assert!(
+            err.contains("must be tail-resumptive (`resume ...`) for compiled lowering"),
+            "expected tail-resumptive rejection for nested-handle clause, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_reject_partial_handler_clause_set_for_effect() {
         let source_path = write_temp_source(
             "effect Counter\n  fn read() -> Int\n  fn write(next: Int) -> Unit\n\nfn g() -[Counter]> Int\n  Counter.write(1)\n  Counter.read()\n\nfn main() -> Int\n  handle g()\n    Counter.read() -> resume 0\n",
