@@ -11515,3 +11515,44 @@ bundling:
 - Completes the immediate WP7.2 mixed-shape packaging triad (classification,
   distinct-vars boundary, same-var equal-constants boundary) under uniform
   suite-style theorem consumption.
+
+### 2026-03-01: packaged rank-2 var/const dim-list kernel suite
+
+**Context**: Extended `Kea/Dimensions.lean` with:
+- `DimPairVarConstKernelSlice`
+- `dimPairVarConstKernelSlice`
+- `DimPairVarConstKernelSliceComponents`
+- `dimPairVarConstKernelSlice_{as_components,of_components,as_components_of_components,iff_components}`
+
+This packages the rank-2 var/const dim-list kernel family by bundling:
+- distinct-var bind routes,
+- same-var decision/equality-vs-mismatch branches (both orientations),
+- success/failure iff classifications
+  (`..._some_iff_var_distinct_or_consts_eq`,
+   `..._none_iff_var_eq_and_consts_ne`).
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No semantic change; this should be packaging/decomposition over existing
+  `unifyDimList_pair_*` theorem routes.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Rank-2 var/const dim-kernel behavior is now consumable from one named suite
+  witness with full `iff/of/as` decomposition parity.
+
+**Impact**:
+- Strengthens WP7.2 deeper dim-aware theorem packaging on the kernel side and
+  reduces theorem-by-theorem plumbing for downstream shape/decimal routes.
