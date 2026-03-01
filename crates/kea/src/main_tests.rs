@@ -3920,6 +3920,42 @@
     }
 
     #[test]
+    fn compile_rejects_try_sugar_on_non_result_expression() {
+        let source_path = write_temp_source(
+            "effect Fail\n  fn fail(err: Int) -> Never\n\nfn run() -[Fail Int]> Int\n  42?\n\nfn main() -> Int\n  let r = catch run()\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
+            "kea-cli-try-sugar-non-result",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject ? on non-Result");
+        assert!(
+            err.contains("type mismatch") && err.contains("Result") && err.contains("Int"),
+            "expected non-Result try-sugar diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_rejects_try_sugar_when_error_type_mismatches_fail_effect() {
+        let source_path = write_temp_source(
+            "effect Fail\n  fn fail(err: String) -> Never\n\nfn step(ok: Bool) -> Result(Int, Int)\n  if ok then Ok(41) else Err(7)\n\nfn run(ok: Bool) -[Fail String]> Int\n  step(ok)?\n\nfn main() -> Int\n  let r = catch run(false)\n  case r\n    Ok(v) -> v\n    Err(e) -> 0\n",
+            "kea-cli-try-sugar-error-type-mismatch",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err(
+            "run should reject try-sugar when Result error type mismatches Fail effect",
+        );
+        assert!(
+            err.contains("type mismatch") && err.contains("Int") && err.contains("String"),
+            "expected try-sugar error-type mismatch diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_try_sugar_ok_path_exit_code() {
         let source_path = write_temp_source(
             "effect Fail\n  fn fail(err: Int) -> Never\n\nfn step(ok: Bool) -> Result(Int, Int)\n  if ok then Ok(41) else Err(7)\n\nfn run(ok: Bool) -[Fail Int]> Int\n  step(ok)?\n\nfn main() -> Int\n  let r = catch run(true)\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
@@ -3945,6 +3981,26 @@
         assert!(
             err.contains("expression cannot fail; catch is unnecessary"),
             "expected unnecessary catch diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_reject_fail_in_handler_then_clause_with_outer_catch_in_compiled_lowering() {
+        let source_path = write_temp_source(
+            "effect Fail\n  fn fail(err: Int) -> Never\n\neffect Reader C\n  fn ask() -> C\n\nfn read() -[Reader Int]> Int\n  Reader.ask()\n\nfn main() -> Int\n  let r = catch handle read()\n    Reader.ask() -> resume 1\n    then value ->\n      fail 9\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
+            "kea-cli-handler-then-fail-propagates-to-catch",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err(
+            "compiled lowering should currently reject fail-in-then under outer catch",
+        );
+        assert!(
+            err.contains("non-Unit return type")
+                && err.contains("not yet supported in compiled lowering"),
+            "expected compiled-lowering unsupported-shape diagnostic, got: {err}"
         );
 
         let _ = std::fs::remove_file(source_path);
