@@ -12742,3 +12742,45 @@ New theorem surface:
 **Impact**:
 - Reduces intermediate theorem plumbing for downstream proofs that start from
   canonical slice assumptions rather than infer-success premises.
+
+### 2026-03-02: top-level aggregate lift for disjoint-target composition coherence
+
+**Context**: Extended `Kea/Properties/EffectHandlerContractSuite.lean` with a
+top-level disjoint-target composition coherence aggregate so this theorem family
+is consumable from the same module as other Phase-2 handler suites.
+
+New theorem surface:
+- `EffectHandlerDisjointCompositionCoherenceSuite`
+- `EffectHandlerDisjointCompositionCoherenceSuiteComponents`
+- `effectHandlerDisjointCompositionCoherenceSuite_iff_components`
+- `effectHandlerDisjointCompositionCoherenceSuite_of_components`
+- `effectHandlerDisjointCompositionCoherenceSuite_as_components`
+- `effectHandlerDisjointCompositionCoherenceSuite_as_components_of_components`
+- `effectHandlerDisjointCompositionCoherenceSuite_of_handler_absence`
+- `effectHandlerDisjointCompositionCoherenceSuite_as_components_of_handler_absence`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; this is an aggregate API lift over the
+  existing disjoint-target nested coherence semantics.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Disjoint-target coherence is now available from the top-level handler suite
+  module with one-hop constructor/decomposition routes.
+
+**Impact**:
+- Improves compositional API coherence for downstream proofs that stay on
+  aggregate Phase-2 theorem surfaces.
