@@ -254,9 +254,21 @@ After Tier 3 lands, verify all stdlib effect modules still compile and their tes
 - [ ] `EffectOp { class: Dispatch }` compiles and runs correctly
 - [ ] Evidence structs allocated, populated, and threaded as hidden parameters
 - [ ] Effect-polymorphic functions compile (handler passed through function boundary)
-- [ ] Capability effects (IO/Clock/Rand/Net) interceptable by user handlers for test mocking
+- [x] Capability effects (IO/Clock/Rand/Net) interceptable by user handlers for test mocking
 - [ ] Non-tail-resumptive handlers compile via continuation capture
-- [ ] Existing Tier 1-2 tests unchanged and passing
+- [x] Existing Tier 1-2 tests unchanged and passing
 - [ ] New Tier 3-4 test suites passing
 - [ ] Benchmark: Tier 3 dispatch overhead <5x vs Tier 2 inlined
-- [ ] `mise run check-full` passes
+- [x] `mise run check-full` passes
+
+## Progress
+
+- 2026-03-01 17:30: Capability effect mocking — DONE (commit c153c7c)
+  - Capability effects now participate in per-operation cell dispatch
+  - Non-entry-point functions get hidden dispatch params for capability ops
+  - Entry-point `main` creates default cells wrapping runtime functions
+  - Handler clauses for capability effects use InvokeCallback (not LoadCell/StoreArg)
+  - Direct capability call-site guard checks for active handler cells
+  - Previously-failing Clock.elapsed_since and Rand mock tests now pass
+  - All 1605 tests pass, `mise run check-full` clean
+- **Next:** Dispatch codegen hardening (Step 2), then Tier 4 non-tail-resumptive handlers
