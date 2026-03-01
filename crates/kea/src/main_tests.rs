@@ -4334,7 +4334,6 @@
     }
 
     #[test]
-    #[ignore = "Tier 3 gap: closures at expression position don't capture dispatch cells (bind_dispatch_effects=false)"]
     fn compile_and_execute_evidence_through_closure_exit_code() {
         // closure captures evidence from enclosing handler scope
         let source_path = write_temp_source(

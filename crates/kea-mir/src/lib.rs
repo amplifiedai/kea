@@ -4135,12 +4135,18 @@ impl FunctionLoweringCtx {
                 } else {
                     Some(synth_lambda_type(params, body))
                 };
+                // Bind dispatch effects into the closure environment so that
+                // effect operations inside the lambda body work when the closure
+                // is called indirectly (stored in a variable, returned, etc.).
+                // Argument-position lambdas use false because the caller threads
+                // dispatch params at the call site. Expression-position lambdas
+                // must capture cells because var_types may not preserve effect rows.
                 self.lower_lambda_to_closure_value(
                     expr,
                     params,
                     body,
                     synthesized_ty.as_ref(),
-                    false,
+                    true,
                 )
             }
             HirExprKind::Tuple(items) => {
