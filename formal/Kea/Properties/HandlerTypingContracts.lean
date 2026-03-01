@@ -346,4 +346,158 @@ theorem loop_linearity_requires_zero
     u = .zero := by
   exact resume_loop_forbids_resuming_body u h_loop
 
+/-- Abstract handler contract as a finite collection of clauses. -/
+structure HandleContract where
+  clauses : List HandleClauseContract
+
+/-- Handler-level typing contract: every clause satisfies `wellTypedSlice`. -/
+def handlerWellTypedSlice (h : HandleContract) : Prop :=
+  ∀ c ∈ h.clauses, wellTypedSlice c
+
+/--
+Judgment-shaped relation for clause summaries inside a handler.
+
+`handlerClauseHasResumeSummary h c u` means clause `c` belongs to handler `h`
+and is assigned resume summary `u`.
+-/
+inductive handlerClauseHasResumeSummary
+    (h : HandleContract) : HandleClauseContract → ResumeUse → Prop where
+  | mk (c : HandleClauseContract) (u : ResumeUse)
+      (h_mem : c ∈ h.clauses)
+      (h_summary : clauseHasResumeSummary c u) :
+      handlerClauseHasResumeSummary h c u
+
+theorem handlerClauseHasResumeSummary_mem
+    (h : HandleContract)
+    (c : HandleClauseContract)
+    (u : ResumeUse)
+    (h_summary : handlerClauseHasResumeSummary h c u) :
+    c ∈ h.clauses := by
+  cases h_summary with
+  | mk h_mem _ =>
+      exact h_mem
+
+theorem handlerClauseHasResumeSummary_clauseSummary
+    (h : HandleContract)
+    (c : HandleClauseContract)
+    (u : ResumeUse)
+    (h_summary : handlerClauseHasResumeSummary h c u) :
+    clauseHasResumeSummary c u := by
+  cases h_summary with
+  | mk _ h_clause =>
+      exact h_clause
+
+/--
+Main handler-level linearity bridge: if a handler is well-typed in the current
+slice, any clause-summary judgment in that handler satisfies at-most-once.
+-/
+theorem handlerClauseHasResumeSummary_implies_atMostOnce_of_handlerWellTypedSlice
+    (h : HandleContract)
+    (c : HandleClauseContract)
+    (u : ResumeUse)
+    (h_typed : handlerWellTypedSlice h)
+    (h_summary : handlerClauseHasResumeSummary h c u) :
+    resume_at_most_once u := by
+  have h_mem : c ∈ h.clauses :=
+    handlerClauseHasResumeSummary_mem h c u h_summary
+  have h_clause_typed : wellTypedSlice c :=
+    h_typed c h_mem
+  have h_clause_summary : clauseHasResumeSummary c u :=
+    handlerClauseHasResumeSummary_clauseSummary h c u h_summary
+  exact clauseHasResumeSummary_implies_atMostOnce_of_wellTypedSlice
+    c u h_clause_typed h_clause_summary
+
+/--
+One-hop form: every clause in a well-typed handler has a canonical summary
+(`resumeUse`) that satisfies at-most-once.
+-/
+theorem handlerWellTypedSlice_implies_clause_atMostOnce
+    (h : HandleContract)
+    (h_typed : handlerWellTypedSlice h) :
+    ∀ c ∈ h.clauses, resume_at_most_once c.resumeUse := by
+  intro c h_mem
+  have h_clause_typed : wellTypedSlice c :=
+    h_typed c h_mem
+  exact clauseHasResumeSummary_implies_atMostOnce_of_wellTypedSlice
+    c c.resumeUse h_clause_typed (clauseHasResumeSummary.mk c)
+
+/--
+Existence form over handler membership:
+every clause in a well-typed handler has some summary witness that is
+at-most-once.
+-/
+theorem handlerWellTypedSlice_has_clause_summary_atMostOnce
+    (h : HandleContract)
+    (h_typed : handlerWellTypedSlice h) :
+    ∀ c ∈ h.clauses,
+      ∃ u, handlerClauseHasResumeSummary h c u ∧ resume_at_most_once u := by
+  intro c h_mem
+  refine ⟨c.resumeUse, ?_, ?_⟩
+  · exact handlerClauseHasResumeSummary.mk c c.resumeUse h_mem (clauseHasResumeSummary.mk c)
+  · exact handlerWellTypedSlice_implies_clause_atMostOnce h h_typed c h_mem
+
+/-- Packaged handler-level resume-linearity consequences. -/
+structure HandlerResumeLinearityBundle (h : HandleContract) where
+  clauseAtMostOnce :
+    ∀ c ∈ h.clauses,
+      ∃ u, handlerClauseHasResumeSummary h c u ∧ resume_at_most_once u
+
+/-- Explicit component alias for `HandlerResumeLinearityBundle`. -/
+abbrev HandlerResumeLinearityBundleComponents
+    (h : HandleContract) : Prop :=
+  ∀ c ∈ h.clauses,
+    ∃ u, handlerClauseHasResumeSummary h c u ∧ resume_at_most_once u
+
+/-- `HandlerResumeLinearityBundle` is equivalent to explicit components. -/
+theorem handlerResumeLinearityBundle_iff_components
+    (h : HandleContract) :
+    Nonempty (HandlerResumeLinearityBundle h) ↔
+      HandlerResumeLinearityBundleComponents h := by
+  constructor
+  · intro h_bundle
+    rcases h_bundle with ⟨b⟩
+    exact b.clauseAtMostOnce
+  · intro h_comp
+    exact ⟨{ clauseAtMostOnce := h_comp }⟩
+
+/-- Build `HandlerResumeLinearityBundle` from explicit components. -/
+theorem handlerResumeLinearityBundle_of_components
+    (h : HandleContract)
+    (h_comp : HandlerResumeLinearityBundleComponents h) :
+    Nonempty (HandlerResumeLinearityBundle h) :=
+  (handlerResumeLinearityBundle_iff_components h).2 h_comp
+
+/-- Decompose `HandlerResumeLinearityBundle` into explicit components. -/
+theorem handlerResumeLinearityBundle_as_components
+    (h : HandleContract)
+    (b : HandlerResumeLinearityBundle h) :
+    HandlerResumeLinearityBundleComponents h :=
+  (handlerResumeLinearityBundle_iff_components h).1 ⟨b⟩
+
+/-- Direct components-route decomposition for `HandlerResumeLinearityBundle`. -/
+theorem handlerResumeLinearityBundle_as_components_of_components
+    (h : HandleContract)
+    (h_comp : HandlerResumeLinearityBundleComponents h) :
+    HandlerResumeLinearityBundleComponents h :=
+  (handlerResumeLinearityBundle_iff_components h).1
+    ((handlerResumeLinearityBundle_iff_components h).2 h_comp)
+
+/-- Build the packaged handler-level bundle from `handlerWellTypedSlice`. -/
+def handlerResumeLinearityBundle_of_handlerWellTypedSlice
+    (h : HandleContract)
+    (h_typed : handlerWellTypedSlice h) :
+    HandlerResumeLinearityBundle h where
+  clauseAtMostOnce :=
+    handlerWellTypedSlice_has_clause_summary_atMostOnce h h_typed
+
+/--
+One-hop handler-level projection from `handlerWellTypedSlice`: every clause
+membership judgment has an at-most-once summary witness.
+-/
+theorem handlerResumeLinearityBundle_clause_atMostOnce_of_handlerWellTypedSlice
+    (h : HandleContract)
+    (h_typed : handlerWellTypedSlice h) :
+    HandlerResumeLinearityBundleComponents h :=
+  (handlerResumeLinearityBundle_of_handlerWellTypedSlice h h_typed).clauseAtMostOnce
+
 end HandleClauseContract
