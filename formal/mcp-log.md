@@ -13275,3 +13275,43 @@ New theorem surface:
 **Impact**:
 - Brings top-level observational projections to parity with the lower
   disjoint-composition coherence layer and removes remaining unpacking boilerplate.
+
+### 2026-03-02: top-level disjoint observational coherence-facet projections
+
+**Context**: Extended `Kea/Properties/EffectHandlerContractSuite.lean` with
+direct projections from `EffectHandlerDisjointObservationalSuite` to all
+coherence-side absence and row-tail facets.
+
+New theorem surface:
+- `effectHandlerDisjointObservationalSuite_leftTargetAAbsent`
+- `effectHandlerDisjointObservationalSuite_leftTargetBAbsent`
+- `effectHandlerDisjointObservationalSuite_rightTargetAAbsent`
+- `effectHandlerDisjointObservationalSuite_rightTargetBAbsent`
+- `effectHandlerDisjointObservationalSuite_leftRowTailStable`
+- `effectHandlerDisjointObservationalSuite_rightRowTailStable`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; this only lifts existing coherence
+  consequences through the combined top-level suite witness.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Combined disjoint observational witnesses now expose both observational
+  commutation and coherence consequences in one-hop theorem form.
+
+**Impact**:
+- Eliminates an extra coherence-field projection layer for top-level users and
+  keeps the combined suite ergonomics symmetric across both facets.
