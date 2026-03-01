@@ -99,6 +99,16 @@ module.exports = grammar({
         optional($._block),
       )),
 
+    // Bodyless fn signature — used in trait/effect declarations.
+    function_signature: ($) =>
+      seq(
+        optional("pub"),
+        "fn",
+        field("name", $.identifier),
+        $.parameter_list,
+        optional($._return_type),
+      ),
+
     expr_declaration: ($) =>
       prec.right(seq(
         repeat(seq($.annotation, optional($.newline))),
@@ -221,7 +231,7 @@ module.exports = grammar({
           $.indent,
           repeat1(choice(
             seq($.doc_block, optional($.newline)),
-            seq($.function_declaration, optional($.newline)),
+            seq($.function_signature, optional($.newline)),
             seq($.type_member, optional($.newline)),
           )),
           $.dedent,
@@ -274,7 +284,7 @@ module.exports = grammar({
           $.indent,
           repeat1(choice(
             seq($.doc_block, optional($.newline)),
-            seq($.function_declaration, optional($.newline)),
+            seq($.function_signature, optional($.newline)),
           )),
           $.dedent,
         )),

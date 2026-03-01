@@ -51,6 +51,9 @@
 (function_declaration
   name: (identifier) @function)
 
+(function_signature
+  name: (identifier) @function)
+
 (expr_declaration
   name: (identifier) @function)
 

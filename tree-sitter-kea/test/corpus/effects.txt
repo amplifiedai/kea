@@ -12,7 +12,7 @@ effect Fail E
     name: (upper_identifier)
     param: (upper_identifier)
     (indent)
-    (function_declaration
+    (function_signature
       name: (identifier)
       (parameter_list
         (parameter
@@ -23,8 +23,7 @@ effect Fail E
       (pure_return_type
         type: (named_type
           (upper_identifier))))
-    (MISSING dedent))
-  (newline))
+    (dedent)))
 
 ==================
 Effect declaration with operation
@@ -39,7 +38,7 @@ effect Clock
   (effect_declaration
     name: (upper_identifier)
     (indent)
-    (function_declaration
+    (function_signature
       name: (identifier)
       (parameter_list)
       (effect_return_type
@@ -48,8 +47,7 @@ effect Clock
             name: (upper_identifier)))
         type: (named_type
           (upper_identifier))))
-    (MISSING dedent))
-  (newline))
+    (dedent)))
 
 ==================
 Multiple effects in arrow

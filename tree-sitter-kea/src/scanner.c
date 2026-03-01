@@ -115,7 +115,12 @@ static inline bool is_doc_start(int32_t c) {
 
 // Scan a doc block: `doc` keyword + optional inline text + indented body.
 // Returns true if a DOC_BLOCK token was emitted.
-static bool scan_doc_block(Scanner *s, TSLexer *lexer) {
+//
+// The doc_col parameter is the column where `doc` starts.  Body lines must
+// be indented strictly MORE than doc_col to be included.  A line at the same
+// indent (or less) ends the doc block — this is how `fn` declarations after
+// a doc block inside an effect/trait/struct body are not swallowed.
+static bool scan_doc_block(Scanner *s, TSLexer *lexer, uint32_t doc_col) {
     // We're positioned at 'd' — verify "doc" followed by space/newline/EOF.
     // We must not consume characters unless we commit to the token.
 
@@ -149,28 +154,24 @@ static bool scan_doc_block(Scanner *s, TSLexer *lexer) {
     }
 
     // Now try to consume indented body lines (block form).
-    // Body lines are: newline(s) followed by indented content.
+    // Body lines must be indented MORE than doc_col.
     // Blank lines within the body are allowed.
     for (;;) {
         // Peek ahead: consume newlines and blank lines, looking for
         // an indented content line.
         if (lexer->lookahead != '\n' && lexer->lookahead != '\r') break;
 
-        // Save position — if the next content line isn't indented, we stop.
-        // We consume newlines speculatively; mark_end only if we find body.
-
         // Consume the newline.
         if (lexer->lookahead == '\r') lexer->advance(lexer, false);
         if (lexer->lookahead == '\n') lexer->advance(lexer, false);
 
         // Skip blank lines (lines with only spaces/tabs).
-        // Track how many newlines we consume speculatively.
         bool found_content = false;
         for (;;) {
             // Measure indent on this line.
-            bool has_indent = false;
+            uint32_t line_indent = 0;
             while (is_space_or_tab(lexer->lookahead)) {
-                has_indent = true;
+                line_indent++;
                 lexer->advance(lexer, false);
             }
 
@@ -186,8 +187,8 @@ static bool scan_doc_block(Scanner *s, TSLexer *lexer) {
                 continue;
             }
 
-            if (has_indent) {
-                // Indented content line — this is part of the doc body.
+            if (line_indent > doc_col) {
+                // Indented more than the doc keyword — part of doc body.
                 // Consume rest of line.
                 while (lexer->lookahead != '\n' && lexer->lookahead != '\r' && !lexer->eof(lexer)) {
                     lexer->advance(lexer, false);
@@ -196,7 +197,7 @@ static bool scan_doc_block(Scanner *s, TSLexer *lexer) {
                 found_content = true;
                 break;
             } else {
-                // Non-indented, non-blank line — end of doc block.
+                // At same indent or less — end of doc block.
                 break;
             }
         }
@@ -310,7 +311,7 @@ bool tree_sitter_kea_external_scanner_scan(void *payload, TSLexer *lexer,
             uint32_t col = lexer->get_column(lexer);
             // Doc blocks only start at column 0 or at the current indent level.
             if (col == stack_top(s)) {
-                return scan_doc_block(s, lexer);
+                return scan_doc_block(s, lexer, col);
             }
         }
         return false;
@@ -333,7 +334,7 @@ bool tree_sitter_kea_external_scanner_scan(void *payload, TSLexer *lexer,
         }
         // If INDENT not valid but DOC_BLOCK is, try doc block.
         if (valid_symbols[DOC_BLOCK] && is_doc_start(lexer->lookahead)) {
-            return scan_doc_block(s, lexer);
+            return scan_doc_block(s, lexer, indent);
         }
         return false;
     }
@@ -357,7 +358,7 @@ bool tree_sitter_kea_external_scanner_scan(void *payload, TSLexer *lexer,
     // Doc blocks at the current indent level document the next
     // declaration at this level.
     if (valid_symbols[DOC_BLOCK] && is_doc_start(lexer->lookahead)) {
-        return scan_doc_block(s, lexer);
+        return scan_doc_block(s, lexer, indent);
     }
 
     if (valid_symbols[NEWLINE]) {
