@@ -13783,3 +13783,38 @@ New theorem surface:
 **Impact**:
 - Removes remaining directional asymmetry in non-unification core-soundness
   global slice APIs.
+
+### 2026-03-02: one-hop projection APIs for declarative global slices
+
+**Context**: Extended `Kea/Eval.lean` with direct bundle/facet projection
+wrappers for both declarative global slice families.
+
+New theorem surface:
+- `coreTypeSoundnessEvalSlice_{bundle,soundness,progress,preservation}`
+- `coreTypeSoundnessEvalInferSlice_{bundle,soundness,progress,preservation}`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; this is a route-ergonomics layer over
+  already proved declarative slice outputs.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Declarative slice consumers can now obtain either full bundles or
+  soundness/progress/preservation facets in one theorem step.
+
+**Impact**:
+- Reduces downstream theorem boilerplate and aligns declarative slice ergonomics
+  with the existing unification-slice projection style.

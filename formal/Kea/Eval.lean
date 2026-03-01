@@ -948,6 +948,42 @@ theorem coreTypeSoundnessEvalSlice_proved : CoreTypeSoundnessEvalSlice := by
   intro tenv venv e ty h_env h_ty h_frag
   exact coreTypeSoundnessEvalBundle_of_hasType h_env h_ty h_frag
 
+theorem coreTypeSoundnessEvalSlice_bundle
+    (h_slice : CoreTypeSoundnessEvalSlice)
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_env : EnvWellTyped tenv venv)
+    (h_ty : HasType tenv e ty)
+    (h_frag : EvalFragmentFull e) :
+    CoreTypeSoundnessEvalBundle tenv venv e ty :=
+  h_slice h_env h_ty h_frag
+
+theorem coreTypeSoundnessEvalSlice_soundness
+    (h_slice : CoreTypeSoundnessEvalSlice)
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_env : EnvWellTyped tenv venv)
+    (h_ty : HasType tenv e ty)
+    (h_frag : EvalFragmentFull e) :
+    ∃ v, eval venv e = some v ∧ ValueHasType v ty :=
+  (coreTypeSoundnessEvalSlice_bundle h_slice h_env h_ty h_frag).soundness
+
+theorem coreTypeSoundnessEvalSlice_progress
+    (h_slice : CoreTypeSoundnessEvalSlice)
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_env : EnvWellTyped tenv venv)
+    (h_ty : HasType tenv e ty)
+    (h_frag : EvalFragmentFull e) :
+    ∃ v, eval venv e = some v :=
+  (coreTypeSoundnessEvalSlice_bundle h_slice h_env h_ty h_frag).progress
+
+theorem coreTypeSoundnessEvalSlice_preservation
+    (h_slice : CoreTypeSoundnessEvalSlice)
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_env : EnvWellTyped tenv venv)
+    (h_ty : HasType tenv e ty)
+    (h_frag : EvalFragmentFull e) :
+    ∀ v, eval venv e = some v → ValueHasType v ty :=
+  (coreTypeSoundnessEvalSlice_bundle h_slice h_env h_ty h_frag).preservation
+
 /--
 Packaged declarative core soundness slice (`inferExpr` route) over the
 executable full fragment.
@@ -989,6 +1025,42 @@ theorem coreTypeSoundnessEvalInferSlice_as_components_of_components
 theorem coreTypeSoundnessEvalInferSlice_proved : CoreTypeSoundnessEvalInferSlice := by
   intro tenv venv e ty h_env h_infer h_frag
   exact coreTypeSoundnessEvalBundle_of_infer h_env h_infer h_frag
+
+theorem coreTypeSoundnessEvalInferSlice_bundle
+    (h_slice : CoreTypeSoundnessEvalInferSlice)
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_env : EnvWellTyped tenv venv)
+    (h_infer : inferExpr tenv e = some ty)
+    (h_frag : EvalFragmentFull e) :
+    CoreTypeSoundnessEvalBundle tenv venv e ty :=
+  h_slice h_env h_infer h_frag
+
+theorem coreTypeSoundnessEvalInferSlice_soundness
+    (h_slice : CoreTypeSoundnessEvalInferSlice)
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_env : EnvWellTyped tenv venv)
+    (h_infer : inferExpr tenv e = some ty)
+    (h_frag : EvalFragmentFull e) :
+    ∃ v, eval venv e = some v ∧ ValueHasType v ty :=
+  (coreTypeSoundnessEvalInferSlice_bundle h_slice h_env h_infer h_frag).soundness
+
+theorem coreTypeSoundnessEvalInferSlice_progress
+    (h_slice : CoreTypeSoundnessEvalInferSlice)
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_env : EnvWellTyped tenv venv)
+    (h_infer : inferExpr tenv e = some ty)
+    (h_frag : EvalFragmentFull e) :
+    ∃ v, eval venv e = some v :=
+  (coreTypeSoundnessEvalInferSlice_bundle h_slice h_env h_infer h_frag).progress
+
+theorem coreTypeSoundnessEvalInferSlice_preservation
+    (h_slice : CoreTypeSoundnessEvalInferSlice)
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_env : EnvWellTyped tenv venv)
+    (h_infer : inferExpr tenv e = some ty)
+    (h_frag : EvalFragmentFull e) :
+    ∀ v, eval venv e = some v → ValueHasType v ty :=
+  (coreTypeSoundnessEvalInferSlice_bundle h_slice h_env h_infer h_frag).preservation
 
 theorem coreTypeSoundnessEvalInferSlice_of_coreTypeSoundnessEvalSlice
     (h_slice : CoreTypeSoundnessEvalSlice) :
