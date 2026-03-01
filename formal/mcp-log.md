@@ -12181,3 +12181,41 @@ New theorem surface:
 **Impact**:
 - Tightens the soundness citation surface for the core calculus and reduces
   call-site proof plumbing in downstream formal layers.
+
+### 2026-03-01: projection/decomposition wrappers on core-soundness eval bundle
+
+**Context**: Extended the new `CoreTypeSoundnessEvalUnifyBundle` layer in
+`Kea/Eval.lean` with one-hop projection wrappers and constructor-route
+`as_components` wrappers to keep usage style aligned with the broader theorem
+surface.
+
+New theorem surface:
+- `coreTypeSoundnessEvalUnifyBundle_{soundness,progress,preservation}`
+- `coreTypeSoundnessEvalUnifyBundle_as_components_of_{inferUnify,inferUnify_from_hooks}`
+- `coreTypeSoundnessEvalUnifySlice_{soundness,progress,preservation}`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime semantics change; wrappers should be direct consequences of the
+  newly added bundle constructors and fields.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Core-soundness bundle routes now support one-step field and component access
+  without manual record unpacking.
+
+**Impact**:
+- Keeps the new core-soundness package consistent with project-wide route and
+  decomposition API conventions.
