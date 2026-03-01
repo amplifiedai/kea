@@ -581,6 +581,137 @@ theorem effectHandlerSuite_of_fail_present
         h_wellTyped h_failZero h_fail_present h_clauseEffects h_lowered
   }
 
+/--
+Direct packaged resume-linearity consequence from a clause-level well-typed
+premise, independent of catch/capability side conditions.
+-/
+def effectHandlerResumeLinearityBundle_of_wellTyped
+    (clause : HandleClauseContract)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause) :
+    HandleClauseContract.ClauseResumeLinearityBundle clause :=
+  HandleClauseContract.clauseResumeLinearityBundle_of_wellTypedSlice clause h_wellTyped
+
+/-- One-hop decomposition of the packaged resume-linearity consequence. -/
+theorem effectHandlerResumeLinearityBundle_as_components_of_wellTyped
+    (clause : HandleClauseContract)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause) :
+    HandleClauseContract.ClauseResumeLinearityBundleComponents clause :=
+  HandleClauseContract.clauseResumeLinearityBundle_as_components
+    clause
+    (effectHandlerResumeLinearityBundle_of_wellTyped clause h_wellTyped)
+
+/--
+Premise-route wrapper: extract the packaged resume-linearity consequence along
+the same route used to build `EffectHandlerSuite`.
+-/
+def effectHandlerSuite_resumeLinearityBundle_of_premises
+    (clause : HandleClauseContract)
+    (_baseEffects : EffectRow)
+    (_capability : Label)
+    (_innerEffects : EffectRow)
+    (_okTy _errTy _loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (_h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects _baseEffects _capability)
+    (_h_cap_ne : _capability ≠ clause.handled)
+    (_h_failZero : FailResultContracts.failAsZeroResume clause)
+    (_h_clauseEffects : clause.exprEffects = _innerEffects)
+    (_h_lowered :
+      _loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams _innerEffects _okTy)
+          clause.exprEffects
+          _okTy
+          _errTy) :
+    HandleClauseContract.ClauseResumeLinearityBundle clause :=
+  effectHandlerResumeLinearityBundle_of_wellTyped clause h_wellTyped
+
+/--
+Premise-route decomposition wrapper for the packaged resume-linearity
+consequence.
+-/
+theorem effectHandlerSuite_resumeLinearityBundle_as_components_of_premises
+    (clause : HandleClauseContract)
+    (_baseEffects : EffectRow)
+    (_capability : Label)
+    (_innerEffects : EffectRow)
+    (_okTy _errTy _loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (_h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects _baseEffects _capability)
+    (_h_cap_ne : _capability ≠ clause.handled)
+    (_h_failZero : FailResultContracts.failAsZeroResume clause)
+    (_h_clauseEffects : clause.exprEffects = _innerEffects)
+    (_h_lowered :
+      _loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams _innerEffects _okTy)
+          clause.exprEffects
+          _okTy
+          _errTy) :
+    HandleClauseContract.ClauseResumeLinearityBundleComponents clause :=
+  effectHandlerResumeLinearityBundle_as_components_of_wellTyped clause h_wellTyped
+
+/--
+Fail-present-route wrapper: extract the packaged resume-linearity consequence
+along the same route used to build `EffectHandlerSuite`.
+-/
+def effectHandlerSuite_resumeLinearityBundle_of_fail_present
+    (clause : HandleClauseContract)
+    (_baseEffects : EffectRow)
+    (_capability : Label)
+    (_innerEffects : EffectRow)
+    (_okTy _errTy _loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (_h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects _baseEffects _capability)
+    (_h_cap_ne : _capability ≠ clause.handled)
+    (_h_failZero : FailResultContracts.failAsZeroResume clause)
+    (_h_fail_present :
+      RowFields.has (EffectRow.fields clause.exprEffects) FailResultContracts.failLabel = true)
+    (_h_clauseEffects : clause.exprEffects = _innerEffects)
+    (_h_lowered :
+      _loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams _innerEffects _okTy)
+          clause.exprEffects
+          _okTy
+          _errTy) :
+    HandleClauseContract.ClauseResumeLinearityBundle clause :=
+  effectHandlerResumeLinearityBundle_of_wellTyped clause h_wellTyped
+
+/--
+Fail-present-route decomposition wrapper for the packaged resume-linearity
+consequence.
+-/
+theorem effectHandlerSuite_resumeLinearityBundle_as_components_of_fail_present
+    (clause : HandleClauseContract)
+    (_baseEffects : EffectRow)
+    (_capability : Label)
+    (_innerEffects : EffectRow)
+    (_okTy _errTy _loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (_h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects _baseEffects _capability)
+    (_h_cap_ne : _capability ≠ clause.handled)
+    (_h_failZero : FailResultContracts.failAsZeroResume clause)
+    (_h_fail_present :
+      RowFields.has (EffectRow.fields clause.exprEffects) FailResultContracts.failLabel = true)
+    (_h_clauseEffects : clause.exprEffects = _innerEffects)
+    (_h_lowered :
+      _loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams _innerEffects _okTy)
+          clause.exprEffects
+          _okTy
+          _errTy) :
+    HandleClauseContract.ClauseResumeLinearityBundleComponents clause :=
+  effectHandlerResumeLinearityBundle_as_components_of_wellTyped clause h_wellTyped
+
 theorem effectHandlerSuite_as_components_of_premises
     (clause : HandleClauseContract)
     (baseEffects : EffectRow)
