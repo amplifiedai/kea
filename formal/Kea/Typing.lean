@@ -4970,6 +4970,65 @@ structure PrincipalBoundaryNoUnifyExprCapstone
     PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty
       ↔ PrincipalTypingSliceCore env e ty
 
+/-- Explicit component alias for `PrincipalBoundaryNoUnifyExprCapstone`. -/
+abbrev PrincipalBoundaryNoUnifyExprCapstoneComponents
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty) : Prop :=
+  PrincipalNoUnifyBridgeBundle h_app h_proj st fuel env e st' ty ∧
+    (PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty
+      ↔ PrincipalTypingSliceCore env e ty)
+
+/-- `PrincipalBoundaryNoUnifyExprCapstone` is equivalent to explicit components. -/
+theorem principalBoundaryNoUnifyExprCapstone_iff_components
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty) :
+    PrincipalBoundaryNoUnifyExprCapstone h_app h_proj st fuel env e st' ty
+      ↔ PrincipalBoundaryNoUnifyExprCapstoneComponents h_app h_proj st fuel env e st' ty := by
+  constructor
+  · intro h_cap
+    exact ⟨h_cap.noUnify, h_cap.preconditionedCoreIff⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2⟩
+
+/-- Build `PrincipalBoundaryNoUnifyExprCapstone` from explicit components. -/
+theorem principalBoundaryNoUnifyExprCapstone_of_components
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_comp : PrincipalBoundaryNoUnifyExprCapstoneComponents h_app h_proj st fuel env e st' ty) :
+    PrincipalBoundaryNoUnifyExprCapstone h_app h_proj st fuel env e st' ty :=
+  (principalBoundaryNoUnifyExprCapstone_iff_components
+    h_app h_proj st fuel env e st' ty).2 h_comp
+
+/-- Decompose `PrincipalBoundaryNoUnifyExprCapstone` into explicit components. -/
+theorem principalBoundaryNoUnifyExprCapstone_as_components
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_cap : PrincipalBoundaryNoUnifyExprCapstone h_app h_proj st fuel env e st' ty) :
+    PrincipalBoundaryNoUnifyExprCapstoneComponents h_app h_proj st fuel env e st' ty :=
+  (principalBoundaryNoUnifyExprCapstone_iff_components
+    h_app h_proj st fuel env e st' ty).1 h_cap
+
+/-- Direct components-route decomposition for `PrincipalBoundaryNoUnifyExprCapstone`. -/
+theorem principalBoundaryNoUnifyExprCapstone_as_components_of_components
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_comp : PrincipalBoundaryNoUnifyExprCapstoneComponents h_app h_proj st fuel env e st' ty) :
+    PrincipalBoundaryNoUnifyExprCapstoneComponents h_app h_proj st fuel env e st' ty :=
+  (principalBoundaryNoUnifyExprCapstone_iff_components
+    h_app h_proj st fuel env e st' ty).1
+    (principalBoundaryNoUnifyExprCapstone_of_components
+      h_app h_proj st fuel env e st' ty h_comp)
+
 /--
 Construct the no-unify expression capstone directly from successful no-unify
 inference via the proved principal boundary suite.
@@ -5091,6 +5150,65 @@ structure PrincipalBoundaryNoUnifyFieldCapstone
   preconditionedCoreIff :
     PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf
       ↔ PrincipalFieldTypingSliceCore env fs rf
+
+/-- Explicit component alias for `PrincipalBoundaryNoUnifyFieldCapstone`. -/
+abbrev PrincipalBoundaryNoUnifyFieldCapstoneComponents
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields) : Prop :=
+  PrincipalFieldNoUnifyBridgeBundle h_app h_proj st fuel env fs st' rf ∧
+    (PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSliceCore env fs rf)
+
+/-- `PrincipalBoundaryNoUnifyFieldCapstone` is equivalent to explicit components. -/
+theorem principalBoundaryNoUnifyFieldCapstone_iff_components
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields) :
+    PrincipalBoundaryNoUnifyFieldCapstone h_app h_proj st fuel env fs st' rf
+      ↔ PrincipalBoundaryNoUnifyFieldCapstoneComponents h_app h_proj st fuel env fs st' rf := by
+  constructor
+  · intro h_cap
+    exact ⟨h_cap.noUnify, h_cap.preconditionedCoreIff⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2⟩
+
+/-- Build `PrincipalBoundaryNoUnifyFieldCapstone` from explicit components. -/
+theorem principalBoundaryNoUnifyFieldCapstone_of_components
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_comp : PrincipalBoundaryNoUnifyFieldCapstoneComponents h_app h_proj st fuel env fs st' rf) :
+    PrincipalBoundaryNoUnifyFieldCapstone h_app h_proj st fuel env fs st' rf :=
+  (principalBoundaryNoUnifyFieldCapstone_iff_components
+    h_app h_proj st fuel env fs st' rf).2 h_comp
+
+/-- Decompose `PrincipalBoundaryNoUnifyFieldCapstone` into explicit components. -/
+theorem principalBoundaryNoUnifyFieldCapstone_as_components
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_cap : PrincipalBoundaryNoUnifyFieldCapstone h_app h_proj st fuel env fs st' rf) :
+    PrincipalBoundaryNoUnifyFieldCapstoneComponents h_app h_proj st fuel env fs st' rf :=
+  (principalBoundaryNoUnifyFieldCapstone_iff_components
+    h_app h_proj st fuel env fs st' rf).1 h_cap
+
+/-- Direct components-route decomposition for `PrincipalBoundaryNoUnifyFieldCapstone`. -/
+theorem principalBoundaryNoUnifyFieldCapstone_as_components_of_components
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_comp : PrincipalBoundaryNoUnifyFieldCapstoneComponents h_app h_proj st fuel env fs st' rf) :
+    PrincipalBoundaryNoUnifyFieldCapstoneComponents h_app h_proj st fuel env fs st' rf :=
+  (principalBoundaryNoUnifyFieldCapstone_iff_components
+    h_app h_proj st fuel env fs st' rf).1
+    (principalBoundaryNoUnifyFieldCapstone_of_components
+      h_app h_proj st fuel env fs st' rf h_comp)
 
 /--
 Construct the no-unify field capstone directly from successful no-unify field
@@ -5510,6 +5628,57 @@ structure PrincipalPreconditionedExprAllHooksCapstone
       (PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty
         ↔ PrincipalTypingSliceCore env e ty)
 
+/-- Explicit component alias for `PrincipalPreconditionedExprAllHooksCapstone`. -/
+abbrev PrincipalPreconditionedExprAllHooksCapstoneComponents
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty) : Prop :=
+  PrincipalTypingSliceCore env e ty ∧
+    (∀ h_app h_proj, PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty) ∧
+    (∀ h_app h_proj,
+      (PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty
+        ↔ PrincipalTypingSliceCore env e ty))
+
+/-- `PrincipalPreconditionedExprAllHooksCapstone` is equivalent to explicit components. -/
+theorem principalPreconditionedExprAllHooksCapstone_iff_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty) :
+    PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty
+      ↔ PrincipalPreconditionedExprAllHooksCapstoneComponents st fuel env e st' ty := by
+  constructor
+  · intro h_cap
+    exact ⟨h_cap.core, h_cap.preconditionedAny, h_cap.preconditionedAnyIffCore⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2.1, h_comp.2.2⟩
+
+/-- Build `PrincipalPreconditionedExprAllHooksCapstone` from explicit components. -/
+theorem principalPreconditionedExprAllHooksCapstone_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_comp : PrincipalPreconditionedExprAllHooksCapstoneComponents st fuel env e st' ty) :
+    PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty :=
+  (principalPreconditionedExprAllHooksCapstone_iff_components
+    st fuel env e st' ty).2 h_comp
+
+/-- Decompose `PrincipalPreconditionedExprAllHooksCapstone` into explicit components. -/
+theorem principalPreconditionedExprAllHooksCapstone_as_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_cap : PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty) :
+    PrincipalPreconditionedExprAllHooksCapstoneComponents st fuel env e st' ty :=
+  (principalPreconditionedExprAllHooksCapstone_iff_components
+    st fuel env e st' ty).1 h_cap
+
+/-- Direct components-route decomposition for `PrincipalPreconditionedExprAllHooksCapstone`. -/
+theorem principalPreconditionedExprAllHooksCapstone_as_components_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_comp : PrincipalPreconditionedExprAllHooksCapstoneComponents st fuel env e st' ty) :
+    PrincipalPreconditionedExprAllHooksCapstoneComponents st fuel env e st' ty :=
+  (principalPreconditionedExprAllHooksCapstone_iff_components
+    st fuel env e st' ty).1
+    (principalPreconditionedExprAllHooksCapstone_of_components
+      st fuel env e st' ty h_comp)
+
 /--
 Construct the general successful-run all-hooks expression capstone from one
 hook witness pair.
@@ -5555,6 +5724,58 @@ structure PrincipalPreconditionedFieldAllHooksCapstone
     ∀ h_app h_proj,
       (PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf
         ↔ PrincipalFieldTypingSliceCore env fs rf)
+
+/-- Explicit component alias for `PrincipalPreconditionedFieldAllHooksCapstone`. -/
+abbrev PrincipalPreconditionedFieldAllHooksCapstoneComponents
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields) : Prop :=
+  PrincipalFieldTypingSliceCore env fs rf ∧
+    (∀ h_app h_proj,
+      PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf) ∧
+    (∀ h_app h_proj,
+      (PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf
+        ↔ PrincipalFieldTypingSliceCore env fs rf))
+
+/-- `PrincipalPreconditionedFieldAllHooksCapstone` is equivalent to explicit components. -/
+theorem principalPreconditionedFieldAllHooksCapstone_iff_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields) :
+    PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf
+      ↔ PrincipalPreconditionedFieldAllHooksCapstoneComponents st fuel env fs st' rf := by
+  constructor
+  · intro h_cap
+    exact ⟨h_cap.core, h_cap.preconditionedAny, h_cap.preconditionedAnyIffCore⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2.1, h_comp.2.2⟩
+
+/-- Build `PrincipalPreconditionedFieldAllHooksCapstone` from explicit components. -/
+theorem principalPreconditionedFieldAllHooksCapstone_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_comp : PrincipalPreconditionedFieldAllHooksCapstoneComponents st fuel env fs st' rf) :
+    PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf :=
+  (principalPreconditionedFieldAllHooksCapstone_iff_components
+    st fuel env fs st' rf).2 h_comp
+
+/-- Decompose `PrincipalPreconditionedFieldAllHooksCapstone` into explicit components. -/
+theorem principalPreconditionedFieldAllHooksCapstone_as_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_cap : PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf) :
+    PrincipalPreconditionedFieldAllHooksCapstoneComponents st fuel env fs st' rf :=
+  (principalPreconditionedFieldAllHooksCapstone_iff_components
+    st fuel env fs st' rf).1 h_cap
+
+/-- Direct components-route decomposition for `PrincipalPreconditionedFieldAllHooksCapstone`. -/
+theorem principalPreconditionedFieldAllHooksCapstone_as_components_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_comp : PrincipalPreconditionedFieldAllHooksCapstoneComponents st fuel env fs st' rf) :
+    PrincipalPreconditionedFieldAllHooksCapstoneComponents st fuel env fs st' rf :=
+  (principalPreconditionedFieldAllHooksCapstone_iff_components
+    st fuel env fs st' rf).1
+    (principalPreconditionedFieldAllHooksCapstone_of_components
+      st fuel env fs st' rf h_comp)
 
 /--
 Construct the general successful-run all-hooks field capstone from one hook
@@ -5699,6 +5920,57 @@ structure PrincipalPreconditionedExprAllHooksRunBundle
       (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
         ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty)
 
+/-- Explicit component alias for `PrincipalPreconditionedExprAllHooksRunBundle`. -/
+abbrev PrincipalPreconditionedExprAllHooksRunBundleComponents
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty) : Prop :=
+  PrincipalPreconditionedExprAllHooksCapstone st fuel env e st' ty ∧
+    (∀ {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+      {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook},
+      (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+        ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty))
+
+/-- `PrincipalPreconditionedExprAllHooksRunBundle` is equivalent to explicit components. -/
+theorem principalPreconditionedExprAllHooksRunBundle_iff_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty) :
+    PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty
+      ↔ PrincipalPreconditionedExprAllHooksRunBundleComponents st fuel env e st' ty := by
+  constructor
+  · intro h_bundle
+    exact ⟨h_bundle.capstone, h_bundle.hookIrrelevant⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2⟩
+
+/-- Build `PrincipalPreconditionedExprAllHooksRunBundle` from explicit components. -/
+theorem principalPreconditionedExprAllHooksRunBundle_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_comp : PrincipalPreconditionedExprAllHooksRunBundleComponents st fuel env e st' ty) :
+    PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty :=
+  (principalPreconditionedExprAllHooksRunBundle_iff_components
+    st fuel env e st' ty).2 h_comp
+
+/-- Decompose `PrincipalPreconditionedExprAllHooksRunBundle` into explicit components. -/
+theorem principalPreconditionedExprAllHooksRunBundle_as_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_bundle : PrincipalPreconditionedExprAllHooksRunBundle st fuel env e st' ty) :
+    PrincipalPreconditionedExprAllHooksRunBundleComponents st fuel env e st' ty :=
+  (principalPreconditionedExprAllHooksRunBundle_iff_components
+    st fuel env e st' ty).1 h_bundle
+
+/-- Direct components-route decomposition for `PrincipalPreconditionedExprAllHooksRunBundle`. -/
+theorem principalPreconditionedExprAllHooksRunBundle_as_components_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_comp : PrincipalPreconditionedExprAllHooksRunBundleComponents st fuel env e st' ty) :
+    PrincipalPreconditionedExprAllHooksRunBundleComponents st fuel env e st' ty :=
+  (principalPreconditionedExprAllHooksRunBundle_iff_components
+    st fuel env e st' ty).1
+    (principalPreconditionedExprAllHooksRunBundle_of_components
+      st fuel env e st' ty h_comp)
+
 /--
 Run-level field bundle for arbitrary successful all-hooks principality.
 
@@ -5713,6 +5985,57 @@ structure PrincipalPreconditionedFieldAllHooksRunBundle
       {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook},
       (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
         ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf)
+
+/-- Explicit component alias for `PrincipalPreconditionedFieldAllHooksRunBundle`. -/
+abbrev PrincipalPreconditionedFieldAllHooksRunBundleComponents
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields) : Prop :=
+  PrincipalPreconditionedFieldAllHooksCapstone st fuel env fs st' rf ∧
+    (∀ {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+      {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook},
+      (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+        ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf))
+
+/-- `PrincipalPreconditionedFieldAllHooksRunBundle` is equivalent to explicit components. -/
+theorem principalPreconditionedFieldAllHooksRunBundle_iff_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields) :
+    PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf
+      ↔ PrincipalPreconditionedFieldAllHooksRunBundleComponents st fuel env fs st' rf := by
+  constructor
+  · intro h_bundle
+    exact ⟨h_bundle.capstone, h_bundle.hookIrrelevant⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2⟩
+
+/-- Build `PrincipalPreconditionedFieldAllHooksRunBundle` from explicit components. -/
+theorem principalPreconditionedFieldAllHooksRunBundle_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_comp : PrincipalPreconditionedFieldAllHooksRunBundleComponents st fuel env fs st' rf) :
+    PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf :=
+  (principalPreconditionedFieldAllHooksRunBundle_iff_components
+    st fuel env fs st' rf).2 h_comp
+
+/-- Decompose `PrincipalPreconditionedFieldAllHooksRunBundle` into explicit components. -/
+theorem principalPreconditionedFieldAllHooksRunBundle_as_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_bundle : PrincipalPreconditionedFieldAllHooksRunBundle st fuel env fs st' rf) :
+    PrincipalPreconditionedFieldAllHooksRunBundleComponents st fuel env fs st' rf :=
+  (principalPreconditionedFieldAllHooksRunBundle_iff_components
+    st fuel env fs st' rf).1 h_bundle
+
+/-- Direct components-route decomposition for `PrincipalPreconditionedFieldAllHooksRunBundle`. -/
+theorem principalPreconditionedFieldAllHooksRunBundle_as_components_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_comp : PrincipalPreconditionedFieldAllHooksRunBundleComponents st fuel env fs st' rf) :
+    PrincipalPreconditionedFieldAllHooksRunBundleComponents st fuel env fs st' rf :=
+  (principalPreconditionedFieldAllHooksRunBundle_iff_components
+    st fuel env fs st' rf).1
+    (principalPreconditionedFieldAllHooksRunBundle_of_components
+      st fuel env fs st' rf h_comp)
 
 /--
 Construct an expression run-level all-hooks bundle from an existing capstone.
