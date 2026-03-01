@@ -3750,6 +3750,38 @@
     }
 
     #[test]
+    fn compile_and_execute_handler_two_argument_callback_clause_exit_code() {
+        let source_path = write_temp_source(
+            "effect Math\n  fn add(a: Int, b: Int) -> Int\n\nfn program() -[Math]> Int\n  Math.add(40, 2)\n\nfn main() -> Int\n  handle program()\n    Math.add(a, b) -> resume a + b\n",
+            "kea-cli-handler-two-arg-callback-clause",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("two-argument callback handler clause should run");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_reject_handler_callback_clause_non_variable_arg_pattern() {
+        let source_path = write_temp_source(
+            "effect Math\n  fn add(a: Int, b: Int) -> Int\n\nfn program() -[Math]> Int\n  Math.add(40, 2)\n\nfn main() -> Int\n  handle program()\n    Math.add(40, b) -> resume 40 + b\n",
+            "kea-cli-handler-callback-clause-non-var-pattern",
+            "kea",
+        );
+
+        let err = run_file(&source_path)
+            .expect_err("compiled lowering should reject non-variable callback arg patterns");
+        assert!(
+            err.contains("requires simple variable argument patterns for callback lowering"),
+            "expected callback-pattern lowering diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_log_side_effecting_handler_clause_exit_code() {
         let source_path = write_temp_source(
             "effect IO\n  fn stdout(msg: String) -> Unit\n\neffect Log\n  fn info(msg: String) -> Unit\n\nfn program() -[Log]> Int\n  Log.info(\"hello\")\n  7\n\nfn with_stdout_logger(f: fn() -[Log]> Int) -[IO]> Int\n  handle f()\n    Log.info(msg) ->\n      IO.stdout(msg)\n      resume ()\n\nfn main() -[IO]> Int\n  with_stdout_logger(program)\n",
