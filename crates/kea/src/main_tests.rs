@@ -3312,6 +3312,52 @@
     }
 
     #[test]
+    fn compile_and_reject_nested_lambda_returning_lambda_in_local_binding() {
+        let source_path = write_temp_source(
+            "fn outer(a: Int) -> fn(Int) -> Int\n  let make = |b|\n    |c| a + b + c\n  make(30)\n\nfn main() -> Int\n  let f = outer(10)\n  f(2)\n",
+            "kea-cli-nested-closure-three-scope-capture",
+            "kea",
+        );
+
+        let err = run_file(&source_path)
+            .expect_err("nested lambda returning lambda should currently fail in lowering");
+        assert!(
+            err.contains("non-unit function returned without value"),
+            "expected current nested-lambda lowering diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_closure_capture_and_post_capture_use_of_heap_value_exit_code() {
+        let source_path = write_temp_source(
+            "use List\n\nfn main() -> Int\n  let xs = List.Cons(1, List.Cons(2, List.Cons(3, List.Nil)))\n  let f = || List.length(xs)\n  let direct = List.length(xs)\n  f() + direct\n",
+            "kea-cli-closure-capture-post-use-heap",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("capture plus direct heap use should run");
+        assert_eq!(run.exit_code, 6);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_log_with_collected_logs_high_volume_exit_code() {
+        let source_path = write_temp_source(
+            "use Log\nuse List\n\nfn emit(n: Int) -[Log]> Unit\n  if n == 0\n    ()\n  else\n    Log.info(\"x\")\n    emit(n - 1)\n\nfn run() -[Log]> Int\n  emit(200)\n  7\n\nfn main() -> Int\n  let pair = Log.with_collected_logs(run)\n  let value = pair.0\n  let logs = pair.1\n  if value == 7 and List.length(logs) == 200\n    42\n  else\n    0\n",
+            "kea-cli-log-with-collected-high-volume",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("high-volume log collection should run");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_fail_only_main_ok_path_exit_code() {
         let source_path = write_temp_source(
             "effect Fail\n  fn fail(err: Int) -> Never\n\nfn main() -[Fail]> Int\n  12\n",
@@ -3489,6 +3535,39 @@
 
         let run = run_file(&source_path).expect("effectful generic callback should run");
         assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_handler_returns_closure_capturing_effect_value_exit_code() {
+        let source_path = write_temp_source(
+            "effect Reader C\n  fn ask() -> C\n\nfn make_adder() -[Reader Int]> fn(Int) -> Int\n  let base = Reader.ask()\n  |x| x + base\n\nfn main() -> Int\n  let add = handle make_adder()\n    Reader.ask() -> resume 40\n  add(2)\n",
+            "kea-cli-handler-returns-capturing-closure",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("handler-returned closure should run");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_reject_handler_resume_with_closure_capturing_clause_arg_in_compiled_lowering() {
+        let source_path = write_temp_source(
+            "effect Factory\n  fn build(seed: Int) -> fn(Int) -> Int\n\nfn program() -[Factory]> fn(Int) -> Int\n  Factory.build(40)\n\nfn main() -> Int\n  let add = handle program()\n    Factory.build(seed) -> resume (|x| x + seed)\n  add(2)\n",
+            "kea-cli-handler-resume-closure-captures-clause-arg",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err(
+            "compiled handler lowering should currently reject effect ops returning closures",
+        );
+        assert!(
+            err.contains("missing handler operation plan for effect `Factory`"),
+            "expected missing handler-operation-plan diagnostic, got: {err}"
+        );
 
         let _ = std::fs::remove_file(source_path);
     }
