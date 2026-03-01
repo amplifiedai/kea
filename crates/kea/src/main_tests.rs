@@ -3849,6 +3849,34 @@
     }
 
     #[test]
+    fn compile_and_execute_nested_catch_inner_handles_inner_fail_exit_code() {
+        let source_path = write_temp_source(
+            "effect Fail\n  fn fail(err: Int) -> Never\n\nfn inner() -[Fail Int]> Int\n  fail 3\n\nfn outer() -[Fail Int]> Int\n  let handled = catch inner()\n  let inner_value = case handled\n    Ok(v) -> v\n    Err(e) -> e + 1\n  if inner_value == 4\n    fail 9\n  else\n    0\n\nfn main() -> Int\n  let r = catch outer()\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
+            "kea-cli-catch-nested-inner-handles-inner-fail",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("nested catch run should succeed");
+        assert_eq!(run.exit_code, 9);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_catch_wraps_handle_result_exit_code() {
+        let source_path = write_temp_source(
+            "effect Fail\n  fn fail(err: Int) -> Never\n\neffect Reader C\n  fn ask() -> C\n\nfn base() -[Reader Int]> Int\n  Reader.ask()\n\nfn wrapped() -[Fail Int]> Int\n  let x = handle base()\n    Reader.ask() -> resume 2\n  if x == 2\n    fail 7\n  else\n    x\n\nfn main() -> Int\n  let r = catch wrapped()\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
+            "kea-cli-catch-wraps-handle-result",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("catch around handle should succeed");
+        assert_eq!(run.exit_code, 7);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_catch_higher_order_fail_parameter_err_exit_code() {
         let source_path = write_temp_source(
             "effect Fail\n  fn fail(err: Int) -> Never\n\nfn call_with_catch(f: fn() -[Fail Int]> Int) -> Result(Int, Int)\n  catch f()\n\nfn boom() -[Fail Int]> Int\n  fail 7\n\nfn main() -> Int\n  let r = call_with_catch(boom)\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
@@ -3917,6 +3945,25 @@
         assert!(
             err.contains("expression cannot fail; catch is unnecessary"),
             "expected unnecessary catch diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_rejects_catch_with_wrong_error_type_annotation() {
+        let source_path = write_temp_source(
+            "effect Fail\n  fn fail(err: Int) -> Never\n\nfn main() -> Int\n  let r: Result(Int, String) = catch fail 7\n  case r\n    Ok(v) -> v\n    Err(e) -> 0\n",
+            "kea-cli-catch-wrong-error-annotation",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject catch error type mismatch");
+        assert!(
+            err.contains("type annotation mismatch")
+                && err.contains("declared `String`")
+                && err.contains("type `Int`"),
+            "expected catch error type-mismatch diagnostic, got: {err}"
         );
 
         let _ = std::fs::remove_file(source_path);
