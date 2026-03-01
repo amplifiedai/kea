@@ -10765,3 +10765,41 @@ consumption.
 **Impact**:
 - Resume-linearity theorem consumption now matches the broader Phase-2 bundle
   API style used across handler/catch/capstone layers.
+
+### 2026-03-01: aggregate-suite resume-linearity route wrappers
+
+**Context**: Extended `Kea/Properties/EffectHandlerContractSuite.lean` with
+resume-linearity package route wrappers:
+- `effectHandlerResumeLinearityBundle_of_wellTyped`
+- `effectHandlerResumeLinearityBundle_as_components_of_wellTyped`
+- `effectHandlerSuite_resumeLinearityBundle_of_{premises,fail_present}`
+- `effectHandlerSuite_resumeLinearityBundle_as_components_of_{premises,fail_present}`
+
+This threads `HandleClauseContract.ClauseResumeLinearityBundle` into the same
+premise/fail-present entry routes used by the aggregate handler suite APIs.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No semantic change; wrappers should compile as route-level projections from
+  the existing `wellTypedSlice` premise.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Resume-linearity package witnesses are now available on aggregate-suite
+  premise/fail-present routes in one theorem step.
+
+**Impact**:
+- Handler aggregate theorem consumers can pull resume-linearity evidence using
+  the same top-level route idiom as closed-aware/capability/catch facets.
