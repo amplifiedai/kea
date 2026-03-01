@@ -3812,6 +3812,15 @@ fn lower_instruction<M: Module>(
                 }
                 builder.ins().trap(TrapCode::unwrap_user(1));
                 Ok(true)
+            } else if *class == MirEffectOpClass::Dispatch {
+                Err(CodegenError::UnsupportedMir {
+                    function: function_name.to_string(),
+                    detail: format!(
+                        "effect operation `{effect}.{operation}` requires evidence dispatch \
+                         (Tier 3) but no handler cell was threaded — ensure the effect is \
+                         handled or the function receives dispatch parameters"
+                    ),
+                })
             } else {
                 Err(CodegenError::UnsupportedMir {
                     function: function_name.to_string(),
