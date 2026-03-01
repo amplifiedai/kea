@@ -11900,3 +11900,42 @@ top-level suites.
 **Impact**:
 - Completes decomposition entrypoint parity for the latest package layers and
   keeps theorem APIs uniform across constructor and component routes.
+
+### 2026-03-01: parity pass on intermediate extended suites
+
+**Context**: Extended intermediate suite layers with constructor-route
+decomposition and one-hop projection wrappers:
+- `dimKernelExtendedSuite_as_components_of_master`
+- `dimKernelExtendedSuite_{core,pairVarConst}`
+- `decimalDimKernelExtendedSuite_as_components_of_master`
+- `decimalDimKernelExtendedSuite_{numeric,dimKernelExtended}`
+- `shapeConstDimKernelExtendedSuite_as_components_of_master`
+- `shapeConstDimKernelExtendedSuite_{shapeKernel,dimKernelExtended}`
+- `numericShapeConstDimKernelExtendedSuite_as_components_of_master`
+- `numericShapeConstDimKernelExtendedSuite_{numericKernel,shapeKernelExtended}`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No semantic change; wrappers should be direct consequences of existing suite
+  constructors and fields.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Mid-stack extended suites now match top-level suites in constructor-route and
+  one-hop facet access style.
+
+**Impact**:
+- Improves uniformity of theorem consumption across WP7.2/WP7.3 package layers
+  and further reduces proof plumbing at call sites.

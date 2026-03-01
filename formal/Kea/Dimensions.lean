@@ -1261,6 +1261,11 @@ theorem dimKernelExtendedSuite_as_components_of_components
     DimKernelExtendedSuiteComponents := by
   simpa using h_comp
 
+/-- Constructor-route decomposition wrapper for `dimKernelExtendedSuite`. -/
+theorem dimKernelExtendedSuite_as_components_of_master :
+    DimKernelExtendedSuiteComponents := by
+  exact dimKernelExtendedSuite_as_components dimKernelExtendedSuite
+
 /-- `DimKernelExtendedSuite` is equivalent to its explicit component pair. -/
 theorem dimKernelExtendedSuite_iff_components :
     DimKernelExtendedSuite ↔ DimKernelExtendedSuiteComponents := by
@@ -1269,3 +1274,17 @@ theorem dimKernelExtendedSuite_iff_components :
     exact dimKernelExtendedSuite_as_components suite
   · intro h
     exact dimKernelExtendedSuite_of_components h.1 h.2
+
+/-- One-hop projection: core dimension-kernel suite from
+`DimKernelExtendedSuite`. -/
+theorem dimKernelExtendedSuite_core
+    (suite : DimKernelExtendedSuite) :
+    DimKernelSuite :=
+  suite.core
+
+/-- One-hop projection: rank-2 var/const kernel suite from
+`DimKernelExtendedSuite`. -/
+theorem dimKernelExtendedSuite_pairVarConst
+    (suite : DimKernelExtendedSuite) :
+    DimPairVarConstKernelSlice :=
+  suite.pairVarConst

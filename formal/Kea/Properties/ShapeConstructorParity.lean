@@ -4412,6 +4412,13 @@ theorem shapeConstDimKernelExtendedSuite_as_components_of_components
     ShapeConstDimKernelExtendedSuiteComponents := by
   simpa using h_comp
 
+/-- Constructor-route decomposition wrapper for
+`shapeConstDimKernelExtendedSuite`. -/
+theorem shapeConstDimKernelExtendedSuite_as_components_of_master :
+    ShapeConstDimKernelExtendedSuiteComponents := by
+  exact shapeConstDimKernelExtendedSuite_as_components
+    shapeConstDimKernelExtendedSuite
+
 /-- `ShapeConstDimKernelExtendedSuite` is equivalent to its explicit component
 pair. -/
 theorem shapeConstDimKernelExtendedSuite_iff_components :
@@ -4422,6 +4429,20 @@ theorem shapeConstDimKernelExtendedSuite_iff_components :
     exact shapeConstDimKernelExtendedSuite_as_components suite
   · intro h
     exact shapeConstDimKernelExtendedSuite_of_components h.1 h.2
+
+/-- One-hop projection: constant-shape suite from
+`ShapeConstDimKernelExtendedSuite`. -/
+theorem shapeConstDimKernelExtendedSuite_shapeKernel
+    (suite : ShapeConstDimKernelExtendedSuite) :
+    ShapeConstDimKernelSuite :=
+  suite.shapeKernel
+
+/-- One-hop projection: extended dimension-kernel suite from
+`ShapeConstDimKernelExtendedSuite`. -/
+theorem shapeConstDimKernelExtendedSuite_dimKernelExtended
+    (suite : ShapeConstDimKernelExtendedSuite) :
+    DimKernelExtendedSuite :=
+  suite.dimKernelExtended
 
 /-- Unified numeric + extended-shape kernel suite:
     combines numeric constructor contracts with the extended shape/dimension
@@ -4462,6 +4483,13 @@ theorem numericShapeConstDimKernelExtendedSuite_as_components_of_components
     NumericShapeConstDimKernelExtendedSuiteComponents := by
   simpa using h_comp
 
+/-- Constructor-route decomposition wrapper for
+`numericShapeConstDimKernelExtendedSuite`. -/
+theorem numericShapeConstDimKernelExtendedSuite_as_components_of_master :
+    NumericShapeConstDimKernelExtendedSuiteComponents := by
+  exact numericShapeConstDimKernelExtendedSuite_as_components
+    numericShapeConstDimKernelExtendedSuite
+
 /-- `NumericShapeConstDimKernelExtendedSuite` is equivalent to its explicit
 component pair. -/
 theorem numericShapeConstDimKernelExtendedSuite_iff_components :
@@ -4472,6 +4500,20 @@ theorem numericShapeConstDimKernelExtendedSuite_iff_components :
     exact numericShapeConstDimKernelExtendedSuite_as_components suite
   · intro h
     exact numericShapeConstDimKernelExtendedSuite_of_components h.1 h.2
+
+/-- One-hop projection: numeric constructor suite from
+`NumericShapeConstDimKernelExtendedSuite`. -/
+theorem numericShapeConstDimKernelExtendedSuite_numericKernel
+    (suite : NumericShapeConstDimKernelExtendedSuite) :
+    NumericConstructorKernelSuite :=
+  suite.numericKernel
+
+/-- One-hop projection: extended constant-shape suite from
+`NumericShapeConstDimKernelExtendedSuite`. -/
+theorem numericShapeConstDimKernelExtendedSuite_shapeKernelExtended
+    (suite : NumericShapeConstDimKernelExtendedSuite) :
+    ShapeConstDimKernelExtendedSuite :=
+  suite.shapeKernelExtended
 
 /-- Top-level mixed+constant numeric shape suite:
     combines the numeric/extended-constant-shape suite with the mixed-shape
