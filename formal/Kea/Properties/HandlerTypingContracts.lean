@@ -132,6 +132,88 @@ theorem wellTypedSlice_hasResumeSummary_atMostOnce
   exact clauseHasResumeSummary_implies_atMostOnce_of_wellTypedSlice
     c c.resumeUse h_typed (clauseHasResumeSummary.mk c)
 
+/--
+Packaged resume-linearity consequences for a clause typing witness.
+-/
+structure ClauseResumeLinearityBundle (c : HandleClauseContract) where
+  summary : ResumeUse
+  hasSummary : clauseHasResumeSummary c summary
+  atMostOnce : resume_at_most_once summary
+
+/-- Explicit component alias for `ClauseResumeLinearityBundle`. -/
+abbrev ClauseResumeLinearityBundleComponents
+    (c : HandleClauseContract) : Prop :=
+  ∃ u, clauseHasResumeSummary c u ∧ resume_at_most_once u
+
+/-- `ClauseResumeLinearityBundle` is equivalent to explicit components. -/
+theorem clauseResumeLinearityBundle_iff_components
+    (c : HandleClauseContract) :
+    Nonempty (ClauseResumeLinearityBundle c) ↔
+      ClauseResumeLinearityBundleComponents c := by
+  constructor
+  · intro h_bundle
+    rcases h_bundle with ⟨b⟩
+    exact ⟨b.summary, b.hasSummary, b.atMostOnce⟩
+  · intro h_comp
+    rcases h_comp with ⟨u, h_summary, h_atMostOnce⟩
+    exact ⟨{ summary := u, hasSummary := h_summary, atMostOnce := h_atMostOnce }⟩
+
+/-- Build `ClauseResumeLinearityBundle` from explicit components. -/
+theorem clauseResumeLinearityBundle_of_components
+    (c : HandleClauseContract)
+    (h_comp : ClauseResumeLinearityBundleComponents c) :
+    Nonempty (ClauseResumeLinearityBundle c) :=
+  (clauseResumeLinearityBundle_iff_components c).2 h_comp
+
+/-- Decompose `ClauseResumeLinearityBundle` into explicit components. -/
+theorem clauseResumeLinearityBundle_as_components
+    (c : HandleClauseContract)
+    (b : ClauseResumeLinearityBundle c) :
+    ClauseResumeLinearityBundleComponents c :=
+  (clauseResumeLinearityBundle_iff_components c).1 ⟨b⟩
+
+/-- Direct components-route decomposition for `ClauseResumeLinearityBundle`. -/
+theorem clauseResumeLinearityBundle_as_components_of_components
+    (c : HandleClauseContract)
+    (h_comp : ClauseResumeLinearityBundleComponents c) :
+    ClauseResumeLinearityBundleComponents c :=
+  (clauseResumeLinearityBundle_iff_components c).1
+    ((clauseResumeLinearityBundle_iff_components c).2 h_comp)
+
+/-- Build the packaged resume-linearity bundle from `wellTypedSlice`. -/
+def clauseResumeLinearityBundle_of_wellTypedSlice
+    (c : HandleClauseContract)
+    (h_typed : wellTypedSlice c) :
+    ClauseResumeLinearityBundle c := by
+  refine
+    { summary := c.resumeUse
+      hasSummary := clauseHasResumeSummary.mk c
+      atMostOnce := ?_ }
+  exact clauseHasResumeSummary_implies_atMostOnce_of_wellTypedSlice
+    c c.resumeUse h_typed (clauseHasResumeSummary.mk c)
+
+/-- One-hop at-most-once projection from the packaged resume-linearity bundle. -/
+theorem clauseResumeLinearityBundle_atMostOnce
+    (c : HandleClauseContract)
+    (b : ClauseResumeLinearityBundle c) :
+    resume_at_most_once b.summary := b.atMostOnce
+
+/-- One-hop summary projection from the packaged resume-linearity bundle. -/
+theorem clauseResumeLinearityBundle_hasSummary
+    (c : HandleClauseContract)
+    (b : ClauseResumeLinearityBundle c) :
+    clauseHasResumeSummary c b.summary := b.hasSummary
+
+/--
+One-hop at-most-once wrapper from `wellTypedSlice` via the packaged
+resume-linearity bundle.
+-/
+theorem clauseResumeLinearityBundle_atMostOnce_of_wellTypedSlice
+    (c : HandleClauseContract)
+    (h_typed : wellTypedSlice c) :
+    resume_at_most_once (clauseResumeLinearityBundle_of_wellTypedSlice c h_typed).summary :=
+  (clauseResumeLinearityBundle_of_wellTypedSlice c h_typed).atMostOnce
+
 theorem wellTypedSlice_noHandledReintroHandler (c : HandleClauseContract)
     (h : wellTypedSlice c) :
     noHandledReintroHandler c := h.2.2.1
