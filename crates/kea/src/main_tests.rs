@@ -3367,6 +3367,80 @@
     }
 
     #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn compile_and_execute_division_by_zero_traps() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  let x = 10\n  let y = 0\n  x / y\n",
+            "kea-cli-div-by-zero",
+            "kea",
+        );
+        let output_path = temp_artifact_path("kea-cli-div-by-zero", "bin");
+
+        let compiled =
+            compile_file(&source_path, CodegenMode::Aot).expect("aot compile should work");
+        link_object_bytes(&compiled.object, &output_path).expect("link should work");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("aot executable should run");
+
+        assert!(
+            status.signal().is_some(),
+            "division by zero should kill process with a signal, got exit code: {:?}",
+            status.code()
+        );
+
+        let _ = std::fs::remove_file(source_path);
+        let _ = std::fs::remove_file(output_path);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn compile_and_execute_modulo_by_zero_traps() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  let x = 10\n  let y = 0\n  x % y\n",
+            "kea-cli-mod-by-zero",
+            "kea",
+        );
+        let output_path = temp_artifact_path("kea-cli-mod-by-zero", "bin");
+
+        let compiled =
+            compile_file(&source_path, CodegenMode::Aot).expect("aot compile should work");
+        link_object_bytes(&compiled.object, &output_path).expect("link should work");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("aot executable should run");
+
+        assert!(
+            status.signal().is_some(),
+            "modulo by zero should kill process with a signal, got exit code: {:?}",
+            status.code()
+        );
+
+        let _ = std::fs::remove_file(source_path);
+        let _ = std::fs::remove_file(output_path);
+    }
+
+    #[test]
+    fn compile_and_execute_division_nonzero_works() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  100 / 10\n",
+            "kea-cli-div-nonzero",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("division run should succeed");
+        assert_eq!(run.exit_code, 10);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_higher_order_function_pointer_exit_code() {
         let source_path = write_temp_source(
             "fn inc(n: Int) -> Int\n  n + 1\n\nfn apply_twice(f: fn(Int) -> Int, x: Int) -> Int\n  f(f(x))\n\nfn main() -> Int\n  apply_twice(inc, 41)\n",

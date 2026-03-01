@@ -4171,8 +4171,30 @@ fn lower_binary(
         MirBinaryOp::WrappingAdd if lhs_ty.is_int() => builder.ins().iadd(lhs, rhs),
         MirBinaryOp::WrappingSub if lhs_ty.is_int() => builder.ins().isub(lhs, rhs),
         MirBinaryOp::WrappingMul if lhs_ty.is_int() => builder.ins().imul(lhs, rhs),
-        MirBinaryOp::Div if lhs_ty.is_int() => builder.ins().sdiv(lhs, rhs),
-        MirBinaryOp::Mod if lhs_ty.is_int() => builder.ins().srem(lhs, rhs),
+        MirBinaryOp::Div if lhs_ty.is_int() => {
+            let zero_block = builder.create_block();
+            let ok_block = builder.create_block();
+            let is_zero = builder.ins().icmp_imm(IntCC::Equal, rhs, 0);
+            builder.ins().brif(is_zero, zero_block, &[], ok_block, &[]);
+
+            builder.switch_to_block(zero_block);
+            builder.ins().trap(TrapCode::unwrap_user(1));
+
+            builder.switch_to_block(ok_block);
+            builder.ins().sdiv(lhs, rhs)
+        }
+        MirBinaryOp::Mod if lhs_ty.is_int() => {
+            let zero_block = builder.create_block();
+            let ok_block = builder.create_block();
+            let is_zero = builder.ins().icmp_imm(IntCC::Equal, rhs, 0);
+            builder.ins().brif(is_zero, zero_block, &[], ok_block, &[]);
+
+            builder.switch_to_block(zero_block);
+            builder.ins().trap(TrapCode::unwrap_user(1));
+
+            builder.switch_to_block(ok_block);
+            builder.ins().srem(lhs, rhs)
+        }
 
         MirBinaryOp::Add if lhs_ty.is_float() => builder.ins().fadd(lhs, rhs),
         MirBinaryOp::Sub if lhs_ty.is_float() => builder.ins().fsub(lhs, rhs),
