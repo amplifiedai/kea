@@ -12532,3 +12532,46 @@ New theorem surface:
 **Impact**:
 - Keeps the new composition-coherence surface consistent with downstream
   theorem-usage ergonomics across Phase-2 packages.
+
+### 2026-03-01: direct infer-success routes to canonical core-calculus consequences
+
+**Context**: Extended `Kea/Eval.lean` so the canonical core-calculus soundness
+shape has direct run-local entrypoints from `inferExprUnify` success premises,
+without requiring intermediate bundle conversion at call sites.
+
+New theorem surface:
+- `coreCalculusSoundness_consequences_of_inferUnify`
+- `coreCalculusSoundness_consequences_of_inferUnify_from_hooks`
+- `coreCalculusSoundness_soundness_of_inferUnify`
+- `coreCalculusSoundness_progress_of_inferUnify`
+- `coreCalculusSoundness_preservation_of_inferUnify`
+- `coreCalculusSoundness_soundness_of_inferUnify_from_hooks`
+- `coreCalculusSoundness_progress_of_inferUnify_from_hooks`
+- `coreCalculusSoundness_preservation_of_inferUnify_from_hooks`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; this is theorem-surface routing from
+  existing bundle/slice contracts to canonical consequences.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Canonical core-calculus soundness/progress/preservation consequences are now
+  directly accessible from infer-success premises on both bundled-hook and
+  explicit-hook routes.
+
+**Impact**:
+- Tightens the connection between algorithmic inference success and the
+  canonical core-soundness claim surface.
