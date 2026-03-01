@@ -1384,6 +1384,15 @@ fn register_top_level_declarations(
         ));
     }
 
+    // Validate alias targets now that all types are registered.
+    if let Err(diag) = records.validate_alias_targets(Some(sum_types)) {
+        diagnostics.push(diag);
+        return Err(format_diagnostics(
+            "alias target validation failed",
+            diagnostics,
+        ));
+    }
+
     // Pass 2: register declarations that depend on types.
     for decl in &module.declarations {
         match &decl.node {
