@@ -2219,6 +2219,41 @@
     }
 
     #[test]
+    fn compile_rejects_effect_operation_call_with_missing_required_argument() {
+        let source_path = write_temp_source(
+            "effect Counter\n  fn add(x: Int) -> Unit\n\nfn main() -[Counter]> Int\n  Counter.add()\n  0\n",
+            "kea-cli-effect-op-missing-arg",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject missing call arguments");
+        assert!(
+            err.contains("missing required argument `x`"),
+            "expected missing-argument diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_rejects_effect_operation_call_with_wrong_argument_type() {
+        let source_path = write_temp_source(
+            "effect Counter\n  fn add(x: Int) -> Unit\n\nfn main() -[Counter]> Int\n  Counter.add(\"oops\")\n  0\n",
+            "kea-cli-effect-op-type-mismatch",
+            "kea",
+        );
+
+        let err =
+            run_file(&source_path).expect_err("run should reject effect operation argument mismatch");
+        assert!(
+            err.contains("type mismatch") && err.contains("Int") && err.contains("String"),
+            "expected operation argument type-mismatch diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_rejects_handle_without_operation_clauses() {
         let source_path = write_temp_source(
             "fn main() -> Int\n  handle 1\n    then value -> value\n",
