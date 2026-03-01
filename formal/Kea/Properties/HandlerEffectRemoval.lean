@@ -506,4 +506,221 @@ theorem nested_same_target_remains_absent_of_outer_absent
     target
     h_outer_abs
 
+/--
+Two-stage handling for distinct targets, in `A then B` order.
+-/
+def handleComposeTwoTargets
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label) : EffectRow :=
+  handleComposeNormalized
+    (handleComposeNormalized effects handlerA targetA)
+    handlerB
+    targetB
+
+/--
+Two-stage handling for distinct targets, in `B then A` order.
+-/
+def handleComposeTwoTargetsSwap
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label) : EffectRow :=
+  handleComposeNormalized
+    (handleComposeNormalized effects handlerB targetB)
+    handlerA
+    targetA
+
+theorem handleComposeTwoTargets_preserves_row_tail
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label) :
+    rest (handleComposeTwoTargets effects handlerA handlerB targetA targetB) =
+      rest effects := by
+  unfold handleComposeTwoTargets
+  have h_outer :=
+    handleComposeNormalized_preserves_row_tail
+      (handleComposeNormalized effects handlerA targetA)
+      handlerB
+      targetB
+  have h_inner := handleComposeNormalized_preserves_row_tail effects handlerA targetA
+  exact h_outer.trans h_inner
+
+theorem handleComposeTwoTargetsSwap_preserves_row_tail
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label) :
+    rest (handleComposeTwoTargetsSwap effects handlerA handlerB targetA targetB) =
+      rest effects := by
+  unfold handleComposeTwoTargetsSwap
+  have h_outer :=
+    handleComposeNormalized_preserves_row_tail
+      (handleComposeNormalized effects handlerB targetB)
+      handlerA
+      targetA
+  have h_inner := handleComposeNormalized_preserves_row_tail effects handlerB targetB
+  exact h_outer.trans h_inner
+
+theorem handleComposeTwoTargets_targetA_absent
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label)
+    (h_targets_ne : targetA ≠ targetB)
+    (h_handlerA_abs_targetA : RowFields.has (fields handlerA) targetA = false)
+    (h_handlerB_abs_targetA : RowFields.has (fields handlerB) targetA = false) :
+    RowFields.has
+      (fields (handleComposeTwoTargets effects handlerA handlerB targetA targetB))
+      targetA = false := by
+  unfold handleComposeTwoTargets
+  have h_mid_targetA_abs :
+      RowFields.has
+        (fields (handleComposeNormalized effects handlerA targetA))
+        targetA = false :=
+    handle_removes_effect_normalized_of_handler_absent
+      effects
+      handlerA
+      targetA
+      h_handlerA_abs_targetA
+  have h_removed_targetA_abs :
+      RowFields.has
+        (fields (handleRemove (handleComposeNormalized effects handlerA targetA) targetB))
+        targetA = false := by
+    have h_preserve :
+        RowFields.has
+          (fields (handleRemove (handleComposeNormalized effects handlerA targetA) targetB))
+          targetA =
+          RowFields.has
+            (fields (handleComposeNormalized effects handlerA targetA))
+            targetA :=
+      handle_preserves_other_effects
+        (handleComposeNormalized effects handlerA targetA)
+        targetB
+        targetA
+        h_targets_ne
+    rw [h_preserve]
+    exact h_mid_targetA_abs
+  have h_union_targetA_abs :
+      RowFields.has
+        (RowFields.unionIdem
+          (fields (handleRemove (handleComposeNormalized effects handlerA targetA) targetB))
+          (fields handlerB))
+        targetA = false :=
+    RowFields.has_unionIdem_false_of_false_false
+      (fields (handleRemove (handleComposeNormalized effects handlerA targetA) targetB))
+      (fields handlerB)
+      targetA
+      h_removed_targetA_abs
+      h_handlerB_abs_targetA
+  simpa [fields_handleComposeNormalized] using h_union_targetA_abs
+
+theorem handleComposeTwoTargets_targetB_absent
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label)
+    (h_handlerB_abs_targetB : RowFields.has (fields handlerB) targetB = false) :
+    RowFields.has
+      (fields (handleComposeTwoTargets effects handlerA handlerB targetA targetB))
+      targetB = false := by
+  unfold handleComposeTwoTargets
+  exact handle_removes_effect_normalized_of_handler_absent
+    (handleComposeNormalized effects handlerA targetA)
+    handlerB
+    targetB
+    h_handlerB_abs_targetB
+
+theorem handleComposeTwoTargetsSwap_targetA_absent
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label)
+    (h_handlerA_abs_targetA : RowFields.has (fields handlerA) targetA = false) :
+    RowFields.has
+      (fields (handleComposeTwoTargetsSwap effects handlerA handlerB targetA targetB))
+      targetA = false := by
+  unfold handleComposeTwoTargetsSwap
+  exact handle_removes_effect_normalized_of_handler_absent
+    (handleComposeNormalized effects handlerB targetB)
+    handlerA
+    targetA
+    h_handlerA_abs_targetA
+
+theorem handleComposeTwoTargetsSwap_targetB_absent
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label)
+    (h_targets_ne : targetA ≠ targetB)
+    (h_handlerB_abs_targetB : RowFields.has (fields handlerB) targetB = false)
+    (h_handlerA_abs_targetB : RowFields.has (fields handlerA) targetB = false) :
+    RowFields.has
+      (fields (handleComposeTwoTargetsSwap effects handlerA handlerB targetA targetB))
+      targetB = false := by
+  unfold handleComposeTwoTargetsSwap
+  exact handleComposeTwoTargets_targetA_absent
+    effects
+    handlerB
+    handlerA
+    targetB
+    targetA
+    h_targets_ne.symm
+    h_handlerB_abs_targetB
+    h_handlerA_abs_targetB
+
+/--
+Compositional coherence for two distinct handled targets, up to directly
+observable effect-row consequences:
+- both handled labels are absent in both handler orders
+- row-tail openness is preserved in both handler orders
+-/
+structure DisjointHandlerCompositionCoherence
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label) : Prop where
+  leftTargetAAbsent :
+    RowFields.has
+      (fields (handleComposeTwoTargets effects handlerA handlerB targetA targetB))
+      targetA = false
+  leftTargetBAbsent :
+    RowFields.has
+      (fields (handleComposeTwoTargets effects handlerA handlerB targetA targetB))
+      targetB = false
+  rightTargetAAbsent :
+    RowFields.has
+      (fields (handleComposeTwoTargetsSwap effects handlerA handlerB targetA targetB))
+      targetA = false
+  rightTargetBAbsent :
+    RowFields.has
+      (fields (handleComposeTwoTargetsSwap effects handlerA handlerB targetA targetB))
+      targetB = false
+  leftRowTailStable :
+    rest (handleComposeTwoTargets effects handlerA handlerB targetA targetB) = rest effects
+  rightRowTailStable :
+    rest (handleComposeTwoTargetsSwap effects handlerA handlerB targetA targetB) = rest effects
+
+theorem disjoint_handler_composition_coherence_of_handler_absence
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label)
+    (h_targets_ne : targetA ≠ targetB)
+    (h_handlerA_abs_targetA : RowFields.has (fields handlerA) targetA = false)
+    (h_handlerA_abs_targetB : RowFields.has (fields handlerA) targetB = false)
+    (h_handlerB_abs_targetA : RowFields.has (fields handlerB) targetA = false)
+    (h_handlerB_abs_targetB : RowFields.has (fields handlerB) targetB = false) :
+    DisjointHandlerCompositionCoherence effects handlerA handlerB targetA targetB := by
+  refine {
+    leftTargetAAbsent :=
+      handleComposeTwoTargets_targetA_absent
+        effects handlerA handlerB targetA targetB
+        h_targets_ne
+        h_handlerA_abs_targetA
+        h_handlerB_abs_targetA
+    leftTargetBAbsent :=
+      handleComposeTwoTargets_targetB_absent
+        effects handlerA handlerB targetA targetB
+        h_handlerB_abs_targetB
+    rightTargetAAbsent :=
+      handleComposeTwoTargetsSwap_targetA_absent
+        effects handlerA handlerB targetA targetB
+        h_handlerA_abs_targetA
+    rightTargetBAbsent :=
+      handleComposeTwoTargetsSwap_targetB_absent
+        effects handlerA handlerB targetA targetB
+        h_targets_ne
+        h_handlerB_abs_targetB
+        h_handlerA_abs_targetB
+    leftRowTailStable :=
+      handleComposeTwoTargets_preserves_row_tail
+        effects handlerA handlerB targetA targetB
+    rightRowTailStable :=
+      handleComposeTwoTargetsSwap_preserves_row_tail
+        effects handlerA handlerB targetA targetB
+  }
+
 end EffectRow
