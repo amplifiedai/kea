@@ -933,6 +933,26 @@ theorem verticalEvalSlice_proved : VerticalEvalSlice := by
     exact inferEval_sound_evalFragmentFull h_env h_infer h_frag
 
 /--
+Packaged theorem surface bridging unification-threaded success into evaluator
+soundness on the full executable fragment.
+-/
+def VerticalEvalUnifyBridgeSlice : Prop :=
+  ∀ {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty},
+    (h_hooks : UnifyHookPremises) →
+    (st st' : UnifyState) →
+    (fuel : Nat) →
+    inferExprUnify st fuel tenv e = .ok st' ty →
+    EnvWellTyped tenv venv →
+    EvalFragmentFull e →
+    ∃ v, eval venv e = some v ∧ ValueHasType v ty
+
+/-- The unification-bridge evaluator slice is fully proved. -/
+theorem verticalEvalUnifyBridgeSlice_proved : VerticalEvalUnifyBridgeSlice := by
+  intro tenv venv e ty h_hooks st st' fuel h_ok h_env h_frag
+  exact type_soundness_evalFragmentFull_of_inferUnify
+    h_hooks st st' fuel h_ok h_env h_frag
+
+/--
 Executable soundness for the atomic evaluator fragment:
 well-typed atomic expressions evaluate to runtime values of the same type.
 -/

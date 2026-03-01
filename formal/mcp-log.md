@@ -11168,3 +11168,38 @@ These keep the same outcomes while taking explicit `h_app`/`h_proj` premises.
 **Impact**:
 - Evaluator-side theorem consumers can stay on explicit hook premises without
   manual packaging boilerplate.
+
+### 2026-03-01: packaged unification-to-evaluator bridge slice
+
+**Context**: Extended `Kea/Eval.lean` with:
+- `VerticalEvalUnifyBridgeSlice`
+- `verticalEvalUnifyBridgeSlice_proved`
+
+This packages the successful `inferExprUnify` → evaluator soundness route as a
+single named theorem surface on `EvalFragmentFull`.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No semantic change; the packaged slice should be a direct quantification over
+  `type_soundness_evalFragmentFull_of_inferUnify`.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Infer-unify-to-evaluator full-fragment soundness now has a one-name packaged
+  theorem contract.
+
+**Impact**:
+- Item-(2) route traceability is improved: algorithmic unification success can
+  now be cited via a dedicated evaluator bridge slice.

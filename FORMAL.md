@@ -501,6 +501,7 @@ This work starts by cannibalizing the existing Rill formal corpus and then exten
 - **Phase 2 (active):** `Kea/Eval.lean` now also bridges unification-threaded inference into that same core soundness shape (`coreProgressPreservationEvalFragmentFull_of_inferUnify`), using bundled hook premises plus `inferExprUnify` success.
 - **Phase 2 (active):** `Kea/Eval.lean` now additionally exposes direct unification-threaded entry wrappers for the full evaluator fragment (`type_soundness_evalFragmentFull_of_inferUnify`, `eval_progress_evalFragmentFull_of_inferUnify`, `eval_preservation_evalFragmentFull_of_inferUnify`), so `inferExprUnify` success reaches canonical soundness outcomes in one theorem step.
 - **Phase 2 (active):** `Kea/Eval.lean` now also has hook-parameterized convenience variants for those unification-threaded theorem surfaces (`..._of_inferUnify_from_hooks` for core progress/preservation pair, type soundness, progress, and preservation), so call sites can stay on explicit `h_app`/`h_proj` premises.
+- **Phase 2 (active):** `Kea/Eval.lean` now packages this unification-threaded path as a named slice (`VerticalEvalUnifyBridgeSlice`, proved by `verticalEvalUnifyBridgeSlice_proved`) for one-name citation of infer-unify-to-evaluator soundness on the full executable fragment.
 
 The formal workspace lives at [`formal/`](formal/).
 
