@@ -9438,6 +9438,18 @@ theorem effectHandlerDisjointObservationalSuite_coherence
     EffectHandlerDisjointCompositionCoherenceSuite effects handlerA handlerB targetA targetB :=
   h_suite.coherence
 
+theorem effectHandlerDisjointObservationalSuite_nestedDisjoint
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label)
+    (h_suite :
+      EffectHandlerDisjointObservationalSuite effects handlerA handlerB targetA targetB) :
+    NestedHandlerCompositionContracts.NestedHandlerDisjointCoherence
+      effects handlerA handlerB targetA targetB :=
+  effectHandlerDisjointCompositionCoherenceSuite_nestedDisjoint
+    effects handlerA handlerB targetA targetB
+    (effectHandlerDisjointObservationalSuite_coherence
+      effects handlerA handlerB targetA targetB h_suite)
+
 theorem effectHandlerDisjointObservationalSuite_leftTargetAAbsent
     (effects handlerA handlerB : EffectRow)
     (targetA targetB : Label)
@@ -9580,6 +9592,26 @@ theorem effectHandlerDisjointObservationalSuite_coherence_of_handler_absence
     (h_handlerB_abs_targetB : RowFields.has (EffectRow.fields handlerB) targetB = false) :
     EffectHandlerDisjointCompositionCoherenceSuite effects handlerA handlerB targetA targetB :=
   effectHandlerDisjointObservationalSuite_coherence
+    effects handlerA handlerB targetA targetB
+    (effectHandlerDisjointObservationalSuite_of_handler_absence
+      effects handlerA handlerB targetA targetB
+      h_targets_ne
+      h_handlerA_abs_targetA
+      h_handlerA_abs_targetB
+      h_handlerB_abs_targetA
+      h_handlerB_abs_targetB)
+
+theorem effectHandlerDisjointObservationalSuite_nestedDisjoint_of_handler_absence
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label)
+    (h_targets_ne : targetA ≠ targetB)
+    (h_handlerA_abs_targetA : RowFields.has (EffectRow.fields handlerA) targetA = false)
+    (h_handlerA_abs_targetB : RowFields.has (EffectRow.fields handlerA) targetB = false)
+    (h_handlerB_abs_targetA : RowFields.has (EffectRow.fields handlerB) targetA = false)
+    (h_handlerB_abs_targetB : RowFields.has (EffectRow.fields handlerB) targetB = false) :
+    NestedHandlerCompositionContracts.NestedHandlerDisjointCoherence
+      effects handlerA handlerB targetA targetB :=
+  effectHandlerDisjointObservationalSuite_nestedDisjoint
     effects handlerA handlerB targetA targetB
     (effectHandlerDisjointObservationalSuite_of_handler_absence
       effects handlerA handlerB targetA targetB

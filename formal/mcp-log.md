@@ -13355,3 +13355,38 @@ New theorem surface:
 **Impact**:
 - Closes the remaining premise-route ergonomics gap on the top-level disjoint
   package and removes all intermediate witness threading for these facets.
+
+### 2026-03-02: top-level disjoint observational nested-coherence projections
+
+**Context**: Extended `Kea/Properties/EffectHandlerContractSuite.lean` with
+direct nested-coherence projections on `EffectHandlerDisjointObservationalSuite`
+for both suite witnesses and handler-absence premise routes.
+
+New theorem surface:
+- `effectHandlerDisjointObservationalSuite_nestedDisjoint`
+- `effectHandlerDisjointObservationalSuite_nestedDisjoint_of_handler_absence`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; this is route-level projection parity
+  over already established disjoint nested coherence.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- The combined disjoint package now directly exposes the nested coherence witness
+  without requiring intermediate extraction through the coherence facet first.
+
+**Impact**:
+- Completes one-hop projection parity for the combined top-level disjoint suite.
