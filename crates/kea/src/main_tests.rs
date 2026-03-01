@@ -2163,6 +2163,57 @@
     }
 
     #[test]
+    fn compile_rejects_unexpected_eof_mid_return_type_annotation() {
+        let source_path = write_temp_source(
+            "fn id(x: Int) ->\n  x\n\nfn main() -> Int\n  id(1)\n",
+            "kea-cli-unexpected-eof-mid-return-type",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject missing return type");
+        assert!(
+            err.contains("expected type"),
+            "expected missing-return-type diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_rejects_unexpected_eof_mid_handler_clause_body() {
+        let source_path = write_temp_source(
+            "effect Ping\n  fn ask() -> Int\n\nfn run() -[Ping]> Int\n  Ping.ask()\n\nfn main() -> Int\n  handle run()\n    Ping.ask() ->\n",
+            "kea-cli-unexpected-eof-mid-handler-clause",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject incomplete handler clause");
+        assert!(
+            err.contains("expected expression"),
+            "expected incomplete-handler-clause diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_rejects_unexpected_eof_mid_case_arm_body() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  case 1\n    1 ->\n",
+            "kea-cli-unexpected-eof-mid-case-arm",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject incomplete case arm");
+        assert!(
+            err.contains("expected expression"),
+            "expected incomplete-case-arm diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_reports_multiple_syntax_errors_in_single_function_body() {
         let source_path = write_temp_source(
             "fn main() -> Int\n  let x =\n  let y =\n  x + y\n",
