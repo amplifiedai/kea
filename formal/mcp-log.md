@@ -13502,3 +13502,46 @@ New theorem surface:
 
 **Impact**:
 - Finishes one-hop premise-route parity on this coherence-suite nested witness.
+
+### 2026-03-02: declarative bundled core soundness surface in Eval
+
+**Context**: Extended `Kea/Eval.lean` with a declarative-typing bundled core
+soundness package, parallel to the existing unification-threaded bundle family,
+to expose soundness/progress/preservation as one theorem object on the base
+`HasType`/`inferExpr` routes.
+
+New theorem surface:
+- `CoreTypeSoundnessEvalBundle`
+- `CoreTypeSoundnessEvalBundleComponents`
+- `coreTypeSoundnessEvalBundle_{iff_components,of_components,as_components,as_components_of_components}`
+- `coreTypeSoundnessEvalBundle_{soundness,progress,preservation}`
+- `coreTypeSoundnessEvalBundle_of_{hasType,infer}`
+- `coreTypeSoundnessEvalBundle_as_components_of_{hasType,infer}`
+- `coreTypeSoundnessEvalBundle_iff_soundness_and_coreProgressPreservation`
+- `coreTypeSoundnessEvalBundle_{of,as_}_soundness_and_coreProgressPreservation`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; this packages existing proved declarative
+  evaluator theorems into a unified bundle/decomposition API.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Base (non-unification) core type-system soundness is now available as a named
+  bundled theorem surface with one-hop projections and decomposition routes.
+
+**Impact**:
+- Strengthens explicit theorem-level support for core-calculus soundness claims
+  on declarative typing paths, not just unification-threaded paths.
