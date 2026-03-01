@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -28,6 +29,8 @@ use kea_infer::{Category, InferenceContext, Reason};
 use kea_mir::lower_hir_module;
 use kea_syntax::{lex_layout, parse_module};
 use kea_types::{Type, TypeScheme, sanitize_type_display};
+
+const COMPILER_WORKER_STACK_BYTES: usize = 16 * 1024 * 1024;
 
 #[derive(Debug)]
 pub struct CompilationContext {
@@ -78,6 +81,13 @@ pub struct ModuleProcessResult {
 }
 
 pub fn compile_module(source: &str, file_id: FileId) -> Result<CompilationContext, String> {
+    let source_owned = source.to_string();
+    run_on_compiler_stack("compile_module", move || {
+        compile_module_inner(&source_owned, file_id)
+    })
+}
+
+fn compile_module_inner(source: &str, file_id: FileId) -> Result<CompilationContext, String> {
     let (tokens, mut diagnostics) =
         lex_layout(source, file_id).map_err(|diags| format_diagnostics("lexing failed", &diags))?;
 
@@ -137,7 +147,10 @@ pub fn compile_module(source: &str, file_id: FileId) -> Result<CompilationContex
 }
 
 pub fn compile_project(entry: &Path) -> Result<CompilationContext, String> {
-    parse_and_typecheck_project(entry)
+    let entry = entry.to_path_buf();
+    run_on_compiler_stack("compile_project", move || {
+        parse_and_typecheck_project(&entry)
+    })
 }
 
 pub fn emit_object(ctx: &CompilationContext, mode: CodegenMode) -> Result<CompileResult, String> {
@@ -277,6 +290,36 @@ pub fn run_test_file(input: &Path) -> Result<TestRunResult, String> {
     }
 
     Ok(TestRunResult { cases: results })
+}
+
+fn run_on_compiler_stack<T, F>(label: &'static str, job: F) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+{
+    let worker = std::thread::Builder::new()
+        .name(format!("kea-{label}"))
+        .stack_size(COMPILER_WORKER_STACK_BYTES)
+        .spawn(job)
+        .map_err(|err| format!("failed to spawn compiler worker thread for {label}: {err}"))?;
+
+    match worker.join() {
+        Ok(result) => result,
+        Err(payload) => Err(format!(
+            "compiler worker thread panicked during {label}: {}",
+            panic_payload_message(payload)
+        )),
+    }
+}
+
+fn panic_payload_message(payload: Box<dyn Any + Send + 'static>) -> String {
+    if let Some(message) = payload.downcast_ref::<&str>() {
+        (*message).to_string()
+    } else if let Some(message) = payload.downcast_ref::<String>() {
+        message.clone()
+    } else {
+        "unknown panic payload".to_string()
+    }
 }
 
 pub fn emit_diagnostics(diags: &[Diagnostic]) {

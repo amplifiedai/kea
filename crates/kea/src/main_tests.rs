@@ -3979,33 +3979,64 @@
     }
 
     #[test]
-    fn compile_and_execute_function_with_thirty_parameters_exit_code() {
-        let mut source = String::from("fn sum30(");
-        for i in 1..=30 {
+    fn compile_and_execute_function_with_fifty_parameters_exit_code() {
+        let mut source = String::from("fn sum50(");
+        for i in 1..=50 {
             if i > 1 {
                 source.push_str(", ");
             }
             source.push_str(&format!("a{i}: Int"));
         }
         source.push_str(") -> Int\n  ");
-        for i in 1..=30 {
+        for i in 1..=50 {
             if i > 1 {
                 source.push_str(" + ");
             }
             source.push_str(&format!("a{i}"));
         }
-        source.push_str("\n\nfn main() -> Int\n  sum30(");
-        for i in 1..=30 {
+        source.push_str("\n\nfn main() -> Int\n  sum50(");
+        for i in 1..=50 {
             if i > 1 {
                 source.push_str(", ");
             }
             source.push_str(&i.to_string());
         }
         source.push_str(")\n");
-        let source_path = write_temp_source(&source, "kea-cli-thirty-parameter-function", "kea");
+        let source_path = write_temp_source(&source, "kea-cli-fifty-parameter-function", "kea");
 
-        let run = run_file(&source_path).expect("30-parameter function run should succeed");
-        assert_eq!(run.exit_code, 465);
+        let run = run_file(&source_path).expect("50-parameter function run should succeed");
+        assert_eq!(run.exit_code, 1275);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_project_with_fifty_parameters_does_not_overflow() {
+        let mut source = String::from("fn sum50(");
+        for i in 1..=50 {
+            if i > 1 {
+                source.push_str(", ");
+            }
+            source.push_str(&format!("a{i}: Int"));
+        }
+        source.push_str(") -> Int\n  ");
+        for i in 1..=50 {
+            if i > 1 {
+                source.push_str(" + ");
+            }
+            source.push_str(&format!("a{i}"));
+        }
+        source.push_str("\n\nfn main() -> Int\n  sum50(");
+        for i in 1..=50 {
+            if i > 1 {
+                source.push_str(", ");
+            }
+            source.push_str(&i.to_string());
+        }
+        source.push_str(")\n");
+        let source_path = write_temp_source(&source, "kea-cli-fifty-parameter-compile-only", "kea");
+
+        let _ctx = kea::compile_project(&source_path).expect("compile-only should succeed");
 
         let _ = std::fs::remove_file(source_path);
     }
@@ -4244,21 +4275,15 @@
     }
 
     #[test]
-    fn compile_and_reject_fail_in_handler_then_clause_with_outer_catch_in_compiled_lowering() {
+    fn compile_and_execute_fail_in_handler_then_clause_with_outer_catch_exit_code() {
         let source_path = write_temp_source(
             "effect Fail\n  fn fail(err: Int) -> Never\n\neffect Reader C\n  fn ask() -> C\n\nfn read() -[Reader Int]> Int\n  Reader.ask()\n\nfn main() -> Int\n  let r = catch handle read()\n    Reader.ask() -> resume 1\n    then value ->\n      fail 9\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
             "kea-cli-handler-then-fail-propagates-to-catch",
             "kea",
         );
 
-        let err = run_file(&source_path).expect_err(
-            "compiled lowering should currently reject fail-in-then under outer catch",
-        );
-        assert!(
-            err.contains("non-Unit return type")
-                && err.contains("not yet supported in compiled lowering"),
-            "expected compiled-lowering unsupported-shape diagnostic, got: {err}"
-        );
+        let run = run_file(&source_path).expect("fail in handler then should be caught");
+        assert_eq!(run.exit_code, 9);
 
         let _ = std::fs::remove_file(source_path);
     }
