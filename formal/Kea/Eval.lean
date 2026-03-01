@@ -1570,6 +1570,24 @@ theorem coreTypeSoundnessEvalUnifySliceFromHooks_of_coreCalculusSoundnessSliceFr
       tenv venv e ty).2 ⟨h_sound, h_progressPres⟩
 
 /--
+Proved-route convenience wrapper from canonical bundled core-calculus
+soundness to the packaged core-soundness slice.
+-/
+theorem coreTypeSoundnessEvalUnifySlice_of_coreCalculusSoundnessSlice_proved :
+    CoreTypeSoundnessEvalUnifySlice :=
+  coreTypeSoundnessEvalUnifySlice_of_coreCalculusSoundnessSlice
+    coreCalculusSoundnessSlice_proved
+
+/--
+Proved-route convenience wrapper from canonical explicit-hook bundled
+core-calculus soundness to the packaged core-soundness slice.
+-/
+theorem coreTypeSoundnessEvalUnifySliceFromHooks_of_coreCalculusSoundnessSliceFromHooks_proved :
+    CoreTypeSoundnessEvalUnifySliceFromHooks :=
+  coreTypeSoundnessEvalUnifySliceFromHooks_of_coreCalculusSoundnessSliceFromHooks
+    coreCalculusSoundnessSliceFromHooks_proved
+
+/--
 Reverse bridge: recover the canonical core-calculus soundness package from the
 packaged core-soundness-bundle slice.
 -/
@@ -1622,6 +1640,24 @@ theorem coreCalculusSoundnessSliceFromHooks_iff_coreTypeSoundnessEvalUnifySliceF
   constructor
   · exact coreTypeSoundnessEvalUnifySliceFromHooks_of_coreCalculusSoundnessSliceFromHooks
   · exact coreCalculusSoundnessSliceFromHooks_of_coreTypeSoundnessEvalUnifySliceFromHooks
+
+/--
+Proved-route convenience wrapper from packaged core-soundness slice back to
+the canonical bundled core-calculus soundness pair.
+-/
+theorem coreCalculusSoundnessSlice_of_coreTypeSoundnessEvalUnifySlice_proved :
+    CoreCalculusSoundnessSlice :=
+  coreCalculusSoundnessSlice_of_coreTypeSoundnessEvalUnifySlice
+    coreTypeSoundnessEvalUnifySlice_proved
+
+/--
+Proved-route convenience wrapper from packaged explicit-hook core-soundness
+slice back to the canonical explicit-hook core-calculus soundness pair.
+-/
+theorem coreCalculusSoundnessSliceFromHooks_of_coreTypeSoundnessEvalUnifySliceFromHooks_proved :
+    CoreCalculusSoundnessSliceFromHooks :=
+  coreCalculusSoundnessSliceFromHooks_of_coreTypeSoundnessEvalUnifySliceFromHooks
+    coreTypeSoundnessEvalUnifySliceFromHooks_proved
 
 /--
 Executable soundness for the atomic evaluator fragment:

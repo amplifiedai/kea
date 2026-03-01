@@ -12408,3 +12408,41 @@ New theorem surface:
 **Impact**:
 - Keeps evaluator soundness route APIs consistent with the project’s broader
   decomposition conventions.
+
+### 2026-03-01: proved-route wrappers on canonical<->packaged eval soundness equivalences
+
+**Context**: Added direct proved-entry convenience wrappers in `Kea/Eval.lean`
+for both directions of the canonical vs packaged core-soundness equivalence
+layer.
+
+New theorem surface:
+- `coreTypeSoundnessEvalUnifySlice_of_coreCalculusSoundnessSlice_proved`
+- `coreTypeSoundnessEvalUnifySliceFromHooks_of_coreCalculusSoundnessSliceFromHooks_proved`
+- `coreCalculusSoundnessSlice_of_coreTypeSoundnessEvalUnifySlice_proved`
+- `coreCalculusSoundnessSliceFromHooks_of_coreTypeSoundnessEvalUnifySliceFromHooks_proved`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime semantic change; these are route-level aliases over already-proved
+  bidirectional bridges.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Canonical and packaged soundness families can now be consumed directly from
+  proved surfaces without manual bridge chaining.
+
+**Impact**:
+- Improves theorem ergonomics and keeps core-soundness API usage one-hop for
+  both route families.
