@@ -1375,6 +1375,43 @@ impl RecordRegistry {
         Ok(())
     }
 
+    /// Validate that all alias targets reference known types.
+    ///
+    /// Must be called after all aliases, records, opaques, and sum types are
+    /// registered so that forward references resolve correctly.
+    pub fn validate_alias_targets(
+        &self,
+        sum_types: Option<&SumTypeRegistry>,
+    ) -> Result<(), Diagnostic> {
+        for (name, info) in &self.aliases {
+            let mut unknown = Vec::new();
+            collect_unknown_type_names(
+                &info.target,
+                &info.params,
+                self,
+                sum_types,
+                &mut unknown,
+            );
+            if let Some(first_unknown) = unknown.first() {
+                let mut diag = Diagnostic::error(
+                    Category::TypeMismatch,
+                    format!(
+                        "unknown type `{first_unknown}` in alias `{name}` target",
+                    ),
+                );
+                if let Some(span) = info.definition_span {
+                    diag = diag.at(SourceLocation {
+                        file_id: span.file.0,
+                        start: span.start,
+                        end: span.end,
+                    });
+                }
+                return Err(diag);
+            }
+        }
+        Ok(())
+    }
+
     fn alias_has_cycle(&self) -> bool {
         fn visit(
             name: &str,
@@ -4925,6 +4962,89 @@ fn looks_like_type_var_name(name: &str) -> bool {
         .next()
         .is_some_and(|ch| ch.is_ascii_lowercase())
         && !is_builtin_type_name(name)
+}
+
+/// Check whether `name` is a known type: builtin, alias, opaque, record, or sum type.
+fn is_known_type_name(
+    name: &str,
+    records: &RecordRegistry,
+    sum_types: Option<&SumTypeRegistry>,
+) -> bool {
+    is_builtin_type_name(name)
+        || records.lookup_alias(name).is_some()
+        || records.lookup_opaque(name).is_some()
+        || records.lookup(name).is_some()
+        || sum_types.and_then(|st| st.lookup(name)).is_some()
+}
+
+/// Walk a type annotation and collect any named types that are not known.
+///
+/// `type_params` are the alias's own type parameters (e.g. `a`, `b`) which
+/// are valid even though they're not registered types.
+fn collect_unknown_type_names(
+    ann: &TypeAnnotation,
+    type_params: &[String],
+    records: &RecordRegistry,
+    sum_types: Option<&SumTypeRegistry>,
+    unknown: &mut Vec<String>,
+) {
+    match ann {
+        TypeAnnotation::Named(name) => {
+            if !type_params.contains(name)
+                && !is_known_type_name(name, records, sum_types)
+                && !looks_like_type_var_name(name)
+            {
+                unknown.push(name.clone());
+            }
+        }
+        TypeAnnotation::Applied(name, args) => {
+            if !type_params.contains(name)
+                && !is_known_type_name(name, records, sum_types)
+                && !looks_like_type_var_name(name)
+            {
+                unknown.push(name.clone());
+            }
+            for arg in args {
+                collect_unknown_type_names(arg, type_params, records, sum_types, unknown);
+            }
+        }
+        TypeAnnotation::Row { fields, .. } => {
+            for (_, field_ty) in fields {
+                collect_unknown_type_names(field_ty, type_params, records, sum_types, unknown);
+            }
+        }
+        TypeAnnotation::Tuple(elems) => {
+            for elem in elems {
+                collect_unknown_type_names(elem, type_params, records, sum_types, unknown);
+            }
+        }
+        TypeAnnotation::Function(params, ret) => {
+            for p in params {
+                collect_unknown_type_names(p, type_params, records, sum_types, unknown);
+            }
+            collect_unknown_type_names(ret, type_params, records, sum_types, unknown);
+        }
+        TypeAnnotation::FunctionWithEffect(params, _, ret) => {
+            for p in params {
+                collect_unknown_type_names(p, type_params, records, sum_types, unknown);
+            }
+            collect_unknown_type_names(ret, type_params, records, sum_types, unknown);
+        }
+        TypeAnnotation::Optional(inner) => {
+            collect_unknown_type_names(inner, type_params, records, sum_types, unknown);
+        }
+        TypeAnnotation::Forall { type_vars, ty } => {
+            // Forall-bound vars extend the scope of valid names.
+            let mut extended: Vec<String> = type_params.to_vec();
+            extended.extend(type_vars.iter().cloned());
+            collect_unknown_type_names(ty, &extended, records, sum_types, unknown);
+        }
+        // Leaf annotations that don't reference type names.
+        TypeAnnotation::EffectRow(_)
+        | TypeAnnotation::Existential { .. }
+        | TypeAnnotation::Projection { .. }
+        | TypeAnnotation::DimLiteral(_) => {}
+    }
 }
 
 impl Default for TraitRegistry {

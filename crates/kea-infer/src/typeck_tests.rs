@@ -1363,6 +1363,88 @@ fn alias_cycle_is_rejected() {
 }
 
 #[test]
+fn alias_unknown_target_type_is_rejected() {
+    let mut records = RecordRegistry::new();
+    records
+        .register_alias(&make_alias_def(
+            "Foo",
+            vec![],
+            TypeAnnotation::Named("Nonexistent".to_string()),
+        ))
+        .expect("alias registration succeeds (validation is deferred)");
+    let err = records
+        .validate_alias_targets(None)
+        .expect_err("unknown target type should fail validation");
+    assert!(
+        err.message.contains("unknown type `Nonexistent`"),
+        "unexpected error: {}",
+        err.message
+    );
+    assert!(
+        err.message.contains("alias `Foo`"),
+        "should mention the alias name: {}",
+        err.message
+    );
+}
+
+#[test]
+fn alias_valid_target_passes_validation() {
+    let mut records = RecordRegistry::new();
+    records
+        .register_alias(&make_alias_def(
+            "UserId",
+            vec![],
+            TypeAnnotation::Named("Int".to_string()),
+        ))
+        .expect("alias registration");
+    records
+        .validate_alias_targets(None)
+        .expect("builtin target should pass validation");
+}
+
+#[test]
+fn alias_parametric_target_accepts_own_params() {
+    let mut records = RecordRegistry::new();
+    records
+        .register_alias(&make_alias_def(
+            "Pair",
+            vec!["a", "b"],
+            TypeAnnotation::Tuple(vec![
+                TypeAnnotation::Named("a".to_string()),
+                TypeAnnotation::Named("b".to_string()),
+            ]),
+        ))
+        .expect("alias registration");
+    records
+        .validate_alias_targets(None)
+        .expect("alias params should be accepted as valid type names");
+}
+
+#[test]
+fn alias_forward_reference_passes_validation() {
+    let mut records = RecordRegistry::new();
+    // Register A = B first (forward reference), then B = Int
+    records
+        .register_alias(&make_alias_def(
+            "A",
+            vec![],
+            TypeAnnotation::Named("B".to_string()),
+        ))
+        .expect("alias A registration");
+    records
+        .register_alias(&make_alias_def(
+            "B",
+            vec![],
+            TypeAnnotation::Named("Int".to_string()),
+        ))
+        .expect("alias B registration");
+    // After both are registered, validation should pass
+    records
+        .validate_alias_targets(None)
+        .expect("forward reference between aliases should pass");
+}
+
+#[test]
 fn effect_row_alias_expands_in_declared_effect_contract_validation() {
     let mut records = RecordRegistry::new();
     records
