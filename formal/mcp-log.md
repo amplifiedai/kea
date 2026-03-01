@@ -12138,3 +12138,46 @@ New theorem surface:
 **Impact**:
 - Reduces theorem plumbing for callers that need the concrete clause summary
   contract while staying on handler-level route APIs.
+
+### 2026-03-01: packaged unification-threaded core-soundness triple in Kea/Eval
+
+**Context**: Added a single bundled theorem surface in `Kea/Eval.lean` that
+packages unification-threaded core soundness as one witness carrying
+soundness, progress, and preservation together.
+
+New theorem surface:
+- `CoreTypeSoundnessEvalUnifyBundle`
+- `CoreTypeSoundnessEvalUnifyBundleComponents`
+- `coreTypeSoundnessEvalUnifyBundle_{iff_components,of_components,as_components,as_components_of_components}`
+- `coreTypeSoundnessEvalUnifyBundle_of_inferUnify`
+- `coreTypeSoundnessEvalUnifyBundle_of_inferUnify_from_hooks`
+- `CoreTypeSoundnessEvalUnifySlice`
+- `CoreTypeSoundnessEvalUnifySliceFromHooks`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No new runtime semantics: this is a packaging lift over existing proved
+  wrappers (`type_soundness_evalFragmentFull_of_inferUnify`,
+  `eval_progress_evalFragmentFull_of_inferUnify`,
+  `eval_preservation_evalFragmentFull_of_inferUnify`).
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Core-soundness consumption for unification-threaded runs now has a single
+  packaged theorem witness instead of three separate theorem chains.
+
+**Impact**:
+- Tightens the soundness citation surface for the core calculus and reduces
+  call-site proof plumbing in downstream formal layers.
