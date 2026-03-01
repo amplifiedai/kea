@@ -996,6 +996,38 @@ theorem coreTypeSoundnessEvalInferSlice_of_coreTypeSoundnessEvalSlice
   intro tenv venv e ty h_env h_infer h_frag
   exact h_slice h_env (inferExpr_sound tenv e ty h_infer) h_frag
 
+theorem coreTypeSoundnessEvalSlice_of_verticalEvalSlice
+    (h_vertical : VerticalEvalSlice) :
+    CoreTypeSoundnessEvalSlice := by
+  intro tenv venv e ty h_env h_ty h_frag
+  have h_sound : ∃ v, eval venv e = some v ∧ ValueHasType v ty :=
+    h_vertical.1 h_env h_ty h_frag
+  refine {
+    soundness := h_sound
+    progress := ?_
+    preservation := ?_
+  }
+  · rcases h_sound with ⟨v, h_eval, _h_vty⟩
+    exact ⟨v, h_eval⟩
+  · intro v h_eval
+    rcases h_sound with ⟨v', h_eval', h_vty'⟩
+    have h_eq : v = v' := eval_deterministic venv e h_eval h_eval'
+    exact h_eq ▸ h_vty'
+
+theorem coreTypeSoundnessEvalSlice_proved_via_verticalEvalSlice :
+    CoreTypeSoundnessEvalSlice :=
+  coreTypeSoundnessEvalSlice_of_verticalEvalSlice verticalEvalSlice_proved
+
+theorem coreTypeSoundnessEvalInferSlice_of_verticalEvalSlice
+    (h_vertical : VerticalEvalSlice) :
+    CoreTypeSoundnessEvalInferSlice :=
+  coreTypeSoundnessEvalInferSlice_of_coreTypeSoundnessEvalSlice
+    (coreTypeSoundnessEvalSlice_of_verticalEvalSlice h_vertical)
+
+theorem coreTypeSoundnessEvalInferSlice_proved_via_verticalEvalSlice :
+    CoreTypeSoundnessEvalInferSlice :=
+  coreTypeSoundnessEvalInferSlice_of_verticalEvalSlice verticalEvalSlice_proved
+
 /--
 Unification-threaded entrypoint to the same core progress+preservation pair.
 
