@@ -2203,7 +2203,7 @@ fn declare_drop_functions<M: Module>(
 fn define_record_drop_function<M: Module>(
     module: &mut M,
     type_name: &str,
-    _layout: &BackendRecordLayout,
+    layout: &BackendRecordLayout,
     drop_func_ids: &DropFunctionIds,
     free_func_id: Option<FuncId>,
 ) -> Result<(), CodegenError> {
@@ -2246,8 +2246,34 @@ fn define_record_drop_function<M: Module>(
         .brif(is_zero, unique_block, &[], ret_block, &[]);
 
     builder.switch_to_block(unique_block);
+    for (field_name, field_ty) in &layout.field_types {
+        if !is_managed_heap_type(field_ty) {
+            continue;
+        }
+        let Some(field_offset) = layout.field_offsets.get(field_name) else {
+            continue;
+        };
+        let field_offset =
+            i32::try_from(*field_offset).map_err(|_| CodegenError::UnsupportedMir {
+                function: type_name.to_string(),
+                detail: format!(
+                    "record `{type_name}` field `{field_name}` offset does not fit i32"
+                ),
+            })?;
+        let field_ptr = builder
+            .ins()
+            .load(ptr_ty, MemFlags::new(), payload_ptr, field_offset);
+        emit_typed_release(
+            module,
+            &mut builder,
+            type_name,
+            field_ptr,
+            Some(field_ty),
+            drop_func_ids,
+            free_func_id,
+        )?;
+    }
     builder.ins().jump(free_block, &[]);
-
     builder.switch_to_block(free_block);
     let free_func_id = free_func_id.ok_or_else(|| CodegenError::UnsupportedMir {
         function: type_name.to_string(),
@@ -2265,7 +2291,7 @@ fn define_record_drop_function<M: Module>(
     module
         .define_function(func_id, &mut context)
         .map_err(|detail| CodegenError::Module {
-            detail: format!("{detail:?}"),
+            detail: format!("drop function `{type_name}`: {detail:?}"),
         })?;
     module.clear_context(&mut context);
     Ok(())
@@ -2316,7 +2342,7 @@ fn define_sum_drop_function<M: Module>(
         module
             .define_function(func_id, &mut context)
             .map_err(|detail| CodegenError::Module {
-                detail: format!("{detail:?}"),
+                detail: format!("drop function `{type_name}`: {detail:?}"),
             })?;
         module.clear_context(&mut context);
         return Ok(());
@@ -2349,7 +2375,95 @@ fn define_sum_drop_function<M: Module>(
         .brif(is_zero, unique_block, &[], ret_block, &[]);
 
     builder.switch_to_block(unique_block);
-    builder.ins().jump(free_block, &[]);
+    let tag_offset = i32::try_from(layout.tag_offset).map_err(|_| CodegenError::UnsupportedMir {
+        function: type_name.to_string(),
+        detail: format!("sum `{type_name}` tag offset does not fit i32"),
+    })?;
+    let tag_value = builder
+        .ins()
+        .load(types::I32, MemFlags::new(), payload_ptr, tag_offset);
+    let payload_offset =
+        i32::try_from(layout.payload_offset).map_err(|_| CodegenError::UnsupportedMir {
+            function: type_name.to_string(),
+            detail: format!("sum `{type_name}` payload offset does not fit i32"),
+        })?;
+    let mut variants = layout
+        .variant_tags
+        .iter()
+        .filter_map(|(variant_name, tag)| {
+            let field_types = layout.variant_field_types.get(variant_name)?;
+            if field_types.iter().any(is_managed_heap_type) {
+                Some((*tag, field_types.as_slice()))
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+    variants.sort_by_key(|(tag, _)| *tag);
+
+    if variants.is_empty() {
+        builder.ins().jump(free_block, &[]);
+    } else {
+        let mut check_block = unique_block;
+        for (idx, (variant_tag, field_types)) in variants.iter().enumerate() {
+            if idx > 0 {
+                builder.switch_to_block(check_block);
+            }
+            let variant_release_block = builder.create_block();
+            let next_check_or_free = if idx + 1 < variants.len() {
+                builder.create_block()
+            } else {
+                free_block
+            };
+
+            let expected_tag = builder.ins().iconst(types::I32, i64::from(*variant_tag));
+            let is_match = builder.ins().icmp(IntCC::Equal, tag_value, expected_tag);
+            builder
+                .ins()
+                .brif(is_match, variant_release_block, &[], next_check_or_free, &[]);
+
+            builder.switch_to_block(variant_release_block);
+            for (field_idx, field_ty) in field_types.iter().enumerate() {
+                if !is_managed_heap_type(field_ty) {
+                    continue;
+                }
+                let field_offset = payload_offset
+                    .checked_add(i32::try_from(field_idx.saturating_mul(8)).map_err(|_| {
+                        CodegenError::UnsupportedMir {
+                            function: type_name.to_string(),
+                            detail: format!(
+                                "sum `{type_name}` variant tag `{variant_tag}` field offset overflow"
+                            ),
+                        }
+                    })?)
+                    .ok_or_else(|| CodegenError::UnsupportedMir {
+                        function: type_name.to_string(),
+                        detail: format!(
+                            "sum `{type_name}` variant tag `{variant_tag}` field offset overflow"
+                        ),
+                    })?;
+                let field_ptr = builder
+                    .ins()
+                    .load(ptr_ty, MemFlags::new(), payload_ptr, field_offset);
+                emit_typed_release(
+                    module,
+                    &mut builder,
+                    type_name,
+                    field_ptr,
+                    Some(field_ty),
+                    drop_func_ids,
+                    free_func_id,
+                )?;
+            }
+            builder.ins().jump(free_block, &[]);
+            check_block = next_check_or_free;
+        }
+
+        if check_block != free_block {
+            builder.switch_to_block(check_block);
+            builder.ins().jump(free_block, &[]);
+        }
+    }
 
     builder.switch_to_block(free_block);
     let free_func_id = free_func_id.ok_or_else(|| CodegenError::UnsupportedMir {
@@ -2368,7 +2482,7 @@ fn define_sum_drop_function<M: Module>(
     module
         .define_function(func_id, &mut context)
         .map_err(|detail| CodegenError::Module {
-            detail: format!("{detail:?}"),
+            detail: format!("drop function `{type_name}`: {detail:?}"),
         })?;
     module.clear_context(&mut context);
     Ok(())
