@@ -13818,3 +13818,42 @@ New theorem surface:
 **Impact**:
 - Reduces downstream theorem boilerplate and aligns declarative slice ergonomics
   with the existing unification-slice projection style.
+
+### 2026-03-02: declarative slice to canonical consequence routes
+
+**Context**: Extended `Kea/Eval.lean` with direct theorem routes from the new
+declarative global slices into `CoreCalculusSoundnessConsequences`, including
+proved-route aliases.
+
+New theorem surface:
+- `coreCalculusSoundnessConsequences_of_coreTypeSoundnessEvalSlice`
+- `coreCalculusSoundnessConsequences_of_coreTypeSoundnessEvalInferSlice`
+- `coreCalculusSoundnessConsequences_of_coreTypeSoundnessEvalSlice_proved`
+- `coreCalculusSoundnessConsequences_of_coreTypeSoundnessEvalInferSlice_proved`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; this is route-level interoperability
+  between already equivalent declarative bundle/slice and canonical consequence
+  surfaces.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Declarative global slice witnesses now map to canonical consequence witnesses
+  in one theorem step on both `HasType` and `inferExpr` routes.
+
+**Impact**:
+- Further unifies evaluator soundness surfaces and reduces conversion friction
+  across canonical/declarative layers.

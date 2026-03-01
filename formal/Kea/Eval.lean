@@ -2143,6 +2143,44 @@ theorem coreCalculusSoundnessConsequences_as_declarative_bundle_of_inferUnify_fr
     (coreCalculusSoundnessConsequences_of_inferUnify_from_hooks
       h_app h_proj st st' fuel h_ok h_env h_frag)
 
+theorem coreCalculusSoundnessConsequences_of_coreTypeSoundnessEvalSlice
+    (h_slice : CoreTypeSoundnessEvalSlice)
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_env : EnvWellTyped tenv venv)
+    (h_ty : HasType tenv e ty)
+    (h_frag : EvalFragmentFull e) :
+    CoreCalculusSoundnessConsequences tenv venv e ty :=
+  coreCalculusSoundnessConsequences_of_declarative_bundle tenv venv e ty
+    (coreTypeSoundnessEvalSlice_bundle h_slice h_env h_ty h_frag)
+
+theorem coreCalculusSoundnessConsequences_of_coreTypeSoundnessEvalInferSlice
+    (h_slice : CoreTypeSoundnessEvalInferSlice)
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_env : EnvWellTyped tenv venv)
+    (h_infer : inferExpr tenv e = some ty)
+    (h_frag : EvalFragmentFull e) :
+    CoreCalculusSoundnessConsequences tenv venv e ty :=
+  coreCalculusSoundnessConsequences_of_declarative_bundle tenv venv e ty
+    (coreTypeSoundnessEvalInferSlice_bundle h_slice h_env h_infer h_frag)
+
+theorem coreCalculusSoundnessConsequences_of_coreTypeSoundnessEvalSlice_proved
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_env : EnvWellTyped tenv venv)
+    (h_ty : HasType tenv e ty)
+    (h_frag : EvalFragmentFull e) :
+    CoreCalculusSoundnessConsequences tenv venv e ty :=
+  coreCalculusSoundnessConsequences_of_coreTypeSoundnessEvalSlice
+    coreTypeSoundnessEvalSlice_proved h_env h_ty h_frag
+
+theorem coreCalculusSoundnessConsequences_of_coreTypeSoundnessEvalInferSlice_proved
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_env : EnvWellTyped tenv venv)
+    (h_infer : inferExpr tenv e = some ty)
+    (h_frag : EvalFragmentFull e) :
+    CoreCalculusSoundnessConsequences tenv venv e ty :=
+  coreCalculusSoundnessConsequences_of_coreTypeSoundnessEvalInferSlice
+    coreTypeSoundnessEvalInferSlice_proved h_env h_infer h_frag
+
 theorem coreCalculusSoundnessConsequences_of_coreCalculusSoundnessSlice
     (h_core : CoreCalculusSoundnessSlice)
     {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
