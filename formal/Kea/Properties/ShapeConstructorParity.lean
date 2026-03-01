@@ -2637,6 +2637,120 @@ theorem tensor_rank2_same_var_non_generalization_slice_of_eq
   · exact tensor_rank2_const_same_var_not_ok_iff_dim_kernel_success_of_eq
       st fuel elem n1 n2 v h_eq
 
+/-- Packaged distinct-vars mixed-shape dim-kernel boundary suite combining:
+    witness-level kernel-vs-constructor mismatch, divergence-vs-contract
+    equivalence, and direct non-generalization across fixed-size-list, rank-1
+    tensor, and rank-2 tensor mixed var/const routes. -/
+structure MixedShapeVarConstBoundarySuite
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v : DimVarId) (n : Nat)
+    (v1 v2 : DimVarId) (n1 n2 : Nat)
+    (h_distinct : v1 ≠ v2) : Prop where
+  kernelBoundary :
+    mixed_shape_kernel_boundary_slice
+      st fuel elem v n v1 v2 n1 n2 h_distinct
+  divergenceIffNotNaiveContract :
+    mixed_shape_divergence_iff_not_naive_contract_slice
+      st fuel elem v n v1 v2 n1 n2
+  nonGeneralization :
+    mixed_shape_non_generalization_slice
+      st fuel elem v n v1 v2 n1 n2 h_distinct
+
+/-- Canonical witness for the packaged distinct-vars mixed-shape boundary
+suite. -/
+theorem mixedShapeVarConstBoundarySuite
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v : DimVarId) (n : Nat)
+    (v1 v2 : DimVarId) (n1 n2 : Nat)
+    (h_distinct : v1 ≠ v2) :
+    MixedShapeVarConstBoundarySuite st fuel elem v n v1 v2 n1 n2 h_distinct := by
+  refine
+    { kernelBoundary := ?_
+      divergenceIffNotNaiveContract := ?_
+      nonGeneralization := ?_ }
+  · exact mixed_shape_kernel_boundary_slice
+      st fuel elem v n v1 v2 n1 n2 h_distinct
+  · exact mixed_shape_divergence_iff_not_naive_contract_slice
+      st fuel elem v n v1 v2 n1 n2
+  · exact mixed_shape_non_generalization_slice
+      st fuel elem v n v1 v2 n1 n2 h_distinct
+
+/-- Explicit component tuple alias for `MixedShapeVarConstBoundarySuite`. -/
+abbrev MixedShapeVarConstBoundarySuiteComponents
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v : DimVarId) (n : Nat)
+    (v1 v2 : DimVarId) (n1 n2 : Nat)
+    (h_distinct : v1 ≠ v2) : Prop :=
+  mixed_shape_kernel_boundary_slice
+      st fuel elem v n v1 v2 n1 n2 h_distinct ∧
+  mixed_shape_divergence_iff_not_naive_contract_slice
+      st fuel elem v n v1 v2 n1 n2 ∧
+  mixed_shape_non_generalization_slice
+      st fuel elem v n v1 v2 n1 n2 h_distinct
+
+/-- Decompose `MixedShapeVarConstBoundarySuite` into explicit components. -/
+theorem mixedShapeVarConstBoundarySuite_as_components
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v : DimVarId) (n : Nat)
+    (v1 v2 : DimVarId) (n1 n2 : Nat)
+    (h_distinct : v1 ≠ v2)
+    (suite : MixedShapeVarConstBoundarySuite st fuel elem v n v1 v2 n1 n2 h_distinct) :
+    MixedShapeVarConstBoundarySuiteComponents
+      st fuel elem v n v1 v2 n1 n2 h_distinct :=
+  ⟨suite.kernelBoundary, suite.divergenceIffNotNaiveContract, suite.nonGeneralization⟩
+
+/-- Build `MixedShapeVarConstBoundarySuite` from explicit components. -/
+theorem mixedShapeVarConstBoundarySuite_of_components
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v : DimVarId) (n : Nat)
+    (v1 v2 : DimVarId) (n1 n2 : Nat)
+    (h_distinct : v1 ≠ v2)
+    (h_kernel :
+      mixed_shape_kernel_boundary_slice
+        st fuel elem v n v1 v2 n1 n2 h_distinct)
+    (h_div :
+      mixed_shape_divergence_iff_not_naive_contract_slice
+        st fuel elem v n v1 v2 n1 n2)
+    (h_nonGen :
+      mixed_shape_non_generalization_slice
+        st fuel elem v n v1 v2 n1 n2 h_distinct) :
+    MixedShapeVarConstBoundarySuite st fuel elem v n v1 v2 n1 n2 h_distinct :=
+  { kernelBoundary := h_kernel
+    divergenceIffNotNaiveContract := h_div
+    nonGeneralization := h_nonGen }
+
+/-- Direct component-route decomposition for
+`MixedShapeVarConstBoundarySuite`. -/
+theorem mixedShapeVarConstBoundarySuite_as_components_of_components
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v : DimVarId) (n : Nat)
+    (v1 v2 : DimVarId) (n1 n2 : Nat)
+    (h_distinct : v1 ≠ v2)
+    (h_comp : MixedShapeVarConstBoundarySuiteComponents
+      st fuel elem v n v1 v2 n1 n2 h_distinct) :
+    MixedShapeVarConstBoundarySuiteComponents
+      st fuel elem v n v1 v2 n1 n2 h_distinct := by
+  simpa using h_comp
+
+/-- `MixedShapeVarConstBoundarySuite` is equivalent to its explicit component
+tuple. -/
+theorem mixedShapeVarConstBoundarySuite_iff_components
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v : DimVarId) (n : Nat)
+    (v1 v2 : DimVarId) (n1 n2 : Nat)
+    (h_distinct : v1 ≠ v2) :
+    MixedShapeVarConstBoundarySuite st fuel elem v n v1 v2 n1 n2 h_distinct ↔
+      MixedShapeVarConstBoundarySuiteComponents
+        st fuel elem v n v1 v2 n1 n2 h_distinct := by
+  constructor
+  · intro suite
+    exact mixedShapeVarConstBoundarySuite_as_components
+      st fuel elem v n v1 v2 n1 n2 h_distinct suite
+  · intro h
+    rcases h with ⟨h_kernel, h_div, h_nonGen⟩
+    exact mixedShapeVarConstBoundarySuite_of_components
+      st fuel elem v n v1 v2 n1 n2 h_distinct h_kernel h_div h_nonGen
+
 /-- Fixed-size-list element mismatch does not unify when size matches. -/
 theorem fixedSizeList_elem_mismatch
     (st : UnifyState) (d : Nat) :
