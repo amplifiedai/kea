@@ -13588,3 +13588,42 @@ New theorem surface:
 **Impact**:
 - Makes core type-system soundness citation surfaces uniform across local bundle,
   global slice, and unification-threaded package layers.
+
+### 2026-03-02: bridge declarative slices to existing vertical evaluator package
+
+**Context**: Extended `Kea/Eval.lean` to connect the newly introduced
+declarative core soundness slices with the existing `VerticalEvalSlice`
+theorem package.
+
+New theorem surface:
+- `coreTypeSoundnessEvalSlice_of_verticalEvalSlice`
+- `coreTypeSoundnessEvalSlice_proved_via_verticalEvalSlice`
+- `coreTypeSoundnessEvalInferSlice_of_verticalEvalSlice`
+- `coreTypeSoundnessEvalInferSlice_proved_via_verticalEvalSlice`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; this is interoperability routing between
+  pre-existing vertical witnesses and the new declarative bundle/slice surfaces.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed` (with unrelated pre-existing `kea-mir`
+  dead-code warnings).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Vertical evaluator proofs can now be consumed directly as declarative
+  core-soundness slices on both `HasType` and `inferExpr` routes.
+
+**Impact**:
+- Tightens interoperability between legacy and newly packaged evaluator
+  soundness theorem families.
