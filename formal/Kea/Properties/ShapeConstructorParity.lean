@@ -4259,3 +4259,51 @@ theorem numericShapeConstDimKernelSuite_iff_components :
     exact numericShapeConstDimKernelSuite_as_components suite
   · intro h
     exact numericShapeConstDimKernelSuite_of_components h.1 h.2
+
+/-- Extended constant-shape suite that pairs the existing shape suite with the
+extended dimension-kernel package (`DimKernelExtendedSuite`). -/
+structure ShapeConstDimKernelExtendedSuite : Prop where
+  shapeKernel : ShapeConstDimKernelSuite
+  dimKernelExtended : DimKernelExtendedSuite
+
+/-- Explicit component pair alias for `ShapeConstDimKernelExtendedSuite`. -/
+abbrev ShapeConstDimKernelExtendedSuiteComponents : Prop :=
+  ShapeConstDimKernelSuite ∧ DimKernelExtendedSuite
+
+/-- Canonical extended constant-shape suite witness. -/
+theorem shapeConstDimKernelExtendedSuite : ShapeConstDimKernelExtendedSuite := by
+  exact
+    { shapeKernel := shapeConstDimKernelSuite
+      dimKernelExtended := dimKernelExtendedSuite }
+
+/-- Decompose `ShapeConstDimKernelExtendedSuite` into explicit components. -/
+theorem shapeConstDimKernelExtendedSuite_as_components
+    (suite : ShapeConstDimKernelExtendedSuite) :
+    ShapeConstDimKernelExtendedSuiteComponents :=
+  ⟨suite.shapeKernel, suite.dimKernelExtended⟩
+
+/-- Build `ShapeConstDimKernelExtendedSuite` from explicit components. -/
+theorem shapeConstDimKernelExtendedSuite_of_components
+    (shapeKernel : ShapeConstDimKernelSuite)
+    (dimKernelExtended : DimKernelExtendedSuite) :
+    ShapeConstDimKernelExtendedSuite :=
+  { shapeKernel := shapeKernel
+    dimKernelExtended := dimKernelExtended }
+
+/-- Direct components-route decomposition for
+`ShapeConstDimKernelExtendedSuite`. -/
+theorem shapeConstDimKernelExtendedSuite_as_components_of_components
+    (h_comp : ShapeConstDimKernelExtendedSuiteComponents) :
+    ShapeConstDimKernelExtendedSuiteComponents := by
+  simpa using h_comp
+
+/-- `ShapeConstDimKernelExtendedSuite` is equivalent to its explicit component
+pair. -/
+theorem shapeConstDimKernelExtendedSuite_iff_components :
+    ShapeConstDimKernelExtendedSuite ↔
+      ShapeConstDimKernelExtendedSuiteComponents := by
+  constructor
+  · intro suite
+    exact shapeConstDimKernelExtendedSuite_as_components suite
+  · intro h
+    exact shapeConstDimKernelExtendedSuite_of_components h.1 h.2

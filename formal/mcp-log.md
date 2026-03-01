@@ -11595,3 +11595,42 @@ into one top-level dimension witness.
 **Impact**:
 - Improves WP7.2 theorem-route ergonomics and keeps deeper dim-aware surfaces
   aligned with the project’s suite-style API pattern.
+
+### 2026-03-01: extended constant-shape suite over extended dimension kernel
+
+**Context**: Extended `Kea/Properties/ShapeConstructorParity.lean` with:
+- `ShapeConstDimKernelExtendedSuite`
+- `shapeConstDimKernelExtendedSuite`
+- `ShapeConstDimKernelExtendedSuiteComponents`
+- `shapeConstDimKernelExtendedSuite_{as_components,of_components,as_components_of_components,iff_components}`
+
+This composes:
+- `ShapeConstDimKernelSuite` (existing constant-shape package), and
+- `DimKernelExtendedSuite` (core + rank-2 var/const dimension package)
+into one non-breaking top-level theorem surface.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No semantic change; this is suite-level composition and decomposition over
+  existing package witnesses.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Constant-shape consumers can depend on one extended top-level package without
+  changing existing `ShapeConstDimKernelSuite` APIs.
+
+**Impact**:
+- Improves WP7.2/WP7.4 theorem plumbing by keeping the new deeper dimension
+  kernel layer available through suite-style composition.
