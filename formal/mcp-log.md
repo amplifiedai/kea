@@ -12575,3 +12575,48 @@ New theorem surface:
 **Impact**:
 - Tightens the connection between algorithmic inference success and the
   canonical core-soundness claim surface.
+
+### 2026-03-02: nested-handler API lift for disjoint-target composition coherence
+
+**Context**: Extended `Kea/Properties/NestedHandlerCompositionContracts.lean`
+to expose the previously added disjoint-target row-level coherence contracts on
+the nested-handler theorem surface.
+
+New theorem surface:
+- `nestedComposeDisjoint`
+- `nestedComposeDisjointSwap`
+- `NestedHandlerDisjointCoherence`
+- `NestedHandlerDisjointCoherenceComponents`
+- `nestedHandlerDisjointCoherence_iff_components`
+- `nestedHandlerDisjointCoherence_of_components`
+- `nestedHandlerDisjointCoherence_as_components`
+- `nestedHandlerDisjointCoherence_as_components_of_components`
+- `nestedHandlerDisjointCoherence_of_handler_absence`
+- `nestedHandlerDisjointCoherence_as_components_of_handler_absence`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; this is a theorem-surface lift/alias
+  layer over existing disjoint-target handler composition semantics.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Disjoint-target handler composition coherence is now directly consumable from
+  the nested-handler contract module, including one-hop decomposition from
+  premise-level non-reintroduction assumptions.
+
+**Impact**:
+- Aligns nested composition APIs with the new disjoint-target coherence layer,
+  reducing cross-module theorem routing overhead.
