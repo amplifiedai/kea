@@ -11713,3 +11713,42 @@ This package combines:
 **Impact**:
 - Further reduces theorem plumbing for WP7.2 mixed-shape coverage and keeps
   boundary-level APIs on the standard suite decomposition pattern.
+
+### 2026-03-01: top-level numeric mixed+constant shape suite
+
+**Context**: Extended `Kea/Properties/ShapeConstructorParity.lean` with:
+- `NumericShapeMixedDimKernelMasterSuite`
+- `numericShapeMixedDimKernelMasterSuite`
+- `NumericShapeMixedDimKernelMasterSuiteComponents`
+- `numericShapeMixedDimKernelMasterSuite_{as_components,of_components,as_components_of_components,iff_components}`
+
+This combines:
+- `NumericShapeConstDimKernelExtendedSuite` (numeric + extended constant-shape),
+- `MixedShapeDeepDimKernelMasterSuite` (mixed-shape boundary master),
+into one top-level theorem witness.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No semantic change; this is a composition/decomposition layer over existing
+  suite packages.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Consumers now have one top-level numeric shape suite that spans both constant
+  and mixed-shape dimension-kernel contract layers.
+
+**Impact**:
+- Consolidates WP7.2/WP7.3/WP7.4 theorem routing and further reduces
+  downstream package plumbing.
