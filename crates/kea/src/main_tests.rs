@@ -2099,6 +2099,53 @@
     }
 
     #[test]
+    fn compile_rejects_empty_file_without_main() {
+        let source_path = write_temp_source("", "kea-cli-empty-file-no-main", "kea");
+
+        let err = run_file(&source_path).expect_err("run should reject empty source files");
+        assert!(
+            err.contains("main"),
+            "expected missing-main style diagnostic for empty file, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_rejects_whitespace_only_file_without_main() {
+        let source_path = write_temp_source(
+            " \n  \n\t\n",
+            "kea-cli-whitespace-only-file-no-main",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject whitespace-only source files");
+        assert!(
+            err.contains("main"),
+            "expected missing-main style diagnostic for whitespace-only file, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_rejects_comment_only_file_without_main() {
+        let source_path = write_temp_source(
+            "-- only comments\n-- no declarations\n",
+            "kea-cli-comment-only-file-no-main",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject comment-only source files");
+        assert!(
+            err.contains("main"),
+            "expected missing-main style diagnostic for comment-only file, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_rejects_unexpected_eof_mid_expression() {
         let source_path = write_temp_source(
             "fn main() -> Int\n  1 +\n",
