@@ -674,6 +674,246 @@ theorem unifyDimList_pair_const_var_none_iff_var_eq_and_consts_ne
     subst h_eq_vars
     exact unifyDimList_pair_const_same_var_none_of_ne fuel n1 n2 v1 h_ne_consts
 
+/-- Packaged rank-2 var/const dim-list kernel contracts covering distinct-var
+bindings, same-var decision branches, and bidirectional success/failure
+classifications for var-vs-const and const-vs-var orientations. -/
+structure DimPairVarConstKernelSlice : Prop where
+  pair_var_const_binds_distinct :
+    ∀ fuel v1 v2 n1 n2, v1 ≠ v2 →
+      unifyDimList DimSubst.empty (fuel + 1)
+        [Dim.var v1, Dim.var v2]
+        [Dim.const n1, Dim.const n2] =
+        some (DimSubst.extend (DimSubst.extend DimSubst.empty v1 (.const n1)) v2 (.const n2))
+  pair_const_var_binds_distinct :
+    ∀ fuel n1 n2 v1 v2, v1 ≠ v2 →
+      unifyDimList DimSubst.empty (fuel + 1)
+        [Dim.const n1, Dim.const n2]
+        [Dim.var v1, Dim.var v2] =
+        some (DimSubst.extend (DimSubst.extend DimSubst.empty v1 (.const n1)) v2 (.const n2))
+  pair_same_var_const_binds_of_eq :
+    ∀ fuel v n1 n2, n1 = n2 →
+      unifyDimList DimSubst.empty (fuel + 1)
+        [Dim.var v, Dim.var v]
+        [Dim.const n1, Dim.const n2] =
+        some (DimSubst.extend DimSubst.empty v (.const n1))
+  pair_same_var_const_none_of_ne :
+    ∀ fuel v n1 n2, n1 ≠ n2 →
+      unifyDimList DimSubst.empty (fuel + 1)
+        [Dim.var v, Dim.var v]
+        [Dim.const n1, Dim.const n2] = none
+  pair_same_var_const_decision :
+    ∀ fuel v n1 n2,
+      unifyDimList DimSubst.empty (fuel + 1)
+        [Dim.var v, Dim.var v]
+        [Dim.const n1, Dim.const n2] =
+        (if n1 = n2 then
+          some (DimSubst.extend DimSubst.empty v (.const n1))
+        else none)
+  pair_const_same_var_binds_of_eq :
+    ∀ fuel n1 n2 v, n1 = n2 →
+      unifyDimList DimSubst.empty (fuel + 1)
+        [Dim.const n1, Dim.const n2]
+        [Dim.var v, Dim.var v] =
+        some (DimSubst.extend DimSubst.empty v (.const n1))
+  pair_const_same_var_none_of_ne :
+    ∀ fuel n1 n2 v, n1 ≠ n2 →
+      unifyDimList DimSubst.empty (fuel + 1)
+        [Dim.const n1, Dim.const n2]
+        [Dim.var v, Dim.var v] = none
+  pair_const_same_var_decision :
+    ∀ fuel n1 n2 v,
+      unifyDimList DimSubst.empty (fuel + 1)
+        [Dim.const n1, Dim.const n2]
+        [Dim.var v, Dim.var v] =
+        (if n1 = n2 then
+          some (DimSubst.extend DimSubst.empty v (.const n1))
+        else none)
+  pair_var_const_some_iff_var_distinct_or_consts_eq :
+    ∀ fuel v1 v2 n1 n2,
+      (∃ s' : DimSubst,
+        unifyDimList DimSubst.empty (fuel + 1)
+          [Dim.var v1, Dim.var v2]
+          [Dim.const n1, Dim.const n2] = some s') ↔
+      (v1 ≠ v2 ∨ n1 = n2)
+  pair_var_const_none_iff_var_eq_and_consts_ne :
+    ∀ fuel v1 v2 n1 n2,
+      unifyDimList DimSubst.empty (fuel + 1)
+        [Dim.var v1, Dim.var v2]
+        [Dim.const n1, Dim.const n2] = none ↔
+      (v1 = v2 ∧ n1 ≠ n2)
+  pair_const_var_some_iff_var_distinct_or_consts_eq :
+    ∀ fuel n1 n2 v1 v2,
+      (∃ s' : DimSubst,
+        unifyDimList DimSubst.empty (fuel + 1)
+          [Dim.const n1, Dim.const n2]
+          [Dim.var v1, Dim.var v2] = some s') ↔
+      (v1 ≠ v2 ∨ n1 = n2)
+  pair_const_var_none_iff_var_eq_and_consts_ne :
+    ∀ fuel n1 n2 v1 v2,
+      unifyDimList DimSubst.empty (fuel + 1)
+        [Dim.const n1, Dim.const n2]
+        [Dim.var v1, Dim.var v2] = none ↔
+      (v1 = v2 ∧ n1 ≠ n2)
+
+/-- Canonical packaged witness for rank-2 var/const dim-list kernel behavior. -/
+theorem dimPairVarConstKernelSlice : DimPairVarConstKernelSlice := by
+  refine
+    { pair_var_const_binds_distinct := ?_
+      pair_const_var_binds_distinct := ?_
+      pair_same_var_const_binds_of_eq := ?_
+      pair_same_var_const_none_of_ne := ?_
+      pair_same_var_const_decision := ?_
+      pair_const_same_var_binds_of_eq := ?_
+      pair_const_same_var_none_of_ne := ?_
+      pair_const_same_var_decision := ?_
+      pair_var_const_some_iff_var_distinct_or_consts_eq := ?_
+      pair_var_const_none_iff_var_eq_and_consts_ne := ?_
+      pair_const_var_some_iff_var_distinct_or_consts_eq := ?_
+      pair_const_var_none_iff_var_eq_and_consts_ne := ?_ }
+  · intro fuel v1 v2 n1 n2 h_distinct
+    exact unifyDimList_pair_var_const_binds_distinct fuel v1 v2 n1 n2 h_distinct
+  · intro fuel n1 n2 v1 v2 h_distinct
+    exact unifyDimList_pair_const_var_binds_distinct fuel n1 n2 v1 v2 h_distinct
+  · intro fuel v n1 n2 h_eq
+    exact unifyDimList_pair_same_var_const_binds_of_eq fuel v n1 n2 h_eq
+  · intro fuel v n1 n2 h_ne
+    exact unifyDimList_pair_same_var_const_none_of_ne fuel v n1 n2 h_ne
+  · intro fuel v n1 n2
+    exact unifyDimList_pair_same_var_const_decision fuel v n1 n2
+  · intro fuel n1 n2 v h_eq
+    exact unifyDimList_pair_const_same_var_binds_of_eq fuel n1 n2 v h_eq
+  · intro fuel n1 n2 v h_ne
+    exact unifyDimList_pair_const_same_var_none_of_ne fuel n1 n2 v h_ne
+  · intro fuel n1 n2 v
+    exact unifyDimList_pair_const_same_var_decision fuel n1 n2 v
+  · intro fuel v1 v2 n1 n2
+    exact unifyDimList_pair_var_const_some_iff_var_distinct_or_consts_eq fuel v1 v2 n1 n2
+  · intro fuel v1 v2 n1 n2
+    exact unifyDimList_pair_var_const_none_iff_var_eq_and_consts_ne fuel v1 v2 n1 n2
+  · intro fuel n1 n2 v1 v2
+    exact unifyDimList_pair_const_var_some_iff_var_distinct_or_consts_eq fuel n1 n2 v1 v2
+  · intro fuel n1 n2 v1 v2
+    exact unifyDimList_pair_const_var_none_iff_var_eq_and_consts_ne fuel n1 n2 v1 v2
+
+/-- Explicit component tuple alias for `DimPairVarConstKernelSlice`. -/
+abbrev DimPairVarConstKernelSliceComponents : Prop :=
+  (∀ fuel v1 v2 n1 n2, v1 ≠ v2 →
+    unifyDimList DimSubst.empty (fuel + 1)
+      [Dim.var v1, Dim.var v2]
+      [Dim.const n1, Dim.const n2] =
+      some (DimSubst.extend (DimSubst.extend DimSubst.empty v1 (.const n1)) v2 (.const n2))) ∧
+  (∀ fuel n1 n2 v1 v2, v1 ≠ v2 →
+    unifyDimList DimSubst.empty (fuel + 1)
+      [Dim.const n1, Dim.const n2]
+      [Dim.var v1, Dim.var v2] =
+      some (DimSubst.extend (DimSubst.extend DimSubst.empty v1 (.const n1)) v2 (.const n2))) ∧
+  (∀ fuel v n1 n2, n1 = n2 →
+    unifyDimList DimSubst.empty (fuel + 1)
+      [Dim.var v, Dim.var v]
+      [Dim.const n1, Dim.const n2] =
+      some (DimSubst.extend DimSubst.empty v (.const n1))) ∧
+  (∀ fuel v n1 n2, n1 ≠ n2 →
+    unifyDimList DimSubst.empty (fuel + 1)
+      [Dim.var v, Dim.var v]
+      [Dim.const n1, Dim.const n2] = none) ∧
+  (∀ fuel v n1 n2,
+    unifyDimList DimSubst.empty (fuel + 1)
+      [Dim.var v, Dim.var v]
+      [Dim.const n1, Dim.const n2] =
+      (if n1 = n2 then
+        some (DimSubst.extend DimSubst.empty v (.const n1))
+      else none)) ∧
+  (∀ fuel n1 n2 v, n1 = n2 →
+    unifyDimList DimSubst.empty (fuel + 1)
+      [Dim.const n1, Dim.const n2]
+      [Dim.var v, Dim.var v] =
+      some (DimSubst.extend DimSubst.empty v (.const n1))) ∧
+  (∀ fuel n1 n2 v, n1 ≠ n2 →
+    unifyDimList DimSubst.empty (fuel + 1)
+      [Dim.const n1, Dim.const n2]
+      [Dim.var v, Dim.var v] = none) ∧
+  (∀ fuel n1 n2 v,
+    unifyDimList DimSubst.empty (fuel + 1)
+      [Dim.const n1, Dim.const n2]
+      [Dim.var v, Dim.var v] =
+      (if n1 = n2 then
+        some (DimSubst.extend DimSubst.empty v (.const n1))
+      else none)) ∧
+  (∀ fuel v1 v2 n1 n2,
+    (∃ s' : DimSubst,
+      unifyDimList DimSubst.empty (fuel + 1)
+        [Dim.var v1, Dim.var v2]
+        [Dim.const n1, Dim.const n2] = some s') ↔
+      (v1 ≠ v2 ∨ n1 = n2)) ∧
+  (∀ fuel v1 v2 n1 n2,
+    unifyDimList DimSubst.empty (fuel + 1)
+      [Dim.var v1, Dim.var v2]
+      [Dim.const n1, Dim.const n2] = none ↔
+      (v1 = v2 ∧ n1 ≠ n2)) ∧
+  (∀ fuel n1 n2 v1 v2,
+    (∃ s' : DimSubst,
+      unifyDimList DimSubst.empty (fuel + 1)
+        [Dim.const n1, Dim.const n2]
+        [Dim.var v1, Dim.var v2] = some s') ↔
+      (v1 ≠ v2 ∨ n1 = n2)) ∧
+  (∀ fuel n1 n2 v1 v2,
+    unifyDimList DimSubst.empty (fuel + 1)
+      [Dim.const n1, Dim.const n2]
+      [Dim.var v1, Dim.var v2] = none ↔
+      (v1 = v2 ∧ n1 ≠ n2))
+
+/-- Decompose `DimPairVarConstKernelSlice` into explicit component contracts. -/
+theorem dimPairVarConstKernelSlice_as_components
+    (slice : DimPairVarConstKernelSlice) :
+    DimPairVarConstKernelSliceComponents :=
+  ⟨slice.pair_var_const_binds_distinct,
+    slice.pair_const_var_binds_distinct,
+    slice.pair_same_var_const_binds_of_eq,
+    slice.pair_same_var_const_none_of_ne,
+    slice.pair_same_var_const_decision,
+    slice.pair_const_same_var_binds_of_eq,
+    slice.pair_const_same_var_none_of_ne,
+    slice.pair_const_same_var_decision,
+    slice.pair_var_const_some_iff_var_distinct_or_consts_eq,
+    slice.pair_var_const_none_iff_var_eq_and_consts_ne,
+    slice.pair_const_var_some_iff_var_distinct_or_consts_eq,
+    slice.pair_const_var_none_iff_var_eq_and_consts_ne⟩
+
+/-- Build `DimPairVarConstKernelSlice` from explicit component contracts. -/
+theorem dimPairVarConstKernelSlice_of_components
+    (h_comp : DimPairVarConstKernelSliceComponents) :
+    DimPairVarConstKernelSlice := by
+  rcases h_comp with
+    ⟨h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, h11, h12⟩
+  exact
+    { pair_var_const_binds_distinct := h1
+      pair_const_var_binds_distinct := h2
+      pair_same_var_const_binds_of_eq := h3
+      pair_same_var_const_none_of_ne := h4
+      pair_same_var_const_decision := h5
+      pair_const_same_var_binds_of_eq := h6
+      pair_const_same_var_none_of_ne := h7
+      pair_const_same_var_decision := h8
+      pair_var_const_some_iff_var_distinct_or_consts_eq := h9
+      pair_var_const_none_iff_var_eq_and_consts_ne := h10
+      pair_const_var_some_iff_var_distinct_or_consts_eq := h11
+      pair_const_var_none_iff_var_eq_and_consts_ne := h12 }
+
+/-- Direct component-route decomposition for `DimPairVarConstKernelSlice`. -/
+theorem dimPairVarConstKernelSlice_as_components_of_components
+    (h_comp : DimPairVarConstKernelSliceComponents) :
+    DimPairVarConstKernelSliceComponents := by
+  simpa using h_comp
+
+/-- `DimPairVarConstKernelSlice` is equivalent to its explicit component tuple. -/
+theorem dimPairVarConstKernelSlice_iff_components :
+    DimPairVarConstKernelSlice ↔ DimPairVarConstKernelSliceComponents := by
+  constructor
+  · intro slice
+    exact dimPairVarConstKernelSlice_as_components slice
+  · intro h_comp
+    exact dimPairVarConstKernelSlice_of_components h_comp
+
 /-- Pointwise dimension-list unification is reflexive. -/
 theorem unifyDimList_reflexive (s : DimSubst) (fuel : Nat) :
     ∀ ds : List Dim, unifyDimList s (fuel + 1) ds ds = some s := by
