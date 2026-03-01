@@ -845,7 +845,7 @@ fn handle_request(_ req: Request) -WebEffects> Response
 Effect row variables in where clauses constrain effect sets:
 
 ```kea
-fn retry(_ n: Int, _ f: () -[Fail E, e]> T) -[e]> Option T
+fn retry(_ n: Int, _ f: Unit -[Fail E, e]> T) -[e]> Option T
   where E: Show
 ```
 
@@ -888,7 +888,7 @@ result. If no `then` clause, the result passes through unchanged.
 effect Log
   fn log(_ level: Level, _ msg: String) -> Unit
 
-fn with_stdout_logger(_ f: () -[Log, e]> T) -[IO, e]> T
+fn with_stdout_logger(_ f: Unit -[Log, e]> T) -[IO, e]> T
   handle f()
     Log.log(level, msg) ->
       IO.stdout("[{level}] {msg}")
@@ -909,7 +909,7 @@ effect State S
   fn get() -> S
   fn put(_ new_state: S) -> Unit
 
-fn with_state(_ initial: S, _ f: () -[State S, e]> T) -[e]> (T, S)
+fn with_state(_ initial: S, _ f: Unit -[State S, e]> T) -[e]> (T, S)
   let state = Unique initial
   let result = handle f()
     State.get() ->
@@ -923,7 +923,7 @@ fn with_state(_ initial: S, _ f: () -[State S, e]> T) -[e]> (T, S)
 **Example — mock IO for testing:**
 
 ```kea
-fn with_mock_fs(_ files: Map String Bytes, _ f: () -[IO, e]> T) -[e]> T
+fn with_mock_fs(_ files: Map String Bytes, _ f: Unit -[IO, e]> T) -[e]> T
   handle f()
     IO.read_file(path) ->
       case files.get(path)
@@ -1036,7 +1036,7 @@ implicit. The effect handler provides the arena.
 **`with_arena` handler:**
 
 ```kea
-fn with_arena(_ f: () -[Alloc, e]> T) -[e]> T
+fn with_arena(_ f: Unit -[Alloc, e]> T) -[e]> T
 ```
 
 `with_arena` creates an arena, handles `Alloc` by bump-allocating
@@ -1158,7 +1158,7 @@ let server: Server [IO, Fail AppError] = Server
 ```kea
 enum Step E A
   Continue(A)
-  Yield(A, () -[E]> Step E A)
+  Yield(A, Unit -[E]> Step E A)
   Done
 ```
 
@@ -1169,7 +1169,7 @@ a parameter of the stream type.
 handler-shaped functions:
 
 ```kea
-type Wrap E_in E_out T = (() -[E_in]> T) -[E_out]> T
+type Wrap E_in E_out T = (Unit -[E_in]> T) -[E_out]> T
 
 fn compose_handlers(_ outer: Wrap E1 E2 T, _ inner: Wrap E2 E3 T)
   -> Wrap E1 E3 T
@@ -1970,7 +1970,7 @@ be a callback is not automatically `with`-able.
 ```kea
 struct Logging
   @with
-  fn with_stdout(_ f: () -[Log, e]> T) -[IO, e]> T
+  fn with_stdout(_ f: Unit -[Log, e]> T) -[IO, e]> T
     handle f()
       Log.log(level, msg) ->
         IO.stdout("[{level}] {msg}")
@@ -2029,7 +2029,7 @@ its last `@with` argument, where that argument has function type.
 The compiler inserts the generated callback as the final argument.
 
 For `with expr` (non-binding): the missing last argument must
-have type `() -[e1]> T` for some effects `e1` and return type `T`.
+have type `Unit -[e1]> T` for some effects `e1` and return type `T`.
 
 For `with pattern <- expr` (binding): the missing last argument
 must have type `(A) -[e1]> T` for some `A`, effects `e1`, and

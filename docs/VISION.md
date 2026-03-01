@@ -92,7 +92,7 @@ Handlers give effects meaning and remove them from the type:
 
 ```kea
 struct Logging
-  fn with_stdout(_ f: () -[Log, e]> T) -[IO, e]> T
+  fn with_stdout(_ f: Unit -[Log, e]> T) -[IO, e]> T
     handle f()
       Log.log(level, msg) ->
         IO.stdout("[{level}] {msg}")
@@ -104,7 +104,7 @@ handler removes `Log` and adds nothing:
 
 ```kea
 struct Logging
-  fn with_capture(_ f: () -[Log, e]> T) -[e]> (T, List String)
+  fn with_capture(_ f: Unit -[Log, e]> T) -[e]> (T, List String)
     let logs = []
     let result = handle f()
       Log.log(level, msg) ->

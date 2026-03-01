@@ -430,7 +430,7 @@ enum Level
 struct Logging
 
   @with
-  fn with_stdout(_ f: () -[Log, e]> T) -[IO, e]> T
+  fn with_stdout(_ f: Unit -[Log, e]> T) -[IO, e]> T
     handle f()
       Log.log(level, msg) ->
         IO.stdout("[{level.show()}] {msg}")
@@ -440,7 +440,7 @@ struct Logging
 struct Database
 
   @with
-  fn with_transaction(_ conn: Connection, _ f: () -[Tx, e]> T)
+  fn with_transaction(_ conn: Connection, _ f: Unit -[Tx, e]> T)
     -[IO, Fail DbError, e]> T
     IO.stdout("BEGIN")
     let result = catch
@@ -465,7 +465,7 @@ struct Database
 struct RateLimiter
 
   @with
-  fn with_rate_limit(_ cache: Ref CacheMsg, _ f: () -[RateLimit, e]> T)
+  fn with_rate_limit(_ cache: Ref CacheMsg, _ f: Unit -[RateLimit, e]> T)
     -[Send, Fail RateLimited, e]> T
     handle f()
       RateLimit.check_rate(key, limit) ->
@@ -479,7 +479,7 @@ struct RateLimiter
 struct Caching
 
   @with
-  fn with_map_cache(_ f: () -[Cache K V, e]> T) -[State (Map K V), e]> T
+  fn with_map_cache(_ f: Unit -[Cache K V, e]> T) -[State (Map K V), e]> T
     where K: Eq
     handle f()
       Cache.cache_get(key) ->
@@ -643,7 +643,7 @@ pattern match on the `AppError` variants. This works but adds a
 layer of wrapping/unwrapping.
 
 **The `||` lambda syntax for thunks.** Every handler takes
-`() -[effects]> T`, so you write `||` a lot. It's two
+`Unit -[effects]> T`, so you write `||` a lot. It's two
 characters more than Haskell's `\() ->` but the `||` with
 the empty param list between pipes reads oddly. Maybe just
 aesthetic, but it's frequent enough to notice.

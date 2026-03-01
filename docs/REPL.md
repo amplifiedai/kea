@@ -184,7 +184,7 @@ The same computation can be run under different handlers. The REPL shows the eff
 
 ```
 kea> let program = || Log.log(Info, "hello") ; IO.stdout("world")
-program : () -[Log, IO]> Unit
+program : Unit -[Log, IO]> Unit
 
 kea> -- Try handler 1: silent logging
 kea> handle program()
@@ -194,12 +194,12 @@ kea> handle program()
 -- Log handled (silently), IO passed through
 
 kea> -- Try handler 2: stdout logging
-kea> fn with_stdout_log(_ f: () -[Log, e]> T) -[IO, e]> T
+kea> fn with_stdout_log(_ f: Unit -[Log, e]> T) -[IO, e]> T
 ....   handle f()
 ....     Log.log(level, msg) ->
 ....       IO.stdout("[{level}] {msg}")
 ....       resume ()
-with_stdout_log : (() -[Log, e]> T) -[IO, e]> T
+with_stdout_log : (Unit -[Log, e]> T) -[IO, e]> T
 
 kea> with_stdout_log(program)
 [Info] hello
@@ -244,7 +244,7 @@ Handlers for Log:
   (define your own with `handle`)
 ```
 
-This queries the type environment for functions whose signatures consume a given effect — functions of the form `(() -[E, e]> T) -[e, H...]> T`.
+This queries the type environment for functions whose signatures consume a given effect — functions of the form `(Unit -[E, e]> T) -[e, H...]> T`.
 
 ### 4.5 Mock Handler Workflow
 
@@ -444,7 +444,7 @@ kea> with_state(0, computation)
 (15, 15) : (Int, Int)
 
 kea> -- Handler B: state as pure function (logged)
-kea> fn with_logged_state(_ initial: S, _ f: () -[State S, e]> T) -[IO, e]> (T, S)
+kea> fn with_logged_state(_ initial: S, _ f: Unit -[State S, e]> T) -[IO, e]> (T, S)
 ....   let state = Unique initial
 ....   let result = handle f()
 ....     State.get() ->
@@ -526,7 +526,7 @@ struct Counter
   count: Int
 
   Inherent methods:
-    init     : () -> Counter
+    init     : Unit -> Counter
     handle   : (Counter, CounterMsg T) -[Send]> (Counter, T)
 
   Implements:
@@ -674,7 +674,7 @@ kea> fn test_load_config()
 ....     Ok(config) -> assert_eq(config.port, 8080)
 ....     Err(e) -> assert false "unexpected error: {e}"
 
-test_load_config : () -> Unit
+test_load_config : Unit -> Unit
 -- pure! All effects handled by mocks.
 
 kea> test_load_config()

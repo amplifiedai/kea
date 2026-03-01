@@ -106,7 +106,7 @@ Declaring an effect says *what* a function does. A handler says
 *how* it's done:
 
 ```kea
-fn with_stdout_logger(f: () -[Log, e]> T) -[IO, e]> T
+fn with_stdout_logger(f: Unit -[Log, e]> T) -[IO, e]> T
   handle f()
     Log.log(level, msg) ->
       IO.stdout("[{level}] {msg}")
@@ -457,7 +457,7 @@ effect Cache K V
 Together they express things neither can alone:
 
 ```kea
-fn cached(key: K, compute: () -[e]> V) -[Cache K V, e]> V
+fn cached(key: K, compute: Unit -[e]> V) -[Cache K V, e]> V
   where K: Cacheable
   case Cache.lookup(key.cache_key())
     Some(v) -> v
