@@ -451,7 +451,11 @@ pub fn lower_hir_module(module: &HirModule) -> MirModule {
 }
 
 fn rewrite_trmc_descending_sum_chain(function: &mut MirFunction) {
-    if function.signature.params != vec![Type::Int] {
+    if function.signature.params.first() != Some(&Type::Int) {
+        return;
+    }
+    let function_arity = function.signature.params.len();
+    if function_arity == 0 {
         return;
     }
 
@@ -544,7 +548,12 @@ fn rewrite_trmc_descending_sum_chain(function: &mut MirFunction) {
 
     let recurse_block = &function.blocks[recurse_idx];
     let Some((call_idx, call_result, call_arg, constructor_idx, constructor)) =
-        find_recursive_constructor_pattern(recurse_block, &function.name, &recurse_value)
+        find_recursive_constructor_pattern(
+            recurse_block,
+            &function.name,
+            &recurse_value,
+            function_arity,
+        )
     else {
         return;
     };
@@ -612,6 +621,10 @@ fn rewrite_trmc_descending_sum_chain(function: &mut MirFunction) {
 
     let mut step_context_remap = BTreeMap::new();
     step_context_remap.insert(MirValueId(0), loop_i.clone());
+    for passthrough_param in 1..function_arity {
+        let param_id = MirValueId(passthrough_param as u32);
+        step_context_remap.insert(param_id.clone(), param_id);
+    }
     let mut step_context_insts =
         clone_insts_with_remap(pre_call, &mut step_context_remap, &mut next_value_id);
     step_context_insts.retain(|inst| !matches!(inst, MirInst::Nop));
@@ -730,6 +743,7 @@ fn find_recursive_constructor_pattern<'a>(
     block: &'a MirBlock,
     function_name: &str,
     recurse_block_value: &MirValueId,
+    function_arity: usize,
 ) -> Option<(usize, &'a MirValueId, MirValueId, usize, RecurseConstructorPattern)> {
     for (idx, inst) in block.instructions.iter().enumerate() {
         let MirInst::Call {
@@ -741,7 +755,17 @@ fn find_recursive_constructor_pattern<'a>(
         else {
             continue;
         };
-        if name != function_name || args.len() != 1 {
+        if name != function_name || args.len() != function_arity {
+            continue;
+        }
+        let mut passthrough_ok = true;
+        for (arg_idx, arg) in args.iter().enumerate().skip(1) {
+            if *arg != MirValueId(arg_idx as u32) {
+                passthrough_ok = false;
+                break;
+            }
+        }
+        if !passthrough_ok {
             continue;
         }
         let call_arg = args[0].clone();
@@ -10452,6 +10476,126 @@ mod tests {
                     } if *left == loop_i && *right == loop_i
                 )),
             "step block should keep pre-call constructor field expressions remapped to loop index"
+        );
+    }
+
+    #[test]
+    fn rewrite_trmc_descending_sum_chain_supports_passthrough_extra_params() {
+        let mut function = MirFunction {
+            name: "build".to_string(),
+            signature: MirFunctionSignature {
+                params: vec![Type::Int, Type::Int],
+                ret: Type::Dynamic,
+                effects: EffectRow::pure(),
+            },
+            entry: MirBlockId(0),
+            blocks: vec![
+                MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: MirValueId(2),
+                            literal: MirLiteral::Int(0),
+                        },
+                        MirInst::Binary {
+                            dest: MirValueId(3),
+                            op: MirBinaryOp::Lte,
+                            left: MirValueId(0),
+                            right: MirValueId(2),
+                        },
+                    ],
+                    terminator: MirTerminator::Branch {
+                        condition: MirValueId(3),
+                        then_block: MirBlockId(1),
+                        else_block: MirBlockId(2),
+                    },
+                },
+                MirBlock {
+                    id: MirBlockId(1),
+                    params: vec![],
+                    instructions: vec![MirInst::SumInit {
+                        dest: MirValueId(4),
+                        sum_type: "Chain".to_string(),
+                        variant: "End".to_string(),
+                        tag: 0,
+                        fields: vec![],
+                    }],
+                    terminator: MirTerminator::Jump {
+                        target: MirBlockId(3),
+                        args: vec![MirValueId(4)],
+                    },
+                },
+                MirBlock {
+                    id: MirBlockId(2),
+                    params: vec![],
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: MirValueId(5),
+                            literal: MirLiteral::Int(1),
+                        },
+                        MirInst::Binary {
+                            dest: MirValueId(6),
+                            op: MirBinaryOp::Sub,
+                            left: MirValueId(0),
+                            right: MirValueId(5),
+                        },
+                        MirInst::Call {
+                            callee: MirCallee::Local("build".to_string()),
+                            args: vec![MirValueId(6), MirValueId(1)],
+                            arg_types: vec![Type::Int, Type::Int],
+                            result: Some(MirValueId(7)),
+                            ret_type: Type::Dynamic,
+                            callee_fail_result_abi: false,
+                            capture_fail_result: false,
+                            cc_manifest_id: "default".to_string(),
+                        },
+                        MirInst::SumInit {
+                            dest: MirValueId(8),
+                            sum_type: "Chain".to_string(),
+                            variant: "Node".to_string(),
+                            tag: 1,
+                            fields: vec![MirValueId(1), MirValueId(7)],
+                        },
+                    ],
+                    terminator: MirTerminator::Jump {
+                        target: MirBlockId(3),
+                        args: vec![MirValueId(8)],
+                    },
+                },
+                MirBlock {
+                    id: MirBlockId(3),
+                    params: vec![MirBlockParam {
+                        id: MirValueId(9),
+                        ty: Type::Dynamic,
+                    }],
+                    instructions: vec![MirInst::Nop],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirValueId(9)),
+                    },
+                },
+            ],
+        };
+
+        rewrite_trmc_descending_sum_chain(&mut function);
+
+        assert!(
+            function
+                .blocks
+                .iter()
+                .flat_map(|block| block.instructions.iter())
+                .all(|inst| !matches!(inst, MirInst::Call { .. })),
+            "rewrite should remove recursive call when non-recursive params are passthrough"
+        );
+        assert!(
+            function.blocks[2]
+                .instructions
+                .iter()
+                .any(|inst| matches!(
+                    inst,
+                    MirInst::SumInit { fields, .. } if fields.first() == Some(&MirValueId(1))
+                )),
+            "step block should preserve passthrough extra parameter in constructor fields"
         );
     }
 
