@@ -10612,3 +10612,42 @@ For each package: added `...Components` plus
 **Impact**:
 - No-unify boundary proofs can use one consistent component-route API from
   bridge bundles through all-hooks capstones.
+
+### 2026-03-01: direct no-unify and all-hooks capstone/run-bundle decomposition aliases
+
+**Context**: Added component aliases and structural decomposition APIs in
+`Kea/Typing.lean` for:
+- `PrincipalBoundaryNoUnifyExprCapstone`
+- `PrincipalBoundaryNoUnifyFieldCapstone`
+- `PrincipalPreconditionedExprAllHooksCapstone`
+- `PrincipalPreconditionedFieldAllHooksCapstone`
+- `PrincipalPreconditionedExprAllHooksRunBundle`
+- `PrincipalPreconditionedFieldAllHooksRunBundle`
+
+For each package: added `...Components` plus
+`..._{iff_components,of_components,as_components,as_components_of_components}`.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Structural API expansion only; no runtime semantic change.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Direct no-unify and all-hooks capstone/run-bundle surfaces now expose uniform
+  explicit component reconstruction and one-hop decomposition contracts.
+
+**Impact**:
+- No-unify and all-hooks principal APIs now follow the same decomposition style
+  already used by bridge and recursive-soundness package layers.
