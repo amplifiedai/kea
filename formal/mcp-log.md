@@ -11279,3 +11279,38 @@ resume linearity.
 **Impact**:
 - Tail-resumptive classification results can now be converted to linearity
   facts (and back) without ad hoc case analysis.
+
+### 2026-03-01: capability bundles export at-most-once via tail equivalence
+
+**Context**: Extended `Kea/Properties/TailCapabilityComposition.lean` with:
+- `tailCapabilityBundle_atMostOnce_of_wellTyped`
+- `tailCapabilityClosedAwareBundle_atMostOnce_of_wellTyped`
+
+These route capability-bundle `notInvalid` facts through the new
+`TailResumptiveClassification` equivalence to produce direct
+`ResumeUse.atMostOnce` consequences.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No semantic change; wrappers should compose existing bundle projections with
+  `tail_resumptive_notInvalid_implies_atMostOnce`.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Tail capability bundles now expose linearity directly on well-typed routes.
+
+**Impact**:
+- Capability composition consumers can now use at-most-once facts without
+  manual classification conversion steps.
