@@ -13666,3 +13666,44 @@ New theorem surface:
 **Impact**:
 - Unifies consumption paths so downstream proofs can target a single declarative
   bundle API regardless of whether evidence originated from unification routes.
+
+### 2026-03-02: canonical consequence interoperability with declarative bundle
+
+**Context**: Extended `Kea/Eval.lean` to connect
+`CoreCalculusSoundnessConsequences` directly with the declarative bundle surface
+`CoreTypeSoundnessEvalBundle`, plus infer-unify one-hop entry wrappers to that
+declarative target.
+
+New theorem surface:
+- `coreCalculusSoundnessConsequences_iff_coreTypeSoundnessEvalBundle`
+- `coreCalculusSoundnessConsequences_of_declarative_bundle`
+- `coreCalculusSoundnessConsequences_as_declarative_bundle`
+- `coreCalculusSoundnessConsequences_as_declarative_bundle_of_inferUnify`
+- `coreCalculusSoundnessConsequences_as_declarative_bundle_of_inferUnify_from_hooks`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; this adds theorem-route interoperability
+  between already equivalent canonical consequences and declarative bundle forms.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed` (with unrelated pre-existing `kea-mir`
+  dead-code warnings).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Canonical consequence witnesses and infer-unify consequence routes now map in
+  one step to the declarative bundle API.
+
+**Impact**:
+- Completes bundle-level interoperability across canonical, unification-threaded,
+  and declarative core-soundness theorem families.
