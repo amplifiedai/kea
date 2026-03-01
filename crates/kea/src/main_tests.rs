@@ -3408,7 +3408,8 @@
         let err = run_file(&source_path)
             .expect_err("nested lambda returning lambda should currently fail in lowering");
         assert!(
-            err.contains("non-unit function returned without value"),
+            err.contains("non-Unit return type")
+                && err.contains("not yet supported in compiled lowering"),
             "expected current nested-lambda lowering diagnostic, got: {err}"
         );
 
@@ -3651,7 +3652,8 @@
             "compiled handler lowering should currently reject effect ops returning closures",
         );
         assert!(
-            err.contains("missing handler operation plan for effect `Factory`"),
+            err.contains("Factory.build")
+                && err.contains("not yet supported in compiled handler lowering"),
             "expected missing handler-operation-plan diagnostic, got: {err}"
         );
 

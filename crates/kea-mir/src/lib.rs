@@ -4539,7 +4539,7 @@ impl FunctionLoweringCtx {
                     let Some(plan) = self.active_effect_handlers.get(&effect) else {
                         self.emit_inst(MirInst::Unsupported {
                             detail: format!(
-                                "missing handler operation plan for effect `{effect}` in call lowering"
+                                "effect operation `{effect}.{operation}` is not yet supported in compiled handler lowering (missing handler operation plan for effect `{effect}`)"
                             ),
                         });
                         return None;
@@ -4547,7 +4547,7 @@ impl FunctionLoweringCtx {
                     let Some(lowering) = plan.operation_lowering.get(&operation).copied() else {
                         self.emit_inst(MirInst::Unsupported {
                             detail: format!(
-                                "missing handler operation plan for `{effect}.{operation}` in call lowering"
+                                "effect operation `{effect}.{operation}` is not yet supported in compiled handler lowering (missing handler operation plan)"
                             ),
                         });
                         return None;
