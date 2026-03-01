@@ -22341,6 +22341,130 @@ structure PrincipalFieldTypingDualConsequence
       ↔ PrincipalFieldTypingSliceCore env fs rf
   inferFields_agrees : inferFields env fs = some rf
 
+/-- Explicit component alias for `PrincipalTypingDualConsequence`. -/
+abbrev PrincipalTypingDualConsequenceComponents
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty) : Prop :=
+  PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty ∧
+    PrincipalTypingSliceCore env e ty ∧
+    (PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty
+      ↔ PrincipalTypingSliceCore env e ty) ∧
+    (inferExpr env e = some ty)
+
+/-- `PrincipalTypingDualConsequence` is equivalent to explicit components. -/
+theorem principalTypingDualConsequence_iff_components
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty) :
+    PrincipalTypingDualConsequence h_app h_proj st fuel env e st' ty
+      ↔ PrincipalTypingDualConsequenceComponents h_app h_proj st fuel env e st' ty := by
+  constructor
+  · intro h_conseq
+    exact ⟨h_conseq.preconditioned, h_conseq.core, h_conseq.preconditioned_iff_core,
+      h_conseq.inferExpr_agrees⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2.1, h_comp.2.2.1, h_comp.2.2.2⟩
+
+/-- Build `PrincipalTypingDualConsequence` from explicit components. -/
+theorem principalTypingDualConsequence_of_components
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_comp : PrincipalTypingDualConsequenceComponents h_app h_proj st fuel env e st' ty) :
+    PrincipalTypingDualConsequence h_app h_proj st fuel env e st' ty :=
+  (principalTypingDualConsequence_iff_components
+    h_app h_proj st fuel env e st' ty).2 h_comp
+
+/-- Decompose `PrincipalTypingDualConsequence` into explicit components. -/
+theorem principalTypingDualConsequence_as_components
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_conseq : PrincipalTypingDualConsequence h_app h_proj st fuel env e st' ty) :
+    PrincipalTypingDualConsequenceComponents h_app h_proj st fuel env e st' ty :=
+  (principalTypingDualConsequence_iff_components
+    h_app h_proj st fuel env e st' ty).1 h_conseq
+
+/-- Direct components-route decomposition for `PrincipalTypingDualConsequence`. -/
+theorem principalTypingDualConsequence_as_components_of_components
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_comp : PrincipalTypingDualConsequenceComponents h_app h_proj st fuel env e st' ty) :
+    PrincipalTypingDualConsequenceComponents h_app h_proj st fuel env e st' ty :=
+  (principalTypingDualConsequence_iff_components
+    h_app h_proj st fuel env e st' ty).1
+    (principalTypingDualConsequence_of_components
+      h_app h_proj st fuel env e st' ty h_comp)
+
+/-- Explicit component alias for `PrincipalFieldTypingDualConsequence`. -/
+abbrev PrincipalFieldTypingDualConsequenceComponents
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields) : Prop :=
+  PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf ∧
+    PrincipalFieldTypingSliceCore env fs rf ∧
+    (PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf
+      ↔ PrincipalFieldTypingSliceCore env fs rf) ∧
+    (inferFields env fs = some rf)
+
+/-- `PrincipalFieldTypingDualConsequence` is equivalent to explicit components. -/
+theorem principalFieldTypingDualConsequence_iff_components
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields) :
+    PrincipalFieldTypingDualConsequence h_app h_proj st fuel env fs st' rf
+      ↔ PrincipalFieldTypingDualConsequenceComponents h_app h_proj st fuel env fs st' rf := by
+  constructor
+  · intro h_conseq
+    exact ⟨h_conseq.preconditioned, h_conseq.core, h_conseq.preconditioned_iff_core,
+      h_conseq.inferFields_agrees⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2.1, h_comp.2.2.1, h_comp.2.2.2⟩
+
+/-- Build `PrincipalFieldTypingDualConsequence` from explicit components. -/
+theorem principalFieldTypingDualConsequence_of_components
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_comp : PrincipalFieldTypingDualConsequenceComponents h_app h_proj st fuel env fs st' rf) :
+    PrincipalFieldTypingDualConsequence h_app h_proj st fuel env fs st' rf :=
+  (principalFieldTypingDualConsequence_iff_components
+    h_app h_proj st fuel env fs st' rf).2 h_comp
+
+/-- Decompose `PrincipalFieldTypingDualConsequence` into explicit components. -/
+theorem principalFieldTypingDualConsequence_as_components
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_conseq : PrincipalFieldTypingDualConsequence h_app h_proj st fuel env fs st' rf) :
+    PrincipalFieldTypingDualConsequenceComponents h_app h_proj st fuel env fs st' rf :=
+  (principalFieldTypingDualConsequence_iff_components
+    h_app h_proj st fuel env fs st' rf).1 h_conseq
+
+/-- Direct components-route decomposition for `PrincipalFieldTypingDualConsequence`. -/
+theorem principalFieldTypingDualConsequence_as_components_of_components
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_comp : PrincipalFieldTypingDualConsequenceComponents h_app h_proj st fuel env fs st' rf) :
+    PrincipalFieldTypingDualConsequenceComponents h_app h_proj st fuel env fs st' rf :=
+  (principalFieldTypingDualConsequence_iff_components
+    h_app h_proj st fuel env fs st' rf).1
+    (principalFieldTypingDualConsequence_of_components
+      h_app h_proj st fuel env fs st' rf h_comp)
+
 /--
 Construct expression dual-principal consequences from a successful run via the
 dual bundle API.

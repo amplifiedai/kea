@@ -10503,3 +10503,38 @@ For each package: added `...Components` plus
 **Impact**:
 - Full-surface consumers can stay on the same decomposition idiom already used
   by consequence and route-layer packages.
+
+### 2026-03-01: dual-bundle consequence decomposition aliases
+
+**Context**: Added component aliases and structural decomposition APIs in
+`Kea/Typing.lean` for:
+- `PrincipalTypingDualConsequence`
+- `PrincipalFieldTypingDualConsequence`
+
+For each package: added `...Components` plus
+`..._{iff_components,of_components,as_components,as_components_of_components}`.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Structural API expansion only; no runtime semantic change.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Dual-bundle bridge consequence packages now support explicit component
+  reconstruction and one-hop decomposition.
+
+**Impact**:
+- Bridge-level proof paths can use the same component-route API as suite/full
+  and route-layer packages.
