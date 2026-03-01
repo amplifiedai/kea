@@ -3834,6 +3834,53 @@
     }
 
     #[test]
+    fn compile_and_execute_function_with_thirty_parameters_exit_code() {
+        let mut source = String::from("fn sum30(");
+        for i in 1..=30 {
+            if i > 1 {
+                source.push_str(", ");
+            }
+            source.push_str(&format!("a{i}: Int"));
+        }
+        source.push_str(") -> Int\n  ");
+        for i in 1..=30 {
+            if i > 1 {
+                source.push_str(" + ");
+            }
+            source.push_str(&format!("a{i}"));
+        }
+        source.push_str("\n\nfn main() -> Int\n  sum30(");
+        for i in 1..=30 {
+            if i > 1 {
+                source.push_str(", ");
+            }
+            source.push_str(&i.to_string());
+        }
+        source.push_str(")\n");
+        let source_path = write_temp_source(&source, "kea-cli-thirty-parameter-function", "kea");
+
+        let run = run_file(&source_path).expect("30-parameter function run should succeed");
+        assert_eq!(run.exit_code, 465);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_hundred_nested_let_bindings_exit_code() {
+        let mut source = String::from("fn main() -> Int\n");
+        for i in 0..100 {
+            source.push_str(&format!("  let x{i} = {}\n", i + 1));
+        }
+        source.push_str("  x99\n");
+        let source_path = write_temp_source(&source, "kea-cli-hundred-nested-lets", "kea");
+
+        let run = run_file(&source_path).expect("100 nested let bindings should run");
+        assert_eq!(run.exit_code, 100);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_reject_non_tail_resumptive_clause_body_with_effects() {
         let source_path = write_temp_source(
             "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\neffect Log\n  fn log(msg: Int) -> Unit\n\nfn f() -[State Int, Log]> Int\n  State.get()\n\nfn run_state() -[Log]> Int\n  handle f()\n    State.get() ->\n      Log.log(1)\n      resume 0\n    State.put(next) -> resume ()\n\nfn main() -> Int\n  handle run_state()\n    Log.log(msg) -> resume ()\n",
