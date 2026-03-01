@@ -600,6 +600,44 @@ theorem effectHandlerResumeLinearityBundle_as_components_of_wellTyped
     clause
     (effectHandlerResumeLinearityBundle_of_wellTyped clause h_wellTyped)
 
+/-- Singleton handler packaging for a single clause. -/
+def singletonHandleContract
+    (clause : HandleClauseContract) :
+    HandleClauseContract.HandleContract where
+  clauses := [clause]
+
+theorem singletonHandleContract_wellTypedSlice_of_wellTyped
+    (clause : HandleClauseContract)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause) :
+    HandleClauseContract.handlerWellTypedSlice (singletonHandleContract clause) := by
+  intro c h_mem
+  have h_eq : c = clause := by
+    simpa [singletonHandleContract] using h_mem
+  subst h_eq
+  exact h_wellTyped
+
+/--
+Handler-level packaged resume-linearity consequence from a clause-level
+well-typed premise via singleton handler membership.
+-/
+def effectHandlerHandlerResumeLinearityBundle_of_wellTyped
+    (clause : HandleClauseContract)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause) :
+    HandleClauseContract.HandlerResumeLinearityBundle (singletonHandleContract clause) :=
+  HandleClauseContract.handlerResumeLinearityBundle_of_handlerWellTypedSlice
+    (singletonHandleContract clause)
+    (singletonHandleContract_wellTypedSlice_of_wellTyped clause h_wellTyped)
+
+/-- One-hop decomposition of singleton handler-level resume-linearity bundle. -/
+theorem effectHandlerHandlerResumeLinearityBundle_as_components_of_wellTyped
+    (clause : HandleClauseContract)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause) :
+    HandleClauseContract.HandlerResumeLinearityBundleComponents
+      (singletonHandleContract clause) :=
+  HandleClauseContract.handlerResumeLinearityBundle_as_components
+    (singletonHandleContract clause)
+    (effectHandlerHandlerResumeLinearityBundle_of_wellTyped clause h_wellTyped)
+
 /--
 Premise-route wrapper: extract the packaged resume-linearity consequence along
 the same route used to build `EffectHandlerSuite`.
@@ -653,6 +691,58 @@ theorem effectHandlerSuite_resumeLinearityBundle_as_components_of_premises
           _errTy) :
     HandleClauseContract.ClauseResumeLinearityBundleComponents clause :=
   effectHandlerResumeLinearityBundle_as_components_of_wellTyped clause h_wellTyped
+
+/--
+Premise-route wrapper: extract singleton handler-level packaged linearity along
+the same route used to build `EffectHandlerSuite`.
+-/
+def effectHandlerSuite_handlerResumeLinearityBundle_of_premises
+    (clause : HandleClauseContract)
+    (_baseEffects : EffectRow)
+    (_capability : Label)
+    (_innerEffects : EffectRow)
+    (_okTy _errTy _loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (_h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects _baseEffects _capability)
+    (_h_cap_ne : _capability ≠ clause.handled)
+    (_h_failZero : FailResultContracts.failAsZeroResume clause)
+    (_h_clauseEffects : clause.exprEffects = _innerEffects)
+    (_h_lowered :
+      _loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams _innerEffects _okTy)
+          clause.exprEffects
+          _okTy
+          _errTy) :
+    HandleClauseContract.HandlerResumeLinearityBundle (singletonHandleContract clause) :=
+  effectHandlerHandlerResumeLinearityBundle_of_wellTyped clause h_wellTyped
+
+theorem effectHandlerSuite_handlerResumeLinearityBundle_as_components_of_premises
+    (clause : HandleClauseContract)
+    (_baseEffects : EffectRow)
+    (_capability : Label)
+    (_innerEffects : EffectRow)
+    (_okTy _errTy _loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (_h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects _baseEffects _capability)
+    (_h_cap_ne : _capability ≠ clause.handled)
+    (_h_failZero : FailResultContracts.failAsZeroResume clause)
+    (_h_clauseEffects : clause.exprEffects = _innerEffects)
+    (_h_lowered :
+      _loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams _innerEffects _okTy)
+          clause.exprEffects
+          _okTy
+          _errTy) :
+    HandleClauseContract.HandlerResumeLinearityBundleComponents
+      (singletonHandleContract clause) :=
+  effectHandlerHandlerResumeLinearityBundle_as_components_of_wellTyped
+    clause h_wellTyped
 
 /--
 Fail-present-route wrapper: extract the packaged resume-linearity consequence
@@ -711,6 +801,61 @@ theorem effectHandlerSuite_resumeLinearityBundle_as_components_of_fail_present
           _errTy) :
     HandleClauseContract.ClauseResumeLinearityBundleComponents clause :=
   effectHandlerResumeLinearityBundle_as_components_of_wellTyped clause h_wellTyped
+
+/--
+Fail-present route wrapper for singleton handler-level packaged linearity.
+-/
+def effectHandlerSuite_handlerResumeLinearityBundle_of_fail_present
+    (clause : HandleClauseContract)
+    (_baseEffects : EffectRow)
+    (_capability : Label)
+    (_innerEffects : EffectRow)
+    (_okTy _errTy _loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (_h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects _baseEffects _capability)
+    (_h_cap_ne : _capability ≠ clause.handled)
+    (_h_failZero : FailResultContracts.failAsZeroResume clause)
+    (_h_fail_present :
+      RowFields.has (EffectRow.fields clause.exprEffects) FailResultContracts.failLabel = true)
+    (_h_clauseEffects : clause.exprEffects = _innerEffects)
+    (_h_lowered :
+      _loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams _innerEffects _okTy)
+          clause.exprEffects
+          _okTy
+          _errTy) :
+    HandleClauseContract.HandlerResumeLinearityBundle (singletonHandleContract clause) :=
+  effectHandlerHandlerResumeLinearityBundle_of_wellTyped clause h_wellTyped
+
+theorem effectHandlerSuite_handlerResumeLinearityBundle_as_components_of_fail_present
+    (clause : HandleClauseContract)
+    (_baseEffects : EffectRow)
+    (_capability : Label)
+    (_innerEffects : EffectRow)
+    (_okTy _errTy _loweredTy : Ty)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice clause)
+    (_h_expr :
+      clause.exprEffects =
+        EffectOperationTyping.performOperationEffects _baseEffects _capability)
+    (_h_cap_ne : _capability ≠ clause.handled)
+    (_h_failZero : FailResultContracts.failAsZeroResume clause)
+    (_h_fail_present :
+      RowFields.has (EffectRow.fields clause.exprEffects) FailResultContracts.failLabel = true)
+    (_h_clauseEffects : clause.exprEffects = _innerEffects)
+    (_h_lowered :
+      _loweredTy =
+        FailResultContracts.lowerFailFunctionType
+          (CatchInteroperabilitySuite.higherOrderParams _innerEffects _okTy)
+          clause.exprEffects
+          _okTy
+          _errTy) :
+    HandleClauseContract.HandlerResumeLinearityBundleComponents
+      (singletonHandleContract clause) :=
+  effectHandlerHandlerResumeLinearityBundle_as_components_of_wellTyped
+    clause h_wellTyped
 
 theorem effectHandlerSuite_as_components_of_premises
     (clause : HandleClauseContract)
