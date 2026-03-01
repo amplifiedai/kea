@@ -11791,3 +11791,42 @@ into one suite-level theorem surface.
 **Impact**:
 - Improves WP7.3 integration with WP7.2 deeper kernel contracts while keeping
   route-level APIs on the standard suite decomposition pattern.
+
+### 2026-03-01: unified numeric/dimension/shape master suite
+
+**Context**: Extended `Kea/Properties/ShapeConstructorParity.lean` with:
+- `NumericDimShapeMasterSuite`
+- `numericDimShapeMasterSuite`
+- `NumericDimShapeMasterSuiteComponents`
+- `numericDimShapeMasterSuite_{as_components,of_components,as_components_of_components,iff_components}`
+
+This package combines:
+- `DecimalDimKernelExtendedSuite` (decimal/numeric + extended dimensions),
+- `NumericShapeMixedDimKernelMasterSuite` (numeric + constant/mixed shape),
+into one top-level unified theorem witness.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No semantic change; this is suite composition/decomposition across existing
+  package layers.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- One theorem surface now spans decimal/numeric, deeper dimensions, and both
+  constant+mixed shape kernel layers.
+
+**Impact**:
+- Further compresses WP7.2–WP7.4 theorem routing and keeps the vertical
+  packaging stack coherent for downstream consumers.
