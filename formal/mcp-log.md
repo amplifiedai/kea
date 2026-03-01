@@ -13315,3 +13315,43 @@ New theorem surface:
 **Impact**:
 - Eliminates an extra coherence-field projection layer for top-level users and
   keeps the combined suite ergonomics symmetric across both facets.
+
+### 2026-03-02: handler-absence parity for top-level disjoint coherence facets
+
+**Context**: Extended `Kea/Properties/EffectHandlerContractSuite.lean` with
+direct handler-absence wrappers for all six coherence-side projections already
+available from `EffectHandlerDisjointObservationalSuite`.
+
+New theorem surface:
+- `effectHandlerDisjointObservationalSuite_leftTargetAAbsent_of_handler_absence`
+- `effectHandlerDisjointObservationalSuite_leftTargetBAbsent_of_handler_absence`
+- `effectHandlerDisjointObservationalSuite_rightTargetAAbsent_of_handler_absence`
+- `effectHandlerDisjointObservationalSuite_rightTargetBAbsent_of_handler_absence`
+- `effectHandlerDisjointObservationalSuite_leftRowTailStable_of_handler_absence`
+- `effectHandlerDisjointObservationalSuite_rightRowTailStable_of_handler_absence`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; this is premise-route projection parity
+  over existing combined-suite coherence facets.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Combined disjoint observational APIs now provide one-hop handler-absence
+  entrypoints for both observational and coherence-side consequences.
+
+**Impact**:
+- Closes the remaining premise-route ergonomics gap on the top-level disjoint
+  package and removes all intermediate witness threading for these facets.
