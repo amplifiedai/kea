@@ -3011,6 +3011,40 @@
     }
 
     #[test]
+    fn compile_rejects_division_by_zero_literal() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  1 / 0\n",
+            "kea-cli-div-by-zero-literal",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("division by zero literal should fail at compile time");
+        assert!(
+            err.contains("division by zero is not allowed"),
+            "expected division-by-zero diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_rejects_modulo_by_zero_literal() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  7 % 0\n",
+            "kea-cli-mod-by-zero-literal",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("modulo by zero literal should fail at compile time");
+        assert!(
+            err.contains("modulo by zero is not allowed"),
+            "expected modulo-by-zero diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_rejects_unique_use_after_move() {
         let source_path = write_temp_source(
             "enum Unique a\n  Unique(a)\n\nfn consume(value: Unique Int) -> Int\n  case value\n    Unique(v) -> v\n\nfn main() -> Int\n  let u = Unique(7)\n  let first = consume(u)\n  first + consume(u)\n",
