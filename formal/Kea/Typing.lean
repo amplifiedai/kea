@@ -24421,6 +24421,130 @@ structure PrincipalFieldRunBundleConsequences
       (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
         ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf)
 
+/-- Explicit component alias for `PrincipalExprRunBundleConsequences`. -/
+abbrev PrincipalExprRunBundleConsequencesComponents
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty) : Prop :=
+  PrincipalTypingSliceCore env e ty ∧
+    (∀ h_app h_proj,
+      PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty) ∧
+    (∀ (h_hooks : UnifyHookPremises),
+      PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty) ∧
+    (∀ h_app h_proj,
+      (PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty
+        ↔ PrincipalTypingSliceCore env e ty)) ∧
+    (∀ (h_hooks : UnifyHookPremises),
+      (PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty
+        ↔ PrincipalTypingSliceCore env e ty)) ∧
+    (∀ {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+      {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook},
+      (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+        ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty))
+
+/-- `PrincipalExprRunBundleConsequences` is equivalent to explicit components. -/
+theorem principalExprRunBundleConsequences_iff_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty) :
+    PrincipalExprRunBundleConsequences st fuel env e st' ty
+      ↔ PrincipalExprRunBundleConsequencesComponents st fuel env e st' ty := by
+  constructor
+  · intro h_bundle
+    exact ⟨h_bundle.core, h_bundle.preconditionedAny, h_bundle.preconditioned,
+      h_bundle.preconditionedAnyIffCore, h_bundle.preconditionedIffCore, h_bundle.hookIrrelevant⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2.1, h_comp.2.2.1, h_comp.2.2.2.1, h_comp.2.2.2.2.1, h_comp.2.2.2.2.2⟩
+
+/-- Build `PrincipalExprRunBundleConsequences` from explicit components. -/
+theorem principalExprRunBundleConsequences_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_comp : PrincipalExprRunBundleConsequencesComponents st fuel env e st' ty) :
+    PrincipalExprRunBundleConsequences st fuel env e st' ty :=
+  (principalExprRunBundleConsequences_iff_components
+    st fuel env e st' ty).2 h_comp
+
+/-- Decompose `PrincipalExprRunBundleConsequences` into explicit components. -/
+theorem principalExprRunBundleConsequences_as_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_bundle : PrincipalExprRunBundleConsequences st fuel env e st' ty) :
+    PrincipalExprRunBundleConsequencesComponents st fuel env e st' ty :=
+  (principalExprRunBundleConsequences_iff_components
+    st fuel env e st' ty).1 h_bundle
+
+/-- Direct components-route decomposition for `PrincipalExprRunBundleConsequences`. -/
+theorem principalExprRunBundleConsequences_as_components_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_comp : PrincipalExprRunBundleConsequencesComponents st fuel env e st' ty) :
+    PrincipalExprRunBundleConsequencesComponents st fuel env e st' ty :=
+  (principalExprRunBundleConsequences_iff_components
+    st fuel env e st' ty).1
+    (principalExprRunBundleConsequences_of_components
+      st fuel env e st' ty h_comp)
+
+/-- Explicit component alias for `PrincipalFieldRunBundleConsequences`. -/
+abbrev PrincipalFieldRunBundleConsequencesComponents
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields) : Prop :=
+  PrincipalFieldTypingSliceCore env fs rf ∧
+    (∀ h_app h_proj,
+      PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf) ∧
+    (∀ (h_hooks : UnifyHookPremises),
+      PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf) ∧
+    (∀ h_app h_proj,
+      (PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf
+        ↔ PrincipalFieldTypingSliceCore env fs rf)) ∧
+    (∀ (h_hooks : UnifyHookPremises),
+      (PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf
+        ↔ PrincipalFieldTypingSliceCore env fs rf)) ∧
+    (∀ {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+      {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook},
+      (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+        ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf))
+
+/-- `PrincipalFieldRunBundleConsequences` is equivalent to explicit components. -/
+theorem principalFieldRunBundleConsequences_iff_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields) :
+    PrincipalFieldRunBundleConsequences st fuel env fs st' rf
+      ↔ PrincipalFieldRunBundleConsequencesComponents st fuel env fs st' rf := by
+  constructor
+  · intro h_bundle
+    exact ⟨h_bundle.core, h_bundle.preconditionedAny, h_bundle.preconditioned,
+      h_bundle.preconditionedAnyIffCore, h_bundle.preconditionedIffCore, h_bundle.hookIrrelevant⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2.1, h_comp.2.2.1, h_comp.2.2.2.1, h_comp.2.2.2.2.1, h_comp.2.2.2.2.2⟩
+
+/-- Build `PrincipalFieldRunBundleConsequences` from explicit components. -/
+theorem principalFieldRunBundleConsequences_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_comp : PrincipalFieldRunBundleConsequencesComponents st fuel env fs st' rf) :
+    PrincipalFieldRunBundleConsequences st fuel env fs st' rf :=
+  (principalFieldRunBundleConsequences_iff_components
+    st fuel env fs st' rf).2 h_comp
+
+/-- Decompose `PrincipalFieldRunBundleConsequences` into explicit components. -/
+theorem principalFieldRunBundleConsequences_as_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_bundle : PrincipalFieldRunBundleConsequences st fuel env fs st' rf) :
+    PrincipalFieldRunBundleConsequencesComponents st fuel env fs st' rf :=
+  (principalFieldRunBundleConsequences_iff_components
+    st fuel env fs st' rf).1 h_bundle
+
+/-- Direct components-route decomposition for `PrincipalFieldRunBundleConsequences`. -/
+theorem principalFieldRunBundleConsequences_as_components_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_comp : PrincipalFieldRunBundleConsequencesComponents st fuel env fs st' rf) :
+    PrincipalFieldRunBundleConsequencesComponents st fuel env fs st' rf :=
+  (principalFieldRunBundleConsequences_iff_components
+    st fuel env fs st' rf).1
+    (principalFieldRunBundleConsequences_of_components
+      st fuel env fs st' rf h_comp)
+
 /--
 Build packaged expression consequences from one successful run on the
 boundary+sound capstone through the run-bundle route.
