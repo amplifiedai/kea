@@ -430,6 +430,12 @@ pub fn lower_hir_module(module: &HirModule) -> MirModule {
             ));
         }
     }
+    // Generate default capability wrapper functions.  These are zero-capture
+    // closures whose entry calls the runtime directly.  Entry-point functions
+    // (main) create ClosureInit references to these wrappers so that capability
+    // cells can be threaded to callees even when no user handler is installed.
+    functions.extend(generate_default_capability_wrappers(&effect_operations));
+
     for function in &mut functions {
         rewrite_trmc_descending_sum_chain(function);
         emit_reuse_tokens_for_trailing_release_alloc(function, &layouts);
@@ -2239,6 +2245,69 @@ fn is_direct_capability_effect(effect: &str) -> bool {
         .any(|capability| capability.effect == effect)
 }
 
+fn default_capability_wrapper_name(effect: &str, operation: &str) -> String {
+    format!("__kea_default_{effect}_{operation}")
+}
+
+/// Generate MIR wrapper functions for each capability operation.  Each wrapper
+/// is a closure entry: it takes `(closure_ptr, ...operation_args)` and forwards
+/// to `EffectOp::Direct`.  Entry-point functions create closures referencing
+/// these wrappers as default capability cells.
+fn generate_default_capability_wrappers(
+    effect_operations: &BTreeMap<String, EffectOperationInfo>,
+) -> Vec<MirFunction> {
+    let mut wrappers = Vec::new();
+    let mut seen = BTreeSet::new();
+    for op in effect_operations.values() {
+        if !is_direct_capability_effect(&op.effect) {
+            continue;
+        }
+        let fn_name = default_capability_wrapper_name(&op.effect, &op.operation);
+        if !seen.insert(fn_name.clone()) {
+            continue;
+        }
+        // Params: closure_ptr (Dynamic) + one Dynamic per real arg
+        let mut params = vec![Type::Dynamic]; // closure_ptr (unused)
+        for _ in 0..op.arity {
+            params.push(Type::Dynamic);
+        }
+        let ret = if op.returns_unit {
+            Type::Unit
+        } else {
+            Type::Dynamic
+        };
+        // Real args are MirValueId(1..arity) — MirValueId(0) is closure_ptr
+        let args: Vec<MirValueId> = (1..=op.arity as u32).map(MirValueId).collect();
+        let result = if op.returns_unit {
+            None
+        } else {
+            Some(MirValueId(op.arity as u32 + 1))
+        };
+        wrappers.push(MirFunction {
+            name: fn_name,
+            signature: MirFunctionSignature {
+                params,
+                ret: ret.clone(),
+                effects: EffectRow::pure(),
+            },
+            entry: MirBlockId(0),
+            blocks: vec![MirBlock {
+                id: MirBlockId(0),
+                params: Vec::new(),
+                instructions: vec![MirInst::EffectOp {
+                    class: MirEffectOpClass::Direct,
+                    effect: op.effect.clone(),
+                    operation: op.operation.clone(),
+                    args,
+                    result: result.clone(),
+                }],
+                terminator: MirTerminator::Return { value: result },
+            }],
+        });
+    }
+    wrappers
+}
+
 #[derive(Debug, Clone)]
 struct EffectOperationInfo {
     effect: String,
@@ -2295,10 +2364,21 @@ fn handler_plan_for_effect(
     effect_operations: &BTreeMap<String, EffectOperationInfo>,
     effect: &str,
 ) -> Option<ActiveEffectHandlerPlan> {
+    let is_capability = is_direct_capability_effect(effect);
     let mut operation_lowering = BTreeMap::new();
     for op in effect_operations.values().filter(|op| op.effect == effect) {
-        let Some(lowering) = handler_cell_lowering_for_operation(op) else {
-            continue;
+        let lowering = if is_capability {
+            // Capability effects always use InvokeCallback so that both default
+            // runtime wrappers and mock handler callbacks are callable closures.
+            HandlerCellOpLowering::InvokeCallback {
+                arity: op.arity,
+                returns_unit: op.returns_unit,
+            }
+        } else {
+            let Some(l) = handler_cell_lowering_for_operation(op) else {
+                continue;
+            };
+            l
         };
         operation_lowering.insert(op.operation.clone(), lowering);
     }
@@ -2325,6 +2405,10 @@ fn collect_function_dispatch_effects(
         let Type::Function(ft) = &function.ty else {
             continue;
         };
+        // Entry-point functions (main) don't receive hidden dispatch params
+        // because the JIT harness calls them with zero args. They create
+        // default capability cells internally instead.
+        let is_entry_point = function.name == "main";
         let effects = ft
             .effects
             .row
@@ -2333,7 +2417,7 @@ fn collect_function_dispatch_effects(
             .map(|(label, _)| label.as_str().to_string())
             .filter(|effect| dispatchable_effects.contains(effect))
             .filter(|effect| effect != "Fail")
-            .filter(|effect| !is_direct_capability_effect(effect))
+            .filter(|effect| !is_entry_point || !is_direct_capability_effect(effect))
             .collect::<Vec<_>>();
         let mut dispatch_ops = BTreeSet::new();
         for effect in effects {
@@ -2994,6 +3078,42 @@ fn lower_hir_function(
             ctx.sum_value_types.insert(MirValueId(index as u32), sum_type);
         }
     }
+    // Entry-point functions create default capability cells (closures wrapping
+    // the runtime functions) so that capability dispatch cells can be threaded
+    // to callees even when no user handler is installed.
+    if function.name == "main"
+        && let Type::Function(ft) = &function.ty
+    {
+        for (label, _) in &ft.effects.row.fields {
+            let effect = label.as_str();
+            if !is_direct_capability_effect(effect) {
+                continue;
+            }
+            for op in effect_operations.values().filter(|op| op.effect == effect) {
+                let wrapper_name = default_capability_wrapper_name(effect, &op.operation);
+                let fn_ref = ctx.new_value();
+                ctx.emit_inst(MirInst::FunctionRef {
+                    dest: fn_ref.clone(),
+                    function: wrapper_name,
+                });
+                let closure = ctx.new_value();
+                ctx.emit_inst(MirInst::ClosureInit {
+                    dest: closure.clone(),
+                    entry: fn_ref,
+                    captures: vec![],
+                    capture_types: vec![],
+                });
+                ctx.active_effect_cells
+                    .insert((effect.to_string(), op.operation.clone()), closure);
+            }
+            if let Some(plan) = handler_plan_for_effect(effect_operations, effect) {
+                ctx.active_effect_handlers
+                    .entry(effect.to_string())
+                    .or_insert(plan);
+            }
+        }
+    }
+
     let return_value = if let HirExprKind::Lambda { params, body } = &function.body.kind {
         ctx.lower_lambda_to_closure_value(
             &function.body,
@@ -4138,7 +4258,7 @@ impl FunctionLoweringCtx {
                 }
             };
 
-            if clause.args.is_empty() {
+            if clause.args.is_empty() && !is_direct_capability_effect(&target_effect) {
                 let Some(resume_value) = resume_value else {
                     self.emit_inst(MirInst::Unsupported {
                         detail: format!(
@@ -4158,6 +4278,7 @@ impl FunctionLoweringCtx {
 
             if clause.args.len() == 1
                 && target_effect != "Log"
+                && !is_direct_capability_effect(&target_effect)
                 && matches!(
                     resume_value,
                     Some(value) if matches!(value.kind, HirExprKind::Lit(kea_ast::Lit::Unit))
@@ -4643,6 +4764,7 @@ impl FunctionLoweringCtx {
         if let HirExprKind::Var(name) = &func.kind
             && !capture_fail_result
             && let Some((effect, operation)) = direct_capability_operation(name)
+            && self.lookup_effect_cell(effect, operation).is_none()
         {
             let mut lowered_args = Vec::with_capacity(args.len());
             for arg in args {
@@ -5002,7 +5124,7 @@ impl FunctionLoweringCtx {
         let mut dispatch_ops = BTreeSet::new();
         for (label, _) in &effects.row.fields {
             let effect = label.as_str();
-            if effect == "Fail" || is_direct_capability_effect(effect) {
+            if effect == "Fail" {
                 continue;
             }
             for op in self.effect_operations.values().filter(|op| op.effect == effect) {
