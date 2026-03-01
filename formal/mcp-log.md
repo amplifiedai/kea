@@ -11556,3 +11556,42 @@ This packages the rank-2 var/const dim-list kernel family by bundling:
 **Impact**:
 - Strengthens WP7.2 deeper dim-aware theorem packaging on the kernel side and
   reduces theorem-by-theorem plumbing for downstream shape/decimal routes.
+
+### 2026-03-01: extended top-level dimension kernel suite
+
+**Context**: Extended `Kea/Dimensions.lean` with:
+- `DimKernelExtendedSuite`
+- `dimKernelExtendedSuite`
+- `DimKernelExtendedSuiteComponents`
+- `dimKernelExtendedSuite_{as_components,of_components,as_components_of_components,iff_components}`
+
+This packages:
+- `DimKernelSuite` (scalar + constant-list kernels), and
+- `DimPairVarConstKernelSlice` (rank-2 var/const list kernel classification)
+into one top-level dimension witness.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No semantic change; this is a suite-composition + decomposition layer over
+  already-proved kernel packages.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Dimension-kernel consumers can now depend on one top-level package witness
+  for core and rank-2 var/const kernel contracts together.
+
+**Impact**:
+- Improves WP7.2 theorem-route ergonomics and keeps deeper dim-aware surfaces
+  aligned with the project’s suite-style API pattern.

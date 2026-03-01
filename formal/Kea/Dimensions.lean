@@ -1225,3 +1225,47 @@ theorem dimKernelSuite_iff_components :
     exact dimKernelSuite_as_components suite
   · intro h
     exact dimKernelSuite_of_components h.1 h.2
+
+/-- Extended dimension-kernel package adding rank-2 var/const list
+classification on top of scalar/list constant kernels. -/
+structure DimKernelExtendedSuite : Prop where
+  core : DimKernelSuite
+  pairVarConst : DimPairVarConstKernelSlice
+
+/-- Explicit component alias for `DimKernelExtendedSuite`. -/
+abbrev DimKernelExtendedSuiteComponents : Prop :=
+  DimKernelSuite ∧ DimPairVarConstKernelSlice
+
+/-- Canonical extended dimension-kernel suite witness. -/
+theorem dimKernelExtendedSuite : DimKernelExtendedSuite := by
+  exact
+    { core := dimKernelSuite
+      pairVarConst := dimPairVarConstKernelSlice }
+
+/-- Decompose `DimKernelExtendedSuite` into explicit components. -/
+theorem dimKernelExtendedSuite_as_components
+    (suite : DimKernelExtendedSuite) :
+    DimKernelExtendedSuiteComponents :=
+  ⟨suite.core, suite.pairVarConst⟩
+
+/-- Build `DimKernelExtendedSuite` from explicit components. -/
+theorem dimKernelExtendedSuite_of_components
+    (core : DimKernelSuite)
+    (pairVarConst : DimPairVarConstKernelSlice) :
+    DimKernelExtendedSuite :=
+  { core := core, pairVarConst := pairVarConst }
+
+/-- Direct component-route decomposition for `DimKernelExtendedSuite`. -/
+theorem dimKernelExtendedSuite_as_components_of_components
+    (h_comp : DimKernelExtendedSuiteComponents) :
+    DimKernelExtendedSuiteComponents := by
+  simpa using h_comp
+
+/-- `DimKernelExtendedSuite` is equivalent to its explicit component pair. -/
+theorem dimKernelExtendedSuite_iff_components :
+    DimKernelExtendedSuite ↔ DimKernelExtendedSuiteComponents := by
+  constructor
+  · intro suite
+    exact dimKernelExtendedSuite_as_components suite
+  · intro h
+    exact dimKernelExtendedSuite_of_components h.1 h.2
