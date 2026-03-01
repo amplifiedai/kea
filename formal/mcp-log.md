@@ -12333,3 +12333,40 @@ New theorem surface:
 **Impact**:
 - Tightens soundness-route coherence and removes residual asymmetry in the
   evaluator soundness API.
+
+### 2026-03-01: component/decomposition parity for canonical eval soundness pair slices
+
+**Context**: Added explicit component aliases and decomposition wrappers for the
+canonical evaluator soundness pair surfaces in `Kea/Eval.lean`.
+
+New theorem surface:
+- `CoreCalculusSoundnessSliceComponents`
+- `coreCalculusSoundnessSlice_{iff_components,of_components,as_components,as_components_of_components}`
+- `CoreCalculusSoundnessSliceFromHooksComponents`
+- `coreCalculusSoundnessSliceFromHooks_{iff_components,of_components,as_components,as_components_of_components}`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime semantics change; these are definitional wrappers over existing
+  paired slice definitions.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Canonical soundness pair APIs now match the same decomposition ergonomics as
+  newer packaged theorem surfaces.
+
+**Impact**:
+- Maintains theorem-surface uniformity and reduces call-site friction when
+  switching between canonical and packaged evaluator soundness routes.
