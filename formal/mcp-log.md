@@ -12998,3 +12998,44 @@ New theorem surface:
 **Impact**:
 - Provides a stronger, citable coherence claim for independent handler
   composition in the Phase-2 formal model.
+
+### 2026-03-02: observational commutation lifted to nested and top-level suite APIs
+
+**Context**: Lifted the new disjoint-target observational commutation theorem
+from `HandlerEffectRemoval` into `NestedHandlerCompositionContracts` and
+`EffectHandlerContractSuite` so downstream proofs can consume it from higher
+aggregate layers.
+
+New theorem surface:
+- `nestedHandlerDisjointLabelObservationalEq_of_handler_absence`
+- `nestedHandlerDisjointLabelObservationalEq_rest_eq_of_handler_absence`
+- `nestedHandlerDisjointLabelObservationalEq_has_eq_of_handler_absence`
+- `effectHandlerDisjointCompositionCoherenceSuite_labelObservationalEq_of_handler_absence`
+- `effectHandlerDisjointCompositionCoherenceSuite_restEq_of_handler_absence`
+- `effectHandlerDisjointCompositionCoherenceSuite_hasEq_of_handler_absence`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; this is route-lift/projection closure of
+  an already-proved observational commutation contract.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Observational commutation is now consumable from both nested and aggregate
+  Phase-2 interfaces with direct premise-route access.
+
+**Impact**:
+- Strengthens end-to-end composition-coherence ergonomics for multi-handler
+  reasoning without dropping to lower-level row lemmas.

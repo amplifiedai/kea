@@ -456,5 +456,74 @@ theorem nestedHandlerDisjointCoherence_as_components_of_handler_absence
     h_handlerB_abs_targetA
     h_handlerB_abs_targetB
 
+/--
+Alias surface for disjoint-target nested composition commutation up to
+label-observational equivalence.
+-/
+abbrev NestedHandlerDisjointLabelObservationalEq
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label) : Prop :=
+  EffectRow.LabelObservationalEq
+    (nestedComposeDisjoint effects handlerA handlerB targetA targetB)
+    (nestedComposeDisjointSwap effects handlerA handlerB targetA targetB)
+
+theorem nestedHandlerDisjointLabelObservationalEq_of_handler_absence
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label)
+    (h_targets_ne : targetA ≠ targetB)
+    (h_handlerA_abs_targetA : RowFields.has (EffectRow.fields handlerA) targetA = false)
+    (h_handlerA_abs_targetB : RowFields.has (EffectRow.fields handlerA) targetB = false)
+    (h_handlerB_abs_targetA : RowFields.has (EffectRow.fields handlerB) targetA = false)
+    (h_handlerB_abs_targetB : RowFields.has (EffectRow.fields handlerB) targetB = false) :
+    NestedHandlerDisjointLabelObservationalEq effects handlerA handlerB targetA targetB :=
+  EffectRow.disjoint_handler_composition_labelObservationalEq_of_handler_absence
+    effects handlerA handlerB targetA targetB
+    h_targets_ne
+    h_handlerA_abs_targetA
+    h_handlerA_abs_targetB
+    h_handlerB_abs_targetA
+    h_handlerB_abs_targetB
+
+theorem nestedHandlerDisjointLabelObservationalEq_rest_eq_of_handler_absence
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label)
+    (h_targets_ne : targetA ≠ targetB)
+    (h_handlerA_abs_targetA : RowFields.has (EffectRow.fields handlerA) targetA = false)
+    (h_handlerA_abs_targetB : RowFields.has (EffectRow.fields handlerA) targetB = false)
+    (h_handlerB_abs_targetA : RowFields.has (EffectRow.fields handlerB) targetA = false)
+    (h_handlerB_abs_targetB : RowFields.has (EffectRow.fields handlerB) targetB = false) :
+    EffectRow.rest (nestedComposeDisjoint effects handlerA handlerB targetA targetB) =
+      EffectRow.rest (nestedComposeDisjointSwap effects handlerA handlerB targetA targetB) :=
+  (nestedHandlerDisjointLabelObservationalEq_of_handler_absence
+    effects handlerA handlerB targetA targetB
+    h_targets_ne
+    h_handlerA_abs_targetA
+    h_handlerA_abs_targetB
+    h_handlerB_abs_targetA
+    h_handlerB_abs_targetB).1
+
+theorem nestedHandlerDisjointLabelObservationalEq_has_eq_of_handler_absence
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label)
+    (label : Label)
+    (h_targets_ne : targetA ≠ targetB)
+    (h_handlerA_abs_targetA : RowFields.has (EffectRow.fields handlerA) targetA = false)
+    (h_handlerA_abs_targetB : RowFields.has (EffectRow.fields handlerA) targetB = false)
+    (h_handlerB_abs_targetA : RowFields.has (EffectRow.fields handlerB) targetA = false)
+    (h_handlerB_abs_targetB : RowFields.has (EffectRow.fields handlerB) targetB = false) :
+    RowFields.has
+      (EffectRow.fields (nestedComposeDisjoint effects handlerA handlerB targetA targetB))
+      label =
+    RowFields.has
+      (EffectRow.fields (nestedComposeDisjointSwap effects handlerA handlerB targetA targetB))
+      label :=
+  (nestedHandlerDisjointLabelObservationalEq_of_handler_absence
+    effects handlerA handlerB targetA targetB
+    h_targets_ne
+    h_handlerA_abs_targetA
+    h_handlerA_abs_targetB
+    h_handlerB_abs_targetA
+    h_handlerB_abs_targetB).2 label
+
 end NestedHandlerCompositionContracts
 end Kea
