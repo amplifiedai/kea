@@ -2850,6 +2850,121 @@ theorem mixedShapeVarConstBoundarySuite_iff_components
     exact mixedShapeVarConstBoundarySuite_of_components
       st fuel elem v n v1 v2 n1 n2 h_distinct h_kernel h_div h_nonGen
 
+/-- Master mixed-shape dim-aware boundary suite combining:
+    rank-2 mixed classification, distinct-vars boundary packaging, and
+    same-var/equal-constants boundary packaging. -/
+structure MixedShapeDeepDimKernelMasterSuite
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v : DimVarId) (n : Nat)
+    (v1 v2 : DimVarId) (n1 n2 : Nat)
+    (h_distinct : v1 ≠ v2)
+    (vSame : DimVarId) (h_eq : n1 = n2) : Prop where
+  rank2Classification :
+    TensorRank2MixedDimKernelClassificationSlice st fuel elem v1 v2 n1 n2
+  distinctVarBoundary :
+    MixedShapeVarConstBoundarySuite st fuel elem v n v1 v2 n1 n2 h_distinct
+  sameVarEqBoundary :
+    TensorRank2SameVarEqBoundarySuite st fuel elem vSame n1 n2 h_eq
+
+/-- Canonical master mixed-shape dim-aware boundary suite witness. -/
+theorem mixedShapeDeepDimKernelMasterSuite
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v : DimVarId) (n : Nat)
+    (v1 v2 : DimVarId) (n1 n2 : Nat)
+    (h_distinct : v1 ≠ v2)
+    (vSame : DimVarId) (h_eq : n1 = n2) :
+    MixedShapeDeepDimKernelMasterSuite
+      st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq := by
+  refine
+    { rank2Classification := ?_
+      distinctVarBoundary := ?_
+      sameVarEqBoundary := ?_ }
+  · exact tensorRank2MixedDimKernelClassificationSlice_proved
+      st fuel elem v1 v2 n1 n2
+  · exact mixedShapeVarConstBoundarySuite
+      st fuel elem v n v1 v2 n1 n2 h_distinct
+  · exact tensorRank2SameVarEqBoundarySuite
+      st fuel elem vSame n1 n2 h_eq
+
+/-- Explicit component tuple alias for `MixedShapeDeepDimKernelMasterSuite`. -/
+abbrev MixedShapeDeepDimKernelMasterSuiteComponents
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v : DimVarId) (n : Nat)
+    (v1 v2 : DimVarId) (n1 n2 : Nat)
+    (h_distinct : v1 ≠ v2)
+    (vSame : DimVarId) (h_eq : n1 = n2) : Prop :=
+  TensorRank2MixedDimKernelClassificationSlice st fuel elem v1 v2 n1 n2 ∧
+  MixedShapeVarConstBoundarySuite st fuel elem v n v1 v2 n1 n2 h_distinct ∧
+  TensorRank2SameVarEqBoundarySuite st fuel elem vSame n1 n2 h_eq
+
+/-- Decompose `MixedShapeDeepDimKernelMasterSuite` into explicit components. -/
+theorem mixedShapeDeepDimKernelMasterSuite_as_components
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v : DimVarId) (n : Nat)
+    (v1 v2 : DimVarId) (n1 n2 : Nat)
+    (h_distinct : v1 ≠ v2)
+    (vSame : DimVarId) (h_eq : n1 = n2)
+    (suite : MixedShapeDeepDimKernelMasterSuite
+      st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq) :
+    MixedShapeDeepDimKernelMasterSuiteComponents
+      st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq :=
+  ⟨suite.rank2Classification, suite.distinctVarBoundary, suite.sameVarEqBoundary⟩
+
+/-- Build `MixedShapeDeepDimKernelMasterSuite` from explicit components. -/
+theorem mixedShapeDeepDimKernelMasterSuite_of_components
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v : DimVarId) (n : Nat)
+    (v1 v2 : DimVarId) (n1 n2 : Nat)
+    (h_distinct : v1 ≠ v2)
+    (vSame : DimVarId) (h_eq : n1 = n2)
+    (h_rank2 :
+      TensorRank2MixedDimKernelClassificationSlice st fuel elem v1 v2 n1 n2)
+    (h_distinct_suite :
+      MixedShapeVarConstBoundarySuite st fuel elem v n v1 v2 n1 n2 h_distinct)
+    (h_same :
+      TensorRank2SameVarEqBoundarySuite st fuel elem vSame n1 n2 h_eq) :
+    MixedShapeDeepDimKernelMasterSuite
+      st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq :=
+  { rank2Classification := h_rank2
+    distinctVarBoundary := h_distinct_suite
+    sameVarEqBoundary := h_same }
+
+/-- Direct component-route decomposition for
+`MixedShapeDeepDimKernelMasterSuite`. -/
+theorem mixedShapeDeepDimKernelMasterSuite_as_components_of_components
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v : DimVarId) (n : Nat)
+    (v1 v2 : DimVarId) (n1 n2 : Nat)
+    (h_distinct : v1 ≠ v2)
+    (vSame : DimVarId) (h_eq : n1 = n2)
+    (h_comp : MixedShapeDeepDimKernelMasterSuiteComponents
+      st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq) :
+    MixedShapeDeepDimKernelMasterSuiteComponents
+      st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq := by
+  simpa using h_comp
+
+/-- `MixedShapeDeepDimKernelMasterSuite` is equivalent to its explicit
+component tuple. -/
+theorem mixedShapeDeepDimKernelMasterSuite_iff_components
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v : DimVarId) (n : Nat)
+    (v1 v2 : DimVarId) (n1 n2 : Nat)
+    (h_distinct : v1 ≠ v2)
+    (vSame : DimVarId) (h_eq : n1 = n2) :
+    MixedShapeDeepDimKernelMasterSuite
+      st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq ↔
+      MixedShapeDeepDimKernelMasterSuiteComponents
+        st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq := by
+  constructor
+  · intro suite
+    exact mixedShapeDeepDimKernelMasterSuite_as_components
+      st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq suite
+  · intro h
+    rcases h with ⟨h_rank2, h_distinct_suite, h_same⟩
+    exact mixedShapeDeepDimKernelMasterSuite_of_components
+      st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq
+      h_rank2 h_distinct_suite h_same
+
 /-- Fixed-size-list element mismatch does not unify when size matches. -/
 theorem fixedSizeList_elem_mismatch
     (st : UnifyState) (d : Nat) :

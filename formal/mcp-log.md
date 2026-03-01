@@ -11674,3 +11674,42 @@ kernel package.
 **Impact**:
 - Keeps the WP7.2 deeper kernel work reachable through the existing WP7.3/7.4
   numeric+shape composition path without breaking prior suite APIs.
+
+### 2026-03-01: master mixed-shape boundary package
+
+**Context**: Extended `Kea/Properties/ShapeConstructorParity.lean` with:
+- `MixedShapeDeepDimKernelMasterSuite`
+- `mixedShapeDeepDimKernelMasterSuite`
+- `MixedShapeDeepDimKernelMasterSuiteComponents`
+- `mixedShapeDeepDimKernelMasterSuite_{as_components,of_components,as_components_of_components,iff_components}`
+
+This package combines:
+- rank-2 mixed classification (`TensorRank2MixedDimKernelClassificationSlice`),
+- distinct-vars mixed boundary suite (`MixedShapeVarConstBoundarySuite`),
+- same-var/equal-constants boundary suite (`TensorRank2SameVarEqBoundarySuite`).
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No semantic change; this is suite-level composition/decomposition over
+  existing mixed-shape boundary packages.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Mixed-shape dim-aware boundary reasoning is now available from one master
+  theorem witness spanning distinct-vars and same-var/equal-constants routes.
+
+**Impact**:
+- Further reduces theorem plumbing for WP7.2 mixed-shape coverage and keeps
+  boundary-level APIs on the standard suite decomposition pattern.
