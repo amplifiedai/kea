@@ -13116,3 +13116,42 @@ New theorem surface:
 **Impact**:
 - Keeps observational coherence contracts API-consistent with the broader
   theorem-surface conventions used across the formal corpus.
+
+### 2026-03-02: combined top-level disjoint observational suite
+
+**Context**: Extended `Kea/Properties/EffectHandlerContractSuite.lean` with a
+combined package carrying both disjoint composition coherence and
+label-observational commutation.
+
+New theorem surface:
+- `EffectHandlerDisjointObservationalSuite`
+- `EffectHandlerDisjointObservationalSuiteComponents`
+- `effectHandlerDisjointObservationalSuite_{iff_components,of_components,as_components,as_components_of_components}`
+- `effectHandlerDisjointObservationalSuite_{of_handler_absence,as_components_of_handler_absence}`
+- `effectHandlerDisjointObservationalSuite_{coherence,observationalEq}`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; this is a package-level aggregation of
+  already proved disjoint coherence + observational commutation contracts.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- A single top-level witness now exports both consequence-level and
+  observational-level disjoint composition guarantees.
+
+**Impact**:
+- Improves downstream ergonomics for multi-handler coherence proofs that need
+  both facets together.

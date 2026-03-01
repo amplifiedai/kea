@@ -9307,5 +9307,148 @@ theorem effectHandlerDisjointCompositionCoherenceSuite_hasEq_of_handler_absence
     h_handlerB_abs_targetA
     h_handlerB_abs_targetB).2 label
 
+/--
+Combined top-level disjoint composition package carrying both:
+- target-absence/row-tail coherence consequences
+- full label-observational commutation witness
+-/
+structure EffectHandlerDisjointObservationalSuite
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label) : Prop where
+  coherence :
+    EffectHandlerDisjointCompositionCoherenceSuite effects handlerA handlerB targetA targetB
+  observationalEq :
+    EffectRow.LabelObservationalEq
+      (NestedHandlerCompositionContracts.nestedComposeDisjoint
+        effects handlerA handlerB targetA targetB)
+      (NestedHandlerCompositionContracts.nestedComposeDisjointSwap
+        effects handlerA handlerB targetA targetB)
+
+/-- Explicit component alias for `EffectHandlerDisjointObservationalSuite`. -/
+abbrev EffectHandlerDisjointObservationalSuiteComponents
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label) : Prop :=
+  EffectHandlerDisjointCompositionCoherenceSuite effects handlerA handlerB targetA targetB
+    ∧
+    EffectRow.LabelObservationalEq
+      (NestedHandlerCompositionContracts.nestedComposeDisjoint
+        effects handlerA handlerB targetA targetB)
+      (NestedHandlerCompositionContracts.nestedComposeDisjointSwap
+        effects handlerA handlerB targetA targetB)
+
+theorem effectHandlerDisjointObservationalSuite_iff_components
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label) :
+    EffectHandlerDisjointObservationalSuite effects handlerA handlerB targetA targetB
+      ↔
+      EffectHandlerDisjointObservationalSuiteComponents
+        effects handlerA handlerB targetA targetB := by
+  constructor
+  · intro h
+    exact ⟨h.coherence, h.observationalEq⟩
+  · intro h
+    exact { coherence := h.1, observationalEq := h.2 }
+
+theorem effectHandlerDisjointObservationalSuite_of_components
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label)
+    (h_comp :
+      EffectHandlerDisjointObservationalSuiteComponents
+        effects handlerA handlerB targetA targetB) :
+    EffectHandlerDisjointObservationalSuite effects handlerA handlerB targetA targetB :=
+  (effectHandlerDisjointObservationalSuite_iff_components
+    effects handlerA handlerB targetA targetB).2 h_comp
+
+theorem effectHandlerDisjointObservationalSuite_as_components
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label)
+    (h_suite :
+      EffectHandlerDisjointObservationalSuite effects handlerA handlerB targetA targetB) :
+    EffectHandlerDisjointObservationalSuiteComponents
+      effects handlerA handlerB targetA targetB :=
+  (effectHandlerDisjointObservationalSuite_iff_components
+    effects handlerA handlerB targetA targetB).1 h_suite
+
+theorem effectHandlerDisjointObservationalSuite_as_components_of_components
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label)
+    (h_comp :
+      EffectHandlerDisjointObservationalSuiteComponents
+        effects handlerA handlerB targetA targetB) :
+    EffectHandlerDisjointObservationalSuiteComponents
+      effects handlerA handlerB targetA targetB :=
+  effectHandlerDisjointObservationalSuite_as_components
+    effects handlerA handlerB targetA targetB
+    (effectHandlerDisjointObservationalSuite_of_components
+      effects handlerA handlerB targetA targetB h_comp)
+
+theorem effectHandlerDisjointObservationalSuite_of_handler_absence
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label)
+    (h_targets_ne : targetA ≠ targetB)
+    (h_handlerA_abs_targetA : RowFields.has (EffectRow.fields handlerA) targetA = false)
+    (h_handlerA_abs_targetB : RowFields.has (EffectRow.fields handlerA) targetB = false)
+    (h_handlerB_abs_targetA : RowFields.has (EffectRow.fields handlerB) targetA = false)
+    (h_handlerB_abs_targetB : RowFields.has (EffectRow.fields handlerB) targetB = false) :
+    EffectHandlerDisjointObservationalSuite effects handlerA handlerB targetA targetB := by
+  exact {
+    coherence :=
+      effectHandlerDisjointCompositionCoherenceSuite_of_handler_absence
+        effects handlerA handlerB targetA targetB
+        h_targets_ne
+        h_handlerA_abs_targetA
+        h_handlerA_abs_targetB
+        h_handlerB_abs_targetA
+        h_handlerB_abs_targetB
+    observationalEq :=
+      effectHandlerDisjointCompositionCoherenceSuite_labelObservationalEq_of_handler_absence
+        effects handlerA handlerB targetA targetB
+        h_targets_ne
+        h_handlerA_abs_targetA
+        h_handlerA_abs_targetB
+        h_handlerB_abs_targetA
+        h_handlerB_abs_targetB
+  }
+
+theorem effectHandlerDisjointObservationalSuite_as_components_of_handler_absence
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label)
+    (h_targets_ne : targetA ≠ targetB)
+    (h_handlerA_abs_targetA : RowFields.has (EffectRow.fields handlerA) targetA = false)
+    (h_handlerA_abs_targetB : RowFields.has (EffectRow.fields handlerA) targetB = false)
+    (h_handlerB_abs_targetA : RowFields.has (EffectRow.fields handlerB) targetA = false)
+    (h_handlerB_abs_targetB : RowFields.has (EffectRow.fields handlerB) targetB = false) :
+    EffectHandlerDisjointObservationalSuiteComponents
+      effects handlerA handlerB targetA targetB :=
+  effectHandlerDisjointObservationalSuite_as_components
+    effects handlerA handlerB targetA targetB
+    (effectHandlerDisjointObservationalSuite_of_handler_absence
+      effects handlerA handlerB targetA targetB
+      h_targets_ne
+      h_handlerA_abs_targetA
+      h_handlerA_abs_targetB
+      h_handlerB_abs_targetA
+      h_handlerB_abs_targetB)
+
+theorem effectHandlerDisjointObservationalSuite_coherence
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label)
+    (h_suite :
+      EffectHandlerDisjointObservationalSuite effects handlerA handlerB targetA targetB) :
+    EffectHandlerDisjointCompositionCoherenceSuite effects handlerA handlerB targetA targetB :=
+  h_suite.coherence
+
+theorem effectHandlerDisjointObservationalSuite_observationalEq
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label)
+    (h_suite :
+      EffectHandlerDisjointObservationalSuite effects handlerA handlerB targetA targetB) :
+    EffectRow.LabelObservationalEq
+      (NestedHandlerCompositionContracts.nestedComposeDisjoint
+        effects handlerA handlerB targetA targetB)
+      (NestedHandlerCompositionContracts.nestedComposeDisjointSwap
+        effects handlerA handlerB targetA targetB) :=
+  h_suite.observationalEq
+
 end EffectHandlerContractSuite
 end Kea
