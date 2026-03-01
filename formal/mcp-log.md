@@ -12664,3 +12664,43 @@ New theorem surface:
 **Impact**:
 - Reduces theorem plumbing at infer-success call sites while keeping the
   canonical soundness claim surface explicit.
+
+### 2026-03-02: canonical consequence <-> packaged bundle interoperability
+
+**Context**: Extended `Kea/Eval.lean` to make the new
+`CoreCalculusSoundnessConsequences` package explicitly interchangeable with
+`CoreTypeSoundnessEvalUnifyBundle`, including direct infer-success projections
+to bundle form.
+
+New theorem surface:
+- `coreCalculusSoundnessConsequences_iff_coreTypeSoundnessEvalUnifyBundle`
+- `coreCalculusSoundnessConsequences_of_bundle`
+- `coreCalculusSoundnessConsequences_as_bundle`
+- `coreCalculusSoundnessConsequences_as_bundle_of_inferUnify`
+- `coreCalculusSoundnessConsequences_as_bundle_of_inferUnify_from_hooks`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; this is theorem-level route/equivalence
+  closure between existing canonical and packaged run-local soundness surfaces.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Canonical run-local consequences and packaged triple bundles are now directly
+  interchangeable, with one-hop infer-success routes into bundle consumers.
+
+**Impact**:
+- Strengthens end-to-end soundness API coherence across canonical and packaged
+  theorem families.
