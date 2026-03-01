@@ -10987,3 +10987,40 @@ guarantees through the classifier+capstone paired route family.
 **Impact**:
 - Resume-linearity theorem routing is now consistent across aggregate,
   capstone, and coherent catch-pair layers.
+
+### 2026-03-01: composition-suite resume-linearity route wrappers
+
+**Context**: Extended `Kea/Properties/EffectHandlerContractSuite.lean` with
+resume-linearity route wrappers on the nested composition layer:
+- `effectHandlerCompositionSuite_resumeLinearityBundle_of_{premises,fail_present}`
+- `effectHandlerCompositionSuite_resumeLinearityBundle_as_components_of_{premises,fail_present}`
+- `effectHandlerCompositionSuite_resumeAtMostOnce_of_{premises,fail_present}`
+
+These lift the same clause-level resume guarantees through outer-handler
+composition entry routes.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No semantic change; wrappers should be route-level projections from
+  `wellTypedSlice`.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Composition entry routes now expose packaged and direct resume-linearity
+  consequences in one step.
+
+**Impact**:
+- Resume-linearity routing now remains uniform through the nested composition
+  layer in addition to aggregate/capstone/catch-pair layers.
