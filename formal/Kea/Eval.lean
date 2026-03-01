@@ -769,6 +769,25 @@ theorem coreProgressPreservationEvalFragmentFull_of_infer
   exact coreProgressPreservationEvalFragmentFull_of_hasType h_env h_ty h_frag
 
 /--
+Unification-threaded entrypoint to the same core progress+preservation pair.
+
+This bridges successful `inferExprUnify` runs (under bundled hook premises)
+into evaluator-side core soundness.
+-/
+theorem coreProgressPreservationEvalFragmentFull_of_inferUnify
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_hooks : UnifyHookPremises)
+    (st st' : UnifyState) (fuel : Nat)
+    (h_ok : inferExprUnify st fuel tenv e = .ok st' ty)
+    (h_env : EnvWellTyped tenv venv)
+    (h_frag : EvalFragmentFull e) :
+    CoreProgressPreservationEvalFragmentFull tenv venv e ty := by
+  have h_infer : inferExpr tenv e = some ty :=
+    inferExprUnify_inferExpr_agrees_of_success_from_hook_bundle_via_dual_bundle
+      h_hooks st fuel tenv e st' ty h_ok
+  exact coreProgressPreservationEvalFragmentFull_of_infer h_env h_infer h_frag
+
+/--
 Packaged theorem surface for the reduced executable vertical slice.
 This is the citation anchor for the evaluator-side end-to-end fragment.
 -/
