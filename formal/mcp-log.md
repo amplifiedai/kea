@@ -10651,3 +10651,41 @@ For each package: added `...Components` plus
 **Impact**:
 - No-unify and all-hooks principal APIs now follow the same decomposition style
   already used by bridge and recursive-soundness package layers.
+
+### 2026-03-01: handler resume-summary judgment bridge
+
+**Context**: Added a judgment-shaped resume-summary layer in
+`Kea/Properties/HandlerTypingContracts.lean`:
+- `clauseHasResumeSummary`
+- `clauseHasResumeSummary_eq_resumeUse`
+- `clauseHasResumeSummary_implies_atMostOnce_of_wellTypedSlice`
+- `wellTypedSlice_hasResumeSummary_atMostOnce`
+
+This closes the contract-level gap between clause well-typedness and explicit
+`resume_at_most_once` witnesses.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Well-typed clause contracts should now directly yield a resume-summary witness
+  with the named at-most-once property.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Clause-level typing contracts now export an explicit resume-summary judgment
+  and a direct at-most-once theorem route.
+
+**Impact**:
+- Resume linearity is now connected to a concrete judgment surface rather than
+  only implicit summary fields in the contract record.
