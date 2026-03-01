@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use kea_ast::{BinOp, DeclKind, ExprKind as AstExprKind, TypeAnnotation, UnaryOp};
 use kea_hir::{HirDecl, HirExpr, HirExprKind, HirFunction, HirHandleClause, HirModule, HirPattern};
-use kea_types::{EffectRow, FunctionType, SumType, Type};
+use kea_types::{EffectRow, FunctionType, Label, SumType, Type};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct MirValueId(pub u32);
@@ -3868,10 +3868,32 @@ impl FunctionLoweringCtx {
             }
             HirExprKind::Call { func, args } => self.lower_call_expr(expr, func, args, false),
             HirExprKind::Catch { expr: caught } => {
-                let HirExprKind::Call { func, args } = &caught.kind else {
-                    return None;
+                let result = if let HirExprKind::Call { func, args } = &caught.kind {
+                    self.lower_call_expr(caught, func, args, true)?
+                } else {
+                    let wrapped_fn_ty = Type::Function(FunctionType::with_effects(
+                        vec![],
+                        caught.ty.clone(),
+                        EffectRow::closed(vec![(Label::new("Fail"), Type::Dynamic)]),
+                    ));
+                    let wrapped_lambda = HirExpr {
+                        kind: HirExprKind::Lambda {
+                            params: Vec::new(),
+                            body: Box::new(caught.as_ref().clone()),
+                        },
+                        ty: wrapped_fn_ty,
+                        span: caught.span,
+                    };
+                    let wrapped_call = HirExpr {
+                        kind: HirExprKind::Call {
+                            func: Box::new(wrapped_lambda.clone()),
+                            args: Vec::new(),
+                        },
+                        ty: caught.ty.clone(),
+                        span: caught.span,
+                    };
+                    self.lower_call_expr(&wrapped_call, &wrapped_lambda, &[], true)?
                 };
-                let result = self.lower_call_expr(caught, func, args, true)?;
                 self.sum_value_types
                     .insert(result.clone(), "Result".to_string());
                 Some(result)

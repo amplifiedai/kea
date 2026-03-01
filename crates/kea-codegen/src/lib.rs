@@ -3281,7 +3281,10 @@ fn lower_instruction<M: Module>(
                     for arg_ty in arg_types {
                         signature.params.push(AbiParam::new(clif_type(arg_ty)?));
                     }
-                    if *ret_type != Type::Unit {
+                    if callee_uses_fail_result_abi {
+                        // Fail-only callees always return a runtime Result handle.
+                        signature.returns.push(AbiParam::new(ptr_ty));
+                    } else if *ret_type != Type::Unit {
                         signature.returns.push(AbiParam::new(clif_type(ret_type)?));
                     }
                     let sig_ref = builder.import_signature(signature);
