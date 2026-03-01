@@ -10431,3 +10431,38 @@ For each package: added `...Components` plus
 **Impact**:
 - Base consequence bundles and downstream all-hooks route surfaces can now be
   composed through one uniform alias-based decomposition API.
+
+### 2026-03-01: boundary-sound run-bundle consequence decomposition aliases
+
+**Context**: Added component aliases and structural decomposition APIs in
+`Kea/Typing.lean` for:
+- `PrincipalExprRunBundleConsequences`
+- `PrincipalFieldRunBundleConsequences`
+
+For each package: added `...Components` plus
+`..._{iff_components,of_components,as_components,as_components_of_components}`.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Structural API expansion only; no runtime semantic change.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Boundary+sound consequence bundles now expose explicit component
+  reconstruction/projection contracts matching the no-unify layer.
+
+**Impact**:
+- Downstream route-surface/cross-route stacks can consume consequence bundles
+  through one consistent alias/decomposition API family.
