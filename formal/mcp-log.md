@@ -12219,3 +12219,41 @@ New theorem surface:
 **Impact**:
 - Keeps the new core-soundness package consistent with project-wide route and
   decomposition API conventions.
+
+### 2026-03-01: equivalence bridges from core-soundness bundle to existing eval slices
+
+**Context**: Added explicit theorem bridges in `Kea/Eval.lean` connecting the
+new `CoreTypeSoundnessEvalUnifyBundle` package back to previously established
+slice surfaces.
+
+New theorem surface:
+- `coreTypeSoundnessEvalUnifyBundle_iff_soundness_and_coreProgressPreservation`
+- `coreTypeSoundnessEvalUnifyBundle_of_existing_slices`
+- `coreTypeSoundnessEvalUnifyBundle_of_existing_slices_from_hooks`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime semantic change; these are composition/equivalence theorems over
+  already-proved `VerticalEvalUnifyBridgeSlice` and
+  `CoreProgressPreservationEvalUnifySlice` consequences.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- The new core-soundness package is now explicitly linked to legacy evaluator
+  slices by theorem-level equivalence/composition routes.
+
+**Impact**:
+- Strengthens traceability for core-soundness claims and supports both old and
+  new theorem-consumption styles without proof duplication.
