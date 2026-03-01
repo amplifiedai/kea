@@ -1,4 +1,6 @@
-scope,min_consumed,min_coverage_pct
-totals,1,1
-record_build,1,50
-sum_build,1,50
+scope,min_consumed,min_coverage_pct,max_trmc_candidates
+totals,1,1,0
+record_build,1,50,
+sum_build,1,50,
+trmc_chain,0,0,0
+trmc_chain_weighted,0,0,0
