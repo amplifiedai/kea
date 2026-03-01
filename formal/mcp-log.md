@@ -10538,3 +10538,40 @@ For each package: added `...Components` plus
 **Impact**:
 - Bridge-level proof paths can use the same component-route API as suite/full
   and route-layer packages.
+
+### 2026-03-01: recursive soundness bundle decomposition aliases
+
+**Context**: Added component aliases and structural decomposition APIs in
+`Kea/Typing.lean` for:
+- `InferUnifyHasTypeUSoundBundle`
+- `InferUnifySoundDualBundle`
+
+For each package: added `...Components` plus
+`..._{iff_components,of_components,as_components,as_components_of_components}`.
+Also adjusted new alias binder names to `_h_app`/`_h_proj` to eliminate
+unused-parameter warnings during `lake build`.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Structural API expansion only; no runtime semantic change.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Recursive soundness bundle layers now support explicit component
+  reconstruction and decomposition contracts without introducing new lint noise.
+
+**Impact**:
+- Soundness-entry theorem families now share the same alias/decomposition style
+  as the rest of the principal boundary surfaces.
