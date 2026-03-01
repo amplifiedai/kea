@@ -485,6 +485,7 @@ This work starts by cannibalizing the existing Rill formal corpus and then exten
 - **Phase 2 (active):** Added the same full decomposition layer for boundary+sound counterparts `Principal{Expr,Field}RunBundleConsequences` in `Kea/Typing.lean` (`...Components` plus `..._{iff_components,of_components,as_components,as_components_of_components}`), so run-bundle consequence APIs are now uniform across no-unify and general boundary+sound paths.
 - **Phase 2 (active):** Added matching alias/decomposition contracts for direct boundary+sound full bundles in `Kea/Typing.lean`: `PrincipalBoundarySound{Expr,Field,NoUnifyExpr,NoUnifyField}Full` now each expose `...Components` and `..._{iff_components,of_components,as_components,as_components_of_components}`.
 - **Phase 2 (active):** Added alias/decomposition contracts for dual-bundle principal consequence packages `Principal{,Field}TypingDualConsequence` in `Kea/Typing.lean` (`...Components` and `..._{iff_components,of_components,as_components,as_components_of_components}`), aligning these bridge-level bundles with the same component-route API style.
+- **Phase 2 (active):** Added component/decomposition parity for recursive soundness bundles `InferUnifyHasTypeUSoundBundle` and `InferUnifySoundDualBundle` in `Kea/Typing.lean` (`...Components` and `..._{iff_components,of_components,as_components,as_components_of_components}`), and fixed local unused-parameter lint warnings on the new component aliases.
 
 The formal workspace lives at [`formal/`](formal/).
 

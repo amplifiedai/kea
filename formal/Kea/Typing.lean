@@ -21589,6 +21589,54 @@ structure InferUnifyHasTypeUSoundBundle
       inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)) →
       HasFieldsTypeU env fs rf
 
+/-- Explicit component alias for `InferUnifyHasTypeUSoundBundle`. -/
+abbrev InferUnifyHasTypeUSoundBundleComponents
+    (_h_app : AppUnifySoundHookU)
+    (_h_proj : ProjUnifySoundHookU) : Prop :=
+  (∀ st fuel env e st' ty,
+    inferExprUnify st fuel env e = .ok st' ty →
+    HasTypeU env e ty) ∧
+    (∀ st fuel env fs st' rf,
+      inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)) →
+      HasFieldsTypeU env fs rf)
+
+/-- `InferUnifyHasTypeUSoundBundle` is equivalent to explicit components. -/
+theorem inferUnifyHasTypeUSoundBundle_iff_components
+    (h_app : AppUnifySoundHookU)
+    (h_proj : ProjUnifySoundHookU) :
+    InferUnifyHasTypeUSoundBundle h_app h_proj
+      ↔ InferUnifyHasTypeUSoundBundleComponents h_app h_proj := by
+  constructor
+  · intro h_bundle
+    exact ⟨h_bundle.expr, h_bundle.field⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2⟩
+
+/-- Build `InferUnifyHasTypeUSoundBundle` from explicit components. -/
+theorem inferUnifyHasTypeUSoundBundle_of_components
+    (h_app : AppUnifySoundHookU)
+    (h_proj : ProjUnifySoundHookU)
+    (h_comp : InferUnifyHasTypeUSoundBundleComponents h_app h_proj) :
+    InferUnifyHasTypeUSoundBundle h_app h_proj :=
+  (inferUnifyHasTypeUSoundBundle_iff_components h_app h_proj).2 h_comp
+
+/-- Decompose `InferUnifyHasTypeUSoundBundle` into explicit components. -/
+theorem inferUnifyHasTypeUSoundBundle_as_components
+    (h_app : AppUnifySoundHookU)
+    (h_proj : ProjUnifySoundHookU)
+    (h_bundle : InferUnifyHasTypeUSoundBundle h_app h_proj) :
+    InferUnifyHasTypeUSoundBundleComponents h_app h_proj :=
+  (inferUnifyHasTypeUSoundBundle_iff_components h_app h_proj).1 h_bundle
+
+/-- Direct components-route decomposition for `InferUnifyHasTypeUSoundBundle`. -/
+theorem inferUnifyHasTypeUSoundBundle_as_components_of_components
+    (h_app : AppUnifySoundHookU)
+    (h_proj : ProjUnifySoundHookU)
+    (h_comp : InferUnifyHasTypeUSoundBundleComponents h_app h_proj) :
+    InferUnifyHasTypeUSoundBundleComponents h_app h_proj :=
+  (inferUnifyHasTypeUSoundBundle_iff_components h_app h_proj).1
+    (inferUnifyHasTypeUSoundBundle_of_components h_app h_proj h_comp)
+
 /--
 Build the packaged recursive `HasTypeU` soundness surface from weak hook
 premises.
@@ -21854,6 +21902,60 @@ structure InferUnifySoundDualBundle
     ∀ st fuel env fs st' rf,
       inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)) →
       HasFieldsTypeU env fs rf
+
+/-- Explicit component alias for `InferUnifySoundDualBundle`. -/
+abbrev InferUnifySoundDualBundleComponents
+    (_h_app : AppUnifySoundHook)
+    (_h_proj : ProjUnifySoundHook) : Prop :=
+  (∀ st fuel env e st' ty,
+    inferExprUnify st fuel env e = .ok st' ty →
+    HasType env e ty) ∧
+    (∀ st fuel env fs st' rf,
+      inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)) →
+      HasFieldsType env fs rf) ∧
+    (∀ st fuel env e st' ty,
+      inferExprUnify st fuel env e = .ok st' ty →
+      HasTypeU env e ty) ∧
+    (∀ st fuel env fs st' rf,
+      inferFieldsUnify st fuel env fs = .ok st' (.row (.mk rf none)) →
+      HasFieldsTypeU env fs rf)
+
+/-- `InferUnifySoundDualBundle` is equivalent to explicit components. -/
+theorem inferUnifySoundDualBundle_iff_components
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook) :
+    InferUnifySoundDualBundle h_app h_proj
+      ↔ InferUnifySoundDualBundleComponents h_app h_proj := by
+  constructor
+  · intro h_bundle
+    exact ⟨h_bundle.expr_hasType, h_bundle.field_hasType, h_bundle.expr_hasTypeU, h_bundle.field_hasTypeU⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2.1, h_comp.2.2.1, h_comp.2.2.2⟩
+
+/-- Build `InferUnifySoundDualBundle` from explicit components. -/
+theorem inferUnifySoundDualBundle_of_components
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (h_comp : InferUnifySoundDualBundleComponents h_app h_proj) :
+    InferUnifySoundDualBundle h_app h_proj :=
+  (inferUnifySoundDualBundle_iff_components h_app h_proj).2 h_comp
+
+/-- Decompose `InferUnifySoundDualBundle` into explicit components. -/
+theorem inferUnifySoundDualBundle_as_components
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (h_bundle : InferUnifySoundDualBundle h_app h_proj) :
+    InferUnifySoundDualBundleComponents h_app h_proj :=
+  (inferUnifySoundDualBundle_iff_components h_app h_proj).1 h_bundle
+
+/-- Direct components-route decomposition for `InferUnifySoundDualBundle`. -/
+theorem inferUnifySoundDualBundle_as_components_of_components
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (h_comp : InferUnifySoundDualBundleComponents h_app h_proj) :
+    InferUnifySoundDualBundleComponents h_app h_proj :=
+  (inferUnifySoundDualBundle_iff_components h_app h_proj).1
+    (inferUnifySoundDualBundle_of_components h_app h_proj h_comp)
 
 /--
 Build the dual-judgment recursive soundness bundle from strong hook premises.
