@@ -11634,3 +11634,43 @@ into one non-breaking top-level theorem surface.
 **Impact**:
 - Improves WP7.2/WP7.4 theorem plumbing by keeping the new deeper dimension
   kernel layer available through suite-style composition.
+
+### 2026-03-01: numeric + extended-shape kernel suite composition
+
+**Context**: Extended `Kea/Properties/ShapeConstructorParity.lean` with:
+- `NumericShapeConstDimKernelExtendedSuite`
+- `numericShapeConstDimKernelExtendedSuite`
+- `NumericShapeConstDimKernelExtendedSuiteComponents`
+- `numericShapeConstDimKernelExtendedSuite_{as_components,of_components,as_components_of_components,iff_components}`
+
+This composes:
+- `NumericConstructorKernelSuite`, and
+- `ShapeConstDimKernelExtendedSuite`
+into one top-level numeric+shape witness that carries the deeper dimension
+kernel package.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No semantic change; this is a suite-composition/decomposition layer over
+  existing package witnesses.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Numeric+shape consumers now have a single suite entrypoint that includes the
+  extended dimension-kernel layer.
+
+**Impact**:
+- Keeps the WP7.2 deeper kernel work reachable through the existing WP7.3/7.4
+  numeric+shape composition path without breaking prior suite APIs.
