@@ -11394,3 +11394,44 @@ consumption on explicit `h_app`/`h_proj` premises.
 **Impact**:
 - Slice-level theorem routing now matches the broader explicit-vs-bundled hook
   API style used elsewhere in the formal corpus.
+
+### 2026-03-01: packaged rank-2 mixed dim-kernel classification slice
+
+**Context**: Extended `Kea/Properties/ShapeConstructorParity.lean` with a
+packaged rank-2 mixed var/const dim-aware classification layer:
+- `TensorRank2MixedDimKernelClassificationSlice`
+- `tensorRank2MixedDimKernelClassificationSlice_proved`
+- `TensorRank2MixedDimKernelClassificationSliceComponents`
+- `tensorRank2MixedDimKernelClassificationSlice_{as_components,of_components,as_components_of_components,iff_components}`
+
+This bundles the existing theorem families for:
+- non-generalization-by-var-equality,
+- hold-case classification (`var_eq ∧ const_ne`),
+- divergence-witness classification (`var_distinct ∨ const_eq`),
+- divergence iff naive-contract failure.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No semantic change; package/decomposition wrappers should re-export existing
+  rank-2 mixed theorem slices without changing outcomes.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Rank-2 mixed dim-aware classification is now consumable from one named
+  package witness with standard `iff/of/as` decomposition parity.
+
+**Impact**:
+- Moves WP7.2 deeper dim-aware theorem families toward suite-style consumption
+  and reduces theorem-by-theorem wiring in downstream shape proofs.
