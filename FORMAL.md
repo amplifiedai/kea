@@ -560,6 +560,7 @@ This work starts by cannibalizing the existing Rill formal corpus and then exten
 - **Phase 2 (active):** `EffectHandlerDisjointObservationalSuite` now also exports direct nested-coherence projection wrappers (`effectHandlerDisjointObservationalSuite_nestedDisjoint` and `..._nestedDisjoint_of_handler_absence`), so consumers can reach the nested disjoint coherence witness in one step from either suite or premises.
 - **Phase 2 (active):** Disjoint suite layers now also export direct nested-coherence component decompositions (`effectHandlerDisjointCompositionCoherenceSuite_nestedDisjoint_as_components{,_of_handler_absence}` and `effectHandlerDisjointObservationalSuite_nestedDisjoint_as_components{,_of_handler_absence}`), so nested disjoint witness components are one-hop consumable from both suite and premise routes.
 - **Phase 2 (active):** `EffectHandlerDisjointCompositionCoherenceSuite` now also has full handler-absence one-hop projection parity for coherence facets (`..._{leftTargetAAbsent,leftTargetBAbsent,rightTargetAAbsent,rightTargetBAbsent,leftRowTailStable,rightRowTailStable}_of_handler_absence`), closing the remaining directional symmetry gap at the coherence-suite layer.
+- **Phase 2 (active):** `EffectHandlerDisjointCompositionCoherenceSuite` now also exports the direct nested coherence premise route (`effectHandlerDisjointCompositionCoherenceSuite_nestedDisjoint_of_handler_absence`), completing one-hop premise projections for both nested witness and its component form.
 
 The formal workspace lives at [`formal/`](formal/).
 
