@@ -13682,6 +13682,7 @@ fn infer_expr_bidir(
             let left_ty = infer_expr_bidir(left, env, unifier, records, traits, sum_types);
             let right_ty = infer_expr_bidir(right, env, unifier, records, traits, sum_types);
             let op_name = binop_name(op.node);
+            report_zero_division_literal_if_present(op.node, right, unifier);
 
             match op.node {
                 // Arithmetic: both sides same type, result same type.
@@ -15670,6 +15671,18 @@ fn eval_const_int_expr(expr: &Expr) -> Option<i128> {
     }
 }
 
+fn report_zero_division_literal_if_present(op: BinOp, right: &Expr, unifier: &mut Unifier) {
+    let message = match op {
+        BinOp::Div if eval_const_int_expr(right) == Some(0) => "division by zero is not allowed",
+        BinOp::Mod if eval_const_int_expr(right) == Some(0) => "modulo by zero is not allowed",
+        _ => return,
+    };
+
+    unifier.push_error(
+        Diagnostic::error(Category::TypeError, message).at(span_to_loc(right.span)),
+    );
+}
+
 fn is_try_from_function_reference(func: &Expr) -> bool {
     match &func.node {
         ExprKind::Var(name) => name == "try_from" || name.ends_with(".try_from"),
@@ -16186,6 +16199,7 @@ fn check_expr_bidir(
             let (left_ty, right_ty, result_ty) = if is_numeric_arithmetic {
                 let left_ty = infer_expr_bidir(left, env, unifier, records, traits, sum_types);
                 let right_ty = infer_expr_bidir(right, env, unifier, records, traits, sum_types);
+                report_zero_division_literal_if_present(op.node, right, unifier);
                 let left_resolved = unifier.substitution.apply(&left_ty);
                 let right_resolved = unifier.substitution.apply(&right_ty);
                 let result_ty = if let Some(decimal_ty) = infer_decimal_binary_result_fallback(
