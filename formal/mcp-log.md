@@ -12704,3 +12704,41 @@ New theorem surface:
 **Impact**:
 - Strengthens end-to-end soundness API coherence across canonical and packaged
   theorem families.
+
+### 2026-03-02: canonical-slice route wrappers into run-local consequences
+
+**Context**: Extended `Kea/Eval.lean` so `CoreCalculusSoundnessConsequences`
+can be derived directly from canonical slice witnesses (bundled and explicit
+hooks), including proved-route variants.
+
+New theorem surface:
+- `coreCalculusSoundnessConsequences_of_coreCalculusSoundnessSlice`
+- `coreCalculusSoundnessConsequences_of_coreCalculusSoundnessSliceFromHooks`
+- `coreCalculusSoundnessConsequences_of_coreCalculusSoundnessSlice_proved`
+- `coreCalculusSoundnessConsequences_of_coreCalculusSoundnessSliceFromHooks_proved`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; this is route-wrapper closure between
+  already equivalent canonical slice and run-local consequence surfaces.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Canonical slice witnesses now feed the run-local consequence package in one
+  theorem step, preserving uniform route ergonomics across soundness families.
+
+**Impact**:
+- Reduces intermediate theorem plumbing for downstream proofs that start from
+  canonical slice assumptions rather than infer-success premises.
