@@ -11435,3 +11435,42 @@ This bundles the existing theorem families for:
 **Impact**:
 - Moves WP7.2 deeper dim-aware theorem families toward suite-style consumption
   and reduces theorem-by-theorem wiring in downstream shape proofs.
+
+### 2026-03-01: packaged distinct-vars mixed-shape boundary suite
+
+**Context**: Extended `Kea/Properties/ShapeConstructorParity.lean` with:
+- `MixedShapeVarConstBoundarySuite`
+- `mixedShapeVarConstBoundarySuite`
+- `MixedShapeVarConstBoundarySuiteComponents`
+- `mixedShapeVarConstBoundarySuite_{as_components,of_components,as_components_of_components,iff_components}`
+
+This packages the distinct-vars mixed-shape boundary layer by bundling:
+- `mixed_shape_kernel_boundary_slice`,
+- `mixed_shape_divergence_iff_not_naive_contract_slice`,
+- `mixed_shape_non_generalization_slice`.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No semantic change; the suite should be a pure packaging/decomposition layer
+  over existing mixed-shape boundary theorems.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Distinct-vars mixed-shape boundary reasoning is now available as one packaged
+  theorem witness with standard decomposition parity.
+
+**Impact**:
+- Reduces route-level theorem threading for WP7.2 dim-aware shape boundaries
+  and aligns these contracts with the rest of the suite-style formal API.
