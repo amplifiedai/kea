@@ -10950,3 +10950,40 @@ the existing explicit wrappers and existential soundness theorem.
 **Impact**:
 - Item-(2) style soundness consumption is clearer and closer to canonical
   progress/preservation theorem structure.
+
+### 2026-03-01: catch-pair resume-linearity route wrappers
+
+**Context**: Extended `Kea/Properties/EffectHandlerContractSuite.lean` with
+resume-linearity route wrappers on the coherent catch-pair layer:
+- `effectHandlerCatchPairSuite_resumeLinearityBundle_of_{premises,fail_present}`
+- `effectHandlerCatchPairSuite_resumeLinearityBundle_as_components_of_{premises,fail_present}`
+- `effectHandlerCatchPairSuite_resumeAtMostOnce_of_{premises,fail_present}`
+
+These mirror the aggregate/capstone route wrappers and lift clause resume
+guarantees through the classifier+capstone paired route family.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No semantic change; wrappers should compile as premise-route projections from
+  `wellTypedSlice`.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Catch-pair entry routes now expose both packaged and direct clause
+  resume-linearity consequences in one theorem step.
+
+**Impact**:
+- Resume-linearity theorem routing is now consistent across aggregate,
+  capstone, and coherent catch-pair layers.
