@@ -1937,6 +1937,32 @@ theorem coreCalculusSoundnessConsequences_as_bundle
   (coreCalculusSoundnessConsequences_iff_coreTypeSoundnessEvalUnifyBundle
     tenv venv e ty).1 h_cons
 
+theorem coreCalculusSoundnessConsequences_iff_coreTypeSoundnessEvalBundle
+    (tenv : TermEnv) (venv : ValueEnv) (e : CoreExpr) (ty : Ty) :
+    CoreCalculusSoundnessConsequences tenv venv e ty
+      ↔ CoreTypeSoundnessEvalBundle tenv venv e ty := by
+  constructor
+  · intro h_cons
+    exact
+      (coreTypeSoundnessEvalBundle_iff_soundness_and_coreProgressPreservation).2 h_cons
+  · intro h_bundle
+    exact
+      (coreTypeSoundnessEvalBundle_iff_soundness_and_coreProgressPreservation).1 h_bundle
+
+theorem coreCalculusSoundnessConsequences_of_declarative_bundle
+    (tenv : TermEnv) (venv : ValueEnv) (e : CoreExpr) (ty : Ty)
+    (h_bundle : CoreTypeSoundnessEvalBundle tenv venv e ty) :
+    CoreCalculusSoundnessConsequences tenv venv e ty :=
+  (coreCalculusSoundnessConsequences_iff_coreTypeSoundnessEvalBundle
+    tenv venv e ty).2 h_bundle
+
+theorem coreCalculusSoundnessConsequences_as_declarative_bundle
+    (tenv : TermEnv) (venv : ValueEnv) (e : CoreExpr) (ty : Ty)
+    (h_cons : CoreCalculusSoundnessConsequences tenv venv e ty) :
+    CoreTypeSoundnessEvalBundle tenv venv e ty :=
+  (coreCalculusSoundnessConsequences_iff_coreTypeSoundnessEvalBundle
+    tenv venv e ty).1 h_cons
+
 theorem coreCalculusSoundnessConsequences_as_bundle_of_inferUnify
     {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
     (h_hooks : UnifyHookPremises)
@@ -1961,6 +1987,33 @@ theorem coreCalculusSoundnessConsequences_as_bundle_of_inferUnify_from_hooks
     (h_frag : EvalFragmentFull e) :
     CoreTypeSoundnessEvalUnifyBundle tenv venv e ty :=
   coreCalculusSoundnessConsequences_as_bundle tenv venv e ty
+    (coreCalculusSoundnessConsequences_of_inferUnify_from_hooks
+      h_app h_proj st st' fuel h_ok h_env h_frag)
+
+theorem coreCalculusSoundnessConsequences_as_declarative_bundle_of_inferUnify
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_hooks : UnifyHookPremises)
+    (st st' : UnifyState)
+    (fuel : Nat)
+    (h_ok : inferExprUnify st fuel tenv e = .ok st' ty)
+    (h_env : EnvWellTyped tenv venv)
+    (h_frag : EvalFragmentFull e) :
+    CoreTypeSoundnessEvalBundle tenv venv e ty :=
+  coreCalculusSoundnessConsequences_as_declarative_bundle tenv venv e ty
+    (coreCalculusSoundnessConsequences_of_inferUnify
+      h_hooks st st' fuel h_ok h_env h_frag)
+
+theorem coreCalculusSoundnessConsequences_as_declarative_bundle_of_inferUnify_from_hooks
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st st' : UnifyState)
+    (fuel : Nat)
+    (h_ok : inferExprUnify st fuel tenv e = .ok st' ty)
+    (h_env : EnvWellTyped tenv venv)
+    (h_frag : EvalFragmentFull e) :
+    CoreTypeSoundnessEvalBundle tenv venv e ty :=
+  coreCalculusSoundnessConsequences_as_declarative_bundle tenv venv e ty
     (coreCalculusSoundnessConsequences_of_inferUnify_from_hooks
       h_app h_proj st st' fuel h_ok h_env h_frag)
 
