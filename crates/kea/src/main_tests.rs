@@ -4048,6 +4048,20 @@
     }
 
     #[test]
+    fn compile_and_execute_handle_then_clause_case_body_exit_code() {
+        let source_path = write_temp_source(
+            "effect Reader C\n  fn ask() -> C\n\nfn read() -[Reader Int]> Int\n  Reader.ask()\n\nfn main() -> Int\n  handle read()\n    Reader.ask() -> resume 2\n    then value ->\n      case value\n        2 -> 42\n        _ -> 0\n",
+            "kea-cli-handle-then-case-body",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("handle then with case body should run");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_generic_two_op_tail_handler_exit_code() {
         let source_path = write_temp_source(
             "effect Counter\n  fn read() -> Int\n  fn write(next: Int) -> Unit\n\nfn count_to(n: Int) -[Counter]> Int\n  let i = Counter.read()\n  if i >= n\n    i\n  else\n    Counter.write(i + 1)\n    count_to(n)\n\nfn main() -> Int\n  handle count_to(6)\n    Counter.read() -> resume 0\n    Counter.write(next) -> resume ()\n",
@@ -4220,6 +4234,105 @@
         assert_eq!(run.exit_code, 100);
 
         let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_program_with_hundred_top_level_functions_exit_code() {
+        let mut source = String::new();
+        source.push_str("fn f99(n: Int) -> Int\n  n\n\n");
+        for i in (0..99).rev() {
+            let next = i + 1;
+            source.push_str(&format!("fn f{i}(n: Int) -> Int\n  f{next}(n) + 1\n\n"));
+        }
+        source.push_str("fn main() -> Int\n  f0(0)\n");
+
+        let source_path = write_temp_source(
+            &source,
+            "kea-cli-hundred-top-level-functions",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("100 top-level functions should run");
+        assert_eq!(run.exit_code, 99);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_project_accepts_effect_row_with_twenty_effects() {
+        let mut source = String::new();
+        for i in 1..=20 {
+            source.push_str(&format!("effect E{i}\n  fn ping() -> Unit\n\n"));
+        }
+        source.push_str("fn stress() -[");
+        for i in 1..=20 {
+            if i > 1 {
+                source.push_str(", ");
+            }
+            source.push_str(&format!("E{i}"));
+        }
+        source.push_str("]> Int\n  7\n\nfn main() -> Int\n  0\n");
+
+        let source_path = write_temp_source(&source, "kea-cli-effect-row-twenty-effects", "kea");
+
+        let _ctx = kea::compile_project(&source_path)
+            .expect("20-effect row compile-only stress should succeed");
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_deeply_nested_option_type_annotation_exit_code() {
+        let mut nested = String::from("Int");
+        for _ in 0..20 {
+            nested = format!("Option({nested})");
+        }
+        let source = format!(
+            "fn main() -> Int\n  let v: {nested} = None\n  case v\n    None -> 1\n    Some(_) -> 0\n"
+        );
+
+        let source_path = write_temp_source(&source, "kea-cli-deep-option-type", "kea");
+
+        let run = run_file(&source_path).expect("deep nested option type should run");
+        assert_eq!(run.exit_code, 1);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn compile_build_and_execute_aot_string_interpolation_with_fifty_expressions_stdout() {
+        let mut interpolated = String::new();
+        let mut expected = String::new();
+        for i in 1..=50 {
+            interpolated.push('{');
+            interpolated.push_str(&i.to_string());
+            interpolated.push('}');
+            expected.push_str(&i.to_string());
+        }
+
+        let source = format!(
+            "effect IO\n  fn stdout(msg: String) -> Unit\n\nfn main() -[IO]> Unit\n  let s = \"{interpolated}\"\n  IO.stdout(s)\n"
+        );
+        let source_path = write_temp_source(&source, "kea-cli-string-interpolation-fifty", "kea");
+        let output_path = temp_artifact_path("kea-cli-aot-string-interpolation-fifty", "bin");
+
+        let compiled =
+            compile_file(&source_path, CodegenMode::Aot).expect("aot compile should work");
+        link_object_bytes(&compiled.object, &output_path).expect("link should work");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("aot executable should run");
+        assert_eq!(output.status.code(), Some(0));
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            stdout.contains(&expected),
+            "expected stdout to contain interpolated payload, got `{stdout}`"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+        let _ = std::fs::remove_file(output_path);
     }
 
     #[test]
