@@ -13198,3 +13198,40 @@ New theorem surface:
 
 **Impact**:
 - Removes a remaining route-family asymmetry in evaluator soundness APIs.
+
+### 2026-03-02: direct handler-absence facet routes on disjoint observational suite
+
+**Context**: Extended `Kea/Properties/EffectHandlerContractSuite.lean` with
+direct one-hop wrappers from handler-absence premises to each facet of
+`EffectHandlerDisjointObservationalSuite`.
+
+New theorem surface:
+- `effectHandlerDisjointObservationalSuite_coherence_of_handler_absence`
+- `effectHandlerDisjointObservationalSuite_observationalEq_of_handler_absence`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; this is route-surface ergonomics over
+  already proved handler-absence constructors.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Top-level callers can now retrieve either disjoint-coherence or
+  label-observational-equivalence results directly from premises in one theorem
+  step.
+
+**Impact**:
+- Reduces boilerplate term threading at suite-level call sites and keeps
+  handler-absence route APIs projection-parity complete.
