@@ -623,6 +623,53 @@ theorem numericConstructorKernelSuite_as_components_of_components
     NumericConstructorKernelSuiteComponents := by
   simpa using h_comp
 
+/-- Extended decimal/numeric kernel suite combining numeric constructor
+contracts with the deeper dimension-kernel package. -/
+structure DecimalDimKernelExtendedSuite : Prop where
+  numeric : NumericConstructorKernelSuite
+  dimKernelExtended : DimKernelExtendedSuite
+
+/-- Explicit component pair alias for `DecimalDimKernelExtendedSuite`. -/
+abbrev DecimalDimKernelExtendedSuiteComponents : Prop :=
+  NumericConstructorKernelSuite ∧ DimKernelExtendedSuite
+
+/-- Canonical extended decimal/numeric kernel suite witness. -/
+theorem decimalDimKernelExtendedSuite : DecimalDimKernelExtendedSuite := by
+  exact
+    { numeric := numericConstructorKernelSuite
+      dimKernelExtended := dimKernelExtendedSuite }
+
+/-- Decompose `DecimalDimKernelExtendedSuite` into explicit components. -/
+theorem decimalDimKernelExtendedSuite_as_components
+    (suite : DecimalDimKernelExtendedSuite) :
+    DecimalDimKernelExtendedSuiteComponents :=
+  ⟨suite.numeric, suite.dimKernelExtended⟩
+
+/-- Build `DecimalDimKernelExtendedSuite` from explicit components. -/
+theorem decimalDimKernelExtendedSuite_of_components
+    (numeric : NumericConstructorKernelSuite)
+    (dimKernelExtended : DimKernelExtendedSuite) :
+    DecimalDimKernelExtendedSuite :=
+  { numeric := numeric
+    dimKernelExtended := dimKernelExtended }
+
+/-- Direct components-route decomposition for `DecimalDimKernelExtendedSuite`. -/
+theorem decimalDimKernelExtendedSuite_as_components_of_components
+    (h_comp : DecimalDimKernelExtendedSuiteComponents) :
+    DecimalDimKernelExtendedSuiteComponents := by
+  simpa using h_comp
+
+/-- `DecimalDimKernelExtendedSuite` is equivalent to its explicit component
+pair. -/
+theorem decimalDimKernelExtendedSuite_iff_components :
+    DecimalDimKernelExtendedSuite ↔
+      DecimalDimKernelExtendedSuiteComponents := by
+  constructor
+  · intro suite
+    exact decimalDimKernelExtendedSuite_as_components suite
+  · intro h
+    exact decimalDimKernelExtendedSuite_of_components h.1 h.2
+
 /-- Decimal and non-decimal types do not unify. -/
 theorem decimal_non_decimal_mismatch (st : UnifyState) :
     unify st 1
