@@ -11314,3 +11314,45 @@ These route capability-bundle `notInvalid` facts through the new
 **Impact**:
 - Capability composition consumers can now use at-most-once facts without
   manual classification conversion steps.
+
+### 2026-03-01: direct suite-witness resume-at-most-once projections
+
+**Context**: Extended `Kea/Properties/EffectHandlerContractSuite.lean` with
+direct (non-route) suite projections:
+- `effectHandlerSuite_resumeAtMostOnce`
+- `effectHandlerCapstoneSuite_resumeAtMostOnce`
+- `effectHandlerCatchPairSuite_resumeAtMostOnce`
+- `effectHandlerCompositionSuite_resumeAtMostOnce`
+- `effectHandlerCompositionCoherenceSuite_resumeAtMostOnce`
+
+Also added the missing paired non-invalid projection for catch-pair:
+`effectHandlerCatchPairSuite_tailNotInvalid`.
+
+These extract `ResumeUse.atMostOnce clause.resumeUse` directly from aggregate
+handler suite witnesses.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No semantic change; projections should compose existing `tailNotInvalid`
+  suite projections with `tail_resumptive_notInvalid_implies_atMostOnce`.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Resume linearity is now directly accessible from aggregate/coherence suite
+  witnesses without route-premise reconstruction.
+
+**Impact**:
+- Top-level handler theorem consumers can read `atMostOnce` as a direct bundle
+  projection, aligning resume linearity with other one-hop suite facets.

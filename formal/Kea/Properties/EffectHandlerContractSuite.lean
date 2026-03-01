@@ -1858,6 +1858,18 @@ theorem effectHandlerSuite_tailNotInvalid
       TailResumptiveClassification.TailResumptiveClass.invalid :=
   h_suite.capabilityClosedAware.notInvalid
 
+/-- One-hop projection: clause resume linearity from aggregate suite. -/
+theorem effectHandlerSuite_resumeAtMostOnce
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_suite : EffectHandlerSuite clause capability innerEffects okTy errTy loweredTy) :
+    ResumeUse.atMostOnce clause.resumeUse :=
+  TailResumptiveClassification.tail_resumptive_notInvalid_implies_atMostOnce
+    clause
+    (effectHandlerSuite_tailNotInvalid clause capability innerEffects okTy errTy loweredTy h_suite)
+
 /--
 One-hop projection: closed-aware tail-capability bundle decomposed into
 capability-presence + not-invalid classification facts from aggregate suite.
@@ -2476,6 +2488,19 @@ theorem effectHandlerCapstoneSuite_tailNotInvalid
       TailResumptiveClassification.TailResumptiveClass.invalid :=
   h_suite.capabilityClosedAware.notInvalid
 
+/-- One-hop projection: clause resume linearity from capstone aggregate suite. -/
+theorem effectHandlerCapstoneSuite_resumeAtMostOnce
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_suite : EffectHandlerCapstoneSuite clause capability innerEffects okTy errTy loweredTy) :
+    ResumeUse.atMostOnce clause.resumeUse :=
+  TailResumptiveClassification.tail_resumptive_notInvalid_implies_atMostOnce
+    clause
+    (effectHandlerCapstoneSuite_tailNotInvalid
+      clause capability innerEffects okTy errTy loweredTy h_suite)
+
 /--
 One-hop projection: closed-aware tail-capability bundle decomposed into
 capability-presence + not-invalid classification facts from capstone suite.
@@ -3080,6 +3105,31 @@ theorem effectHandlerCatchPairSuite_classifierFromCapstone
       effectHandlerSuite_of_capstoneSuite
         clause capability innerEffects okTy errTy loweredTy h_pair.capstone :=
   h_pair.classifierFromCapstone
+
+/-- One-hop projection: non-invalid tail classification from coherent pair suite. -/
+theorem effectHandlerCatchPairSuite_tailNotInvalid
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_pair : EffectHandlerCatchPairSuite clause capability innerEffects okTy errTy loweredTy) :
+    TailResumptiveClassification.classifyClause clause ≠
+      TailResumptiveClassification.TailResumptiveClass.invalid :=
+  effectHandlerCapstoneSuite_tailNotInvalid
+    clause capability innerEffects okTy errTy loweredTy h_pair.capstone
+
+/-- One-hop projection: clause resume linearity from coherent pair suite. -/
+theorem effectHandlerCatchPairSuite_resumeAtMostOnce
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (h_pair : EffectHandlerCatchPairSuite clause capability innerEffects okTy errTy loweredTy) :
+    ResumeUse.atMostOnce clause.resumeUse :=
+  TailResumptiveClassification.tail_resumptive_notInvalid_implies_atMostOnce
+    clause
+    (effectHandlerCatchPairSuite_tailNotInvalid
+      clause capability innerEffects okTy errTy loweredTy h_pair)
 
 /-- One-hop projection: generic classifier branch from coherent pair suite. -/
 theorem effectHandlerCatchPairSuite_genericCatchClassifier
@@ -4138,6 +4188,21 @@ theorem effectHandlerCompositionSuite_tailNotInvalid
       TailResumptiveClassification.TailResumptiveClass.invalid :=
   effectHandlerCapstoneSuite_tailNotInvalid
     clause capability innerEffects okTy errTy loweredTy h_suite.catchPair.capstone
+
+/-- One-hop projection: clause resume linearity from master composition suite. -/
+theorem effectHandlerCompositionSuite_resumeAtMostOnce
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionSuite clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    ResumeUse.atMostOnce clause.resumeUse :=
+  TailResumptiveClassification.tail_resumptive_notInvalid_implies_atMostOnce
+    clause
+    (effectHandlerCompositionSuite_tailNotInvalid
+      clause capability innerEffects okTy errTy loweredTy outerHandler h_suite)
 
 /--
 One-hop projection: closed-aware tail-capability bundle decomposed into
@@ -6155,6 +6220,22 @@ theorem effectHandlerCompositionCoherenceSuite_tailNotInvalid
       TailResumptiveClassification.TailResumptiveClass.invalid :=
   effectHandlerCompositionSuite_tailNotInvalid
     clause capability innerEffects okTy errTy loweredTy outerHandler h_suite.composition
+
+/-- One-hop projection: clause resume linearity from composition+coherence suite. -/
+theorem effectHandlerCompositionCoherenceSuite_resumeAtMostOnce
+    (clause : HandleClauseContract)
+    (capability : Label)
+    (innerEffects : EffectRow)
+    (okTy errTy loweredTy : Ty)
+    (outerHandler : EffectRow)
+    (h_suite :
+      EffectHandlerCompositionCoherenceSuite
+        clause capability innerEffects okTy errTy loweredTy outerHandler) :
+    ResumeUse.atMostOnce clause.resumeUse :=
+  TailResumptiveClassification.tail_resumptive_notInvalid_implies_atMostOnce
+    clause
+    (effectHandlerCompositionCoherenceSuite_tailNotInvalid
+      clause capability innerEffects okTy errTy loweredTy outerHandler h_suite)
 
 /--
 One-hop projection: closed-aware tail-capability bundle decomposed into
