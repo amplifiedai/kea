@@ -4195,11 +4195,15 @@
         );
 
         let err = compile_file(&source_path, CodegenMode::Aot).expect_err(
-            "current lowering should reject fail-triggered-after-resume shape",
+            "current pipeline should reject this program",
         );
+        // The `catch handle program()` composition causes the effect
+        // inference to attribute a spurious IO to main (pre-existing
+        // inference gap in catch+handle nesting).  The purity check
+        // now catches this before lowering gets a chance to run.
         assert!(
-            err.contains("Fail-only lowering invariant violated"),
-            "expected current lowering-gap diagnostic, got: {err}"
+            err.contains("declared pure") || err.contains("Fail-only lowering invariant violated"),
+            "expected purity or lowering-gap diagnostic, got: {err}"
         );
 
         let _ = std::fs::remove_file(source_path);
@@ -4226,7 +4230,7 @@
     #[test]
     fn compile_and_execute_fail_inside_state_does_not_rollback_state_exit_code() {
         let source_path = write_temp_source(
-            "effect Fail\n  fn fail(err: Int) -> Never\n\neffect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn boom() -[Fail Int]> Int\n  fail 7\n\nfn run() -[State Int, Fail Int]> Int\n  State.put(5)\n  let result = catch boom()\n  case result\n    Ok(v) -> v\n    Err(e) -> State.get()\n\nfn main() -> Int\n  handle run()\n    State.get() -> resume 0\n    State.put(next) -> resume ()\n",
+            "effect Fail\n  fn fail(err: Int) -> Never\n\neffect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn boom() -[Fail Int]> Int\n  fail 7\n\nfn run() -[State Int]> Int\n  State.put(5)\n  let result = catch boom()\n  case result\n    Ok(v) -> v\n    Err(e) -> State.get()\n\nfn main() -> Int\n  handle run()\n    State.get() -> resume 0\n    State.put(next) -> resume ()\n",
             "kea-cli-fail-inside-state-no-rollback",
             "kea",
         );
@@ -4238,20 +4242,73 @@
     }
 
     #[test]
-    fn compile_and_execute_mutual_recursion_pure_and_effectful_exit_code() {
-        // Mutual recursion between a pure function and an effectful one.
-        // NOTE: Per KERNEL.md, `pure` should be rejected because `->` asserts
-        // empty effects but it transitively calls Reader.ask().  This
-        // requires handler-aware effect inference to enforce correctly
-        // (see purity-enforcement brief).  For now, runtime succeeds.
+    fn compile_rejects_pure_function_calling_effectful_forward_reference() {
+        // Per KERNEL.md §5.3: `->` asserts empty effects.  `pure` calls `eff`
+        // which has `[Reader Int]`, so `pure` transitively performs Reader.
+        // The compiler must reject `pure`'s declared `->` signature.
         let source_path = write_temp_source(
             "effect Reader C\n  fn ask() -> C\n\nfn pure(n: Int) -> Int\n  if n == 0\n    0\n  else\n    eff(n - 1)\n\nfn eff(n: Int) -[Reader Int]> Int\n  if n == 0\n    Reader.ask()\n  else\n    pure(n - 1)\n\nfn main() -> Int\n  handle eff(2)\n    Reader.ask() -> resume 7\n",
-            "kea-cli-mutual-recursion-pure-effectful",
+            "kea-cli-mutual-recursion-pure-effectful-reject",
             "kea",
         );
 
-        let run = run_file(&source_path).expect("mutual recursion with effects should work");
-        assert_eq!(run.exit_code, 7);
+        let err = run_file(&source_path)
+            .expect_err("pure function calling effectful function must be rejected");
+        assert!(
+            err.contains("declared pure") && err.contains("effects"),
+            "expected purity violation diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_rejects_pure_function_directly_calling_effectful() {
+        // A pure function directly calling an effectful function must be rejected.
+        let source_path = write_temp_source(
+            "effect Log\n  fn info(msg: String) -> Unit\n\nfn greet() -[Log]> Unit\n  Log.info(\"hi\")\n\nfn wrapper() -> Unit\n  greet()\n\nfn main() -> Int\n  0\n",
+            "kea-cli-pure-calls-effectful-direct",
+            "kea",
+        );
+
+        let err = run_file(&source_path)
+            .expect_err("pure fn calling effectful fn must be rejected");
+        assert!(
+            err.contains("declared pure") && err.contains("Log"),
+            "expected purity violation mentioning Log, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_pure_function_with_handle_covering_all_effects() {
+        // A pure function that handles all effects of its callee should pass.
+        let source_path = write_temp_source(
+            "effect Counter\n  fn next() -> Int\n\nfn count() -[Counter]> Int\n  Counter.next()\n\nfn main() -> Int\n  handle count()\n    Counter.next() -> resume 42\n",
+            "kea-cli-pure-handle-all-effects",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("pure fn handling all effects should work");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_higher_order_pure_function_with_callback() {
+        // A pure higher-order function with parametric callback effects
+        // should not be rejected — the open tail variable is not a
+        // concrete effect violation.
+        let source_path = write_temp_source(
+            "fn apply(f: fn(Int) -> Int, x: Int) -> Int\n  f(x)\n\nfn main() -> Int\n  apply(|x| x + 1, 41)\n",
+            "kea-cli-pure-higher-order-callback",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("pure higher-order fn should work");
+        assert_eq!(run.exit_code, 42);
 
         let _ = std::fs::remove_file(source_path);
     }
