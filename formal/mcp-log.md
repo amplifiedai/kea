@@ -10913,3 +10913,40 @@ wrappers.
 **Impact**:
 - Route-level consumers can use either packaged resume bundles or direct
   `resume_at_most_once` conclusions without extra destructuring.
+
+### 2026-03-01: canonical progress+preservation pair for EvalFragmentFull
+
+**Context**: Extended `Kea/Eval.lean` with a canonical combined core-soundness
+shape for the full executable fragment:
+- `CoreProgressPreservationEvalFragmentFull`
+- `coreProgressPreservationEvalFragmentFull_of_hasType`
+- `coreProgressPreservationEvalFragmentFull_of_infer`
+
+This packages progress and preservation in one theorem surface while keeping
+the existing explicit wrappers and existential soundness theorem.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No semantic change; the new pair should compose existing
+  `eval_progress_evalFragmentFull` and `eval_preservation_evalFragmentFull`.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Core fragment soundness now has a direct progress+preservation pair contract
+  with both declarative and algorithmic entrypoints.
+
+**Impact**:
+- Item-(2) style soundness consumption is clearer and closer to canonical
+  progress/preservation theorem structure.

@@ -737,6 +737,38 @@ theorem type_soundness_evalFragmentFull
   exact eval_sound_evalFragmentFull h_env h_ty h_frag
 
 /--
+Canonical core-fragment soundness shape:
+- progress (`eval` produces a value)
+- preservation (`eval` results preserve the typing judgment)
+-/
+def CoreProgressPreservationEvalFragmentFull
+    (tenv : TermEnv) (venv : ValueEnv) (e : CoreExpr) (ty : Ty) : Prop :=
+  (∃ v, eval venv e = some v) ∧
+    (∀ v, eval venv e = some v → ValueHasType v ty)
+
+/-- Progress+preservation pair from declarative typing on `EvalFragmentFull`. -/
+theorem coreProgressPreservationEvalFragmentFull_of_hasType
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_env : EnvWellTyped tenv venv)
+    (h_ty : HasType tenv e ty)
+    (h_frag : EvalFragmentFull e) :
+    CoreProgressPreservationEvalFragmentFull tenv venv e ty := by
+  constructor
+  · exact eval_progress_evalFragmentFull h_env h_ty h_frag
+  · intro v h_eval
+    exact eval_preservation_evalFragmentFull h_env h_ty h_frag h_eval
+
+/-- Progress+preservation pair from successful inference on `EvalFragmentFull`. -/
+theorem coreProgressPreservationEvalFragmentFull_of_infer
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_env : EnvWellTyped tenv venv)
+    (h_infer : inferExpr tenv e = some ty)
+    (h_frag : EvalFragmentFull e) :
+    CoreProgressPreservationEvalFragmentFull tenv venv e ty := by
+  have h_ty : HasType tenv e ty := inferExpr_sound tenv e ty h_infer
+  exact coreProgressPreservationEvalFragmentFull_of_hasType h_env h_ty h_frag
+
+/--
 Packaged theorem surface for the reduced executable vertical slice.
 This is the citation anchor for the evaluator-side end-to-end fragment.
 -/
