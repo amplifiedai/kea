@@ -12370,3 +12370,41 @@ New theorem surface:
 **Impact**:
 - Maintains theorem-surface uniformity and reduces call-site friction when
   switching between canonical and packaged evaluator soundness routes.
+
+### 2026-03-01: decomposition parity on packaged eval core-soundness slices
+
+**Context**: Extended `Kea/Eval.lean` so the packaged core-soundness slice
+exports (`CoreTypeSoundnessEvalUnifySlice`,
+`CoreTypeSoundnessEvalUnifySliceFromHooks`) have explicit components/decompose
+APIs in the same style as other formal bundles.
+
+New theorem surface:
+- `CoreTypeSoundnessEvalUnifySliceComponents`
+- `coreTypeSoundnessEvalUnifySlice_{iff_components,of_components,as_components,as_components_of_components}`
+- `CoreTypeSoundnessEvalUnifySliceFromHooksComponents`
+- `coreTypeSoundnessEvalUnifySliceFromHooks_{iff_components,of_components,as_components,as_components_of_components}`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime semantic change; these are definitional slice-surface wrappers.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Packaged core-soundness slices now support direct `iff/of/as` consumption
+  without ad hoc function-level unfolding.
+
+**Impact**:
+- Keeps evaluator soundness route APIs consistent with the project’s broader
+  decomposition conventions.
