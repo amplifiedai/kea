@@ -12491,3 +12491,44 @@ New theorem surface:
 **Impact**:
 - Closes a practical composition-coherence gap in the Phase-2 handler model and
   provides a direct theorem surface for multi-handler lowering arguments.
+
+### 2026-03-01: decomposition parity for disjoint-target composition coherence package
+
+**Context**: Extended the new disjoint-target coherence package in
+`Kea/Properties/HandlerEffectRemoval.lean` with the project-standard
+components/decomposition theorem surface and a one-hop route from constructor
+premises.
+
+New theorem surface:
+- `DisjointHandlerCompositionCoherenceComponents`
+- `disjointHandlerCompositionCoherence_iff_components`
+- `disjointHandlerCompositionCoherence_of_components`
+- `disjointHandlerCompositionCoherence_as_components`
+- `disjointHandlerCompositionCoherence_as_components_of_components`
+- `disjoint_handler_composition_coherence_as_components_of_handler_absence`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; this is decomposition-route parity over
+  the previously added disjoint-target coherence semantics.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Disjoint-target coherence now matches existing formal API conventions with
+  direct `iff/of/as` conversions and premise-level decomposition routing.
+
+**Impact**:
+- Keeps the new composition-coherence surface consistent with downstream
+  theorem-usage ergonomics across Phase-2 packages.
