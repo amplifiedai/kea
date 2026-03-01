@@ -63,6 +63,16 @@ def linearityOk (c : HandleClauseContract) : Prop :=
   ResumeUse.atMostOnce c.resumeUse
 
 /--
+Judgment-shaped resume summary relation for handler clauses.
+
+`clauseHasResumeSummary c u` means clause `c` is assigned resume summary `u`.
+This is a lightweight stand-in for a full clause typing judgment.
+-/
+inductive clauseHasResumeSummary : HandleClauseContract → ResumeUse → Prop where
+  | mk (c : HandleClauseContract) :
+      clauseHasResumeSummary c c.resumeUse
+
+/--
 Effect-side premise used by the current removal theorem:
 handler-body effects do not re-introduce the handled label.
 -/
@@ -86,6 +96,41 @@ theorem wellTypedSlice_coverage (c : HandleClauseContract)
 theorem wellTypedSlice_linearity (c : HandleClauseContract)
     (h : wellTypedSlice c) :
     linearityOk c := h.2.1
+
+theorem clauseHasResumeSummary_eq_resumeUse
+    (c : HandleClauseContract) (u : ResumeUse)
+    (h_summary : clauseHasResumeSummary c u) :
+    u = c.resumeUse := by
+  cases h_summary with
+  | mk => rfl
+
+/--
+Main linearity bridge: if a clause is well-typed in the current contract slice,
+its assigned resume summary satisfies the named at-most-once contract.
+-/
+theorem clauseHasResumeSummary_implies_atMostOnce_of_wellTypedSlice
+    (c : HandleClauseContract) (u : ResumeUse)
+    (h_typed : wellTypedSlice c)
+    (h_summary : clauseHasResumeSummary c u) :
+    resume_at_most_once u := by
+  have h_lin : ResumeUse.atMostOnce c.resumeUse :=
+    wellTypedSlice_linearity c h_typed
+  have h_eq : u = c.resumeUse :=
+    clauseHasResumeSummary_eq_resumeUse c u h_summary
+  subst h_eq
+  exact resume_at_most_once_sound c.resumeUse h_lin
+
+/--
+Existence form of the resume-linearity bridge:
+every well-typed clause has a summary witness that is at-most-once.
+-/
+theorem wellTypedSlice_hasResumeSummary_atMostOnce
+    (c : HandleClauseContract)
+    (h_typed : wellTypedSlice c) :
+    ∃ u, clauseHasResumeSummary c u ∧ resume_at_most_once u := by
+  refine ⟨c.resumeUse, clauseHasResumeSummary.mk c, ?_⟩
+  exact clauseHasResumeSummary_implies_atMostOnce_of_wellTypedSlice
+    c c.resumeUse h_typed (clauseHasResumeSummary.mk c)
 
 theorem wellTypedSlice_noHandledReintroHandler (c : HandleClauseContract)
     (h : wellTypedSlice c) :
