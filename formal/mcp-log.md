@@ -11061,3 +11061,38 @@ entry surface.
 **Impact**:
 - Resume-linearity routing is now uniform across aggregate, capstone,
   catch-pair, composition, and composition-coherence layers.
+
+### 2026-03-01: inferExprUnify bridge into core progress+preservation pair
+
+**Context**: Extended `Kea/Eval.lean` with:
+- `coreProgressPreservationEvalFragmentFull_of_inferUnify`
+
+This theorem bridges successful `inferExprUnify` runs (with bundled hook
+premises) into the canonical evaluator-side
+`CoreProgressPreservationEvalFragmentFull` contract.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- The bridge should compose existing `inferExprUnify`→`inferExpr` agreement
+  with the existing `inferExpr`→progress/preservation wrapper.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Unification-threaded typing success now has a direct route to evaluator-side
+  core progress+preservation consequences.
+
+**Impact**:
+- Item-(2) soundness routing now connects the unification path to the core
+  progress/preservation theorem shape in one theorem step.
