@@ -4363,6 +4363,30 @@
         let _ = std::fs::remove_file(source_path);
     }
 
+    // ── Tier 4: non-tail-resumptive handler tests ────────────────────────
+    // Non-tail resume requires continuation capture (setjmp/longjmp).
+    // Currently rejected with a clear diagnostic. These tests document
+    // the expected behavior for when Tier 4 is implemented.
+
+    #[test]
+    fn compile_rejects_non_tail_resume_transforms_result() {
+        // Code after resume requires continuation capture (Tier 4)
+        let source_path = write_temp_source(
+            "effect Reader C\n  fn ask() -> C\n\nfn body() -[Reader Int]> Int\n  Reader.ask()\n\nfn main() -> Int\n  handle body()\n    Reader.ask() ->\n      let x = resume 40\n      x + 2\n",
+            "kea-cli-non-tail-resume-transforms",
+            "kea",
+        );
+
+        let err = run_file(&source_path)
+            .expect_err("non-tail resume should be rejected until Tier 4 is implemented");
+        assert!(
+            err.contains("must be tail-resumptive"),
+            "expected tail-resumptive rejection, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
     #[test]
     fn compile_rejects_pure_function_calling_effectful_forward_reference() {
         // Per KERNEL.md §5.3: `->` asserts empty effects.  `pure` calls `eff`
