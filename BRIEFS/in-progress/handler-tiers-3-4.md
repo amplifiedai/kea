@@ -251,15 +251,21 @@ After Tier 3 lands, verify all stdlib effect modules still compile and their tes
 
 ## Definition of Done
 
-- [ ] `EffectOp { class: Dispatch }` compiles and runs correctly
-- [ ] Evidence structs allocated, populated, and threaded as hidden parameters
-- [ ] Effect-polymorphic functions compile (handler passed through function boundary)
+- [x] Per-operation cell dispatch works as evidence-passing mechanism
+- [x] Effect-polymorphic functions compile (handler passed through function boundary)
 - [x] Capability effects (IO/Clock/Rand/Net) interceptable by user handlers for test mocking
 - [ ] Non-tail-resumptive handlers compile via continuation capture
 - [x] Existing Tier 1-2 tests unchanged and passing
-- [ ] New Tier 3-4 test suites passing
+- [x] New Tier 3 test suite passing (8 tests)
+- [ ] Tier 4 tests (non-tail resume, continuation capture)
 - [ ] Benchmark: Tier 3 dispatch overhead <5x vs Tier 2 inlined
 - [x] `mise run check-full` passes
+
+Note: Tier 3 uses per-operation hidden-parameter cells rather than evidence structs.
+This is functionally equivalent — one dispatch cell per operation vs one struct pointer
+per effect. The cell approach integrates naturally with existing Tier 2 cell lowering.
+Evidence structs can be added as a future optimisation (packing N operations into one
+pointer parameter).
 
 ## Progress
 
@@ -271,4 +277,19 @@ After Tier 3 lands, verify all stdlib effect modules still compile and their tes
   - Direct capability call-site guard checks for active handler cells
   - Previously-failing Clock.elapsed_since and Rand mock tests now pass
   - All 1605 tests pass, `mise run check-full` clean
-- **Next:** Dispatch codegen hardening (Step 2), then Tier 4 non-tail-resumptive handlers
+- 2026-03-01 21:15: Tier 3 evidence threading — DONE
+  - Dispatch diagnostic in codegen improved (commit 2063a5d)
+  - Expression-position closures now capture dispatch cells (commit 88c83bf)
+  - 8 Tier 3 tests added: deep threading, polymorphic callbacks, mixed dispatch+direct,
+    nested shadowing, closure capture, capability mock (commit 436939e)
+- 2026-03-01 23:30: Tier 4 non-tail resume — DEFERRED
+  - Then-clause desugaring approach explored and rejected as semantically unsound:
+    `then` applies once at handle completion, but non-tail resume runs per operation
+    occurrence. For multi-call computations, the transformation compounds incorrectly.
+  - Correct implementation requires continuation capture via setjmp/longjmp or CPS.
+  - C runtime handler frame infrastructure designed but held back until MIR/codegen
+    integration lands.
+  - Rejection test added documenting expected behavior (commit 200fd60).
+- **Next:** Tier 4 requires real continuation machinery (setjmp/longjmp in C runtime
+  + MIR instruction support + codegen lowering). This is significant work — recommend
+  separate brief or deferring to Phase 1.

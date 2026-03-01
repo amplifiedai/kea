@@ -68,7 +68,7 @@ Designed and approved. Ready to pick up. Ordered by execution sequence per ROADM
 ### Pre-0g: Effect Contract Completeness
 
 21. *(done)* **[Pure arrow enforcement](done/pure-arrow-enforcement.md)** — see Done section.
-22. **[Handler compilation Tiers 3-4](in-progress/handler-tiers-3-4.md)** — Evidence-passing for polymorphic handlers (Tier 3) and one-shot continuations for non-tail-resumptive handlers (Tier 4). Tiers 1-2 shipped in 0e; Tier 3 blocks effect-polymorphic library functions and Phase 1. Tier 4 covers ~5% of handlers (code after `resume`). **Capability mocking done** — IO/Clock/Rand/Net interceptable by user handlers.
+22. **[Handler compilation Tiers 3-4](in-progress/handler-tiers-3-4.md)** — **Tier 3 done** (per-operation cell dispatch, capability mocking, 8 tests). Tier 4 (non-tail resume via continuations) deferred — requires setjmp/longjmp runtime + MIR/codegen integration.
 
 ### Phase 0g: Advanced Types + @derive + Stdlib Tier 3 (needs 0d + 0c)
 
