@@ -659,6 +659,12 @@ theorem decimalDimKernelExtendedSuite_as_components_of_components
     DecimalDimKernelExtendedSuiteComponents := by
   simpa using h_comp
 
+/-- Constructor-route decomposition wrapper for
+`decimalDimKernelExtendedSuite`. -/
+theorem decimalDimKernelExtendedSuite_as_components_of_master :
+    DecimalDimKernelExtendedSuiteComponents := by
+  exact decimalDimKernelExtendedSuite_as_components decimalDimKernelExtendedSuite
+
 /-- `DecimalDimKernelExtendedSuite` is equivalent to its explicit component
 pair. -/
 theorem decimalDimKernelExtendedSuite_iff_components :
@@ -669,6 +675,20 @@ theorem decimalDimKernelExtendedSuite_iff_components :
     exact decimalDimKernelExtendedSuite_as_components suite
   · intro h
     exact decimalDimKernelExtendedSuite_of_components h.1 h.2
+
+/-- One-hop projection: numeric constructor suite from
+`DecimalDimKernelExtendedSuite`. -/
+theorem decimalDimKernelExtendedSuite_numeric
+    (suite : DecimalDimKernelExtendedSuite) :
+    NumericConstructorKernelSuite :=
+  suite.numeric
+
+/-- One-hop projection: extended dimension-kernel suite from
+`DecimalDimKernelExtendedSuite`. -/
+theorem decimalDimKernelExtendedSuite_dimKernelExtended
+    (suite : DecimalDimKernelExtendedSuite) :
+    DimKernelExtendedSuite :=
+  suite.dimKernelExtended
 
 /-- Decimal and non-decimal types do not unify. -/
 theorem decimal_non_decimal_mismatch (st : UnifyState) :
