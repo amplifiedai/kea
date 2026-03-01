@@ -1850,6 +1850,64 @@ theorem coreTypeSoundnessEvalUnifySliceFromHooks_of_coreCalculusSoundnessConsequ
   coreTypeSoundnessEvalUnifySliceFromHooks_of_coreCalculusSoundnessConsequencesSliceFromHooks
     coreCalculusSoundnessConsequencesSliceFromHooks_proved
 
+theorem coreCalculusSoundnessConsequencesSlice_of_coreCalculusSoundnessSlice
+    (h_core : CoreCalculusSoundnessSlice) :
+    CoreCalculusSoundnessConsequencesSlice := by
+  intro tenv venv e ty h_hooks st st' fuel h_ok h_env h_frag
+  exact coreCalculusSoundnessConsequences_of_coreCalculusSoundnessSlice
+    h_core h_hooks st st' fuel h_ok h_env h_frag
+
+theorem coreCalculusSoundnessConsequencesSliceFromHooks_of_coreCalculusSoundnessSliceFromHooks
+    (h_core : CoreCalculusSoundnessSliceFromHooks) :
+    CoreCalculusSoundnessConsequencesSliceFromHooks := by
+  intro tenv venv e ty h_app h_proj st st' fuel h_ok h_env h_frag
+  exact coreCalculusSoundnessConsequences_of_coreCalculusSoundnessSliceFromHooks
+    h_core h_app h_proj st st' fuel h_ok h_env h_frag
+
+theorem coreCalculusSoundnessSlice_of_coreCalculusSoundnessConsequencesSlice
+    (h_cons : CoreCalculusSoundnessConsequencesSlice) :
+    CoreCalculusSoundnessSlice :=
+  coreCalculusSoundnessSlice_of_coreTypeSoundnessEvalUnifySlice
+    (coreTypeSoundnessEvalUnifySlice_of_coreCalculusSoundnessConsequencesSlice h_cons)
+
+theorem coreCalculusSoundnessSliceFromHooks_of_coreCalculusSoundnessConsequencesSliceFromHooks
+    (h_cons : CoreCalculusSoundnessConsequencesSliceFromHooks) :
+    CoreCalculusSoundnessSliceFromHooks :=
+  coreCalculusSoundnessSliceFromHooks_of_coreTypeSoundnessEvalUnifySliceFromHooks
+    (coreTypeSoundnessEvalUnifySliceFromHooks_of_coreCalculusSoundnessConsequencesSliceFromHooks h_cons)
+
+theorem coreCalculusSoundnessConsequencesSlice_iff_coreCalculusSoundnessSlice :
+    CoreCalculusSoundnessConsequencesSlice ↔ CoreCalculusSoundnessSlice := by
+  constructor
+  · exact coreCalculusSoundnessSlice_of_coreCalculusSoundnessConsequencesSlice
+  · exact coreCalculusSoundnessConsequencesSlice_of_coreCalculusSoundnessSlice
+
+theorem coreCalculusSoundnessConsequencesSliceFromHooks_iff_coreCalculusSoundnessSliceFromHooks :
+    CoreCalculusSoundnessConsequencesSliceFromHooks ↔ CoreCalculusSoundnessSliceFromHooks := by
+  constructor
+  · exact coreCalculusSoundnessSliceFromHooks_of_coreCalculusSoundnessConsequencesSliceFromHooks
+  · exact coreCalculusSoundnessConsequencesSliceFromHooks_of_coreCalculusSoundnessSliceFromHooks
+
+theorem coreCalculusSoundnessConsequencesSlice_of_coreCalculusSoundnessSlice_proved :
+    CoreCalculusSoundnessConsequencesSlice :=
+  coreCalculusSoundnessConsequencesSlice_of_coreCalculusSoundnessSlice
+    coreCalculusSoundnessSlice_proved
+
+theorem coreCalculusSoundnessConsequencesSliceFromHooks_of_coreCalculusSoundnessSliceFromHooks_proved :
+    CoreCalculusSoundnessConsequencesSliceFromHooks :=
+  coreCalculusSoundnessConsequencesSliceFromHooks_of_coreCalculusSoundnessSliceFromHooks
+    coreCalculusSoundnessSliceFromHooks_proved
+
+theorem coreCalculusSoundnessSlice_of_coreCalculusSoundnessConsequencesSlice_proved :
+    CoreCalculusSoundnessSlice :=
+  coreCalculusSoundnessSlice_of_coreCalculusSoundnessConsequencesSlice
+    coreCalculusSoundnessConsequencesSlice_proved
+
+theorem coreCalculusSoundnessSliceFromHooks_of_coreCalculusSoundnessConsequencesSliceFromHooks_proved :
+    CoreCalculusSoundnessSliceFromHooks :=
+  coreCalculusSoundnessSliceFromHooks_of_coreCalculusSoundnessConsequencesSliceFromHooks
+    coreCalculusSoundnessConsequencesSliceFromHooks_proved
+
 theorem coreCalculusSoundnessConsequencesSlice_soundness
     (h_slice : CoreCalculusSoundnessConsequencesSlice)
     {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
