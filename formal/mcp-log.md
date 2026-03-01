@@ -11132,3 +11132,39 @@ canonical soundness/progress/preservation outcomes on `EvalFragmentFull`.
 **Impact**:
 - Unification-threaded core soundness claims are now available in canonical
   theorem form without intermediate bridge plumbing.
+
+### 2026-03-01: hook-parameterized inferExprUnify eval soundness wrappers
+
+**Context**: Extended `Kea/Eval.lean` with hook-parameterized convenience
+variants for the unification-threaded core soundness surfaces:
+- `coreProgressPreservationEvalFragmentFull_of_inferUnify_from_hooks`
+- `type_soundness_evalFragmentFull_of_inferUnify_from_hooks`
+- `eval_progress_evalFragmentFull_of_inferUnify_from_hooks`
+- `eval_preservation_evalFragmentFull_of_inferUnify_from_hooks`
+
+These keep the same outcomes while taking explicit `h_app`/`h_proj` premises.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No semantic change; wrappers should reduce to tupled-hook variants.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Unification-threaded core soundness wrappers are now available in both
+  bundled-hook and explicit hook-parameterized forms.
+
+**Impact**:
+- Evaluator-side theorem consumers can stay on explicit hook premises without
+  manual packaging boilerplate.

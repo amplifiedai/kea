@@ -837,6 +837,71 @@ theorem eval_preservation_evalFragmentFull_of_inferUnify
     h_hooks st st' fuel h_ok h_env h_frag).2 v h_eval
 
 /--
+Hook-parameterized variant of
+`coreProgressPreservationEvalFragmentFull_of_inferUnify`.
+-/
+theorem coreProgressPreservationEvalFragmentFull_of_inferUnify_from_hooks
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st st' : UnifyState) (fuel : Nat)
+    (h_ok : inferExprUnify st fuel tenv e = .ok st' ty)
+    (h_env : EnvWellTyped tenv venv)
+    (h_frag : EvalFragmentFull e) :
+    CoreProgressPreservationEvalFragmentFull tenv venv e ty :=
+  coreProgressPreservationEvalFragmentFull_of_inferUnify
+    ⟨h_app, h_proj⟩ st st' fuel h_ok h_env h_frag
+
+/--
+Hook-parameterized variant of
+`type_soundness_evalFragmentFull_of_inferUnify`.
+-/
+theorem type_soundness_evalFragmentFull_of_inferUnify_from_hooks
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st st' : UnifyState) (fuel : Nat)
+    (h_ok : inferExprUnify st fuel tenv e = .ok st' ty)
+    (h_env : EnvWellTyped tenv venv)
+    (h_frag : EvalFragmentFull e) :
+    ∃ v, eval venv e = some v ∧ ValueHasType v ty :=
+  type_soundness_evalFragmentFull_of_inferUnify
+    ⟨h_app, h_proj⟩ st st' fuel h_ok h_env h_frag
+
+/--
+Hook-parameterized variant of
+`eval_progress_evalFragmentFull_of_inferUnify`.
+-/
+theorem eval_progress_evalFragmentFull_of_inferUnify_from_hooks
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st st' : UnifyState) (fuel : Nat)
+    (h_ok : inferExprUnify st fuel tenv e = .ok st' ty)
+    (h_env : EnvWellTyped tenv venv)
+    (h_frag : EvalFragmentFull e) :
+    ∃ v, eval venv e = some v :=
+  eval_progress_evalFragmentFull_of_inferUnify
+    ⟨h_app, h_proj⟩ st st' fuel h_ok h_env h_frag
+
+/--
+Hook-parameterized variant of
+`eval_preservation_evalFragmentFull_of_inferUnify`.
+-/
+theorem eval_preservation_evalFragmentFull_of_inferUnify_from_hooks
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty} {v : Value}
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st st' : UnifyState) (fuel : Nat)
+    (h_ok : inferExprUnify st fuel tenv e = .ok st' ty)
+    (h_env : EnvWellTyped tenv venv)
+    (h_frag : EvalFragmentFull e)
+    (h_eval : eval venv e = some v) :
+    ValueHasType v ty :=
+  eval_preservation_evalFragmentFull_of_inferUnify
+    ⟨h_app, h_proj⟩ st st' fuel h_ok h_env h_frag h_eval
+
+/--
 Packaged theorem surface for the reduced executable vertical slice.
 This is the citation anchor for the evaluator-side end-to-end fragment.
 -/
