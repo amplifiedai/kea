@@ -3703,9 +3703,60 @@ tie it to at least one function-typed parameter effect annotation",
                             .iter()
                             .map(|s| format!("`{s}`"))
                             .collect::<Vec<_>>()
-                            .join(", "),
+                        .join(", "),
                     ),
                 ));
+            }
+
+            // Validate that provided method signatures are compatible with
+            // declared trait method signatures for this impl target.
+            for trait_method in &trait_info.methods {
+                let Some(actual_ty) = methods.get(&trait_method.name) else {
+                    continue;
+                };
+
+                let expected_raw = Type::Function(FunctionType {
+                    params: trait_method.param_types.clone(),
+                    ret: Box::new(trait_method.return_type.clone()),
+                    effects: trait_method
+                        .declared_effect
+                        .as_ref()
+                        .and_then(|ann| effect_annotation_to_compat_row(ann, None))
+                        .unwrap_or_else(pure_effect_row),
+                });
+
+                let mut self_ty = impl_self_type_hint(&last.type_name);
+                if let Type::Function(actual_fn) = actual_ty
+                    && let Some(first_param) = actual_fn.params.first()
+                {
+                    self_ty = first_param.clone();
+                }
+
+                let mut subst = Substitution::new();
+                subst.bind_type(TypeVarId(u32::MAX), self_ty);
+                let expected_ty = subst.apply(&expected_raw);
+
+                let mut sig_unifier = Unifier::new();
+                let prov = Provenance {
+                    span: Span::synthetic(),
+                    reason: Reason::TraitBound {
+                        trait_name: last.trait_name.clone(),
+                    },
+                };
+                if let Err(err) = sig_unifier.solve(vec![Constraint::TypeEqual {
+                    expected: expected_ty.clone(),
+                    actual: actual_ty.clone(),
+                    provenance: prov,
+                }]) {
+                    return Err(Diagnostic::error(
+                        Category::TraitBound,
+                        format!(
+                            "impl method `{}` for trait `{}` has incompatible type: expected `{expected_ty}`, found `{actual_ty}`",
+                            trait_method.name, last.trait_name
+                        ),
+                    )
+                    .with_help(format!("signature mismatch details: {err}")));
+                }
             }
         }
 
@@ -4813,6 +4864,33 @@ fn is_builtin_type_name(name: &str) -> bool {
             | "Step"
             | "Seq"
     )
+}
+
+fn impl_self_type_hint(type_name: &str) -> Type {
+    match type_name {
+        "Int" => Type::Int,
+        "Int8" => Type::IntN(kea_types::IntWidth::I8, kea_types::Signedness::Signed),
+        "Int16" => Type::IntN(kea_types::IntWidth::I16, kea_types::Signedness::Signed),
+        "Int32" => Type::IntN(kea_types::IntWidth::I32, kea_types::Signedness::Signed),
+        "Int64" => Type::IntN(kea_types::IntWidth::I64, kea_types::Signedness::Signed),
+        "UInt8" => Type::IntN(kea_types::IntWidth::I8, kea_types::Signedness::Unsigned),
+        "UInt16" => Type::IntN(kea_types::IntWidth::I16, kea_types::Signedness::Unsigned),
+        "UInt32" => Type::IntN(kea_types::IntWidth::I32, kea_types::Signedness::Unsigned),
+        "UInt64" => Type::IntN(kea_types::IntWidth::I64, kea_types::Signedness::Unsigned),
+        "Float" => Type::Float,
+        "Float16" => Type::FloatN(kea_types::FloatWidth::F16),
+        "Float32" => Type::FloatN(kea_types::FloatWidth::F32),
+        "Float64" => Type::FloatN(kea_types::FloatWidth::F64),
+        "Bool" => Type::Bool,
+        "String" => Type::String,
+        "Unit" => Type::Unit,
+        "Date" => Type::Date,
+        "DateTime" => Type::DateTime,
+        "Html" => Type::Html,
+        "Markdown" => Type::Markdown,
+        "Atom" => Type::Atom,
+        _ => Type::Var(TypeVarId(u32::MAX.wrapping_sub(2))),
+    }
 }
 
 /// Extract the ownership scope from a tagged ownership string.
