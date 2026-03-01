@@ -3783,6 +3783,72 @@
     }
 
     #[test]
+    fn compile_rejects_impl_method_return_type_mismatch_even_when_unused() {
+        let source_path = write_temp_source(
+            "trait Inc a\n  fn inc(x: a) -> a\n\nInt as Inc\n  fn inc(x: Int) -> String\n    \"oops\"\n\nfn main() -> Int\n  0\n",
+            "kea-cli-trait-return-type-mismatch",
+            "kea",
+        );
+
+        let err = run_file(&source_path)
+            .expect_err("run should reject impl return type mismatch at registration time");
+        assert!(
+            err.contains("has incompatible type"),
+            "expected impl signature mismatch diagnostic, got: {err}"
+        );
+        assert!(
+            err.contains("expected") && err.contains("found") && err.contains("String"),
+            "expected expected/found signature detail, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_rejects_impl_method_parameter_type_mismatch_even_when_unused() {
+        let source_path = write_temp_source(
+            "trait Inc a\n  fn inc(x: a) -> a\n\nInt as Inc\n  fn inc(x: String) -> Int\n    0\n\nfn main() -> Int\n  0\n",
+            "kea-cli-trait-param-type-mismatch",
+            "kea",
+        );
+
+        let err = run_file(&source_path)
+            .expect_err("run should reject impl parameter type mismatch at registration time");
+        assert!(
+            err.contains("has incompatible type"),
+            "expected impl signature mismatch diagnostic, got: {err}"
+        );
+        assert!(
+            err.contains("String") && err.contains("Int"),
+            "expected parameter type mismatch details, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_rejects_impl_method_arity_mismatch_even_when_unused() {
+        let source_path = write_temp_source(
+            "trait Adder a\n  fn add(x: a, y: a) -> a\n\nInt as Adder\n  fn add(x: Int) -> Int\n    x\n\nfn main() -> Int\n  0\n",
+            "kea-cli-trait-arity-mismatch",
+            "kea",
+        );
+
+        let err = run_file(&source_path)
+            .expect_err("run should reject impl arity mismatch at registration time");
+        assert!(
+            err.contains("has incompatible type"),
+            "expected impl signature mismatch diagnostic, got: {err}"
+        );
+        assert!(
+            err.contains("expected") && err.contains("found"),
+            "expected expected/found signature detail, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_bool_case_exit_code() {
         let source_path = write_temp_source(
             "fn main() -> Int\n  case true\n    true -> 3\n    false -> 8\n",
