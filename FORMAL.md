@@ -489,6 +489,7 @@ This work starts by cannibalizing the existing Rill formal corpus and then exten
 - **Phase 2 (active):** Added component/decomposition parity for recursive soundness bundles `InferUnifyHasTypeUSoundBundle` and `InferUnifySoundDualBundle` in `Kea/Typing.lean` (`...Components` and `..._{iff_components,of_components,as_components,as_components_of_components}`), and fixed local unused-parameter lint warnings on the new component aliases.
 - **Phase 2 (active):** Added decomposition parity for no-unify bridge/capstone bundles in `Kea/Typing.lean`: `Principal{,Field}NoUnifyBridgeBundle` and `PrincipalBoundaryNoUnify{Expr,Field}AllHooksCapstone` now each have `...Components` plus `..._{iff_components,of_components,as_components,as_components_of_components}`.
 - **Phase 2 (active):** Extended that decomposition parity in `Kea/Typing.lean` to direct no-unify and all-hooks surfaces: `PrincipalBoundaryNoUnify{Expr,Field}Capstone`, `PrincipalPreconditioned{Expr,Field}AllHooksCapstone`, and `PrincipalPreconditioned{Expr,Field}AllHooksRunBundle` now each expose `...Components` plus `..._{iff_components,of_components,as_components,as_components_of_components}`.
+- **Phase 2 (active):** `Kea/Eval.lean` now exposes explicit named full-fragment theorem wrappers (`eval_progress_evalFragmentFull`, `eval_preservation_evalFragmentFull`, `type_soundness_evalFragmentFull`) over the existing executable-soundness slice, making progress/preservation/soundness citation surfaces explicit.
 
 The formal workspace lives at [`formal/`](formal/).
 
