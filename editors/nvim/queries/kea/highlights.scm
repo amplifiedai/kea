@@ -1,11 +1,20 @@
 ; Kea syntax highlighting queries
 ; Effect-aware capture strategy: effects are a distinct visual layer.
+;
+; NOTE: In nvim-treesitter, later patterns override earlier ones.
+; Generic catches (identifier, upper_identifier) go first so that
+; specific patterns (function names, parameters, etc.) can override.
+
+; ── Generic catches (lowest priority) ──────────────────────────────
+
+(identifier) @variable
+(upper_identifier) @type
 
 ; ── Keywords ─────────────────────────────────────────────────────
 
 ["let" "fn" "expr" "pub" "if" "else" "case" "when"
- "type" "struct" "trait" "impl" "where" "use" "as" "test"
- "for" "in" "while" "cond"] @keyword
+ "type" "enum" "struct" "trait" "impl" "where" "use" "as" "test"
+ "for" "in" "while" "cond" "alias"] @keyword
 
 ; Effect keywords — distinct from regular keywords so themes
 ; can give effects their own colour.
@@ -14,7 +23,30 @@
 ; Logical operators as keywords
 ["and" "or" "not"] @keyword.operator
 
-; ── Functions ────────────────────────────────────────────────────
+; ── Literals ─────────────────────────────────────────────────────
+
+(integer) @number
+(float) @number.float
+(string) @string
+(triple_quoted_string) @string
+(boolean) @boolean
+(none) @constant.builtin
+
+; ── Operators ────────────────────────────────────────────────────
+
+["+" "-" "*" "/" "%" "++" "<>"
+ "==" "!=" "<" "<=" ">" ">="
+ "=" "->" "~"] @operator
+
+; Try operator (effect sugar)
+(try_expression "?" @operator.effect)
+
+; ── Punctuation ──────────────────────────────────────────────────
+
+["(" ")" "[" "]" "{" "}"] @punctuation.bracket
+["," "." ":" "|"] @punctuation.delimiter
+
+; ── Functions (overrides @variable) ────────────────────────────────
 
 (function_declaration
   name: (identifier) @function)
@@ -29,7 +61,7 @@
   function: (field_expression
     field: (identifier) @function.call))
 
-; ── Types ────────────────────────────────────────────────────────
+; ── Types (overrides generic @type) ────────────────────────────────
 
 (type_definition
   name: (upper_identifier) @type.definition)
@@ -38,6 +70,9 @@
   name: (upper_identifier) @type.definition)
 
 (trait_definition
+  name: (upper_identifier) @type.definition)
+
+(alias_declaration
   name: (upper_identifier) @type.definition)
 
 (variant
@@ -75,7 +110,7 @@
 (operation_clause
   operation: (identifier) @function.effect)
 
-; ── Constructors ─────────────────────────────────────────────────
+; ── Constructors (overrides @type) ─────────────────────────────────
 
 (constructor_expression
   constructor: (upper_identifier) @constructor)
@@ -89,38 +124,7 @@
   "@" @attribute
   name: (identifier) @attribute)
 
-; ── Literals ─────────────────────────────────────────────────────
-
-(integer) @number
-(float) @number.float
-(string) @string
-(triple_quoted_string) @string
-(boolean) @boolean
-(none) @constant.builtin
-
-; ── Operators ────────────────────────────────────────────────────
-
-["+" "-" "*" "/" "%" "++" "<>"
- "==" "!=" "<" "<=" ">" ">="
- "=" "->" "~"] @operator
-
-; Try operator (effect sugar)
-(try_expression "?" @operator.effect)
-
-; ── Punctuation ──────────────────────────────────────────────────
-
-["(" ")" "[" "]" "{" "}"] @punctuation.bracket
-["," "." ":" "|"] @punctuation.delimiter
-
-; ── Receiver placeholder ─────────────────────────────────────────
-
-(receiver_placeholder) @variable.builtin
-
-; ── Variables ────────────────────────────────────────────────────
-
-(identifier) @variable
-
-; ── Parameters ───────────────────────────────────────────────────
+; ── Parameters (overrides @variable) ─────────────────────────────
 
 (parameter
   pattern: (variable_pattern
@@ -130,7 +134,11 @@
   pattern: (variable_pattern
     (identifier) @variable.parameter))
 
-; ── Comments ─────────────────────────────────────────────────────
+; ── Receiver placeholder ─────────────────────────────────────────
+
+(receiver_placeholder) @variable.builtin
+
+; ── Comments (highest priority) ──────────────────────────────────
 
 (line_comment) @comment
 (doc_block) @comment.documentation

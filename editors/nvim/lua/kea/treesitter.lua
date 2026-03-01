@@ -25,10 +25,10 @@ function M.setup()
     parser_config.kea = {
       install_info = {
         url = url,
-        files = { "src/parser.c" },
+        files = { "src/parser.c", "src/scanner.c" },
         branch = "main",
         generate_requires_npm = false,
-        requires_generate_from_grammar = true,
+        requires_generate_from_grammar = false,
       },
       filetype = "kea",
     }
