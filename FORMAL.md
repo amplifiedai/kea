@@ -571,6 +571,7 @@ This work starts by cannibalizing the existing Rill formal corpus and then exten
 - **Phase 2 (active):** Declarative global slices now also expose one-hop bundle/projection wrappers (`coreTypeSoundnessEval{,Infer}Slice_{bundle,soundness,progress,preservation}`), so downstream theorems can consume slice outputs directly without manual bundle field unpacking.
 - **Phase 2 (active):** `Kea/Eval.lean` now also routes declarative global slices directly into canonical consequence form (`coreCalculusSoundnessConsequences_of_coreTypeSoundnessEval{,Infer}Slice` plus proved-route variants), tightening declarative-slice interoperability with the existing canonical soundness consequence family.
 - **Phase 2 (active):** `Kea/Eval.lean` now also introduces declarative canonical-consequence slice families (`CoreCalculusSoundnessDeclarativeSlice`, `CoreCalculusSoundnessDeclarativeInferSlice`) with full decomposition parity and explicit `↔` bridges to the declarative bundle slices, so canonical consequence presentation is now available as first-class `HasType`/`inferExpr` global slice surfaces.
+- **Phase 2 (active):** The declarative canonical-consequence slice pair is now also directly interchangeable (`coreCalculusSoundnessDeclarativeSlice_iff_coreCalculusSoundnessDeclarativeInferSlice`) with proved-route aliases in both directions, closing `HasType`/`inferExpr` symmetry on canonical consequence global slices.
 
 The formal workspace lives at [`formal/`](formal/).
 

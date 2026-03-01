@@ -2295,6 +2295,34 @@ theorem coreCalculusSoundnessDeclarativeInferSlice_proved :
   coreCalculusSoundnessDeclarativeInferSlice_of_coreTypeSoundnessEvalInferSlice
     coreTypeSoundnessEvalInferSlice_proved
 
+theorem coreCalculusSoundnessDeclarativeInferSlice_of_coreCalculusSoundnessDeclarativeSlice
+    (h_slice : CoreCalculusSoundnessDeclarativeSlice) :
+    CoreCalculusSoundnessDeclarativeInferSlice := by
+  intro tenv venv e ty h_env h_infer h_frag
+  exact h_slice h_env (inferExpr_sound tenv e ty h_infer) h_frag
+
+theorem coreCalculusSoundnessDeclarativeSlice_of_coreCalculusSoundnessDeclarativeInferSlice
+    (h_slice : CoreCalculusSoundnessDeclarativeInferSlice) :
+    CoreCalculusSoundnessDeclarativeSlice := by
+  intro tenv venv e ty h_env h_ty h_frag
+  exact h_slice h_env (inferExpr_complete tenv e ty h_ty) h_frag
+
+theorem coreCalculusSoundnessDeclarativeSlice_iff_coreCalculusSoundnessDeclarativeInferSlice :
+    CoreCalculusSoundnessDeclarativeSlice ↔ CoreCalculusSoundnessDeclarativeInferSlice := by
+  constructor
+  · exact coreCalculusSoundnessDeclarativeInferSlice_of_coreCalculusSoundnessDeclarativeSlice
+  · exact coreCalculusSoundnessDeclarativeSlice_of_coreCalculusSoundnessDeclarativeInferSlice
+
+theorem coreCalculusSoundnessDeclarativeSlice_proved_via_infer :
+    CoreCalculusSoundnessDeclarativeSlice :=
+  coreCalculusSoundnessDeclarativeSlice_of_coreCalculusSoundnessDeclarativeInferSlice
+    coreCalculusSoundnessDeclarativeInferSlice_proved
+
+theorem coreCalculusSoundnessDeclarativeInferSlice_proved_via_hasType :
+    CoreCalculusSoundnessDeclarativeInferSlice :=
+  coreCalculusSoundnessDeclarativeInferSlice_of_coreCalculusSoundnessDeclarativeSlice
+    coreCalculusSoundnessDeclarativeSlice_proved
+
 theorem coreCalculusSoundnessConsequences_of_coreCalculusSoundnessSlice
     (h_core : CoreCalculusSoundnessSlice)
     {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
