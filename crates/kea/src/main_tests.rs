@@ -2082,6 +2082,23 @@
     }
 
     #[test]
+    fn compile_rejects_unterminated_string_literal() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  let x = \"oops\n  0\n",
+            "kea-cli-string-literal-unterminated",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject unterminated string");
+        assert!(
+            err.contains("unterminated string literal"),
+            "expected unterminated-string diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_rejects_unexpected_eof_mid_expression() {
         let source_path = write_temp_source(
             "fn main() -> Int\n  1 +\n",
@@ -3751,6 +3768,20 @@
 
         let run = run_file(&source_path).expect("nested different-effect handlers should run");
         assert_eq!(run.exit_code, 4);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_nested_same_effect_handlers_three_levels_exit_code() {
+        let source_path = write_temp_source(
+            "effect Reader C\n  fn ask() -> C\n\nfn inner() -[Reader Int]> Int\n  Reader.ask()\n\nfn middle() -[Reader Int]> Int\n  let a = handle inner()\n    Reader.ask() -> resume 2\n  a + Reader.ask()\n\nfn outer() -[Reader Int]> Int\n  let b = handle middle()\n    Reader.ask() -> resume 20\n  b + Reader.ask()\n\nfn main() -> Int\n  handle outer()\n    Reader.ask() -> resume 200\n",
+            "kea-cli-nested-same-effect-handlers-three-levels",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("nested same-effect handlers should run");
+        assert_eq!(run.exit_code, 222);
 
         let _ = std::fs::remove_file(source_path);
     }
