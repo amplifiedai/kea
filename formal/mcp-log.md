@@ -10575,3 +10575,40 @@ unused-parameter warnings during `lake build`.
 **Impact**:
 - Soundness-entry theorem families now share the same alias/decomposition style
   as the rest of the principal boundary surfaces.
+
+### 2026-03-01: no-unify bridge and capstone decomposition aliases
+
+**Context**: Added component aliases and structural decomposition APIs in
+`Kea/Typing.lean` for:
+- `PrincipalFieldNoUnifyBridgeBundle`
+- `PrincipalNoUnifyBridgeBundle`
+- `PrincipalBoundaryNoUnifyExprAllHooksCapstone`
+- `PrincipalBoundaryNoUnifyFieldAllHooksCapstone`
+
+For each package: added `...Components` plus
+`..._{iff_components,of_components,as_components,as_components_of_components}`.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Structural API expansion only; no runtime semantic change.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- No-unify bridge and capstone bundle layers now expose uniform explicit
+  reconstruction/decomposition contracts.
+
+**Impact**:
+- No-unify boundary proofs can use one consistent component-route API from
+  bridge bundles through all-hooks capstones.
