@@ -12295,3 +12295,41 @@ New theorem surface:
 **Impact**:
 - Improves citation clarity for core-calculus soundness while preserving
   backward-compatible theorem entry surfaces.
+
+### 2026-03-01: bidirectional equivalence between canonical and packaged eval soundness slices
+
+**Context**: Completed route parity in `Kea/Eval.lean` by adding reverse bridges
+from the packaged core-soundness slice family back to canonical paired slices,
+and explicit `↔` theorems for both bundled and explicit-hook routes.
+
+New theorem surface:
+- `coreCalculusSoundnessSlice_of_coreTypeSoundnessEvalUnifySlice`
+- `coreCalculusSoundnessSliceFromHooks_of_coreTypeSoundnessEvalUnifySliceFromHooks`
+- `coreCalculusSoundnessSlice_iff_coreTypeSoundnessEvalUnifySlice`
+- `coreCalculusSoundnessSliceFromHooks_iff_coreTypeSoundnessEvalUnifySliceFromHooks`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime semantic change; the new theorems should be structural route
+  conversions over already-proved bundle/slice bridges.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Canonical and packaged core-soundness families are now fully interchangeable
+  by explicit theorem equivalence, not just one-way bridge wrappers.
+
+**Impact**:
+- Tightens soundness-route coherence and removes residual asymmetry in the
+  evaluator soundness API.

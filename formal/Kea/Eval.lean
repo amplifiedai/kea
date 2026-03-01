@@ -1428,6 +1428,60 @@ theorem coreTypeSoundnessEvalUnifySliceFromHooks_of_coreCalculusSoundnessSliceFr
       tenv venv e ty).2 ⟨h_sound, h_progressPres⟩
 
 /--
+Reverse bridge: recover the canonical core-calculus soundness package from the
+packaged core-soundness-bundle slice.
+-/
+theorem coreCalculusSoundnessSlice_of_coreTypeSoundnessEvalUnifySlice
+    (h_bundleSlice : CoreTypeSoundnessEvalUnifySlice) :
+    CoreCalculusSoundnessSlice := by
+  refine ⟨?_, ?_⟩
+  · intro tenv venv e ty h_hooks st st' fuel h_ok h_env h_frag
+    exact (h_bundleSlice h_hooks st st' fuel h_ok h_env h_frag).soundness
+  · intro tenv venv e ty h_hooks st st' fuel h_ok h_env h_frag
+    have h_bundle :=
+      h_bundleSlice h_hooks st st' fuel h_ok h_env h_frag
+    exact
+      (coreTypeSoundnessEvalUnifyBundle_iff_soundness_and_coreProgressPreservation
+        tenv venv e ty).1 h_bundle |>.2
+
+/--
+Hook-parameterized reverse bridge from the packaged core-soundness-bundle
+slice to the canonical core-calculus soundness package.
+-/
+theorem coreCalculusSoundnessSliceFromHooks_of_coreTypeSoundnessEvalUnifySliceFromHooks
+    (h_bundleSlice : CoreTypeSoundnessEvalUnifySliceFromHooks) :
+    CoreCalculusSoundnessSliceFromHooks := by
+  refine ⟨?_, ?_⟩
+  · intro tenv venv e ty h_app h_proj st st' fuel h_ok h_env h_frag
+    exact (h_bundleSlice h_app h_proj st st' fuel h_ok h_env h_frag).soundness
+  · intro tenv venv e ty h_app h_proj st st' fuel h_ok h_env h_frag
+    have h_bundle :=
+      h_bundleSlice h_app h_proj st st' fuel h_ok h_env h_frag
+    exact
+      (coreTypeSoundnessEvalUnifyBundle_iff_soundness_and_coreProgressPreservation
+        tenv venv e ty).1 h_bundle |>.2
+
+/--
+Canonical and packaged core-soundness slice families are equivalent (bundled
+hook route).
+-/
+theorem coreCalculusSoundnessSlice_iff_coreTypeSoundnessEvalUnifySlice :
+    CoreCalculusSoundnessSlice ↔ CoreTypeSoundnessEvalUnifySlice := by
+  constructor
+  · exact coreTypeSoundnessEvalUnifySlice_of_coreCalculusSoundnessSlice
+  · exact coreCalculusSoundnessSlice_of_coreTypeSoundnessEvalUnifySlice
+
+/--
+Canonical and packaged core-soundness slice families are equivalent (explicit
+hook route).
+-/
+theorem coreCalculusSoundnessSliceFromHooks_iff_coreTypeSoundnessEvalUnifySliceFromHooks :
+    CoreCalculusSoundnessSliceFromHooks ↔ CoreTypeSoundnessEvalUnifySliceFromHooks := by
+  constructor
+  · exact coreTypeSoundnessEvalUnifySliceFromHooks_of_coreCalculusSoundnessSliceFromHooks
+  · exact coreCalculusSoundnessSliceFromHooks_of_coreTypeSoundnessEvalUnifySliceFromHooks
+
+/--
 Executable soundness for the atomic evaluator fragment:
 well-typed atomic expressions evaluate to runtime values of the same type.
 -/
