@@ -13545,3 +13545,46 @@ New theorem surface:
 **Impact**:
 - Strengthens explicit theorem-level support for core-calculus soundness claims
   on declarative typing paths, not just unification-threaded paths.
+
+### 2026-03-02: declarative bundle lifted to global HasType/infer slices
+
+**Context**: Extended `Kea/Eval.lean` by lifting
+`CoreTypeSoundnessEvalBundle` into global theorem-slice surfaces for both
+declarative (`HasType`) and algorithmic (`inferExpr`) non-unification routes.
+
+New theorem surface:
+- `CoreTypeSoundnessEvalSlice`
+- `CoreTypeSoundnessEvalSliceComponents`
+- `coreTypeSoundnessEvalSlice_{iff_components,of_components,as_components,as_components_of_components}`
+- `coreTypeSoundnessEvalSlice_proved`
+- `CoreTypeSoundnessEvalInferSlice`
+- `CoreTypeSoundnessEvalInferSliceComponents`
+- `coreTypeSoundnessEvalInferSlice_{iff_components,of_components,as_components,as_components_of_components}`
+- `coreTypeSoundnessEvalInferSlice_proved`
+- `coreTypeSoundnessEvalInferSlice_of_coreTypeSoundnessEvalSlice`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; this introduces packaging/bridge routes
+  over already established declarative/infer evaluator soundness theorems.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Declarative and infer (non-unification) core soundness are now available as
+  named global slice families with standard decomposition APIs.
+
+**Impact**:
+- Makes core type-system soundness citation surfaces uniform across local bundle,
+  global slice, and unification-threaded package layers.

@@ -907,6 +907,96 @@ theorem coreTypeSoundnessEvalBundle_as_soundness_and_coreProgressPreservation
   (coreTypeSoundnessEvalBundle_iff_soundness_and_coreProgressPreservation).1 h_bundle
 
 /--
+Packaged declarative core soundness slice (`HasType` route) over the executable
+full fragment.
+-/
+def CoreTypeSoundnessEvalSlice : Prop :=
+  ∀ {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty},
+    EnvWellTyped tenv venv →
+    HasType tenv e ty →
+    EvalFragmentFull e →
+    CoreTypeSoundnessEvalBundle tenv venv e ty
+
+/-- Explicit component alias for `CoreTypeSoundnessEvalSlice`. -/
+abbrev CoreTypeSoundnessEvalSliceComponents : Prop :=
+  ∀ {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty},
+    EnvWellTyped tenv venv →
+    HasType tenv e ty →
+    EvalFragmentFull e →
+    CoreTypeSoundnessEvalBundle tenv venv e ty
+
+theorem coreTypeSoundnessEvalSlice_iff_components :
+    CoreTypeSoundnessEvalSlice ↔ CoreTypeSoundnessEvalSliceComponents := Iff.rfl
+
+theorem coreTypeSoundnessEvalSlice_of_components
+    (h_comp : CoreTypeSoundnessEvalSliceComponents) :
+    CoreTypeSoundnessEvalSlice :=
+  (coreTypeSoundnessEvalSlice_iff_components).2 h_comp
+
+theorem coreTypeSoundnessEvalSlice_as_components
+    (h_slice : CoreTypeSoundnessEvalSlice) :
+    CoreTypeSoundnessEvalSliceComponents :=
+  (coreTypeSoundnessEvalSlice_iff_components).1 h_slice
+
+theorem coreTypeSoundnessEvalSlice_as_components_of_components
+    (h_comp : CoreTypeSoundnessEvalSliceComponents) :
+    CoreTypeSoundnessEvalSliceComponents :=
+  (coreTypeSoundnessEvalSlice_iff_components).1
+    ((coreTypeSoundnessEvalSlice_iff_components).2 h_comp)
+
+theorem coreTypeSoundnessEvalSlice_proved : CoreTypeSoundnessEvalSlice := by
+  intro tenv venv e ty h_env h_ty h_frag
+  exact coreTypeSoundnessEvalBundle_of_hasType h_env h_ty h_frag
+
+/--
+Packaged declarative core soundness slice (`inferExpr` route) over the
+executable full fragment.
+-/
+def CoreTypeSoundnessEvalInferSlice : Prop :=
+  ∀ {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty},
+    EnvWellTyped tenv venv →
+    inferExpr tenv e = some ty →
+    EvalFragmentFull e →
+    CoreTypeSoundnessEvalBundle tenv venv e ty
+
+/-- Explicit component alias for `CoreTypeSoundnessEvalInferSlice`. -/
+abbrev CoreTypeSoundnessEvalInferSliceComponents : Prop :=
+  ∀ {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty},
+    EnvWellTyped tenv venv →
+    inferExpr tenv e = some ty →
+    EvalFragmentFull e →
+    CoreTypeSoundnessEvalBundle tenv venv e ty
+
+theorem coreTypeSoundnessEvalInferSlice_iff_components :
+    CoreTypeSoundnessEvalInferSlice ↔ CoreTypeSoundnessEvalInferSliceComponents := Iff.rfl
+
+theorem coreTypeSoundnessEvalInferSlice_of_components
+    (h_comp : CoreTypeSoundnessEvalInferSliceComponents) :
+    CoreTypeSoundnessEvalInferSlice :=
+  (coreTypeSoundnessEvalInferSlice_iff_components).2 h_comp
+
+theorem coreTypeSoundnessEvalInferSlice_as_components
+    (h_slice : CoreTypeSoundnessEvalInferSlice) :
+    CoreTypeSoundnessEvalInferSliceComponents :=
+  (coreTypeSoundnessEvalInferSlice_iff_components).1 h_slice
+
+theorem coreTypeSoundnessEvalInferSlice_as_components_of_components
+    (h_comp : CoreTypeSoundnessEvalInferSliceComponents) :
+    CoreTypeSoundnessEvalInferSliceComponents :=
+  (coreTypeSoundnessEvalInferSlice_iff_components).1
+    ((coreTypeSoundnessEvalInferSlice_iff_components).2 h_comp)
+
+theorem coreTypeSoundnessEvalInferSlice_proved : CoreTypeSoundnessEvalInferSlice := by
+  intro tenv venv e ty h_env h_infer h_frag
+  exact coreTypeSoundnessEvalBundle_of_infer h_env h_infer h_frag
+
+theorem coreTypeSoundnessEvalInferSlice_of_coreTypeSoundnessEvalSlice
+    (h_slice : CoreTypeSoundnessEvalSlice) :
+    CoreTypeSoundnessEvalInferSlice := by
+  intro tenv venv e ty h_env h_infer h_frag
+  exact h_slice h_env (inferExpr_sound tenv e ty h_infer) h_frag
+
+/--
 Unification-threaded entrypoint to the same core progress+preservation pair.
 
 This bridges successful `inferExprUnify` runs (under bundled hook premises)
