@@ -698,6 +698,45 @@ theorem inferEval_sound_evalFragmentFull
   exact eval_sound_evalFragmentFull h_env h_ty h_frag
 
 /--
+Progress wrapper for the executable full fragment:
+well-typed fragment expressions evaluate to some runtime value.
+-/
+theorem eval_progress_evalFragmentFull
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_env : EnvWellTyped tenv venv)
+    (h_ty : HasType tenv e ty)
+    (h_frag : EvalFragmentFull e) :
+    ∃ v, eval venv e = some v := by
+  rcases eval_sound_evalFragmentFull h_env h_ty h_frag with ⟨v, h_eval, _h_vty⟩
+  exact ⟨v, h_eval⟩
+
+/--
+Preservation wrapper for the executable full fragment:
+if a well-typed fragment expression evaluates, the result value has the same type.
+-/
+theorem eval_preservation_evalFragmentFull
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty} {v : Value}
+    (h_env : EnvWellTyped tenv venv)
+    (h_ty : HasType tenv e ty)
+    (h_frag : EvalFragmentFull e)
+    (h_eval : eval venv e = some v) :
+    ValueHasType v ty := by
+  rcases eval_sound_evalFragmentFull h_env h_ty h_frag with ⟨v', h_eval', h_vty'⟩
+  have h_eq : v = v' := eval_deterministic venv e h_eval h_eval'
+  exact h_eq ▸ h_vty'
+
+/--
+Named type-soundness wrapper for the executable full fragment.
+-/
+theorem type_soundness_evalFragmentFull
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_env : EnvWellTyped tenv venv)
+    (h_ty : HasType tenv e ty)
+    (h_frag : EvalFragmentFull e) :
+    ∃ v, eval venv e = some v ∧ ValueHasType v ty := by
+  exact eval_sound_evalFragmentFull h_env h_ty h_frag
+
+/--
 Packaged theorem surface for the reduced executable vertical slice.
 This is the citation anchor for the evaluator-side end-to-end fragment.
 -/

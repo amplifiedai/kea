@@ -10689,3 +10689,40 @@ This closes the contract-level gap between clause well-typedness and explicit
 **Impact**:
 - Resume linearity is now connected to a concrete judgment surface rather than
   only implicit summary fields in the contract record.
+
+### 2026-03-01: explicit full-fragment progress/preservation/soundness wrappers
+
+**Context**: Added explicit theorem-name wrappers in `Kea/Eval.lean` over the
+already-proved `EvalFragmentFull` executable soundness slice:
+- `eval_progress_evalFragmentFull`
+- `eval_preservation_evalFragmentFull`
+- `type_soundness_evalFragmentFull`
+
+These make the core evaluator fragment’s progress/preservation/soundness claims
+directly citable without unpacking existential soundness statements manually.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No semantic change; named wrappers should compile as thin projections over
+  existing `eval_sound_evalFragmentFull` and determinism.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Progress/preservation/soundness are now explicit theorem surfaces on the
+  full executable fragment.
+
+**Impact**:
+- Core-soundness status is clearer in the corpus and easier to reference from
+  formal tracking/docs.
