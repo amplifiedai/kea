@@ -10726,3 +10726,42 @@ directly citable without unpacking existential soundness statements manually.
 **Impact**:
 - Core-soundness status is clearer in the corpus and easier to reference from
   formal tracking/docs.
+
+### 2026-03-01: packaged clause resume-linearity bundle
+
+**Context**: Extended `Kea/Properties/HandlerTypingContracts.lean` with a
+packaged clause resume-linearity surface:
+- `ClauseResumeLinearityBundle`
+- `ClauseResumeLinearityBundleComponents`
+- `clauseResumeLinearityBundle_{iff_components,of_components,as_components,as_components_of_components}`
+- `clauseResumeLinearityBundle_of_wellTypedSlice`
+- one-hop bundle projections
+
+This packages the new resume-summary judgment bridge for one-step downstream
+consumption.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No semantic change; bundle layer should expose existing well-typed linearity
+  consequences via stable decomposition/projection APIs.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Clause resume-linearity consequences are now available as a named bundle with
+  explicit decomposition/constructor routes.
+
+**Impact**:
+- Resume-linearity theorem consumption now matches the broader Phase-2 bundle
+  API style used across handler/catch/capstone layers.
