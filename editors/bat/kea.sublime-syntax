@@ -28,20 +28,30 @@ contexts:
       captures:
         1: keyword.other.documentation.kea
         2: comment.block.documentation.kea
-    # Block form: doc\n  indented body lines
+    # Block form: doc on its own line, body is indented deeper.
+    # Pop when we see a non-blank line that isn't indented more than
+    # the doc keyword.  We detect this by looking for declaration
+    # keywords (fn, doc, type, etc.) at the doc's indent level.
     - match: '^\s*(doc)\s*$'
       captures:
         1: keyword.other.documentation.kea
       push: doc-body
 
   doc-body:
+    # Blank lines stay in doc.
     - match: '^\s*$'
       scope: comment.block.documentation.kea
-    - match: '^\s\s+'
+    # A line starting with a declaration keyword at any indent ends the doc.
+    # Lookahead so the keyword is highlighted by the main context.
+    - match: '(?=^\s*(?:fn|doc|type|enum|struct|trait|effect|impl|use|pub|alias|test|expr|handle|@)\b)'
+      pop: true
+    # Non-blank, non-keyword lines that have some indentation are body.
+    - match: '^\s+'
       push:
         - meta_scope: comment.block.documentation.kea
         - match: '$'
           pop: true
+    # Anything else (e.g., column-0 non-keyword) ends the doc.
     - match: '(?=\S)'
       pop: true
 
