@@ -1382,6 +1382,25 @@ theorem coreTypeSoundnessEvalUnifyBundle_preservation
   h_bundle.preservation
 
 /--
+Interoperability bridge: any unification-threaded core-soundness bundle
+instantiates the declarative bundled core-soundness surface.
+-/
+theorem coreTypeSoundnessEvalBundle_of_coreTypeSoundnessEvalUnifyBundle
+    (tenv : TermEnv)
+    (venv : ValueEnv)
+    (e : CoreExpr)
+    (ty : Ty)
+    (h_unify : CoreTypeSoundnessEvalUnifyBundle tenv venv e ty) :
+    CoreTypeSoundnessEvalBundle tenv venv e ty := by
+  exact {
+    soundness := h_unify.soundness
+    progress := h_unify.progress
+    preservation := by
+      intro v h_eval
+      exact h_unify.preservation h_eval
+  }
+
+/--
 Build the packaged core-soundness bundle from unification-threaded inference
 success under bundled hooks.
 -/
@@ -1458,6 +1477,60 @@ theorem coreTypeSoundnessEvalUnifyBundle_as_components_of_inferUnify_from_hooks
   coreTypeSoundnessEvalUnifyBundle_as_components
     tenv venv e ty
     (coreTypeSoundnessEvalUnifyBundle_of_inferUnify_from_hooks
+      h_app h_proj st st' fuel h_ok h_env h_frag)
+
+theorem coreTypeSoundnessEvalBundle_of_inferUnify
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_hooks : UnifyHookPremises)
+    (st st' : UnifyState)
+    (fuel : Nat)
+    (h_ok : inferExprUnify st fuel tenv e = .ok st' ty)
+    (h_env : EnvWellTyped tenv venv)
+    (h_frag : EvalFragmentFull e) :
+    CoreTypeSoundnessEvalBundle tenv venv e ty :=
+  coreTypeSoundnessEvalBundle_of_coreTypeSoundnessEvalUnifyBundle
+    tenv venv e ty
+    (coreTypeSoundnessEvalUnifyBundle_of_inferUnify
+      h_hooks st st' fuel h_ok h_env h_frag)
+
+theorem coreTypeSoundnessEvalBundle_of_inferUnify_from_hooks
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st st' : UnifyState)
+    (fuel : Nat)
+    (h_ok : inferExprUnify st fuel tenv e = .ok st' ty)
+    (h_env : EnvWellTyped tenv venv)
+    (h_frag : EvalFragmentFull e) :
+    CoreTypeSoundnessEvalBundle tenv venv e ty :=
+  coreTypeSoundnessEvalBundle_of_inferUnify
+    ⟨h_app, h_proj⟩ st st' fuel h_ok h_env h_frag
+
+theorem coreTypeSoundnessEvalBundle_as_components_of_inferUnify
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_hooks : UnifyHookPremises)
+    (st st' : UnifyState)
+    (fuel : Nat)
+    (h_ok : inferExprUnify st fuel tenv e = .ok st' ty)
+    (h_env : EnvWellTyped tenv venv)
+    (h_frag : EvalFragmentFull e) :
+    CoreTypeSoundnessEvalBundleComponents tenv venv e ty :=
+  coreTypeSoundnessEvalBundle_as_components
+    (coreTypeSoundnessEvalBundle_of_inferUnify
+      h_hooks st st' fuel h_ok h_env h_frag)
+
+theorem coreTypeSoundnessEvalBundle_as_components_of_inferUnify_from_hooks
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st st' : UnifyState)
+    (fuel : Nat)
+    (h_ok : inferExprUnify st fuel tenv e = .ok st' ty)
+    (h_env : EnvWellTyped tenv venv)
+    (h_frag : EvalFragmentFull e) :
+    CoreTypeSoundnessEvalBundleComponents tenv venv e ty :=
+  coreTypeSoundnessEvalBundle_as_components
+    (coreTypeSoundnessEvalBundle_of_inferUnify_from_hooks
       h_app h_proj st st' fuel h_ok h_env h_frag)
 
 /--
