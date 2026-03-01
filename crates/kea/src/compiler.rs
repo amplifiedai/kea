@@ -1847,33 +1847,32 @@ fn typecheck_functions(
     diagnostics: &mut Vec<Diagnostic>,
     module_path: Option<&str>,
 ) -> Result<(), String> {
-    // Pre-register all function names so forward references (including mutual
-    // recursion) resolve instead of producing "undefined variable" errors.
-    // For fully-annotated functions we resolve the declared type; for others
-    // we bind a placeholder type variable.
+    // Pre-register all function names and effect rows so forward references
+    // (including mutual recursion) resolve correctly.  This also enables
+    // transitive effect inference for forward-referenced effectful callees.
     let mut placeholder_counter = u32::MAX;
     for decl in &module.declarations {
-        let (name, resolved) = match &decl.node {
-            DeclKind::Function(fn_decl) => (
-                &fn_decl.name.node,
-                resolve_fn_decl_type(fn_decl, records, sum_types),
-            ),
-            DeclKind::ExprFn(expr_decl) => (
-                &expr_decl.name.node,
-                resolve_fn_decl_type(
-                    &expr_decl_to_fn_decl(expr_decl),
-                    records,
-                    sum_types,
-                ),
-            ),
+        let fn_decl = match &decl.node {
+            DeclKind::Function(fn_decl) => fn_decl.clone(),
+            DeclKind::ExprFn(expr_decl) => expr_decl_to_fn_decl(expr_decl),
             _ => continue,
         };
+        let resolved = resolve_fn_decl_type(&fn_decl, records, sum_types);
         let ty = resolved.unwrap_or_else(|| {
             let id = placeholder_counter;
             placeholder_counter = placeholder_counter.wrapping_sub(1);
             Type::Var(kea_types::TypeVarId(id))
         });
-        env.bind(name.clone(), TypeScheme::mono(ty));
+        env.bind(fn_decl.name.node.clone(), TypeScheme::mono(ty));
+
+        // Also pre-register the effect row so transitive effect inference
+        // sees the declared effects of forward-referenced callees.
+        let effects = resolve_effect_annotation_simple(
+            &fn_decl.effect_annotation,
+            records,
+            sum_types,
+        );
+        env.set_function_effect_row(fn_decl.name.node.clone(), effects);
     }
 
     for decl in &module.declarations {
