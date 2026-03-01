@@ -28018,6 +28018,270 @@ structure PrincipalBoundarySoundNoUnifyFieldFull
       (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
         ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf)
 
+/-- Explicit component alias for `PrincipalBoundarySoundExprFull`. -/
+abbrev PrincipalBoundarySoundExprFullComponents
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty) : Prop :=
+  HasType env e ty ∧
+    HasTypeU env e ty ∧
+    PrincipalTypingSliceCore env e ty ∧
+    (∀ h_app h_proj,
+      PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty) ∧
+    (∀ (h_hooks : UnifyHookPremises),
+      PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty) ∧
+    (∀ h_app h_proj,
+      (PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty
+        ↔ PrincipalTypingSliceCore env e ty)) ∧
+    (∀ (h_hooks : UnifyHookPremises),
+      (PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty
+        ↔ PrincipalTypingSliceCore env e ty)) ∧
+    (∀ {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+      {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook},
+      (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+        ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty))
+
+/-- `PrincipalBoundarySoundExprFull` is equivalent to explicit components. -/
+theorem principalBoundarySoundExprFull_iff_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty) :
+    PrincipalBoundarySoundExprFull st fuel env e st' ty
+      ↔ PrincipalBoundarySoundExprFullComponents st fuel env e st' ty := by
+  constructor
+  · intro h_full
+    exact ⟨h_full.hasType, h_full.hasTypeU, h_full.core, h_full.preconditionedAny,
+      h_full.preconditioned, h_full.preconditionedAnyIffCore, h_full.preconditionedIffCore,
+      h_full.hookIrrelevant⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2.1, h_comp.2.2.1, h_comp.2.2.2.1, h_comp.2.2.2.2.1,
+      h_comp.2.2.2.2.2.1, h_comp.2.2.2.2.2.2.1, h_comp.2.2.2.2.2.2.2⟩
+
+/-- Build `PrincipalBoundarySoundExprFull` from explicit components. -/
+theorem principalBoundarySoundExprFull_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_comp : PrincipalBoundarySoundExprFullComponents st fuel env e st' ty) :
+    PrincipalBoundarySoundExprFull st fuel env e st' ty :=
+  (principalBoundarySoundExprFull_iff_components
+    st fuel env e st' ty).2 h_comp
+
+/-- Decompose `PrincipalBoundarySoundExprFull` into explicit components. -/
+theorem principalBoundarySoundExprFull_as_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_full : PrincipalBoundarySoundExprFull st fuel env e st' ty) :
+    PrincipalBoundarySoundExprFullComponents st fuel env e st' ty :=
+  (principalBoundarySoundExprFull_iff_components
+    st fuel env e st' ty).1 h_full
+
+/-- Direct components-route decomposition for `PrincipalBoundarySoundExprFull`. -/
+theorem principalBoundarySoundExprFull_as_components_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_comp : PrincipalBoundarySoundExprFullComponents st fuel env e st' ty) :
+    PrincipalBoundarySoundExprFullComponents st fuel env e st' ty :=
+  (principalBoundarySoundExprFull_iff_components
+    st fuel env e st' ty).1
+    (principalBoundarySoundExprFull_of_components
+      st fuel env e st' ty h_comp)
+
+/-- Explicit component alias for `PrincipalBoundarySoundFieldFull`. -/
+abbrev PrincipalBoundarySoundFieldFullComponents
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields) : Prop :=
+  HasFieldsType env fs rf ∧
+    HasFieldsTypeU env fs rf ∧
+    PrincipalFieldTypingSliceCore env fs rf ∧
+    (∀ h_app h_proj,
+      PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf) ∧
+    (∀ (h_hooks : UnifyHookPremises),
+      PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf) ∧
+    (∀ h_app h_proj,
+      (PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf
+        ↔ PrincipalFieldTypingSliceCore env fs rf)) ∧
+    (∀ (h_hooks : UnifyHookPremises),
+      (PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf
+        ↔ PrincipalFieldTypingSliceCore env fs rf)) ∧
+    (∀ {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+      {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook},
+      (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+        ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf))
+
+/-- `PrincipalBoundarySoundFieldFull` is equivalent to explicit components. -/
+theorem principalBoundarySoundFieldFull_iff_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields) :
+    PrincipalBoundarySoundFieldFull st fuel env fs st' rf
+      ↔ PrincipalBoundarySoundFieldFullComponents st fuel env fs st' rf := by
+  constructor
+  · intro h_full
+    exact ⟨h_full.hasType, h_full.hasTypeU, h_full.core, h_full.preconditionedAny,
+      h_full.preconditioned, h_full.preconditionedAnyIffCore, h_full.preconditionedIffCore,
+      h_full.hookIrrelevant⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2.1, h_comp.2.2.1, h_comp.2.2.2.1, h_comp.2.2.2.2.1,
+      h_comp.2.2.2.2.2.1, h_comp.2.2.2.2.2.2.1, h_comp.2.2.2.2.2.2.2⟩
+
+/-- Build `PrincipalBoundarySoundFieldFull` from explicit components. -/
+theorem principalBoundarySoundFieldFull_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_comp : PrincipalBoundarySoundFieldFullComponents st fuel env fs st' rf) :
+    PrincipalBoundarySoundFieldFull st fuel env fs st' rf :=
+  (principalBoundarySoundFieldFull_iff_components
+    st fuel env fs st' rf).2 h_comp
+
+/-- Decompose `PrincipalBoundarySoundFieldFull` into explicit components. -/
+theorem principalBoundarySoundFieldFull_as_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_full : PrincipalBoundarySoundFieldFull st fuel env fs st' rf) :
+    PrincipalBoundarySoundFieldFullComponents st fuel env fs st' rf :=
+  (principalBoundarySoundFieldFull_iff_components
+    st fuel env fs st' rf).1 h_full
+
+/-- Direct components-route decomposition for `PrincipalBoundarySoundFieldFull`. -/
+theorem principalBoundarySoundFieldFull_as_components_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_comp : PrincipalBoundarySoundFieldFullComponents st fuel env fs st' rf) :
+    PrincipalBoundarySoundFieldFullComponents st fuel env fs st' rf :=
+  (principalBoundarySoundFieldFull_iff_components
+    st fuel env fs st' rf).1
+    (principalBoundarySoundFieldFull_of_components
+      st fuel env fs st' rf h_comp)
+
+/-- Explicit component alias for `PrincipalBoundarySoundNoUnifyExprFull`. -/
+abbrev PrincipalBoundarySoundNoUnifyExprFullComponents
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty) : Prop :=
+  HasType env e ty ∧
+    HasTypeU env e ty ∧
+    PrincipalTypingSliceCore env e ty ∧
+    (∀ h_app h_proj,
+      PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty) ∧
+    (∀ (h_hooks : UnifyHookPremises),
+      PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty) ∧
+    (∀ h_app h_proj,
+      (PrincipalTypingSlicePreconditioned h_app h_proj st fuel env e st' ty
+        ↔ PrincipalTypingSliceCore env e ty)) ∧
+    (∀ (h_hooks : UnifyHookPremises),
+      (PrincipalTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env e st' ty
+        ↔ PrincipalTypingSliceCore env e ty)) ∧
+    (∀ {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+      {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook},
+      (PrincipalTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env e st' ty
+        ↔ PrincipalTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env e st' ty))
+
+/-- `PrincipalBoundarySoundNoUnifyExprFull` is equivalent to explicit components. -/
+theorem principalBoundarySoundNoUnifyExprFull_iff_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty) :
+    PrincipalBoundarySoundNoUnifyExprFull st fuel env e st' ty
+      ↔ PrincipalBoundarySoundNoUnifyExprFullComponents st fuel env e st' ty := by
+  constructor
+  · intro h_full
+    exact ⟨h_full.hasType, h_full.hasTypeU, h_full.core, h_full.preconditionedAny,
+      h_full.preconditioned, h_full.preconditionedAnyIffCore, h_full.preconditionedIffCore,
+      h_full.hookIrrelevant⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2.1, h_comp.2.2.1, h_comp.2.2.2.1, h_comp.2.2.2.2.1,
+      h_comp.2.2.2.2.2.1, h_comp.2.2.2.2.2.2.1, h_comp.2.2.2.2.2.2.2⟩
+
+/-- Build `PrincipalBoundarySoundNoUnifyExprFull` from explicit components. -/
+theorem principalBoundarySoundNoUnifyExprFull_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_comp : PrincipalBoundarySoundNoUnifyExprFullComponents st fuel env e st' ty) :
+    PrincipalBoundarySoundNoUnifyExprFull st fuel env e st' ty :=
+  (principalBoundarySoundNoUnifyExprFull_iff_components
+    st fuel env e st' ty).2 h_comp
+
+/-- Decompose `PrincipalBoundarySoundNoUnifyExprFull` into explicit components. -/
+theorem principalBoundarySoundNoUnifyExprFull_as_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_full : PrincipalBoundarySoundNoUnifyExprFull st fuel env e st' ty) :
+    PrincipalBoundarySoundNoUnifyExprFullComponents st fuel env e st' ty :=
+  (principalBoundarySoundNoUnifyExprFull_iff_components
+    st fuel env e st' ty).1 h_full
+
+/-- Direct components-route decomposition for `PrincipalBoundarySoundNoUnifyExprFull`. -/
+theorem principalBoundarySoundNoUnifyExprFull_as_components_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (e : CoreExpr)
+    (st' : UnifyState) (ty : Ty)
+    (h_comp : PrincipalBoundarySoundNoUnifyExprFullComponents st fuel env e st' ty) :
+    PrincipalBoundarySoundNoUnifyExprFullComponents st fuel env e st' ty :=
+  (principalBoundarySoundNoUnifyExprFull_iff_components
+    st fuel env e st' ty).1
+    (principalBoundarySoundNoUnifyExprFull_of_components
+      st fuel env e st' ty h_comp)
+
+/-- Explicit component alias for `PrincipalBoundarySoundNoUnifyFieldFull`. -/
+abbrev PrincipalBoundarySoundNoUnifyFieldFullComponents
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields) : Prop :=
+  HasFieldsType env fs rf ∧
+    HasFieldsTypeU env fs rf ∧
+    PrincipalFieldTypingSliceCore env fs rf ∧
+    (∀ h_app h_proj,
+      PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf) ∧
+    (∀ (h_hooks : UnifyHookPremises),
+      PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf) ∧
+    (∀ h_app h_proj,
+      (PrincipalFieldTypingSlicePreconditioned h_app h_proj st fuel env fs st' rf
+        ↔ PrincipalFieldTypingSliceCore env fs rf)) ∧
+    (∀ (h_hooks : UnifyHookPremises),
+      (PrincipalFieldTypingSlicePreconditioned h_hooks.1 h_hooks.2 st fuel env fs st' rf
+        ↔ PrincipalFieldTypingSliceCore env fs rf)) ∧
+    (∀ {h_app₁ : AppUnifySoundHook} {h_proj₁ : ProjUnifySoundHook}
+      {h_app₂ : AppUnifySoundHook} {h_proj₂ : ProjUnifySoundHook},
+      (PrincipalFieldTypingSlicePreconditioned h_app₁ h_proj₁ st fuel env fs st' rf
+        ↔ PrincipalFieldTypingSlicePreconditioned h_app₂ h_proj₂ st fuel env fs st' rf))
+
+/-- `PrincipalBoundarySoundNoUnifyFieldFull` is equivalent to explicit components. -/
+theorem principalBoundarySoundNoUnifyFieldFull_iff_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields) :
+    PrincipalBoundarySoundNoUnifyFieldFull st fuel env fs st' rf
+      ↔ PrincipalBoundarySoundNoUnifyFieldFullComponents st fuel env fs st' rf := by
+  constructor
+  · intro h_full
+    exact ⟨h_full.hasType, h_full.hasTypeU, h_full.core, h_full.preconditionedAny,
+      h_full.preconditioned, h_full.preconditionedAnyIffCore, h_full.preconditionedIffCore,
+      h_full.hookIrrelevant⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2.1, h_comp.2.2.1, h_comp.2.2.2.1, h_comp.2.2.2.2.1,
+      h_comp.2.2.2.2.2.1, h_comp.2.2.2.2.2.2.1, h_comp.2.2.2.2.2.2.2⟩
+
+/-- Build `PrincipalBoundarySoundNoUnifyFieldFull` from explicit components. -/
+theorem principalBoundarySoundNoUnifyFieldFull_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_comp : PrincipalBoundarySoundNoUnifyFieldFullComponents st fuel env fs st' rf) :
+    PrincipalBoundarySoundNoUnifyFieldFull st fuel env fs st' rf :=
+  (principalBoundarySoundNoUnifyFieldFull_iff_components
+    st fuel env fs st' rf).2 h_comp
+
+/-- Decompose `PrincipalBoundarySoundNoUnifyFieldFull` into explicit components. -/
+theorem principalBoundarySoundNoUnifyFieldFull_as_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_full : PrincipalBoundarySoundNoUnifyFieldFull st fuel env fs st' rf) :
+    PrincipalBoundarySoundNoUnifyFieldFullComponents st fuel env fs st' rf :=
+  (principalBoundarySoundNoUnifyFieldFull_iff_components
+    st fuel env fs st' rf).1 h_full
+
+/-- Direct components-route decomposition for `PrincipalBoundarySoundNoUnifyFieldFull`. -/
+theorem principalBoundarySoundNoUnifyFieldFull_as_components_of_components
+    (st : UnifyState) (fuel : Nat) (env : TermEnv) (fs : CoreFields)
+    (st' : UnifyState) (rf : RowFields)
+    (h_comp : PrincipalBoundarySoundNoUnifyFieldFullComponents st fuel env fs st' rf) :
+    PrincipalBoundarySoundNoUnifyFieldFullComponents st fuel env fs st' rf :=
+  (principalBoundarySoundNoUnifyFieldFull_iff_components
+    st fuel env fs st' rf).1
+    (principalBoundarySoundNoUnifyFieldFull_of_components
+      st fuel env fs st' rf h_comp)
+
 /--
 Build the packaged no-unify expression capstone from one successful no-unify
 run via the direct boundary+sound typing-suite surface.

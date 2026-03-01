@@ -483,6 +483,7 @@ This work starts by cannibalizing the existing Rill formal corpus and then exten
 - **Phase 2 (active):** Added the same alias/decomposition families for the base no-unify all-hooks surfaces in `Kea/Typing.lean` (`PrincipalNoUnify{Expr,Field}AllHooksRouteSurface`), so both base surfaces and dual-master wrappers now share uniform `...Components`/`..._{iff_components,of_components,as_components,as_components_of_components}` contracts.
 - **Phase 2 (active):** Added full component/decomposition contracts for `PrincipalNoUnify{Expr,Field}RunBundleConsequences` in `Kea/Typing.lean` (`...Components` plus `..._{iff_components,of_components,as_components,as_components_of_components}`), aligning consequence bundles with the already-aliased no-unify all-hooks surfaces and cross-route wrappers.
 - **Phase 2 (active):** Added the same full decomposition layer for boundary+sound counterparts `Principal{Expr,Field}RunBundleConsequences` in `Kea/Typing.lean` (`...Components` plus `..._{iff_components,of_components,as_components,as_components_of_components}`), so run-bundle consequence APIs are now uniform across no-unify and general boundary+sound paths.
+- **Phase 2 (active):** Added matching alias/decomposition contracts for direct boundary+sound full bundles in `Kea/Typing.lean`: `PrincipalBoundarySound{Expr,Field,NoUnifyExpr,NoUnifyField}Full` now each expose `...Components` and `..._{iff_components,of_components,as_components,as_components_of_components}`.
 
 The formal workspace lives at [`formal/`](formal/).
 
