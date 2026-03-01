@@ -12,14 +12,21 @@ fn add(x: Int, y: Int) -> Int
     name: (identifier)
     (parameter_list
       (parameter
-        pattern: (variable_pattern (identifier))
-        type: (named_type (upper_identifier)))
+        pattern: (variable_pattern
+          (identifier))
+        type: (named_type
+          (upper_identifier)))
       (parameter
-        pattern: (variable_pattern (identifier))
-        type: (named_type (upper_identifier))))
+        pattern: (variable_pattern
+          (identifier))
+        type: (named_type
+          (upper_identifier))))
     (pure_return_type
-      type: (named_type (upper_identifier)))
-    (identifier)))
+      type: (named_type
+        (upper_identifier)))
+    (indent)
+    (identifier)
+    (dedent)))
 
 ==================
 Effect declaration
@@ -33,17 +40,23 @@ effect IO
 (source_file
   (effect_declaration
     name: (upper_identifier)
+    (indent)
     (function_declaration
       name: (identifier)
       (parameter_list
         (parameter
-          pattern: (variable_pattern (identifier))
-          type: (named_type (upper_identifier))))
+          pattern: (variable_pattern
+            (identifier))
+          type: (named_type
+            (upper_identifier))))
       (effect_return_type
         (effect_row
           (effect_ref
             name: (upper_identifier)))
-        type: (named_type (upper_identifier))))))
+        type: (named_type
+          (upper_identifier))))
+    (MISSING dedent))
+  (newline))
 
 ==================
 Type definition
@@ -56,9 +69,13 @@ type Color = Red | Green | Blue
 (source_file
   (type_definition
     name: (upper_identifier)
-    (variant name: (upper_identifier))
-    (variant name: (upper_identifier))
-    (variant name: (upper_identifier))))
+    (variant
+      name: (upper_identifier))
+    (variant
+      name: (upper_identifier))
+    (variant
+      name: (upper_identifier)))
+  (newline))
 
 ==================
 Struct definition
@@ -73,12 +90,17 @@ struct User
 (source_file
   (struct_definition
     name: (upper_identifier)
+    (indent)
     (struct_field
       name: (identifier)
-      type: (named_type (upper_identifier)))
+      type: (named_type
+        (upper_identifier)))
+    (newline)
     (struct_field
       name: (identifier)
-      type: (named_type (upper_identifier)))))
+      type: (named_type
+        (upper_identifier)))
+    (dedent)))
 
 ==================
 Trait definition
@@ -93,17 +115,25 @@ trait Eq a
   (trait_definition
     name: (upper_identifier)
     param: (identifier)
+    (indent)
     (function_declaration
       name: (identifier)
       (parameter_list
         (parameter
-          pattern: (variable_pattern (identifier))
-          type: (named_type (identifier)))
+          pattern: (variable_pattern
+            (identifier))
+          type: (named_type
+            (identifier)))
         (parameter
-          pattern: (variable_pattern (identifier))
-          type: (named_type (identifier))))
+          pattern: (variable_pattern
+            (identifier))
+          type: (named_type
+            (identifier))))
       (pure_return_type
-        type: (named_type (upper_identifier))))))
+        type: (named_type
+          (upper_identifier))))
+    (MISSING dedent))
+  (newline))
 
 ==================
 Use declaration
@@ -117,8 +147,10 @@ use Test
 (source_file
   (use_declaration
     module: (upper_identifier))
+  (newline)
   (use_declaration
-    module: (upper_identifier)))
+    module: (upper_identifier))
+  (newline))
 
 ==================
 Doc block on function
@@ -133,25 +165,34 @@ fn add(x: Int, y: Int) -> Int
 (source_file
   (documented_declaration
     (doc_block)
+    (newline)
     (function_declaration
       name: (identifier)
       (parameter_list
         (parameter
-          pattern: (variable_pattern (identifier))
-          type: (named_type (upper_identifier)))
+          pattern: (variable_pattern
+            (identifier))
+          type: (named_type
+            (upper_identifier)))
         (parameter
-          pattern: (variable_pattern (identifier))
-          type: (named_type (upper_identifier))))
+          pattern: (variable_pattern
+            (identifier))
+          type: (named_type
+            (upper_identifier))))
       (pure_return_type
-        type: (named_type (upper_identifier)))
-      (identifier))))
+        type: (named_type
+          (upper_identifier)))
+      (indent)
+      (identifier)
+      (dedent))))
 
 ==================
 Multi-line doc block
 ==================
 
-doc A user record.
-doc Contains name and age fields.
+doc
+  A user record.
+  Contains name and age fields.
 struct User
   name: String
   age: Int
@@ -161,14 +202,69 @@ struct User
 (source_file
   (documented_declaration
     (doc_block)
+    (newline)
     (struct_definition
       name: (upper_identifier)
+      (indent)
       (struct_field
         name: (identifier)
-        type: (named_type (upper_identifier)))
+        type: (named_type
+          (upper_identifier)))
+      (newline)
       (struct_field
         name: (identifier)
-        type: (named_type (upper_identifier))))))
+        type: (named_type
+          (upper_identifier)))
+      (dedent))))
+
+==================
+Block-form doc with indented body
+==================
+
+doc
+  Return true when a list has no elements.
+  Checks the outermost constructor.
+fn is_empty(xs: List a) -> Bool
+  case xs
+    Nil -> true
+    Cons(_, _) -> false
+
+---
+
+(source_file
+  (documented_declaration
+    (doc_block)
+    (newline)
+    (function_declaration
+      name: (identifier)
+      (parameter_list
+        (parameter
+          pattern: (variable_pattern
+            (identifier))
+          type: (applied_type
+            constructor: (upper_identifier)
+            arg: (named_type
+              (identifier)))))
+      (pure_return_type
+        type: (named_type
+          (upper_identifier)))
+      (indent)
+      (case_expression
+        scrutinee: (identifier)
+        (indent)
+        (case_arm
+          pattern: (constructor_pattern
+            constructor: (upper_identifier))
+          body: (boolean))
+        (newline)
+        (case_arm
+          pattern: (constructor_pattern
+            constructor: (upper_identifier)
+            (wildcard_pattern)
+            (wildcard_pattern))
+          body: (boolean))
+        (dedent))
+      (dedent))))
 
 ==================
 Doc block on effect
@@ -183,19 +279,62 @@ effect IO
 (source_file
   (documented_declaration
     (doc_block)
+    (newline)
     (effect_declaration
       name: (upper_identifier)
+      (indent)
       (function_declaration
         name: (identifier)
         (parameter_list
           (parameter
-            pattern: (variable_pattern (identifier))
-            type: (named_type (upper_identifier))))
+            pattern: (variable_pattern
+              (identifier))
+            type: (named_type
+              (upper_identifier))))
         (effect_return_type
           (effect_row
             (effect_ref
               name: (upper_identifier)))
-          type: (named_type (upper_identifier)))))))
+          type: (named_type
+            (upper_identifier))))
+      (MISSING dedent)))
+  (newline))
+
+==================
+Doc block with blank lines between paragraphs
+==================
+
+doc
+  List provides operations over immutable linked lists.
+
+  Use Cons to build lists and Nil for empty.
+  Most transformations use map, filter, and fold.
+enum List a
+  Nil
+  Cons(a, List a)
+
+---
+
+(source_file
+  (documented_declaration
+    (doc_block)
+    (newline)
+    (type_definition
+      name: (upper_identifier)
+      param: (identifier)
+      (indent)
+      (variant
+        name: (upper_identifier))
+      (newline)
+      (variant
+        name: (upper_identifier)
+        (named_type
+          (identifier))
+        (applied_type
+          constructor: (upper_identifier)
+          arg: (named_type
+            (identifier))))
+      (dedent))))
 
 ==================
 Test declaration
@@ -209,4 +348,6 @@ test "simple test"
 (source_file
   (test_declaration
     name: (string)
-    (boolean)))
+    (indent)
+    (boolean)
+    (dedent)))
