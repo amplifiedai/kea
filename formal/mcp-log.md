@@ -13906,3 +13906,40 @@ New theorem surface:
 **Impact**:
 - Aligns canonical consequence presentation with the same global-slice API style
   used by declarative and unification bundle families.
+
+### 2026-03-02: bidirectional equivalence for declarative canonical slices
+
+**Context**: Extended `Kea/Eval.lean` to close direct `HasType`/`inferExpr`
+equivalence on the new declarative canonical-consequence global slice pair.
+
+New theorem surface:
+- `coreCalculusSoundnessDeclarativeInferSlice_of_coreCalculusSoundnessDeclarativeSlice`
+- `coreCalculusSoundnessDeclarativeSlice_of_coreCalculusSoundnessDeclarativeInferSlice`
+- `coreCalculusSoundnessDeclarativeSlice_iff_coreCalculusSoundnessDeclarativeInferSlice`
+- `coreCalculusSoundnessDeclarativeSlice_proved_via_infer`
+- `coreCalculusSoundnessDeclarativeInferSlice_proved_via_hasType`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; this is theorem-route closure using
+  existing `inferExpr_sound`/`inferExpr_complete` links.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Declarative canonical-consequence global slices are now directly
+  interchangeable in both directions with one-step proved aliases.
+
+**Impact**:
+- Closes the last directional asymmetry on declarative canonical slice APIs.
