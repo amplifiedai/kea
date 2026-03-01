@@ -36,7 +36,9 @@ fn main() -> Int
   build(7).x
 "#;
 
-const SUM_REUSE_SOURCE: &str = r#"type Pairish = Left(Int) | Right(Int)
+const SUM_REUSE_SOURCE: &str = r#"enum Pairish
+  Left(Int)
+  Right(Int)
 
 fn build(n: Int) -> Pairish
   let p = Left(1)
@@ -126,13 +128,31 @@ fn main() -> Int
   rewrite(true, Point { x: 0 }).x
 "#;
 
-const TRMC_CHAIN_SOURCE: &str = r#"type Chain = End | Node(Int, Chain)
+const TRMC_CHAIN_SOURCE: &str = r#"enum Chain
+  End
+  Node(Int, Chain)
 
 fn build(n: Int) -> Chain
   if n <= 0
     End
   else
     Node(n, build(n - 1))
+
+fn main() -> Int
+  case build(4)
+    End -> 0
+    Node(head, _) -> head
+"#;
+
+const TRMC_CHAIN_WEIGHTED_SOURCE: &str = r#"enum Chain
+  End
+  Node(Int, Chain)
+
+fn build(n: Int) -> Chain
+  if n <= 0
+    End
+  else
+    Node(n + n, build(n - 1))
 
 fn main() -> Int
   case build(4)
@@ -157,6 +177,7 @@ fn run() -> Result<(), String> {
         compile_kernel("loop_mixed_unit_walk", LOOP_MIXED_UNIT_WALK_SOURCE)?,
         compile_kernel("mixed_join_token", MIXED_JOIN_TOKEN_SOURCE)?,
         compile_kernel("trmc_chain", TRMC_CHAIN_SOURCE)?,
+        compile_kernel("trmc_chain_weighted", TRMC_CHAIN_WEIGHTED_SOURCE)?,
     ];
     let total_reuse: usize = metrics.iter().map(|m| m.reuse_count).sum();
     let total_reuse_token_candidates: usize =
