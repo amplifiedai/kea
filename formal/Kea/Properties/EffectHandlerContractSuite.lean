@@ -9104,6 +9104,18 @@ theorem effectHandlerDisjointCompositionCoherenceSuite_nestedDisjoint
       effects handlerA handlerB targetA targetB :=
   h_suite.nestedDisjoint
 
+theorem effectHandlerDisjointCompositionCoherenceSuite_nestedDisjoint_as_components
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label)
+    (h_suite :
+      EffectHandlerDisjointCompositionCoherenceSuite effects handlerA handlerB targetA targetB) :
+    NestedHandlerCompositionContracts.NestedHandlerDisjointCoherenceComponents
+      effects handlerA handlerB targetA targetB :=
+  NestedHandlerCompositionContracts.nestedHandlerDisjointCoherence_as_components
+    effects handlerA handlerB targetA targetB
+    (effectHandlerDisjointCompositionCoherenceSuite_nestedDisjoint
+      effects handlerA handlerB targetA targetB h_suite)
+
 /-- One-hop projection: first order removes `targetA`. -/
 theorem effectHandlerDisjointCompositionCoherenceSuite_leftTargetAAbsent
     (effects handlerA handlerB : EffectRow)
@@ -9307,6 +9319,26 @@ theorem effectHandlerDisjointCompositionCoherenceSuite_hasEq_of_handler_absence
     h_handlerB_abs_targetA
     h_handlerB_abs_targetB).2 label
 
+theorem effectHandlerDisjointCompositionCoherenceSuite_nestedDisjoint_as_components_of_handler_absence
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label)
+    (h_targets_ne : targetA ≠ targetB)
+    (h_handlerA_abs_targetA : RowFields.has (EffectRow.fields handlerA) targetA = false)
+    (h_handlerA_abs_targetB : RowFields.has (EffectRow.fields handlerA) targetB = false)
+    (h_handlerB_abs_targetA : RowFields.has (EffectRow.fields handlerB) targetA = false)
+    (h_handlerB_abs_targetB : RowFields.has (EffectRow.fields handlerB) targetB = false) :
+    NestedHandlerCompositionContracts.NestedHandlerDisjointCoherenceComponents
+      effects handlerA handlerB targetA targetB :=
+  effectHandlerDisjointCompositionCoherenceSuite_nestedDisjoint_as_components
+    effects handlerA handlerB targetA targetB
+    (effectHandlerDisjointCompositionCoherenceSuite_of_handler_absence
+      effects handlerA handlerB targetA targetB
+      h_targets_ne
+      h_handlerA_abs_targetA
+      h_handlerA_abs_targetB
+      h_handlerB_abs_targetA
+      h_handlerB_abs_targetB)
+
 /--
 Combined top-level disjoint composition package carrying both:
 - target-absence/row-tail coherence consequences
@@ -9448,6 +9480,18 @@ theorem effectHandlerDisjointObservationalSuite_nestedDisjoint
   effectHandlerDisjointCompositionCoherenceSuite_nestedDisjoint
     effects handlerA handlerB targetA targetB
     (effectHandlerDisjointObservationalSuite_coherence
+      effects handlerA handlerB targetA targetB h_suite)
+
+theorem effectHandlerDisjointObservationalSuite_nestedDisjoint_as_components
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label)
+    (h_suite :
+      EffectHandlerDisjointObservationalSuite effects handlerA handlerB targetA targetB) :
+    NestedHandlerCompositionContracts.NestedHandlerDisjointCoherenceComponents
+      effects handlerA handlerB targetA targetB :=
+  NestedHandlerCompositionContracts.nestedHandlerDisjointCoherence_as_components
+    effects handlerA handlerB targetA targetB
+    (effectHandlerDisjointObservationalSuite_nestedDisjoint
       effects handlerA handlerB targetA targetB h_suite)
 
 theorem effectHandlerDisjointObservationalSuite_leftTargetAAbsent
@@ -9612,6 +9656,26 @@ theorem effectHandlerDisjointObservationalSuite_nestedDisjoint_of_handler_absenc
     NestedHandlerCompositionContracts.NestedHandlerDisjointCoherence
       effects handlerA handlerB targetA targetB :=
   effectHandlerDisjointObservationalSuite_nestedDisjoint
+    effects handlerA handlerB targetA targetB
+    (effectHandlerDisjointObservationalSuite_of_handler_absence
+      effects handlerA handlerB targetA targetB
+      h_targets_ne
+      h_handlerA_abs_targetA
+      h_handlerA_abs_targetB
+      h_handlerB_abs_targetA
+      h_handlerB_abs_targetB)
+
+theorem effectHandlerDisjointObservationalSuite_nestedDisjoint_as_components_of_handler_absence
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label)
+    (h_targets_ne : targetA ≠ targetB)
+    (h_handlerA_abs_targetA : RowFields.has (EffectRow.fields handlerA) targetA = false)
+    (h_handlerA_abs_targetB : RowFields.has (EffectRow.fields handlerA) targetB = false)
+    (h_handlerB_abs_targetA : RowFields.has (EffectRow.fields handlerB) targetA = false)
+    (h_handlerB_abs_targetB : RowFields.has (EffectRow.fields handlerB) targetB = false) :
+    NestedHandlerCompositionContracts.NestedHandlerDisjointCoherenceComponents
+      effects handlerA handlerB targetA targetB :=
+  effectHandlerDisjointObservationalSuite_nestedDisjoint_as_components
     effects handlerA handlerB targetA targetB
     (effectHandlerDisjointObservationalSuite_of_handler_absence
       effects handlerA handlerB targetA targetB

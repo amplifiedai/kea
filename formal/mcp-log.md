@@ -13390,3 +13390,42 @@ New theorem surface:
 
 **Impact**:
 - Completes one-hop projection parity for the combined top-level disjoint suite.
+
+### 2026-03-02: nested-disjoint component routes on disjoint suite layers
+
+**Context**: Extended `Kea/Properties/EffectHandlerContractSuite.lean` with
+direct component decomposition wrappers for nested-disjoint coherence at both
+the disjoint composition coherence suite layer and the combined disjoint
+observational suite layer.
+
+New theorem surface:
+- `effectHandlerDisjointCompositionCoherenceSuite_nestedDisjoint_as_components`
+- `effectHandlerDisjointCompositionCoherenceSuite_nestedDisjoint_as_components_of_handler_absence`
+- `effectHandlerDisjointObservationalSuite_nestedDisjoint_as_components`
+- `effectHandlerDisjointObservationalSuite_nestedDisjoint_as_components_of_handler_absence`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; this is decomposition-route parity over
+  existing nested-disjoint projections.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Nested disjoint coherence components are now one-hop consumable from both
+  suite-witness and handler-absence routes on both disjoint suite layers.
+
+**Impact**:
+- Closes another decomposition-parity gap and keeps disjoint suite APIs fully
+  symmetric across projection vs component-route consumption.
