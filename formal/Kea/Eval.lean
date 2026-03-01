@@ -953,6 +953,28 @@ theorem verticalEvalUnifyBridgeSlice_proved : VerticalEvalUnifyBridgeSlice := by
     h_hooks st st' fuel h_ok h_env h_frag
 
 /--
+Hook-parameterized packaged theorem surface for unification-threaded evaluator
+soundness on the full executable fragment.
+-/
+def VerticalEvalUnifyBridgeSliceFromHooks : Prop :=
+  ∀ {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty},
+    (h_app : AppUnifySoundHook) →
+    (h_proj : ProjUnifySoundHook) →
+    (st st' : UnifyState) →
+    (fuel : Nat) →
+    inferExprUnify st fuel tenv e = .ok st' ty →
+    EnvWellTyped tenv venv →
+    EvalFragmentFull e →
+    ∃ v, eval venv e = some v ∧ ValueHasType v ty
+
+/-- The hook-parameterized unification-bridge evaluator slice is fully proved. -/
+theorem verticalEvalUnifyBridgeSliceFromHooks_proved :
+    VerticalEvalUnifyBridgeSliceFromHooks := by
+  intro tenv venv e ty h_app h_proj st st' fuel h_ok h_env h_frag
+  exact type_soundness_evalFragmentFull_of_inferUnify_from_hooks
+    h_app h_proj st st' fuel h_ok h_env h_frag
+
+/--
 Packaged theorem surface for unification-threaded progress+preservation on the
 full executable fragment.
 -/
@@ -972,6 +994,28 @@ theorem coreProgressPreservationEvalUnifySlice_proved :
   intro tenv venv e ty h_hooks st st' fuel h_ok h_env h_frag
   exact coreProgressPreservationEvalFragmentFull_of_inferUnify
     h_hooks st st' fuel h_ok h_env h_frag
+
+/--
+Hook-parameterized packaged theorem surface for unification-threaded
+progress+preservation on the full executable fragment.
+-/
+def CoreProgressPreservationEvalUnifySliceFromHooks : Prop :=
+  ∀ {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty},
+    (h_app : AppUnifySoundHook) →
+    (h_proj : ProjUnifySoundHook) →
+    (st st' : UnifyState) →
+    (fuel : Nat) →
+    inferExprUnify st fuel tenv e = .ok st' ty →
+    EnvWellTyped tenv venv →
+    EvalFragmentFull e →
+    CoreProgressPreservationEvalFragmentFull tenv venv e ty
+
+/-- The hook-parameterized progress+preservation slice is fully proved. -/
+theorem coreProgressPreservationEvalUnifySliceFromHooks_proved :
+    CoreProgressPreservationEvalUnifySliceFromHooks := by
+  intro tenv venv e ty h_app h_proj st st' fuel h_ok h_env h_frag
+  exact coreProgressPreservationEvalFragmentFull_of_inferUnify_from_hooks
+    h_app h_proj st st' fuel h_ok h_env h_frag
 
 /--
 Executable soundness for the atomic evaluator fragment:
