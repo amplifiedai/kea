@@ -13155,3 +13155,46 @@ New theorem surface:
 **Impact**:
 - Improves downstream ergonomics for multi-handler coherence proofs that need
   both facets together.
+
+### 2026-03-02: canonical-slice <-> consequence-slice bridge closure
+
+**Context**: Extended `Kea/Eval.lean` with explicit bridge/equivalence routes
+between `CoreCalculusSoundnessSlice{,FromHooks}` and
+`CoreCalculusSoundnessConsequencesSlice{,FromHooks}` plus proved-route aliases.
+
+New theorem surface:
+- `coreCalculusSoundnessConsequencesSlice_of_coreCalculusSoundnessSlice`
+- `coreCalculusSoundnessConsequencesSliceFromHooks_of_coreCalculusSoundnessSliceFromHooks`
+- `coreCalculusSoundnessSlice_of_coreCalculusSoundnessConsequencesSlice`
+- `coreCalculusSoundnessSliceFromHooks_of_coreCalculusSoundnessConsequencesSliceFromHooks`
+- `coreCalculusSoundnessConsequencesSlice_iff_coreCalculusSoundnessSlice`
+- `coreCalculusSoundnessConsequencesSliceFromHooks_iff_coreCalculusSoundnessSliceFromHooks`
+- `coreCalculusSoundnessConsequencesSlice_of_coreCalculusSoundnessSlice_proved`
+- `coreCalculusSoundnessConsequencesSliceFromHooks_of_coreCalculusSoundnessSliceFromHooks_proved`
+- `coreCalculusSoundnessSlice_of_coreCalculusSoundnessConsequencesSlice_proved`
+- `coreCalculusSoundnessSliceFromHooks_of_coreCalculusSoundnessConsequencesSliceFromHooks_proved`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; this is route-equivalence closure across
+  already aligned canonical and consequence slice families.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Canonical and consequence slices are now directly interchangeable in both hook
+  routes, with proved-route aliases for one-step entry.
+
+**Impact**:
+- Removes a remaining route-family asymmetry in evaluator soundness APIs.
