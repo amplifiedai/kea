@@ -685,6 +685,84 @@ structure DisjointHandlerCompositionCoherence
   rightRowTailStable :
     rest (handleComposeTwoTargetsSwap effects handlerA handlerB targetA targetB) = rest effects
 
+/-- Explicit component alias for disjoint-target composition coherence. -/
+abbrev DisjointHandlerCompositionCoherenceComponents
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label) : Prop :=
+  RowFields.has
+      (fields (handleComposeTwoTargets effects handlerA handlerB targetA targetB))
+      targetA = false
+    ∧
+    RowFields.has
+      (fields (handleComposeTwoTargets effects handlerA handlerB targetA targetB))
+      targetB = false
+    ∧
+    RowFields.has
+      (fields (handleComposeTwoTargetsSwap effects handlerA handlerB targetA targetB))
+      targetA = false
+    ∧
+    RowFields.has
+      (fields (handleComposeTwoTargetsSwap effects handlerA handlerB targetA targetB))
+      targetB = false
+    ∧
+    rest (handleComposeTwoTargets effects handlerA handlerB targetA targetB) = rest effects
+    ∧
+    rest (handleComposeTwoTargetsSwap effects handlerA handlerB targetA targetB) = rest effects
+
+theorem disjointHandlerCompositionCoherence_iff_components
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label) :
+    DisjointHandlerCompositionCoherence effects handlerA handlerB targetA targetB
+      ↔
+      DisjointHandlerCompositionCoherenceComponents
+        effects handlerA handlerB targetA targetB := by
+  constructor
+  · intro h
+    exact ⟨h.leftTargetAAbsent, h.leftTargetBAbsent, h.rightTargetAAbsent,
+      h.rightTargetBAbsent, h.leftRowTailStable, h.rightRowTailStable⟩
+  · intro h
+    exact {
+      leftTargetAAbsent := h.1
+      leftTargetBAbsent := h.2.1
+      rightTargetAAbsent := h.2.2.1
+      rightTargetBAbsent := h.2.2.2.1
+      leftRowTailStable := h.2.2.2.2.1
+      rightRowTailStable := h.2.2.2.2.2
+    }
+
+theorem disjointHandlerCompositionCoherence_of_components
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label)
+    (h_comp :
+      DisjointHandlerCompositionCoherenceComponents
+        effects handlerA handlerB targetA targetB) :
+    DisjointHandlerCompositionCoherence effects handlerA handlerB targetA targetB :=
+  (disjointHandlerCompositionCoherence_iff_components
+    effects handlerA handlerB targetA targetB).2 h_comp
+
+theorem disjointHandlerCompositionCoherence_as_components
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label)
+    (h :
+      DisjointHandlerCompositionCoherence effects handlerA handlerB targetA targetB) :
+    DisjointHandlerCompositionCoherenceComponents
+      effects handlerA handlerB targetA targetB :=
+  (disjointHandlerCompositionCoherence_iff_components
+    effects handlerA handlerB targetA targetB).1 h
+
+theorem disjointHandlerCompositionCoherence_as_components_of_components
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label)
+    (h_comp :
+      DisjointHandlerCompositionCoherenceComponents
+        effects handlerA handlerB targetA targetB) :
+    DisjointHandlerCompositionCoherenceComponents
+      effects handlerA handlerB targetA targetB :=
+  disjointHandlerCompositionCoherence_as_components
+    effects handlerA handlerB targetA targetB
+    (disjointHandlerCompositionCoherence_of_components
+      effects handlerA handlerB targetA targetB h_comp)
+
 theorem disjoint_handler_composition_coherence_of_handler_absence
     (effects handlerA handlerB : EffectRow)
     (targetA targetB : Label)
@@ -722,5 +800,25 @@ theorem disjoint_handler_composition_coherence_of_handler_absence
       handleComposeTwoTargetsSwap_preserves_row_tail
         effects handlerA handlerB targetA targetB
   }
+
+theorem disjoint_handler_composition_coherence_as_components_of_handler_absence
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label)
+    (h_targets_ne : targetA ≠ targetB)
+    (h_handlerA_abs_targetA : RowFields.has (fields handlerA) targetA = false)
+    (h_handlerA_abs_targetB : RowFields.has (fields handlerA) targetB = false)
+    (h_handlerB_abs_targetA : RowFields.has (fields handlerB) targetA = false)
+    (h_handlerB_abs_targetB : RowFields.has (fields handlerB) targetB = false) :
+    DisjointHandlerCompositionCoherenceComponents
+      effects handlerA handlerB targetA targetB :=
+  disjointHandlerCompositionCoherence_as_components
+    effects handlerA handlerB targetA targetB
+    (disjoint_handler_composition_coherence_of_handler_absence
+      effects handlerA handlerB targetA targetB
+      h_targets_ne
+      h_handlerA_abs_targetA
+      h_handlerA_abs_targetB
+      h_handlerB_abs_targetA
+      h_handlerB_abs_targetB)
 
 end EffectRow
