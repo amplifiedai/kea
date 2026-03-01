@@ -4145,6 +4145,57 @@
     }
 
     #[test]
+    fn compile_and_execute_recursive_handler_installation_depth_exit_code() {
+        let source_path = write_temp_source(
+            "effect Reader C\n  fn ask() -> C\n\nfn descend(n: Int) -[Reader Int]> Int\n  if n == 0\n    Reader.ask()\n  else\n    let inner = handle descend(n - 1)\n      Reader.ask() -> resume n\n    inner + 1\n\nfn main() -> Int\n  handle descend(25)\n    Reader.ask() -> resume 0\n",
+            "kea-cli-recursive-handler-installation-depth",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("recursive handler installation should run");
+        assert_eq!(run.exit_code, 26);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_reject_fail_triggered_after_resume_in_current_lowering() {
+        let source_path = write_temp_source(
+            "effect Fail\n  fn fail(err: Int) -> Never\n\neffect Gate\n  fn read() -> Int\n\nfn program() -[Gate, Fail Int]> Int\n  let n = Gate.read()\n  if n == 0\n    fail 9\n  else\n    n\n\nfn main() -> Int\n  let r = catch handle program()\n    Gate.read() -> resume 0\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
+            "kea-cli-resume-path-fail-caught",
+            "kea",
+        );
+
+        let err = compile_file(&source_path, CodegenMode::Aot).expect_err(
+            "current lowering should reject fail-triggered-after-resume shape",
+        );
+        assert!(
+            err.contains("Fail-only lowering invariant violated"),
+            "expected current lowering-gap diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_reject_state_put_inside_state_clause_for_current_tail_resumptive_rules() {
+        let source_path = write_temp_source(
+            "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn probe() -[State Int]> Int\n  State.put(5)\n  0\n\nfn run_inner() -[State Int]> Int\n  handle probe()\n    State.get() -> resume 0\n    State.put(next) ->\n      State.put(next + 10)\n      resume ()\n\nfn main() -> Int\n  handle run_inner()\n    State.get() -> resume 100\n    State.put(next) -> resume ()\n    then value ->\n      State.get()\n",
+            "kea-cli-state-put-inside-state-clause-forwards",
+            "kea",
+        );
+
+        let err = run_file(&source_path)
+            .expect_err("current compiled lowering should reject non-tail state clause bodies");
+        assert!(
+            err.contains("must be tail-resumptive (`resume ...`) for compiled lowering"),
+            "expected tail-resumptive diagnostic for nested state.put in clause, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_fail_inside_state_does_not_rollback_state_exit_code() {
         let source_path = write_temp_source(
             "effect Fail\n  fn fail(err: Int) -> Never\n\neffect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn boom() -[Fail Int]> Int\n  fail 7\n\nfn run() -[State Int, Fail Int]> Int\n  State.put(5)\n  let result = catch boom()\n  case result\n    Ok(v) -> v\n    Err(e) -> State.get()\n\nfn main() -> Int\n  handle run()\n    State.get() -> resume 0\n    State.put(next) -> resume ()\n",
@@ -4154,6 +4205,24 @@
 
         let run = run_file(&source_path).expect("state should remain updated after local catch");
         assert_eq!(run.exit_code, 5);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_rejects_mutual_recursion_between_pure_and_effectful_functions_for_now() {
+        let source_path = write_temp_source(
+            "effect Reader C\n  fn ask() -> C\n\nfn pure(n: Int) -> Int\n  if n == 0\n    0\n  else\n    eff(n - 1)\n\nfn eff(n: Int) -[Reader Int]> Int\n  if n == 0\n    Reader.ask()\n  else\n    pure(n - 1)\n\nfn main() -> Int\n  handle eff(2)\n    Reader.ask() -> resume 7\n",
+            "kea-cli-mutual-recursion-pure-effectful-current-gap",
+            "kea",
+        );
+
+        let err = run_file(&source_path)
+            .expect_err("mutual recursion across pure/effectful top-level functions is currently unsupported");
+        assert!(
+            err.contains("undefined variable `eff`"),
+            "expected forward-reference diagnostic for current mutual-recursion gap, got: {err}"
+        );
 
         let _ = std::fs::remove_file(source_path);
     }
