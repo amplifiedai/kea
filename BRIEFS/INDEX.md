@@ -69,6 +69,7 @@ Designed and approved. Ready to pick up. Ordered by execution sequence per ROADM
 
 21. *(done)* **[Pure arrow enforcement](done/pure-arrow-enforcement.md)** — see Done section.
 22. **[Handler compilation Tiers 3-4](in-progress/handler-tiers-3-4.md)** — **Tier 3 done** (per-operation cell dispatch, capability mocking, 8 tests). Tier 4 (non-tail resume via continuations) deferred — requires setjmp/longjmp runtime + MIR/codegen integration.
+23. **[Tier 4: Non-tail-resumptive handlers](todo/tier4-continuations.md)** — One-shot continuations via setjmp/longjmp three-jmpbuf protocol. C runtime helpers + JIT stubs + MIR/codegen lowering. ~5% of handlers, required for Phase 1 completeness.
 
 ### Phase 0g: Advanced Types + @derive + Stdlib Tier 3 (needs 0d + 0c)
 
