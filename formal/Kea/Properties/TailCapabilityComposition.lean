@@ -398,6 +398,20 @@ theorem tailCapabilityBundle_notInvalid_of_wellTyped
       TailResumptiveClassification.TailResumptiveClass.invalid :=
   (tailCapabilityBundle_of_wellTyped c baseEffects capability h_wellTyped h_expr h_ne).notInvalid
 
+theorem tailCapabilityBundle_atMostOnce_of_wellTyped
+    (c : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice c)
+    (h_expr :
+      c.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_ne : capability ≠ c.handled) :
+    ResumeUse.atMostOnce c.resumeUse :=
+  TailResumptiveClassification.tail_resumptive_notInvalid_implies_atMostOnce c
+    (tailCapabilityBundle_notInvalid_of_wellTyped
+      c baseEffects capability h_wellTyped h_expr h_ne)
+
 structure TailCapabilityClosedAwareBundle
     (c : HandleClauseContract)
     (capability : Label) where
@@ -548,6 +562,20 @@ theorem tailCapabilityClosedAwareBundle_notInvalid_of_wellTyped
       TailResumptiveClassification.TailResumptiveClass.invalid :=
   (tailCapabilityClosedAwareBundle_of_wellTyped
     c baseEffects capability h_wellTyped h_expr h_ne).notInvalid
+
+theorem tailCapabilityClosedAwareBundle_atMostOnce_of_wellTyped
+    (c : HandleClauseContract)
+    (baseEffects : EffectRow)
+    (capability : Label)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice c)
+    (h_expr :
+      c.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_ne : capability ≠ c.handled) :
+    ResumeUse.atMostOnce c.resumeUse :=
+  TailResumptiveClassification.tail_resumptive_notInvalid_implies_atMostOnce c
+    (tailCapabilityClosedAwareBundle_notInvalid_of_wellTyped
+      c baseEffects capability h_wellTyped h_expr h_ne)
 
 end TailCapabilityComposition
 end Kea
