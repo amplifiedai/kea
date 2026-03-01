@@ -9100,6 +9100,9 @@ pub fn validate_declared_fn_effect_row_with_env_and_records(
     records: &RecordRegistry,
 ) -> Result<(), Diagnostic> {
     let Some(ann) = &fn_decl.effect_annotation else {
+        // TODO: Per KERNEL.md, `->` asserts empty effects.  Enforcement
+        // requires migrating existing code to use effect annotations where
+        // needed.  See BRIEFS for the purity-enforcement follow-up.
         return Ok(());
     };
     let declared = parse_declared_effect(ann);

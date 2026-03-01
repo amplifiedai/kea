@@ -4239,10 +4239,11 @@
 
     #[test]
     fn compile_and_execute_mutual_recursion_pure_and_effectful_exit_code() {
-        // Mutual recursion between a pure function and an effectful one:
-        // pure() calls eff() which performs Reader.ask(), with the handler
-        // installed at the call site.  Forward references resolve correctly
-        // and the effect propagates through the handler.
+        // Mutual recursion between a pure function and an effectful one.
+        // NOTE: Per KERNEL.md, `pure` should be rejected because `->` asserts
+        // empty effects but it transitively calls Reader.ask().  This
+        // requires handler-aware effect inference to enforce correctly
+        // (see purity-enforcement brief).  For now, runtime succeeds.
         let source_path = write_temp_source(
             "effect Reader C\n  fn ask() -> C\n\nfn pure(n: Int) -> Int\n  if n == 0\n    0\n  else\n    eff(n - 1)\n\nfn eff(n: Int) -[Reader Int]> Int\n  if n == 0\n    Reader.ask()\n  else\n    pure(n - 1)\n\nfn main() -> Int\n  handle eff(2)\n    Reader.ask() -> resume 7\n",
             "kea-cli-mutual-recursion-pure-effectful",
