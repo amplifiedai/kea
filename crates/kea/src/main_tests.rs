@@ -3979,6 +3979,47 @@
     }
 
     #[test]
+    fn compile_and_execute_nested_same_effect_handlers_ten_levels_exit_code() {
+        let depth = 10;
+        let mut source =
+            String::from("effect Reader C\n  fn ask() -> C\n\nfn level0() -[Reader Int]> Int\n  Reader.ask()\n\n");
+
+        for level in 1..=depth {
+            source.push_str(&format!(
+                "fn level{level}() -[Reader Int]> Int\n  let inner = handle level{}()\n    Reader.ask() -> resume {level}\n  inner + Reader.ask()\n\n",
+                level - 1
+            ));
+        }
+
+        source.push_str(&format!(
+            "fn main() -> Int\n  handle level{depth}()\n    Reader.ask() -> resume {}\n",
+            depth + 1
+        ));
+
+        let source_path =
+            write_temp_source(&source, "kea-cli-nested-same-effect-handlers-ten-levels", "kea");
+
+        let run = run_file(&source_path).expect("ten-level nested same-effect handlers should run");
+        assert_eq!(run.exit_code, 66);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_fail_inside_state_does_not_rollback_state_exit_code() {
+        let source_path = write_temp_source(
+            "effect Fail\n  fn fail(err: Int) -> Never\n\neffect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn boom() -[Fail Int]> Int\n  fail 7\n\nfn run() -[State Int, Fail Int]> Int\n  State.put(5)\n  let result = catch boom()\n  case result\n    Ok(v) -> v\n    Err(e) -> State.get()\n\nfn main() -> Int\n  handle run()\n    State.get() -> resume 0\n    State.put(next) -> resume ()\n",
+            "kea-cli-fail-inside-state-no-rollback",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("state should remain updated after local catch");
+        assert_eq!(run.exit_code, 5);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_function_with_fifty_parameters_exit_code() {
         let mut source = String::from("fn sum50(");
         for i in 1..=50 {
