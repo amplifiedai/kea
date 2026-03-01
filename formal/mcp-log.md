@@ -12061,3 +12061,43 @@ New theorem surface:
 **Impact**:
 - Keeps resume-linearity theorem surfaces aligned across clause, handler, and
   aggregate-suite layers with one-hop route wrappers.
+
+### 2026-03-01: full suite-layer parity for singleton handler-level resume wrappers
+
+**Context**: Extended singleton handler-level resume-linearity route wrappers in
+`Kea/Properties/EffectHandlerContractSuite.lean` from `EffectHandlerSuite` to
+all aggregate layers.
+
+New theorem surface:
+- `effectHandlerCapstoneSuite_handlerResumeLinearityBundle_of_{premises,fail_present}`
+- `effectHandlerCatchPairSuite_handlerResumeLinearityBundle_of_{premises,fail_present}`
+- `effectHandlerCompositionSuite_handlerResumeLinearityBundle_of_{premises,fail_present}`
+- `effectHandlerCompositionCoherenceSuite_handlerResumeLinearityBundle_of_{premises,fail_present}`
+- matching `..._as_components_of_{premises,fail_present}` wrappers for each.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No semantic change; these wrappers should remain route aliases over existing
+  singleton handler-level linearity exports from the same `wellTypedSlice`
+  premise.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Handler-level resume-linearity exports are now route-parity complete across
+  suite/capstone/catch-pair/composition/coherence entry surfaces.
+
+**Impact**:
+- Reduces theorem-surface skew between clause-level and handler-level routes in
+  the full Phase-2 handler contract stack.
