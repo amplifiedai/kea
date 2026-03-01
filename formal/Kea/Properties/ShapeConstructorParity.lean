@@ -4575,6 +4575,33 @@ theorem numericShapeMixedDimKernelMasterSuite_iff_components
     exact numericShapeMixedDimKernelMasterSuite_of_components
       st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq h.1 h.2
 
+/-- One-hop projection: constant-shape extended facet from the mixed+constant
+numeric shape suite. -/
+theorem numericShapeMixedDimKernelMasterSuite_constShapeExtended
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v : DimVarId) (n : Nat)
+    (v1 v2 : DimVarId) (n1 n2 : Nat)
+    (h_distinct : v1 ≠ v2)
+    (vSame : DimVarId) (h_eq : n1 = n2)
+    (suite : NumericShapeMixedDimKernelMasterSuite
+      st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq) :
+    NumericShapeConstDimKernelExtendedSuite :=
+  suite.constShapeExtended
+
+/-- One-hop projection: mixed-boundary master facet from the mixed+constant
+numeric shape suite. -/
+theorem numericShapeMixedDimKernelMasterSuite_mixedBoundary
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v : DimVarId) (n : Nat)
+    (v1 v2 : DimVarId) (n1 n2 : Nat)
+    (h_distinct : v1 ≠ v2)
+    (vSame : DimVarId) (h_eq : n1 = n2)
+    (suite : NumericShapeMixedDimKernelMasterSuite
+      st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq) :
+    MixedShapeDeepDimKernelMasterSuite
+      st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq :=
+  suite.mixedBoundary
+
 /-- Unified numeric/dimension/shape master suite:
     combines decimal+dimension-extended numeric contracts with the top-level
     numeric mixed+constant shape suite. -/
@@ -4674,3 +4701,59 @@ theorem numericDimShapeMasterSuite_iff_components
   · intro h
     exact numericDimShapeMasterSuite_of_components
       st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq h.1 h.2
+
+/-- One-hop projection: decimal+dimension extended numeric facet from the
+unified numeric/dimension/shape master suite. -/
+theorem numericDimShapeMasterSuite_numericDim
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v : DimVarId) (n : Nat)
+    (v1 v2 : DimVarId) (n1 n2 : Nat)
+    (h_distinct : v1 ≠ v2)
+    (vSame : DimVarId) (h_eq : n1 = n2)
+    (suite : NumericDimShapeMasterSuite
+      st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq) :
+    DecimalDimKernelExtendedSuite :=
+  suite.numericDim
+
+/-- One-hop projection: numeric shape master facet from the unified
+numeric/dimension/shape master suite. -/
+theorem numericDimShapeMasterSuite_shapeMaster
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v : DimVarId) (n : Nat)
+    (v1 v2 : DimVarId) (n1 n2 : Nat)
+    (h_distinct : v1 ≠ v2)
+    (vSame : DimVarId) (h_eq : n1 = n2)
+    (suite : NumericDimShapeMasterSuite
+      st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq) :
+    NumericShapeMixedDimKernelMasterSuite
+      st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq :=
+  suite.shapeMaster
+
+/-- One-hop projection: constant-shape extended facet from the unified
+numeric/dimension/shape master suite. -/
+theorem numericDimShapeMasterSuite_constShapeExtended
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v : DimVarId) (n : Nat)
+    (v1 v2 : DimVarId) (n1 n2 : Nat)
+    (h_distinct : v1 ≠ v2)
+    (vSame : DimVarId) (h_eq : n1 = n2)
+    (suite : NumericDimShapeMasterSuite
+      st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq) :
+    NumericShapeConstDimKernelExtendedSuite := by
+  exact (numericShapeMixedDimKernelMasterSuite_constShapeExtended
+    st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq suite.shapeMaster)
+
+/-- One-hop projection: mixed-boundary master facet from the unified
+numeric/dimension/shape master suite. -/
+theorem numericDimShapeMasterSuite_mixedBoundary
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v : DimVarId) (n : Nat)
+    (v1 v2 : DimVarId) (n1 n2 : Nat)
+    (h_distinct : v1 ≠ v2)
+    (vSame : DimVarId) (h_eq : n1 = n2)
+    (suite : NumericDimShapeMasterSuite
+      st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq) :
+    MixedShapeDeepDimKernelMasterSuite
+      st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq := by
+  exact (numericShapeMixedDimKernelMasterSuite_mixedBoundary
+    st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq suite.shapeMaster)
