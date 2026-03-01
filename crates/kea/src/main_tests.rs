@@ -2232,6 +2232,40 @@
     }
 
     #[test]
+    fn compile_rejects_garbage_after_valid_top_level_declaration() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  1\n\n#\n",
+            "kea-cli-garbage-after-valid-decl",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject garbage trailing tokens");
+        assert!(
+            err.contains("unexpected character"),
+            "expected garbage-token lexer diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_rejects_mismatched_parenthesis_in_expression() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  let x = (1 + 2\n  x\n",
+            "kea-cli-mismatched-parenthesis",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject mismatched parentheses");
+        assert!(
+            err.contains("expected ')'") || err.contains("expected expression"),
+            "expected mismatched-parenthesis diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_rejects_resume_outside_handler_clause() {
         let source_path = write_temp_source(
             "fn main() -> Int\n  resume 1\n",
