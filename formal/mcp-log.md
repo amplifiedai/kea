@@ -11474,3 +11474,44 @@ This packages the distinct-vars mixed-shape boundary layer by bundling:
 **Impact**:
 - Reduces route-level theorem threading for WP7.2 dim-aware shape boundaries
   and aligns these contracts with the rest of the suite-style formal API.
+
+### 2026-03-01: packaged same-var equal-constants rank-2 boundary suite
+
+**Context**: Extended `Kea/Properties/ShapeConstructorParity.lean` with:
+- `TensorRank2SameVarEqBoundarySuite`
+- `tensorRank2SameVarEqBoundarySuite`
+- `TensorRank2SameVarEqBoundarySuiteComponents`
+- `tensorRank2SameVarEqBoundarySuite_{as_components,of_components,as_components_of_components,iff_components}`
+
+This packages the equal-constants repeated-var rank-2 boundary layer by
+bundling:
+- `tensor_rank2_same_var_kernel_boundary_slice_of_eq`,
+- `tensor_rank2_same_var_divergence_iff_not_naive_contract_slice_of_eq`,
+- `tensor_rank2_same_var_non_generalization_slice_of_eq`.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No semantic change; the suite should package existing same-var/equal-constants
+  theorem routes with standard decomposition parity.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Same-var equal-constants rank-2 boundary reasoning is now available as one
+  packaged witness with `iff/of/as` decomposition APIs.
+
+**Impact**:
+- Completes the immediate WP7.2 mixed-shape packaging triad (classification,
+  distinct-vars boundary, same-var equal-constants boundary) under uniform
+  suite-style theorem consumption.

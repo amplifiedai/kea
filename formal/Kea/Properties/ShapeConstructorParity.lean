@@ -2637,6 +2637,105 @@ theorem tensor_rank2_same_var_non_generalization_slice_of_eq
   · exact tensor_rank2_const_same_var_not_ok_iff_dim_kernel_success_of_eq
       st fuel elem n1 n2 v h_eq
 
+/-- Packaged equal-constants repeated-var rank-2 boundary suite combining:
+    kernel-boundary witnesses, divergence-vs-contract equivalence, and direct
+    non-generalization across both mixed orientations. -/
+structure TensorRank2SameVarEqBoundarySuite
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v : DimVarId) (n1 n2 : Nat) (h_eq : n1 = n2) : Prop where
+  kernelBoundary :
+    tensor_rank2_same_var_kernel_boundary_slice_of_eq
+      st fuel elem v n1 n2 h_eq
+  divergenceIffNotNaiveContract :
+    tensor_rank2_same_var_divergence_iff_not_naive_contract_slice_of_eq
+      st fuel elem v n1 n2 h_eq
+  nonGeneralization :
+    tensor_rank2_same_var_non_generalization_slice_of_eq
+      st fuel elem v n1 n2 h_eq
+
+/-- Canonical witness for the equal-constants repeated-var rank-2 boundary
+suite package. -/
+theorem tensorRank2SameVarEqBoundarySuite
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v : DimVarId) (n1 n2 : Nat) (h_eq : n1 = n2) :
+    TensorRank2SameVarEqBoundarySuite st fuel elem v n1 n2 h_eq := by
+  refine
+    { kernelBoundary := ?_
+      divergenceIffNotNaiveContract := ?_
+      nonGeneralization := ?_ }
+  · exact tensor_rank2_same_var_kernel_boundary_slice_of_eq
+      st fuel elem v n1 n2 h_eq
+  · exact tensor_rank2_same_var_divergence_iff_not_naive_contract_slice_of_eq
+      st fuel elem v n1 n2 h_eq
+  · exact tensor_rank2_same_var_non_generalization_slice_of_eq
+      st fuel elem v n1 n2 h_eq
+
+/-- Explicit component tuple alias for `TensorRank2SameVarEqBoundarySuite`. -/
+abbrev TensorRank2SameVarEqBoundarySuiteComponents
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v : DimVarId) (n1 n2 : Nat) (h_eq : n1 = n2) : Prop :=
+  tensor_rank2_same_var_kernel_boundary_slice_of_eq
+      st fuel elem v n1 n2 h_eq ∧
+  tensor_rank2_same_var_divergence_iff_not_naive_contract_slice_of_eq
+      st fuel elem v n1 n2 h_eq ∧
+  tensor_rank2_same_var_non_generalization_slice_of_eq
+      st fuel elem v n1 n2 h_eq
+
+/-- Decompose `TensorRank2SameVarEqBoundarySuite` into explicit components. -/
+theorem tensorRank2SameVarEqBoundarySuite_as_components
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v : DimVarId) (n1 n2 : Nat) (h_eq : n1 = n2)
+    (suite : TensorRank2SameVarEqBoundarySuite st fuel elem v n1 n2 h_eq) :
+    TensorRank2SameVarEqBoundarySuiteComponents
+      st fuel elem v n1 n2 h_eq :=
+  ⟨suite.kernelBoundary, suite.divergenceIffNotNaiveContract, suite.nonGeneralization⟩
+
+/-- Build `TensorRank2SameVarEqBoundarySuite` from explicit components. -/
+theorem tensorRank2SameVarEqBoundarySuite_of_components
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v : DimVarId) (n1 n2 : Nat) (h_eq : n1 = n2)
+    (h_kernel :
+      tensor_rank2_same_var_kernel_boundary_slice_of_eq
+        st fuel elem v n1 n2 h_eq)
+    (h_div :
+      tensor_rank2_same_var_divergence_iff_not_naive_contract_slice_of_eq
+        st fuel elem v n1 n2 h_eq)
+    (h_nonGen :
+      tensor_rank2_same_var_non_generalization_slice_of_eq
+        st fuel elem v n1 n2 h_eq) :
+    TensorRank2SameVarEqBoundarySuite st fuel elem v n1 n2 h_eq :=
+  { kernelBoundary := h_kernel
+    divergenceIffNotNaiveContract := h_div
+    nonGeneralization := h_nonGen }
+
+/-- Direct component-route decomposition for
+`TensorRank2SameVarEqBoundarySuite`. -/
+theorem tensorRank2SameVarEqBoundarySuite_as_components_of_components
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v : DimVarId) (n1 n2 : Nat) (h_eq : n1 = n2)
+    (h_comp : TensorRank2SameVarEqBoundarySuiteComponents
+      st fuel elem v n1 n2 h_eq) :
+    TensorRank2SameVarEqBoundarySuiteComponents
+      st fuel elem v n1 n2 h_eq := by
+  simpa using h_comp
+
+/-- `TensorRank2SameVarEqBoundarySuite` is equivalent to its explicit component
+tuple. -/
+theorem tensorRank2SameVarEqBoundarySuite_iff_components
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v : DimVarId) (n1 n2 : Nat) (h_eq : n1 = n2) :
+    TensorRank2SameVarEqBoundarySuite st fuel elem v n1 n2 h_eq ↔
+      TensorRank2SameVarEqBoundarySuiteComponents
+        st fuel elem v n1 n2 h_eq := by
+  constructor
+  · intro suite
+    exact tensorRank2SameVarEqBoundarySuite_as_components
+      st fuel elem v n1 n2 h_eq suite
+  · intro h
+    rcases h with ⟨h_kernel, h_div, h_nonGen⟩
+    exact tensorRank2SameVarEqBoundarySuite_of_components
+      st fuel elem v n1 n2 h_eq h_kernel h_div h_nonGen
+
 /-- Packaged distinct-vars mixed-shape dim-kernel boundary suite combining:
     witness-level kernel-vs-constructor mismatch, divergence-vs-contract
     equivalence, and direct non-generalization across fixed-size-list, rank-1
