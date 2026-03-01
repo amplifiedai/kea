@@ -1737,6 +1737,122 @@ theorem tensor_rank2_mixed_divergence_iff_not_naive_contract_slice
   · exact tensor_rank2_const_var_divergence_iff_not_naive_contract
       st fuel elem n1 n2 v1 v2
 
+/-- Packaged rank-2 mixed dim-aware classification layer bundling:
+    non-generalization-by-var-equality, positive hold classification,
+    divergence-witness classification, and divergence-vs-contract-failure
+    equivalence for both var/const orientations. -/
+structure TensorRank2MixedDimKernelClassificationSlice
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v1 v2 : DimVarId) (n1 n2 : Nat) : Prop where
+  nonGeneralizationByVarEquality :
+    tensor_rank2_mixed_non_generalization_by_var_equality_slice
+      st fuel elem v1 v2 n1 n2
+  okIffVarEqAndConstNe :
+    tensor_rank2_mixed_ok_iff_dim_kernel_success_iff_var_eq_and_const_ne_slice
+      st fuel elem v1 v2 n1 n2
+  divergenceWitnessIffVarDistinctOrConstsEq :
+    tensor_rank2_mixed_kernel_success_but_unify_rejects_iff_var_distinct_or_consts_eq_slice
+      st fuel elem v1 v2 n1 n2
+  divergenceIffNotNaiveContract :
+    tensor_rank2_mixed_divergence_iff_not_naive_contract_slice
+      st fuel elem v1 v2 n1 n2
+
+/-- Canonical witness for the packaged rank-2 mixed dim-aware classification
+surface. -/
+theorem tensorRank2MixedDimKernelClassificationSlice_proved
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v1 v2 : DimVarId) (n1 n2 : Nat) :
+    TensorRank2MixedDimKernelClassificationSlice st fuel elem v1 v2 n1 n2 := by
+  refine
+    { nonGeneralizationByVarEquality := ?_
+      okIffVarEqAndConstNe := ?_
+      divergenceWitnessIffVarDistinctOrConstsEq := ?_
+      divergenceIffNotNaiveContract := ?_ }
+  · exact tensor_rank2_mixed_non_generalization_by_var_equality_slice
+      st fuel elem v1 v2 n1 n2
+  · exact tensor_rank2_mixed_ok_iff_dim_kernel_success_iff_var_eq_and_const_ne_slice
+      st fuel elem v1 v2 n1 n2
+  · exact tensor_rank2_mixed_kernel_success_but_unify_rejects_iff_var_distinct_or_consts_eq_slice
+      st fuel elem v1 v2 n1 n2
+  · exact tensor_rank2_mixed_divergence_iff_not_naive_contract_slice
+      st fuel elem v1 v2 n1 n2
+
+/-- Explicit component tuple alias for `TensorRank2MixedDimKernelClassificationSlice`. -/
+abbrev TensorRank2MixedDimKernelClassificationSliceComponents
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v1 v2 : DimVarId) (n1 n2 : Nat) : Prop :=
+  tensor_rank2_mixed_non_generalization_by_var_equality_slice
+      st fuel elem v1 v2 n1 n2 ∧
+  tensor_rank2_mixed_ok_iff_dim_kernel_success_iff_var_eq_and_const_ne_slice
+      st fuel elem v1 v2 n1 n2 ∧
+  tensor_rank2_mixed_kernel_success_but_unify_rejects_iff_var_distinct_or_consts_eq_slice
+      st fuel elem v1 v2 n1 n2 ∧
+  tensor_rank2_mixed_divergence_iff_not_naive_contract_slice
+      st fuel elem v1 v2 n1 n2
+
+/-- Decompose the packaged rank-2 mixed dim-aware slice into explicit
+components. -/
+theorem tensorRank2MixedDimKernelClassificationSlice_as_components
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v1 v2 : DimVarId) (n1 n2 : Nat)
+    (slice : TensorRank2MixedDimKernelClassificationSlice st fuel elem v1 v2 n1 n2) :
+    TensorRank2MixedDimKernelClassificationSliceComponents
+      st fuel elem v1 v2 n1 n2 :=
+  ⟨slice.nonGeneralizationByVarEquality,
+    slice.okIffVarEqAndConstNe,
+    slice.divergenceWitnessIffVarDistinctOrConstsEq,
+    slice.divergenceIffNotNaiveContract⟩
+
+/-- Build the packaged rank-2 mixed dim-aware slice from explicit components. -/
+theorem tensorRank2MixedDimKernelClassificationSlice_of_components
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v1 v2 : DimVarId) (n1 n2 : Nat)
+    (h_nonGen :
+      tensor_rank2_mixed_non_generalization_by_var_equality_slice
+        st fuel elem v1 v2 n1 n2)
+    (h_ok :
+      tensor_rank2_mixed_ok_iff_dim_kernel_success_iff_var_eq_and_const_ne_slice
+        st fuel elem v1 v2 n1 n2)
+    (h_divWitness :
+      tensor_rank2_mixed_kernel_success_but_unify_rejects_iff_var_distinct_or_consts_eq_slice
+        st fuel elem v1 v2 n1 n2)
+    (h_divIff :
+      tensor_rank2_mixed_divergence_iff_not_naive_contract_slice
+        st fuel elem v1 v2 n1 n2) :
+    TensorRank2MixedDimKernelClassificationSlice st fuel elem v1 v2 n1 n2 :=
+  { nonGeneralizationByVarEquality := h_nonGen
+    okIffVarEqAndConstNe := h_ok
+    divergenceWitnessIffVarDistinctOrConstsEq := h_divWitness
+    divergenceIffNotNaiveContract := h_divIff }
+
+/-- Direct components-route decomposition for
+`TensorRank2MixedDimKernelClassificationSlice`. -/
+theorem tensorRank2MixedDimKernelClassificationSlice_as_components_of_components
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v1 v2 : DimVarId) (n1 n2 : Nat)
+    (h_comp : TensorRank2MixedDimKernelClassificationSliceComponents
+      st fuel elem v1 v2 n1 n2) :
+    TensorRank2MixedDimKernelClassificationSliceComponents
+      st fuel elem v1 v2 n1 n2 := by
+  simpa using h_comp
+
+/-- `TensorRank2MixedDimKernelClassificationSlice` is equivalent to its explicit
+component tuple. -/
+theorem tensorRank2MixedDimKernelClassificationSlice_iff_components
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v1 v2 : DimVarId) (n1 n2 : Nat) :
+    TensorRank2MixedDimKernelClassificationSlice st fuel elem v1 v2 n1 n2 ↔
+      TensorRank2MixedDimKernelClassificationSliceComponents
+        st fuel elem v1 v2 n1 n2 := by
+  constructor
+  · intro slice
+    exact tensorRank2MixedDimKernelClassificationSlice_as_components
+      st fuel elem v1 v2 n1 n2 slice
+  · intro h
+    rcases h with ⟨h_nonGen, h_ok, h_divWitness, h_divIff⟩
+    exact tensorRank2MixedDimKernelClassificationSlice_of_components
+      st fuel elem v1 v2 n1 n2 h_nonGen h_ok h_divWitness h_divIff
+
 /-- Current constructor-level tensor unifier rejects rank-2 const-vs-repeated-var
     shapes even when pointwise dim-kernel succeeds (equal-constants case). -/
 theorem tensor_rank2_const_same_var_kernel_success_but_unify_rejects_of_eq
