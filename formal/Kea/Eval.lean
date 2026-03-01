@@ -1018,6 +1018,165 @@ theorem coreProgressPreservationEvalUnifySliceFromHooks_proved :
     h_app h_proj st st' fuel h_ok h_env h_frag
 
 /--
+Packaged unification-threaded core soundness surface:
+- executable soundness witness
+- progress witness
+- preservation function for all produced values
+on the full executable fragment.
+-/
+structure CoreTypeSoundnessEvalUnifyBundle
+    (tenv : TermEnv)
+    (venv : ValueEnv)
+    (e : CoreExpr)
+    (ty : Ty) : Prop where
+  soundness : ∃ v, eval venv e = some v ∧ ValueHasType v ty
+  progress : ∃ v, eval venv e = some v
+  preservation : ∀ {v : Value}, eval venv e = some v → ValueHasType v ty
+
+/-- Explicit component alias for `CoreTypeSoundnessEvalUnifyBundle`. -/
+abbrev CoreTypeSoundnessEvalUnifyBundleComponents
+    (tenv : TermEnv)
+    (venv : ValueEnv)
+    (e : CoreExpr)
+    (ty : Ty) : Prop :=
+  (∃ v, eval venv e = some v ∧ ValueHasType v ty) ∧
+    (∃ v, eval venv e = some v) ∧
+    (∀ {v : Value}, eval venv e = some v → ValueHasType v ty)
+
+/--
+`CoreTypeSoundnessEvalUnifyBundle` is equivalent to its explicit component
+surface.
+-/
+theorem coreTypeSoundnessEvalUnifyBundle_iff_components
+    (tenv : TermEnv)
+    (venv : ValueEnv)
+    (e : CoreExpr)
+    (ty : Ty) :
+    CoreTypeSoundnessEvalUnifyBundle tenv venv e ty ↔
+      CoreTypeSoundnessEvalUnifyBundleComponents tenv venv e ty := by
+  constructor
+  · intro h_bundle
+    exact ⟨h_bundle.soundness, h_bundle.progress, h_bundle.preservation⟩
+  · intro h_comp
+    exact ⟨h_comp.1, h_comp.2.1, h_comp.2.2⟩
+
+/-- Build `CoreTypeSoundnessEvalUnifyBundle` from explicit components. -/
+theorem coreTypeSoundnessEvalUnifyBundle_of_components
+    (tenv : TermEnv)
+    (venv : ValueEnv)
+    (e : CoreExpr)
+    (ty : Ty)
+    (h_comp : CoreTypeSoundnessEvalUnifyBundleComponents tenv venv e ty) :
+    CoreTypeSoundnessEvalUnifyBundle tenv venv e ty :=
+  (coreTypeSoundnessEvalUnifyBundle_iff_components tenv venv e ty).2 h_comp
+
+/-- Decompose `CoreTypeSoundnessEvalUnifyBundle` into explicit components. -/
+theorem coreTypeSoundnessEvalUnifyBundle_as_components
+    (tenv : TermEnv)
+    (venv : ValueEnv)
+    (e : CoreExpr)
+    (ty : Ty)
+    (h_bundle : CoreTypeSoundnessEvalUnifyBundle tenv venv e ty) :
+    CoreTypeSoundnessEvalUnifyBundleComponents tenv venv e ty :=
+  (coreTypeSoundnessEvalUnifyBundle_iff_components tenv venv e ty).1 h_bundle
+
+/-- Direct components-route decomposition for `CoreTypeSoundnessEvalUnifyBundle`. -/
+theorem coreTypeSoundnessEvalUnifyBundle_as_components_of_components
+    (tenv : TermEnv)
+    (venv : ValueEnv)
+    (e : CoreExpr)
+    (ty : Ty)
+    (h_comp : CoreTypeSoundnessEvalUnifyBundleComponents tenv venv e ty) :
+    CoreTypeSoundnessEvalUnifyBundleComponents tenv venv e ty :=
+  (coreTypeSoundnessEvalUnifyBundle_iff_components tenv venv e ty).1
+    ((coreTypeSoundnessEvalUnifyBundle_iff_components tenv venv e ty).2 h_comp)
+
+/--
+Build the packaged core-soundness bundle from unification-threaded inference
+success under bundled hooks.
+-/
+theorem coreTypeSoundnessEvalUnifyBundle_of_inferUnify
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_hooks : UnifyHookPremises)
+    (st st' : UnifyState)
+    (fuel : Nat)
+    (h_ok : inferExprUnify st fuel tenv e = .ok st' ty)
+    (h_env : EnvWellTyped tenv venv)
+    (h_frag : EvalFragmentFull e) :
+    CoreTypeSoundnessEvalUnifyBundle tenv venv e ty := by
+  refine
+    { soundness := ?_
+      progress := ?_
+      preservation := ?_ }
+  · exact type_soundness_evalFragmentFull_of_inferUnify
+      h_hooks st st' fuel h_ok h_env h_frag
+  · exact eval_progress_evalFragmentFull_of_inferUnify
+      h_hooks st st' fuel h_ok h_env h_frag
+  · intro v h_eval
+    exact eval_preservation_evalFragmentFull_of_inferUnify
+      h_hooks st st' fuel h_ok h_env h_frag h_eval
+
+/--
+Hook-parameterized constructor variant for
+`coreTypeSoundnessEvalUnifyBundle_of_inferUnify`.
+-/
+theorem coreTypeSoundnessEvalUnifyBundle_of_inferUnify_from_hooks
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st st' : UnifyState)
+    (fuel : Nat)
+    (h_ok : inferExprUnify st fuel tenv e = .ok st' ty)
+    (h_env : EnvWellTyped tenv venv)
+    (h_frag : EvalFragmentFull e) :
+    CoreTypeSoundnessEvalUnifyBundle tenv venv e ty :=
+  coreTypeSoundnessEvalUnifyBundle_of_inferUnify
+    ⟨h_app, h_proj⟩ st st' fuel h_ok h_env h_frag
+
+/--
+Packaged theorem surface: successful unification-threaded inference yields the
+full core-soundness bundle.
+-/
+def CoreTypeSoundnessEvalUnifySlice : Prop :=
+  ∀ {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty},
+    (h_hooks : UnifyHookPremises) →
+    (st st' : UnifyState) →
+    (fuel : Nat) →
+    inferExprUnify st fuel tenv e = .ok st' ty →
+    EnvWellTyped tenv venv →
+    EvalFragmentFull e →
+    CoreTypeSoundnessEvalUnifyBundle tenv venv e ty
+
+/-- The packaged core-soundness unification slice is fully proved. -/
+theorem coreTypeSoundnessEvalUnifySlice_proved :
+    CoreTypeSoundnessEvalUnifySlice := by
+  intro tenv venv e ty h_hooks st st' fuel h_ok h_env h_frag
+  exact coreTypeSoundnessEvalUnifyBundle_of_inferUnify
+    h_hooks st st' fuel h_ok h_env h_frag
+
+/--
+Hook-parameterized packaged theorem surface for
+`CoreTypeSoundnessEvalUnifySlice`.
+-/
+def CoreTypeSoundnessEvalUnifySliceFromHooks : Prop :=
+  ∀ {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty},
+    (h_app : AppUnifySoundHook) →
+    (h_proj : ProjUnifySoundHook) →
+    (st st' : UnifyState) →
+    (fuel : Nat) →
+    inferExprUnify st fuel tenv e = .ok st' ty →
+    EnvWellTyped tenv venv →
+    EvalFragmentFull e →
+    CoreTypeSoundnessEvalUnifyBundle tenv venv e ty
+
+/-- The hook-parameterized core-soundness unification slice is fully proved. -/
+theorem coreTypeSoundnessEvalUnifySliceFromHooks_proved :
+    CoreTypeSoundnessEvalUnifySliceFromHooks := by
+  intro tenv venv e ty h_app h_proj st st' fuel h_ok h_env h_frag
+  exact coreTypeSoundnessEvalUnifyBundle_of_inferUnify_from_hooks
+    h_app h_proj st st' fuel h_ok h_env h_frag
+
+/--
 Executable soundness for the atomic evaluator fragment:
 well-typed atomic expressions evaluate to runtime values of the same type.
 -/
