@@ -2431,6 +2431,25 @@
     }
 
     #[test]
+    fn compile_rejects_duplicate_fail_effect_entries_with_incompatible_payloads() {
+        let source_path = write_temp_source(
+            "effect Fail E\n  fn fail(err: E) -> Never\n\nfn bad() -[Fail Int, Fail String]> Int\n  0\n\nfn main() -> Int\n  0\n",
+            "kea-cli-effect-row-duplicate-fail-incompatible",
+            "kea",
+        );
+
+        let err = run_file(&source_path)
+            .expect_err("run should reject incompatible duplicate Fail entries in effect row");
+        assert!(
+            err.contains("effect row")
+                && err.contains("multiple incompatible `Fail` entries"),
+            "expected incompatible duplicate Fail diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_rejects_handle_without_operation_clauses() {
         let source_path = write_temp_source(
             "fn main() -> Int\n  handle 1\n    then value -> value\n",
