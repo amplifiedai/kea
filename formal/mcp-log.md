@@ -11830,3 +11830,38 @@ into one top-level unified theorem witness.
 **Impact**:
 - Further compresses WP7.2–WP7.4 theorem routing and keeps the vertical
   packaging stack coherent for downstream consumers.
+
+### 2026-03-01: one-hop projections on top-level numeric shape suites
+
+**Context**: Extended `Kea/Properties/ShapeConstructorParity.lean` with direct
+projection wrappers on the newest top-level suites:
+- `numericShapeMixedDimKernelMasterSuite_{constShapeExtended,mixedBoundary}`
+- `numericDimShapeMasterSuite_{numericDim,shapeMaster,constShapeExtended,mixedBoundary}`
+
+These expose key facets in one theorem step without record destructuring.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No semantic change; projection wrappers should be direct consequences of the
+  existing suite structures and previously added component packages.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Top-level suite consumers can target decimal/dimension/shape facets in one
+  hop, consistent with the project’s projection-style theorem APIs.
+
+**Impact**:
+- Reduces downstream proof plumbing around the newest WP7.2–WP7.4 package
+  layers while preserving existing theorem surfaces.
