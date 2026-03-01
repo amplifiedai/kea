@@ -12021,3 +12021,43 @@ New theorem surface:
 **Impact**:
 - Improves theorem reuse for downstream handler APIs by allowing direct routing
   from either primitive handler-linearity assumptions or packaged components.
+
+### 2026-03-01: singleton-handler bridge for suite-level resume linearity routes
+
+**Context**: Extended `Kea/Properties/EffectHandlerContractSuite.lean` to connect
+suite-level resume routes to the new handler-level packaging in
+`HandlerTypingContracts`.
+
+New theorem surface:
+- `singletonHandleContract`
+- `singletonHandleContract_wellTypedSlice_of_wellTyped`
+- `effectHandlerHandlerResumeLinearityBundle_of_wellTyped`
+- `effectHandlerHandlerResumeLinearityBundle_as_components_of_wellTyped`
+- `effectHandlerSuite_handlerResumeLinearityBundle_of_{premises,fail_present}`
+- `effectHandlerSuite_handlerResumeLinearityBundle_as_components_of_{premises,fail_present}`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime semantics change; this should be a route lift that reuses the
+  already-proved clause-level well-typed premise on a singleton handler model.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Suite-level premise/fail-present routes now export handler-level resume
+  bundles in addition to existing clause-level resume bundles.
+
+**Impact**:
+- Keeps resume-linearity theorem surfaces aligned across clause, handler, and
+  aggregate-suite layers with one-hop route wrappers.
