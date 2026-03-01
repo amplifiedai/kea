@@ -1400,6 +1400,36 @@ theorem coreTypeSoundnessEvalBundle_of_coreTypeSoundnessEvalUnifyBundle
       exact h_unify.preservation h_eval
   }
 
+theorem coreTypeSoundnessEvalUnifyBundle_of_coreTypeSoundnessEvalBundle
+    (tenv : TermEnv)
+    (venv : ValueEnv)
+    (e : CoreExpr)
+    (ty : Ty)
+    (h_decl : CoreTypeSoundnessEvalBundle tenv venv e ty) :
+    CoreTypeSoundnessEvalUnifyBundle tenv venv e ty := by
+  exact {
+    soundness := h_decl.soundness
+    progress := h_decl.progress
+    preservation := by
+      intro v h_eval
+      exact h_decl.preservation v h_eval
+  }
+
+theorem coreTypeSoundnessEvalBundle_iff_coreTypeSoundnessEvalUnifyBundle
+    (tenv : TermEnv)
+    (venv : ValueEnv)
+    (e : CoreExpr)
+    (ty : Ty) :
+    CoreTypeSoundnessEvalBundle tenv venv e ty
+      ↔ CoreTypeSoundnessEvalUnifyBundle tenv venv e ty := by
+  constructor
+  · intro h_decl
+    exact coreTypeSoundnessEvalUnifyBundle_of_coreTypeSoundnessEvalBundle
+      tenv venv e ty h_decl
+  · intro h_unify
+    exact coreTypeSoundnessEvalBundle_of_coreTypeSoundnessEvalUnifyBundle
+      tenv venv e ty h_unify
+
 /--
 Build the packaged core-soundness bundle from unification-threaded inference
 success under bundled hooks.
