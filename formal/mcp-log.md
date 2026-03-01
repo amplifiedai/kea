@@ -11939,3 +11939,45 @@ decomposition and one-hop projection wrappers:
 **Impact**:
 - Improves uniformity of theorem consumption across WP7.2/WP7.3 package layers
   and further reduces proof plumbing at call sites.
+
+### 2026-03-01: handler-level resume-summary judgment and at-most-once bridge
+
+**Context**: Lifted resume-linearity from clause-only to handler membership in
+`Kea/Properties/HandlerTypingContracts.lean` by adding handler-level judgment
+surfaces and proving well-typed handlers enforce at-most-once on each clause
+summary.
+
+New theorem surface:
+- `HandleContract`, `handlerWellTypedSlice`, `handlerClauseHasResumeSummary`
+- `handlerClauseHasResumeSummary_implies_atMostOnce_of_handlerWellTypedSlice`
+- `handlerWellTypedSlice_implies_clause_atMostOnce`
+- `handlerWellTypedSlice_has_clause_summary_atMostOnce`
+- `HandlerResumeLinearityBundle` with
+  `handlerResumeLinearityBundle_{iff_components,of_components,as_components,as_components_of_components}`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- This is a theorem-surface lift (no runtime semantics change): the new
+  handler-level theorems should follow directly from existing clause-level
+  `wellTypedSlice -> resume_at_most_once` bridges.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- The resume-linearity claim now has an explicit handler-level membership
+  judgment and packaged theorem output, not only clause-local scaffolding.
+
+**Impact**:
+- Closes the key Phase-2 gap between clause summary scaffolding and a concrete
+  “well-typed handler clauses satisfy at-most-once” theorem surface.
