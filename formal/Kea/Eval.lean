@@ -996,6 +996,30 @@ theorem coreTypeSoundnessEvalInferSlice_of_coreTypeSoundnessEvalSlice
   intro tenv venv e ty h_env h_infer h_frag
   exact h_slice h_env (inferExpr_sound tenv e ty h_infer) h_frag
 
+theorem coreTypeSoundnessEvalSlice_of_coreTypeSoundnessEvalInferSlice
+    (h_slice : CoreTypeSoundnessEvalInferSlice) :
+    CoreTypeSoundnessEvalSlice := by
+  intro tenv venv e ty h_env h_ty h_frag
+  have h_infer : inferExpr tenv e = some ty :=
+    inferExpr_complete tenv e ty h_ty
+  exact h_slice h_env h_infer h_frag
+
+theorem coreTypeSoundnessEvalSlice_iff_coreTypeSoundnessEvalInferSlice :
+    CoreTypeSoundnessEvalSlice ↔ CoreTypeSoundnessEvalInferSlice := by
+  constructor
+  · exact coreTypeSoundnessEvalInferSlice_of_coreTypeSoundnessEvalSlice
+  · exact coreTypeSoundnessEvalSlice_of_coreTypeSoundnessEvalInferSlice
+
+theorem coreTypeSoundnessEvalSlice_proved_via_inferSlice :
+    CoreTypeSoundnessEvalSlice :=
+  coreTypeSoundnessEvalSlice_of_coreTypeSoundnessEvalInferSlice
+    coreTypeSoundnessEvalInferSlice_proved
+
+theorem coreTypeSoundnessEvalInferSlice_proved_via_hasTypeSlice :
+    CoreTypeSoundnessEvalInferSlice :=
+  coreTypeSoundnessEvalInferSlice_of_coreTypeSoundnessEvalSlice
+    coreTypeSoundnessEvalSlice_proved
+
 theorem coreTypeSoundnessEvalSlice_of_verticalEvalSlice
     (h_vertical : VerticalEvalSlice) :
     CoreTypeSoundnessEvalSlice := by

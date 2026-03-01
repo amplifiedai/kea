@@ -13745,3 +13745,41 @@ New theorem surface:
 **Impact**:
 - Simplifies downstream theorem plumbing by making bundle-family choice
   representational rather than proof-structural.
+
+### 2026-03-02: declarative HasType/infer slice bidirectional equivalence
+
+**Context**: Extended `Kea/Eval.lean` to close the reverse direction between
+declarative global slice surfaces, proving infer-based slices imply HasType-based
+slices and packaging the pair as an iff theorem.
+
+New theorem surface:
+- `coreTypeSoundnessEvalSlice_of_coreTypeSoundnessEvalInferSlice`
+- `coreTypeSoundnessEvalSlice_iff_coreTypeSoundnessEvalInferSlice`
+- `coreTypeSoundnessEvalSlice_proved_via_inferSlice`
+- `coreTypeSoundnessEvalInferSlice_proved_via_hasTypeSlice`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; this is theorem-route closure using
+  existing `inferExpr_complete`/`inferExpr_sound` links.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Declarative global slice surfaces are now fully interchangeable in both
+  directions with direct proved-route aliases.
+
+**Impact**:
+- Removes remaining directional asymmetry in non-unification core-soundness
+  global slice APIs.
