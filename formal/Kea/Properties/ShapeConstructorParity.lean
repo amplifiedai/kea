@@ -4307,3 +4307,53 @@ theorem shapeConstDimKernelExtendedSuite_iff_components :
     exact shapeConstDimKernelExtendedSuite_as_components suite
   · intro h
     exact shapeConstDimKernelExtendedSuite_of_components h.1 h.2
+
+/-- Unified numeric + extended-shape kernel suite:
+    combines numeric constructor contracts with the extended shape/dimension
+    package that includes deeper rank-2 var/const kernel contracts. -/
+structure NumericShapeConstDimKernelExtendedSuite : Prop where
+  numericKernel : NumericConstructorKernelSuite
+  shapeKernelExtended : ShapeConstDimKernelExtendedSuite
+
+/-- Explicit component pair alias for `NumericShapeConstDimKernelExtendedSuite`. -/
+abbrev NumericShapeConstDimKernelExtendedSuiteComponents : Prop :=
+  NumericConstructorKernelSuite ∧ ShapeConstDimKernelExtendedSuite
+
+/-- Canonical numeric + extended-shape suite witness. -/
+theorem numericShapeConstDimKernelExtendedSuite :
+    NumericShapeConstDimKernelExtendedSuite := by
+  exact
+    { numericKernel := numericConstructorKernelSuite
+      shapeKernelExtended := shapeConstDimKernelExtendedSuite }
+
+/-- Decompose `NumericShapeConstDimKernelExtendedSuite` into explicit components. -/
+theorem numericShapeConstDimKernelExtendedSuite_as_components
+    (suite : NumericShapeConstDimKernelExtendedSuite) :
+    NumericShapeConstDimKernelExtendedSuiteComponents :=
+  ⟨suite.numericKernel, suite.shapeKernelExtended⟩
+
+/-- Build `NumericShapeConstDimKernelExtendedSuite` from explicit components. -/
+theorem numericShapeConstDimKernelExtendedSuite_of_components
+    (numericKernel : NumericConstructorKernelSuite)
+    (shapeKernelExtended : ShapeConstDimKernelExtendedSuite) :
+    NumericShapeConstDimKernelExtendedSuite :=
+  { numericKernel := numericKernel
+    shapeKernelExtended := shapeKernelExtended }
+
+/-- Direct components-route decomposition for
+`NumericShapeConstDimKernelExtendedSuite`. -/
+theorem numericShapeConstDimKernelExtendedSuite_as_components_of_components
+    (h_comp : NumericShapeConstDimKernelExtendedSuiteComponents) :
+    NumericShapeConstDimKernelExtendedSuiteComponents := by
+  simpa using h_comp
+
+/-- `NumericShapeConstDimKernelExtendedSuite` is equivalent to its explicit
+component pair. -/
+theorem numericShapeConstDimKernelExtendedSuite_iff_components :
+    NumericShapeConstDimKernelExtendedSuite ↔
+      NumericShapeConstDimKernelExtendedSuiteComponents := by
+  constructor
+  · intro suite
+    exact numericShapeConstDimKernelExtendedSuite_as_components suite
+  · intro h
+    exact numericShapeConstDimKernelExtendedSuite_of_components h.1 h.2
