@@ -239,7 +239,9 @@ fn f() -> Int
 
 (source_file
   (documented_declaration
-    (doc_block)
+    (doc_block
+      (doc_start)
+      (doc_body))
     (newline)
     (function_declaration
       name: (identifier)
@@ -267,7 +269,9 @@ fn b() -> Int
 
 (source_file
   (documented_declaration
-    (doc_block)
+    (doc_block
+      (doc_start)
+      (doc_body))
     (newline)
     (function_declaration
       name: (identifier)
@@ -279,7 +283,9 @@ fn b() -> Int
       (integer)
       (dedent)))
   (documented_declaration
-    (doc_block)
+    (doc_block
+      (doc_start)
+      (doc_body))
     (newline)
     (function_declaration
       name: (identifier)

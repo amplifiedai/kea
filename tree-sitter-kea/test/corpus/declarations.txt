@@ -162,7 +162,9 @@ fn add(x: Int, y: Int) -> Int
 
 (source_file
   (documented_declaration
-    (doc_block)
+    (doc_block
+      (doc_start)
+      (doc_body))
     (newline)
     (function_declaration
       name: (identifier)
@@ -199,7 +201,9 @@ struct User
 
 (source_file
   (documented_declaration
-    (doc_block)
+    (doc_block
+      (doc_start)
+      (doc_body))
     (newline)
     (struct_definition
       name: (upper_identifier)
@@ -231,7 +235,9 @@ fn is_empty(xs: List a) -> Bool
 
 (source_file
   (documented_declaration
-    (doc_block)
+    (doc_block
+      (doc_start)
+      (doc_body))
     (newline)
     (function_declaration
       name: (identifier)
@@ -276,7 +282,9 @@ effect IO
 
 (source_file
   (documented_declaration
-    (doc_block)
+    (doc_block
+      (doc_start)
+      (doc_body))
     (newline)
     (effect_declaration
       name: (upper_identifier)
@@ -314,7 +322,9 @@ enum List a
 
 (source_file
   (documented_declaration
-    (doc_block)
+    (doc_block
+      (doc_start)
+      (doc_body))
     (newline)
     (type_definition
       name: (upper_identifier)
