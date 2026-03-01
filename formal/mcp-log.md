@@ -11752,3 +11752,42 @@ into one top-level theorem witness.
 **Impact**:
 - Consolidates WP7.2/WP7.3/WP7.4 theorem routing and further reduces
   downstream package plumbing.
+
+### 2026-03-01: decimal + extended-dimension kernel suite composition
+
+**Context**: Extended `Kea/Properties/DecimalParity.lean` with:
+- `DecimalDimKernelExtendedSuite`
+- `decimalDimKernelExtendedSuite`
+- `DecimalDimKernelExtendedSuiteComponents`
+- `decimalDimKernelExtendedSuite_{as_components,of_components,as_components_of_components,iff_components}`
+
+This composes:
+- `NumericConstructorKernelSuite` (precision + decimal constructor contracts),
+- `DimKernelExtendedSuite` (core + rank-2 var/const dimension contracts),
+into one suite-level theorem surface.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No semantic change; this is pure package composition/decomposition over
+  existing suite witnesses.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Decimal/numeric consumers can now depend on one suite witness that includes
+  the deeper dimension-kernel layer.
+
+**Impact**:
+- Improves WP7.3 integration with WP7.2 deeper kernel contracts while keeping
+  route-level APIs on the standard suite decomposition pattern.
