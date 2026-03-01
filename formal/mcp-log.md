@@ -12101,3 +12101,40 @@ New theorem surface:
 **Impact**:
 - Reduces theorem-surface skew between clause-level and handler-level routes in
   the full Phase-2 handler contract stack.
+
+### 2026-03-01: direct singleton-handler at-most-once projections on suite routes
+
+**Context**: Added one-hop concrete `resume_at_most_once clause.resumeUse`
+wrappers in `Kea/Properties/EffectHandlerContractSuite.lean` on top of the
+new singleton handler-level bundle routes.
+
+New theorem surface:
+- `singletonHandleContract_handlerResumeAtMostOnce`
+- `effectHandler_handlerResumeAtMostOnce_of_wellTyped`
+- `effectHandler{,Capstone,CatchPair,Composition,CompositionCoherence}Suite_handlerResumeAtMostOnce_of_{premises,fail_present}`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime behavior change; these should be projection wrappers over the
+  existing singleton handler-level bundle and well-typed route assumptions.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Handler-level route surfaces now provide direct concrete at-most-once outputs
+  without requiring explicit bundle/component destructuring.
+
+**Impact**:
+- Reduces theorem plumbing for callers that need the concrete clause summary
+  contract while staying on handler-level route APIs.
