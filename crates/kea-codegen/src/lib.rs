@@ -4349,7 +4349,9 @@ fn lower_terminator(
                 } else {
                     let value_id = value.as_ref().ok_or_else(|| CodegenError::UnsupportedMir {
                         function: ctx.function_name.to_string(),
-                        detail: "non-unit function returned without value".to_string(),
+                        detail:
+                            "function declares a non-Unit return type but lowered body produced no return value; this shape is not yet supported in compiled lowering"
+                                .to_string(),
                     })?;
                     get_value(ctx.values, ctx.function_name, value_id)?
                 };
@@ -4378,7 +4380,9 @@ fn lower_terminator(
 
             let value_id = value.as_ref().ok_or_else(|| CodegenError::UnsupportedMir {
                 function: ctx.function_name.to_string(),
-                detail: "non-unit function returned without value".to_string(),
+                detail:
+                    "function declares a non-Unit return type but lowered body produced no return value; this shape is not yet supported in compiled lowering"
+                        .to_string(),
             })?;
             let mut value = get_value(ctx.values, ctx.function_name, value_id)?;
             let expected_ret_clif_ty =
