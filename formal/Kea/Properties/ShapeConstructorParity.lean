@@ -4555,6 +4555,21 @@ theorem numericShapeMixedDimKernelMasterSuite_as_components_of_components
       st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq := by
   simpa using h_comp
 
+/-- Constructor-route decomposition wrapper for
+`numericShapeMixedDimKernelMasterSuite`. -/
+theorem numericShapeMixedDimKernelMasterSuite_as_components_of_master
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v : DimVarId) (n : Nat)
+    (v1 v2 : DimVarId) (n1 n2 : Nat)
+    (h_distinct : v1 ≠ v2)
+    (vSame : DimVarId) (h_eq : n1 = n2) :
+    NumericShapeMixedDimKernelMasterSuiteComponents
+      st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq := by
+  exact numericShapeMixedDimKernelMasterSuite_as_components
+    st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq
+    (numericShapeMixedDimKernelMasterSuite
+      st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq)
+
 /-- `NumericShapeMixedDimKernelMasterSuite` is equivalent to its explicit
 component pair. -/
 theorem numericShapeMixedDimKernelMasterSuite_iff_components
@@ -4682,6 +4697,21 @@ theorem numericDimShapeMasterSuite_as_components_of_components
     NumericDimShapeMasterSuiteComponents
       st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq := by
   simpa using h_comp
+
+/-- Constructor-route decomposition wrapper for
+`numericDimShapeMasterSuite`. -/
+theorem numericDimShapeMasterSuite_as_components_of_master
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v : DimVarId) (n : Nat)
+    (v1 v2 : DimVarId) (n1 n2 : Nat)
+    (h_distinct : v1 ≠ v2)
+    (vSame : DimVarId) (h_eq : n1 = n2) :
+    NumericDimShapeMasterSuiteComponents
+      st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq := by
+  exact numericDimShapeMasterSuite_as_components
+    st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq
+    (numericDimShapeMasterSuite
+      st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq)
 
 /-- `NumericDimShapeMasterSuite` is equivalent to its explicit component pair. -/
 theorem numericDimShapeMasterSuite_iff_components

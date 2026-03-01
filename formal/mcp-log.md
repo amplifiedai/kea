@@ -11865,3 +11865,38 @@ These expose key facets in one theorem step without record destructuring.
 **Impact**:
 - Reduces downstream proof plumbing around the newest WP7.2–WP7.4 package
   layers while preserving existing theorem surfaces.
+
+### 2026-03-01: constructor-route decomposition parity on top-level masters
+
+**Context**: Extended `Kea/Properties/ShapeConstructorParity.lean` with:
+- `numericShapeMixedDimKernelMasterSuite_as_components_of_master`
+- `numericDimShapeMasterSuite_as_components_of_master`
+
+These provide direct constructor-route decomposition wrappers for the newest
+top-level suites.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No semantic change; wrappers should be immediate consequences of existing
+  constructor and `as_components` theorem surfaces.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Top-level master suites now support direct constructor-to-components routing
+  in one theorem step.
+
+**Impact**:
+- Completes decomposition entrypoint parity for the latest package layers and
+  keeps theorem APIs uniform across constructor and component routes.
