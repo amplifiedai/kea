@@ -1745,6 +1745,34 @@
     }
 
     #[test]
+    fn compile_and_execute_io_stdout_empty_string_exit_code() {
+        let source_path = write_temp_source(
+            "effect IO\n  fn stdout(msg: String) -> Unit\n\nfn main() -[IO]> Unit\n  IO.stdout(\"\")\n",
+            "kea-cli-io-stdout-empty",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 0);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_io_stdout_very_long_string_exit_code() {
+        let payload = "a".repeat(10 * 1024);
+        let source = format!(
+            "effect IO\n  fn stdout(msg: String) -> Unit\n\nfn main() -[IO]> Unit\n  IO.stdout(\"{payload}\")\n"
+        );
+        let source_path = write_temp_source(&source, "kea-cli-io-stdout-very-long", "kea");
+
+        let run = run_file(&source_path).expect("run should succeed for long stdout payload");
+        assert_eq!(run.exit_code, 0);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_string_interpolation_exit_code() {
         let source_path = write_temp_source(
             "use Text\n\nfn main() -> Int\n  let x = 42\n  if Text.length(\"x is {x}\") == 7\n    1\n  else\n    0\n",
