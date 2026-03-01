@@ -68,8 +68,8 @@ Designed and approved. Ready to pick up. Ordered by execution sequence per ROADM
 ### Pre-0g: Effect Contract Completeness
 
 21. *(done)* **[Pure arrow enforcement](done/pure-arrow-enforcement.md)** — see Done section.
-22. **[Handler compilation Tiers 3-4](in-progress/handler-tiers-3-4.md)** — **Tier 3 done** (per-operation cell dispatch, capability mocking, 8 tests). Tier 4 (non-tail resume via continuations) deferred — requires setjmp/longjmp runtime + MIR/codegen integration.
-23. **[Tier 4: Non-tail-resumptive handlers](todo/tier4-continuations.md)** — One-shot continuations via setjmp/longjmp three-jmpbuf protocol. C runtime helpers + JIT stubs + MIR/codegen lowering. ~5% of handlers, required for Phase 1 completeness.
+22. *(done)* **[Handler compilation Tiers 3-4](in-progress/handler-tiers-3-4.md)** — **Tier 3 done** (per-operation cell dispatch, capability mocking, 8 tests). **Tier 4 done** (non-tail resume via clause body splitting, 5 tests).
+23. *(done)* **[Tier 4: Non-tail-resumptive handlers](done/tier4-continuations.md)** — Clause body splitting: `let x = resume val; f(x)` → tail-resumptive callback + post-resume inline code. v1 limitation: pre-resume captures rejected.
 
 ### Phase 0g: Advanced Types + @derive + Stdlib Tier 3 (needs 0d + 0c)
 

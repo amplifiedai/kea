@@ -4211,6 +4211,78 @@ impl FunctionLoweringCtx {
         clauses: &[HirHandleClause],
         then_clause: Option<&HirExpr>,
     ) -> Option<MirValueId> {
+        /// Result of splitting a non-tail clause body at the Resume node.
+        /// Pre-resume stmts + resume value become a tail-resumptive callback.
+        /// Post-resume code runs inline after the handle expression returns.
+        struct NonTailResumeSplit {
+            pre_resume_stmts: Vec<HirExpr>,
+            resume_value: HirExpr,
+            resume_binding: String,
+            post_resume_body: Vec<HirExpr>,
+            captured_bindings: Vec<String>,
+        }
+
+        /// Split a non-tail clause body at the `let x = resume val` point.
+        /// Returns None if the body doesn't contain a splittable resume.
+        fn split_non_tail_resume(body: &HirExpr) -> Option<NonTailResumeSplit> {
+            let HirExprKind::Block(exprs) = &body.kind else {
+                return None;
+            };
+            // Find the Let binding whose value is a Resume
+            let resume_idx = exprs.iter().position(|e| {
+                matches!(
+                    &e.kind,
+                    HirExprKind::Let {
+                        value,
+                        pattern: HirPattern::Var(_),
+                    } if matches!(value.kind, HirExprKind::Resume { .. })
+                )
+            })?;
+            let resume_expr = &exprs[resume_idx];
+            let HirExprKind::Let {
+                pattern: HirPattern::Var(binding_name),
+                value: resume_value_box,
+            } = &resume_expr.kind
+            else {
+                return None;
+            };
+            let HirExprKind::Resume { value } = &resume_value_box.kind else {
+                return None;
+            };
+
+            let pre_resume_stmts: Vec<HirExpr> = exprs[..resume_idx].to_vec();
+            let post_resume_body: Vec<HirExpr> = exprs[resume_idx + 1..].to_vec();
+            if post_resume_body.is_empty() {
+                return None; // No code after resume — this is tail-resumptive
+            }
+
+            // Find captured bindings: vars bound in pre-resume that are referenced in post-resume
+            let mut pre_bound = BTreeSet::new();
+            for stmt in &pre_resume_stmts {
+                if let HirExprKind::Let {
+                    pattern: HirPattern::Var(name),
+                    ..
+                } = &stmt.kind
+                {
+                    pre_bound.insert(name.clone());
+                }
+            }
+            let mut post_refs = BTreeSet::new();
+            for expr in &post_resume_body {
+                collect_hir_var_refs(expr, &mut post_refs);
+            }
+            let captured_bindings: Vec<String> =
+                pre_bound.intersection(&post_refs).cloned().collect();
+
+            Some(NonTailResumeSplit {
+                pre_resume_stmts,
+                resume_value: value.as_ref().clone(),
+                resume_binding: binding_name.clone(),
+                post_resume_body,
+                captured_bindings,
+            })
+        }
+
         fn strip_tail_resume_unit_body(body: &HirExpr) -> Option<HirExpr> {
             match &body.kind {
                 HirExprKind::Resume { value } => {
@@ -4265,6 +4337,8 @@ impl FunctionLoweringCtx {
         let mut operation_initial_exprs: BTreeMap<String, Option<HirExpr>> = BTreeMap::new();
         let mut operation_callback_values: BTreeMap<String, MirValueId> = BTreeMap::new();
         let mut has_store_clause = false;
+        // Non-tail resume: (resume_binding_name, post_resume_body_exprs, span)
+        let mut non_tail_post_resume: Option<(String, Vec<HirExpr>, kea_ast::Span)> = None;
         for clause in clauses
             .iter()
             .filter(|clause| clause.effect == target_effect)
@@ -4278,26 +4352,82 @@ impl FunctionLoweringCtx {
                 });
                 return None;
             }
-            let resume_value = if target_effect == "Log" && clause.args.len() == 1 {
-                None
+            // Classify clause body: tail-resumptive (Resume { value }) or
+            // non-tail-resumptive (let x = resume val; post_code).
+            let resume_value;
+            let mut non_tail_split: Option<NonTailResumeSplit> = None;
+            if target_effect == "Log" && clause.args.len() == 1 {
+                resume_value = None;
             } else {
                 match &clause.body.kind {
-                    HirExprKind::Resume { value } => Some(value.as_ref()),
-                    _ => {
-                        self.emit_inst(MirInst::Unsupported {
-                            detail: format!(
-                                "handler clause `{target_effect}.{} {}`",
-                                clause.operation,
-                                "must be tail-resumptive (`resume ...`) for compiled lowering"
-                            ),
-                        });
-                        return None;
+                    HirExprKind::Resume { value } => {
+                        resume_value = Some(value.as_ref());
                     }
+                    _ => match split_non_tail_resume(&clause.body) {
+                        Some(split) => {
+                            if !split.captured_bindings.is_empty() {
+                                self.emit_inst(MirInst::Unsupported {
+                                    detail: format!(
+                                        "handler clause `{target_effect}.{}`: non-tail resume \
+                                         with captured pre-resume bindings ({}) is not yet \
+                                         supported — move binding computation after resume or \
+                                         use a tail-resumptive handler",
+                                        clause.operation,
+                                        split.captured_bindings.join(", ")
+                                    ),
+                                });
+                                return None;
+                            }
+                            resume_value = None;
+                            non_tail_split = Some(split);
+                        }
+                        None => {
+                            self.emit_inst(MirInst::Unsupported {
+                                detail: format!(
+                                    "handler clause `{target_effect}.{} {}`",
+                                    clause.operation,
+                                    "must be tail-resumptive (`resume ...`) for compiled lowering, \
+                                     or use `let x = resume val; ...` form"
+                                ),
+                            });
+                            return None;
+                        }
+                    },
                 }
             };
 
+            // Zero-arg operations: use LoadCell when resume value doesn't depend
+            // on clause args. For non-tail splits with empty pre-resume stmts,
+            // the resume value is a constant — LoadCell applies. If pre-resume
+            // stmts exist, we'd need InvokeCallback (but zero-arg closures are
+            // not yet supported, so reject).
             if clause.args.is_empty() && !is_direct_capability_effect(&target_effect) {
-                let Some(resume_value) = resume_value else {
+                let load_cell_value = if let Some(rv) = resume_value {
+                    Some((*rv).clone())
+                } else if let Some(split) = &non_tail_split {
+                    if split.pre_resume_stmts.is_empty() {
+                        Some(split.resume_value.clone())
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+                if let Some(rv_expr) = load_cell_value {
+                    plan.operation_lowering
+                        .insert(clause.operation.clone(), HandlerCellOpLowering::LoadCell);
+                    operation_initial_exprs
+                        .insert(clause.operation.clone(), Some(rv_expr));
+                    // Extract post-resume info from the split before continuing
+                    if let Some(split) = non_tail_split.take() {
+                        non_tail_post_resume = Some((
+                            split.resume_binding,
+                            split.post_resume_body,
+                            clause.span,
+                        ));
+                    }
+                    continue;
+                } else if non_tail_split.is_none() {
                     self.emit_inst(MirInst::Unsupported {
                         detail: format!(
                             "zero-argument handler clause `{target_effect}.{} {}`",
@@ -4306,15 +4436,13 @@ impl FunctionLoweringCtx {
                         ),
                     });
                     return None;
-                };
-                plan.operation_lowering
-                    .insert(clause.operation.clone(), HandlerCellOpLowering::LoadCell);
-                operation_initial_exprs
-                    .insert(clause.operation.clone(), Some((*resume_value).clone()));
-                continue;
+                }
+                // Zero-arg non-tail with pre-resume stmts falls through to InvokeCallback
             }
 
-            if clause.args.len() == 1
+            // StoreArgAndReturnUnit: only for tail-resumptive clauses
+            if non_tail_split.is_none()
+                && clause.args.len() == 1
                 && target_effect != "Log"
                 && !is_direct_capability_effect(&target_effect)
                 && matches!(
@@ -4331,7 +4459,27 @@ impl FunctionLoweringCtx {
                 continue;
             }
 
-            let callback_body = if target_effect == "Log" && clause.args.len() == 1 {
+            let callback_body = if let Some(split) = non_tail_split.take() {
+                // Non-tail resume: build callback from pre-resume stmts + resume value.
+                // Post-resume code will be inlined after the handle expression returns.
+                non_tail_post_resume = Some((
+                    split.resume_binding,
+                    split.post_resume_body,
+                    clause.span,
+                ));
+                if split.pre_resume_stmts.is_empty() {
+                    split.resume_value
+                } else {
+                    let mut block_exprs = split.pre_resume_stmts;
+                    block_exprs.push(split.resume_value);
+                    let body_ty = block_exprs.last().map_or(Type::Dynamic, |e| e.ty.clone());
+                    HirExpr {
+                        kind: HirExprKind::Block(block_exprs),
+                        ty: body_ty,
+                        span: clause.span,
+                    }
+                }
+            } else if target_effect == "Log" && clause.args.len() == 1 {
                 let Some(body) = strip_tail_resume_unit_body(&clause.body) else {
                     self.emit_inst(MirInst::Unsupported {
                         detail: format!(
@@ -4500,9 +4648,49 @@ impl FunctionLoweringCtx {
             .insert(target_effect.clone(), plan);
 
         let mut lowered_result = result.clone();
+
+        // Non-tail resume: inline post-resume code after handle returns.
+        // The resume binding gets bound to the handle result, then post-resume
+        // body runs to produce the final value.
+        if let Some((resume_binding, post_resume_body, _span)) = non_tail_post_resume
+            && self.current_block().terminator.is_none()
+        {
+            let handled_value = if let Some(value) = lowered_result.clone() {
+                value
+            } else if handled.ty == Type::Unit {
+                let unit = self.new_value();
+                self.emit_inst(MirInst::Const {
+                    dest: unit.clone(),
+                    literal: MirLiteral::Unit,
+                });
+                unit
+            } else {
+                self.emit_inst(MirInst::Unsupported {
+                    detail: "non-tail resume: handle expression expected a value, \
+                             but handled body produced none"
+                        .to_string(),
+                });
+                return None;
+            };
+            let incoming_scope = self.snapshot_var_scope();
+            self.vars.insert(resume_binding.clone(), handled_value);
+            self.var_types
+                .insert(resume_binding, handled.ty.clone());
+            // Lower post-resume body: last expression is the value
+            let mut post_result = None;
+            for (i, expr) in post_resume_body.iter().enumerate() {
+                let val = self.lower_expr(expr);
+                if i == post_resume_body.len() - 1 {
+                    post_result = val;
+                }
+            }
+            lowered_result = post_result;
+            self.restore_var_scope(&incoming_scope);
+        }
+
         if let Some(then_expr) = then_clause {
             if self.current_block().terminator.is_none() {
-                let handled_value = if let Some(value) = result.clone() {
+                let handled_value = if let Some(value) = lowered_result.clone() {
                     value
                 } else if handled.ty == Type::Unit {
                     let unit = self.new_value();

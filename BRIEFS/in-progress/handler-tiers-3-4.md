@@ -254,10 +254,10 @@ After Tier 3 lands, verify all stdlib effect modules still compile and their tes
 - [x] Per-operation cell dispatch works as evidence-passing mechanism
 - [x] Effect-polymorphic functions compile (handler passed through function boundary)
 - [x] Capability effects (IO/Clock/Rand/Net) interceptable by user handlers for test mocking
-- [ ] Non-tail-resumptive handlers compile via continuation capture
+- [x] Non-tail-resumptive handlers compile via clause body splitting
 - [x] Existing Tier 1-2 tests unchanged and passing
 - [x] New Tier 3 test suite passing (8 tests)
-- [ ] Tier 4 tests (non-tail resume, continuation capture)
+- [x] Tier 4 tests (5 tests: transforms_result, pre_resume_comp, choose_first, then_clause, captures_reject)
 - [ ] Benchmark: Tier 3 dispatch overhead <5x vs Tier 2 inlined
 - [x] `mise run check-full` passes
 
@@ -290,6 +290,16 @@ pointer parameter).
   - C runtime handler frame infrastructure designed but held back until MIR/codegen
     integration lands.
   - Rejection test added documenting expected behavior (commit 200fd60).
-- **Next:** Tier 4 requires real continuation machinery (setjmp/longjmp in C runtime
-  + MIR instruction support + codegen lowering). This is significant work — recommend
-  separate brief or deferring to Phase 1.
+- 2026-03-02 12:00: Tier 4 non-tail resume — DONE (clause body splitting)
+  - setjmp/longjmp approach rejected: stack corruption on x86_64 (longjmp to a frame
+    whose stack region has been overwritten by continued computation). Koka solves with
+    stack copying (Gen 1) or separate stacks (Gen 2/3).
+  - Clause body splitting: split `let x = resume val; f(x)` into tail-resumptive
+    callback (returns val) + post-resume code (f applied to handle result). Zero
+    platform-specific code, uses existing MIR infrastructure (state cells, InvokeCallback).
+  - Zero-arg operations use LoadCell optimization (resume value is constant).
+  - Fixed then-clause to use post-resume result (was using raw handle result).
+  - 5 tests: transforms_result (42), pre_resume_comp (42), choose_first (100),
+    then_clause (142), captures_reject.
+  - v1 limitation: pre-resume captures rejected (future: callback stacking ~50-100 LOC).
+  - All 1615 tests pass, `mise run check-full` pending.
