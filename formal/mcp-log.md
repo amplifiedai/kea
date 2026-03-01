@@ -11356,3 +11356,41 @@ handler suite witnesses.
 **Impact**:
 - Top-level handler theorem consumers can read `atMostOnce` as a direct bundle
   projection, aligning resume linearity with other one-hop suite facets.
+
+### 2026-03-01: hook-parameterized packaged infer-unify eval slices
+
+**Context**: Extended `Kea/Eval.lean` with hook-parameterized packaged slice
+variants:
+- `VerticalEvalUnifyBridgeSliceFromHooks`
+- `verticalEvalUnifyBridgeSliceFromHooks_proved`
+- `CoreProgressPreservationEvalUnifySliceFromHooks`
+- `coreProgressPreservationEvalUnifySliceFromHooks_proved`
+
+These mirror the existing bundled-hook slice packaging and keep top-level slice
+consumption on explicit `h_app`/`h_proj` premises.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No semantic change; proved slices should be direct wrappers over existing
+  `..._of_inferUnify_from_hooks` theorem families.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Infer-unify evaluator bridge/progress-preservation slices are now packaged in
+  both bundled-hook and explicit-hook forms.
+
+**Impact**:
+- Slice-level theorem routing now matches the broader explicit-vs-bundled hook
+  API style used elsewhere in the formal corpus.
