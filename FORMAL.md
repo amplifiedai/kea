@@ -549,6 +549,7 @@ This work starts by cannibalizing the existing Rill formal corpus and then exten
 - **Phase 2 (active):** `Kea/Eval.lean` now lifts that run-local package to slice level (`CoreCalculusSoundnessConsequencesSlice{,FromHooks}`) with full decomposition parity, direct infer-success constructors, and bidirectional equivalence/route wrappers to `CoreTypeSoundnessEvalUnifySlice{,FromHooks}` (including proved-route aliases), closing consequence-slice interoperability with the packaged core-soundness slice family.
 - **Phase 2 (active):** `CoreCalculusSoundnessConsequencesSlice{,FromHooks}` now also exposes direct one-hop consequence projections (`..._{soundness,progress,preservation}`), so slice consumers can retrieve canonical runtime facts without unpacking consequence pairs manually.
 - **Phase 2 (active):** `Kea/Eval.lean` now also provides one-hop canonical-slice-to-bundle routes (`coreTypeSoundnessEvalUnifyBundle_of_coreCalculusSoundnessSlice{,FromHooks}` with component/proved variants), so packaged triple consumers can start directly from canonical slice witnesses without intermediate conversion steps.
+- **Phase 2 (active):** `CoreCalculusSoundnessSlice{,FromHooks}` now also has direct one-hop consequence projections (`..._{soundness,progress,preservation}`) and proved-route variants, so canonical-slice consumers can retrieve runtime facts without manual pair destructuring.
 
 The formal workspace lives at [`formal/`](formal/).
 
