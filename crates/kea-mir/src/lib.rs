@@ -3868,7 +3868,29 @@ impl FunctionLoweringCtx {
             }
             HirExprKind::Call { func, args } => self.lower_call_expr(expr, func, args, false),
             HirExprKind::Catch { expr: caught } => {
-                let result = if let HirExprKind::Call { func, args } = &caught.kind {
+                let result = if let HirExprKind::Call { func, args } = &caught.kind
+                    && let HirExprKind::Var(name) = &func.kind
+                    && name == "Fail.fail"
+                {
+                    // Direct `catch fail x` — statically known to always produce Err(x).
+                    // Emit Err(arg) directly instead of routing through the call path,
+                    // which can't resolve Fail.fail as a callable symbol.
+                    let mut fields = Vec::new();
+                    for arg in args {
+                        if let Some(v) = self.lower_expr(arg) {
+                            fields.push(v);
+                        }
+                    }
+                    let dest = self.new_value();
+                    self.emit_inst(MirInst::SumInit {
+                        dest: dest.clone(),
+                        sum_type: "Result".to_string(),
+                        variant: "Err".to_string(),
+                        tag: 1,
+                        fields,
+                    });
+                    dest
+                } else if let HirExprKind::Call { func, args } = &caught.kind {
                     self.lower_call_expr(caught, func, args, true)?
                 } else {
                     let wrapped_fn_ty = Type::Function(FunctionType::with_effects(
