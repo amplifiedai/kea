@@ -13235,3 +13235,43 @@ New theorem surface:
 **Impact**:
 - Reduces boilerplate term threading at suite-level call sites and keeps
   handler-absence route APIs projection-parity complete.
+
+### 2026-03-02: top-level disjoint observational rest/has projection routes
+
+**Context**: Extended `Kea/Properties/EffectHandlerContractSuite.lean` so
+`EffectHandlerDisjointObservationalSuite` exports direct `rest` and label
+membership commutation projections, both from suite witnesses and directly from
+handler-absence premises.
+
+New theorem surface:
+- `effectHandlerDisjointObservationalSuite_restEq`
+- `effectHandlerDisjointObservationalSuite_hasEq`
+- `effectHandlerDisjointObservationalSuite_restEq_of_handler_absence`
+- `effectHandlerDisjointObservationalSuite_hasEq_of_handler_absence`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; this is projection-route parity over an
+  existing observational-equivalence contract.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Top-level disjoint observational commutation now exposes one-hop
+  rest/label-membership facts from either suite witnesses or handler-absence
+  premises.
+
+**Impact**:
+- Brings top-level observational projections to parity with the lower
+  disjoint-composition coherence layer and removes remaining unpacking boilerplate.
