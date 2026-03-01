@@ -1925,6 +1925,91 @@ theorem coreCalculusSoundnessConsequencesSliceFromHooks_preservation
     ∀ {v : Value}, eval venv e = some v → ValueHasType v ty :=
   (h_slice h_app h_proj st st' fuel h_ok h_env h_frag).2.2
 
+theorem coreTypeSoundnessEvalUnifyBundle_of_coreCalculusSoundnessSlice
+    (h_core : CoreCalculusSoundnessSlice)
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_hooks : UnifyHookPremises)
+    (st st' : UnifyState)
+    (fuel : Nat)
+    (h_ok : inferExprUnify st fuel tenv e = .ok st' ty)
+    (h_env : EnvWellTyped tenv venv)
+    (h_frag : EvalFragmentFull e) :
+    CoreTypeSoundnessEvalUnifyBundle tenv venv e ty :=
+  coreCalculusSoundnessConsequences_as_bundle tenv venv e ty
+    (coreCalculusSoundnessConsequences_of_coreCalculusSoundnessSlice
+      h_core h_hooks st st' fuel h_ok h_env h_frag)
+
+theorem coreTypeSoundnessEvalUnifyBundle_of_coreCalculusSoundnessSliceFromHooks
+    (h_core : CoreCalculusSoundnessSliceFromHooks)
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st st' : UnifyState)
+    (fuel : Nat)
+    (h_ok : inferExprUnify st fuel tenv e = .ok st' ty)
+    (h_env : EnvWellTyped tenv venv)
+    (h_frag : EvalFragmentFull e) :
+    CoreTypeSoundnessEvalUnifyBundle tenv venv e ty :=
+  coreCalculusSoundnessConsequences_as_bundle tenv venv e ty
+    (coreCalculusSoundnessConsequences_of_coreCalculusSoundnessSliceFromHooks
+      h_core h_app h_proj st st' fuel h_ok h_env h_frag)
+
+theorem coreTypeSoundnessEvalUnifyBundle_as_components_of_coreCalculusSoundnessSlice
+    (h_core : CoreCalculusSoundnessSlice)
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_hooks : UnifyHookPremises)
+    (st st' : UnifyState)
+    (fuel : Nat)
+    (h_ok : inferExprUnify st fuel tenv e = .ok st' ty)
+    (h_env : EnvWellTyped tenv venv)
+    (h_frag : EvalFragmentFull e) :
+    CoreTypeSoundnessEvalUnifyBundleComponents tenv venv e ty :=
+  coreTypeSoundnessEvalUnifyBundle_as_components tenv venv e ty
+    (coreTypeSoundnessEvalUnifyBundle_of_coreCalculusSoundnessSlice
+      h_core h_hooks st st' fuel h_ok h_env h_frag)
+
+theorem coreTypeSoundnessEvalUnifyBundle_as_components_of_coreCalculusSoundnessSliceFromHooks
+    (h_core : CoreCalculusSoundnessSliceFromHooks)
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st st' : UnifyState)
+    (fuel : Nat)
+    (h_ok : inferExprUnify st fuel tenv e = .ok st' ty)
+    (h_env : EnvWellTyped tenv venv)
+    (h_frag : EvalFragmentFull e) :
+    CoreTypeSoundnessEvalUnifyBundleComponents tenv venv e ty :=
+  coreTypeSoundnessEvalUnifyBundle_as_components tenv venv e ty
+    (coreTypeSoundnessEvalUnifyBundle_of_coreCalculusSoundnessSliceFromHooks
+      h_core h_app h_proj st st' fuel h_ok h_env h_frag)
+
+theorem coreTypeSoundnessEvalUnifyBundle_of_coreCalculusSoundnessSlice_proved
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_hooks : UnifyHookPremises)
+    (st st' : UnifyState)
+    (fuel : Nat)
+    (h_ok : inferExprUnify st fuel tenv e = .ok st' ty)
+    (h_env : EnvWellTyped tenv venv)
+    (h_frag : EvalFragmentFull e) :
+    CoreTypeSoundnessEvalUnifyBundle tenv venv e ty :=
+  coreTypeSoundnessEvalUnifyBundle_of_coreCalculusSoundnessSlice
+    coreCalculusSoundnessSlice_proved
+    h_hooks st st' fuel h_ok h_env h_frag
+
+theorem coreTypeSoundnessEvalUnifyBundle_of_coreCalculusSoundnessSliceFromHooks_proved
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st st' : UnifyState)
+    (fuel : Nat)
+    (h_ok : inferExprUnify st fuel tenv e = .ok st' ty)
+    (h_env : EnvWellTyped tenv venv)
+    (h_frag : EvalFragmentFull e) :
+    CoreTypeSoundnessEvalUnifyBundle tenv venv e ty :=
+  coreTypeSoundnessEvalUnifyBundle_of_coreCalculusSoundnessSliceFromHooks
+    coreCalculusSoundnessSliceFromHooks_proved
+    h_app h_proj st st' fuel h_ok h_env h_frag
+
 /--
 Canonical soundness consequence from successful unification-threaded inference
 (bundled hook route).

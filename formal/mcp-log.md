@@ -12915,3 +12915,43 @@ New theorem surface:
 **Impact**:
 - Keeps evaluator consequence-slice ergonomics aligned with the broader one-hop
   projection style used throughout the formal corpus.
+
+### 2026-03-02: direct canonical-slice to packaged-bundle routes in Eval
+
+**Context**: Extended `Kea/Eval.lean` with one-hop wrappers that produce
+`CoreTypeSoundnessEvalUnifyBundle` directly from canonical
+`CoreCalculusSoundnessSlice{,FromHooks}` witnesses.
+
+New theorem surface:
+- `coreTypeSoundnessEvalUnifyBundle_of_coreCalculusSoundnessSlice`
+- `coreTypeSoundnessEvalUnifyBundle_of_coreCalculusSoundnessSliceFromHooks`
+- `coreTypeSoundnessEvalUnifyBundle_as_components_of_coreCalculusSoundnessSlice`
+- `coreTypeSoundnessEvalUnifyBundle_as_components_of_coreCalculusSoundnessSliceFromHooks`
+- `coreTypeSoundnessEvalUnifyBundle_of_coreCalculusSoundnessSlice_proved`
+- `coreTypeSoundnessEvalUnifyBundle_of_coreCalculusSoundnessSliceFromHooks_proved`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; this is route-convenience closure over
+  already equivalent canonical and packaged soundness families.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Canonical slice assumptions now feed packaged bundle consumers in one theorem
+  step, including direct component extraction and proved-route aliases.
+
+**Impact**:
+- Further tightens evaluator soundness route interoperability and reduces
+  call-site theorem chaining.
