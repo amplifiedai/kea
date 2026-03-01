@@ -1855,6 +1855,92 @@
     }
 
     #[test]
+    fn compile_rejects_double_ampersand_operator_syntax() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  if true && false\n    1\n  else\n    0\n",
+            "kea-cli-reject-double-ampersand",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject && operator syntax");
+        assert!(
+            err.contains("operator '&&' is not supported; use 'and' instead"),
+            "expected && rejection diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_rejects_bang_prefix_boolean_operator_syntax() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  if !true\n    1\n  else\n    0\n",
+            "kea-cli-reject-bang-not",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject ! operator syntax");
+        assert!(
+            err.contains("unexpected character '!'; use 'not' instead"),
+            "expected ! rejection diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_rejects_nil_literal_syntax() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  let x = nil\n  0\n",
+            "kea-cli-reject-nil-literal",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject nil literal syntax");
+        assert!(
+            err.contains("`nil` is not supported; use `None`"),
+            "expected nil rejection diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_rejects_bare_lambda_syntax() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  let f = x -> x + 1\n  f(1)\n",
+            "kea-cli-reject-bare-lambda",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject bare lambda syntax");
+        assert!(
+            err.contains("bare lambda syntax is not supported; use `|x| expr`"),
+            "expected bare-lambda rejection diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_rejects_parenthesized_lambda_syntax() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  let f = (x) -> x + 1\n  f(1)\n",
+            "kea-cli-reject-parenthesized-lambda",
+            "kea",
+        );
+
+        let err =
+            run_file(&source_path).expect_err("run should reject parenthesized lambda syntax");
+        assert!(
+            err.contains("parenthesized lambda syntax is not supported; use `|x| expr`"),
+            "expected parenthesized-lambda rejection diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_rejects_legacy_derive_attribute_syntax() {
         let source_path = write_temp_source(
             "#[derive(Eq)]\nstruct Point\n  x: Int\n\nfn main() -> Int\n  0\n",
