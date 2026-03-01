@@ -1,14 +1,21 @@
 // Kea tree-sitter external scanner.
 //
-// Emits INDENT, DEDENT, NEWLINE, and DOC_BLOCK tokens based on an
-// indentation stack.  Mirrors the layout logic in the Kea compiler's
-// lexer (crates/kea-syntax/src/lexer.rs  apply_layout()).
+// Emits INDENT, DEDENT, NEWLINE, DOC_START, and DOC_BODY tokens based
+// on an indentation stack.  Mirrors the layout logic in the Kea
+// compiler's lexer (crates/kea-syntax/src/lexer.rs  apply_layout()).
 //
 // Key invariants:
 //   - indent_stack is never empty (always has at least the base level 0)
 //   - blank lines (only whitespace) never produce tokens
 //   - inside brackets, no layout tokens are emitted
 //   - EOF pops all remaining indent levels
+//
+// Doc blocks are split into two tokens:
+//   - DOC_START: the "doc" keyword (3 chars)
+//   - DOC_BODY:  optional inline text + indented body lines
+// This allows the grammar to highlight "doc" as a keyword and the
+// body as documentation.  The external scanner is called before extras
+// processing, so DOC_BODY sees raw input right after "doc".
 
 #include "tree_sitter/parser.h"
 
@@ -21,7 +28,8 @@ enum TokenType {
     INDENT,
     DEDENT,
     NEWLINE,
-    DOC_BLOCK,
+    DOC_START,
+    DOC_BODY,
 };
 
 // Scanner limits.
@@ -106,79 +114,67 @@ static inline bool is_space_or_tab(int32_t c) {
     return c == ' ' || c == '\t';
 }
 
-// Check if a character could start "doc" keyword.
 static inline bool is_doc_start(int32_t c) {
     return c == 'd';
 }
 
-// ── Doc block scanner ───────────────────────────────────────────
+// ── Doc start scanner ──────────────────────────────────────────
 
-// Scan a doc block: `doc` keyword + optional inline text + indented body.
-// Returns true if a DOC_BLOCK token was emitted.
-//
-// The doc_col parameter is the column where `doc` starts.  Body lines must
-// be indented strictly MORE than doc_col to be included.  A line at the same
-// indent (or less) ends the doc block — this is how `fn` declarations after
-// a doc block inside an effect/trait/struct body are not swallowed.
-static bool scan_doc_block(Scanner *s, TSLexer *lexer, uint32_t doc_col) {
-    // We're positioned at 'd' — verify "doc" followed by space/newline/EOF.
-    // We must not consume characters unless we commit to the token.
-
-    // Check 'd'
+// Scan just the "doc" keyword (3 chars).
+static bool scan_doc_start(Scanner *s, TSLexer *lexer) {
     if (lexer->lookahead != 'd') return false;
     lexer->advance(lexer, false);
-    // Check 'o'
     if (lexer->lookahead != 'o') return false;
     lexer->advance(lexer, false);
-    // Check 'c'
     if (lexer->lookahead != 'c') return false;
     lexer->advance(lexer, false);
 
-    // "doc" must be followed by space, tab, newline, or EOF — not an identifier char.
     int32_t after = lexer->lookahead;
     if (after != ' ' && after != '\t' && after != '\n' && after != '\r' && !lexer->eof(lexer)) {
-        // It's an identifier like "document" — not a doc block.
         return false;
     }
 
-    // We have "doc" — now consume the rest.
-    lexer->mark_end(lexer);  // Mark end after "doc" as fallback.
+    lexer->mark_end(lexer);
+    lexer->result_symbol = DOC_START;
+    return true;
+}
 
-    // Inline text: consume rest of line if there's content.
-    if (after == ' ' || after == '\t') {
-        // Consume space + rest of line.
+// ── Doc body scanner ───────────────────────────────────────────
+
+// Scan the doc body: optional inline text + indented body lines.
+// Called right after DOC_START ("doc") was consumed.
+//
+// doc_col is the column where the "doc" keyword started (stack_top).
+// Body lines must be indented strictly MORE than doc_col.
+static bool scan_doc_body(Scanner *s, TSLexer *lexer, uint32_t doc_col) {
+    bool has_content = false;
+
+    // Inline text: if lookahead is space/tab, consume rest of line.
+    if (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
         while (lexer->lookahead != '\n' && lexer->lookahead != '\r' && !lexer->eof(lexer)) {
             lexer->advance(lexer, false);
         }
         lexer->mark_end(lexer);
+        has_content = true;
     }
 
-    // Now try to consume indented body lines (block form).
-    // Body lines must be indented MORE than doc_col.
-    // Blank lines within the body are allowed.
+    // Try to consume indented body lines.
     for (;;) {
-        // Peek ahead: consume newlines and blank lines, looking for
-        // an indented content line.
         if (lexer->lookahead != '\n' && lexer->lookahead != '\r') break;
 
-        // Consume the newline.
+        // Consume the newline speculatively.
         if (lexer->lookahead == '\r') lexer->advance(lexer, false);
         if (lexer->lookahead == '\n') lexer->advance(lexer, false);
 
-        // Skip blank lines (lines with only spaces/tabs).
         bool found_content = false;
         for (;;) {
-            // Measure indent on this line.
             uint32_t line_indent = 0;
             while (is_space_or_tab(lexer->lookahead)) {
                 line_indent++;
                 lexer->advance(lexer, false);
             }
 
-            if (lexer->eof(lexer)) {
-                // EOF after whitespace — stop.
-                break;
-            }
+            if (lexer->eof(lexer)) break;
 
             if (lexer->lookahead == '\n' || lexer->lookahead == '\r') {
                 // Blank line — consume and continue looking.
@@ -188,16 +184,15 @@ static bool scan_doc_block(Scanner *s, TSLexer *lexer, uint32_t doc_col) {
             }
 
             if (line_indent > doc_col) {
-                // Indented more than the doc keyword — part of doc body.
-                // Consume rest of line.
+                // Indented more than "doc" keyword — part of body.
                 while (lexer->lookahead != '\n' && lexer->lookahead != '\r' && !lexer->eof(lexer)) {
                     lexer->advance(lexer, false);
                 }
                 lexer->mark_end(lexer);
+                has_content = true;
                 found_content = true;
                 break;
             } else {
-                // At same indent or less — end of doc block.
                 break;
             }
         }
@@ -205,8 +200,11 @@ static bool scan_doc_block(Scanner *s, TSLexer *lexer, uint32_t doc_col) {
         if (!found_content) break;
     }
 
-    lexer->result_symbol = DOC_BLOCK;
-    return true;
+    if (has_content) {
+        lexer->result_symbol = DOC_BODY;
+        return true;
+    }
+    return false;
 }
 
 // ── Main scan function ──────────────────────────────────────────
@@ -224,62 +222,45 @@ bool tree_sitter_kea_external_scanner_scan(void *payload, TSLexer *lexer,
 
     // --- Phase 0.5: Error recovery guard ---
     // If ALL external symbols are valid, the parser is in error recovery.
-    // Don't interfere.
     if (valid_symbols[INDENT] && valid_symbols[DEDENT] &&
-        valid_symbols[NEWLINE] && valid_symbols[DOC_BLOCK]) {
+        valid_symbols[NEWLINE] && valid_symbols[DOC_START] && valid_symbols[DOC_BODY]) {
         return false;
     }
 
-    // At EOF, only emit DEDENT or NEWLINE — never try DOC_BLOCK.
-    // This prevents the scanner from consuming whitespace at EOF when only
-    // DOC_BLOCK is valid, which would prevent the parser from reaching
-    // the state where DEDENT is valid.
+    // --- Phase 0.6: Doc body scan ---
+    // Called right after DOC_START was consumed.  We check DOC_BODY
+    // first because the external scanner runs before extras processing,
+    // so we can see the raw newlines/spaces after "doc".  If we fall
+    // through to Phase 2, those characters get consumed as whitespace.
+    if (valid_symbols[DOC_BODY]) {
+        // The doc keyword started at the current indent level.
+        if (scan_doc_body(s, lexer, stack_top(s))) {
+            return true;
+        }
+        // No body content — fall through.  The parser will skip the
+        // optional($.doc_body) and try the next alternative.
+    }
+
+    // At EOF, only emit DEDENT or NEWLINE — never try DOC_START.
     if (lexer->eof(lexer) &&
         !valid_symbols[INDENT] && !valid_symbols[DEDENT] && !valid_symbols[NEWLINE]) {
         return false;
     }
 
-    // --- Phase 1: Track brackets ---
-    // Peek at the current character to update bracket depth.
-    // We don't consume anything here — let the main parser handle brackets.
-    // But we need to know if we're inside brackets to suppress layout.
-    //
-    // Actually, bracket tracking in tree-sitter external scanners works
-    // differently from the compiler: we can't peek at the next *token*.
-    // Instead, we rely on the grammar: inside (), [], {}, the parser
-    // won't have INDENT/DEDENT/NEWLINE in valid_symbols because those
-    // rules aren't in the bracket-delimited grammar positions.
-    //
-    // So we don't need explicit bracket tracking — the valid_symbols
-    // array already handles it.
-
     // --- Phase 2: Look for a newline ---
-    // Skip spaces/tabs (horizontal whitespace) first.
-    // We need to find if we're at a line boundary.
-
     bool found_newline = false;
 
-    // If the very first character is a newline, we're at a line boundary.
-    // Consume all whitespace until we find content, tracking indentation.
-
-    // Consume horizontal whitespace before checking for newline.
     while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
-        lexer->advance(lexer, true);  // skip = true (whitespace)
+        lexer->advance(lexer, true);
     }
 
-    // Check for newline.
     if (lexer->lookahead == '\n' || lexer->lookahead == '\r') {
         found_newline = true;
-
-        // Consume the newline and any subsequent blank lines.
         while (lexer->lookahead == '\n' || lexer->lookahead == '\r' ||
                lexer->lookahead == ' ' || lexer->lookahead == '\t') {
             if (lexer->lookahead == '\n' || lexer->lookahead == '\r') {
                 lexer->advance(lexer, true);
             } else {
-                // Could be indentation of a content line, or trailing
-                // whitespace on a blank line.  We need to peek ahead.
-                // Consume spaces, then check if next is newline/EOF.
                 lexer->advance(lexer, true);
             }
         }
@@ -287,15 +268,11 @@ bool tree_sitter_kea_external_scanner_scan(void *payload, TSLexer *lexer,
 
     // --- Phase 3: At EOF, emit remaining layout tokens ---
     if (lexer->eof(lexer)) {
-        // Emit DEDENT if valid and we have pending indent levels.
         if (valid_symbols[DEDENT] && s->stack_len > 1) {
             stack_pop(s);
             lexer->result_symbol = DEDENT;
             return true;
         }
-        // Emit NEWLINE at EOF to close the last statement.
-        // This lets repeat1(seq(decl, optional(newline))) finish its
-        // iteration so the parser can then request DEDENT.
         if (found_newline && valid_symbols[NEWLINE]) {
             lexer->result_symbol = NEWLINE;
             return true;
@@ -303,15 +280,12 @@ bool tree_sitter_kea_external_scanner_scan(void *payload, TSLexer *lexer,
         return false;
     }
 
-    // --- Phase 4: If no newline found, try DOC_BLOCK at start of file ---
+    // --- Phase 4: If no newline found, try DOC_START at start of file ---
     if (!found_newline) {
-        // We might be at the very start of the file (column 0).
-        // Check for doc block.
-        if (valid_symbols[DOC_BLOCK] && is_doc_start(lexer->lookahead)) {
+        if (valid_symbols[DOC_START] && is_doc_start(lexer->lookahead)) {
             uint32_t col = lexer->get_column(lexer);
-            // Doc blocks only start at column 0 or at the current indent level.
             if (col == stack_top(s)) {
-                return scan_doc_block(s, lexer, col);
+                return scan_doc_start(s, lexer);
             }
         }
         return false;
@@ -321,9 +295,6 @@ bool tree_sitter_kea_external_scanner_scan(void *payload, TSLexer *lexer,
     uint32_t indent = lexer->get_column(lexer);
 
     // --- Phase 6: Emit layout token based on indent comparison ---
-    // INDENT/DEDENT must be emitted BEFORE doc blocks.  A doc block
-    // at increased indent is inside a new block — the INDENT must come
-    // first so the parser can open the block.
     uint16_t current = stack_top(s);
 
     if (indent > current) {
@@ -332,18 +303,15 @@ bool tree_sitter_kea_external_scanner_scan(void *payload, TSLexer *lexer,
             lexer->result_symbol = INDENT;
             return true;
         }
-        // If INDENT not valid but DOC_BLOCK is, try doc block.
-        if (valid_symbols[DOC_BLOCK] && is_doc_start(lexer->lookahead)) {
-            return scan_doc_block(s, lexer, indent);
+        if (valid_symbols[DOC_START] && is_doc_start(lexer->lookahead)) {
+            return scan_doc_start(s, lexer);
         }
         return false;
     }
 
     if (indent < current) {
         if (valid_symbols[DEDENT]) {
-            // Pop levels until we match.
             stack_pop(s);
-            // Queue additional dedents if needed.
             while (s->stack_len > 1 && indent < stack_top(s)) {
                 stack_pop(s);
                 s->queued_dedents++;
@@ -354,11 +322,9 @@ bool tree_sitter_kea_external_scanner_scan(void *payload, TSLexer *lexer,
         return false;
     }
 
-    // indent == current — check for doc block before NEWLINE.
-    // Doc blocks at the current indent level document the next
-    // declaration at this level.
-    if (valid_symbols[DOC_BLOCK] && is_doc_start(lexer->lookahead)) {
-        return scan_doc_block(s, lexer, indent);
+    // indent == current
+    if (valid_symbols[DOC_START] && is_doc_start(lexer->lookahead)) {
+        return scan_doc_start(s, lexer);
     }
 
     if (valid_symbols[NEWLINE]) {

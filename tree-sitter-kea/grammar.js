@@ -28,7 +28,8 @@ module.exports = grammar({
     $.indent,
     $.dedent,
     $.newline,
-    $.doc_block,
+    $.doc_start,
+    $.doc_body,
   ],
 
   word: ($) => $.identifier,
@@ -68,6 +69,8 @@ module.exports = grammar({
         $.documented_declaration,
         $._bare_declaration,
       ),
+
+    doc_block: ($) => seq($.doc_start, optional($.doc_body)),
 
     documented_declaration: ($) =>
       seq($.doc_block, optional($.newline), $._bare_declaration),

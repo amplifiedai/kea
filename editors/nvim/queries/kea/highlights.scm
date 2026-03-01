@@ -141,7 +141,8 @@
 
 (receiver_placeholder) @variable.builtin
 
-; ── Comments (highest priority) ──────────────────────────────────
+; ── Comments and documentation (highest priority) ───────────────
 
 (line_comment) @comment
-(doc_block) @comment.documentation
+(doc_body) @comment.documentation
+(doc_start) @keyword
