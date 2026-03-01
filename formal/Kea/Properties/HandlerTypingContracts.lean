@@ -180,6 +180,32 @@ theorem clauseResumeLinearityBundle_as_components_of_components
   (clauseResumeLinearityBundle_iff_components c).1
     ((clauseResumeLinearityBundle_iff_components c).2 h_comp)
 
+/--
+The resume-linearity component witness is equivalent to the primitive
+linearity premise for the clause.
+-/
+theorem clauseResumeLinearityBundleComponents_iff_linearityOk
+    (c : HandleClauseContract) :
+    ClauseResumeLinearityBundleComponents c ↔ linearityOk c := by
+  constructor
+  · intro h_comp
+    rcases h_comp with ⟨u, h_summary, h_atMostOnce⟩
+    have h_eq : u = c.resumeUse :=
+      clauseHasResumeSummary_eq_resumeUse c u h_summary
+    subst h_eq
+    exact h_atMostOnce
+  · intro h_lin
+    exact ⟨c.resumeUse, clauseHasResumeSummary.mk c, h_lin⟩
+
+/--
+Bundle existence is equivalent to the primitive clause linearity premise.
+-/
+theorem clauseResumeLinearityBundle_iff_linearityOk
+    (c : HandleClauseContract) :
+    Nonempty (ClauseResumeLinearityBundle c) ↔ linearityOk c := by
+  rw [clauseResumeLinearityBundle_iff_components c]
+  exact clauseResumeLinearityBundleComponents_iff_linearityOk c
+
 /-- Build the packaged resume-linearity bundle from `wellTypedSlice`. -/
 def clauseResumeLinearityBundle_of_wellTypedSlice
     (c : HandleClauseContract)
