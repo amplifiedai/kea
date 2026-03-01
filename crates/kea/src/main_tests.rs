@@ -4402,6 +4402,20 @@
     }
 
     #[test]
+    fn compile_and_execute_catch_direct_fail_exit_code() {
+        let source_path = write_temp_source(
+            "effect Fail\n  fn fail(err: Int) -> Never\n\nfn main() -> Int\n  let r = catch fail 7\n  case r\n    Ok(v) -> v\n    Err(e) -> e\n",
+            "kea-cli-catch-direct-fail",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("direct catch fail should succeed");
+        assert_eq!(run.exit_code, 7);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_rejects_cyclic_alias_definitions() {
         let source_path = write_temp_source(
             "alias A = B\nalias B = A\n\nfn main() -> Int\n  0\n",
