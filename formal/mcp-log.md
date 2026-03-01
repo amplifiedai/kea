@@ -12875,3 +12875,43 @@ New theorem surface:
 **Impact**:
 - Reduces theorem destructuring overhead and aligns this suite with existing
   one-hop projection conventions across Phase-2 aggregates.
+
+### 2026-03-02: one-hop runtime consequence projections for Eval consequence slices
+
+**Context**: Extended `Kea/Eval.lean` so
+`CoreCalculusSoundnessConsequencesSlice{,FromHooks}` provide direct projection
+theorems for soundness/progress/preservation consequences.
+
+New theorem surface:
+- `coreCalculusSoundnessConsequencesSlice_soundness`
+- `coreCalculusSoundnessConsequencesSlice_progress`
+- `coreCalculusSoundnessConsequencesSlice_preservation`
+- `coreCalculusSoundnessConsequencesSliceFromHooks_soundness`
+- `coreCalculusSoundnessConsequencesSliceFromHooks_progress`
+- `coreCalculusSoundnessConsequencesSliceFromHooks_preservation`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; this is projection convenience over
+  already-defined consequence slices.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Consequence-slice consumers can now retrieve soundness/progress/preservation
+  in one theorem step on both hook routes.
+
+**Impact**:
+- Keeps evaluator consequence-slice ergonomics aligned with the broader one-hop
+  projection style used throughout the formal corpus.
