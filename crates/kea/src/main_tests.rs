@@ -3368,9 +3368,7 @@
 
     #[test]
     #[cfg(not(target_os = "windows"))]
-    fn compile_and_execute_division_by_zero_traps() {
-        use std::os::unix::process::ExitStatusExt;
-
+    fn compile_and_execute_division_by_zero_panics_with_message() {
         let source_path = write_temp_source(
             "fn main() -> Int\n  let x = 10\n  let y = 0\n  x / y\n",
             "kea-cli-div-by-zero",
@@ -3382,14 +3380,15 @@
             compile_file(&source_path, CodegenMode::Aot).expect("aot compile should work");
         link_object_bytes(&compiled.object, &output_path).expect("link should work");
 
-        let status = std::process::Command::new(&output_path)
-            .status()
+        let output = std::process::Command::new(&output_path)
+            .output()
             .expect("aot executable should run");
 
+        assert_eq!(output.status.code(), Some(101));
+        let stderr = String::from_utf8_lossy(&output.stderr);
         assert!(
-            status.signal().is_some(),
-            "division by zero should kill process with a signal, got exit code: {:?}",
-            status.code()
+            stderr.contains("panic: integer division by zero"),
+            "expected panic message on stderr, got: {stderr}"
         );
 
         let _ = std::fs::remove_file(source_path);
@@ -3398,9 +3397,7 @@
 
     #[test]
     #[cfg(not(target_os = "windows"))]
-    fn compile_and_execute_modulo_by_zero_traps() {
-        use std::os::unix::process::ExitStatusExt;
-
+    fn compile_and_execute_modulo_by_zero_panics_with_message() {
         let source_path = write_temp_source(
             "fn main() -> Int\n  let x = 10\n  let y = 0\n  x % y\n",
             "kea-cli-mod-by-zero",
@@ -3412,14 +3409,15 @@
             compile_file(&source_path, CodegenMode::Aot).expect("aot compile should work");
         link_object_bytes(&compiled.object, &output_path).expect("link should work");
 
-        let status = std::process::Command::new(&output_path)
-            .status()
+        let output = std::process::Command::new(&output_path)
+            .output()
             .expect("aot executable should run");
 
+        assert_eq!(output.status.code(), Some(101));
+        let stderr = String::from_utf8_lossy(&output.stderr);
         assert!(
-            status.signal().is_some(),
-            "modulo by zero should kill process with a signal, got exit code: {:?}",
-            status.code()
+            stderr.contains("panic: integer remainder by zero"),
+            "expected panic message on stderr, got: {stderr}"
         );
 
         let _ = std::fs::remove_file(source_path);

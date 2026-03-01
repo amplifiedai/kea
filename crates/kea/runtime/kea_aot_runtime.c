@@ -163,6 +163,20 @@ int64_t __kea_net_recv(int64_t conn, int64_t size) {
 #endif
 }
 
+void __kea_panic_div_zero(void) {
+  static const char msg[] = "panic: integer division by zero\n";
+  fwrite(msg, 1, sizeof(msg) - 1, stderr);
+  fflush(stderr);
+  _exit(101);
+}
+
+void __kea_panic_mod_zero(void) {
+  static const char msg[] = "panic: integer remainder by zero\n";
+  fwrite(msg, 1, sizeof(msg) - 1, stderr);
+  fflush(stderr);
+  _exit(101);
+}
+
 int64_t __kea_clock_now(void) {
 #ifdef _WIN32
   return -1;

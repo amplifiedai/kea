@@ -477,6 +477,16 @@ fn net_runtime() -> &'static Mutex<NetRuntimeState> {
     })
 }
 
+unsafe extern "C" fn kea_panic_div_zero_stub() -> ! {
+    eprintln!("panic: integer division by zero");
+    std::process::exit(101);
+}
+
+unsafe extern "C" fn kea_panic_mod_zero_stub() -> ! {
+    eprintln!("panic: integer remainder by zero");
+    std::process::exit(101);
+}
+
 fn register_jit_runtime_symbols(builder: &mut JITBuilder) {
     builder.symbol("__kea_net_connect", kea_net_connect_stub as *const u8);
     builder.symbol("__kea_net_send", kea_net_send_stub as *const u8);
@@ -485,6 +495,14 @@ fn register_jit_runtime_symbols(builder: &mut JITBuilder) {
     builder.symbol("__kea_io_read_file", kea_io_read_file_stub as *const u8);
     builder.symbol("__kea_clock_now", kea_clock_now_stub as *const u8);
     builder.symbol("__kea_clock_monotonic", kea_clock_monotonic_stub as *const u8);
+    builder.symbol(
+        "__kea_panic_div_zero",
+        kea_panic_div_zero_stub as *const u8,
+    );
+    builder.symbol(
+        "__kea_panic_mod_zero",
+        kea_panic_mod_zero_stub as *const u8,
+    );
 }
 
 fn compile_with_jit(
@@ -2401,7 +2419,7 @@ fn lower_instruction<M: Module>(
             let result = if *op == MirBinaryOp::Concat {
                 lower_string_concat(module, builder, function_name, lhs, rhs, ctx)?
             } else {
-                lower_binary(builder, function_name, *op, lhs, rhs)?
+                lower_binary(module, builder, function_name, *op, lhs, rhs)?
             };
             values.insert(dest.clone(), result);
             Ok(false)
@@ -4147,7 +4165,22 @@ fn lower_string_concat(
     Ok(out_ptr)
 }
 
+fn declare_void_panic_func(
+    module: &mut impl Module,
+    name: &str,
+) -> Result<FuncId, CodegenError> {
+    let mut sig = module.make_signature();
+    sig.params.clear();
+    sig.returns.clear();
+    module
+        .declare_function(name, Linkage::Import, &sig)
+        .map_err(|detail| CodegenError::Module {
+            detail: detail.to_string(),
+        })
+}
+
 fn lower_binary(
+    module: &mut impl Module,
     builder: &mut FunctionBuilder,
     function_name: &str,
     op: MirBinaryOp,
@@ -4172,24 +4205,32 @@ fn lower_binary(
         MirBinaryOp::WrappingSub if lhs_ty.is_int() => builder.ins().isub(lhs, rhs),
         MirBinaryOp::WrappingMul if lhs_ty.is_int() => builder.ins().imul(lhs, rhs),
         MirBinaryOp::Div if lhs_ty.is_int() => {
+            let panic_id = declare_void_panic_func(module, "__kea_panic_div_zero")?;
+            let panic_ref = module.declare_func_in_func(panic_id, builder.func);
+
             let zero_block = builder.create_block();
             let ok_block = builder.create_block();
             let is_zero = builder.ins().icmp_imm(IntCC::Equal, rhs, 0);
             builder.ins().brif(is_zero, zero_block, &[], ok_block, &[]);
 
             builder.switch_to_block(zero_block);
+            builder.ins().call(panic_ref, &[]);
             builder.ins().trap(TrapCode::unwrap_user(1));
 
             builder.switch_to_block(ok_block);
             builder.ins().sdiv(lhs, rhs)
         }
         MirBinaryOp::Mod if lhs_ty.is_int() => {
+            let panic_id = declare_void_panic_func(module, "__kea_panic_mod_zero")?;
+            let panic_ref = module.declare_func_in_func(panic_id, builder.func);
+
             let zero_block = builder.create_block();
             let ok_block = builder.create_block();
             let is_zero = builder.ins().icmp_imm(IntCC::Equal, rhs, 0);
             builder.ins().brif(is_zero, zero_block, &[], ok_block, &[]);
 
             builder.switch_to_block(zero_block);
+            builder.ins().call(panic_ref, &[]);
             builder.ins().trap(TrapCode::unwrap_user(1));
 
             builder.switch_to_block(ok_block);
