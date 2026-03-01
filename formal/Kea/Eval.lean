@@ -2010,6 +2010,162 @@ theorem coreTypeSoundnessEvalUnifyBundle_of_coreCalculusSoundnessSliceFromHooks_
     coreCalculusSoundnessSliceFromHooks_proved
     h_app h_proj st st' fuel h_ok h_env h_frag
 
+theorem coreCalculusSoundnessSlice_soundness
+    (h_core : CoreCalculusSoundnessSlice)
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_hooks : UnifyHookPremises)
+    (st st' : UnifyState)
+    (fuel : Nat)
+    (h_ok : inferExprUnify st fuel tenv e = .ok st' ty)
+    (h_env : EnvWellTyped tenv venv)
+    (h_frag : EvalFragmentFull e) :
+    ∃ v, eval venv e = some v ∧ ValueHasType v ty :=
+  h_core.1 h_hooks st st' fuel h_ok h_env h_frag
+
+theorem coreCalculusSoundnessSlice_progress
+    (h_core : CoreCalculusSoundnessSlice)
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_hooks : UnifyHookPremises)
+    (st st' : UnifyState)
+    (fuel : Nat)
+    (h_ok : inferExprUnify st fuel tenv e = .ok st' ty)
+    (h_env : EnvWellTyped tenv venv)
+    (h_frag : EvalFragmentFull e) :
+    ∃ v, eval venv e = some v :=
+  (h_core.2 h_hooks st st' fuel h_ok h_env h_frag).1
+
+theorem coreCalculusSoundnessSlice_preservation
+    (h_core : CoreCalculusSoundnessSlice)
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_hooks : UnifyHookPremises)
+    (st st' : UnifyState)
+    (fuel : Nat)
+    (h_ok : inferExprUnify st fuel tenv e = .ok st' ty)
+    (h_env : EnvWellTyped tenv venv)
+    (h_frag : EvalFragmentFull e) :
+    ∀ {v : Value}, eval venv e = some v → ValueHasType v ty :=
+  (h_core.2 h_hooks st st' fuel h_ok h_env h_frag).2
+
+theorem coreCalculusSoundnessSliceFromHooks_soundness
+    (h_core : CoreCalculusSoundnessSliceFromHooks)
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st st' : UnifyState)
+    (fuel : Nat)
+    (h_ok : inferExprUnify st fuel tenv e = .ok st' ty)
+    (h_env : EnvWellTyped tenv venv)
+    (h_frag : EvalFragmentFull e) :
+    ∃ v, eval venv e = some v ∧ ValueHasType v ty :=
+  h_core.1 h_app h_proj st st' fuel h_ok h_env h_frag
+
+theorem coreCalculusSoundnessSliceFromHooks_progress
+    (h_core : CoreCalculusSoundnessSliceFromHooks)
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st st' : UnifyState)
+    (fuel : Nat)
+    (h_ok : inferExprUnify st fuel tenv e = .ok st' ty)
+    (h_env : EnvWellTyped tenv venv)
+    (h_frag : EvalFragmentFull e) :
+    ∃ v, eval venv e = some v :=
+  (h_core.2 h_app h_proj st st' fuel h_ok h_env h_frag).1
+
+theorem coreCalculusSoundnessSliceFromHooks_preservation
+    (h_core : CoreCalculusSoundnessSliceFromHooks)
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st st' : UnifyState)
+    (fuel : Nat)
+    (h_ok : inferExprUnify st fuel tenv e = .ok st' ty)
+    (h_env : EnvWellTyped tenv venv)
+    (h_frag : EvalFragmentFull e) :
+    ∀ {v : Value}, eval venv e = some v → ValueHasType v ty :=
+  (h_core.2 h_app h_proj st st' fuel h_ok h_env h_frag).2
+
+theorem coreCalculusSoundnessSlice_soundness_proved
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_hooks : UnifyHookPremises)
+    (st st' : UnifyState)
+    (fuel : Nat)
+    (h_ok : inferExprUnify st fuel tenv e = .ok st' ty)
+    (h_env : EnvWellTyped tenv venv)
+    (h_frag : EvalFragmentFull e) :
+    ∃ v, eval venv e = some v ∧ ValueHasType v ty :=
+  coreCalculusSoundnessSlice_soundness
+    coreCalculusSoundnessSlice_proved
+    h_hooks st st' fuel h_ok h_env h_frag
+
+theorem coreCalculusSoundnessSlice_progress_proved
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_hooks : UnifyHookPremises)
+    (st st' : UnifyState)
+    (fuel : Nat)
+    (h_ok : inferExprUnify st fuel tenv e = .ok st' ty)
+    (h_env : EnvWellTyped tenv venv)
+    (h_frag : EvalFragmentFull e) :
+    ∃ v, eval venv e = some v :=
+  coreCalculusSoundnessSlice_progress
+    coreCalculusSoundnessSlice_proved
+    h_hooks st st' fuel h_ok h_env h_frag
+
+theorem coreCalculusSoundnessSlice_preservation_proved
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_hooks : UnifyHookPremises)
+    (st st' : UnifyState)
+    (fuel : Nat)
+    (h_ok : inferExprUnify st fuel tenv e = .ok st' ty)
+    (h_env : EnvWellTyped tenv venv)
+    (h_frag : EvalFragmentFull e) :
+    ∀ {v : Value}, eval venv e = some v → ValueHasType v ty :=
+  coreCalculusSoundnessSlice_preservation
+    coreCalculusSoundnessSlice_proved
+    h_hooks st st' fuel h_ok h_env h_frag
+
+theorem coreCalculusSoundnessSliceFromHooks_soundness_proved
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st st' : UnifyState)
+    (fuel : Nat)
+    (h_ok : inferExprUnify st fuel tenv e = .ok st' ty)
+    (h_env : EnvWellTyped tenv venv)
+    (h_frag : EvalFragmentFull e) :
+    ∃ v, eval venv e = some v ∧ ValueHasType v ty :=
+  coreCalculusSoundnessSliceFromHooks_soundness
+    coreCalculusSoundnessSliceFromHooks_proved
+    h_app h_proj st st' fuel h_ok h_env h_frag
+
+theorem coreCalculusSoundnessSliceFromHooks_progress_proved
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st st' : UnifyState)
+    (fuel : Nat)
+    (h_ok : inferExprUnify st fuel tenv e = .ok st' ty)
+    (h_env : EnvWellTyped tenv venv)
+    (h_frag : EvalFragmentFull e) :
+    ∃ v, eval venv e = some v :=
+  coreCalculusSoundnessSliceFromHooks_progress
+    coreCalculusSoundnessSliceFromHooks_proved
+    h_app h_proj st st' fuel h_ok h_env h_frag
+
+theorem coreCalculusSoundnessSliceFromHooks_preservation_proved
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st st' : UnifyState)
+    (fuel : Nat)
+    (h_ok : inferExprUnify st fuel tenv e = .ok st' ty)
+    (h_env : EnvWellTyped tenv venv)
+    (h_frag : EvalFragmentFull e) :
+    ∀ {v : Value}, eval venv e = some v → ValueHasType v ty :=
+  coreCalculusSoundnessSliceFromHooks_preservation
+    coreCalculusSoundnessSliceFromHooks_proved
+    h_app h_proj st st' fuel h_ok h_env h_frag
+
 /--
 Canonical soundness consequence from successful unification-threaded inference
 (bundled hook route).

@@ -13039,3 +13039,41 @@ New theorem surface:
 **Impact**:
 - Strengthens end-to-end composition-coherence ergonomics for multi-handler
   reasoning without dropping to lower-level row lemmas.
+
+### 2026-03-02: canonical-slice one-hop consequence projections in Eval
+
+**Context**: Extended `Kea/Eval.lean` to expose direct
+`soundness/progress/preservation` projection theorems from
+`CoreCalculusSoundnessSlice{,FromHooks}` and matching proved-route variants.
+
+New theorem surface:
+- `coreCalculusSoundnessSlice_{soundness,progress,preservation}`
+- `coreCalculusSoundnessSliceFromHooks_{soundness,progress,preservation}`
+- `coreCalculusSoundnessSlice_{soundness,progress,preservation}_proved`
+- `coreCalculusSoundnessSliceFromHooks_{soundness,progress,preservation}_proved`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; this closes projection-route parity on
+  canonical evaluator soundness slice surfaces.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Canonical slice consumers now get runtime consequence facts directly in one
+  theorem step, on bundled and explicit-hook routes.
+
+**Impact**:
+- Completes one-hop projection ergonomics for canonical evaluator soundness
+  surfaces.
