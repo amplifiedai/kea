@@ -13857,3 +13857,52 @@ New theorem surface:
 **Impact**:
 - Further unifies evaluator soundness surfaces and reduces conversion friction
   across canonical/declarative layers.
+
+### 2026-03-02: declarative canonical-consequence global slice families
+
+**Context**: Extended `Kea/Eval.lean` with dedicated declarative global slice
+families that target `CoreCalculusSoundnessConsequences` directly, and connected
+them bidirectionally to the existing declarative bundle slice families.
+
+New theorem surface:
+- `CoreCalculusSoundnessDeclarativeSlice`
+- `CoreCalculusSoundnessDeclarativeSliceComponents`
+- `coreCalculusSoundnessDeclarativeSlice_{iff_components,of_components,as_components,as_components_of_components}`
+- `coreCalculusSoundnessDeclarativeSlice_of_coreTypeSoundnessEvalSlice`
+- `coreTypeSoundnessEvalSlice_of_coreCalculusSoundnessDeclarativeSlice`
+- `coreCalculusSoundnessDeclarativeSlice_iff_coreTypeSoundnessEvalSlice`
+- `coreCalculusSoundnessDeclarativeSlice_proved`
+- `CoreCalculusSoundnessDeclarativeInferSlice`
+- `CoreCalculusSoundnessDeclarativeInferSliceComponents`
+- `coreCalculusSoundnessDeclarativeInferSlice_{iff_components,of_components,as_components,as_components_of_components}`
+- `coreCalculusSoundnessDeclarativeInferSlice_of_coreTypeSoundnessEvalInferSlice`
+- `coreTypeSoundnessEvalInferSlice_of_coreCalculusSoundnessDeclarativeInferSlice`
+- `coreCalculusSoundnessDeclarativeInferSlice_iff_coreTypeSoundnessEvalInferSlice`
+- `coreCalculusSoundnessDeclarativeInferSlice_proved`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; this is theorem-surface packaging and
+  equivalence routing over already established declarative consequence and bundle
+  conversions.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Canonical consequence statements now have first-class declarative global slice
+  APIs on both `HasType` and `inferExpr` routes.
+
+**Impact**:
+- Aligns canonical consequence presentation with the same global-slice API style
+  used by declarative and unification bundle families.
