@@ -1489,6 +1489,101 @@ theorem coreCalculusSoundness_consequences_of_inferUnify_from_hooks
         h_app h_proj st st' fuel h_ok h_env h_frag)
 
 /--
+Named run-local canonical core-calculus consequence surface:
+soundness plus progress/preservation for one inferred run.
+-/
+abbrev CoreCalculusSoundnessConsequences
+    (tenv : TermEnv) (venv : ValueEnv) (e : CoreExpr) (ty : Ty) : Prop :=
+  (∃ v, eval venv e = some v ∧ ValueHasType v ty)
+    ∧ CoreProgressPreservationEvalFragmentFull tenv venv e ty
+
+theorem coreCalculusSoundnessConsequences_iff_components
+    (tenv : TermEnv) (venv : ValueEnv) (e : CoreExpr) (ty : Ty) :
+    CoreCalculusSoundnessConsequences tenv venv e ty
+      ↔
+      ((∃ v, eval venv e = some v ∧ ValueHasType v ty)
+        ∧ CoreProgressPreservationEvalFragmentFull tenv venv e ty) := Iff.rfl
+
+theorem coreCalculusSoundnessConsequences_of_components
+    (tenv : TermEnv) (venv : ValueEnv) (e : CoreExpr) (ty : Ty)
+    (h_comp :
+      (∃ v, eval venv e = some v ∧ ValueHasType v ty)
+        ∧ CoreProgressPreservationEvalFragmentFull tenv venv e ty) :
+    CoreCalculusSoundnessConsequences tenv venv e ty :=
+  (coreCalculusSoundnessConsequences_iff_components tenv venv e ty).2 h_comp
+
+theorem coreCalculusSoundnessConsequences_as_components
+    (tenv : TermEnv) (venv : ValueEnv) (e : CoreExpr) (ty : Ty)
+    (h_cons : CoreCalculusSoundnessConsequences tenv venv e ty) :
+    (∃ v, eval venv e = some v ∧ ValueHasType v ty)
+      ∧ CoreProgressPreservationEvalFragmentFull tenv venv e ty :=
+  (coreCalculusSoundnessConsequences_iff_components tenv venv e ty).1 h_cons
+
+theorem coreCalculusSoundnessConsequences_as_components_of_components
+    (tenv : TermEnv) (venv : ValueEnv) (e : CoreExpr) (ty : Ty)
+    (h_comp :
+      (∃ v, eval venv e = some v ∧ ValueHasType v ty)
+        ∧ CoreProgressPreservationEvalFragmentFull tenv venv e ty) :
+    (∃ v, eval venv e = some v ∧ ValueHasType v ty)
+      ∧ CoreProgressPreservationEvalFragmentFull tenv venv e ty :=
+  coreCalculusSoundnessConsequences_as_components tenv venv e ty
+    (coreCalculusSoundnessConsequences_of_components tenv venv e ty h_comp)
+
+theorem coreCalculusSoundnessConsequences_of_inferUnify
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_hooks : UnifyHookPremises)
+    (st st' : UnifyState)
+    (fuel : Nat)
+    (h_ok : inferExprUnify st fuel tenv e = .ok st' ty)
+    (h_env : EnvWellTyped tenv venv)
+    (h_frag : EvalFragmentFull e) :
+    CoreCalculusSoundnessConsequences tenv venv e ty :=
+  coreCalculusSoundness_consequences_of_inferUnify
+    h_hooks st st' fuel h_ok h_env h_frag
+
+theorem coreCalculusSoundnessConsequences_of_inferUnify_from_hooks
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st st' : UnifyState)
+    (fuel : Nat)
+    (h_ok : inferExprUnify st fuel tenv e = .ok st' ty)
+    (h_env : EnvWellTyped tenv venv)
+    (h_frag : EvalFragmentFull e) :
+    CoreCalculusSoundnessConsequences tenv venv e ty :=
+  coreCalculusSoundness_consequences_of_inferUnify_from_hooks
+    h_app h_proj st st' fuel h_ok h_env h_frag
+
+theorem coreCalculusSoundnessConsequences_as_components_of_inferUnify
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_hooks : UnifyHookPremises)
+    (st st' : UnifyState)
+    (fuel : Nat)
+    (h_ok : inferExprUnify st fuel tenv e = .ok st' ty)
+    (h_env : EnvWellTyped tenv venv)
+    (h_frag : EvalFragmentFull e) :
+    (∃ v, eval venv e = some v ∧ ValueHasType v ty)
+      ∧ CoreProgressPreservationEvalFragmentFull tenv venv e ty :=
+  coreCalculusSoundnessConsequences_as_components tenv venv e ty
+    (coreCalculusSoundnessConsequences_of_inferUnify
+      h_hooks st st' fuel h_ok h_env h_frag)
+
+theorem coreCalculusSoundnessConsequences_as_components_of_inferUnify_from_hooks
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st st' : UnifyState)
+    (fuel : Nat)
+    (h_ok : inferExprUnify st fuel tenv e = .ok st' ty)
+    (h_env : EnvWellTyped tenv venv)
+    (h_frag : EvalFragmentFull e) :
+    (∃ v, eval venv e = some v ∧ ValueHasType v ty)
+      ∧ CoreProgressPreservationEvalFragmentFull tenv venv e ty :=
+  coreCalculusSoundnessConsequences_as_components tenv venv e ty
+    (coreCalculusSoundnessConsequences_of_inferUnify_from_hooks
+      h_app h_proj st st' fuel h_ok h_env h_frag)
+
+/--
 Canonical soundness consequence from successful unification-threaded inference
 (bundled hook route).
 -/
