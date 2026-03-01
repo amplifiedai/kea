@@ -12257,3 +12257,41 @@ New theorem surface:
 **Impact**:
 - Strengthens traceability for core-soundness claims and supports both old and
   new theorem-consumption styles without proof duplication.
+
+### 2026-03-01: canonical core-calculus soundness slices and bridge into packaged triple
+
+**Context**: Added canonical paired evaluator slices and route bridges in
+`Kea/Eval.lean` to make legacy and packaged core-soundness families explicitly
+interchangeable.
+
+New theorem surface:
+- `CoreCalculusSoundnessSlice`, `coreCalculusSoundnessSlice_proved`
+- `CoreCalculusSoundnessSliceFromHooks`, `coreCalculusSoundnessSliceFromHooks_proved`
+- `coreTypeSoundnessEvalUnifySlice_of_coreCalculusSoundnessSlice`
+- `coreTypeSoundnessEvalUnifySliceFromHooks_of_coreCalculusSoundnessSliceFromHooks`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime semantic change; these are route-level packaging/bridge theorems
+  over already-proved evaluator soundness and progress/preservation slices.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Legacy paired slices and packaged core-soundness triple are now linked by
+  first-class theorem routes (bundled and explicit-hook variants).
+
+**Impact**:
+- Improves citation clarity for core-calculus soundness while preserving
+  backward-compatible theorem entry surfaces.

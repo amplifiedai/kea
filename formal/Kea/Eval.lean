@@ -1364,6 +1364,70 @@ theorem coreTypeSoundnessEvalUnifyBundle_of_existing_slices_from_hooks
       tenv venv e ty).2 ⟨h_sound, h_core⟩
 
 /--
+Canonical core-calculus soundness package for unification-threaded runs:
+the existing evaluator soundness slice plus the existing progress/preservation
+slice.
+-/
+def CoreCalculusSoundnessSlice : Prop :=
+  VerticalEvalUnifyBridgeSlice ∧ CoreProgressPreservationEvalUnifySlice
+
+/-- The canonical bundled core-calculus soundness slice is fully proved. -/
+theorem coreCalculusSoundnessSlice_proved : CoreCalculusSoundnessSlice := by
+  exact ⟨verticalEvalUnifyBridgeSlice_proved, coreProgressPreservationEvalUnifySlice_proved⟩
+
+/--
+Hook-parameterized canonical core-calculus soundness package for
+unification-threaded runs.
+-/
+def CoreCalculusSoundnessSliceFromHooks : Prop :=
+  VerticalEvalUnifyBridgeSliceFromHooks ∧ CoreProgressPreservationEvalUnifySliceFromHooks
+
+/--
+The hook-parameterized bundled core-calculus soundness slice is fully proved.
+-/
+theorem coreCalculusSoundnessSliceFromHooks_proved :
+    CoreCalculusSoundnessSliceFromHooks := by
+  exact
+    ⟨verticalEvalUnifyBridgeSliceFromHooks_proved,
+      coreProgressPreservationEvalUnifySliceFromHooks_proved⟩
+
+/--
+Bridge from the canonical core-calculus soundness package to the packaged
+core-soundness-bundle slice.
+-/
+theorem coreTypeSoundnessEvalUnifySlice_of_coreCalculusSoundnessSlice
+    (h_core : CoreCalculusSoundnessSlice) :
+    CoreTypeSoundnessEvalUnifySlice := by
+  intro tenv venv e ty h_hooks st st' fuel h_ok h_env h_frag
+  have h_sound :
+      ∃ v, eval venv e = some v ∧ ValueHasType v ty :=
+    h_core.1 h_hooks st st' fuel h_ok h_env h_frag
+  have h_progressPres :
+      CoreProgressPreservationEvalFragmentFull tenv venv e ty :=
+    h_core.2 h_hooks st st' fuel h_ok h_env h_frag
+  exact
+    (coreTypeSoundnessEvalUnifyBundle_iff_soundness_and_coreProgressPreservation
+      tenv venv e ty).2 ⟨h_sound, h_progressPres⟩
+
+/--
+Hook-parameterized bridge from the canonical core-calculus soundness package to
+the packaged core-soundness-bundle slice.
+-/
+theorem coreTypeSoundnessEvalUnifySliceFromHooks_of_coreCalculusSoundnessSliceFromHooks
+    (h_core : CoreCalculusSoundnessSliceFromHooks) :
+    CoreTypeSoundnessEvalUnifySliceFromHooks := by
+  intro tenv venv e ty h_app h_proj st st' fuel h_ok h_env h_frag
+  have h_sound :
+      ∃ v, eval venv e = some v ∧ ValueHasType v ty :=
+    h_core.1 h_app h_proj st st' fuel h_ok h_env h_frag
+  have h_progressPres :
+      CoreProgressPreservationEvalFragmentFull tenv venv e ty :=
+    h_core.2 h_app h_proj st st' fuel h_ok h_env h_frag
+  exact
+    (coreTypeSoundnessEvalUnifyBundle_iff_soundness_and_coreProgressPreservation
+      tenv venv e ty).2 ⟨h_sound, h_progressPres⟩
+
+/--
 Executable soundness for the atomic evaluator fragment:
 well-typed atomic expressions evaluate to runtime values of the same type.
 -/
