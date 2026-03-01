@@ -13707,3 +13707,41 @@ New theorem surface:
 **Impact**:
 - Completes bundle-level interoperability across canonical, unification-threaded,
   and declarative core-soundness theorem families.
+
+### 2026-03-02: declarative/unification bundle equivalence in Eval
+
+**Context**: Extended `Kea/Eval.lean` with explicit two-way transport between
+`CoreTypeSoundnessEvalBundle` and `CoreTypeSoundnessEvalUnifyBundle`, then
+packaged the relation as a direct iff theorem.
+
+New theorem surface:
+- `coreTypeSoundnessEvalUnifyBundle_of_coreTypeSoundnessEvalBundle`
+- `coreTypeSoundnessEvalBundle_iff_coreTypeSoundnessEvalUnifyBundle`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; this closes direct bundle-equivalence
+  routing between declarative and unification package families.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed` (with unrelated pre-existing `kea-mir`
+  dead-code warnings).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Core soundness bundle witnesses are now interchangeable across declarative and
+  unification bundle families without routing through intermediate consequence
+  aliases.
+
+**Impact**:
+- Simplifies downstream theorem plumbing by making bundle-family choice
+  representational rather than proof-structural.
