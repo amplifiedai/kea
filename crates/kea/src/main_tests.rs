@@ -4241,6 +4241,129 @@
         let _ = std::fs::remove_file(source_path);
     }
 
+    // ── Tier 3: evidence-passing dispatch tests ──────────────────────────
+
+    #[test]
+    fn compile_and_execute_evidence_three_deep_call_chain_exit_code() {
+        // handler → fn1 → fn2 → State.get(), evidence threaded through 3 levels
+        let source_path = write_temp_source(
+            "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn level2() -[State Int]> Int\n  State.get()\n\nfn level1() -[State Int]> Int\n  level2() + 1\n\nfn main() -> Int\n  handle level1()\n    State.get() -> resume 41\n    State.put(next) -> resume ()\n",
+            "kea-cli-evidence-three-deep",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("evidence threading through 3 levels should work");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_evidence_five_deep_call_chain_exit_code() {
+        // handler → fn1 → fn2 → fn3 → fn4 → State.get()
+        let source_path = write_temp_source(
+            "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn d4() -[State Int]> Int\n  State.get()\n\nfn d3() -[State Int]> Int\n  d4()\n\nfn d2() -[State Int]> Int\n  d3()\n\nfn d1() -[State Int]> Int\n  d2()\n\nfn main() -> Int\n  handle d1()\n    State.get() -> resume 42\n    State.put(next) -> resume ()\n",
+            "kea-cli-evidence-five-deep",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("evidence threading through 5 levels should work");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_effect_polymorphic_callback_forwards_handler_exit_code() {
+        // fn apply takes effectful callback, handler installed by caller
+        let source_path = write_temp_source(
+            "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn apply(f: fn() -[State Int]> Int) -[State Int]> Int\n  f()\n\nfn read_state() -[State Int]> Int\n  State.get()\n\nfn main() -> Int\n  handle apply(read_state)\n    State.get() -> resume 42\n    State.put(next) -> resume ()\n",
+            "kea-cli-effect-polymorphic-callback",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("effect polymorphic callback should forward handler");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_effect_polymorphic_callback_with_put_exit_code() {
+        // effectful callback that both reads and writes state
+        let source_path = write_temp_source(
+            "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn apply(f: fn() -[State Int]> Int) -[State Int]> Int\n  f()\n\nfn bump_state() -[State Int]> Int\n  let s = State.get()\n  State.put(s + 1)\n  State.get()\n\nfn main() -> Int\n  handle apply(bump_state)\n    State.get() -> resume 41\n    State.put(next) -> resume ()\n",
+            "kea-cli-effect-polymorphic-callback-put",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("polymorphic callback with put should work");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_mixed_dispatch_and_direct_effects_exit_code() {
+        // function with both State (dispatch via handler) and IO (direct capability)
+        let source_path = write_temp_source(
+            "use IO\n\neffect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn compute() -[State Int, IO]> Int\n  IO.stdout(\"hello\")\n  State.get()\n\nfn main() -[IO]> Int\n  handle compute()\n    State.get() -> resume 42\n    State.put(next) -> resume ()\n",
+            "kea-cli-mixed-dispatch-and-direct",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("mixed dispatch and direct effects should work");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_nested_evidence_inner_shadows_outer_exit_code() {
+        // inner handler provides new evidence for same effect, shadowing outer
+        let source_path = write_temp_source(
+            "effect Reader C\n  fn ask() -> C\n\nfn inner_read() -[Reader Int]> Int\n  Reader.ask()\n\nfn middle() -[Reader Int]> Int\n  let a = handle inner_read()\n    Reader.ask() -> resume 2\n  a + Reader.ask()\n\nfn main() -> Int\n  handle middle()\n    Reader.ask() -> resume 40\n",
+            "kea-cli-nested-evidence-shadows",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("inner handler should shadow outer evidence");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    #[ignore = "Tier 3 gap: closures at expression position don't capture dispatch cells (bind_dispatch_effects=false)"]
+    fn compile_and_execute_evidence_through_closure_exit_code() {
+        // closure captures evidence from enclosing handler scope
+        let source_path = write_temp_source(
+            "effect Reader C\n  fn ask() -> C\n\nfn make_and_call() -[Reader Int]> Int\n  let f = || Reader.ask() + 1\n  f()\n\nfn main() -> Int\n  handle make_and_call()\n    Reader.ask() -> resume 41\n",
+            "kea-cli-evidence-through-closure",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("closure should capture evidence from handler scope");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_capability_mock_io_stdout_exit_code() {
+        // user handler intercepts IO.stdout, proving capability mocking works
+        let source_path = write_temp_source(
+            "use IO\n\nfn program() -[IO]> Int\n  IO.stdout(\"intercepted\")\n  42\n\nfn main() -> Int\n  handle program()\n    IO.stdout(msg) -> resume ()\n    IO.stderr(msg) -> resume ()\n    IO.read_file(path) -> resume \"\"\n    IO.write_file(path, data) -> resume ()\n",
+            "kea-cli-capability-mock-io-stdout",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("capability mock IO.stdout should work");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
     #[test]
     fn compile_rejects_pure_function_calling_effectful_forward_reference() {
         // Per KERNEL.md §5.3: `->` asserts empty effects.  `pure` calls `eff`
