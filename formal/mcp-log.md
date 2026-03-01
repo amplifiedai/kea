@@ -10803,3 +10803,39 @@ premise/fail-present entry routes used by the aggregate handler suite APIs.
 **Impact**:
 - Handler aggregate theorem consumers can pull resume-linearity evidence using
   the same top-level route idiom as closed-aware/capability/catch facets.
+
+### 2026-03-01: capstone-suite resume-linearity route wrappers
+
+**Context**: Extended `Kea/Properties/EffectHandlerContractSuite.lean` with
+matching capstone-route wrappers for the resume-linearity package:
+- `effectHandlerCapstoneSuite_resumeLinearityBundle_of_{premises,fail_present}`
+- `effectHandlerCapstoneSuite_resumeLinearityBundle_as_components_of_{premises,fail_present}`
+
+These mirror the earlier aggregate-suite route wrappers and complete parity for
+the capstone entry layer.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No semantic change; capstone wrappers should compile as route-level
+  projections from `wellTypedSlice`.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Capstone handler suite entry routes now also export resume-linearity package
+  witnesses and explicit component decomposition wrappers.
+
+**Impact**:
+- Resume-linearity evidence is uniformly available on both classifier and
+  capstone aggregate route layers.
