@@ -1292,6 +1292,78 @@ theorem coreTypeSoundnessEvalUnifySlice_preservation
     h_hooks st st' fuel h_ok h_env h_frag).preservation
 
 /--
+The packaged core-soundness bundle is equivalent to explicit soundness plus
+the existing core progress+preservation pair.
+-/
+theorem coreTypeSoundnessEvalUnifyBundle_iff_soundness_and_coreProgressPreservation
+    (tenv : TermEnv)
+    (venv : ValueEnv)
+    (e : CoreExpr)
+    (ty : Ty) :
+    CoreTypeSoundnessEvalUnifyBundle tenv venv e ty ↔
+      (∃ v, eval venv e = some v ∧ ValueHasType v ty)
+        ∧ CoreProgressPreservationEvalFragmentFull tenv venv e ty := by
+  constructor
+  · intro h_bundle
+    exact ⟨h_bundle.soundness, h_bundle.progress, h_bundle.preservation⟩
+  · intro h_pair
+    exact
+      { soundness := h_pair.1
+        progress := h_pair.2.1
+        preservation := h_pair.2.2 }
+
+/--
+Route bridge: recover the packaged core-soundness bundle by composing the
+existing vertical soundness slice with the existing core progress+preservation
+slice.
+-/
+theorem coreTypeSoundnessEvalUnifyBundle_of_existing_slices
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_hooks : UnifyHookPremises)
+    (st st' : UnifyState)
+    (fuel : Nat)
+    (h_ok : inferExprUnify st fuel tenv e = .ok st' ty)
+    (h_env : EnvWellTyped tenv venv)
+    (h_frag : EvalFragmentFull e) :
+    CoreTypeSoundnessEvalUnifyBundle tenv venv e ty := by
+  have h_sound :
+      ∃ v, eval venv e = some v ∧ ValueHasType v ty :=
+    verticalEvalUnifyBridgeSlice_proved h_hooks st st' fuel h_ok h_env h_frag
+  have h_core :
+      CoreProgressPreservationEvalFragmentFull tenv venv e ty :=
+    coreProgressPreservationEvalUnifySlice_proved
+      h_hooks st st' fuel h_ok h_env h_frag
+  exact
+    (coreTypeSoundnessEvalUnifyBundle_iff_soundness_and_coreProgressPreservation
+      tenv venv e ty).2 ⟨h_sound, h_core⟩
+
+/--
+Hook-parameterized route bridge variant of
+`coreTypeSoundnessEvalUnifyBundle_of_existing_slices`.
+-/
+theorem coreTypeSoundnessEvalUnifyBundle_of_existing_slices_from_hooks
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_app : AppUnifySoundHook)
+    (h_proj : ProjUnifySoundHook)
+    (st st' : UnifyState)
+    (fuel : Nat)
+    (h_ok : inferExprUnify st fuel tenv e = .ok st' ty)
+    (h_env : EnvWellTyped tenv venv)
+    (h_frag : EvalFragmentFull e) :
+    CoreTypeSoundnessEvalUnifyBundle tenv venv e ty := by
+  have h_sound :
+      ∃ v, eval venv e = some v ∧ ValueHasType v ty :=
+    verticalEvalUnifyBridgeSliceFromHooks_proved
+      h_app h_proj st st' fuel h_ok h_env h_frag
+  have h_core :
+      CoreProgressPreservationEvalFragmentFull tenv venv e ty :=
+    coreProgressPreservationEvalUnifySliceFromHooks_proved
+      h_app h_proj st st' fuel h_ok h_env h_frag
+  exact
+    (coreTypeSoundnessEvalUnifyBundle_iff_soundness_and_coreProgressPreservation
+      tenv venv e ty).2 ⟨h_sound, h_core⟩
+
+/--
 Executable soundness for the atomic evaluator fragment:
 well-typed atomic expressions evaluate to runtime values of the same type.
 -/
