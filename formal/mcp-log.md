@@ -10839,3 +10839,40 @@ the capstone entry layer.
 **Impact**:
 - Resume-linearity evidence is uniformly available on both classifier and
   capstone aggregate route layers.
+
+### 2026-03-01: resume-linearity bundle equivalence to primitive linearity
+
+**Context**: Strengthened `Kea/Properties/HandlerTypingContracts.lean` with
+equivalence theorems:
+- `clauseResumeLinearityBundleComponents_iff_linearityOk`
+- `clauseResumeLinearityBundle_iff_linearityOk`
+
+This makes the new packaged resume-linearity witness provably interchangeable
+with the primitive `linearityOk` clause premise.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- Component and bundle witnesses should collapse to exactly the original
+  `linearityOk` proposition because `clauseHasResumeSummary` pins the summary
+  to `c.resumeUse`.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Resume-linearity bundle/components are now theorem-level equivalent to the
+  primitive clause linearity premise.
+
+**Impact**:
+- Downstream proofs can choose either API shape (`linearityOk` or bundle) with
+  no logical gap.
