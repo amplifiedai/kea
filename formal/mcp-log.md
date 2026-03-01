@@ -11024,3 +11024,40 @@ composition entry routes.
 **Impact**:
 - Resume-linearity routing now remains uniform through the nested composition
   layer in addition to aggregate/capstone/catch-pair layers.
+
+### 2026-03-01: composition-coherence resume-linearity route wrappers
+
+**Context**: Extended `Kea/Properties/EffectHandlerContractSuite.lean` with
+resume-linearity route wrappers on the composition-coherence layer:
+- `effectHandlerCompositionCoherenceSuite_resumeLinearityBundle_of_{premises,fail_present}`
+- `effectHandlerCompositionCoherenceSuite_resumeLinearityBundle_as_components_of_{premises,fail_present}`
+- `effectHandlerCompositionCoherenceSuite_resumeAtMostOnce_of_{premises,fail_present}`
+
+These complete the same route-parity pattern on the top nested coherence
+entry surface.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No semantic change; wrappers should be route-level projections from
+  `wellTypedSlice`.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Composition-coherence entry routes now expose packaged and direct
+  resume-linearity consequences in one theorem step.
+
+**Impact**:
+- Resume-linearity routing is now uniform across aggregate, capstone,
+  catch-pair, composition, and composition-coherence layers.
