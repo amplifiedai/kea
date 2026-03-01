@@ -13467,3 +13467,38 @@ New theorem surface:
 **Impact**:
 - Removes the last asymmetry between left/right and row-tail directions for
   direct premise-route consumption in this suite.
+
+### 2026-03-02: direct nested-coherence premise route on coherence suite
+
+**Context**: Extended `Kea/Properties/EffectHandlerContractSuite.lean` with the
+missing direct one-hop premise projection from handler-absence assumptions to
+the nested disjoint coherence witness at the
+`EffectHandlerDisjointCompositionCoherenceSuite` layer.
+
+New theorem surface:
+- `effectHandlerDisjointCompositionCoherenceSuite_nestedDisjoint_of_handler_absence`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; this closes a route-surface parity gap
+  between suite witness projection and existing component projection routes.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Nested disjoint coherence is now directly available from handler-absence
+  premises without first constructing and reprojecting through the suite term.
+
+**Impact**:
+- Finishes one-hop premise-route parity on this coherence-suite nested witness.
