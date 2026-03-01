@@ -4194,7 +4194,8 @@ fn lower_instruction<M: Module>(
         MirInst::HandlerEnter { .. } | MirInst::HandlerExit { .. } => Ok(false),
         MirInst::Resume { .. } => Err(CodegenError::UnsupportedMir {
             function: function_name.to_string(),
-            detail: "non-tail-resumptive handlers are not yet supported in compiled mode"
+            detail: "Resume instruction reached codegen — non-tail resume should be \
+                     decomposed during MIR lowering (compiler bug)"
                 .to_string(),
         }),
     }
@@ -7918,12 +7919,12 @@ mod tests {
                     ..BackendConfig::default()
                 },
             )
-            .expect_err("resume should report non-tail handler support gap");
+            .expect_err("resume should report compiler bug");
         assert!(matches!(
             err,
             CodegenError::UnsupportedMir { function, ref detail }
                 if function == "handler_markers"
-                    && detail.contains("non-tail-resumptive handlers are not yet supported")
+                    && detail.contains("Resume instruction reached codegen")
         ));
     }
 

@@ -4364,24 +4364,86 @@
     }
 
     // ── Tier 4: non-tail-resumptive handler tests ────────────────────────
-    // Non-tail resume requires continuation capture (setjmp/longjmp).
-    // Currently rejected with a clear diagnostic. These tests document
-    // the expected behavior for when Tier 4 is implemented.
+    // Non-tail resume via clause body splitting: `let x = resume val; f(x)`
+    // splits into a tail-resumptive callback (returns val) + post-resume
+    // code (f applied to the handle result).
 
     #[test]
-    fn compile_rejects_non_tail_resume_transforms_result() {
-        // Code after resume requires continuation capture (Tier 4)
+    fn compile_non_tail_resume_transforms_result() {
+        // let x = resume 40; x + 2  →  callback returns 40, post-resume adds 2
         let source_path = write_temp_source(
             "effect Reader C\n  fn ask() -> C\n\nfn body() -[Reader Int]> Int\n  Reader.ask()\n\nfn main() -> Int\n  handle body()\n    Reader.ask() ->\n      let x = resume 40\n      x + 2\n",
             "kea-cli-non-tail-resume-transforms",
             "kea",
         );
 
+        let run = run_file(&source_path).expect("non-tail resume transforms result should run");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_non_tail_resume_with_pre_resume_computation() {
+        // Pre-resume computation feeds into resume value (no captures needed)
+        // let r = resume (x * 2); r + 1
+        let source_path = write_temp_source(
+            "effect Transform\n  fn get(x: Int) -> Int\n\nfn body() -[Transform]> Int\n  Transform.get(20)\n\nfn main() -> Int\n  handle body()\n    Transform.get(x) ->\n      let r = resume x * 2\n      r + 2\n",
+            "kea-cli-non-tail-resume-pre-resume-comp",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("non-tail resume with pre-resume computation should run");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_non_tail_resume_choose_first() {
+        // Choose pattern: resume with first option, return the pick
+        let source_path = write_temp_source(
+            "effect Choose\n  fn choose(n: Int) -> Int\n\nfn body() -[Choose]> Int\n  Choose.choose(100)\n\nfn main() -> Int\n  handle body()\n    Choose.choose(n) ->\n      let picked = resume n\n      picked\n",
+            "kea-cli-non-tail-resume-choose-first",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("non-tail resume choose first should run");
+        assert_eq!(run.exit_code, 100);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_non_tail_resume_with_then_clause() {
+        // Non-tail resume composes with then clause:
+        // post-resume produces intermediate, then-clause transforms it
+        let source_path = write_temp_source(
+            "effect Reader C\n  fn ask() -> C\n\nfn body() -[Reader Int]> Int\n  Reader.ask()\n\nfn main() -> Int\n  handle body()\n    Reader.ask() ->\n      let x = resume 40\n      x + 2\n    then result ->\n      result + 100\n",
+            "kea-cli-non-tail-resume-then-clause",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("non-tail resume with then clause should run");
+        assert_eq!(run.exit_code, 142);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_rejects_non_tail_resume_with_captures() {
+        // Pre-resume binding used in post-resume is rejected (v1 limitation)
+        let source_path = write_temp_source(
+            "effect Transform\n  fn get(x: Int) -> Int\n\nfn body() -[Transform]> Int\n  Transform.get(10)\n\nfn main() -> Int\n  handle body()\n    Transform.get(x) ->\n      let n = x + 5\n      let r = resume n\n      r + n\n",
+            "kea-cli-non-tail-resume-captures-reject",
+            "kea",
+        );
+
         let err = run_file(&source_path)
-            .expect_err("non-tail resume should be rejected until Tier 4 is implemented");
+            .expect_err("non-tail resume with captures should be rejected");
         assert!(
-            err.contains("must be tail-resumptive"),
-            "expected tail-resumptive rejection, got: {err}"
+            err.contains("captured pre-resume bindings"),
+            "expected capture rejection diagnostic, got: {err}"
         );
 
         let _ = std::fs::remove_file(source_path);
