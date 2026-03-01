@@ -1371,6 +1371,33 @@ slice.
 def CoreCalculusSoundnessSlice : Prop :=
   VerticalEvalUnifyBridgeSlice ∧ CoreProgressPreservationEvalUnifySlice
 
+/-- Explicit component alias for `CoreCalculusSoundnessSlice`. -/
+abbrev CoreCalculusSoundnessSliceComponents : Prop :=
+  VerticalEvalUnifyBridgeSlice ∧ CoreProgressPreservationEvalUnifySlice
+
+/-- `CoreCalculusSoundnessSlice` is equivalent to explicit components. -/
+theorem coreCalculusSoundnessSlice_iff_components :
+    CoreCalculusSoundnessSlice ↔ CoreCalculusSoundnessSliceComponents := Iff.rfl
+
+/-- Build `CoreCalculusSoundnessSlice` from explicit components. -/
+theorem coreCalculusSoundnessSlice_of_components
+    (h_comp : CoreCalculusSoundnessSliceComponents) :
+    CoreCalculusSoundnessSlice :=
+  (coreCalculusSoundnessSlice_iff_components).2 h_comp
+
+/-- Decompose `CoreCalculusSoundnessSlice` into explicit components. -/
+theorem coreCalculusSoundnessSlice_as_components
+    (h_core : CoreCalculusSoundnessSlice) :
+    CoreCalculusSoundnessSliceComponents :=
+  (coreCalculusSoundnessSlice_iff_components).1 h_core
+
+/-- Direct components-route decomposition for `CoreCalculusSoundnessSlice`. -/
+theorem coreCalculusSoundnessSlice_as_components_of_components
+    (h_comp : CoreCalculusSoundnessSliceComponents) :
+    CoreCalculusSoundnessSliceComponents :=
+  (coreCalculusSoundnessSlice_iff_components).1
+    ((coreCalculusSoundnessSlice_iff_components).2 h_comp)
+
 /-- The canonical bundled core-calculus soundness slice is fully proved. -/
 theorem coreCalculusSoundnessSlice_proved : CoreCalculusSoundnessSlice := by
   exact ⟨verticalEvalUnifyBridgeSlice_proved, coreProgressPreservationEvalUnifySlice_proved⟩
@@ -1381,6 +1408,39 @@ unification-threaded runs.
 -/
 def CoreCalculusSoundnessSliceFromHooks : Prop :=
   VerticalEvalUnifyBridgeSliceFromHooks ∧ CoreProgressPreservationEvalUnifySliceFromHooks
+
+/-- Explicit component alias for `CoreCalculusSoundnessSliceFromHooks`. -/
+abbrev CoreCalculusSoundnessSliceFromHooksComponents : Prop :=
+  VerticalEvalUnifyBridgeSliceFromHooks ∧ CoreProgressPreservationEvalUnifySliceFromHooks
+
+/-- `CoreCalculusSoundnessSliceFromHooks` is equivalent to explicit components. -/
+theorem coreCalculusSoundnessSliceFromHooks_iff_components :
+    CoreCalculusSoundnessSliceFromHooks ↔
+      CoreCalculusSoundnessSliceFromHooksComponents := Iff.rfl
+
+/-- Build `CoreCalculusSoundnessSliceFromHooks` from explicit components. -/
+theorem coreCalculusSoundnessSliceFromHooks_of_components
+    (h_comp : CoreCalculusSoundnessSliceFromHooksComponents) :
+    CoreCalculusSoundnessSliceFromHooks :=
+  (coreCalculusSoundnessSliceFromHooks_iff_components).2 h_comp
+
+/--
+Decompose `CoreCalculusSoundnessSliceFromHooks` into explicit components.
+-/
+theorem coreCalculusSoundnessSliceFromHooks_as_components
+    (h_core : CoreCalculusSoundnessSliceFromHooks) :
+    CoreCalculusSoundnessSliceFromHooksComponents :=
+  (coreCalculusSoundnessSliceFromHooks_iff_components).1 h_core
+
+/--
+Direct components-route decomposition for
+`CoreCalculusSoundnessSliceFromHooks`.
+-/
+theorem coreCalculusSoundnessSliceFromHooks_as_components_of_components
+    (h_comp : CoreCalculusSoundnessSliceFromHooksComponents) :
+    CoreCalculusSoundnessSliceFromHooksComponents :=
+  (coreCalculusSoundnessSliceFromHooks_iff_components).1
+    ((coreCalculusSoundnessSliceFromHooks_iff_components).2 h_comp)
 
 /--
 The hook-parameterized bundled core-calculus soundness slice is fully proved.
