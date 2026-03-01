@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use kea_ast::{
     DeclKind, Expr, ExprDecl, ExprKind, FileId, FnDecl, ImportItems, Module, RecordDef, Span,
-    TestDecl, TypeAnnotation, TypeDef,
+    Spanned, TestDecl, TypeAnnotation, TypeDef,
 };
 use kea_codegen::{
     Backend, BackendConfig, CodegenMode, CraneliftBackend, PassStats, default_abi_manifest,
@@ -1847,6 +1847,35 @@ fn typecheck_functions(
     diagnostics: &mut Vec<Diagnostic>,
     module_path: Option<&str>,
 ) -> Result<(), String> {
+    // Pre-register all function names so forward references (including mutual
+    // recursion) resolve instead of producing "undefined variable" errors.
+    // For fully-annotated functions we resolve the declared type; for others
+    // we bind a placeholder type variable.
+    let mut placeholder_counter = u32::MAX;
+    for decl in &module.declarations {
+        let (name, resolved) = match &decl.node {
+            DeclKind::Function(fn_decl) => (
+                &fn_decl.name.node,
+                resolve_fn_decl_type(fn_decl, records, sum_types),
+            ),
+            DeclKind::ExprFn(expr_decl) => (
+                &expr_decl.name.node,
+                resolve_fn_decl_type(
+                    &expr_decl_to_fn_decl(expr_decl),
+                    records,
+                    sum_types,
+                ),
+            ),
+            _ => continue,
+        };
+        let ty = resolved.unwrap_or_else(|| {
+            let id = placeholder_counter;
+            placeholder_counter = placeholder_counter.wrapping_sub(1);
+            Type::Var(kea_types::TypeVarId(id))
+        });
+        env.bind(name.clone(), TypeScheme::mono(ty));
+    }
+
     for decl in &module.declarations {
         let fn_decl = match &decl.node {
             DeclKind::Function(fn_decl) => fn_decl.clone(),
@@ -1936,6 +1965,70 @@ fn typecheck_functions(
     }
 
     Ok(())
+}
+
+/// Try to build a concrete `Type::Function` from a function declaration's
+/// annotations, including the effect row.  Returns `None` if any param or the
+/// return type is unannotated or uses an unresolvable type name.
+fn resolve_fn_decl_type(
+    fn_decl: &FnDecl,
+    records: &RecordRegistry,
+    sum_types: &SumTypeRegistry,
+) -> Option<Type> {
+    let ret_ann = fn_decl.return_annotation.as_ref()?;
+    let ret_ty = resolve_annotation(&ret_ann.node, records, Some(sum_types))?;
+
+    let mut param_types = Vec::with_capacity(fn_decl.params.len());
+    for param in &fn_decl.params {
+        let ann = param.annotation.as_ref()?;
+        let ty = resolve_annotation(&ann.node, records, Some(sum_types))?;
+        param_types.push(ty);
+    }
+
+    let effects = resolve_effect_annotation_simple(&fn_decl.effect_annotation, records, sum_types);
+
+    Some(Type::Function(kea_types::FunctionType {
+        params: param_types,
+        ret: Box::new(ret_ty),
+        effects,
+    }))
+}
+
+/// Resolve an effect annotation to an `EffectRow` for pre-binding.
+/// Falls back to `EffectRow::pure()` if the annotation is absent or can't be
+/// fully resolved (e.g. uses effect variables).
+fn resolve_effect_annotation_simple(
+    ann: &Option<Spanned<kea_ast::EffectAnnotation>>,
+    records: &RecordRegistry,
+    sum_types: &SumTypeRegistry,
+) -> kea_types::EffectRow {
+    use kea_ast::EffectAnnotation;
+    let Some(spanned) = ann else {
+        return kea_types::EffectRow::pure();
+    };
+    match &spanned.node {
+        EffectAnnotation::Pure => kea_types::EffectRow::pure(),
+        EffectAnnotation::Row(row) => {
+            // Only resolve closed rows (no rest variable) for pre-binding.
+            if row.rest.is_some() {
+                return kea_types::EffectRow::pure();
+            }
+            let mut effects = Vec::new();
+            for item in &row.effects {
+                let payload = if let Some(ref payload_name) = item.payload {
+                    let ann = TypeAnnotation::Named(payload_name.clone());
+                    resolve_annotation(&ann, records, Some(sum_types))
+                        .unwrap_or(Type::Unit)
+                } else {
+                    Type::Unit
+                };
+                effects.push((kea_types::Label::new(&item.name), payload));
+            }
+            kea_types::EffectRow::closed(effects)
+        }
+        // Volatile/Impure/Var — can't resolve to a concrete row.
+        _ => kea_types::EffectRow::pure(),
+    }
 }
 
 fn expr_decl_to_fn_decl(expr: &ExprDecl) -> FnDecl {

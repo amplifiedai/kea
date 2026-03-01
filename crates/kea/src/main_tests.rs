@@ -3439,6 +3439,34 @@
     }
 
     #[test]
+    fn compile_and_execute_mutual_recursion_exit_code() {
+        let source_path = write_temp_source(
+            "fn is_even(n: Int) -> Int\n  if n == 0\n    1\n  else\n    is_odd(n - 1)\n\nfn is_odd(n: Int) -> Int\n  if n == 0\n    0\n  else\n    is_even(n - 1)\n\nfn main() -> Int\n  is_even(10)\n",
+            "kea-cli-mutual-recursion",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("mutual recursion should work");
+        assert_eq!(run.exit_code, 1);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_forward_reference_exit_code() {
+        let source_path = write_temp_source(
+            "fn caller() -> Int\n  callee(40)\n\nfn callee(x: Int) -> Int\n  x + 2\n\nfn main() -> Int\n  caller()\n",
+            "kea-cli-forward-ref",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("forward reference should work");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_higher_order_function_pointer_exit_code() {
         let source_path = write_temp_source(
             "fn inc(n: Int) -> Int\n  n + 1\n\nfn apply_twice(f: fn(Int) -> Int, x: Int) -> Int\n  f(f(x))\n\nfn main() -> Int\n  apply_twice(inc, 41)\n",
@@ -4210,19 +4238,19 @@
     }
 
     #[test]
-    fn compile_rejects_mutual_recursion_between_pure_and_effectful_functions_for_now() {
+    fn compile_and_execute_mutual_recursion_pure_and_effectful_exit_code() {
+        // Mutual recursion between a pure function and an effectful one:
+        // pure() calls eff() which performs Reader.ask(), with the handler
+        // installed at the call site.  Forward references resolve correctly
+        // and the effect propagates through the handler.
         let source_path = write_temp_source(
             "effect Reader C\n  fn ask() -> C\n\nfn pure(n: Int) -> Int\n  if n == 0\n    0\n  else\n    eff(n - 1)\n\nfn eff(n: Int) -[Reader Int]> Int\n  if n == 0\n    Reader.ask()\n  else\n    pure(n - 1)\n\nfn main() -> Int\n  handle eff(2)\n    Reader.ask() -> resume 7\n",
-            "kea-cli-mutual-recursion-pure-effectful-current-gap",
+            "kea-cli-mutual-recursion-pure-effectful",
             "kea",
         );
 
-        let err = run_file(&source_path)
-            .expect_err("mutual recursion across pure/effectful top-level functions is currently unsupported");
-        assert!(
-            err.contains("undefined variable `eff`"),
-            "expected forward-reference diagnostic for current mutual-recursion gap, got: {err}"
-        );
+        let run = run_file(&source_path).expect("mutual recursion with effects should work");
+        assert_eq!(run.exit_code, 7);
 
         let _ = std::fs::remove_file(source_path);
     }
