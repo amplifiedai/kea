@@ -4308,6 +4308,124 @@
     }
 
     #[test]
+    fn compile_rejects_cyclic_alias_definitions() {
+        let source_path = write_temp_source(
+            "alias A = B\nalias B = A\n\nfn main() -> Int\n  0\n",
+            "kea-cli-alias-cycle",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject cyclic aliases");
+        assert!(
+            err.contains("cyclic alias definition"),
+            "expected cyclic-alias diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_rejects_type_annotation_arity_mismatch() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  let v: Result(Int) = Ok(1)\n  0\n",
+            "kea-cli-type-arity-mismatch",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject type annotation arity mismatch");
+        assert!(
+            err.contains("expects 2 type arguments")
+                || (err.contains("Result") && err.contains("2") && err.contains("1")),
+            "expected type annotation arity mismatch diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_rejects_named_record_field_type_mismatch_with_field_context() {
+        let source_path = write_temp_source(
+            "struct User\n  age: Int\n\nfn main() -> Int\n  let _ = User { age: \"oops\" }\n  0\n",
+            "kea-cli-record-field-type-mismatch",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject mismatched record field type");
+        assert!(
+            (err.contains("field `age` has type") || err.contains("field age has type"))
+                && err.contains("Int")
+                && err.contains("String"),
+            "expected record field type-mismatch diagnostic, got: {err}"
+        );
+        assert!(
+            err.contains("age"),
+            "expected mismatched field name in diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_rejects_row_polymorphic_argument_missing_required_field() {
+        let source_path = write_temp_source(
+            "fn get_age(u: { age: Int | r }) -> Int\n  u.age\n\nfn main() -> Int\n  get_age(#{ score: 1 })\n",
+            "kea-cli-row-poly-missing-field",
+            "kea",
+        );
+
+        let err =
+            run_file(&source_path).expect_err("run should reject row-polymorphic call missing field");
+        assert!(
+            err.contains("age")
+                && (err.contains("field") || err.contains("type mismatch") || err.contains("record")),
+            "expected missing-field context in row-polymorphic diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_rejects_function_call_with_too_many_arguments() {
+        let source_path = write_temp_source(
+            "fn add(x: Int, y: Int) -> Int\n  x + y\n\nfn main() -> Int\n  add(1, 2, 3)\n",
+            "kea-cli-call-too-many-args",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject extra positional argument");
+        assert!(
+            err.contains("too many arguments")
+                || (err.contains("expected 2") && err.contains("got 3")),
+            "expected arity mismatch diagnostic with expected/got counts, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_type_errors_do_not_expose_internal_inference_variables() {
+        let source_path = write_temp_source(
+            "fn get_age(u: { age: Int | r }) -> Int\n  u.age\n\nfn main() -> Int\n  get_age(#{ age: \"oops\" })\n",
+            "kea-cli-no-internal-type-vars-in-errors",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("run should reject row-polymorphic type mismatch");
+        assert!(
+            (err.contains("type mismatch") || err.contains("field `age` has type"))
+                && err.contains("Int")
+                && err.contains("String"),
+            "expected a user-facing type mismatch diagnostic, got: {err}"
+        );
+        assert!(
+            !err.contains("?t") && !err.contains("TypeVarId"),
+            "diagnostic leaked internal type variables, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_trait_qualified_method_single_impl_exit_code() {
         let source_path = write_temp_source(
             "trait Inc a\n  fn inc(x: a) -> a\n\nInt as Inc\n  fn inc(x: Int) -> Int\n    x + 1\n\nfn main() -> Int\n  Inc.inc(41)\n",
