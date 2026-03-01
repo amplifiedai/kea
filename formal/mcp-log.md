@@ -12831,3 +12831,47 @@ New theorem surface:
 **Impact**:
 - Removes remaining consequence-slice route asymmetry in evaluator soundness
   APIs and keeps theorem consumption uniformly one-hop.
+
+### 2026-03-02: one-hop consequence projections on disjoint top-level suite
+
+**Context**: Extended
+`Kea/Properties/EffectHandlerContractSuite.lean` so
+`EffectHandlerDisjointCompositionCoherenceSuite` exports concrete consequence
+facts directly, instead of requiring manual nested component unpacking.
+
+New theorem surface:
+- `effectHandlerDisjointCompositionCoherenceSuite_nestedDisjoint`
+- `effectHandlerDisjointCompositionCoherenceSuite_leftTargetAAbsent`
+- `effectHandlerDisjointCompositionCoherenceSuite_leftTargetBAbsent`
+- `effectHandlerDisjointCompositionCoherenceSuite_rightTargetAAbsent`
+- `effectHandlerDisjointCompositionCoherenceSuite_rightTargetBAbsent`
+- `effectHandlerDisjointCompositionCoherenceSuite_leftRowTailStable`
+- `effectHandlerDisjointCompositionCoherenceSuite_rightRowTailStable`
+- `effectHandlerDisjointCompositionCoherenceSuite_leftTargetAAbsent_of_handler_absence`
+- `effectHandlerDisjointCompositionCoherenceSuite_rightTargetBAbsent_of_handler_absence`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; this is projection-route convenience over
+  an existing disjoint-target coherence suite.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Disjoint-target suite consumers can now retrieve concrete left/right
+  target-absence and row-tail consequences in one theorem step.
+
+**Impact**:
+- Reduces theorem destructuring overhead and aligns this suite with existing
+  one-hop projection conventions across Phase-2 aggregates.

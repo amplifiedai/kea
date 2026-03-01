@@ -9094,5 +9094,149 @@ theorem effectHandlerDisjointCompositionCoherenceSuite_as_components_of_handler_
       h_handlerB_abs_targetA
       h_handlerB_abs_targetB)
 
+/-- One-hop projection: nested disjoint coherence witness from top-level suite. -/
+theorem effectHandlerDisjointCompositionCoherenceSuite_nestedDisjoint
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label)
+    (h_suite :
+      EffectHandlerDisjointCompositionCoherenceSuite effects handlerA handlerB targetA targetB) :
+    NestedHandlerCompositionContracts.NestedHandlerDisjointCoherence
+      effects handlerA handlerB targetA targetB :=
+  h_suite.nestedDisjoint
+
+/-- One-hop projection: first order removes `targetA`. -/
+theorem effectHandlerDisjointCompositionCoherenceSuite_leftTargetAAbsent
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label)
+    (h_suite :
+      EffectHandlerDisjointCompositionCoherenceSuite effects handlerA handlerB targetA targetB) :
+    RowFields.has
+      (EffectRow.fields
+        (NestedHandlerCompositionContracts.nestedComposeDisjoint
+          effects handlerA handlerB targetA targetB))
+      targetA = false := by
+  exact
+    (NestedHandlerCompositionContracts.nestedHandlerDisjointCoherence_as_components
+      effects handlerA handlerB targetA targetB h_suite.nestedDisjoint).1
+
+/-- One-hop projection: first order removes `targetB`. -/
+theorem effectHandlerDisjointCompositionCoherenceSuite_leftTargetBAbsent
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label)
+    (h_suite :
+      EffectHandlerDisjointCompositionCoherenceSuite effects handlerA handlerB targetA targetB) :
+    RowFields.has
+      (EffectRow.fields
+        (NestedHandlerCompositionContracts.nestedComposeDisjoint
+          effects handlerA handlerB targetA targetB))
+      targetB = false := by
+  exact
+    (NestedHandlerCompositionContracts.nestedHandlerDisjointCoherence_as_components
+      effects handlerA handlerB targetA targetB h_suite.nestedDisjoint).2.1
+
+/-- One-hop projection: swapped order removes `targetA`. -/
+theorem effectHandlerDisjointCompositionCoherenceSuite_rightTargetAAbsent
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label)
+    (h_suite :
+      EffectHandlerDisjointCompositionCoherenceSuite effects handlerA handlerB targetA targetB) :
+    RowFields.has
+      (EffectRow.fields
+        (NestedHandlerCompositionContracts.nestedComposeDisjointSwap
+          effects handlerA handlerB targetA targetB))
+      targetA = false := by
+  exact
+    (NestedHandlerCompositionContracts.nestedHandlerDisjointCoherence_as_components
+      effects handlerA handlerB targetA targetB h_suite.nestedDisjoint).2.2.1
+
+/-- One-hop projection: swapped order removes `targetB`. -/
+theorem effectHandlerDisjointCompositionCoherenceSuite_rightTargetBAbsent
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label)
+    (h_suite :
+      EffectHandlerDisjointCompositionCoherenceSuite effects handlerA handlerB targetA targetB) :
+    RowFields.has
+      (EffectRow.fields
+        (NestedHandlerCompositionContracts.nestedComposeDisjointSwap
+          effects handlerA handlerB targetA targetB))
+      targetB = false := by
+  exact
+    (NestedHandlerCompositionContracts.nestedHandlerDisjointCoherence_as_components
+      effects handlerA handlerB targetA targetB h_suite.nestedDisjoint).2.2.2.1
+
+/-- One-hop projection: first order preserves row tail. -/
+theorem effectHandlerDisjointCompositionCoherenceSuite_leftRowTailStable
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label)
+    (h_suite :
+      EffectHandlerDisjointCompositionCoherenceSuite effects handlerA handlerB targetA targetB) :
+    EffectRow.rest
+      (NestedHandlerCompositionContracts.nestedComposeDisjoint
+        effects handlerA handlerB targetA targetB) =
+      EffectRow.rest effects := by
+  exact
+    (NestedHandlerCompositionContracts.nestedHandlerDisjointCoherence_as_components
+      effects handlerA handlerB targetA targetB h_suite.nestedDisjoint).2.2.2.2.1
+
+/-- One-hop projection: swapped order preserves row tail. -/
+theorem effectHandlerDisjointCompositionCoherenceSuite_rightRowTailStable
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label)
+    (h_suite :
+      EffectHandlerDisjointCompositionCoherenceSuite effects handlerA handlerB targetA targetB) :
+    EffectRow.rest
+      (NestedHandlerCompositionContracts.nestedComposeDisjointSwap
+        effects handlerA handlerB targetA targetB) =
+      EffectRow.rest effects := by
+  exact
+    (NestedHandlerCompositionContracts.nestedHandlerDisjointCoherence_as_components
+      effects handlerA handlerB targetA targetB h_suite.nestedDisjoint).2.2.2.2.2
+
+theorem effectHandlerDisjointCompositionCoherenceSuite_leftTargetAAbsent_of_handler_absence
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label)
+    (h_targets_ne : targetA ≠ targetB)
+    (h_handlerA_abs_targetA : RowFields.has (EffectRow.fields handlerA) targetA = false)
+    (h_handlerA_abs_targetB : RowFields.has (EffectRow.fields handlerA) targetB = false)
+    (h_handlerB_abs_targetA : RowFields.has (EffectRow.fields handlerB) targetA = false)
+    (h_handlerB_abs_targetB : RowFields.has (EffectRow.fields handlerB) targetB = false) :
+    RowFields.has
+      (EffectRow.fields
+        (NestedHandlerCompositionContracts.nestedComposeDisjoint
+          effects handlerA handlerB targetA targetB))
+      targetA = false :=
+  effectHandlerDisjointCompositionCoherenceSuite_leftTargetAAbsent
+    effects handlerA handlerB targetA targetB
+    (effectHandlerDisjointCompositionCoherenceSuite_of_handler_absence
+      effects handlerA handlerB targetA targetB
+      h_targets_ne
+      h_handlerA_abs_targetA
+      h_handlerA_abs_targetB
+      h_handlerB_abs_targetA
+      h_handlerB_abs_targetB)
+
+theorem effectHandlerDisjointCompositionCoherenceSuite_rightTargetBAbsent_of_handler_absence
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label)
+    (h_targets_ne : targetA ≠ targetB)
+    (h_handlerA_abs_targetA : RowFields.has (EffectRow.fields handlerA) targetA = false)
+    (h_handlerA_abs_targetB : RowFields.has (EffectRow.fields handlerA) targetB = false)
+    (h_handlerB_abs_targetA : RowFields.has (EffectRow.fields handlerB) targetA = false)
+    (h_handlerB_abs_targetB : RowFields.has (EffectRow.fields handlerB) targetB = false) :
+    RowFields.has
+      (EffectRow.fields
+        (NestedHandlerCompositionContracts.nestedComposeDisjointSwap
+          effects handlerA handlerB targetA targetB))
+      targetB = false :=
+  effectHandlerDisjointCompositionCoherenceSuite_rightTargetBAbsent
+    effects handlerA handlerB targetA targetB
+    (effectHandlerDisjointCompositionCoherenceSuite_of_handler_absence
+      effects handlerA handlerB targetA targetB
+      h_targets_ne
+      h_handlerA_abs_targetA
+      h_handlerA_abs_targetB
+      h_handlerB_abs_targetA
+      h_handlerB_abs_targetB)
+
 end EffectHandlerContractSuite
 end Kea
