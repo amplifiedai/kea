@@ -1214,6 +1214,40 @@ def CoreTypeSoundnessEvalUnifySlice : Prop :=
     EvalFragmentFull e →
     CoreTypeSoundnessEvalUnifyBundle tenv venv e ty
 
+/-- Explicit component alias for `CoreTypeSoundnessEvalUnifySlice`. -/
+abbrev CoreTypeSoundnessEvalUnifySliceComponents : Prop :=
+  ∀ {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty},
+    (h_hooks : UnifyHookPremises) →
+    (st st' : UnifyState) →
+    (fuel : Nat) →
+    inferExprUnify st fuel tenv e = .ok st' ty →
+    EnvWellTyped tenv venv →
+    EvalFragmentFull e →
+    CoreTypeSoundnessEvalUnifyBundle tenv venv e ty
+
+/-- `CoreTypeSoundnessEvalUnifySlice` is equivalent to explicit components. -/
+theorem coreTypeSoundnessEvalUnifySlice_iff_components :
+    CoreTypeSoundnessEvalUnifySlice ↔ CoreTypeSoundnessEvalUnifySliceComponents := Iff.rfl
+
+/-- Build `CoreTypeSoundnessEvalUnifySlice` from explicit components. -/
+theorem coreTypeSoundnessEvalUnifySlice_of_components
+    (h_comp : CoreTypeSoundnessEvalUnifySliceComponents) :
+    CoreTypeSoundnessEvalUnifySlice :=
+  (coreTypeSoundnessEvalUnifySlice_iff_components).2 h_comp
+
+/-- Decompose `CoreTypeSoundnessEvalUnifySlice` into explicit components. -/
+theorem coreTypeSoundnessEvalUnifySlice_as_components
+    (h_slice : CoreTypeSoundnessEvalUnifySlice) :
+    CoreTypeSoundnessEvalUnifySliceComponents :=
+  (coreTypeSoundnessEvalUnifySlice_iff_components).1 h_slice
+
+/-- Direct components-route decomposition for `CoreTypeSoundnessEvalUnifySlice`. -/
+theorem coreTypeSoundnessEvalUnifySlice_as_components_of_components
+    (h_comp : CoreTypeSoundnessEvalUnifySliceComponents) :
+    CoreTypeSoundnessEvalUnifySliceComponents :=
+  (coreTypeSoundnessEvalUnifySlice_iff_components).1
+    ((coreTypeSoundnessEvalUnifySlice_iff_components).2 h_comp)
+
 /-- The packaged core-soundness unification slice is fully proved. -/
 theorem coreTypeSoundnessEvalUnifySlice_proved :
     CoreTypeSoundnessEvalUnifySlice := by
@@ -1235,6 +1269,54 @@ def CoreTypeSoundnessEvalUnifySliceFromHooks : Prop :=
     EnvWellTyped tenv venv →
     EvalFragmentFull e →
     CoreTypeSoundnessEvalUnifyBundle tenv venv e ty
+
+/--
+Explicit component alias for `CoreTypeSoundnessEvalUnifySliceFromHooks`.
+-/
+abbrev CoreTypeSoundnessEvalUnifySliceFromHooksComponents : Prop :=
+  ∀ {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty},
+    (h_app : AppUnifySoundHook) →
+    (h_proj : ProjUnifySoundHook) →
+    (st st' : UnifyState) →
+    (fuel : Nat) →
+    inferExprUnify st fuel tenv e = .ok st' ty →
+    EnvWellTyped tenv venv →
+    EvalFragmentFull e →
+    CoreTypeSoundnessEvalUnifyBundle tenv venv e ty
+
+/--
+`CoreTypeSoundnessEvalUnifySliceFromHooks` is equivalent to explicit
+components.
+-/
+theorem coreTypeSoundnessEvalUnifySliceFromHooks_iff_components :
+    CoreTypeSoundnessEvalUnifySliceFromHooks ↔
+      CoreTypeSoundnessEvalUnifySliceFromHooksComponents := Iff.rfl
+
+/--
+Build `CoreTypeSoundnessEvalUnifySliceFromHooks` from explicit components.
+-/
+theorem coreTypeSoundnessEvalUnifySliceFromHooks_of_components
+    (h_comp : CoreTypeSoundnessEvalUnifySliceFromHooksComponents) :
+    CoreTypeSoundnessEvalUnifySliceFromHooks :=
+  (coreTypeSoundnessEvalUnifySliceFromHooks_iff_components).2 h_comp
+
+/--
+Decompose `CoreTypeSoundnessEvalUnifySliceFromHooks` into explicit components.
+-/
+theorem coreTypeSoundnessEvalUnifySliceFromHooks_as_components
+    (h_slice : CoreTypeSoundnessEvalUnifySliceFromHooks) :
+    CoreTypeSoundnessEvalUnifySliceFromHooksComponents :=
+  (coreTypeSoundnessEvalUnifySliceFromHooks_iff_components).1 h_slice
+
+/--
+Direct components-route decomposition for
+`CoreTypeSoundnessEvalUnifySliceFromHooks`.
+-/
+theorem coreTypeSoundnessEvalUnifySliceFromHooks_as_components_of_components
+    (h_comp : CoreTypeSoundnessEvalUnifySliceFromHooksComponents) :
+    CoreTypeSoundnessEvalUnifySliceFromHooksComponents :=
+  (coreTypeSoundnessEvalUnifySliceFromHooks_iff_components).1
+    ((coreTypeSoundnessEvalUnifySliceFromHooks_iff_components).2 h_comp)
 
 /-- The hook-parameterized core-soundness unification slice is fully proved. -/
 theorem coreTypeSoundnessEvalUnifySliceFromHooks_proved :
