@@ -177,6 +177,54 @@ theorem has_unionIdem_false_of_false_false :
         exact has_unionIdem_false_of_false_false (insertIfAbsent base l ty) rest label
           h_base_step h_rest_false
 
+/--
+Membership in idempotent union is boolean-or over memberships.
+-/
+theorem has_unionIdem_eq_or
+    (base extra : RowFields) (label : Label) :
+    RowFields.has (unionIdem base extra) label =
+      (RowFields.has base label || RowFields.has extra label) := by
+  by_cases h_base : RowFields.has base label = true
+  · have h_union_true :
+      RowFields.has (unionIdem base extra) label = true :=
+      has_unionIdem_of_has_left_true base extra label h_base
+    rw [h_union_true, h_base]
+    simp
+  · have h_base_false : RowFields.has base label = false := by
+      cases h_base_val : RowFields.has base label <;> simp [h_base_val] at h_base ⊢
+    by_cases h_extra : RowFields.has extra label = true
+    · have h_union_true :
+          RowFields.has (unionIdem base extra) label = true :=
+        has_unionIdem_of_has_right_true base extra label h_extra
+      rw [h_union_true, h_base_false, h_extra]
+      simp
+    · have h_extra_false : RowFields.has extra label = false := by
+        cases h_extra_val : RowFields.has extra label <;> simp [h_extra_val] at h_extra ⊢
+      have h_union_false :
+          RowFields.has (unionIdem base extra) label = false :=
+        has_unionIdem_false_of_false_false base extra label h_base_false h_extra_false
+      rw [h_union_false, h_base_false, h_extra_false]
+      simp
+
+/-- Label-membership in `unionIdem` is commutative. -/
+theorem has_unionIdem_comm
+    (a b : RowFields) (label : Label) :
+    RowFields.has (unionIdem a b) label =
+      RowFields.has (unionIdem b a) label := by
+  rw [has_unionIdem_eq_or, has_unionIdem_eq_or]
+  simp [Bool.or_comm]
+
+/-- Label-membership in nested `unionIdem` is associative. -/
+theorem has_unionIdem_assoc
+    (a b c : RowFields) (label : Label) :
+    RowFields.has (unionIdem (unionIdem a b) c) label =
+      RowFields.has (unionIdem a (unionIdem b c)) label := by
+  rw [has_unionIdem_eq_or (unionIdem a b) c label]
+  rw [has_unionIdem_eq_or a b label]
+  rw [has_unionIdem_eq_or a (unionIdem b c) label]
+  rw [has_unionIdem_eq_or b c label]
+  simp [Bool.or_assoc]
+
 theorem wellFormed_insertIfAbsent
     (kctx : KindCtx) (rctx : RowCtx)
     (base : RowFields) (label : Label) (ty : Ty)
@@ -820,5 +868,129 @@ theorem disjoint_handler_composition_coherence_as_components_of_handler_absence
       h_handlerA_abs_targetB
       h_handlerB_abs_targetA
       h_handlerB_abs_targetB)
+
+theorem handleComposeTwoTargets_has_of_ne_targets
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB label : Label)
+    (h_label_ne_a : label ≠ targetA)
+    (h_label_ne_b : label ≠ targetB) :
+    RowFields.has
+      (fields (handleComposeTwoTargets effects handlerA handlerB targetA targetB))
+      label =
+      ((RowFields.has (fields effects) label || RowFields.has (fields handlerA) label)
+        || RowFields.has (fields handlerB) label) := by
+  unfold handleComposeTwoTargets
+  rw [fields_handleComposeNormalized]
+  rw [RowFields.has_unionIdem_eq_or]
+  have h_remove_b :
+      RowFields.has
+        (fields (handleRemove (handleComposeNormalized effects handlerA targetA) targetB))
+        label =
+      RowFields.has (fields (handleComposeNormalized effects handlerA targetA)) label :=
+    handle_preserves_other_effects
+      (handleComposeNormalized effects handlerA targetA)
+      targetB
+      label
+      h_label_ne_b
+  rw [h_remove_b]
+  rw [fields_handleComposeNormalized]
+  rw [RowFields.has_unionIdem_eq_or]
+  have h_remove_a :
+      RowFields.has (fields (handleRemove effects targetA)) label =
+        RowFields.has (fields effects) label :=
+    handle_preserves_other_effects effects targetA label h_label_ne_a
+  rw [h_remove_a]
+
+theorem handleComposeTwoTargetsSwap_has_of_ne_targets
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB label : Label)
+    (h_label_ne_a : label ≠ targetA)
+    (h_label_ne_b : label ≠ targetB) :
+    RowFields.has
+      (fields (handleComposeTwoTargetsSwap effects handlerA handlerB targetA targetB))
+      label =
+      ((RowFields.has (fields effects) label || RowFields.has (fields handlerB) label)
+        || RowFields.has (fields handlerA) label) := by
+  unfold handleComposeTwoTargetsSwap
+  rw [fields_handleComposeNormalized]
+  rw [RowFields.has_unionIdem_eq_or]
+  have h_remove_a :
+      RowFields.has
+        (fields (handleRemove (handleComposeNormalized effects handlerB targetB) targetA))
+        label =
+      RowFields.has (fields (handleComposeNormalized effects handlerB targetB)) label :=
+    handle_preserves_other_effects
+      (handleComposeNormalized effects handlerB targetB)
+      targetA
+      label
+      h_label_ne_a
+  rw [h_remove_a]
+  rw [fields_handleComposeNormalized]
+  rw [RowFields.has_unionIdem_eq_or]
+  have h_remove_b :
+      RowFields.has (fields (handleRemove effects targetB)) label =
+        RowFields.has (fields effects) label :=
+    handle_preserves_other_effects effects targetB label h_label_ne_b
+  rw [h_remove_b]
+
+theorem handleComposeTwoTargets_has_eq_swap_of_ne_targets
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB label : Label)
+    (h_label_ne_a : label ≠ targetA)
+    (h_label_ne_b : label ≠ targetB) :
+    RowFields.has
+      (fields (handleComposeTwoTargets effects handlerA handlerB targetA targetB))
+      label =
+    RowFields.has
+      (fields (handleComposeTwoTargetsSwap effects handlerA handlerB targetA targetB))
+      label := by
+  rw [handleComposeTwoTargets_has_of_ne_targets
+    effects handlerA handlerB targetA targetB label h_label_ne_a h_label_ne_b]
+  rw [handleComposeTwoTargetsSwap_has_of_ne_targets
+    effects handlerA handlerB targetA targetB label h_label_ne_a h_label_ne_b]
+  simp [Bool.or_assoc, Bool.or_left_comm, Bool.or_comm]
+
+/--
+Label-observational equivalence for effect rows:
+- identical row-tail openness
+- identical label-membership for every effect label
+-/
+def LabelObservationalEq (r1 r2 : EffectRow) : Prop :=
+  rest r1 = rest r2 ∧
+    ∀ label, RowFields.has (fields r1) label = RowFields.has (fields r2) label
+
+/--
+Disjoint-target handling commutes up to label-observational equivalence under
+non-reintroduction assumptions on both handlers.
+-/
+theorem disjoint_handler_composition_labelObservationalEq_of_handler_absence
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label)
+    (h_targets_ne : targetA ≠ targetB)
+    (h_handlerA_abs_targetA : RowFields.has (fields handlerA) targetA = false)
+    (h_handlerA_abs_targetB : RowFields.has (fields handlerA) targetB = false)
+    (h_handlerB_abs_targetA : RowFields.has (fields handlerB) targetA = false)
+    (h_handlerB_abs_targetB : RowFields.has (fields handlerB) targetB = false) :
+    LabelObservationalEq
+      (handleComposeTwoTargets effects handlerA handlerB targetA targetB)
+      (handleComposeTwoTargetsSwap effects handlerA handlerB targetA targetB) := by
+  let h_coh := disjoint_handler_composition_coherence_of_handler_absence
+    effects handlerA handlerB targetA targetB
+    h_targets_ne
+    h_handlerA_abs_targetA
+    h_handlerA_abs_targetB
+    h_handlerB_abs_targetA
+    h_handlerB_abs_targetB
+  refine ⟨?_, ?_⟩
+  · exact h_coh.leftRowTailStable.trans h_coh.rightRowTailStable.symm
+  · intro label
+    by_cases h_label_a : label = targetA
+    · subst h_label_a
+      rw [h_coh.leftTargetAAbsent, h_coh.rightTargetAAbsent]
+    · by_cases h_label_b : label = targetB
+      · subst h_label_b
+        rw [h_coh.leftTargetBAbsent, h_coh.rightTargetBAbsent]
+      · exact handleComposeTwoTargets_has_eq_swap_of_ne_targets
+          effects handlerA handlerB targetA targetB label h_label_a h_label_b
 
 end EffectRow
