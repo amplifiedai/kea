@@ -13429,3 +13429,41 @@ New theorem surface:
 **Impact**:
 - Closes another decomposition-parity gap and keeps disjoint suite APIs fully
   symmetric across projection vs component-route consumption.
+
+### 2026-03-02: coherence-suite handler-absence projection symmetry closure
+
+**Context**: Extended `Kea/Properties/EffectHandlerContractSuite.lean` to close
+the remaining directional symmetry gap on
+`EffectHandlerDisjointCompositionCoherenceSuite` handler-absence projections.
+
+New theorem surface:
+- `effectHandlerDisjointCompositionCoherenceSuite_leftTargetBAbsent_of_handler_absence`
+- `effectHandlerDisjointCompositionCoherenceSuite_rightTargetAAbsent_of_handler_absence`
+- `effectHandlerDisjointCompositionCoherenceSuite_leftRowTailStable_of_handler_absence`
+- `effectHandlerDisjointCompositionCoherenceSuite_rightRowTailStable_of_handler_absence`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; this is one-hop projection parity over
+  already existing coherence-suite witness routes.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- All six coherence-side facets now have direct handler-absence projections at
+  the coherence-suite layer.
+
+**Impact**:
+- Removes the last asymmetry between left/right and row-tail directions for
+  direct premise-route consumption in this suite.
