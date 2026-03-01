@@ -12784,3 +12784,50 @@ New theorem surface:
 **Impact**:
 - Improves compositional API coherence for downstream proofs that stay on
   aggregate Phase-2 theorem surfaces.
+
+### 2026-03-02: consequence-slice layer and equivalence closure in Eval
+
+**Context**: Extended `Kea/Eval.lean` by lifting
+`CoreCalculusSoundnessConsequences` to dedicated bundled/explicit-hook slice
+surfaces and closing bidirectional equivalence/routes with
+`CoreTypeSoundnessEvalUnifySlice` families.
+
+New theorem surface:
+- `CoreCalculusSoundnessConsequencesSlice`
+- `CoreCalculusSoundnessConsequencesSliceComponents`
+- `coreCalculusSoundnessConsequencesSlice_{iff_components,of_components,as_components,as_components_of_components,proved}`
+- `CoreCalculusSoundnessConsequencesSliceFromHooks`
+- `CoreCalculusSoundnessConsequencesSliceFromHooksComponents`
+- `coreCalculusSoundnessConsequencesSliceFromHooks_{iff_components,of_components,as_components,as_components_of_components,proved}`
+- `coreCalculusSoundnessConsequencesSlice_{of_coreTypeSoundnessEvalUnifySlice,of_coreTypeSoundnessEvalUnifySlice_proved}`
+- `coreCalculusSoundnessConsequencesSliceFromHooks_{of_coreTypeSoundnessEvalUnifySliceFromHooks,of_coreTypeSoundnessEvalUnifySliceFromHooks_proved}`
+- `coreTypeSoundnessEvalUnifySlice_{of_coreCalculusSoundnessConsequencesSlice,of_coreCalculusSoundnessConsequencesSlice_proved}`
+- `coreTypeSoundnessEvalUnifySliceFromHooks_{of_coreCalculusSoundnessConsequencesSliceFromHooks,of_coreCalculusSoundnessConsequencesSliceFromHooks_proved}`
+- `coreCalculusSoundnessConsequencesSlice_iff_coreTypeSoundnessEvalUnifySlice`
+- `coreCalculusSoundnessConsequencesSliceFromHooks_iff_coreTypeSoundnessEvalUnifySliceFromHooks`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; this is theorem-surface packaging and
+  route-equivalence closure over existing core-soundness contracts.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Run-local canonical consequence slices are now first-class and directly
+  interchangeable with packaged core-soundness slices on both hook routes.
+
+**Impact**:
+- Removes remaining consequence-slice route asymmetry in evaluator soundness
+  APIs and keeps theorem consumption uniformly one-hop.
