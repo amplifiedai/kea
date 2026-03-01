@@ -4472,3 +4472,105 @@ theorem numericShapeConstDimKernelExtendedSuite_iff_components :
     exact numericShapeConstDimKernelExtendedSuite_as_components suite
   · intro h
     exact numericShapeConstDimKernelExtendedSuite_of_components h.1 h.2
+
+/-- Top-level mixed+constant numeric shape suite:
+    combines the numeric/extended-constant-shape suite with the mixed-shape
+    boundary master package. -/
+structure NumericShapeMixedDimKernelMasterSuite
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v : DimVarId) (n : Nat)
+    (v1 v2 : DimVarId) (n1 n2 : Nat)
+    (h_distinct : v1 ≠ v2)
+    (vSame : DimVarId) (h_eq : n1 = n2) : Prop where
+  constShapeExtended : NumericShapeConstDimKernelExtendedSuite
+  mixedBoundary :
+    MixedShapeDeepDimKernelMasterSuite
+      st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq
+
+/-- Explicit component pair alias for `NumericShapeMixedDimKernelMasterSuite`. -/
+abbrev NumericShapeMixedDimKernelMasterSuiteComponents
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v : DimVarId) (n : Nat)
+    (v1 v2 : DimVarId) (n1 n2 : Nat)
+    (h_distinct : v1 ≠ v2)
+    (vSame : DimVarId) (h_eq : n1 = n2) : Prop :=
+  NumericShapeConstDimKernelExtendedSuite ∧
+  MixedShapeDeepDimKernelMasterSuite
+    st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq
+
+/-- Canonical top-level mixed+constant numeric shape suite witness. -/
+theorem numericShapeMixedDimKernelMasterSuite
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v : DimVarId) (n : Nat)
+    (v1 v2 : DimVarId) (n1 n2 : Nat)
+    (h_distinct : v1 ≠ v2)
+    (vSame : DimVarId) (h_eq : n1 = n2) :
+    NumericShapeMixedDimKernelMasterSuite
+      st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq := by
+  exact
+    { constShapeExtended := numericShapeConstDimKernelExtendedSuite
+      mixedBoundary := mixedShapeDeepDimKernelMasterSuite
+        st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq }
+
+/-- Decompose `NumericShapeMixedDimKernelMasterSuite` into explicit components. -/
+theorem numericShapeMixedDimKernelMasterSuite_as_components
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v : DimVarId) (n : Nat)
+    (v1 v2 : DimVarId) (n1 n2 : Nat)
+    (h_distinct : v1 ≠ v2)
+    (vSame : DimVarId) (h_eq : n1 = n2)
+    (suite : NumericShapeMixedDimKernelMasterSuite
+      st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq) :
+    NumericShapeMixedDimKernelMasterSuiteComponents
+      st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq :=
+  ⟨suite.constShapeExtended, suite.mixedBoundary⟩
+
+/-- Build `NumericShapeMixedDimKernelMasterSuite` from explicit components. -/
+theorem numericShapeMixedDimKernelMasterSuite_of_components
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v : DimVarId) (n : Nat)
+    (v1 v2 : DimVarId) (n1 n2 : Nat)
+    (h_distinct : v1 ≠ v2)
+    (vSame : DimVarId) (h_eq : n1 = n2)
+    (constShapeExtended : NumericShapeConstDimKernelExtendedSuite)
+    (mixedBoundary :
+      MixedShapeDeepDimKernelMasterSuite
+        st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq) :
+    NumericShapeMixedDimKernelMasterSuite
+      st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq :=
+  { constShapeExtended := constShapeExtended
+    mixedBoundary := mixedBoundary }
+
+/-- Direct components-route decomposition for
+`NumericShapeMixedDimKernelMasterSuite`. -/
+theorem numericShapeMixedDimKernelMasterSuite_as_components_of_components
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v : DimVarId) (n : Nat)
+    (v1 v2 : DimVarId) (n1 n2 : Nat)
+    (h_distinct : v1 ≠ v2)
+    (vSame : DimVarId) (h_eq : n1 = n2)
+    (h_comp : NumericShapeMixedDimKernelMasterSuiteComponents
+      st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq) :
+    NumericShapeMixedDimKernelMasterSuiteComponents
+      st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq := by
+  simpa using h_comp
+
+/-- `NumericShapeMixedDimKernelMasterSuite` is equivalent to its explicit
+component pair. -/
+theorem numericShapeMixedDimKernelMasterSuite_iff_components
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v : DimVarId) (n : Nat)
+    (v1 v2 : DimVarId) (n1 n2 : Nat)
+    (h_distinct : v1 ≠ v2)
+    (vSame : DimVarId) (h_eq : n1 = n2) :
+    NumericShapeMixedDimKernelMasterSuite
+      st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq ↔
+      NumericShapeMixedDimKernelMasterSuiteComponents
+        st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq := by
+  constructor
+  · intro suite
+    exact numericShapeMixedDimKernelMasterSuite_as_components
+      st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq suite
+  · intro h
+    exact numericShapeMixedDimKernelMasterSuite_of_components
+      st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq h.1 h.2
