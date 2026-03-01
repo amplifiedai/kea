@@ -1686,6 +1686,171 @@ theorem coreCalculusSoundnessConsequences_of_coreCalculusSoundnessSliceFromHooks
     h_app h_proj st st' fuel h_ok h_env h_frag
 
 /--
+Packaged run-local canonical consequence surface from successful unification
+inference (bundled hook route).
+-/
+def CoreCalculusSoundnessConsequencesSlice : Prop :=
+  ∀ {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty},
+    (h_hooks : UnifyHookPremises) →
+    (st st' : UnifyState) →
+    (fuel : Nat) →
+    inferExprUnify st fuel tenv e = .ok st' ty →
+    EnvWellTyped tenv venv →
+    EvalFragmentFull e →
+    CoreCalculusSoundnessConsequences tenv venv e ty
+
+/-- Explicit component alias for `CoreCalculusSoundnessConsequencesSlice`. -/
+abbrev CoreCalculusSoundnessConsequencesSliceComponents : Prop :=
+  ∀ {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty},
+    (h_hooks : UnifyHookPremises) →
+    (st st' : UnifyState) →
+    (fuel : Nat) →
+    inferExprUnify st fuel tenv e = .ok st' ty →
+    EnvWellTyped tenv venv →
+    EvalFragmentFull e →
+    CoreCalculusSoundnessConsequences tenv venv e ty
+
+theorem coreCalculusSoundnessConsequencesSlice_iff_components :
+    CoreCalculusSoundnessConsequencesSlice ↔
+      CoreCalculusSoundnessConsequencesSliceComponents := Iff.rfl
+
+theorem coreCalculusSoundnessConsequencesSlice_of_components
+    (h_comp : CoreCalculusSoundnessConsequencesSliceComponents) :
+    CoreCalculusSoundnessConsequencesSlice :=
+  (coreCalculusSoundnessConsequencesSlice_iff_components).2 h_comp
+
+theorem coreCalculusSoundnessConsequencesSlice_as_components
+    (h_slice : CoreCalculusSoundnessConsequencesSlice) :
+    CoreCalculusSoundnessConsequencesSliceComponents :=
+  (coreCalculusSoundnessConsequencesSlice_iff_components).1 h_slice
+
+theorem coreCalculusSoundnessConsequencesSlice_as_components_of_components
+    (h_comp : CoreCalculusSoundnessConsequencesSliceComponents) :
+    CoreCalculusSoundnessConsequencesSliceComponents :=
+  (coreCalculusSoundnessConsequencesSlice_iff_components).1
+    ((coreCalculusSoundnessConsequencesSlice_iff_components).2 h_comp)
+
+theorem coreCalculusSoundnessConsequencesSlice_proved :
+    CoreCalculusSoundnessConsequencesSlice := by
+  intro tenv venv e ty h_hooks st st' fuel h_ok h_env h_frag
+  exact coreCalculusSoundnessConsequences_of_inferUnify
+    h_hooks st st' fuel h_ok h_env h_frag
+
+/--
+Packaged run-local canonical consequence surface from successful unification
+inference (explicit hook route).
+-/
+def CoreCalculusSoundnessConsequencesSliceFromHooks : Prop :=
+  ∀ {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty},
+    (h_app : AppUnifySoundHook) →
+    (h_proj : ProjUnifySoundHook) →
+    (st st' : UnifyState) →
+    (fuel : Nat) →
+    inferExprUnify st fuel tenv e = .ok st' ty →
+    EnvWellTyped tenv venv →
+    EvalFragmentFull e →
+    CoreCalculusSoundnessConsequences tenv venv e ty
+
+/-- Explicit component alias for `CoreCalculusSoundnessConsequencesSliceFromHooks`. -/
+abbrev CoreCalculusSoundnessConsequencesSliceFromHooksComponents : Prop :=
+  ∀ {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty},
+    (h_app : AppUnifySoundHook) →
+    (h_proj : ProjUnifySoundHook) →
+    (st st' : UnifyState) →
+    (fuel : Nat) →
+    inferExprUnify st fuel tenv e = .ok st' ty →
+    EnvWellTyped tenv venv →
+    EvalFragmentFull e →
+    CoreCalculusSoundnessConsequences tenv venv e ty
+
+theorem coreCalculusSoundnessConsequencesSliceFromHooks_iff_components :
+    CoreCalculusSoundnessConsequencesSliceFromHooks ↔
+      CoreCalculusSoundnessConsequencesSliceFromHooksComponents := Iff.rfl
+
+theorem coreCalculusSoundnessConsequencesSliceFromHooks_of_components
+    (h_comp : CoreCalculusSoundnessConsequencesSliceFromHooksComponents) :
+    CoreCalculusSoundnessConsequencesSliceFromHooks :=
+  (coreCalculusSoundnessConsequencesSliceFromHooks_iff_components).2 h_comp
+
+theorem coreCalculusSoundnessConsequencesSliceFromHooks_as_components
+    (h_slice : CoreCalculusSoundnessConsequencesSliceFromHooks) :
+    CoreCalculusSoundnessConsequencesSliceFromHooksComponents :=
+  (coreCalculusSoundnessConsequencesSliceFromHooks_iff_components).1 h_slice
+
+theorem coreCalculusSoundnessConsequencesSliceFromHooks_as_components_of_components
+    (h_comp : CoreCalculusSoundnessConsequencesSliceFromHooksComponents) :
+    CoreCalculusSoundnessConsequencesSliceFromHooksComponents :=
+  (coreCalculusSoundnessConsequencesSliceFromHooks_iff_components).1
+    ((coreCalculusSoundnessConsequencesSliceFromHooks_iff_components).2 h_comp)
+
+theorem coreCalculusSoundnessConsequencesSliceFromHooks_proved :
+    CoreCalculusSoundnessConsequencesSliceFromHooks := by
+  intro tenv venv e ty h_app h_proj st st' fuel h_ok h_env h_frag
+  exact coreCalculusSoundnessConsequences_of_inferUnify_from_hooks
+    h_app h_proj st st' fuel h_ok h_env h_frag
+
+theorem coreCalculusSoundnessConsequencesSlice_of_coreTypeSoundnessEvalUnifySlice
+    (h_slice : CoreTypeSoundnessEvalUnifySlice) :
+    CoreCalculusSoundnessConsequencesSlice := by
+  intro tenv venv e ty h_hooks st st' fuel h_ok h_env h_frag
+  exact coreCalculusSoundnessConsequences_of_bundle tenv venv e ty
+    (h_slice h_hooks st st' fuel h_ok h_env h_frag)
+
+theorem coreCalculusSoundnessConsequencesSliceFromHooks_of_coreTypeSoundnessEvalUnifySliceFromHooks
+    (h_slice : CoreTypeSoundnessEvalUnifySliceFromHooks) :
+    CoreCalculusSoundnessConsequencesSliceFromHooks := by
+  intro tenv venv e ty h_app h_proj st st' fuel h_ok h_env h_frag
+  exact coreCalculusSoundnessConsequences_of_bundle tenv venv e ty
+    (h_slice h_app h_proj st st' fuel h_ok h_env h_frag)
+
+theorem coreTypeSoundnessEvalUnifySlice_of_coreCalculusSoundnessConsequencesSlice
+    (h_slice : CoreCalculusSoundnessConsequencesSlice) :
+    CoreTypeSoundnessEvalUnifySlice := by
+  intro tenv venv e ty h_hooks st st' fuel h_ok h_env h_frag
+  exact coreCalculusSoundnessConsequences_as_bundle tenv venv e ty
+    (h_slice h_hooks st st' fuel h_ok h_env h_frag)
+
+theorem coreTypeSoundnessEvalUnifySliceFromHooks_of_coreCalculusSoundnessConsequencesSliceFromHooks
+    (h_slice : CoreCalculusSoundnessConsequencesSliceFromHooks) :
+    CoreTypeSoundnessEvalUnifySliceFromHooks := by
+  intro tenv venv e ty h_app h_proj st st' fuel h_ok h_env h_frag
+  exact coreCalculusSoundnessConsequences_as_bundle tenv venv e ty
+    (h_slice h_app h_proj st st' fuel h_ok h_env h_frag)
+
+theorem coreCalculusSoundnessConsequencesSlice_iff_coreTypeSoundnessEvalUnifySlice :
+    CoreCalculusSoundnessConsequencesSlice ↔ CoreTypeSoundnessEvalUnifySlice := by
+  constructor
+  · exact coreTypeSoundnessEvalUnifySlice_of_coreCalculusSoundnessConsequencesSlice
+  · exact coreCalculusSoundnessConsequencesSlice_of_coreTypeSoundnessEvalUnifySlice
+
+theorem coreCalculusSoundnessConsequencesSliceFromHooks_iff_coreTypeSoundnessEvalUnifySliceFromHooks :
+    CoreCalculusSoundnessConsequencesSliceFromHooks ↔
+      CoreTypeSoundnessEvalUnifySliceFromHooks := by
+  constructor
+  · exact coreTypeSoundnessEvalUnifySliceFromHooks_of_coreCalculusSoundnessConsequencesSliceFromHooks
+  · exact coreCalculusSoundnessConsequencesSliceFromHooks_of_coreTypeSoundnessEvalUnifySliceFromHooks
+
+theorem coreCalculusSoundnessConsequencesSlice_of_coreTypeSoundnessEvalUnifySlice_proved :
+    CoreCalculusSoundnessConsequencesSlice :=
+  coreCalculusSoundnessConsequencesSlice_of_coreTypeSoundnessEvalUnifySlice
+    coreTypeSoundnessEvalUnifySlice_proved
+
+theorem coreCalculusSoundnessConsequencesSliceFromHooks_of_coreTypeSoundnessEvalUnifySliceFromHooks_proved :
+    CoreCalculusSoundnessConsequencesSliceFromHooks :=
+  coreCalculusSoundnessConsequencesSliceFromHooks_of_coreTypeSoundnessEvalUnifySliceFromHooks
+    coreTypeSoundnessEvalUnifySliceFromHooks_proved
+
+theorem coreTypeSoundnessEvalUnifySlice_of_coreCalculusSoundnessConsequencesSlice_proved :
+    CoreTypeSoundnessEvalUnifySlice :=
+  coreTypeSoundnessEvalUnifySlice_of_coreCalculusSoundnessConsequencesSlice
+    coreCalculusSoundnessConsequencesSlice_proved
+
+theorem coreTypeSoundnessEvalUnifySliceFromHooks_of_coreCalculusSoundnessConsequencesSliceFromHooks_proved :
+    CoreTypeSoundnessEvalUnifySliceFromHooks :=
+  coreTypeSoundnessEvalUnifySliceFromHooks_of_coreCalculusSoundnessConsequencesSliceFromHooks
+    coreCalculusSoundnessConsequencesSliceFromHooks_proved
+
+/--
 Canonical soundness consequence from successful unification-threaded inference
 (bundled hook route).
 -/
