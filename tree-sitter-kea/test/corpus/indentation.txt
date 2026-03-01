@@ -1,0 +1,400 @@
+==================
+Empty file
+==================
+
+
+
+---
+
+(source_file)
+
+==================
+Single expression
+==================
+
+42
+
+---
+
+(source_file
+  (integer)
+  (newline))
+
+==================
+Multiple top-level expressions
+==================
+
+1
+2
+3
+
+---
+
+(source_file
+  (integer)
+  (newline)
+  (integer)
+  (newline)
+  (integer)
+  (newline))
+
+==================
+Blank lines between declarations
+==================
+
+fn a() -> Int
+  1
+
+fn b() -> Int
+  2
+
+---
+
+(source_file
+  (function_declaration
+    name: (identifier)
+    (parameter_list)
+    (pure_return_type
+      type: (named_type
+        (upper_identifier)))
+    (indent)
+    (integer)
+    (dedent))
+  (function_declaration
+    name: (identifier)
+    (parameter_list)
+    (pure_return_type
+      type: (named_type
+        (upper_identifier)))
+    (indent)
+    (integer)
+    (dedent)))
+
+==================
+Nested blocks via case
+==================
+
+fn f(x: Int) -> Int
+  case x
+    0 -> 1
+    _ -> x
+
+---
+
+(source_file
+  (function_declaration
+    name: (identifier)
+    (parameter_list
+      (parameter
+        pattern: (variable_pattern
+          (identifier))
+        type: (named_type
+          (upper_identifier))))
+    (pure_return_type
+      type: (named_type
+        (upper_identifier)))
+    (indent)
+    (case_expression
+      scrutinee: (identifier)
+      (indent)
+      (case_arm
+        pattern: (literal_pattern
+          (integer))
+        body: (integer))
+      (newline)
+      (case_arm
+        pattern: (wildcard_pattern)
+        body: (identifier))
+      (dedent))
+    (dedent)))
+
+==================
+Multi-level dedent
+==================
+
+fn f() -> Int
+  case true
+    true -> 1
+    false -> 2
+
+fn g() -> Int
+  0
+
+---
+
+(source_file
+  (function_declaration
+    name: (identifier)
+    (parameter_list)
+    (pure_return_type
+      type: (named_type
+        (upper_identifier)))
+    (indent)
+    (case_expression
+      scrutinee: (boolean)
+      (indent)
+      (case_arm
+        pattern: (literal_pattern
+          (boolean))
+        body: (integer))
+      (newline)
+      (case_arm
+        pattern: (literal_pattern
+          (boolean))
+        body: (integer))
+      (dedent))
+    (dedent))
+  (function_declaration
+    name: (identifier)
+    (parameter_list)
+    (pure_return_type
+      type: (named_type
+        (upper_identifier)))
+    (indent)
+    (integer)
+    (dedent)))
+
+==================
+Expression inside brackets ignores indentation
+==================
+
+fn f() -> Int
+  g(1,
+    2,
+    3)
+
+---
+
+(source_file
+  (function_declaration
+    name: (identifier)
+    (parameter_list)
+    (pure_return_type
+      type: (named_type
+        (upper_identifier)))
+    (indent)
+    (call_expression
+      function: (identifier)
+      (integer)
+      (integer)
+      (integer))
+    (dedent)))
+
+==================
+Struct with methods
+==================
+
+struct Point
+  x: Int
+  y: Int
+  fn sum(self: Point) -> Int
+    self.x
+
+---
+
+(source_file
+  (struct_definition
+    name: (upper_identifier)
+    (indent)
+    (struct_field
+      name: (identifier)
+      type: (named_type
+        (upper_identifier)))
+    (newline)
+    (struct_field
+      name: (identifier)
+      type: (named_type
+        (upper_identifier)))
+    (newline)
+    (function_declaration
+      name: (identifier)
+      (parameter_list
+        (parameter
+          pattern: (variable_pattern
+            (identifier))
+          type: (named_type
+            (upper_identifier))))
+      (pure_return_type
+        type: (named_type
+          (upper_identifier)))
+      (indent)
+      (field_expression
+        object: (identifier)
+        field: (identifier))
+      (dedent))
+    (dedent)))
+
+==================
+Doc block with blank lines
+==================
+
+doc
+  First paragraph.
+
+  Second paragraph after blank line.
+fn f() -> Int
+  0
+
+---
+
+(source_file
+  (documented_declaration
+    (doc_block)
+    (newline)
+    (function_declaration
+      name: (identifier)
+      (parameter_list)
+      (pure_return_type
+        type: (named_type
+          (upper_identifier)))
+      (indent)
+      (integer)
+      (dedent))))
+
+==================
+Multiple doc blocks
+==================
+
+doc First function.
+fn a() -> Int
+  1
+
+doc Second function.
+fn b() -> Int
+  2
+
+---
+
+(source_file
+  (documented_declaration
+    (doc_block)
+    (newline)
+    (function_declaration
+      name: (identifier)
+      (parameter_list)
+      (pure_return_type
+        type: (named_type
+          (upper_identifier)))
+      (indent)
+      (integer)
+      (dedent)))
+  (documented_declaration
+    (doc_block)
+    (newline)
+    (function_declaration
+      name: (identifier)
+      (parameter_list)
+      (pure_return_type
+        type: (named_type
+          (upper_identifier)))
+      (indent)
+      (integer)
+      (dedent))))
+
+==================
+Handle expression with handler clauses
+==================
+
+handle do_stuff()
+  IO.stdout(msg) -> resume()
+
+---
+
+(source_file
+  (handle_expression
+    expr: (call_expression
+      function: (identifier))
+    (indent)
+    (operation_clause
+      effect: (upper_identifier)
+      operation: (identifier)
+      (variable_pattern
+        (identifier))
+      body: (resume_expression
+        value: (unit)))
+    (dedent)))
+
+==================
+Annotation on separate line from fn
+==================
+
+@intrinsic("strlen")
+fn length(s: String) -> Int
+  0
+
+---
+
+(source_file
+  (function_declaration
+    (annotation
+      name: (identifier)
+      (string))
+    (newline)
+    name: (identifier)
+    (parameter_list
+      (parameter
+        pattern: (variable_pattern
+          (identifier))
+        type: (named_type
+          (upper_identifier))))
+    (pure_return_type
+      type: (named_type
+        (upper_identifier)))
+    (indent)
+    (integer)
+    (dedent)))
+
+==================
+Impl block with body
+==================
+
+Int as Eq
+  fn eq(x: Int, y: Int) -> Bool
+    x == y
+
+---
+
+(source_file
+  (impl_block
+    target: (upper_identifier)
+    trait: (upper_identifier)
+    (indent)
+    (function_declaration
+      name: (identifier)
+      (parameter_list
+        (parameter
+          pattern: (variable_pattern
+            (identifier))
+          type: (named_type
+            (upper_identifier)))
+        (parameter
+          pattern: (variable_pattern
+            (identifier))
+          type: (named_type
+            (upper_identifier))))
+      (pure_return_type
+        type: (named_type
+          (upper_identifier)))
+      (indent)
+      (binary_expression
+        (identifier)
+        (identifier))
+      (dedent))
+    (dedent)))
+
+==================
+Alias declaration
+==================
+
+alias LogList = List String
+
+---
+
+(source_file
+  (alias_declaration
+    name: (upper_identifier)
+    type: (applied_type
+      constructor: (upper_identifier)
+      arg: (named_type
+        (upper_identifier))))
+  (newline))

@@ -2,9 +2,8 @@
 // @ts-check
 
 // Kea tree-sitter grammar.
-// Flat grammar (no external scanner for indentation).
-// Indentation-sensitive blocks are parsed as sequences of expressions;
-// indents.scm handles editor auto-indent.
+// Uses an external scanner (src/scanner.c) for indentation-sensitive
+// layout: INDENT/DEDENT/NEWLINE tokens plus DOC_BLOCK scanning.
 
 const PREC = {
   or: 1,
@@ -21,20 +20,31 @@ const PREC = {
 module.exports = grammar({
   name: "kea",
 
-  extras: ($) => [/\s/, $.line_comment],
+  // Horizontal whitespace and comments are ignorable.
+  // Newlines are NOT extras — they are handled by the external scanner.
+  extras: ($) => [/[\s]/, $.line_comment],
+
+  externals: ($) => [
+    $.indent,
+    $.dedent,
+    $.newline,
+    $.doc_block,
+  ],
 
   word: ($) => $.identifier,
 
   conflicts: ($) => [
     [$.lambda_parameter, $.or_pattern],
     [$.pure_return_type, $.effect_function_type],
-    [$.struct_field, $.effect_function_type],
     [$.type_constraint, $.effect_function_type],
-    [$.effect_ref, $.constructor_expression],
-    [$.named_type, $.applied_type],
     [$.trait_definition, $.effect_function_type],
     [$.field_init, $.field_pattern],
     [$.effect_return_type, $.effect_function_type],
+    [$.impl_block, $.constructor_expression],
+    [$.alias_declaration, $.effect_function_type],
+    [$.applied_type, $.paren_type],
+    [$.function_declaration, $.struct_field],
+    [$.function_declaration, $.struct_field],
   ],
 
   rules: {
@@ -42,14 +52,14 @@ module.exports = grammar({
 
     _top_level: ($) =>
       choice(
-        $._declaration,
-        $._expression,
+        seq($._declaration, optional($.newline)),
+        seq($._expression, optional($.newline)),
       ),
 
     // ── Doc blocks ──────────────────────────────────────────────
-
-    doc_block: (_$) =>
-      prec.right(repeat1(token(seq("doc", /[ \t]+/, /[^\n]*/)))),
+    // Handled entirely by the external scanner.  The scanner matches
+    // `doc` + optional inline text + indented body lines (including
+    // blank lines within the body).
 
     // ── Declarations ──────────────────────────────────────────────
 
@@ -60,7 +70,7 @@ module.exports = grammar({
       ),
 
     documented_declaration: ($) =>
-      seq($.doc_block, $._bare_declaration),
+      seq($.doc_block, optional($.newline), $._bare_declaration),
 
     _bare_declaration: ($) =>
       choice(
@@ -70,31 +80,33 @@ module.exports = grammar({
         $.struct_definition,
         $.trait_definition,
         $.impl_block,
+        $.legacy_impl_block,
         $.effect_declaration,
         $.use_declaration,
         $.test_declaration,
+        $.alias_declaration,
       ),
 
     function_declaration: ($) =>
       prec.right(seq(
-        repeat($.annotation),
+        repeat(seq($.annotation, optional($.newline))),
         optional("pub"),
         "fn",
         field("name", $.identifier),
         $.parameter_list,
         optional($._return_type),
         optional($.where_clause),
-        optional($._body),
+        optional($._block),
       )),
 
     expr_declaration: ($) =>
       prec.right(seq(
-        repeat($.annotation),
+        repeat(seq($.annotation, optional($.newline))),
         "expr",
         field("name", $.identifier),
         $.parameter_list,
         optional($._return_type),
-        optional($._body),
+        optional($._block),
       )),
 
     parameter_list: ($) =>
@@ -120,7 +132,7 @@ module.exports = grammar({
     effect_row: ($) =>
       seq(
         "[",
-        commaSep1($.effect_ref),
+        commaSep1(choice($.effect_ref, field("tail", $.identifier))),
         optional(seq("|", field("tail", $.identifier))),
         "]",
       ),
@@ -142,14 +154,28 @@ module.exports = grammar({
       ),
 
     type_definition: ($) =>
-      prec.right(seq(
-        repeat($.annotation),
-        optional("pub"),
-        "type",
-        field("name", $.upper_identifier),
-        repeat(field("param", $._type_param)),
-        "=",
-        sep1($.variant, "|"),
+      prec.right(choice(
+        // Inline form: type Color = Red | Green | Blue
+        seq(
+          repeat(seq($.annotation, optional($.newline))),
+          optional("pub"),
+          choice("type", "enum"),
+          field("name", $.upper_identifier),
+          repeat(field("param", $._type_param)),
+          "=",
+          sep1($.variant, "|"),
+        ),
+        // Block form: enum List a\n  Nil\n  Cons(a, List a)
+        seq(
+          repeat(seq($.annotation, optional($.newline))),
+          optional("pub"),
+          choice("type", "enum"),
+          field("name", $.upper_identifier),
+          repeat(field("param", $._type_param)),
+          $.indent,
+          repeat1(seq($.variant, optional($.newline))),
+          $.dedent,
+        ),
       )),
 
     variant: ($) =>
@@ -163,12 +189,16 @@ module.exports = grammar({
 
     struct_definition: ($) =>
       prec.right(seq(
-        repeat($.annotation),
+        repeat(seq($.annotation, optional($.newline))),
         optional("pub"),
         "struct",
         field("name", $.upper_identifier),
         repeat(field("param", $._type_param)),
-        repeat($.struct_field),
+        optional(seq(
+          $.indent,
+          repeat1(seq(choice($.struct_field, $.function_declaration), optional($.newline))),
+          $.dedent,
+        )),
       )),
 
     struct_field: ($) =>
@@ -181,35 +211,57 @@ module.exports = grammar({
 
     trait_definition: ($) =>
       prec.right(seq(
-        repeat($.annotation),
+        repeat(seq($.annotation, optional($.newline))),
         optional("pub"),
         "trait",
         field("name", $.upper_identifier),
-        optional(choice(
-          seq("(", commaSep($._type_param), ")"),
-          repeat1(field("param", $._type_param)),
-        )),
+        repeat(field("param", $._type_param)),
         optional(seq(":", commaSep1($._type))),
-        repeat($._trait_member),
+        optional(seq(
+          $.indent,
+          repeat1(choice(
+            seq($.doc_block, optional($.newline)),
+            seq($.function_declaration, optional($.newline)),
+            seq($.type_member, optional($.newline)),
+          )),
+          $.dedent,
+        )),
       )),
-
-    _trait_member: ($) =>
-      choice(
-        $.function_declaration,
-        $.type_member,
-      ),
 
     type_member: ($) =>
       seq("type", field("name", $.upper_identifier)),
 
+    // Canonical syntax: Type as Trait
     impl_block: ($) =>
       prec.right(seq(
-        repeat($.annotation),
+        repeat(seq($.annotation, optional($.newline))),
+        field("target", $.upper_identifier),
+        repeat(field("param", $._type_param)),
+        "as",
+        field("trait", $.upper_identifier),
+        optional(seq(
+          $.indent,
+          repeat1(seq($.function_declaration, optional($.newline))),
+          $.dedent,
+        )),
+      )),
+
+    // Legacy syntax: impl Trait for Type
+    legacy_impl_block: ($) =>
+      prec.right(seq(
+        repeat(seq($.annotation, optional($.newline))),
         "impl",
         field("trait", $._type),
         optional(seq("for", field("target", $._type))),
         optional($.where_clause),
-        repeat($.function_declaration),
+        optional(seq(
+          $.indent,
+          repeat1(choice(
+            seq($.doc_block, optional($.newline)),
+            seq($.function_declaration, optional($.newline)),
+          )),
+          $.dedent,
+        )),
       )),
 
     effect_declaration: ($) =>
@@ -218,8 +270,25 @@ module.exports = grammar({
         "effect",
         field("name", $.upper_identifier),
         repeat(field("param", $._type_param)),
-        repeat($.function_declaration),
+        optional(seq(
+          $.indent,
+          repeat1(choice(
+            seq($.doc_block, optional($.newline)),
+            seq($.function_declaration, optional($.newline)),
+          )),
+          $.dedent,
+        )),
       )),
+
+    alias_declaration: ($) =>
+      seq(
+        optional("pub"),
+        "alias",
+        field("name", $.upper_identifier),
+        repeat(field("param", $._type_param)),
+        "=",
+        field("type", $._type),
+      ),
 
     use_declaration: ($) =>
       seq(
@@ -237,7 +306,7 @@ module.exports = grammar({
       prec.right(seq(
         "test",
         field("name", $.string),
-        optional($._body),
+        optional($._block),
       )),
 
     annotation: ($) =>
@@ -283,8 +352,8 @@ module.exports = grammar({
           commaSep1(field("arg", $._type)),
           ")",
         )),
-        // Space-separated (single arg): Option a
-        prec.right(-1, seq(
+        // Space-separated (single arg): Option a, List b
+        prec.right(1, seq(
           field("constructor", $.upper_identifier),
           repeat1(field("arg", $._simple_type)),
         )),
@@ -339,7 +408,7 @@ module.exports = grammar({
     row_type_field: ($) =>
       seq(field("name", $.identifier), ":", field("type", $._type)),
 
-    paren_type: ($) => seq("(", $._type, ")"),
+    paren_type: ($) => seq("(", commaSep1($._type), ")"),
 
     // ── Expressions ───────────────────────────────────────────────
 
@@ -375,10 +444,10 @@ module.exports = grammar({
       prec.right(seq(
         "if",
         field("condition", $._expression),
-        field("then", $._expression),
+        field("then", choice($._expression, $._block)),
         optional(seq(
           "else",
-          field("else", $._expression),
+          field("else", choice($._expression, $._block)),
         )),
       )),
 
@@ -386,7 +455,9 @@ module.exports = grammar({
       prec.right(seq(
         "case",
         field("scrutinee", $._expression),
-        repeat1($.case_arm),
+        $.indent,
+        repeat1(seq($.case_arm, optional($.newline))),
+        $.dedent,
       )),
 
     case_arm: ($) =>
@@ -394,28 +465,39 @@ module.exports = grammar({
         field("pattern", $._pattern),
         optional(seq("when", field("guard", $._expression))),
         "->",
-        field("body", $._expression),
+        field("body", choice($._expression, $._block)),
       )),
 
     cond_expression: ($) =>
       prec.right(seq(
         "cond",
-        repeat1($.cond_arm),
+        $.indent,
+        repeat1(seq($.cond_arm, optional($.newline))),
+        $.dedent,
       )),
 
     cond_arm: ($) =>
       prec.right(seq(
         field("condition", $._expression),
         "->",
-        field("body", $._expression),
+        field("body", choice($._expression, $._block)),
       )),
 
     handle_expression: ($) =>
       prec.right(seq(
         "handle",
         field("expr", $._expression),
-        repeat1($.operation_clause),
-        optional(seq("then", field("then", $._expression))),
+        $.indent,
+        repeat1(seq($.operation_clause, optional($.newline))),
+        optional(seq($.then_clause, optional($.newline))),
+        $.dedent,
+      )),
+
+    then_clause: ($) =>
+      prec.right(seq(
+        "then",
+        optional(seq(field("pattern", $._pattern), "->")),
+        field("body", choice($._expression, $._block)),
       )),
 
     operation_clause: ($) =>
@@ -425,7 +507,7 @@ module.exports = grammar({
         field("operation", $.identifier),
         optional(seq("(", commaSep($._pattern), ")")),
         "->",
-        field("body", $._expression),
+        field("body", choice($._expression, $._block)),
       )),
 
     resume_expression: ($) =>
@@ -444,14 +526,14 @@ module.exports = grammar({
         "in",
         field("iterable", $._expression),
         optional(seq(",", field("guard", $._expression))),
-        field("body", $._expression),
+        field("body", choice($._expression, $._block)),
       )),
 
     while_expression: ($) =>
       prec.right(seq(
         "while",
         field("condition", $._expression),
-        field("body", $._expression),
+        field("body", choice($._expression, $._block)),
       )),
 
     lambda_expression: ($) =>
@@ -459,7 +541,7 @@ module.exports = grammar({
         "|",
         commaSep($.lambda_parameter),
         "|",
-        field("body", $._expression),
+        field("body", choice($._expression, $._block)),
       )),
 
     lambda_parameter: ($) =>
@@ -505,7 +587,7 @@ module.exports = grammar({
       prec(PREC.postfix, seq(
         field("object", $._expression),
         ".",
-        field("field", choice($.identifier, $.upper_identifier)),
+        field("field", choice($.identifier, $.upper_identifier, $.integer)),
       )),
 
     try_expression: ($) =>
@@ -532,7 +614,7 @@ module.exports = grammar({
         $.parenthesized_expression,
       ),
 
-    parenthesized_expression: ($) => seq("(", $._expression, ")"),
+    parenthesized_expression: ($) => seq("(", commaSep1($._expression), ")"),
 
     list_expression: ($) => seq("[", commaSep($._expression), "]"),
 
@@ -625,9 +707,10 @@ module.exports = grammar({
 
     parenthesized_pattern: ($) => seq("(", $._pattern, ")"),
 
-    // ── Body (indentation-tolerant) ───────────────────────────────
+    // ── Block (indentation-delimited) ───────────────────────────
 
-    _body: ($) => repeat1($._expression),
+    _block: ($) =>
+      seq($.indent, repeat1(seq($._expression, optional($.newline))), $.dedent),
 
     // ── Terminals ─────────────────────────────────────────────────
 
@@ -702,3 +785,4 @@ function commaSep1(rule) {
 function sep1(rule, separator) {
   return seq(rule, repeat(seq(separator, rule)));
 }
+

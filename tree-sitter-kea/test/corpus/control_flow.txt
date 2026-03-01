@@ -14,8 +14,12 @@ else
     condition: (binary_expression
       (identifier)
       (integer))
+    then: (indent)
     then: (string)
-    else: (string)))
+    then: (dedent)
+    else: (indent)
+    else: (string)
+    else: (dedent)))
 
 ==================
 Cond expression
@@ -28,6 +32,8 @@ cond
 
 (source_file
   (cond_expression
+    (indent)
     (cond_arm
       condition: (boolean)
-      body: (string))))
+      body: (string))
+    (dedent)))

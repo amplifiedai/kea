@@ -11,14 +11,20 @@ effect Fail E
   (effect_declaration
     name: (upper_identifier)
     param: (upper_identifier)
+    (indent)
     (function_declaration
       name: (identifier)
       (parameter_list
         (parameter
-          pattern: (variable_pattern (identifier))
-          type: (named_type (upper_identifier))))
+          pattern: (variable_pattern
+            (identifier))
+          type: (named_type
+            (upper_identifier))))
       (pure_return_type
-        type: (named_type (upper_identifier))))))
+        type: (named_type
+          (upper_identifier))))
+    (MISSING dedent))
+  (newline))
 
 ==================
 Effect declaration with operation
@@ -32,6 +38,7 @@ effect Clock
 (source_file
   (effect_declaration
     name: (upper_identifier)
+    (indent)
     (function_declaration
       name: (identifier)
       (parameter_list)
@@ -39,7 +46,10 @@ effect Clock
         (effect_row
           (effect_ref
             name: (upper_identifier)))
-        type: (named_type (upper_identifier))))))
+        type: (named_type
+          (upper_identifier))))
+    (MISSING dedent))
+  (newline))
 
 ==================
 Multiple effects in arrow
@@ -55,17 +65,23 @@ fn risky(x: Int) -[IO, Fail String]> Bool
     name: (identifier)
     (parameter_list
       (parameter
-        pattern: (variable_pattern (identifier))
-        type: (named_type (upper_identifier))))
+        pattern: (variable_pattern
+          (identifier))
+        type: (named_type
+          (upper_identifier))))
     (effect_return_type
       (effect_row
         (effect_ref
           name: (upper_identifier))
         (effect_ref
           name: (upper_identifier)
-          arg: (named_type (upper_identifier))))
-      type: (named_type (upper_identifier)))
-    (boolean)))
+          arg: (named_type
+            (upper_identifier))))
+      type: (named_type
+        (upper_identifier)))
+    (indent)
+    (boolean)
+    (dedent)))
 
 ==================
 Catch expression
@@ -77,7 +93,8 @@ catch x
 
 (source_file
   (catch_expression
-    expr: (identifier)))
+    expr: (identifier))
+  (newline))
 
 ==================
 Fail expression
@@ -89,7 +106,8 @@ fail "error"
 
 (source_file
   (fail_expression
-    value: (string)))
+    value: (string))
+  (newline))
 
 ==================
 Resume expression
@@ -101,4 +119,5 @@ resume 42
 
 (source_file
   (resume_expression
-    value: (integer)))
+    value: (integer))
+  (newline))

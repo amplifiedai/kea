@@ -10,8 +10,11 @@ Integer literals
 
 (source_file
   (integer)
+  (newline)
   (integer)
-  (integer))
+  (newline)
+  (integer)
+  (newline))
 
 ==================
 Hex integer
@@ -22,7 +25,8 @@ Hex integer
 ---
 
 (source_file
-  (integer))
+  (integer)
+  (newline))
 
 ==================
 Binary integer
@@ -33,7 +37,8 @@ Binary integer
 ---
 
 (source_file
-  (integer))
+  (integer)
+  (newline))
 
 ==================
 Octal integer
@@ -44,7 +49,8 @@ Octal integer
 ---
 
 (source_file
-  (integer))
+  (integer)
+  (newline))
 
 ==================
 Float literals
@@ -57,7 +63,9 @@ Float literals
 
 (source_file
   (float)
-  (float))
+  (newline)
+  (float)
+  (newline))
 
 ==================
 String literal
@@ -68,7 +76,8 @@ String literal
 ---
 
 (source_file
-  (string))
+  (string)
+  (newline))
 
 ==================
 String with escapes
@@ -79,7 +88,8 @@ String with escapes
 ---
 
 (source_file
-  (string))
+  (string)
+  (newline))
 
 ==================
 Triple-quoted string
@@ -90,7 +100,8 @@ Triple-quoted string
 ---
 
 (source_file
-  (triple_quoted_string))
+  (triple_quoted_string)
+  (newline))
 
 ==================
 Triple-quoted string with escapes
@@ -101,7 +112,8 @@ Triple-quoted string with escapes
 ---
 
 (source_file
-  (triple_quoted_string))
+  (triple_quoted_string)
+  (newline))
 
 ==================
 Triple-quoted string with embedded quotes
@@ -112,7 +124,8 @@ Triple-quoted string with embedded quotes
 ---
 
 (source_file
-  (triple_quoted_string))
+  (triple_quoted_string)
+  (newline))
 
 ==================
 Boolean literals
@@ -125,7 +138,9 @@ false
 
 (source_file
   (boolean)
-  (boolean))
+  (newline)
+  (boolean)
+  (newline))
 
 ==================
 Unit literal
@@ -136,7 +151,8 @@ Unit literal
 ---
 
 (source_file
-  (unit))
+  (unit)
+  (newline))
 
 ==================
 None literal
@@ -147,4 +163,5 @@ None
 ---
 
 (source_file
-  (none))
+  (none)
+  (newline))

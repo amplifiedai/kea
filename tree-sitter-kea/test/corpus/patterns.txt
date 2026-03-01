@@ -10,9 +10,11 @@ case x
 (source_file
   (case_expression
     scrutinee: (identifier)
+    (indent)
     (case_arm
       pattern: (wildcard_pattern)
-      body: (integer))))
+      body: (integer))
+    (dedent)))
 
 ==================
 Constructor pattern with args
@@ -26,11 +28,14 @@ case opt
 (source_file
   (case_expression
     scrutinee: (identifier)
+    (indent)
     (case_arm
       pattern: (constructor_pattern
         constructor: (upper_identifier)
-        (variable_pattern (identifier)))
-      body: (identifier))))
+        (variable_pattern
+          (identifier)))
+      body: (identifier))
+    (dedent)))
 
 ==================
 Constructor pattern no args
@@ -44,6 +49,9 @@ case opt
 (source_file
   (case_expression
     scrutinee: (identifier)
+    (indent)
     (case_arm
-      pattern: (literal_pattern (none))
-      body: (integer))))
+      pattern: (literal_pattern
+        (none))
+      body: (integer))
+    (dedent)))

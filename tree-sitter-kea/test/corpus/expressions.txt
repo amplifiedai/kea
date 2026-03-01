@@ -8,8 +8,10 @@ let x = 42
 
 (source_file
   (let_expression
-    pattern: (variable_pattern (identifier))
-    value: (integer)))
+    pattern: (variable_pattern
+      (identifier))
+    value: (integer))
+  (newline))
 
 ==================
 If expression
@@ -25,8 +27,12 @@ else
 (source_file
   (if_expression
     condition: (boolean)
+    then: (indent)
     then: (integer)
-    else: (integer)))
+    then: (dedent)
+    else: (indent)
+    else: (integer)
+    else: (dedent)))
 
 ==================
 Case expression
@@ -41,14 +47,19 @@ case x
 (source_file
   (case_expression
     scrutinee: (identifier)
+    (indent)
     (case_arm
       pattern: (constructor_pattern
         constructor: (upper_identifier)
-        (variable_pattern (identifier)))
+        (variable_pattern
+          (identifier)))
       body: (identifier))
+    (newline)
     (case_arm
-      pattern: (literal_pattern (none))
-      body: (integer))))
+      pattern: (literal_pattern
+        (none))
+      body: (integer))
+    (dedent)))
 
 ==================
 Lambda expression
@@ -61,8 +72,10 @@ Lambda expression
 (source_file
   (lambda_expression
     (lambda_parameter
-      pattern: (variable_pattern (identifier)))
-    body: (identifier)))
+      pattern: (variable_pattern
+        (identifier)))
+    body: (identifier))
+  (newline))
 
 ==================
 Binary operators
@@ -77,9 +90,11 @@ x == y
   (binary_expression
     (integer)
     (integer))
+  (newline)
   (binary_expression
     (identifier)
-    (identifier)))
+    (identifier))
+  (newline))
 
 ==================
 Method call
@@ -95,7 +110,8 @@ IO.stdout("hello")
       object: (constructor_expression
         constructor: (upper_identifier))
       field: (identifier))
-    (string)))
+    (string))
+  (newline))
 
 ==================
 List literal
@@ -109,4 +125,5 @@ List literal
   (list_expression
     (integer)
     (integer)
-    (integer)))
+    (integer))
+  (newline))
