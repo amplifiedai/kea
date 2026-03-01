@@ -352,5 +352,109 @@ theorem nested_handler_closedAware_bundle_of_outer_absent
       nested_handlers_compose_closedAware_row_tail effects innerHandler outerHandler target
   }
 
+/--
+Disjoint-target nested composition (`A` then `B`) routed through the shared
+effect-row composition model.
+-/
+def nestedComposeDisjoint
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label) : EffectRow :=
+  EffectRow.handleComposeTwoTargets effects handlerA handlerB targetA targetB
+
+/--
+Disjoint-target nested composition (`B` then `A`) routed through the shared
+effect-row composition model.
+-/
+def nestedComposeDisjointSwap
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label) : EffectRow :=
+  EffectRow.handleComposeTwoTargetsSwap effects handlerA handlerB targetA targetB
+
+/-- Alias surface for disjoint-target nested composition coherence. -/
+abbrev NestedHandlerDisjointCoherence
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label) : Prop :=
+  EffectRow.DisjointHandlerCompositionCoherence effects handlerA handlerB targetA targetB
+
+/-- Alias components for disjoint-target nested composition coherence. -/
+abbrev NestedHandlerDisjointCoherenceComponents
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label) : Prop :=
+  EffectRow.DisjointHandlerCompositionCoherenceComponents
+    effects handlerA handlerB targetA targetB
+
+theorem nestedHandlerDisjointCoherence_iff_components
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label) :
+    NestedHandlerDisjointCoherence effects handlerA handlerB targetA targetB
+      ↔
+      NestedHandlerDisjointCoherenceComponents effects handlerA handlerB targetA targetB :=
+  EffectRow.disjointHandlerCompositionCoherence_iff_components
+    effects handlerA handlerB targetA targetB
+
+theorem nestedHandlerDisjointCoherence_of_components
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label)
+    (h_comp :
+      NestedHandlerDisjointCoherenceComponents effects handlerA handlerB targetA targetB) :
+    NestedHandlerDisjointCoherence effects handlerA handlerB targetA targetB :=
+  EffectRow.disjointHandlerCompositionCoherence_of_components
+    effects handlerA handlerB targetA targetB h_comp
+
+theorem nestedHandlerDisjointCoherence_as_components
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label)
+    (h :
+      NestedHandlerDisjointCoherence effects handlerA handlerB targetA targetB) :
+    NestedHandlerDisjointCoherenceComponents effects handlerA handlerB targetA targetB :=
+  EffectRow.disjointHandlerCompositionCoherence_as_components
+    effects handlerA handlerB targetA targetB h
+
+theorem nestedHandlerDisjointCoherence_as_components_of_components
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label)
+    (h_comp :
+      NestedHandlerDisjointCoherenceComponents effects handlerA handlerB targetA targetB) :
+    NestedHandlerDisjointCoherenceComponents effects handlerA handlerB targetA targetB :=
+  EffectRow.disjointHandlerCompositionCoherence_as_components_of_components
+    effects handlerA handlerB targetA targetB h_comp
+
+/--
+Disjoint-target coherence route from handler non-reintroduction premises.
+-/
+theorem nestedHandlerDisjointCoherence_of_handler_absence
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label)
+    (h_targets_ne : targetA ≠ targetB)
+    (h_handlerA_abs_targetA : RowFields.has (EffectRow.fields handlerA) targetA = false)
+    (h_handlerA_abs_targetB : RowFields.has (EffectRow.fields handlerA) targetB = false)
+    (h_handlerB_abs_targetA : RowFields.has (EffectRow.fields handlerB) targetA = false)
+    (h_handlerB_abs_targetB : RowFields.has (EffectRow.fields handlerB) targetB = false) :
+    NestedHandlerDisjointCoherence effects handlerA handlerB targetA targetB :=
+  EffectRow.disjoint_handler_composition_coherence_of_handler_absence
+    effects handlerA handlerB targetA targetB
+    h_targets_ne
+    h_handlerA_abs_targetA
+    h_handlerA_abs_targetB
+    h_handlerB_abs_targetA
+    h_handlerB_abs_targetB
+
+theorem nestedHandlerDisjointCoherence_as_components_of_handler_absence
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label)
+    (h_targets_ne : targetA ≠ targetB)
+    (h_handlerA_abs_targetA : RowFields.has (EffectRow.fields handlerA) targetA = false)
+    (h_handlerA_abs_targetB : RowFields.has (EffectRow.fields handlerA) targetB = false)
+    (h_handlerB_abs_targetA : RowFields.has (EffectRow.fields handlerB) targetA = false)
+    (h_handlerB_abs_targetB : RowFields.has (EffectRow.fields handlerB) targetB = false) :
+    NestedHandlerDisjointCoherenceComponents effects handlerA handlerB targetA targetB :=
+  EffectRow.disjoint_handler_composition_coherence_as_components_of_handler_absence
+    effects handlerA handlerB targetA targetB
+    h_targets_ne
+    h_handlerA_abs_targetA
+    h_handlerA_abs_targetB
+    h_handlerB_abs_targetA
+    h_handlerB_abs_targetB
+
 end NestedHandlerCompositionContracts
 end Kea
