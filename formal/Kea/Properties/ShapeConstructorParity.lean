@@ -4574,3 +4574,103 @@ theorem numericShapeMixedDimKernelMasterSuite_iff_components
   · intro h
     exact numericShapeMixedDimKernelMasterSuite_of_components
       st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq h.1 h.2
+
+/-- Unified numeric/dimension/shape master suite:
+    combines decimal+dimension-extended numeric contracts with the top-level
+    numeric mixed+constant shape suite. -/
+structure NumericDimShapeMasterSuite
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v : DimVarId) (n : Nat)
+    (v1 v2 : DimVarId) (n1 n2 : Nat)
+    (h_distinct : v1 ≠ v2)
+    (vSame : DimVarId) (h_eq : n1 = n2) : Prop where
+  numericDim : DecimalDimKernelExtendedSuite
+  shapeMaster :
+    NumericShapeMixedDimKernelMasterSuite
+      st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq
+
+/-- Explicit component pair alias for `NumericDimShapeMasterSuite`. -/
+abbrev NumericDimShapeMasterSuiteComponents
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v : DimVarId) (n : Nat)
+    (v1 v2 : DimVarId) (n1 n2 : Nat)
+    (h_distinct : v1 ≠ v2)
+    (vSame : DimVarId) (h_eq : n1 = n2) : Prop :=
+  DecimalDimKernelExtendedSuite ∧
+  NumericShapeMixedDimKernelMasterSuite
+    st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq
+
+/-- Canonical unified numeric/dimension/shape master suite witness. -/
+theorem numericDimShapeMasterSuite
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v : DimVarId) (n : Nat)
+    (v1 v2 : DimVarId) (n1 n2 : Nat)
+    (h_distinct : v1 ≠ v2)
+    (vSame : DimVarId) (h_eq : n1 = n2) :
+    NumericDimShapeMasterSuite
+      st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq := by
+  exact
+    { numericDim := decimalDimKernelExtendedSuite
+      shapeMaster := numericShapeMixedDimKernelMasterSuite
+        st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq }
+
+/-- Decompose `NumericDimShapeMasterSuite` into explicit components. -/
+theorem numericDimShapeMasterSuite_as_components
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v : DimVarId) (n : Nat)
+    (v1 v2 : DimVarId) (n1 n2 : Nat)
+    (h_distinct : v1 ≠ v2)
+    (vSame : DimVarId) (h_eq : n1 = n2)
+    (suite : NumericDimShapeMasterSuite
+      st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq) :
+    NumericDimShapeMasterSuiteComponents
+      st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq :=
+  ⟨suite.numericDim, suite.shapeMaster⟩
+
+/-- Build `NumericDimShapeMasterSuite` from explicit components. -/
+theorem numericDimShapeMasterSuite_of_components
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v : DimVarId) (n : Nat)
+    (v1 v2 : DimVarId) (n1 n2 : Nat)
+    (h_distinct : v1 ≠ v2)
+    (vSame : DimVarId) (h_eq : n1 = n2)
+    (numericDim : DecimalDimKernelExtendedSuite)
+    (shapeMaster :
+      NumericShapeMixedDimKernelMasterSuite
+        st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq) :
+    NumericDimShapeMasterSuite
+      st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq :=
+  { numericDim := numericDim
+    shapeMaster := shapeMaster }
+
+/-- Direct components-route decomposition for `NumericDimShapeMasterSuite`. -/
+theorem numericDimShapeMasterSuite_as_components_of_components
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v : DimVarId) (n : Nat)
+    (v1 v2 : DimVarId) (n1 n2 : Nat)
+    (h_distinct : v1 ≠ v2)
+    (vSame : DimVarId) (h_eq : n1 = n2)
+    (h_comp : NumericDimShapeMasterSuiteComponents
+      st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq) :
+    NumericDimShapeMasterSuiteComponents
+      st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq := by
+  simpa using h_comp
+
+/-- `NumericDimShapeMasterSuite` is equivalent to its explicit component pair. -/
+theorem numericDimShapeMasterSuite_iff_components
+    (st : UnifyState) (fuel : Nat) (elem : Ty)
+    (v : DimVarId) (n : Nat)
+    (v1 v2 : DimVarId) (n1 n2 : Nat)
+    (h_distinct : v1 ≠ v2)
+    (vSame : DimVarId) (h_eq : n1 = n2) :
+    NumericDimShapeMasterSuite
+      st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq ↔
+      NumericDimShapeMasterSuiteComponents
+        st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq := by
+  constructor
+  · intro suite
+    exact numericDimShapeMasterSuite_as_components
+      st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq suite
+  · intro h
+    exact numericDimShapeMasterSuite_of_components
+      st fuel elem v n v1 v2 n1 n2 h_distinct vSame h_eq h.1 h.2
