@@ -11238,3 +11238,44 @@ as a one-name theorem surface, parallel to `VerticalEvalUnifyBridgeSlice`.
 **Impact**:
 - Core-soundness packaging now exposes both existential type-soundness and
   progress/preservation slices for the infer-unify path.
+
+### 2026-03-01: tail-resumptive not-invalid <-> at-most-once equivalence
+
+**Context**: Extended `Kea/Properties/TailResumptiveClassification.lean` with
+reverse-direction and equivalence theorems:
+- `classifyResumeUse_atMostOnce_of_not_invalid`
+- `classifyResumeUse_not_invalid_iff_atMostOnce`
+- `classifyClause_notInvalid_iff_atMostOnce`
+- `tail_resumptive_notInvalid_implies_atMostOnce`
+- bundle-level extraction wrappers for normalized/closed-aware paths:
+  `tail_resumptive_bundle_atMostOnce_of_wellTyped`,
+  `tail_resumptive_closedAware_bundle_atMostOnce_of_wellTyped`
+
+This closes the logical loop between tail-classification non-invalidity and
+resume linearity.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime semantic change; the new theorems should characterize the existing
+  classifier mapping (`zero|one` non-invalid, `many` invalid).
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Tail non-invalid classification and resume at-most-once are now theorem-level
+  equivalent on both raw and bundle-extracted routes.
+
+**Impact**:
+- Tail-resumptive classification results can now be converted to linearity
+  facts (and back) without ad hoc case analysis.
