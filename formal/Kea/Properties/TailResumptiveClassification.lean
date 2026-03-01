@@ -64,6 +64,40 @@ theorem classifyResumeUse_not_invalid_of_atMostOnce
   | many =>
       simp [ResumeUse.atMostOnce] at h_lin
 
+theorem classifyResumeUse_atMostOnce_of_not_invalid
+    (u : ResumeUse)
+    (h_not_invalid : classifyResumeUse u ≠ .invalid) :
+    ResumeUse.atMostOnce u := by
+  cases u with
+  | zero =>
+      simp [ResumeUse.atMostOnce]
+  | one =>
+      simp [ResumeUse.atMostOnce]
+  | many =>
+      exfalso
+      exact h_not_invalid (by simp [classifyResumeUse])
+
+theorem classifyResumeUse_not_invalid_iff_atMostOnce
+    (u : ResumeUse) :
+    classifyResumeUse u ≠ .invalid ↔ ResumeUse.atMostOnce u := by
+  constructor
+  · intro h_not_invalid
+    exact classifyResumeUse_atMostOnce_of_not_invalid u h_not_invalid
+  · intro h_lin
+    exact classifyResumeUse_not_invalid_of_atMostOnce u h_lin
+
+theorem classifyClause_notInvalid_iff_atMostOnce
+    (c : HandleClauseContract) :
+    classifyClause c ≠ .invalid ↔ ResumeUse.atMostOnce c.resumeUse := by
+  simpa [classifyClause] using
+    (classifyResumeUse_not_invalid_iff_atMostOnce c.resumeUse)
+
+theorem tail_resumptive_notInvalid_implies_atMostOnce
+    (c : HandleClauseContract)
+    (h_not_invalid : classifyClause c ≠ .invalid) :
+    ResumeUse.atMostOnce c.resumeUse :=
+  (classifyClause_notInvalid_iff_atMostOnce c).1 h_not_invalid
+
 /--
 Phase-2 target theorem surface:
 well-typed clauses classify as either non-resumptive or tail-resumptive
@@ -261,6 +295,13 @@ theorem tail_resumptive_bundle_notInvalid
     classifyClause c ≠ .invalid :=
   (tail_resumptive_bundle_of_wellTyped c h_wellTyped).notInvalid
 
+theorem tail_resumptive_bundle_atMostOnce_of_wellTyped
+    (c : HandleClauseContract)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice c) :
+    ResumeUse.atMostOnce c.resumeUse :=
+  tail_resumptive_notInvalid_implies_atMostOnce c
+    (tail_resumptive_bundle_notInvalid c h_wellTyped)
+
 structure TailResumptiveClosedAwareBundle (c : HandleClauseContract) where
   classification :
     classifyClause c = .nonResumptive ∨
@@ -356,6 +397,13 @@ theorem tail_resumptive_closedAware_bundle_notInvalid_of_wellTyped
     (h_wellTyped : HandleClauseContract.wellTypedSlice c) :
     classifyClause c ≠ .invalid :=
   (tail_resumptive_closedAware_bundle_of_wellTyped c h_wellTyped).notInvalid
+
+theorem tail_resumptive_closedAware_bundle_atMostOnce_of_wellTyped
+    (c : HandleClauseContract)
+    (h_wellTyped : HandleClauseContract.wellTypedSlice c) :
+    ResumeUse.atMostOnce c.resumeUse :=
+  tail_resumptive_notInvalid_implies_atMostOnce c
+    (tail_resumptive_closedAware_bundle_notInvalid_of_wellTyped c h_wellTyped)
 
 theorem tail_resumptive_closedAware_bundle_direct_call_of_eligible
     (c : HandleClauseContract)
