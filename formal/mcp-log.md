@@ -13627,3 +13627,42 @@ New theorem surface:
 **Impact**:
 - Tightens interoperability between legacy and newly packaged evaluator
   soundness theorem families.
+
+### 2026-03-02: unification-threaded to declarative bundle interoperability
+
+**Context**: Extended `Kea/Eval.lean` to connect unification-threaded core
+soundness bundle outputs with the new declarative core soundness bundle surface.
+
+New theorem surface:
+- `coreTypeSoundnessEvalBundle_of_coreTypeSoundnessEvalUnifyBundle`
+- `coreTypeSoundnessEvalBundle_of_inferUnify`
+- `coreTypeSoundnessEvalBundle_of_inferUnify_from_hooks`
+- `coreTypeSoundnessEvalBundle_as_components_of_inferUnify`
+- `coreTypeSoundnessEvalBundle_as_components_of_inferUnify_from_hooks`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; this adds route-level interoperability
+  wrappers between already proved unification and declarative bundle families.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed` (with unrelated pre-existing `kea-mir`
+  dead-code warnings).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Infer-unify successes now map in one step to the declarative bundle shape,
+  including direct component-route wrappers.
+
+**Impact**:
+- Unifies consumption paths so downstream proofs can target a single declarative
+  bundle API regardless of whether evidence originated from unification routes.
