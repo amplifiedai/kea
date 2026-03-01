@@ -959,6 +959,34 @@ def LabelObservationalEq (r1 r2 : EffectRow) : Prop :=
   rest r1 = rest r2 ∧
     ∀ label, RowFields.has (fields r1) label = RowFields.has (fields r2) label
 
+/-- Explicit component alias for `LabelObservationalEq`. -/
+abbrev LabelObservationalEqComponents (r1 r2 : EffectRow) : Prop :=
+  rest r1 = rest r2 ∧
+    ∀ label, RowFields.has (fields r1) label = RowFields.has (fields r2) label
+
+theorem labelObservationalEq_iff_components
+    (r1 r2 : EffectRow) :
+    LabelObservationalEq r1 r2 ↔ LabelObservationalEqComponents r1 r2 := Iff.rfl
+
+theorem labelObservationalEq_of_components
+    (r1 r2 : EffectRow)
+    (h_comp : LabelObservationalEqComponents r1 r2) :
+    LabelObservationalEq r1 r2 :=
+  (labelObservationalEq_iff_components r1 r2).2 h_comp
+
+theorem labelObservationalEq_as_components
+    (r1 r2 : EffectRow)
+    (h_eq : LabelObservationalEq r1 r2) :
+    LabelObservationalEqComponents r1 r2 :=
+  (labelObservationalEq_iff_components r1 r2).1 h_eq
+
+theorem labelObservationalEq_as_components_of_components
+    (r1 r2 : EffectRow)
+    (h_comp : LabelObservationalEqComponents r1 r2) :
+    LabelObservationalEqComponents r1 r2 :=
+  labelObservationalEq_as_components r1 r2
+    (labelObservationalEq_of_components r1 r2 h_comp)
+
 /--
 Disjoint-target handling commutes up to label-observational equivalence under
 non-reintroduction assumptions on both handlers.
@@ -992,5 +1020,27 @@ theorem disjoint_handler_composition_labelObservationalEq_of_handler_absence
         rw [h_coh.leftTargetBAbsent, h_coh.rightTargetBAbsent]
       · exact handleComposeTwoTargets_has_eq_swap_of_ne_targets
           effects handlerA handlerB targetA targetB label h_label_a h_label_b
+
+theorem disjoint_handler_composition_labelObservationalEq_as_components_of_handler_absence
+    (effects handlerA handlerB : EffectRow)
+    (targetA targetB : Label)
+    (h_targets_ne : targetA ≠ targetB)
+    (h_handlerA_abs_targetA : RowFields.has (fields handlerA) targetA = false)
+    (h_handlerA_abs_targetB : RowFields.has (fields handlerA) targetB = false)
+    (h_handlerB_abs_targetA : RowFields.has (fields handlerB) targetA = false)
+    (h_handlerB_abs_targetB : RowFields.has (fields handlerB) targetB = false) :
+    LabelObservationalEqComponents
+      (handleComposeTwoTargets effects handlerA handlerB targetA targetB)
+      (handleComposeTwoTargetsSwap effects handlerA handlerB targetA targetB) :=
+  labelObservationalEq_as_components
+    (handleComposeTwoTargets effects handlerA handlerB targetA targetB)
+    (handleComposeTwoTargetsSwap effects handlerA handlerB targetA targetB)
+    (disjoint_handler_composition_labelObservationalEq_of_handler_absence
+      effects handlerA handlerB targetA targetB
+      h_targets_ne
+      h_handlerA_abs_targetA
+      h_handlerA_abs_targetB
+      h_handlerB_abs_targetA
+      h_handlerB_abs_targetB)
 
 end EffectRow

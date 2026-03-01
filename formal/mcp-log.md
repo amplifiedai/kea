@@ -13077,3 +13077,42 @@ New theorem surface:
 **Impact**:
 - Completes one-hop projection ergonomics for canonical evaluator soundness
   surfaces.
+
+### 2026-03-02: decomposition parity for LabelObservationalEq
+
+**Context**: Extended `Kea/Properties/HandlerEffectRemoval.lean` so the new
+`LabelObservationalEq` contract follows the standard decomposition API shape and
+is directly decomposable from the disjoint-handler-absence route.
+
+New theorem surface:
+- `labelObservationalEq_iff_components`
+- `labelObservationalEq_of_components`
+- `labelObservationalEq_as_components`
+- `labelObservationalEq_as_components_of_components`
+- `disjoint_handler_composition_labelObservationalEq_as_components_of_handler_absence`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; this is decomposition-route parity for an
+  existing observational-commutation theorem family.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Observational-commutation witnesses now decompose to explicit rest+label-eq
+  components in one theorem step from the main handler-absence route.
+
+**Impact**:
+- Keeps observational coherence contracts API-consistent with the broader
+  theorem-surface conventions used across the formal corpus.
