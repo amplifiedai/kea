@@ -3398,20 +3398,15 @@
     }
 
     #[test]
-    fn compile_and_reject_nested_lambda_returning_lambda_in_local_binding() {
+    fn compile_and_execute_nested_lambda_returning_lambda_in_local_binding_exit_code() {
         let source_path = write_temp_source(
             "fn outer(a: Int) -> fn(Int) -> Int\n  let make = |b|\n    |c| a + b + c\n  make(30)\n\nfn main() -> Int\n  let f = outer(10)\n  f(2)\n",
             "kea-cli-nested-closure-three-scope-capture",
             "kea",
         );
 
-        let err = run_file(&source_path)
-            .expect_err("nested lambda returning lambda should currently fail in lowering");
-        assert!(
-            err.contains("non-Unit return type")
-                && err.contains("not yet supported in compiled lowering"),
-            "expected current nested-lambda lowering diagnostic, got: {err}"
-        );
+        let run = run_file(&source_path).expect("nested lambda returning lambda should run");
+        assert_eq!(run.exit_code, 42);
 
         let _ = std::fs::remove_file(source_path);
     }
@@ -3641,21 +3636,16 @@
     }
 
     #[test]
-    fn compile_and_reject_handler_resume_with_closure_capturing_clause_arg_in_compiled_lowering() {
+    fn compile_and_execute_handler_resume_with_closure_capturing_clause_arg_exit_code() {
         let source_path = write_temp_source(
             "effect Factory\n  fn build(seed: Int) -> fn(Int) -> Int\n\nfn program() -[Factory]> fn(Int) -> Int\n  Factory.build(40)\n\nfn main() -> Int\n  let add = handle program()\n    Factory.build(seed) -> resume (|x| x + seed)\n  add(2)\n",
             "kea-cli-handler-resume-closure-captures-clause-arg",
             "kea",
         );
 
-        let err = run_file(&source_path).expect_err(
-            "compiled handler lowering should currently reject effect ops returning closures",
-        );
-        assert!(
-            err.contains("Factory.build")
-                && err.contains("not yet supported in compiled handler lowering"),
-            "expected missing handler-operation-plan diagnostic, got: {err}"
-        );
+        let run = run_file(&source_path)
+            .expect("compiled handler lowering should support effect ops returning closures");
+        assert_eq!(run.exit_code, 42);
 
         let _ = std::fs::remove_file(source_path);
     }
