@@ -436,6 +436,17 @@ theorem handlerWellTypedSlice_has_clause_summary_atMostOnce
   · exact handlerClauseHasResumeSummary.mk c c.resumeUse h_mem (clauseHasResumeSummary.mk c)
   · exact handlerWellTypedSlice_implies_clause_atMostOnce h h_typed c h_mem
 
+/-- Primitive handler-level linearity premise (clause-wise). -/
+def handlerLinearityOk (h : HandleContract) : Prop :=
+  ∀ c ∈ h.clauses, linearityOk c
+
+theorem handlerWellTypedSlice_implies_handlerLinearityOk
+    (h : HandleContract)
+    (h_typed : handlerWellTypedSlice h) :
+    handlerLinearityOk h := by
+  intro c h_mem
+  exact wellTypedSlice_linearity c (h_typed c h_mem)
+
 /-- Packaged handler-level resume-linearity consequences. -/
 structure HandlerResumeLinearityBundle (h : HandleContract) where
   clauseAtMostOnce :
@@ -482,13 +493,54 @@ theorem handlerResumeLinearityBundle_as_components_of_components
   (handlerResumeLinearityBundle_iff_components h).1
     ((handlerResumeLinearityBundle_iff_components h).2 h_comp)
 
+/--
+The handler-level bundle components are equivalent to the primitive
+clause-wise handler linearity premise.
+-/
+theorem handlerResumeLinearityBundleComponents_iff_handlerLinearityOk
+    (h : HandleContract) :
+    HandlerResumeLinearityBundleComponents h ↔ handlerLinearityOk h := by
+  constructor
+  · intro h_comp
+    intro c h_mem
+    rcases h_comp c h_mem with ⟨u, h_summary, h_atMostOnce⟩
+    have h_clause_summary : clauseHasResumeSummary c u :=
+      handlerClauseHasResumeSummary_clauseSummary h c u h_summary
+    have h_eq : u = c.resumeUse :=
+      clauseHasResumeSummary_eq_resumeUse c u h_clause_summary
+    subst h_eq
+    exact h_atMostOnce
+  · intro h_lin
+    intro c h_mem
+    refine ⟨c.resumeUse, ?_, h_lin c h_mem⟩
+    exact handlerClauseHasResumeSummary.mk c c.resumeUse h_mem (clauseHasResumeSummary.mk c)
+
+/--
+Bundle existence is equivalent to primitive handler-level linearity.
+-/
+theorem handlerResumeLinearityBundle_iff_handlerLinearityOk
+    (h : HandleContract) :
+    Nonempty (HandlerResumeLinearityBundle h) ↔ handlerLinearityOk h := by
+  rw [handlerResumeLinearityBundle_iff_components h]
+  exact handlerResumeLinearityBundleComponents_iff_handlerLinearityOk h
+
+/-- Build the packaged handler-level bundle from `handlerLinearityOk`. -/
+def handlerResumeLinearityBundle_of_handlerLinearityOk
+    (h : HandleContract)
+    (h_lin : handlerLinearityOk h) :
+    HandlerResumeLinearityBundle h where
+  clauseAtMostOnce := by
+    intro c h_mem
+    refine ⟨c.resumeUse, ?_, h_lin c h_mem⟩
+    exact handlerClauseHasResumeSummary.mk c c.resumeUse h_mem (clauseHasResumeSummary.mk c)
+
 /-- Build the packaged handler-level bundle from `handlerWellTypedSlice`. -/
 def handlerResumeLinearityBundle_of_handlerWellTypedSlice
     (h : HandleContract)
     (h_typed : handlerWellTypedSlice h) :
-    HandlerResumeLinearityBundle h where
-  clauseAtMostOnce :=
-    handlerWellTypedSlice_has_clause_summary_atMostOnce h h_typed
+    HandlerResumeLinearityBundle h :=
+  handlerResumeLinearityBundle_of_handlerLinearityOk h
+    (handlerWellTypedSlice_implies_handlerLinearityOk h h_typed)
 
 /--
 One-hop handler-level projection from `handlerWellTypedSlice`: every clause
@@ -499,5 +551,16 @@ theorem handlerResumeLinearityBundle_clause_atMostOnce_of_handlerWellTypedSlice
     (h_typed : handlerWellTypedSlice h) :
     HandlerResumeLinearityBundleComponents h :=
   (handlerResumeLinearityBundle_of_handlerWellTypedSlice h h_typed).clauseAtMostOnce
+
+/--
+Direct decomposition route from `handlerWellTypedSlice` to explicit
+handler-level bundle components.
+-/
+theorem handlerResumeLinearityBundle_as_components_of_handlerWellTypedSlice
+    (h : HandleContract)
+    (h_typed : handlerWellTypedSlice h) :
+    HandlerResumeLinearityBundleComponents h :=
+  handlerResumeLinearityBundle_as_components h
+    (handlerResumeLinearityBundle_of_handlerWellTypedSlice h h_typed)
 
 end HandleClauseContract

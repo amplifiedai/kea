@@ -11981,3 +11981,43 @@ New theorem surface:
 **Impact**:
 - Closes the key Phase-2 gap between clause summary scaffolding and a concrete
   “well-typed handler clauses satisfy at-most-once” theorem surface.
+
+### 2026-03-01: handler-level primitive-linearity equivalence for resume bundles
+
+**Context**: Strengthened the new handler-level resume package in
+`Kea/Properties/HandlerTypingContracts.lean` by proving equivalence between
+bundle components and a primitive clause-wise handler linearity predicate.
+
+New theorem surface:
+- `handlerLinearityOk`
+- `handlerWellTypedSlice_implies_handlerLinearityOk`
+- `handlerResumeLinearityBundleComponents_iff_handlerLinearityOk`
+- `handlerResumeLinearityBundle_iff_handlerLinearityOk`
+- `handlerResumeLinearityBundle_of_handlerLinearityOk`
+- `handlerResumeLinearityBundle_as_components_of_handlerWellTypedSlice`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime semantic change; this is a theorem-shape tightening that should
+  reuse existing clause-level summary equalities and handler membership routes.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Handler-level resume bundle semantics now match clause-level style:
+  packaged components are interchangeable with primitive linearity premises.
+
+**Impact**:
+- Improves theorem reuse for downstream handler APIs by allowing direct routing
+  from either primitive handler-linearity assumptions or packaged components.
