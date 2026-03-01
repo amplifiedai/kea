@@ -788,6 +788,55 @@ theorem coreProgressPreservationEvalFragmentFull_of_inferUnify
   exact coreProgressPreservationEvalFragmentFull_of_infer h_env h_infer h_frag
 
 /--
+Type-soundness wrapper from successful unification-threaded inference on the
+full executable fragment.
+-/
+theorem type_soundness_evalFragmentFull_of_inferUnify
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_hooks : UnifyHookPremises)
+    (st st' : UnifyState) (fuel : Nat)
+    (h_ok : inferExprUnify st fuel tenv e = .ok st' ty)
+    (h_env : EnvWellTyped tenv venv)
+    (h_frag : EvalFragmentFull e) :
+    ∃ v, eval venv e = some v ∧ ValueHasType v ty := by
+  exact type_soundness_evalFragmentFull
+    h_env
+    (inferExprUnify_sound_preconditioned_from_hook_bundle_via_dual_bundle
+      h_hooks st fuel tenv e st' ty h_ok)
+    h_frag
+
+/--
+Progress wrapper from successful unification-threaded inference on the full
+executable fragment.
+-/
+theorem eval_progress_evalFragmentFull_of_inferUnify
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}
+    (h_hooks : UnifyHookPremises)
+    (st st' : UnifyState) (fuel : Nat)
+    (h_ok : inferExprUnify st fuel tenv e = .ok st' ty)
+    (h_env : EnvWellTyped tenv venv)
+    (h_frag : EvalFragmentFull e) :
+    ∃ v, eval venv e = some v := by
+  exact (coreProgressPreservationEvalFragmentFull_of_inferUnify
+    h_hooks st st' fuel h_ok h_env h_frag).1
+
+/--
+Preservation wrapper from successful unification-threaded inference on the full
+executable fragment.
+-/
+theorem eval_preservation_evalFragmentFull_of_inferUnify
+    {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty} {v : Value}
+    (h_hooks : UnifyHookPremises)
+    (st st' : UnifyState) (fuel : Nat)
+    (h_ok : inferExprUnify st fuel tenv e = .ok st' ty)
+    (h_env : EnvWellTyped tenv venv)
+    (h_frag : EvalFragmentFull e)
+    (h_eval : eval venv e = some v) :
+    ValueHasType v ty := by
+  exact (coreProgressPreservationEvalFragmentFull_of_inferUnify
+    h_hooks st st' fuel h_ok h_env h_frag).2 v h_eval
+
+/--
 Packaged theorem surface for the reduced executable vertical slice.
 This is the citation anchor for the evaluator-side end-to-end fragment.
 -/

@@ -11096,3 +11096,39 @@ premises) into the canonical evaluator-side
 **Impact**:
 - Item-(2) soundness routing now connects the unification path to the core
   progress/preservation theorem shape in one theorem step.
+
+### 2026-03-01: direct inferExprUnify wrappers for core soundness outcomes
+
+**Context**: Extended `Kea/Eval.lean` with direct unification-threaded wrappers:
+- `type_soundness_evalFragmentFull_of_inferUnify`
+- `eval_progress_evalFragmentFull_of_inferUnify`
+- `eval_preservation_evalFragmentFull_of_inferUnify`
+
+These provide one-step access from successful `inferExprUnify` runs to the
+canonical soundness/progress/preservation outcomes on `EvalFragmentFull`.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No semantic change; wrappers should compose existing unification-to-typing
+  and evaluator-side soundness bridges.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Successful unification inference now has direct wrappers to full-fragment
+  soundness, progress, and preservation conclusions.
+
+**Impact**:
+- Unification-threaded core soundness claims are now available in canonical
+  theorem form without intermediate bridge plumbing.

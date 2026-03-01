@@ -499,6 +499,7 @@ This work starts by cannibalizing the existing Rill formal corpus and then exten
 - **Phase 2 (active):** `Kea/Eval.lean` now exposes explicit named full-fragment theorem wrappers (`eval_progress_evalFragmentFull`, `eval_preservation_evalFragmentFull`, `type_soundness_evalFragmentFull`) over the existing executable-soundness slice, making progress/preservation/soundness citation surfaces explicit.
 - **Phase 2 (active):** `Kea/Eval.lean` now also adds a canonical combined soundness shape for the same fragment (`CoreProgressPreservationEvalFragmentFull`) with both declarative and algorithmic entry wrappers (`coreProgressPreservationEvalFragmentFull_of_hasType`, `coreProgressPreservationEvalFragmentFull_of_infer`).
 - **Phase 2 (active):** `Kea/Eval.lean` now also bridges unification-threaded inference into that same core soundness shape (`coreProgressPreservationEvalFragmentFull_of_inferUnify`), using bundled hook premises plus `inferExprUnify` success.
+- **Phase 2 (active):** `Kea/Eval.lean` now additionally exposes direct unification-threaded entry wrappers for the full evaluator fragment (`type_soundness_evalFragmentFull_of_inferUnify`, `eval_progress_evalFragmentFull_of_inferUnify`, `eval_preservation_evalFragmentFull_of_inferUnify`), so `inferExprUnify` success reaches canonical soundness outcomes in one theorem step.
 
 The formal workspace lives at [`formal/`](formal/).
 
