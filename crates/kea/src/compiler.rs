@@ -654,10 +654,10 @@ fn test_decl_to_fn_decl(test_decl: &TestDecl, generated_name: &str) -> kea_ast::
         doc: None,
         annotations: Vec::new(),
         params: Vec::new(),
-        return_annotation: Some(kea_ast::Spanned::new(
-            TypeAnnotation::Named("Unit".to_string()),
-            test_decl.span,
-        )),
+        // Synthetic test functions: clear return_annotation so the purity
+        // validator skips them.  Test bodies may use any effects (Fail,
+        // IO, Net, etc.) depending on what they test.
+        return_annotation: None,
         effect_annotation: None,
         body: test_decl.body.clone(),
         span: test_decl.span,
@@ -675,16 +675,25 @@ fn is_main_decl(decl: &kea_ast::Decl) -> bool {
 }
 
 fn build_test_main_decl(test_fn_name: &str, file_id: FileId) -> Result<kea_ast::Decl, String> {
+    // Parse the body from source but strip return_annotation so the purity
+    // validator skips the synthetic main (the guard checks
+    // return_annotation.is_some()).  Test functions may use any effects.
     let source = format!("fn main() -> Int\n  {test_fn_name}()\n  0\n");
     let (tokens, _) = lex_layout(&source, file_id)
         .map_err(|diags| format_diagnostics("lexing failed", &diags))?;
     let module = parse_module(tokens, file_id)
         .map_err(|diags| format_diagnostics("parsing failed", &diags))?;
-    module
+    let mut decl = module
         .declarations
         .into_iter()
         .next()
-        .ok_or_else(|| "failed to build synthetic test main declaration".to_string())
+        .ok_or_else(|| "failed to build synthetic test main declaration".to_string())?;
+    // Clear return_annotation so the purity validator treats this as a
+    // synthetic node rather than a user-written fn declaration.
+    if let DeclKind::Function(ref mut fn_decl) = decl.node {
+        fn_decl.return_annotation = None;
+    }
+    Ok(decl)
 }
 
 fn collect_project_modules(entry: &Path) -> Result<Vec<LoadedModule>, String> {

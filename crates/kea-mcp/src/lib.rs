@@ -576,7 +576,7 @@ mod tests {
     #[test]
     fn type_check_let_bound_call_result_preserves_returned_callable_effect_row() {
         let server = KeaMcpServer::new();
-        let code = "effect Emit\n  fn emit(val: Int) -> Unit\n\nfn make_emitter() -> fn(Int) -[Emit]> Unit\n  |x: Int| Emit.emit(x)\n\nfn trap() -> Unit\n  let f = make_emitter()\n  f(42)";
+        let code = "effect Emit\n  fn emit(val: Int) -> Unit\n\nfn make_emitter() -> fn(Int) -[Emit]> Unit\n  |x: Int| Emit.emit(x)\n\nfn trap() -[Emit]> Unit\n  let f = make_emitter()\n  f(42)";
         let value = parse_json(&server.handle_type_check(code));
         assert_eq!(value["status"], "ok", "type_check response: {value}");
 
@@ -596,7 +596,7 @@ mod tests {
     #[test]
     fn type_check_direct_curried_call_preserves_returned_callable_effect_row() {
         let server = KeaMcpServer::new();
-        let code = "effect Emit\n  fn emit(val: Int) -> Unit\n\nfn apply(f: fn(Int) -[Emit]> Unit) -> fn(Int) -[Emit]> Unit\n  f\n\nfn logger(x: Int) -[Emit]> Unit\n  Emit.emit(x)\n\nfn trap() -> Unit\n  apply(logger)(42)";
+        let code = "effect Emit\n  fn emit(val: Int) -> Unit\n\nfn apply(f: fn(Int) -[Emit]> Unit) -> fn(Int) -[Emit]> Unit\n  f\n\nfn logger(x: Int) -[Emit]> Unit\n  Emit.emit(x)\n\nfn trap() -[Emit]> Unit\n  apply(logger)(42)";
         let value = parse_json(&server.handle_type_check(code));
         assert_eq!(value["status"], "ok", "type_check response: {value}");
 

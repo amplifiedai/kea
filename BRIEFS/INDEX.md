@@ -65,6 +65,11 @@ Designed and approved. Ready to pick up. Ordered by execution sequence per ROADM
 
 *(in progress — see Active section)*
 
+### Pre-0g: Effect Contract Completeness
+
+21. *(done)* **[Pure arrow enforcement](done/pure-arrow-enforcement.md)** — see Done section.
+22. **[Handler compilation Tiers 3-4](todo/handler-tiers-3-4.md)** — Evidence-passing for polymorphic handlers (Tier 3) and one-shot continuations for non-tail-resumptive handlers (Tier 4). Tiers 1-2 shipped in 0e; Tier 3 blocks effect-polymorphic library functions and Phase 1. Tier 4 covers ~5% of handlers (code after `resume`).
+
 ### Phase 0g: Advanced Types + @derive + Stdlib Tier 3 (needs 0d + 0c)
 
 10. **[Advanced type features](todo/0g-advanced-types.md)** — GADTs, Eff kind, associated types, supertraits, @derive(Show, Eq, Ord). Stdlib Tier 3: Foldable, Iterator, JSON, sorted collections. **0g completion = stdlib sufficient for self-hosting.**
@@ -72,6 +77,14 @@ Designed and approved. Ready to pick up. Ordered by execution sequence per ROADM
 ### Phase 0h: Error Message Quality (parallel, not blocking)
 
 11. **[Error message quality](todo/0h-stdlib-errors.md)** — Row-diff error messages, effect provenance in diagnostics, stable error codes, snapshot tests. Not on critical path — runs in parallel with 0g.
+
+### Language Model Consistency (near-term)
+
+19. **[Module/type merge and nominal method placement](todo/module-type-merge-methods.md)** — Make file-module semantics explicit in KERNEL/CALL-SYNTAX, enable inherent methods in struct/enum blocks, preserve same-name merge (`List` not `List.List`), and define duplicate-name diagnostics.
+
+### Documentation Bootstrap (near-term)
+
+20. **[kea doc bootstrap (HTML from compiler metadata)](todo/kea-doc-bootstrap.md)** — Add a practical `kea doc` command now (without grammar blocks) that generates effect-aware reference HTML from compiler metadata, targeting canonical `kd-*` keadocs classes and existing design-system assets.
 
 ### Cross-phase: Practical Language Gaps (0f through Phase 1)
 
@@ -136,6 +149,7 @@ Completed briefs. Kept for reference and design rationale.
 
 | Brief | Summary |
 |-------|---------|
+| [pure-arrow-enforcement](done/pure-arrow-enforcement.md) | `->` now enforces empty effects at compile time. Validator rejects pure functions with concrete unhandled effects; handler-aware inference already subtracted handled effects correctly. Synthetic test infra exempted. |
 | [idiomatic-stdlib-pass](done/idiomatic-stdlib-pass.md) | Idiomatic quality sweep complete across stdlib modules: Fail-first signatures, Result role clarified as data representation, consistent naming/ordering, and Elixir/Rust-quality documentation patterns applied end-to-end. |
 | [syntax-migration](done/syntax-migration-rill-to-kea.md) | Rill→Kea syntax migration complete: `struct` (with `record` deprecated), `base~{ field }` functional update, `(a, b)` tuples (with `#()` deprecated), `%{}` map literals verified. |
 | [string-interpolation](done/string-interpolation.md) | KERNEL §1.6 landed with `{...}` interpolation, escaped braces (`{{`/`}}`), parser desugaring to `show(...)` + concat, and CLI/runtime regression coverage. |
@@ -170,6 +184,9 @@ Completed briefs. Kept for reference and design rationale.
                 │    │
                 │    ├── 0e: runtime effects + STDLIB TIER 1 (effects)  ← DONE
                 │    │    │   (IO/State/Log as .kea, handler tests in Kea)
+                │    │    │
+                │    │    ├── handler-tiers-3-4: evidence dispatch + continuations
+                │    │    │    (blocks effect-polymorphic libs, Phase 1)
                 │    │    │
                 │    │    └── 0f step 7: Unique + effects
                 │    │

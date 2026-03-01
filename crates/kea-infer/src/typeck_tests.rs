@@ -10311,9 +10311,17 @@ fn trait_bounds_checked_against_registry() {
         where_clause: vec![],
     };
     trait_registry.register_trait_impl(&impl_block).unwrap();
-    // Add dummy methods to satisfy the impl.
+    // Add methods with a type compatible with the trait method signature.
+    // The trait method `sum` has no annotations, so defaults to `() -> ()`.
     trait_registry
-        .add_impl_methods(BTreeMap::from([("sum".to_string(), Type::Int)]))
+        .add_impl_methods(BTreeMap::from([(
+            "sum".to_string(),
+            Type::Function(kea_types::FunctionType {
+                params: vec![],
+                ret: Box::new(Type::Unit),
+                effects: kea_types::EffectRow::pure(),
+            }),
+        )]))
         .unwrap();
 
     // Create a scheme with `t0: Additive`, instantiate it, then unify t0 with List(Int).

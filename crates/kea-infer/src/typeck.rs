@@ -9100,9 +9100,23 @@ pub fn validate_declared_fn_effect_row_with_env_and_records(
     records: &RecordRegistry,
 ) -> Result<(), Diagnostic> {
     let Some(ann) = &fn_decl.effect_annotation else {
-        // TODO: Per KERNEL.md, `->` asserts empty effects.  Enforcement
-        // requires migrating existing code to use effect annotations where
-        // needed.  See BRIEFS for the purity-enforcement follow-up.
+        // `->` asserts empty effects (KERNEL §5.3).  Enforce for real fn
+        // declarations (return_annotation present), not synthetic closures.
+        // Only reject concrete named effects — open tail variables from
+        // parametric callbacks (e.g. `[| e1]`) are not violations.
+        if fn_decl.return_annotation.is_some() && !inferred_row.row.fields.is_empty() {
+            return Err(Diagnostic::error(
+                Category::TypeMismatch,
+                format!(
+                    "function `{}` is declared pure (`->`) but its body requires effects `{}`",
+                    fn_decl.name.node, inferred_row,
+                ),
+            )
+            .at(span_to_loc(fn_decl.name.span))
+            .with_help(
+                "add an effect annotation: replace `->` with `-[effects]>` to declare the required effects".to_string(),
+            ));
+        }
         return Ok(());
     };
     let declared = parse_declared_effect(ann);
