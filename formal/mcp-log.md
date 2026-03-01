@@ -11203,3 +11203,38 @@ single named theorem surface on `EvalFragmentFull`.
 **Impact**:
 - Item-(2) route traceability is improved: algorithmic unification success can
   now be cited via a dedicated evaluator bridge slice.
+
+### 2026-03-01: packaged infer-unify progress+preservation slice
+
+**Context**: Extended `Kea/Eval.lean` with:
+- `CoreProgressPreservationEvalUnifySlice`
+- `coreProgressPreservationEvalUnifySlice_proved`
+
+This packages unification-threaded progress+preservation on `EvalFragmentFull`
+as a one-name theorem surface, parallel to `VerticalEvalUnifyBridgeSlice`.
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No semantic change; the packaged slice should quantify over
+  `coreProgressPreservationEvalFragmentFull_of_inferUnify`.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Unification-threaded progress+preservation now has its own packaged theorem
+  contract.
+
+**Impact**:
+- Core-soundness packaging now exposes both existential type-soundness and
+  progress/preservation slices for the infer-unify path.
