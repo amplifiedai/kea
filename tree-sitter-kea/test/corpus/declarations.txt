@@ -41,7 +41,7 @@ effect IO
   (effect_declaration
     name: (upper_identifier)
     (indent)
-    (function_declaration
+    (function_signature
       name: (identifier)
       (parameter_list
         (parameter
@@ -55,8 +55,7 @@ effect IO
             name: (upper_identifier)))
         type: (named_type
           (upper_identifier))))
-    (MISSING dedent))
-  (newline))
+    (dedent)))
 
 ==================
 Type definition
@@ -116,7 +115,7 @@ trait Eq a
     name: (upper_identifier)
     param: (identifier)
     (indent)
-    (function_declaration
+    (function_signature
       name: (identifier)
       (parameter_list
         (parameter
@@ -132,8 +131,7 @@ trait Eq a
       (pure_return_type
         type: (named_type
           (upper_identifier))))
-    (MISSING dedent))
-  (newline))
+    (dedent)))
 
 ==================
 Use declaration
@@ -283,7 +281,7 @@ effect IO
     (effect_declaration
       name: (upper_identifier)
       (indent)
-      (function_declaration
+      (function_signature
         name: (identifier)
         (parameter_list
           (parameter
@@ -297,8 +295,7 @@ effect IO
               name: (upper_identifier)))
           type: (named_type
             (upper_identifier))))
-      (MISSING dedent)))
-  (newline))
+      (dedent))))
 
 ==================
 Doc block with blank lines between paragraphs
