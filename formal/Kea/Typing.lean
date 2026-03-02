@@ -2528,6 +2528,38 @@ theorem native_handler_scoped_to_strict_lift_prop_of_strict_typing
     cases h_eq
 
 /--
+Scoped-to-strict lift implies global strict-top handle typing.
+-/
+theorem native_handler_strict_top_typing_prop_of_scoped_to_strict_lift
+    (h_lift : native_handler_scoped_to_strict_lift_prop) :
+    native_handler_strict_top_typing_prop := by
+  intro env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed
+  exact h_lift env
+    (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+    ty
+    h_typed
+
+/--
+Global strict-top handle typing is sufficient to recover scoped-to-strict lift.
+-/
+theorem native_handler_scoped_to_strict_lift_prop_of_strict_top_typing
+    (h_strict_top : native_handler_strict_top_typing_prop) :
+    native_handler_scoped_to_strict_lift_prop := by
+  exact native_handler_scoped_to_strict_lift_prop_of_strict_typing
+    ((native_handler_strict_top_typing_prop_iff_strict_typing).1 h_strict_top)
+
+/--
+Global strict-top handle typing and scoped-to-strict lift are equivalent
+contracts.
+-/
+theorem native_handler_strict_top_typing_prop_iff_scoped_to_strict_lift :
+    native_handler_strict_top_typing_prop
+      ↔ native_handler_scoped_to_strict_lift_prop := by
+  constructor
+  · exact native_handler_scoped_to_strict_lift_prop_of_strict_top_typing
+  · exact native_handler_strict_top_typing_prop_of_scoped_to_strict_lift
+
+/--
 Global mismatch-extension progress from core body progress plus strict-top
 handle typing.
 -/
@@ -2545,6 +2577,24 @@ theorem native_handler_step_ext_with_mismatch_progress_of_core_progress_and_stri
   exact native_handler_step_ext_with_mismatch_step_of_core_progress_and_strict_top_handle
     clauseSem mismatchSem bodyStep h_core_progress
     (h_strict_top_typing env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed)
+
+/--
+Global mismatch-extension progress route from core body progress plus
+scoped-to-strict lift, routed through strict-top handle typing.
+-/
+theorem native_handler_step_ext_with_mismatch_progress_of_core_progress_and_scoped_to_strict_lift_via_strict_top_typing
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core_progress :
+      ∀ env body ty,
+        HasTypeScopedTop env body ty →
+        CoreValue body ∨ ∃ body', bodyStep body body')
+    (h_lift : native_handler_scoped_to_strict_lift_prop) :
+    native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep := by
+  exact native_handler_step_ext_with_mismatch_progress_of_core_progress_and_strict_top_typing
+    clauseSem mismatchSem bodyStep h_core_progress
+    (native_handler_strict_top_typing_prop_of_scoped_to_strict_lift h_lift)
 
 /--
 Core-judgment local handler soundness route from global strict typing:
@@ -2762,6 +2812,21 @@ theorem not_native_handler_strict_top_typing_prop_iff_not_metadata_coherence :
   · intro h_not_coherence h_strict_top
     exact h_not_coherence
       ((native_handler_strict_top_typing_prop_iff_metadata_coherence).1 h_strict_top)
+
+/--
+Negated-form boundary equivalence: strict-top typing fails iff scoped-to-strict
+lift fails.
+-/
+theorem not_native_handler_strict_top_typing_prop_iff_not_scoped_to_strict_lift :
+    (¬ native_handler_strict_top_typing_prop)
+      ↔ (¬ native_handler_scoped_to_strict_lift_prop) := by
+  constructor
+  · intro h_not_strict_top h_lift
+    exact h_not_strict_top
+      (native_handler_strict_top_typing_prop_of_scoped_to_strict_lift h_lift)
+  · intro h_not_lift h_strict_top
+    exact h_not_lift
+      (native_handler_scoped_to_strict_lift_prop_of_strict_top_typing h_strict_top)
 
 /--
 Full mismatch-extension progress from core body progress plus a global strict
@@ -3017,6 +3082,29 @@ theorem native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_st
       clauseSem mismatchSem bodyStep h_core.1
   · exact native_handler_step_ext_with_mismatch_progress_of_core_progress_and_strict_top_typing
       clauseSem mismatchSem bodyStep h_core.2 h_strict_top_typing
+
+/--
+Capstone route: mismatch-extension soundness from packaged core soundness plus
+scoped-to-strict lift, routed through strict-top typing.
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_scoped_to_strict_lift_via_strict_top_typing
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core :
+      (∀ env body body' ty,
+        HasTypeScopedTop env body ty →
+        bodyStep body body' →
+        HasTypeScopedTop env body' ty)
+      ∧
+      (∀ env body ty,
+        HasTypeScopedTop env body ty →
+        CoreValue body ∨ ∃ body', bodyStep body body'))
+    (h_lift : native_handler_scoped_to_strict_lift_prop) :
+    native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep := by
+  exact native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_strict_top_typing
+    clauseSem mismatchSem bodyStep h_core
+    (native_handler_strict_top_typing_prop_of_scoped_to_strict_lift h_lift)
 
 /--
 Specialized soundness target for the concrete pass-through mismatch semantics.

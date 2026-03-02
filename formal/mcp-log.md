@@ -17619,3 +17619,57 @@ strict-top/global soundness routes).
 **Impact**:
 - Checkpoint validation now explicitly follows the required `Predict -> Probe ->
   Classify -> Act -> Traceability` structure with new slice-relevant probes.
+
+### 2026-03-02: strict-top/scoped-lift contract triangle closure and routed capstones
+
+**Context**: Added direct equivalence/route theorems connecting strict-top
+typing and scoped-to-strict lift, and routed global progress/soundness through
+strict-top from scoped-lift assumptions.
+
+**MCP tools used**: `reset_session`, `type_check`
+
+**Predict (Lean side)**:
+- Contract-triangle theorem additions are proof-surface closure, so runtime
+  semantics should remain unchanged.
+- Coherent matching handlers should fully discharge handled effects.
+- Mismatched partial handling should expose residual effects (purity violation).
+- Out-of-handler `resume` remains rejected.
+
+**Probe (Rust side via MCP)**:
+1. Coherent single-effect discharge with post-handle computation:
+   - `main` pure, `handle run(); Counter.next() -> resume 40`, then `v + 2`
+   - `status = ok`, `main : () -> Int`.
+2. Resume return-type mismatch in matching clause:
+   - `Counter.next() -> resume "bad"`
+   - `status = error`, `E0001` (type mismatch).
+3. Partial nested handling leaves residual effect:
+   - inner handles `A`, outer absent `B`, pure `main`
+   - `status = error`, `E0001` (requires `[B]`).
+4. Full nested disjoint handling:
+   - inner handles `A`, outer handles `B`
+   - `status = ok`, `main : () -> Int`.
+5. Out-of-handler resume baseline:
+   - `fn mk() -> Int; resume 1`
+   - `status = error`, `E0012`.
+
+**Classify**: Agreement.
+
+**Act**:
+- Kept theorem additions; no statement/precondition revisions required.
+- Continued with strict-top/scoped-lift closure and routed capstone exports.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_strict_top_typing_prop_of_scoped_to_strict_lift`
+  - `native_handler_scoped_to_strict_lift_prop_of_strict_top_typing`
+  - `native_handler_strict_top_typing_prop_iff_scoped_to_strict_lift`
+  - `native_handler_step_ext_with_mismatch_progress_of_core_progress_and_scoped_to_strict_lift_via_strict_top_typing`
+  - `not_native_handler_strict_top_typing_prop_iff_not_scoped_to_strict_lift`
+  - `native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_scoped_to_strict_lift_via_strict_top_typing`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Strict-top and scoped-lift contracts now have direct theorem equivalence and
+  route-level capstone bridges for global progress/soundness.
