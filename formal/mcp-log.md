@@ -16016,3 +16016,38 @@ to:
 
 **Outcome**:
 - Typed native shape consequence routing now has a direct one-hop API theorem.
+
+### 2026-03-02: explicit no-step lemmas and typed native progress counterexample
+
+**Context**: Strengthened the native minimal-step characterization by adding
+explicit no-step consequences and a packaged typed counterexample witness.
+
+Lean changes:
+- `native_handler_step_not_exists_of_not_supported_shape`
+- `native_handler_step_not_exists_of_int_body`
+- `native_handler_typed_progress_counterexample`
+
+This makes the native progress boundary concrete at theorem level: we now have
+an explicit typed handle expression with no one-step successor in the current
+minimal relation.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Predict (Lean side)**:
+- Theorem strengthening only; no runtime behavior change expected.
+- Existing `E0012` behavior should remain stable.
+
+**Probe (direct `kea` MCP)**:
+1. Single-resume clause accepted (`status = ok`).
+2. Sequential double-resume rejected (`status = error`, `E0012`).
+3. `resume` outside handler rejected (`status = error`, `E0012`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Native progress limitation now has explicit no-step theorem routes and a
+  concrete typed counterexample witness.

@@ -867,6 +867,33 @@ theorem native_handler_step_exists_iff_supported_shape
     exact native_handler_step_exists_of_supported_shape clauseSem h_shape
 
 /--
+If supported shape does not hold, no native one-step reduction exists.
+-/
+theorem native_handler_step_not_exists_of_not_supported_shape
+    (clauseSem : NativeHandlerClauseSem)
+    {body : CoreExpr} {op : Label} {argName resumeName : String}
+    {argTy opRetTy : Ty} {clauseBody : CoreExpr}
+    (h_not_shape : ¬ NativeHandlerStepSupportedShape body op argTy opRetTy) :
+    ¬ ∃ e', NativeHandlerStep clauseSem
+      (.handle body op argName resumeName argTy opRetTy clauseBody) e' := by
+  intro h_exists
+  exact h_not_shape ((native_handler_step_exists_iff_supported_shape clauseSem).1 h_exists)
+
+/--
+Concrete no-step consequence for handles whose body is a non-`perform` int literal.
+-/
+theorem native_handler_step_not_exists_of_int_body
+    (clauseSem : NativeHandlerClauseSem)
+    {n : Int} {op : Label} {argName resumeName : String}
+    {argTy opRetTy : Ty} {clauseBody : CoreExpr} :
+    ¬ ∃ e', NativeHandlerStep clauseSem
+      (.handle (.intLit n) op argName resumeName argTy opRetTy clauseBody) e' := by
+  apply native_handler_step_not_exists_of_not_supported_shape clauseSem
+  intro h_shape
+  rcases h_shape with ⟨arg, k, h_eq⟩
+  cases h_eq
+
+/--
 Typed-redex progress on the native handler-step relation.
 -/
 theorem native_handler_step_progress_of_typed_redex
@@ -1045,6 +1072,27 @@ theorem native_handler_step_progress_prop_false
       native_handler_body_progress_obligation_prop :=
     (native_handler_step_progress_prop_iff_body_progress_obligation clauseSem).1 h_progress
   exact native_handler_body_progress_obligation_false h_body_progress
+
+/--
+Typed native progress counterexample for the current minimal relation:
+there exists a well-typed native handle expression with no one-step successor.
+-/
+theorem native_handler_typed_progress_counterexample
+    (clauseSem : NativeHandlerClauseSem) :
+    ∃ env body op argName resumeName argTy opRetTy clauseBody ty,
+      HasType env (.handle body op argName resumeName argTy opRetTy clauseBody) ty ∧
+      ¬ ∃ e', NativeHandlerStep clauseSem
+        (.handle body op argName resumeName argTy opRetTy clauseBody) e' := by
+  refine ⟨[], .intLit 0, "Op", "x", "k", .int, .int, .intLit 1, .int, ?_, ?_⟩
+  · exact HasType.handle [] (.intLit 0) "Op" "x" "k" .int .int .int (.intLit 1)
+      (HasType.int [] 0)
+      (HasType.int
+        ((resumeCtxName, .function (.cons .int .nil) .int) ::
+          ("k", .function (.cons .int .nil) .int) ::
+          ("x", .int) ::
+          [])
+        1)
+  · exact native_handler_step_not_exists_of_int_body clauseSem
 
 /-- Declarative field typing is functional on the core slice. -/
 theorem hasFieldsType_unique
