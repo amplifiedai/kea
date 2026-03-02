@@ -5,10 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>keadocs design system preview</title>
 
+  <!-- Local font-face declarations (same as generator output) -->
+  <link rel="stylesheet" href="../css/fonts.css">
+  <!-- If fonts haven't been downloaded yet, uncomment the next 3 lines as fallback:
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Literata:ital,opsz,wght@0,7..72,300;0,7..72,400;0,7..72,500;0,7..72,600;0,7..72,700;1,7..72,400&family=Syne:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-
+  -->
   <link rel="stylesheet" href="../css/keadocs.css">
 
   <style>
@@ -47,7 +50,7 @@
 
   <!-- theme toggle -->
   <div style="text-align: right; margin-bottom: 1rem;">
-    <button class="kd-theme-toggle" onclick="toggleTheme()" aria-label="Toggle dark mode" id="themeBtn">○</button>
+    <button class="kd-theme-toggle" aria-label="Toggle dark mode" id="themeBtn">○</button>
   </div>
 
   <h1>keadocs design system</h1>
@@ -174,9 +177,9 @@
     </div>
 
     <p class="preview-label">effectful with click-to-expand effect annotation</p>
-    <div class="kd-sig kd-sig--effectful" id="sig-assert">
-      <span class="kd-syn-keyword">fn</span> <span class="kd-syn-function">assert</span>(<span class="kd-syn-param">value</span>: <a class="kd-type-link" href="#">Bool</a>) <span class="kd-effect-trigger" onclick="toggleExpand('expand-assert')">-[Fail String]></span> <a class="kd-type-link" href="#">Unit</a>
-      <div class="kd-expand" id="expand-assert">
+    <div class="kd-sig kd-sig--effectful">
+      <span class="kd-syn-keyword">fn</span> <span class="kd-syn-function">assert</span>(<span class="kd-syn-param">value</span>: <a class="kd-type-link" href="#">Bool</a>) <span class="kd-effect-trigger" aria-expanded="false">-[Fail String]></span> <a class="kd-type-link" href="#">Unit</a>
+      <div class="kd-expand">
         <div class="kd-expand__row">
           <span class="kd-expand__label kd-expand__label--fail">Fail String</span>
           <span class="kd-expand__desc">fails with <code>"assertion failed"</code> when the value is false. <a href="#">reference →</a></span>
@@ -388,6 +391,10 @@
       <h1 class="kd-page-title" style="margin-top: 0;">io</h1>
       <div class="kd-page-meta">
         <span class="kd-page-tag kd-page-tag--effect">effect</span>
+        <span class="kd-page-tag kd-page-tag--struct">struct</span>
+        <span class="kd-page-tag kd-page-tag--enum">enum</span>
+        <span class="kd-page-tag kd-page-tag--trait">trait</span>
+        <span class="kd-page-tag kd-page-tag--alias">alias</span>
         <span>core / io</span>
         <span style="margin-left: auto;"><a class="kd-src-link" href="#">[src]</a></span>
       </div>
@@ -431,40 +438,8 @@
 
 </div>
 
-<script>
-function toggleTheme() {
-  const html = document.documentElement;
-  const current = html.getAttribute('data-theme');
-  const next = current === 'dark' ? 'light' : 'dark';
-  html.setAttribute('data-theme', next);
-  try { localStorage.setItem('kd-theme', next); } catch (e) {}
-  updateToggle(next);
-}
-
-function updateToggle(theme) {
-  document.querySelectorAll('.kd-theme-toggle').forEach(btn => {
-    btn.textContent = theme === 'dark' ? '●' : '○';
-  });
-}
-
-function toggleExpand(id) {
-  const el = document.getElementById(id);
-  if (el) el.classList.toggle('kd-expand--visible');
-}
-
-(function() {
-  try {
-    const saved = localStorage.getItem('kd-theme');
-    if (saved) {
-      document.documentElement.setAttribute('data-theme', saved);
-      updateToggle(saved);
-    } else {
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      updateToggle(prefersDark ? 'dark' : 'light');
-    }
-  } catch (e) {}
-})();
-</script>
+<!-- Uses the same keadocs.js that ships with generator output -->
+<script src="../js/keadocs.js" defer></script>
 
 </body>
 </html>

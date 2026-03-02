@@ -802,6 +802,7 @@ hr.kd-rule--reveal  { height: 4px; background: var(--kd-scarlet); }
 .kd-page-tag--struct { background: rgba(43, 107, 107, 0.07); color: var(--kd-teal); }
 .kd-page-tag--trait  { background: var(--kd-badge-io-bg);     color: var(--kd-olive); }
 .kd-page-tag--enum   { background: var(--kd-badge-fail-bg);   color: var(--kd-gold-muted); }
+.kd-page-tag--alias  { background: var(--kd-badge-pure-bg);   color: var(--kd-secondary); }
 
 .kd-page-desc { max-width: 38rem; }
 
