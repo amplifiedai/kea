@@ -560,14 +560,37 @@ fn inline_known_handler_callbacks(
         let target_block = &target_fn.blocks[0];
 
         if is_state_get {
-            // State-get shape: single instruction StateCellLoad, returns loaded value
+            // State-get: exactly 1 capture (the state cell), 0 call params
+            if captures.len() != 1 {
+                continue;
+            }
+            // Wrapper shape: exactly 1 ClosureCaptureLoad(index=0) + 1 Call
+            if wrapper_block.instructions.len() != 2 {
+                continue;
+            }
+            if !matches!(
+                &wrapper_block.instructions[0],
+                MirInst::ClosureCaptureLoad { capture_index: 0, .. }
+            ) {
+                continue;
+            }
+            // Target shape: single StateCellLoad, return value matches loaded value
             if target_block.instructions.len() != 1 {
                 continue;
             }
-            if !matches!(&target_block.instructions[0], MirInst::StateCellLoad { .. }) {
+            let MirInst::StateCellLoad { dest: loaded, .. } = &target_block.instructions[0]
+            else {
+                continue;
+            };
+            // Verify terminator returns the loaded value
+            if !matches!(
+                &target_block.terminator,
+                MirTerminator::Return { value: Some(v) } if v == loaded
+            ) {
                 continue;
             }
-            if captures.is_empty() {
+            // Target must accept exactly 1 param (the cell)
+            if target_fn.signature.params.len() != 1 {
                 continue;
             }
             inlinable.insert(
@@ -577,23 +600,43 @@ fn inline_known_handler_callbacks(
                 },
             );
         } else if is_state_put {
-            // State-put shape: StateCellStore + Const(Unit), returns unit
+            // State-put: exactly 1 capture (the state cell), 1 call param (the value)
+            if captures.len() != 1 {
+                continue;
+            }
+            // Wrapper shape: exactly 1 ClosureCaptureLoad(index=0) + 1 Call
+            if wrapper_block.instructions.len() != 2 {
+                continue;
+            }
+            if !matches!(
+                &wrapper_block.instructions[0],
+                MirInst::ClosureCaptureLoad { capture_index: 0, .. }
+            ) {
+                continue;
+            }
+            // Target shape: StateCellStore + Const(Unit), return value matches unit const
             if target_block.instructions.len() != 2 {
                 continue;
             }
             if !matches!(&target_block.instructions[0], MirInst::StateCellStore { .. }) {
                 continue;
             }
+            let MirInst::Const {
+                dest: unit_dest,
+                literal: MirLiteral::Unit,
+            } = &target_block.instructions[1]
+            else {
+                continue;
+            };
+            // Verify terminator returns the unit const
             if !matches!(
-                &target_block.instructions[1],
-                MirInst::Const {
-                    literal: MirLiteral::Unit,
-                    ..
-                }
+                &target_block.terminator,
+                MirTerminator::Return { value: Some(v) } if v == unit_dest
             ) {
                 continue;
             }
-            if captures.is_empty() {
+            // Target must accept exactly 2 params (cell, value)
+            if target_fn.signature.params.len() != 2 {
                 continue;
             }
             inlinable.insert(
@@ -628,6 +671,9 @@ fn inline_known_handler_callbacks(
             {
                 match callback_kind {
                     InlinableCallback::StateGet { state_cell } => {
+                        if !args.is_empty() {
+                            continue;
+                        }
                         if let Some(dest) = result {
                             replacements.push((
                                 block_idx,
@@ -643,12 +689,12 @@ fn inline_known_handler_callbacks(
                         }
                     }
                     InlinableCallback::StatePut { state_cell } => {
+                        if args.len() != 1 {
+                            continue;
+                        }
                         let mut insts = vec![MirInst::StateCellStore {
                             cell: state_cell.clone(),
-                            value: args
-                                .first()
-                                .cloned()
-                                .unwrap_or(MirValueId(u32::MAX)),
+                            value: args[0].clone(),
                         }];
                         if let Some(dest) = result {
                             insts.push(MirInst::Const {
