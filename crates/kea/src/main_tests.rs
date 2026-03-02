@@ -2627,6 +2627,29 @@
 
     #[test]
     #[cfg(not(target_os = "windows"))]
+    fn compile_rejects_fip_when_unique_param_escapes_via_call() {
+        let source_path = write_temp_source(
+            "fn consume(x: Unique Int) -> Int\n  0\n\n@fip\nfn forward_via_call(x: Unique Int) -> Int\n  consume(x)\n\nfn main() -> Int\n  0\n",
+            "kea-cli-fip-unique-call-escape",
+            "kea",
+        );
+
+        let err = run_file(&source_path)
+            .expect_err("@fip verifier should reject unique call-boundary escape");
+        assert!(
+            err.contains("`@fip` verification failed for `forward_via_call`"),
+            "expected @fip verification failure, got: {err}"
+        );
+        assert!(
+            err.contains("escapes through a call argument"),
+            "expected call-boundary ownership-flow detail, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
     fn compile_rejects_fip_when_allocations_remain() {
         let source_path = write_temp_source(
             "enum Chain\n  End\n  Link(Int, Chain)\n\n@fip\nfn build(n: Int) -> Chain\n  if n <= 0\n    Chain.End\n  else\n    Chain.Link(n, build(n - 1))\n\nfn main() -> Int\n  0\n",

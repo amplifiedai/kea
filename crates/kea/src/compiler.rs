@@ -2175,7 +2175,7 @@ fn validate_fip_annotations(module: &Module, hir: &HirModule) -> Vec<Diagnostic>
 
         let profile = mir_function.map(collect_fip_mir_profile).unwrap_or_default();
         let hir_var_refs = collect_hir_var_refs_by_function_name(hir, &name);
-        let unique_flow_issues = fip_spec
+        let mut unique_flow_issues = fip_spec
             .unique_param_names
             .iter()
             .filter(|name| !hir_var_refs.contains(*name))
@@ -2185,6 +2185,13 @@ fn validate_fip_annotations(module: &Module, hir: &HirModule) -> Vec<Diagnostic>
                 )
             })
             .collect::<Vec<_>>();
+        let call_escapes =
+            collect_hir_unique_call_escapes_by_function_name(hir, &name, &fip_spec.unique_param_names);
+        for escaped in call_escapes {
+            unique_flow_issues.push(format!(
+                "Unique parameter `{escaped}` escapes through a call argument; @fip call-boundary ownership proofs are not yet supported"
+            ));
+        }
         let mut failures = Vec::new();
         if profile.disallowed_alloc_count > 0 {
             failures.push(format!("disallowed_alloc_count={}", profile.disallowed_alloc_count));
@@ -2387,6 +2394,116 @@ fn collect_hir_var_refs(expr: &HirExpr, refs: &mut BTreeSet<String>) {
         }
         HirExprKind::Resume { value } => collect_hir_var_refs(value, refs),
         HirExprKind::Raw(_) => {}
+    }
+}
+
+fn collect_hir_unique_call_escapes_by_function_name(
+    hir: &HirModule,
+    name: &str,
+    unique_param_names: &BTreeSet<String>,
+) -> BTreeSet<String> {
+    let mut escapes = BTreeSet::new();
+    for decl in &hir.declarations {
+        let HirDecl::Function(function) = decl else {
+            continue;
+        };
+        if function.name != name && !function.name.ends_with(&format!(".{name}")) {
+            continue;
+        }
+        collect_hir_unique_call_escapes(&function.body, unique_param_names, &mut escapes);
+        break;
+    }
+    escapes
+}
+
+fn collect_hir_unique_call_escapes(
+    expr: &HirExpr,
+    unique_param_names: &BTreeSet<String>,
+    escapes: &mut BTreeSet<String>,
+) {
+    match &expr.kind {
+        HirExprKind::Call { func, args } => {
+            collect_hir_unique_call_escapes(func, unique_param_names, escapes);
+            for arg in args {
+                if let HirExprKind::Var(name) = &arg.kind
+                    && unique_param_names.contains(name)
+                {
+                    escapes.insert(name.clone());
+                }
+                collect_hir_unique_call_escapes(arg, unique_param_names, escapes);
+            }
+        }
+        HirExprKind::Binary { left, right, .. } => {
+            collect_hir_unique_call_escapes(left, unique_param_names, escapes);
+            collect_hir_unique_call_escapes(right, unique_param_names, escapes);
+        }
+        HirExprKind::Unary { operand, .. } => {
+            collect_hir_unique_call_escapes(operand, unique_param_names, escapes);
+        }
+        HirExprKind::If {
+            condition,
+            then_branch,
+            else_branch,
+        } => {
+            collect_hir_unique_call_escapes(condition, unique_param_names, escapes);
+            collect_hir_unique_call_escapes(then_branch, unique_param_names, escapes);
+            if let Some(else_expr) = else_branch {
+                collect_hir_unique_call_escapes(else_expr, unique_param_names, escapes);
+            }
+        }
+        HirExprKind::Let { value, .. } => {
+            collect_hir_unique_call_escapes(value, unique_param_names, escapes);
+        }
+        HirExprKind::Block(exprs) | HirExprKind::Tuple(exprs) => {
+            for item in exprs {
+                collect_hir_unique_call_escapes(item, unique_param_names, escapes);
+            }
+        }
+        HirExprKind::Lambda { body, .. } => {
+            collect_hir_unique_call_escapes(body, unique_param_names, escapes);
+        }
+        HirExprKind::RecordLit { fields, .. } => {
+            for (_, field_expr) in fields {
+                collect_hir_unique_call_escapes(field_expr, unique_param_names, escapes);
+            }
+        }
+        HirExprKind::RecordUpdate { base, fields, .. } => {
+            collect_hir_unique_call_escapes(base, unique_param_names, escapes);
+            for (_, field_expr) in fields {
+                collect_hir_unique_call_escapes(field_expr, unique_param_names, escapes);
+            }
+        }
+        HirExprKind::FieldAccess { expr, .. } => {
+            collect_hir_unique_call_escapes(expr, unique_param_names, escapes);
+        }
+        HirExprKind::SumConstructor { fields, .. } => {
+            for field_expr in fields {
+                collect_hir_unique_call_escapes(field_expr, unique_param_names, escapes);
+            }
+        }
+        HirExprKind::SumPayloadAccess { expr, .. } => {
+            collect_hir_unique_call_escapes(expr, unique_param_names, escapes);
+        }
+        HirExprKind::Catch { expr } => {
+            collect_hir_unique_call_escapes(expr, unique_param_names, escapes);
+        }
+        HirExprKind::Handle {
+            expr,
+            clauses,
+            then_clause,
+        } => {
+            collect_hir_unique_call_escapes(expr, unique_param_names, escapes);
+            for clause in clauses {
+                collect_hir_unique_call_escapes(&clause.body, unique_param_names, escapes);
+            }
+            if let Some(then_expr) = then_clause {
+                collect_hir_unique_call_escapes(then_expr, unique_param_names, escapes);
+            }
+        }
+        HirExprKind::Resume { value } => {
+            collect_hir_unique_call_escapes(value, unique_param_names, escapes);
+        }
+        HirExprKind::Lit(_) | HirExprKind::Var(_) | HirExprKind::Raw(_) => {}
     }
 }
 
