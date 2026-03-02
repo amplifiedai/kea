@@ -135,6 +135,7 @@ fn compile_module_inner(source: &str, file_id: FileId) -> Result<CompilationCont
     )?;
 
     let hir = lower_module(&module, &env);
+    let hir = kea_hir::monomorphize::monomorphize(&hir);
     let explicit_borrow_param_map = collect_borrow_param_positions(&module, None);
     let borrow_param_map = infer_auto_borrow_param_positions(&hir, &explicit_borrow_param_map);
     diagnostics.extend(check_unique_moves_with_borrow_map(&hir, &borrow_param_map));
@@ -431,6 +432,7 @@ pub fn process_module_in_env(
     }
 
     let hir = lower_module(module, env);
+    let hir = kea_hir::monomorphize::monomorphize(&hir);
     let explicit_borrow_param_map = collect_borrow_param_positions(module, None);
     let borrow_param_map = infer_auto_borrow_param_positions(&hir, &explicit_borrow_param_map);
     diagnostics.extend(check_unique_moves_with_borrow_map(&hir, &borrow_param_map));
@@ -1068,6 +1070,7 @@ fn typecheck_loaded_modules(
 
     let module = merge_modules_for_codegen(&typed_modules);
     let hir = lower_module(&module, &env);
+    let hir = kea_hir::monomorphize::monomorphize(&hir);
     diagnostics.extend(validate_fip_annotations(&module, &hir));
     if has_errors(&diagnostics) {
         return Err(format_diagnostics("`@fip` verification failed", &diagnostics));

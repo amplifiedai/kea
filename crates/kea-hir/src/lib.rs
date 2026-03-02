@@ -4,6 +4,8 @@
 //! This initial slice provides a stable typed representation for function declarations
 //! and expression trees, with a conservative fallback for unsupported syntax.
 
+pub mod monomorphize;
+
 use std::collections::{BTreeMap, BTreeSet};
 
 use kea_ast::{
