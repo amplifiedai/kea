@@ -2178,6 +2178,80 @@ theorem native_handler_step_ext_with_mismatch_exists_and_preserves_of_core_sound
     h_step
 
 /--
+Global progress target for mismatched-perform extension under strict top-level
+typing of handled expressions.
+-/
+def native_handler_step_ext_with_mismatch_progress_strict_top_prop
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) : Prop :=
+  ∀ env body opHandle argName resumeName argTy opRetTy clauseBody ty,
+    HasTypeScopedStrictTop env
+      (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+      ty →
+    ∃ e', NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep
+      (.handle body opHandle argName resumeName argTy opRetTy clauseBody) e'
+
+/--
+Strict-top route: derive mismatched-extension progress from core body progress.
+-/
+theorem native_handler_step_ext_with_mismatch_progress_strict_top_of_core_progress
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core_progress :
+      ∀ env body ty,
+        HasTypeScopedTop env body ty →
+        CoreValue body ∨ ∃ body', bodyStep body body') :
+    native_handler_step_ext_with_mismatch_progress_strict_top_prop
+      clauseSem mismatchSem bodyStep := by
+  intro env body opHandle argName resumeName argTy opRetTy clauseBody ty h_strict_top
+  exact native_handler_step_ext_with_mismatch_step_of_core_progress_and_strict_top_handle
+    clauseSem mismatchSem bodyStep h_core_progress h_strict_top
+
+/--
+Global one-step soundness target (existence + preservation) for mismatched
+handler steps under strict top-level typing.
+-/
+def native_handler_step_ext_with_mismatch_soundness_strict_top_prop
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) : Prop :=
+  ∀ env body opHandle argName resumeName argTy opRetTy clauseBody ty,
+    HasTypeScopedStrictTop env
+      (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+      ty →
+    ∃ e',
+      NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        e'
+      ∧
+      HasTypeScopedTop env e' ty
+
+/--
+Strict-top capstone route: one-step soundness from core body
+preservation/progress obligations.
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_strict_top_of_core_soundness
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_body_pres :
+      ∀ env body body' ty,
+        HasTypeScopedTop env body ty →
+        bodyStep body body' →
+        HasTypeScopedTop env body' ty)
+    (h_core_progress :
+      ∀ env body ty,
+        HasTypeScopedTop env body ty →
+        CoreValue body ∨ ∃ body', bodyStep body body') :
+    native_handler_step_ext_with_mismatch_soundness_strict_top_prop
+      clauseSem mismatchSem bodyStep := by
+  intro env body opHandle argName resumeName argTy opRetTy clauseBody ty h_strict_top
+  exact native_handler_step_ext_with_mismatch_exists_and_preserves_of_core_soundness_and_strict_top_handle
+    clauseSem mismatchSem bodyStep h_body_pres h_core_progress h_strict_top
+
+/--
 Progress target for the mismatched-perform extension under strict local handle
 typing premises.
 -/

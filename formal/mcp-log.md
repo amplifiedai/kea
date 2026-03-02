@@ -17376,3 +17376,40 @@ from handler metadata equality under strict top-level typing.
 **Outcome**:
 - Strict-top mismatch reasoning now has an explicit non-derivability witness
   aligned with runtime resume-context enforcement behavior.
+
+### 2026-03-02: strict-top global handler progress/soundness proposition layer
+
+**Context**: Added explicit proposition surfaces that state handler-step
+progress and one-step soundness directly over `HasTypeScopedStrictTop`.
+
+Lean changes:
+- Added in `Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_progress_strict_top_prop`
+  - `native_handler_step_ext_with_mismatch_progress_strict_top_of_core_progress`
+  - `native_handler_step_ext_with_mismatch_soundness_strict_top_prop`
+  - `native_handler_step_ext_with_mismatch_soundness_strict_top_of_core_soundness`
+
+These route core body progress/preservation assumptions into strict-top
+handler judgments without requiring per-call handle-shape conversions.
+
+**Build check**:
+- `cd formal && lake build Kea.Typing` passes.
+- `cd formal && lake build` passes.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Probe (direct `kea` MCP)**:
+1. Spoofed resume context variable remains rejected (`E0012`).
+2. Single-resume matching handler clause remains accepted (`status = ok`).
+3. Double-resume handler clause remains rejected (`E0012`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Handler progress/preservation targets are now explicitly stated at the
+  strict-top core judgment layer, tightening the path toward native
+  handler-step capstones.
