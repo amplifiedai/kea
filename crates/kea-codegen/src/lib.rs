@@ -2330,6 +2330,7 @@ fn define_sum_drop_function<M: Module>(
     let unique_block = builder.create_block();
     let free_block = builder.create_block();
     let ret_block = builder.create_block();
+    builder.append_block_param(free_block, ptr_ty);
     builder.append_block_params_for_function_params(entry);
     builder.switch_to_block(entry);
 
@@ -2343,6 +2344,25 @@ fn define_sum_drop_function<M: Module>(
         })?;
     let has_unit_variant = layout.variant_field_counts.values().any(|count| *count == 0);
     let has_payload_variant = layout.variant_field_counts.values().any(|count| *count > 0);
+    let max_immediate_tag = if has_unit_variant && has_payload_variant {
+        Some(
+            i64::try_from(layout.variant_field_counts.len()).map_err(|_| {
+                CodegenError::UnsupportedMir {
+                    function: type_name.to_string(),
+                    detail: format!("sum `{type_name}` has invalid mixed-variant tag cardinality"),
+                }
+            })? - 1,
+        )
+    } else {
+        None
+    };
+
+    let free_func_id = free_func_id.ok_or_else(|| CodegenError::UnsupportedMir {
+        function: type_name.to_string(),
+        detail: "drop lowering requires imported `free` symbol".to_string(),
+    })?;
+    let free_ref = module.declare_func_in_func(free_func_id, builder.func);
+
     if has_unit_variant && !has_payload_variant {
         builder.ins().return_(&[]);
         builder.seal_all_blocks();
@@ -2355,41 +2375,10 @@ fn define_sum_drop_function<M: Module>(
         module.clear_context(&mut context);
         return Ok(());
     }
-    if has_unit_variant && has_payload_variant {
-        let pointer_block = builder.create_block();
-        let max_tag = i64::try_from(layout.variant_field_counts.len())
-            .map_err(|_| CodegenError::UnsupportedMir {
-                function: type_name.to_string(),
-                detail: format!("sum `{type_name}` has invalid mixed-variant tag cardinality"),
-            })?
-            - 1;
-        let max_tag_value = builder.ins().iconst(ptr_ty, max_tag);
-        let is_immediate =
-            builder
-                .ins()
-                .icmp(IntCC::UnsignedLessThanOrEqual, payload_ptr, max_tag_value);
-        builder
-            .ins()
-            .brif(is_immediate, ret_block, &[], pointer_block, &[]);
-        builder.switch_to_block(pointer_block);
-    }
-    let rc_ptr = builder.ins().iadd_imm(payload_ptr, -8);
-    let rc_value = builder.ins().load(types::I64, MemFlags::new(), rc_ptr, 0);
-    let next = builder.ins().iadd_imm(rc_value, -1);
-    builder.ins().store(MemFlags::new(), next, rc_ptr, 0);
-    let is_zero = builder.ins().icmp_imm(IntCC::Equal, next, 0);
-    builder
-        .ins()
-        .brif(is_zero, unique_block, &[], ret_block, &[]);
-
-    builder.switch_to_block(unique_block);
     let tag_offset = i32::try_from(layout.tag_offset).map_err(|_| CodegenError::UnsupportedMir {
         function: type_name.to_string(),
         detail: format!("sum `{type_name}` tag offset does not fit i32"),
     })?;
-    let tag_value = builder
-        .ins()
-        .load(types::I32, MemFlags::new(), payload_ptr, tag_offset);
     let payload_offset =
         i32::try_from(layout.payload_offset).map_err(|_| CodegenError::UnsupportedMir {
             function: type_name.to_string(),
@@ -2400,37 +2389,89 @@ fn define_sum_drop_function<M: Module>(
         .iter()
         .filter_map(|(variant_name, tag)| {
             let field_types = layout.variant_field_types.get(variant_name)?;
+            let mut self_field_count = 0usize;
+            let mut self_field_index = None;
+            for (field_idx, field_ty) in field_types.iter().enumerate() {
+                if let Type::Sum(sum_ty) = field_ty
+                    && sum_ty.name == type_name
+                {
+                    self_field_count = self_field_count.saturating_add(1);
+                    if self_field_index.is_none() {
+                        self_field_index = Some(field_idx);
+                    }
+                }
+            }
             if field_types.iter().any(is_managed_heap_type) {
-                Some((*tag, field_types.as_slice()))
+                Some((*tag, field_types.as_slice(), self_field_count, self_field_index))
             } else {
                 None
             }
         })
         .collect::<Vec<_>>();
-    variants.sort_by_key(|(tag, _)| *tag);
+    variants.sort_by_key(|(tag, _, _, _)| *tag);
+    let iterative_self_chain_supported = variants.iter().all(|(_, _, self_count, _)| *self_count <= 1)
+        && variants.iter().any(|(_, _, self_count, _)| *self_count == 1);
 
-    if variants.is_empty() {
-        builder.ins().jump(free_block, &[]);
-    } else {
+    if iterative_self_chain_supported {
+        let loop_block = builder.create_block();
+        builder.append_block_param(loop_block, ptr_ty);
+        builder.ins().jump(loop_block, &[payload_ptr]);
+        builder.switch_to_block(loop_block);
+        let current_payload_ptr = builder
+            .block_params(loop_block)
+            .first()
+            .copied()
+            .ok_or_else(|| CodegenError::UnsupportedMir {
+                function: type_name.to_string(),
+                detail: format!("sum `{type_name}` iterative drop loop missing payload parameter"),
+            })?;
+        if let Some(max_tag) = max_immediate_tag {
+            let pointer_block = builder.create_block();
+            let max_tag_value = builder.ins().iconst(ptr_ty, max_tag);
+            let is_immediate =
+                builder
+                    .ins()
+                    .icmp(IntCC::UnsignedLessThanOrEqual, current_payload_ptr, max_tag_value);
+            builder
+                .ins()
+                .brif(is_immediate, ret_block, &[], pointer_block, &[]);
+            builder.switch_to_block(pointer_block);
+        }
+        let rc_ptr = builder.ins().iadd_imm(current_payload_ptr, -8);
+        let rc_value = builder.ins().load(types::I64, MemFlags::new(), rc_ptr, 0);
+        let next = builder.ins().iadd_imm(rc_value, -1);
+        builder.ins().store(MemFlags::new(), next, rc_ptr, 0);
+        let is_zero = builder.ins().icmp_imm(IntCC::Equal, next, 0);
+        builder
+            .ins()
+            .brif(is_zero, unique_block, &[], ret_block, &[]);
+
+        builder.switch_to_block(unique_block);
+        let tag_value = builder
+            .ins()
+            .load(types::I32, MemFlags::new(), current_payload_ptr, tag_offset);
         let mut check_block = unique_block;
-        for (idx, (variant_tag, field_types)) in variants.iter().enumerate() {
+        for (idx, (variant_tag, field_types, _self_count, self_field_index)) in
+            variants.iter().enumerate()
+        {
             if idx > 0 {
                 builder.switch_to_block(check_block);
             }
             let variant_release_block = builder.create_block();
-            let next_check_or_free = if idx + 1 < variants.len() {
+            let next_check_or_ret = if idx + 1 < variants.len() {
                 builder.create_block()
             } else {
-                free_block
+                ret_block
             };
 
             let expected_tag = builder.ins().iconst(types::I32, i64::from(*variant_tag));
             let is_match = builder.ins().icmp(IntCC::Equal, tag_value, expected_tag);
             builder
                 .ins()
-                .brif(is_match, variant_release_block, &[], next_check_or_free, &[]);
+                .brif(is_match, variant_release_block, &[], next_check_or_ret, &[]);
 
             builder.switch_to_block(variant_release_block);
+            let mut next_chain_payload = None;
             for (field_idx, field_ty) in field_types.iter().enumerate() {
                 if !is_managed_heap_type(field_ty) {
                     continue;
@@ -2452,7 +2493,13 @@ fn define_sum_drop_function<M: Module>(
                     })?;
                 let field_ptr = builder
                     .ins()
-                    .load(ptr_ty, MemFlags::new(), payload_ptr, field_offset);
+                    .load(ptr_ty, MemFlags::new(), current_payload_ptr, field_offset);
+                if self_field_index.is_some_and(|self_idx| self_idx == field_idx)
+                    && matches!(field_ty, Type::Sum(sum_ty) if sum_ty.name == type_name)
+                {
+                    next_chain_payload = Some(field_ptr);
+                    continue;
+                }
                 emit_typed_release(
                     module,
                     &mut builder,
@@ -2460,26 +2507,139 @@ fn define_sum_drop_function<M: Module>(
                     field_ptr,
                     Some(field_ty),
                     drop_func_ids,
-                    free_func_id,
+                    Some(free_func_id),
                 )?;
             }
-            builder.ins().jump(free_block, &[]);
-            check_block = next_check_or_free;
+            let _ = builder.ins().call(free_ref, &[rc_ptr]);
+            if let Some(next_chain_payload) = next_chain_payload {
+                if let Some(max_tag) = max_immediate_tag {
+                    let loop_continue_block = builder.create_block();
+                    let max_tag_value = builder.ins().iconst(ptr_ty, max_tag);
+                    let is_immediate = builder.ins().icmp(
+                        IntCC::UnsignedLessThanOrEqual,
+                        next_chain_payload,
+                        max_tag_value,
+                    );
+                    builder
+                        .ins()
+                        .brif(is_immediate, ret_block, &[], loop_continue_block, &[]);
+                    builder.switch_to_block(loop_continue_block);
+                }
+                builder.ins().jump(loop_block, &[next_chain_payload]);
+            } else {
+                builder.ins().jump(ret_block, &[]);
+            }
+            check_block = next_check_or_ret;
         }
 
-        if check_block != free_block {
+        if check_block != ret_block {
             builder.switch_to_block(check_block);
-            builder.ins().jump(free_block, &[]);
+            builder.ins().jump(ret_block, &[]);
+        }
+    } else {
+        if let Some(max_tag) = max_immediate_tag {
+            let pointer_block = builder.create_block();
+            let max_tag_value = builder.ins().iconst(ptr_ty, max_tag);
+            let is_immediate =
+                builder
+                    .ins()
+                    .icmp(IntCC::UnsignedLessThanOrEqual, payload_ptr, max_tag_value);
+            builder
+                .ins()
+                .brif(is_immediate, ret_block, &[], pointer_block, &[]);
+            builder.switch_to_block(pointer_block);
+        }
+        let rc_ptr = builder.ins().iadd_imm(payload_ptr, -8);
+        let rc_value = builder.ins().load(types::I64, MemFlags::new(), rc_ptr, 0);
+        let next = builder.ins().iadd_imm(rc_value, -1);
+        builder.ins().store(MemFlags::new(), next, rc_ptr, 0);
+        let is_zero = builder.ins().icmp_imm(IntCC::Equal, next, 0);
+        builder
+            .ins()
+            .brif(is_zero, unique_block, &[], ret_block, &[]);
+
+        builder.switch_to_block(unique_block);
+        let tag_value = builder
+            .ins()
+            .load(types::I32, MemFlags::new(), payload_ptr, tag_offset);
+
+        if variants.is_empty() {
+            builder.ins().jump(free_block, &[rc_ptr]);
+        } else {
+            let mut check_block = unique_block;
+            for (idx, (variant_tag, field_types, _self_count, _self_field_index)) in
+                variants.iter().enumerate()
+            {
+                if idx > 0 {
+                    builder.switch_to_block(check_block);
+                }
+                let variant_release_block = builder.create_block();
+                let next_check_or_free = if idx + 1 < variants.len() {
+                    builder.create_block()
+                } else {
+                    free_block
+                };
+
+                let expected_tag = builder.ins().iconst(types::I32, i64::from(*variant_tag));
+                let is_match = builder.ins().icmp(IntCC::Equal, tag_value, expected_tag);
+                builder
+                    .ins()
+                    .brif(is_match, variant_release_block, &[], next_check_or_free, &[]);
+
+                builder.switch_to_block(variant_release_block);
+                for (field_idx, field_ty) in field_types.iter().enumerate() {
+                    if !is_managed_heap_type(field_ty) {
+                        continue;
+                    }
+                    let field_offset = payload_offset
+                        .checked_add(i32::try_from(field_idx.saturating_mul(8)).map_err(|_| {
+                            CodegenError::UnsupportedMir {
+                                function: type_name.to_string(),
+                                detail: format!(
+                                    "sum `{type_name}` variant tag `{variant_tag}` field offset overflow"
+                                ),
+                            }
+                        })?)
+                        .ok_or_else(|| CodegenError::UnsupportedMir {
+                            function: type_name.to_string(),
+                            detail: format!(
+                                "sum `{type_name}` variant tag `{variant_tag}` field offset overflow"
+                            ),
+                        })?;
+                    let field_ptr = builder
+                        .ins()
+                        .load(ptr_ty, MemFlags::new(), payload_ptr, field_offset);
+                    emit_typed_release(
+                        module,
+                        &mut builder,
+                        type_name,
+                        field_ptr,
+                        Some(field_ty),
+                        drop_func_ids,
+                        Some(free_func_id),
+                    )?;
+                }
+                builder.ins().jump(free_block, &[rc_ptr]);
+                check_block = next_check_or_free;
+            }
+
+            if check_block != free_block {
+                builder.switch_to_block(check_block);
+                builder.ins().jump(free_block, &[rc_ptr]);
+            }
         }
     }
 
     builder.switch_to_block(free_block);
-    let free_func_id = free_func_id.ok_or_else(|| CodegenError::UnsupportedMir {
-        function: type_name.to_string(),
-        detail: "drop lowering requires imported `free` symbol".to_string(),
-    })?;
-    let free_ref = module.declare_func_in_func(free_func_id, builder.func);
-    let _ = builder.ins().call(free_ref, &[rc_ptr]);
+    let free_ptr = builder
+        .block_params(free_block)
+        .first()
+        .copied()
+        .ok_or_else(|| CodegenError::UnsupportedMir {
+            function: type_name.to_string(),
+            detail: format!("sum `{type_name}` drop free block missing pointer parameter"),
+        })?;
+    let _ = builder.ins().call(free_ref, &[free_ptr]);
     builder.ins().jump(ret_block, &[]);
 
     builder.switch_to_block(ret_block);
