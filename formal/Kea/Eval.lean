@@ -3927,6 +3927,74 @@ theorem handler_typed_redex_capstone_with_classification
   · exact handler_step_clause_atMostOnce_of_typed_redex h_typed
   · exact handler_step_clause_notInvalid_of_typed_redex h_typed
 
+/--
+Extract the clause well-typed slice from a typed handler redex premise.
+-/
+theorem handler_typed_redex_clause_wellTypedSlice
+    {tenv : TermEnv}
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    {arg k : CoreExpr}
+    {ty : Ty}
+    (h_typed : HandlerHasType tenv
+      (.handle (.perform clause.handled clause.opArgTy clause.opRetTy arg k)
+        handler
+        clause)
+      ty) :
+    HandleClauseContract.wellTypedSlice clause.contract := by
+  cases h_typed with
+  | handle _ _ _ _ _ _ _ _ h_clause_contract _ =>
+      exact h_clause_contract
+
+/--
+Typed-redex bridge into the packaged tail-resumptive bundle surface.
+-/
+theorem handler_typed_redex_tail_resumptive_bundle
+    {tenv : TermEnv}
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    {arg k : CoreExpr}
+    {ty : Ty}
+    (h_typed : HandlerHasType tenv
+      (.handle (.perform clause.handled clause.opArgTy clause.opRetTy arg k)
+        handler
+        clause)
+      ty) :
+    TailResumptiveClassification.TailResumptiveBundle clause.contract := by
+  exact
+    TailResumptiveClassification.tail_resumptive_bundle_of_wellTyped
+      clause.contract
+      (handler_typed_redex_clause_wellTypedSlice h_typed)
+
+/--
+Extended capstone route for typed handler redexes with the packaged
+tail-resumptive bundle consequence.
+-/
+theorem handler_typed_redex_capstone_with_tail_resumptive_bundle
+    {tenv : TermEnv}
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    {arg k : CoreExpr}
+    {ty : Ty}
+    (h_typed : HandlerHasType tenv
+      (.handle (.perform clause.handled clause.opArgTy clause.opRetTy arg k)
+        handler
+        clause)
+      ty) :
+    (∃ e',
+      HandlerStep
+        (.handle (.perform clause.handled clause.opArgTy clause.opRetTy arg k)
+          handler
+          clause)
+        e' ∧
+      HandlerHasType tenv e' ty) ∧
+    resume_at_most_once clause.contract.resumeUse ∧
+    TailResumptiveClassification.TailResumptiveBundle clause.contract := by
+  refine ⟨?_, ?_, ?_⟩
+  · exact handler_step_exists_and_preserves_of_typed_redex h_typed
+  · exact handler_step_clause_atMostOnce_of_typed_redex h_typed
+  · exact handler_typed_redex_tail_resumptive_bundle h_typed
+
 /-- Inversion lemma for the `core` constructor of `HandlerHasType`. -/
 theorem handlerHasType_core_inv
     {tenv : TermEnv}

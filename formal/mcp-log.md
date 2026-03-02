@@ -14334,3 +14334,47 @@ on top of step existence, post-step preservation, and at-most-once.
 - The new classification bridge in Lean is consistent with the same MCP
   linearity/normalization controls already used by the handler-boundary
   capstone route.
+
+### 2026-03-02: typed redex bridge to packaged tail-resumptive bundle
+
+**Context**: Continued `HandlerStepBoundary` by lifting typed-redex premises
+into the packaged tail-classification contract surface in
+`TailResumptiveClassification`.
+
+Lean changes:
+- `handler_typed_redex_clause_wellTypedSlice`
+- `handler_typed_redex_tail_resumptive_bundle`
+- `handler_typed_redex_capstone_with_tail_resumptive_bundle`
+
+This extends evaluator-side capstones from scalar linearity/classification facts
+to full `TailResumptiveBundle` witnesses.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+- `diagnose`
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; theorem-route strengthening only.
+- Existing linearly-safe handler behavior and overlap normalization should hold.
+
+**Probe (direct `kea` MCP)**:
+1. Single-resume handler accepted:
+   - `Ping.ask() -> resume 1` case type-checks (`status = ok`).
+2. Multi-resume branch rejected:
+   - if/else branch-resume case emits `E0012` (`handler clause may resume at most once`).
+3. `resume` outside handler rejected:
+   - emits `E0012` (`resume` only valid in matching handler clause).
+4. Overlap normalization remains stable:
+   - `mixed : () -[IO, Log]> ()`
+   - `handled : () -[IO]> ()`
+   - both type-check with expected residual on `handled`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Typed handler-redex capstones now bridge directly into the packaged
+  tail-resumptive contract surface without introducing any new Lean↔MCP
+  mismatch signal.
