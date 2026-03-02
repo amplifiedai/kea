@@ -14753,3 +14753,46 @@ This theorem provides step existence from a typed handle when body shape is:
 **Outcome**:
 - The boundary progress surface now has one theorem covering both supported
   typed-handle body shapes, with MCP behavior still aligned.
+
+### 2026-03-02: shape-parameterized typed-handle capstone
+
+**Context**: Added a boundary capstone theorem that packages progress,
+post-step preservation, and clause contract consequences under the supported
+typed-handle body-shape assumption.
+
+Lean change:
+- `handler_typed_handle_shape_capstone`
+
+This theorem consumes:
+- `HandlerHasType tenv (.handle body handler clause) ty`
+- shape premise (`body` is core passthrough or matching perform-redex)
+
+and returns:
+- step existence with post-step typing,
+- `wellTypedSlice`,
+- `resume_at_most_once`,
+- non-invalid classification,
+- `TailResumptiveBundle`.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+- `diagnose`
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; theorem-route packaging only.
+- Existing linearity diagnostics and overlap normalization should remain stable.
+
+**Probe (direct `kea` MCP)**:
+1. Single-resume clause accepted.
+2. Branch double-resume rejected with `E0012`.
+3. `resume` outside handler rejected with `E0012`.
+4. Overlap residual remains normalized (`handled : () -[IO]> ()`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Supported typed-handle boundary progress and contract consequences are now
+  available through one capstone theorem route, with MCP behavior aligned.

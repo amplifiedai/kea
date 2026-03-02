@@ -4223,6 +4223,45 @@ theorem handler_step_exists_and_preserves_of_typed_redex
   exact handler_step_preservation h_typed h_step
 
 /--
+Shape-parameterized typed-handle capstone for the current boundary:
+if the body is either core passthrough or matching perform-redex, we get
+one-step existence, post-step type preservation, and clause contract outputs.
+-/
+theorem handler_typed_handle_shape_capstone
+    {tenv : TermEnv}
+    {body : HandlerExpr}
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    {ty : Ty}
+    (h_typed : HandlerHasType tenv (.handle body handler clause) ty)
+    (h_shape :
+      (∃ e : CoreExpr, body = .core e)
+      ∨
+      (∃ arg k,
+        body = .perform clause.handled clause.opArgTy clause.opRetTy arg k)) :
+    (∃ e',
+      HandlerStep (.handle body handler clause) e' ∧
+      HandlerHasType tenv e' ty) ∧
+    HandleClauseContract.wellTypedSlice clause.contract ∧
+    resume_at_most_once clause.contract.resumeUse ∧
+    (TailResumptiveClassification.classifyClause clause.contract ≠
+      TailResumptiveClassification.TailResumptiveClass.invalid) ∧
+    TailResumptiveClassification.TailResumptiveBundle clause.contract := by
+  rcases handler_step_progress_of_typed_handle_core_or_matching_perform
+    h_typed h_shape with ⟨e', h_step⟩
+  have h_pres : HandlerHasType tenv e' ty :=
+    handler_step_preservation h_typed h_step
+  have h_contract :
+      HandleClauseContract.wellTypedSlice clause.contract
+      ∧ resume_at_most_once clause.contract.resumeUse
+      ∧ (TailResumptiveClassification.classifyClause clause.contract ≠
+          TailResumptiveClassification.TailResumptiveClass.invalid)
+      ∧ TailResumptiveClassification.TailResumptiveBundle clause.contract :=
+    handler_clause_contract_capstone_of_handlerHasType h_typed
+  refine ⟨⟨e', h_step, h_pres⟩, ?_⟩
+  exact h_contract
+
+/--
 Capstone boundary theorem for typed handler redexes:
 step existence, post-step type preservation, and clause at-most-once.
 -/
