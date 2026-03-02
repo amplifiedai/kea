@@ -577,6 +577,10 @@ Concrete milestone checklist for moving from the current fuel model to an implem
   (`hasTypeScopedStrictTop_of_handleStrict`,
   `hasTypeScopedStrictTop_handle_iff_handleStrict`) to simplify strict
   extension consumption in future capstone routes.
+  Update: added negated-form boundary equivalence theorems
+  (`not_native_handler_scoped_to_strict_lift_prop_iff_not_metadata_coherence`,
+  `not_native_handler_strict_typing_prop_iff_not_metadata_coherence`), so
+  failure conditions across lift/strict/coherence now collapse to one class.
   Update: re-ran direct in-session `kea` MCP stress probes (spoofed
   `__kea_resume_ctx`, out-of-handler `resume`, single-resume handler acceptance,
   double-resume rejection) and observed agreement with Lean assumptions

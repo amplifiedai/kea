@@ -2346,6 +2346,20 @@ theorem native_handler_scoped_to_strict_lift_prop_iff_metadata_coherence :
   · exact native_handler_scoped_to_strict_lift_of_metadata_coherence
 
 /--
+Negated-form boundary equivalence: scoped->strict lift fails iff metadata
+coherence fails.
+-/
+theorem not_native_handler_scoped_to_strict_lift_prop_iff_not_metadata_coherence :
+    (¬ native_handler_scoped_to_strict_lift_prop)
+      ↔ (¬ native_handler_perform_metadata_coherence_prop) := by
+  constructor
+  · intro h_not_lift h_coherence
+    exact h_not_lift (native_handler_scoped_to_strict_lift_of_metadata_coherence h_coherence)
+  · intro h_not_coherence h_lift
+    exact h_not_coherence
+      (native_handler_perform_metadata_coherence_of_scoped_to_strict_lift h_lift)
+
+/--
 The scoped-to-strict lift contract is not derivable from current scoped typing.
 -/
 theorem not_native_handler_scoped_to_strict_lift_prop :
@@ -2353,6 +2367,21 @@ theorem not_native_handler_scoped_to_strict_lift_prop :
   intro h_lift
   exact not_native_handler_perform_metadata_coherence_prop
     (native_handler_perform_metadata_coherence_of_scoped_to_strict_lift h_lift)
+
+/--
+Negated-form boundary equivalence: strict-handle typing fails iff metadata
+coherence fails.
+-/
+theorem not_native_handler_strict_typing_prop_iff_not_metadata_coherence :
+    (¬ native_handler_strict_typing_prop)
+      ↔ (¬ native_handler_perform_metadata_coherence_prop) := by
+  constructor
+  · intro h_not_strict h_coherence
+    exact h_not_strict
+      (native_handler_strict_typing_of_metadata_coherence h_coherence)
+  · intro h_not_coherence h_strict
+    exact h_not_coherence
+      (native_handler_perform_metadata_coherence_of_strict_typing h_strict)
 
 /--
 Full mismatch-extension progress from core body progress plus a global strict

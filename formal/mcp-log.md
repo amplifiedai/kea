@@ -17210,3 +17210,37 @@ roots.
 
 **Outcome**:
 - Handle-root strictness can now be consumed via clean `↔` theorem surface.
+
+### 2026-03-02: negated boundary equivalence surface
+
+**Context**: Added negated-form equivalence theorems so failure modes across
+lift/strict/coherence are formally synchronized.
+
+Lean changes:
+- Added in `Kea/Typing.lean`:
+  - `not_native_handler_scoped_to_strict_lift_prop_iff_not_metadata_coherence`
+  - `not_native_handler_strict_typing_prop_iff_not_metadata_coherence`
+
+This ensures there is a single negative boundary class, not multiple unrelated
+“fails” statements.
+
+**Build check**:
+- `cd formal && lake build Kea.Typing` passes.
+- `cd formal && lake build` passes.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Probe (direct `kea` MCP)**:
+1. Spoofed resume context variable remains rejected (`E0012`).
+2. Single-resume matching handler clause remains accepted (`status = ok`).
+3. Double-resume handler clause remains rejected (`E0012`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Boundary failure reasoning is now normalized across all three obligation
+  surfaces.
