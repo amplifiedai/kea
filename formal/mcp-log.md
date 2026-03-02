@@ -16432,3 +16432,40 @@ underlying body-step relation does not step that `perform`.
 - The remaining capstone gap is now sharper: beyond congruence, we need either
   structural bubbling semantics for mismatched operations or tighter typing
   constraints linking handled op metadata to body `perform` shapes.
+
+### 2026-03-02: structural mismatched-perform extension point
+
+**Context**: Added a formal extension point that can close the mismatched-op
+stuck family by semantics, while preserving explicit preservation obligations.
+
+Lean changes:
+- Added in `Kea/Typing.lean`:
+  - `NativeHandlerMismatchSem` (abstract mismatch-target semantics + typing law)
+  - `NativeHandlerStepExtWithMismatch` (extends `NativeHandlerStepExt`)
+  - `native_handler_step_ext_with_mismatch_preservation_prop`
+  - `native_handler_step_ext_with_mismatch_preservation`
+  - `native_handler_step_ext_with_mismatch_exists_of_op_mismatch`
+
+This isolates the structural next step: supply a concrete mismatch-target
+implementation satisfying `mismatch_sound`.
+
+**Build check**:
+- `cd formal && lake build Kea.Typing` passes.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Probe (direct `kea` MCP)**:
+1. Spoof attempt still rejected:
+   - `fn spoof(__kea_resume_ctx: fn(Int) -> Int) -> Int; resume 1`
+   - `status = error`, `E0012`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- The corpus now has a machine-checkable structural route for resolving
+  mismatched-op stuckness; remaining work is a concrete mismatch semantics
+  witness.

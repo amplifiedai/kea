@@ -457,6 +457,14 @@ Concrete milestone checklist for moving from the current fuel model to an implem
   `native_handler_step_ext_typed_mismatch_counterexample`.
   These show value+congruence alone are insufficient unless body-step semantics
   handles mismatched performed operations (or the typing judgment is narrowed).
+  Update: added a structural mismatched-perform extension point with typed
+  preservation contracts:
+  `NativeHandlerMismatchSem`,
+  `NativeHandlerStepExtWithMismatch`,
+  `native_handler_step_ext_with_mismatch_preservation`,
+  `native_handler_step_ext_with_mismatch_exists_of_op_mismatch`.
+  This gives a direct formal route to eliminate the mismatched-op stuck family
+  by semantics (rather than assumption), while keeping preservation explicit.
   Update: added explicit theorem exports for that gate
   (`hasType_resume_requires_ctx`, `resume_not_typable_without_ctx`,
   `inferExpr_resume_none_without_ctx`), so out-of-handler `resume` rejection is

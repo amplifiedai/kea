@@ -1633,6 +1633,103 @@ theorem native_handler_step_ext_typed_mismatch_counterexample
       clauseSem bodyStep h_op_ne h_no_body_step
 
 /--
+Abstract semantics for bubbling mismatched performed operations through `handle`.
+-/
+structure NativeHandlerMismatchSem : Type where
+  mismatchTarget :
+    Label → Ty → Ty → CoreExpr → CoreExpr →
+    Label → String → String → Ty → Ty → CoreExpr →
+    CoreExpr
+  mismatch_sound :
+    ∀ env opBody argTy opRetTy arg k opHandle argName resumeName clauseBody ty,
+      opBody ≠ opHandle →
+      HasTypeScopedTop env
+        (.handle (.perform opBody argTy opRetTy arg k) opHandle argName resumeName argTy opRetTy clauseBody)
+        ty →
+      HasTypeScopedTop env
+        (mismatchTarget opBody argTy opRetTy arg k opHandle argName resumeName argTy opRetTy clauseBody)
+        ty
+
+/--
+Native handler-step relation extended with an explicit mismatched-perform case.
+-/
+inductive NativeHandlerStepExtWithMismatch
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    : CoreExpr → CoreExpr → Prop where
+  | ext {e e' : CoreExpr}
+      (h_ext : NativeHandlerStepExt clauseSem bodyStep e e') :
+      NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep e e'
+  | handle_perform_op_mismatch
+      (opBody opHandle : Label) (argTy opRetTy : Ty)
+      (arg k : CoreExpr)
+      (argName resumeName : String)
+      (clauseBody : CoreExpr)
+      (h_op_ne : opBody ≠ opHandle) :
+      NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep
+        (.handle (.perform opBody argTy opRetTy arg k) opHandle argName resumeName argTy opRetTy clauseBody)
+        (mismatchSem.mismatchTarget
+          opBody argTy opRetTy arg k opHandle argName resumeName argTy opRetTy clauseBody)
+
+/--
+Preservation target for the mismatched-perform-extended native relation.
+-/
+def native_handler_step_ext_with_mismatch_preservation_prop
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) : Prop :=
+  ∀ env e e' ty,
+    HasTypeScopedTop env e ty →
+    NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep e e' →
+    HasTypeScopedTop env e' ty
+
+/--
+Preservation for the mismatched-perform-extended native relation.
+-/
+theorem native_handler_step_ext_with_mismatch_preservation
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_body_pres :
+      ∀ env body body' ty,
+        HasTypeScopedTop env body ty →
+        bodyStep body body' →
+        HasTypeScopedTop env body' ty) :
+    native_handler_step_ext_with_mismatch_preservation_prop
+      clauseSem mismatchSem bodyStep := by
+  intro env e e' ty h_typed h_step
+  cases h_step with
+  | ext h_ext =>
+    exact native_handler_step_ext_preservation
+      clauseSem bodyStep h_body_pres env e e' ty h_typed h_ext
+  | handle_perform_op_mismatch opBody opHandle argTy opRetTy arg k argName resumeName clauseBody h_op_ne =>
+    exact mismatchSem.mismatch_sound
+      env opBody argTy opRetTy arg k opHandle argName resumeName clauseBody ty
+      h_op_ne h_typed
+
+/--
+Under the mismatched-perform extension, op-mismatch handled `perform` bodies
+always have a one-step successor.
+-/
+theorem native_handler_step_ext_with_mismatch_exists_of_op_mismatch
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    {opBody opHandle : Label}
+    {argName resumeName : String}
+    {argTy opRetTy : Ty}
+    {arg k clauseBody : CoreExpr}
+    (h_op_ne : opBody ≠ opHandle) :
+    ∃ e', NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep
+      (.handle (.perform opBody argTy opRetTy arg k) opHandle argName resumeName argTy opRetTy clauseBody)
+      e' := by
+  refine ⟨mismatchSem.mismatchTarget
+      opBody argTy opRetTy arg k opHandle argName resumeName argTy opRetTy clauseBody, ?_⟩
+  exact NativeHandlerStepExtWithMismatch.handle_perform_op_mismatch
+    opBody opHandle argTy opRetTy arg k argName resumeName clauseBody h_op_ne
+
+/--
 Original native handler steps embed into the extended relation.
 -/
 theorem native_handler_step_ext_of_native_handler_step
