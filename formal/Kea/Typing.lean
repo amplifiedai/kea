@@ -42,6 +42,9 @@ mutual
     | letE : String → CoreExpr → CoreExpr → CoreExpr
     | record : CoreFields → CoreExpr
     | proj : CoreExpr → Label → CoreExpr
+    | perform : Label → Ty → Ty → CoreExpr → CoreExpr → CoreExpr
+    | handle : CoreExpr → Label → String → String → Ty → Ty → CoreExpr → CoreExpr
+    | resume : CoreExpr → CoreExpr
 
   /-- Field syntax for core anonymous records. -/
   inductive CoreFields : Type where
@@ -77,6 +80,9 @@ mutual
       match inferExpr env e with
       | some (.anonRecord (.mk rowFields none)) => RowFields.get rowFields label
       | _ => none
+    | .perform _ _ _ _ _ => none
+    | .handle _ _ _ _ _ _ _ => none
+    | .resume _ => none
 
   /-- Algorithmic inference for core record fields. -/
   def inferFields (env : TermEnv) : CoreFields → Option RowFields
@@ -343,6 +349,15 @@ mutual
                 have h_sub : HasType env e (.anonRecord (.mk rowFields none)) :=
                   inferExpr_sound env e (.anonRecord (.mk rowFields none)) h_e
                 exact HasType.proj env e rowFields label ty h_sub h_get
+    | perform _ _ _ _ _ =>
+      intro ty h
+      simp [inferExpr] at h
+    | handle _ _ _ _ _ _ _ =>
+      intro ty h
+      simp [inferExpr] at h
+    | resume _ =>
+      intro ty h
+      simp [inferExpr] at h
 
   /-- Field inference is sound with respect to declarative field typing. -/
   theorem inferFields_sound (env : TermEnv) (fs : CoreFields) :
@@ -811,6 +826,9 @@ mutual
         | .err e => .err e
         | .ok stU =>
           .ok stU (applySubstCompat stU.subst fuel (.var fieldVar))
+    | .perform _ _ _ _ _ => .err "perform not supported in inferExprUnify"
+    | .handle _ _ _ _ _ _ _ => .err "handle not supported in inferExprUnify"
+    | .resume _ => .err "resume not supported in inferExprUnify"
 
   /-- Unification-backed field inference (threads state through fields). -/
   def inferFieldsUnify (st : UnifyState) (fuel : Nat) (env : TermEnv) : CoreFields → InferUnifyResult
@@ -3081,6 +3099,9 @@ mutual
     | .letE _ value body => exprSize value + exprSize body + 1
     | .record fields => fieldsSize fields + 1
     | .proj recv _ => exprSize recv + 1
+    | .perform _ _ _ arg k => exprSize arg + exprSize k + 1
+    | .handle body _ _ _ _ _ clauseBody => exprSize body + exprSize clauseBody + 1
+    | .resume e => exprSize e + 1
 
   /-- Structural size of field lists (for recursive proof termination). -/
   def fieldsSize : CoreFields → Nat
@@ -3663,6 +3684,15 @@ mutual
           exact h_proj env recv label recvTy freshRow.2 stU fuel freshTy.1 freshRow.1
             (inferExprUnify_sound_preconditioned h_app h_proj st fuel env recv stRecv recvTy h_recv)
             h_unify
+    | perform _ _ _ _ _ =>
+      intro st' ty h
+      simp [inferExprUnify] at h
+    | handle _ _ _ _ _ _ _ =>
+      intro st' ty h
+      simp [inferExprUnify] at h
+    | resume _ =>
+      intro st' ty h
+      simp [inferExprUnify] at h
 
   /-- Field-level counterpart of `inferExprUnify_sound_preconditioned`. -/
   theorem inferFieldsUnify_sound_preconditioned
@@ -3853,6 +3883,15 @@ mutual
           exact h_proj env recv label recvTy freshRow.2 stU fuel freshTy.1 freshRow.1
             (inferExprUnify_sound_preconditioned_hasTypeU_direct h_app h_proj st fuel env recv stRecv recvTy h_recv)
             h_unify
+    | perform _ _ _ _ _ =>
+      intro st' ty h
+      simp [inferExprUnify] at h
+    | handle _ _ _ _ _ _ _ =>
+      intro st' ty h
+      simp [inferExprUnify] at h
+    | resume _ =>
+      intro st' ty h
+      simp [inferExprUnify] at h
 
   theorem inferFieldsUnify_sound_preconditioned_hasTypeU_direct
       (h_app : AppUnifySoundHookU)

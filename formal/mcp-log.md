@@ -15524,3 +15524,51 @@ shape paths.
 **Outcome**:
 - Supported-shape completeness is now available uniformly across bare
   consequence and full capstone theorem surfaces, with MCP behavior aligned.
+
+### 2026-03-02: native handler constructor scaffold checkpoint in `Kea/Typing.lean`
+
+**Context**: Started the native-judgment pivot by extending `Typing.CoreExpr`
+with explicit handler forms (`perform`, `handle`, `resume`) and restoring
+typing-core build invariants before adding native handler progress/preservation
+statements.
+
+Lean changes:
+- Added `CoreExpr.perform`, `CoreExpr.handle`, `CoreExpr.resume`.
+- Extended `inferExpr` with constructor branches (currently `none`).
+- Extended `inferExprUnify` with constructor branches (currently `.err ...`).
+- Updated theorem exhaustiveness branches relying on `cases e`:
+  - `inferExpr_sound`
+  - `inferExprUnify_sound_preconditioned`
+  - `inferExprUnify_sound_preconditioned_hasTypeU_direct`
+- Updated `exprSize` structural recursion for new constructors.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Predict (Lean side)**:
+- This checkpoint is constructor scaffolding only; runtime behavior should not
+  diverge from prior handler-linearity expectations.
+
+**Probe (direct `kea` MCP)**:
+1. Single-resume handler accepted:
+   - `effect Log ...; fn run() -> Unit; handle Log.log("hello") ... resume ()`
+   - `status = ok`.
+2. Sequential double-resume rejected:
+   - clause body with two `resume ()` statements.
+   - `status = error`, `E0012` (`handler clause may resume at most once`).
+3. `resume` outside handler rejected:
+   - `fn bad() -> Unit; resume ()`
+   - `status = error`, `E0012` (`resume is only valid inside a matching handler clause`).
+4. Residual-row normalization stress remains aligned:
+   - `mixed : () -[Log, Trace]> ()`, `handled : () -[Trace]> ()` over `handle mixed()`.
+   - `status = ok`, inferred `handled : () -[Trace]> ()`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Native constructor scaffolding in `Kea/Typing.lean` now builds cleanly
+  (`cd formal && lake build`), and direct MCP probe expectations remain aligned
+  at this checkpoint.
