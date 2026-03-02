@@ -1,4 +1,5 @@
 import Kea.Typing
+import Kea.Properties.HandlerTypingContracts
 
 /-
   Kea.Eval — Minimal evaluator spike.
@@ -3537,3 +3538,170 @@ theorem eval_preserves_string_lit
   simp [eval] at h_eval
   rcases h_eval with rfl
   exact ValueHasType.string s
+
+/-!
+  Minimal handler-step boundary scaffold.
+
+  `CoreExpr`/`HasType` in `Kea/Typing.lean` currently model the pure evaluator
+  core only (no `handle`/`resume` constructors). This section introduces an
+  explicit handler-step judgment boundary inside `Kea/Eval.lean` so the open
+  preservation gap for handler reduction is machine-checkable.
+-/
+namespace HandlerStepBoundary
+
+abbrev HandleContract := HandleClauseContract.HandleContract
+
+/-- Minimal semantic shape of a single handler clause. -/
+structure HandlerClauseSem where
+  handled : Label
+  argName : String
+  kName : String
+  opArgTy : Ty
+  opRetTy : Ty
+  body : CoreExpr
+  contract : HandleClauseContract
+
+/-- Continuation type used by the minimal handler-step boundary model. -/
+def continuationTy (opRetTy handlerTy : Ty) : Ty :=
+  .function (.cons opRetTy .nil) handlerTy
+
+/-- Minimal effectful expression layer for handler-step boundary statements. -/
+inductive HandlerExpr : Type where
+  | core : CoreExpr → HandlerExpr
+  | perform : Label → Ty → Ty → CoreExpr → CoreExpr → HandlerExpr
+  | handle : HandlerExpr → HandleContract → HandlerClauseSem → HandlerExpr
+
+/--
+Placeholder binder for the handler reduction result.
+TODO: replace with explicit substitution for argument + continuation binding.
+-/
+def bindTailResumptive (clause : HandlerClauseSem) (_arg _k : CoreExpr) : CoreExpr :=
+  clause.body
+
+/-- Minimal typing judgment for `HandlerExpr` used by boundary propositions. -/
+inductive HandlerHasType : TermEnv → HandlerExpr → Ty → Prop where
+  | core (tenv : TermEnv) (e : CoreExpr) (ty : Ty)
+      (h_core : HasType tenv e ty) :
+      HandlerHasType tenv (.core e) ty
+  | perform (tenv : TermEnv) (op : Label) (argTy opRetTy handlerTy : Ty)
+      (arg k : CoreExpr)
+      (h_arg : HasType tenv arg argTy)
+      (h_k : HasType tenv k (continuationTy opRetTy handlerTy)) :
+      HandlerHasType tenv (.perform op argTy opRetTy arg k) handlerTy
+  | handle (tenv : TermEnv) (body : HandlerExpr) (handler : HandleContract)
+      (clause : HandlerClauseSem) (ty : Ty)
+      (h_body : HandlerHasType tenv body ty)
+      (h_contract_shape : clause.contract.handled = clause.handled)
+      (h_mem : clause.contract ∈ handler.clauses)
+      (h_clause_contract : HandleClauseContract.wellTypedSlice clause.contract)
+      (h_clause_body :
+        HasType
+          ((clause.kName, continuationTy clause.opRetTy ty) ::
+            (clause.argName, clause.opArgTy) ::
+            tenv)
+          clause.body
+          ty) :
+      HandlerHasType tenv (.handle body handler clause) ty
+
+/--
+Single handler-step rule at the current boundary:
+`handle (perform op arg k) with clause` reduces to clause-body instantiation,
+explicitly tracking the tail-resumptive clause case.
+-/
+inductive HandlerStep : HandlerExpr → HandlerExpr → Prop where
+  | handle_perform_tail
+      (handler : HandleContract)
+      (clause : HandlerClauseSem)
+      (arg k : CoreExpr)
+      (h_contract_shape : clause.contract.handled = clause.handled)
+      (h_mem : clause.contract ∈ handler.clauses)
+      (h_summary :
+        HandleClauseContract.handlerClauseHasResumeSummary
+          handler clause.contract clause.contract.resumeUse)
+      (h_tail_resumptive :
+        clause.contract.resumeUse = .zero ∨ clause.contract.resumeUse = .one) :
+      HandlerStep
+        (.handle (.perform clause.handled clause.opArgTy clause.opRetTy arg k)
+          handler
+          clause)
+        (.core (bindTailResumptive clause arg k))
+
+/--
+Bridge from handler-step premises into the existing handler-level resume
+linearity theorem surface.
+-/
+theorem handler_step_tail_resumptive_atMostOnce
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    {arg k : CoreExpr}
+    {e' : HandlerExpr}
+    (h_handler_typed : HandleClauseContract.handlerWellTypedSlice handler)
+    (h_step :
+      HandlerStep
+        (.handle (.perform clause.handled clause.opArgTy clause.opRetTy arg k)
+          handler
+          clause)
+        e') :
+    resume_at_most_once clause.contract.resumeUse := by
+  cases h_step with
+  | handle_perform_tail _ _ _ _ _ _ h_summary _ =>
+      exact
+        HandleClauseContract.handlerClauseHasResumeSummary_implies_atMostOnce_of_handlerWellTypedSlice
+          handler
+          clause.contract
+          clause.contract.resumeUse
+          h_handler_typed
+          h_summary
+
+/--
+Named progress proposition for the single explicit handler-step redex case.
+-/
+def handler_step_progress_prop : Prop :=
+  ∀ {tenv : TermEnv} {handler : HandleContract} {clause : HandlerClauseSem}
+    {arg k : CoreExpr} {ty : Ty},
+    HandlerHasType tenv
+      (.handle (.perform clause.handled clause.opArgTy clause.opRetTy arg k)
+        handler
+        clause)
+      ty →
+    HandleClauseContract.handlerClauseHasResumeSummary
+      handler
+      clause.contract
+      clause.contract.resumeUse →
+    clause.contract.resumeUse = .zero ∨ clause.contract.resumeUse = .one →
+    ∃ e',
+      HandlerStep
+        (.handle (.perform clause.handled clause.opArgTy clause.opRetTy arg k)
+          handler
+          clause)
+        e'
+
+/-- Progress witness for the explicit handler-step redex boundary. -/
+theorem handler_step_progress : handler_step_progress_prop := by
+  intro tenv handler clause arg k ty h_typed h_summary h_tail
+  cases h_typed with
+  | handle _ _ _ _ _ _ h_contract_shape h_mem _ _ =>
+      refine ⟨.core (bindTailResumptive clause arg k), ?_⟩
+      exact
+        HandlerStep.handle_perform_tail
+          handler clause arg k h_contract_shape h_mem h_summary h_tail
+
+/--
+Named preservation proposition for handler reduction:
+if a handler expression is well-typed and takes one handler step, the result
+is well-typed at the same type.
+-/
+def handler_step_preservation_prop : Prop :=
+  ∀ {tenv : TermEnv} {e e' : HandlerExpr} {ty : Ty},
+    HandlerHasType tenv e ty →
+    HandlerStep e e' →
+    HandlerHasType tenv e' ty
+
+/--
+Open proof target for handler-step preservation at the current boundary.
+This theorem is intentionally left as the explicit formal gap.
+-/
+theorem handler_step_preservation : handler_step_preservation_prop := by
+  sorry
+
+end HandlerStepBoundary

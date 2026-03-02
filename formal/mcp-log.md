@@ -13985,3 +13985,54 @@ New theorem surface:
 **Impact**:
 - Establishes a major citation anchor for the declarative core-soundness track,
   reducing multi-theorem plumbing in downstream formal and paper-facing claims.
+
+### 2026-03-02: handler-step boundary judgment + explicit preservation gap target
+
+**Context**: Extended `Kea/Eval.lean` with a dedicated handler-step boundary
+model (`HandlerStepBoundary`) after confirming `Kea/Typing.lean` currently has
+no core `handle`/`resume` constructors. Added a minimal one-case handler
+reduction judgment for `handle (perform ...)` (tail-resumptive clause case),
+typed boundary judgments, and explicit named preservation/progress proposition
+surfaces.
+
+New theorem surface:
+- `HandlerStepBoundary.HandlerClauseSem`
+- `HandlerStepBoundary.HandlerExpr`
+- `HandlerStepBoundary.HandlerHasType`
+- `HandlerStepBoundary.HandlerStep`
+- `HandlerStepBoundary.handler_step_tail_resumptive_atMostOnce`
+- `HandlerStepBoundary.handler_step_progress_prop`
+- `HandlerStepBoundary.handler_step_progress`
+- `HandlerStepBoundary.handler_step_preservation_prop`
+- `HandlerStepBoundary.handler_step_preservation` (intentional `sorry` stub)
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- This should not change existing evaluator soundness results for the pure core
+  fragment.
+- The new boundary should make the handler-preservation gap explicit as a named
+  machine-checkable theorem target.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Handler reduction now has an explicit inductive step judgment and boundary
+  typing relation in the formal corpus.
+- The preservation gap is no longer only prose; it is now represented by the
+  named theorem `handler_step_preservation`.
+
+**Impact**:
+- Makes the remaining handler-soundness work precisely scoped and citable.
+- Connects tail-resumptive handler-step premises to existing handler linearity
+  theorems through `handler_step_tail_resumptive_atMostOnce`.
