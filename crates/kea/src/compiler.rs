@@ -154,39 +154,47 @@ pub fn compile_project(entry: &Path) -> Result<CompilationContext, String> {
 }
 
 pub fn emit_object(ctx: &CompilationContext, mode: CodegenMode) -> Result<CompileResult, String> {
-    let lowering_config = match mode {
-        CodegenMode::Jit => MirLoweringConfig::jit(),
-        CodegenMode::Aot => MirLoweringConfig::aot(),
-    };
-    let mir = lower_hir_module_with_config(&ctx.hir, &lowering_config);
-    let abi = default_abi_manifest(&mir);
+    let hir = ctx.hir.clone();
+    let diagnostics = ctx.diagnostics.clone();
+    run_on_compiler_stack("emit_object", move || {
+        let lowering_config = match mode {
+            CodegenMode::Jit => MirLoweringConfig::jit(),
+            CodegenMode::Aot => MirLoweringConfig::aot(),
+        };
+        let mir = lower_hir_module_with_config(&hir, &lowering_config);
+        let abi = default_abi_manifest(&mir);
 
-    let backend = CraneliftBackend;
-    let artifact = backend
-        .compile_module(
-            &mir,
-            &abi,
-            &BackendConfig {
-                mode,
-                ..BackendConfig::default()
-            },
-        )
-        .map_err(|err| format!("codegen failed: {err}"))?;
+        let backend = CraneliftBackend;
+        let artifact = backend
+            .compile_module(
+                &mir,
+                &abi,
+                &BackendConfig {
+                    mode,
+                    ..BackendConfig::default()
+                },
+            )
+            .map_err(|err| format!("codegen failed: {err}"))?;
 
-    Ok(CompileResult {
-        object: artifact.object,
-        stats: artifact.stats,
-        diagnostics: ctx.diagnostics.clone(),
+        Ok(CompileResult {
+            object: artifact.object,
+            stats: artifact.stats,
+            diagnostics,
+        })
     })
 }
 
 pub fn execute_jit(ctx: &CompilationContext) -> Result<RunResult, String> {
-    let exit_code = execute_hir_main_jit(&ctx.hir, &BackendConfig::default())
-        .map_err(|err| format!("codegen failed: {err}"))?;
+    let hir = ctx.hir.clone();
+    let diagnostics = ctx.diagnostics.clone();
+    run_on_compiler_stack("execute_jit", move || {
+        let exit_code = execute_hir_main_jit(&hir, &BackendConfig::default())
+            .map_err(|err| format!("codegen failed: {err}"))?;
 
-    Ok(RunResult {
-        exit_code,
-        diagnostics: ctx.diagnostics.clone(),
+        Ok(RunResult {
+            exit_code,
+            diagnostics,
+        })
     })
 }
 

@@ -4826,6 +4826,30 @@
     }
 
     #[test]
+    fn compile_and_execute_program_with_hundred_mutually_recursive_top_level_functions_exit_code() {
+        let mut source = String::new();
+        for i in 0..100 {
+            let next = (i + 1) % 100;
+            source.push_str(&format!(
+                "fn f{i}(n: Int) -> Int\n  if n == 0\n    {i}\n  else\n    f{next}(n - 1)\n\n"
+            ));
+        }
+        source.push_str("fn main() -> Int\n  f0(100)\n");
+
+        let source_path = write_temp_source(
+            &source,
+            "kea-cli-hundred-mutual-top-level-functions",
+            "kea",
+        );
+
+        let run =
+            run_file(&source_path).expect("100 mutually-recursive top-level functions should run");
+        assert_eq!(run.exit_code, 0);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_project_accepts_effect_row_with_twenty_effects() {
         let mut source = String::new();
         for i in 1..=20 {
@@ -4862,6 +4886,38 @@
 
         let run = run_file(&source_path).expect("deep nested option type should run");
         assert_eq!(run.exit_code, 1);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_thousand_line_case_with_five_hundred_variants_exit_code() {
+        let mut source = String::from("enum Big\n");
+        for i in 0..500 {
+            source.push_str(&format!("  V{i}\n"));
+        }
+        source.push_str("\nfn main() -> Int\n  case V499\n");
+        for i in 0..500 {
+            source.push_str(&format!("    V{i} -> {i}\n"));
+        }
+
+        let source_path = write_temp_source(&source, "kea-cli-large-case-500", "kea");
+        let run = run_file(&source_path).expect("500-variant case stress should run");
+        assert_eq!(run.exit_code, 499);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_and_execute_negative_modulo_exit_code() {
+        let source_path = write_temp_source(
+            "fn main() -> Int\n  -5 % 3\n",
+            "kea-cli-negative-modulo",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("negative modulo should run");
+        assert_eq!(run.exit_code, -2);
 
         let _ = std::fs::remove_file(source_path);
     }
