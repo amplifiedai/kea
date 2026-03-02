@@ -5006,18 +5006,28 @@ theorem handler_typed_redex_core_eval_sound
       ty)
     (h_frag : EvalFragmentFull (bindTailResumptive clause arg k)) :
     ∃ v, eval venv (bindTailResumptive clause arg k) = some v ∧ ValueHasType v ty := by
-  rcases handler_typed_redex_capstone h_typed with ⟨h_step_pack, _h_linear⟩
-  rcases h_step_pack with ⟨e', h_step, h_typed'⟩
-  have h_target :
-      e' = .core (bindTailResumptive clause arg k) := by
+  have h_shape :
+      handlerStepSupportedShape
+        (.perform clause.handled clause.opArgTy clause.opRetTy arg k)
+        clause :=
+    Or.inr ⟨arg, k, rfl⟩
+  have h_frag_shape :
+      ∀ target : CoreExpr,
+        HandlerStep
+          (.handle (.perform clause.handled clause.opArgTy clause.opRetTy arg k)
+            handler
+            clause)
+          (.core target) →
+        EvalFragmentFull target := by
+    intro target h_step
     cases h_step with
     | handle_perform_tail _ _ _ _ _ _ _ _ =>
-        rfl
-  subst h_target
-  have h_core_ty :
-      HasType tenv (bindTailResumptive clause arg k) ty :=
-    handlerHasType_core_inv h_typed'
-  exact eval_sound_evalFragmentFull h_env h_core_ty h_frag
+        simpa [bindTailResumptive] using h_frag
+  rcases handler_typed_handle_shape_eval_sound h_env h_typed h_shape h_frag_shape with
+    ⟨target, v, h_step, h_eval_eq, h_v_ty⟩
+  cases h_step with
+  | handle_perform_tail _ _ _ _ _ _ _ _ =>
+      exact ⟨v, by simpa [bindTailResumptive] using h_eval_eq, h_v_ty⟩
 
 /--
 Unified typed-redex capstone combining evaluator soundness and clause contract
@@ -5190,11 +5200,20 @@ theorem handler_typed_core_body_eval_sound
     (h_typed : HandlerHasType tenv (.handle (.core e) handler clause) ty)
     (h_frag : EvalFragmentFull e) :
     ∃ v, eval venv e = some v ∧ ValueHasType v ty := by
-  cases h_typed with
-  | handle _ body _ _ _ h_body _ _ _ _ =>
-      cases h_body with
-      | core _ _ _ h_core =>
-          exact eval_sound_evalFragmentFull h_env h_core h_frag
+  have h_shape : handlerStepSupportedShape (.core e) clause := Or.inl ⟨e, rfl⟩
+  have h_frag_shape :
+      ∀ target : CoreExpr,
+        HandlerStep (.handle (.core e) handler clause) (.core target) →
+        EvalFragmentFull target := by
+    intro target h_step
+    cases h_step with
+    | handle_core _ _ _ =>
+        simpa using h_frag
+  rcases handler_typed_handle_shape_eval_sound h_env h_typed h_shape h_frag_shape with
+    ⟨target, v, h_step, h_eval_eq, h_v_ty⟩
+  cases h_step with
+  | handle_core _ _ _ =>
+      exact ⟨v, by simpa using h_eval_eq, h_v_ty⟩
 
 /--
 Unified typed core-body capstone combining evaluator soundness and clause
