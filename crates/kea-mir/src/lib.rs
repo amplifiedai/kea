@@ -436,6 +436,21 @@ pub fn lower_hir_module(module: &HirModule) -> MirModule {
     // cells can be threaded to callees even when no user handler is installed.
     functions.extend(generate_default_capability_wrappers(&effect_operations));
 
+    // Handler inlining: devirtualize state-get/state-put callback closures
+    // when the handler is statically known (same-function scope).
+    // Build a lookup of function index by name, then use index-based iteration
+    // to avoid borrow conflicts (the pass only reads other functions, never mutates them).
+    {
+        let fn_index: BTreeMap<String, usize> = functions
+            .iter()
+            .enumerate()
+            .map(|(i, f)| (f.name.clone(), i))
+            .collect();
+        for i in 0..functions.len() {
+            inline_known_handler_callbacks(i, &mut functions, &fn_index);
+        }
+    }
+
     for function in &mut functions {
         rewrite_trmc_descending_sum_chain(function);
         emit_reuse_tokens_for_trailing_release_alloc(function, &layouts);
@@ -448,6 +463,383 @@ pub fn lower_hir_module(module: &HirModule) -> MirModule {
     }
 
     MirModule { functions, layouts }
+}
+
+/// Classify what a closure wraps, determined by structural verification of the
+/// entry wrapper and its target function body.
+#[derive(Debug, Clone)]
+enum InlinableCallback {
+    /// State.get: captures[0] is the state cell, replace Call with StateCellLoad
+    StateGet { state_cell: MirValueId },
+    /// State.put: captures[0] is the state cell, replace Call with StateCellStore + Unit
+    StatePut { state_cell: MirValueId },
+}
+
+/// MIR optimization pass: replace indirect closure calls for statically-known
+/// state-get/state-put handlers with direct StateCellLoad/StateCellStore.
+///
+/// Only applies when handler and dispatch site are in the same function (Case 1).
+/// Chain-augmented callbacks (`__chain_callback`) are explicitly skipped.
+fn inline_known_handler_callbacks(
+    func_idx: usize,
+    functions: &mut [MirFunction],
+    fn_index: &BTreeMap<String, usize>,
+) {
+    let function = &functions[func_idx];
+    // Phase 1: Build analysis maps by scanning all instructions
+    let mut fn_ref_map: BTreeMap<MirValueId, String> = BTreeMap::new();
+    let mut closure_map: BTreeMap<MirValueId, (String, Vec<MirValueId>)> = BTreeMap::new();
+
+    for block in &function.blocks {
+        for inst in &block.instructions {
+            match inst {
+                MirInst::FunctionRef { dest, function } => {
+                    fn_ref_map.insert(dest.clone(), function.clone());
+                }
+                MirInst::ClosureInit {
+                    dest,
+                    entry,
+                    captures,
+                    ..
+                } => {
+                    if let Some(entry_name) = fn_ref_map.get(entry) {
+                        closure_map
+                            .insert(dest.clone(), (entry_name.clone(), captures.clone()));
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    // Phase 2: Structural verification — classify each closure
+    let mut inlinable: BTreeMap<MirValueId, InlinableCallback> = BTreeMap::new();
+
+    for (closure_id, (entry_name, captures)) in &closure_map {
+        // Skip chain-augmented callbacks (stacking wrappers)
+        if entry_name.contains("__chain_callback") {
+            continue;
+        }
+
+        // Fast pre-filter: only state_get / state_put entry wrappers
+        let is_state_get = entry_name.ends_with("$state_get");
+        let is_state_put = entry_name.ends_with("$state_put");
+        if !is_state_get && !is_state_put {
+            continue;
+        }
+
+        // Structural verification: look up entry wrapper function
+        let Some(&wrapper_idx) = fn_index.get(entry_name.as_str()) else {
+            continue;
+        };
+        let wrapper_fn = &functions[wrapper_idx];
+
+        // Entry wrapper must be single-block with ClosureCaptureLoad(s) → Call(Local(target))
+        if wrapper_fn.blocks.len() != 1 {
+            continue;
+        }
+        let wrapper_block = &wrapper_fn.blocks[0];
+
+        // Find the Call instruction (last instruction) and extract the target name
+        let Some(MirInst::Call {
+            callee: MirCallee::Local(target_name),
+            ..
+        }) = wrapper_block.instructions.last()
+        else {
+            continue;
+        };
+
+        // Look up the target (impl) function and verify its body shape
+        let Some(&target_idx) = fn_index.get(target_name.as_str()) else {
+            continue;
+        };
+        let target_fn = &functions[target_idx];
+        if target_fn.blocks.len() != 1 {
+            continue;
+        }
+        let target_block = &target_fn.blocks[0];
+
+        if is_state_get {
+            // State-get shape: single instruction StateCellLoad, returns loaded value
+            if target_block.instructions.len() != 1 {
+                continue;
+            }
+            if !matches!(&target_block.instructions[0], MirInst::StateCellLoad { .. }) {
+                continue;
+            }
+            if captures.is_empty() {
+                continue;
+            }
+            inlinable.insert(
+                closure_id.clone(),
+                InlinableCallback::StateGet {
+                    state_cell: captures[0].clone(),
+                },
+            );
+        } else if is_state_put {
+            // State-put shape: StateCellStore + Const(Unit), returns unit
+            if target_block.instructions.len() != 2 {
+                continue;
+            }
+            if !matches!(&target_block.instructions[0], MirInst::StateCellStore { .. }) {
+                continue;
+            }
+            if !matches!(
+                &target_block.instructions[1],
+                MirInst::Const {
+                    literal: MirLiteral::Unit,
+                    ..
+                }
+            ) {
+                continue;
+            }
+            if captures.is_empty() {
+                continue;
+            }
+            inlinable.insert(
+                closure_id.clone(),
+                InlinableCallback::StatePut {
+                    state_cell: captures[0].clone(),
+                },
+            );
+        }
+    }
+
+    if inlinable.is_empty() {
+        return;
+    }
+
+    // Reborrow mutably for rewrite and DCE phases
+    let function = &mut functions[func_idx];
+
+    // Phase 3: Rewrite — collect replacements then apply
+    // Each replacement: (block_idx, inst_idx, replacement instructions)
+    let mut replacements: Vec<(usize, usize, Vec<MirInst>)> = Vec::new();
+
+    for (block_idx, block) in function.blocks.iter().enumerate() {
+        for (inst_idx, inst) in block.instructions.iter().enumerate() {
+            if let MirInst::Call {
+                callee: MirCallee::Value(callee_value),
+                args,
+                result,
+                ..
+            } = inst
+                && let Some(callback_kind) = inlinable.get(callee_value)
+            {
+                match callback_kind {
+                    InlinableCallback::StateGet { state_cell } => {
+                        if let Some(dest) = result {
+                            replacements.push((
+                                block_idx,
+                                inst_idx,
+                                vec![MirInst::StateCellLoad {
+                                    dest: dest.clone(),
+                                    cell: state_cell.clone(),
+                                }],
+                            ));
+                        } else {
+                            replacements
+                                .push((block_idx, inst_idx, vec![MirInst::Nop]));
+                        }
+                    }
+                    InlinableCallback::StatePut { state_cell } => {
+                        let mut insts = vec![MirInst::StateCellStore {
+                            cell: state_cell.clone(),
+                            value: args
+                                .first()
+                                .cloned()
+                                .unwrap_or(MirValueId(u32::MAX)),
+                        }];
+                        if let Some(dest) = result {
+                            insts.push(MirInst::Const {
+                                dest: dest.clone(),
+                                literal: MirLiteral::Unit,
+                            });
+                        }
+                        replacements.push((block_idx, inst_idx, insts));
+                    }
+                }
+            }
+        }
+    }
+
+    // Apply replacements in reverse order to preserve indices
+    for (block_idx, inst_idx, new_insts) in replacements.into_iter().rev() {
+        let block = &mut function.blocks[block_idx];
+        block.instructions.remove(inst_idx);
+        for (offset, inst) in new_insts.into_iter().enumerate() {
+            block.instructions.insert(inst_idx + offset, inst);
+        }
+    }
+
+    // Phase 4: Two-pass dead code elimination for orphaned FunctionRef + ClosureInit
+    for _ in 0..2 {
+        let mut referenced: BTreeSet<MirValueId> = BTreeSet::new();
+        for block in &function.blocks {
+            for inst in &block.instructions {
+                // Collect all values read by this instruction
+                // Use a simple inline check rather than calling inst_reads_value for each candidate
+                match inst {
+                    MirInst::ClosureInit {
+                        entry, captures, ..
+                    } => {
+                        referenced.insert(entry.clone());
+                        for c in captures {
+                            referenced.insert(c.clone());
+                        }
+                    }
+                    MirInst::Call {
+                        callee: MirCallee::Value(v),
+                        args,
+                        ..
+                    } => {
+                        referenced.insert(v.clone());
+                        for a in args {
+                            referenced.insert(a.clone());
+                        }
+                    }
+                    MirInst::Call { args, .. } => {
+                        for a in args {
+                            referenced.insert(a.clone());
+                        }
+                    }
+                    MirInst::StateCellLoad { cell, .. } => {
+                        referenced.insert(cell.clone());
+                    }
+                    MirInst::StateCellStore { cell, value } => {
+                        referenced.insert(cell.clone());
+                        referenced.insert(value.clone());
+                    }
+                    MirInst::Binary { left, right, .. } => {
+                        referenced.insert(left.clone());
+                        referenced.insert(right.clone());
+                    }
+                    MirInst::Unary { operand, .. } => {
+                        referenced.insert(operand.clone());
+                    }
+                    MirInst::StateCellNew { initial, .. } => {
+                        referenced.insert(initial.clone());
+                    }
+                    MirInst::ClosureCaptureLoad { closure, .. } => {
+                        referenced.insert(closure.clone());
+                    }
+                    MirInst::RecordInit { fields, .. } => {
+                        for (_, v) in fields {
+                            referenced.insert(v.clone());
+                        }
+                    }
+                    MirInst::SumInit { fields, .. } => {
+                        for v in fields {
+                            referenced.insert(v.clone());
+                        }
+                    }
+                    MirInst::RecordFieldLoad { record, .. } => {
+                        referenced.insert(record.clone());
+                    }
+                    MirInst::SumTagLoad { sum, .. }
+                    | MirInst::SumPayloadLoad { sum, .. } => {
+                        referenced.insert(sum.clone());
+                    }
+                    MirInst::Move { src, .. }
+                    | MirInst::Borrow { src, .. }
+                    | MirInst::TryClaim { src, .. }
+                    | MirInst::Freeze { src, .. } => {
+                        referenced.insert(src.clone());
+                    }
+                    MirInst::Retain { value } | MirInst::Release { value } => {
+                        referenced.insert(value.clone());
+                    }
+                    MirInst::Resume { value } => {
+                        referenced.insert(value.clone());
+                    }
+                    MirInst::EffectOp { args, .. } => {
+                        for a in args {
+                            referenced.insert(a.clone());
+                        }
+                    }
+                    MirInst::CowUpdate {
+                        target, updates, ..
+                    } => {
+                        referenced.insert(target.clone());
+                        for u in updates {
+                            referenced.insert(u.value.clone());
+                        }
+                    }
+                    MirInst::RecordInitReuse {
+                        source, fields, ..
+                    } => {
+                        referenced.insert(source.clone());
+                        for (_, v) in fields {
+                            referenced.insert(v.clone());
+                        }
+                    }
+                    MirInst::SumInitReuse {
+                        source, fields, ..
+                    } => {
+                        referenced.insert(source.clone());
+                        for v in fields {
+                            referenced.insert(v.clone());
+                        }
+                    }
+                    MirInst::RecordInitFromToken {
+                        token, fields, ..
+                    } => {
+                        referenced.insert(token.clone());
+                        for (_, v) in fields {
+                            referenced.insert(v.clone());
+                        }
+                    }
+                    MirInst::SumInitFromToken {
+                        token, fields, ..
+                    } => {
+                        referenced.insert(token.clone());
+                        for v in fields {
+                            referenced.insert(v.clone());
+                        }
+                    }
+                    MirInst::ReuseToken { source, .. } => {
+                        referenced.insert(source.clone());
+                    }
+                    MirInst::Const { .. }
+                    | MirInst::FunctionRef { .. }
+                    | MirInst::HandlerEnter { .. }
+                    | MirInst::HandlerExit { .. }
+                    | MirInst::Unsupported { .. }
+                    | MirInst::Nop => {}
+                }
+            }
+            // Also check terminator
+            match &block.terminator {
+                MirTerminator::Return {
+                    value: Some(v),
+                } => {
+                    referenced.insert(v.clone());
+                }
+                MirTerminator::Jump { args, .. } => {
+                    for a in args {
+                        referenced.insert(a.clone());
+                    }
+                }
+                MirTerminator::Branch { condition, .. } => {
+                    referenced.insert(condition.clone());
+                }
+                MirTerminator::Return { value: None }
+                | MirTerminator::Unreachable => {}
+            }
+        }
+
+        // Kill unreferenced FunctionRef and ClosureInit instructions
+        for block in &mut function.blocks {
+            for inst in &mut block.instructions {
+                if matches!(inst, MirInst::FunctionRef { .. } | MirInst::ClosureInit { .. })
+                    && let Some(dest) = inst_defined_value(inst)
+                    && !referenced.contains(dest)
+                {
+                    *inst = MirInst::Nop;
+                }
+            }
+        }
+    }
 }
 
 fn rewrite_trmc_descending_sum_chain(function: &mut MirFunction) {
