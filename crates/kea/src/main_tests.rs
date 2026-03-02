@@ -2604,6 +2604,21 @@
 
     #[test]
     #[cfg(not(target_os = "windows"))]
+    fn compile_and_execute_fip_unique_alias_forward_handoff_exit_code() {
+        let source_path = write_temp_source(
+            "@fip\nfn alias_forward(x: Unique Int) -> Unique Int\n  let y = x\n  y\n\nfn main() -> Int\n  0\n",
+            "kea-cli-fip-unique-alias-forward",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("@fip unique alias-forward handoff should verify");
+        assert_eq!(run.exit_code, 0);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
     fn compile_rejects_fip_when_unique_handoff_missing() {
         let source_path = write_temp_source(
             "@fip\nfn leak(x: Unique Int) -> Int\n  1\n\nfn main() -> Int\n  0\n",
@@ -2620,6 +2635,29 @@
         assert!(
             err.contains("never referenced in function body"),
             "expected unique ownership-flow detail, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn compile_rejects_fip_when_unique_param_is_referenced_twice() {
+        let source_path = write_temp_source(
+            "@fip\nfn dup_branch(x: Unique Int, pick_left: Bool) -> Unique Int\n  if pick_left\n    x\n  else\n    x\n\nfn main() -> Int\n  0\n",
+            "kea-cli-fip-unique-double-reference",
+            "kea",
+        );
+
+        let err = run_file(&source_path)
+            .expect_err("@fip verifier should reject duplicated unique references");
+        assert!(
+            err.contains("`@fip` verification failed for `dup_branch`"),
+            "expected @fip verification failure, got: {err}"
+        );
+        assert!(
+            err.contains("referenced 2 times"),
+            "expected duplicated-reference ownership-flow detail, got: {err}"
         );
 
         let _ = std::fs::remove_file(source_path);

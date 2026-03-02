@@ -2174,15 +2174,18 @@ fn validate_fip_annotations(module: &Module, hir: &HirModule) -> Vec<Diagnostic>
         };
 
         let profile = mir_function.map(collect_fip_mir_profile).unwrap_or_default();
-        let hir_var_refs = collect_hir_var_refs_by_function_name(hir, &name);
+        let hir_var_counts = collect_hir_var_ref_counts_by_function_name(hir, &name);
         let mut unique_flow_issues = fip_spec
             .unique_param_names
             .iter()
-            .filter(|name| !hir_var_refs.contains(*name))
-            .map(|name| {
-                format!(
+            .filter_map(|name| match hir_var_counts.get(name).copied().unwrap_or(0) {
+                0 => Some(format!(
                     "Unique parameter `{name}` is never referenced in function body (expected exactly-once consume/forward)"
-                )
+                )),
+                n if n > 1 => Some(format!(
+                    "Unique parameter `{name}` is referenced {n} times; @fip currently requires a single syntactic ownership handoff"
+                )),
+                _ => None,
             })
             .collect::<Vec<_>>();
         let call_escapes =
@@ -2310,8 +2313,8 @@ fn is_unique_type_annotation(annotation: &TypeAnnotation) -> bool {
     }
 }
 
-fn collect_hir_var_refs_by_function_name(hir: &HirModule, name: &str) -> BTreeSet<String> {
-    let mut refs = BTreeSet::new();
+fn collect_hir_var_ref_counts_by_function_name(hir: &HirModule, name: &str) -> BTreeMap<String, usize> {
+    let mut counts = BTreeMap::new();
     for decl in &hir.declarations {
         let HirDecl::Function(function) = decl else {
             continue;
@@ -2319,80 +2322,80 @@ fn collect_hir_var_refs_by_function_name(hir: &HirModule, name: &str) -> BTreeSe
         if function.name != name && !function.name.ends_with(&format!(".{name}")) {
             continue;
         }
-        collect_hir_var_refs(&function.body, &mut refs);
+        collect_hir_var_ref_counts(&function.body, &mut counts);
         break;
     }
-    refs
+    counts
 }
 
-fn collect_hir_var_refs(expr: &HirExpr, refs: &mut BTreeSet<String>) {
+fn collect_hir_var_ref_counts(expr: &HirExpr, counts: &mut BTreeMap<String, usize>) {
     match &expr.kind {
         HirExprKind::Lit(_) => {}
         HirExprKind::Var(name) => {
-            refs.insert(name.clone());
+            *counts.entry(name.clone()).or_default() += 1;
         }
         HirExprKind::Binary { left, right, .. } => {
-            collect_hir_var_refs(left, refs);
-            collect_hir_var_refs(right, refs);
+            collect_hir_var_ref_counts(left, counts);
+            collect_hir_var_ref_counts(right, counts);
         }
-        HirExprKind::Unary { operand, .. } => collect_hir_var_refs(operand, refs),
+        HirExprKind::Unary { operand, .. } => collect_hir_var_ref_counts(operand, counts),
         HirExprKind::If {
             condition,
             then_branch,
             else_branch,
         } => {
-            collect_hir_var_refs(condition, refs);
-            collect_hir_var_refs(then_branch, refs);
+            collect_hir_var_ref_counts(condition, counts);
+            collect_hir_var_ref_counts(then_branch, counts);
             if let Some(else_expr) = else_branch {
-                collect_hir_var_refs(else_expr, refs);
+                collect_hir_var_ref_counts(else_expr, counts);
             }
         }
         HirExprKind::Call { func, args } => {
-            collect_hir_var_refs(func, refs);
+            collect_hir_var_ref_counts(func, counts);
             for arg in args {
-                collect_hir_var_refs(arg, refs);
+                collect_hir_var_ref_counts(arg, counts);
             }
         }
-        HirExprKind::Let { value, .. } => collect_hir_var_refs(value, refs),
+        HirExprKind::Let { value, .. } => collect_hir_var_ref_counts(value, counts),
         HirExprKind::Block(exprs) | HirExprKind::Tuple(exprs) => {
             for item in exprs {
-                collect_hir_var_refs(item, refs);
+                collect_hir_var_ref_counts(item, counts);
             }
         }
-        HirExprKind::Lambda { body, .. } => collect_hir_var_refs(body, refs),
+        HirExprKind::Lambda { body, .. } => collect_hir_var_ref_counts(body, counts),
         HirExprKind::RecordLit { fields, .. } => {
             for (_, field_expr) in fields {
-                collect_hir_var_refs(field_expr, refs);
+                collect_hir_var_ref_counts(field_expr, counts);
             }
         }
         HirExprKind::RecordUpdate { base, fields, .. } => {
-            collect_hir_var_refs(base, refs);
+            collect_hir_var_ref_counts(base, counts);
             for (_, field_expr) in fields {
-                collect_hir_var_refs(field_expr, refs);
+                collect_hir_var_ref_counts(field_expr, counts);
             }
         }
-        HirExprKind::FieldAccess { expr, .. } => collect_hir_var_refs(expr, refs),
+        HirExprKind::FieldAccess { expr, .. } => collect_hir_var_ref_counts(expr, counts),
         HirExprKind::SumConstructor { fields, .. } => {
             for field_expr in fields {
-                collect_hir_var_refs(field_expr, refs);
+                collect_hir_var_ref_counts(field_expr, counts);
             }
         }
-        HirExprKind::SumPayloadAccess { expr, .. } => collect_hir_var_refs(expr, refs),
-        HirExprKind::Catch { expr } => collect_hir_var_refs(expr, refs),
+        HirExprKind::SumPayloadAccess { expr, .. } => collect_hir_var_ref_counts(expr, counts),
+        HirExprKind::Catch { expr } => collect_hir_var_ref_counts(expr, counts),
         HirExprKind::Handle {
             expr,
             clauses,
             then_clause,
         } => {
-            collect_hir_var_refs(expr, refs);
+            collect_hir_var_ref_counts(expr, counts);
             for clause in clauses {
-                collect_hir_var_refs(&clause.body, refs);
+                collect_hir_var_ref_counts(&clause.body, counts);
             }
             if let Some(then_expr) = then_clause {
-                collect_hir_var_refs(then_expr, refs);
+                collect_hir_var_ref_counts(then_expr, counts);
             }
         }
-        HirExprKind::Resume { value } => collect_hir_var_refs(value, refs),
+        HirExprKind::Resume { value } => collect_hir_var_ref_counts(value, counts),
         HirExprKind::Raw(_) => {}
     }
 }
