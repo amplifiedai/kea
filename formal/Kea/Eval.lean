@@ -2484,6 +2484,53 @@ theorem coreCalculusSoundnessDeclarativeMasterSuite_proved :
   coreCalculusSoundnessDeclarativeMasterSuite_of_hasTypeSlice
     coreCalculusSoundnessDeclarativeSlice_proved
 
+theorem coreCalculusSoundnessDeclarativeMasterSuite_hasTypeSlice
+    (h_suite : CoreCalculusSoundnessDeclarativeMasterSuite) :
+    CoreCalculusSoundnessDeclarativeSlice :=
+  h_suite.hasTypeSlice
+
+theorem coreCalculusSoundnessDeclarativeMasterSuite_inferSlice
+    (h_suite : CoreCalculusSoundnessDeclarativeMasterSuite) :
+    CoreCalculusSoundnessDeclarativeInferSlice :=
+  h_suite.inferSlice
+
+theorem coreCalculusSoundnessDeclarativeMasterSuite_hasTypeInferIff
+    (h_suite : CoreCalculusSoundnessDeclarativeMasterSuite) :
+    CoreCalculusSoundnessDeclarativeSlice ↔ CoreCalculusSoundnessDeclarativeInferSlice :=
+  h_suite.hasTypeInferIff
+
+theorem coreCalculusSoundnessDeclarativeMasterSuite_hasTypeEvalIff
+    (h_suite : CoreCalculusSoundnessDeclarativeMasterSuite) :
+    CoreCalculusSoundnessDeclarativeSlice ↔ CoreTypeSoundnessEvalSlice :=
+  h_suite.hasTypeEvalIff
+
+theorem coreCalculusSoundnessDeclarativeMasterSuite_inferEvalIff
+    (h_suite : CoreCalculusSoundnessDeclarativeMasterSuite) :
+    CoreCalculusSoundnessDeclarativeInferSlice ↔ CoreTypeSoundnessEvalInferSlice :=
+  h_suite.inferEvalIff
+
+theorem coreCalculusSoundnessDeclarativeMasterSuite_as_components_of_hasTypeSlice
+    (h_hasType : CoreCalculusSoundnessDeclarativeSlice) :
+    CoreCalculusSoundnessDeclarativeMasterSuiteComponents :=
+  coreCalculusSoundnessDeclarativeMasterSuite_as_components
+    (coreCalculusSoundnessDeclarativeMasterSuite_of_hasTypeSlice h_hasType)
+
+theorem coreCalculusSoundnessDeclarativeMasterSuite_as_components_of_inferSlice
+    (h_infer : CoreCalculusSoundnessDeclarativeInferSlice) :
+    CoreCalculusSoundnessDeclarativeMasterSuiteComponents :=
+  coreCalculusSoundnessDeclarativeMasterSuite_as_components
+    (coreCalculusSoundnessDeclarativeMasterSuite_of_inferSlice h_infer)
+
+theorem coreCalculusSoundnessDeclarativeMasterSuite_hasTypeSlice_proved :
+    CoreCalculusSoundnessDeclarativeSlice :=
+  coreCalculusSoundnessDeclarativeMasterSuite_hasTypeSlice
+    coreCalculusSoundnessDeclarativeMasterSuite_proved
+
+theorem coreCalculusSoundnessDeclarativeMasterSuite_inferSlice_proved :
+    CoreCalculusSoundnessDeclarativeInferSlice :=
+  coreCalculusSoundnessDeclarativeMasterSuite_inferSlice
+    coreCalculusSoundnessDeclarativeMasterSuite_proved
+
 theorem coreCalculusSoundnessConsequences_of_coreCalculusSoundnessSlice
     (h_core : CoreCalculusSoundnessSlice)
     {tenv : TermEnv} {venv : ValueEnv} {e : CoreExpr} {ty : Ty}

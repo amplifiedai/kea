@@ -13943,3 +13943,45 @@ New theorem surface:
 
 **Impact**:
 - Closes the last directional asymmetry on declarative canonical slice APIs.
+
+### 2026-03-02: declarative canonical master capstone suite
+
+**Context**: Extended `Kea/Eval.lean` with a top-level capstone package that
+collects declarative canonical soundness slices and their key equivalence
+bridges into one theorem surface.
+
+New theorem surface:
+- `CoreCalculusSoundnessDeclarativeMasterSuite`
+- `CoreCalculusSoundnessDeclarativeMasterSuiteComponents`
+- `coreCalculusSoundnessDeclarativeMasterSuite_{iff_components,of_components,as_components,as_components_of_components}`
+- `coreCalculusSoundnessDeclarativeMasterSuite_of_{hasTypeSlice,inferSlice}`
+- `coreCalculusSoundnessDeclarativeMasterSuite_proved`
+- `coreCalculusSoundnessDeclarativeMasterSuite_{hasTypeSlice,inferSlice,hasTypeInferIff,hasTypeEvalIff,inferEvalIff}`
+- `coreCalculusSoundnessDeclarativeMasterSuite_as_components_of_{hasTypeSlice,inferSlice}`
+- `coreCalculusSoundnessDeclarativeMasterSuite_{hasTypeSlice,inferSlice}_proved`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; this is a capstone packaging layer over
+  already proved declarative canonical slice and bridge families.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Declarative canonical soundness now has a single top-level proved suite
+  witness with direct facet and decomposition routes.
+
+**Impact**:
+- Establishes a major citation anchor for the declarative core-soundness track,
+  reducing multi-theorem plumbing in downstream formal and paper-facing claims.
