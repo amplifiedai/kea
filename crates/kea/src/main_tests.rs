@@ -2651,6 +2651,26 @@
 
     #[test]
     #[cfg(not(target_os = "windows"))]
+    fn compile_and_execute_fip_unique_known_qualified_forwarder_call_exit_code() {
+        let project_dir = temp_workspace_project_dir("kea-cli-fip-unique-qualified-forwarder");
+        let src_dir = project_dir.join("src");
+        std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+        let source_path = src_dir.join("main.kea");
+        std::fs::write(
+            &source_path,
+            "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\n@fip\nfn call_forward_once(x: Unique Int) -> Unique Int\n  Main.forward_once(x)\n\nfn main() -> Int\n  0\n",
+        )
+        .expect("source write should succeed");
+
+        let run = run_file(&source_path)
+            .expect("@fip verifier should accept qualified known safe forwarder calls");
+        assert_eq!(run.exit_code, 0);
+
+        let _ = std::fs::remove_dir_all(project_dir);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
     fn compile_rejects_fip_when_unique_handoff_missing() {
         let source_path = write_temp_source(
             "@fip\nfn leak(x: Unique Int) -> Int\n  1\n\nfn main() -> Int\n  0\n",
