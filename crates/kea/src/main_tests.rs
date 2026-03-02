@@ -2642,23 +2642,16 @@
 
     #[test]
     #[cfg(not(target_os = "windows"))]
-    fn compile_rejects_fip_when_unique_param_is_referenced_twice() {
+    fn compile_and_execute_fip_unique_branch_handoff_exit_code() {
         let source_path = write_temp_source(
             "@fip\nfn dup_branch(x: Unique Int, pick_left: Bool) -> Unique Int\n  if pick_left\n    x\n  else\n    x\n\nfn main() -> Int\n  0\n",
-            "kea-cli-fip-unique-double-reference",
+            "kea-cli-fip-unique-branch-handoff",
             "kea",
         );
 
-        let err = run_file(&source_path)
-            .expect_err("@fip verifier should reject duplicated unique references");
-        assert!(
-            err.contains("`@fip` verification failed for `dup_branch`"),
-            "expected @fip verification failure, got: {err}"
-        );
-        assert!(
-            err.contains("referenced 2 times"),
-            "expected duplicated-reference ownership-flow detail, got: {err}"
-        );
+        let run = run_file(&source_path)
+            .expect("@fip verifier should accept branch-exclusive unique handoff");
+        assert_eq!(run.exit_code, 0);
 
         let _ = std::fs::remove_file(source_path);
     }

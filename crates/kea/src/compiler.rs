@@ -2174,7 +2174,7 @@ fn validate_fip_annotations(module: &Module, hir: &HirModule) -> Vec<Diagnostic>
         };
 
         let profile = mir_function.map(collect_fip_mir_profile).unwrap_or_default();
-        let hir_var_counts = collect_hir_var_ref_counts_by_function_name(hir, &name);
+        let hir_var_counts = collect_hir_var_ref_max_counts_by_function_name(hir, &name);
         let mut unique_flow_issues = fip_spec
             .unique_param_names
             .iter()
@@ -2313,7 +2313,10 @@ fn is_unique_type_annotation(annotation: &TypeAnnotation) -> bool {
     }
 }
 
-fn collect_hir_var_ref_counts_by_function_name(hir: &HirModule, name: &str) -> BTreeMap<String, usize> {
+fn collect_hir_var_ref_max_counts_by_function_name(
+    hir: &HirModule,
+    name: &str,
+) -> BTreeMap<String, usize> {
     let mut counts = BTreeMap::new();
     for decl in &hir.declarations {
         let HirDecl::Function(function) = decl else {
@@ -2322,80 +2325,104 @@ fn collect_hir_var_ref_counts_by_function_name(hir: &HirModule, name: &str) -> B
         if function.name != name && !function.name.ends_with(&format!(".{name}")) {
             continue;
         }
-        collect_hir_var_ref_counts(&function.body, &mut counts);
+        collect_hir_var_ref_max_counts(&function.body, &mut counts);
         break;
     }
     counts
 }
 
-fn collect_hir_var_ref_counts(expr: &HirExpr, counts: &mut BTreeMap<String, usize>) {
+fn collect_hir_var_ref_max_counts(expr: &HirExpr, counts: &mut BTreeMap<String, usize>) {
     match &expr.kind {
         HirExprKind::Lit(_) => {}
         HirExprKind::Var(name) => {
             *counts.entry(name.clone()).or_default() += 1;
         }
         HirExprKind::Binary { left, right, .. } => {
-            collect_hir_var_ref_counts(left, counts);
-            collect_hir_var_ref_counts(right, counts);
+            collect_hir_var_ref_max_counts(left, counts);
+            collect_hir_var_ref_max_counts(right, counts);
         }
-        HirExprKind::Unary { operand, .. } => collect_hir_var_ref_counts(operand, counts),
+        HirExprKind::Unary { operand, .. } => collect_hir_var_ref_max_counts(operand, counts),
         HirExprKind::If {
             condition,
             then_branch,
             else_branch,
         } => {
-            collect_hir_var_ref_counts(condition, counts);
-            collect_hir_var_ref_counts(then_branch, counts);
+            collect_hir_var_ref_max_counts(condition, counts);
+            let mut then_counts = BTreeMap::new();
+            collect_hir_var_ref_max_counts(then_branch, &mut then_counts);
+            let mut else_counts = BTreeMap::new();
             if let Some(else_expr) = else_branch {
-                collect_hir_var_ref_counts(else_expr, counts);
+                collect_hir_var_ref_max_counts(else_expr, &mut else_counts);
+            }
+            let keys = then_counts
+                .keys()
+                .chain(else_counts.keys())
+                .cloned()
+                .collect::<BTreeSet<_>>();
+            for key in keys {
+                let merged = then_counts
+                    .get(&key)
+                    .copied()
+                    .unwrap_or(0)
+                    .max(else_counts.get(&key).copied().unwrap_or(0));
+                *counts.entry(key).or_default() += merged;
             }
         }
         HirExprKind::Call { func, args } => {
-            collect_hir_var_ref_counts(func, counts);
+            collect_hir_var_ref_max_counts(func, counts);
             for arg in args {
-                collect_hir_var_ref_counts(arg, counts);
+                collect_hir_var_ref_max_counts(arg, counts);
             }
         }
-        HirExprKind::Let { value, .. } => collect_hir_var_ref_counts(value, counts),
+        HirExprKind::Let { value, .. } => collect_hir_var_ref_max_counts(value, counts),
         HirExprKind::Block(exprs) | HirExprKind::Tuple(exprs) => {
             for item in exprs {
-                collect_hir_var_ref_counts(item, counts);
+                collect_hir_var_ref_max_counts(item, counts);
             }
         }
-        HirExprKind::Lambda { body, .. } => collect_hir_var_ref_counts(body, counts),
+        HirExprKind::Lambda { body, .. } => collect_hir_var_ref_max_counts(body, counts),
         HirExprKind::RecordLit { fields, .. } => {
             for (_, field_expr) in fields {
-                collect_hir_var_ref_counts(field_expr, counts);
+                collect_hir_var_ref_max_counts(field_expr, counts);
             }
         }
         HirExprKind::RecordUpdate { base, fields, .. } => {
-            collect_hir_var_ref_counts(base, counts);
+            collect_hir_var_ref_max_counts(base, counts);
             for (_, field_expr) in fields {
-                collect_hir_var_ref_counts(field_expr, counts);
+                collect_hir_var_ref_max_counts(field_expr, counts);
             }
         }
-        HirExprKind::FieldAccess { expr, .. } => collect_hir_var_ref_counts(expr, counts),
+        HirExprKind::FieldAccess { expr, .. } => collect_hir_var_ref_max_counts(expr, counts),
         HirExprKind::SumConstructor { fields, .. } => {
             for field_expr in fields {
-                collect_hir_var_ref_counts(field_expr, counts);
+                collect_hir_var_ref_max_counts(field_expr, counts);
             }
         }
-        HirExprKind::SumPayloadAccess { expr, .. } => collect_hir_var_ref_counts(expr, counts),
-        HirExprKind::Catch { expr } => collect_hir_var_ref_counts(expr, counts),
+        HirExprKind::SumPayloadAccess { expr, .. } => collect_hir_var_ref_max_counts(expr, counts),
+        HirExprKind::Catch { expr } => collect_hir_var_ref_max_counts(expr, counts),
         HirExprKind::Handle {
             expr,
             clauses,
             then_clause,
         } => {
-            collect_hir_var_ref_counts(expr, counts);
+            collect_hir_var_ref_max_counts(expr, counts);
+            let mut clause_max = BTreeMap::new();
             for clause in clauses {
-                collect_hir_var_ref_counts(&clause.body, counts);
+                let mut clause_counts = BTreeMap::new();
+                collect_hir_var_ref_max_counts(&clause.body, &mut clause_counts);
+                for (name, count) in clause_counts {
+                    let entry = clause_max.entry(name).or_insert(0);
+                    *entry = (*entry).max(count);
+                }
+            }
+            for (name, count) in clause_max {
+                *counts.entry(name).or_default() += count;
             }
             if let Some(then_expr) = then_clause {
-                collect_hir_var_ref_counts(then_expr, counts);
+                collect_hir_var_ref_max_counts(then_expr, counts);
             }
         }
-        HirExprKind::Resume { value } => collect_hir_var_ref_counts(value, counts),
+        HirExprKind::Resume { value } => collect_hir_var_ref_max_counts(value, counts),
         HirExprKind::Raw(_) => {}
     }
 }
