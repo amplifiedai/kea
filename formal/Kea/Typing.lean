@@ -1730,6 +1730,75 @@ theorem native_handler_step_ext_with_mismatch_exists_of_op_mismatch
     opBody opHandle argTy opRetTy arg k argName resumeName clauseBody h_op_ne
 
 /--
+Typed op-mismatch handled-`perform` expressions always make one step under the
+mismatched-perform extension.
+-/
+theorem native_handler_step_ext_with_mismatch_progress_of_typed_op_mismatch
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    {env : TermEnv}
+    {opBody opHandle : Label}
+    {argName resumeName : String}
+    {argTy opRetTy ty : Ty}
+    {arg k clauseBody : CoreExpr}
+    (_h_typed :
+      HasTypeScopedTop env
+        (.handle (.perform opBody argTy opRetTy arg k) opHandle argName resumeName argTy opRetTy clauseBody)
+        ty)
+    (h_op_ne : opBody ≠ opHandle) :
+    ∃ e', NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep
+      (.handle (.perform opBody argTy opRetTy arg k) opHandle argName resumeName argTy opRetTy clauseBody)
+      e' := by
+  exact native_handler_step_ext_with_mismatch_exists_of_op_mismatch
+    clauseSem mismatchSem bodyStep h_op_ne
+
+/--
+Concrete typed mismatched-op counterexample is resolved at the step-existence
+level under the mismatched-perform extension.
+-/
+theorem native_handler_step_ext_with_mismatch_typed_mismatch_counterexample_resolved
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    {opBody opHandle : Label}
+    (h_op_ne : opBody ≠ opHandle) :
+    ∃ env argName resumeName clauseBody ty e',
+      HasTypeScopedTop env
+        (.handle
+          (.perform opBody .int .int (.intLit 1) (.lam "x" .int (.intLit 0)))
+          opHandle argName resumeName .int .int clauseBody)
+        ty
+      ∧
+      NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep
+        (.handle
+          (.perform opBody .int .int (.intLit 1) (.lam "x" .int (.intLit 0)))
+          opHandle argName resumeName .int .int clauseBody)
+        e' := by
+  refine ⟨[], "x", "k", .intLit 2, .int,
+      mismatchSem.mismatchTarget
+        opBody .int .int (.intLit 1) (.lam "x" .int (.intLit 0))
+        opHandle "x" "k" .int .int (.intLit 2),
+      ?_⟩
+  refine ⟨?_, ?_⟩
+  · exact HasTypeScoped.handle none []
+      (.perform opBody .int .int (.intLit 1) (.lam "x" .int (.intLit 0)))
+      opHandle "x" "k" .int .int .int (.intLit 2)
+      (HasTypeScoped.perform none [] opBody .int .int .int
+        (.intLit 1) (.lam "x" .int (.intLit 0))
+        (HasTypeScoped.int none [] 1)
+        (HasTypeScoped.lam none [] "x" .int .int (.intLit 0)
+          (HasTypeScoped.int none [("x", .int)] 0)))
+      (HasTypeScoped.int (some (.int, .int))
+        (("k", .function (.cons .int .nil) .int) ::
+          ("x", .int) ::
+          [])
+        2)
+  · exact NativeHandlerStepExtWithMismatch.handle_perform_op_mismatch
+      opBody opHandle .int .int (.intLit 1) (.lam "x" .int (.intLit 0))
+      "x" "k" (.intLit 2) h_op_ne
+
+/--
 Original native handler steps embed into the extended relation.
 -/
 theorem native_handler_step_ext_of_native_handler_step

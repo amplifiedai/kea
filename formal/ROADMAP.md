@@ -465,6 +465,11 @@ Concrete milestone checklist for moving from the current fuel model to an implem
   `native_handler_step_ext_with_mismatch_exists_of_op_mismatch`.
   This gives a direct formal route to eliminate the mismatched-op stuck family
   by semantics (rather than assumption), while keeping preservation explicit.
+  Update: added typed op-mismatch progress wrappers on that extension
+  (`native_handler_step_ext_with_mismatch_progress_of_typed_op_mismatch`,
+  `native_handler_step_ext_with_mismatch_typed_mismatch_counterexample_resolved`)
+  to show the concrete typed mismatch witness now has guaranteed step
+  existence once mismatch semantics is supplied.
   Update: added explicit theorem exports for that gate
   (`hasType_resume_requires_ctx`, `resume_not_typable_without_ctx`,
   `inferExpr_resume_none_without_ctx`), so out-of-handler `resume` rejection is

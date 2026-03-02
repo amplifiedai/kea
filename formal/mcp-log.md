@@ -16469,3 +16469,36 @@ implementation satisfying `mismatch_sound`.
 - The corpus now has a machine-checkable structural route for resolving
   mismatched-op stuckness; remaining work is a concrete mismatch semantics
   witness.
+
+### 2026-03-02: typed mismatch witness resolved under structural extension
+
+**Context**: Added theorem-level wrappers showing the earlier typed mismatch
+counterexample becomes step-enabled under the mismatched-perform extension.
+
+Lean changes:
+- Added in `Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_progress_of_typed_op_mismatch`
+  - `native_handler_step_ext_with_mismatch_typed_mismatch_counterexample_resolved`
+
+These directly connect the new structural extension to the previously isolated
+stuck family.
+
+**Build check**:
+- `cd formal && lake build Kea.Typing` passes.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Probe (direct `kea` MCP)**:
+1. Spoof attempt still rejected:
+   - `fn spoof(__kea_resume_ctx: fn(Int) -> Int) -> Int; resume 1`
+   - `status = error`, `E0012`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- The typed mismatch family now has explicit step-existence routes under the
+  structural mismatch extension.
