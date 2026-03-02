@@ -4304,6 +4304,104 @@
     }
 
     #[test]
+    fn compile_and_execute_inline_state_handler_get_returns_initial_exit_code() {
+        // Inline handler: handle body directly calls State.get() in same function
+        let source_path = write_temp_source(
+            "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn main() -> Int\n  handle State.get()\n    State.get() -> resume 42\n    State.put(next) -> resume ()\n",
+            "kea-cli-inline-state-handler",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("inline state handler should work");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_cross_boundary_1arg_unit_non_tail_handler() {
+        // Cross-function dispatch: non-stateful 1-arg Unit operation with non-tail resume.
+        // Store.save(42) fires in do_save(), handler in main() transforms result with +1.
+        // Body returns 100, chain adds 1 → exit 101.
+        let source_path = write_temp_source(
+            "effect Store\n  fn save(value: Int) -> Unit\n\nfn do_save() -[Store]> Int\n  Store.save(42)\n  100\n\nfn main() -> Int\n  handle do_save()\n    Store.save(v) ->\n      let r = resume ()\n      r + 1\n",
+            "kea-cli-cross-boundary-1arg-unit-non-tail",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("cross-boundary 1-arg Unit non-tail should work");
+        assert_eq!(run.exit_code, 101);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_state_get_survives_across_handler_boundary() {
+        // Regression: state cell must not be freed before handler body executes.
+        // The optimizer (schedule_trailing_releases_after_last_use) sees closure
+        // init as the last direct use of the state cell. If the cell is in
+        // release_cells, it gets freed before the handler body calls State.get().
+        // This test catches dangling pointer regressions (was SIGBUS/garbage pre-fix).
+        let source_path = write_temp_source(
+            "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn read_state() -[State Int]> Int\n  State.get()\n\nfn main() -> Int\n  handle read_state()\n    State.get() -> resume 77\n    State.put(next) -> resume ()\n",
+            "kea-cli-state-survives-boundary",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("state cell must survive across handler boundary");
+        assert_eq!(run.exit_code, 77);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_state_put_then_get_across_boundary() {
+        // State.put followed by State.get in a different function.
+        // Both callbacks must hold valid references to the same state cell.
+        let source_path = write_temp_source(
+            "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn update_and_read() -[State Int]> Int\n  State.put(99)\n  State.get()\n\nfn main() -> Int\n  handle update_and_read()\n    State.get() -> resume 0\n    State.put(next) -> resume ()\n",
+            "kea-cli-state-put-get-boundary",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("put then get across boundary should work");
+        assert_eq!(run.exit_code, 99);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_state_multiple_gets_across_boundary() {
+        // Multiple State.get() calls across function boundary.
+        // State cell must remain valid for all invocations.
+        let source_path = write_temp_source(
+            "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn double_get() -[State Int]> Int\n  let a = State.get()\n  let b = State.get()\n  a + b\n\nfn main() -> Int\n  handle double_get()\n    State.get() -> resume 21\n    State.put(next) -> resume ()\n",
+            "kea-cli-state-multi-get-boundary",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("multiple gets across boundary should work");
+        assert_eq!(run.exit_code, 42);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_state_interleaved_put_get_across_boundary() {
+        // Interleaved put/get: put(10), get, put(20), get → should return 20
+        let source_path = write_temp_source(
+            "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn interleave() -[State Int]> Int\n  State.put(10)\n  let _ = State.get()\n  State.put(20)\n  State.get()\n\nfn main() -> Int\n  handle interleave()\n    State.get() -> resume 0\n    State.put(next) -> resume ()\n",
+            "kea-cli-state-interleave-boundary",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("interleaved put/get across boundary should work");
+        assert_eq!(run.exit_code, 20);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_mixed_dispatch_and_direct_effects_exit_code() {
         // function with both State (dispatch via handler) and IO (direct capability)
         let source_path = write_temp_source(
@@ -4370,7 +4468,8 @@
 
     #[test]
     fn compile_non_tail_resume_transforms_result() {
-        // let x = resume 40; x + 2  →  callback returns 40, post-resume adds 2
+        // Zero-arg non-tail resume via callback stacking (pure reader effect)
+        // let x = resume 40; x + 2  →  callback returns 40, chain adds 2
         let source_path = write_temp_source(
             "effect Reader C\n  fn ask() -> C\n\nfn body() -[Reader Int]> Int\n  Reader.ask()\n\nfn main() -> Int\n  handle body()\n    Reader.ask() ->\n      let x = resume 40\n      x + 2\n",
             "kea-cli-non-tail-resume-transforms",
@@ -4416,7 +4515,7 @@
 
     #[test]
     fn compile_non_tail_resume_with_then_clause() {
-        // Non-tail resume composes with then clause:
+        // Non-tail resume composes with then clause
         // post-resume produces intermediate, then-clause transforms it
         let source_path = write_temp_source(
             "effect Reader C\n  fn ask() -> C\n\nfn body() -[Reader Int]> Int\n  Reader.ask()\n\nfn main() -> Int\n  handle body()\n    Reader.ask() ->\n      let x = resume 40\n      x + 2\n    then result ->\n      result + 100\n",
@@ -4430,22 +4529,113 @@
         let _ = std::fs::remove_file(source_path);
     }
 
+    // ── Callback stacking: multi-yield non-tail handler tests ────────────
+    // When the same handled operation fires multiple times, callback stacking
+    // builds a LIFO chain of post-resume transforms. After handle returns,
+    // the chain unwinds on the body result.
+
     #[test]
-    fn compile_rejects_non_tail_resume_with_captures() {
-        // Pre-resume binding used in post-resume is rejected (v1 limitation)
+    fn compile_non_tail_resume_multi_yield_choose() {
+        // Choose.choose called twice, `picked * 2` per invocation.
+        // Body: choose(10) + choose(20) = 30
+        // Chain: identity → wrap(picked*2) → wrap(wrap(picked*2))
+        // Unwind: chain(30) = ((30 * 2) * 2) = 120
         let source_path = write_temp_source(
-            "effect Transform\n  fn get(x: Int) -> Int\n\nfn body() -[Transform]> Int\n  Transform.get(10)\n\nfn main() -> Int\n  handle body()\n    Transform.get(x) ->\n      let n = x + 5\n      let r = resume n\n      r + n\n",
-            "kea-cli-non-tail-resume-captures-reject",
+            "effect Choose\n  fn choose(n: Int) -> Int\n\nfn body() -[Choose]> Int\n  let a = Choose.choose(10)\n  let b = Choose.choose(20)\n  a + b\n\nfn main() -> Int\n  handle body()\n    Choose.choose(n) ->\n      let picked = resume n\n      picked * 2\n",
+            "kea-cli-non-tail-multi-yield-choose",
             "kea",
         );
 
-        let err = run_file(&source_path)
-            .expect_err("non-tail resume with captures should be rejected");
-        assert!(
-            err.contains("captured pre-resume bindings"),
-            "expected capture rejection diagnostic, got: {err}"
+        let run = run_file(&source_path).expect("multi-yield choose should run");
+        assert_eq!(run.exit_code, 120);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_non_tail_resume_single_yield_with_chain() {
+        // Single invocation with chain stacking (non-zero-arg path)
+        // Same as choose_first but verifies chain unwind works for single invocation
+        // Body: choose(20) = 20
+        // Chain: identity → wrap(picked + 1)
+        // Unwind: chain(20) = identity(20 + 1) = 21
+        let source_path = write_temp_source(
+            "effect Choose\n  fn choose(n: Int) -> Int\n\nfn body() -[Choose]> Int\n  Choose.choose(20)\n\nfn main() -> Int\n  handle body()\n    Choose.choose(n) ->\n      let picked = resume n\n      picked + 1\n",
+            "kea-cli-non-tail-single-yield-chain",
+            "kea",
         );
 
+        let run = run_file(&source_path).expect("single yield with chain should run");
+        assert_eq!(run.exit_code, 21);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_non_tail_resume_multi_yield_zero_arg() {
+        // Zero-arg multi-yield: Reader.ask called twice with non-tail handler
+        // Body: ask() + ask() = 10 + 10 = 20
+        // Chain: identity → wrap(x * 3) → wrap(wrap(x * 3))
+        // Unwind: chain(20) = ((20 * 3) * 3) = 180
+        let source_path = write_temp_source(
+            "effect Reader C\n  fn ask() -> C\n\nfn body() -[Reader Int]> Int\n  let a = Reader.ask()\n  let b = Reader.ask()\n  a + b\n\nfn main() -> Int\n  handle body()\n    Reader.ask() ->\n      let x = resume 10\n      x * 3\n",
+            "kea-cli-non-tail-multi-yield-zero-arg",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("multi-yield zero-arg should run");
+        assert_eq!(run.exit_code, 180);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_non_tail_resume_with_pre_resume_binding_capture() {
+        // Pre-resume binding `n` captured in post-resume body via __kea_internal_capture_store.
+        // Transform.get(x=10): n = x + 5 = 15, resume 15, body returns 15, r = 15, r + n = 30.
+        let source_path = write_temp_source(
+            "effect Transform\n  fn get(x: Int) -> Int\n\nfn body() -[Transform]> Int\n  Transform.get(10)\n\nfn main() -> Int\n  handle body()\n    Transform.get(x) ->\n      let n = x + 5\n      let r = resume n\n      r + n\n",
+            "kea-cli-non-tail-resume-pre-resume-capture",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("pre-resume binding capture should compile and run");
+        assert_eq!(run.exit_code, 30);
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_non_tail_resume_with_pre_resume_capture_multi_yield() {
+        // Multi-yield: each invocation captures its own snapshot of pre-resume binding `n`.
+        // First: Choose.choose(10) → n = 15, resume 15
+        // Second: Choose.choose(20) → n = 25, resume 25
+        // body = 15 + 25 = 40
+        // Chain unwind (LIFO): second's post-resume(40) = 40 + 25 = 65,
+        //                       first's post-resume(65) = 65 + 15 = 80
+        let source_path = write_temp_source(
+            "effect Choose\n  fn choose(x: Int) -> Int\n\nfn body() -[Choose]> Int\n  let a = Choose.choose(10)\n  let b = Choose.choose(20)\n  a + b\n\nfn main() -> Int\n  handle body()\n    Choose.choose(x) ->\n      let n = x + 5\n      let r = resume n\n      r + n\n",
+            "kea-cli-non-tail-pre-resume-capture-multi-yield",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("multi-yield pre-resume capture should work");
+        assert_eq!(run.exit_code, 80);
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    fn compile_non_tail_resume_clause_arg_and_pre_resume_capture_combined() {
+        // Both clause arg capture AND pre-resume binding capture in one handler.
+        // Transform.get(x=10): n = x * 2 = 20, resume n = resume 20, body returns 20,
+        // r = 20, r + n + x = 20 + 20 + 10 = 50.
+        let source_path = write_temp_source(
+            "effect Transform\n  fn get(x: Int) -> Int\n\nfn body() -[Transform]> Int\n  Transform.get(10)\n\nfn main() -> Int\n  handle body()\n    Transform.get(x) ->\n      let n = x * 2\n      let r = resume n\n      r + n + x\n",
+            "kea-cli-non-tail-clause-arg-and-pre-resume-capture",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("combined clause arg + pre-resume capture should work");
+        assert_eq!(run.exit_code, 50);
         let _ = std::fs::remove_file(source_path);
     }
 

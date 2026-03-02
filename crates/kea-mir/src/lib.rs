@@ -2376,41 +2376,28 @@ fn collect_effect_operations(module: &HirModule) -> BTreeMap<String, EffectOpera
 }
 
 fn handler_cell_lowering_for_operation(op: &EffectOperationInfo) -> Option<HandlerCellOpLowering> {
-    match (op.arity, op.returns_unit) {
-        (0, _) => Some(HandlerCellOpLowering::LoadCell),
-        (1, true) if op.effect == "Log" => {
-            Some(HandlerCellOpLowering::InvokeCallback {
-                arity: 1,
-                returns_unit: true,
-            })
-        }
-        (1, true) => Some(HandlerCellOpLowering::StoreArgAndReturnUnit),
-        _ => Some(HandlerCellOpLowering::InvokeCallback {
-            arity: op.arity,
-            returns_unit: op.returns_unit,
-        }),
-    }
+    // Uniform InvokeCallback: all operations dispatch through callback closures.
+    // This eliminates plan mismatch between handler and callee — there's only one
+    // dispatch mode, so no reconstruction needed. Previous LoadCell (zero-arg) and
+    // StoreArgAndReturnUnit (State.put) modes are now callbacks that close over
+    // internal state cells.
+    Some(HandlerCellOpLowering::InvokeCallback {
+        arity: op.arity,
+        returns_unit: op.returns_unit,
+    })
 }
 
 fn handler_plan_for_effect(
     effect_operations: &BTreeMap<String, EffectOperationInfo>,
     effect: &str,
 ) -> Option<ActiveEffectHandlerPlan> {
-    let is_capability = is_direct_capability_effect(effect);
+    // Uniform InvokeCallback: all operations dispatch through callback closures.
+    // handler_cell_lowering_for_operation always returns InvokeCallback, so
+    // the plan is the same for all effects — capability, stateful, or reader.
     let mut operation_lowering = BTreeMap::new();
     for op in effect_operations.values().filter(|op| op.effect == effect) {
-        let lowering = if is_capability {
-            // Capability effects always use InvokeCallback so that both default
-            // runtime wrappers and mock handler callbacks are callable closures.
-            HandlerCellOpLowering::InvokeCallback {
-                arity: op.arity,
-                returns_unit: op.returns_unit,
-            }
-        } else {
-            let Some(l) = handler_cell_lowering_for_operation(op) else {
-                continue;
-            };
-            l
+        let Some(lowering) = handler_cell_lowering_for_operation(op) else {
+            continue;
         };
         operation_lowering.insert(op.operation.clone(), lowering);
     }
@@ -2687,12 +2674,20 @@ struct NonTailResumeSplit {
     resume_value: HirExpr,
     resume_binding: String,
     post_resume_body: Vec<HirExpr>,
+    /// Pre-resume let-bindings referenced in post-resume body.
     captured_bindings: Vec<String>,
+    /// Clause arg names referenced in post-resume body.
+    clause_arg_captures: Vec<String>,
 }
 
 /// Split a non-tail clause body at the `let x = resume val` point.
 /// Returns None if the body doesn't contain a splittable resume.
-fn split_non_tail_resume(body: &HirExpr) -> Option<NonTailResumeSplit> {
+/// `clause_arg_names` are the handler clause's argument names — if any are
+/// referenced in the post-resume body, they're recorded in `clause_arg_captures`.
+fn split_non_tail_resume(
+    body: &HirExpr,
+    clause_arg_names: &BTreeSet<String>,
+) -> Option<NonTailResumeSplit> {
     let HirExprKind::Block(exprs) = &body.kind else {
         return None;
     };
@@ -2739,6 +2734,10 @@ fn split_non_tail_resume(body: &HirExpr) -> Option<NonTailResumeSplit> {
     }
     let captured_bindings: Vec<String> =
         pre_bound.intersection(&post_refs).cloned().collect();
+    let clause_arg_captures: Vec<String> = clause_arg_names
+        .intersection(&post_refs)
+        .cloned()
+        .collect();
 
     Some(NonTailResumeSplit {
         pre_resume_stmts,
@@ -2746,6 +2745,7 @@ fn split_non_tail_resume(body: &HirExpr) -> Option<NonTailResumeSplit> {
         resume_binding: binding_name.clone(),
         post_resume_body,
         captured_bindings,
+        clause_arg_captures,
     })
 }
 
@@ -3329,6 +3329,7 @@ struct FunctionLoweringCtx {
     next_value_id: u32,
     const_lowering_stack: Vec<String>,
     const_owner_stack: Vec<String>,
+    stacking_chains: BTreeMap<(String, String), StackingChain>,
 }
 
 #[derive(Debug, Clone)]
@@ -3355,8 +3356,6 @@ struct CapturedBinding {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum HandlerCellOpLowering {
-    LoadCell,
-    StoreArgAndReturnUnit,
     InvokeCallback {
         arity: usize,
         returns_unit: bool,
@@ -3366,6 +3365,15 @@ enum HandlerCellOpLowering {
 #[derive(Debug, Clone, Default)]
 struct ActiveEffectHandlerPlan {
     operation_lowering: BTreeMap<String, HandlerCellOpLowering>,
+}
+
+/// Tracks a callback stacking chain for a non-tail handler clause.
+/// The chain cell holds a composed closure that applies post-resume transforms
+/// in LIFO order. Built up per-invocation inside the callback, unwound after
+/// the handle expression returns.
+#[derive(Debug, Clone)]
+struct StackingChain {
+    chain_cell: MirValueId,
 }
 
 #[derive(Debug, Clone)]
@@ -3457,6 +3465,7 @@ impl FunctionLoweringCtx {
             next_value_id: (param_count + hidden_dispatch_effects.len()) as u32,
             const_lowering_stack: Vec::new(),
             const_owner_stack: Vec::new(),
+            stacking_chains: BTreeMap::new(),
         }
     }
 
@@ -3495,6 +3504,433 @@ impl FunctionLoweringCtx {
         self.known_function_types
             .insert(function.name.clone(), signature_ty);
         self.lifted_functions.push(function);
+    }
+
+    /// Create an identity closure `|x| x` for use as the initial chain value
+    /// in callback stacking. Returns a closure MirValueId.
+    fn create_identity_closure(&mut self) -> Option<MirValueId> {
+        let entry_name = self.allocate_generated_closure_entry_name("chain_identity");
+        // Entry function: (env: Dynamic, x: Dynamic) -> Dynamic
+        // env = param 0 (unused), x = param 1 — just return x.
+        let identity_fn = MirFunction {
+            name: entry_name.clone(),
+            signature: MirFunctionSignature {
+                params: vec![Type::Dynamic, Type::Dynamic],
+                ret: Type::Dynamic,
+                effects: EffectRow::pure(),
+            },
+            entry: MirBlockId(0),
+            blocks: vec![MirBlock {
+                id: MirBlockId(0),
+                params: Vec::new(),
+                instructions: vec![],
+                terminator: MirTerminator::Return {
+                    value: Some(MirValueId(1)),
+                },
+            }],
+        };
+        self.register_generated_function(identity_fn);
+        self.emit_closure_value(entry_name, vec![])
+    }
+
+    /// Build a post-resume chain function for callback stacking.
+    ///
+    /// Creates a synthetic function with params `[prev_chain, resume_binding, extra_captures...]`
+    /// whose body is: `prev_chain(post_resume_transform(resume_binding))`.
+    /// `extra_capture_names` are clause args or other values needed by the post-resume body.
+    /// Returns the closure entry wrapper name for use with `emit_closure_value`.
+    fn build_post_resume_chain_function(
+        &mut self,
+        effect: &str,
+        operation: &str,
+        split: &NonTailResumeSplit,
+        extra_capture_names: &[String],
+        span: kea_ast::Span,
+    ) -> Option<String> {
+        // Param order must match closure wrapper: captures first, then call params.
+        // Wrapper passes: [capture_0=prev_chain, capture_1..N=extras, call_param_0=result]
+        let mut params = vec![kea_hir::HirParam {
+            name: Some("__prev_chain".to_string()),
+            span,
+        }];
+        for name in extra_capture_names {
+            params.push(kea_hir::HirParam {
+                name: Some(name.clone()),
+                span,
+            });
+        }
+        params.push(kea_hir::HirParam {
+            name: Some(split.resume_binding.clone()),
+            span,
+        });
+
+        // Body: post_resume_body exprs, with last wrapped in Call(prev_chain, [expr])
+        let mut body_exprs: Vec<HirExpr> = split.post_resume_body.clone();
+        let last_expr = body_exprs.pop().unwrap_or_else(|| HirExpr {
+            kind: HirExprKind::Var(split.resume_binding.clone()),
+            ty: Type::Dynamic,
+            span,
+        });
+        body_exprs.push(HirExpr {
+            kind: HirExprKind::Call {
+                func: Box::new(HirExpr {
+                    kind: HirExprKind::Var("__prev_chain".to_string()),
+                    ty: Type::Dynamic,
+                    span,
+                }),
+                args: vec![last_expr],
+            },
+            ty: Type::Dynamic,
+            span,
+        });
+
+        let body = HirExpr {
+            kind: HirExprKind::Block(body_exprs),
+            ty: Type::Dynamic,
+            span,
+        };
+
+        let param_types: Vec<Type> = params.iter().map(|_| Type::Dynamic).collect();
+        let fn_name = format!(
+            "{}::__post_resume_{effect}_{operation}${}",
+            self.function_name, self.next_lifted_lambda_id
+        );
+        self.next_lifted_lambda_id = self.next_lifted_lambda_id.saturating_add(1);
+
+        let synthetic_fn = HirFunction {
+            name: fn_name.clone(),
+            params: params.clone(),
+            body,
+            ty: Type::Function(FunctionType {
+                params: param_types,
+                ret: Box::new(Type::Dynamic),
+                effects: EffectRow::pure(),
+            }),
+            effects: EffectRow::pure(),
+            span,
+        };
+
+        let lowered_functions = lower_hir_function(
+            &synthetic_fn,
+            &self.layouts,
+            &self.known_functions,
+            &self.known_function_types,
+            &self.known_const_exprs,
+            &self.intrinsic_symbols,
+            &self.effect_operations,
+            &self.known_function_dispatch_effects,
+            &self.lambda_factories,
+        );
+        for f in lowered_functions {
+            self.register_generated_function(f);
+        }
+
+        // Closure entry: captures = [prev_chain, extra_0, ...], call param = [result]
+        let n_extra = extra_capture_names.len();
+        let capture_types: Vec<Type> =
+            std::iter::repeat_n(Type::Dynamic, 1 + n_extra).collect();
+        let entry_name = self.allocate_generated_closure_entry_name("post_resume");
+        let wrapper = self.build_closure_entry_wrapper(
+            entry_name.clone(),
+            fn_name,
+            capture_types,        // captures: prev_chain + extras
+            vec![Type::Dynamic],  // call param: result
+            Vec::new(),
+            Vec::new(),
+            Type::Dynamic,
+            EffectRow::pure(),
+            false,
+        );
+        self.register_generated_function(wrapper);
+        Some(entry_name)
+    }
+
+    /// Build a MIR callback wrapper that augments an inner callback with chain
+    /// building for callback stacking. The wrapper:
+    /// 1. Calls the inner callback to get the resume value
+    /// 2. Loads the previous chain from chain_cell
+    /// 3. Creates a new chain closure wrapping prev with the post-resume transform
+    /// 4. Stores the new chain in chain_cell
+    /// 5. Returns the resume value
+    ///
+    /// Returns a closure MirValueId for the augmented callback.
+    fn build_chain_augmented_callback(
+        &mut self,
+        inner_callback: MirValueId,
+        chain_cell: MirValueId,
+        post_resume_entry: &str,
+        arity: usize,
+        clause_arg_capture_indices: &[usize],
+        binding_capture_cells: &[MirValueId],
+    ) -> Option<MirValueId> {
+        // Build a MIR function manually:
+        // Params: [env, arg0, arg1, ..., argN-1]
+        // Captures in env: [inner_callback, chain_cell, binding_cell_0, ...]
+        let wrapper_fn_name = format!(
+            "{}::__chain_callback${}",
+            self.function_name, self.next_lifted_lambda_id
+        );
+        self.next_lifted_lambda_id = self.next_lifted_lambda_id.saturating_add(1);
+
+        let mut instructions = Vec::new();
+        let env_param = MirValueId(0); // closure env
+        // call params are MirValueId(1) through MirValueId(arity)
+        let mut next_id = 1 + arity as u32;
+
+        // Unpack captures from env: [inner_callback, chain_cell, binding_cells...]
+        let cap_inner = MirValueId(next_id);
+        next_id += 1;
+        instructions.push(MirInst::ClosureCaptureLoad {
+            dest: cap_inner.clone(),
+            closure: env_param.clone(),
+            capture_index: 0,
+            capture_ty: Type::Dynamic,
+        });
+        let cap_chain_cell = MirValueId(next_id);
+        next_id += 1;
+        instructions.push(MirInst::ClosureCaptureLoad {
+            dest: cap_chain_cell.clone(),
+            closure: env_param.clone(),
+            capture_index: 1,
+            capture_ty: Type::Dynamic,
+        });
+        let mut cap_binding_cells = Vec::new();
+        for i in 0..binding_capture_cells.len() {
+            let cap_cell = MirValueId(next_id);
+            next_id += 1;
+            instructions.push(MirInst::ClosureCaptureLoad {
+                dest: cap_cell.clone(),
+                closure: env_param.clone(),
+                capture_index: 2 + i,
+                capture_ty: Type::Dynamic,
+            });
+            cap_binding_cells.push(cap_cell);
+        }
+
+        // Call inner_callback(arg0, ..., argN-1) -> resume_value
+        let inner_args: Vec<MirValueId> = (1..=arity as u32).map(MirValueId).collect();
+        let resume_value = MirValueId(next_id);
+        next_id += 1;
+        instructions.push(MirInst::Call {
+            callee: MirCallee::Value(cap_inner),
+            args: inner_args,
+            arg_types: vec![Type::Dynamic; arity],
+            result: Some(resume_value.clone()),
+            ret_type: Type::Dynamic,
+            callee_fail_result_abi: false,
+            capture_fail_result: false,
+            cc_manifest_id: "default".to_string(),
+        });
+
+        // After inner callback: load captured binding VALUES from cells.
+        // The inner callback stored values via __kea_internal_capture_store.
+        // We load the values (not cells) so each chain closure gets its own snapshot.
+        let mut loaded_binding_values = Vec::new();
+        for cap_cell in &cap_binding_cells {
+            let loaded = MirValueId(next_id);
+            next_id += 1;
+            instructions.push(MirInst::StateCellLoad {
+                dest: loaded.clone(),
+                cell: cap_cell.clone(),
+            });
+            loaded_binding_values.push(loaded);
+        }
+
+        // Load prev chain from chain_cell
+        let prev_chain = MirValueId(next_id);
+        next_id += 1;
+        instructions.push(MirInst::StateCellLoad {
+            dest: prev_chain.clone(),
+            cell: cap_chain_cell.clone(),
+        });
+
+        // Create new chain closure: captures = [prev_chain, clause_arg_captures..., binding_values...]
+        let post_resume_entry_ref = MirValueId(next_id);
+        next_id += 1;
+        instructions.push(MirInst::FunctionRef {
+            dest: post_resume_entry_ref.clone(),
+            function: post_resume_entry.to_string(),
+        });
+        let mut chain_captures = vec![prev_chain];
+        for &idx in clause_arg_capture_indices {
+            // Clause args are MirValueId(1..=arity) in the wrapper function
+            chain_captures.push(MirValueId(1 + idx as u32));
+        }
+        for val in &loaded_binding_values {
+            chain_captures.push(val.clone());
+        }
+        let chain_capture_types = vec![Type::Dynamic; chain_captures.len()];
+        let new_chain = MirValueId(next_id);
+        next_id += 1;
+        instructions.push(MirInst::ClosureInit {
+            dest: new_chain.clone(),
+            entry: post_resume_entry_ref,
+            captures: chain_captures,
+            capture_types: chain_capture_types,
+        });
+
+        // Store new chain in chain_cell
+        instructions.push(MirInst::StateCellStore {
+            cell: cap_chain_cell,
+            value: new_chain,
+        });
+
+        let _ = next_id; // suppress unused warning
+
+        // Build the wrapper MIR function
+        let wrapper_fn = MirFunction {
+            name: wrapper_fn_name.clone(),
+            signature: MirFunctionSignature {
+                params: std::iter::once(Type::Dynamic) // env
+                    .chain(std::iter::repeat_n(Type::Dynamic, arity)) // args
+                    .collect(),
+                ret: Type::Dynamic,
+                effects: EffectRow::pure(),
+            },
+            entry: MirBlockId(0),
+            blocks: vec![MirBlock {
+                id: MirBlockId(0),
+                params: Vec::new(),
+                instructions,
+                terminator: MirTerminator::Return {
+                    value: Some(resume_value),
+                },
+            }],
+        };
+        self.register_generated_function(wrapper_fn);
+
+        // Create closure: captures = [inner_callback, chain_cell, binding_cells...]
+        let mut outer_captures = vec![
+            (inner_callback, Type::Dynamic),
+            (chain_cell, Type::Dynamic),
+        ];
+        for cell in binding_capture_cells {
+            outer_captures.push((cell.clone(), Type::Dynamic));
+        }
+        self.emit_closure_value(wrapper_fn_name, outer_captures)
+    }
+
+    /// Build an impl function for state-get: `__state_get_impl(cell) -> Dynamic`.
+    /// Plain function with explicit params — no closure env interaction.
+    fn build_state_get_impl_function(&mut self) -> String {
+        let impl_name = format!(
+            "{}::__state_get_impl${}",
+            self.function_name, self.next_lifted_lambda_id
+        );
+        self.next_lifted_lambda_id = self.next_lifted_lambda_id.saturating_add(1);
+
+        // Params: [cell]
+        // Body: StateCellLoad(cell) → value; return value
+        let cell_param = MirValueId(0);
+        let loaded_value = MirValueId(1);
+        let get_impl = MirFunction {
+            name: impl_name.clone(),
+            signature: MirFunctionSignature {
+                params: vec![Type::Dynamic],
+                ret: Type::Dynamic,
+                effects: EffectRow::pure(),
+            },
+            entry: MirBlockId(0),
+            blocks: vec![MirBlock {
+                id: MirBlockId(0),
+                params: Vec::new(),
+                instructions: vec![MirInst::StateCellLoad {
+                    dest: loaded_value.clone(),
+                    cell: cell_param,
+                }],
+                terminator: MirTerminator::Return {
+                    value: Some(loaded_value),
+                },
+            }],
+        };
+        self.register_generated_function(get_impl);
+        impl_name
+    }
+
+    /// Build an impl function for state-put: `__state_put_impl(cell, value) -> Dynamic`.
+    /// Plain function with explicit params — no closure env interaction.
+    fn build_state_put_impl_function(&mut self) -> String {
+        let impl_name = format!(
+            "{}::__state_put_impl${}",
+            self.function_name, self.next_lifted_lambda_id
+        );
+        self.next_lifted_lambda_id = self.next_lifted_lambda_id.saturating_add(1);
+
+        // Params: [cell, value]
+        // Body: StateCellStore(cell, value); Const(Unit); return Unit
+        let cell_param = MirValueId(0);
+        let value_param = MirValueId(1);
+        let unit_val = MirValueId(2);
+        let put_impl = MirFunction {
+            name: impl_name.clone(),
+            signature: MirFunctionSignature {
+                params: vec![Type::Dynamic, Type::Dynamic],
+                ret: Type::Dynamic,
+                effects: EffectRow::pure(),
+            },
+            entry: MirBlockId(0),
+            blocks: vec![MirBlock {
+                id: MirBlockId(0),
+                params: Vec::new(),
+                instructions: vec![
+                    MirInst::StateCellStore {
+                        cell: cell_param,
+                        value: value_param,
+                    },
+                    MirInst::Const {
+                        dest: unit_val.clone(),
+                        literal: MirLiteral::Unit,
+                    },
+                ],
+                terminator: MirTerminator::Return {
+                    value: Some(unit_val),
+                },
+            }],
+        };
+        self.register_generated_function(put_impl);
+        impl_name
+    }
+
+    /// Build a state-get callback via the proven closure pipeline.
+    /// impl function → entry wrapper (build_closure_entry_wrapper) → closure value.
+    /// Captures = [internal_cell]. Returns closure MirValueId.
+    fn build_state_get_callback(&mut self, internal_cell: MirValueId) -> Option<MirValueId> {
+        let impl_name = self.build_state_get_impl_function();
+        let entry_name = self.allocate_generated_closure_entry_name("state_get");
+        let wrapper = self.build_closure_entry_wrapper(
+            entry_name.clone(),
+            impl_name,
+            vec![Type::Dynamic], // captures: [cell]
+            vec![],              // call params: none (zero-arg get)
+            vec![],              // no dispatch effects
+            vec![],              // no bound dispatch captures
+            Type::Dynamic,
+            EffectRow::pure(),
+            false,
+        );
+        self.register_generated_function(wrapper);
+        self.emit_closure_value(entry_name, vec![(internal_cell, Type::Dynamic)])
+    }
+
+    /// Build a state-put callback via the proven closure pipeline.
+    /// impl function → entry wrapper (build_closure_entry_wrapper) → closure value.
+    /// Captures = [internal_cell]. Returns closure MirValueId.
+    fn build_state_put_callback(&mut self, internal_cell: MirValueId) -> Option<MirValueId> {
+        let impl_name = self.build_state_put_impl_function();
+        let entry_name = self.allocate_generated_closure_entry_name("state_put");
+        let wrapper = self.build_closure_entry_wrapper(
+            entry_name.clone(),
+            impl_name,
+            vec![Type::Dynamic], // captures: [cell]
+            vec![Type::Dynamic], // call params: [value] (one-arg put)
+            vec![],              // no dispatch effects
+            vec![],              // no bound dispatch captures
+            Type::Dynamic,
+            EffectRow::pure(),
+            false,
+        );
+        self.register_generated_function(wrapper);
+        self.emit_closure_value(entry_name, vec![(internal_cell, Type::Dynamic)])
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -4334,11 +4770,51 @@ impl FunctionLoweringCtx {
             return None;
         }
         let mut plan = ActiveEffectHandlerPlan::default();
-        let mut operation_initial_exprs: BTreeMap<String, Option<HirExpr>> = BTreeMap::new();
         let mut operation_callback_values: BTreeMap<String, MirValueId> = BTreeMap::new();
-        let mut has_store_clause = false;
-        // Non-tail resume: (resume_binding_name, post_resume_body_exprs, span)
-        let mut non_tail_post_resume: Option<(String, Vec<HirExpr>, kea_ast::Span)> = None;
+
+        // Pre-scan: detect if this effect is stateful (has a store-like operation).
+        // A store-like operation has arity 1 and returns Unit (e.g. State.put).
+        // Stateful effects need an internal state cell shared between get/put callbacks.
+        let is_stateful = !is_direct_capability_effect(&target_effect)
+            && target_effect != "Log"
+            && self
+                .effect_operations
+                .values()
+                .filter(|op| op.effect == target_effect)
+                .any(|op| op.arity == 1 && op.returns_unit);
+
+        // For stateful effects, create the internal state cell.
+        // The initial value comes from the first zero-arg clause's resume value.
+        let internal_state_cell = if is_stateful {
+            // Find initial value from a zero-arg clause (State.get-like).
+            let initial_expr = clauses
+                .iter()
+                .filter(|c| c.effect == target_effect && c.args.is_empty())
+                .find_map(|c| match &c.body.kind {
+                    HirExprKind::Resume { value } => Some(value.as_ref().clone()),
+                    _ => split_non_tail_resume(&c.body, &BTreeSet::new())
+                        .map(|s| s.resume_value.clone()),
+                });
+            let initial = if let Some(expr) = &initial_expr {
+                self.lower_expr(expr)?
+            } else {
+                let unit = self.new_value();
+                self.emit_inst(MirInst::Const {
+                    dest: unit.clone(),
+                    literal: MirLiteral::Unit,
+                });
+                unit
+            };
+            let cell = self.new_value();
+            self.emit_inst(MirInst::StateCellNew {
+                dest: cell.clone(),
+                initial,
+            });
+            Some(cell)
+        } else {
+            None
+        };
+
         for clause in clauses
             .iter()
             .filter(|clause| clause.effect == target_effect)
@@ -4363,46 +4839,165 @@ impl FunctionLoweringCtx {
                     HirExprKind::Resume { value } => {
                         resume_value = Some(value.as_ref());
                     }
-                    _ => match split_non_tail_resume(&clause.body) {
-                        Some(split) => {
-                            if !split.captured_bindings.is_empty() {
+                    _ => {
+                        let clause_arg_names: BTreeSet<String> = clause
+                            .args
+                            .iter()
+                            .filter_map(|p| {
+                                if let HirPattern::Var(n) = p {
+                                    Some(n.clone())
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
+                        match split_non_tail_resume(&clause.body, &clause_arg_names) {
+                            Some(split) => {
+                                resume_value = None;
+                                non_tail_split = Some(split);
+                            }
+                            None => {
                                 self.emit_inst(MirInst::Unsupported {
                                     detail: format!(
-                                        "handler clause `{target_effect}.{}`: non-tail resume \
-                                         with captured pre-resume bindings ({}) is not yet \
-                                         supported — move binding computation after resume or \
-                                         use a tail-resumptive handler",
+                                        "handler clause `{target_effect}.{} {}`",
                                         clause.operation,
-                                        split.captured_bindings.join(", ")
+                                        "must be tail-resumptive (`resume ...`) for compiled lowering, \
+                                         or use `let x = resume val; ...` form"
                                     ),
                                 });
                                 return None;
                             }
-                            resume_value = None;
-                            non_tail_split = Some(split);
                         }
-                        None => {
-                            self.emit_inst(MirInst::Unsupported {
-                                detail: format!(
-                                    "handler clause `{target_effect}.{} {}`",
-                                    clause.operation,
-                                    "must be tail-resumptive (`resume ...`) for compiled lowering, \
-                                     or use `let x = resume val; ...` form"
-                                ),
-                            });
-                            return None;
-                        }
-                    },
+                    }
                 }
             };
 
-            // Zero-arg operations: use LoadCell when resume value doesn't depend
-            // on clause args. For non-tail splits with empty pre-resume stmts,
-            // the resume value is a constant — LoadCell applies. If pre-resume
-            // stmts exist, we'd need InvokeCallback (but zero-arg closures are
-            // not yet supported, so reject).
+            // Stateful effects: build get/put callbacks from raw MIR.
+            // The callbacks capture the internal state cell.
+            if let Some(ref state_cell) = internal_state_cell {
+                // Zero-arg operation in stateful effect → state-get callback
+                if clause.args.is_empty() {
+                    let get_callback = self.build_state_get_callback(state_cell.clone())?;
+                    // If non-tail, wrap with chain augmentation
+                    let final_callback = if let Some(split) = non_tail_split.take() {
+                        let post_resume_entry = self.build_post_resume_chain_function(
+                            &target_effect,
+                            &clause.operation,
+                            &split,
+                            &[], // stateful get: no clause arg captures
+                            clause.span,
+                        )?;
+                        let identity = self.create_identity_closure()?;
+                        let chain_cell = self.new_value();
+                        self.emit_inst(MirInst::StateCellNew {
+                            dest: chain_cell.clone(),
+                            initial: identity,
+                        });
+                        self.stacking_chains.insert(
+                            (target_effect.clone(), clause.operation.clone()),
+                            StackingChain {
+                                chain_cell: chain_cell.clone(),
+                            },
+                        );
+                        self.build_chain_augmented_callback(
+                            get_callback,
+                            chain_cell,
+                            &post_resume_entry,
+                            0, // zero-arg
+                            &[], // no clause arg captures
+                            &[], // no binding capture cells
+                        )?
+                    } else {
+                        get_callback
+                    };
+                    plan.operation_lowering.insert(
+                        clause.operation.clone(),
+                        HandlerCellOpLowering::InvokeCallback {
+                            arity: 0,
+                            returns_unit: false,
+                        },
+                    );
+                    operation_callback_values
+                        .insert(clause.operation.clone(), final_callback);
+                    continue;
+                }
+
+                // 1-arg operation returning Unit in stateful effect → state-put callback
+                if clause.args.len() == 1
+                    && (matches!(
+                        resume_value,
+                        Some(value) if matches!(value.kind, HirExprKind::Lit(kea_ast::Lit::Unit))
+                    ) || non_tail_split
+                        .as_ref()
+                        .is_some_and(|s| matches!(s.resume_value.kind, HirExprKind::Lit(kea_ast::Lit::Unit))))
+                {
+                    let put_callback = self.build_state_put_callback(state_cell.clone())?;
+                    // If non-tail, wrap with chain augmentation
+                    let final_callback = if let Some(split) = non_tail_split.take() {
+                        let post_resume_entry = self.build_post_resume_chain_function(
+                            &target_effect,
+                            &clause.operation,
+                            &split,
+                            &split.clause_arg_captures.clone(),
+                            clause.span,
+                        )?;
+                        let identity = self.create_identity_closure()?;
+                        let chain_cell = self.new_value();
+                        self.emit_inst(MirInst::StateCellNew {
+                            dest: chain_cell.clone(),
+                            initial: identity,
+                        });
+                        self.stacking_chains.insert(
+                            (target_effect.clone(), clause.operation.clone()),
+                            StackingChain {
+                                chain_cell: chain_cell.clone(),
+                            },
+                        );
+                        // Compute clause arg capture indices for this operation
+                        let clause_arg_names: Vec<String> = clause
+                            .args
+                            .iter()
+                            .filter_map(|p| {
+                                if let HirPattern::Var(n) = p {
+                                    Some(n.clone())
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
+                        let capture_indices: Vec<usize> = split
+                            .clause_arg_captures
+                            .iter()
+                            .filter_map(|name| clause_arg_names.iter().position(|n| n == name))
+                            .collect();
+                        self.build_chain_augmented_callback(
+                            put_callback,
+                            chain_cell,
+                            &post_resume_entry,
+                            1, // one-arg
+                            &capture_indices,
+                            &[], // no binding capture cells
+                        )?
+                    } else {
+                        put_callback
+                    };
+                    plan.operation_lowering.insert(
+                        clause.operation.clone(),
+                        HandlerCellOpLowering::InvokeCallback {
+                            arity: 1,
+                            returns_unit: true,
+                        },
+                    );
+                    operation_callback_values
+                        .insert(clause.operation.clone(), final_callback);
+                    continue;
+                }
+                // Other operations in stateful effect: fall through to general path
+            }
+
+            // Non-stateful zero-arg operations: build constant-returning callback
             if clause.args.is_empty() && !is_direct_capability_effect(&target_effect) {
-                let load_cell_value = if let Some(rv) = resume_value {
+                let callback_value_expr = if let Some(rv) = resume_value {
                     Some((*rv).clone())
                 } else if let Some(split) = &non_tail_split {
                     if split.pre_resume_stmts.is_empty() {
@@ -4413,20 +5008,41 @@ impl FunctionLoweringCtx {
                 } else {
                     None
                 };
-                if let Some(rv_expr) = load_cell_value {
-                    plan.operation_lowering
-                        .insert(clause.operation.clone(), HandlerCellOpLowering::LoadCell);
-                    operation_initial_exprs
-                        .insert(clause.operation.clone(), Some(rv_expr));
-                    // Extract post-resume info from the split before continuing
-                    if let Some(split) = non_tail_split.take() {
-                        non_tail_post_resume = Some((
-                            split.resume_binding,
-                            split.post_resume_body,
-                            clause.span,
-                        ));
+                if let Some(rv_expr) = callback_value_expr {
+                    if non_tail_split.is_none() {
+                        // Tail-resumptive: build simple constant callback
+                        let inner_callback_body = rv_expr;
+                        let inner_callback_lambda = HirExpr {
+                            kind: HirExprKind::Lambda {
+                                params: vec![],
+                                body: Box::new(inner_callback_body.clone()),
+                            },
+                            ty: Type::Function(FunctionType {
+                                params: vec![],
+                                ret: Box::new(inner_callback_body.ty.clone()),
+                                effects: EffectRow::pure(),
+                            }),
+                            span: clause.span,
+                        };
+                        let callback = self.lower_lambda_to_closure_value(
+                            &inner_callback_lambda,
+                            &[],
+                            &inner_callback_body,
+                            Some(&inner_callback_lambda.ty),
+                            true,
+                        )?;
+                        plan.operation_lowering.insert(
+                            clause.operation.clone(),
+                            HandlerCellOpLowering::InvokeCallback {
+                                arity: 0,
+                                returns_unit: false,
+                            },
+                        );
+                        operation_callback_values
+                            .insert(clause.operation.clone(), callback);
+                        continue;
                     }
-                    continue;
+                    // Non-tail zero-arg: fall through to InvokeCallback path below
                 } else if non_tail_split.is_none() {
                     self.emit_inst(MirInst::Unsupported {
                         detail: format!(
@@ -4440,45 +5056,74 @@ impl FunctionLoweringCtx {
                 // Zero-arg non-tail with pre-resume stmts falls through to InvokeCallback
             }
 
-            // StoreArgAndReturnUnit: only for tail-resumptive clauses
-            if non_tail_split.is_none()
-                && clause.args.len() == 1
-                && target_effect != "Log"
-                && !is_direct_capability_effect(&target_effect)
-                && matches!(
-                    resume_value,
-                    Some(value) if matches!(value.kind, HirExprKind::Lit(kea_ast::Lit::Unit))
-                )
-            {
-                plan.operation_lowering.insert(
-                    clause.operation.clone(),
-                    HandlerCellOpLowering::StoreArgAndReturnUnit,
-                );
-                operation_initial_exprs.insert(clause.operation.clone(), None);
-                has_store_clause = true;
-                continue;
-            }
-
+            // Track whether this callback needs chain augmentation
+            let mut needs_chain_augment: Option<NonTailResumeSplit> = None;
+            let mut pre_resume_capture_cells: Vec<MirValueId> = Vec::new();
             let callback_body = if let Some(split) = non_tail_split.take() {
-                // Non-tail resume: build callback from pre-resume stmts + resume value.
-                // Post-resume code will be inlined after the handle expression returns.
-                non_tail_post_resume = Some((
-                    split.resume_binding,
-                    split.post_resume_body,
-                    clause.span,
-                ));
-                if split.pre_resume_stmts.is_empty() {
-                    split.resume_value
+                // Non-tail resume: build inner callback from pre-resume stmts + resume value.
+                // Chain augmentation wraps the callback to build the stacking chain.
+
+                // Allocate capture cells for pre-resume bindings referenced in post-resume body.
+                // The callback body stores into these cells; after callback returns, chain
+                // augmentation loads the values and passes them as captures to the chain closure.
+                for (i, binding) in split.captured_bindings.iter().enumerate() {
+                    let cell = self.new_value();
+                    let unit_initial = self.new_value();
+                    self.emit_inst(MirInst::Const {
+                        dest: unit_initial.clone(),
+                        literal: MirLiteral::Int(0),
+                    });
+                    self.emit_inst(MirInst::StateCellNew {
+                        dest: cell.clone(),
+                        initial: unit_initial,
+                    });
+                    let cell_name = format!("__capture_cell_{i}_{binding}");
+                    self.vars.insert(cell_name.clone(), cell.clone());
+                    self.var_types.insert(cell_name, Type::Dynamic);
+                    pre_resume_capture_cells.push(cell);
+                }
+
+                let mut block_exprs = split.pre_resume_stmts.clone();
+                // Inject __kea_internal_capture_store calls for each captured binding
+                for (i, binding) in split.captured_bindings.iter().enumerate() {
+                    let cell_name = format!("__capture_cell_{i}_{binding}");
+                    block_exprs.push(HirExpr {
+                        kind: HirExprKind::Call {
+                            func: Box::new(HirExpr {
+                                kind: HirExprKind::Var("__kea_internal_capture_store".to_string()),
+                                ty: Type::Dynamic,
+                                span: clause.span,
+                            }),
+                            args: vec![
+                                HirExpr {
+                                    kind: HirExprKind::Var(cell_name),
+                                    ty: Type::Dynamic,
+                                    span: clause.span,
+                                },
+                                HirExpr {
+                                    kind: HirExprKind::Var(binding.clone()),
+                                    ty: Type::Dynamic,
+                                    span: clause.span,
+                                },
+                            ],
+                        },
+                        ty: Type::Unit,
+                        span: clause.span,
+                    });
+                }
+                block_exprs.push(split.resume_value.clone());
+                let body_ty = block_exprs.last().map_or(Type::Dynamic, |e| e.ty.clone());
+                let body = if block_exprs.len() == 1 {
+                    block_exprs.pop().unwrap()
                 } else {
-                    let mut block_exprs = split.pre_resume_stmts;
-                    block_exprs.push(split.resume_value);
-                    let body_ty = block_exprs.last().map_or(Type::Dynamic, |e| e.ty.clone());
                     HirExpr {
                         kind: HirExprKind::Block(block_exprs),
                         ty: body_ty,
                         span: clause.span,
                     }
-                }
+                };
+                needs_chain_augment = Some(split);
+                body
             } else if target_effect == "Log" && clause.args.len() == 1 {
                 let Some(body) = strip_tail_resume_unit_body(&clause.body) else {
                     self.emit_inst(MirInst::Unsupported {
@@ -4555,6 +5200,58 @@ impl FunctionLoweringCtx {
                 });
                 return None;
             };
+            // If this is a non-tail callback, wrap with chain augmentation
+            let final_callback = if let Some(split) = needs_chain_augment {
+                // Combine clause arg captures + binding captures for the chain function
+                let mut all_extra_captures: Vec<String> = split.clause_arg_captures.clone();
+                all_extra_captures.extend(split.captured_bindings.clone());
+                let post_resume_entry = self.build_post_resume_chain_function(
+                    &target_effect,
+                    &clause.operation,
+                    &split,
+                    &all_extra_captures,
+                    clause.span,
+                )?;
+                let identity = self.create_identity_closure()?;
+                let chain_cell = self.new_value();
+                self.emit_inst(MirInst::StateCellNew {
+                    dest: chain_cell.clone(),
+                    initial: identity,
+                });
+                self.stacking_chains.insert(
+                    (target_effect.clone(), clause.operation.clone()),
+                    StackingChain {
+                        chain_cell: chain_cell.clone(),
+                    },
+                );
+                // Map clause arg capture names to their indices in callback_params
+                let clause_arg_names: Vec<String> = clause
+                    .args
+                    .iter()
+                    .filter_map(|p| {
+                        if let HirPattern::Var(n) = p {
+                            Some(n.clone())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                let capture_indices: Vec<usize> = split
+                    .clause_arg_captures
+                    .iter()
+                    .filter_map(|name| clause_arg_names.iter().position(|n| n == name))
+                    .collect();
+                self.build_chain_augmented_callback(
+                    callback_value,
+                    chain_cell,
+                    &post_resume_entry,
+                    callback_params.len(),
+                    &capture_indices,
+                    &pre_resume_capture_cells,
+                )?
+            } else {
+                callback_value
+            };
             plan.operation_lowering.insert(
                 clause.operation.clone(),
                 HandlerCellOpLowering::InvokeCallback {
@@ -4562,8 +5259,7 @@ impl FunctionLoweringCtx {
                     returns_unit: callback_return_ty == Type::Unit,
                 },
             );
-            operation_initial_exprs.insert(clause.operation.clone(), None);
-            operation_callback_values.insert(clause.operation.clone(), callback_value);
+            operation_callback_values.insert(clause.operation.clone(), final_callback);
         }
         if plan.operation_lowering.is_empty() {
             self.emit_inst(MirInst::Unsupported {
@@ -4574,60 +5270,28 @@ impl FunctionLoweringCtx {
             return None;
         }
 
+        // Uniform InvokeCallback: all operations are callback closures.
+        // The callback value IS the cell value stored in active_effect_cells.
         let mut operation_cells: Vec<(String, MirValueId)> = Vec::new();
         let mut release_cells: BTreeSet<MirValueId> = BTreeSet::new();
-        let shared_cell = if has_store_clause {
-            let initial = operation_initial_exprs
-                .values()
-                .find_map(|expr| expr.as_ref())
-                .and_then(|expr| self.lower_expr(expr))
-                .unwrap_or_else(|| {
-                    let unit = self.new_value();
-                    self.emit_inst(MirInst::Const {
-                        dest: unit.clone(),
-                        literal: MirLiteral::Unit,
-                    });
-                    unit
-                });
-            let cell = self.new_value();
-            self.emit_inst(MirInst::StateCellNew {
-                dest: cell.clone(),
-                initial,
-            });
-            Some(cell)
-        } else {
-            None
-        };
         for operation in plan.operation_lowering.keys() {
-            let cell = if let Some(callback) = operation_callback_values.get(operation) {
-                callback.clone()
-            } else if let Some(shared) = &shared_cell {
-                shared.clone()
-            } else {
-                let Some(Some(initial_expr)) = operation_initial_exprs.get(operation) else {
-                    self.emit_inst(MirInst::Unsupported {
-                        detail: format!(
-                            "missing initializer for handled operation `{target_effect}.{operation}`"
-                        ),
-                    });
-                    return None;
-                };
-                let initial = self.lower_expr(initial_expr)?;
-                let cell = self.new_value();
-                self.emit_inst(MirInst::StateCellNew {
-                    dest: cell.clone(),
-                    initial,
+            let Some(callback) = operation_callback_values.get(operation) else {
+                self.emit_inst(MirInst::Unsupported {
+                    detail: format!(
+                        "missing callback for handled operation `{target_effect}.{operation}`"
+                    ),
                 });
-                cell
+                return None;
             };
-            if shared_cell.is_none() {
-                release_cells.insert(cell.clone());
-            }
-            operation_cells.push((operation.clone(), cell));
+            release_cells.insert(callback.clone());
+            operation_cells.push((operation.clone(), callback.clone()));
         }
-        if let Some(shared) = &shared_cell {
-            release_cells.insert(shared.clone());
-        }
+        // Note: the internal state cell (if stateful) is NOT released here.
+        // It is captured by the get/put callback closures, and its lifetime
+        // is managed through those closures. Releasing it separately would
+        // cause the optimizer to free it before the handler body executes
+        // (schedule_trailing_releases_after_last_use sees the ClosureInit as
+        // the last direct use, not the indirect use via the closure call).
         self.emit_inst(MirInst::HandlerEnter {
             effect: target_effect.clone(),
         });
@@ -4649,43 +5313,51 @@ impl FunctionLoweringCtx {
 
         let mut lowered_result = result.clone();
 
-        // Non-tail resume: inline post-resume code after handle returns.
-        // The resume binding gets bound to the handle result, then post-resume
-        // body runs to produce the final value.
-        if let Some((resume_binding, post_resume_body, _span)) = non_tail_post_resume
-            && self.current_block().terminator.is_none()
-        {
-            let handled_value = if let Some(value) = lowered_result.clone() {
-                value
-            } else if handled.ty == Type::Unit {
-                let unit = self.new_value();
-                self.emit_inst(MirInst::Const {
-                    dest: unit.clone(),
-                    literal: MirLiteral::Unit,
+        // Callback stacking: unwind the chain after handle returns.
+        // The chain closure was built up per-invocation inside the callback.
+        // Calling chain(body_result) applies all post-resume transforms in LIFO order.
+        if self.current_block().terminator.is_none() {
+            let stacking_chain = self
+                .stacking_chains
+                .iter()
+                .find(|((eff, _op), _)| eff == &target_effect)
+                .map(|(_, chain)| chain.clone());
+            if let Some(chain) = stacking_chain {
+                let handled_value = if let Some(value) = lowered_result.clone() {
+                    value
+                } else if handled.ty == Type::Unit {
+                    let unit = self.new_value();
+                    self.emit_inst(MirInst::Const {
+                        dest: unit.clone(),
+                        literal: MirLiteral::Unit,
+                    });
+                    unit
+                } else {
+                    self.emit_inst(MirInst::Unsupported {
+                        detail: "callback stacking: handle expression expected a value, \
+                                 but handled body produced none"
+                            .to_string(),
+                    });
+                    return None;
+                };
+                let chain_fn = self.new_value();
+                self.emit_inst(MirInst::StateCellLoad {
+                    dest: chain_fn.clone(),
+                    cell: chain.chain_cell,
                 });
-                unit
-            } else {
-                self.emit_inst(MirInst::Unsupported {
-                    detail: "non-tail resume: handle expression expected a value, \
-                             but handled body produced none"
-                        .to_string(),
+                let final_result = self.new_value();
+                self.emit_inst(MirInst::Call {
+                    callee: MirCallee::Value(chain_fn),
+                    args: vec![handled_value],
+                    arg_types: vec![Type::Dynamic],
+                    result: Some(final_result.clone()),
+                    ret_type: Type::Dynamic,
+                    callee_fail_result_abi: false,
+                    capture_fail_result: false,
+                    cc_manifest_id: "default".to_string(),
                 });
-                return None;
-            };
-            let incoming_scope = self.snapshot_var_scope();
-            self.vars.insert(resume_binding.clone(), handled_value);
-            self.var_types
-                .insert(resume_binding, handled.ty.clone());
-            // Lower post-resume body: last expression is the value
-            let mut post_result = None;
-            for (i, expr) in post_resume_body.iter().enumerate() {
-                let val = self.lower_expr(expr);
-                if i == post_resume_body.len() - 1 {
-                    post_result = val;
-                }
+                lowered_result = Some(final_result);
             }
-            lowered_result = post_result;
-            self.restore_var_scope(&incoming_scope);
         }
 
         if let Some(then_expr) = then_clause {
@@ -4980,6 +5652,31 @@ impl FunctionLoweringCtx {
                 }
             }
         }
+        // Internal intrinsic: __kea_internal_capture_store(cell, value) -> Unit
+        // Used by callback stacking to store pre-resume bindings into state cells.
+        if let HirExprKind::Var(name) = &func.kind
+            && name == "__kea_internal_capture_store"
+            && args.len() == 2
+        {
+            let cell = self.lower_expr(&args[0])?;
+            let value = self.lower_expr(&args[1])?;
+            self.emit_inst(MirInst::StateCellStore { cell, value });
+            let unit = self.new_value();
+            self.emit_inst(MirInst::Const {
+                dest: unit.clone(),
+                literal: MirLiteral::Int(0),
+            });
+            return Some(unit);
+        }
+        // Safety guard: reject user code calling the internal intrinsic with wrong arity
+        if let HirExprKind::Var(name) = &func.kind
+            && name == "__kea_internal_capture_store"
+        {
+            self.emit_inst(MirInst::Unsupported {
+                detail: "__kea_internal_capture_store is an internal compiler function, not callable from user code".to_string(),
+            });
+            return None;
+        }
         if let HirExprKind::Var(name) = &func.kind
             && !capture_fail_result
             && (name.ends_with(".try_from") || name == "try_from")
@@ -5055,38 +5752,6 @@ impl FunctionLoweringCtx {
                     lowering
                 };
                 match lowering {
-                    HandlerCellOpLowering::LoadCell => {
-                        if !args.is_empty() {
-                            self.emit_inst(MirInst::Unsupported {
-                                detail: format!(
-                                    "handled operation `{effect}.{operation}` expected 0 args for load lowering"
-                                ),
-                            });
-                            return None;
-                        }
-                        if expr.ty == Type::Unit {
-                            return None;
-                        }
-                        let dest = self.new_value();
-                        self.emit_inst(MirInst::StateCellLoad {
-                            dest: dest.clone(),
-                            cell,
-                        });
-                        return Some(dest);
-                    }
-                    HandlerCellOpLowering::StoreArgAndReturnUnit => {
-                        if args.len() != 1 {
-                            self.emit_inst(MirInst::Unsupported {
-                                detail: format!(
-                                    "handled operation `{effect}.{operation}` expected 1 arg for store lowering"
-                                ),
-                            });
-                            return None;
-                        }
-                        let value = self.lower_expr(&args[0])?;
-                        self.emit_inst(MirInst::StateCellStore { cell, value });
-                        return None;
-                    }
                     HandlerCellOpLowering::InvokeCallback {
                         arity,
                         returns_unit,
