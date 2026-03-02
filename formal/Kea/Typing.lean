@@ -1753,6 +1753,52 @@ def native_handler_handle_progress_obligation_ext_with_mismatch_prop
       ∨ ∃ body', bodyStep body body'
 
 /--
+Metadata-coherence obligation for typed handles: if the handled body is a
+`perform`, its argument/op-return metadata matches the handle metadata.
+-/
+def native_handler_perform_metadata_coherence_prop : Prop :=
+  ∀ env body opHandle argName resumeName argTy opRetTy clauseBody ty,
+    HasTypeScopedTop env (.handle body opHandle argName resumeName argTy opRetTy clauseBody) ty →
+    ∀ opBody argTyBody opRetTyBody arg k,
+      body = .perform opBody argTyBody opRetTyBody arg k →
+      argTyBody = argTy ∧ opRetTyBody = opRetTy
+
+/--
+Derive the mismatch-extension typed-handle progress obligation from:
+1) core body progress (`value ∨ body-step`), and
+2) typed-handle perform-metadata coherence.
+-/
+theorem native_handler_handle_progress_obligation_ext_with_mismatch_of_core_progress_and_metadata_coherence
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core_progress :
+      ∀ env body ty,
+        HasTypeScopedTop env body ty →
+        CoreValue body ∨ ∃ body', bodyStep body body')
+    (h_coherence : native_handler_perform_metadata_coherence_prop) :
+    native_handler_handle_progress_obligation_ext_with_mismatch_prop bodyStep := by
+  intro env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed
+  dsimp [HasTypeScopedTop] at h_typed
+  cases h_typed with
+  | handle _ _ _ _ _ _ _ _ _ _ h_body _h_clause =>
+    by_cases h_isPerform :
+      ∃ opBody argTyBody opRetTyBody arg k,
+        body = .perform opBody argTyBody opRetTyBody arg k
+    · rcases h_isPerform with ⟨opBody, argTyBody, opRetTyBody, arg, k, h_eq⟩
+      have h_meta :=
+        h_coherence env body opHandle argName resumeName argTy opRetTy clauseBody ty
+          (HasTypeScoped.handle none env body opHandle argName resumeName argTy opRetTy ty clauseBody h_body _h_clause)
+          opBody argTyBody opRetTyBody arg k h_eq
+      rcases h_meta with ⟨h_argTy, h_opRetTy⟩
+      subst h_argTy
+      subst h_opRetTy
+      exact Or.inl ⟨opBody, arg, k, h_eq⟩
+    · have h_prog := h_core_progress env body ty h_body
+      rcases h_prog with h_val | h_step
+      · exact Or.inr (Or.inl h_val)
+      · rcases h_step with ⟨body', h_body_step⟩
+        exact Or.inr (Or.inr ⟨body', h_body_step⟩)
+
+/--
 Progress for the mismatched-perform extension from the typed-handle body-shape
 obligation.
 -/
@@ -1785,6 +1831,25 @@ theorem native_handler_step_ext_with_mismatch_progress_of_handle_progress_obliga
     exact ⟨.handle body' opHandle argName resumeName argTy opRetTy clauseBody,
       NativeHandlerStepExtWithMismatch.ext
         (NativeHandlerStepExt.handle_congr body body' opHandle argName resumeName argTy opRetTy clauseBody h_body_step)⟩
+
+/--
+One-hop mismatch-extension progress route from core body progress plus typed
+handle perform-metadata coherence.
+-/
+theorem native_handler_step_ext_with_mismatch_progress_of_core_progress_and_metadata_coherence
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core_progress :
+      ∀ env body ty,
+        HasTypeScopedTop env body ty →
+        CoreValue body ∨ ∃ body', bodyStep body body')
+    (h_coherence : native_handler_perform_metadata_coherence_prop) :
+    native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep := by
+  exact native_handler_step_ext_with_mismatch_progress_of_handle_progress_obligation
+    clauseSem mismatchSem bodyStep
+    (native_handler_handle_progress_obligation_ext_with_mismatch_of_core_progress_and_metadata_coherence
+      bodyStep h_core_progress h_coherence)
 
 /--
 Soundness target (preservation + progress) for the mismatched-perform

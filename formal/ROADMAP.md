@@ -481,6 +481,13 @@ Concrete milestone checklist for moving from the current fuel model to an implem
   `native_handler_step_ext_with_mismatch_soundness_of_core_preservation_and_handle_progress`.
   This gives one-hop preservation+progress discharge routes once body-step
   preservation and typed-handle body-shape obligations are available.
+  Update: reduced mismatch-extension progress assumptions further with
+  metadata-coherence bridging:
+  `native_handler_perform_metadata_coherence_prop`,
+  `native_handler_handle_progress_obligation_ext_with_mismatch_of_core_progress_and_metadata_coherence`,
+  `native_handler_step_ext_with_mismatch_progress_of_core_progress_and_metadata_coherence`.
+  Remaining progress gap is now cleanly split into core body progress plus a
+  single typed-handle metadata coherence premise.
   Update: added explicit theorem exports for that gate
   (`hasType_resume_requires_ctx`, `resume_not_typable_without_ctx`,
   `inferExpr_resume_none_without_ctx`), so out-of-handler `resume` rejection is

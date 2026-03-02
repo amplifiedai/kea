@@ -16570,3 +16570,38 @@ These package mismatch-extension soundness from explicit obligations.
 **Outcome**:
 - Mismatch-extension formal surface now has a single packaged soundness target;
   remaining gap is concrete obligation discharge, not theorem plumbing.
+
+### 2026-03-02: metadata-coherence bridge for mismatch-extension progress
+
+**Context**: Further reduced mismatch-extension progress assumptions by
+factoring out a focused metadata-coherence premise for typed handles.
+
+Lean changes:
+- Added in `Kea/Typing.lean`:
+  - `native_handler_perform_metadata_coherence_prop`
+  - `native_handler_handle_progress_obligation_ext_with_mismatch_of_core_progress_and_metadata_coherence`
+  - `native_handler_step_ext_with_mismatch_progress_of_core_progress_and_metadata_coherence`
+
+These show mismatch-extension progress can be derived from:
+1) core body progress (`CoreValue ∨ bodyStep`), plus
+2) typed-handle perform-metadata coherence.
+
+**Build check**:
+- `cd formal && lake build Kea.Typing` passes.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Probe (direct `kea` MCP)**:
+1. Spoof attempt still rejected:
+   - `fn spoof(__kea_resume_ctx: fn(Int) -> Int) -> Int; resume 1`
+   - `status = error`, `E0012`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- The mismatch-extension progress boundary is now narrowed to two explicit
+  premises (core progress + metadata coherence).
