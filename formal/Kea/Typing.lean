@@ -1580,6 +1580,32 @@ def native_handler_step_ext_soundness_prop
     ∧ native_handler_step_ext_progress_prop clauseSem bodyStep
 
 /--
+Core preservation obligation for a candidate body-step relation.
+-/
+def native_core_preservation_prop
+    (bodyStep : CoreExpr → CoreExpr → Prop) : Prop :=
+  ∀ env body body' ty,
+    HasTypeScopedTop env body ty →
+    bodyStep body body' →
+    HasTypeScopedTop env body' ty
+
+/--
+Core progress obligation for a candidate body-step relation.
+-/
+def native_core_progress_prop
+    (bodyStep : CoreExpr → CoreExpr → Prop) : Prop :=
+  ∀ env body ty,
+    HasTypeScopedTop env body ty →
+    CoreValue body ∨ ∃ body', bodyStep body body'
+
+/--
+Packaged core soundness obligations for a candidate body-step relation.
+-/
+def native_core_soundness_prop
+    (bodyStep : CoreExpr → CoreExpr → Prop) : Prop :=
+  native_core_preservation_prop bodyStep ∧ native_core_progress_prop bodyStep
+
+/--
 Capstone route: full extended native handler-step soundness follows directly
 from the packaged body-step obligations.
 -/
@@ -1592,6 +1618,68 @@ theorem native_handler_step_ext_soundness_of_body_step_obligations
   · exact native_handler_step_ext_preservation clauseSem bodyStep h_body.preservation
   · exact native_handler_step_ext_progress_of_body_progress_obligation
       clauseSem bodyStep h_body.progress
+
+/--
+Core progress implies the typed-handle body-case obligation for the extended
+relation (via value/step branches).
+-/
+theorem native_handler_handle_progress_obligation_ext_of_core_progress
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core_progress : native_core_progress_prop bodyStep) :
+    native_handler_handle_progress_obligation_ext_prop bodyStep := by
+  intro env body op argName resumeName argTy opRetTy clauseBody ty h_typed
+  dsimp [HasTypeScopedTop] at h_typed
+  cases h_typed with
+  | handle _ _ _ _ _ _ _ _ _ _ h_body _h_clause =>
+    have h_prog := h_core_progress env body ty h_body
+    rcases h_prog with h_val | h_step
+    · exact Or.inr (Or.inl h_val)
+    · rcases h_step with ⟨body', h_body_step⟩
+      exact Or.inr (Or.inr ⟨body', h_body_step⟩)
+
+/--
+Extended native handler progress from core progress on the body-step relation.
+-/
+theorem native_handler_step_ext_progress_of_core_progress
+    (clauseSem : NativeHandlerClauseSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core_progress : native_core_progress_prop bodyStep) :
+    native_handler_step_ext_progress_prop clauseSem bodyStep := by
+  exact native_handler_step_ext_progress_of_handle_progress_obligation
+    clauseSem bodyStep
+    (native_handler_handle_progress_obligation_ext_of_core_progress bodyStep h_core_progress)
+
+/--
+Build packaged handler body-step obligations from packaged core soundness
+obligations.
+-/
+theorem native_handler_body_step_obligations_of_core_soundness
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core : native_core_soundness_prop bodyStep) :
+    NativeHandlerBodyStepObligations bodyStep := by
+  refine {
+    preservation := h_core.1
+    progress := ?_
+  }
+  intro env body op argTy opRetTy ty h_body
+  have h_prog := h_core.2 env body ty h_body
+  rcases h_prog with h_val | h_step
+  · exact Or.inr (Or.inl h_val)
+  · rcases h_step with ⟨body', h_body_step⟩
+    exact Or.inr (Or.inr ⟨body', h_body_step⟩)
+
+/--
+Capstone route: extended native handler-step soundness follows from core
+soundness obligations for the chosen body-step relation.
+-/
+theorem native_handler_step_ext_soundness_of_core_soundness
+    (clauseSem : NativeHandlerClauseSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core : native_core_soundness_prop bodyStep) :
+    native_handler_step_ext_soundness_prop clauseSem bodyStep := by
+  exact native_handler_step_ext_soundness_of_body_step_obligations
+    clauseSem bodyStep
+    (native_handler_body_step_obligations_of_core_soundness bodyStep h_core)
 
 /-- Declarative field typing is functional on the core slice. -/
 theorem hasFieldsType_unique

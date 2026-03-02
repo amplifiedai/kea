@@ -434,6 +434,15 @@ Concrete milestone checklist for moving from the current fuel model to an implem
   and `native_handler_step_ext_progress_of_handle_progress_obligation`), so the
   remaining progress work is now exactly the typed-handle body-case obligation
   on the extended relation.
+  Update: added a direct bridge from core body-step soundness obligations to
+  extended handler-step soundness:
+  `native_core_{preservation,progress,soundness}_prop`,
+  `native_handler_handle_progress_obligation_ext_of_core_progress`,
+  `native_handler_step_ext_progress_of_core_progress`,
+  `native_handler_body_step_obligations_of_core_soundness`,
+  `native_handler_step_ext_soundness_of_core_soundness`.
+  This makes the remaining capstone work a single upstream target: construct a
+  concrete `bodyStep` relation with core preservation+progress.
   Update: added explicit theorem exports for that gate
   (`hasType_resume_requires_ctx`, `resume_not_typable_without_ctx`,
   `inferExpr_resume_none_without_ctx`), so out-of-handler `resume` rejection is

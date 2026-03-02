@@ -16324,3 +16324,42 @@ typed-handle body-case obligation (matching `perform` or value or body-step).
 **Outcome**:
 - Extended-progress boundary is now an explicit `↔` theorem at the typed-handle
   layer; remaining work is sharply scoped.
+
+### 2026-03-02: bridge core body-step soundness to extended handler soundness
+
+**Context**: Added a one-hop bridge that turns the extended handler capstone
+into an upstream core obligation for a chosen body-step relation.
+
+Lean changes:
+- Added in `Kea/Typing.lean`:
+  - `native_core_preservation_prop`
+  - `native_core_progress_prop`
+  - `native_core_soundness_prop`
+  - `native_handler_handle_progress_obligation_ext_of_core_progress`
+  - `native_handler_step_ext_progress_of_core_progress`
+  - `native_handler_body_step_obligations_of_core_soundness`
+  - `native_handler_step_ext_soundness_of_core_soundness`
+
+These theorems establish:
+if `bodyStep` satisfies core preservation+progress, then the extended
+handler-step relation gets packaged preservation+progress automatically.
+
+**Build check**:
+- `cd formal && lake build Kea.Typing` passes.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Probe (direct `kea` MCP)**:
+1. Spoof attempt still rejected:
+   - `fn spoof(__kea_resume_ctx: fn(Int) -> Int) -> Int; resume 1`
+   - `status = error`, `E0012`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Remaining capstone gap is now singular and explicit: provide a concrete
+  `bodyStep` with core soundness obligations.
