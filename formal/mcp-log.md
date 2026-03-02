@@ -14796,3 +14796,41 @@ and returns:
 **Outcome**:
 - Supported typed-handle boundary progress and contract consequences are now
   available through one capstone theorem route, with MCP behavior aligned.
+
+### 2026-03-02: capability-extended shape capstone
+
+**Context**: Added a capability-extended variant of the new shape-parameterized
+typed-handle capstone.
+
+Lean change:
+- `handler_typed_handle_shape_capstone_with_capability`
+
+This theorem extends `handler_typed_handle_shape_capstone` with:
+- `TailCapabilityBundle`,
+- `TailCapabilityClosedAwareBundle`,
+
+under explicit capability-origin premises.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+- `diagnose`
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; theorem-route extension only.
+- Existing handler linearity diagnostics and overlap normalization should remain
+  stable.
+
+**Probe (direct `kea` MCP)**:
+1. Single-resume clause accepted.
+2. Branch double-resume rejected with `E0012`.
+3. `resume` outside handler rejected with `E0012`.
+4. Overlap residual remains normalized (`handled : () -[IO]> ()`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- The supported-shape typed-handle capstone route now also exports normalized
+  and closed-aware capability bundles, with MCP behavior aligned.

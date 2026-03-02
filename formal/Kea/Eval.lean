@@ -4262,6 +4262,62 @@ theorem handler_typed_handle_shape_capstone
   exact h_contract
 
 /--
+Capability-extended shape-parameterized typed-handle capstone:
+adds normalized and closed-aware capability bundle consequences under explicit
+capability-origin premises.
+-/
+theorem handler_typed_handle_shape_capstone_with_capability
+    {tenv : TermEnv}
+    {body : HandlerExpr}
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    {ty : Ty}
+    {baseEffects : EffectRow}
+    {capability : Label}
+    (h_typed : HandlerHasType tenv (.handle body handler clause) ty)
+    (h_shape :
+      (∃ e : CoreExpr, body = .core e)
+      ∨
+      (∃ arg k,
+        body = .perform clause.handled clause.opArgTy clause.opRetTy arg k))
+    (h_expr :
+      clause.contract.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_ne : capability ≠ clause.contract.handled) :
+    (∃ e',
+      HandlerStep (.handle body handler clause) e' ∧
+      HandlerHasType tenv e' ty) ∧
+    HandleClauseContract.wellTypedSlice clause.contract ∧
+    resume_at_most_once clause.contract.resumeUse ∧
+    (TailResumptiveClassification.classifyClause clause.contract ≠
+      TailResumptiveClassification.TailResumptiveClass.invalid) ∧
+    TailResumptiveClassification.TailResumptiveBundle clause.contract ∧
+    TailCapabilityComposition.TailCapabilityBundle clause.contract capability ∧
+    TailCapabilityComposition.TailCapabilityClosedAwareBundle
+      clause.contract
+      capability := by
+  have h_base :
+      (∃ e',
+        HandlerStep (.handle body handler clause) e' ∧
+        HandlerHasType tenv e' ty) ∧
+      HandleClauseContract.wellTypedSlice clause.contract ∧
+      resume_at_most_once clause.contract.resumeUse ∧
+      (TailResumptiveClassification.classifyClause clause.contract ≠
+        TailResumptiveClassification.TailResumptiveClass.invalid) ∧
+      TailResumptiveClassification.TailResumptiveBundle clause.contract :=
+    handler_typed_handle_shape_capstone h_typed h_shape
+  have h_cap :
+      TailCapabilityComposition.TailCapabilityBundle clause.contract capability :=
+    handler_clause_tail_capability_bundle_of_handlerHasType h_typed h_expr h_ne
+  have h_cap_closed :
+      TailCapabilityComposition.TailCapabilityClosedAwareBundle
+        clause.contract
+        capability :=
+    handler_clause_tail_capability_closedAware_bundle_of_handlerHasType
+      h_typed h_expr h_ne
+  exact ⟨h_base.1, h_base.2.1, h_base.2.2.1, h_base.2.2.2.1, h_base.2.2.2.2, h_cap, h_cap_closed⟩
+
+/--
 Capstone boundary theorem for typed handler redexes:
 step existence, post-step type preservation, and clause at-most-once.
 -/
