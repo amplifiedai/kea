@@ -1835,6 +1835,157 @@ theorem not_native_handler_perform_metadata_coherence_prop :
   cases h_meta.1
 
 /--
+Strict handle-typing premise at a single handle site: base scoped typing plus
+local perform-metadata coherence for that handle body.
+-/
+def HasTypeScopedHandleStrict
+    (env : TermEnv)
+    (body : CoreExpr)
+    (opHandle : Label)
+    (argName resumeName : String)
+    (argTy opRetTy : Ty)
+    (clauseBody : CoreExpr)
+    (ty : Ty) : Prop :=
+  HasTypeScopedTop env (.handle body opHandle argName resumeName argTy opRetTy clauseBody) ty
+    ∧
+    (∀ opBody argTyBody opRetTyBody arg k,
+      body = .perform opBody argTyBody opRetTyBody arg k →
+      argTyBody = argTy ∧ opRetTyBody = opRetTy)
+
+/--
+One-step mismatch-extension progress from:
+1) core body progress (`CoreValue ∨ bodyStep`), and
+2) strict handle-typing at this handle site.
+-/
+theorem native_handler_step_ext_with_mismatch_step_of_core_progress_and_strict_handle
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core_progress :
+      ∀ env body ty,
+        HasTypeScopedTop env body ty →
+        CoreValue body ∨ ∃ body', bodyStep body body')
+    {env : TermEnv}
+    {body : CoreExpr}
+    {opHandle : Label}
+    {argName resumeName : String}
+    {argTy opRetTy : Ty}
+    {clauseBody : CoreExpr}
+    {ty : Ty}
+    (h_strict :
+      HasTypeScopedHandleStrict env body opHandle argName resumeName argTy opRetTy clauseBody ty) :
+    ∃ e', NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep
+      (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+      e' := by
+  rcases h_strict with ⟨h_typed, h_local_coh⟩
+  have h_body_typed : HasTypeScopedTop env body ty := by
+    dsimp [HasTypeScopedTop] at h_typed ⊢
+    cases h_typed with
+    | handle _ _ _ _ _ _ _ _ _ _ h_body _h_clause =>
+      exact h_body
+  by_cases h_isPerform :
+    ∃ opBody argTyBody opRetTyBody arg k,
+      body = .perform opBody argTyBody opRetTyBody arg k
+  · rcases h_isPerform with ⟨opBody, argTyBody, opRetTyBody, arg, k, h_eq⟩
+    have h_meta := h_local_coh opBody argTyBody opRetTyBody arg k h_eq
+    rcases h_meta with ⟨h_argTy, h_opRetTy⟩
+    by_cases h_op_eq : opBody = opHandle
+    · subst h_op_eq
+      refine ⟨clauseSem.instantiate clauseBody arg k, ?_⟩
+      refine NativeHandlerStepExtWithMismatch.ext ?_
+      simpa [h_eq, h_argTy, h_opRetTy] using
+        (NativeHandlerStepExt.handle_perform
+          opBody argTy opRetTy arg k argName resumeName clauseBody)
+    · exact ⟨mismatchSem.mismatchTarget
+          opBody argTy opRetTy arg k opHandle argName resumeName argTy opRetTy clauseBody,
+        by
+          simpa [h_eq, h_argTy, h_opRetTy] using
+            (NativeHandlerStepExtWithMismatch.handle_perform_op_mismatch
+              (clauseSem := clauseSem)
+              (mismatchSem := mismatchSem)
+              (bodyStep := bodyStep)
+              opBody opHandle argTy opRetTy arg k argName resumeName clauseBody h_op_eq)⟩
+  · have h_prog := h_core_progress env body ty h_body_typed
+    rcases h_prog with h_val | h_step
+    · exact ⟨body,
+        NativeHandlerStepExtWithMismatch.ext
+          (NativeHandlerStepExt.handle_value body opHandle argName resumeName argTy opRetTy clauseBody h_val)⟩
+    · rcases h_step with ⟨body', h_body_step⟩
+      exact ⟨.handle body' opHandle argName resumeName argTy opRetTy clauseBody,
+        NativeHandlerStepExtWithMismatch.ext
+          (NativeHandlerStepExt.handle_congr body body' opHandle argName resumeName argTy opRetTy clauseBody h_body_step)⟩
+
+/--
+Progress target for the mismatched-perform extension under strict local handle
+typing premises.
+-/
+def native_handler_step_ext_with_mismatch_progress_strict_prop
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) : Prop :=
+  ∀ env body opHandle argName resumeName argTy opRetTy clauseBody ty,
+    HasTypeScopedHandleStrict env body opHandle argName resumeName argTy opRetTy clauseBody ty →
+    ∃ e', NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep
+      (.handle body opHandle argName resumeName argTy opRetTy clauseBody) e'
+
+/--
+Strict-handle route: derive mismatched-extension progress from core body
+progress plus strict local handle typing.
+-/
+theorem native_handler_step_ext_with_mismatch_progress_strict_of_core_progress
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core_progress :
+      ∀ env body ty,
+        HasTypeScopedTop env body ty →
+        CoreValue body ∨ ∃ body', bodyStep body body') :
+    native_handler_step_ext_with_mismatch_progress_strict_prop
+      clauseSem mismatchSem bodyStep := by
+  intro env body opHandle argName resumeName argTy opRetTy clauseBody ty h_strict
+  exact native_handler_step_ext_with_mismatch_step_of_core_progress_and_strict_handle
+    clauseSem mismatchSem bodyStep h_core_progress h_strict
+
+/--
+Soundness target (preservation + progress) for mismatched-perform extension
+under strict local handle typing premises.
+-/
+def native_handler_step_ext_with_mismatch_soundness_strict_prop
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) : Prop :=
+  native_handler_step_ext_with_mismatch_preservation_prop
+      clauseSem mismatchSem bodyStep
+    ∧
+    native_handler_step_ext_with_mismatch_progress_strict_prop
+      clauseSem mismatchSem bodyStep
+
+/--
+Strict-handle capstone route: mismatched-extension soundness from body-step
+preservation plus core body progress.
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_strict_of_core_progress_and_body_preservation
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_body_pres :
+      ∀ env body body' ty,
+        HasTypeScopedTop env body ty →
+        bodyStep body body' →
+        HasTypeScopedTop env body' ty)
+    (h_core_progress :
+      ∀ env body ty,
+        HasTypeScopedTop env body ty →
+        CoreValue body ∨ ∃ body', bodyStep body body') :
+    native_handler_step_ext_with_mismatch_soundness_strict_prop
+      clauseSem mismatchSem bodyStep := by
+  refine ⟨?_, ?_⟩
+  · exact native_handler_step_ext_with_mismatch_preservation
+      clauseSem mismatchSem bodyStep h_body_pres
+  · exact native_handler_step_ext_with_mismatch_progress_strict_of_core_progress
+      clauseSem mismatchSem bodyStep h_core_progress
+
+/--
 Derive the mismatch-extension typed-handle progress obligation from:
 1) core body progress (`value ∨ body-step`), and
 2) typed-handle perform-metadata coherence.

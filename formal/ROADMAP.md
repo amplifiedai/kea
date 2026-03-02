@@ -505,6 +505,21 @@ Concrete milestone checklist for moving from the current fuel model to an implem
   `native_handler_step_ext_with_passThroughMismatch_soundness_of_handle_progress_obligation`)
   so call sites can consume concrete mismatch-semantics soundness without
   threading generic `mismatchSem` parameters.
+  Update: added a strict local typed-handle premise
+  (`HasTypeScopedHandleStrict`) and a one-step strict route theorem
+  (`native_handler_step_ext_with_mismatch_step_of_core_progress_and_strict_handle`)
+  so mismatch-extension progress can be derived per-handle from core body
+  progress plus local perform-metadata coherence at that handle site.
+  Update: packaged strict-premise progress/soundness surfaces
+  (`native_handler_step_ext_with_mismatch_progress_strict_prop`,
+  `native_handler_step_ext_with_mismatch_progress_strict_of_core_progress`,
+  `native_handler_step_ext_with_mismatch_soundness_strict_prop`,
+  `native_handler_step_ext_with_mismatch_soundness_strict_of_core_progress_and_body_preservation`)
+  to make the new strict route citable as a standalone capstone path.
+  Update: re-ran direct in-session `kea` MCP stress probes (spoofed
+  `__kea_resume_ctx`, out-of-handler `resume`, single-resume handler acceptance,
+  double-resume rejection) and observed agreement with Lean assumptions
+  (`E0012` on invalid cases, success on valid single-resume); no divergence.
   Update: added explicit theorem exports for that gate
   (`hasType_resume_requires_ctx`, `resume_not_typable_without_ctx`,
   `inferExpr_resume_none_without_ctx`), so out-of-handler `resume` rejection is

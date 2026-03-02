@@ -16705,3 +16705,48 @@ Lean changes:
 **Outcome**:
 - Concrete mismatch semantics now has direct packaged soundness wrappers on the
   theorem surface.
+
+### 2026-03-02: strict-handle progress/soundness route and MCP stress recheck
+
+**Context**: Added a strict local handle-typing route so mismatch-extension
+progress can be stated from core body progress plus a local non-forgeable
+handle premise, without requiring the global metadata-coherence axiom.
+
+Lean changes:
+- Added in `Kea/Typing.lean`:
+  - `HasTypeScopedHandleStrict`
+  - `native_handler_step_ext_with_mismatch_step_of_core_progress_and_strict_handle`
+  - `native_handler_step_ext_with_mismatch_progress_strict_prop`
+  - `native_handler_step_ext_with_mismatch_progress_strict_of_core_progress`
+  - `native_handler_step_ext_with_mismatch_soundness_strict_prop`
+  - `native_handler_step_ext_with_mismatch_soundness_strict_of_core_progress_and_body_preservation`
+
+**Build check**:
+- `cd formal && lake build Kea.Typing` passes.
+- `cd formal && lake build` passes.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Probe (direct `kea` MCP)**:
+1. Spoofed resume context variable is still rejected:
+   - `fn spoof(__kea_resume_ctx: fn(Int) -> Int) -> Int; resume 1`
+   - `status = error`, `E0012` (`resume` only valid in matching clause).
+2. Out-of-handler resume is rejected:
+   - `fn main() -> Int; resume 1`
+   - `status = error`, `E0012`.
+3. Single-resume handler still typechecks:
+   - `Reader.ask() -> resume 42` in a matching handler clause
+   - `status = ok`.
+4. Double-resume handler clause is rejected:
+   - branch-resume program with two `resume` sites
+   - `status = error`, `E0012` (`handler clause may resume at most once`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Progress closure now has a strict-premise route that is machine-checkable and
+  composable with existing preservation infrastructure.
