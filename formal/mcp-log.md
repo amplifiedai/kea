@@ -14036,3 +14036,44 @@ New theorem surface:
 - Makes the remaining handler-soundness work precisely scoped and citable.
 - Connects tail-resumptive handler-step premises to existing handler linearity
   theorems through `handler_step_tail_resumptive_atMostOnce`.
+
+### 2026-03-02: typed handler-step refinement for preservation decomposition
+
+**Context**: Extended the new `HandlerStepBoundary` in `Kea/Eval.lean` with a
+typed handler-step judgment that carries the concrete preservation-side
+obligation for tail-resumptive clause-body instantiation.
+
+New theorem surface:
+- `HandlerStepBoundary.HandlerStepTyped`
+- `HandlerStepBoundary.handlerStep_of_handlerStepTyped`
+- `HandlerStepBoundary.handler_step_typed_preservation`
+
+**MCP tools used**: `type_check`, `diagnose`, `get_type` (via
+`./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`).
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; this should only refine theorem
+  structure around the already-introduced handler-step boundary model.
+- Preservation should be directly provable for the typed-step refinement.
+
+**Probe (Rust side)**:
+- Ran `cd formal && lake build`.
+- Result: `Build completed successfully (45 jobs).`
+- Ran source-path MCP probe
+  `./scripts/cargo-agent.sh test -p kea-mcp --lib -- --nocapture`.
+- Result: `10 passed; 0 failed`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- The open preservation work is now decomposed into two machine-checkable
+  layers:
+  1. proved `handler_step_typed_preservation` for typed steps,
+  2. remaining gap: derive `HandlerStepTyped` premises from untyped
+     `HandlerStep` + handler typing data.
+
+**Impact**:
+- Tightens the handler-soundness boundary and reduces ambiguity in what remains
+  to prove.

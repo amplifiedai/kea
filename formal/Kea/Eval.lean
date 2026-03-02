@@ -3627,6 +3627,31 @@ inductive HandlerStep : HandlerExpr → HandlerExpr → Prop where
         (.core (bindTailResumptive clause arg k))
 
 /--
+Typed refinement of `HandlerStep` that records the precise preservation-side
+obligation: the tail-resumptive clause-body instantiation is well-typed in the
+ambient environment.
+-/
+inductive HandlerStepTyped (tenv : TermEnv) (ty : Ty) : HandlerExpr → HandlerExpr → Prop where
+  | handle_perform_tail
+      (handler : HandleContract)
+      (clause : HandlerClauseSem)
+      (arg k : CoreExpr)
+      (h_contract_shape : clause.contract.handled = clause.handled)
+      (h_mem : clause.contract ∈ handler.clauses)
+      (h_summary :
+        HandleClauseContract.handlerClauseHasResumeSummary
+          handler clause.contract clause.contract.resumeUse)
+      (h_tail_resumptive :
+        clause.contract.resumeUse = .zero ∨ clause.contract.resumeUse = .one)
+      (h_instantiated :
+        HasType tenv (bindTailResumptive clause arg k) ty) :
+      HandlerStepTyped tenv ty
+        (.handle (.perform clause.handled clause.opArgTy clause.opRetTy arg k)
+          handler
+          clause)
+        (.core (bindTailResumptive clause arg k))
+
+/--
 Bridge from handler-step premises into the existing handler-level resume
 linearity theorem surface.
 -/
@@ -3652,6 +3677,21 @@ theorem handler_step_tail_resumptive_atMostOnce
           clause.contract.resumeUse
           h_handler_typed
           h_summary
+
+/--
+Bridge from a typed handler step into the untyped step relation.
+-/
+theorem handlerStep_of_handlerStepTyped
+    {tenv : TermEnv}
+    {ty : Ty}
+    {e e' : HandlerExpr}
+    (h_step_typed : HandlerStepTyped tenv ty e e') :
+    HandlerStep e e' := by
+  cases h_step_typed with
+  | handle_perform_tail handler clause arg k h_contract_shape h_mem h_summary h_tail _ =>
+      exact
+        HandlerStep.handle_perform_tail
+          handler clause arg k h_contract_shape h_mem h_summary h_tail
 
 /--
 Named progress proposition for the single explicit handler-step redex case.
@@ -3685,6 +3725,27 @@ theorem handler_step_progress : handler_step_progress_prop := by
       exact
         HandlerStep.handle_perform_tail
           handler clause arg k h_contract_shape h_mem h_summary h_tail
+
+/--
+Preservation for the typed handler-step refinement.
+
+This theorem isolates the remaining untyped-preservation gap to proving
+`HandlerStepTyped` from the ordinary `HandlerStep` premises.
+-/
+theorem handler_step_typed_preservation
+    {tenv : TermEnv}
+    {e e' : HandlerExpr}
+    {ty : Ty}
+    (h_typed : HandlerHasType tenv e ty)
+    (h_step_typed : HandlerStepTyped tenv ty e e') :
+    HandlerHasType tenv e' ty := by
+  cases h_step_typed with
+  | handle_perform_tail _ clause arg k _ _ _ _ h_instantiated =>
+      exact
+        HandlerHasType.core tenv
+          (bindTailResumptive clause arg k)
+          ty
+          h_instantiated
 
 /--
 Named preservation proposition for handler reduction:
