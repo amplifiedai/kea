@@ -565,6 +565,11 @@ Concrete milestone checklist for moving from the current fuel model to an implem
   Update: extended constructive lift coverage at handle sites with
   `hasTypeScopedTop_handle_lifts_strict_of_body_not_perform`, so non-`perform`
   handle bodies now lift without extra metadata assumptions.
+  Update: proved bidirectional reduction
+  (`native_handler_scoped_to_strict_lift_prop_of_strict_typing`,
+  `native_handler_scoped_to_strict_lift_prop_iff_strict_typing`), so the
+  scoped->strict lift target is exactly the handle-only strict typing contract
+  (and via prior lemmas, exactly metadata coherence).
   Update: re-ran direct in-session `kea` MCP stress probes (spoofed
   `__kea_resume_ctx`, out-of-handler `resume`, single-resume handler acceptance,
   double-resume rejection) and observed agreement with Lean assumptions

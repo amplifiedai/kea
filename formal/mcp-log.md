@@ -17110,3 +17110,37 @@ fragment (value/congruence-oriented handle bodies).
 - Scoped->strict constructive lift now covers:
   non-`handle` expressions, coherent `handle` bodies, and non-`perform`
   `handle` bodies.
+
+### 2026-03-02: scoped->strict lift reduced to handle-only strict contract
+
+**Context**: Proved bidirectional reduction between the global scoped->strict
+lift contract and the handle-only strict typing contract.
+
+Lean changes:
+- Added in `Kea/Typing.lean`:
+  - `native_handler_scoped_to_strict_lift_prop_of_strict_typing`
+  - `native_handler_scoped_to_strict_lift_prop_iff_strict_typing`
+
+Together with existing equivalences, this yields:
+`scoped->strict lift <-> strict typing <-> metadata coherence`.
+
+**Build check**:
+- `cd formal && lake build Kea.Typing` passes.
+- `cd formal && lake build` passes.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Probe (direct `kea` MCP)**:
+1. Spoofed resume context variable remains rejected (`E0012`).
+2. Single-resume matching handler clause remains accepted (`status = ok`).
+3. Double-resume handler clause remains rejected (`E0012`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- The open native extension target is now minimized to handle-site coherence
+  only; no additional global obligation shape remains.

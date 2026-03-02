@@ -2153,6 +2153,65 @@ theorem native_handler_strict_typing_prop_of_scoped_to_strict_lift
       h_typed)
 
 /--
+Global strict-handle typing is sufficient to build the scoped-to-strict lift
+contract (non-handle roots are strict by vacuity).
+-/
+theorem native_handler_scoped_to_strict_lift_prop_of_strict_typing
+    (h_strict_typing : native_handler_strict_typing_prop) :
+    native_handler_scoped_to_strict_lift_prop := by
+  intro env e ty h_typed
+  cases e with
+  | intLit _ =>
+    refine ⟨h_typed, ?_⟩
+    intro body opHandle argName resumeName argTy opRetTy clauseBody h_eq
+    cases h_eq
+  | boolLit _ =>
+    refine ⟨h_typed, ?_⟩
+    intro body opHandle argName resumeName argTy opRetTy clauseBody h_eq
+    cases h_eq
+  | stringLit _ =>
+    refine ⟨h_typed, ?_⟩
+    intro body opHandle argName resumeName argTy opRetTy clauseBody h_eq
+    cases h_eq
+  | var _ =>
+    refine ⟨h_typed, ?_⟩
+    intro body opHandle argName resumeName argTy opRetTy clauseBody h_eq
+    cases h_eq
+  | lam _ _ _ =>
+    refine ⟨h_typed, ?_⟩
+    intro body opHandle argName resumeName argTy opRetTy clauseBody h_eq
+    cases h_eq
+  | app _ _ =>
+    refine ⟨h_typed, ?_⟩
+    intro body opHandle argName resumeName argTy opRetTy clauseBody h_eq
+    cases h_eq
+  | letE _ _ _ =>
+    refine ⟨h_typed, ?_⟩
+    intro body opHandle argName resumeName argTy opRetTy clauseBody h_eq
+    cases h_eq
+  | record _ =>
+    refine ⟨h_typed, ?_⟩
+    intro body opHandle argName resumeName argTy opRetTy clauseBody h_eq
+    cases h_eq
+  | proj _ _ =>
+    refine ⟨h_typed, ?_⟩
+    intro body opHandle argName resumeName argTy opRetTy clauseBody h_eq
+    cases h_eq
+  | perform _ _ _ _ _ =>
+    refine ⟨h_typed, ?_⟩
+    intro body opHandle argName resumeName argTy opRetTy clauseBody h_eq
+    cases h_eq
+  | handle body opHandle argName resumeName argTy opRetTy clauseBody =>
+    exact hasTypeScopedTop_handle_lifts_strict_of_local_coherence
+      h_typed
+      (h_strict_typing
+        env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed).2
+  | resume _ =>
+    refine ⟨h_typed, ?_⟩
+    intro body opHandle argName resumeName argTy opRetTy clauseBody h_eq
+    cases h_eq
+
+/--
 Scoped-to-strict lifting implies global metadata coherence on typed handles.
 -/
 theorem native_handler_perform_metadata_coherence_of_scoped_to_strict_lift
@@ -2161,6 +2220,17 @@ theorem native_handler_perform_metadata_coherence_of_scoped_to_strict_lift
   intro env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed
   exact (native_handler_strict_typing_prop_of_scoped_to_strict_lift h_lift
     env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed).2
+
+/--
+Scoped-to-strict lift and strict-handle typing are equivalent global
+obligations.
+-/
+theorem native_handler_scoped_to_strict_lift_prop_iff_strict_typing :
+    native_handler_scoped_to_strict_lift_prop
+      ↔ native_handler_strict_typing_prop := by
+  constructor
+  · exact native_handler_strict_typing_prop_of_scoped_to_strict_lift
+  · exact native_handler_scoped_to_strict_lift_prop_of_strict_typing
 
 /--
 Strict-typing implies global perform-metadata coherence for typed handles.
