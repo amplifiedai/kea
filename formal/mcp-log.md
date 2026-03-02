@@ -17008,3 +17008,37 @@ negative witness under current typing.
 **Outcome**:
 - The unresolved native-judgment closure is now maximally explicit:
   proving a scoped->strict lift is equivalent to proving metadata coherence.
+
+### 2026-03-02: no-body-step impossibility for mismatch-extension soundness
+
+**Context**: Added explicit impossibility theorems showing mismatch-extension
+progress/soundness fail when body-step semantics is empty.
+
+Lean changes:
+- Added in `Kea/Typing.lean`:
+  - `not_native_handler_step_ext_with_mismatch_progress_prop_of_bodyStepFalse`
+  - `not_native_handler_step_ext_with_mismatch_soundness_prop_of_bodyStepFalse`
+
+Proof uses the existing typed metadata-mismatch witness plus the derived
+no-step lemma under `bodyStep = False`.
+
+**Build check**:
+- `cd formal && lake build Kea.Typing` passes.
+- `cd formal && lake build` passes.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Probe (direct `kea` MCP)**:
+1. Spoofed resume context variable remains rejected (`E0012`).
+2. Single-resume matching handler clause remains accepted (`status = ok`).
+3. Double-resume handler clause remains rejected (`E0012`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- The formal boundary now includes a negative capstone: without body-step
+  semantics (or stricter typing), mismatch-extension soundness cannot hold.

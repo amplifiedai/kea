@@ -2541,6 +2541,46 @@ theorem native_handler_step_ext_with_mismatch_typed_metadata_mismatch_counterexa
       clauseSem mismatchSem bodyStep h_no_body_step
 
 /--
+With no body-step semantics (`False` relation), mismatch-extension progress is
+not derivable under current typing (metadata-mismatch typed witness is stuck).
+-/
+theorem not_native_handler_step_ext_with_mismatch_progress_prop_of_bodyStepFalse
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) :
+    ¬ native_handler_step_ext_with_mismatch_progress_prop
+        clauseSem mismatchSem
+        (fun _ _ => False) := by
+  intro h_progress
+  have h_counter :=
+    native_handler_step_ext_with_mismatch_typed_metadata_mismatch_counterexample
+      clauseSem mismatchSem
+      (fun _ _ => False)
+      (by
+        intro body' h_step
+        cases h_step)
+  rcases h_counter with ⟨h_typed, h_no_step⟩
+  have h_exists :=
+    h_progress []
+      (.perform "Op" .bool .bool (.boolLit true) (.lam "x" .bool (.intLit 0)))
+      "Op" "x" "k" .int .int (.intLit 2) .int
+      h_typed
+  exact h_no_step h_exists
+
+/--
+With no body-step semantics (`False` relation), mismatch-extension soundness is
+not derivable under current typing.
+-/
+theorem not_native_handler_step_ext_with_mismatch_soundness_prop_of_bodyStepFalse
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) :
+    ¬ native_handler_step_ext_with_mismatch_soundness_prop
+        clauseSem mismatchSem
+        (fun _ _ => False) := by
+  intro h_sound
+  exact not_native_handler_step_ext_with_mismatch_progress_prop_of_bodyStepFalse
+    clauseSem mismatchSem h_sound.2
+
+/--
 Original native handler steps embed into the extended relation.
 -/
 theorem native_handler_step_ext_of_native_handler_step
