@@ -16896,3 +16896,40 @@ These package the closure shape as:
 **Outcome**:
 - Mismatch-extension capstone consumption is now aligned with existing packaged
   core soundness surfaces, reducing theorem-integration friction.
+
+### 2026-03-02: metadata-mismatch no-step counterexample under mismatch extension
+
+**Context**: Added a concrete theorem witness showing mismatch-extension
+progress still fails for typed handles when body/handle metadata disagree and
+the body-step relation does not step that body.
+
+Lean changes:
+- Added in `Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_not_exists_of_metadata_mismatch_without_body_step`
+  - `native_handler_step_ext_with_mismatch_typed_metadata_mismatch_counterexample`
+
+This separates the remaining gap from op-label mismatch: even with
+`NativeHandlerStepExtWithMismatch`, metadata mismatch can still block stepping
+without either strict typing or richer body-step semantics.
+
+**Build check**:
+- `cd formal && lake build Kea.Typing` passes.
+- `cd formal && lake build` passes.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Probe (direct `kea` MCP)**:
+1. Spoofed resume context variable remains rejected (`E0012`).
+2. Single-resume matching handler clause remains accepted (`status = ok`).
+3. Double-resume handler clause remains rejected (`E0012`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- The formal boundary is now tighter: the unresolved progress gap is
+  specifically metadata mismatch (unless strict typing or additional semantics
+  closes it), not just op mismatch.

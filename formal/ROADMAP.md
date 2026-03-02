@@ -535,6 +535,12 @@ Concrete milestone checklist for moving from the current fuel model to an implem
   `native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_metadata_coherence`
   and
   `native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_strict_typing_packaged`.
+  Update: added explicit metadata-mismatch no-step witnesses under the
+  mismatched-perform extension
+  (`native_handler_step_ext_with_mismatch_not_exists_of_metadata_mismatch_without_body_step`,
+  `native_handler_step_ext_with_mismatch_typed_metadata_mismatch_counterexample`),
+  tightening the remaining progress gap to metadata coherence vs body-step
+  semantics.
   Update: re-ran direct in-session `kea` MCP stress probes (spoofed
   `__kea_resume_ctx`, out-of-handler `resume`, single-resume handler acceptance,
   double-resume rejection) and observed agreement with Lean assumptions

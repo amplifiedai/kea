@@ -2336,6 +2336,74 @@ theorem native_handler_step_ext_with_mismatch_typed_mismatch_counterexample_reso
       "x" "k" (.intLit 2) h_op_ne
 
 /--
+Even with mismatched-op bubbling, progress can still fail on a typed handled
+`perform` when body/handle metadata disagree and the body-step relation does
+not step that body.
+-/
+theorem native_handler_step_ext_with_mismatch_not_exists_of_metadata_mismatch_without_body_step
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_no_body_step :
+      ∀ body', ¬ bodyStep
+        (.perform "Op" .bool .bool (.boolLit true) (.lam "x" .bool (.intLit 0)))
+        body') :
+    ¬ ∃ e', NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep
+      (.handle
+        (.perform "Op" .bool .bool (.boolLit true) (.lam "x" .bool (.intLit 0)))
+        "Op" "x" "k" .int .int (.intLit 2))
+      e' := by
+  intro h_exists
+  rcases h_exists with ⟨e', h_step⟩
+  cases h_step with
+  | ext h_ext =>
+    cases h_ext with
+    | handle_value _ _ _ _ _ _ _ h_val =>
+      exact coreValue_not_perform h_val
+    | handle_congr _ body' _ _ _ _ _ _ h_body_step =>
+      exact h_no_body_step body' h_body_step
+
+/--
+Concrete typed metadata-mismatch counterexample for the mismatched-perform
+extension under no-step body semantics.
+-/
+theorem native_handler_step_ext_with_mismatch_typed_metadata_mismatch_counterexample
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_no_body_step :
+      ∀ body', ¬ bodyStep
+        (.perform "Op" .bool .bool (.boolLit true) (.lam "x" .bool (.intLit 0)))
+        body') :
+    HasTypeScopedTop []
+      (.handle
+        (.perform "Op" .bool .bool (.boolLit true) (.lam "x" .bool (.intLit 0)))
+        "Op" "x" "k" .int .int (.intLit 2))
+      .int
+    ∧
+    ¬ ∃ e', NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep
+      (.handle
+        (.perform "Op" .bool .bool (.boolLit true) (.lam "x" .bool (.intLit 0)))
+        "Op" "x" "k" .int .int (.intLit 2))
+      e' := by
+  refine ⟨?_, ?_⟩
+  · exact HasTypeScoped.handle none []
+      (.perform "Op" .bool .bool (.boolLit true) (.lam "x" .bool (.intLit 0)))
+      "Op" "x" "k" .int .int .int (.intLit 2)
+      (HasTypeScoped.perform none [] "Op" .bool .bool .int
+        (.boolLit true) (.lam "x" .bool (.intLit 0))
+        (HasTypeScoped.bool none [] true)
+        (HasTypeScoped.lam none [] "x" .bool .int (.intLit 0)
+          (HasTypeScoped.int none [("x", .bool)] 0)))
+      (HasTypeScoped.int (some (.int, .int))
+        (("k", .function (.cons .int .nil) .int) ::
+          ("x", .int) ::
+          [])
+        2)
+  · exact native_handler_step_ext_with_mismatch_not_exists_of_metadata_mismatch_without_body_step
+      clauseSem mismatchSem bodyStep h_no_body_step
+
+/--
 Original native handler steps embed into the extended relation.
 -/
 theorem native_handler_step_ext_of_native_handler_step
