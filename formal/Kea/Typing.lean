@@ -2638,6 +2638,30 @@ theorem native_handler_strict_typing_prop_iff_metadata_coherence :
   · exact native_handler_strict_typing_of_metadata_coherence
 
 /--
+Global metadata coherence is sufficient to reconstruct global strict-top handle
+typing.
+-/
+theorem native_handler_strict_top_typing_of_metadata_coherence
+    (h_coherence : native_handler_perform_metadata_coherence_prop) :
+    native_handler_strict_top_typing_prop := by
+  exact (native_handler_strict_top_typing_prop_iff_strict_typing).2
+    (native_handler_strict_typing_of_metadata_coherence h_coherence)
+
+/--
+Strict-top handle typing and metadata coherence are equivalent global
+contracts.
+-/
+theorem native_handler_strict_top_typing_prop_iff_metadata_coherence :
+    native_handler_strict_top_typing_prop
+      ↔ native_handler_perform_metadata_coherence_prop := by
+  constructor
+  · intro h_strict_top
+    exact native_handler_perform_metadata_coherence_of_strict_typing
+      ((native_handler_strict_top_typing_prop_iff_strict_typing).1 h_strict_top)
+  · intro h_coherence
+    exact native_handler_strict_top_typing_of_metadata_coherence h_coherence
+
+/--
 Current native scoped typing does not satisfy the global strict-handle typing
 contract.
 -/
@@ -2646,6 +2670,16 @@ theorem not_native_handler_strict_typing_prop :
   intro h_strict_typing
   exact not_native_handler_perform_metadata_coherence_prop
     (native_handler_perform_metadata_coherence_of_strict_typing h_strict_typing)
+
+/--
+Current native scoped typing does not satisfy the global strict-top handle
+typing contract.
+-/
+theorem not_native_handler_strict_top_typing_prop :
+    ¬ native_handler_strict_top_typing_prop := by
+  intro h_strict_top
+  exact not_native_handler_perform_metadata_coherence_prop
+    ((native_handler_strict_top_typing_prop_iff_metadata_coherence).1 h_strict_top)
 
 /--
 Global metadata coherence is sufficient to build the scoped-to-strict lift
@@ -2713,6 +2747,21 @@ theorem not_native_handler_strict_typing_prop_iff_not_metadata_coherence :
   · intro h_not_coherence h_strict
     exact h_not_coherence
       (native_handler_perform_metadata_coherence_of_strict_typing h_strict)
+
+/--
+Negated-form boundary equivalence: strict-top handle typing fails iff metadata
+coherence fails.
+-/
+theorem not_native_handler_strict_top_typing_prop_iff_not_metadata_coherence :
+    (¬ native_handler_strict_top_typing_prop)
+      ↔ (¬ native_handler_perform_metadata_coherence_prop) := by
+  constructor
+  · intro h_not_strict_top h_coherence
+    exact h_not_strict_top
+      (native_handler_strict_top_typing_of_metadata_coherence h_coherence)
+  · intro h_not_coherence h_strict_top
+    exact h_not_coherence
+      ((native_handler_strict_top_typing_prop_iff_metadata_coherence).1 h_strict_top)
 
 /--
 Full mismatch-extension progress from core body progress plus a global strict

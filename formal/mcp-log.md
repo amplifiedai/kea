@@ -17517,3 +17517,48 @@ it directly to the existing progress/soundness capstones.
 **Outcome**:
 - Global handler progress/soundness can now be consumed either from strict-local
   or strict-top contracts with explicit theorem equivalence links.
+
+### 2026-03-02: strict-top metadata boundary closure + expanded MCP sanity sweep
+
+**Context**: Closed the strict-top contract boundary with metadata-coherence
+equivalences and added a broader MCP sanity matrix across handler sentinel
+slices (beyond the 3-probe sentinel triad).
+
+Lean changes:
+- Added in `Kea/Typing.lean`:
+  - `native_handler_strict_top_typing_of_metadata_coherence`
+  - `native_handler_strict_top_typing_prop_iff_metadata_coherence`
+  - `not_native_handler_strict_top_typing_prop`
+  - `not_native_handler_strict_top_typing_prop_iff_not_metadata_coherence`
+
+**Build check**:
+- `cd formal && lake build Kea.Typing` passes.
+- `cd formal && lake build` passes.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Probe matrix (direct `kea` MCP)**:
+1. Spoofed resume context via parameter:
+   - rejected (`E0012`).
+2. Spoofed resume context via local `let __kea_resume_ctx = ...`:
+   - rejected (`E0012`).
+3. Coherent single-resume handler discharging effect in pure `main`:
+   - accepted (`status = ok`, `main : () -> Int`).
+4. Sequential double-resume in one clause:
+   - rejected (`E0012`, at-most-once enforcement).
+5. Mismatched handler clauses (handle `Counter` with only `State` clauses) under pure `main`:
+   - rejected with purity/effect leak diagnostic (`E0001`, requires `[Counter]`).
+6. Nested disjoint handlers (A handled then B handled in outer function):
+   - accepted (`status = ok`, outer `main : () -> Int`).
+7. `resume` in lambda outside handler clause:
+   - rejected (`E0012`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Sentinel validation now includes a broader slice sanity suite aligned with
+  current handler theorems, not only the minimal 3-probe loop.
