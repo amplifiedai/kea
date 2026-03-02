@@ -14378,3 +14378,44 @@ to full `TailResumptiveBundle` witnesses.
 - Typed handler-redex capstones now bridge directly into the packaged
   tail-resumptive contract surface without introducing any new Lean↔MCP
   mismatch signal.
+
+### 2026-03-02: typed redex bridge to tail-capability composition bundle
+
+**Context**: Continued `HandlerStepBoundary` by extending typed-redex theorem
+routes into `TailCapabilityComposition` package outputs.
+
+Lean changes:
+- `handler_typed_redex_tail_capability_bundle`
+- `handler_typed_redex_capstone_with_tail_capability_bundle`
+
+This adds evaluator-side capstone routes that return
+`TailCapabilityBundle clause.contract capability` under explicit capability
+origin assumptions.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+- `diagnose`
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; this is a package-route extension.
+- Existing linearity diagnostics and overlap normalization should remain stable.
+
+**Probe (direct `kea` MCP)**:
+1. Single-resume handler accepted:
+   - `Ping.ask() -> resume 1` case type-checks (`status = ok`).
+2. Multi-resume branch rejected:
+   - branch double-resume case emits `E0012`.
+3. `resume` outside handler rejected:
+   - emits `E0012`.
+4. Overlap normalization still stable:
+   - `mixed : () -[IO, Log]> ()`
+   - `handled : () -[IO]> ()`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Typed-redex evaluator capstones now connect into both tail-resumptive and
+  tail-capability packaged theorem surfaces with no new Lean↔MCP divergence.
