@@ -15914,3 +15914,36 @@ declarative and algorithmic layers.
 **Outcome**:
 - Resume-scoping alignment now has explicit theorem surfaces for downstream
   native typing clients.
+
+### 2026-03-02: typed native handle shape/completeness-preservation capstone
+
+**Context**: Added a stronger typed theorem route on native step semantics so
+shape support and one-step typed preservation are connected in one `↔` theorem.
+
+Lean changes:
+- `native_handler_step_exists_and_preserves_iff_supported_shape_of_typed`
+
+This theorem states: for a typed native handle expression, existence of a
+native one-step successor that preserves typing is equivalent to supported
+perform-redex body shape.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Predict (Lean side)**:
+- No runtime behavior change expected (theorem-surface strengthening only).
+- Existing `E0012` behavior should remain stable.
+
+**Probe (direct `kea` MCP)**:
+1. Single-resume clause accepted (`status = ok`).
+2. Sequential double-resume rejected (`status = error`, `E0012`).
+3. `resume` outside handler rejected (`status = error`, `E0012`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Native typed-handle shape completeness now includes preservation in one
+  machine-checked capstone route.

@@ -835,6 +835,34 @@ theorem native_handler_step_exists_and_preserves_of_typed_redex
       (clauseSem.instantiate clauseBody arg k) ty h_typed
       (NativeHandlerStep.handle_perform op argTy opRetTy arg k argName resumeName clauseBody)
 
+/--
+Typed native-handle completeness strengthened with preservation:
+supported shape is equivalent to existence of a one-step native successor that
+remains well-typed at the same type.
+-/
+theorem native_handler_step_exists_and_preserves_iff_supported_shape_of_typed
+    (clauseSem : NativeHandlerClauseSem)
+    {env : TermEnv} {body : CoreExpr} {op : Label}
+    {argName resumeName : String} {argTy opRetTy : Ty}
+    {clauseBody : CoreExpr} {ty : Ty}
+    (h_typed :
+      HasType env (.handle body op argName resumeName argTy opRetTy clauseBody) ty) :
+    (∃ e',
+      NativeHandlerStep clauseSem
+        (.handle body op argName resumeName argTy opRetTy clauseBody) e' ∧
+      HasType env e' ty)
+      ↔ NativeHandlerStepSupportedShape body op argTy opRetTy := by
+  constructor
+  · intro h_exists
+    rcases h_exists with ⟨e', h_step, _h_typed'⟩
+    exact native_handler_step_requires_supported_shape clauseSem h_step
+  · intro h_shape
+    rcases native_handler_step_exists_of_supported_shape clauseSem h_shape with ⟨e', h_step⟩
+    refine ⟨e', h_step, ?_⟩
+    exact native_handler_step_preservation clauseSem env
+      (.handle body op argName resumeName argTy opRetTy clauseBody)
+      e' ty h_typed h_step
+
 /-- Progress target for native `handle` expressions in `Typing.lean`. -/
 def native_handler_step_progress_prop (clauseSem : NativeHandlerClauseSem) : Prop :=
   ∀ env body op argName resumeName argTy opRetTy clauseBody ty,
