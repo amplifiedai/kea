@@ -2183,7 +2183,7 @@ fn validate_fip_annotations(module: &Module, hir: &HirModule) -> Vec<Diagnostic>
                 for root in &fip_spec.unique_param_names {
                     aliases.insert(root.clone(), root.clone());
                 }
-                analyze_hir_unique_flow_expr(&function.body, &aliases, &safe_handoff_callees)
+                analyze_hir_unique_flow_function(function, &aliases, &safe_handoff_callees)
             })
             .unwrap_or_default();
         let mir_unique_flow = match (mir_function, hir_function) {
@@ -2402,7 +2402,7 @@ fn collect_safe_unique_forwarders(
         let mut is_safe_forwarder = false;
         for root in candidate_roots {
             let aliases = BTreeMap::from([(root.clone(), root.clone())]);
-            let flow = analyze_hir_unique_flow_expr(&function.body, &aliases, &no_safe_handoffs);
+            let flow = analyze_hir_unique_flow_function(function, &aliases, &no_safe_handoffs);
             let ref_count = flow.ref_counts.get(&root).copied().unwrap_or(0);
             let call_escape_count = flow.call_escape_counts.get(&root).copied().unwrap_or(0);
             if ref_count == 1
@@ -2484,6 +2484,14 @@ fn hir_call_crosses_ownership_boundary(func: &HirExpr) -> bool {
     !matches!(func.kind, HirExprKind::Lambda { .. })
 }
 
+fn hir_callable_root_name(func: &HirExpr) -> Option<String> {
+    match &func.kind {
+        HirExprKind::Var(name) => Some(name.clone()),
+        HirExprKind::FieldAccess { expr, .. } => hir_callable_root_name(expr),
+        _ => None,
+    }
+}
+
 fn hir_callable_name(func: &HirExpr) -> Option<String> {
     match &func.kind {
         HirExprKind::Var(name) => Some(name.clone()),
@@ -2499,8 +2507,14 @@ fn hir_call_is_safe_unique_handoff(
     func: &HirExpr,
     args: &[HirExpr],
     safe_handoff_callees: &BTreeSet<String>,
+    local_bindings: &BTreeSet<String>,
 ) -> bool {
     if args.len() != 1 {
+        return false;
+    }
+    if let Some(root) = hir_callable_root_name(func)
+        && local_bindings.contains(&root)
+    {
         return false;
     }
     let Some(name) = hir_callable_name(func) else {
@@ -2509,10 +2523,33 @@ fn hir_call_is_safe_unique_handoff(
     safe_handoff_callees.contains(&name)
 }
 
-fn analyze_hir_unique_flow_expr(
+fn hir_function_param_bindings(function: &HirFunction) -> BTreeSet<String> {
+    function
+        .params
+        .iter()
+        .filter_map(|param| param.name.clone())
+        .collect()
+}
+
+fn analyze_hir_unique_flow_function(
+    function: &HirFunction,
+    aliases: &BTreeMap<String, String>,
+    safe_handoff_callees: &BTreeSet<String>,
+) -> HirUniqueFlowSummary {
+    let local_bindings = hir_function_param_bindings(function);
+    analyze_hir_unique_flow_expr_scoped(
+        &function.body,
+        aliases,
+        safe_handoff_callees,
+        &local_bindings,
+    )
+}
+
+fn analyze_hir_unique_flow_expr_scoped(
     expr: &HirExpr,
     aliases: &BTreeMap<String, String>,
     safe_handoff_callees: &BTreeSet<String>,
+    local_bindings: &BTreeSet<String>,
 ) -> HirUniqueFlowSummary {
     match &expr.kind {
         HirExprKind::Lit(_) => HirUniqueFlowSummary::default(),
@@ -2525,8 +2562,18 @@ fn analyze_hir_unique_flow_expr(
             summary
         }
         HirExprKind::Binary { left, right, .. } => {
-            let left_summary = analyze_hir_unique_flow_expr(left, aliases, safe_handoff_callees);
-            let right_summary = analyze_hir_unique_flow_expr(right, aliases, safe_handoff_callees);
+            let left_summary = analyze_hir_unique_flow_expr_scoped(
+                left,
+                aliases,
+                safe_handoff_callees,
+                local_bindings,
+            );
+            let right_summary = analyze_hir_unique_flow_expr_scoped(
+                right,
+                aliases,
+                safe_handoff_callees,
+                local_bindings,
+            );
             let mut summary = HirUniqueFlowSummary::default();
             add_ref_counts(&mut summary.ref_counts, &left_summary.ref_counts);
             add_ref_counts(&mut summary.ref_counts, &right_summary.ref_counts);
@@ -2541,20 +2588,40 @@ fn analyze_hir_unique_flow_expr(
             summary
         }
         HirExprKind::Unary { operand, .. } => {
-            analyze_hir_unique_flow_expr(operand, aliases, safe_handoff_callees)
+            analyze_hir_unique_flow_expr_scoped(
+                operand,
+                aliases,
+                safe_handoff_callees,
+                local_bindings,
+            )
         }
         HirExprKind::If {
             condition,
             then_branch,
             else_branch,
         } => {
-            let condition_summary =
-                analyze_hir_unique_flow_expr(condition, aliases, safe_handoff_callees);
-            let then_summary =
-                analyze_hir_unique_flow_expr(then_branch, aliases, safe_handoff_callees);
+            let condition_summary = analyze_hir_unique_flow_expr_scoped(
+                condition,
+                aliases,
+                safe_handoff_callees,
+                local_bindings,
+            );
+            let then_summary = analyze_hir_unique_flow_expr_scoped(
+                then_branch,
+                aliases,
+                safe_handoff_callees,
+                local_bindings,
+            );
             let else_summary = else_branch
                 .as_ref()
-                .map(|branch| analyze_hir_unique_flow_expr(branch, aliases, safe_handoff_callees))
+                .map(|branch| {
+                    analyze_hir_unique_flow_expr_scoped(
+                        branch,
+                        aliases,
+                        safe_handoff_callees,
+                        local_bindings,
+                    )
+                })
                 .unwrap_or_default();
             let mut summary = HirUniqueFlowSummary::default();
             add_ref_counts(&mut summary.ref_counts, &condition_summary.ref_counts);
@@ -2585,12 +2652,23 @@ fn analyze_hir_unique_flow_expr(
             summary
         }
         HirExprKind::Call { func, args } => {
-            let mut summary = analyze_hir_unique_flow_expr(func, aliases, safe_handoff_callees);
+            let mut summary = analyze_hir_unique_flow_expr_scoped(
+                func,
+                aliases,
+                safe_handoff_callees,
+                local_bindings,
+            );
             let crosses_boundary = hir_call_crosses_ownership_boundary(func);
-            let is_safe_handoff = hir_call_is_safe_unique_handoff(func, args, safe_handoff_callees);
+            let is_safe_handoff =
+                hir_call_is_safe_unique_handoff(func, args, safe_handoff_callees, local_bindings);
             let mut safe_handoff_root = None;
             for arg in args {
-                let arg_summary = analyze_hir_unique_flow_expr(arg, aliases, safe_handoff_callees);
+                let arg_summary = analyze_hir_unique_flow_expr_scoped(
+                    arg,
+                    aliases,
+                    safe_handoff_callees,
+                    local_bindings,
+                );
                 add_ref_counts(&mut summary.ref_counts, &arg_summary.ref_counts);
                 add_ref_counts(
                     &mut summary.call_escape_counts,
@@ -2611,7 +2689,12 @@ fn analyze_hir_unique_flow_expr(
             summary
         }
         HirExprKind::Let { pattern, value } => {
-            let mut summary = analyze_hir_unique_flow_expr(value, aliases, safe_handoff_callees);
+            let mut summary = analyze_hir_unique_flow_expr_scoped(
+                value,
+                aliases,
+                safe_handoff_callees,
+                local_bindings,
+            );
             if matches!(pattern, kea_hir::HirPattern::Var(_))
                 && let Some(root) = summary.result_alias_root.clone()
                 && let Some(count) = summary.ref_counts.get_mut(&root)
@@ -2622,10 +2705,15 @@ fn analyze_hir_unique_flow_expr(
         }
         HirExprKind::Block(exprs) => {
             let mut scoped_aliases = aliases.clone();
+            let mut scoped_local_bindings = local_bindings.clone();
             let mut summary = HirUniqueFlowSummary::default();
             for item in exprs {
-                let item_summary =
-                    analyze_hir_unique_flow_expr(item, &scoped_aliases, safe_handoff_callees);
+                let item_summary = analyze_hir_unique_flow_expr_scoped(
+                    item,
+                    &scoped_aliases,
+                    safe_handoff_callees,
+                    &scoped_local_bindings,
+                );
                 add_ref_counts(&mut summary.ref_counts, &item_summary.ref_counts);
                 add_ref_counts(
                     &mut summary.call_escape_counts,
@@ -2639,6 +2727,7 @@ fn analyze_hir_unique_flow_expr(
                     } else {
                         scoped_aliases.remove(binding);
                     }
+                    scoped_local_bindings.insert(binding.clone());
                     summary.result_alias_root = None;
                     continue;
                 }
@@ -2649,7 +2738,12 @@ fn analyze_hir_unique_flow_expr(
         HirExprKind::Tuple(exprs) => {
             let mut summary = HirUniqueFlowSummary::default();
             for item in exprs {
-                let item_summary = analyze_hir_unique_flow_expr(item, aliases, safe_handoff_callees);
+                let item_summary = analyze_hir_unique_flow_expr_scoped(
+                    item,
+                    aliases,
+                    safe_handoff_callees,
+                    local_bindings,
+                );
                 add_ref_counts(&mut summary.ref_counts, &item_summary.ref_counts);
                 add_ref_counts(
                     &mut summary.call_escape_counts,
@@ -2658,14 +2752,29 @@ fn analyze_hir_unique_flow_expr(
             }
             summary
         }
-        HirExprKind::Lambda { body, .. } => {
-            analyze_hir_unique_flow_expr(body, aliases, safe_handoff_callees)
+        HirExprKind::Lambda { params, body } => {
+            let mut lambda_local_bindings = local_bindings.clone();
+            for param in params {
+                if let Some(name) = &param.name {
+                    lambda_local_bindings.insert(name.clone());
+                }
+            }
+            analyze_hir_unique_flow_expr_scoped(
+                body,
+                aliases,
+                safe_handoff_callees,
+                &lambda_local_bindings,
+            )
         }
         HirExprKind::RecordLit { fields, .. } => {
             let mut summary = HirUniqueFlowSummary::default();
             for (_, field_expr) in fields {
-                let field_summary =
-                    analyze_hir_unique_flow_expr(field_expr, aliases, safe_handoff_callees);
+                let field_summary = analyze_hir_unique_flow_expr_scoped(
+                    field_expr,
+                    aliases,
+                    safe_handoff_callees,
+                    local_bindings,
+                );
                 add_ref_counts(&mut summary.ref_counts, &field_summary.ref_counts);
                 add_ref_counts(
                     &mut summary.call_escape_counts,
@@ -2675,10 +2784,19 @@ fn analyze_hir_unique_flow_expr(
             summary
         }
         HirExprKind::RecordUpdate { base, fields, .. } => {
-            let mut summary = analyze_hir_unique_flow_expr(base, aliases, safe_handoff_callees);
+            let mut summary = analyze_hir_unique_flow_expr_scoped(
+                base,
+                aliases,
+                safe_handoff_callees,
+                local_bindings,
+            );
             for (_, field_expr) in fields {
-                let field_summary =
-                    analyze_hir_unique_flow_expr(field_expr, aliases, safe_handoff_callees);
+                let field_summary = analyze_hir_unique_flow_expr_scoped(
+                    field_expr,
+                    aliases,
+                    safe_handoff_callees,
+                    local_bindings,
+                );
                 add_ref_counts(&mut summary.ref_counts, &field_summary.ref_counts);
                 add_ref_counts(
                     &mut summary.call_escape_counts,
@@ -2689,15 +2807,24 @@ fn analyze_hir_unique_flow_expr(
             summary
         }
         HirExprKind::FieldAccess { expr, .. } => {
-            let mut summary = analyze_hir_unique_flow_expr(expr, aliases, safe_handoff_callees);
+            let mut summary = analyze_hir_unique_flow_expr_scoped(
+                expr,
+                aliases,
+                safe_handoff_callees,
+                local_bindings,
+            );
             summary.result_alias_root = None;
             summary
         }
         HirExprKind::SumConstructor { fields, .. } => {
             let mut summary = HirUniqueFlowSummary::default();
             for field_expr in fields {
-                let field_summary =
-                    analyze_hir_unique_flow_expr(field_expr, aliases, safe_handoff_callees);
+                let field_summary = analyze_hir_unique_flow_expr_scoped(
+                    field_expr,
+                    aliases,
+                    safe_handoff_callees,
+                    local_bindings,
+                );
                 add_ref_counts(&mut summary.ref_counts, &field_summary.ref_counts);
                 add_ref_counts(
                     &mut summary.call_escape_counts,
@@ -2707,24 +2834,49 @@ fn analyze_hir_unique_flow_expr(
             summary
         }
         HirExprKind::SumPayloadAccess { expr, .. } => {
-            let mut summary = analyze_hir_unique_flow_expr(expr, aliases, safe_handoff_callees);
+            let mut summary = analyze_hir_unique_flow_expr_scoped(
+                expr,
+                aliases,
+                safe_handoff_callees,
+                local_bindings,
+            );
             summary.result_alias_root = None;
             summary
         }
         HirExprKind::Catch { expr } => {
-            analyze_hir_unique_flow_expr(expr, aliases, safe_handoff_callees)
+            analyze_hir_unique_flow_expr_scoped(
+                expr,
+                aliases,
+                safe_handoff_callees,
+                local_bindings,
+            )
         }
         HirExprKind::Handle {
             expr,
             clauses,
             then_clause,
         } => {
-            let mut summary = analyze_hir_unique_flow_expr(expr, aliases, safe_handoff_callees);
+            let mut summary = analyze_hir_unique_flow_expr_scoped(
+                expr,
+                aliases,
+                safe_handoff_callees,
+                local_bindings,
+            );
             let mut clause_count_max = BTreeMap::new();
             let mut clause_escapes_max = BTreeMap::new();
             for clause in clauses {
-                let clause_summary =
-                    analyze_hir_unique_flow_expr(&clause.body, aliases, safe_handoff_callees);
+                let mut clause_bindings = local_bindings.clone();
+                for arg in &clause.args {
+                    if let kea_hir::HirPattern::Var(name) = arg {
+                        clause_bindings.insert(name.clone());
+                    }
+                }
+                let clause_summary = analyze_hir_unique_flow_expr_scoped(
+                    &clause.body,
+                    aliases,
+                    safe_handoff_callees,
+                    &clause_bindings,
+                );
                 clause_count_max = max_ref_counts(&clause_count_max, &clause_summary.ref_counts);
                 clause_escapes_max = max_ref_counts(
                     &clause_escapes_max,
@@ -2734,8 +2886,12 @@ fn analyze_hir_unique_flow_expr(
             add_ref_counts(&mut summary.ref_counts, &clause_count_max);
             add_ref_counts(&mut summary.call_escape_counts, &clause_escapes_max);
             if let Some(then_expr) = then_clause {
-                let then_summary =
-                    analyze_hir_unique_flow_expr(then_expr, aliases, safe_handoff_callees);
+                let then_summary = analyze_hir_unique_flow_expr_scoped(
+                    then_expr,
+                    aliases,
+                    safe_handoff_callees,
+                    local_bindings,
+                );
                 add_ref_counts(&mut summary.ref_counts, &then_summary.ref_counts);
                 add_ref_counts(
                     &mut summary.call_escape_counts,
@@ -2746,7 +2902,12 @@ fn analyze_hir_unique_flow_expr(
             summary
         }
         HirExprKind::Resume { value } => {
-            analyze_hir_unique_flow_expr(value, aliases, safe_handoff_callees)
+            analyze_hir_unique_flow_expr_scoped(
+                value,
+                aliases,
+                safe_handoff_callees,
+                local_bindings,
+            )
         }
         HirExprKind::Raw(_) => HirUniqueFlowSummary::default(),
     }
