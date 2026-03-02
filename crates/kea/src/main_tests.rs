@@ -3481,6 +3481,20 @@
     }
 
     #[test]
+    fn compile_and_execute_recursive_enum_case_with_gt_recurse_guard_exit_code() {
+        let source_path = write_temp_source(
+            "enum Chain\n  End\n  Link(Int, Chain)\n\nfn build(n: Int) -> Chain\n  if n > 0\n    Chain.Link(n, build(n - 1))\n  else\n    Chain.End\n\nfn sum_chain(c: Chain, acc: Int) -> Int\n  case c\n    Chain.End -> acc\n    Chain.Link(v, rest) -> sum_chain(rest, acc + v)\n\nfn main() -> Int\n  sum_chain(build(3), 0)\n",
+            "kea-cli-recursive-enum-gt-guard-case",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 6);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_forward_reference_exit_code() {
         let source_path = write_temp_source(
             "fn caller() -> Int\n  callee(40)\n\nfn callee(x: Int) -> Int\n  x + 2\n\nfn main() -> Int\n  caller()\n",
