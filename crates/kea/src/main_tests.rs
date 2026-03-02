@@ -2726,6 +2726,38 @@
 
     #[test]
     #[cfg(not(target_os = "windows"))]
+    fn compile_fip_unique_module_alias_forwarder_call_reaches_codegen_alias_gap() {
+        let project_dir = temp_workspace_project_dir("kea-cli-fip-unique-module-alias-forwarder");
+        let src_dir = project_dir.join("src");
+        std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+        let source_path = src_dir.join("main.kea");
+        std::fs::write(
+            src_dir.join("alpha.kea"),
+            "fn forward_once(x: Unique Int) -> Unique Int\n  x\n",
+        )
+        .expect("alpha module write should succeed");
+        std::fs::write(
+            &source_path,
+            "use Alpha as A\n\n@fip\nfn call_forward_once(x: Unique Int) -> Unique Int\n  A.forward_once(x)\n\nfn main() -> Int\n  0\n",
+        )
+        .expect("source write should succeed");
+
+        let err =
+            run_file(&source_path).expect_err("module-alias qualified call is not lowered in codegen yet");
+        assert!(
+            !err.contains("`@fip` verification failed"),
+            "expected @fip verification to pass before codegen gap, got: {err}"
+        );
+        assert!(
+            err.contains("unresolved qualified call target `A.forward_once`"),
+            "expected unresolved qualified call target codegen error, got: {err}"
+        );
+
+        let _ = std::fs::remove_dir_all(project_dir);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
     fn compile_rejects_fip_unique_shadowed_forwarder_name_call_escape() {
         let project_dir = temp_workspace_project_dir("kea-cli-fip-unique-shadowed-forwarder-name");
         let src_dir = project_dir.join("src");

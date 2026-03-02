@@ -1138,6 +1138,44 @@ fn prune_type_scheme_quantifiers(mut scheme: TypeScheme) -> TypeScheme {
     scheme
 }
 
+fn collect_import_aliases(module: &Module) -> BTreeMap<String, String> {
+    let mut aliases = BTreeMap::new();
+    for decl in &module.declarations {
+        let DeclKind::Import(import) = &decl.node else {
+            continue;
+        };
+        let module_path = import.module.node.clone();
+        let alias = import
+            .alias
+            .as_ref()
+            .map(|alias| alias.node.clone())
+            .unwrap_or_else(|| {
+                module_path
+                    .rsplit('.')
+                    .next()
+                    .unwrap_or(module_path.as_str())
+                    .to_string()
+            });
+        aliases.insert(alias, module_path);
+    }
+    aliases
+}
+
+fn extend_safe_forwarders_with_import_aliases(
+    safe_handoff_callees: &mut BTreeSet<String>,
+    import_aliases: &BTreeMap<String, String>,
+) {
+    let originals = safe_handoff_callees.iter().cloned().collect::<Vec<_>>();
+    for (alias, module_path) in import_aliases {
+        let prefix = format!("{module_path}.");
+        for original in &originals {
+            if let Some(rest) = original.strip_prefix(&prefix) {
+                safe_handoff_callees.insert(format!("{alias}.{rest}"));
+            }
+        }
+    }
+}
+
 fn apply_module_imports(
     module: &Module,
     env: &mut TypeEnv,
@@ -2174,7 +2212,9 @@ fn validate_fip_annotations(module: &Module, hir: &HirModule) -> Vec<Diagnostic>
         .iter()
         .map(|stats| (stats.function.as_str(), stats))
         .collect::<BTreeMap<_, _>>();
-    let safe_handoff_callees = collect_safe_unique_forwarders(hir, &mir);
+    let mut safe_handoff_callees = collect_safe_unique_forwarders(hir, &mir);
+    let import_aliases = collect_import_aliases(module);
+    extend_safe_forwarders_with_import_aliases(&mut safe_handoff_callees, &import_aliases);
 
     let mut diagnostics = Vec::new();
     for (name, fip_spec) in annotated_functions {
