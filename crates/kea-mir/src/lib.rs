@@ -438,14 +438,26 @@ pub fn lower_hir_module(module: &HirModule) -> MirModule {
 
     // Handler inlining: devirtualize callback closures when structurally verified.
     // Disable with KEA_NO_HANDLER_INLINE=1 for debugging.
+    // Set KEA_HANDLER_INLINE_STATS=1 to print rewrite counts to stderr.
     if std::env::var("KEA_NO_HANDLER_INLINE").as_deref() != Ok("1") {
         let fn_index: BTreeMap<String, usize> = functions
             .iter()
             .enumerate()
             .map(|(i, f)| (f.name.clone(), i))
             .collect();
+        let (mut total_get, mut total_put, mut total_pure) = (0usize, 0usize, 0usize);
         for i in 0..functions.len() {
-            inline_known_handler_callbacks(i, &mut functions, &fn_index);
+            let (g, p, c) = inline_known_handler_callbacks(i, &mut functions, &fn_index);
+            total_get += g;
+            total_put += p;
+            total_pure += c;
+        }
+        if std::env::var("KEA_HANDLER_INLINE_STATS").as_deref() == Ok("1")
+            && (total_get + total_put + total_pure) > 0
+        {
+            eprintln!(
+                "[handler-inline] state_get={total_get} state_put={total_put} pure={total_pure}"
+            );
         }
     }
 
@@ -499,7 +511,8 @@ fn inline_known_handler_callbacks(
     func_idx: usize,
     functions: &mut [MirFunction],
     fn_index: &BTreeMap<String, usize>,
-) {
+) -> (usize, usize, usize) {
+    // Returns (state_get_inlined, state_put_inlined, pure_callback_inlined)
     let function = &functions[func_idx];
     // Phase 1: Build analysis maps by scanning all instructions
     let mut fn_ref_map: BTreeMap<MirValueId, String> = BTreeMap::new();
@@ -749,8 +762,11 @@ fn inline_known_handler_callbacks(
     }
 
     if inlinable.is_empty() {
-        return;
+        return (0, 0, 0);
     }
+    let mut state_get_count = 0usize;
+    let mut state_put_count = 0usize;
+    let mut pure_count = 0usize;
 
     // Reborrow mutably for rewrite and DCE phases
     let function = &mut functions[func_idx];
@@ -774,6 +790,7 @@ fn inline_known_handler_callbacks(
                         if !args.is_empty() {
                             continue;
                         }
+                        state_get_count += 1;
                         if let Some(dest) = result {
                             replacements.push((
                                 block_idx,
@@ -792,6 +809,7 @@ fn inline_known_handler_callbacks(
                         if args.len() != 1 {
                             continue;
                         }
+                        state_put_count += 1;
                         let mut insts = vec![MirInst::StateCellStore {
                             cell: state_cell.clone(),
                             value: args[0].clone(),
@@ -811,6 +829,7 @@ fn inline_known_handler_callbacks(
                         if args.len() != *num_call_args {
                             continue;
                         }
+                        pure_count += 1;
                         let insts = match replacement {
                             PureCallbackReplacement::Const(literal) => {
                                 if let Some(dest) = result {
@@ -1030,6 +1049,7 @@ fn inline_known_handler_callbacks(
             }
         }
     }
+    (state_get_count, state_put_count, pure_count)
 }
 
 fn rewrite_trmc_descending_sum_chain(function: &mut MirFunction) {

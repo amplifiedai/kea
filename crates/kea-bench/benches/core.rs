@@ -204,6 +204,21 @@ fn state_count_to_1_m_manual(bencher: Bencher) {
     });
 }
 
+/// Same-function state microbench: handler + State.get/State.put dispatch in
+/// the same function. Exercises handler inlining Phase A devirtualization.
+#[divan::bench(args = [10, 50, 100])]
+fn inline_state_get_put(bencher: Bencher, ops: usize) {
+    let source = build_inline_state_source(ops);
+    let ctx = compile_module(&source, FileId(0))
+        .unwrap_or_else(|err| panic!("inline state benchmark setup should compile: {err}"));
+    bencher.bench(|| {
+        let run = execute_jit(black_box(&ctx))
+            .unwrap_or_else(|err| panic!("inline state benchmark run should succeed: {err}"));
+        assert_eq!(run.exit_code, ops as i32);
+        black_box(run.exit_code)
+    });
+}
+
 #[divan::bench(args = [8, 32, 128])]
 fn fail_propagation_depth_n(bencher: Bencher, depth: usize) {
     let source = build_fail_propagation_source(depth);
@@ -301,6 +316,18 @@ fn build_string_transform_source(line_count: usize) -> String {
     }
     source.push_str(&format!("  s{}\n", line_count - 1));
     source
+}
+
+fn build_inline_state_source(ops: usize) -> String {
+    // Same-function: handler and dispatch in one function.
+    // Body is a single expression: State.get() + State.get() + ... (ops terms)
+    let gets = (0..ops)
+        .map(|_| "State.get()")
+        .collect::<Vec<_>>()
+        .join(" + ");
+    format!(
+        "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn main() -> Int\n  handle {gets}\n    State.get() -> resume 1\n    State.put(next) -> resume ()\n"
+    )
 }
 
 fn build_state_count_to_source(n: usize) -> String {
