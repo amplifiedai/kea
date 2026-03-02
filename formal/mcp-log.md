@@ -15572,3 +15572,62 @@ Lean changes:
 - Native constructor scaffolding in `Kea/Typing.lean` now builds cleanly
   (`cd formal && lake build`), and direct MCP probe expectations remain aligned
   at this checkpoint.
+
+### 2026-03-02: native handler judgment layer + open preservation/progress targets
+
+**Context**: Extended `Kea/Typing.lean` from constructor-only scaffolding into a
+native handler-typing layer and stated native handler-step theorem targets in
+the core typing module (not the evaluator boundary module).
+
+Lean changes:
+- Added native typing support for new constructors:
+  - `inferExpr` now types `.perform` / `.handle` / `.resume`.
+  - `HasType` and `HasTypeU` now include `perform`, `handle`, and `resume`
+    constructors.
+  - Updated supporting soundness/completeness/transport proofs:
+    `hasType_to_hasTypeU`, `inferExpr_sound`, `inferExpr_complete`,
+    `hasType_lookup_congr`.
+- Added native handler-step judgment:
+  - `NativeHandlerStep` (minimal matching-`perform` case).
+- Added native theorem targets in `Typing.lean`:
+  - `native_handler_step_preservation_prop`
+  - `native_handler_step_progress_prop`
+- Attempted preservation transfer by factoring through a native explicit gap:
+  - `native_handler_clause_instantiation_obligation_prop`
+  - `native_handler_step_preservation_of_instantiation_obligation` (proved)
+  - `native_handler_clause_instantiation_obligation` (`sorry`)
+  - `native_handler_step_preservation` now derived from that obligation.
+- Added progress-shape witness:
+  - `NativeHandlerStepSupportedShape`
+  - `native_handler_step_exists_of_supported_shape` (proved)
+  - full `native_handler_step_progress` remains `sorry`.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Predict (Lean side)**:
+- Native-judgment formalization should not change runtime typechecker behavior.
+- Existing resume-linearity diagnostics should remain aligned.
+
+**Probe (direct `kea` MCP)**:
+1. Single-resume clause accepted:
+   - `status = ok` (`run_once : () -> ()`).
+2. Sequential double-resume clause rejected:
+   - `status = error`, `E0012` (`handler clause may resume at most once`).
+3. `resume` outside handler rejected:
+   - `status = error`, `E0012` (`resume is only valid inside a matching handler clause`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Native handler typing + native step statement layer is now explicit in
+  `Kea/Typing.lean`.
+- Preservation transfer from the evaluator boundary model does **not** close
+  directly yet: a native clause-instantiation transport lemma remains required
+  (`native_handler_clause_instantiation_obligation`).
+- Progress similarly requires additional native body-step semantics or a
+  supported-shape precondition; only the supported-shape existence route is
+  currently proved.
