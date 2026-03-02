@@ -5465,4 +5465,147 @@ theorem handler_step_preservation : handler_step_preservation_prop :=
   handler_step_preservation_of_instantiation_obligation
     handler_step_instantiation_obligation
 
+/--
+Strengthened generic evaluator bridge for supported-shape typed handles:
+in addition to step/eval/value-typing, the stepped-to core target is also
+typed at `ty`.
+-/
+theorem handler_typed_handle_shape_eval_sound_typed_target
+    {tenv : TermEnv}
+    {venv : ValueEnv}
+    {body : HandlerExpr}
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    {ty : Ty}
+    (h_env : EnvWellTyped tenv venv)
+    (h_typed : HandlerHasType tenv (.handle body handler clause) ty)
+    (h_shape : handlerStepSupportedShape body clause)
+    (h_frag :
+      ∀ target : CoreExpr,
+        HandlerStep (.handle body handler clause) (.core target) →
+        EvalFragmentFull target) :
+    ∃ target v,
+      HandlerStep (.handle body handler clause) (.core target)
+      ∧ HasType tenv target ty
+      ∧ eval venv target = some v
+      ∧ ValueHasType v ty := by
+  rcases handler_typed_handle_shape_eval_sound h_env h_typed h_shape h_frag with
+    ⟨target, v, h_step, h_eval_eq, h_v_ty⟩
+  have h_target_typed : HasType tenv target ty :=
+    handlerHasType_core_inv (handler_step_preservation h_typed h_step)
+  exact ⟨target, v, h_step, h_target_typed, h_eval_eq, h_v_ty⟩
+
+/--
+Strengthened generic shape-based evaluator+contract capstone:
+adds a typed core-target witness to the existing evaluator+contract outputs.
+-/
+theorem handler_typed_handle_shape_eval_and_contract_typed_target_capstone
+    {tenv : TermEnv}
+    {venv : ValueEnv}
+    {body : HandlerExpr}
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    {ty : Ty}
+    (h_env : EnvWellTyped tenv venv)
+    (h_typed : HandlerHasType tenv (.handle body handler clause) ty)
+    (h_shape : handlerStepSupportedShape body clause)
+    (h_frag :
+      ∀ target : CoreExpr,
+        HandlerStep (.handle body handler clause) (.core target) →
+        EvalFragmentFull target) :
+    (∃ target v,
+      HandlerStep (.handle body handler clause) (.core target)
+      ∧ HasType tenv target ty
+      ∧ eval venv target = some v
+      ∧ ValueHasType v ty)
+    ∧ HandleClauseContract.wellTypedSlice clause.contract
+    ∧ resume_at_most_once clause.contract.resumeUse
+    ∧ (TailResumptiveClassification.classifyClause clause.contract ≠
+        TailResumptiveClassification.TailResumptiveClass.invalid)
+    ∧ TailResumptiveClassification.TailResumptiveBundle clause.contract := by
+  have h_eval :
+      ∃ target v,
+        HandlerStep (.handle body handler clause) (.core target)
+        ∧ HasType tenv target ty
+        ∧ eval venv target = some v
+        ∧ ValueHasType v ty :=
+    handler_typed_handle_shape_eval_sound_typed_target
+      h_env h_typed h_shape h_frag
+  have h_contract :
+      HandleClauseContract.wellTypedSlice clause.contract
+      ∧ resume_at_most_once clause.contract.resumeUse
+      ∧ (TailResumptiveClassification.classifyClause clause.contract ≠
+          TailResumptiveClassification.TailResumptiveClass.invalid)
+      ∧ TailResumptiveClassification.TailResumptiveBundle clause.contract :=
+    handler_clause_contract_capstone_of_handlerHasType h_typed
+  exact ⟨h_eval, h_contract.1, h_contract.2.1, h_contract.2.2.1, h_contract.2.2.2⟩
+
+/--
+Capability-extended strengthened generic evaluator+contract capstone:
+adds a typed core-target witness to the existing capability contract outputs.
+-/
+theorem handler_typed_handle_shape_eval_and_capability_contract_typed_target_capstone
+    {tenv : TermEnv}
+    {venv : ValueEnv}
+    {body : HandlerExpr}
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    {ty : Ty}
+    {baseEffects : EffectRow}
+    {capability : Label}
+    (h_env : EnvWellTyped tenv venv)
+    (h_typed : HandlerHasType tenv (.handle body handler clause) ty)
+    (h_shape : handlerStepSupportedShape body clause)
+    (h_frag :
+      ∀ target : CoreExpr,
+        HandlerStep (.handle body handler clause) (.core target) →
+        EvalFragmentFull target)
+    (h_expr :
+      clause.contract.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_ne : capability ≠ clause.contract.handled) :
+    (∃ target v,
+      HandlerStep (.handle body handler clause) (.core target)
+      ∧ HasType tenv target ty
+      ∧ eval venv target = some v
+      ∧ ValueHasType v ty)
+    ∧ HandleClauseContract.wellTypedSlice clause.contract
+    ∧ resume_at_most_once clause.contract.resumeUse
+    ∧ (TailResumptiveClassification.classifyClause clause.contract ≠
+        TailResumptiveClassification.TailResumptiveClass.invalid)
+    ∧ TailResumptiveClassification.TailResumptiveBundle clause.contract
+    ∧ TailCapabilityComposition.TailCapabilityBundle clause.contract capability
+    ∧ TailCapabilityComposition.TailCapabilityClosedAwareBundle
+        clause.contract
+        capability := by
+  have h_eval :
+      ∃ target v,
+        HandlerStep (.handle body handler clause) (.core target)
+        ∧ HasType tenv target ty
+        ∧ eval venv target = some v
+        ∧ ValueHasType v ty :=
+    handler_typed_handle_shape_eval_sound_typed_target
+      h_env h_typed h_shape h_frag
+  have h_contract :
+      HandleClauseContract.wellTypedSlice clause.contract
+      ∧ resume_at_most_once clause.contract.resumeUse
+      ∧ (TailResumptiveClassification.classifyClause clause.contract ≠
+          TailResumptiveClassification.TailResumptiveClass.invalid)
+      ∧ TailResumptiveClassification.TailResumptiveBundle clause.contract
+      ∧ TailCapabilityComposition.TailCapabilityBundle clause.contract capability
+      ∧ TailCapabilityComposition.TailCapabilityClosedAwareBundle
+          clause.contract
+          capability :=
+    ⟨
+      (handler_clause_contract_capstone_of_handlerHasType h_typed).1,
+      (handler_clause_contract_capstone_of_handlerHasType h_typed).2.1,
+      (handler_clause_contract_capstone_of_handlerHasType h_typed).2.2.1,
+      (handler_clause_contract_capstone_of_handlerHasType h_typed).2.2.2,
+      handler_clause_tail_capability_bundle_of_handlerHasType h_typed h_expr h_ne,
+      handler_clause_tail_capability_closedAware_bundle_of_handlerHasType h_typed h_expr h_ne
+    ⟩
+  exact
+    ⟨h_eval, h_contract.1, h_contract.2.1, h_contract.2.2.1,
+      h_contract.2.2.2.1, h_contract.2.2.2.2.1, h_contract.2.2.2.2.2⟩
+
 end HandlerStepBoundary

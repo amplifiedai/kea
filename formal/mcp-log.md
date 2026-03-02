@@ -15300,3 +15300,41 @@ with shape-specific projection over boundary-step witnesses.
 **Outcome**:
 - Shape-specific evaluator soundness bridges now share the same generic
   supported-shape theorem route used by downstream capstones.
+
+### 2026-03-02: strengthen generic shape evaluator routes with typed-target witnesses
+
+**Context**: Added strengthened generic shape-level evaluator capstones that
+carry explicit typed-target witnesses (`HasType tenv target ty`) alongside
+step/eval/value-typing outputs.
+
+Lean changes:
+- `handler_typed_handle_shape_eval_sound_typed_target`
+- `handler_typed_handle_shape_eval_and_contract_typed_target_capstone`
+- `handler_typed_handle_shape_eval_and_capability_contract_typed_target_capstone`
+
+These expose an explicit typed-core-target route for supported-shape handler
+steps while preserving existing evaluator/contract outputs.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+- `diagnose`
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; theorem strengthening only.
+- Existing resume-linearity diagnostics and handled-effect normalization should
+  remain stable.
+
+**Probe (direct `kea` MCP)**:
+1. Single-resume clause accepted.
+2. Branch double-resume rejected with `E0012`.
+3. `resume` outside handler rejected with `E0012`.
+4. Mismatched-handle residual remains normalized (`handled : () -[Log]> ()`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Generic supported-shape evaluator capstones now expose typed-target witness
+  surfaces, with MCP behavior still aligned.
