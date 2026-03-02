@@ -3618,9 +3618,10 @@ inductive HandlerHasType : TermEnv → HandlerExpr → Ty → Prop where
       HandlerHasType tenv (.handle body handler clause) ty
 
 /--
-Single handler-step rule at the current boundary:
-`handle (perform op arg k) with clause` reduces to clause-body instantiation,
-explicitly tracking the tail-resumptive clause case.
+Handler-step rules at the current boundary:
+1. `handle (perform op arg k) with clause` reduces to clause-body instantiation
+   (tail-resumptive tracked explicitly).
+2. `handle (core e) with clause` reduces to `core e`.
 -/
 inductive HandlerStep : HandlerExpr → HandlerExpr → Prop where
   | handle_perform_tail
@@ -3639,10 +3640,17 @@ inductive HandlerStep : HandlerExpr → HandlerExpr → Prop where
           handler
           clause)
         (.core (bindTailResumptive clause arg k))
+  | handle_core
+      (handler : HandleContract)
+      (clause : HandlerClauseSem)
+      (e : CoreExpr) :
+      HandlerStep
+        (.handle (.core e) handler clause)
+        (.core e)
 
 /--
-Any handler step from `.handle body handler clause` requires the body to be a
-matching `.perform` redex for that clause shape.
+Any handler step from `.handle body handler clause` has a body shape supported
+by the current boundary rules: either matching `perform` redex or `core`.
 -/
 theorem handler_step_requires_perform_redex
     {body : HandlerExpr}
@@ -3650,41 +3658,39 @@ theorem handler_step_requires_perform_redex
     {clause : HandlerClauseSem}
     {e' : HandlerExpr}
     (h_step : HandlerStep (.handle body handler clause) e') :
-    ∃ arg k,
-      body = .perform clause.handled clause.opArgTy clause.opRetTy arg k := by
+    (∃ arg k,
+      body = .perform clause.handled clause.opArgTy clause.opRetTy arg k)
+    ∨
+    (∃ e : CoreExpr, body = .core e) := by
   cases h_step with
   | handle_perform_tail _ _ arg k _ _ _ _ =>
-      exact ⟨arg, k, rfl⟩
+      exact Or.inl ⟨arg, k, rfl⟩
+  | handle_core _ _ e =>
+      exact Or.inr ⟨e, rfl⟩
 
 /--
-Boundary limitation witness: a handled core body has no outgoing handler step
-under the current one-rule `HandlerStep` relation.
+Core-body progress witness at the boundary:
+handled core bodies step directly to the same core payload.
 -/
-theorem handler_core_body_cannot_step
+theorem handler_core_body_step
     {e : CoreExpr}
     {handler : HandleContract}
     {clause : HandlerClauseSem}
-    {e' : HandlerExpr}
-    (h_step : HandlerStep (.handle (.core e) handler clause) e') :
-    False := by
-  rcases handler_step_requires_perform_redex h_step with ⟨arg, k, h_body⟩
-  cases h_body
+    HandlerStep (.handle (.core e) handler clause) (.core e) :=
+  HandlerStep.handle_core handler clause e
 
 /--
-Typed-form progress gap witness for the current boundary model:
-typed handles whose body is already core do not step via `HandlerStep`.
+Typed-form core-body progress witness for the current boundary model.
 -/
-theorem handler_progress_gap_core_body
+theorem handler_progress_core_body
     {tenv : TermEnv}
     {e : CoreExpr}
     {handler : HandleContract}
     {clause : HandlerClauseSem}
     {ty : Ty}
     (h_typed : HandlerHasType tenv (.handle (.core e) handler clause) ty) :
-    ¬ ∃ e', HandlerStep (.handle (.core e) handler clause) e' := by
-  intro h_exists
-  rcases h_exists with ⟨e', h_step⟩
-  exact handler_core_body_cannot_step h_step
+    ∃ e', HandlerStep (.handle (.core e) handler clause) e' := by
+  exact ⟨.core e, handler_core_body_step⟩
 
 /--
 Typed refinement of `HandlerStep` that records the precise preservation-side
@@ -3710,6 +3716,14 @@ inductive HandlerStepTyped (tenv : TermEnv) (ty : Ty) : HandlerExpr → HandlerE
           handler
           clause)
         (.core (bindTailResumptive clause arg k))
+  | handle_core
+      (handler : HandleContract)
+      (clause : HandlerClauseSem)
+      (e : CoreExpr)
+      (h_core : HasType tenv e ty) :
+      HandlerStepTyped tenv ty
+        (.handle (.core e) handler clause)
+        (.core e)
 
 /--
 Bridge from handler-step premises into the existing handler-level resume
@@ -3752,6 +3766,8 @@ theorem handlerStep_of_handlerStepTyped
       exact
         HandlerStep.handle_perform_tail
           handler clause arg k h_contract_shape h_mem h_summary h_tail
+  | handle_core handler clause e _ =>
+      exact HandlerStep.handle_core handler clause e
 
 /--
 Named progress proposition for the single explicit handler-step redex case.
@@ -4154,11 +4170,7 @@ theorem handler_step_deterministic
     (h1 : HandlerStep e e1)
     (h2 : HandlerStep e e2) :
     e1 = e2 := by
-  cases h1 with
-  | handle_perform_tail _ clause arg k _ _ _ _ =>
-      cases h2 with
-      | handle_perform_tail _ _ _ _ _ _ _ _ =>
-          rfl
+  cases h1 <;> cases h2 <;> rfl
 
 /--
 One-step typed-redex preservation corollary:
@@ -4610,6 +4622,8 @@ theorem handler_step_typed_preservation
           (bindTailResumptive clause arg k)
           ty
           h_instantiated
+  | handle_core _ _ e h_core =>
+      exact HandlerHasType.core tenv e ty h_core
 
 /--
 Named preservation proposition for handler reduction:
@@ -4667,6 +4681,12 @@ theorem handler_step_typed_of_handler_step
       exact
         HandlerStepTyped.handle_perform_tail
           handler clause arg k h_contract_shape h_mem h_summary h_tail h_inst
+  | handle_core handler clause e =>
+      cases h_typed with
+      | handle _ body handler' clause' ty' h_body _ _ _ _ =>
+          cases h_body with
+          | core _ _ _ h_core =>
+              exact HandlerStepTyped.handle_core handler clause e h_core
 
 /--
 Preservation follows from the explicit instantiation typing obligation.

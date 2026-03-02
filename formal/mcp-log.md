@@ -14676,3 +14676,44 @@ to perform-redex bodies; typed `.handle (.core ...) ...` terms do not step.
 - The remaining progress-side boundary for the current handler-step relation is
   now explicitly represented as theorem statements, while runtime behavior
   remains aligned with prior assumptions.
+
+### 2026-03-02: boundary progress extension with core-body passthrough step
+
+**Context**: Promoted the prior progress-gap witness into an explicit progress
+rule by extending `HandlerStep`/`HandlerStepTyped` with a core-body passthrough
+constructor.
+
+Lean changes:
+- `HandlerStep.handle_core`
+- `HandlerStepTyped.handle_core`
+- `handler_core_body_step`
+- `handler_progress_core_body`
+- updated step-shape theorem `handler_step_requires_perform_redex`
+  (now captures perform-redex or core-body step shapes)
+
+The prior no-step gap theorems for `.handle (.core ...)` were replaced by this
+positive progress route in the boundary model.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+- `diagnose`
+
+**Predict (Lean side)**:
+- No runtime diagnostic behavior change expected from this boundary-model
+  extension.
+- Existing linearity diagnostics and overlap normalization should remain stable.
+
+**Probe (direct `kea` MCP)**:
+1. Single-resume clause accepted.
+2. Branch double-resume rejected with `E0012`.
+3. `resume` outside handler rejected with `E0012`.
+4. Overlap residual remains normalized (`handled : () -[IO]> ()`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Boundary handler progress now includes both perform-redex and core-body paths
+  in machine-checked form, with no Lean↔MCP divergence signal.
