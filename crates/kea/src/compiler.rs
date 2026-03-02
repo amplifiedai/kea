@@ -15,7 +15,8 @@ use kea_codegen::{
 use kea_diag::{Diagnostic, Severity, SourceLocation};
 use kea_hir::{
     check_unique_moves_with_borrow_map, collect_borrow_param_positions,
-    infer_auto_borrow_param_positions, lower_module, HirDecl, HirExpr, HirExprKind, HirModule,
+    infer_auto_borrow_param_positions, lower_module, HirDecl, HirExpr, HirExprKind, HirFunction,
+    HirModule,
 };
 use kea_infer::typeck::{
     RecordRegistry, SumTypeRegistry, TraitRegistry, TypeEnv, apply_where_clause,
@@ -2174,22 +2175,66 @@ fn validate_fip_annotations(module: &Module, hir: &HirModule) -> Vec<Diagnostic>
         };
 
         let profile = mir_function.map(collect_fip_mir_profile).unwrap_or_default();
-        let flow = analyze_hir_unique_flow_by_function_name(hir, &name, &fip_spec.unique_param_names);
+        let hir_function = find_hir_function_by_name(hir, &name);
+        let flow = hir_function
+            .map(|function| {
+                let mut aliases = BTreeMap::new();
+                for root in &fip_spec.unique_param_names {
+                    aliases.insert(root.clone(), root.clone());
+                }
+                analyze_hir_unique_flow_expr(&function.body, &aliases)
+            })
+            .unwrap_or_default();
+        let mir_unique_flow = match (mir_function, hir_function) {
+            (Some(mir_fn), Some(hir_fn)) => {
+                collect_mir_unique_flow_summary(mir_fn, hir_fn, &fip_spec.unique_param_names)
+            }
+            _ => MirUniqueFlowSummary::default(),
+        };
         let mut unique_flow_issues = Vec::new();
         for root in &fip_spec.unique_param_names {
+            let move_boundary_count = mir_unique_flow
+                .move_boundary_counts
+                .get(root)
+                .copied()
+                .unwrap_or(0);
+            let freeze_boundary_count = mir_unique_flow
+                .freeze_boundary_counts
+                .get(root)
+                .copied()
+                .unwrap_or(0);
             match flow.ref_counts.get(root).copied().unwrap_or(0) {
                 0 => unique_flow_issues.push(format!(
                     "Unique parameter `{root}` is never referenced in function body (expected exactly-once consume/forward)"
                 )),
-                n if n > 1 => unique_flow_issues.push(format!(
-                    "Unique parameter `{root}` is referenced {n} times on one control-flow path; @fip currently requires a single ownership handoff per path"
-                )),
+                n if n > 1 => {
+                    if move_boundary_count > 0 || freeze_boundary_count > 0 {
+                        unique_flow_issues.push(format!(
+                            "Unique parameter `{root}` is referenced {n} times on one control-flow path after explicit ownership transitions (Move={move_boundary_count}, Freeze={freeze_boundary_count}); this looks like a double handoff in a mixed alias/transform path"
+                        ));
+                    } else {
+                        unique_flow_issues.push(format!(
+                            "Unique parameter `{root}` is referenced {n} times on one control-flow path; @fip currently requires a single ownership handoff per path"
+                        ));
+                    }
+                }
                 _ => {}
             }
-            if flow.call_escapes.contains(root) {
-                unique_flow_issues.push(format!(
-                    "Unique parameter `{root}` escapes through a call argument; @fip call-boundary ownership proofs are not yet supported"
-                ));
+            let call_escape_count = flow
+                .call_escape_counts
+                .get(root)
+                .copied()
+                .unwrap_or(0);
+            if call_escape_count > 0 {
+                if move_boundary_count > 0 || freeze_boundary_count > 0 {
+                    unique_flow_issues.push(format!(
+                        "Unique parameter `{root}` escapes through {call_escape_count} call argument(s) despite explicit ownership transitions (Move={move_boundary_count}, Freeze={freeze_boundary_count}); @fip call-boundary ownership proofs are not yet supported"
+                    ));
+                } else {
+                    unique_flow_issues.push(format!(
+                        "Unique parameter `{root}` escapes through {call_escape_count} call argument(s); @fip call-boundary ownership proofs are not yet supported"
+                    ));
+                }
             }
         }
         let mut failures = Vec::new();
@@ -2313,8 +2358,14 @@ fn is_unique_type_annotation(annotation: &TypeAnnotation) -> bool {
 #[derive(Debug, Clone, Default)]
 struct HirUniqueFlowSummary {
     ref_counts: BTreeMap<String, usize>,
-    call_escapes: BTreeSet<String>,
+    call_escape_counts: BTreeMap<String, usize>,
     result_alias_root: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct MirUniqueFlowSummary {
+    move_boundary_counts: BTreeMap<String, usize>,
+    freeze_boundary_counts: BTreeMap<String, usize>,
 }
 
 fn add_ref_counts(
@@ -2347,6 +2398,18 @@ fn max_ref_counts(
     merged
 }
 
+fn find_hir_function_by_name<'a>(hir: &'a HirModule, name: &str) -> Option<&'a HirFunction> {
+    for decl in &hir.declarations {
+        let HirDecl::Function(function) = decl else {
+            continue;
+        };
+        if function.name == name || function.name.ends_with(&format!(".{name}")) {
+            return Some(function);
+        }
+    }
+    None
+}
+
 fn resolve_unique_root(
     name: &str,
     aliases: &BTreeMap<String, String>,
@@ -2354,25 +2417,8 @@ fn resolve_unique_root(
     aliases.get(name).cloned()
 }
 
-fn analyze_hir_unique_flow_by_function_name(
-    hir: &HirModule,
-    name: &str,
-    unique_param_names: &BTreeSet<String>,
-) -> HirUniqueFlowSummary {
-    let mut aliases = BTreeMap::new();
-    for root in unique_param_names {
-        aliases.insert(root.clone(), root.clone());
-    }
-    for decl in &hir.declarations {
-        let HirDecl::Function(function) = decl else {
-            continue;
-        };
-        if function.name != name && !function.name.ends_with(&format!(".{name}")) {
-            continue;
-        }
-        return analyze_hir_unique_flow_expr(&function.body, &aliases);
-    }
-    HirUniqueFlowSummary::default()
+fn hir_call_crosses_ownership_boundary(func: &HirExpr) -> bool {
+    !matches!(func.kind, HirExprKind::Lambda { .. })
 }
 
 fn analyze_hir_unique_flow_expr(
@@ -2395,11 +2441,14 @@ fn analyze_hir_unique_flow_expr(
             let mut summary = HirUniqueFlowSummary::default();
             add_ref_counts(&mut summary.ref_counts, &left_summary.ref_counts);
             add_ref_counts(&mut summary.ref_counts, &right_summary.ref_counts);
-            summary.call_escapes = left_summary
-                .call_escapes
-                .union(&right_summary.call_escapes)
-                .cloned()
-                .collect();
+            add_ref_counts(
+                &mut summary.call_escape_counts,
+                &left_summary.call_escape_counts,
+            );
+            add_ref_counts(
+                &mut summary.call_escape_counts,
+                &right_summary.call_escape_counts,
+            );
             summary
         }
         HirExprKind::Unary { operand, .. } => analyze_hir_unique_flow_expr(operand, aliases),
@@ -2420,14 +2469,17 @@ fn analyze_hir_unique_flow_expr(
                 &mut summary.ref_counts,
                 &max_ref_counts(&then_summary.ref_counts, &else_summary.ref_counts),
             );
-            summary.call_escapes = condition_summary
-                .call_escapes
-                .union(&then_summary.call_escapes)
-                .cloned()
-                .collect::<BTreeSet<_>>()
-                .union(&else_summary.call_escapes)
-                .cloned()
-                .collect();
+            add_ref_counts(
+                &mut summary.call_escape_counts,
+                &condition_summary.call_escape_counts,
+            );
+            add_ref_counts(
+                &mut summary.call_escape_counts,
+                &max_ref_counts(
+                    &then_summary.call_escape_counts,
+                    &else_summary.call_escape_counts,
+                ),
+            );
             summary.result_alias_root = match (
                 then_summary.result_alias_root.as_ref(),
                 else_summary.result_alias_root.as_ref(),
@@ -2441,12 +2493,18 @@ fn analyze_hir_unique_flow_expr(
         }
         HirExprKind::Call { func, args } => {
             let mut summary = analyze_hir_unique_flow_expr(func, aliases);
+            let crosses_boundary = hir_call_crosses_ownership_boundary(func);
             for arg in args {
                 let arg_summary = analyze_hir_unique_flow_expr(arg, aliases);
                 add_ref_counts(&mut summary.ref_counts, &arg_summary.ref_counts);
-                summary.call_escapes.extend(arg_summary.call_escapes.iter().cloned());
-                if let Some(root) = arg_summary.result_alias_root {
-                    summary.call_escapes.insert(root);
+                add_ref_counts(
+                    &mut summary.call_escape_counts,
+                    &arg_summary.call_escape_counts,
+                );
+                if crosses_boundary
+                    && let Some(root) = arg_summary.result_alias_root
+                {
+                    *summary.call_escape_counts.entry(root).or_default() += 1;
                 }
             }
             summary.result_alias_root = None;
@@ -2468,9 +2526,10 @@ fn analyze_hir_unique_flow_expr(
             for item in exprs {
                 let item_summary = analyze_hir_unique_flow_expr(item, &scoped_aliases);
                 add_ref_counts(&mut summary.ref_counts, &item_summary.ref_counts);
-                summary
-                    .call_escapes
-                    .extend(item_summary.call_escapes.iter().cloned());
+                add_ref_counts(
+                    &mut summary.call_escape_counts,
+                    &item_summary.call_escape_counts,
+                );
                 if let HirExprKind::Let { pattern, .. } = &item.kind
                     && let kea_hir::HirPattern::Var(binding) = pattern
                 {
@@ -2491,9 +2550,10 @@ fn analyze_hir_unique_flow_expr(
             for item in exprs {
                 let item_summary = analyze_hir_unique_flow_expr(item, aliases);
                 add_ref_counts(&mut summary.ref_counts, &item_summary.ref_counts);
-                summary
-                    .call_escapes
-                    .extend(item_summary.call_escapes.iter().cloned());
+                add_ref_counts(
+                    &mut summary.call_escape_counts,
+                    &item_summary.call_escape_counts,
+                );
             }
             summary
         }
@@ -2503,9 +2563,10 @@ fn analyze_hir_unique_flow_expr(
             for (_, field_expr) in fields {
                 let field_summary = analyze_hir_unique_flow_expr(field_expr, aliases);
                 add_ref_counts(&mut summary.ref_counts, &field_summary.ref_counts);
-                summary
-                    .call_escapes
-                    .extend(field_summary.call_escapes.iter().cloned());
+                add_ref_counts(
+                    &mut summary.call_escape_counts,
+                    &field_summary.call_escape_counts,
+                );
             }
             summary
         }
@@ -2514,9 +2575,10 @@ fn analyze_hir_unique_flow_expr(
             for (_, field_expr) in fields {
                 let field_summary = analyze_hir_unique_flow_expr(field_expr, aliases);
                 add_ref_counts(&mut summary.ref_counts, &field_summary.ref_counts);
-                summary
-                    .call_escapes
-                    .extend(field_summary.call_escapes.iter().cloned());
+                add_ref_counts(
+                    &mut summary.call_escape_counts,
+                    &field_summary.call_escape_counts,
+                );
             }
             summary.result_alias_root = None;
             summary
@@ -2531,9 +2593,10 @@ fn analyze_hir_unique_flow_expr(
             for field_expr in fields {
                 let field_summary = analyze_hir_unique_flow_expr(field_expr, aliases);
                 add_ref_counts(&mut summary.ref_counts, &field_summary.ref_counts);
-                summary
-                    .call_escapes
-                    .extend(field_summary.call_escapes.iter().cloned());
+                add_ref_counts(
+                    &mut summary.call_escape_counts,
+                    &field_summary.call_escape_counts,
+                );
             }
             summary
         }
@@ -2550,20 +2613,24 @@ fn analyze_hir_unique_flow_expr(
         } => {
             let mut summary = analyze_hir_unique_flow_expr(expr, aliases);
             let mut clause_count_max = BTreeMap::new();
-            let mut clause_escapes = BTreeSet::new();
+            let mut clause_escapes_max = BTreeMap::new();
             for clause in clauses {
                 let clause_summary = analyze_hir_unique_flow_expr(&clause.body, aliases);
                 clause_count_max = max_ref_counts(&clause_count_max, &clause_summary.ref_counts);
-                clause_escapes.extend(clause_summary.call_escapes.iter().cloned());
+                clause_escapes_max = max_ref_counts(
+                    &clause_escapes_max,
+                    &clause_summary.call_escape_counts,
+                );
             }
             add_ref_counts(&mut summary.ref_counts, &clause_count_max);
-            summary.call_escapes.extend(clause_escapes);
+            add_ref_counts(&mut summary.call_escape_counts, &clause_escapes_max);
             if let Some(then_expr) = then_clause {
                 let then_summary = analyze_hir_unique_flow_expr(then_expr, aliases);
                 add_ref_counts(&mut summary.ref_counts, &then_summary.ref_counts);
-                summary
-                    .call_escapes
-                    .extend(then_summary.call_escapes.iter().cloned());
+                add_ref_counts(
+                    &mut summary.call_escape_counts,
+                    &then_summary.call_escape_counts,
+                );
             }
             summary.result_alias_root = None;
             summary
@@ -2571,6 +2638,121 @@ fn analyze_hir_unique_flow_expr(
         HirExprKind::Resume { value } => analyze_hir_unique_flow_expr(value, aliases),
         HirExprKind::Raw(_) => HirUniqueFlowSummary::default(),
     }
+}
+
+fn merge_value_roots(
+    value_roots: &mut BTreeMap<kea_mir::MirValueId, BTreeSet<String>>,
+    dest: &kea_mir::MirValueId,
+    roots: &BTreeSet<String>,
+) -> bool {
+    if roots.is_empty() {
+        return false;
+    }
+    let entry = value_roots.entry(dest.clone()).or_default();
+    let before = entry.len();
+    entry.extend(roots.iter().cloned());
+    entry.len() != before
+}
+
+fn collect_mir_unique_flow_summary(
+    function: &kea_mir::MirFunction,
+    hir_function: &HirFunction,
+    unique_param_names: &BTreeSet<String>,
+) -> MirUniqueFlowSummary {
+    let mut summary = MirUniqueFlowSummary::default();
+
+    let Some(entry_block) = function.blocks.iter().find(|block| block.id == function.entry) else {
+        return summary;
+    };
+
+    let mut value_roots: BTreeMap<kea_mir::MirValueId, BTreeSet<String>> = BTreeMap::new();
+    let Type::Function(hir_fn_ty) = &hir_function.ty else {
+        return summary;
+    };
+
+    let mut mir_cursor = 0usize;
+    for (index, param) in hir_function.params.iter().enumerate() {
+        let Some(name) = &param.name else {
+            continue;
+        };
+        if !unique_param_names.contains(name) {
+            continue;
+        }
+        let Some(hir_param_ty) = hir_fn_ty.params.get(index) else {
+            continue;
+        };
+        let mut matched_mir_index = None;
+        for mir_index in mir_cursor..function.signature.params.len() {
+            if function.signature.params[mir_index] == *hir_param_ty {
+                matched_mir_index = Some(mir_index);
+                break;
+            }
+        }
+        let Some(mir_index) = matched_mir_index else {
+            continue;
+        };
+        mir_cursor = mir_index.saturating_add(1);
+        let Some(entry_param) = entry_block.params.get(mir_index) else {
+            continue;
+        };
+        value_roots
+            .entry(entry_param.id.clone())
+            .or_default()
+            .insert(name.clone());
+    }
+
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for block in &function.blocks {
+            for inst in &block.instructions {
+                let (dest, src) = match inst {
+                    kea_mir::MirInst::Move { dest, src }
+                    | kea_mir::MirInst::Borrow { dest, src }
+                    | kea_mir::MirInst::TryClaim { dest, src } => (dest, src),
+                    _ => continue,
+                };
+                let Some(roots) = value_roots.get(src).cloned() else {
+                    continue;
+                };
+                changed |= merge_value_roots(&mut value_roots, dest, &roots);
+            }
+            if let kea_mir::MirTerminator::Jump { target, args } = &block.terminator
+                && let Some(target_block) = function.blocks.iter().find(|candidate| candidate.id == *target)
+            {
+                for (arg, param) in args.iter().zip(target_block.params.iter()) {
+                    let Some(roots) = value_roots.get(arg).cloned() else {
+                        continue;
+                    };
+                    changed |= merge_value_roots(&mut value_roots, &param.id, &roots);
+                }
+            }
+        }
+    }
+
+    for block in &function.blocks {
+        for inst in &block.instructions {
+            match inst {
+                kea_mir::MirInst::Move { src, .. } => {
+                    if let Some(roots) = value_roots.get(src) {
+                        for root in roots {
+                            *summary.move_boundary_counts.entry(root.clone()).or_default() += 1;
+                        }
+                    }
+                }
+                kea_mir::MirInst::Freeze { src, .. } => {
+                    if let Some(roots) = value_roots.get(src) {
+                        for root in roots {
+                            *summary.freeze_boundary_counts.entry(root.clone()).or_default() += 1;
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    summary
 }
 
 fn collect_fip_offending_sites(function: &kea_mir::MirFunction, limit: usize) -> Vec<String> {

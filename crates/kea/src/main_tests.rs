@@ -2619,6 +2619,22 @@
 
     #[test]
     #[cfg(not(target_os = "windows"))]
+    fn compile_and_execute_fip_unique_inline_lambda_forward_exit_code() {
+        let source_path = write_temp_source(
+            "@fip\nfn inline_lambda_forward(x: Unique Int) -> Unique Int\n  (|y| y)(x)\n\nfn main() -> Int\n  0\n",
+            "kea-cli-fip-unique-inline-lambda-forward",
+            "kea",
+        );
+
+        let run =
+            run_file(&source_path).expect("@fip verifier should accept inlined unique handoff");
+        assert_eq!(run.exit_code, 0);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
     fn compile_rejects_fip_when_unique_handoff_missing() {
         let source_path = write_temp_source(
             "@fip\nfn leak(x: Unique Int) -> Int\n  1\n\nfn main() -> Int\n  0\n",
@@ -2660,7 +2676,7 @@
     #[cfg(not(target_os = "windows"))]
     fn compile_rejects_fip_when_unique_param_escapes_via_call() {
         let source_path = write_temp_source(
-            "fn consume(x: Unique Int) -> Int\n  0\n\n@fip\nfn forward_via_call(x: Unique Int) -> Int\n  consume(x)\n\nfn main() -> Int\n  0\n",
+            "@fip\nfn forward_via_call(x: Unique Int, f: fn(Unique Int) -> Int) -> Int\n  f(x)\n\nfn main() -> Int\n  0\n",
             "kea-cli-fip-unique-call-escape",
             "kea",
         );
@@ -2672,7 +2688,8 @@
             "expected @fip verification failure, got: {err}"
         );
         assert!(
-            err.contains("escapes through a call argument"),
+            err.contains("escapes through")
+                && err.contains("call argument"),
             "expected call-boundary ownership-flow detail, got: {err}"
         );
 
@@ -2683,7 +2700,7 @@
     #[cfg(not(target_os = "windows"))]
     fn compile_rejects_fip_when_unique_alias_escapes_via_call() {
         let source_path = write_temp_source(
-            "fn consume(x: Unique Int) -> Int\n  0\n\n@fip\nfn alias_forward_via_call(x: Unique Int) -> Int\n  let y = x\n  consume(y)\n\nfn main() -> Int\n  0\n",
+            "@fip\nfn alias_forward_via_call(x: Unique Int, f: fn(Unique Int) -> Int) -> Int\n  let y = x\n  f(y)\n\nfn main() -> Int\n  0\n",
             "kea-cli-fip-unique-alias-call-escape",
             "kea",
         );
@@ -2695,7 +2712,8 @@
             "expected @fip verification failure, got: {err}"
         );
         assert!(
-            err.contains("escapes through a call argument"),
+            err.contains("escapes through")
+                && err.contains("call argument"),
             "expected aliased call-boundary ownership-flow detail, got: {err}"
         );
 
