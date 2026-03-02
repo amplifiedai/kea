@@ -14869,3 +14869,39 @@ These specialize the shape premise to `body = .core e`, making the
 **Outcome**:
 - Core-body handler progress/contracts/capabilities now have dedicated capstone
   theorem entrypoints while MCP behavior remains aligned.
+
+### 2026-03-02: perform-redex specialization of shape capstone routes
+
+**Context**: Added perform-redex specializations for the shape-parameterized
+typed-handle capstones, mirroring the core-body specializations.
+
+Lean changes:
+- `handler_typed_redex_shape_capstone`
+- `handler_typed_redex_shape_capstone_with_capability`
+
+These route redex consequences through the shared shape-capstone layer
+(`handler_typed_handle_shape_capstone{,_with_capability}`) using the matching
+perform-redex shape witness.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+- `diagnose`
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; specialization-route consolidation only.
+- Existing linearity diagnostics and overlap normalization should remain stable.
+
+**Probe (direct `kea` MCP)**:
+1. Single-resume clause accepted.
+2. Branch double-resume rejected with `E0012`.
+3. `resume` outside handler rejected with `E0012`.
+4. Overlap residual remains normalized (`handled : () -[IO]> ()`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Redex routes and core-body routes now share one shape-capstone foundation,
+  with direct MCP behavior still aligned.
