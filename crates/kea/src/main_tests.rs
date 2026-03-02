@@ -2651,28 +2651,17 @@
 
     #[test]
     #[cfg(not(target_os = "windows"))]
-    fn compile_rejects_fip_unique_higher_order_forwarder_value_call_for_now() {
+    fn compile_and_execute_fip_unique_higher_order_forwarder_value_call_exit_code() {
         let source_path = write_temp_source(
             "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_forwarder(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  f(x)\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_forwarder(forward_once, x)\n\nfn main() -> Int\n  0\n",
             "kea-cli-fip-unique-higher-order-forwarder-call",
             "kea",
         );
 
-        let err = run_file(&source_path).expect_err(
-            "known forwarder values still lower through closure materialization and unresolved call-boundary proof paths",
+        let run = run_file(&source_path).expect(
+            "@fip verifier should accept higher-order forwarding when the forwarder is a known-safe function item",
         );
-        assert!(
-            err.contains("`@fip` verification failed for `call_via_apply`"),
-            "expected @fip verification failure, got: {err}"
-        );
-        assert!(
-            err.contains("escapes through 1 call argument(s)"),
-            "expected higher-order call-boundary escape diagnostic, got: {err}"
-        );
-        assert!(
-            !err.contains("ClosureInit"),
-            "zero-capture function-item forwarding should no longer report ClosureInit as an allocation-site blocker, got: {err}"
-        );
+        assert_eq!(run.exit_code, 0);
 
         let _ = std::fs::remove_file(source_path);
     }

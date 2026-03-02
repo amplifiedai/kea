@@ -2641,43 +2641,23 @@ fn collect_safe_unique_higher_order_forwarders(
         let HirDecl::Function(function) = decl else {
             continue;
         };
-        let Type::Function(fn_ty) = &function.ty else {
-            continue;
-        };
-        if function.params.len() != fn_ty.params.len() {
+        if function.params.len() < 2 {
             continue;
         }
 
         let mut matched = None;
-        for (unique_index, unique_ty) in fn_ty.params.iter().enumerate() {
-            if !is_unique_type(unique_ty) {
-                continue;
-            }
-            let Some(expected_unique_name) = function
-                .params
-                .get(unique_index)
-                .and_then(|param| param.name.as_ref())
-            else {
+        for (unique_index, unique_param) in function.params.iter().enumerate() {
+            let Some(expected_unique_name) = unique_param.name.as_ref() else {
                 continue;
             };
 
-            for (forwarder_index, forwarder_ty) in fn_ty.params.iter().enumerate() {
+            for (forwarder_index, forwarder_param) in function.params.iter().enumerate() {
                 if forwarder_index == unique_index {
                     continue;
                 }
-                let Some(expected_forwarder_name) = function
-                    .params
-                    .get(forwarder_index)
-                    .and_then(|param| param.name.as_ref())
-                else {
+                let Some(expected_forwarder_name) = forwarder_param.name.as_ref() else {
                     continue;
                 };
-                if !is_unary_unique_forwarder_fn_type(forwarder_ty, unique_ty) {
-                    continue;
-                }
-                if *fn_ty.ret != *unique_ty {
-                    continue;
-                }
                 if !matches_higher_order_forwarder_body(
                     &function.body,
                     expected_forwarder_name,
@@ -2810,7 +2790,31 @@ fn hir_call_safe_unique_handoff_arg_index(
     let spec = safe_higher_order_handoff_callees
         .get(&name)
         .copied()
-        .or_else(|| safe_higher_order_handoff_callees.get(short_name).copied())?;
+        .or_else(|| safe_higher_order_handoff_callees.get(short_name).copied());
+    if let Some(spec) = spec
+        && let Some(index) = hir_call_safe_unique_handoff_arg_index_from_spec(
+            &spec,
+            args,
+            safe_handoff_callees,
+            local_bindings,
+        )
+    {
+        return Some(index);
+    }
+    hir_call_safe_unique_handoff_arg_index_from_callable_type(
+        func,
+        args,
+        safe_handoff_callees,
+        local_bindings,
+    )
+}
+
+fn hir_call_safe_unique_handoff_arg_index_from_spec(
+    spec: &SafeHigherOrderForwarder,
+    args: &[HirExpr],
+    safe_handoff_callees: &BTreeSet<String>,
+    local_bindings: &BTreeSet<String>,
+) -> Option<usize> {
     if spec.unique_arg_index >= args.len() || spec.forwarder_arg_index >= args.len() {
         return None;
     }
@@ -2828,6 +2832,59 @@ fn hir_call_safe_unique_handoff_arg_index(
     (safe_handoff_callees.contains(&forwarder_name)
         || safe_handoff_callees.contains(forwarder_short_name))
     .then_some(spec.unique_arg_index)
+}
+
+fn hir_call_safe_unique_handoff_arg_index_from_callable_type(
+    func: &HirExpr,
+    args: &[HirExpr],
+    safe_handoff_callees: &BTreeSet<String>,
+    local_bindings: &BTreeSet<String>,
+) -> Option<usize> {
+    let Type::Function(fn_ty) = &func.ty else {
+        return None;
+    };
+    if fn_ty.params.len() != args.len() {
+        return None;
+    }
+
+    for (unique_arg_index, unique_ty) in fn_ty.params.iter().enumerate() {
+        if !is_unique_type(unique_ty) {
+            continue;
+        }
+        for (forwarder_arg_index, forwarder_ty) in fn_ty.params.iter().enumerate() {
+            if forwarder_arg_index == unique_arg_index {
+                continue;
+            }
+            if !is_unary_unique_forwarder_fn_type(forwarder_ty, unique_ty) {
+                continue;
+            }
+            if *fn_ty.ret != *unique_ty {
+                continue;
+            }
+            let Some(forwarder_expr) = args.get(forwarder_arg_index) else {
+                continue;
+            };
+            if let Some(root) = hir_callable_root_name(forwarder_expr)
+                && local_bindings.contains(&root)
+            {
+                continue;
+            }
+            let Some(forwarder_name) = hir_callable_name(forwarder_expr) else {
+                continue;
+            };
+            let forwarder_short_name = forwarder_name
+                .rsplit('.')
+                .next()
+                .unwrap_or(forwarder_name.as_str());
+            if safe_handoff_callees.contains(&forwarder_name)
+                || safe_handoff_callees.contains(forwarder_short_name)
+            {
+                return Some(unique_arg_index);
+            }
+        }
+    }
+
+    None
 }
 
 fn hir_function_param_bindings(function: &HirFunction) -> BTreeSet<String> {
