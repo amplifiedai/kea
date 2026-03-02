@@ -16363,3 +16363,35 @@ handler-step relation gets packaged preservation+progress automatically.
 **Outcome**:
 - Remaining capstone gap is now singular and explicit: provide a concrete
   `bodyStep` with core soundness obligations.
+
+### 2026-03-02: compatibility lift from original to extended native steps
+
+**Context**: Added theorem-level continuity between the original minimal native
+step relation and the new extended value+congruence relation, so existing
+consumers can migrate without losing typed-redex routes.
+
+Lean changes:
+- Added in `Kea/Typing.lean`:
+  - `native_handler_step_ext_of_native_handler_step`
+  - `native_handler_step_ext_progress_of_typed_redex`
+  - `native_handler_step_ext_exists_and_preserves_of_typed_redex`
+
+**Build check**:
+- `cd formal && lake build Kea.Typing` passes.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Probe (direct `kea` MCP)**:
+1. Spoof attempt still rejected:
+   - `fn spoof(__kea_resume_ctx: fn(Int) -> Int) -> Int; resume 1`
+   - `status = error`, `E0012`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Extended relation now has explicit backward-compatibility and typed-redex
+  wrappers, with no MCP behavior divergence observed.

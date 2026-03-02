@@ -443,6 +443,13 @@ Concrete milestone checklist for moving from the current fuel model to an implem
   `native_handler_step_ext_soundness_of_core_soundness`.
   This makes the remaining capstone work a single upstream target: construct a
   concrete `bodyStep` relation with core preservation+progress.
+  Update: added continuity/compatibility surfaces between the original and
+  extended native step relations:
+  `native_handler_step_ext_of_native_handler_step`,
+  `native_handler_step_ext_progress_of_typed_redex`,
+  `native_handler_step_ext_exists_and_preserves_of_typed_redex`.
+  This keeps existing typed-redex routes available while moving capstone work
+  onto the extended value+congruence relation.
   Update: added explicit theorem exports for that gate
   (`hasType_resume_requires_ctx`, `resume_not_typable_without_ctx`,
   `inferExpr_resume_none_without_ctx`), so out-of-handler `resume` rejection is

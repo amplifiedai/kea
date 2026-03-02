@@ -1557,6 +1557,68 @@ theorem native_handler_step_ext_exists_of_int_body
       (CoreValue.int n)⟩
 
 /--
+Original native handler steps embed into the extended relation.
+-/
+theorem native_handler_step_ext_of_native_handler_step
+    (clauseSem : NativeHandlerClauseSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    {e e' : CoreExpr}
+    (h_step : NativeHandlerStep clauseSem e e') :
+    NativeHandlerStepExt clauseSem bodyStep e e' := by
+  cases h_step with
+  | handle_perform op argTy opRetTy arg k argName resumeName clauseBody =>
+    exact NativeHandlerStepExt.handle_perform
+      op argTy opRetTy arg k argName resumeName clauseBody
+
+/--
+Typed-redex progress in the extended native relation.
+-/
+theorem native_handler_step_ext_progress_of_typed_redex
+    (clauseSem : NativeHandlerClauseSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    {env : TermEnv} {op : Label} {argTy opRetTy ty : Ty}
+    {arg k : CoreExpr} {argName resumeName : String} {clauseBody : CoreExpr}
+    (_h_typed :
+      HasTypeScopedTop env
+        (.handle (.perform op argTy opRetTy arg k) op argName resumeName argTy opRetTy clauseBody)
+        ty) :
+    ∃ e',
+      NativeHandlerStepExt clauseSem bodyStep
+        (.handle (.perform op argTy opRetTy arg k) op argName resumeName argTy opRetTy clauseBody)
+        e' := by
+  exact ⟨clauseSem.instantiate clauseBody arg k,
+    NativeHandlerStepExt.handle_perform op argTy opRetTy arg k argName resumeName clauseBody⟩
+
+/--
+Typed-redex one-step progress+preservation in the extended native relation.
+-/
+theorem native_handler_step_ext_exists_and_preserves_of_typed_redex
+    (clauseSem : NativeHandlerClauseSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_body_pres :
+      ∀ env body body' ty,
+        HasTypeScopedTop env body ty →
+        bodyStep body body' →
+        HasTypeScopedTop env body' ty)
+    {env : TermEnv} {op : Label} {argTy opRetTy ty : Ty}
+    {arg k : CoreExpr} {argName resumeName : String} {clauseBody : CoreExpr}
+    (h_typed :
+      HasTypeScopedTop env
+        (.handle (.perform op argTy opRetTy arg k) op argName resumeName argTy opRetTy clauseBody)
+        ty) :
+    ∃ e',
+      NativeHandlerStepExt clauseSem bodyStep
+        (.handle (.perform op argTy opRetTy arg k) op argName resumeName argTy opRetTy clauseBody)
+        e' ∧
+      HasTypeScopedTop env e' ty := by
+  refine ⟨clauseSem.instantiate clauseBody arg k, ?_, ?_⟩
+  · exact NativeHandlerStepExt.handle_perform op argTy opRetTy arg k argName resumeName clauseBody
+  · exact native_handler_step_ext_preservation clauseSem bodyStep h_body_pres env
+      (.handle (.perform op argTy opRetTy arg k) op argName resumeName argTy opRetTy clauseBody)
+      (clauseSem.instantiate clauseBody arg k) ty h_typed
+      (NativeHandlerStepExt.handle_perform op argTy opRetTy arg k argName resumeName clauseBody)
+
+/--
 Packaged body-step obligations required to discharge full extended native
 handler-step soundness.
 -/
