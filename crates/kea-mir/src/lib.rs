@@ -436,11 +436,9 @@ pub fn lower_hir_module(module: &HirModule) -> MirModule {
     // cells can be threaded to callees even when no user handler is installed.
     functions.extend(generate_default_capability_wrappers(&effect_operations));
 
-    // Handler inlining: devirtualize state-get/state-put callback closures
-    // when the handler is statically known (same-function scope).
-    // Build a lookup of function index by name, then use index-based iteration
-    // to avoid borrow conflicts (the pass only reads other functions, never mutates them).
-    {
+    // Handler inlining: devirtualize callback closures when structurally verified.
+    // Disable with KEA_NO_HANDLER_INLINE=1 for debugging.
+    if std::env::var("KEA_NO_HANDLER_INLINE").as_deref() != Ok("1") {
         let fn_index: BTreeMap<String, usize> = functions
             .iter()
             .enumerate()
