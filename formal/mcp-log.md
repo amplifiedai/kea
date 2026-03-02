@@ -15631,3 +15631,94 @@ Lean changes:
 - Progress similarly requires additional native body-step semantics or a
   supported-shape precondition; only the supported-shape existence route is
   currently proved.
+
+### 2026-03-02: isolate native handler progress gap via explicit body-shape obligation
+
+**Context**: Refined the native handler theorem stack in `Kea/Typing.lean` so
+both preservation and progress route through explicit obligation propositions,
+with proved conditional theorems and exactly-scoped open obligations.
+
+Lean changes:
+- Preservation side retained and clarified:
+  - `native_handler_step_preservation_of_instantiation_obligation` (proved)
+  - `native_handler_clause_instantiation_obligation` (`sorry`)
+  - `native_handler_step_preservation` derived through the obligation.
+- Progress side now mirrors that structure:
+  - Added `native_handler_body_progress_obligation_prop`
+  - Added proved conditional theorem
+    `native_handler_step_progress_of_body_progress_obligation`
+  - Added open obligation `native_handler_body_progress_obligation` (`sorry`)
+  - `native_handler_step_progress` now derived through the obligation.
+- Existing proved shape witness reused:
+  - `NativeHandlerStepSupportedShape`
+  - `native_handler_step_exists_of_supported_shape`
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Predict (Lean side)**:
+- No runtime behavior change expected (formal theorem factoring only).
+- Existing resume diagnostics should remain aligned.
+
+**Probe (direct `kea` MCP)**:
+1. Single-resume clause accepted (`status = ok`).
+2. Sequential double-resume rejected (`status = error`, `E0012`).
+3. `resume` outside handler rejected (`status = error`, `E0012`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Native handler preservation/progress gaps are now explicitly represented as
+  two minimal obligation theorems in `Typing.lean`:
+  1. `native_handler_clause_instantiation_obligation`
+  2. `native_handler_body_progress_obligation`
+- Conditional theorem routes above those obligations are machine-checked and
+  proved.
+
+### 2026-03-02: native preservation closed via abstract clause instantiation semantics
+
+**Context**: Reworked the native `Typing.lean` handler-step layer to mirror the
+evaluator-boundary preservation architecture more directly, replacing the prior
+unrealistic "clause body types in ambient env unchanged" obligation with an
+explicit abstract instantiation semantics contract.
+
+Lean changes:
+- Added `NativeHandlerClauseSem`:
+  - `instantiate : CoreExpr → CoreExpr → CoreExpr → CoreExpr`
+  - `instantiate_sound` typing law.
+- Parameterized `NativeHandlerStep` by `NativeHandlerClauseSem`, with step
+  target now `instantiate clauseBody arg k` (not raw `clauseBody`).
+- Upgraded preservation to fully proved native theorem:
+  - `native_handler_step_preservation_prop (clauseSem)`
+  - `native_handler_step_preservation (clauseSem)` (proved, no `sorry`).
+- Kept progress factoring:
+  - `native_handler_step_progress_prop (clauseSem)`
+  - supported-shape existence theorem remains proved.
+  - only remaining open target is `native_handler_body_progress_obligation`
+    (`sorry`) used by `native_handler_step_progress`.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Predict (Lean side)**:
+- Formal preservation architecture change only; no runtime behavior change.
+- Resume-linearity diagnostics should remain aligned.
+
+**Probe (direct `kea` MCP)**:
+1. Single-resume clause accepted (`status = ok`).
+2. Sequential double-resume clause rejected (`status = error`, `E0012`).
+3. `resume` outside handler rejected (`status = error`, `E0012`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Native handler preservation in `Typing.lean` is now fully discharged under a
+  first-class abstract instantiation semantics.
+- Remaining native open gap is strictly progress-side
+  (`native_handler_body_progress_obligation`).

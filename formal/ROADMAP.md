@@ -348,6 +348,26 @@ Concrete milestone checklist for moving from the current fuel model to an implem
   proved supported-shape existence route
   (`NativeHandlerStepSupportedShape`, `native_handler_step_exists_of_supported_shape`)
   while full native progress remains open (`native_handler_step_progress`).
+  Update: further refined the native handler stack so both preservation and
+  progress are now routed through explicit minimal obligations in
+  `Kea/Typing.lean`, with conditional routes fully proved:
+  `native_handler_step_preservation_of_instantiation_obligation` and
+  `native_handler_step_progress_of_body_progress_obligation`. The two remaining
+  native open targets are now precisely isolated as
+  `native_handler_clause_instantiation_obligation` and
+  `native_handler_body_progress_obligation` (both `sorry`), while top-level
+  `native_handler_step_{preservation,progress}` are derived wrappers over those
+  obligations.
+  Update: replaced that preservation-side obligation with an explicit abstract
+  clause-instantiation semantics contract (`NativeHandlerClauseSem` with
+  `instantiate` + `instantiate_sound`) and parameterized native step semantics
+  over it (`NativeHandlerStep clauseSem` stepping to `instantiate clauseBody arg k`);
+  native preservation is now fully proved as
+  `native_handler_step_preservation (clauseSem)` with no preservation `sorry`
+  remaining in this layer. The remaining open native gap is now progress-side
+  only (`native_handler_body_progress_obligation`), while
+  `native_handler_step_progress` is a derived wrapper over that single
+  obligation.
   Update: refined that boundary with a typed-step judgment (`HandlerStepTyped`) carrying the concrete preservation-side typing premise for tail-resumptive instantiation, and added proved bridge/preservation lemmas (`handlerStep_of_handlerStepTyped`, `handler_step_typed_preservation`) so the remaining open work is now explicitly the derivation of typed-step premises from untyped handler reduction.
   Update: further minimized the open handler-preservation gap by introducing `handler_step_instantiation_obligation_prop` and deriving full boundary preservation through `handler_step_preservation_of_instantiation_obligation`; the remaining `sorry` target is now `handler_step_instantiation_obligation` (typed clause-instantiation premise only), with `handler_step_preservation` reduced to a one-line consequence wrapper.
   Update: closed that remaining boundary target by extending `HandlerClauseSem` with abstract instantiation semantics + typing law (`instantiate`, `instantiate_sound`) and proving `handler_step_instantiation_obligation`; `handler_step_preservation` is now fully proved in this boundary model with no `sorry` left in `Kea/Eval.lean`.

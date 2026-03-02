@@ -587,76 +587,58 @@ theorem inferExpr_iff_hasType (env : TermEnv) (e : CoreExpr) (ty : Ty) :
    ========================================================================= -/
 
 /--
+Abstract clause instantiation semantics for native handler reduction.
+-/
+structure NativeHandlerClauseSem : Type where
+  instantiate : CoreExpr → CoreExpr → CoreExpr → CoreExpr
+  instantiate_sound :
+    ∀ env argName resumeName argTy opRetTy ty clauseBody arg k,
+      HasType env arg argTy →
+      HasType env k (.function (.cons opRetTy .nil) ty) →
+      HasType
+        ((resumeName, .function (.cons opRetTy .nil) ty) :: (argName, argTy) :: env)
+        clauseBody
+        ty →
+      HasType env (instantiate clauseBody arg k) ty
+
+/--
 Native one-step handler reduction on `Typing.CoreExpr`.
 
-Current minimal native case: handling a matching `perform` redex steps to the
-clause body (with argument/resume substitution left abstract for now).
+Current minimal native case: handling a matching `perform` redex.
 -/
-inductive NativeHandlerStep : CoreExpr → CoreExpr → Prop where
+inductive NativeHandlerStep (clauseSem : NativeHandlerClauseSem) : CoreExpr → CoreExpr → Prop where
   | handle_perform
       (op : Label) (argTy opRetTy : Ty)
       (arg k : CoreExpr)
       (argName resumeName : String)
       (clauseBody : CoreExpr) :
-      NativeHandlerStep
+      NativeHandlerStep clauseSem
         (.handle (.perform op argTy opRetTy arg k) op argName resumeName argTy opRetTy clauseBody)
-        clauseBody
+        (clauseSem.instantiate clauseBody arg k)
 
 /-- Preservation target for native handler-step reduction in `Typing.lean`. -/
-def native_handler_step_preservation_prop : Prop :=
+def native_handler_step_preservation_prop (clauseSem : NativeHandlerClauseSem) : Prop :=
   ∀ env e e' ty,
     HasType env e ty →
-    NativeHandlerStep e e' →
+    NativeHandlerStep clauseSem e e' →
     HasType env e' ty
 
 /--
-Open native obligation for clause instantiation at the `Typing.CoreExpr` layer.
-
-Intuitively: after binding the operation argument and resume continuation, the
-typed clause body must be transportable back to the ambient environment.
+Native preservation for one handler step under abstract clause semantics.
 -/
-def native_handler_clause_instantiation_obligation_prop : Prop :=
-  ∀ env argName resumeName argTy opRetTy ty clauseBody,
-    HasType
-      ((resumeName, .function (.cons opRetTy .nil) ty) :: (argName, argTy) :: env)
-      clauseBody
-      ty →
-    HasType env clauseBody ty
-
-/--
-Conditional native preservation: if clause instantiation is admissible in the
-native typing judgment, one native handler step preserves typing.
--/
-theorem native_handler_step_preservation_of_instantiation_obligation
-    (h_inst : native_handler_clause_instantiation_obligation_prop) :
-    native_handler_step_preservation_prop := by
+theorem native_handler_step_preservation
+    (clauseSem : NativeHandlerClauseSem) :
+    native_handler_step_preservation_prop clauseSem := by
   intro env e e' ty h_ty h_step
   cases h_step with
   | handle_perform op argTy opRetTy arg k argName resumeName clauseBody =>
     cases h_ty with
     | handle _ _ _ _ _ _ _ _ _ h_body h_clause =>
-      exact h_inst env argName resumeName argTy opRetTy ty _ h_clause
-
-/--
-Open native clause-instantiation obligation.
-
-This is the exact missing bridge needed to discharge native preservation.
--/
-theorem native_handler_clause_instantiation_obligation :
-    native_handler_clause_instantiation_obligation_prop := by
-  sorry
-
-/--
-Open native preservation target.
-
-This is intentionally stated at the `Typing.CoreExpr` layer (not the evaluator
-boundary model) so the remaining gap is machine-checkable in the native
-judgment.
--/
-theorem native_handler_step_preservation :
-    native_handler_step_preservation_prop := by
-  exact native_handler_step_preservation_of_instantiation_obligation
-    native_handler_clause_instantiation_obligation
+      cases h_body with
+      | perform _ _ _ _ _ _ _ h_arg h_k =>
+        exact clauseSem.instantiate_sound
+          env argName resumeName argTy opRetTy ty clauseBody arg k
+          h_arg h_k h_clause
 
 /--
 Supported shape for the current minimal native `NativeHandlerStep` relation.
@@ -669,19 +651,55 @@ def NativeHandlerStepSupportedShape
 Current native-step existence consequence under the supported body shape.
 -/
 theorem native_handler_step_exists_of_supported_shape
+    (clauseSem : NativeHandlerClauseSem)
     {body : CoreExpr} {op : Label} {argName resumeName : String}
     {argTy opRetTy : Ty} {clauseBody : CoreExpr}
     (h_shape : NativeHandlerStepSupportedShape body op argTy opRetTy) :
-    ∃ e', NativeHandlerStep (.handle body op argName resumeName argTy opRetTy clauseBody) e' := by
+    ∃ e', NativeHandlerStep clauseSem
+      (.handle body op argName resumeName argTy opRetTy clauseBody) e' := by
   rcases h_shape with ⟨arg, k, rfl⟩
-  exact ⟨clauseBody,
+  exact ⟨clauseSem.instantiate clauseBody arg k,
     NativeHandlerStep.handle_perform op argTy opRetTy arg k argName resumeName clauseBody⟩
 
 /-- Progress target for native `handle` expressions in `Typing.lean`. -/
-def native_handler_step_progress_prop : Prop :=
+def native_handler_step_progress_prop (clauseSem : NativeHandlerClauseSem) : Prop :=
   ∀ env body op argName resumeName argTy opRetTy clauseBody ty,
     HasType env (.handle body op argName resumeName argTy opRetTy clauseBody) ty →
-    ∃ e', NativeHandlerStep (.handle body op argName resumeName argTy opRetTy clauseBody) e'
+    ∃ e', NativeHandlerStep clauseSem
+      (.handle body op argName resumeName argTy opRetTy clauseBody) e'
+
+/--
+Open native body-progress obligation: typed native `handle` bodies must satisfy
+the currently supported redex shape.
+-/
+def native_handler_body_progress_obligation_prop : Prop :=
+  ∀ env body op argName resumeName argTy opRetTy clauseBody ty,
+    HasType env (.handle body op argName resumeName argTy opRetTy clauseBody) ty →
+    NativeHandlerStepSupportedShape body op argTy opRetTy
+
+/--
+Conditional native progress: if typed native `handle` bodies satisfy supported
+shape, one native handler step exists.
+-/
+theorem native_handler_step_progress_of_body_progress_obligation
+    (clauseSem : NativeHandlerClauseSem)
+    (h_body_progress : native_handler_body_progress_obligation_prop) :
+    native_handler_step_progress_prop clauseSem := by
+  intro env body op argName resumeName argTy opRetTy clauseBody ty h_typed
+  exact native_handler_step_exists_of_supported_shape
+    clauseSem
+    (h_body_progress env body op argName resumeName argTy opRetTy clauseBody ty h_typed)
+
+/--
+Open native body-progress obligation.
+
+This is the exact missing bridge needed to discharge native progress.
+-/
+theorem native_handler_body_progress_obligation
+    (clauseSem : NativeHandlerClauseSem) :
+    native_handler_body_progress_obligation_prop := by
+  let _ := clauseSem
+  sorry
 
 /--
 Open native progress target for handler reduction.
@@ -690,8 +708,10 @@ This deliberately targets the native typing judgment; proving it will require
 either additional body-step semantics or a stronger supported-shape precondition.
 -/
 theorem native_handler_step_progress :
-    native_handler_step_progress_prop := by
-  sorry
+    ∀ clauseSem : NativeHandlerClauseSem, native_handler_step_progress_prop clauseSem := by
+  intro clauseSem
+  exact native_handler_step_progress_of_body_progress_obligation
+    clauseSem (native_handler_body_progress_obligation clauseSem)
 
 /-- Declarative field typing is functional on the core slice. -/
 theorem hasFieldsType_unique
