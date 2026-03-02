@@ -1506,15 +1506,25 @@ fn resolve_qualified_constructor_meta(
         .cloned()
 }
 
-#[allow(clippy::too_many_arguments)]
+/// Shared context for HIR lowering, replacing repeated parameters across
+/// all lowering functions.
+struct LowerCtx<'a> {
+    unit_variant_tags: &'a UnitVariantTags,
+    qualified_variant_tags: &'a QualifiedUnitVariantTags,
+    pattern_variant_tags: &'a PatternVariantTags,
+    pattern_qualified_tags: &'a QualifiedPatternVariantTags,
+    known_record_defs: &'a KnownRecordDefs,
+    /// Per-expression inferred types from type inference, available for
+    /// monomorphization.  Not yet used in `lower_expr` default_ty because
+    /// MIR handler lowering currently depends on Dynamic expression types.
+    #[allow(dead_code)]
+    expr_types: &'a std::collections::BTreeMap<Span, Type>,
+}
+
 fn lower_constructor_fields(
     args: &[kea_ast::Argument],
     meta: &PatternVariantMeta,
-    unit_variant_tags: &UnitVariantTags,
-    qualified_variant_tags: &QualifiedUnitVariantTags,
-    pattern_variant_tags: &PatternVariantTags,
-    pattern_qualified_tags: &QualifiedPatternVariantTags,
-    known_record_defs: &KnownRecordDefs,
+    ctx: &LowerCtx,
 ) -> Option<Vec<HirExpr>> {
     let has_labeled_args = args.iter().any(|arg| arg.label.is_some());
     if !has_labeled_args {
@@ -1524,11 +1534,7 @@ fn lower_constructor_fields(
                     lower_expr(
                         &arg.value,
                         None,
-                        unit_variant_tags,
-                        qualified_variant_tags,
-                        pattern_variant_tags,
-                        pattern_qualified_tags,
-                        known_record_defs,
+                        ctx,
                     )
                 })
                 .collect(),
@@ -1555,20 +1561,28 @@ fn lower_constructor_fields(
         lowered_by_slot[field_index] = Some(lower_expr(
             &arg.value,
             None,
-            unit_variant_tags,
-            qualified_variant_tags,
-            pattern_variant_tags,
-            pattern_qualified_tags,
-            known_record_defs,
+            ctx,
         ));
     }
     lowered_by_slot.into_iter().collect()
 }
 
-pub fn lower_module(module: &Module, env: &TypeEnv) -> HirModule {
+pub fn lower_module(
+    module: &Module,
+    env: &TypeEnv,
+    expr_types: &std::collections::BTreeMap<kea_ast::Span, kea_types::Type>,
+) -> HirModule {
     let (unit_variant_tags, qualified_variant_tags, pattern_variant_tags, pattern_qualified_tags) =
         collect_variant_tags(module, env);
     let known_record_defs = collect_record_defs(module);
+    let ctx = LowerCtx {
+        unit_variant_tags: &unit_variant_tags,
+        qualified_variant_tags: &qualified_variant_tags,
+        pattern_variant_tags: &pattern_variant_tags,
+        pattern_qualified_tags: &pattern_qualified_tags,
+        known_record_defs: &known_record_defs,
+        expr_types,
+    };
     let mut declarations = Vec::new();
     for decl in &module.declarations {
         match &decl.node {
@@ -1576,11 +1590,7 @@ pub fn lower_module(module: &Module, env: &TypeEnv) -> HirModule {
                 declarations.push(HirDecl::Function(lower_function_with_variants(
                     fn_decl,
                     env,
-                    &unit_variant_tags,
-                    &qualified_variant_tags,
-                    &pattern_variant_tags,
-                    &pattern_qualified_tags,
-                    &known_record_defs,
+                    &ctx,
                 )));
                 if intrinsic_symbol_from_annotations(&fn_decl.annotations).is_some() {
                     declarations.push(HirDecl::Raw(DeclKind::Function(fn_decl.clone())));
@@ -1590,11 +1600,7 @@ pub fn lower_module(module: &Module, env: &TypeEnv) -> HirModule {
                 declarations.push(HirDecl::Function(lower_function_with_variants(
                     &expr_decl_to_fn_decl(expr_decl),
                     env,
-                    &unit_variant_tags,
-                    &qualified_variant_tags,
-                    &pattern_variant_tags,
-                    &pattern_qualified_tags,
-                    &known_record_defs,
+                    &ctx,
                 )));
                 if intrinsic_symbol_from_annotations(&expr_decl.annotations).is_some() {
                     declarations.push(HirDecl::Raw(DeclKind::ExprFn(expr_decl.clone())));
@@ -1607,26 +1613,21 @@ pub fn lower_module(module: &Module, env: &TypeEnv) -> HirModule {
 }
 
 pub fn lower_function(fn_decl: &FnDecl, env: &TypeEnv) -> HirFunction {
-    let known_record_defs = BTreeSet::new();
-    lower_function_with_variants(
-        fn_decl,
-        env,
-        &UnitVariantTags::new(),
-        &QualifiedUnitVariantTags::new(),
-        &PatternVariantTags::new(),
-        &QualifiedPatternVariantTags::new(),
-        &known_record_defs,
-    )
+    let ctx = LowerCtx {
+        unit_variant_tags: &UnitVariantTags::new(),
+        qualified_variant_tags: &QualifiedUnitVariantTags::new(),
+        pattern_variant_tags: &PatternVariantTags::new(),
+        pattern_qualified_tags: &QualifiedPatternVariantTags::new(),
+        known_record_defs: &BTreeSet::new(),
+        expr_types: &BTreeMap::new(),
+    };
+    lower_function_with_variants(fn_decl, env, &ctx)
 }
 
 fn lower_function_with_variants(
     fn_decl: &FnDecl,
     env: &TypeEnv,
-    unit_variant_tags: &UnitVariantTags,
-    qualified_variant_tags: &QualifiedUnitVariantTags,
-    pattern_variant_tags: &PatternVariantTags,
-    pattern_qualified_tags: &QualifiedPatternVariantTags,
-    known_record_defs: &KnownRecordDefs,
+    ctx: &LowerCtx,
 ) -> HirFunction {
     let mut fn_ty = env
         .lookup(&fn_decl.name.node)
@@ -1670,11 +1671,7 @@ fn lower_function_with_variants(
         body: lower_expr(
             &fn_decl.body,
             Some(ret_ty),
-            unit_variant_tags,
-            qualified_variant_tags,
-            pattern_variant_tags,
-            pattern_qualified_tags,
-            known_record_defs,
+            ctx,
         ),
         ty: fn_ty,
         effects,
@@ -1832,25 +1829,24 @@ fn intrinsic_symbol_from_annotations(annotations: &[Annotation]) -> Option<Strin
 fn lower_expr(
     expr: &Expr,
     ty_hint: Option<Type>,
-    unit_variant_tags: &UnitVariantTags,
-    qualified_variant_tags: &QualifiedUnitVariantTags,
-    pattern_variant_tags: &PatternVariantTags,
-    pattern_qualified_tags: &QualifiedPatternVariantTags,
-    known_record_defs: &KnownRecordDefs,
+    ctx: &LowerCtx,
 ) -> HirExpr {
+    // NOTE: expr_types are available via ctx.expr_types for future use by
+    // monomorphization.  We do NOT use them for default_ty yet because MIR
+    // handler lowering relies on Dynamic expression types.
     let default_ty = ty_hint.clone().unwrap_or(Type::Dynamic);
 
     let kind = match &expr.node {
         ExprKind::Lit(lit) => HirExprKind::Lit(lit.clone()),
         ExprKind::Var(name) => {
-            if let Some(tag) = unit_variant_tags.get(name) {
+            if let Some(tag) = ctx.unit_variant_tags.get(name) {
                 HirExprKind::Lit(Lit::Int(*tag))
             } else {
                 HirExprKind::Var(name.clone())
             }
         }
         ExprKind::None => {
-            if let Some(tag) = unit_variant_tags.get("None") {
+            if let Some(tag) = ctx.unit_variant_tags.get("None") {
                 HirExprKind::Lit(Lit::Int(*tag))
             } else {
                 HirExprKind::Raw(expr.node.clone())
@@ -1861,20 +1857,12 @@ fn lower_expr(
             left: Box::new(lower_expr(
                 left,
                 None,
-                unit_variant_tags,
-                qualified_variant_tags,
-                pattern_variant_tags,
-                pattern_qualified_tags,
-                known_record_defs,
+                ctx,
             )),
             right: Box::new(lower_expr(
                 right,
                 None,
-                unit_variant_tags,
-                qualified_variant_tags,
-                pattern_variant_tags,
-                pattern_qualified_tags,
-                known_record_defs,
+                ctx,
             )),
         },
         ExprKind::UnaryOp { op, operand } => HirExprKind::Unary {
@@ -1882,11 +1870,7 @@ fn lower_expr(
             operand: Box::new(lower_expr(
                 operand,
                 None,
-                unit_variant_tags,
-                qualified_variant_tags,
-                pattern_variant_tags,
-                pattern_qualified_tags,
-                known_record_defs,
+                ctx,
             )),
         },
         ExprKind::With {
@@ -1898,11 +1882,7 @@ fn lower_expr(
             return lower_expr(
                 &lowered,
                 ty_hint,
-                unit_variant_tags,
-                qualified_variant_tags,
-                pattern_variant_tags,
-                pattern_qualified_tags,
-                known_record_defs,
+                ctx,
             );
         }
         ExprKind::Call { func, args } => {
@@ -1919,11 +1899,7 @@ fn lower_expr(
                     args: vec![lower_expr(
                         &args[0].value,
                         None,
-                        unit_variant_tags,
-                        qualified_variant_tags,
-                        pattern_variant_tags,
-                        pattern_qualified_tags,
-                        known_record_defs,
+                        ctx,
                     )],
                 }
             } else if let ExprKind::FieldAccess {
@@ -1935,16 +1911,12 @@ fn lower_expr(
                     type_name,
                     &field.node,
                     args.len(),
-                    pattern_qualified_tags,
+                    ctx.pattern_qualified_tags,
                 )
                 && let Some(fields) = lower_constructor_fields(
                     args,
                     &meta,
-                    unit_variant_tags,
-                    qualified_variant_tags,
-                    pattern_variant_tags,
-                    pattern_qualified_tags,
-                    known_record_defs,
+                    ctx,
                 )
             {
                 HirExprKind::SumConstructor {
@@ -1958,11 +1930,7 @@ fn lower_expr(
                     func: Box::new(lower_expr(
                         func,
                         None,
-                        unit_variant_tags,
-                        qualified_variant_tags,
-                        pattern_variant_tags,
-                        pattern_qualified_tags,
-                        known_record_defs,
+                        ctx,
                     )),
                     args: args
                         .iter()
@@ -1970,11 +1938,7 @@ fn lower_expr(
                             lower_expr(
                                 &arg.value,
                                 None,
-                                unit_variant_tags,
-                                qualified_variant_tags,
-                                pattern_variant_tags,
-                                pattern_qualified_tags,
-                                known_record_defs,
+                                ctx,
                             )
                         })
                         .collect(),
@@ -1986,11 +1950,7 @@ fn lower_expr(
             body: Box::new(lower_expr(
                 body,
                 None,
-                unit_variant_tags,
-                qualified_variant_tags,
-                pattern_variant_tags,
-                pattern_qualified_tags,
-                known_record_defs,
+                ctx,
             )),
         },
         ExprKind::Let { pattern, value, .. } => HirExprKind::Let {
@@ -1998,11 +1958,7 @@ fn lower_expr(
             value: Box::new(lower_expr(
                 value,
                 None,
-                unit_variant_tags,
-                qualified_variant_tags,
-                pattern_variant_tags,
-                pattern_qualified_tags,
-                known_record_defs,
+                ctx,
             )),
         },
         ExprKind::If {
@@ -2013,30 +1969,18 @@ fn lower_expr(
             condition: Box::new(lower_expr(
                 condition,
                 None,
-                unit_variant_tags,
-                qualified_variant_tags,
-                pattern_variant_tags,
-                pattern_qualified_tags,
-                known_record_defs,
+                ctx,
             )),
             then_branch: Box::new(lower_expr(
                 then_branch,
                 ty_hint.clone(),
-                unit_variant_tags,
-                qualified_variant_tags,
-                pattern_variant_tags,
-                pattern_qualified_tags,
-                known_record_defs,
+                ctx,
             )),
             else_branch: else_branch.as_ref().map(|expr| {
                 Box::new(lower_expr(
                     expr,
                     ty_hint.clone(),
-                    unit_variant_tags,
-                    qualified_variant_tags,
-                    pattern_variant_tags,
-                    pattern_qualified_tags,
-                    known_record_defs,
+                    ctx,
                 ))
             }),
         },
@@ -2045,11 +1989,7 @@ fn lower_expr(
                 scrutinee,
                 arms,
                 ty_hint.clone(),
-                unit_variant_tags,
-                qualified_variant_tags,
-                pattern_variant_tags,
-                pattern_qualified_tags,
-                known_record_defs,
+                ctx,
             ) {
                 case_kind
             } else {
@@ -2071,11 +2011,7 @@ fn lower_expr(
                         lower_expr(
                             inner,
                             hint,
-                            unit_variant_tags,
-                            qualified_variant_tags,
-                            pattern_variant_tags,
-                            pattern_qualified_tags,
-                            known_record_defs,
+                            ctx,
                         )
                     })
                     .collect(),
@@ -2088,11 +2024,7 @@ fn lower_expr(
                     lower_expr(
                         inner,
                         None,
-                        unit_variant_tags,
-                        qualified_variant_tags,
-                        pattern_variant_tags,
-                        pattern_qualified_tags,
-                        known_record_defs,
+                        ctx,
                     )
                 })
                 .collect(),
@@ -2101,7 +2033,7 @@ fn lower_expr(
             name,
             fields,
             spread,
-        } if known_record_defs.contains(&name.node) => {
+        } if ctx.known_record_defs.contains(&name.node) => {
             let lowered_fields = fields
                 .iter()
                 .map(|(field_name, field_value)| {
@@ -2110,11 +2042,7 @@ fn lower_expr(
                         lower_expr(
                             field_value,
                             None,
-                            unit_variant_tags,
-                            qualified_variant_tags,
-                            pattern_variant_tags,
-                            pattern_qualified_tags,
-                            known_record_defs,
+                            ctx,
                         ),
                     )
                 })
@@ -2125,11 +2053,7 @@ fn lower_expr(
                     base: Box::new(lower_expr(
                         base,
                         None,
-                        unit_variant_tags,
-                        qualified_variant_tags,
-                        pattern_variant_tags,
-                        pattern_qualified_tags,
-                        known_record_defs,
+                        ctx,
                     )),
                     fields: lowered_fields,
                 }
@@ -2144,11 +2068,7 @@ fn lower_expr(
             let lowered_base = lower_expr(
                 base,
                 None,
-                unit_variant_tags,
-                qualified_variant_tags,
-                pattern_variant_tags,
-                pattern_qualified_tags,
-                known_record_defs,
+                ctx,
             );
             let lowered_fields = fields
                 .iter()
@@ -2158,11 +2078,7 @@ fn lower_expr(
                         lower_expr(
                             field_value,
                             None,
-                            unit_variant_tags,
-                            qualified_variant_tags,
-                            pattern_variant_tags,
-                            pattern_qualified_tags,
-                            known_record_defs,
+                            ctx,
                         ),
                     )
                 })
@@ -2183,22 +2099,18 @@ fn lower_expr(
         }
         ExprKind::Constructor { name, args } => {
             if args.is_empty() {
-                if let Some(tag) = unit_variant_tags.get(&name.node) {
+                if let Some(tag) = ctx.unit_variant_tags.get(&name.node) {
                     HirExprKind::Lit(Lit::Int(*tag))
                 } else {
                     HirExprKind::Raw(expr.node.clone())
                 }
             } else if let Some(meta) =
-                resolve_unqualified_constructor_meta(&name.node, args.len(), pattern_variant_tags)
+                resolve_unqualified_constructor_meta(&name.node, args.len(), ctx.pattern_variant_tags)
             {
                 if let Some(fields) = lower_constructor_fields(
                     args,
                     &meta,
-                    unit_variant_tags,
-                    qualified_variant_tags,
-                    pattern_variant_tags,
-                    pattern_qualified_tags,
-                    known_record_defs,
+                    ctx,
                 ) {
                     HirExprKind::SumConstructor {
                         sum_type: meta.sum_type,
@@ -2219,7 +2131,7 @@ fn lower_expr(
         } => {
             if let ExprKind::Var(type_name) = &qualifier.node {
                 if let Some(tag) =
-                    qualified_variant_tags.get(&(type_name.clone(), field.node.clone()))
+                    ctx.qualified_variant_tags.get(&(type_name.clone(), field.node.clone()))
                 {
                     HirExprKind::Lit(Lit::Int(*tag))
                 } else if is_namespace_qualifier(type_name) {
@@ -2229,11 +2141,7 @@ fn lower_expr(
                         expr: Box::new(lower_expr(
                             qualifier,
                             None,
-                            unit_variant_tags,
-                            qualified_variant_tags,
-                            pattern_variant_tags,
-                            pattern_qualified_tags,
-                            known_record_defs,
+                            ctx,
                         )),
                         field: field.node.clone(),
                     }
@@ -2243,11 +2151,7 @@ fn lower_expr(
                     expr: Box::new(lower_expr(
                         qualifier,
                         None,
-                        unit_variant_tags,
-                        qualified_variant_tags,
-                        pattern_variant_tags,
-                        pattern_qualified_tags,
-                        known_record_defs,
+                        ctx,
                     )),
                     field: field.node.clone(),
                 }
@@ -2261,11 +2165,7 @@ fn lower_expr(
             expr: Box::new(lower_expr(
                 handled,
                 None,
-                unit_variant_tags,
-                qualified_variant_tags,
-                pattern_variant_tags,
-                pattern_qualified_tags,
-                known_record_defs,
+                ctx,
             )),
         },
         ExprKind::Handle {
@@ -2276,11 +2176,7 @@ fn lower_expr(
             expr: Box::new(lower_expr(
                 handled,
                 None,
-                unit_variant_tags,
-                qualified_variant_tags,
-                pattern_variant_tags,
-                pattern_qualified_tags,
-                known_record_defs,
+                ctx,
             )),
             clauses: clauses
                 .iter()
@@ -2291,11 +2187,7 @@ fn lower_expr(
                     body: lower_expr(
                         &clause.body,
                         None,
-                        unit_variant_tags,
-                        qualified_variant_tags,
-                        pattern_variant_tags,
-                        pattern_qualified_tags,
-                        known_record_defs,
+                        ctx,
                     ),
                     span: clause.span,
                 })
@@ -2304,11 +2196,7 @@ fn lower_expr(
                 Box::new(lower_expr(
                     then_expr,
                     None,
-                    unit_variant_tags,
-                    qualified_variant_tags,
-                    pattern_variant_tags,
-                    pattern_qualified_tags,
-                    known_record_defs,
+                    ctx,
                 ))
             }),
         },
@@ -2316,11 +2204,7 @@ fn lower_expr(
             value: Box::new(lower_expr(
                 value,
                 None,
-                unit_variant_tags,
-                qualified_variant_tags,
-                pattern_variant_tags,
-                pattern_qualified_tags,
-                known_record_defs,
+                ctx,
             )),
         },
         other => HirExprKind::Raw(other.clone()),
@@ -2332,7 +2216,7 @@ fn lower_expr(
         ExprKind::Lit(Lit::Bool(_)) => Type::Bool,
         ExprKind::Lit(Lit::String(_)) => Type::String,
         ExprKind::Lit(Lit::Unit) => Type::Unit,
-        ExprKind::None if unit_variant_tags.contains_key("None") => Type::Int,
+        ExprKind::None if ctx.unit_variant_tags.contains_key("None") => Type::Int,
         ExprKind::BinaryOp { op, left, .. } => match op.node {
             BinOp::Eq
             | BinOp::Neq
@@ -2366,12 +2250,12 @@ fn lower_expr(
             UnaryOp::Not => Type::Bool,
         },
         ExprKind::Constructor { name, args } => {
-            if args.is_empty() && unit_variant_tags.contains_key(&name.node) {
+            if args.is_empty() && ctx.unit_variant_tags.contains_key(&name.node) {
                 Type::Int
             } else if default_ty != Type::Dynamic {
                 default_ty
             } else if let Some(meta) =
-                resolve_unqualified_constructor_meta(&name.node, args.len(), pattern_variant_tags)
+                resolve_unqualified_constructor_meta(&name.node, args.len(), ctx.pattern_variant_tags)
             {
                 Type::Sum(kea_types::SumType {
                     name: meta.sum_type,
@@ -2387,7 +2271,7 @@ fn lower_expr(
             field,
         } => {
             if let ExprKind::Var(type_name) = &qualifier.node {
-                if qualified_variant_tags.contains_key(&(type_name.clone(), field.node.clone())) {
+                if ctx.qualified_variant_tags.contains_key(&(type_name.clone(), field.node.clone())) {
                     Type::Int
                 } else {
                     default_ty
@@ -2396,8 +2280,8 @@ fn lower_expr(
                 default_ty
             }
         }
-        ExprKind::Var(name) if unit_variant_tags.contains_key(name) => Type::Int,
-        ExprKind::Record { name, .. } if known_record_defs.contains(&name.node) => {
+        ExprKind::Var(name) if ctx.unit_variant_tags.contains_key(name) => Type::Int,
+        ExprKind::Record { name, .. } if ctx.known_record_defs.contains(&name.node) => {
             Type::Record(kea_types::RecordType {
                 name: name.node.clone(),
                 params: vec![],
@@ -2405,7 +2289,7 @@ fn lower_expr(
             })
         }
         ExprKind::Update { base, .. } => match &base.node {
-            ExprKind::Record { name, .. } if known_record_defs.contains(&name.node) => {
+            ExprKind::Record { name, .. } if ctx.known_record_defs.contains(&name.node) => {
                 Type::Record(kea_types::RecordType {
                     name: name.node.clone(),
                     params: vec![],
@@ -2514,26 +2398,17 @@ enum RecordCaseCarrier {
     Anonymous,
 }
 
-#[allow(clippy::too_many_arguments)]
 fn lower_bool_case(
     scrutinee: &Expr,
     arms: &[CaseArm],
     ty_hint: Option<Type>,
-    unit_variant_tags: &UnitVariantTags,
-    qualified_variant_tags: &QualifiedUnitVariantTags,
-    pattern_variant_tags: &PatternVariantTags,
-    pattern_qualified_tags: &QualifiedPatternVariantTags,
-    known_record_defs: &KnownRecordDefs,
+    ctx: &LowerCtx,
 ) -> Option<HirExprKind> {
     if let Some(kind) = lower_literal_case(
         scrutinee,
         arms,
         ty_hint.clone(),
-        unit_variant_tags,
-        qualified_variant_tags,
-        pattern_variant_tags,
-        pattern_qualified_tags,
-        known_record_defs,
+        ctx,
     ) {
         return Some(kind);
     }
@@ -2542,11 +2417,7 @@ fn lower_bool_case(
         scrutinee,
         arms,
         ty_hint.clone(),
-        unit_variant_tags,
-        qualified_variant_tags,
-        pattern_variant_tags,
-        pattern_qualified_tags,
-        known_record_defs,
+        ctx,
     ) {
         return Some(kind);
     }
@@ -2559,11 +2430,7 @@ fn lower_bool_case(
     let lowered_scrutinee = lower_expr(
         scrutinee,
         None,
-        unit_variant_tags,
-        qualified_variant_tags,
-        pattern_variant_tags,
-        pattern_qualified_tags,
-        known_record_defs,
+        ctx,
     );
     let safe_scrutinee = matches!(
         lowered_scrutinee.kind,
@@ -2596,11 +2463,7 @@ fn lower_bool_case(
         let lowered_body = lower_expr(
             body,
             ty_hint.clone(),
-            unit_variant_tags,
-            qualified_variant_tags,
-            pattern_variant_tags,
-            pattern_qualified_tags,
-            known_record_defs,
+            ctx,
         );
         match bind {
             Some(name) => HirExpr {
@@ -2705,16 +2568,11 @@ fn lower_bool_case(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn lower_literal_case(
     scrutinee: &Expr,
     arms: &[CaseArm],
     ty_hint: Option<Type>,
-    unit_variant_tags: &UnitVariantTags,
-    qualified_variant_tags: &QualifiedUnitVariantTags,
-    pattern_variant_tags: &PatternVariantTags,
-    pattern_qualified_tags: &QualifiedPatternVariantTags,
-    known_record_defs: &KnownRecordDefs,
+    ctx: &LowerCtx,
 ) -> Option<HirExprKind> {
     enum LiteralFallbackArm<'a> {
         Wild {
@@ -2746,8 +2604,8 @@ fn lower_literal_case(
                     let (values, bind_name, payload_binds, payload_checks) =
                         literal_case_values_from_pattern(
                             &pattern,
-                            pattern_variant_tags,
-                            pattern_qualified_tags,
+                            ctx.pattern_variant_tags,
+                            ctx.pattern_qualified_tags,
                         )?;
                     for value in values {
                         literal_arms.push((
@@ -2799,11 +2657,7 @@ fn lower_literal_case(
     let lowered_scrutinee = lower_expr(
         scrutinee,
         None,
-        unit_variant_tags,
-        qualified_variant_tags,
-        pattern_variant_tags,
-        pattern_qualified_tags,
-        known_record_defs,
+        ctx,
     );
     let safe_scrutinee = matches!(
         lowered_scrutinee.kind,
@@ -2845,11 +2699,7 @@ fn lower_literal_case(
                 let then_branch = lower_expr(
                     body,
                     ty_hint.clone(),
-                    unit_variant_tags,
-                    qualified_variant_tags,
-                    pattern_variant_tags,
-                    pattern_qualified_tags,
-                    known_record_defs,
+                    ctx,
                 );
                 let Some(guard_expr) = guard else {
                     // Unconditional fallback shadows any later fallback arm.
@@ -2859,11 +2709,7 @@ fn lower_literal_case(
                 let condition = lower_expr(
                     guard_expr,
                     None,
-                    unit_variant_tags,
-                    qualified_variant_tags,
-                    pattern_variant_tags,
-                    pattern_qualified_tags,
-                    known_record_defs,
+                    ctx,
                 );
                 let next_else = else_expr.clone().or_else(|| {
                     if return_ty == Type::Unit {
@@ -2897,11 +2743,7 @@ fn lower_literal_case(
                         lower_expr(
                             body,
                             ty_hint.clone(),
-                            unit_variant_tags,
-                            qualified_variant_tags,
-                            pattern_variant_tags,
-                            pattern_qualified_tags,
-                            known_record_defs,
+                            ctx,
                         ),
                     ]),
                     ty: return_ty.clone(),
@@ -2918,11 +2760,7 @@ fn lower_literal_case(
                         lower_expr(
                             guard_expr,
                             None,
-                            unit_variant_tags,
-                            qualified_variant_tags,
-                            pattern_variant_tags,
-                            pattern_qualified_tags,
-                            known_record_defs,
+                            ctx,
                         ),
                     ]),
                     ty: Type::Bool,
@@ -2961,11 +2799,7 @@ fn lower_literal_case(
             payload_binds.clone(),
             &scrutinee_expr,
             ty_hint.clone(),
-            unit_variant_tags,
-            qualified_variant_tags,
-            pattern_variant_tags,
-            pattern_qualified_tags,
-            known_record_defs,
+            ctx,
         ));
     }
 
@@ -3000,11 +2834,7 @@ fn lower_literal_case(
                 lower_expr(
                     &qualified_const,
                     None,
-                    unit_variant_tags,
-                    qualified_variant_tags,
-                    pattern_variant_tags,
-                    pattern_qualified_tags,
-                    known_record_defs,
+                    ctx,
                 )
             }
         };
@@ -3047,11 +2877,7 @@ fn lower_literal_case(
             let guard_expr = lower_expr(
                 guard_expr,
                 None,
-                unit_variant_tags,
-                qualified_variant_tags,
-                pattern_variant_tags,
-                pattern_qualified_tags,
-                known_record_defs,
+                ctx,
             );
             let mut binds =
                 build_literal_arm_bindings(bind_name.as_deref(), &payload_binds, &scrutinee_expr);
@@ -3085,11 +2911,7 @@ fn lower_literal_case(
                     payload_binds,
                     &scrutinee_expr,
                     ty_hint.clone(),
-                    unit_variant_tags,
-                    qualified_variant_tags,
-                    pattern_variant_tags,
-                    pattern_qualified_tags,
-                    known_record_defs,
+                    ctx,
                 )),
                 else_branch: else_expr.as_ref().map(|expr| Box::new(expr.clone())),
             },
@@ -3107,16 +2929,11 @@ fn lower_literal_case(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn lower_record_case(
     scrutinee: &Expr,
     arms: &[CaseArm],
     ty_hint: Option<Type>,
-    unit_variant_tags: &UnitVariantTags,
-    qualified_variant_tags: &QualifiedUnitVariantTags,
-    pattern_variant_tags: &PatternVariantTags,
-    pattern_qualified_tags: &QualifiedPatternVariantTags,
-    known_record_defs: &KnownRecordDefs,
+    ctx: &LowerCtx,
 ) -> Option<HirExprKind> {
     enum RecordFallbackArm<'a> {
         Wild {
@@ -3173,11 +2990,7 @@ fn lower_record_case(
     let lowered_scrutinee = lower_expr(
         scrutinee,
         None,
-        unit_variant_tags,
-        qualified_variant_tags,
-        pattern_variant_tags,
-        pattern_qualified_tags,
-        known_record_defs,
+        ctx,
     );
     let safe_scrutinee = matches!(
         lowered_scrutinee.kind,
@@ -3219,11 +3032,7 @@ fn lower_record_case(
                 let then_branch = lower_expr(
                     body,
                     ty_hint.clone(),
-                    unit_variant_tags,
-                    qualified_variant_tags,
-                    pattern_variant_tags,
-                    pattern_qualified_tags,
-                    known_record_defs,
+                    ctx,
                 );
                 let Some(guard_expr) = guard else {
                     // Unconditional fallback shadows any later fallback arm.
@@ -3233,11 +3042,7 @@ fn lower_record_case(
                 let condition = lower_expr(
                     guard_expr,
                     None,
-                    unit_variant_tags,
-                    qualified_variant_tags,
-                    pattern_variant_tags,
-                    pattern_qualified_tags,
-                    known_record_defs,
+                    ctx,
                 );
                 else_expr = Some(HirExpr {
                     kind: HirExprKind::If {
@@ -3258,11 +3063,7 @@ fn lower_record_case(
                 let then_body = lower_expr(
                     body,
                     ty_hint.clone(),
-                    unit_variant_tags,
-                    qualified_variant_tags,
-                    pattern_variant_tags,
-                    pattern_qualified_tags,
-                    known_record_defs,
+                    ctx,
                 );
                 let then_branch = if binds.is_empty() {
                     then_body
@@ -3284,11 +3085,7 @@ fn lower_record_case(
                     let lowered_guard = lower_expr(
                         guard_expr,
                         None,
-                        unit_variant_tags,
-                        qualified_variant_tags,
-                        pattern_variant_tags,
-                        pattern_qualified_tags,
-                        known_record_defs,
+                        ctx,
                     );
                     let mut guard_bindings =
                         build_record_arm_bindings(Some(name.as_str()), &[], &scrutinee_expr);
@@ -3361,11 +3158,7 @@ fn lower_record_case(
             let guard_expr = lower_expr(
                 guard_expr,
                 None,
-                unit_variant_tags,
-                qualified_variant_tags,
-                pattern_variant_tags,
-                pattern_qualified_tags,
-                known_record_defs,
+                ctx,
             );
             let mut binds =
                 build_record_arm_bindings(bind_name.as_deref(), &field_binds, &scrutinee_expr);
@@ -3399,11 +3192,7 @@ fn lower_record_case(
             field_binds,
             &scrutinee_expr,
             ty_hint.clone(),
-            unit_variant_tags,
-            qualified_variant_tags,
-            pattern_variant_tags,
-            pattern_qualified_tags,
-            known_record_defs,
+            ctx,
         );
 
         let Some(condition) = condition else {
@@ -3821,27 +3610,18 @@ fn collect_constructor_payload_pattern(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn lower_arm_body(
     body: &Expr,
     bind_name: Option<String>,
     payload_binds: Vec<ConstructorPayloadBind>,
     scrutinee_expr: &HirExpr,
     ty_hint: Option<Type>,
-    unit_variant_tags: &UnitVariantTags,
-    qualified_variant_tags: &QualifiedUnitVariantTags,
-    pattern_variant_tags: &PatternVariantTags,
-    pattern_qualified_tags: &QualifiedPatternVariantTags,
-    known_record_defs: &KnownRecordDefs,
+    ctx: &LowerCtx,
 ) -> HirExpr {
     let lowered_body = lower_expr(
         body,
         ty_hint,
-        unit_variant_tags,
-        qualified_variant_tags,
-        pattern_variant_tags,
-        pattern_qualified_tags,
-        known_record_defs,
+        ctx,
     );
     let mut bind_exprs =
         build_literal_arm_bindings(bind_name.as_deref(), &payload_binds, scrutinee_expr);
@@ -4247,27 +4027,18 @@ fn literal_case_type(lit: LiteralCaseValue) -> Type {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn lower_record_arm_body(
     body: &Expr,
     bind_name: Option<String>,
     field_binds: Vec<RecordFieldBind>,
     scrutinee_expr: &HirExpr,
     ty_hint: Option<Type>,
-    unit_variant_tags: &UnitVariantTags,
-    qualified_variant_tags: &QualifiedUnitVariantTags,
-    pattern_variant_tags: &PatternVariantTags,
-    pattern_qualified_tags: &QualifiedPatternVariantTags,
-    known_record_defs: &KnownRecordDefs,
+    ctx: &LowerCtx,
 ) -> HirExpr {
     let lowered_body = lower_expr(
         body,
         ty_hint,
-        unit_variant_tags,
-        qualified_variant_tags,
-        pattern_variant_tags,
-        pattern_qualified_tags,
-        known_record_defs,
+        ctx,
     );
     let mut bind_exprs =
         build_record_arm_bindings(bind_name.as_deref(), &field_binds, scrutinee_expr);
@@ -4325,7 +4096,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let HirDecl::Function(function) = &lowered.declarations[0] else {
             panic!("expected lowered function declaration");
         };
@@ -4349,7 +4120,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let HirDecl::Function(function) = &lowered.declarations[0] else {
             panic!("expected lowered function declaration");
         };
@@ -4371,7 +4142,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let HirDecl::Function(function) = &lowered.declarations[0] else {
             panic!("expected lowered function declaration");
         };
@@ -4401,7 +4172,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let HirDecl::Function(function) = &lowered.declarations[0] else {
             panic!("expected lowered function declaration");
         };
@@ -4429,7 +4200,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -4469,7 +4240,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -4512,7 +4283,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -4552,7 +4323,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -4594,7 +4365,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -4629,7 +4400,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let HirDecl::Function(function) = &lowered.declarations[0] else {
             panic!("expected lowered function declaration");
         };
@@ -4649,7 +4420,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let HirDecl::Function(function) = &lowered.declarations[0] else {
             panic!("expected lowered function declaration");
         };
@@ -4671,7 +4442,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let HirDecl::Function(function) = &lowered.declarations[0] else {
             panic!("expected lowered function declaration");
         };
@@ -4693,7 +4464,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let HirDecl::Function(function) = &lowered.declarations[0] else {
             panic!("expected lowered function declaration");
         };
@@ -4733,7 +4504,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let HirDecl::Function(function) = &lowered.declarations[0] else {
             panic!("expected lowered function declaration");
         };
@@ -4760,7 +4531,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let HirDecl::Function(function) = &lowered.declarations[0] else {
             panic!("expected lowered function declaration");
         };
@@ -4798,7 +4569,7 @@ mod tests {
         );
         env.bind("Math.answer".to_string(), TypeScheme::mono(Type::Int));
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -4849,7 +4620,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -4897,7 +4668,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -4941,7 +4712,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -4987,7 +4758,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -5024,7 +4795,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -5065,7 +4836,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let HirDecl::Function(function) = &lowered.declarations[0] else {
             panic!("expected lowered function declaration");
         };
@@ -5102,7 +4873,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let HirDecl::Function(function) = &lowered.declarations[0] else {
             panic!("expected lowered function declaration");
         };
@@ -5128,7 +4899,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let HirDecl::Function(function) = &lowered.declarations[0] else {
             panic!("expected lowered function declaration");
         };
@@ -5164,7 +4935,7 @@ mod tests {
             TypeScheme::mono(Type::Function(FunctionType::pure(vec![], Type::Unit))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let HirDecl::Function(function) = &lowered.declarations[0] else {
             panic!("expected lowered function declaration");
         };
@@ -5187,7 +4958,7 @@ mod tests {
             TypeScheme::mono(Type::Function(FunctionType::pure(vec![], Type::Int))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -5230,7 +5001,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -5275,7 +5046,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -5332,7 +5103,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -5398,7 +5169,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -5458,7 +5229,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -5498,7 +5269,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -5559,7 +5330,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -5606,7 +5377,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -5660,7 +5431,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -5711,7 +5482,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -5765,7 +5536,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -5833,7 +5604,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -5865,7 +5636,7 @@ mod tests {
             TypeScheme::mono(Type::Function(FunctionType::pure(vec![], Type::Int))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -5892,7 +5663,7 @@ mod tests {
             TypeScheme::mono(Type::Function(FunctionType::pure(vec![], Type::Int))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -5927,7 +5698,7 @@ mod tests {
             TypeScheme::mono(Type::Function(FunctionType::pure(vec![], Type::Int))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -5959,7 +5730,7 @@ mod tests {
             TypeScheme::mono(Type::Function(FunctionType::pure(vec![], Type::Int))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -5999,7 +5770,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let HirDecl::Function(function) = &lowered.declarations[0] else {
             panic!("expected lowered function declaration");
         };
@@ -6023,7 +5794,7 @@ mod tests {
             TypeScheme::mono(Type::Function(FunctionType::pure(vec![], Type::Int))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -6058,7 +5829,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let HirDecl::Function(function) = &lowered.declarations[0] else {
             panic!("expected lowered function declaration");
         };
@@ -6091,7 +5862,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let HirDecl::Function(function) = &lowered.declarations[0] else {
             panic!("expected lowered function declaration");
         };
@@ -6121,7 +5892,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let HirDecl::Function(function) = &lowered.declarations[0] else {
             panic!("expected lowered function declaration");
         };
@@ -6159,7 +5930,7 @@ mod tests {
             TypeScheme::mono(Type::Function(FunctionType::pure(vec![], Type::Int))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -6200,7 +5971,7 @@ mod tests {
             TypeScheme::mono(Type::Function(FunctionType::pure(vec![], Type::Int))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -6258,7 +6029,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let HirDecl::Function(function) = &lowered.declarations[0] else {
             panic!("expected lowered function declaration");
         };
@@ -6282,7 +6053,7 @@ mod tests {
             TypeScheme::mono(Type::Function(FunctionType::pure(vec![], Type::Int))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let function = lowered
             .declarations
             .iter()
@@ -6328,7 +6099,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let HirDecl::Function(function) = &lowered.declarations[0] else {
             panic!("expected lowered function declaration");
         };
@@ -6352,7 +6123,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let HirDecl::Function(function) = &lowered.declarations[0] else {
             panic!("expected lowered function declaration");
         };
@@ -6376,7 +6147,7 @@ mod tests {
             ))),
         );
 
-        let lowered = lower_module(&module, &env);
+        let lowered = lower_module(&module, &env, &Default::default());
         let HirDecl::Function(function) = &lowered.declarations[0] else {
             panic!("expected lowered function declaration");
         };

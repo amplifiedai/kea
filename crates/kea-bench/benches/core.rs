@@ -380,7 +380,7 @@ fn build_fail_result_manual_source(depth: usize) -> String {
 
 fn build_io_stdout_throughput_source(writes: usize) -> String {
     format!(
-        "effect IO\n  fn stdout(msg: String) -> Unit\n\nfn print_n(n: Int, acc: Int) -[IO]> Int\n  if n == 0\n    acc\n  else\n    IO.stdout(\"x\")\n    print_n(n - 1, acc + 1)\n\nfn main() -> Int\n  print_n({writes}, 0)\n"
+        "effect IO\n  fn stdout(msg: String) -> Unit\n\nfn print_n(n: Int, acc: Int) -[IO]> Int\n  if n == 0\n    acc\n  else\n    IO.stdout(\"x\")\n    print_n(n - 1, acc + 1)\n\nfn main() -[IO]> Int\n  print_n({writes}, 0)\n"
     )
 }
 

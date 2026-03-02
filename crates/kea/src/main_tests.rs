@@ -2378,6 +2378,47 @@
         let _ = std::fs::remove_file(source_path);
     }
 
+    /// §5.13: When the body constrains `Reader Int`, the handler must resume
+    /// with an Int, not a String.  Shared type-variable instantiation
+    /// connects the body's concrete type parameter to the handler clause.
+    #[test]
+    fn compile_rejects_polymorphic_effect_resume_type_mismatch() {
+        let source_path = write_temp_source(
+            "effect Reader R\n  fn ask() -> R\n\nfn app() -[Reader Int]> Int\n  Reader.ask() + 1\n\nfn main() -> Int\n  handle app()\n    Reader.ask() -> resume \"bad\"\n",
+            "kea-cli-poly-effect-resume-mismatch",
+            "kea",
+        );
+
+        let err = run_file(&source_path)
+            .expect_err("should reject polymorphic effect resume type mismatch");
+        assert!(
+            err.contains("type mismatch"),
+            "expected type mismatch diagnostic for polymorphic effect resume, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    /// §5.13: State effect — put constrains the type parameter, get's resume
+    /// must match.  Handler resumes get() with String when State is Int.
+    #[test]
+    fn compile_rejects_state_handler_resume_type_mismatch() {
+        let source_path = write_temp_source(
+            "effect State S\n  fn get() -> S\n  fn put(val: S) -> Unit\n\nfn app() -[State Int]> Int\n  State.put(10)\n  State.get()\n\nfn main() -> Int\n  handle app()\n    State.get() -> resume \"bad\"\n    State.put(val) -> resume ()\n",
+            "kea-cli-state-resume-mismatch",
+            "kea",
+        );
+
+        let err = run_file(&source_path)
+            .expect_err("should reject State handler resume type mismatch");
+        assert!(
+            err.contains("type mismatch"),
+            "expected type mismatch diagnostic for State resume, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
     #[test]
     fn compile_rejects_effect_operation_call_with_too_many_arguments() {
         let source_path = write_temp_source(

@@ -3551,6 +3551,21 @@ theorem native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_st
 
 /--
 Packaged route: mismatch-extension soundness from packaged core soundness plus
+global strict-top typing (via strict-top->coherence bridge).
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_strict_top_typing_packaged
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core : native_core_soundness_prop bodyStep)
+    (h_strict_top_typing : native_handler_strict_top_typing_prop) :
+    native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep := by
+  exact native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_metadata_coherence
+    clauseSem mismatchSem bodyStep h_core
+    ((native_handler_strict_top_typing_prop_iff_metadata_coherence).1 h_strict_top_typing)
+
+/--
+Packaged route: mismatch-extension soundness from packaged core soundness plus
 a scoped-to-strict judgment lift.
 -/
 theorem native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_scoped_to_strict_lift
@@ -3563,6 +3578,21 @@ theorem native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_sc
   exact native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_metadata_coherence
     clauseSem mismatchSem bodyStep h_core
     (native_handler_perform_metadata_coherence_of_scoped_to_strict_lift h_lift)
+
+/--
+Packaged route: mismatch-extension soundness from packaged core soundness plus
+scoped-to-strict lift, routed through strict-top typing.
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_scoped_to_strict_lift_via_strict_top_typing_packaged
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core : native_core_soundness_prop bodyStep)
+    (h_lift : native_handler_scoped_to_strict_lift_prop) :
+    native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep := by
+  exact native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_strict_top_typing_packaged
+    clauseSem mismatchSem bodyStep h_core
+    (native_handler_strict_top_typing_prop_of_scoped_to_strict_lift h_lift)
 
 /-- Declarative field typing is functional on the core slice. -/
 theorem hasFieldsType_unique

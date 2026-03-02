@@ -93,6 +93,8 @@ pub enum Reason {
     TraitBound { trait_name: String },
     /// Actor operation: spawn, send, or call requires Actor type.
     ActorOp,
+    /// Handle expression: body's effect type parameter must match handler.
+    HandleEffectPayload,
 }
 
 // ---------------------------------------------------------------------------
@@ -422,6 +424,16 @@ impl InferenceContext {
     pub fn take_type_annotations(&mut self) -> crate::typeck::TypeAnnotations {
         self.unifier.take_type_annotations()
     }
+
+    /// Resolve all recorded expression types using the final substitution
+    /// and return them. This takes the map from the underlying unifier.
+    pub fn resolve_expr_types(&mut self) -> std::collections::BTreeMap<Span, Type> {
+        let raw = std::mem::take(&mut self.unifier.expr_types);
+        let sub = &self.unifier.substitution;
+        raw.into_iter()
+            .map(|(span, ty)| (span, sub.apply(&ty)))
+            .collect()
+    }
 }
 
 impl Default for InferenceContext {
@@ -573,6 +585,9 @@ pub struct Unifier {
     capture_constraints: bool,
     /// Captured constraints for observability tools.
     captured_constraints: Vec<Constraint>,
+    /// Per-expression types recorded during inference, keyed by source span.
+    /// Used to propagate concrete types to HIR lowering for monomorphization.
+    pub expr_types: std::collections::BTreeMap<Span, Type>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -696,6 +711,7 @@ impl Unifier {
             unify_trace: Vec::new(),
             capture_constraints: false,
             captured_constraints: Vec::new(),
+            expr_types: std::collections::BTreeMap::new(),
         }
     }
 
@@ -711,6 +727,11 @@ impl Unifier {
         let id = self.fresh_type_var();
         self.type_var_kinds.insert(id, kind);
         id
+    }
+
+    /// Record the inferred type for an expression, keyed by its source span.
+    pub fn record_expr_type(&mut self, span: Span, ty: Type) {
+        self.expr_types.insert(span, ty);
     }
 
     /// Replace the active annotation type-parameter scope.
@@ -2617,10 +2638,12 @@ fn type_mismatch_message(
             format!("case arms have different types: `{expected}` vs `{actual}`"),
             Some("all arms must return the same type".into()),
         ),
-        Reason::RecordField { label } => (
-            format!("field `{label}` has type `{expected}`, but got `{actual}`"),
-            None,
-        ),
+        Reason::RecordField { label } => {
+            (
+                format!("field `{label}` has type `{expected}`, but got `{actual}`"),
+                None,
+            )
+        }
         Reason::TraitBound { trait_name } => (
             format!("type `{actual}` does not implement trait `{trait_name}`"),
             Some(format!(

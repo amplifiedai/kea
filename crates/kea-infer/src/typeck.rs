@@ -306,6 +306,13 @@ pub struct TypeEnv {
     actor_context_depth: usize,
     /// Active resume contexts for nested handler clauses.
     resume_contexts: Vec<ResumeContext>,
+    /// Ambient effect row variables for nested handle expressions.
+    ///
+    /// When non-empty, function calls inside the body of a handle expression
+    /// constrain their effect rows against the topmost ambient via Rémy row
+    /// unification.  This lets handle decompose the body's accumulated effects
+    /// and extract concrete effect type parameters (§5.13).
+    ambient_effect_rows: Vec<RowVarId>,
 }
 
 impl TypeEnv {
@@ -315,7 +322,7 @@ impl TypeEnv {
         }
     }
 
-    fn update_bound_function_effect(&mut self, name: &str, row: &EffectRow) {
+    pub fn update_bound_function_effect(&mut self, name: &str, row: &EffectRow) {
         for scope in self.bindings.iter_mut().rev() {
             if let Some(scheme) = scope.get_mut(name) {
                 Self::apply_effect_row_to_scheme(scheme, row);
@@ -381,6 +388,7 @@ impl TypeEnv {
             stream_contexts: Vec::new(),
             actor_context_depth: 0,
             resume_contexts: Vec::new(),
+            ambient_effect_rows: Vec::new(),
         }
     }
 
@@ -500,10 +508,27 @@ impl TypeEnv {
         name: &str,
         scheme: TypeScheme,
     ) {
+        self.register_module_type_scheme_exact_with_effects(
+            module_path,
+            name,
+            scheme,
+            Effects::pure_deterministic(),
+        );
+    }
+
+    /// Like `register_module_type_scheme_exact`, but with an explicit
+    /// `Effects` classifier for the separate effect system.
+    pub fn register_module_type_scheme_exact_with_effects(
+        &mut self,
+        module_path: &str,
+        name: &str,
+        scheme: TypeScheme,
+        effects: Effects,
+    ) {
         self.module_type_schemes
             .entry(module_path.to_string())
             .or_default()
-            .insert(name.to_string(), (scheme, Effects::pure_deterministic()));
+            .insert(name.to_string(), (scheme, effects));
         self.ensure_module_alias_for_path(module_path);
     }
 
@@ -935,6 +960,18 @@ impl TypeEnv {
 
     fn current_resume_context(&self) -> Option<&ResumeContext> {
         self.resume_contexts.last()
+    }
+
+    fn push_ambient_effect_row(&mut self, row_var: RowVarId) {
+        self.ambient_effect_rows.push(row_var);
+    }
+
+    fn pop_ambient_effect_row(&mut self) {
+        self.ambient_effect_rows.pop();
+    }
+
+    fn current_ambient_effect_row(&self) -> Option<RowVarId> {
+        self.ambient_effect_rows.last().copied()
     }
 
     /// Return all visible names with their type representations.
@@ -4823,6 +4860,7 @@ fn resolve_annotation_with_type_params(
             )
             .or_else(|| effect_annotation_to_compat_row(&effect.node, Some(records)))
             .unwrap_or_else(pure_effect_row);
+            let effects = patch_effect_row_type_params(effects, &effect.node, type_param_scope);
             Some(Type::Function(FunctionType {
                 params: param_types?,
                 ret: Box::new(resolve_annotation_with_type_params(
@@ -7389,6 +7427,33 @@ fn resolve_annotation_or_bare_df(
                     .map(|_| EffectRow::open(vec![], unifier.fresh_row_var()))
             })
             .unwrap_or_else(pure_effect_row);
+            let mut effects = effects;
+            // Fix effect payloads: the compat row builder always uses Unit for
+            // non-Fail effects.  Replace Unit payloads with properly resolved
+            // types — either concrete (Int), annotation scope vars (C → Var),
+            // or fresh type vars for unknown names.
+            if let kea_ast::EffectAnnotation::Row(row) = &effect.node {
+                for item in &row.effects {
+                    if let Some(payload_name) = &item.payload {
+                        let param_ty = resolve_effect_payload_type(payload_name, Some(records))
+                            .or_else(|| {
+                                unifier
+                                    .annotation_type_param_scope
+                                    .get(payload_name)
+                                    .cloned()
+                            })
+                            .unwrap_or_else(|| {
+                                Type::Var(unifier.fresh_type_var_with_kind(Kind::Star))
+                            });
+                        let label = Label::new(&item.name);
+                        for (field_label, field_ty) in &mut effects.row.fields {
+                            if field_label == &label && *field_ty == Type::Unit {
+                                *field_ty = param_ty.clone();
+                            }
+                        }
+                    }
+                }
+            }
             Some(Type::Function(FunctionType {
                 params: param_types?,
                 ret: Box::new(resolve_annotation_or_bare_df(
@@ -7922,6 +7987,12 @@ pub fn register_effect_decl(
         kinds.insert(tv, Kind::Star);
     }
 
+    // Effect payload from type parameter(s), shared across all operations.
+    // For parameterised effects (Reader(R), State(S), Fail(E)), the first
+    // type parameter becomes the effect row payload, connecting the row
+    // entry (e.g. Reader<Int>) to operation type variables per §5.13.
+    let effect_payload_from_type_params = type_param_scope.values().next().cloned();
+
     for op in &effect_decl.operations {
         let mut param_tys = Vec::with_capacity(op.params.len());
         let mut missing_param_annotations = Vec::new();
@@ -7989,11 +8060,19 @@ pub fn register_effect_decl(
             continue;
         };
 
-        let effect_payload = if module_short == "Fail" {
-            param_tys.first().cloned().unwrap_or(Type::Unit)
-        } else {
-            Type::Unit
-        };
+        // Use type parameter payload when available (all parameterised effects).
+        // Fall back to Fail-specific per-operation payload for non-parameterised
+        // `effect Fail` declarations.
+        let effect_payload = effect_payload_from_type_params
+            .clone()
+            .or_else(|| {
+                if module_short == "Fail" {
+                    param_tys.first().cloned()
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(Type::Unit);
 
         let op_ty = Type::Function(FunctionType {
             params: param_tys,
@@ -8015,7 +8094,16 @@ pub fn register_effect_decl(
 
         env.register_module_function(&module_path, &op.name.node);
         env.register_effect_operation(&module_path, &op.name.node);
-        env.register_module_type_scheme(&module_path, &op.name.node, op_scheme, Effects::impure());
+        // Use _exact_with_effects to preserve the precise effect row
+        // (e.g. [State: Var(s_var)]) while keeping the Effects::impure()
+        // classifier for the separate effect system.  The normal
+        // register_module_type_scheme would replace our row with [IO: Unit].
+        env.register_module_type_scheme_exact_with_effects(
+            &module_path,
+            &op.name.node,
+            op_scheme,
+            Effects::impure(),
+        );
 
         let qualified_name = format!("{module_path}.{}", op.name.node);
         env.set_function_signature(
@@ -8044,7 +8132,7 @@ pub fn register_effect_decl(
                 param_effect_rows,
                 effect_row: EffectRow::closed(vec![(
                     Label::new(module_short.clone()),
-                    effect_payload,
+                    effect_payload.clone(),
                 )]),
                 instantiate_on_call: true,
             },
@@ -8221,8 +8309,10 @@ fn infer_lambda_type_effect_row(
         return unknown_effect_row(&mut next_effect_var);
     }
 
+    let resolved_row = effect_unifier.substitution.apply_row(&root.row);
+
     EffectRow {
-        row: effect_unifier.substitution.apply_row(&root.row),
+        row: resolved_row,
     }
 }
 
@@ -8674,6 +8764,10 @@ fn effect_row_item_to_compat_row(
     row_var_bindings: &mut BTreeMap<String, RowVarId>,
     next_row_var: &mut u32,
 ) -> Option<EffectRow> {
+    // Fail effects always resolve their payload so the separate system can
+    // track Fail specialisation.  Non-Fail effects only need label-level
+    // tracking in the separate system — the main unifier handles payload
+    // precision via Rémy row unification in the ambient effect row.
     if item.name == "Fail" {
         let payload = match &item.payload {
             Some(name) => resolve_effect_payload_type(name, records)?,
@@ -8700,6 +8794,38 @@ fn effect_row_item_to_compat_row(
     }
 
     Some(effect_item_name_to_compat_row(&item.name))
+}
+
+/// Patch effect row payloads that reference type parameters.
+///
+/// When a function type annotation like `fn() -[Reader C]> Int` is resolved,
+/// the compat row builder can't resolve `C` (a type parameter) and falls back
+/// to `Type::Unit`.  This post-processing step replaces those `Unit` placeholders
+/// with the actual type variable from `type_param_scope`, so that Rémy row
+/// unification can properly connect the payload to concrete types.
+fn patch_effect_row_type_params(
+    mut effects: EffectRow,
+    effect_ann: &kea_ast::EffectAnnotation,
+    type_param_scope: &BTreeMap<String, Type>,
+) -> EffectRow {
+    if type_param_scope.is_empty() {
+        return effects;
+    }
+    if let kea_ast::EffectAnnotation::Row(row) = effect_ann {
+        for item in &row.effects {
+            if let Some(payload_name) = &item.payload
+                && let Some(param_ty) = type_param_scope.get(payload_name)
+            {
+                let label = Label::new(&item.name);
+                for (field_label, field_ty) in &mut effects.row.fields {
+                    if field_label == &label && *field_ty == Type::Unit {
+                        *field_ty = param_ty.clone();
+                    }
+                }
+            }
+        }
+    }
+    effects
 }
 
 fn append_effect_row_fields_unique(
@@ -9078,6 +9204,39 @@ pub fn validate_declared_fn_effect_with_env(
 }
 
 /// Validate an optional declaration-level effect annotation against an inferred row.
+/// Resolve a function declaration's effect annotation to an [`EffectRow`] with
+/// properly resolved payloads (e.g. `State Int` → `[State: Int]`).
+///
+/// Returns `None` if the function has no effect annotation, or if the
+/// annotation uses a variable/pure/legacy form.
+pub fn resolve_declared_effect_row(
+    fn_decl: &FnDecl,
+    records: &RecordRegistry,
+) -> Option<EffectRow> {
+    let ann = fn_decl.effect_annotation.as_ref()?;
+    let declared = parse_declared_effect(ann);
+    match &declared {
+        kea_ast::EffectAnnotation::Row(row) => {
+            if row.rest.is_some() {
+                // Open rows with a rest variable (e.g. `-[State S, e]>`)
+                // can't be fully resolved without the unifier's scope.
+                return None;
+            }
+            let mut fields = Vec::new();
+            for item in &row.effects {
+                let payload = match &item.payload {
+                    Some(name) => resolve_effect_payload_type(name, Some(records))
+                        .unwrap_or(Type::Unit),
+                    None => Type::Unit,
+                };
+                fields.push((Label::new(&item.name), payload));
+            }
+            Some(EffectRow::closed(fields))
+        }
+        _ => effect_annotation_to_compat_row(&declared, Some(records)),
+    }
+}
+
 pub fn validate_declared_fn_effect_row(
     fn_decl: &FnDecl,
     inferred_row: &EffectRow,
@@ -13101,7 +13260,68 @@ fn infer_handle_expr_type(
     traits: &TraitRegistry,
     sum_types: &SumTypeRegistry,
 ) -> Type {
+    // ── §5.13: determine the handled effect BEFORE body inference ───────
+    //
+    // We need to create shared type variable instantiations for the
+    // effect's type parameters so that body and handler clauses share the
+    // same type variables.  This implements the spec requirement that the
+    // handler knows the body's concrete effect type parameter.
+
+    let Some(first_clause) = clauses.first() else {
+        unifier.push_error(
+            Diagnostic::error(
+                Category::TypeError,
+                "handle expression requires at least one operation clause",
+            )
+            .at(span_to_loc(expr_span)),
+        );
+        // Still infer the body even without clauses.
+        let _handled_ty = infer_expr_bidir(handled, env, unifier, records, traits, sum_types);
+        return unifier.fresh_type();
+    };
+
+    let target_effect = first_clause.effect.node.clone();
+    let module_path = env
+        .module_aliases
+        .get(&target_effect)
+        .cloned()
+        .unwrap_or_else(|| format!("Kea.{target_effect}"));
+
+    // ── Create shared fresh type vars for the effect's type params ──────
+    //
+    // All operations of the same effect share the same type_vars (the
+    // effect's type parameters).  We create ONE set of fresh variables and
+    // use them for both body inference and handler clause processing.
+
+    let effect_type_vars = env
+        .lookup_module_type_scheme(&module_path, &first_clause.operation.node)
+        .map(|s| s.type_vars.clone())
+        .unwrap_or_default();
+
+    let shared_type_mapping: BTreeMap<TypeVarId, TypeVarId> = effect_type_vars
+        .iter()
+        .map(|&tv| (tv, unifier.fresh_type_var()))
+        .collect();
+
+    // ── Ambient effect row for body inference (§5.13) ──────────────────
+    //
+    // Push a fresh row variable as the ambient.  Every function call inside
+    // the body constrains its callee's effects against this ambient (see
+    // the Call arm above).  After body inference, we decompose the ambient
+    // to extract the target effect's concrete type parameter.
+
+    let body_ambient = unifier.fresh_row_var();
+    env.push_ambient_effect_row(body_ambient);
+
     let handled_ty = infer_expr_bidir(handled, env, unifier, records, traits, sum_types);
+
+    // ── Then-clause processing ──────────────────────────────────────────
+    //
+    // The then clause is semantically inside the handler's scope: effects
+    // like State.get() in a then clause are intercepted by the same
+    // handler.  Process it BEFORE popping the ambient so its effect calls
+    // constrain the ambient correctly.
+
     let mut result_ty = handled_ty.clone();
 
     if let Some(then_expr) = then_clause {
@@ -13124,18 +13344,78 @@ fn infer_handle_expr_type(
         result_ty = out_ty;
     }
 
-    let Some(first_clause) = clauses.first() else {
-        unifier.push_error(
-            Diagnostic::error(
-                Category::TypeError,
-                "handle expression requires at least one operation clause",
-            )
-            .at(span_to_loc(expr_span)),
+    env.pop_ambient_effect_row();
+
+    // ── Decompose ambient to extract residual effects ───────────────────
+    //
+    // The ambient now contains all effects performed by the body AND the
+    // then clause (both are inside the handler's scope).  Decompose it to
+    // strip the handled effect and propagate residuals to the outer ambient.
+    //
+    // We decompose with a fresh throwaway payload variable so that
+    // imprecise annotation payloads (e.g. Unit for unresolvable generic
+    // type params) don't poison shared_payload_var.  Then, if the resolved
+    // ambient has a PRECISE (non-Unit) payload for the target effect, we
+    // separately constrain shared_payload_var to that payload.
+
+    let rest_var = if !shared_type_mapping.is_empty() {
+        let shared_payload_var = shared_type_mapping.values().next().copied().unwrap();
+        let decompose_payload = unifier.fresh_type();
+        let rest = unifier.fresh_row_var();
+        constrain_row_eq(
+            unifier,
+            &RowType::open(
+                vec![(Label::new(target_effect.clone()), decompose_payload.clone())],
+                rest,
+            ),
+            &RowType::empty_open(body_ambient),
+            &Provenance {
+                span: expr_span,
+                reason: Reason::HandleEffectPayload,
+            },
         );
-        return unifier.fresh_type();
+
+        // Link shared_payload_var to the ambient payload when it's precise.
+        // The resolved decompose_payload may be a concrete type (e.g. Int
+        // from `base: () -[Reader Int]> Int`) or Unit (placeholder from an
+        // annotation that couldn't resolve a generic type param like C).
+        // Only constrain when non-Unit to avoid false conflicts.
+        let resolved_payload = unifier.substitution.apply(&decompose_payload);
+        if resolved_payload != Type::Unit {
+            constrain_type_eq(
+                unifier,
+                &Type::Var(shared_payload_var),
+                &resolved_payload,
+                &Provenance {
+                    span: expr_span,
+                    reason: Reason::HandleEffectPayload,
+                },
+            );
+        }
+
+        Some(rest)
+    } else {
+        None
     };
 
-    let target_effect = first_clause.effect.node.clone();
+    // Propagate residual (unhandled) effects to the outer ambient so
+    // nested handle expressions accumulate correctly.
+    if let Some(rest) = rest_var
+        && let Some(outer_ambient) = env.current_ambient_effect_row()
+    {
+        constrain_row_eq(
+            unifier,
+            &RowType::empty_open(rest),
+            &RowType::empty_open(outer_ambient),
+            &Provenance {
+                span: expr_span,
+                reason: Reason::HandleEffectPayload,
+            },
+        );
+    }
+
+    // ── Catch-on-non-failing body check ─────────────────────────────────
+
     if is_catch_desugar_shape(clauses, then_clause)
         && target_effect == "Fail"
         && let Some(resolved_handled_row) = infer_resolved_expr_effect_row(handled, env)
@@ -13151,11 +13431,8 @@ fn infer_handle_expr_type(
         return unifier.fresh_type();
     }
 
-    let module_path = env
-        .module_aliases
-        .get(&target_effect)
-        .cloned()
-        .unwrap_or_else(|| format!("Kea.{target_effect}"));
+    // ── Process handler clauses ─────────────────────────────────────────
+
     let mut seen_ops = BTreeSet::new();
 
     for clause in clauses {
@@ -13199,7 +13476,69 @@ fn infer_handle_expr_type(
             );
             continue;
         };
-        let op_ty = instantiate_with_span(&op_scheme, unifier, clause.span);
+
+        // Instantiate using SHARED type mapping for the effect's type
+        // params.  Any operation-specific type vars (e.g. `a` in
+        // `fail(e: E) -> a`) still get independent fresh variables.
+        let op_ty = if shared_type_mapping.is_empty() {
+            instantiate_with_span(&op_scheme, unifier, clause.span)
+        } else {
+            // Build a full mapping: shared vars for effect type params,
+            // fresh vars for any remaining operation-specific type vars.
+            let mut full_type_map = shared_type_mapping.clone();
+            for &tv in &op_scheme.type_vars {
+                full_type_map.entry(tv).or_insert_with(|| {
+                    if let Some(kind) = op_scheme.kinds.get(&tv) {
+                        unifier.fresh_type_var_with_kind(kind.clone())
+                    } else {
+                        unifier.fresh_type_var()
+                    }
+                });
+            }
+            let mut row_map = BTreeMap::new();
+            for &rv in &op_scheme.row_vars {
+                row_map.insert(rv, unifier.fresh_row_var());
+            }
+            let mut dim_map = BTreeMap::new();
+            for &dv in &op_scheme.dim_vars {
+                dim_map.insert(dv, unifier.fresh_dim_var());
+            }
+            // Transfer lacks constraints.
+            for (&old_rv, labels) in &op_scheme.lacks {
+                if let Some(&new_rv) = row_map.get(&old_rv) {
+                    for label in labels {
+                        let prov = Provenance {
+                            span: clause.span,
+                            reason: Reason::RowExtension {
+                                label: label.clone(),
+                            },
+                        };
+                        constrain_lacks(unifier, new_rv, label.clone(), &prov);
+                    }
+                }
+            }
+            // Transfer trait bounds.
+            for (&old_tv, traits_set) in &op_scheme.bounds {
+                if let Some(&new_tv) = full_type_map.get(&old_tv) {
+                    for trait_name in traits_set {
+                        let prov = Provenance {
+                            span: clause.span,
+                            reason: Reason::TraitBound {
+                                trait_name: trait_name.clone(),
+                            },
+                        };
+                        constrain_trait_obligation(
+                            unifier,
+                            &Type::Var(new_tv),
+                            trait_name,
+                            &prov,
+                        );
+                    }
+                }
+            }
+            rename_type(&op_scheme.ty, &full_type_map, &row_map, &dim_map)
+        };
+
         let resolved_op_ty = unifier.substitution.apply(&op_ty);
         let Type::Function(op_fn) = resolved_op_ty else {
             unifier.push_error(
@@ -13328,7 +13667,7 @@ fn infer_expr_bidir(
         }
     };
 
-    match &expr.node {
+    let ty = match &expr.node {
         // -- Literals --
         ExprKind::Lit(lit) => match lit {
             Lit::Int(_) => Type::Int,
@@ -13349,7 +13688,9 @@ fn infer_expr_bidir(
 
         // -- Variable reference --
         ExprKind::Var(name) => match env.lookup(name) {
-            Some(scheme) => instantiate_with_span(scheme, unifier, expr.span),
+            Some(scheme) => {
+                instantiate_with_span(scheme, unifier, expr.span)
+            }
             None => {
                 unifier.push_error(
                     Diagnostic::error(
@@ -13542,8 +13883,28 @@ fn infer_expr_bidir(
                     push_annotation_arity_mismatch(unifier, ann.span, &name, expected, got);
                 }
             }
-            let lambda_effects =
-                infer_lambda_type_effect_row(params, &param_types, body, env, unifier);
+
+            // Use the separate effect system for label discovery, then
+            // replace each payload with a fresh type var from the MAIN
+            // unifier.  This avoids two problems:
+            //
+            // 1. Unit payloads from the separate system would cause
+            //    mismatches when unified with concrete types like
+            //    [State: Int] from a higher-order function's scheme.
+            //
+            // 2. Type vars from register_effect_decl (Var(s_var)) would
+            //    leak across functions in the main unifier's namespace,
+            //    creating spurious linkages.
+            //
+            // Fresh vars let Rémy row unification determine the actual
+            // payload types through constraints from function calls.
+            let mut lambda_effects = infer_lambda_type_effect_row(
+                params, &param_types, body, env, unifier,
+            );
+            for (_label, payload) in &mut lambda_effects.row.fields {
+                *payload = Type::Var(unifier.fresh_type_var());
+            }
+
             env.pop_scope();
             unifier.exit_lambda();
 
@@ -13714,6 +14075,23 @@ fn infer_expr_bidir(
                     &ft.ret,
                     &prov(Reason::FunctionArg { param_index: 0 }),
                 );
+                // §5.13: Accumulate callee effects into the ambient effect row
+                // so handle expressions can discover what effects the body performs.
+                if let Some(ambient_rv) = env.current_ambient_effect_row() {
+                    let callee_open = RowType::open(
+                        ft.effects.row.fields.clone(),
+                        ft.effects.row.rest.unwrap_or_else(|| unifier.fresh_row_var()),
+                    );
+                    constrain_row_eq(
+                        unifier,
+                        &callee_open,
+                        &RowType::empty_open(ambient_rv),
+                        &Provenance {
+                            span: expr.span,
+                            reason: Reason::HandleEffectPayload,
+                        },
+                    );
+                }
                 unifier.note_evidence_site(expr.span, &resolved_callable);
             } else {
                 let expected_params = params_for_call_unification(&resolved_callable, &arg_types);
@@ -13732,6 +14110,23 @@ fn infer_expr_bidir(
                     &resolved_callable,
                     &prov(Reason::FunctionArg { param_index: 0 }),
                 );
+                // §5.13: Accumulate callee effects into the ambient effect row.
+                // The expected_func_ty has an open effect row var that gets unified
+                // with the callee's actual effects above; link it to the ambient.
+                if let Some(ambient_rv) = env.current_ambient_effect_row()
+                    && let Type::Function(ref expected_ft) = expected_func_ty
+                    && let Some(call_rv) = expected_ft.effects.row.rest
+                {
+                    constrain_row_eq(
+                        unifier,
+                        &RowType::empty_open(call_rv),
+                        &RowType::empty_open(ambient_rv),
+                        &Provenance {
+                            span: expr.span,
+                            reason: Reason::HandleEffectPayload,
+                        },
+                    );
+                }
                 unifier.note_evidence_site(expr.span, &resolved_callable);
             }
 
@@ -15700,7 +16095,9 @@ fn infer_expr_bidir(
             }
             Type::Unit
         }
-    }
+    };
+    unifier.record_expr_type(expr.span, ty.clone());
+    ty
 }
 
 /// Check `expr` against an expected type.

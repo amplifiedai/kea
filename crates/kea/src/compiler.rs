@@ -22,7 +22,8 @@ use kea_infer::typeck::{
     RecordRegistry, SumTypeRegistry, TraitRegistry, TypeEnv, apply_where_clause,
     concrete_method_types_from_decls,
     infer_and_resolve_in_context, infer_fn_decl_effect_row, register_builtin_int_bitwise_methods,
-    register_effect_decl, register_fn_effect_signature, register_fn_signature, resolve_annotation,
+    register_effect_decl, register_fn_effect_signature, register_fn_signature,
+    resolve_annotation, resolve_declared_effect_row,
     check_expr_in_context,
     seed_fn_where_type_params_in_context, validate_declared_fn_effect_row_with_env_and_records,
     validate_module_annotations, validate_module_fn_annotations, validate_where_clause_traits,
@@ -124,7 +125,7 @@ fn compile_module_inner(source: &str, file_id: FileId) -> Result<CompilationCont
         None,
     )?;
 
-    typecheck_functions(
+    let expr_types = typecheck_functions(
         &module,
         &mut env,
         &mut records,
@@ -134,7 +135,7 @@ fn compile_module_inner(source: &str, file_id: FileId) -> Result<CompilationCont
         None,
     )?;
 
-    let hir = lower_module(&module, &env);
+    let hir = lower_module(&module, &env, &expr_types);
     let hir = kea_hir::monomorphize::monomorphize(&hir);
     let explicit_borrow_param_map = collect_borrow_param_positions(&module, None);
     let borrow_param_map = infer_auto_borrow_param_positions(&hir, &explicit_borrow_param_map);
@@ -417,7 +418,7 @@ pub fn process_module_in_env(
         return Err(diagnostics);
     }
 
-    if typecheck_functions(
+    let expr_types = match typecheck_functions(
         module,
         env,
         records,
@@ -425,13 +426,12 @@ pub fn process_module_in_env(
         sum_types,
         &mut diagnostics,
         None,
-    )
-    .is_err()
-    {
-        return Err(diagnostics);
-    }
+    ) {
+        Ok(et) => et,
+        Err(_) => return Err(diagnostics),
+    };
 
-    let hir = lower_module(module, env);
+    let hir = lower_module(module, env, &expr_types);
     let hir = kea_hir::monomorphize::monomorphize(&hir);
     let explicit_borrow_param_map = collect_borrow_param_positions(module, None);
     let borrow_param_map = infer_auto_borrow_param_positions(&hir, &explicit_borrow_param_map);
@@ -945,6 +945,7 @@ fn typecheck_loaded_modules(
     let mut sum_types = SumTypeRegistry::new();
     let mut diagnostics = Vec::new();
     let mut typed_modules = Vec::new();
+    let mut all_expr_types = std::collections::BTreeMap::new();
     let mut qualified_borrow_param_map = BTreeMap::new();
     for loaded in loaded_modules {
         let expanded = expand_impl_methods_for_codegen(&loaded.module);
@@ -998,7 +999,7 @@ fn typecheck_loaded_modules(
         // so those calls resolve in user modules without explicit imports.
         apply_hardcoded_prelude_reexports(&mut env, &traits);
 
-        typecheck_functions(
+        let expr_types = typecheck_functions(
             &expanded,
             &mut env,
             &mut records,
@@ -1008,7 +1009,8 @@ fn typecheck_loaded_modules(
             Some(&loaded.module_path),
         )?;
 
-        let hir = lower_module(&expanded, &env);
+        all_expr_types.extend(expr_types);
+        let hir = lower_module(&expanded, &env, &all_expr_types);
         let mut borrow_param_map = qualified_borrow_param_map.clone();
         borrow_param_map.extend(collect_borrow_param_positions(
             &expanded,
@@ -1069,7 +1071,7 @@ fn typecheck_loaded_modules(
     apply_hardcoded_prelude_reexports(&mut env, &traits);
 
     let module = merge_modules_for_codegen(&typed_modules);
-    let hir = lower_module(&module, &env);
+    let hir = lower_module(&module, &env, &all_expr_types);
     let hir = kea_hir::monomorphize::monomorphize(&hir);
     diagnostics.extend(validate_fip_annotations(&module, &hir));
     if has_errors(&diagnostics) {
@@ -2004,7 +2006,7 @@ fn typecheck_functions(
     sum_types: &mut SumTypeRegistry,
     diagnostics: &mut Vec<Diagnostic>,
     module_path: Option<&str>,
-) -> Result<(), String> {
+) -> Result<std::collections::BTreeMap<Span, Type>, String> {
     // Pre-register all function names and effect rows so forward references
     // (including mutual recursion) resolve correctly.  This also enables
     // transitive effect inference for forward-referenced effectful callees.
@@ -2032,6 +2034,8 @@ fn typecheck_functions(
         );
         env.set_function_effect_row(fn_decl.name.node.clone(), effects);
     }
+
+    let mut all_expr_types = std::collections::BTreeMap::new();
 
     for decl in &module.declarations {
         let fn_decl = match &decl.node {
@@ -2068,6 +2072,8 @@ fn typecheck_functions(
 
         diagnostics.extend(ctx.errors().iter().filter(|d| !is_error(d)).cloned());
 
+        all_expr_types.extend(ctx.resolve_expr_types());
+
         if !fn_decl.where_clause.is_empty()
             && let Some(scheme) = env.lookup(&fn_decl.name.node).cloned()
         {
@@ -2095,6 +2101,15 @@ fn typecheck_functions(
         env.set_function_effect_row(fn_decl.name.node.clone(), runtime_effect_row);
         register_fn_signature(&fn_decl, env);
 
+        // Update the bound scheme's effect row to match the declared
+        // annotation with properly resolved payloads.  This must happen
+        // AFTER set_function_effect_row, which calls update_bound_function_effect
+        // with the separate system's Unit payloads.  Our resolved annotation
+        // has the authoritative payload types (e.g. [State: Int]).
+        if let Some(declared_row) = resolve_declared_effect_row(&fn_decl, records) {
+            env.update_bound_function_effect(&fn_decl.name.node, &declared_row);
+        }
+
         if let Some(module_path) = module_path {
             let module_short = module_struct_name(module_path).to_string();
             if env.resolve_module_path_alias(&module_short).is_none() {
@@ -2121,7 +2136,7 @@ fn typecheck_functions(
         }
     }
 
-    Ok(())
+    Ok(all_expr_types)
 }
 
 /// Try to build a concrete `Type::Function` from a function declaration's
