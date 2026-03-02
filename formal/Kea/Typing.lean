@@ -2209,6 +2209,7 @@ theorem native_handler_step_ext_with_mismatch_progress_strict_top_of_core_progre
   exact native_handler_step_ext_with_mismatch_step_of_core_progress_and_strict_top_handle
     clauseSem mismatchSem bodyStep h_core_progress h_strict_top
 
+
 /--
 Global one-step soundness target (existence + preservation) for mismatched
 handler steps under strict top-level typing.
@@ -2320,6 +2321,56 @@ theorem native_handler_step_ext_with_mismatch_soundness_strict_of_core_progress_
       clauseSem mismatchSem bodyStep h_body_pres
   · exact native_handler_step_ext_with_mismatch_progress_strict_of_core_progress
       clauseSem mismatchSem bodyStep h_core_progress
+
+/--
+Strict-top and strict-local progress surfaces are equivalent at handle roots.
+-/
+theorem native_handler_step_ext_with_mismatch_progress_strict_top_prop_iff_progress_strict_prop
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) :
+    native_handler_step_ext_with_mismatch_progress_strict_top_prop
+        clauseSem mismatchSem bodyStep
+      ↔
+    native_handler_step_ext_with_mismatch_progress_strict_prop
+        clauseSem mismatchSem bodyStep := by
+  constructor
+  · intro h_top
+    intro env body opHandle argName resumeName argTy opRetTy clauseBody ty h_strict
+    exact h_top env body opHandle argName resumeName argTy opRetTy clauseBody ty
+      (hasTypeScopedStrictTop_of_handleStrict h_strict)
+  · intro h_local
+    intro env body opHandle argName resumeName argTy opRetTy clauseBody ty h_strict_top
+    exact h_local env body opHandle argName resumeName argTy opRetTy clauseBody ty
+      ((hasTypeScopedStrictTop_handle_iff_handleStrict).1 h_strict_top)
+
+/--
+Lift strict-local packaged soundness into strict-top one-step soundness.
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_strict_top_of_soundness_strict
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_sound :
+      native_handler_step_ext_with_mismatch_soundness_strict_prop
+        clauseSem mismatchSem bodyStep) :
+    native_handler_step_ext_with_mismatch_soundness_strict_top_prop
+      clauseSem mismatchSem bodyStep := by
+  intro env body opHandle argName resumeName argTy opRetTy clauseBody ty h_strict_top
+  have h_step :
+      ∃ e', NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        e' :=
+    h_sound.2 env body opHandle argName resumeName argTy opRetTy clauseBody ty
+      ((hasTypeScopedStrictTop_handle_iff_handleStrict).1 h_strict_top)
+  rcases h_step with ⟨e', h_step'⟩
+  refine ⟨e', h_step', ?_⟩
+  exact h_sound.1 env
+    (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+    e'
+    ty
+    h_strict_top.1
+    h_step'
 
 /--
 Global strict-handle typing contract: every typed handle in `HasTypeScopedTop`

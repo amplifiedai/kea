@@ -849,6 +849,7 @@ Concrete milestone checklist for moving from the current fuel model to an implem
 
 Update: in `Kea/Typing.lean`, added `hasTypeScopedStrictTop_typed_metadata_mismatch_counterexample_not_typable`, making strict-top rejection of the typed metadata-mismatch handle explicit and machine-checkable; rebuilt `lake build Kea.Typing` and `lake build`, and re-ran MCP resume probes (spoofed out-of-handler resume rejected with `E0012`, single-resume accepted, double-resume rejected) with no divergence.
 Update: added strict-top global handler proposition surfaces in `Kea/Typing.lean` (`native_handler_step_ext_with_mismatch_progress_strict_top_prop`, `native_handler_step_ext_with_mismatch_progress_strict_top_of_core_progress`, `native_handler_step_ext_with_mismatch_soundness_strict_top_prop`, `native_handler_step_ext_with_mismatch_soundness_strict_top_of_core_soundness`) so handler-step progress/one-step soundness are now stated directly over `HasTypeScopedStrictTop`; rebuilt `lake build Kea.Typing` and `lake build`, re-ran MCP resume probes, no divergence.
+Update: added strict-top coherence bridges (`native_handler_step_ext_with_mismatch_progress_strict_top_prop_iff_progress_strict_prop`, `native_handler_step_ext_with_mismatch_soundness_strict_top_of_soundness_strict`) so strict-top and strict-local handler soundness/progress surfaces are theorem-linked; rebuilt formal targets and re-ran MCP resume probes with no divergence.
 
 ## Operating Checklist (every milestone)
 
