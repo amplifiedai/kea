@@ -381,6 +381,13 @@ Concrete milestone checklist for moving from the current fuel model to an implem
   semantics (`native_handler_step_progress_prop_iff_body_progress_obligation`),
   making the unresolved native progress target fully explicit and
   machine-checkable.
+  Update: removed the remaining native progress `sorry` by proving explicit
+  impossibility for the current minimal relation
+  (`native_handler_body_progress_obligation_false`,
+  `native_handler_step_progress_prop_false`): typed handles can have
+  non-`perform` bodies, so full native one-step progress is not derivable
+  without extending native step semantics. `Kea/Typing.lean` now builds with no
+  `sorry` declarations.
   Update: refined that boundary with a typed-step judgment (`HandlerStepTyped`) carrying the concrete preservation-side typing premise for tail-resumptive instantiation, and added proved bridge/preservation lemmas (`handlerStep_of_handlerStepTyped`, `handler_step_typed_preservation`) so the remaining open work is now explicitly the derivation of typed-step premises from untyped handler reduction.
   Update: further minimized the open handler-preservation gap by introducing `handler_step_instantiation_obligation_prop` and deriving full boundary preservation through `handler_step_preservation_of_instantiation_obligation`; the remaining `sorry` target is now `handler_step_instantiation_obligation` (typed clause-instantiation premise only), with `handler_step_preservation` reduced to a one-line consequence wrapper.
   Update: closed that remaining boundary target by extending `HandlerClauseSem` with abstract instantiation semantics + typing law (`instantiate`, `instantiate_sound`) and proving `handler_step_instantiation_obligation`; `handler_step_preservation` is now fully proved in this boundary model with no `sorry` left in `Kea/Eval.lean`.

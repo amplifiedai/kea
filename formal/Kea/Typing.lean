@@ -782,27 +782,46 @@ theorem native_handler_step_progress_prop_iff_body_progress_obligation
       clauseSem h_body_progress
 
 /--
-Open native body-progress obligation.
-
-This is the exact missing bridge needed to discharge native progress.
+The current native body-progress obligation is false for this minimal step
+relation: typed `handle` forms can have non-`perform` bodies.
 -/
-theorem native_handler_body_progress_obligation
-    (clauseSem : NativeHandlerClauseSem) :
-    native_handler_body_progress_obligation_prop := by
-  let _ := clauseSem
-  sorry
+theorem native_handler_body_progress_obligation_false :
+    ¬ native_handler_body_progress_obligation_prop := by
+  intro h_body_progress
+  let env : TermEnv := []
+  let body : CoreExpr := .intLit 0
+  let op : Label := "Op"
+  let argName : String := "x"
+  let resumeName : String := "k"
+  let argTy : Ty := .int
+  let opRetTy : Ty := .int
+  let ty : Ty := .int
+  let clauseBody : CoreExpr := .intLit 1
+  have h_typed :
+      HasType env (.handle body op argName resumeName argTy opRetTy clauseBody) ty := by
+    exact HasType.handle env body op argName resumeName argTy opRetTy ty clauseBody
+      (HasType.int env 0)
+      (HasType.int
+        ((resumeName, .function (.cons opRetTy .nil) ty) :: (argName, argTy) :: env)
+        1)
+  have h_shape :
+      NativeHandlerStepSupportedShape body op argTy opRetTy :=
+    h_body_progress env body op argName resumeName argTy opRetTy clauseBody ty h_typed
+  rcases h_shape with ⟨arg, k, h_eq⟩
+  simp [body] at h_eq
 
 /--
-Open native progress target for handler reduction.
-
-This deliberately targets the native typing judgment; proving it will require
-either additional body-step semantics or a stronger supported-shape precondition.
+For any fixed clause semantics, full native progress is impossible under the
+current minimal step relation.
 -/
-theorem native_handler_step_progress :
-    ∀ clauseSem : NativeHandlerClauseSem, native_handler_step_progress_prop clauseSem := by
-  intro clauseSem
-  exact native_handler_step_progress_of_body_progress_obligation
-    clauseSem (native_handler_body_progress_obligation clauseSem)
+theorem native_handler_step_progress_prop_false
+    (clauseSem : NativeHandlerClauseSem) :
+    ¬ native_handler_step_progress_prop clauseSem := by
+  intro h_progress
+  have h_body_progress :
+      native_handler_body_progress_obligation_prop :=
+    (native_handler_step_progress_prop_iff_body_progress_obligation clauseSem).1 h_progress
+  exact native_handler_body_progress_obligation_false h_body_progress
 
 /-- Declarative field typing is functional on the core slice. -/
 theorem hasFieldsType_unique

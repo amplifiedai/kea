@@ -15796,3 +15796,42 @@ body-shape obligation.
 **Outcome**:
 - Native progress gap is now machine-characterized as
   `native_handler_body_progress_obligation` via an explicit `↔` theorem route.
+
+### 2026-03-02: close native `Typing.lean` sorrys by proving progress impossibility
+
+**Context**: Replaced the final native progress `sorry` path with proved
+impossibility results that reflect the current minimal native step model
+faithfully.
+
+Lean changes:
+- Removed the remaining `sorry`-based theorem route and proved:
+  - `native_handler_body_progress_obligation_false`
+  - `native_handler_step_progress_prop_false`
+- The proof shows a concrete typed counterexample:
+  - `handle` with a non-`perform` body (`.intLit 0`) typechecks under
+    `HasType.handle`, but cannot satisfy
+    `NativeHandlerStepSupportedShape`.
+- Result: `formal/Kea/Typing.lean` now builds with no `sorry` declarations.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Predict (Lean side)**:
+- This is a theorem-accuracy correction, not a runtime behavior change.
+- Existing linearly-safe handler diagnostics should remain aligned.
+
+**Probe (direct `kea` MCP)**:
+1. Single-resume clause accepted (`status = ok`).
+2. Sequential double-resume clause rejected (`status = error`, `E0012`).
+3. `resume` outside handler rejected (`status = error`, `E0012`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Native handler theorem stack is now fully machine-checked without `sorry`.
+- The prior full-progress target is now explicitly marked impossible for the
+  current minimal native relation, which precisely scopes the next semantics
+  extension needed to recover a true progress theorem.
