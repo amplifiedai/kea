@@ -5780,6 +5780,88 @@ theorem handler_typed_handle_shape_core_soundness_exists_iff_supported_shape
         h_env h_typed h_shape h_frag
 
 /--
+Supported-shape completeness lifted to the core-soundness+contract capstone
+surface.
+-/
+theorem handler_typed_handle_shape_core_soundness_and_contract_capstone_iff_supported_shape
+    {tenv : TermEnv}
+    {venv : ValueEnv}
+    {body : HandlerExpr}
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    {ty : Ty}
+    (h_env : EnvWellTyped tenv venv)
+    (h_typed : HandlerHasType tenv (.handle body handler clause) ty)
+    (h_frag :
+      ∀ target : CoreExpr,
+        HandlerStep (.handle body handler clause) (.core target) →
+        EvalFragmentFull target) :
+    ((∃ target,
+      HandlerStep (.handle body handler clause) (.core target) ∧
+      CoreCalculusSoundnessConsequences tenv venv target ty)
+    ∧ HandleClauseContract.wellTypedSlice clause.contract
+    ∧ resume_at_most_once clause.contract.resumeUse
+    ∧ (TailResumptiveClassification.classifyClause clause.contract ≠
+        TailResumptiveClassification.TailResumptiveClass.invalid)
+    ∧ TailResumptiveClassification.TailResumptiveBundle clause.contract)
+      ↔ handlerStepSupportedShape body clause := by
+  constructor
+  · intro h_cap
+    exact
+      (handler_typed_handle_shape_core_soundness_exists_iff_supported_shape
+        h_env h_typed h_frag).1 h_cap.1
+  · intro h_shape
+    exact
+      handler_typed_handle_shape_core_soundness_and_contract_capstone
+        h_env h_typed h_shape h_frag
+
+/--
+Supported-shape completeness lifted to the capability-extended
+core-soundness+contract capstone surface.
+-/
+theorem handler_typed_handle_shape_core_soundness_and_capability_contract_capstone_iff_supported_shape
+    {tenv : TermEnv}
+    {venv : ValueEnv}
+    {body : HandlerExpr}
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    {ty : Ty}
+    {baseEffects : EffectRow}
+    {capability : Label}
+    (h_env : EnvWellTyped tenv venv)
+    (h_typed : HandlerHasType tenv (.handle body handler clause) ty)
+    (h_frag :
+      ∀ target : CoreExpr,
+        HandlerStep (.handle body handler clause) (.core target) →
+        EvalFragmentFull target)
+    (h_expr :
+      clause.contract.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_ne : capability ≠ clause.contract.handled) :
+    ((∃ target,
+      HandlerStep (.handle body handler clause) (.core target) ∧
+      CoreCalculusSoundnessConsequences tenv venv target ty)
+    ∧ HandleClauseContract.wellTypedSlice clause.contract
+    ∧ resume_at_most_once clause.contract.resumeUse
+    ∧ (TailResumptiveClassification.classifyClause clause.contract ≠
+        TailResumptiveClassification.TailResumptiveClass.invalid)
+    ∧ TailResumptiveClassification.TailResumptiveBundle clause.contract
+    ∧ TailCapabilityComposition.TailCapabilityBundle clause.contract capability
+    ∧ TailCapabilityComposition.TailCapabilityClosedAwareBundle
+        clause.contract
+        capability)
+      ↔ handlerStepSupportedShape body clause := by
+  constructor
+  · intro h_cap
+    exact
+      (handler_typed_handle_shape_core_soundness_exists_iff_supported_shape
+        h_env h_typed h_frag).1 h_cap.1
+  · intro h_shape
+    exact
+      handler_typed_handle_shape_core_soundness_and_capability_contract_capstone
+        h_env h_typed h_shape h_frag h_expr h_ne
+
+/--
 Perform-redex specialization: direct core-soundness consequence on
 `bindTailResumptive`.
 -/

@@ -15487,3 +15487,40 @@ step-existence to consequence-carrying core-target existence.
 **Outcome**:
 - Supported-shape completeness is now explicitly available on the
   core-soundness-consequence surface, with MCP behavior still aligned.
+
+### 2026-03-02: completeness characterization lifted through contract capstone surfaces
+
+**Context**: Added `iff` characterizations that lift supported-shape
+completeness from bare core-consequence existence to full
+contract/capability-contract capstone outputs.
+
+Lean changes:
+- `handler_typed_handle_shape_core_soundness_and_contract_capstone_iff_supported_shape`
+- `handler_typed_handle_shape_core_soundness_and_capability_contract_capstone_iff_supported_shape`
+
+These establish that full capstone outputs are available exactly on supported
+shape paths.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+- `diagnose`
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; theorem-route strengthening only.
+- Existing resume-linearity diagnostics and handled-effect normalization should
+  remain stable.
+
+**Probe (direct `kea` MCP)**:
+1. Single-resume clause accepted.
+2. Branch double-resume rejected with `E0012`.
+3. `resume` outside handler rejected with `E0012`.
+4. Mismatched-handle residual remains normalized (`handled : () -[Log]> ()`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Supported-shape completeness is now available uniformly across bare
+  consequence and full capstone theorem surfaces, with MCP behavior aligned.
