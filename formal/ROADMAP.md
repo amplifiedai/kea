@@ -470,6 +470,11 @@ Concrete milestone checklist for moving from the current fuel model to an implem
   `native_handler_step_ext_with_mismatch_typed_mismatch_counterexample_resolved`)
   to show the concrete typed mismatch witness now has guaranteed step
   existence once mismatch semantics is supplied.
+  Update: added global progress routing for the mismatch extension via
+  typed-handle body-shape obligations:
+  `native_handler_step_ext_with_mismatch_progress_prop`,
+  `native_handler_handle_progress_obligation_ext_with_mismatch_prop`,
+  `native_handler_step_ext_with_mismatch_progress_of_handle_progress_obligation`.
   Update: added explicit theorem exports for that gate
   (`hasType_resume_requires_ctx`, `resume_not_typable_without_ctx`,
   `inferExpr_resume_none_without_ctx`), so out-of-handler `resume` rejection is

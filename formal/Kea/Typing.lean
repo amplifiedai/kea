@@ -1729,6 +1729,63 @@ theorem native_handler_step_ext_with_mismatch_exists_of_op_mismatch
   exact NativeHandlerStepExtWithMismatch.handle_perform_op_mismatch
     opBody opHandle argTy opRetTy arg k argName resumeName clauseBody h_op_ne
 
+/-- Progress target for the mismatched-perform-extended native relation. -/
+def native_handler_step_ext_with_mismatch_progress_prop
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) : Prop :=
+  ∀ env body opHandle argName resumeName argTy opRetTy clauseBody ty,
+    HasTypeScopedTop env (.handle body opHandle argName resumeName argTy opRetTy clauseBody) ty →
+    ∃ e', NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep
+      (.handle body opHandle argName resumeName argTy opRetTy clauseBody) e'
+
+/--
+Typed-handle body-shape obligation for the mismatched-perform extension:
+the body is either a performed operation with matching arg/op-return metadata
+(label may differ), a value, or can body-step.
+-/
+def native_handler_handle_progress_obligation_ext_with_mismatch_prop
+    (bodyStep : CoreExpr → CoreExpr → Prop) : Prop :=
+  ∀ env body opHandle argName resumeName argTy opRetTy clauseBody ty,
+    HasTypeScopedTop env (.handle body opHandle argName resumeName argTy opRetTy clauseBody) ty →
+      (∃ opBody arg k, body = .perform opBody argTy opRetTy arg k)
+      ∨ CoreValue body
+      ∨ ∃ body', bodyStep body body'
+
+/--
+Progress for the mismatched-perform extension from the typed-handle body-shape
+obligation.
+-/
+theorem native_handler_step_ext_with_mismatch_progress_of_handle_progress_obligation
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_handle_progress :
+      native_handler_handle_progress_obligation_ext_with_mismatch_prop bodyStep) :
+    native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep := by
+  intro env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed
+  have h_cases :=
+    h_handle_progress env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed
+  rcases h_cases with h_perform | h_value | h_step
+  · rcases h_perform with ⟨opBody, arg, k, h_eq⟩
+    subst h_eq
+    by_cases h_op_eq : opBody = opHandle
+    · subst h_op_eq
+      exact ⟨clauseSem.instantiate clauseBody arg k,
+        NativeHandlerStepExtWithMismatch.ext
+          (NativeHandlerStepExt.handle_perform opBody argTy opRetTy arg k argName resumeName clauseBody)⟩
+    · exact ⟨mismatchSem.mismatchTarget
+          opBody argTy opRetTy arg k opHandle argName resumeName argTy opRetTy clauseBody,
+        NativeHandlerStepExtWithMismatch.handle_perform_op_mismatch
+          opBody opHandle argTy opRetTy arg k argName resumeName clauseBody h_op_eq⟩
+  · exact ⟨body,
+      NativeHandlerStepExtWithMismatch.ext
+        (NativeHandlerStepExt.handle_value body opHandle argName resumeName argTy opRetTy clauseBody h_value)⟩
+  · rcases h_step with ⟨body', h_body_step⟩
+    exact ⟨.handle body' opHandle argName resumeName argTy opRetTy clauseBody,
+      NativeHandlerStepExtWithMismatch.ext
+        (NativeHandlerStepExt.handle_congr body body' opHandle argName resumeName argTy opRetTy clauseBody h_body_step)⟩
+
 /--
 Typed op-mismatch handled-`perform` expressions always make one step under the
 mismatched-perform extension.

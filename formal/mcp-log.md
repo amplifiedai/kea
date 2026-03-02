@@ -16502,3 +16502,38 @@ stuck family.
 **Outcome**:
 - The typed mismatch family now has explicit step-existence routes under the
   structural mismatch extension.
+
+### 2026-03-02: global progress route for mismatch extension
+
+**Context**: Added a full progress routing theorem for the mismatched-perform
+extension, not just the concrete mismatch witness.
+
+Lean changes:
+- Added in `Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_progress_prop`
+  - `native_handler_handle_progress_obligation_ext_with_mismatch_prop`
+  - `native_handler_step_ext_with_mismatch_progress_of_handle_progress_obligation`
+
+This gives a theorem-level route from a typed-handle body-shape obligation to
+global progress on the mismatch-extended relation.
+
+**Build check**:
+- `cd formal && lake build Kea.Typing` passes.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Probe (direct `kea` MCP)**:
+1. Spoof attempt still rejected:
+   - `fn spoof(__kea_resume_ctx: fn(Int) -> Int) -> Int; resume 1`
+   - `status = error`, `E0012`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Mismatch extension now has both preservation and progress theorem routes;
+  remaining work is constructing concrete mismatch semantics and discharging the
+  typed-handle body-shape obligation.
