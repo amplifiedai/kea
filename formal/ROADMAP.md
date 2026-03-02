@@ -408,6 +408,10 @@ Concrete milestone checklist for moving from the current fuel model to an implem
   (`hasTypeScoped_resume_requires_ctx`,
   `hasTypeScoped_resume_iff_ctx_and_value`) so the non-forgeable context gate
   is directly citable as both one-way and two-way theorem contracts.
+  Update: added scoped algorithmic resume checker contracts
+  (`inferResumeScoped`, `inferResumeScoped_none_without_ctx`,
+  `inferResumeScoped_iff_ctx_and_arg`) so the non-forgeable context model now
+  has a direct algorithmic iff surface in addition to declarative typing.
   Update: added explicit theorem exports for that gate
   (`hasType_resume_requires_ctx`, `resume_not_typable_without_ctx`,
   `inferExpr_resume_none_without_ctx`), so out-of-handler `resume` rejection is

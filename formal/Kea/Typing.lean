@@ -867,6 +867,63 @@ theorem hasTypeScoped_resume_iff_ctx_and_value
     exact HasTypeScoped.resume ctx env value opRetTy handlerTy h_ctx h_value
 
 /--
+Algorithmic scoped check for `resume`, parameterized by non-forgeable context.
+-/
+def inferResumeScoped (ctx : ScopedResumeCtx) (env : TermEnv) (value : CoreExpr) : Option Ty :=
+  match ctx with
+  | some (opRetTy, handlerTy) =>
+    match inferExpr env value with
+    | some actualTy =>
+      if beqTy actualTy opRetTy then some handlerTy else none
+    | none => none
+  | none => none
+
+/-- Without scoped context, algorithmic scoped `resume` inference rejects. -/
+theorem inferResumeScoped_none_without_ctx
+    (env : TermEnv) (value : CoreExpr) :
+    inferResumeScoped none env value = none := by
+  simp [inferResumeScoped]
+
+/--
+Algorithmic scoped `resume` inference is equivalent to a matching context and
+argument inferred at that context's operation return type.
+-/
+theorem inferResumeScoped_iff_ctx_and_arg
+    (ctx : ScopedResumeCtx) (env : TermEnv) (value : CoreExpr) (handlerTy : Ty) :
+    inferResumeScoped ctx env value = some handlerTy
+      ↔
+      ∃ opRetTy,
+        ctx = some (opRetTy, handlerTy) ∧
+        inferExpr env value = some opRetTy := by
+  constructor
+  · intro h
+    cases h_ctx : ctx with
+    | none =>
+      simp [inferResumeScoped, h_ctx] at h
+    | some ctxPair =>
+      cases ctxPair with
+      | mk opRetTy ctxHandlerTy =>
+        cases h_val : inferExpr env value with
+        | none =>
+          simp [inferResumeScoped, h_ctx, h_val] at h
+        | some actualTy =>
+          cases h_eq : beqTy actualTy opRetTy with
+          | false =>
+            simp [inferResumeScoped, h_ctx, h_val, h_eq] at h
+          | true =>
+            have h_handler : ctxHandlerTy = handlerTy := by
+              simpa [inferResumeScoped, h_ctx, h_val, h_eq] using h
+            have h_actual : actualTy = opRetTy :=
+              beqTy_sound actualTy opRetTy h_eq
+            subst handlerTy
+            refine ⟨opRetTy, ?_, ?_⟩
+            · exact rfl
+            · simpa using congrArg Option.some h_actual
+  · intro h
+    rcases h with ⟨opRetTy, h_ctx, h_val⟩
+    simp [inferResumeScoped, h_ctx, h_val, beqTy_refl opRetTy]
+
+/--
 `resume` is not typable at top-level in the scoped judgment.
 -/
 theorem hasTypeScopedTop_resume_not_typable

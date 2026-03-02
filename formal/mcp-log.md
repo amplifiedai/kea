@@ -16174,3 +16174,35 @@ Lean changes:
 **Outcome**:
 - Scoped resume admissibility now has explicit one-way and two-way theorem
   contracts aligned with MCP diagnostics.
+
+### 2026-03-02: scoped algorithmic resume checker equivalence
+
+**Context**: Added an algorithmic scoped `resume` checker so the new
+non-forgeable context model has an executable-side theorem surface parallel to
+the declarative scoped judgment.
+
+Lean changes:
+- Added in `Kea/Typing.lean`:
+  - `inferResumeScoped`
+  - `inferResumeScoped_none_without_ctx`
+  - `inferResumeScoped_iff_ctx_and_arg`
+
+**Build check**:
+- `cd formal && lake build Kea.Typing` passes.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Probe (direct `kea` MCP)**:
+1. Spoof attempt remains rejected:
+   - `fn spoof(__kea_resume_ctx: fn(Int) -> Int) -> Int; resume 1`
+   - `status = error`, `E0012`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Scoped resume gating now has both declarative and algorithmic theorem
+  characterizations, with MCP rejection behavior unchanged.
