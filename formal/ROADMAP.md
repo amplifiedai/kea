@@ -388,6 +388,15 @@ Concrete milestone checklist for moving from the current fuel model to an implem
   non-`perform` bodies, so full native one-step progress is not derivable
   without extending native step semantics. `Kea/Typing.lean` now builds with no
   `sorry` declarations.
+  Update: closed the critical native resume-scoping divergence against MCP by
+  introducing an explicit resume-context gate in `Kea/Typing.lean`
+  (`resumeCtxName`): `inferExpr.handle` now seeds context in clause env,
+  `inferExpr.resume` requires that context and continuation-shape checks, and
+  `HasType{,U}.resume` require matching context witnesses. Core proof stack and
+  native clause-semantics contracts were updated accordingly
+  (`hasType_to_hasTypeU`, `inferExpr_{sound,complete}`,
+  `hasType_lookup_congr`, `NativeHandlerClauseSem.instantiate_sound`), and MCP
+  re-probes confirm out-of-handler `resume` remains rejected with `E0012`.
   Update: refined that boundary with a typed-step judgment (`HandlerStepTyped`) carrying the concrete preservation-side typing premise for tail-resumptive instantiation, and added proved bridge/preservation lemmas (`handlerStep_of_handlerStepTyped`, `handler_step_typed_preservation`) so the remaining open work is now explicitly the derivation of typed-step premises from untyped handler reduction.
   Update: further minimized the open handler-preservation gap by introducing `handler_step_instantiation_obligation_prop` and deriving full boundary preservation through `handler_step_preservation_of_instantiation_obligation`; the remaining `sorry` target is now `handler_step_instantiation_obligation` (typed clause-instantiation premise only), with `handler_step_preservation` reduced to a one-line consequence wrapper.
   Update: closed that remaining boundary target by extending `HandlerClauseSem` with abstract instantiation semantics + typing law (`instantiate`, `instantiate_sound`) and proving `handler_step_instantiation_obligation`; `handler_step_preservation` is now fully proved in this boundary model with no `sorry` left in `Kea/Eval.lean`.

@@ -30,6 +30,9 @@ def lookup (env : TermEnv) (name : String) : Option Ty :=
 
 end TermEnv
 
+/-- Internal typing-context marker used to gate `resume` in core typing rules. -/
+def resumeCtxName : String := "__kea_resume_ctx"
+
 mutual
   /-- Minimal core expressions for M4 typing-soundness kickoff. -/
   inductive CoreExpr : Type where
@@ -91,14 +94,23 @@ mutual
       match inferExpr env body with
       | some bodyTy =>
         let clauseEnv :=
-          (resumeName, .function (.cons opRetTy .nil) bodyTy) :: (argName, argTy) :: env
+          (resumeCtxName, .function (.cons opRetTy .nil) bodyTy) ::
+            (resumeName, .function (.cons opRetTy .nil) bodyTy) ::
+            (argName, argTy) ::
+            env
         match inferExpr clauseEnv clauseBody with
         | some clauseTy =>
           if beqTy clauseTy bodyTy then some bodyTy else none
         | none => none
       | none => none
     | .resume value =>
-      inferExpr env value
+      match TermEnv.lookup env resumeCtxName with
+      | some (.function (.cons opRetTy .nil) handlerTy) =>
+        match inferExpr env value with
+        | some actualTy =>
+          if beqTy actualTy opRetTy then some handlerTy else none
+        | none => none
+      | _ => none
 
   /-- Algorithmic inference for core record fields. -/
   def inferFields (env : TermEnv) : CoreFields → Option RowFields
@@ -148,13 +160,17 @@ mutual
         (h_body : HasType env body bodyTy)
         (h_clause :
           HasType
-            ((resumeName, .function (.cons opRetTy .nil) bodyTy) :: (argName, argTy) :: env)
+            ((resumeCtxName, .function (.cons opRetTy .nil) bodyTy) ::
+              (resumeName, .function (.cons opRetTy .nil) bodyTy) ::
+              (argName, argTy) ::
+              env)
             clauseBody
             bodyTy) :
         HasType env (.handle body op argName resumeName argTy opRetTy clauseBody) bodyTy
-    | resume (env : TermEnv) (value : CoreExpr) (ty : Ty)
-        (h_value : HasType env value ty) :
-        HasType env (.resume value) ty
+    | resume (env : TermEnv) (value : CoreExpr) (opRetTy handlerTy : Ty)
+        (h_ctx : TermEnv.lookup env resumeCtxName = some (.function (.cons opRetTy .nil) handlerTy))
+        (h_value : HasType env value opRetTy) :
+        HasType env (.resume value) handlerTy
 
   /-- Declarative typing judgment for core record field syntax. -/
   inductive HasFieldsType : TermEnv → CoreFields → RowFields → Prop where
@@ -209,13 +225,17 @@ mutual
         (h_body : HasTypeU env body bodyTy)
         (h_clause :
           HasTypeU
-            ((resumeName, .function (.cons opRetTy .nil) bodyTy) :: (argName, argTy) :: env)
+            ((resumeCtxName, .function (.cons opRetTy .nil) bodyTy) ::
+              (resumeName, .function (.cons opRetTy .nil) bodyTy) ::
+              (argName, argTy) ::
+              env)
             clauseBody
             bodyTy) :
         HasTypeU env (.handle body op argName resumeName argTy opRetTy clauseBody) bodyTy
-    | resume (env : TermEnv) (value : CoreExpr) (ty : Ty)
-        (h_value : HasTypeU env value ty) :
-        HasTypeU env (.resume value) ty
+    | resume (env : TermEnv) (value : CoreExpr) (opRetTy handlerTy : Ty)
+        (h_ctx : TermEnv.lookup env resumeCtxName = some (.function (.cons opRetTy .nil) handlerTy))
+        (h_value : HasTypeU env value opRetTy) :
+        HasTypeU env (.resume value) handlerTy
     | subst (env : TermEnv) (e : CoreExpr) (ty : Ty) (s : Subst) (fuel : Nat)
         (h_ty : HasTypeU env e ty) :
         HasTypeU env e (applySubstCompat s fuel ty)
@@ -262,8 +282,9 @@ mutual
       exact HasTypeU.handle env body op argName resumeName argTy opRetTy ty clauseBody
         (hasType_to_hasTypeU h_body)
         (hasType_to_hasTypeU h_clause)
-    | resume env value ty h_value =>
-      exact HasTypeU.resume env value ty (hasType_to_hasTypeU h_value)
+    | resume env value opRetTy _ h_ctx h_value =>
+      exact HasTypeU.resume env value opRetTy ty h_ctx
+        (hasType_to_hasTypeU h_value)
 
   /-- Lift monomorphic field typing derivations into `HasFieldsTypeU`. -/
   theorem hasFieldsType_to_hasFieldsTypeU
@@ -465,7 +486,10 @@ mutual
         simp [h_body] at h
       | some bodyTy =>
         let clauseEnv :=
-          (resumeName, .function (.cons opRetTy .nil) bodyTy) :: (argName, argTy) :: env
+          (resumeCtxName, .function (.cons opRetTy .nil) bodyTy) ::
+            (resumeName, .function (.cons opRetTy .nil) bodyTy) ::
+            (argName, argTy) ::
+            env
         cases h_clause : inferExpr clauseEnv clauseBody with
         | none =>
           simp [clauseEnv, h_body, h_clause] at h
@@ -488,8 +512,44 @@ mutual
               h_body_ty h_clause_ty
     | resume value =>
       intro ty h
-      exact HasType.resume env value ty
-        (inferExpr_sound env value ty (by simpa [inferExpr] using h))
+      simp [inferExpr] at h
+      cases h_ctx : TermEnv.lookup env resumeCtxName with
+      | none =>
+        simp [h_ctx] at h
+      | some ctxTy =>
+        cases ctxTy with
+        | function params handlerTy =>
+          cases params with
+          | nil =>
+            simp [h_ctx] at h
+          | cons opRetTy rest =>
+            cases rest with
+            | nil =>
+              cases h_value : inferExpr env value with
+              | none =>
+                simp [h_ctx, h_value] at h
+              | some actualTy =>
+                cases h_eq : beqTy actualTy opRetTy with
+                | false =>
+                  simp [h_ctx, h_value, h_eq] at h
+                | true =>
+                  have h_ty_eq : handlerTy = ty := by
+                    simpa [inferExpr, h_ctx, h_value, h_eq] using h
+                  subst ty
+                  have h_value_ty : HasType env value actualTy :=
+                    inferExpr_sound env value actualTy h_value
+                  have h_actual_eq : actualTy = opRetTy :=
+                    beqTy_sound actualTy opRetTy h_eq
+                  rw [h_actual_eq] at h_value_ty
+                  exact HasType.resume env value opRetTy handlerTy h_ctx h_value_ty
+            | cons _ _ =>
+              simp [h_ctx] at h
+        | int | intN _ _ | float | floatN _ | decimal _ _ | bool | string | html | markdown | atom | date | dateTime | unit =>
+          simp [h_ctx] at h
+        | list _ | map _ _ | set _ | option _ | result _ _ | existential _ _ | fixedSizeList _ _ | tensor _ _ | sum _ _ | «opaque» _ _
+          | functionEff _ _ _ | record _ _ | anonRecord _ | dataframe _ | groupedFrame _ _ | tagged _ _ | dynamic | column _ | stream _ | task _ | actor _ | arc _
+          | «forall» _ _ | app _ _ | constructor _ _ _ | var _ | row _ | tuple _ =>
+          simp [h_ctx] at h
 
   /-- Field inference is sound with respect to declarative field typing. -/
   theorem inferFields_sound (env : TermEnv) (fs : CoreFields) :
@@ -553,13 +613,16 @@ mutual
       simp [inferExpr,
         inferExpr_complete env body ty h_body,
         inferExpr_complete
-          ((resumeName, .function (.cons opRetTy .nil) ty) :: (argName, argTy) :: env)
+          ((resumeCtxName, .function (.cons opRetTy .nil) ty) ::
+            (resumeName, .function (.cons opRetTy .nil) ty) ::
+            (argName, argTy) ::
+            env)
           clauseBody
           ty
           h_clause,
         beqTy_refl ty]
-    | resume env value ty h_value =>
-      simpa [inferExpr] using inferExpr_complete env value ty h_value
+    | resume env value opRetTy handlerTy h_ctx h_value =>
+      simp [inferExpr, h_ctx, inferExpr_complete env value opRetTy h_value, beqTy_refl opRetTy]
 
   /-- Declarative field typing is complete wrt algorithmic field inference. -/
   theorem inferFields_complete
@@ -596,7 +659,10 @@ structure NativeHandlerClauseSem : Type where
       HasType env arg argTy →
       HasType env k (.function (.cons opRetTy .nil) ty) →
       HasType
-        ((resumeName, .function (.cons opRetTy .nil) ty) :: (argName, argTy) :: env)
+        ((resumeCtxName, .function (.cons opRetTy .nil) ty) ::
+          (resumeName, .function (.cons opRetTy .nil) ty) ::
+          (argName, argTy) ::
+          env)
         clauseBody
         ty →
       HasType env (instantiate clauseBody arg k) ty
@@ -802,7 +868,10 @@ theorem native_handler_body_progress_obligation_false :
     exact HasType.handle env body op argName resumeName argTy opRetTy ty clauseBody
       (HasType.int env 0)
       (HasType.int
-        ((resumeName, .function (.cons opRetTy .nil) ty) :: (argName, argTy) :: env)
+        ((resumeCtxName, .function (.cons opRetTy .nil) ty) ::
+          (resumeName, .function (.cons opRetTy .nil) ty) ::
+          (argName, argTy) ::
+          env)
         1)
   have h_shape :
       NativeHandlerStepSupportedShape body op argTy opRetTy :=
@@ -1132,18 +1201,29 @@ mutual
       let h_lookup_eq_clause :
           ∀ n,
             TermEnv.lookup
-                ((resumeName, .function (.cons opRetTy .nil) ty) :: (argName, argTy) :: env)
+                ((resumeCtxName, .function (.cons opRetTy .nil) ty) ::
+                  (resumeName, .function (.cons opRetTy .nil) ty) ::
+                  (argName, argTy) ::
+                  env)
                 n =
               TermEnv.lookup
-                ((resumeName, .function (.cons opRetTy .nil) ty) :: (argName, argTy) :: env')
+                ((resumeCtxName, .function (.cons opRetTy .nil) ty) ::
+                  (resumeName, .function (.cons opRetTy .nil) ty) ::
+                  (argName, argTy) ::
+                  env')
                 n :=
-        lookup_eq_cons (lookup_eq_cons h_lookup_eq argName argTy)
-          resumeName (.function (.cons opRetTy .nil) ty)
+        lookup_eq_cons
+          (lookup_eq_cons
+            (lookup_eq_cons h_lookup_eq argName argTy)
+            resumeName (.function (.cons opRetTy .nil) ty))
+          resumeCtxName (.function (.cons opRetTy .nil) ty)
       exact HasType.handle env' body op argName resumeName argTy opRetTy ty clauseBody
         (hasType_lookup_congr h_lookup_eq h_body)
         (hasType_lookup_congr h_lookup_eq_clause h_clause)
-    | resume _ value ty h_value =>
-      exact HasType.resume env' value ty (hasType_lookup_congr h_lookup_eq h_value)
+    | resume _ value opRetTy _ h_ctx h_value =>
+      exact HasType.resume env' value opRetTy ty
+        (by simpa [h_lookup_eq resumeCtxName] using h_ctx)
+        (hasType_lookup_congr h_lookup_eq h_value)
 
   /-- Field typing transport under lookup-equivalent environments. -/
   theorem hasFieldsType_lookup_congr

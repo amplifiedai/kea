@@ -15835,3 +15835,48 @@ Lean changes:
 - The prior full-progress target is now explicitly marked impossible for the
   current minimal native relation, which precisely scopes the next semantics
   extension needed to recover a true progress theorem.
+
+### 2026-03-02: resolve native resume-context divergence against MCP (`E0012`)
+
+**Context**: A critical divergence was detected: native `HasType.resume` in
+`Kea/Typing.lean` was globally admissible, while MCP/runtime correctly rejects
+`resume` outside handlers (`E0012`). This checkpoint closes that gap.
+
+Lean changes:
+- Added explicit resume-context gate in native typing/inference:
+  - `resumeCtxName`
+  - `inferExpr.handle` now extends clause env with resume context marker.
+  - `inferExpr.resume` now requires that marker and enforces argument/result
+    shape (`opRetTy -> handlerTy`) before typing.
+  - `HasType.resume` / `HasTypeU.resume` now require the same context witness.
+- Threaded the gate through all affected core proofs:
+  - `hasType_to_hasTypeU`
+  - `inferExpr_sound`
+  - `inferExpr_complete`
+  - `hasType_lookup_congr`
+  - native clause semantics contract (`NativeHandlerClauseSem.instantiate_sound`)
+    updated to the context-augmented clause environment.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Predict (Lean side)**:
+- This should eliminate the previously observed native-typing over-acceptance of
+  out-of-handler `resume` and align with MCP `E0012` behavior.
+
+**Probe (direct `kea` MCP)**:
+1. Single-resume handler accepted (`status = ok`).
+2. Sequential double-resume rejected (`status = error`, `E0012`).
+3. `resume` outside handler rejected (`status = error`, `E0012`).
+4. Out-of-handler function with ordinary continuation parameter still rejects:
+   - `fn probe(ctx: fn(Int) -> Int) -> Int; resume 1`
+   - `status = error`, `E0012`.
+
+**Classify**: Agreement (divergence closed).
+
+**Divergence**: none.
+
+**Outcome**:
+- Critical native resume-scoping divergence is now closed at the active native
+  typing surface in `Kea/Typing.lean`.
