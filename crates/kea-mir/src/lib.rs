@@ -1437,16 +1437,7 @@ fn extract_descending_base_threshold(
     param_value: &MirValueId,
     recurse_on_then: bool,
 ) -> Option<i64> {
-    let mut int_consts = BTreeMap::new();
-    for inst in &entry_block.instructions {
-        if let MirInst::Const {
-            dest,
-            literal: MirLiteral::Int(value),
-        } = inst
-        {
-            int_consts.insert(dest.clone(), *value);
-        }
-    }
+    let int_consts = int_const_map_from_insts(&entry_block.instructions);
 
     for inst in &entry_block.instructions {
         let MirInst::Binary {
@@ -1497,12 +1488,47 @@ fn extract_descending_base_threshold(
 fn int_const_map_from_insts(insts: &[MirInst]) -> BTreeMap<MirValueId, i64> {
     let mut int_consts = BTreeMap::new();
     for inst in insts {
-        if let MirInst::Const {
-            dest,
-            literal: MirLiteral::Int(value),
-        } = inst
-        {
-            int_consts.insert(dest.clone(), *value);
+        match inst {
+            MirInst::Const {
+                dest,
+                literal: MirLiteral::Int(value),
+            } => {
+                int_consts.insert(dest.clone(), *value);
+            }
+            MirInst::Unary {
+                dest,
+                op: MirUnaryOp::Neg,
+                operand,
+            } => {
+                if let Some(value) = int_consts.get(operand).copied()
+                    && let Some(negated) = value.checked_neg()
+                {
+                    int_consts.insert(dest.clone(), negated);
+                }
+            }
+            MirInst::Binary {
+                dest,
+                op,
+                left,
+                right,
+            } => {
+                let Some(left_value) = int_consts.get(left).copied() else {
+                    continue;
+                };
+                let Some(right_value) = int_consts.get(right).copied() else {
+                    continue;
+                };
+                let folded = match op {
+                    MirBinaryOp::Add => left_value.checked_add(right_value),
+                    MirBinaryOp::Sub => left_value.checked_sub(right_value),
+                    MirBinaryOp::Mul => left_value.checked_mul(right_value),
+                    _ => None,
+                };
+                if let Some(value) = folded {
+                    int_consts.insert(dest.clone(), value);
+                }
+            }
+            _ => {}
         }
     }
     int_consts
@@ -12451,6 +12477,158 @@ mod tests {
                 } if *left == loop_i && *right == step_const
             )),
             "step block should advance loop index by the normalized positive decrement amount"
+        );
+    }
+
+    #[test]
+    fn rewrite_trmc_descending_sum_chain_supports_expression_threshold_and_step() {
+        let mut function = MirFunction {
+            name: "build".to_string(),
+            signature: MirFunctionSignature {
+                params: vec![Type::Int],
+                ret: Type::Dynamic,
+                effects: EffectRow::pure(),
+            },
+            entry: MirBlockId(0),
+            blocks: vec![
+                MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: MirValueId(1),
+                            literal: MirLiteral::Int(1),
+                        },
+                        MirInst::Const {
+                            dest: MirValueId(2),
+                            literal: MirLiteral::Int(1),
+                        },
+                        MirInst::Binary {
+                            dest: MirValueId(3),
+                            op: MirBinaryOp::Add,
+                            left: MirValueId(1),
+                            right: MirValueId(2),
+                        },
+                        MirInst::Binary {
+                            dest: MirValueId(4),
+                            op: MirBinaryOp::Lte,
+                            left: MirValueId(0),
+                            right: MirValueId(3),
+                        },
+                    ],
+                    terminator: MirTerminator::Branch {
+                        condition: MirValueId(4),
+                        then_block: MirBlockId(1),
+                        else_block: MirBlockId(2),
+                    },
+                },
+                MirBlock {
+                    id: MirBlockId(1),
+                    params: vec![],
+                    instructions: vec![MirInst::SumInit {
+                        dest: MirValueId(5),
+                        sum_type: "Chain".to_string(),
+                        variant: "End".to_string(),
+                        tag: 0,
+                        fields: vec![],
+                    }],
+                    terminator: MirTerminator::Jump {
+                        target: MirBlockId(3),
+                        args: vec![MirValueId(5)],
+                    },
+                },
+                MirBlock {
+                    id: MirBlockId(2),
+                    params: vec![],
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: MirValueId(6),
+                            literal: MirLiteral::Int(1),
+                        },
+                        MirInst::Const {
+                            dest: MirValueId(7),
+                            literal: MirLiteral::Int(1),
+                        },
+                        MirInst::Binary {
+                            dest: MirValueId(8),
+                            op: MirBinaryOp::Add,
+                            left: MirValueId(6),
+                            right: MirValueId(7),
+                        },
+                        MirInst::Binary {
+                            dest: MirValueId(9),
+                            op: MirBinaryOp::Sub,
+                            left: MirValueId(0),
+                            right: MirValueId(8),
+                        },
+                        MirInst::Call {
+                            callee: MirCallee::Local("build".to_string()),
+                            args: vec![MirValueId(9)],
+                            arg_types: vec![Type::Int],
+                            result: Some(MirValueId(10)),
+                            ret_type: Type::Dynamic,
+                            callee_fail_result_abi: false,
+                            capture_fail_result: false,
+                            cc_manifest_id: "default".to_string(),
+                        },
+                        MirInst::SumInit {
+                            dest: MirValueId(11),
+                            sum_type: "Chain".to_string(),
+                            variant: "Node".to_string(),
+                            tag: 1,
+                            fields: vec![MirValueId(0), MirValueId(10)],
+                        },
+                    ],
+                    terminator: MirTerminator::Jump {
+                        target: MirBlockId(3),
+                        args: vec![MirValueId(11)],
+                    },
+                },
+                MirBlock {
+                    id: MirBlockId(3),
+                    params: vec![MirBlockParam {
+                        id: MirValueId(12),
+                        ty: Type::Dynamic,
+                    }],
+                    instructions: vec![MirInst::Nop],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirValueId(12)),
+                    },
+                },
+            ],
+        };
+
+        rewrite_trmc_descending_sum_chain(&mut function);
+
+        assert!(
+            function
+                .blocks
+                .iter()
+                .flat_map(|block| block.instructions.iter())
+                .all(|inst| !matches!(inst, MirInst::Call { .. })),
+            "rewrite should fold simple integer constant expressions used by threshold and decrement step"
+        );
+
+        let entry_block = &function.blocks[0];
+        let Some(base_start_const) = entry_block.instructions.iter().find_map(|inst| match inst {
+            MirInst::Const {
+                dest,
+                literal: MirLiteral::Int(3),
+            } => Some(dest.clone()),
+            _ => None,
+        }) else {
+            panic!("rewritten entry block should materialize loop start literal threshold+1 for folded `n <= 1 + 1`");
+        };
+        assert!(
+            entry_block.instructions.iter().any(|inst| matches!(
+                inst,
+                MirInst::Binary {
+                    op: MirBinaryOp::Add,
+                    left,
+                    ..
+                } if *left == base_start_const
+            )),
+            "rewritten entry block should compute loop start from folded threshold expression"
         );
     }
 
