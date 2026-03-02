@@ -15722,3 +15722,38 @@ Lean changes:
   first-class abstract instantiation semantics.
 - Remaining native open gap is strictly progress-side
   (`native_handler_body_progress_obligation`).
+
+### 2026-03-02: native typed-redex progress/preservation corollaries
+
+**Context**: Added direct typed-redex consequence theorems on top of the new
+native clause-semantics-preserving step relation, so native users can consume
+one-step progress/preservation immediately on redex-shaped handles.
+
+Lean changes:
+- `native_handler_step_progress_of_typed_redex`
+- `native_handler_step_exists_and_preserves_of_typed_redex`
+
+These are proved on `NativeHandlerStep clauseSem` and rely on the already-proved
+`native_handler_step_preservation clauseSem`.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Predict (Lean side)**:
+- No runtime behavior change expected (theorem-surface additions only).
+- Existing handler-linearity diagnostics should remain aligned.
+
+**Probe (direct `kea` MCP)**:
+1. Single-resume clause accepted (`status = ok`).
+2. Sequential double-resume clause rejected (`status = error`, `E0012`).
+3. `resume` outside handler rejected (`status = error`, `E0012`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Native typed redexes now have direct one-step progress and preservation
+  theorem routes in `Typing.lean`, while the only remaining native open target
+  stays progress-generalization (`native_handler_body_progress_obligation`).

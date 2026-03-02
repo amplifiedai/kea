@@ -661,6 +661,47 @@ theorem native_handler_step_exists_of_supported_shape
   exact ⟨clauseSem.instantiate clauseBody arg k,
     NativeHandlerStep.handle_perform op argTy opRetTy arg k argName resumeName clauseBody⟩
 
+/--
+Typed-redex progress on the native handler-step relation.
+-/
+theorem native_handler_step_progress_of_typed_redex
+    (clauseSem : NativeHandlerClauseSem)
+    {env : TermEnv} {op : Label} {argTy opRetTy ty : Ty}
+    {arg k : CoreExpr} {argName resumeName : String} {clauseBody : CoreExpr}
+    (_h_typed :
+      HasType env
+        (.handle (.perform op argTy opRetTy arg k) op argName resumeName argTy opRetTy clauseBody)
+        ty) :
+    ∃ e',
+      NativeHandlerStep clauseSem
+        (.handle (.perform op argTy opRetTy arg k) op argName resumeName argTy opRetTy clauseBody)
+        e' := by
+  exact ⟨clauseSem.instantiate clauseBody arg k,
+    NativeHandlerStep.handle_perform op argTy opRetTy arg k argName resumeName clauseBody⟩
+
+/--
+Typed-redex one-step progress+preservation bundle on the native relation.
+-/
+theorem native_handler_step_exists_and_preserves_of_typed_redex
+    (clauseSem : NativeHandlerClauseSem)
+    {env : TermEnv} {op : Label} {argTy opRetTy ty : Ty}
+    {arg k : CoreExpr} {argName resumeName : String} {clauseBody : CoreExpr}
+    (h_typed :
+      HasType env
+        (.handle (.perform op argTy opRetTy arg k) op argName resumeName argTy opRetTy clauseBody)
+        ty) :
+    ∃ e',
+      NativeHandlerStep clauseSem
+        (.handle (.perform op argTy opRetTy arg k) op argName resumeName argTy opRetTy clauseBody)
+        e' ∧
+      HasType env e' ty := by
+  refine ⟨clauseSem.instantiate clauseBody arg k, ?_, ?_⟩
+  · exact NativeHandlerStep.handle_perform op argTy opRetTy arg k argName resumeName clauseBody
+  · exact native_handler_step_preservation clauseSem env
+      (.handle (.perform op argTy opRetTy arg k) op argName resumeName argTy opRetTy clauseBody)
+      (clauseSem.instantiate clauseBody arg k) ty h_typed
+      (NativeHandlerStep.handle_perform op argTy opRetTy arg k argName resumeName clauseBody)
+
 /-- Progress target for native `handle` expressions in `Typing.lean`. -/
 def native_handler_step_progress_prop (clauseSem : NativeHandlerClauseSem) : Prop :=
   ∀ env body op argName resumeName argTy opRetTy clauseBody ty,
