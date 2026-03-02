@@ -426,6 +426,14 @@ Concrete milestone checklist for moving from the current fuel model to an implem
   `NativeHandlerBodyStepObligations`, `native_handler_step_ext_soundness_prop`,
   `native_handler_step_ext_soundness_of_body_step_obligations`
   (preservation+progress bundle from body-step preservation/progress premises).
+  Update: further tightened the progress boundary with a typed-handle
+  equivalence:
+  `native_handler_step_ext_progress_prop_iff_handle_progress_obligation`
+  (plus bridge routes
+  `native_handler_handle_progress_obligation_ext_of_body_progress_obligation`
+  and `native_handler_step_ext_progress_of_handle_progress_obligation`), so the
+  remaining progress work is now exactly the typed-handle body-case obligation
+  on the extended relation.
   Update: added explicit theorem exports for that gate
   (`hasType_resume_requires_ctx`, `resume_not_typable_without_ctx`,
   `inferExpr_resume_none_without_ctx`), so out-of-handler `resume` rejection is

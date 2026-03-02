@@ -16287,3 +16287,40 @@ follows in one theorem application.
 **Outcome**:
 - Extended native handler-step now has a capstone packaging theorem; remaining
   gap is entirely in constructing the body-step obligations witness.
+
+### 2026-03-02: typed-handle progress boundary equivalence on extended relation
+
+**Context**: Refined the extended handler progress target to an explicit
+equivalence, so the remaining gap is stated at the exact typed-handle shape
+needed by reviewers/consumers.
+
+Lean changes:
+- Added in `Kea/Typing.lean`:
+  - `native_handler_handle_progress_obligation_ext_prop`
+  - `native_handler_handle_progress_obligation_ext_of_body_progress_obligation`
+  - `native_handler_step_ext_progress_of_handle_progress_obligation`
+  - `native_handler_step_ext_progress_prop_iff_handle_progress_obligation`
+
+This makes progress boundary precise:
+for fixed `clauseSem`/`bodyStep`, extended handler progress is equivalent to the
+typed-handle body-case obligation (matching `perform` or value or body-step).
+
+**Build check**:
+- `cd formal && lake build Kea.Typing` passes.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Probe (direct `kea` MCP)**:
+1. Spoof attempt still rejected:
+   - `fn spoof(__kea_resume_ctx: fn(Int) -> Int) -> Int; resume 1`
+   - `status = error`, `E0012`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Extended-progress boundary is now an explicit `↔` theorem at the typed-handle
+  layer; remaining work is sharply scoped.

@@ -1440,6 +1440,18 @@ def native_handler_step_ext_progress_prop
       (.handle body op argName resumeName argTy opRetTy clauseBody) e'
 
 /--
+Typed-handle body-case obligation for extended progress:
+for typed handles, bodies must be matching `perform`, values, or body-step.
+-/
+def native_handler_handle_progress_obligation_ext_prop
+    (bodyStep : CoreExpr → CoreExpr → Prop) : Prop :=
+  ∀ env body op argName resumeName argTy opRetTy clauseBody ty,
+    HasTypeScopedTop env (.handle body op argName resumeName argTy opRetTy clauseBody) ty →
+      (∃ arg k, body = .perform op argTy opRetTy arg k)
+      ∨ CoreValue body
+      ∨ ∃ body', bodyStep body body'
+
+/--
 Extended native handler progress from the explicit body-progress obligation.
 -/
 theorem native_handler_step_ext_progress_of_body_progress_obligation
@@ -1466,6 +1478,67 @@ theorem native_handler_step_ext_progress_of_body_progress_obligation
     · rcases h_step with ⟨body', h_body_step⟩
       exact ⟨.handle body' op argName resumeName argTy opRetTy clauseBody,
         NativeHandlerStepExt.handle_congr body body' op argName resumeName argTy opRetTy clauseBody h_body_step⟩
+
+/--
+The body-typing obligation implies the typed-handle obligation.
+-/
+theorem native_handler_handle_progress_obligation_ext_of_body_progress_obligation
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_body_progress : native_handler_body_progress_obligation_ext_prop bodyStep) :
+    native_handler_handle_progress_obligation_ext_prop bodyStep := by
+  intro env body op argName resumeName argTy opRetTy clauseBody ty h_typed
+  dsimp [HasTypeScopedTop] at h_typed
+  cases h_typed with
+  | handle _ _ _ _ _ _ _ _ _ _ h_body _h_clause =>
+    exact h_body_progress env body op argTy opRetTy ty h_body
+
+/--
+Extended native handler progress from the typed-handle body-case obligation.
+-/
+theorem native_handler_step_ext_progress_of_handle_progress_obligation
+    (clauseSem : NativeHandlerClauseSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_handle_progress : native_handler_handle_progress_obligation_ext_prop bodyStep) :
+    native_handler_step_ext_progress_prop clauseSem bodyStep := by
+  intro env body op argName resumeName argTy opRetTy clauseBody ty h_typed
+  have h_cases :=
+    h_handle_progress env body op argName resumeName argTy opRetTy clauseBody ty h_typed
+  rcases h_cases with h_perform | h_value | h_step
+  · rcases h_perform with ⟨arg, k, h_eq⟩
+    subst h_eq
+    exact ⟨clauseSem.instantiate clauseBody arg k,
+      NativeHandlerStepExt.handle_perform op argTy opRetTy arg k argName resumeName clauseBody⟩
+  · exact ⟨body,
+      NativeHandlerStepExt.handle_value body op argName resumeName argTy opRetTy clauseBody h_value⟩
+  · rcases h_step with ⟨body', h_body_step⟩
+    exact ⟨.handle body' op argName resumeName argTy opRetTy clauseBody,
+      NativeHandlerStepExt.handle_congr body body' op argName resumeName argTy opRetTy clauseBody h_body_step⟩
+
+/--
+For fixed clause/body-step semantics, extended handler progress is equivalent
+to the typed-handle body-case obligation.
+-/
+theorem native_handler_step_ext_progress_prop_iff_handle_progress_obligation
+    (clauseSem : NativeHandlerClauseSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) :
+    native_handler_step_ext_progress_prop clauseSem bodyStep
+      ↔ native_handler_handle_progress_obligation_ext_prop bodyStep := by
+  constructor
+  · intro h_progress
+    intro env body op argName resumeName argTy opRetTy clauseBody ty h_typed
+    have h_exists :=
+      h_progress env body op argName resumeName argTy opRetTy clauseBody ty h_typed
+    rcases h_exists with ⟨e', h_step⟩
+    cases h_step with
+    | handle_perform _ _ _ arg k _ _ _ =>
+      exact Or.inl ⟨arg, k, rfl⟩
+    | handle_value _ _ _ _ _ _ _ h_value =>
+      exact Or.inr (Or.inl h_value)
+    | handle_congr _ body' _ _ _ _ _ _ h_body_step =>
+      exact Or.inr (Or.inr ⟨body', h_body_step⟩)
+  · intro h_handle_progress
+    exact native_handler_step_ext_progress_of_handle_progress_obligation
+      clauseSem bodyStep h_handle_progress
 
 /--
 Concrete witness: the old non-`perform` typed-body counterexample now steps in
