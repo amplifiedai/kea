@@ -3873,6 +3873,49 @@ theorem handler_typed_redex_capstone
   refine ⟨handler_step_exists_and_preserves_of_typed_redex h_typed, ?_⟩
   exact handler_step_clause_atMostOnce_of_typed_redex h_typed
 
+/-- Inversion lemma for the `core` constructor of `HandlerHasType`. -/
+theorem handlerHasType_core_inv
+    {tenv : TermEnv}
+    {e : CoreExpr}
+    {ty : Ty}
+    (h : HandlerHasType tenv (.core e) ty) :
+    HasType tenv e ty := by
+  cases h with
+  | core _ _ _ h_core =>
+      exact h_core
+
+/--
+Bridge theorem: once a typed handler redex takes its one-step boundary
+reduction to a core expression, existing core evaluator soundness applies.
+-/
+theorem handler_typed_redex_core_eval_sound
+    {tenv : TermEnv}
+    {venv : ValueEnv}
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    {arg k : CoreExpr}
+    {ty : Ty}
+    (h_env : EnvWellTyped tenv venv)
+    (h_typed : HandlerHasType tenv
+      (.handle (.perform clause.handled clause.opArgTy clause.opRetTy arg k)
+        handler
+        clause)
+      ty)
+    (h_frag : EvalFragmentFull (bindTailResumptive clause arg k)) :
+    ∃ v, eval venv (bindTailResumptive clause arg k) = some v ∧ ValueHasType v ty := by
+  rcases handler_typed_redex_capstone h_typed with ⟨h_step_pack, _h_linear⟩
+  rcases h_step_pack with ⟨e', h_step, h_typed'⟩
+  have h_target :
+      e' = .core (bindTailResumptive clause arg k) := by
+    cases h_step with
+    | handle_perform_tail _ _ _ _ _ _ _ _ =>
+        rfl
+  subst h_target
+  have h_core_ty :
+      HasType tenv (bindTailResumptive clause arg k) ty :=
+    handlerHasType_core_inv h_typed'
+  exact eval_sound_evalFragmentFull h_env h_core_ty h_frag
+
 /--
 Preservation for the typed handler-step refinement.
 

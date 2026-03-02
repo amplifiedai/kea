@@ -14249,3 +14249,43 @@ Lean changes:
 **Outcome**:
 - The boundary model now exposes a single typed-redex capstone theorem for
   consumption, with direct MCP controls still matching its core assumptions.
+
+### 2026-03-02: bridge handler redex capstone into core evaluator soundness
+
+**Context**: Continued vertical integration in `Kea/Eval.lean` by connecting
+the typed handler-redex capstone to the existing `EvalFragmentFull` soundness
+theorem family.
+
+Lean changes:
+- `handlerHasType_core_inv`
+- `handler_typed_redex_core_eval_sound`
+
+The new bridge states: from a typed handler redex, once reduced to the boundary
+core target, existing core evaluator soundness yields the expected runtime
+value typing result.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+- `diagnose`
+
+**Predict (Lean side)**:
+- No runtime behavior change expected; this is theorem-route integration.
+- Existing controls (single resume accepted, overlap normalized, invalid resume
+  rejected) should remain unchanged.
+
+**Probe (direct `kea` MCP)**:
+1. Single-resume handler clause still accepted (`status = ok`).
+2. Overlap residual handler case still checks as:
+   - `mixed : () -[IO, Log]> ()`
+   - `handled : () -[IO]> ()`.
+3. `resume` outside handler still diagnosed as `E0012`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Handler-boundary redex reasoning is now theorem-level connected to the
+  existing core evaluator soundness stack, reducing separation between the
+  handler-boundary slice and core-calculus soundness routes.
