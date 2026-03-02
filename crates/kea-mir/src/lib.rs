@@ -473,10 +473,27 @@ enum InlinableCallback {
     StateGet { state_cell: MirValueId },
     /// State.put: captures[0] is the state cell, replace Call with StateCellStore + Unit
     StatePut { state_cell: MirValueId },
+    /// Pure callback: replace Call with a Const or Move
+    PureCallback {
+        replacement: PureCallbackReplacement,
+        num_call_args: usize,
+    },
 }
 
-/// MIR optimization pass: replace indirect closure calls for statically-known
-/// state-get/state-put handlers with direct StateCellLoad/StateCellStore.
+/// What a pure callback returns — resolved during structural verification.
+#[derive(Debug, Clone)]
+enum PureCallbackReplacement {
+    /// Return a constant literal (e.g., `resume 42`, `resume ()`)
+    Const(MirLiteral),
+    /// Return a captured value, resolved from ClosureInit captures
+    CaptureValue(MirValueId),
+    /// Return a call argument by index (resolved at rewrite time)
+    CallArg(usize),
+}
+
+/// MIR optimization pass: devirtualize handler callback closures when structurally
+/// verified as safe. Phase A: state-get/state-put → direct ops. Phase B: pure
+/// callbacks (constant return, capture return, arg passthrough) → Const/Move.
 ///
 /// Only applies when handler and dispatch site are in the same function (Case 1).
 /// Chain-augmented callbacks (`__chain_callback`) are explicitly skipped.
@@ -521,13 +538,6 @@ fn inline_known_handler_callbacks(
             continue;
         }
 
-        // Fast pre-filter: only state_get / state_put entry wrappers
-        let is_state_get = entry_name.ends_with("$state_get");
-        let is_state_put = entry_name.ends_with("$state_put");
-        if !is_state_get && !is_state_put {
-            continue;
-        }
-
         // Structural verification: look up entry wrapper function
         let Some(&wrapper_idx) = fn_index.get(entry_name.as_str()) else {
             continue;
@@ -543,6 +553,7 @@ fn inline_known_handler_callbacks(
         // Find the Call instruction (last instruction) and extract the target name
         let Some(MirInst::Call {
             callee: MirCallee::Local(target_name),
+            args: wrapper_call_args,
             ..
         }) = wrapper_block.instructions.last()
         else {
@@ -558,6 +569,10 @@ fn inline_known_handler_callbacks(
             continue;
         }
         let target_block = &target_fn.blocks[0];
+
+        // Phase A: State wrapper devirtualization (name pre-filter + structural verification)
+        let is_state_get = entry_name.ends_with("$state_get");
+        let is_state_put = entry_name.ends_with("$state_put");
 
         if is_state_get {
             // State-get: exactly 1 capture (the state cell), 0 call params
@@ -645,6 +660,93 @@ fn inline_known_handler_callbacks(
                     state_cell: captures[0].clone(),
                 },
             );
+        } else {
+            // Phase B: Pure callback devirtualization
+            // Verify wrapper has only ClosureCaptureLoad instructions + final Call
+            let num_wrapper_captures = wrapper_block
+                .instructions
+                .iter()
+                .filter(|i| matches!(i, MirInst::ClosureCaptureLoad { .. }))
+                .count();
+            // All non-Call instructions must be ClosureCaptureLoad (no bound dispatch captures)
+            if num_wrapper_captures + 1 != wrapper_block.instructions.len() {
+                continue;
+            }
+            // Verify captures are sequential indices 0..N
+            let captures_sequential = wrapper_block.instructions[..num_wrapper_captures]
+                .iter()
+                .enumerate()
+                .all(|(i, inst)| {
+                    matches!(inst, MirInst::ClosureCaptureLoad { capture_index, .. } if *capture_index == i)
+                });
+            if !captures_sequential {
+                continue;
+            }
+            // Derive num_call_params from wrapper call args vs captures
+            let num_call_params = wrapper_call_args.len().saturating_sub(num_wrapper_captures);
+            // Verify capture count matches the closure's actual captures
+            if captures.len() != num_wrapper_captures {
+                continue;
+            }
+            // Target must be single-block, 0 or 1 instructions, pure
+            if target_block.instructions.len() > 1 {
+                continue;
+            }
+            // Determine what the target returns
+            let MirTerminator::Return { value: Some(ret_val) } = &target_block.terminator else {
+                continue;
+            };
+            if target_block.instructions.len() == 1 {
+                // Single instruction: must be Const, and return value must match its dest
+                let MirInst::Const { dest, literal } = &target_block.instructions[0] else {
+                    continue;
+                };
+                if ret_val != dest {
+                    continue;
+                }
+                inlinable.insert(
+                    closure_id.clone(),
+                    InlinableCallback::PureCallback {
+                        replacement: PureCallbackReplacement::Const(literal.clone()),
+                        num_call_args: num_call_params,
+                    },
+                );
+            } else {
+                // Zero instructions: return value must be a function parameter
+                // Target params = captures (0..num_wrapper_captures) + call params
+                let param_idx = ret_val.0 as usize;
+                if param_idx >= target_fn.signature.params.len() {
+                    continue;
+                }
+                if param_idx < num_wrapper_captures {
+                    // Returns a capture — resolve to the actual MirValueId from ClosureInit
+                    if param_idx >= captures.len() {
+                        continue;
+                    }
+                    inlinable.insert(
+                        closure_id.clone(),
+                        InlinableCallback::PureCallback {
+                            replacement: PureCallbackReplacement::CaptureValue(
+                                captures[param_idx].clone(),
+                            ),
+                            num_call_args: num_call_params,
+                        },
+                    );
+                } else {
+                    // Returns a call arg
+                    let call_arg_idx = param_idx - num_wrapper_captures;
+                    if call_arg_idx >= num_call_params {
+                        continue;
+                    }
+                    inlinable.insert(
+                        closure_id.clone(),
+                        InlinableCallback::PureCallback {
+                            replacement: PureCallbackReplacement::CallArg(call_arg_idx),
+                            num_call_args: num_call_params,
+                        },
+                    );
+                }
+            }
         }
     }
 
@@ -702,6 +804,50 @@ fn inline_known_handler_callbacks(
                                 literal: MirLiteral::Unit,
                             });
                         }
+                        replacements.push((block_idx, inst_idx, insts));
+                    }
+                    InlinableCallback::PureCallback {
+                        replacement,
+                        num_call_args,
+                    } => {
+                        if args.len() != *num_call_args {
+                            continue;
+                        }
+                        let insts = match replacement {
+                            PureCallbackReplacement::Const(literal) => {
+                                if let Some(dest) = result {
+                                    vec![MirInst::Const {
+                                        dest: dest.clone(),
+                                        literal: literal.clone(),
+                                    }]
+                                } else {
+                                    vec![MirInst::Nop]
+                                }
+                            }
+                            PureCallbackReplacement::CaptureValue(src) => {
+                                if let Some(dest) = result {
+                                    vec![MirInst::Move {
+                                        dest: dest.clone(),
+                                        src: src.clone(),
+                                    }]
+                                } else {
+                                    vec![MirInst::Nop]
+                                }
+                            }
+                            PureCallbackReplacement::CallArg(idx) => {
+                                if *idx >= args.len() {
+                                    continue;
+                                }
+                                if let Some(dest) = result {
+                                    vec![MirInst::Move {
+                                        dest: dest.clone(),
+                                        src: args[*idx].clone(),
+                                    }]
+                                } else {
+                                    vec![MirInst::Nop]
+                                }
+                            }
+                        };
                         replacements.push((block_idx, inst_idx, insts));
                     }
                 }
