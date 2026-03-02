@@ -1971,6 +1971,32 @@ theorem hasTypeScopedTop_handle_lifts_strict_of_local_coherence
   exact h_local_coh
 
 /--
+Constructive lift fragment: typed `handle` expressions lift to strict typing
+when their body is known not to be a performed operation.
+-/
+theorem hasTypeScopedTop_handle_lifts_strict_of_body_not_perform
+    {env : TermEnv}
+    {body : CoreExpr}
+    {opHandle : Label}
+    {argName resumeName : String}
+    {argTy opRetTy : Ty}
+    {clauseBody : CoreExpr}
+    {ty : Ty}
+    (h_typed :
+      HasTypeScopedTop env
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        ty)
+    (h_not_perform :
+      ∀ opBody argTyBody opRetTyBody arg k,
+        body ≠ .perform opBody argTyBody opRetTyBody arg k) :
+    HasTypeScopedStrictTop env
+      (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+      ty := by
+  apply hasTypeScopedTop_handle_lifts_strict_of_local_coherence h_typed
+  intro opBody argTyBody opRetTyBody arg k h_eq
+  exact False.elim (h_not_perform opBody argTyBody opRetTyBody arg k h_eq)
+
+/--
 One-step mismatch-extension progress from:
 1) core body progress (`CoreValue ∨ bodyStep`), and
 2) strict handle-typing at this handle site.

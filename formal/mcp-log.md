@@ -17076,3 +17076,37 @@ coherence evidence.
 **Outcome**:
 - The scoped->strict extension path now has concrete constructive footholds
   rather than only global assumptions.
+
+### 2026-03-02: constructive lift for non-perform handle bodies
+
+**Context**: Extended constructive lift coverage for strict typing at handle
+sites where body is known not to be a `perform`.
+
+Lean changes:
+- Added in `Kea/Typing.lean`:
+  - `hasTypeScopedTop_handle_lifts_strict_of_body_not_perform`
+
+This turns local metadata coherence into a vacuous condition on a common
+fragment (value/congruence-oriented handle bodies).
+
+**Build check**:
+- `cd formal && lake build Kea.Typing` passes.
+- `cd formal && lake build` passes.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Probe (direct `kea` MCP)**:
+1. Spoofed resume context variable remains rejected (`E0012`).
+2. Single-resume matching handler clause remains accepted (`status = ok`).
+3. Double-resume handler clause remains rejected (`E0012`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Scoped->strict constructive lift now covers:
+  non-`handle` expressions, coherent `handle` bodies, and non-`perform`
+  `handle` bodies.
