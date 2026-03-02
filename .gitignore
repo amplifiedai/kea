@@ -31,9 +31,13 @@ Thumbs.db
 # sccache
 .sccache/
 
-# Private project management
-/BRIEFS/
-/FORMAL.md
+# Private project management (internal docs, briefs, strategy)
+/internal/
+
+# Agent configuration (not imposed on contributors)
+/.claude/
+/.mcp.json
+/AGENTS.md
 
 # Tree-sitter generated artifacts
 tree-sitter-kea/src/parser.c
