@@ -4061,6 +4061,75 @@ theorem handler_typed_redex_capstone_with_tail_capability_bundle
   · exact handler_step_clause_atMostOnce_of_typed_redex h_typed
   · exact handler_typed_redex_tail_capability_bundle h_typed h_expr h_ne
 
+/--
+Typed-redex bridge into packaged closed-aware tail-capability contracts.
+-/
+theorem handler_typed_redex_tail_capability_closedAware_bundle
+    {tenv : TermEnv}
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    {arg k : CoreExpr}
+    {ty : Ty}
+    {baseEffects : EffectRow}
+    {capability : Label}
+    (h_typed : HandlerHasType tenv
+      (.handle (.perform clause.handled clause.opArgTy clause.opRetTy arg k)
+        handler
+        clause)
+      ty)
+    (h_expr :
+      clause.contract.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_ne : capability ≠ clause.contract.handled) :
+    TailCapabilityComposition.TailCapabilityClosedAwareBundle
+      clause.contract
+      capability := by
+  exact
+    TailCapabilityComposition.tailCapabilityClosedAwareBundle_of_wellTyped
+      clause.contract
+      baseEffects
+      capability
+      (handler_typed_redex_clause_wellTypedSlice h_typed)
+      h_expr
+      h_ne
+
+/--
+Extended capstone route for typed handler redexes with closed-aware
+tail-capability bundle consequences under explicit capability-origin premises.
+-/
+theorem handler_typed_redex_capstone_with_tail_capability_closedAware_bundle
+    {tenv : TermEnv}
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    {arg k : CoreExpr}
+    {ty : Ty}
+    {baseEffects : EffectRow}
+    {capability : Label}
+    (h_typed : HandlerHasType tenv
+      (.handle (.perform clause.handled clause.opArgTy clause.opRetTy arg k)
+        handler
+        clause)
+      ty)
+    (h_expr :
+      clause.contract.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_ne : capability ≠ clause.contract.handled) :
+    (∃ e',
+      HandlerStep
+        (.handle (.perform clause.handled clause.opArgTy clause.opRetTy arg k)
+          handler
+          clause)
+        e' ∧
+      HandlerHasType tenv e' ty) ∧
+    resume_at_most_once clause.contract.resumeUse ∧
+    TailCapabilityComposition.TailCapabilityClosedAwareBundle
+      clause.contract
+      capability := by
+  refine ⟨?_, ?_, ?_⟩
+  · exact handler_step_exists_and_preserves_of_typed_redex h_typed
+  · exact handler_step_clause_atMostOnce_of_typed_redex h_typed
+  · exact handler_typed_redex_tail_capability_closedAware_bundle h_typed h_expr h_ne
+
 /-- Inversion lemma for the `core` constructor of `HandlerHasType`. -/
 theorem handlerHasType_core_inv
     {tenv : TermEnv}

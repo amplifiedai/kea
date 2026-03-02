@@ -14419,3 +14419,38 @@ origin assumptions.
 **Outcome**:
 - Typed-redex evaluator capstones now connect into both tail-resumptive and
   tail-capability packaged theorem surfaces with no new Lean↔MCP divergence.
+
+### 2026-03-02: typed redex bridge to closed-aware tail-capability bundle
+
+**Context**: Extended evaluator-side typed-redex bridges with the
+closed-aware capability composition package output.
+
+Lean changes:
+- `handler_typed_redex_tail_capability_closedAware_bundle`
+- `handler_typed_redex_capstone_with_tail_capability_closedAware_bundle`
+
+This mirrors the prior normalized capability-route lift and keeps both package
+surfaces available from typed handler-redex premises.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+- `diagnose`
+
+**Predict (Lean side)**:
+- No runtime semantic changes expected; theorem-route extension only.
+- Existing `resume` legality and overlap normalization should remain stable.
+
+**Probe (direct `kea` MCP)**:
+1. Single-resume handler accepted (`status = ok`).
+2. Branch double-resume rejected with `E0012`.
+3. `resume` outside handler rejected with `E0012`.
+4. Overlap residual stays normalized (`handled : () -[IO]> ()`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Typed-redex evaluator capstones now expose normalized and closed-aware
+  tail-capability bundle routes with no new Lean↔MCP mismatch signal.
