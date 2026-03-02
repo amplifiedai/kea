@@ -5750,6 +5750,36 @@ theorem handler_typed_handle_shape_core_soundness_and_capability_contract_capsto
       h_contract.2.2.2.1, h_contract.2.2.2.2.1, h_contract.2.2.2.2.2⟩
 
 /--
+Typed supported-shape completeness lifted to the core-soundness-consequence
+surface.
+-/
+theorem handler_typed_handle_shape_core_soundness_exists_iff_supported_shape
+    {tenv : TermEnv}
+    {venv : ValueEnv}
+    {body : HandlerExpr}
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    {ty : Ty}
+    (h_env : EnvWellTyped tenv venv)
+    (h_typed : HandlerHasType tenv (.handle body handler clause) ty)
+    (h_frag :
+      ∀ target : CoreExpr,
+        HandlerStep (.handle body handler clause) (.core target) →
+        EvalFragmentFull target) :
+    (∃ target,
+      HandlerStep (.handle body handler clause) (.core target) ∧
+      CoreCalculusSoundnessConsequences tenv venv target ty)
+      ↔ handlerStepSupportedShape body clause := by
+  constructor
+  · intro h_exists
+    rcases h_exists with ⟨target, h_step, _h_cons⟩
+    exact handler_step_requires_perform_redex h_step
+  · intro h_shape
+    exact
+      handler_typed_handle_shape_steps_to_core_soundness_consequences
+        h_env h_typed h_shape h_frag
+
+/--
 Perform-redex specialization: direct core-soundness consequence on
 `bindTailResumptive`.
 -/

@@ -15451,3 +15451,39 @@ closed-aware capability contract outputs.
 **Outcome**:
 - Concrete redex/core-body consequence routes now include capability-extended
   contract parity, with MCP behavior still aligned.
+
+### 2026-03-02: completeness characterization at handler-to-core consequence layer
+
+**Context**: Added an `iff` theorem that characterizes supported handler body
+shape exactly by existence of a one-step core target carrying
+`CoreCalculusSoundnessConsequences`.
+
+Lean changes:
+- `handler_typed_handle_shape_core_soundness_exists_iff_supported_shape`
+
+This lifts the prior supported-shape completeness characterization from
+step-existence to consequence-carrying core-target existence.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+- `diagnose`
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; theorem-route strengthening only.
+- Existing resume-linearity diagnostics and handled-effect normalization should
+  remain stable.
+
+**Probe (direct `kea` MCP)**:
+1. Single-resume clause accepted.
+2. Branch double-resume rejected with `E0012`.
+3. `resume` outside handler rejected with `E0012`.
+4. Mismatched-handle residual remains normalized (`handled : () -[Log]> ()`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Supported-shape completeness is now explicitly available on the
+  core-soundness-consequence surface, with MCP behavior still aligned.
