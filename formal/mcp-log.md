@@ -14834,3 +14834,38 @@ under explicit capability-origin premises.
 **Outcome**:
 - The supported-shape typed-handle capstone route now also exports normalized
   and closed-aware capability bundles, with MCP behavior aligned.
+
+### 2026-03-02: core-body specialization of shape capstone routes
+
+**Context**: Added direct core-body specializations for the new
+shape-parameterized typed-handle capstones.
+
+Lean changes:
+- `handler_typed_core_body_capstone`
+- `handler_typed_core_body_capstone_with_capability`
+
+These specialize the shape premise to `body = .core e`, making the
+`handle_core` boundary step directly consumable from dedicated theorem routes.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+- `diagnose`
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; specialization-layer packaging only.
+- Existing linearity diagnostics and overlap normalization should remain stable.
+
+**Probe (direct `kea` MCP)**:
+1. Single-resume clause accepted.
+2. Branch double-resume rejected with `E0012`.
+3. `resume` outside handler rejected with `E0012`.
+4. Overlap residual remains normalized (`handled : () -[IO]> ()`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Core-body handler progress/contracts/capabilities now have dedicated capstone
+  theorem entrypoints while MCP behavior remains aligned.
