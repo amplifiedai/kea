@@ -2601,6 +2601,10 @@
             err.contains("`@fip` verification failed for `build`"),
             "expected @fip verification failure, got: {err}"
         );
+        assert!(
+            err.contains("first offending MIR sites"),
+            "expected site-level @fip diagnostics, got: {err}"
+        );
 
         let _ = std::fs::remove_file(source_path);
     }

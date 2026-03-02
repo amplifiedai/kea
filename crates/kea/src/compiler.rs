@@ -2114,6 +2114,7 @@ fn validate_fip_annotations(module: &Module, hir: &HirModule) -> Vec<Diagnostic>
 
     let mut diagnostics = Vec::new();
     for (name, span) in annotated_functions {
+        let mir_function = mir.functions.iter().find(|function| function.name == name);
         let Some(stats) = stats_by_name.get(name.as_str()) else {
             diagnostics.push(
                 Diagnostic::error(
@@ -2148,6 +2149,19 @@ fn validate_fip_annotations(module: &Module, hir: &HirModule) -> Vec<Diagnostic>
         }
 
         if !failures.is_empty() {
+            let mut help_parts = vec![
+                "expected zero alloc/retain/release and no remaining TRMC candidates after MIR lowering."
+                    .to_string(),
+            ];
+            if let Some(function) = mir_function {
+                let sites = collect_fip_offending_sites(function, 5);
+                if !sites.is_empty() {
+                    help_parts.push(format!(
+                        "first offending MIR sites:\n{}",
+                        sites.join("\n")
+                    ));
+                }
+            }
             diagnostics.push(
                 Diagnostic::error(
                     Category::TypeError,
@@ -2161,15 +2175,34 @@ fn validate_fip_annotations(module: &Module, hir: &HirModule) -> Vec<Diagnostic>
                     start: span.start,
                     end: span.end,
                 })
-                .with_help(
-                    "expected zero alloc/retain/release and no remaining TRMC candidates after MIR lowering."
-                        .to_string(),
-                ),
+                .with_help(help_parts.join("\n\n")),
             );
         }
     }
 
     diagnostics
+}
+
+fn collect_fip_offending_sites(function: &kea_mir::MirFunction, limit: usize) -> Vec<String> {
+    let mut sites = Vec::new();
+    for block in &function.blocks {
+        for (inst_idx, inst) in block.instructions.iter().enumerate() {
+            let op = match inst {
+                kea_mir::MirInst::Retain { .. } => Some("Retain"),
+                kea_mir::MirInst::Release { .. } => Some("Release"),
+                kea_mir::MirInst::RecordInit { .. } => Some("RecordInit"),
+                kea_mir::MirInst::SumInit { .. } => Some("SumInit"),
+                _ => None,
+            };
+            if let Some(op) = op {
+                sites.push(format!("- b{} i{}: {}", block.id.0, inst_idx, op));
+                if sites.len() >= limit {
+                    return sites;
+                }
+            }
+        }
+    }
+    sites
 }
 
 fn has_errors(diags: &[Diagnostic]) -> bool {
