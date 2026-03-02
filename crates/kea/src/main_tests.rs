@@ -2651,6 +2651,58 @@
 
     #[test]
     #[cfg(not(target_os = "windows"))]
+    fn compile_rejects_fip_unique_higher_order_forwarder_value_call_for_now() {
+        let source_path = write_temp_source(
+            "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_forwarder(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  f(x)\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_forwarder(forward_once, x)\n\nfn main() -> Int\n  0\n",
+            "kea-cli-fip-unique-higher-order-forwarder-call",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err(
+            "known forwarder values still lower through closure materialization and unresolved call-boundary proof paths",
+        );
+        assert!(
+            err.contains("`@fip` verification failed for `call_via_apply`"),
+            "expected @fip verification failure, got: {err}"
+        );
+        assert!(
+            err.contains("ClosureInit"),
+            "expected closure-allocation site in diagnostics, got: {err}"
+        );
+        assert!(
+            err.contains("escapes through 1 call argument(s)"),
+            "expected higher-order call-boundary escape diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn compile_rejects_fip_unique_higher_order_forwarder_param_escape() {
+        let source_path = write_temp_source(
+            "fn apply_forwarder(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  f(x)\n\n@fip\nfn call_via_apply(x: Unique Int, f: fn(Unique Int) -> Unique Int) -> Unique Int\n  apply_forwarder(f, x)\n\nfn main() -> Int\n  0\n",
+            "kea-cli-fip-unique-higher-order-forwarder-param-escape",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err(
+            "@fip verifier should reject higher-order forwarding when the forwarded callee is unresolved at call boundary",
+        );
+        assert!(
+            err.contains("`@fip` verification failed for `call_via_apply`"),
+            "expected @fip verification failure, got: {err}"
+        );
+        assert!(
+            err.contains("escapes through 1 call argument(s)"),
+            "expected call-boundary escape diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
     fn compile_and_execute_fip_unique_known_qualified_forwarder_call_exit_code() {
         let project_dir = temp_workspace_project_dir("kea-cli-fip-unique-qualified-forwarder");
         let src_dir = project_dir.join("src");

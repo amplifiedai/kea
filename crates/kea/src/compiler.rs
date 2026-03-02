@@ -1216,6 +1216,24 @@ fn extend_safe_forwarders_with_import_aliases(
     }
 }
 
+fn extend_safe_higher_order_forwarders_with_import_aliases(
+    safe_higher_order_handoff_callees: &mut BTreeMap<String, SafeHigherOrderForwarder>,
+    import_aliases: &BTreeMap<String, String>,
+) {
+    let originals = safe_higher_order_handoff_callees
+        .iter()
+        .map(|(name, spec)| (name.clone(), *spec))
+        .collect::<Vec<_>>();
+    for (alias, module_path) in import_aliases {
+        let prefix = format!("{module_path}.");
+        for (original, spec) in &originals {
+            if let Some(rest) = original.strip_prefix(&prefix) {
+                safe_higher_order_handoff_callees.insert(format!("{alias}.{rest}"), *spec);
+            }
+        }
+    }
+}
+
 fn apply_module_imports(
     module: &Module,
     env: &mut TypeEnv,
@@ -2253,8 +2271,13 @@ fn validate_fip_annotations(module: &Module, hir: &HirModule) -> Vec<Diagnostic>
         .map(|stats| (stats.function.as_str(), stats))
         .collect::<BTreeMap<_, _>>();
     let mut safe_handoff_callees = collect_safe_unique_forwarders(hir, &mir);
+    let mut safe_higher_order_handoff_callees = collect_safe_unique_higher_order_forwarders(hir);
     let import_aliases = collect_import_aliases(module);
     extend_safe_forwarders_with_import_aliases(&mut safe_handoff_callees, &import_aliases);
+    extend_safe_higher_order_forwarders_with_import_aliases(
+        &mut safe_higher_order_handoff_callees,
+        &import_aliases,
+    );
 
     let mut diagnostics = Vec::new();
     for (name, fip_spec) in annotated_functions {
@@ -2287,7 +2310,12 @@ fn validate_fip_annotations(module: &Module, hir: &HirModule) -> Vec<Diagnostic>
                 for root in &fip_spec.unique_param_names {
                     aliases.insert(root.clone(), root.clone());
                 }
-                analyze_hir_unique_flow_function(function, &aliases, &safe_handoff_callees)
+                analyze_hir_unique_flow_function(
+                    function,
+                    &aliases,
+                    &safe_handoff_callees,
+                    &safe_higher_order_handoff_callees,
+                )
             })
             .unwrap_or_default();
         let mir_unique_flow = match (mir_function, hir_function) {
@@ -2473,6 +2501,55 @@ struct MirUniqueFlowSummary {
     freeze_boundary_counts: BTreeMap<String, usize>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct SafeHigherOrderForwarder {
+    unique_arg_index: usize,
+    forwarder_arg_index: usize,
+}
+
+fn is_unique_constructor_type(ty: &Type) -> bool {
+    match ty {
+        Type::Sum(sum) => sum.name == "Unique",
+        Type::Record(record) => record.name == "Unique",
+        Type::Opaque { name, .. } | Type::Constructor { name, .. } => name == "Unique",
+        _ => false,
+    }
+}
+
+fn is_unique_type(ty: &Type) -> bool {
+    match ty {
+        Type::App(constructor, args) => {
+            args.len() == 1 && (is_unique_constructor_type(constructor) || is_unique_type(constructor))
+        }
+        _ => is_unique_constructor_type(ty),
+    }
+}
+
+fn is_unary_unique_forwarder_fn_type(ty: &Type, unique_ty: &Type) -> bool {
+    let Type::Function(fn_ty) = ty else {
+        return false;
+    };
+    fn_ty.params.len() == 1 && fn_ty.params[0] == *unique_ty && *fn_ty.ret == *unique_ty
+}
+
+fn matches_higher_order_forwarder_body(
+    expr: &HirExpr,
+    forwarder_param_name: &str,
+    unique_param_name: &str,
+) -> bool {
+    match &expr.kind {
+        HirExprKind::Call { func, args } => {
+            args.len() == 1
+                && matches!(&func.kind, HirExprKind::Var(name) if name == forwarder_param_name)
+                && matches!(&args[0].kind, HirExprKind::Var(name) if name == unique_param_name)
+        }
+        HirExprKind::Block(exprs) if exprs.len() == 1 => {
+            matches_higher_order_forwarder_body(&exprs[0], forwarder_param_name, unique_param_name)
+        }
+        _ => false,
+    }
+}
+
 fn collect_safe_unique_forwarders(
     hir: &HirModule,
     _mir: &kea_mir::MirModule,
@@ -2506,7 +2583,13 @@ fn collect_safe_unique_forwarders(
         let mut is_safe_forwarder = false;
         for root in candidate_roots {
             let aliases = BTreeMap::from([(root.clone(), root.clone())]);
-            let flow = analyze_hir_unique_flow_function(function, &aliases, &no_safe_handoffs);
+            let no_safe_higher_order_handoffs = BTreeMap::new();
+            let flow = analyze_hir_unique_flow_function(
+                function,
+                &aliases,
+                &no_safe_handoffs,
+                &no_safe_higher_order_handoffs,
+            );
             let ref_count = flow.ref_counts.get(&root).copied().unwrap_or(0);
             let call_escape_count = flow.call_escape_counts.get(&root).copied().unwrap_or(0);
             if ref_count == 1
@@ -2529,6 +2612,100 @@ fn collect_safe_unique_forwarders(
             .unwrap_or(function.name.as_str());
         if short_name_counts.get(short).copied().unwrap_or(0) == 1 {
             safe.insert(short.to_string());
+        }
+    }
+
+    safe
+}
+
+fn collect_safe_unique_higher_order_forwarders(
+    hir: &HirModule,
+) -> BTreeMap<String, SafeHigherOrderForwarder> {
+    let mut safe = BTreeMap::new();
+    let mut short_name_counts = BTreeMap::new();
+    for decl in &hir.declarations {
+        let HirDecl::Function(function) = decl else {
+            continue;
+        };
+        let short = function
+            .name
+            .rsplit('.')
+            .next()
+            .unwrap_or(function.name.as_str())
+            .to_string();
+        *short_name_counts.entry(short).or_default() += 1usize;
+    }
+
+    for decl in &hir.declarations {
+        let HirDecl::Function(function) = decl else {
+            continue;
+        };
+        let Type::Function(fn_ty) = &function.ty else {
+            continue;
+        };
+        if function.params.len() != fn_ty.params.len() {
+            continue;
+        }
+
+        let mut matched = None;
+        for (unique_index, unique_ty) in fn_ty.params.iter().enumerate() {
+            if !is_unique_type(unique_ty) {
+                continue;
+            }
+            let Some(expected_unique_name) = function
+                .params
+                .get(unique_index)
+                .and_then(|param| param.name.as_ref())
+            else {
+                continue;
+            };
+
+            for (forwarder_index, forwarder_ty) in fn_ty.params.iter().enumerate() {
+                if forwarder_index == unique_index {
+                    continue;
+                }
+                let Some(expected_forwarder_name) = function
+                    .params
+                    .get(forwarder_index)
+                    .and_then(|param| param.name.as_ref())
+                else {
+                    continue;
+                };
+                if !is_unary_unique_forwarder_fn_type(forwarder_ty, unique_ty) {
+                    continue;
+                }
+                if *fn_ty.ret != *unique_ty {
+                    continue;
+                }
+                if !matches_higher_order_forwarder_body(
+                    &function.body,
+                    expected_forwarder_name,
+                    expected_unique_name,
+                ) {
+                    continue;
+                }
+                matched = Some(SafeHigherOrderForwarder {
+                    unique_arg_index: unique_index,
+                    forwarder_arg_index: forwarder_index,
+                });
+                break;
+            }
+            if matched.is_some() {
+                break;
+            }
+        }
+
+        let Some(spec) = matched else {
+            continue;
+        };
+        safe.insert(function.name.clone(), spec);
+        let short = function
+            .name
+            .rsplit('.')
+            .next()
+            .unwrap_or(function.name.as_str());
+        if short_name_counts.get(short).copied().unwrap_or(0) == 1 {
+            safe.insert(short.to_string(), spec);
         }
     }
 
@@ -2607,24 +2784,49 @@ fn hir_callable_name(func: &HirExpr) -> Option<String> {
     }
 }
 
-fn hir_call_is_safe_unique_handoff(
+fn hir_call_safe_unique_handoff_arg_index(
     func: &HirExpr,
     args: &[HirExpr],
     safe_handoff_callees: &BTreeSet<String>,
+    safe_higher_order_handoff_callees: &BTreeMap<String, SafeHigherOrderForwarder>,
     local_bindings: &BTreeSet<String>,
-) -> bool {
-    if args.len() != 1 {
-        return false;
+) -> Option<usize> {
+    if args.is_empty() {
+        return None;
     }
     if let Some(root) = hir_callable_root_name(func)
         && local_bindings.contains(&root)
     {
-        return false;
+        return None;
     }
-    let Some(name) = hir_callable_name(func) else {
-        return false;
-    };
-    safe_handoff_callees.contains(&name)
+    let name = hir_callable_name(func)?;
+    let short_name = name.rsplit('.').next().unwrap_or(name.as_str());
+    let is_safe_direct_callee =
+        safe_handoff_callees.contains(&name) || safe_handoff_callees.contains(short_name);
+    if args.len() == 1 && is_safe_direct_callee {
+        return Some(0);
+    }
+    let spec = safe_higher_order_handoff_callees
+        .get(&name)
+        .copied()
+        .or_else(|| safe_higher_order_handoff_callees.get(short_name).copied())?;
+    if spec.unique_arg_index >= args.len() || spec.forwarder_arg_index >= args.len() {
+        return None;
+    }
+    let forwarder_expr = &args[spec.forwarder_arg_index];
+    if let Some(root) = hir_callable_root_name(forwarder_expr)
+        && local_bindings.contains(&root)
+    {
+        return None;
+    }
+    let forwarder_name = hir_callable_name(forwarder_expr)?;
+    let forwarder_short_name = forwarder_name
+        .rsplit('.')
+        .next()
+        .unwrap_or(forwarder_name.as_str());
+    (safe_handoff_callees.contains(&forwarder_name)
+        || safe_handoff_callees.contains(forwarder_short_name))
+    .then_some(spec.unique_arg_index)
 }
 
 fn hir_function_param_bindings(function: &HirFunction) -> BTreeSet<String> {
@@ -2639,12 +2841,14 @@ fn analyze_hir_unique_flow_function(
     function: &HirFunction,
     aliases: &BTreeMap<String, String>,
     safe_handoff_callees: &BTreeSet<String>,
+    safe_higher_order_handoff_callees: &BTreeMap<String, SafeHigherOrderForwarder>,
 ) -> HirUniqueFlowSummary {
     let local_bindings = hir_function_param_bindings(function);
     analyze_hir_unique_flow_expr_scoped(
         &function.body,
         aliases,
         safe_handoff_callees,
+        safe_higher_order_handoff_callees,
         &local_bindings,
     )
 }
@@ -2653,6 +2857,7 @@ fn analyze_hir_unique_flow_expr_scoped(
     expr: &HirExpr,
     aliases: &BTreeMap<String, String>,
     safe_handoff_callees: &BTreeSet<String>,
+    safe_higher_order_handoff_callees: &BTreeMap<String, SafeHigherOrderForwarder>,
     local_bindings: &BTreeSet<String>,
 ) -> HirUniqueFlowSummary {
     match &expr.kind {
@@ -2670,12 +2875,14 @@ fn analyze_hir_unique_flow_expr_scoped(
                 left,
                 aliases,
                 safe_handoff_callees,
+                safe_higher_order_handoff_callees,
                 local_bindings,
             );
             let right_summary = analyze_hir_unique_flow_expr_scoped(
                 right,
                 aliases,
                 safe_handoff_callees,
+                safe_higher_order_handoff_callees,
                 local_bindings,
             );
             let mut summary = HirUniqueFlowSummary::default();
@@ -2696,6 +2903,7 @@ fn analyze_hir_unique_flow_expr_scoped(
                 operand,
                 aliases,
                 safe_handoff_callees,
+                safe_higher_order_handoff_callees,
                 local_bindings,
             )
         }
@@ -2708,12 +2916,14 @@ fn analyze_hir_unique_flow_expr_scoped(
                 condition,
                 aliases,
                 safe_handoff_callees,
+                safe_higher_order_handoff_callees,
                 local_bindings,
             );
             let then_summary = analyze_hir_unique_flow_expr_scoped(
                 then_branch,
                 aliases,
                 safe_handoff_callees,
+                safe_higher_order_handoff_callees,
                 local_bindings,
             );
             let else_summary = else_branch
@@ -2723,6 +2933,7 @@ fn analyze_hir_unique_flow_expr_scoped(
                         branch,
                         aliases,
                         safe_handoff_callees,
+                        safe_higher_order_handoff_callees,
                         local_bindings,
                     )
                 })
@@ -2760,17 +2971,24 @@ fn analyze_hir_unique_flow_expr_scoped(
                 func,
                 aliases,
                 safe_handoff_callees,
+                safe_higher_order_handoff_callees,
                 local_bindings,
             );
             let crosses_boundary = hir_call_crosses_ownership_boundary(func);
-            let is_safe_handoff =
-                hir_call_is_safe_unique_handoff(func, args, safe_handoff_callees, local_bindings);
+            let safe_handoff_arg_index = hir_call_safe_unique_handoff_arg_index(
+                func,
+                args,
+                safe_handoff_callees,
+                safe_higher_order_handoff_callees,
+                local_bindings,
+            );
             let mut safe_handoff_root = None;
-            for arg in args {
+            for (arg_index, arg) in args.iter().enumerate() {
                 let arg_summary = analyze_hir_unique_flow_expr_scoped(
                     arg,
                     aliases,
                     safe_handoff_callees,
+                    safe_higher_order_handoff_callees,
                     local_bindings,
                 );
                 add_ref_counts(&mut summary.ref_counts, &arg_summary.ref_counts);
@@ -2778,7 +2996,7 @@ fn analyze_hir_unique_flow_expr_scoped(
                     &mut summary.call_escape_counts,
                     &arg_summary.call_escape_counts,
                 );
-                if is_safe_handoff
+                if safe_handoff_arg_index == Some(arg_index)
                     && safe_handoff_root.is_none()
                     && let Some(root) = arg_summary.result_alias_root.clone()
                 {
@@ -2797,6 +3015,7 @@ fn analyze_hir_unique_flow_expr_scoped(
                 value,
                 aliases,
                 safe_handoff_callees,
+                safe_higher_order_handoff_callees,
                 local_bindings,
             );
             if matches!(pattern, kea_hir::HirPattern::Var(_))
@@ -2816,6 +3035,7 @@ fn analyze_hir_unique_flow_expr_scoped(
                     item,
                     &scoped_aliases,
                     safe_handoff_callees,
+                    safe_higher_order_handoff_callees,
                     &scoped_local_bindings,
                 );
                 add_ref_counts(&mut summary.ref_counts, &item_summary.ref_counts);
@@ -2846,6 +3066,7 @@ fn analyze_hir_unique_flow_expr_scoped(
                     item,
                     aliases,
                     safe_handoff_callees,
+                    safe_higher_order_handoff_callees,
                     local_bindings,
                 );
                 add_ref_counts(&mut summary.ref_counts, &item_summary.ref_counts);
@@ -2867,6 +3088,7 @@ fn analyze_hir_unique_flow_expr_scoped(
                 body,
                 aliases,
                 safe_handoff_callees,
+                safe_higher_order_handoff_callees,
                 &lambda_local_bindings,
             )
         }
@@ -2877,6 +3099,7 @@ fn analyze_hir_unique_flow_expr_scoped(
                     field_expr,
                     aliases,
                     safe_handoff_callees,
+                    safe_higher_order_handoff_callees,
                     local_bindings,
                 );
                 add_ref_counts(&mut summary.ref_counts, &field_summary.ref_counts);
@@ -2892,6 +3115,7 @@ fn analyze_hir_unique_flow_expr_scoped(
                 base,
                 aliases,
                 safe_handoff_callees,
+                safe_higher_order_handoff_callees,
                 local_bindings,
             );
             for (_, field_expr) in fields {
@@ -2899,6 +3123,7 @@ fn analyze_hir_unique_flow_expr_scoped(
                     field_expr,
                     aliases,
                     safe_handoff_callees,
+                    safe_higher_order_handoff_callees,
                     local_bindings,
                 );
                 add_ref_counts(&mut summary.ref_counts, &field_summary.ref_counts);
@@ -2915,6 +3140,7 @@ fn analyze_hir_unique_flow_expr_scoped(
                 expr,
                 aliases,
                 safe_handoff_callees,
+                safe_higher_order_handoff_callees,
                 local_bindings,
             );
             summary.result_alias_root = None;
@@ -2927,6 +3153,7 @@ fn analyze_hir_unique_flow_expr_scoped(
                     field_expr,
                     aliases,
                     safe_handoff_callees,
+                    safe_higher_order_handoff_callees,
                     local_bindings,
                 );
                 add_ref_counts(&mut summary.ref_counts, &field_summary.ref_counts);
@@ -2942,6 +3169,7 @@ fn analyze_hir_unique_flow_expr_scoped(
                 expr,
                 aliases,
                 safe_handoff_callees,
+                safe_higher_order_handoff_callees,
                 local_bindings,
             );
             summary.result_alias_root = None;
@@ -2952,6 +3180,7 @@ fn analyze_hir_unique_flow_expr_scoped(
                 expr,
                 aliases,
                 safe_handoff_callees,
+                safe_higher_order_handoff_callees,
                 local_bindings,
             )
         }
@@ -2964,6 +3193,7 @@ fn analyze_hir_unique_flow_expr_scoped(
                 expr,
                 aliases,
                 safe_handoff_callees,
+                safe_higher_order_handoff_callees,
                 local_bindings,
             );
             let mut clause_count_max = BTreeMap::new();
@@ -2979,6 +3209,7 @@ fn analyze_hir_unique_flow_expr_scoped(
                     &clause.body,
                     aliases,
                     safe_handoff_callees,
+                    safe_higher_order_handoff_callees,
                     &clause_bindings,
                 );
                 clause_count_max = max_ref_counts(&clause_count_max, &clause_summary.ref_counts);
@@ -2994,6 +3225,7 @@ fn analyze_hir_unique_flow_expr_scoped(
                     then_expr,
                     aliases,
                     safe_handoff_callees,
+                    safe_higher_order_handoff_callees,
                     local_bindings,
                 );
                 add_ref_counts(&mut summary.ref_counts, &then_summary.ref_counts);
@@ -3010,6 +3242,7 @@ fn analyze_hir_unique_flow_expr_scoped(
                 value,
                 aliases,
                 safe_handoff_callees,
+                safe_higher_order_handoff_callees,
                 local_bindings,
             )
         }
