@@ -15005,3 +15005,31 @@ Lean changes:
 **Outcome**:
 - Boundary step existence is now characterized by supported shape directly on
   typed handles, with MCP behavior still aligned.
+
+### 2026-03-02: typed supported-shape completeness with preservation
+
+**Context**: Strengthened the typed supported-shape characterization from
+step-existence-only to step-existence plus post-step typing preservation.
+
+Lean changes:
+- `handler_step_exists_and_preserves_iff_supported_shape_of_typed`
+- `handler_typed_handle_shape_capstone` now consumes this stronger theorem.
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; theorem strengthening/refactor only.
+- Existing linearity diagnostics and overlap normalization should remain stable.
+
+**Probe (direct `kea` MCP)**:
+1. Single-resume clause accepted.
+2. Branch double-resume rejected with `E0012`.
+3. `resume` outside handler rejected with `E0012`.
+4. Overlap residual remains normalized (`handled : () -[IO]> ()`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Supported-shape characterization on typed handles now directly yields
+  preserved successor typing, and shape-capstone routes consume that stronger
+  theorem path.

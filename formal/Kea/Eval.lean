@@ -3749,6 +3749,28 @@ theorem handler_step_exists_iff_supported_shape_of_typed
       exact handler_step_exists_iff_supported_shape h_contract_shape h_mem h_tail
 
 /--
+Typed-handle completeness strengthened with preservation:
+supported shape is equivalent to existence of a one-step boundary successor that
+remains well-typed at the same type.
+-/
+theorem handler_step_exists_and_preserves_iff_supported_shape_of_typed
+    {tenv : TermEnv}
+    {body : HandlerExpr}
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    {ty : Ty}
+    (h_typed : HandlerHasType tenv (.handle body handler clause) ty) :
+    (∃ e', HandlerStep (.handle body handler clause) e' ∧ HandlerHasType tenv e' ty)
+      ↔ handlerStepSupportedShape body clause := by
+  constructor
+  · intro h_exists
+    rcases h_exists with ⟨e', h_step, _h_typed'⟩
+    exact handler_step_requires_perform_redex h_step
+  · intro h_shape
+    rcases (handler_step_exists_iff_supported_shape_of_typed h_typed).2 h_shape with ⟨e', h_step⟩
+    exact ⟨e', h_step, handler_step_preservation h_typed h_step⟩
+
+/--
 Core-body progress witness at the boundary:
 handled core bodies step directly to the same core payload.
 -/
@@ -4324,10 +4346,9 @@ theorem handler_typed_handle_shape_capstone
     (TailResumptiveClassification.classifyClause clause.contract ≠
       TailResumptiveClassification.TailResumptiveClass.invalid) ∧
     TailResumptiveClassification.TailResumptiveBundle clause.contract := by
-  rcases handler_step_progress_of_typed_handle_core_or_matching_perform
-    h_typed h_shape with ⟨e', h_step⟩
-  have h_pres : HandlerHasType tenv e' ty :=
-    handler_step_preservation h_typed h_step
+  have h_step_pack :
+      ∃ e', HandlerStep (.handle body handler clause) e' ∧ HandlerHasType tenv e' ty :=
+    (handler_step_exists_and_preserves_iff_supported_shape_of_typed h_typed).2 h_shape
   have h_contract :
       HandleClauseContract.wellTypedSlice clause.contract
       ∧ resume_at_most_once clause.contract.resumeUse
@@ -4335,7 +4356,7 @@ theorem handler_typed_handle_shape_capstone
           TailResumptiveClassification.TailResumptiveClass.invalid)
       ∧ TailResumptiveClassification.TailResumptiveBundle clause.contract :=
     handler_clause_contract_capstone_of_handlerHasType h_typed
-  refine ⟨⟨e', h_step, h_pres⟩, ?_⟩
+  refine ⟨h_step_pack, ?_⟩
   exact h_contract
 
 /--
