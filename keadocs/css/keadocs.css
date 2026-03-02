@@ -11,15 +11,17 @@
  */
 
 /* ============================================================
-   1. Design tokens
+   1. Design tokens — light mode (default)
    ============================================================ */
 
 :root {
   /* — Primary palette (kea plumage) — */
   --kd-olive:        #4A5A2B;
+  --kd-olive-light:  #6B8240;
   --kd-scarlet:      #C8432B;
   --kd-teal:         #2B6B6B;
   --kd-gold:         #C4982B;
+  --kd-gold-muted:   #A68834;
 
   /* — Structural palette — */
   --kd-ink:          #1C1A18;
@@ -29,7 +31,7 @@
   --kd-bone:         #F4F0E8;
   --kd-paper:        #FAF8F4;
 
-  /* — Semantic mappings (light mode default) — */
+  /* — Semantic mappings — */
   --kd-bg:           var(--kd-paper);
   --kd-surface:      var(--kd-bone);
   --kd-elevated:     var(--kd-stone);
@@ -42,44 +44,67 @@
   --kd-code-bg:      var(--kd-bone);
   --kd-code-border:  var(--kd-stone);
   --kd-border:       var(--kd-stone);
+  --kd-border-heavy: var(--kd-ink);
+  --kd-selection-bg: var(--kd-olive);
+  --kd-selection-fg: var(--kd-bone);
 
   /* — Typography — */
   --kd-font-display: 'Syne', system-ui, sans-serif;
   --kd-font-body:    'Literata', Georgia, serif;
-  --kd-font-mono:    'IBM Plex Mono', ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+  --kd-font-mono:    'IBM Plex Mono', ui-monospace, 'Cascadia Code', monospace;
 
   /* — Syntax highlighting — */
   --kd-syn-keyword:    var(--kd-teal);
   --kd-syn-type:       var(--kd-olive);
   --kd-syn-effect:     var(--kd-scarlet);
-  --kd-syn-string:     #A68834;
+  --kd-syn-string:     var(--kd-gold-muted);
   --kd-syn-comment:    var(--kd-slate-light);
   --kd-syn-function:   var(--kd-ink);
   --kd-syn-operator:   var(--kd-slate-light);
   --kd-syn-param:      var(--kd-slate);
 
   /* — Signature block borders — */
-  --kd-sig-pure:       var(--kd-olive);
-  --kd-sig-effectful:  var(--kd-scarlet);
+  --kd-sig-pure:        var(--kd-olive);
+  --kd-sig-effectful:   var(--kd-scarlet);
   --kd-sig-polymorphic: var(--kd-teal);
 
-  /* — Effect badge colors — */
-  --kd-badge-io-bg:    var(--kd-olive);
-  --kd-badge-io-fg:    var(--kd-paper);
-  --kd-badge-fail-bg:  var(--kd-gold);
-  --kd-badge-fail-fg:  var(--kd-ink);
-  --kd-badge-async-bg: var(--kd-teal);
-  --kd-badge-async-fg: var(--kd-bone);
-  --kd-badge-pure-bg:  var(--kd-stone);
-  --kd-badge-pure-fg:  var(--kd-slate);
+  /* — Effect badges (translucent backgrounds, colored text) — */
+  --kd-badge-io-bg:    rgba(74, 90, 43, 0.08);
+  --kd-badge-io-fg:    var(--kd-olive);
+  --kd-badge-fail-bg:  rgba(196, 152, 43, 0.1);
+  --kd-badge-fail-fg:  var(--kd-gold-muted);
+  --kd-badge-async-bg: rgba(43, 107, 107, 0.07);
+  --kd-badge-async-fg: var(--kd-teal);
+  --kd-badge-pure-bg:  rgba(58, 54, 50, 0.05);
+  --kd-badge-pure-fg:  var(--kd-slate-light);
+
+  /* — Effect expand panel — */
+  --kd-expand-bg:      rgba(74, 90, 43, 0.04);
+  --kd-expand-border:  var(--kd-stone);
 }
 
 /* ============================================================
    2. Dark mode
-   ============================================================ */
+   ============================================================
+   Single set of overrides, applied by both explicit toggle
+   (data-theme="dark") and system preference (when no explicit
+   theme is set). No duplication. */
 
 [data-theme="dark"],
 .kd-dark {
+  --kd-olive:        #6B8240;
+  --kd-olive-light:  #8AAD50;
+  --kd-scarlet:      #E05A3F;
+  --kd-teal:         #4AADAD;
+  --kd-gold-muted:   #D4B85C;
+
+  --kd-ink:          #FAF8F4;
+  --kd-slate:        #D0C8BE;
+  --kd-slate-light:  #8A8070;
+  --kd-stone:        #302C28;
+  --kd-bone:         #1E1C19;
+  --kd-paper:        #151311;
+
   --kd-bg:           #151311;
   --kd-surface:      #1E1C19;
   --kd-elevated:     #252220;
@@ -91,7 +116,10 @@
   --kd-effect:       #E86040;
   --kd-code-bg:      #1A1816;
   --kd-code-border:  #252220;
-  --kd-border:       #252220;
+  --kd-border:       #2A2724;
+  --kd-border-heavy: #5A5448;
+  --kd-selection-bg: #6B8240;
+  --kd-selection-fg: #151311;
 
   --kd-syn-keyword:  #5EC4C4;
   --kd-syn-type:     #8AAD50;
@@ -102,22 +130,40 @@
   --kd-syn-operator: #8A8070;
   --kd-syn-param:    #D0C8BE;
 
-  --kd-sig-pure:      #6B8240;
+  --kd-sig-pure:       #6B8240;
   --kd-sig-effectful:  #E05A3F;
-  --kd-sig-polymorphic: #3FA0A0;
+  --kd-sig-polymorphic:#3FA0A0;
 
-  --kd-badge-io-bg:   #3A4A20;
-  --kd-badge-io-fg:   #C8E090;
-  --kd-badge-fail-bg: #4A3818;
-  --kd-badge-fail-fg: #E8C860;
-  --kd-badge-async-bg:#1A4040;
-  --kd-badge-async-fg:#80D8D8;
-  --kd-badge-pure-bg: #252220;
-  --kd-badge-pure-fg: #8A8070;
+  --kd-badge-io-bg:    rgba(107, 130, 64, 0.12);
+  --kd-badge-io-fg:    #8AAD50;
+  --kd-badge-fail-bg:  rgba(212, 184, 92, 0.1);
+  --kd-badge-fail-fg:  #D4B85C;
+  --kd-badge-async-bg: rgba(74, 173, 173, 0.1);
+  --kd-badge-async-fg: #5EC4C4;
+  --kd-badge-pure-bg:  rgba(200, 200, 180, 0.06);
+  --kd-badge-pure-fg:  #8A8070;
+
+  --kd-expand-bg:      rgba(107, 130, 64, 0.06);
+  --kd-expand-border:  #2A2724;
 }
 
+/* System preference fallback — applies dark tokens when no
+   explicit data-theme is set and the OS prefers dark. */
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
+  :root:not([data-theme="light"]):not([data-theme="dark"]) {
+    --kd-olive:        #6B8240;
+    --kd-olive-light:  #8AAD50;
+    --kd-scarlet:      #E05A3F;
+    --kd-teal:         #4AADAD;
+    --kd-gold-muted:   #D4B85C;
+
+    --kd-ink:          #FAF8F4;
+    --kd-slate:        #D0C8BE;
+    --kd-slate-light:  #8A8070;
+    --kd-stone:        #302C28;
+    --kd-bone:         #1E1C19;
+    --kd-paper:        #151311;
+
     --kd-bg:           #151311;
     --kd-surface:      #1E1C19;
     --kd-elevated:     #252220;
@@ -129,7 +175,10 @@
     --kd-effect:       #E86040;
     --kd-code-bg:      #1A1816;
     --kd-code-border:  #252220;
-    --kd-border:       #252220;
+    --kd-border:       #2A2724;
+    --kd-border-heavy: #5A5448;
+    --kd-selection-bg: #6B8240;
+    --kd-selection-fg: #151311;
 
     --kd-syn-keyword:  #5EC4C4;
     --kd-syn-type:     #8AAD50;
@@ -140,18 +189,21 @@
     --kd-syn-operator: #8A8070;
     --kd-syn-param:    #D0C8BE;
 
-    --kd-sig-pure:      #6B8240;
+    --kd-sig-pure:       #6B8240;
     --kd-sig-effectful:  #E05A3F;
-    --kd-sig-polymorphic: #3FA0A0;
+    --kd-sig-polymorphic:#3FA0A0;
 
-    --kd-badge-io-bg:   #3A4A20;
-    --kd-badge-io-fg:   #C8E090;
-    --kd-badge-fail-bg: #4A3818;
-    --kd-badge-fail-fg: #E8C860;
-    --kd-badge-async-bg:#1A4040;
-    --kd-badge-async-fg:#80D8D8;
-    --kd-badge-pure-bg: #252220;
-    --kd-badge-pure-fg: #8A8070;
+    --kd-badge-io-bg:    rgba(107, 130, 64, 0.12);
+    --kd-badge-io-fg:    #8AAD50;
+    --kd-badge-fail-bg:  rgba(212, 184, 92, 0.1);
+    --kd-badge-fail-fg:  #D4B85C;
+    --kd-badge-async-bg: rgba(74, 173, 173, 0.1);
+    --kd-badge-async-fg: #5EC4C4;
+    --kd-badge-pure-bg:  rgba(200, 200, 180, 0.06);
+    --kd-badge-pure-fg:  #8A8070;
+
+    --kd-expand-bg:      rgba(107, 130, 64, 0.06);
+    --kd-expand-border:  #2A2724;
   }
 }
 
@@ -179,10 +231,15 @@ body {
   line-height: 1.72;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 
-/* — Reading mode (book, landing) is default above.
-     Reference mode (API docs) overrides. — */
+::selection {
+  background: var(--kd-selection-bg);
+  color: var(--kd-selection-fg);
+}
+
+/* — Reference mode (API docs) — tighter density — */
 .kd-reference body,
 body.kd-reference {
   font-size: 0.95rem;
@@ -194,7 +251,7 @@ body.kd-reference {
    ============================================================ */
 
 h1, h2, h3, h4, h5, h6,
-.kd-h1, .kd-h2, .kd-h3 {
+.kd-h1, .kd-h2, .kd-h3, .kd-h4 {
   font-family: var(--kd-font-display);
   color: var(--kd-heading);
   font-weight: 700;
@@ -205,10 +262,12 @@ h1, h2, h3, h4, h5, h6,
 h1, .kd-h1 { font-size: 2.25rem; line-height: 1.15; margin-bottom: 1rem; }
 h2, .kd-h2 { font-size: 1.7rem;  line-height: 1.2;  margin-top: 2.5rem; margin-bottom: 0.75rem; }
 h3, .kd-h3 { font-size: 1.28rem; line-height: 1.3;  margin-top: 2rem;   margin-bottom: 0.5rem; }
+h4, .kd-h4 { font-size: 1.06rem; line-height: 1.35; margin-top: 1.5rem; margin-bottom: 0.35rem; }
 
 .kd-reference h1, .kd-reference .kd-h1 { font-size: 1.7rem; }
 .kd-reference h2, .kd-reference .kd-h2 { font-size: 1.28rem; }
 .kd-reference h3, .kd-reference .kd-h3 { font-size: 1.06rem; }
+.kd-reference h4, .kd-reference .kd-h4 { font-size: 0.95rem; }
 
 /* ============================================================
    5. Links
@@ -217,11 +276,20 @@ h3, .kd-h3 { font-size: 1.28rem; line-height: 1.3;  margin-top: 2rem;   margin-b
 a {
   color: var(--kd-link);
   text-decoration: none;
-  transition: color 0.15s ease;
+  transition: color 0.12s ease;
 }
+a:hover { color: var(--kd-link-hover); }
 
-a:hover {
+/* type links in signatures — olive, underline on hover */
+a.kd-type-link {
+  color: var(--kd-syn-type);
+  text-decoration: none;
+}
+a.kd-type-link:hover {
   color: var(--kd-link-hover);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
 }
 
 /* ============================================================
@@ -235,10 +303,7 @@ code {
   padding: 0.1em 0.35em;
   border-radius: 2px;
 }
-
-.kd-reference code {
-  font-size: 0.85em;
-}
+.kd-reference code { font-size: 0.85em; }
 
 /* ============================================================
    7. Code blocks
@@ -252,14 +317,13 @@ pre {
   padding: 1rem 1.25rem;
   overflow-x: auto;
   border: 1px solid var(--kd-code-border);
+  margin: 1rem 0;
 }
-
 pre code {
   background: none;
   padding: 0;
   font-size: inherit;
 }
-
 .kd-reference pre {
   font-size: 0.82rem;
   line-height: 1.6;
@@ -269,14 +333,14 @@ pre code {
    8. Syntax highlighting classes
    ============================================================ */
 
-.kd-syn-keyword  { color: var(--kd-syn-keyword); }
+.kd-syn-keyword  { color: var(--kd-syn-keyword); font-weight: 500; }
 .kd-syn-type     { color: var(--kd-syn-type); }
-.kd-syn-effect   { color: var(--kd-syn-effect); }
+.kd-syn-effect   { color: var(--kd-syn-effect); font-weight: 500; }
 .kd-syn-string   { color: var(--kd-syn-string); }
 .kd-syn-comment  { color: var(--kd-syn-comment); font-style: italic; }
 .kd-syn-function { color: var(--kd-syn-function); }
 .kd-syn-operator { color: var(--kd-syn-operator); }
-.kd-syn-param    { color: var(--kd-syn-param); }
+.kd-syn-param    { color: var(--kd-syn-param); font-weight: 300; }
 
 /* ============================================================
    9. Signature blocks
@@ -290,139 +354,206 @@ pre code {
   padding: 0.75rem 1rem;
   border-left: 3px solid var(--kd-sig-pure);
   margin: 1rem 0;
+  position: relative;
+  transition: border-left-width 0.15s ease;
 }
+.kd-sig:hover { border-left-width: 5px; }
+
+.kd-sig--effectful  { border-left-color: var(--kd-sig-effectful); }
+.kd-sig--polymorphic { border-left-color: var(--kd-sig-polymorphic); }
 
 .kd-reference .kd-sig {
   font-size: 0.86rem;
   line-height: 1.5;
 }
 
-.kd-sig--effectful {
-  border-left-color: var(--kd-sig-effectful);
-}
+/* ============================================================
+   10. Effect declaration blocks
+   ============================================================
+   Full effect declarations (effect IO, effect Fail E) at the
+   top of effect module pages. Always scarlet border. */
 
-.kd-sig--polymorphic {
-  border-left-color: var(--kd-sig-polymorphic);
+.kd-effect-decl {
+  font-family: var(--kd-font-mono);
+  font-size: 0.86rem;
+  line-height: 1.65;
+  background: var(--kd-surface);
+  padding: 1rem 1.2rem;
+  border-left: 3px solid var(--kd-effect);
+  margin: 1rem 0;
+  transition: border-left-width 0.15s ease;
 }
+.kd-effect-decl:hover { border-left-width: 5px; }
+.kd-effect-decl pre { margin: 0; white-space: pre; overflow-x: auto; }
+.kd-effect-decl code { font-size: inherit; background: none; padding: 0; display: block; }
 
 /* ============================================================
-   10. Effect badges
-   ============================================================ */
+   11. Effect expand panel
+   ============================================================
+   Appears inline below a signature when the effect arrow is
+   clicked. Shows each effect with explanation + reference link. */
+
+.kd-expand {
+  border-top: 1px solid var(--kd-expand-border);
+  background: var(--kd-expand-bg);
+  margin-top: 0.55rem;
+  padding: 0.6rem 0 0.2rem;
+  font-family: var(--kd-font-body);
+  font-size: 0.84rem;
+  line-height: 1.5;
+  color: var(--kd-text);
+  display: none;
+}
+.kd-expand.kd-expand--visible { display: block; }
+
+.kd-expand__row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.15rem 0.7rem;
+  padding: 0.15rem 0;
+}
+.kd-expand__label {
+  font-family: var(--kd-font-mono);
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+.kd-expand__label--io   { color: var(--kd-olive); }
+.kd-expand__label--fail { color: var(--kd-gold-muted); }
+.kd-expand__label--send { color: var(--kd-teal); }
+.kd-expand__desc {
+  color: var(--kd-secondary);
+}
+.kd-expand__desc a {
+  border-bottom: 1px solid var(--kd-border);
+}
+
+/* Clickable effect arrow trigger */
+.kd-effect-trigger {
+  cursor: pointer;
+  border-bottom: 1px dashed var(--kd-effect);
+  transition: opacity 0.12s;
+}
+.kd-effect-trigger:hover { opacity: 0.75; }
+
+/* ============================================================
+   12. Effect badges
+   ============================================================
+   Translucent backgrounds, colored text. Sits on any surface
+   without clashing. */
 
 .kd-badge {
   display: inline-block;
   font-family: var(--kd-font-mono);
-  font-size: 0.65rem;
+  font-size: 0.6rem;
   font-weight: 500;
   line-height: 1;
-  padding: 0.2em 0.45em;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  padding: 0.15em 0.35em;
+  letter-spacing: 0.02em;
   vertical-align: middle;
+  white-space: nowrap;
 }
 
-.kd-badge--io {
-  background: var(--kd-badge-io-bg);
-  color: var(--kd-badge-io-fg);
-}
-
-.kd-badge--fail {
-  background: var(--kd-badge-fail-bg);
-  color: var(--kd-badge-fail-fg);
-}
-
-.kd-badge--async {
-  background: var(--kd-badge-async-bg);
-  color: var(--kd-badge-async-fg);
-}
-
-.kd-badge--pure {
-  background: var(--kd-badge-pure-bg);
-  color: var(--kd-badge-pure-fg);
-}
+.kd-badge--io   { background: var(--kd-badge-io-bg);   color: var(--kd-badge-io-fg); }
+.kd-badge--fail { background: var(--kd-badge-fail-bg); color: var(--kd-badge-fail-fg); }
+.kd-badge--async { background: var(--kd-badge-async-bg); color: var(--kd-badge-async-fg); }
+.kd-badge--pure { background: var(--kd-badge-pure-bg); color: var(--kd-badge-pure-fg); }
 
 /* ============================================================
-   11. Effect arrow coloring
+   13. Effect arrow coloring
    ============================================================ */
 
-.kd-arrow {
-  color: var(--kd-effect);
-}
-
-.kd-arrow--pure {
-  color: var(--kd-syn-operator);
-}
+.kd-arrow      { color: var(--kd-effect); font-weight: 500; }
+.kd-arrow--pure { color: var(--kd-syn-operator); font-weight: 400; }
 
 /* ============================================================
-   12. Horizontal rules (architectural)
+   14. Horizontal rules (architectural)
    ============================================================ */
 
-hr {
-  border: none;
-  margin: 2rem 0;
-}
+hr { border: none; margin: 2rem 0; }
 
-hr.kd-rule--major {
-  border-top: 3px solid var(--kd-olive);
-}
-
-hr.kd-rule--section {
-  border-top: 2px solid var(--kd-heading);
-}
-
-hr.kd-rule--item {
-  border-top: 1px solid var(--kd-border);
-}
-
-hr.kd-rule--reveal {
-  border-top: 2px solid var(--kd-scarlet);
-}
+hr.kd-rule--major   { height: 5px; background: var(--kd-olive); }
+hr.kd-rule--section { height: 2px; background: var(--kd-border-heavy); }
+hr.kd-rule--item    { height: 1px; background: var(--kd-border); }
+hr.kd-rule--reveal  { height: 4px; background: var(--kd-scarlet); }
 
 /* ============================================================
-   13. Navigation bar
+   15. Navigation bar
    ============================================================ */
 
 .kd-nav {
   display: flex;
   align-items: center;
-  gap: 1.5rem;
+  gap: 1rem;
   font-family: var(--kd-font-mono);
-  font-size: 0.82rem;
-  padding: 0.6rem 0;
+  font-size: 0.78rem;
+  padding: 0.65rem 0;
   border-bottom: 1px solid var(--kd-border);
+  background: var(--kd-bg);
+  position: sticky;
+  top: 0;
+  z-index: 100;
 }
 
 .kd-nav__logo {
-  font-weight: 700;
+  font-weight: 600;
   color: var(--kd-heading);
   white-space: nowrap;
+  letter-spacing: -0.02em;
+}
+.kd-nav__logo .kd-arrow { color: var(--kd-effect); }
+
+.kd-nav__version {
+  color: var(--kd-secondary);
+  font-size: 0.72rem;
 }
 
-.kd-nav__logo .kd-arrow {
-  color: var(--kd-effect);
-}
+.kd-nav__sep { color: var(--kd-border); font-weight: 300; }
 
-.kd-nav__sep {
-  color: var(--kd-border);
-}
+.kd-nav__tabs { display: flex; gap: 0; }
 
 .kd-nav__link {
   color: var(--kd-secondary);
   text-decoration: none;
-  padding-bottom: 0.3rem;
+  padding: 0.35em 0.7em;
+  border-bottom: 2px solid transparent;
+  transition: color 0.12s, border-color 0.12s;
 }
-
-.kd-nav__link:hover {
-  color: var(--kd-heading);
-}
-
+.kd-nav__link:hover { color: var(--kd-heading); }
 .kd-nav__link--active {
   color: var(--kd-heading);
-  border-bottom: 2px solid var(--kd-olive);
+  border-bottom-color: var(--kd-olive);
+}
+
+.kd-nav__spacer { flex: 1; }
+
+.kd-nav__search {
+  font-family: var(--kd-font-mono);
+  font-size: 0.68rem;
+  color: var(--kd-secondary);
+  background: var(--kd-surface);
+  border: 1px solid var(--kd-border);
+  padding: 0.3em 0.7em;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.12s;
+}
+.kd-nav__search:hover { border-color: var(--kd-secondary); }
+.kd-nav__search kbd {
+  font-family: inherit;
+  font-size: 0.9em;
+  background: none;
+  padding: 0;
+  opacity: 0.5;
+}
+
+.kd-nav__ext {
+  font-size: 0.68rem;
+  color: var(--kd-secondary);
+  white-space: nowrap;
 }
 
 /* ============================================================
-   14. Manuscript layout (landing, book, spec)
+   16. Manuscript layout (landing, book, spec)
    ============================================================ */
 
 .kd-manuscript {
@@ -432,99 +563,257 @@ hr.kd-rule--reveal {
 }
 
 /* ============================================================
-   15. Three-panel layout (API docs, package registry)
+   17. Three-panel layout (API docs, package registry)
    ============================================================ */
 
 .kd-panels {
   display: grid;
-  grid-template-columns: 14rem 1fr 14rem;
+  grid-template-columns: 14.5rem 1fr;
   gap: 0;
-  min-height: 100vh;
+  min-height: calc(100vh - 3rem);
 }
 
 .kd-panels__sidebar {
   font-family: var(--kd-font-mono);
   font-size: 0.78rem;
-  padding: 1.5rem 1rem;
+  padding: 0.8rem 0;
   border-right: 1px solid var(--kd-border);
   position: sticky;
-  top: 0;
-  height: 100vh;
+  top: 2.8rem;
+  height: calc(100vh - 2.8rem);
   overflow-y: auto;
+  background: var(--kd-bg);
 }
 
 .kd-panels__main {
-  padding: 2rem 2.5rem;
-  max-width: 52rem;
+  padding: 1.8rem 2.5rem 4rem;
+  max-width: 50rem;
 }
 
-.kd-panels__annotations {
-  font-size: 0.82rem;
-  color: var(--kd-secondary);
-  padding: 1.5rem 1rem;
-  border-left: 1px solid var(--kd-border);
-}
-
-.kd-reference .kd-panels__sidebar {
-  font-size: 0.75rem;
-}
-
-@media (max-width: 72rem) {
-  .kd-panels {
-    grid-template-columns: 1fr;
-  }
+@media (max-width: 54rem) {
+  .kd-panels { grid-template-columns: 1fr; }
   .kd-panels__sidebar {
     position: static;
     height: auto;
     border-right: none;
     border-bottom: 1px solid var(--kd-border);
   }
-  .kd-panels__annotations {
-    display: none;
-  }
+  .kd-panels__main { padding: 1.3rem 1rem 3rem; }
 }
 
 /* ============================================================
-   16. Sidebar items
+   18. Sidebar items
    ============================================================ */
 
-.kd-sidebar__section {
-  margin-bottom: 1.5rem;
-}
+.kd-sidebar__section { margin-bottom: 0.5rem; }
 
 .kd-sidebar__heading {
   font-family: var(--kd-font-display);
-  font-size: 0.72rem;
-  font-weight: 700;
-  text-transform: uppercase;
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: lowercase;
   letter-spacing: 0.06em;
   color: var(--kd-secondary);
-  margin-bottom: 0.5rem;
+  padding: 0.5rem 0.9rem 0.25rem;
+}
+
+.kd-sidebar__rule {
+  border: none;
+  height: 1px;
+  background: var(--kd-border);
+  margin: 0.5rem 0.9rem;
 }
 
 .kd-sidebar__link {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.2rem 0.5rem;
+  gap: 0.35rem;
+  padding: 0.22rem 0.9rem;
   color: var(--kd-text);
   text-decoration: none;
+  transition: background 0.1s, color 0.1s;
+  line-height: 1.4;
 }
-
 .kd-sidebar__link:hover {
+  background: var(--kd-elevated);
   color: var(--kd-heading);
-  background: var(--kd-surface);
+}
+.kd-sidebar__link--active {
+  background: var(--kd-badge-io-bg);
+  border-left: 3px solid var(--kd-olive);
+  padding-left: calc(0.9rem - 3px);
+  color: var(--kd-heading);
+  font-weight: 500;
+}
+.kd-sidebar__link--indent {
+  padding-left: 1.8rem;
+}
+.kd-sidebar__link--indent.kd-sidebar__link--active {
+  padding-left: calc(1.8rem - 3px);
 }
 
-.kd-sidebar__link--active {
-  color: var(--kd-heading);
+.kd-sidebar__fn { flex: 1; }
+
+/* ============================================================
+   19. Handler panel
+   ============================================================
+   Shows available handlers for an effect on its reference page. */
+
+.kd-handler-panel {
   background: var(--kd-surface);
-  border-left: 2px solid var(--kd-olive);
-  padding-left: calc(0.5rem - 2px);
+  border: 1px solid var(--kd-border);
+  padding: 1rem 1.2rem;
+  margin: 0.8rem 0 1.2rem;
+  font-size: 0.88rem;
+}
+
+.kd-handler-panel__title {
+  font-family: var(--kd-font-display);
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: lowercase;
+  letter-spacing: 0.04em;
+  color: var(--kd-secondary);
+  margin-bottom: 0.5rem;
+}
+
+.kd-handler-panel__row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.1rem 0.8rem;
+  padding: 0.2rem 0;
+}
+
+.kd-handler-panel__name {
+  font-family: var(--kd-font-mono);
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--kd-heading);
+}
+.kd-handler-panel__desc {
+  color: var(--kd-secondary);
+  font-size: 0.84rem;
 }
 
 /* ============================================================
-   17. Dark mode toggle
+   20. Function entry
+   ============================================================
+   A single function's documentation block in the reference. */
+
+.kd-fn-entry { margin-bottom: 2rem; }
+
+.kd-fn-name {
+  font-family: var(--kd-font-display);
+  font-size: 1.06rem;
+  font-weight: 700;
+  color: var(--kd-heading);
+  text-transform: lowercase;
+  margin-bottom: 0.4rem;
+  display: flex;
+  align-items: baseline;
+  gap: 0.7rem;
+}
+
+.kd-fn-doc { margin-top: 0.6rem; max-width: 38rem; }
+.kd-fn-doc p { margin-bottom: 0.6em; }
+
+/* ============================================================
+   21. Example blocks
+   ============================================================ */
+
+.kd-example-label {
+  font-family: var(--kd-font-display);
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: lowercase;
+  letter-spacing: 0.04em;
+  color: var(--kd-secondary);
+  margin-bottom: 0.3rem;
+  margin-top: 0.5rem;
+}
+
+.kd-example {
+  background: var(--kd-code-bg);
+  border-left: 2px solid var(--kd-olive);
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.6rem;
+  overflow-x: auto;
+}
+.kd-example pre { margin: 0; white-space: pre; border: none; padding: 0; }
+.kd-example code {
+  font-size: 0.82rem;
+  line-height: 1.65;
+  background: none;
+  padding: 0;
+  display: block;
+}
+
+/* ============================================================
+   22. Section labels and breadcrumbs
+   ============================================================ */
+
+.kd-section-label {
+  font-family: var(--kd-font-display);
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: lowercase;
+  letter-spacing: 0.04em;
+  color: var(--kd-secondary);
+  margin-bottom: 1rem;
+}
+
+.kd-breadcrumb {
+  font-family: var(--kd-font-mono);
+  font-size: 0.68rem;
+  color: var(--kd-secondary);
+  margin-bottom: 1rem;
+}
+.kd-breadcrumb a { color: var(--kd-secondary); }
+.kd-breadcrumb a:hover { color: var(--kd-link); }
+.kd-breadcrumb__sep { margin: 0 0.25em; opacity: 0.35; }
+
+/* ============================================================
+   23. Page header (module/type/effect pages)
+   ============================================================ */
+
+.kd-page-header { margin-bottom: 1.8rem; }
+
+.kd-page-title {
+  font-size: 1.7rem;
+  line-height: 1.15;
+  margin-bottom: 0.15rem;
+}
+
+.kd-page-meta {
+  font-family: var(--kd-font-mono);
+  font-size: 0.68rem;
+  color: var(--kd-secondary);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.7rem;
+}
+
+.kd-page-tag {
+  padding: 0.12em 0.4em;
+  font-weight: 500;
+}
+.kd-page-tag--effect { background: rgba(200, 67, 43, 0.07); color: var(--kd-effect); }
+.kd-page-tag--struct { background: rgba(43, 107, 107, 0.07); color: var(--kd-teal); }
+.kd-page-tag--trait  { background: var(--kd-badge-io-bg);     color: var(--kd-olive); }
+.kd-page-tag--enum   { background: var(--kd-badge-fail-bg);   color: var(--kd-gold-muted); }
+
+.kd-page-desc { max-width: 38rem; }
+
+.kd-src-link {
+  font-family: var(--kd-font-mono);
+  font-size: 0.68rem;
+  color: var(--kd-secondary);
+}
+.kd-src-link:hover { color: var(--kd-link-hover); }
+
+/* ============================================================
+   24. Dark mode toggle
    ============================================================ */
 
 .kd-theme-toggle {
@@ -532,34 +821,23 @@ hr.kd-rule--reveal {
   border: none;
   cursor: pointer;
   font-family: var(--kd-font-mono);
-  font-size: 0.9rem;
+  font-size: 0.82rem;
   color: var(--kd-secondary);
-  padding: 0.2rem;
+  padding: 0.2em 0.4em;
+  transition: color 0.12s;
 }
-
-.kd-theme-toggle:hover {
-  color: var(--kd-heading);
-}
+.kd-theme-toggle:hover { color: var(--kd-heading); }
 
 /* ============================================================
-   18. Paragraphs and lists
+   25. Paragraphs and lists
    ============================================================ */
 
-p {
-  margin-bottom: 1rem;
-}
-
-ul, ol {
-  margin-bottom: 1rem;
-  padding-left: 1.5rem;
-}
-
-li {
-  margin-bottom: 0.25rem;
-}
+p { margin-bottom: 1rem; }
+ul, ol { margin-bottom: 1rem; padding-left: 1.5rem; }
+li { margin-bottom: 0.25rem; }
 
 /* ============================================================
-   19. Tables
+   26. Tables
    ============================================================ */
 
 table {
@@ -568,26 +846,119 @@ table {
   font-size: 0.92rem;
   margin: 1rem 0;
 }
-
 th {
   font-family: var(--kd-font-mono);
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   font-weight: 600;
-  text-transform: uppercase;
+  text-transform: lowercase;
   letter-spacing: 0.04em;
   text-align: left;
   color: var(--kd-secondary);
   border-bottom: 2px solid var(--kd-border);
   padding: 0.5rem 0.75rem;
 }
-
 td {
   padding: 0.5rem 0.75rem;
   border-bottom: 1px solid var(--kd-border);
 }
 
 /* ============================================================
-   20. Logo rendering
+   27. Trait tags (clickable on struct pages)
+   ============================================================ */
+
+.kd-trait-list { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+
+.kd-trait-tag {
+  font-family: var(--kd-font-mono);
+  font-size: 0.68rem;
+  padding: 0.15em 0.45em;
+  border: 1px solid var(--kd-border);
+  color: var(--kd-teal);
+  cursor: pointer;
+  text-decoration: none;
+  transition: border-color 0.12s, background 0.12s;
+}
+.kd-trait-tag:hover {
+  border-color: var(--kd-teal);
+  background: var(--kd-badge-async-bg);
+}
+
+/* ============================================================
+   28. Type definition blocks (enum/type alias)
+   ============================================================ */
+
+.kd-type-def {
+  font-family: var(--kd-font-mono);
+  font-size: 0.86rem;
+  line-height: 1.6;
+  background: var(--kd-surface);
+  padding: 0.85rem 1.1rem;
+  border-left: 3px solid var(--kd-teal);
+  margin: 1rem 0 0.5rem;
+}
+.kd-type-def pre { margin: 0; white-space: pre; overflow-x: auto; }
+.kd-type-def code { font-size: inherit; background: none; padding: 0; display: block; }
+
+/* ============================================================
+   29. Variant list (enum pages)
+   ============================================================ */
+
+.kd-variant {
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--kd-border);
+}
+.kd-variant:last-child { border-bottom: none; }
+.kd-variant__name {
+  font-family: var(--kd-font-mono);
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--kd-heading);
+}
+.kd-variant__fields {
+  font-family: var(--kd-font-mono);
+  font-size: 0.82rem;
+  color: var(--kd-syn-type);
+  margin-left: 0.5rem;
+}
+.kd-variant__desc {
+  color: var(--kd-secondary);
+  font-size: 0.84rem;
+  margin-top: 0.15rem;
+}
+
+/* ============================================================
+   30. Field list (struct pages)
+   ============================================================ */
+
+.kd-field {
+  display: grid;
+  grid-template-columns: 8rem 1fr;
+  gap: 0.3rem;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--kd-border);
+  font-size: 0.88rem;
+  align-items: baseline;
+}
+.kd-field:last-child { border-bottom: none; }
+.kd-field__name {
+  font-family: var(--kd-font-mono);
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--kd-heading);
+}
+.kd-field__type {
+  font-family: var(--kd-font-mono);
+  font-size: 0.82rem;
+  color: var(--kd-syn-type);
+}
+.kd-field__desc {
+  grid-column: 1 / -1;
+  color: var(--kd-secondary);
+  font-size: 0.84rem;
+}
+
+/* ============================================================
+   31. Logo rendering
    ============================================================ */
 
 .kd-logo {
@@ -595,11 +966,84 @@ td {
   font-weight: 700;
   white-space: nowrap;
 }
+.kd-logo__bracket { color: var(--kd-effect); }
+.kd-logo__name    { color: var(--kd-heading); }
 
-.kd-logo__bracket {
-  color: var(--kd-effect);
+/* ============================================================
+   32. Footer
+   ============================================================ */
+
+.kd-footer {
+  border-top: 4px solid var(--kd-olive);
+  padding: 1.5rem 0;
+  display: flex;
+  align-items: center;
+  gap: 1.2rem;
+}
+.kd-footer__logo {
+  font-family: var(--kd-font-mono);
+  font-size: 0.78rem;
+  color: var(--kd-secondary);
+}
+.kd-footer__logo .kd-arrow { color: var(--kd-effect); }
+.kd-footer__links {
+  font-family: var(--kd-font-display);
+  font-size: 0.68rem;
+  display: flex;
+  gap: 0.9rem;
+}
+.kd-footer__links a { color: var(--kd-secondary); }
+.kd-footer__links a:hover { color: var(--kd-link); }
+.kd-footer__spacer { flex: 1; }
+.kd-footer__version {
+  font-family: var(--kd-font-mono);
+  font-size: 0.68rem;
+  color: var(--kd-secondary);
+  opacity: 0.4;
 }
 
-.kd-logo__name {
+/* ============================================================
+   33. Callout / pull quote
+   ============================================================ */
+
+.kd-callout {
+  font-family: var(--kd-font-display);
+  font-size: 1.28rem;
+  font-weight: 700;
+  line-height: 1.4;
   color: var(--kd-heading);
+  text-transform: lowercase;
+  border-left: 5px solid var(--kd-olive);
+  padding: 0.8rem 0 0.8rem 1.5rem;
+  margin: 2rem 0;
+  letter-spacing: -0.005em;
+}
+
+/* ============================================================
+   34. Status / admonition blocks
+   ============================================================ */
+
+.kd-admonition {
+  font-family: var(--kd-font-display);
+  font-size: 0.95rem;
+  background: var(--kd-surface);
+  padding: 1.2rem 1.5rem;
+  margin: 1.5rem 0;
+  line-height: 1.55;
+}
+.kd-admonition--warning { border-left: 5px solid var(--kd-gold-muted); }
+.kd-admonition--info    { border-left: 5px solid var(--kd-teal); }
+.kd-admonition--danger  { border-left: 5px solid var(--kd-scarlet); }
+.kd-admonition p { margin-bottom: 0.4rem; }
+.kd-admonition p:last-child { margin-bottom: 0; }
+
+/* ============================================================
+   35. Print
+   ============================================================ */
+
+@media print {
+  body { font-size: 11pt; color: #000; background: #fff; }
+  .kd-nav, .kd-footer, .kd-theme-toggle { display: none; }
+  pre { border: 1px solid #ccc; }
+  a { color: #000; text-decoration: underline; }
 }

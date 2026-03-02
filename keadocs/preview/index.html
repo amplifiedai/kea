@@ -5,15 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>keadocs design system preview</title>
 
-  <!-- Variable fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,700;1,7..72,400&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Literata:ital,opsz,wght@0,7..72,300;0,7..72,400;0,7..72,500;0,7..72,600;0,7..72,700;1,7..72,400&family=Syne:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
   <link rel="stylesheet" href="../css/keadocs.css">
 
   <style>
-    /* Preview-only styles */
+    /* Preview-only styles — not part of the design system */
     .preview-section {
       margin-bottom: 3rem;
       padding-bottom: 2rem;
@@ -21,24 +20,24 @@
     }
     .preview-label {
       font-family: var(--kd-font-mono);
-      font-size: 0.7rem;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
+      font-size: 0.65rem;
+      text-transform: lowercase;
+      letter-spacing: 0.06em;
       color: var(--kd-secondary);
       margin-bottom: 0.5rem;
     }
     .preview-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr));
-      gap: 0.75rem;
+      grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr));
+      gap: 0.6rem;
     }
     .swatch {
-      aspect-ratio: 2 / 1;
+      aspect-ratio: 2.2 / 1;
       display: flex;
       align-items: flex-end;
-      padding: 0.4rem;
+      padding: 0.35rem;
       font-family: var(--kd-font-mono);
-      font-size: 0.65rem;
+      font-size: 0.6rem;
     }
   </style>
 </head>
@@ -46,19 +45,19 @@
 
 <div class="kd-manuscript">
 
-  <!-- ===== Theme toggle ===== -->
+  <!-- theme toggle -->
   <div style="text-align: right; margin-bottom: 1rem;">
-    <button class="kd-theme-toggle" onclick="toggleTheme()" aria-label="Toggle dark mode" id="themeBtn"></button>
+    <button class="kd-theme-toggle" onclick="toggleTheme()" aria-label="Toggle dark mode" id="themeBtn">○</button>
   </div>
 
   <h1>keadocs design system</h1>
-  <p>preview of all components. open in a browser to validate.</p>
+  <p>component catalog. open in a browser and toggle dark mode to validate both themes.</p>
 
-  <!-- ===== Color palette ===== -->
+  <!-- ═══════ COLORS ═══════ -->
   <div class="preview-section">
     <h2>color palette</h2>
 
-    <p class="preview-label">primary</p>
+    <p class="preview-label">primary (kea plumage)</p>
     <div class="preview-grid">
       <div class="swatch" style="background: var(--kd-olive); color: #fff;">olive</div>
       <div class="swatch" style="background: var(--kd-scarlet); color: #fff;">scarlet</div>
@@ -75,56 +74,78 @@
       <div class="swatch" style="background: var(--kd-bone); color: #000;">bone</div>
       <div class="swatch" style="background: var(--kd-paper); color: #000; border: 1px solid var(--kd-border);">paper</div>
     </div>
+
+    <p class="preview-label" style="margin-top: 1rem;">semantic</p>
+    <div class="preview-grid">
+      <div class="swatch" style="background: var(--kd-bg); color: var(--kd-text); border: 1px solid var(--kd-border);">bg</div>
+      <div class="swatch" style="background: var(--kd-surface); color: var(--kd-text);">surface</div>
+      <div class="swatch" style="background: var(--kd-code-bg); color: var(--kd-text);">code-bg</div>
+      <div class="swatch" style="background: var(--kd-elevated); color: var(--kd-text);">elevated</div>
+    </div>
   </div>
 
-  <!-- ===== Typography ===== -->
+  <!-- ═══════ TYPOGRAPHY ═══════ -->
   <div class="preview-section">
     <h2>typography</h2>
-    <h1>h1 &mdash; the compiler knows what your functions do</h1>
-    <h2>h2 &mdash; algebraic effects with handlers</h2>
-    <h3>h3 &mdash; row polymorphism for records and effects</h3>
+    <h1>h1 — the compiler knows what your functions do</h1>
+    <h2>h2 — algebraic effects with handlers</h2>
+    <h3>h3 — row polymorphism for records and effects</h3>
+    <h4>h4 — section within a function entry</h4>
     <p>Body text in Literata. Kea is a statically-typed functional programming language with algebraic effects, handlers, row polymorphism, and indentation-sensitive syntax. It compiles via Cranelift.</p>
     <p>Inline code: <code>List.map(xs, f)</code>, <code>-[IO, Fail E]></code>, <code>Unique Buffer</code>.</p>
+    <p style="font-family: var(--kd-font-mono); font-size: 0.82rem; color: var(--kd-secondary);">Mono text for nav, badges, code — IBM Plex Mono.</p>
+    <p>Select this text to see the olive selection color.</p>
   </div>
 
-  <!-- ===== Logo ===== -->
+  <!-- ═══════ LOGO ═══════ -->
   <div class="preview-section">
     <h2>logo</h2>
-    <p style="font-size: 2.5rem;">
+    <p style="font-size: 3rem; line-height: 1.1; margin-bottom: 1rem;">
       <span class="kd-logo"><span class="kd-logo__bracket">-[</span><span class="kd-logo__name">kea</span><span class="kd-logo__bracket">]></span></span>
     </p>
-    <p style="font-size: 1.2rem; margin-top: 1rem;">
+    <p style="font-size: 1.2rem;">
       <span class="kd-logo"><span class="kd-logo__bracket">-[</span><span class="kd-logo__name">kea</span><span class="kd-logo__bracket">]></span></span>
+      <span style="color: var(--kd-secondary); font-family: var(--kd-font-mono); font-size: 0.78rem; margin-left: 0.5rem;">— nav size</span>
     </p>
   </div>
 
-  <!-- ===== Navigation ===== -->
+  <!-- ═══════ NAVIGATION ═══════ -->
   <div class="preview-section">
     <h2>navigation</h2>
 
     <p class="preview-label">kealang.org</p>
-    <nav class="kd-nav">
+    <nav class="kd-nav" style="position: static;">
       <span class="kd-nav__logo"><span class="kd-arrow">-[</span>kea<span class="kd-arrow">]></span></span>
-      <span class="kd-nav__sep">|</span>
-      <a href="#" class="kd-nav__link kd-nav__link--active">docs</a>
-      <a href="#" class="kd-nav__link">reference</a>
-      <a href="#" class="kd-nav__link">spec</a>
-      <a href="#" class="kd-nav__link">errors</a>
-      <a href="#" class="kd-nav__link">source</a>
+      <span class="kd-nav__sep">│</span>
+      <div class="kd-nav__tabs">
+        <a href="#" class="kd-nav__link kd-nav__link--active">docs</a>
+        <a href="#" class="kd-nav__link">reference</a>
+        <a href="#" class="kd-nav__link">spec</a>
+        <a href="#" class="kd-nav__link">errors</a>
+      </div>
+      <span class="kd-nav__spacer"></span>
+      <a class="kd-nav__search" href="#">search <kbd>⌘K</kbd></a>
+      <button class="kd-theme-toggle" style="font-size: 0.78rem;">○</button>
+      <a class="kd-nav__ext" href="#">source ↗</a>
     </nav>
 
-    <p class="preview-label" style="margin-top: 1.5rem;">packages.kealang.org</p>
-    <nav class="kd-nav">
-      <span class="kd-nav__logo">kea-http</span>
-      <span style="color: var(--kd-secondary); font-family: var(--kd-font-mono); font-size: 0.78rem;">0.1.0</span>
-      <span class="kd-nav__sep">|</span>
-      <a href="#" class="kd-nav__link">guides</a>
-      <a href="#" class="kd-nav__link kd-nav__link--active">reference</a>
-      <a href="#" class="kd-nav__link">source</a>
+    <p class="preview-label" style="margin-top: 1.5rem;">packages.kealang.org (keadocs)</p>
+    <nav class="kd-nav" style="position: static;">
+      <span class="kd-nav__logo">kea_http</span>
+      <span class="kd-nav__version">0.3.0</span>
+      <span class="kd-nav__sep">│</span>
+      <div class="kd-nav__tabs">
+        <a href="#" class="kd-nav__link">guides</a>
+        <a href="#" class="kd-nav__link kd-nav__link--active">reference</a>
+      </div>
+      <span class="kd-nav__spacer"></span>
+      <a class="kd-nav__search" href="#">search <kbd>⌘K</kbd></a>
+      <button class="kd-theme-toggle" style="font-size: 0.78rem;">○</button>
+      <a class="kd-nav__ext" href="#">kealang.org ↗</a>
     </nav>
   </div>
 
-  <!-- ===== Effect badges ===== -->
+  <!-- ═══════ EFFECT BADGES ═══════ -->
   <div class="preview-section">
     <h2>effect badges</h2>
     <p>
@@ -134,88 +155,249 @@
       <span class="kd-badge kd-badge--async">Send</span>
       <span class="kd-badge kd-badge--async">Spawn</span>
     </p>
-    <p style="margin-top: 0.5rem;">Badges appear in sidebars, search results, and tooltips.</p>
+    <p style="margin-top: 0.5rem; font-size: 0.88rem;">Translucent backgrounds. Sit on any surface cleanly.</p>
   </div>
 
-  <!-- ===== Signature blocks ===== -->
+  <!-- ═══════ SIGNATURE BLOCKS ═══════ -->
   <div class="preview-section">
     <h2>signature blocks</h2>
+    <p style="font-size: 0.88rem;">Olive border = pure. Scarlet = effectful. Teal = polymorphic. Hover to see border thicken.</p>
 
-    <p class="preview-label">pure</p>
+    <p class="preview-label">pure (olive border)</p>
     <div class="kd-sig">
-      <span class="kd-syn-keyword">fn</span> <span class="kd-syn-function">map</span>(<span class="kd-syn-param">_ self</span>: <span class="kd-syn-type">List</span> <span class="kd-syn-type">A</span>, <span class="kd-syn-param">_ f</span>: <span class="kd-syn-type">A</span> <span class="kd-syn-operator">-></span> <span class="kd-syn-type">B</span>) <span class="kd-syn-operator">-></span> <span class="kd-syn-type">List</span> <span class="kd-syn-type">B</span>
+      <span class="kd-syn-keyword">fn</span> <span class="kd-syn-function">length</span>(<span class="kd-syn-param">xs</span>: <a class="kd-type-link" href="#">List</a>) <span class="kd-arrow--pure">-></span> <a class="kd-type-link" href="#">Int</a>
     </div>
 
-    <p class="preview-label">effectful</p>
+    <p class="preview-label">effectful (scarlet border)</p>
     <div class="kd-sig kd-sig--effectful">
-      <span class="kd-syn-keyword">fn</span> <span class="kd-syn-function">load_config</span>(<span class="kd-syn-param">_ path</span>: <span class="kd-syn-type">String</span>) <span class="kd-arrow">-[</span><span class="kd-syn-type">IO</span><span class="kd-syn-operator">,</span> <span class="kd-syn-type">Fail</span> <span class="kd-syn-type">ConfigError</span><span class="kd-arrow">]></span> <span class="kd-syn-type">Config</span>
+      <span class="kd-syn-keyword">fn</span> <span class="kd-syn-function">read_file</span>(<span class="kd-syn-param">path</span>: <a class="kd-type-link" href="#">String</a>) <span class="kd-arrow">-></span> <a class="kd-type-link" href="#">String</a>
     </div>
 
-    <p class="preview-label">effect-polymorphic</p>
+    <p class="preview-label">effectful with click-to-expand effect annotation</p>
+    <div class="kd-sig kd-sig--effectful" id="sig-assert">
+      <span class="kd-syn-keyword">fn</span> <span class="kd-syn-function">assert</span>(<span class="kd-syn-param">value</span>: <a class="kd-type-link" href="#">Bool</a>) <span class="kd-effect-trigger" onclick="toggleExpand('expand-assert')">-[Fail String]></span> <a class="kd-type-link" href="#">Unit</a>
+      <div class="kd-expand" id="expand-assert">
+        <div class="kd-expand__row">
+          <span class="kd-expand__label kd-expand__label--fail">Fail String</span>
+          <span class="kd-expand__desc">fails with <code>"assertion failed"</code> when the value is false. <a href="#">reference →</a></span>
+        </div>
+      </div>
+    </div>
+
+    <p class="preview-label">effect-polymorphic (teal border)</p>
     <div class="kd-sig kd-sig--polymorphic">
-      <span class="kd-syn-keyword">fn</span> <span class="kd-syn-function">map</span>(<span class="kd-syn-param">_ self</span>: <span class="kd-syn-type">List</span> <span class="kd-syn-type">A</span>, <span class="kd-syn-param">_ f</span>: <span class="kd-syn-type">A</span> <span class="kd-arrow">-[</span><span class="kd-syn-param">e</span><span class="kd-arrow">]></span> <span class="kd-syn-type">B</span>) <span class="kd-arrow">-[</span><span class="kd-syn-param">e</span><span class="kd-arrow">]></span> <span class="kd-syn-type">List</span> <span class="kd-syn-type">B</span>
+      <span class="kd-syn-keyword">fn</span> <span class="kd-syn-function">map</span>(<span class="kd-syn-param">_ self</span>: <a class="kd-type-link" href="#">List</a> <span class="kd-syn-type">A</span>, <span class="kd-syn-param">_ f</span>: <span class="kd-syn-type">A</span> <span class="kd-arrow">-[</span><span class="kd-syn-param">e</span><span class="kd-arrow">]></span> <span class="kd-syn-type">B</span>) <span class="kd-arrow">-[</span><span class="kd-syn-param">e</span><span class="kd-arrow">]></span> <a class="kd-type-link" href="#">List</a> <span class="kd-syn-type">B</span>
     </div>
   </div>
 
-  <!-- ===== Code block ===== -->
+  <!-- ═══════ EFFECT DECLARATION ═══════ -->
+  <div class="preview-section">
+    <h2>effect declaration block</h2>
+    <div class="kd-effect-decl">
+<pre><code><span class="kd-syn-keyword">effect</span> <span class="kd-syn-effect">IO</span>
+  <span class="kd-syn-keyword">fn</span> <span class="kd-syn-function">stdout</span>(<span class="kd-syn-param">msg</span>: <span class="kd-syn-type">String</span>) <span class="kd-syn-operator">-></span> <span class="kd-syn-type">Unit</span>
+  <span class="kd-syn-keyword">fn</span> <span class="kd-syn-function">stderr</span>(<span class="kd-syn-param">msg</span>: <span class="kd-syn-type">String</span>) <span class="kd-syn-operator">-></span> <span class="kd-syn-type">Unit</span>
+  <span class="kd-syn-keyword">fn</span> <span class="kd-syn-function">read_file</span>(<span class="kd-syn-param">path</span>: <span class="kd-syn-type">String</span>) <span class="kd-syn-operator">-></span> <span class="kd-syn-type">String</span>
+  <span class="kd-syn-keyword">fn</span> <span class="kd-syn-function">write_file</span>(<span class="kd-syn-param">path</span>: <span class="kd-syn-type">String</span>, <span class="kd-syn-param">data</span>: <span class="kd-syn-type">String</span>) <span class="kd-syn-operator">-></span> <span class="kd-syn-type">Unit</span></code></pre>
+    </div>
+
+    <p class="preview-label">parameterised effect</p>
+    <div class="kd-effect-decl">
+<pre><code><span class="kd-syn-keyword">effect</span> <span class="kd-syn-effect">Fail</span> <span class="kd-syn-type">E</span>
+  <span class="kd-syn-comment">--| Abort the current computation with an error payload.</span>
+  <span class="kd-syn-keyword">fn</span> <span class="kd-syn-function">fail</span>(<span class="kd-syn-param">error</span>: <span class="kd-syn-type">E</span>) <span class="kd-syn-operator">-></span> <span class="kd-syn-type">Never</span></code></pre>
+    </div>
+  </div>
+
+  <!-- ═══════ HANDLER PANEL ═══════ -->
+  <div class="preview-section">
+    <h2>handler panel</h2>
+    <div class="kd-handler-panel">
+      <div class="kd-handler-panel__title">handlers</div>
+      <div class="kd-handler-panel__row">
+        <span class="kd-handler-panel__name">runtime</span>
+        <span class="kd-handler-panel__desc">the default handler — real file system, real stdout.</span>
+      </div>
+      <div class="kd-handler-panel__row">
+        <span class="kd-handler-panel__name"><a href="#">Test.with_mock_io</a></span>
+        <span class="kd-handler-panel__desc">in-memory file system and captured output. no real side effects.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════ TYPE DEFINITION ═══════ -->
+  <div class="preview-section">
+    <h2>type definition block</h2>
+    <div class="kd-type-def">
+<pre><code><span class="kd-syn-keyword">type</span> <span class="kd-syn-type">List</span> = <span class="kd-syn-type">Nil</span> | <span class="kd-syn-type">Cons</span>(<span class="kd-syn-type">Int</span>, <span class="kd-syn-type">List</span>)</code></pre>
+    </div>
+    <div class="kd-variant">
+      <span class="kd-variant__name">Nil</span>
+      <div class="kd-variant__desc">the empty list.</div>
+    </div>
+    <div class="kd-variant">
+      <span class="kd-variant__name">Cons</span><span class="kd-variant__fields">(<a href="#" class="kd-type-link">Int</a>, <a href="#" class="kd-type-link">List</a>)</span>
+      <div class="kd-variant__desc">a head element followed by the rest of the list.</div>
+    </div>
+  </div>
+
+  <!-- ═══════ FUNCTION ENTRY ═══════ -->
+  <div class="preview-section">
+    <h2>function entry</h2>
+    <div class="kd-fn-entry">
+      <div class="kd-fn-name">fold <a class="kd-src-link" href="#">[src]</a></div>
+      <div class="kd-sig">
+        <span class="kd-syn-keyword">fn</span> <span class="kd-syn-function">fold</span>(<span class="kd-syn-param">xs</span>: <a class="kd-type-link" href="#">List</a>, <span class="kd-syn-param">init</span>: <a class="kd-type-link" href="#">Int</a>, <span class="kd-syn-param">f</span>: <span class="kd-syn-keyword">fn</span>(<a class="kd-type-link" href="#">Int</a>, <a class="kd-type-link" href="#">Int</a>) <span class="kd-arrow--pure">-></span> <a class="kd-type-link" href="#">Int</a>) <span class="kd-arrow--pure">-></span> <a class="kd-type-link" href="#">Int</a>
+      </div>
+      <div class="kd-fn-doc">
+        <p>Reduce a list from left to right. Applies <code>f</code> to the accumulator and each element, threading the result through.</p>
+        <div class="kd-example-label">example</div>
+        <div class="kd-example">
+<pre><code><span class="kd-syn-type">List</span>.fold(<span class="kd-syn-type">Cons</span>(1, <span class="kd-syn-type">Cons</span>(2, <span class="kd-syn-type">Nil</span>)), 0, |<span class="kd-syn-param">acc</span>, <span class="kd-syn-param">x</span>| <span class="kd-syn-operator">-></span> acc + x)
+  <span class="kd-syn-comment">-- => 3</span></code></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════ FIELD LIST ═══════ -->
+  <div class="preview-section">
+    <h2>field list (struct page)</h2>
+    <div class="kd-field">
+      <span class="kd-field__name">port</span>
+      <span class="kd-field__type"><a class="kd-type-link" href="#">Int</a></span>
+      <span class="kd-field__desc">the TCP port to listen on.</span>
+    </div>
+    <div class="kd-field">
+      <span class="kd-field__name">handler</span>
+      <span class="kd-field__type"><a class="kd-type-link" href="#">Request</a> <span class="kd-arrow">-[IO, Fail E]></span> <a class="kd-type-link" href="#">Response</a></span>
+    </div>
+    <div class="kd-field">
+      <span class="kd-field__name">middleware</span>
+      <span class="kd-field__type"><a class="kd-type-link" href="#">List</a> <a class="kd-type-link" href="#">Middleware</a></span>
+    </div>
+  </div>
+
+  <!-- ═══════ TRAIT TAGS ═══════ -->
+  <div class="preview-section">
+    <h2>trait tags</h2>
+    <div class="kd-trait-list">
+      <a href="#" class="kd-trait-tag">Eq</a>
+      <a href="#" class="kd-trait-tag">Ord</a>
+      <a href="#" class="kd-trait-tag">Show</a>
+      <a href="#" class="kd-trait-tag">Clone</a>
+    </div>
+  </div>
+
+  <!-- ═══════ CODE BLOCK ═══════ -->
   <div class="preview-section">
     <h2>code block</h2>
-    <pre><code><span class="kd-syn-keyword">effect</span> <span class="kd-syn-type">Log</span>
-  <span class="kd-syn-keyword">fn</span> <span class="kd-syn-function">log</span>(<span class="kd-syn-param">_ level</span>: <span class="kd-syn-type">Level</span>, <span class="kd-syn-param">_ msg</span>: <span class="kd-syn-type">String</span>) <span class="kd-syn-operator">-></span> <span class="kd-syn-type">Unit</span>
-
-<span class="kd-syn-keyword">fn</span> <span class="kd-syn-function">with_stdout_logger</span>(<span class="kd-syn-param">_ f</span>: () <span class="kd-arrow">-[</span><span class="kd-syn-type">Log</span>, <span class="kd-syn-param">e</span><span class="kd-arrow">]></span> <span class="kd-syn-type">T</span>) <span class="kd-arrow">-[</span><span class="kd-syn-type">IO</span>, <span class="kd-syn-param">e</span><span class="kd-arrow">]></span> <span class="kd-syn-type">T</span>
+    <pre><code><span class="kd-syn-keyword">fn</span> <span class="kd-syn-function">with_stdout_logger</span>(<span class="kd-syn-param">_ f</span>: () <span class="kd-arrow">-[</span><span class="kd-syn-type">Log</span>, <span class="kd-syn-param">e</span><span class="kd-arrow">]></span> <span class="kd-syn-type">T</span>) <span class="kd-arrow">-[</span><span class="kd-syn-type">IO</span>, <span class="kd-syn-param">e</span><span class="kd-arrow">]></span> <span class="kd-syn-type">T</span>
   <span class="kd-syn-keyword">handle</span> f()
     <span class="kd-syn-type">Log</span>.<span class="kd-syn-function">log</span>(level, msg) <span class="kd-syn-operator">-></span>
       <span class="kd-syn-type">IO</span>.<span class="kd-syn-function">stdout</span>(<span class="kd-syn-string">"[{level}] {msg}"</span>)
       <span class="kd-syn-keyword">resume</span> ()</code></pre>
   </div>
 
-  <!-- ===== Horizontal rules ===== -->
+  <!-- ═══════ HORIZONTAL RULES ═══════ -->
   <div class="preview-section">
     <h2>horizontal rules</h2>
-    <p class="preview-label">major (olive, thick)</p>
+    <p class="preview-label">major (olive, 5px)</p>
     <hr class="kd-rule--major">
-    <p class="preview-label">section (ink, medium)</p>
+    <p class="preview-label">section (ink, 2px)</p>
     <hr class="kd-rule--section">
-    <p class="preview-label">item (stone, thin)</p>
+    <p class="preview-label">item (stone, 1px)</p>
     <hr class="kd-rule--item">
-    <p class="preview-label">reveal (scarlet, once per page)</p>
+    <p class="preview-label">reveal (scarlet, 4px — once per page)</p>
     <hr class="kd-rule--reveal">
   </div>
 
-  <!-- ===== Module listing (sidebar mock) ===== -->
+  <!-- ═══════ CALLOUT ═══════ -->
   <div class="preview-section">
-    <h2>sidebar (reference layout)</h2>
-    <div style="max-width: 14rem; border: 1px solid var(--kd-border); padding: 1rem;">
+    <h2>callout</h2>
+    <div class="kd-callout">adding an effect to a function is the same type-level operation as adding a field to a record. one unification algorithm handles both.</div>
+  </div>
+
+  <!-- ═══════ ADMONITIONS ═══════ -->
+  <div class="preview-section">
+    <h2>admonitions</h2>
+    <div class="kd-admonition kd-admonition--warning">
+      <p><strong>status: early development.</strong> The bootstrap compiler is being built in Rust. This is not production software.</p>
+    </div>
+    <div class="kd-admonition kd-admonition--info">
+      <p><strong>note:</strong> Effect polymorphism means if your callback is pure, the whole pipeline is pure.</p>
+    </div>
+    <div class="kd-admonition kd-admonition--danger">
+      <p><strong>breaking change:</strong> The <code>IO.clock_now</code> operation has been moved to the <code>Clock</code> effect.</p>
+    </div>
+  </div>
+
+  <!-- ═══════ SIDEBAR ═══════ -->
+  <div class="preview-section">
+    <h2>sidebar</h2>
+    <p style="font-size: 0.88rem;">Rendered inside <code>.kd-panels__sidebar</code> to get correct sizing.</p>
+    <div class="kd-panels__sidebar" style="position: static; height: auto; max-width: 14.5rem; border: 1px solid var(--kd-border); border-right: 1px solid var(--kd-border);">
       <div class="kd-sidebar__section">
-        <div class="kd-sidebar__heading">modules</div>
-        <a href="#" class="kd-sidebar__link kd-sidebar__link--active">
-          List <span class="kd-badge kd-badge--pure" style="margin-left: auto;">-></span>
-        </a>
-        <a href="#" class="kd-sidebar__link">
-          Option <span class="kd-badge kd-badge--pure" style="margin-left: auto;">-></span>
-        </a>
-        <a href="#" class="kd-sidebar__link">
-          Result <span class="kd-badge kd-badge--pure" style="margin-left: auto;">-></span>
-        </a>
-        <a href="#" class="kd-sidebar__link">
-          IO <span class="kd-badge kd-badge--io" style="margin-left: auto;">IO</span>
-        </a>
-        <a href="#" class="kd-sidebar__link">
-          Http <span class="kd-badge kd-badge--io" style="margin-left: auto;">Net</span>
-        </a>
+        <div class="kd-sidebar__heading">standard library</div>
+        <a href="#" class="kd-sidebar__link">eq</a>
+        <a href="#" class="kd-sidebar__link">int</a>
+        <a href="#" class="kd-sidebar__link kd-sidebar__link--active">io</a>
+        <a href="#" class="kd-sidebar__link kd-sidebar__link--indent"><span class="kd-sidebar__fn">.stdout</span><span class="kd-badge kd-badge--io">IO</span></a>
+        <a href="#" class="kd-sidebar__link kd-sidebar__link--indent"><span class="kd-sidebar__fn">.stderr</span><span class="kd-badge kd-badge--io">IO</span></a>
+        <a href="#" class="kd-sidebar__link kd-sidebar__link--indent"><span class="kd-sidebar__fn">.read_file</span><span class="kd-badge kd-badge--io">IO</span></a>
+        <a href="#" class="kd-sidebar__link kd-sidebar__link--indent"><span class="kd-sidebar__fn">.write_file</span><span class="kd-badge kd-badge--io">IO</span></a>
+        <a href="#" class="kd-sidebar__link">list</a>
+        <a href="#" class="kd-sidebar__link kd-sidebar__link--indent"><span class="kd-sidebar__fn">.map</span><span class="kd-badge kd-badge--pure">-></span></a>
+        <a href="#" class="kd-sidebar__link kd-sidebar__link--indent"><span class="kd-sidebar__fn">.filter</span><span class="kd-badge kd-badge--pure">-></span></a>
+        <a href="#" class="kd-sidebar__link kd-sidebar__link--indent"><span class="kd-sidebar__fn">.fold</span><span class="kd-badge kd-badge--pure">-></span></a>
+        <a href="#" class="kd-sidebar__link">option</a>
+        <a href="#" class="kd-sidebar__link">result</a>
+        <a href="#" class="kd-sidebar__link">test</a>
+        <a href="#" class="kd-sidebar__link">text</a>
       </div>
+
+      <hr class="kd-sidebar__rule">
+
       <div class="kd-sidebar__section">
-        <div class="kd-sidebar__heading">functions</div>
-        <a href="#" class="kd-sidebar__link">map</a>
-        <a href="#" class="kd-sidebar__link">filter</a>
-        <a href="#" class="kd-sidebar__link">fold</a>
-        <a href="#" class="kd-sidebar__link">find</a>
+        <div class="kd-sidebar__heading">effects</div>
+        <a href="#" class="kd-sidebar__link"><span class="kd-sidebar__fn">Clock</span><span class="kd-badge" style="background: var(--kd-scarlet-bg, rgba(200,67,43,0.07)); color: var(--kd-effect);">effect</span></a>
+        <a href="#" class="kd-sidebar__link"><span class="kd-sidebar__fn">Fail E</span><span class="kd-badge" style="background: var(--kd-scarlet-bg, rgba(200,67,43,0.07)); color: var(--kd-effect);">effect</span></a>
+        <a href="#" class="kd-sidebar__link"><span class="kd-sidebar__fn">IO</span><span class="kd-badge" style="background: var(--kd-scarlet-bg, rgba(200,67,43,0.07)); color: var(--kd-effect);">effect</span></a>
+        <a href="#" class="kd-sidebar__link"><span class="kd-sidebar__fn">Net</span><span class="kd-badge" style="background: var(--kd-scarlet-bg, rgba(200,67,43,0.07)); color: var(--kd-effect);">effect</span></a>
+        <a href="#" class="kd-sidebar__link"><span class="kd-sidebar__fn">Rand</span><span class="kd-badge" style="background: var(--kd-scarlet-bg, rgba(200,67,43,0.07)); color: var(--kd-effect);">effect</span></a>
+      </div>
+
+      <hr class="kd-sidebar__rule">
+
+      <div class="kd-sidebar__section">
+        <div class="kd-sidebar__heading">traits</div>
+        <a href="#" class="kd-sidebar__link"><span class="kd-sidebar__fn">Eq</span><span class="kd-badge" style="background: var(--kd-badge-io-bg); color: var(--kd-olive);">trait</span></a>
+        <a href="#" class="kd-sidebar__link"><span class="kd-sidebar__fn">Ord</span><span class="kd-badge" style="background: var(--kd-badge-io-bg); color: var(--kd-olive);">trait</span></a>
+        <a href="#" class="kd-sidebar__link"><span class="kd-sidebar__fn">Show</span><span class="kd-badge" style="background: var(--kd-badge-io-bg); color: var(--kd-olive);">trait</span></a>
       </div>
     </div>
   </div>
 
-  <!-- ===== Table ===== -->
+  <!-- ═══════ BREADCRUMB + PAGE HEADER ═══════ -->
+  <div class="preview-section">
+    <h2>page header</h2>
+    <div class="kd-breadcrumb">
+      <a href="#">reference</a><span class="kd-breadcrumb__sep">-></span><span>io</span>
+    </div>
+    <div class="kd-page-header">
+      <h1 class="kd-page-title" style="margin-top: 0;">io</h1>
+      <div class="kd-page-meta">
+        <span class="kd-page-tag kd-page-tag--effect">effect</span>
+        <span>core / io</span>
+        <span style="margin-left: auto;"><a class="kd-src-link" href="#">[src]</a></span>
+      </div>
+      <div class="kd-page-desc">
+        <p>File system, standard streams, and basic I/O operations.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════ TABLE ═══════ -->
   <div class="preview-section">
     <h2>table</h2>
     <table>
@@ -223,12 +405,28 @@
         <tr><th>effect</th><th>compilation</th><th>overhead</th></tr>
       </thead>
       <tbody>
-        <tr><td><code>IO</code></td><td>Direct runtime calls</td><td>zero</td></tr>
-        <tr><td><code>Fail E</code></td><td>Result-passing, branch-on-error</td><td>zero</td></tr>
-        <tr><td><code>State S</code></td><td>Tail-resumptive handler</td><td>direct call</td></tr>
-        <tr><td><code>Choose</code></td><td>General handler</td><td>continuation capture</td></tr>
+        <tr><td><code>IO</code></td><td>direct runtime calls</td><td>zero</td></tr>
+        <tr><td><code>Fail E</code></td><td>result-passing, branch-on-error</td><td>zero</td></tr>
+        <tr><td><code>State S</code></td><td>tail-resumptive handler</td><td>direct call</td></tr>
+        <tr><td><code>Choose</code></td><td>general handler</td><td>continuation capture</td></tr>
       </tbody>
     </table>
+  </div>
+
+  <!-- ═══════ FOOTER ═══════ -->
+  <div class="preview-section">
+    <h2>footer</h2>
+    <footer class="kd-footer">
+      <span class="kd-footer__logo"><span class="kd-arrow">-[</span>kea<span class="kd-arrow">]></span></span>
+      <div class="kd-footer__links">
+        <a href="#">docs</a>
+        <a href="#">reference</a>
+        <a href="#">spec</a>
+        <a href="#">source</a>
+      </div>
+      <span class="kd-footer__spacer"></span>
+      <span class="kd-footer__version">kea 0.1.0</span>
+    </footer>
   </div>
 
 </div>
@@ -239,24 +437,32 @@ function toggleTheme() {
   const current = html.getAttribute('data-theme');
   const next = current === 'dark' ? 'light' : 'dark';
   html.setAttribute('data-theme', next);
-  localStorage.setItem('kd-theme', next);
+  try { localStorage.setItem('kd-theme', next); } catch (e) {}
   updateToggle(next);
 }
 
 function updateToggle(theme) {
-  const btn = document.getElementById('themeBtn');
-  btn.textContent = theme === 'dark' ? '\u25CF' : '\u25CB';
+  document.querySelectorAll('.kd-theme-toggle').forEach(btn => {
+    btn.textContent = theme === 'dark' ? '●' : '○';
+  });
+}
+
+function toggleExpand(id) {
+  const el = document.getElementById(id);
+  if (el) el.classList.toggle('kd-expand--visible');
 }
 
 (function() {
-  const saved = localStorage.getItem('kd-theme');
-  if (saved) {
-    document.documentElement.setAttribute('data-theme', saved);
-    updateToggle(saved);
-  } else {
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    updateToggle(prefersDark ? 'dark' : 'light');
-  }
+  try {
+    const saved = localStorage.getItem('kd-theme');
+    if (saved) {
+      document.documentElement.setAttribute('data-theme', saved);
+      updateToggle(saved);
+    } else {
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      updateToggle(prefersDark ? 'dark' : 'light');
+    }
+  } catch (e) {}
 })();
 </script>
 
