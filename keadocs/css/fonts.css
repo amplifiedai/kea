@@ -1,0 +1,86 @@
+/* keadocs font-face declarations
+ *
+ * Variable fonts loaded from local _assets/fonts/ directory.
+ * These @font-face rules must be loaded BEFORE keadocs.css
+ * (or prepended to it) so the font families resolve.
+ *
+ * Fonts are Google Fonts, OFL-licensed:
+ *   Syne         — display / headings (variable weight 400–800)
+ *   Literata     — body text (variable weight 200–900, optical size 7–72)
+ *   IBM Plex Mono — code (variable weight 100–700)
+ */
+
+/* — Syne (display) — */
+@font-face {
+  font-family: 'Syne';
+  src: url('fonts/Syne-VariableFont_wght.woff2') format('woff2-variations');
+  font-weight: 400 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* — Literata (body) — */
+@font-face {
+  font-family: 'Literata';
+  src: url('fonts/Literata-VariableFont_opsz,wght.woff2') format('woff2-variations');
+  font-weight: 200 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Literata';
+  src: url('fonts/Literata-Italic-VariableFont_opsz,wght.woff2') format('woff2-variations');
+  font-weight: 200 900;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* — IBM Plex Mono (code) — */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  src: url('fonts/IBMPlexMono-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'IBM Plex Mono';
+  src: url('fonts/IBMPlexMono-Italic.woff2') format('woff2');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'IBM Plex Mono';
+  src: url('fonts/IBMPlexMono-Light.woff2') format('woff2');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'IBM Plex Mono';
+  src: url('fonts/IBMPlexMono-Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'IBM Plex Mono';
+  src: url('fonts/IBMPlexMono-SemiBold.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'IBM Plex Mono';
+  src: url('fonts/IBMPlexMono-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
