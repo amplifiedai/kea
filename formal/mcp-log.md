@@ -14131,3 +14131,47 @@ behind recent `Kea/Eval.lean` capstone/handler-boundary commits.
 - Restores the intended verification loop discipline for this track
   (Lean build + direct MCP probes), and confirms no new divergence signal on
   the targeted high-risk assumptions.
+
+### 2026-03-02: handler boundary preservation target fully discharged
+
+**Context**: Continued `HandlerStepBoundary` formalization in `Kea/Eval.lean` to
+remove the last remaining handler-boundary `sorry`.
+
+Lean changes:
+- Extended `HandlerClauseSem` with:
+  - `instantiate : CoreExpr → CoreExpr → CoreExpr`
+  - `instantiate_sound` typing law for clause-body instantiation
+- Updated `bindTailResumptive` to delegate to `instantiate`.
+- Proved `handler_step_instantiation_obligation`.
+- As a consequence, `handler_step_preservation` is now fully proved through
+  `handler_step_preservation_of_instantiation_obligation`.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+- `diagnose`
+
+**Predict (Lean side)**:
+- No runtime behavior change expected from this proof-structure refinement.
+- Previously verified key runtime assumptions should remain stable.
+
+**Probe (direct `kea` MCP)**:
+1. Resume linearity negative case:
+   - double-resume handler clause remains rejected (`E0012`).
+2. Overlap normalization check:
+   - handled residual overlap case still checks as `handled : () -[IO]> ()`.
+3. Resume outside handler:
+   - still rejected (`E0012`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- The handler-boundary preservation theorem stack in `Kea/Eval.lean` is now
+  fully proved under the explicit abstract-instantiation model.
+
+**Impact**:
+- Moves this workstream from “named gap stub” to a discharged boundary proof,
+  while keeping the core limitation explicit (`Typing.CoreExpr` still lacks
+  native `handle`/`resume` constructors).

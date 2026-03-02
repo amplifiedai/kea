@@ -3559,6 +3559,18 @@ structure HandlerClauseSem where
   opArgTy : Ty
   opRetTy : Ty
   body : CoreExpr
+  instantiate : CoreExpr → CoreExpr → CoreExpr
+  instantiate_sound :
+    ∀ {tenv : TermEnv} {ty : Ty} {arg k : CoreExpr},
+      HasType tenv arg opArgTy →
+      HasType tenv k (continuationTy opRetTy ty) →
+      HasType
+        ((kName, continuationTy opRetTy ty) ::
+          (argName, opArgTy) ::
+          tenv)
+        body
+        ty →
+      HasType tenv (instantiate arg k) ty
   contract : HandleClauseContract
 
 /-- Continuation type used by the minimal handler-step boundary model. -/
@@ -3573,10 +3585,10 @@ inductive HandlerExpr : Type where
 
 /--
 Placeholder binder for the handler reduction result.
-TODO: replace with explicit substitution for argument + continuation binding.
+The substitution behavior is abstracted by `HandlerClauseSem.instantiate`.
 -/
 def bindTailResumptive (clause : HandlerClauseSem) (_arg _k : CoreExpr) : CoreExpr :=
-  clause.body
+  clause.instantiate _arg _k
 
 /-- Minimal typing judgment for `HandlerExpr` used by boundary propositions. -/
 inductive HandlerHasType : TermEnv → HandlerExpr → Ty → Prop where
@@ -3819,7 +3831,22 @@ Open proof target for the exact remaining handler-step obligation.
 -/
 theorem handler_step_instantiation_obligation :
     handler_step_instantiation_obligation_prop := by
-  sorry
+  intro tenv handler clause arg k ty e' h_typed h_step
+  cases h_typed with
+  | handle _ body handler' clause' ty' h_body _h_contract_shape _h_mem _h_clause_contract h_clause_body =>
+      cases h_body with
+      | perform _ op argTy opRetTy handlerTy arg' k' h_arg h_k =>
+          cases h_step with
+          | handle_perform_tail _ _ _ _ _ _ _ _ =>
+              simpa [bindTailResumptive] using
+                clause.instantiate_sound
+                  (tenv := tenv)
+                  (ty := ty)
+                  (arg := arg)
+                  (k := k)
+                  h_arg
+                  h_k
+                  h_clause_body
 
 /--
 Handler-step preservation at the current boundary, reduced to the explicit
