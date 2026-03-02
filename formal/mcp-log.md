@@ -16395,3 +16395,40 @@ Lean changes:
 **Outcome**:
 - Extended relation now has explicit backward-compatibility and typed-redex
   wrappers, with no MCP behavior divergence observed.
+
+### 2026-03-02: congruence-vs-structure mismatch witnesses (extended relation)
+
+**Context**: Addressed the open design question directly in Lean: whether
+adding congruence is sufficient for progress, or whether additional structural
+cases are still required.
+
+Lean changes:
+- Added in `Kea/Typing.lean`:
+  - `coreValue_not_perform`
+  - `native_handler_step_ext_not_exists_of_op_mismatch_without_body_step`
+  - `native_handler_step_ext_typed_mismatch_counterexample`
+
+These prove that even after adding value+congruence, progress can still fail
+when handled operation metadata does not match the body `perform` and the
+underlying body-step relation does not step that `perform`.
+
+**Build check**:
+- `cd formal && lake build Kea.Typing` passes.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Probe (direct `kea` MCP)**:
+1. Spoof attempt still rejected:
+   - `fn spoof(__kea_resume_ctx: fn(Int) -> Int) -> Int; resume 1`
+   - `status = error`, `E0012`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- The remaining capstone gap is now sharper: beyond congruence, we need either
+  structural bubbling semantics for mismatched operations or tighter typing
+  constraints linking handled op metadata to body `perform` shapes.

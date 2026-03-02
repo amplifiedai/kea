@@ -1556,6 +1556,82 @@ theorem native_handler_step_ext_exists_of_int_body
       (.intLit n) op argName resumeName argTy opRetTy clauseBody
       (CoreValue.int n)⟩
 
+/-- `perform` expressions are not values in the extended value grammar. -/
+theorem coreValue_not_perform
+    {op : Label} {argTy opRetTy : Ty} {arg k : CoreExpr} :
+    ¬ CoreValue (.perform op argTy opRetTy arg k) := by
+  intro h_val
+  cases h_val
+
+/--
+Even with value+congruence, progress can fail on a mismatched handled
+`perform` if the body-step relation does not step that `perform`.
+-/
+theorem native_handler_step_ext_not_exists_of_op_mismatch_without_body_step
+    (clauseSem : NativeHandlerClauseSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    {opBody opHandle : Label}
+    {argName resumeName : String}
+    {argTy opRetTy : Ty}
+    {arg k clauseBody : CoreExpr}
+    (h_op_ne : opBody ≠ opHandle)
+    (h_no_body_step :
+      ∀ body', ¬ bodyStep (.perform opBody argTy opRetTy arg k) body') :
+    ¬ ∃ e', NativeHandlerStepExt clauseSem bodyStep
+      (.handle (.perform opBody argTy opRetTy arg k) opHandle argName resumeName argTy opRetTy clauseBody)
+      e' := by
+  intro h_exists
+  rcases h_exists with ⟨e', h_step⟩
+  cases h_step with
+  | handle_perform op argTy' opRetTy' arg' k' argName' resumeName' clauseBody' =>
+    exact h_op_ne rfl
+  | handle_value body op argName' resumeName' argTy' opRetTy' clauseBody' h_value =>
+    exact coreValue_not_perform h_value
+  | handle_congr body body' op argName' resumeName' argTy' opRetTy' clauseBody' h_body_step =>
+    exact h_no_body_step body' h_body_step
+
+/--
+Concrete typed mismatched-op counterexample for the extended relation under a
+no-body-step premise for the body `perform`.
+-/
+theorem native_handler_step_ext_typed_mismatch_counterexample
+    (clauseSem : NativeHandlerClauseSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    {opBody opHandle : Label}
+    (h_op_ne : opBody ≠ opHandle)
+    (h_no_body_step :
+      ∀ body', ¬ bodyStep
+        (.perform opBody .int .int (.intLit 1) (.lam "x" .int (.intLit 0)))
+        body') :
+    ∃ env argName resumeName clauseBody ty,
+      HasTypeScopedTop env
+        (.handle
+          (.perform opBody .int .int (.intLit 1) (.lam "x" .int (.intLit 0)))
+          opHandle argName resumeName .int .int clauseBody)
+        ty
+      ∧
+      ¬ ∃ e', NativeHandlerStepExt clauseSem bodyStep
+        (.handle
+          (.perform opBody .int .int (.intLit 1) (.lam "x" .int (.intLit 0)))
+          opHandle argName resumeName .int .int clauseBody)
+        e' := by
+  refine ⟨[], "x", "k", .intLit 2, .int, ?_, ?_⟩
+  · exact HasTypeScoped.handle none []
+      (.perform opBody .int .int (.intLit 1) (.lam "x" .int (.intLit 0)))
+      opHandle "x" "k" .int .int .int (.intLit 2)
+      (HasTypeScoped.perform none [] opBody .int .int .int
+        (.intLit 1) (.lam "x" .int (.intLit 0))
+        (HasTypeScoped.int none [] 1)
+        (HasTypeScoped.lam none [] "x" .int .int (.intLit 0)
+          (HasTypeScoped.int none [("x", .int)] 0)))
+      (HasTypeScoped.int (some (.int, .int))
+        (("k", .function (.cons .int .nil) .int) ::
+          ("x", .int) ::
+          [])
+        2)
+  · exact native_handler_step_ext_not_exists_of_op_mismatch_without_body_step
+      clauseSem bodyStep h_op_ne h_no_body_step
+
 /--
 Original native handler steps embed into the extended relation.
 -/
