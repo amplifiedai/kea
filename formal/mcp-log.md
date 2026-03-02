@@ -15757,3 +15757,42 @@ These are proved on `NativeHandlerStep clauseSem` and rely on the already-proved
 - Native typed redexes now have direct one-step progress and preservation
   theorem routes in `Typing.lean`, while the only remaining native open target
   stays progress-generalization (`native_handler_body_progress_obligation`).
+
+### 2026-03-02: native step-existence shape equivalence and progress-gap characterization
+
+**Context**: Continued tightening the native `Typing.lean` handler-step layer by
+proving that native step existence is exactly characterized by perform-redex
+body shape, then using that to state the progress gap as an explicit logical
+equivalence.
+
+Lean changes:
+- Added native shape necessity:
+  - `native_handler_step_requires_supported_shape`
+- Added native shape/existence equivalence:
+  - `native_handler_step_exists_iff_supported_shape`
+- Added progress-gap characterization for fixed clause semantics:
+  - `native_handler_step_progress_prop_iff_body_progress_obligation`
+
+This shows the remaining progress `sorry` is not diffuse: it is exactly the
+body-shape obligation.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Predict (Lean side)**:
+- No runtime behavior change expected (shape/progress theorem factoring only).
+- Existing resume-linearity diagnostics should remain aligned.
+
+**Probe (direct `kea` MCP)**:
+1. Single-resume clause accepted (`status = ok`).
+2. Sequential double-resume clause rejected (`status = error`, `E0012`).
+3. `resume` outside handler rejected (`status = error`, `E0012`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Native progress gap is now machine-characterized as
+  `native_handler_body_progress_obligation` via an explicit `↔` theorem route.

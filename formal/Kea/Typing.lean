@@ -662,6 +662,38 @@ theorem native_handler_step_exists_of_supported_shape
     NativeHandlerStep.handle_perform op argTy opRetTy arg k argName resumeName clauseBody⟩
 
 /--
+Any native handler step implies the body is in the supported perform-redex shape.
+-/
+theorem native_handler_step_requires_supported_shape
+    (clauseSem : NativeHandlerClauseSem)
+    {body e' : CoreExpr} {op : Label} {argName resumeName : String}
+    {argTy opRetTy : Ty} {clauseBody : CoreExpr}
+    (h_step : NativeHandlerStep clauseSem
+      (.handle body op argName resumeName argTy opRetTy clauseBody) e') :
+    NativeHandlerStepSupportedShape body op argTy opRetTy := by
+  cases h_step with
+  | handle_perform _ _ _ arg k _ _ _ =>
+    exact ⟨arg, k, rfl⟩
+
+/--
+For the current native relation, step existence is equivalent to supported
+perform-redex body shape.
+-/
+theorem native_handler_step_exists_iff_supported_shape
+    (clauseSem : NativeHandlerClauseSem)
+    {body : CoreExpr} {op : Label} {argName resumeName : String}
+    {argTy opRetTy : Ty} {clauseBody : CoreExpr} :
+    (∃ e', NativeHandlerStep clauseSem
+      (.handle body op argName resumeName argTy opRetTy clauseBody) e')
+      ↔ NativeHandlerStepSupportedShape body op argTy opRetTy := by
+  constructor
+  · intro h_exists
+    rcases h_exists with ⟨e', h_step⟩
+    exact native_handler_step_requires_supported_shape clauseSem h_step
+  · intro h_shape
+    exact native_handler_step_exists_of_supported_shape clauseSem h_shape
+
+/--
 Typed-redex progress on the native handler-step relation.
 -/
 theorem native_handler_step_progress_of_typed_redex
@@ -730,6 +762,24 @@ theorem native_handler_step_progress_of_body_progress_obligation
   exact native_handler_step_exists_of_supported_shape
     clauseSem
     (h_body_progress env body op argName resumeName argTy opRetTy clauseBody ty h_typed)
+
+/--
+The native body-progress obligation is exactly the missing condition for full
+native handler progress (for a fixed clause semantics).
+-/
+theorem native_handler_step_progress_prop_iff_body_progress_obligation
+    (clauseSem : NativeHandlerClauseSem) :
+    native_handler_step_progress_prop clauseSem
+      ↔ native_handler_body_progress_obligation_prop := by
+  constructor
+  · intro h_progress
+    intro env body op argName resumeName argTy opRetTy clauseBody ty h_typed
+    have h_exists :=
+      h_progress env body op argName resumeName argTy opRetTy clauseBody ty h_typed
+    exact (native_handler_step_exists_iff_supported_shape clauseSem).1 h_exists
+  · intro h_body_progress
+    exact native_handler_step_progress_of_body_progress_obligation
+      clauseSem h_body_progress
 
 /--
 Open native body-progress obligation.
