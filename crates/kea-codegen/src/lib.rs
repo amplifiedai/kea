@@ -27,7 +27,8 @@ use cranelift_object::{ObjectBuilder, ObjectModule};
 use kea_hir::HirModule;
 use kea_mir::{
     MirBinaryOp, MirBlockId, MirCallee, MirEffectOpClass, MirFunction, MirInst, MirLiteral,
-    MirModule, MirTerminator, MirUnaryOp, MirValueId, lower_hir_module,
+    MirLoweringConfig, MirModule, MirTerminator, MirUnaryOp, MirValueId,
+    lower_hir_module_with_config,
 };
 use kea_types::{EffectRow, FloatWidth, IntWidth, RecordType, Signedness, SumType, Type};
 
@@ -179,18 +180,25 @@ pub trait Backend {
     ) -> Result<BackendArtifact, CodegenError>;
 }
 
+fn lowering_config_for_mode(mode: CodegenMode) -> MirLoweringConfig {
+    match mode {
+        CodegenMode::Jit => MirLoweringConfig::jit(),
+        CodegenMode::Aot => MirLoweringConfig::aot(),
+    }
+}
+
 pub fn compile_hir_module<B: Backend>(
     backend: &B,
     hir: &HirModule,
     config: &BackendConfig,
 ) -> Result<BackendArtifact, CodegenError> {
-    let mir = lower_hir_module(hir);
+    let mir = lower_hir_module_with_config(hir, &lowering_config_for_mode(config.mode));
     let abi = default_abi_manifest(&mir);
     backend.compile_module(&mir, &abi, config)
 }
 
 pub fn execute_hir_main_jit(hir: &HirModule, config: &BackendConfig) -> Result<i32, CodegenError> {
-    let mir = lower_hir_module(hir);
+    let mir = lower_hir_module_with_config(hir, &lowering_config_for_mode(config.mode));
     execute_mir_main_jit(&mir, config)
 }
 

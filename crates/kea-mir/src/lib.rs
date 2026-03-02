@@ -9,6 +9,33 @@ use kea_ast::{BinOp, DeclKind, ExprKind as AstExprKind, TypeAnnotation, UnaryOp}
 use kea_hir::{HirDecl, HirExpr, HirExprKind, HirFunction, HirHandleClause, HirModule, HirPattern};
 use kea_types::{EffectRow, FunctionType, Label, SumType, Type};
 
+/// Configuration for MIR lowering passes.
+#[derive(Debug, Clone, Default)]
+pub struct MirLoweringConfig {
+    /// Enable handler inlining (devirtualize callback closures).
+    /// Default: false (JIT — compilation cost dominates).
+    /// Use `MirLoweringConfig::aot()` for AOT mode where compilation is amortized.
+    /// Override with `KEA_NO_HANDLER_INLINE=1` (force off) or
+    /// `KEA_HANDLER_INLINE=1` (force on).
+    pub handler_inlining: bool,
+}
+
+impl MirLoweringConfig {
+    /// AOT defaults: handler inlining on (compilation cost amortized).
+    pub fn aot() -> Self {
+        Self {
+            handler_inlining: true,
+        }
+    }
+
+    /// JIT defaults: handler inlining off (compilation cost dominates).
+    pub fn jit() -> Self {
+        Self {
+            handler_inlining: false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct MirValueId(pub u32);
 
@@ -384,6 +411,10 @@ impl MirInst {
 }
 
 pub fn lower_hir_module(module: &HirModule) -> MirModule {
+    lower_hir_module_with_config(module, &MirLoweringConfig::default())
+}
+
+pub fn lower_hir_module_with_config(module: &HirModule, config: &MirLoweringConfig) -> MirModule {
     let known_functions = module
         .declarations
         .iter()
@@ -437,9 +468,17 @@ pub fn lower_hir_module(module: &HirModule) -> MirModule {
     functions.extend(generate_default_capability_wrappers(&effect_operations));
 
     // Handler inlining: devirtualize callback closures when structurally verified.
-    // Disable with KEA_NO_HANDLER_INLINE=1 for debugging.
+    // Default: on for AOT, off for JIT (compilation cost dominates in JIT).
+    // Override: KEA_HANDLER_INLINE=1 forces on, KEA_NO_HANDLER_INLINE=1 forces off.
     // Set KEA_HANDLER_INLINE_STATS=1 to print rewrite counts to stderr.
-    if std::env::var("KEA_NO_HANDLER_INLINE").as_deref() != Ok("1") {
+    let handler_inline_enabled = if std::env::var("KEA_NO_HANDLER_INLINE").as_deref() == Ok("1") {
+        false
+    } else if std::env::var("KEA_HANDLER_INLINE").as_deref() == Ok("1") {
+        true
+    } else {
+        config.handler_inlining
+    };
+    if handler_inline_enabled {
         let fn_index: BTreeMap<String, usize> = functions
             .iter()
             .enumerate()

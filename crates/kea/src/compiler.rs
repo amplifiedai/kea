@@ -26,7 +26,7 @@ use kea_infer::typeck::{
     validate_module_annotations, validate_module_fn_annotations, validate_where_clause_traits,
 };
 use kea_infer::{Category, InferenceContext, Reason};
-use kea_mir::lower_hir_module;
+use kea_mir::{MirLoweringConfig, lower_hir_module_with_config};
 use kea_syntax::{lex_layout, parse_module};
 use kea_types::{Type, TypeScheme, sanitize_type_display};
 
@@ -154,7 +154,11 @@ pub fn compile_project(entry: &Path) -> Result<CompilationContext, String> {
 }
 
 pub fn emit_object(ctx: &CompilationContext, mode: CodegenMode) -> Result<CompileResult, String> {
-    let mir = lower_hir_module(&ctx.hir);
+    let lowering_config = match mode {
+        CodegenMode::Jit => MirLoweringConfig::jit(),
+        CodegenMode::Aot => MirLoweringConfig::aot(),
+    };
+    let mir = lower_hir_module_with_config(&ctx.hir, &lowering_config);
     let abi = default_abi_manifest(&mir);
 
     let backend = CraneliftBackend;
