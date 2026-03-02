@@ -17480,3 +17480,40 @@ handles without requiring callers to manually perform strict conversion.
 **Outcome**:
 - Handler-step existence+preservation now has direct theorem routes stated at
   the current native core judgment (`HasTypeScopedTop`).
+
+### 2026-03-02: global strict-top typing contract and capstone routes
+
+**Context**: Added a global strict-top handle typing contract and used it to
+derive global mismatch-extension progress/soundness from packaged core
+obligations.
+
+Lean changes:
+- Added in `Kea/Typing.lean`:
+  - `native_handler_strict_top_typing_prop`
+  - `native_handler_strict_top_typing_prop_iff_strict_typing`
+  - `native_handler_step_ext_with_mismatch_progress_of_core_progress_and_strict_top_typing`
+  - `native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_strict_top_typing`
+
+This makes strict-top handle typing a first-class global contract and connects
+it directly to the existing progress/soundness capstones.
+
+**Build check**:
+- `cd formal && lake build Kea.Typing` passes.
+- `cd formal && lake build` passes.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Probe (direct `kea` MCP)**:
+1. Spoofed resume context variable remains rejected (`E0012`).
+2. Single-resume matching handler clause remains accepted (`status = ok`).
+3. Double-resume handler clause remains rejected (`E0012`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Global handler progress/soundness can now be consumed either from strict-local
+  or strict-top contracts with explicit theorem equivalence links.

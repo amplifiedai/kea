@@ -2428,6 +2428,33 @@ def native_handler_strict_typing_prop : Prop :=
     HasTypeScopedHandleStrict env body opHandle argName resumeName argTy opRetTy clauseBody ty
 
 /--
+Global strict-top handle typing contract:
+every `HasTypeScopedTop`-typed handle lifts to `HasTypeScopedStrictTop` at the
+same handle root.
+-/
+def native_handler_strict_top_typing_prop : Prop :=
+  ∀ env body opHandle argName resumeName argTy opRetTy clauseBody ty,
+    HasTypeScopedTop env (.handle body opHandle argName resumeName argTy opRetTy clauseBody) ty →
+    HasTypeScopedStrictTop env (.handle body opHandle argName resumeName argTy opRetTy clauseBody) ty
+
+/--
+Global strict-top and strict-local typing contracts are equivalent at handle
+roots.
+-/
+theorem native_handler_strict_top_typing_prop_iff_strict_typing :
+    native_handler_strict_top_typing_prop
+      ↔ native_handler_strict_typing_prop := by
+  constructor
+  · intro h_top
+    intro env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed
+    exact (hasTypeScopedStrictTop_handle_iff_handleStrict).1
+      (h_top env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed)
+  · intro h_strict
+    intro env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed
+    exact hasTypeScopedStrictTop_of_handleStrict
+      (h_strict env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed)
+
+/--
 If every scoped derivation lifts into strict scoped derivations, then the
 global strict-handle typing contract holds on the current judgment.
 -/
@@ -2499,6 +2526,25 @@ theorem native_handler_scoped_to_strict_lift_prop_of_strict_typing
     refine ⟨h_typed, ?_⟩
     intro body opHandle argName resumeName argTy opRetTy clauseBody h_eq
     cases h_eq
+
+/--
+Global mismatch-extension progress from core body progress plus strict-top
+handle typing.
+-/
+theorem native_handler_step_ext_with_mismatch_progress_of_core_progress_and_strict_top_typing
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core_progress :
+      ∀ env body ty,
+        HasTypeScopedTop env body ty →
+        CoreValue body ∨ ∃ body', bodyStep body body')
+    (h_strict_top_typing : native_handler_strict_top_typing_prop) :
+    native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep := by
+  intro env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed
+  exact native_handler_step_ext_with_mismatch_step_of_core_progress_and_strict_top_handle
+    clauseSem mismatchSem bodyStep h_core_progress
+    (h_strict_top_typing env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed)
 
 /--
 Core-judgment local handler soundness route from global strict typing:
@@ -2897,6 +2943,31 @@ theorem native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_st
     native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep := by
   exact native_handler_step_ext_with_mismatch_soundness_of_core_progress_and_body_preservation_and_strict_typing_as_soundness_prop
     clauseSem mismatchSem bodyStep h_core.1 h_core.2 h_strict_typing
+
+/--
+Capstone route: mismatch-extension soundness from packaged core soundness plus
+global strict-top handle typing.
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_strict_top_typing
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core :
+      (∀ env body body' ty,
+        HasTypeScopedTop env body ty →
+        bodyStep body body' →
+        HasTypeScopedTop env body' ty)
+      ∧
+      (∀ env body ty,
+        HasTypeScopedTop env body ty →
+        CoreValue body ∨ ∃ body', bodyStep body body'))
+    (h_strict_top_typing : native_handler_strict_top_typing_prop) :
+    native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep := by
+  refine ⟨?_, ?_⟩
+  · exact native_handler_step_ext_with_mismatch_preservation
+      clauseSem mismatchSem bodyStep h_core.1
+  · exact native_handler_step_ext_with_mismatch_progress_of_core_progress_and_strict_top_typing
+      clauseSem mismatchSem bodyStep h_core.2 h_strict_top_typing
 
 /--
 Specialized soundness target for the concrete pass-through mismatch semantics.
