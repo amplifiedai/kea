@@ -1483,6 +1483,43 @@ theorem native_handler_step_ext_exists_of_int_body
       (.intLit n) op argName resumeName argTy opRetTy clauseBody
       (CoreValue.int n)⟩
 
+/--
+Packaged body-step obligations required to discharge full extended native
+handler-step soundness.
+-/
+structure NativeHandlerBodyStepObligations
+    (bodyStep : CoreExpr → CoreExpr → Prop) : Prop where
+  preservation :
+    ∀ env body body' ty,
+      HasTypeScopedTop env body ty →
+      bodyStep body body' →
+      HasTypeScopedTop env body' ty
+  progress :
+    native_handler_body_progress_obligation_ext_prop bodyStep
+
+/--
+Extended native handler-step soundness package (preservation + progress).
+-/
+def native_handler_step_ext_soundness_prop
+    (clauseSem : NativeHandlerClauseSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) : Prop :=
+  native_handler_step_ext_preservation_prop clauseSem bodyStep
+    ∧ native_handler_step_ext_progress_prop clauseSem bodyStep
+
+/--
+Capstone route: full extended native handler-step soundness follows directly
+from the packaged body-step obligations.
+-/
+theorem native_handler_step_ext_soundness_of_body_step_obligations
+    (clauseSem : NativeHandlerClauseSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_body : NativeHandlerBodyStepObligations bodyStep) :
+    native_handler_step_ext_soundness_prop clauseSem bodyStep := by
+  refine ⟨?_, ?_⟩
+  · exact native_handler_step_ext_preservation clauseSem bodyStep h_body.preservation
+  · exact native_handler_step_ext_progress_of_body_progress_obligation
+      clauseSem bodyStep h_body.progress
+
 /-- Declarative field typing is functional on the core slice. -/
 theorem hasFieldsType_unique
     {env : TermEnv} {fs : CoreFields} {row₁ row₂ : RowFields}

@@ -16251,3 +16251,39 @@ Lean changes:
 - The native formal surface now includes the missing structural step cases
   (value + congruence), so the remaining capstone work is narrowing the body
   progress/preservation obligations rather than redefining reduction shape.
+
+### 2026-03-02: extended handler-step soundness capstone packaging
+
+**Context**: Added a single discharge route that bundles preservation+progress
+for the extended native relation, parameterized by explicit body-step
+obligations.
+
+Lean changes:
+- Added in `Kea/Typing.lean`:
+  - `NativeHandlerBodyStepObligations`
+  - `native_handler_step_ext_soundness_prop`
+  - `native_handler_step_ext_soundness_of_body_step_obligations`
+
+This turns the current open work into a precise target: provide one packaged
+body-step obligations witness and the extended handler-step soundness bundle
+follows in one theorem application.
+
+**Build check**:
+- `cd formal && lake build Kea.Typing` passes.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Probe (direct `kea` MCP)**:
+1. Spoof attempt still rejected:
+   - `fn spoof(__kea_resume_ctx: fn(Int) -> Int) -> Int; resume 1`
+   - `status = error`, `E0012`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Extended native handler-step now has a capstone packaging theorem; remaining
+  gap is entirely in constructing the body-step obligations witness.

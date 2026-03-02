@@ -421,6 +421,11 @@ Concrete milestone checklist for moving from the current fuel model to an implem
   `native_handler_step_ext_progress_of_body_progress_obligation`) plus an
   explicit witness that the old int-body stuck shape now steps under the
   extended relation (`native_handler_step_ext_exists_of_int_body`).
+  Update: packaged the remaining capstone boundary as explicit obligations and
+  one-hop discharge route:
+  `NativeHandlerBodyStepObligations`, `native_handler_step_ext_soundness_prop`,
+  `native_handler_step_ext_soundness_of_body_step_obligations`
+  (preservation+progress bundle from body-step preservation/progress premises).
   Update: added explicit theorem exports for that gate
   (`hasType_resume_requires_ctx`, `resume_not_typable_without_ctx`,
   `inferExpr_resume_none_without_ctx`), so out-of-handler `resume` rejection is
