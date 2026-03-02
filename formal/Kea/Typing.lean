@@ -2134,6 +2134,50 @@ theorem native_handler_step_ext_with_mismatch_step_of_core_progress_and_strict_t
     ((hasTypeScopedStrictTop_handle_iff_handleStrict).1 h_strict_top)
 
 /--
+Strict-top-handle entrypoint: one-step existence + type preservation from core
+body preservation/progress obligations.
+-/
+theorem native_handler_step_ext_with_mismatch_exists_and_preserves_of_core_soundness_and_strict_top_handle
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_body_pres :
+      ∀ env body body' ty,
+        HasTypeScopedTop env body ty →
+        bodyStep body body' →
+        HasTypeScopedTop env body' ty)
+    (h_core_progress :
+      ∀ env body ty,
+        HasTypeScopedTop env body ty →
+        CoreValue body ∨ ∃ body', bodyStep body body')
+    {env : TermEnv}
+    {body : CoreExpr}
+    {opHandle : Label}
+    {argName resumeName : String}
+    {argTy opRetTy : Ty}
+    {clauseBody : CoreExpr}
+    {ty : Ty}
+    (h_strict_top :
+      HasTypeScopedStrictTop env
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        ty) :
+    ∃ e',
+      NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        e'
+      ∧ HasTypeScopedTop env e' ty := by
+  rcases native_handler_step_ext_with_mismatch_step_of_core_progress_and_strict_top_handle
+      clauseSem mismatchSem bodyStep h_core_progress h_strict_top with ⟨e', h_step⟩
+  refine ⟨e', h_step, ?_⟩
+  exact native_handler_step_ext_with_mismatch_preservation
+    clauseSem mismatchSem bodyStep h_body_pres env
+    (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+    e'
+    ty
+    h_strict_top.1
+    h_step
+
+/--
 Progress target for the mismatched-perform extension under strict local handle
 typing premises.
 -/

@@ -17310,3 +17310,36 @@ progress-only theorem surface.
 **Outcome**:
 - Scoped->strict extension path now has both global progress and global
   soundness entry routes.
+
+### 2026-03-02: strict-top handle existence+preservation capstone helper
+
+**Context**: Added a single theorem returning both step existence and
+post-step typing from strict top-level handle typing plus core obligations.
+
+Lean changes:
+- Added in `Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_exists_and_preserves_of_core_soundness_and_strict_top_handle`
+
+This theorem packages the strict-top handle route as:
+`strict-top-handle + core-pres + core-progress => ∃ step ∧ preserves type`.
+
+**Build check**:
+- `cd formal && lake build Kea.Typing` passes.
+- `cd formal && lake build` passes.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Probe (direct `kea` MCP)**:
+1. Spoofed resume context variable remains rejected (`E0012`).
+2. Single-resume matching handler clause remains accepted (`status = ok`).
+3. Double-resume handler clause remains rejected (`E0012`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Strict-top route now has a direct local capstone theorem (existence +
+  preservation) for handler-step proofs.

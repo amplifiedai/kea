@@ -587,6 +587,10 @@ Concrete milestone checklist for moving from the current fuel model to an implem
   Update: added global scoped->strict progress route
   (`native_handler_step_ext_with_mismatch_progress_of_core_progress_and_scoped_to_strict_lift`)
   so the scoped extension path has explicit progress and soundness surfaces.
+  Update: added strict-top local capstone helper
+  (`native_handler_step_ext_with_mismatch_exists_and_preserves_of_core_soundness_and_strict_top_handle`),
+  packaging step-existence and preservation in one theorem for strict-typed
+  handle roots.
   Update: re-ran direct in-session `kea` MCP stress probes (spoofed
   `__kea_resume_ctx`, out-of-handler `resume`, single-resume handler acceptance,
   double-resume rejection) and observed agreement with Lean assumptions
