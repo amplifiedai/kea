@@ -15185,3 +15185,41 @@ under explicit capability-origin premises.
 **Outcome**:
 - Generic supported-shape evaluator routes now have one capability-extended
   capstone surface, and MCP behavior remains aligned.
+
+### 2026-03-02: reroute shape-specific capability capstones through generic route
+
+**Context**: Refactored the redex/core-body capability evaluator capstones to
+project through the new generic shape-based capability route.
+
+Lean changes:
+- `handler_typed_redex_eval_and_capability_contract_capstone`
+- `handler_typed_core_body_eval_and_capability_contract_capstone`
+
+Both now consume:
+- `handler_typed_handle_shape_eval_and_capability_contract_capstone`
+
+with shape-specific projection on the boundary-step witness.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+- `diagnose`
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; proof-route consolidation only.
+- Existing resume-linearity diagnostics and handled-effect normalization should
+  remain stable.
+
+**Probe (direct `kea` MCP)**:
+1. Single-resume clause accepted.
+2. Branch double-resume rejected with `E0012`.
+3. `resume` outside handler rejected with `E0012`.
+4. Mismatched-handle residual remains normalized (`handled : () -[Log]> ()`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Redex/core-body capability evaluator capstones now share one generic
+  supported-shape capability route, with MCP behavior still aligned.

@@ -5089,31 +5089,57 @@ theorem handler_typed_redex_eval_and_capability_contract_capstone
     ∧ TailCapabilityComposition.TailCapabilityClosedAwareBundle
         clause.contract
         capability := by
-  have h_base :
-      (∃ v, eval venv (bindTailResumptive clause arg k) = some v ∧ ValueHasType v ty)
+  have h_shape :
+      handlerStepSupportedShape
+        (.perform clause.handled clause.opArgTy clause.opRetTy arg k)
+        clause :=
+    Or.inr ⟨arg, k, rfl⟩
+  have h_frag_shape :
+      ∀ target : CoreExpr,
+        HandlerStep
+          (.handle (.perform clause.handled clause.opArgTy clause.opRetTy arg k)
+            handler
+            clause)
+          (.core target) →
+        EvalFragmentFull target := by
+    intro target h_step
+    cases h_step with
+    | handle_perform_tail _ _ _ _ _ _ _ _ =>
+        simpa [bindTailResumptive] using h_frag
+  have h_generic :
+      (∃ target v,
+        HandlerStep
+          (.handle (.perform clause.handled clause.opArgTy clause.opRetTy arg k)
+            handler
+            clause)
+          (.core target)
+        ∧ eval venv target = some v
+        ∧ ValueHasType v ty)
       ∧ HandleClauseContract.wellTypedSlice clause.contract
       ∧ resume_at_most_once clause.contract.resumeUse
       ∧ (TailResumptiveClassification.classifyClause clause.contract ≠
           TailResumptiveClassification.TailResumptiveClass.invalid)
-      ∧ TailResumptiveClassification.TailResumptiveBundle clause.contract :=
-    handler_typed_redex_eval_and_contract_capstone h_env h_typed h_frag
-  have h_cap :
-      TailCapabilityComposition.TailCapabilityBundle clause.contract capability :=
-    handler_typed_redex_tail_capability_bundle h_typed h_expr h_ne
-  have h_cap_closed :
-      TailCapabilityComposition.TailCapabilityClosedAwareBundle
-        clause.contract
-        capability :=
-    handler_typed_redex_tail_capability_closedAware_bundle h_typed h_expr h_ne
-  exact ⟨
-    h_base.1,
-    h_base.2.1,
-    h_base.2.2.1,
-    h_base.2.2.2.1,
-    h_base.2.2.2.2,
-    h_cap,
-    h_cap_closed
-  ⟩
+      ∧ TailResumptiveClassification.TailResumptiveBundle clause.contract
+      ∧ TailCapabilityComposition.TailCapabilityBundle clause.contract capability
+      ∧ TailCapabilityComposition.TailCapabilityClosedAwareBundle
+          clause.contract
+          capability :=
+    handler_typed_handle_shape_eval_and_capability_contract_capstone
+      h_env h_typed h_shape h_frag_shape h_expr h_ne
+  rcases h_generic with
+    ⟨h_eval, h_wellTyped, h_linear, h_not_invalid, h_tail_bundle, h_cap, h_cap_closed⟩
+  rcases h_eval with ⟨target, v, h_step, h_eval_eq, h_v_ty⟩
+  cases h_step with
+  | handle_perform_tail _ _ _ _ _ _ _ _ =>
+      exact ⟨
+        ⟨v, by simpa [bindTailResumptive] using h_eval_eq, h_v_ty⟩,
+        h_wellTyped,
+        h_linear,
+        h_not_invalid,
+        h_tail_bundle,
+        h_cap,
+        h_cap_closed
+      ⟩
 
 /--
 Core-body evaluator bridge: for typed `.handle (.core e) ...`, core evaluator
@@ -5197,32 +5223,45 @@ theorem handler_typed_core_body_eval_and_capability_contract_capstone
     ∧ TailCapabilityComposition.TailCapabilityClosedAwareBundle
         clause.contract
         capability := by
-  have h_base :
-      (∃ v, eval venv e = some v ∧ ValueHasType v ty)
+  have h_shape : handlerStepSupportedShape (.core e) clause := Or.inl ⟨e, rfl⟩
+  have h_frag_shape :
+      ∀ target : CoreExpr,
+        HandlerStep (.handle (.core e) handler clause) (.core target) →
+        EvalFragmentFull target := by
+    intro target h_step
+    cases h_step with
+    | handle_core _ _ _ =>
+        simpa using h_frag
+  have h_generic :
+      (∃ target v,
+        HandlerStep (.handle (.core e) handler clause) (.core target)
+        ∧ eval venv target = some v
+        ∧ ValueHasType v ty)
       ∧ HandleClauseContract.wellTypedSlice clause.contract
       ∧ resume_at_most_once clause.contract.resumeUse
       ∧ (TailResumptiveClassification.classifyClause clause.contract ≠
           TailResumptiveClassification.TailResumptiveClass.invalid)
-      ∧ TailResumptiveClassification.TailResumptiveBundle clause.contract :=
-    handler_typed_core_body_eval_and_contract_capstone h_env h_typed h_frag
-  have h_cap :
-      TailCapabilityComposition.TailCapabilityBundle clause.contract capability :=
-    handler_clause_tail_capability_bundle_of_handlerHasType h_typed h_expr h_ne
-  have h_cap_closed :
-      TailCapabilityComposition.TailCapabilityClosedAwareBundle
-        clause.contract
-        capability :=
-    handler_clause_tail_capability_closedAware_bundle_of_handlerHasType
-      h_typed h_expr h_ne
-  exact ⟨
-    h_base.1,
-    h_base.2.1,
-    h_base.2.2.1,
-    h_base.2.2.2.1,
-    h_base.2.2.2.2,
-    h_cap,
-    h_cap_closed
-  ⟩
+      ∧ TailResumptiveClassification.TailResumptiveBundle clause.contract
+      ∧ TailCapabilityComposition.TailCapabilityBundle clause.contract capability
+      ∧ TailCapabilityComposition.TailCapabilityClosedAwareBundle
+          clause.contract
+          capability :=
+    handler_typed_handle_shape_eval_and_capability_contract_capstone
+      h_env h_typed h_shape h_frag_shape h_expr h_ne
+  rcases h_generic with
+    ⟨h_eval, h_wellTyped, h_linear, h_not_invalid, h_tail_bundle, h_cap, h_cap_closed⟩
+  rcases h_eval with ⟨target, v, h_step, h_eval_eq, h_v_ty⟩
+  cases h_step with
+  | handle_core _ _ _ =>
+      exact ⟨
+        ⟨v, by simpa using h_eval_eq, h_v_ty⟩,
+        h_wellTyped,
+        h_linear,
+        h_not_invalid,
+        h_tail_bundle,
+        h_cap,
+        h_cap_closed
+      ⟩
 
 /--
 Preservation for the typed handler-step refinement.
