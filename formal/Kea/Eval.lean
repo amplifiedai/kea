@@ -3809,6 +3809,129 @@ theorem handler_step_clause_atMostOnce_of_typed_redex
           (HandleClauseContract.clauseHasResumeSummary.mk clause.contract)
 
 /--
+Extract clause contract well-typedness from any typed `handle` expression.
+-/
+theorem handler_clause_wellTypedSlice_of_handlerHasType
+    {tenv : TermEnv}
+    {body : HandlerExpr}
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    {ty : Ty}
+    (h_typed : HandlerHasType tenv (.handle body handler clause) ty) :
+    HandleClauseContract.wellTypedSlice clause.contract := by
+  cases h_typed with
+  | handle _ _ _ _ _ _ _ _ h_clause_contract _ =>
+      exact h_clause_contract
+
+/--
+General linearity bridge from handle typing to clause `resume_at_most_once`.
+-/
+theorem handler_clause_atMostOnce_of_handlerHasType
+    {tenv : TermEnv}
+    {body : HandlerExpr}
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    {ty : Ty}
+    (h_typed : HandlerHasType tenv (.handle body handler clause) ty) :
+    resume_at_most_once clause.contract.resumeUse := by
+  exact
+    HandleClauseContract.clauseHasResumeSummary_implies_atMostOnce_of_wellTypedSlice
+      clause.contract
+      clause.contract.resumeUse
+      (handler_clause_wellTypedSlice_of_handlerHasType h_typed)
+      (HandleClauseContract.clauseHasResumeSummary.mk clause.contract)
+
+/--
+General classification bridge from handle typing to non-invalid clause class.
+-/
+theorem handler_clause_notInvalid_of_handlerHasType
+    {tenv : TermEnv}
+    {body : HandlerExpr}
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    {ty : Ty}
+    (h_typed : HandlerHasType tenv (.handle body handler clause) ty) :
+    TailResumptiveClassification.classifyClause clause.contract ≠
+      TailResumptiveClassification.TailResumptiveClass.invalid := by
+  exact
+    (TailResumptiveClassification.classifyClause_notInvalid_iff_atMostOnce
+      clause.contract).2 (by
+        simpa [resume_at_most_once] using
+          handler_clause_atMostOnce_of_handlerHasType h_typed)
+
+/--
+General typed-handle bridge to packaged tail-resumptive bundle.
+-/
+theorem handler_clause_tail_resumptive_bundle_of_handlerHasType
+    {tenv : TermEnv}
+    {body : HandlerExpr}
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    {ty : Ty}
+    (h_typed : HandlerHasType tenv (.handle body handler clause) ty) :
+    TailResumptiveClassification.TailResumptiveBundle clause.contract := by
+  exact
+    TailResumptiveClassification.tail_resumptive_bundle_of_wellTyped
+      clause.contract
+      (handler_clause_wellTypedSlice_of_handlerHasType h_typed)
+
+/--
+General typed-handle bridge to packaged tail-capability bundle under explicit
+capability-origin premises.
+-/
+theorem handler_clause_tail_capability_bundle_of_handlerHasType
+    {tenv : TermEnv}
+    {body : HandlerExpr}
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    {ty : Ty}
+    {baseEffects : EffectRow}
+    {capability : Label}
+    (h_typed : HandlerHasType tenv (.handle body handler clause) ty)
+    (h_expr :
+      clause.contract.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_ne : capability ≠ clause.contract.handled) :
+    TailCapabilityComposition.TailCapabilityBundle clause.contract capability := by
+  exact
+    TailCapabilityComposition.tailCapabilityBundle_of_wellTyped
+      clause.contract
+      baseEffects
+      capability
+      (handler_clause_wellTypedSlice_of_handlerHasType h_typed)
+      h_expr
+      h_ne
+
+/--
+General typed-handle bridge to packaged closed-aware tail-capability bundle
+under explicit capability-origin premises.
+-/
+theorem handler_clause_tail_capability_closedAware_bundle_of_handlerHasType
+    {tenv : TermEnv}
+    {body : HandlerExpr}
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    {ty : Ty}
+    {baseEffects : EffectRow}
+    {capability : Label}
+    (h_typed : HandlerHasType tenv (.handle body handler clause) ty)
+    (h_expr :
+      clause.contract.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_ne : capability ≠ clause.contract.handled) :
+    TailCapabilityComposition.TailCapabilityClosedAwareBundle
+      clause.contract
+      capability := by
+  exact
+    TailCapabilityComposition.tailCapabilityClosedAwareBundle_of_wellTyped
+      clause.contract
+      baseEffects
+      capability
+      (handler_clause_wellTypedSlice_of_handlerHasType h_typed)
+      h_expr
+      h_ne
+
+/--
 Determinism for the one-step handler boundary relation.
 -/
 theorem handler_step_deterministic

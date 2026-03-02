@@ -14454,3 +14454,41 @@ surfaces available from typed handler-redex premises.
 **Outcome**:
 - Typed-redex evaluator capstones now expose normalized and closed-aware
   tail-capability bundle routes with no new Lean↔MCP mismatch signal.
+
+### 2026-03-02: general handle-typing bridge (not redex-only)
+
+**Context**: Extended `HandlerStepBoundary` with general typing bridges from
+`HandlerHasType (.handle ...)` to linearity/classification/bundle contracts,
+so these consequences no longer require the body to be a perform redex.
+
+Lean changes:
+- `handler_clause_wellTypedSlice_of_handlerHasType`
+- `handler_clause_atMostOnce_of_handlerHasType`
+- `handler_clause_notInvalid_of_handlerHasType`
+- `handler_clause_tail_resumptive_bundle_of_handlerHasType`
+- `handler_clause_tail_capability_bundle_of_handlerHasType`
+- `handler_clause_tail_capability_closedAware_bundle_of_handlerHasType`
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+- `diagnose`
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; this strengthens theorem routing from
+  typing premises.
+- Existing linearity diagnostics and overlap normalization should stay stable.
+
+**Probe (direct `kea` MCP)**:
+1. Single-resume handler accepted (`status = ok`).
+2. Branch double-resume rejected with `E0012`.
+3. `resume` outside handler rejected with `E0012`.
+4. Overlap residual remains normalized (`handled : () -[IO]> ()`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- The handle-typing to clause-contract bridge is now explicit at theorem level
+  for general handle expressions, and direct MCP behavior remains aligned.
