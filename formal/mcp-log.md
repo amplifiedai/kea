@@ -15033,3 +15033,40 @@ Lean changes:
 - Supported-shape characterization on typed handles now directly yields
   preserved successor typing, and shape-capstone routes consume that stronger
   theorem path.
+
+### 2026-03-02: core-body evaluator+contract capstones
+
+**Context**: Added evaluator integration theorems for the core-body boundary
+shape, paralleling the existing redex evaluator capstone family.
+
+Lean changes:
+- `handler_typed_core_body_eval_sound`
+- `handler_typed_core_body_eval_and_contract_capstone`
+- `handler_typed_core_body_eval_and_capability_contract_capstone`
+
+These use the new `handle_core` boundary route and existing core evaluator
+soundness to provide evaluator+contract consequences for typed core-body
+handles.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+- `diagnose`
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; theorem-route extension only.
+- Existing linearity diagnostics and overlap normalization should remain stable.
+
+**Probe (direct `kea` MCP)**:
+1. Single-resume clause accepted.
+2. Branch double-resume rejected with `E0012`.
+3. `resume` outside handler rejected with `E0012`.
+4. Overlap residual remains normalized (`handled : () -[IO]> ()`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Both supported boundary step shapes (perform-redex and core-body) now have
+  evaluator+contract capstone theorem surfaces, with MCP behavior aligned.
