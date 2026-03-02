@@ -2668,6 +2668,33 @@
 
     #[test]
     #[cfg(not(target_os = "windows"))]
+    fn compile_and_execute_fip_unique_higher_order_forwarder_named_import_call_exit_code() {
+        let project_dir =
+            temp_workspace_project_dir("kea-cli-fip-unique-higher-order-forwarder-imported");
+        let src_dir = project_dir.join("src");
+        std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+        let source_path = src_dir.join("main.kea");
+        std::fs::write(
+            src_dir.join("wrappers.kea"),
+            "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_forwarder(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  f(x)\n",
+        )
+        .expect("wrappers module write should succeed");
+        std::fs::write(
+            &source_path,
+            "use Wrappers.{apply_forwarder, forward_once}\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_forwarder(forward_once, x)\n\nfn main() -> Int\n  0\n",
+        )
+        .expect("source write should succeed");
+
+        let run = run_file(&source_path).expect(
+            "@fip verifier should accept named-import higher-order forwarder calls with known-safe function items",
+        );
+        assert_eq!(run.exit_code, 0);
+
+        let _ = std::fs::remove_dir_all(project_dir);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
     fn compile_rejects_fip_unique_higher_order_forwarder_param_escape() {
         let source_path = write_temp_source(
             "fn apply_forwarder(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  f(x)\n\n@fip\nfn call_via_apply(x: Unique Int, f: fn(Unique Int) -> Unique Int) -> Unique Int\n  apply_forwarder(f, x)\n\nfn main() -> Int\n  0\n",
@@ -2685,6 +2712,30 @@
         assert!(
             err.contains("escapes through 1 call argument(s)"),
             "expected call-boundary escape diagnostic, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn compile_rejects_fip_unique_higher_order_forwarder_wrong_unique_arg_escape() {
+        let source_path = write_temp_source(
+            "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_wrong(f: fn(Unique Int) -> Unique Int, x: Unique Int, y: Unique Int) -> Unique Int\n  f(y)\n\n@fip\nfn call_via_apply(x: Unique Int, y: Unique Int) -> Unique Int\n  apply_wrong(forward_once, x, y)\n\nfn main() -> Int\n  0\n",
+            "kea-cli-fip-unique-higher-order-forwarder-wrong-arg-escape",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err(
+            "@fip verifier should reject higher-order wrappers when the tracked unique parameter is not the forwarded argument",
+        );
+        assert!(
+            err.contains("`@fip` verification failed for `call_via_apply`"),
+            "expected @fip verification failure, got: {err}"
+        );
+        assert!(
+            err.contains("Unique parameter `x` escapes through 1 call argument(s)"),
+            "expected escape diagnostic for `x`, got: {err}"
         );
 
         let _ = std::fs::remove_file(source_path);
