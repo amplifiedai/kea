@@ -935,6 +935,25 @@ theorem native_handler_step_exists_and_preserves_iff_supported_shape_of_typed
       (.handle body op argName resumeName argTy opRetTy clauseBody)
       e' ty h_typed h_step
 
+/--
+One-hop typed native handler consequence: supported shape implies one-step
+existence with preservation.
+-/
+theorem native_handler_step_exists_and_preserves_of_typed_handle_and_supported_shape
+    (clauseSem : NativeHandlerClauseSem)
+    {env : TermEnv} {body : CoreExpr} {op : Label}
+    {argName resumeName : String} {argTy opRetTy : Ty}
+    {clauseBody : CoreExpr} {ty : Ty}
+    (h_typed :
+      HasType env (.handle body op argName resumeName argTy opRetTy clauseBody) ty)
+    (h_shape : NativeHandlerStepSupportedShape body op argTy opRetTy) :
+    ∃ e',
+      NativeHandlerStep clauseSem
+        (.handle body op argName resumeName argTy opRetTy clauseBody) e' ∧
+      HasType env e' ty := by
+  exact (native_handler_step_exists_and_preserves_iff_supported_shape_of_typed
+    clauseSem h_typed).2 h_shape
+
 /-- Progress target for native `handle` expressions in `Typing.lean`. -/
 def native_handler_step_progress_prop (clauseSem : NativeHandlerClauseSem) : Prop :=
   ∀ env body op argName resumeName argTy opRetTy clauseBody ty,

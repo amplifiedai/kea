@@ -409,6 +409,10 @@ Concrete milestone checklist for moving from the current fuel model to an implem
   both algorithmic and declarative paths
   (`inferExpr_resume_iff_ctx_and_arg`, `hasType_resume_iff_ctx_and_value`),
   making native resume admissibility conditions directly two-way/citable.
+  Update: added a one-hop typed native handle consequence wrapper
+  (`native_handler_step_exists_and_preserves_of_typed_handle_and_supported_shape`)
+  so supported-shape typed routes can consume step+preservation without
+  intermediate `↔` destructuring.
   Update: refined that boundary with a typed-step judgment (`HandlerStepTyped`) carrying the concrete preservation-side typing premise for tail-resumptive instantiation, and added proved bridge/preservation lemmas (`handlerStep_of_handlerStepTyped`, `handler_step_typed_preservation`) so the remaining open work is now explicitly the derivation of typed-step premises from untyped handler reduction.
   Update: further minimized the open handler-preservation gap by introducing `handler_step_instantiation_obligation_prop` and deriving full boundary preservation through `handler_step_preservation_of_instantiation_obligation`; the remaining `sorry` target is now `handler_step_instantiation_obligation` (typed clause-instantiation premise only), with `handler_step_preservation` reduced to a one-line consequence wrapper.
   Update: closed that remaining boundary target by extending `HandlerClauseSem` with abstract instantiation semantics + typing law (`instantiate`, `instantiate_sound`) and proving `handler_step_instantiation_obligation`; `handler_step_preservation` is now fully proved in this boundary model with no `sorry` left in `Kea/Eval.lean`.

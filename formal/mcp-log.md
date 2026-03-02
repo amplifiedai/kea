@@ -15981,3 +15981,38 @@ matching handler-context continuation type and a matching argument type.
 **Outcome**:
 - Resume-context gating now has full two-way theorem characterization on both
   algorithmic and declarative native typing paths.
+
+### 2026-03-02: one-hop typed native handle consequence wrapper
+
+**Context**: Added a convenience wrapper theorem so typed callers can consume
+supported-shape consequences without manually threading through the
+shape-preservation `↔` capstone.
+
+Lean changes:
+- `native_handler_step_exists_and_preserves_of_typed_handle_and_supported_shape`
+
+This is a one-hop route from:
+1. typed native handle premise, and
+2. supported perform-redex body shape,
+to:
+3. native one-step existence with same-type preservation.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Predict (Lean side)**:
+- Theorem-surface convenience only; no runtime behavior change expected.
+- Existing `E0012` behavior should remain stable.
+
+**Probe (direct `kea` MCP)**:
+1. Single-resume clause accepted (`status = ok`).
+2. Sequential double-resume rejected (`status = error`, `E0012`).
+3. `resume` outside handler rejected (`status = error`, `E0012`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Typed native shape consequence routing now has a direct one-hop API theorem.
