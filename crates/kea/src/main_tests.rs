@@ -2574,6 +2574,58 @@
 
     #[test]
     #[cfg(not(target_os = "windows"))]
+    fn compile_and_execute_fip_zero_alloc_function_exit_code() {
+        let source_path = write_temp_source(
+            "@fip\nfn id(x: Int) -> Int\n  x\n\nfn main() -> Int\n  id(7)\n",
+            "kea-cli-fip-zero-alloc",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("@fip zero-alloc function should compile and run");
+        assert_eq!(run.exit_code, 7);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn compile_rejects_fip_when_allocations_remain() {
+        let source_path = write_temp_source(
+            "enum Chain\n  End\n  Link(Int, Chain)\n\n@fip\nfn build(n: Int) -> Chain\n  if n <= 0\n    Chain.End\n  else\n    Chain.Link(n, build(n - 1))\n\nfn main() -> Int\n  0\n",
+            "kea-cli-fip-reject-allocating",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err("@fip verifier should reject allocating function");
+        assert!(
+            err.contains("`@fip` verification failed for `build`"),
+            "expected @fip verification failure, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn compile_rejects_fip_annotation_with_arguments() {
+        let source_path = write_temp_source(
+            "@fip(\"strict\")\nfn id(x: Int) -> Int\n  x\n\nfn main() -> Int\n  id(1)\n",
+            "kea-cli-fip-args-invalid",
+            "kea",
+        );
+
+        let err =
+            run_file(&source_path).expect_err("@fip annotation with args should fail validation");
+        assert!(
+            err.contains("`@fip` does not accept arguments"),
+            "expected @fip argument validation failure, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
     fn compile_build_and_execute_aot_payload_constructor_case_exit_code() {
         let source_path = write_temp_source(
             "enum Flag\n  Yep(Int)\n  Nope\n\nfn main() -> Int\n  case Yep(1 + 6)\n    Yep(n) -> n\n    Nope -> 0\n",

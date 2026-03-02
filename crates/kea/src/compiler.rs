@@ -8,7 +8,8 @@ use kea_ast::{
     Spanned, TestDecl, TypeAnnotation, TypeDef,
 };
 use kea_codegen::{
-    Backend, BackendConfig, CodegenMode, CraneliftBackend, PassStats, default_abi_manifest,
+    Backend, BackendConfig, CodegenMode, CraneliftBackend, PassStats, collect_pass_stats,
+    default_abi_manifest,
     execute_hir_main_jit,
 };
 use kea_diag::{Diagnostic, Severity, SourceLocation};
@@ -136,6 +137,10 @@ fn compile_module_inner(source: &str, file_id: FileId) -> Result<CompilationCont
     diagnostics.extend(check_unique_moves_with_borrow_map(&hir, &borrow_param_map));
     if has_errors(&diagnostics) {
         return Err(format_diagnostics("move checking failed", &diagnostics));
+    }
+    diagnostics.extend(validate_fip_annotations(&module, &hir));
+    if has_errors(&diagnostics) {
+        return Err(format_diagnostics("`@fip` verification failed", &diagnostics));
     }
 
     Ok(CompilationContext {
@@ -386,6 +391,10 @@ pub fn process_module_in_env(
     let explicit_borrow_param_map = collect_borrow_param_positions(module, None);
     let borrow_param_map = infer_auto_borrow_param_positions(&hir, &explicit_borrow_param_map);
     diagnostics.extend(check_unique_moves_with_borrow_map(&hir, &borrow_param_map));
+    if has_errors(&diagnostics) {
+        return Err(diagnostics);
+    }
+    diagnostics.extend(validate_fip_annotations(module, &hir));
     if has_errors(&diagnostics) {
         return Err(diagnostics);
     }
@@ -1016,6 +1025,10 @@ fn typecheck_loaded_modules(
 
     let module = merge_modules_for_codegen(&typed_modules);
     let hir = lower_module(&module, &env);
+    diagnostics.extend(validate_fip_annotations(&module, &hir));
+    if has_errors(&diagnostics) {
+        return Err(format_diagnostics("`@fip` verification failed", &diagnostics));
+    }
     Ok(CompilationContext {
         module,
         hir,
@@ -2064,6 +2077,99 @@ fn expr_decl_to_fn_decl(expr: &ExprDecl) -> FnDecl {
         span: expr.span,
         where_clause: expr.where_clause.clone(),
     }
+}
+
+fn validate_fip_annotations(module: &Module, hir: &HirModule) -> Vec<Diagnostic> {
+    let mut annotated_functions: BTreeMap<String, Span> = BTreeMap::new();
+    for decl in &module.declarations {
+        match &decl.node {
+            DeclKind::Function(fn_decl) => {
+                if fn_decl.annotations.iter().any(|ann| ann.name.node == "fip") {
+                    annotated_functions
+                        .entry(fn_decl.name.node.clone())
+                        .or_insert(fn_decl.name.span);
+                }
+            }
+            DeclKind::ExprFn(expr_decl) => {
+                if expr_decl.annotations.iter().any(|ann| ann.name.node == "fip") {
+                    annotated_functions
+                        .entry(expr_decl.name.node.clone())
+                        .or_insert(expr_decl.name.span);
+                }
+            }
+            _ => {}
+        }
+    }
+    if annotated_functions.is_empty() {
+        return Vec::new();
+    }
+
+    let mir = lower_hir_module_with_config(hir, &MirLoweringConfig::jit());
+    let pass_stats = collect_pass_stats(&mir);
+    let stats_by_name = pass_stats
+        .per_function
+        .iter()
+        .map(|stats| (stats.function.as_str(), stats))
+        .collect::<BTreeMap<_, _>>();
+
+    let mut diagnostics = Vec::new();
+    for (name, span) in annotated_functions {
+        let Some(stats) = stats_by_name.get(name.as_str()) else {
+            diagnostics.push(
+                Diagnostic::error(
+                    Category::TypeError,
+                    format!("`@fip` function `{name}` could not be verified (missing MIR stats)"),
+                )
+                .at(SourceLocation {
+                    file_id: span.file.0,
+                    start: span.start,
+                    end: span.end,
+                })
+                .with_help(
+                    "the bootstrap verifier only supports named functions that lower to MIR one-to-one."
+                        .to_string(),
+                ),
+            );
+            continue;
+        };
+
+        let mut failures = Vec::new();
+        if stats.alloc_count > 0 {
+            failures.push(format!("alloc_count={}", stats.alloc_count));
+        }
+        if stats.retain_count > 0 {
+            failures.push(format!("retain_count={}", stats.retain_count));
+        }
+        if stats.release_count > 0 {
+            failures.push(format!("release_count={}", stats.release_count));
+        }
+        if stats.trmc_candidate_count > 0 {
+            failures.push(format!("trmc_candidate_count={}", stats.trmc_candidate_count));
+        }
+
+        if !failures.is_empty() {
+            diagnostics.push(
+                Diagnostic::error(
+                    Category::TypeError,
+                    format!(
+                        "`@fip` verification failed for `{name}` ({})",
+                        failures.join(", ")
+                    ),
+                )
+                .at(SourceLocation {
+                    file_id: span.file.0,
+                    start: span.start,
+                    end: span.end,
+                })
+                .with_help(
+                    "expected zero alloc/retain/release and no remaining TRMC candidates after MIR lowering."
+                        .to_string(),
+                ),
+            );
+        }
+    }
+
+    diagnostics
 }
 
 fn has_errors(diags: &[Diagnostic]) -> bool {

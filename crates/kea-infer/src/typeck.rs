@@ -5649,18 +5649,19 @@ impl AnnotationTargetKind {
 fn annotation_name_known(name: &str) -> bool {
     matches!(
         name,
-        "rename" | "default" | "skip_if" | "tagged" | "deprecated" | "intrinsic"
+        "rename" | "default" | "skip_if" | "tagged" | "deprecated" | "intrinsic" | "fip"
     )
 }
 
 fn annotation_name_suggestion(name: &str) -> Option<&'static str> {
-    const KNOWN: [&str; 6] = [
+    const KNOWN: [&str; 7] = [
         "rename",
         "default",
         "skip_if",
         "tagged",
         "deprecated",
         "intrinsic",
+        "fip",
     ];
     let mut best: Option<(&str, usize)> = None;
     for candidate in KNOWN {
@@ -6039,6 +6040,29 @@ fn validate_annotation_arguments(
                         "`@intrinsic` argument must be a string literal",
                     )
                     .at(span_to_loc(ann.args[0].value.span)),
+                );
+            }
+        }
+        "fip" => {
+            if !matches!(
+                target,
+                AnnotationTargetKind::Function | AnnotationTargetKind::ExprFunction
+            ) {
+                diagnostics.push(
+                    Diagnostic::error(
+                        Category::TypeError,
+                        format!("`@fip` is not valid on {}", target.label()),
+                    )
+                    .at(span_to_loc(ann.span)),
+                );
+            }
+            if !ann.args.is_empty() {
+                diagnostics.push(
+                    Diagnostic::error(
+                        Category::TypeError,
+                        "`@fip` does not accept arguments",
+                    )
+                    .at(span_to_loc(ann.span)),
                 );
             }
         }
