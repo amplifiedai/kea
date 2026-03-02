@@ -3693,6 +3693,29 @@ theorem handler_progress_core_body
   exact ⟨.core e, handler_core_body_step⟩
 
 /--
+Boundary progress for currently supported typed-handle body shapes:
+core-body passthrough or matching perform-redex instantiation.
+-/
+theorem handler_step_progress_of_typed_handle_core_or_matching_perform
+    {tenv : TermEnv}
+    {body : HandlerExpr}
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    {ty : Ty}
+    (h_typed : HandlerHasType tenv (.handle body handler clause) ty)
+    (h_shape :
+      (∃ e : CoreExpr, body = .core e)
+      ∨
+      (∃ arg k,
+        body = .perform clause.handled clause.opArgTy clause.opRetTy arg k)) :
+    ∃ e', HandlerStep (.handle body handler clause) e' := by
+  rcases h_shape with h_core | h_perform
+  · rcases h_core with ⟨e, rfl⟩
+    exact ⟨.core e, HandlerStep.handle_core handler clause e⟩
+  · rcases h_perform with ⟨arg, k, rfl⟩
+    exact handler_step_progress_of_typed_redex h_typed
+
+/--
 Typed refinement of `HandlerStep` that records the precise preservation-side
 obligation: the tail-resumptive clause-body instantiation is well-typed in the
 ambient environment.

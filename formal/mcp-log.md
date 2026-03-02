@@ -14717,3 +14717,39 @@ positive progress route in the boundary model.
 **Outcome**:
 - Boundary handler progress now includes both perform-redex and core-body paths
   in machine-checked form, with no Lean↔MCP divergence signal.
+
+### 2026-03-02: unified boundary progress theorem for supported typed-handle shapes
+
+**Context**: Added a single progress theorem that covers both currently
+supported typed-handle body-step shapes in `HandlerStepBoundary`.
+
+Lean change:
+- `handler_step_progress_of_typed_handle_core_or_matching_perform`
+
+This theorem provides step existence from a typed handle when body shape is:
+1. `.core e` (passthrough), or
+2. matching `.perform clause.handled ... arg k` (tail-resumptive instantiation).
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+- `diagnose`
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; this is theorem-surface consolidation.
+- Existing handler linearity diagnostics and overlap normalization should remain
+  stable.
+
+**Probe (direct `kea` MCP)**:
+1. Single-resume clause accepted.
+2. Branch double-resume rejected with `E0012`.
+3. `resume` outside handler rejected with `E0012`.
+4. Overlap residual remains normalized (`handled : () -[IO]> ()`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- The boundary progress surface now has one theorem covering both supported
+  typed-handle body shapes, with MCP behavior still aligned.
