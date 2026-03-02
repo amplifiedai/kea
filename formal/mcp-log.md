@@ -14175,3 +14175,42 @@ Lean changes:
 - Moves this workstream from “named gap stub” to a discharged boundary proof,
   while keeping the core limitation explicit (`Typing.CoreExpr` still lacks
   native `handle`/`resume` constructors).
+
+### 2026-03-02: typed-redex handler corollaries (progress + at-most-once)
+
+**Context**: Continued `HandlerStepBoundary` after discharging preservation, to
+reduce theorem-call friction by deriving progress/linearity directly from typed
+handler redex premises.
+
+Lean changes:
+- Added `handler_step_progress_of_typed_redex`.
+- Added `handler_step_clause_atMostOnce_of_typed_redex`.
+
+These derive:
+1. existence of a handler step from typed redex premises alone, and
+2. clause `resume_at_most_once` from the same typed premise path.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Predict (Lean side)**:
+- No runtime behavior change expected; these are theorem-surface corollaries.
+- Existing resume-linearity behavior should remain stable.
+
+**Probe (direct `kea` MCP)**:
+1. Zero-resume clause accepted:
+   - `Ping.ask() -> 41` in handler clause: `status = ok`.
+2. Branch-double-resume rejected:
+   - clause with `resume` in both branches: `status = error`, `E0012`.
+3. Single-resume clause accepted:
+   - `Ping.ask() -> resume 1`: `status = ok`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Typed handler redex premises now yield one-step progress and at-most-once
+  corollaries in Lean, with matching runtime acceptance/rejection controls on
+  the corresponding MCP probes.

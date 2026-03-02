@@ -3739,6 +3739,74 @@ theorem handler_step_progress : handler_step_progress_prop := by
           handler clause arg k h_contract_shape h_mem h_summary h_tail
 
 /--
+Direct progress corollary from typed redex premises alone.
+The summary and tail-resumptive premises are derived from the handler typing
+contract attached to the clause.
+-/
+theorem handler_step_progress_of_typed_redex
+    {tenv : TermEnv}
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    {arg k : CoreExpr}
+    {ty : Ty}
+    (h_typed : HandlerHasType tenv
+      (.handle (.perform clause.handled clause.opArgTy clause.opRetTy arg k)
+        handler
+        clause)
+      ty) :
+    ∃ e',
+      HandlerStep
+        (.handle (.perform clause.handled clause.opArgTy clause.opRetTy arg k)
+          handler
+          clause)
+        e' := by
+  cases h_typed with
+  | handle _ _ _ _ _ _ h_contract_shape h_mem h_clause_contract _ =>
+      have h_summary :
+          HandleClauseContract.handlerClauseHasResumeSummary
+            handler
+            clause.contract
+            clause.contract.resumeUse :=
+        HandleClauseContract.handlerClauseHasResumeSummary.mk
+          clause.contract
+          clause.contract.resumeUse
+          h_mem
+          (HandleClauseContract.clauseHasResumeSummary.mk clause.contract)
+      have h_tail :
+          clause.contract.resumeUse = .zero ∨ clause.contract.resumeUse = .one :=
+        HandleClauseContract.wellTypedSlice_implies_resumeProvenance
+          clause.contract
+          h_clause_contract
+      exact
+        ⟨.core (bindTailResumptive clause arg k),
+          HandlerStep.handle_perform_tail
+            handler clause arg k h_contract_shape h_mem h_summary h_tail⟩
+
+/--
+Direct clause-level at-most-once corollary from typed redex premises alone.
+-/
+theorem handler_step_clause_atMostOnce_of_typed_redex
+    {tenv : TermEnv}
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    {arg k : CoreExpr}
+    {ty : Ty}
+    (h_typed : HandlerHasType tenv
+      (.handle (.perform clause.handled clause.opArgTy clause.opRetTy arg k)
+        handler
+        clause)
+      ty) :
+    resume_at_most_once clause.contract.resumeUse := by
+  cases h_typed with
+  | handle _ _ _ _ _ _ _ _ h_clause_contract _ =>
+      exact
+        HandleClauseContract.clauseHasResumeSummary_implies_atMostOnce_of_wellTypedSlice
+          clause.contract
+          clause.contract.resumeUse
+          h_clause_contract
+          (HandleClauseContract.clauseHasResumeSummary.mk clause.contract)
+
+/--
 Preservation for the typed handler-step refinement.
 
 This theorem isolates the remaining untyped-preservation gap to proving
