@@ -15414,3 +15414,40 @@ These remove existential target destructuring on concrete shape routes.
 **Outcome**:
 - Redex/core-body routes now expose direct core-soundness-consequence theorem
   surfaces, with MCP behavior still aligned.
+
+### 2026-03-02: capability parity on direct redex/core-body consequence routes
+
+**Context**: Added capability-extended direct redex/core-body consequence
+capstones so concrete-shape routes now expose full consequence+contract parity
+including capability bundles.
+
+Lean changes:
+- `handler_typed_redex_core_soundness_and_capability_contract_capstone`
+- `handler_typed_core_body_core_soundness_and_capability_contract_capstone`
+
+These extend the concrete-shape consequence routes with normalized and
+closed-aware capability contract outputs.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+- `diagnose`
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; theorem specialization/projection only.
+- Existing resume-linearity diagnostics and handled-effect normalization should
+  remain stable.
+
+**Probe (direct `kea` MCP)**:
+1. Single-resume clause accepted.
+2. Branch double-resume rejected with `E0012`.
+3. `resume` outside handler rejected with `E0012`.
+4. Mismatched-handle residual remains normalized (`handled : () -[Log]> ()`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Concrete redex/core-body consequence routes now include capability-extended
+  contract parity, with MCP behavior still aligned.
