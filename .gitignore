@@ -31,6 +31,10 @@ Thumbs.db
 # sccache
 .sccache/
 
+# Private project management
+/BRIEFS/
+/FORMAL.md
+
 # Tree-sitter generated artifacts
 tree-sitter-kea/src/parser.c
 tree-sitter-kea/src/grammar.json
