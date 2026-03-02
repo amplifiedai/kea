@@ -680,6 +680,78 @@ theorem inferExpr_resume_none_without_ctx
     inferExpr env (.resume value) = none := by
   simp [inferExpr, h_no_ctx]
 
+/--
+Algorithmic `resume` typing is equivalent to having a matching handler context
+and an argument inferred at the context's operation return type.
+-/
+theorem inferExpr_resume_iff_ctx_and_arg
+    (env : TermEnv) (value : CoreExpr) (handlerTy : Ty) :
+    inferExpr env (.resume value) = some handlerTy
+      ↔
+      ∃ opRetTy,
+        TermEnv.lookup env resumeCtxName = some (.function (.cons opRetTy .nil) handlerTy) ∧
+        inferExpr env value = some opRetTy := by
+  constructor
+  · intro h
+    simp [inferExpr] at h
+    cases h_ctx : TermEnv.lookup env resumeCtxName with
+    | none =>
+      simp [h_ctx] at h
+    | some ctxTy =>
+      cases ctxTy with
+      | function params ctxHandlerTy =>
+        cases params with
+        | nil =>
+          simp [h_ctx] at h
+        | cons opRetTy rest =>
+          cases rest with
+          | nil =>
+            cases h_val : inferExpr env value with
+            | none =>
+              simp [h_ctx, h_val] at h
+            | some actualTy =>
+              cases h_eq : beqTy actualTy opRetTy with
+              | false =>
+                simp [h_ctx, h_val, h_eq] at h
+              | true =>
+                have h_handler : ctxHandlerTy = handlerTy := by
+                  simpa [inferExpr, h_ctx, h_val, h_eq] using h
+                have h_actual : actualTy = opRetTy :=
+                  beqTy_sound actualTy opRetTy h_eq
+                subst handlerTy
+                refine ⟨opRetTy, ?_, ?_⟩
+                · rfl
+                · simpa using congrArg Option.some h_actual
+          | cons _ _ =>
+            simp [h_ctx] at h
+      | int | intN _ _ | float | floatN _ | decimal _ _ | bool | string | html | markdown | atom | date | dateTime | unit =>
+        simp [h_ctx] at h
+      | list _ | map _ _ | set _ | option _ | result _ _ | existential _ _ | fixedSizeList _ _ | tensor _ _ | sum _ _ | «opaque» _ _
+        | functionEff _ _ _ | record _ _ | anonRecord _ | dataframe _ | groupedFrame _ _ | tagged _ _ | dynamic | column _ | stream _ | task _ | actor _ | arc _
+        | «forall» _ _ | app _ _ | constructor _ _ _ | var _ | row _ | tuple _ =>
+        simp [h_ctx] at h
+  · intro h
+    rcases h with ⟨opRetTy, h_ctx, h_val⟩
+    simp [inferExpr, h_ctx, h_val, beqTy_refl opRetTy]
+
+/--
+Declarative `resume` typing is equivalent to having a matching handler context
+and a value typed at the context's operation return type.
+-/
+theorem hasType_resume_iff_ctx_and_value
+    (env : TermEnv) (value : CoreExpr) (handlerTy : Ty) :
+    HasType env (.resume value) handlerTy
+      ↔
+      ∃ opRetTy,
+        TermEnv.lookup env resumeCtxName = some (.function (.cons opRetTy .nil) handlerTy) ∧
+        HasType env value opRetTy := by
+  constructor
+  · intro h
+    exact hasType_resume_requires_ctx h
+  · intro h
+    rcases h with ⟨opRetTy, h_ctx, h_value⟩
+    exact HasType.resume env value opRetTy handlerTy h_ctx h_value
+
 /- =========================================================================
    Native handler-step judgment on `Typing.CoreExpr`
    ========================================================================= -/

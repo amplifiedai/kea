@@ -15947,3 +15947,37 @@ perform-redex body shape.
 **Outcome**:
 - Native typed-handle shape completeness now includes preservation in one
   machine-checked capstone route.
+
+### 2026-03-02: normalize resume gate as explicit algorithmic/declarative `iff` laws
+
+**Context**: Added direct `iff` characterizations for `resume` on the native
+typing surface so the handler-context gate is packaged as equivalence theorems
+rather than only constructor/one-way lemmas.
+
+Lean changes:
+- `inferExpr_resume_iff_ctx_and_arg`
+- `hasType_resume_iff_ctx_and_value`
+
+These expose exact characterization: `resume` succeeds iff there exists a
+matching handler-context continuation type and a matching argument type.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Predict (Lean side)**:
+- Theorem-surface normalization only; no runtime behavior change expected.
+- Existing `E0012` behavior should remain stable.
+
+**Probe (direct `kea` MCP)**:
+1. Single-resume clause accepted (`status = ok`).
+2. Sequential double-resume rejected (`status = error`, `E0012`).
+3. `resume` outside handler rejected (`status = error`, `E0012`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Resume-context gating now has full two-way theorem characterization on both
+  algorithmic and declarative native typing paths.
