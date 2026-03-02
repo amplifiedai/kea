@@ -1651,6 +1651,21 @@ structure NativeHandlerMismatchSem : Type where
         ty
 
 /--
+Concrete mismatched-perform semantics witness: pass the `perform` through this
+handler unchanged.
+-/
+def nativeHandlerMismatchPassThroughSem : NativeHandlerMismatchSem where
+  mismatchTarget :=
+    fun opBody argTy opRetTy arg k _opHandle _argName _resumeName _argTy _opRetTy _clauseBody =>
+      .perform opBody argTy opRetTy arg k
+  mismatch_sound := by
+    intro env opBody argTy opRetTy arg k opHandle argName resumeName clauseBody ty _h_op_ne h_typed
+    dsimp [HasTypeScopedTop] at h_typed ⊢
+    cases h_typed with
+    | handle _ _ _ _ _ _ _ _ _ _ h_body _h_clause =>
+      exact h_body
+
+/--
 Native handler-step relation extended with an explicit mismatched-perform case.
 -/
 inductive NativeHandlerStepExtWithMismatch
@@ -1728,6 +1743,24 @@ theorem native_handler_step_ext_with_mismatch_exists_of_op_mismatch
       opBody argTy opRetTy arg k opHandle argName resumeName argTy opRetTy clauseBody, ?_⟩
   exact NativeHandlerStepExtWithMismatch.handle_perform_op_mismatch
     opBody opHandle argTy opRetTy arg k argName resumeName clauseBody h_op_ne
+
+/--
+Specialized op-mismatch one-step existence under the concrete pass-through
+mismatch semantics witness.
+-/
+theorem native_handler_step_ext_with_mismatch_exists_of_op_mismatch_passThrough
+    (clauseSem : NativeHandlerClauseSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    {opBody opHandle : Label}
+    {argName resumeName : String}
+    {argTy opRetTy : Ty}
+    {arg k clauseBody : CoreExpr}
+    (h_op_ne : opBody ≠ opHandle) :
+    ∃ e', NativeHandlerStepExtWithMismatch clauseSem nativeHandlerMismatchPassThroughSem bodyStep
+      (.handle (.perform opBody argTy opRetTy arg k) opHandle argName resumeName argTy opRetTy clauseBody)
+      e' := by
+  exact native_handler_step_ext_with_mismatch_exists_of_op_mismatch
+    clauseSem nativeHandlerMismatchPassThroughSem bodyStep h_op_ne
 
 /-- Progress target for the mismatched-perform-extended native relation. -/
 def native_handler_step_ext_with_mismatch_progress_prop

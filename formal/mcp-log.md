@@ -16640,3 +16640,37 @@ from the present judgment.
 - The next closure step is now explicit and unavoidable:
   strengthen typing with metadata coherence, or take structural mismatch
   semantics as the primary capstone path.
+
+### 2026-03-02: concrete mismatch semantics witness (pass-through)
+
+**Context**: Added a concrete `NativeHandlerMismatchSem` instantiation so
+mismatch-extension routes are usable without leaving mismatch semantics
+abstract.
+
+Lean changes:
+- Added in `Kea/Typing.lean`:
+  - `nativeHandlerMismatchPassThroughSem`
+  - `native_handler_step_ext_with_mismatch_exists_of_op_mismatch_passThrough`
+
+The witness models mismatched handled `perform` as pass-through of the same
+`perform` (typed via inversion from the typed handle premise).
+
+**Build check**:
+- `cd formal && lake build Kea.Typing` passes.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Probe (direct `kea` MCP)**:
+1. Spoof attempt still rejected:
+   - `fn spoof(__kea_resume_ctx: fn(Int) -> Int) -> Int; resume 1`
+   - `status = error`, `E0012`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Structural mismatch-extension path now has a concrete semantics witness in
+  the corpus, reducing abstraction in the remaining capstone gap.
