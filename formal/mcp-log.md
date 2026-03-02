@@ -17177,3 +17177,36 @@ required (not just scoped->strict lift, but strict-handle contract itself).
 **Outcome**:
 - The formal corpus now states directly: current native typing does not satisfy
   strict handle metadata constraints.
+
+### 2026-03-02: handle-root strict judgment equivalence surface
+
+**Context**: Added direct equivalence theorems between strict top-level typing
+at handle roots and `HasTypeScopedHandleStrict`.
+
+Lean changes:
+- Added in `Kea/Typing.lean`:
+  - `hasTypeScopedStrictTop_of_handleStrict`
+  - `hasTypeScopedStrictTop_handle_iff_handleStrict`
+
+This removes wrapper indirection for future lift/soundness routes at handle
+roots.
+
+**Build check**:
+- `cd formal && lake build Kea.Typing` passes.
+- `cd formal && lake build` passes.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Probe (direct `kea` MCP)**:
+1. Spoofed resume context variable remains rejected (`E0012`).
+2. Single-resume matching handler clause remains accepted (`status = ok`).
+3. Double-resume handler clause remains rejected (`E0012`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Handle-root strictness can now be consumed via clean `↔` theorem surface.

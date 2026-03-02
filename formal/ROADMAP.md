@@ -573,6 +573,10 @@ Concrete milestone checklist for moving from the current fuel model to an implem
   Update: added direct non-derivability theorem
   `not_native_handler_strict_typing_prop`, making explicit that current native
   scoped typing cannot satisfy strict handle metadata constraints.
+  Update: added handle-root strictness equivalence surfaces
+  (`hasTypeScopedStrictTop_of_handleStrict`,
+  `hasTypeScopedStrictTop_handle_iff_handleStrict`) to simplify strict
+  extension consumption in future capstone routes.
   Update: re-ran direct in-session `kea` MCP stress probes (spoofed
   `__kea_resume_ctx`, out-of-handler `resume`, single-resume handler acceptance,
   double-resume rejection) and observed agreement with Lean assumptions

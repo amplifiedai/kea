@@ -1921,6 +1921,50 @@ theorem hasTypeScopedStrictTop_handle_implies_handleStrict
   · exact hasTypeScopedStrict_handle_metadata h
 
 /--
+Local strict handle witness directly builds strict top-level typing at that
+handle root.
+-/
+theorem hasTypeScopedStrictTop_of_handleStrict
+    {env : TermEnv}
+    {body : CoreExpr}
+    {opHandle : Label}
+    {argName resumeName : String}
+    {argTy opRetTy : Ty}
+    {clauseBody : CoreExpr}
+    {ty : Ty}
+    (h :
+      HasTypeScopedHandleStrict env body opHandle argName resumeName argTy opRetTy clauseBody ty) :
+    HasTypeScopedStrictTop env
+      (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+      ty := by
+  rcases h with ⟨h_typed, h_local_coh⟩
+  refine ⟨h_typed, ?_⟩
+  intro body' opHandle' argName' resumeName' argTy' opRetTy' clauseBody' h_eq
+  cases h_eq
+  exact h_local_coh
+
+/--
+At a `handle` root, strict top-level typing is equivalent to
+`HasTypeScopedHandleStrict`.
+-/
+theorem hasTypeScopedStrictTop_handle_iff_handleStrict
+    {env : TermEnv}
+    {body : CoreExpr}
+    {opHandle : Label}
+    {argName resumeName : String}
+    {argTy opRetTy : Ty}
+    {clauseBody : CoreExpr}
+    {ty : Ty} :
+    HasTypeScopedStrictTop env
+      (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+      ty
+      ↔
+    HasTypeScopedHandleStrict env body opHandle argName resumeName argTy opRetTy clauseBody ty := by
+  constructor
+  · exact hasTypeScopedStrictTop_handle_implies_handleStrict
+  · exact hasTypeScopedStrictTop_of_handleStrict
+
+/--
 Proposed native-judgment strengthening contract: every current scoped typing
 derivation lifts to strict scoped typing.
 -/
