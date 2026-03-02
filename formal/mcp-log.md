@@ -14214,3 +14214,38 @@ These derive:
 - Typed handler redex premises now yield one-step progress and at-most-once
   corollaries in Lean, with matching runtime acceptance/rejection controls on
   the corresponding MCP probes.
+
+### 2026-03-02: typed handler-redex capstone route
+
+**Context**: Continued `HandlerStepBoundary` with a one-theorem capstone for
+typed handler redexes, bundling step existence, post-step typing, and linearity.
+
+Lean changes:
+- `handler_step_deterministic`
+- `handler_step_exists_and_preserves_of_typed_redex`
+- `handler_typed_redex_capstone`
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Predict (Lean side)**:
+- No runtime change expected; this is theorem packaging over already proved
+  boundary lemmas.
+- Prior resume/overlap controls should remain stable.
+
+**Probe (direct `kea` MCP)**:
+1. Single-resume handler accepted (`status = ok`).
+2. Branch-double-resume rejected with `E0012`.
+3. Overlap residual handler case remains normalized:
+   - `mixed : () -[IO, Log]> ()`
+   - `handled : () -[IO]> ()`
+   - `status = ok`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- The boundary model now exposes a single typed-redex capstone theorem for
+  consumption, with direct MCP controls still matching its core assumptions.

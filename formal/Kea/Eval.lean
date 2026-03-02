@@ -3807,6 +3807,73 @@ theorem handler_step_clause_atMostOnce_of_typed_redex
           (HandleClauseContract.clauseHasResumeSummary.mk clause.contract)
 
 /--
+Determinism for the one-step handler boundary relation.
+-/
+theorem handler_step_deterministic
+    {e e1 e2 : HandlerExpr}
+    (h1 : HandlerStep e e1)
+    (h2 : HandlerStep e e2) :
+    e1 = e2 := by
+  cases h1 with
+  | handle_perform_tail _ clause arg k _ _ _ _ =>
+      cases h2 with
+      | handle_perform_tail _ _ _ _ _ _ _ _ =>
+          rfl
+
+/--
+One-step typed-redex preservation corollary:
+from a typed handler redex we can construct a concrete next expression and
+show it is well-typed at the same type.
+-/
+theorem handler_step_exists_and_preserves_of_typed_redex
+    {tenv : TermEnv}
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    {arg k : CoreExpr}
+    {ty : Ty}
+    (h_typed : HandlerHasType tenv
+      (.handle (.perform clause.handled clause.opArgTy clause.opRetTy arg k)
+        handler
+        clause)
+      ty) :
+    ∃ e',
+      HandlerStep
+        (.handle (.perform clause.handled clause.opArgTy clause.opRetTy arg k)
+          handler
+          clause)
+        e' ∧
+      HandlerHasType tenv e' ty := by
+  rcases handler_step_progress_of_typed_redex h_typed with ⟨e', h_step⟩
+  refine ⟨e', h_step, ?_⟩
+  exact handler_step_preservation h_typed h_step
+
+/--
+Capstone boundary theorem for typed handler redexes:
+step existence, post-step type preservation, and clause at-most-once.
+-/
+theorem handler_typed_redex_capstone
+    {tenv : TermEnv}
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    {arg k : CoreExpr}
+    {ty : Ty}
+    (h_typed : HandlerHasType tenv
+      (.handle (.perform clause.handled clause.opArgTy clause.opRetTy arg k)
+        handler
+        clause)
+      ty) :
+    (∃ e',
+      HandlerStep
+        (.handle (.perform clause.handled clause.opArgTy clause.opRetTy arg k)
+          handler
+          clause)
+        e' ∧
+      HandlerHasType tenv e' ty) ∧
+    resume_at_most_once clause.contract.resumeUse := by
+  refine ⟨handler_step_exists_and_preserves_of_typed_redex h_typed, ?_⟩
+  exact handler_step_clause_atMostOnce_of_typed_redex h_typed
+
+/--
 Preservation for the typed handler-step refinement.
 
 This theorem isolates the remaining untyped-preservation gap to proving
