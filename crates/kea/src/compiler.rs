@@ -2174,26 +2174,23 @@ fn validate_fip_annotations(module: &Module, hir: &HirModule) -> Vec<Diagnostic>
         };
 
         let profile = mir_function.map(collect_fip_mir_profile).unwrap_or_default();
-        let hir_var_counts = collect_hir_var_ref_max_counts_by_function_name(hir, &name);
-        let mut unique_flow_issues = fip_spec
-            .unique_param_names
-            .iter()
-            .filter_map(|name| match hir_var_counts.get(name).copied().unwrap_or(0) {
-                0 => Some(format!(
-                    "Unique parameter `{name}` is never referenced in function body (expected exactly-once consume/forward)"
+        let flow = analyze_hir_unique_flow_by_function_name(hir, &name, &fip_spec.unique_param_names);
+        let mut unique_flow_issues = Vec::new();
+        for root in &fip_spec.unique_param_names {
+            match flow.ref_counts.get(root).copied().unwrap_or(0) {
+                0 => unique_flow_issues.push(format!(
+                    "Unique parameter `{root}` is never referenced in function body (expected exactly-once consume/forward)"
                 )),
-                n if n > 1 => Some(format!(
-                    "Unique parameter `{name}` is referenced {n} times; @fip currently requires a single syntactic ownership handoff"
+                n if n > 1 => unique_flow_issues.push(format!(
+                    "Unique parameter `{root}` is referenced {n} times on one control-flow path; @fip currently requires a single ownership handoff per path"
                 )),
-                _ => None,
-            })
-            .collect::<Vec<_>>();
-        let call_escapes =
-            collect_hir_unique_call_escapes_by_function_name(hir, &name, &fip_spec.unique_param_names);
-        for escaped in call_escapes {
-            unique_flow_issues.push(format!(
-                "Unique parameter `{escaped}` escapes through a call argument; @fip call-boundary ownership proofs are not yet supported"
-            ));
+                _ => {}
+            }
+            if flow.call_escapes.contains(root) {
+                unique_flow_issues.push(format!(
+                    "Unique parameter `{root}` escapes through a call argument; @fip call-boundary ownership proofs are not yet supported"
+                ));
+            }
         }
         let mut failures = Vec::new();
         if profile.disallowed_alloc_count > 0 {
@@ -2313,227 +2310,266 @@ fn is_unique_type_annotation(annotation: &TypeAnnotation) -> bool {
     }
 }
 
-fn collect_hir_var_ref_max_counts_by_function_name(
-    hir: &HirModule,
-    name: &str,
-) -> BTreeMap<String, usize> {
-    let mut counts = BTreeMap::new();
-    for decl in &hir.declarations {
-        let HirDecl::Function(function) = decl else {
-            continue;
-        };
-        if function.name != name && !function.name.ends_with(&format!(".{name}")) {
-            continue;
-        }
-        collect_hir_var_ref_max_counts(&function.body, &mut counts);
-        break;
-    }
-    counts
+#[derive(Debug, Clone, Default)]
+struct HirUniqueFlowSummary {
+    ref_counts: BTreeMap<String, usize>,
+    call_escapes: BTreeSet<String>,
+    result_alias_root: Option<String>,
 }
 
-fn collect_hir_var_ref_max_counts(expr: &HirExpr, counts: &mut BTreeMap<String, usize>) {
-    match &expr.kind {
-        HirExprKind::Lit(_) => {}
-        HirExprKind::Var(name) => {
-            *counts.entry(name.clone()).or_default() += 1;
-        }
-        HirExprKind::Binary { left, right, .. } => {
-            collect_hir_var_ref_max_counts(left, counts);
-            collect_hir_var_ref_max_counts(right, counts);
-        }
-        HirExprKind::Unary { operand, .. } => collect_hir_var_ref_max_counts(operand, counts),
-        HirExprKind::If {
-            condition,
-            then_branch,
-            else_branch,
-        } => {
-            collect_hir_var_ref_max_counts(condition, counts);
-            let mut then_counts = BTreeMap::new();
-            collect_hir_var_ref_max_counts(then_branch, &mut then_counts);
-            let mut else_counts = BTreeMap::new();
-            if let Some(else_expr) = else_branch {
-                collect_hir_var_ref_max_counts(else_expr, &mut else_counts);
-            }
-            let keys = then_counts
-                .keys()
-                .chain(else_counts.keys())
-                .cloned()
-                .collect::<BTreeSet<_>>();
-            for key in keys {
-                let merged = then_counts
-                    .get(&key)
-                    .copied()
-                    .unwrap_or(0)
-                    .max(else_counts.get(&key).copied().unwrap_or(0));
-                *counts.entry(key).or_default() += merged;
-            }
-        }
-        HirExprKind::Call { func, args } => {
-            collect_hir_var_ref_max_counts(func, counts);
-            for arg in args {
-                collect_hir_var_ref_max_counts(arg, counts);
-            }
-        }
-        HirExprKind::Let { value, .. } => collect_hir_var_ref_max_counts(value, counts),
-        HirExprKind::Block(exprs) | HirExprKind::Tuple(exprs) => {
-            for item in exprs {
-                collect_hir_var_ref_max_counts(item, counts);
-            }
-        }
-        HirExprKind::Lambda { body, .. } => collect_hir_var_ref_max_counts(body, counts),
-        HirExprKind::RecordLit { fields, .. } => {
-            for (_, field_expr) in fields {
-                collect_hir_var_ref_max_counts(field_expr, counts);
-            }
-        }
-        HirExprKind::RecordUpdate { base, fields, .. } => {
-            collect_hir_var_ref_max_counts(base, counts);
-            for (_, field_expr) in fields {
-                collect_hir_var_ref_max_counts(field_expr, counts);
-            }
-        }
-        HirExprKind::FieldAccess { expr, .. } => collect_hir_var_ref_max_counts(expr, counts),
-        HirExprKind::SumConstructor { fields, .. } => {
-            for field_expr in fields {
-                collect_hir_var_ref_max_counts(field_expr, counts);
-            }
-        }
-        HirExprKind::SumPayloadAccess { expr, .. } => collect_hir_var_ref_max_counts(expr, counts),
-        HirExprKind::Catch { expr } => collect_hir_var_ref_max_counts(expr, counts),
-        HirExprKind::Handle {
-            expr,
-            clauses,
-            then_clause,
-        } => {
-            collect_hir_var_ref_max_counts(expr, counts);
-            let mut clause_max = BTreeMap::new();
-            for clause in clauses {
-                let mut clause_counts = BTreeMap::new();
-                collect_hir_var_ref_max_counts(&clause.body, &mut clause_counts);
-                for (name, count) in clause_counts {
-                    let entry = clause_max.entry(name).or_insert(0);
-                    *entry = (*entry).max(count);
-                }
-            }
-            for (name, count) in clause_max {
-                *counts.entry(name).or_default() += count;
-            }
-            if let Some(then_expr) = then_clause {
-                collect_hir_var_ref_max_counts(then_expr, counts);
-            }
-        }
-        HirExprKind::Resume { value } => collect_hir_var_ref_max_counts(value, counts),
-        HirExprKind::Raw(_) => {}
-    }
-}
-
-fn collect_hir_unique_call_escapes_by_function_name(
-    hir: &HirModule,
-    name: &str,
-    unique_param_names: &BTreeSet<String>,
-) -> BTreeSet<String> {
-    let mut escapes = BTreeSet::new();
-    for decl in &hir.declarations {
-        let HirDecl::Function(function) = decl else {
-            continue;
-        };
-        if function.name != name && !function.name.ends_with(&format!(".{name}")) {
-            continue;
-        }
-        collect_hir_unique_call_escapes(&function.body, unique_param_names, &mut escapes);
-        break;
-    }
-    escapes
-}
-
-fn collect_hir_unique_call_escapes(
-    expr: &HirExpr,
-    unique_param_names: &BTreeSet<String>,
-    escapes: &mut BTreeSet<String>,
+fn add_ref_counts(
+    dst: &mut BTreeMap<String, usize>,
+    src: &BTreeMap<String, usize>,
 ) {
+    for (name, count) in src {
+        *dst.entry(name.clone()).or_default() += *count;
+    }
+}
+
+fn max_ref_counts(
+    left: &BTreeMap<String, usize>,
+    right: &BTreeMap<String, usize>,
+) -> BTreeMap<String, usize> {
+    let keys = left
+        .keys()
+        .chain(right.keys())
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    let mut merged = BTreeMap::new();
+    for key in keys {
+        let max_count = left
+            .get(&key)
+            .copied()
+            .unwrap_or(0)
+            .max(right.get(&key).copied().unwrap_or(0));
+        merged.insert(key, max_count);
+    }
+    merged
+}
+
+fn resolve_unique_root(
+    name: &str,
+    aliases: &BTreeMap<String, String>,
+) -> Option<String> {
+    aliases.get(name).cloned()
+}
+
+fn analyze_hir_unique_flow_by_function_name(
+    hir: &HirModule,
+    name: &str,
+    unique_param_names: &BTreeSet<String>,
+) -> HirUniqueFlowSummary {
+    let mut aliases = BTreeMap::new();
+    for root in unique_param_names {
+        aliases.insert(root.clone(), root.clone());
+    }
+    for decl in &hir.declarations {
+        let HirDecl::Function(function) = decl else {
+            continue;
+        };
+        if function.name != name && !function.name.ends_with(&format!(".{name}")) {
+            continue;
+        }
+        return analyze_hir_unique_flow_expr(&function.body, &aliases);
+    }
+    HirUniqueFlowSummary::default()
+}
+
+fn analyze_hir_unique_flow_expr(
+    expr: &HirExpr,
+    aliases: &BTreeMap<String, String>,
+) -> HirUniqueFlowSummary {
     match &expr.kind {
-        HirExprKind::Call { func, args } => {
-            collect_hir_unique_call_escapes(func, unique_param_names, escapes);
-            for arg in args {
-                if let HirExprKind::Var(name) = &arg.kind
-                    && unique_param_names.contains(name)
-                {
-                    escapes.insert(name.clone());
-                }
-                collect_hir_unique_call_escapes(arg, unique_param_names, escapes);
+        HirExprKind::Lit(_) => HirUniqueFlowSummary::default(),
+        HirExprKind::Var(name) => {
+            let mut summary = HirUniqueFlowSummary::default();
+            if let Some(root) = resolve_unique_root(name, aliases) {
+                *summary.ref_counts.entry(root.clone()).or_default() += 1;
+                summary.result_alias_root = Some(root);
             }
+            summary
         }
         HirExprKind::Binary { left, right, .. } => {
-            collect_hir_unique_call_escapes(left, unique_param_names, escapes);
-            collect_hir_unique_call_escapes(right, unique_param_names, escapes);
+            let left_summary = analyze_hir_unique_flow_expr(left, aliases);
+            let right_summary = analyze_hir_unique_flow_expr(right, aliases);
+            let mut summary = HirUniqueFlowSummary::default();
+            add_ref_counts(&mut summary.ref_counts, &left_summary.ref_counts);
+            add_ref_counts(&mut summary.ref_counts, &right_summary.ref_counts);
+            summary.call_escapes = left_summary
+                .call_escapes
+                .union(&right_summary.call_escapes)
+                .cloned()
+                .collect();
+            summary
         }
-        HirExprKind::Unary { operand, .. } => {
-            collect_hir_unique_call_escapes(operand, unique_param_names, escapes);
-        }
+        HirExprKind::Unary { operand, .. } => analyze_hir_unique_flow_expr(operand, aliases),
         HirExprKind::If {
             condition,
             then_branch,
             else_branch,
         } => {
-            collect_hir_unique_call_escapes(condition, unique_param_names, escapes);
-            collect_hir_unique_call_escapes(then_branch, unique_param_names, escapes);
-            if let Some(else_expr) = else_branch {
-                collect_hir_unique_call_escapes(else_expr, unique_param_names, escapes);
+            let condition_summary = analyze_hir_unique_flow_expr(condition, aliases);
+            let then_summary = analyze_hir_unique_flow_expr(then_branch, aliases);
+            let else_summary = else_branch
+                .as_ref()
+                .map(|branch| analyze_hir_unique_flow_expr(branch, aliases))
+                .unwrap_or_default();
+            let mut summary = HirUniqueFlowSummary::default();
+            add_ref_counts(&mut summary.ref_counts, &condition_summary.ref_counts);
+            add_ref_counts(
+                &mut summary.ref_counts,
+                &max_ref_counts(&then_summary.ref_counts, &else_summary.ref_counts),
+            );
+            summary.call_escapes = condition_summary
+                .call_escapes
+                .union(&then_summary.call_escapes)
+                .cloned()
+                .collect::<BTreeSet<_>>()
+                .union(&else_summary.call_escapes)
+                .cloned()
+                .collect();
+            summary.result_alias_root = match (
+                then_summary.result_alias_root.as_ref(),
+                else_summary.result_alias_root.as_ref(),
+            ) {
+                (Some(then_root), Some(else_root)) if then_root == else_root => {
+                    Some(then_root.clone())
+                }
+                _ => None,
+            };
+            summary
+        }
+        HirExprKind::Call { func, args } => {
+            let mut summary = analyze_hir_unique_flow_expr(func, aliases);
+            for arg in args {
+                let arg_summary = analyze_hir_unique_flow_expr(arg, aliases);
+                add_ref_counts(&mut summary.ref_counts, &arg_summary.ref_counts);
+                summary.call_escapes.extend(arg_summary.call_escapes.iter().cloned());
+                if let Some(root) = arg_summary.result_alias_root {
+                    summary.call_escapes.insert(root);
+                }
             }
+            summary.result_alias_root = None;
+            summary
         }
-        HirExprKind::Let { value, .. } => {
-            collect_hir_unique_call_escapes(value, unique_param_names, escapes);
+        HirExprKind::Let { pattern, value } => {
+            let mut summary = analyze_hir_unique_flow_expr(value, aliases);
+            if matches!(pattern, kea_hir::HirPattern::Var(_))
+                && let Some(root) = summary.result_alias_root.clone()
+                && let Some(count) = summary.ref_counts.get_mut(&root)
+            {
+                *count = count.saturating_sub(1);
+            }
+            summary
         }
-        HirExprKind::Block(exprs) | HirExprKind::Tuple(exprs) => {
+        HirExprKind::Block(exprs) => {
+            let mut scoped_aliases = aliases.clone();
+            let mut summary = HirUniqueFlowSummary::default();
             for item in exprs {
-                collect_hir_unique_call_escapes(item, unique_param_names, escapes);
+                let item_summary = analyze_hir_unique_flow_expr(item, &scoped_aliases);
+                add_ref_counts(&mut summary.ref_counts, &item_summary.ref_counts);
+                summary
+                    .call_escapes
+                    .extend(item_summary.call_escapes.iter().cloned());
+                if let HirExprKind::Let { pattern, .. } = &item.kind
+                    && let kea_hir::HirPattern::Var(binding) = pattern
+                {
+                    if let Some(root) = item_summary.result_alias_root {
+                        scoped_aliases.insert(binding.clone(), root);
+                    } else {
+                        scoped_aliases.remove(binding);
+                    }
+                    summary.result_alias_root = None;
+                    continue;
+                }
+                summary.result_alias_root = item_summary.result_alias_root;
             }
+            summary
         }
-        HirExprKind::Lambda { body, .. } => {
-            collect_hir_unique_call_escapes(body, unique_param_names, escapes);
+        HirExprKind::Tuple(exprs) => {
+            let mut summary = HirUniqueFlowSummary::default();
+            for item in exprs {
+                let item_summary = analyze_hir_unique_flow_expr(item, aliases);
+                add_ref_counts(&mut summary.ref_counts, &item_summary.ref_counts);
+                summary
+                    .call_escapes
+                    .extend(item_summary.call_escapes.iter().cloned());
+            }
+            summary
         }
+        HirExprKind::Lambda { body, .. } => analyze_hir_unique_flow_expr(body, aliases),
         HirExprKind::RecordLit { fields, .. } => {
+            let mut summary = HirUniqueFlowSummary::default();
             for (_, field_expr) in fields {
-                collect_hir_unique_call_escapes(field_expr, unique_param_names, escapes);
+                let field_summary = analyze_hir_unique_flow_expr(field_expr, aliases);
+                add_ref_counts(&mut summary.ref_counts, &field_summary.ref_counts);
+                summary
+                    .call_escapes
+                    .extend(field_summary.call_escapes.iter().cloned());
             }
+            summary
         }
         HirExprKind::RecordUpdate { base, fields, .. } => {
-            collect_hir_unique_call_escapes(base, unique_param_names, escapes);
+            let mut summary = analyze_hir_unique_flow_expr(base, aliases);
             for (_, field_expr) in fields {
-                collect_hir_unique_call_escapes(field_expr, unique_param_names, escapes);
+                let field_summary = analyze_hir_unique_flow_expr(field_expr, aliases);
+                add_ref_counts(&mut summary.ref_counts, &field_summary.ref_counts);
+                summary
+                    .call_escapes
+                    .extend(field_summary.call_escapes.iter().cloned());
             }
+            summary.result_alias_root = None;
+            summary
         }
         HirExprKind::FieldAccess { expr, .. } => {
-            collect_hir_unique_call_escapes(expr, unique_param_names, escapes);
+            let mut summary = analyze_hir_unique_flow_expr(expr, aliases);
+            summary.result_alias_root = None;
+            summary
         }
         HirExprKind::SumConstructor { fields, .. } => {
+            let mut summary = HirUniqueFlowSummary::default();
             for field_expr in fields {
-                collect_hir_unique_call_escapes(field_expr, unique_param_names, escapes);
+                let field_summary = analyze_hir_unique_flow_expr(field_expr, aliases);
+                add_ref_counts(&mut summary.ref_counts, &field_summary.ref_counts);
+                summary
+                    .call_escapes
+                    .extend(field_summary.call_escapes.iter().cloned());
             }
+            summary
         }
         HirExprKind::SumPayloadAccess { expr, .. } => {
-            collect_hir_unique_call_escapes(expr, unique_param_names, escapes);
+            let mut summary = analyze_hir_unique_flow_expr(expr, aliases);
+            summary.result_alias_root = None;
+            summary
         }
-        HirExprKind::Catch { expr } => {
-            collect_hir_unique_call_escapes(expr, unique_param_names, escapes);
-        }
+        HirExprKind::Catch { expr } => analyze_hir_unique_flow_expr(expr, aliases),
         HirExprKind::Handle {
             expr,
             clauses,
             then_clause,
         } => {
-            collect_hir_unique_call_escapes(expr, unique_param_names, escapes);
+            let mut summary = analyze_hir_unique_flow_expr(expr, aliases);
+            let mut clause_count_max = BTreeMap::new();
+            let mut clause_escapes = BTreeSet::new();
             for clause in clauses {
-                collect_hir_unique_call_escapes(&clause.body, unique_param_names, escapes);
+                let clause_summary = analyze_hir_unique_flow_expr(&clause.body, aliases);
+                clause_count_max = max_ref_counts(&clause_count_max, &clause_summary.ref_counts);
+                clause_escapes.extend(clause_summary.call_escapes.iter().cloned());
             }
+            add_ref_counts(&mut summary.ref_counts, &clause_count_max);
+            summary.call_escapes.extend(clause_escapes);
             if let Some(then_expr) = then_clause {
-                collect_hir_unique_call_escapes(then_expr, unique_param_names, escapes);
+                let then_summary = analyze_hir_unique_flow_expr(then_expr, aliases);
+                add_ref_counts(&mut summary.ref_counts, &then_summary.ref_counts);
+                summary
+                    .call_escapes
+                    .extend(then_summary.call_escapes.iter().cloned());
             }
+            summary.result_alias_root = None;
+            summary
         }
-        HirExprKind::Resume { value } => {
-            collect_hir_unique_call_escapes(value, unique_param_names, escapes);
-        }
-        HirExprKind::Lit(_) | HirExprKind::Var(_) | HirExprKind::Raw(_) => {}
+        HirExprKind::Resume { value } => analyze_hir_unique_flow_expr(value, aliases),
+        HirExprKind::Raw(_) => HirUniqueFlowSummary::default(),
     }
 }
 
