@@ -2027,7 +2027,7 @@ theorem native_handler_step_ext_with_mismatch_progress_of_core_progress_and_stri
 Full mismatch-extension soundness from core body preservation/progress plus a
 global strict typing contract.
 -/
-theorem native_handler_step_ext_with_mismatch_soundness_of_core_progress_and_body_preservation_and_strict_typing
+theorem native_handler_step_ext_with_mismatch_soundness_of_core_progress_and_body_preservation_and_strict_typing_as_soundness_prop
     (clauseSem : NativeHandlerClauseSem)
     (mismatchSem : NativeHandlerMismatchSem)
     (bodyStep : CoreExpr → CoreExpr → Prop)
@@ -2193,6 +2193,28 @@ theorem native_handler_step_ext_with_mismatch_soundness_of_core_preservation_and
       clauseSem mismatchSem bodyStep := by
   exact native_handler_step_ext_with_mismatch_soundness_of_handle_progress_obligation
     clauseSem mismatchSem bodyStep h_core_pres h_handle_progress
+
+/--
+Capstone route: mismatch-extension soundness from packaged core soundness plus
+a global strict-typing contract.
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_strict_typing
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core :
+      (∀ env body body' ty,
+        HasTypeScopedTop env body ty →
+        bodyStep body body' →
+        HasTypeScopedTop env body' ty)
+      ∧
+      (∀ env body ty,
+        HasTypeScopedTop env body ty →
+        CoreValue body ∨ ∃ body', bodyStep body body'))
+    (h_strict_typing : native_handler_strict_typing_prop) :
+    native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep := by
+  exact native_handler_step_ext_with_mismatch_soundness_of_core_progress_and_body_preservation_and_strict_typing_as_soundness_prop
+    clauseSem mismatchSem bodyStep h_core.1 h_core.2 h_strict_typing
 
 /--
 Specialized soundness target for the concrete pass-through mismatch semantics.

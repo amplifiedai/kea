@@ -522,6 +522,9 @@ Concrete milestone checklist for moving from the current fuel model to an implem
   then lifted that to full mismatch-extension progress/soundness routes
   (`native_handler_step_ext_with_mismatch_progress_of_core_progress_and_strict_typing`,
   `native_handler_step_ext_with_mismatch_soundness_of_core_progress_and_body_preservation_and_strict_typing`).
+  Update: added a packaged one-hop capstone bridge from core soundness plus
+  strict typing to mismatch-extension soundness:
+  `native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_strict_typing`.
   Update: re-ran direct in-session `kea` MCP stress probes (spoofed
   `__kea_resume_ctx`, out-of-handler `resume`, single-resume handler acceptance,
   double-resume rejection) and observed agreement with Lean assumptions

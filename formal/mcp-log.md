@@ -16791,3 +16791,37 @@ Lean changes:
 - We now have an explicit theorem route from a native strict-typing extension
   to full mismatch-extension progress/soundness, keeping the gap machine-scoped
   as a typing-rule strengthening rather than an implicit prose caveat.
+
+### 2026-03-02: packaged core-soundness to strict mismatch-soundness bridge
+
+**Context**: Added one-hop packaged routing from core-soundness obligations to
+mismatch-extension soundness under strict typing.
+
+Lean changes:
+- Added in `Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_strict_typing`
+
+This theorem consumes a packaged core preservation/progress pair and a global
+strict-typing contract, and returns packaged mismatch-extension soundness.
+
+**Build check**:
+- `cd formal && lake build Kea.Typing` passes.
+- `cd formal && lake build` passes.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Probe (direct `kea` MCP)**:
+1. Spoofed resume context variable remains rejected (`E0012`).
+2. Double-resume handler clause remains rejected (`E0012`).
+3. Single-resume matching handler clause remains accepted (`status = ok`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Capstone closure route is now expressible as
+  `core soundness + strict typing => mismatch-extension soundness` in one
+  theorem statement.
