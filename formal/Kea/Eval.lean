@@ -5749,4 +5749,175 @@ theorem handler_typed_handle_shape_core_soundness_and_capability_contract_capsto
     ⟨h_core, h_contract.1, h_contract.2.1, h_contract.2.2.1,
       h_contract.2.2.2.1, h_contract.2.2.2.2.1, h_contract.2.2.2.2.2⟩
 
+/--
+Perform-redex specialization: direct core-soundness consequence on
+`bindTailResumptive`.
+-/
+theorem handler_typed_redex_core_soundness_consequences
+    {tenv : TermEnv}
+    {venv : ValueEnv}
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    {arg k : CoreExpr}
+    {ty : Ty}
+    (h_env : EnvWellTyped tenv venv)
+    (h_typed : HandlerHasType tenv
+      (.handle (.perform clause.handled clause.opArgTy clause.opRetTy arg k)
+        handler
+        clause)
+      ty)
+    (h_frag : EvalFragmentFull (bindTailResumptive clause arg k)) :
+    CoreCalculusSoundnessConsequences tenv venv (bindTailResumptive clause arg k) ty := by
+  have h_shape :
+      handlerStepSupportedShape
+        (.perform clause.handled clause.opArgTy clause.opRetTy arg k)
+        clause :=
+    Or.inr ⟨arg, k, rfl⟩
+  have h_frag_shape :
+      ∀ target : CoreExpr,
+        HandlerStep
+          (.handle (.perform clause.handled clause.opArgTy clause.opRetTy arg k)
+            handler
+            clause)
+          (.core target) →
+        EvalFragmentFull target := by
+    intro target h_step
+    cases h_step with
+    | handle_perform_tail _ _ _ _ _ _ _ _ =>
+        simpa [bindTailResumptive] using h_frag
+  rcases handler_typed_handle_shape_steps_to_core_soundness_consequences
+      h_env h_typed h_shape h_frag_shape with
+    ⟨target, h_step, h_cons⟩
+  cases h_step with
+  | handle_perform_tail _ _ _ _ _ _ _ _ =>
+      simpa [bindTailResumptive] using h_cons
+
+/--
+Perform-redex specialization: direct core-soundness consequence plus clause
+contract consequences.
+-/
+theorem handler_typed_redex_core_soundness_and_contract_capstone
+    {tenv : TermEnv}
+    {venv : ValueEnv}
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    {arg k : CoreExpr}
+    {ty : Ty}
+    (h_env : EnvWellTyped tenv venv)
+    (h_typed : HandlerHasType tenv
+      (.handle (.perform clause.handled clause.opArgTy clause.opRetTy arg k)
+        handler
+        clause)
+      ty)
+    (h_frag : EvalFragmentFull (bindTailResumptive clause arg k)) :
+    CoreCalculusSoundnessConsequences tenv venv (bindTailResumptive clause arg k) ty
+    ∧ HandleClauseContract.wellTypedSlice clause.contract
+    ∧ resume_at_most_once clause.contract.resumeUse
+    ∧ (TailResumptiveClassification.classifyClause clause.contract ≠
+        TailResumptiveClassification.TailResumptiveClass.invalid)
+    ∧ TailResumptiveClassification.TailResumptiveBundle clause.contract := by
+  have h_shape :
+      handlerStepSupportedShape
+        (.perform clause.handled clause.opArgTy clause.opRetTy arg k)
+        clause :=
+    Or.inr ⟨arg, k, rfl⟩
+  have h_frag_shape :
+      ∀ target : CoreExpr,
+        HandlerStep
+          (.handle (.perform clause.handled clause.opArgTy clause.opRetTy arg k)
+            handler
+            clause)
+          (.core target) →
+        EvalFragmentFull target := by
+    intro target h_step
+    cases h_step with
+    | handle_perform_tail _ _ _ _ _ _ _ _ =>
+        simpa [bindTailResumptive] using h_frag
+  rcases handler_typed_handle_shape_core_soundness_and_contract_capstone
+      h_env h_typed h_shape h_frag_shape with
+    ⟨h_core_exists, h_wellTyped, h_linear, h_not_invalid, h_tail_bundle⟩
+  rcases h_core_exists with ⟨target, h_step, h_cons⟩
+  cases h_step with
+  | handle_perform_tail _ _ _ _ _ _ _ _ =>
+      exact ⟨
+        by simpa [bindTailResumptive] using h_cons,
+        h_wellTyped,
+        h_linear,
+        h_not_invalid,
+        h_tail_bundle
+      ⟩
+
+/--
+Core-body specialization: direct core-soundness consequence on `e`.
+-/
+theorem handler_typed_core_body_core_soundness_consequences
+    {tenv : TermEnv}
+    {venv : ValueEnv}
+    {e : CoreExpr}
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    {ty : Ty}
+    (h_env : EnvWellTyped tenv venv)
+    (h_typed : HandlerHasType tenv (.handle (.core e) handler clause) ty)
+    (h_frag : EvalFragmentFull e) :
+    CoreCalculusSoundnessConsequences tenv venv e ty := by
+  have h_shape : handlerStepSupportedShape (.core e) clause := Or.inl ⟨e, rfl⟩
+  have h_frag_shape :
+      ∀ target : CoreExpr,
+        HandlerStep (.handle (.core e) handler clause) (.core target) →
+        EvalFragmentFull target := by
+    intro target h_step
+    cases h_step with
+    | handle_core _ _ _ =>
+        simpa using h_frag
+  rcases handler_typed_handle_shape_steps_to_core_soundness_consequences
+      h_env h_typed h_shape h_frag_shape with
+    ⟨target, h_step, h_cons⟩
+  cases h_step with
+  | handle_core _ _ _ =>
+      simpa using h_cons
+
+/--
+Core-body specialization: direct core-soundness consequence plus clause contract
+consequences.
+-/
+theorem handler_typed_core_body_core_soundness_and_contract_capstone
+    {tenv : TermEnv}
+    {venv : ValueEnv}
+    {e : CoreExpr}
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    {ty : Ty}
+    (h_env : EnvWellTyped tenv venv)
+    (h_typed : HandlerHasType tenv (.handle (.core e) handler clause) ty)
+    (h_frag : EvalFragmentFull e) :
+    CoreCalculusSoundnessConsequences tenv venv e ty
+    ∧ HandleClauseContract.wellTypedSlice clause.contract
+    ∧ resume_at_most_once clause.contract.resumeUse
+    ∧ (TailResumptiveClassification.classifyClause clause.contract ≠
+        TailResumptiveClassification.TailResumptiveClass.invalid)
+    ∧ TailResumptiveClassification.TailResumptiveBundle clause.contract := by
+  have h_shape : handlerStepSupportedShape (.core e) clause := Or.inl ⟨e, rfl⟩
+  have h_frag_shape :
+      ∀ target : CoreExpr,
+        HandlerStep (.handle (.core e) handler clause) (.core target) →
+        EvalFragmentFull target := by
+    intro target h_step
+    cases h_step with
+    | handle_core _ _ _ =>
+        simpa using h_frag
+  rcases handler_typed_handle_shape_core_soundness_and_contract_capstone
+      h_env h_typed h_shape h_frag_shape with
+    ⟨h_core_exists, h_wellTyped, h_linear, h_not_invalid, h_tail_bundle⟩
+  rcases h_core_exists with ⟨target, h_step, h_cons⟩
+  cases h_step with
+  | handle_core _ _ _ =>
+      exact ⟨
+        by simpa using h_cons,
+        h_wellTyped,
+        h_linear,
+        h_not_invalid,
+        h_tail_bundle
+      ⟩
+
 end HandlerStepBoundary

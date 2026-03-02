@@ -15376,3 +15376,41 @@ These make the handler-boundary-to-core-soundness handoff explicit in one route.
 - Typed supported-shape handler steps now have a direct theorem bridge into the
   existing core-calculus soundness consequence package, with MCP behavior still
   aligned.
+
+### 2026-03-02: specialize handler-to-core consequence bridge to redex/core-body
+
+**Context**: Added concrete redex/core-body specializations that collapse the
+generic existential target bridge into direct core consequence theorems at
+concrete targets.
+
+Lean changes:
+- `handler_typed_redex_core_soundness_consequences`
+- `handler_typed_redex_core_soundness_and_contract_capstone`
+- `handler_typed_core_body_core_soundness_consequences`
+- `handler_typed_core_body_core_soundness_and_contract_capstone`
+
+These remove existential target destructuring on concrete shape routes.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+- `diagnose`
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; theorem specialization/projection only.
+- Existing resume-linearity diagnostics and handled-effect normalization should
+  remain stable.
+
+**Probe (direct `kea` MCP)**:
+1. Single-resume clause accepted.
+2. Branch double-resume rejected with `E0012`.
+3. `resume` outside handler rejected with `E0012`.
+4. Mismatched-handle residual remains normalized (`handled : () -[Log]> ()`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Redex/core-body routes now expose direct core-soundness-consequence theorem
+  surfaces, with MCP behavior still aligned.
