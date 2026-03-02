@@ -2104,6 +2104,36 @@ theorem native_handler_step_ext_with_mismatch_step_of_core_progress_and_strict_h
           (NativeHandlerStepExt.handle_congr body body' opHandle argName resumeName argTy opRetTy clauseBody h_body_step)⟩
 
 /--
+Strict-top-handle entrypoint: one-step mismatch-extension progress from core
+body progress plus strict top-level typing of that handle expression.
+-/
+theorem native_handler_step_ext_with_mismatch_step_of_core_progress_and_strict_top_handle
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core_progress :
+      ∀ env body ty,
+        HasTypeScopedTop env body ty →
+        CoreValue body ∨ ∃ body', bodyStep body body')
+    {env : TermEnv}
+    {body : CoreExpr}
+    {opHandle : Label}
+    {argName resumeName : String}
+    {argTy opRetTy : Ty}
+    {clauseBody : CoreExpr}
+    {ty : Ty}
+    (h_strict_top :
+      HasTypeScopedStrictTop env
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        ty) :
+    ∃ e', NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep
+      (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+      e' := by
+  exact native_handler_step_ext_with_mismatch_step_of_core_progress_and_strict_handle
+    clauseSem mismatchSem bodyStep h_core_progress
+    ((hasTypeScopedStrictTop_handle_iff_handleStrict).1 h_strict_top)
+
+/--
 Progress target for the mismatched-perform extension under strict local handle
 typing premises.
 -/

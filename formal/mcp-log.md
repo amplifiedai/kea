@@ -17244,3 +17244,36 @@ This ensures there is a single negative boundary class, not multiple unrelated
 **Outcome**:
 - Boundary failure reasoning is now normalized across all three obligation
   surfaces.
+
+### 2026-03-02: strict-top handle step entrypoint
+
+**Context**: Added a direct one-step progress entry theorem from strict
+top-level handle typing, avoiding manual conversion to `HasTypeScopedHandleStrict`.
+
+Lean changes:
+- Added in `Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_step_of_core_progress_and_strict_top_handle`
+
+This theorem routes strict top-level handle typing through
+`hasTypeScopedStrictTop_handle_iff_handleStrict` and existing core-progress
+step machinery.
+
+**Build check**:
+- `cd formal && lake build Kea.Typing` passes.
+- `cd formal && lake build` passes.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Probe (direct `kea` MCP)**:
+1. Spoofed resume context variable remains rejected (`E0012`).
+2. Single-resume matching handler clause remains accepted (`status = ok`).
+3. Double-resume handler clause remains rejected (`E0012`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Strict-top typing is now directly consumable at the step-progress boundary.

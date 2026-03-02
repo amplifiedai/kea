@@ -581,6 +581,9 @@ Concrete milestone checklist for moving from the current fuel model to an implem
   (`not_native_handler_scoped_to_strict_lift_prop_iff_not_metadata_coherence`,
   `not_native_handler_strict_typing_prop_iff_not_metadata_coherence`), so
   failure conditions across lift/strict/coherence now collapse to one class.
+  Update: added strict-top handle step entrypoint
+  (`native_handler_step_ext_with_mismatch_step_of_core_progress_and_strict_top_handle`),
+  enabling direct use of strict top-level typing at the mismatch step boundary.
   Update: re-ran direct in-session `kea` MCP stress probes (spoofed
   `__kea_resume_ctx`, out-of-handler `resume`, single-resume handler acceptance,
   double-resume rejection) and observed agreement with Lean assumptions
