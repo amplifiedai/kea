@@ -397,6 +397,11 @@ Concrete milestone checklist for moving from the current fuel model to an implem
   (`hasType_to_hasTypeU`, `inferExpr_{sound,complete}`,
   `hasType_lookup_congr`, `NativeHandlerClauseSem.instantiate_sound`), and MCP
   re-probes confirm out-of-handler `resume` remains rejected with `E0012`.
+  Update: added explicit theorem exports for that gate
+  (`hasType_resume_requires_ctx`, `resume_not_typable_without_ctx`,
+  `inferExpr_resume_none_without_ctx`), so out-of-handler `resume` rejection is
+  now directly consumable at theorem level on both declarative and algorithmic
+  paths.
   Update: refined that boundary with a typed-step judgment (`HandlerStepTyped`) carrying the concrete preservation-side typing premise for tail-resumptive instantiation, and added proved bridge/preservation lemmas (`handlerStep_of_handlerStepTyped`, `handler_step_typed_preservation`) so the remaining open work is now explicitly the derivation of typed-step premises from untyped handler reduction.
   Update: further minimized the open handler-preservation gap by introducing `handler_step_instantiation_obligation_prop` and deriving full boundary preservation through `handler_step_preservation_of_instantiation_obligation`; the remaining `sorry` target is now `handler_step_instantiation_obligation` (typed clause-instantiation premise only), with `handler_step_preservation` reduced to a one-line consequence wrapper.
   Update: closed that remaining boundary target by extending `HandlerClauseSem` with abstract instantiation semantics + typing law (`instantiate`, `instantiate_sound`) and proving `handler_step_instantiation_obligation`; `handler_step_preservation` is now fully proved in this boundary model with no `sorry` left in `Kea/Eval.lean`.

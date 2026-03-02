@@ -15880,3 +15880,37 @@ Lean changes:
 **Outcome**:
 - Critical native resume-scoping divergence is now closed at the active native
   typing surface in `Kea/Typing.lean`.
+
+### 2026-03-02: add explicit no-context resume rejection theorems in `Typing.lean`
+
+**Context**: Added direct theorem-level witnesses that the new resume-context
+gate is not just implicit in constructors but explicitly exportable for callers.
+
+Lean changes:
+- `hasType_resume_requires_ctx`
+- `resume_not_typable_without_ctx`
+- `inferExpr_resume_none_without_ctx`
+
+These make the out-of-handler rejection contract citable directly at both
+declarative and algorithmic layers.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Predict (Lean side)**:
+- Theorems only; no runtime behavior change expected.
+- Existing `E0012` behavior should remain stable.
+
+**Probe (direct `kea` MCP)**:
+1. Single-resume clause accepted (`status = ok`).
+2. Sequential double-resume rejected (`status = error`, `E0012`).
+3. `resume` outside handler rejected (`status = error`, `E0012`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Resume-scoping alignment now has explicit theorem surfaces for downstream
+  native typing clients.

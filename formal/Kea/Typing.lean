@@ -645,6 +645,41 @@ theorem inferExpr_iff_hasType (env : TermEnv) (e : CoreExpr) (ty : Ty) :
   · intro h
     exact inferExpr_complete env e ty h
 
+/--
+Any declarative typing derivation of `resume` carries an explicit handler
+context witness in the environment.
+-/
+theorem hasType_resume_requires_ctx
+    {env : TermEnv} {value : CoreExpr} {ty : Ty}
+    (h : HasType env (.resume value) ty) :
+    ∃ opRetTy,
+      TermEnv.lookup env resumeCtxName = some (.function (.cons opRetTy .nil) ty) ∧
+      HasType env value opRetTy := by
+  cases h with
+  | resume _ _ opRetTy _ h_ctx h_value =>
+    exact ⟨opRetTy, h_ctx, h_value⟩
+
+/--
+If the handler context marker is absent, `resume` is not declaratively typable.
+-/
+theorem resume_not_typable_without_ctx
+    {env : TermEnv} {value : CoreExpr} {ty : Ty}
+    (h_no_ctx : TermEnv.lookup env resumeCtxName = none) :
+    ¬ HasType env (.resume value) ty := by
+  intro h_resume
+  rcases hasType_resume_requires_ctx h_resume with ⟨opRetTy, h_ctx, _h_value⟩
+  rw [h_no_ctx] at h_ctx
+  contradiction
+
+/--
+Algorithmic inference also rejects `resume` when handler context is absent.
+-/
+theorem inferExpr_resume_none_without_ctx
+    {env : TermEnv} {value : CoreExpr}
+    (h_no_ctx : TermEnv.lookup env resumeCtxName = none) :
+    inferExpr env (.resume value) = none := by
+  simp [inferExpr, h_no_ctx]
+
 /- =========================================================================
    Native handler-step judgment on `Typing.CoreExpr`
    ========================================================================= -/
