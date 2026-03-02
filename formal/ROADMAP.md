@@ -412,6 +412,15 @@ Concrete milestone checklist for moving from the current fuel model to an implem
   (`inferResumeScoped`, `inferResumeScoped_none_without_ctx`,
   `inferResumeScoped_iff_ctx_and_arg`) so the non-forgeable context model now
   has a direct algorithmic iff surface in addition to declarative typing.
+  Update: added an extended native handler-step relation with the structural
+  cases needed for capstone progress work:
+  `NativeHandlerStepExt` now includes (1) handled-`perform` reduction,
+  (2) handled-value passthrough, and (3) body congruence over an abstract
+  `bodyStep` relation. Added preservation and progress theorem routes for this
+  extended relation (`native_handler_step_ext_preservation`,
+  `native_handler_step_ext_progress_of_body_progress_obligation`) plus an
+  explicit witness that the old int-body stuck shape now steps under the
+  extended relation (`native_handler_step_ext_exists_of_int_body`).
   Update: added explicit theorem exports for that gate
   (`hasType_resume_requires_ctx`, `resume_not_typable_without_ctx`,
   `inferExpr_resume_none_without_ctx`), so out-of-handler `resume` rejection is

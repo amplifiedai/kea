@@ -16206,3 +16206,48 @@ Lean changes:
 **Outcome**:
 - Scoped resume gating now has both declarative and algorithmic theorem
   characterizations, with MCP rejection behavior unchanged.
+
+### 2026-03-02: extend native handler-step with value + congruence coverage
+
+**Context**: Began the capstone push for full handler-step progress by widening
+the native relation beyond the single handled-`perform` case.
+
+Lean changes:
+- Added value forms for core expressions:
+  - `CoreValue`
+  - `CoreFieldsValue`
+- Added extended native handler-step relation:
+  - `NativeHandlerStepExt clauseSem bodyStep`
+  - cases: `handle_perform`, `handle_value`, `handle_congr`.
+- Added preservation/progress routes for the extended relation:
+  - `native_handler_step_ext_preservation_prop`
+  - `native_handler_step_ext_preservation`
+  - `native_handler_body_progress_obligation_ext_prop`
+  - `native_handler_step_ext_progress_prop`
+  - `native_handler_step_ext_progress_of_body_progress_obligation`
+- Added a concrete witness that the old non-`perform` int-body stuck shape now
+  steps under the extended relation:
+  - `native_handler_step_ext_exists_of_int_body`.
+
+**Build check**:
+- `cd formal && lake build` passes.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Probe (direct `kea` MCP)**:
+1. Single-resume handler accepted (`status = ok`).
+2. Double-resume clause rejected (`status = error`, `E0012`).
+3. Spoofed out-of-handler `resume` rejected:
+   - `fn spoof(__kea_resume_ctx: fn(Int) -> Int) -> Int; resume 1`
+   - `status = error`, `E0012`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- The native formal surface now includes the missing structural step cases
+  (value + congruence), so the remaining capstone work is narrowing the body
+  progress/preservation obligations rather than redefining reduction shape.

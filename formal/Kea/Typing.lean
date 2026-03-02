@@ -1310,6 +1310,179 @@ theorem native_handler_typed_progress_counterexample
         1)
   · exact native_handler_step_not_exists_of_int_body clauseSem
 
+/- =========================================================================
+   Extended native handler-step relation (value + congruence coverage)
+   ========================================================================= -/
+
+mutual
+  /-- Core values used by the extended native handler-step relation. -/
+  inductive CoreValue : CoreExpr → Prop where
+    | int (n : Int) : CoreValue (.intLit n)
+    | bool (b : Bool) : CoreValue (.boolLit b)
+    | string (s : String) : CoreValue (.stringLit s)
+    | lam (param : String) (paramTy : Ty) (body : CoreExpr) :
+        CoreValue (.lam param paramTy body)
+    | record (fields : CoreFields)
+        (h_fields : CoreFieldsValue fields) :
+        CoreValue (.record fields)
+
+  /-- Value fields for `CoreValue.record`. -/
+  inductive CoreFieldsValue : CoreFields → Prop where
+    | nil : CoreFieldsValue .nil
+    | cons (label : Label) (head : CoreExpr) (rest : CoreFields)
+        (h_head : CoreValue head)
+        (h_rest : CoreFieldsValue rest) :
+        CoreFieldsValue (.cons label head rest)
+end
+
+/--
+Extended native one-step handler reduction:
+- match-and-instantiate on handled `perform`,
+- passthrough on handled value bodies,
+- and congruence reduction inside the handled body.
+-/
+inductive NativeHandlerStepExt
+    (clauseSem : NativeHandlerClauseSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    : CoreExpr → CoreExpr → Prop where
+  | handle_perform
+      (op : Label) (argTy opRetTy : Ty)
+      (arg k : CoreExpr)
+      (argName resumeName : String)
+      (clauseBody : CoreExpr) :
+      NativeHandlerStepExt clauseSem bodyStep
+        (.handle (.perform op argTy opRetTy arg k) op argName resumeName argTy opRetTy clauseBody)
+        (clauseSem.instantiate clauseBody arg k)
+  | handle_value
+      (body : CoreExpr) (op : Label)
+      (argName resumeName : String)
+      (argTy opRetTy : Ty)
+      (clauseBody : CoreExpr)
+      (h_value : CoreValue body) :
+      NativeHandlerStepExt clauseSem bodyStep
+        (.handle body op argName resumeName argTy opRetTy clauseBody)
+        body
+  | handle_congr
+      (body body' : CoreExpr) (op : Label)
+      (argName resumeName : String)
+      (argTy opRetTy : Ty)
+      (clauseBody : CoreExpr)
+      (h_body : bodyStep body body') :
+      NativeHandlerStepExt clauseSem bodyStep
+        (.handle body op argName resumeName argTy opRetTy clauseBody)
+        (.handle body' op argName resumeName argTy opRetTy clauseBody)
+
+/--
+Preservation target for the extended native handler-step relation.
+-/
+def native_handler_step_ext_preservation_prop
+    (clauseSem : NativeHandlerClauseSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) : Prop :=
+  ∀ env e e' ty,
+    HasTypeScopedTop env e ty →
+    NativeHandlerStepExt clauseSem bodyStep e e' →
+    HasTypeScopedTop env e' ty
+
+/--
+Extended native one-step preservation, parameterized by body-step preservation.
+-/
+theorem native_handler_step_ext_preservation
+    (clauseSem : NativeHandlerClauseSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_body_pres :
+      ∀ env body body' ty,
+        HasTypeScopedTop env body ty →
+        bodyStep body body' →
+        HasTypeScopedTop env body' ty) :
+    native_handler_step_ext_preservation_prop clauseSem bodyStep := by
+  intro env e e' ty h_ty h_step
+  dsimp [HasTypeScopedTop] at h_ty ⊢
+  cases h_step with
+  | handle_perform op argTy opRetTy arg k argName resumeName clauseBody =>
+    cases h_ty with
+    | handle _ _ _ _ _ _ _ _ _ _ h_body h_clause =>
+      cases h_body with
+      | perform _ _ _ _ _ _ _ _ h_arg h_k =>
+        exact clauseSem.instantiate_sound
+          env argName resumeName argTy opRetTy ty clauseBody arg k
+          h_arg h_k h_clause
+  | handle_value body op argName resumeName argTy opRetTy clauseBody _h_value =>
+    cases h_ty with
+    | handle _ _ _ _ _ _ _ _ _ _ h_body _h_clause =>
+      exact h_body
+  | handle_congr body body' op argName resumeName argTy opRetTy clauseBody h_body_step =>
+    cases h_ty with
+    | handle _ _ _ _ _ _ _ _ _ _ h_body h_clause =>
+      have h_body' : HasTypeScoped none env body' ty :=
+        h_body_pres env body body' ty h_body h_body_step
+      exact HasTypeScoped.handle none env body' op argName resumeName argTy opRetTy ty clauseBody
+        h_body' h_clause
+
+/--
+Body-progress obligation for extended native handler progress:
+typed bodies are either matching `perform`, values, or can take a body step.
+-/
+def native_handler_body_progress_obligation_ext_prop
+    (bodyStep : CoreExpr → CoreExpr → Prop) : Prop :=
+  ∀ env body op argTy opRetTy ty,
+    HasTypeScopedTop env body ty →
+      (∃ arg k, body = .perform op argTy opRetTy arg k)
+      ∨ CoreValue body
+      ∨ ∃ body', bodyStep body body'
+
+/-- Progress target for extended native `handle` expressions. -/
+def native_handler_step_ext_progress_prop
+    (clauseSem : NativeHandlerClauseSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) : Prop :=
+  ∀ env body op argName resumeName argTy opRetTy clauseBody ty,
+    HasTypeScopedTop env (.handle body op argName resumeName argTy opRetTy clauseBody) ty →
+    ∃ e', NativeHandlerStepExt clauseSem bodyStep
+      (.handle body op argName resumeName argTy opRetTy clauseBody) e'
+
+/--
+Extended native handler progress from the explicit body-progress obligation.
+-/
+theorem native_handler_step_ext_progress_of_body_progress_obligation
+    (clauseSem : NativeHandlerClauseSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_body_progress : native_handler_body_progress_obligation_ext_prop bodyStep) :
+    native_handler_step_ext_progress_prop clauseSem bodyStep := by
+  intro env body op argName resumeName argTy opRetTy clauseBody ty h_typed
+  dsimp [HasTypeScopedTop] at h_typed
+  cases h_typed with
+  | handle _ _ _ _ _ _ _ _ _ _ h_body h_clause =>
+    have h_cases :
+        (∃ arg k, body = .perform op argTy opRetTy arg k)
+        ∨ CoreValue body
+        ∨ ∃ body', bodyStep body body' :=
+      h_body_progress env body op argTy opRetTy ty h_body
+    rcases h_cases with h_perform | h_value | h_step
+    · rcases h_perform with ⟨arg, k, h_eq⟩
+      subst h_eq
+      exact ⟨clauseSem.instantiate clauseBody arg k,
+        NativeHandlerStepExt.handle_perform op argTy opRetTy arg k argName resumeName clauseBody⟩
+    · exact ⟨body,
+        NativeHandlerStepExt.handle_value body op argName resumeName argTy opRetTy clauseBody h_value⟩
+    · rcases h_step with ⟨body', h_body_step⟩
+      exact ⟨.handle body' op argName resumeName argTy opRetTy clauseBody,
+        NativeHandlerStepExt.handle_congr body body' op argName resumeName argTy opRetTy clauseBody h_body_step⟩
+
+/--
+Concrete witness: the old non-`perform` typed-body counterexample now steps in
+the extended relation via the value-passthrough case.
+-/
+theorem native_handler_step_ext_exists_of_int_body
+    (clauseSem : NativeHandlerClauseSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    {n : Int} {op : Label} {argName resumeName : String}
+    {argTy opRetTy : Ty} {clauseBody : CoreExpr} :
+    ∃ e', NativeHandlerStepExt clauseSem bodyStep
+      (.handle (.intLit n) op argName resumeName argTy opRetTy clauseBody) e' := by
+  exact ⟨.intLit n,
+    NativeHandlerStepExt.handle_value
+      (.intLit n) op argName resumeName argTy opRetTy clauseBody
+      (CoreValue.int n)⟩
+
 /-- Declarative field typing is functional on the core slice. -/
 theorem hasFieldsType_unique
     {env : TermEnv} {fs : CoreFields} {row₁ row₂ : RowFields}
