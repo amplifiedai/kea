@@ -16933,3 +16933,42 @@ without either strict typing or richer body-step semantics.
 - The formal boundary is now tighter: the unresolved progress gap is
   specifically metadata mismatch (unless strict typing or additional semantics
   closes it), not just op mismatch.
+
+### 2026-03-02: native strict-judgment lift bridge to mismatch soundness
+
+**Context**: Added an explicit strict-judgment layer and lift-based capstone
+route, so extending the native typing judgment is represented as a concrete
+proof contract.
+
+Lean changes:
+- Added in `Kea/Typing.lean`:
+  - `HasTypeScopedStrict` / `HasTypeScopedStrictTop` (strict predicate layer)
+  - `hasTypeScopedStrict_to_scoped`
+  - `native_handler_scoped_to_strict_lift_prop`
+  - `native_handler_strict_typing_prop_of_scoped_to_strict_lift`
+  - `native_handler_perform_metadata_coherence_of_scoped_to_strict_lift`
+  - `native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_scoped_to_strict_lift`
+
+The capstone route is now explicit:
+`core soundness + scoped->strict lift => mismatch-extension soundness`.
+
+**Build check**:
+- `cd formal && lake build Kea.Typing` passes.
+- `cd formal && lake build` passes.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Probe (direct `kea` MCP)**:
+1. Spoofed resume context variable remains rejected (`E0012`).
+2. Single-resume matching handler clause remains accepted (`status = ok`).
+3. Double-resume handler clause remains rejected (`E0012`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- “Extending the judgment” is now a machine-checkable bridge premise rather
+  than prose: the remaining work is to realize/prove the scoped->strict lift.

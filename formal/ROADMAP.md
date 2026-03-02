@@ -541,6 +541,13 @@ Concrete milestone checklist for moving from the current fuel model to an implem
   `native_handler_step_ext_with_mismatch_typed_metadata_mismatch_counterexample`),
   tightening the remaining progress gap to metadata coherence vs body-step
   semantics.
+  Update: encoded a strict-judgment lift contract for native typing extension
+  (`HasTypeScopedStrict`, `native_handler_scoped_to_strict_lift_prop`) and
+  bridged it to capstone routes
+  (`native_handler_strict_typing_prop_of_scoped_to_strict_lift`,
+  `native_handler_perform_metadata_coherence_of_scoped_to_strict_lift`,
+  `native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_scoped_to_strict_lift`),
+  so the remaining closure target is now a precise lift proof obligation.
   Update: re-ran direct in-session `kea` MCP stress probes (spoofed
   `__kea_resume_ctx`, out-of-handler `resume`, single-resume handler acceptance,
   double-resume rejection) and observed agreement with Lean assumptions

@@ -830,6 +830,31 @@ mutual
         HasFieldsTypeScoped ctx env (.cons label e rest) (.cons label ty restFields)
 end
 
+/--
+Strict native declarative typing: same as `HasTypeScoped`, but `handle` carries
+explicit local perform-metadata coherence.
+-/
+def HasTypeScopedStrict
+    (ctx : ScopedResumeCtx) (env : TermEnv) (e : CoreExpr) (ty : Ty) : Prop :=
+  HasTypeScoped ctx env e ty
+    ∧
+    (∀ body opHandle argName resumeName argTy opRetTy clauseBody,
+      e = .handle body opHandle argName resumeName argTy opRetTy clauseBody →
+      ∀ opBody argTyBody opRetTyBody arg k,
+        body = .perform opBody argTyBody opRetTyBody arg k →
+        argTyBody = argTy ∧ opRetTyBody = opRetTy)
+
+/-- Top-level strict native scoped typing (outside any handler clause). -/
+abbrev HasTypeScopedStrictTop (env : TermEnv) (e : CoreExpr) (ty : Ty) : Prop :=
+  HasTypeScopedStrict none env e ty
+
+/-- Strict scoped typing forgets to plain scoped typing. -/
+theorem hasTypeScopedStrict_to_scoped
+    {ctx : ScopedResumeCtx} {env : TermEnv} {e : CoreExpr} {ty : Ty}
+    (h : HasTypeScopedStrict ctx env e ty) :
+    HasTypeScoped ctx env e ty := by
+  exact h.1
+
 /-- Top-level native scoped typing (outside any handler clause). -/
 abbrev HasTypeScopedTop (env : TermEnv) (e : CoreExpr) (ty : Ty) : Prop :=
   HasTypeScoped none env e ty
@@ -1853,6 +1878,56 @@ def HasTypeScopedHandleStrict
       argTyBody = argTy ∧ opRetTyBody = opRetTy)
 
 /--
+Extract the local metadata-coherence premise from strict scoped handle typing.
+-/
+theorem hasTypeScopedStrict_handle_metadata
+    {ctx : ScopedResumeCtx}
+    {env : TermEnv}
+    {body : CoreExpr}
+    {opHandle : Label}
+    {argName resumeName : String}
+    {argTy opRetTy : Ty}
+    {clauseBody : CoreExpr}
+    {ty : Ty}
+    (h :
+      HasTypeScopedStrict ctx env
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        ty) :
+    ∀ opBody argTyBody opRetTyBody arg k,
+      body = .perform opBody argTyBody opRetTyBody arg k →
+      argTyBody = argTy ∧ opRetTyBody = opRetTy := by
+  exact h.2 body opHandle argName resumeName argTy opRetTy clauseBody rfl
+
+/--
+Top-level strict scoped handle typing yields a `HasTypeScopedHandleStrict`
+witness directly.
+-/
+theorem hasTypeScopedStrictTop_handle_implies_handleStrict
+    {env : TermEnv}
+    {body : CoreExpr}
+    {opHandle : Label}
+    {argName resumeName : String}
+    {argTy opRetTy : Ty}
+    {clauseBody : CoreExpr}
+    {ty : Ty}
+    (h :
+      HasTypeScopedStrictTop env
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        ty) :
+    HasTypeScopedHandleStrict env body opHandle argName resumeName argTy opRetTy clauseBody ty := by
+  refine ⟨?_, ?_⟩
+  · simpa [HasTypeScopedTop, HasTypeScopedStrictTop] using
+      (hasTypeScopedStrict_to_scoped h)
+  · exact hasTypeScopedStrict_handle_metadata h
+
+/--
+Proposed native-judgment strengthening contract: every current scoped typing
+derivation lifts to strict scoped typing.
+-/
+def native_handler_scoped_to_strict_lift_prop : Prop :=
+  ∀ env e ty, HasTypeScopedTop env e ty → HasTypeScopedStrictTop env e ty
+
+/--
 One-step mismatch-extension progress from:
 1) core body progress (`CoreValue ∨ bodyStep`), and
 2) strict handle-typing at this handle site.
@@ -1993,6 +2068,30 @@ def native_handler_strict_typing_prop : Prop :=
   ∀ env body opHandle argName resumeName argTy opRetTy clauseBody ty,
     HasTypeScopedTop env (.handle body opHandle argName resumeName argTy opRetTy clauseBody) ty →
     HasTypeScopedHandleStrict env body opHandle argName resumeName argTy opRetTy clauseBody ty
+
+/--
+If every scoped derivation lifts into strict scoped derivations, then the
+global strict-handle typing contract holds on the current judgment.
+-/
+theorem native_handler_strict_typing_prop_of_scoped_to_strict_lift
+    (h_lift : native_handler_scoped_to_strict_lift_prop) :
+    native_handler_strict_typing_prop := by
+  intro env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed
+  exact hasTypeScopedStrictTop_handle_implies_handleStrict
+    (h_lift env
+      (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+      ty
+      h_typed)
+
+/--
+Scoped-to-strict lifting implies global metadata coherence on typed handles.
+-/
+theorem native_handler_perform_metadata_coherence_of_scoped_to_strict_lift
+    (h_lift : native_handler_scoped_to_strict_lift_prop) :
+    native_handler_perform_metadata_coherence_prop := by
+  intro env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed
+  exact (native_handler_strict_typing_prop_of_scoped_to_strict_lift h_lift
+    env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed).2
 
 /--
 Strict-typing implies global perform-metadata coherence for typed handles.
@@ -2621,6 +2720,21 @@ theorem native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_st
   exact native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_metadata_coherence
     clauseSem mismatchSem bodyStep h_core
     (native_handler_perform_metadata_coherence_of_strict_typing h_strict_typing)
+
+/--
+Packaged route: mismatch-extension soundness from packaged core soundness plus
+a scoped-to-strict judgment lift.
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_scoped_to_strict_lift
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core : native_core_soundness_prop bodyStep)
+    (h_lift : native_handler_scoped_to_strict_lift_prop) :
+    native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep := by
+  exact native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_metadata_coherence
+    clauseSem mismatchSem bodyStep h_core
+    (native_handler_perform_metadata_coherence_of_scoped_to_strict_lift h_lift)
 
 /-- Declarative field typing is functional on the core slice. -/
 theorem hasFieldsType_unique
