@@ -5043,17 +5043,51 @@ theorem handler_typed_redex_eval_and_contract_capstone
     ∧ (TailResumptiveClassification.classifyClause clause.contract ≠
         TailResumptiveClassification.TailResumptiveClass.invalid)
     ∧ TailResumptiveClassification.TailResumptiveBundle clause.contract := by
-  have h_eval :
-      ∃ v, eval venv (bindTailResumptive clause arg k) = some v ∧ ValueHasType v ty :=
-    handler_typed_redex_core_eval_sound h_env h_typed h_frag
-  have h_contract :
-      HandleClauseContract.wellTypedSlice clause.contract
+  have h_shape :
+      handlerStepSupportedShape
+        (.perform clause.handled clause.opArgTy clause.opRetTy arg k)
+        clause :=
+    Or.inr ⟨arg, k, rfl⟩
+  have h_frag_shape :
+      ∀ target : CoreExpr,
+        HandlerStep
+          (.handle (.perform clause.handled clause.opArgTy clause.opRetTy arg k)
+            handler
+            clause)
+          (.core target) →
+        EvalFragmentFull target := by
+    intro target h_step
+    cases h_step with
+    | handle_perform_tail _ _ _ _ _ _ _ _ =>
+        simpa [bindTailResumptive] using h_frag
+  have h_generic :
+      (∃ target v,
+        HandlerStep
+          (.handle (.perform clause.handled clause.opArgTy clause.opRetTy arg k)
+            handler
+            clause)
+          (.core target)
+        ∧ eval venv target = some v
+        ∧ ValueHasType v ty)
+      ∧ HandleClauseContract.wellTypedSlice clause.contract
       ∧ resume_at_most_once clause.contract.resumeUse
       ∧ (TailResumptiveClassification.classifyClause clause.contract ≠
           TailResumptiveClassification.TailResumptiveClass.invalid)
       ∧ TailResumptiveClassification.TailResumptiveBundle clause.contract :=
-    handler_clause_contract_capstone_of_handlerHasType h_typed
-  exact ⟨h_eval, h_contract.1, h_contract.2.1, h_contract.2.2.1, h_contract.2.2.2⟩
+    handler_typed_handle_shape_eval_and_contract_capstone
+      h_env h_typed h_shape h_frag_shape
+  rcases h_generic with
+    ⟨h_eval, h_wellTyped, h_linear, h_not_invalid, h_tail_bundle⟩
+  rcases h_eval with ⟨target, v, h_step, h_eval_eq, h_v_ty⟩
+  cases h_step with
+  | handle_perform_tail _ _ _ _ _ _ _ _ =>
+      exact ⟨
+        ⟨v, by simpa [bindTailResumptive] using h_eval_eq, h_v_ty⟩,
+        h_wellTyped,
+        h_linear,
+        h_not_invalid,
+        h_tail_bundle
+      ⟩
 
 /--
 Capability-extended typed-redex capstone: evaluator soundness plus clause
@@ -5182,16 +5216,39 @@ theorem handler_typed_core_body_eval_and_contract_capstone
     ∧ (TailResumptiveClassification.classifyClause clause.contract ≠
         TailResumptiveClassification.TailResumptiveClass.invalid)
     ∧ TailResumptiveClassification.TailResumptiveBundle clause.contract := by
-  have h_eval : ∃ v, eval venv e = some v ∧ ValueHasType v ty :=
-    handler_typed_core_body_eval_sound h_env h_typed h_frag
-  have h_contract :
-      HandleClauseContract.wellTypedSlice clause.contract
+  have h_shape : handlerStepSupportedShape (.core e) clause := Or.inl ⟨e, rfl⟩
+  have h_frag_shape :
+      ∀ target : CoreExpr,
+        HandlerStep (.handle (.core e) handler clause) (.core target) →
+        EvalFragmentFull target := by
+    intro target h_step
+    cases h_step with
+    | handle_core _ _ _ =>
+        simpa using h_frag
+  have h_generic :
+      (∃ target v,
+        HandlerStep (.handle (.core e) handler clause) (.core target)
+        ∧ eval venv target = some v
+        ∧ ValueHasType v ty)
+      ∧ HandleClauseContract.wellTypedSlice clause.contract
       ∧ resume_at_most_once clause.contract.resumeUse
       ∧ (TailResumptiveClassification.classifyClause clause.contract ≠
           TailResumptiveClassification.TailResumptiveClass.invalid)
       ∧ TailResumptiveClassification.TailResumptiveBundle clause.contract :=
-    (handler_typed_core_body_capstone h_typed).2
-  exact ⟨h_eval, h_contract.1, h_contract.2.1, h_contract.2.2.1, h_contract.2.2.2⟩
+    handler_typed_handle_shape_eval_and_contract_capstone
+      h_env h_typed h_shape h_frag_shape
+  rcases h_generic with
+    ⟨h_eval, h_wellTyped, h_linear, h_not_invalid, h_tail_bundle⟩
+  rcases h_eval with ⟨target, v, h_step, h_eval_eq, h_v_ty⟩
+  cases h_step with
+  | handle_core _ _ _ =>
+      exact ⟨
+        ⟨v, by simpa using h_eval_eq, h_v_ty⟩,
+        h_wellTyped,
+        h_linear,
+        h_not_invalid,
+        h_tail_bundle
+      ⟩
 
 /--
 Capability-extended typed core-body capstone: evaluator soundness plus clause
