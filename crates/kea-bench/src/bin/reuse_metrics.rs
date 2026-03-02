@@ -250,7 +250,12 @@ fn compile_kernel(name: &'static str, source: &str) -> Result<KernelMetric, Stri
         .iter()
         .map(|f| f.trmc_candidate_count)
         .sum();
-    let alloc_count = artifact.stats.per_function.iter().map(|f| f.alloc_count).sum();
+    let alloc_count = artifact
+        .stats
+        .per_function
+        .iter()
+        .map(|f| f.alloc_count)
+        .sum();
     let release_count = artifact
         .stats
         .per_function
@@ -297,8 +302,7 @@ fn render_metrics_json(metrics: &[KernelMetric], totals: &Totals) -> String {
         .collect::<Vec<_>>()
         .join(",\n");
 
-    let total_token_opportunities =
-        totals.reuse_token_consumed + totals.reuse_token_candidates;
+    let total_token_opportunities = totals.reuse_token_consumed + totals.reuse_token_candidates;
     let total_coverage_pct = if total_token_opportunities > 0 {
         (totals.reuse_token_consumed as f64 / total_token_opportunities as f64) * 100.0
     } else {

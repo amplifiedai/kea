@@ -194,8 +194,7 @@ impl Parser {
         // struct Name { field: Type, ... }
         // pub struct Name { field: Type, ... }
         if self.check(&TokenKind::Struct)
-            || (self.check(&TokenKind::Pub)
-                && self.peek_is(|k| matches!(k, TokenKind::Struct)))
+            || (self.check(&TokenKind::Pub) && self.peek_is(|k| matches!(k, TokenKind::Struct)))
         {
             let public = self.match_token(&TokenKind::Pub);
             self.advance(); // consume 'struct'
@@ -870,9 +869,7 @@ impl Parser {
         };
 
         if returned_name != enum_name.node {
-            self.error_at_current(
-                "enum variant return type must target the enclosing enum name",
-            );
+            self.error_at_current("enum variant return type must target the enclosing enum name");
             return None;
         }
 
@@ -1309,9 +1306,8 @@ impl Parser {
         // Canonical Kea syntax: Type as Trait
         let type_name = self.expect_upper_ident("expected type name before `as` in impl header")?;
         self.skip_newlines();
-        let type_params = self.parse_impl_target_type_params(
-            "expected type parameter before `as` in impl header",
-        )?;
+        let type_params = self
+            .parse_impl_target_type_params("expected type parameter before `as` in impl header")?;
         self.skip_newlines();
         if !self.check_ident("as") {
             self.error_at_current("expected `as` in impl header (`Type as Trait`)");
@@ -1324,10 +1320,7 @@ impl Parser {
         self.parse_impl_block_with_header(start, trait_name, type_name, type_params)
     }
 
-    fn parse_impl_target_type_params(
-        &mut self,
-        msg: &str,
-    ) -> Option<Vec<Spanned<String>>> {
+    fn parse_impl_target_type_params(&mut self, msg: &str) -> Option<Vec<Spanned<String>>> {
         if self.match_token(&TokenKind::LParen) {
             let mut params = Vec::new();
             loop {
@@ -3950,7 +3943,6 @@ impl Parser {
             ));
         }
 
-
         // Anonymous struct pattern: #{ name, age } or #{ name: pat, .. }
         if self.check(&TokenKind::HashBrace) {
             self.advance(); // consume #{
@@ -4026,7 +4018,10 @@ impl Parser {
                 self.expect(&TokenKind::RParen, "expected ')' to close tuple pattern")?;
                 return Some(Spanned::new(PatternKind::Tuple(pats), start.merge(end)));
             }
-            self.expect(&TokenKind::RParen, "expected ')' after parenthesized pattern")?;
+            self.expect(
+                &TokenKind::RParen,
+                "expected ')' after parenthesized pattern",
+            )?;
             return Some(first);
         }
 
@@ -4540,7 +4535,10 @@ impl Parser {
 
     fn update_fields_expr(&mut self) -> Option<(UpdateFields, Span)> {
         self.skip_newlines();
-        self.expect(&TokenKind::LBrace, "expected '{' after '~' in update expression")?;
+        self.expect(
+            &TokenKind::LBrace,
+            "expected '{' after '~' in update expression",
+        )?;
 
         let mut fields = Vec::new();
         self.skip_newlines();
@@ -4572,7 +4570,10 @@ impl Parser {
         }
         self.skip_newlines();
         let end = self.current_span();
-        self.expect(&TokenKind::RBrace, "expected '}' to close update expression")?;
+        self.expect(
+            &TokenKind::RBrace,
+            "expected '}' to close update expression",
+        )?;
         Some((fields, end))
     }
 
@@ -5047,7 +5048,10 @@ impl Parser {
         }
 
         let mut i = self.pos + 1;
-        while matches!(self.tokens.get(i).map(|t| &t.kind), Some(TokenKind::Newline)) {
+        while matches!(
+            self.tokens.get(i).map(|t| &t.kind),
+            Some(TokenKind::Newline)
+        ) {
             i += 1;
         }
 
@@ -5055,7 +5059,10 @@ impl Parser {
             i += 1;
             let mut expect_name = true;
             loop {
-                while matches!(self.tokens.get(i).map(|t| &t.kind), Some(TokenKind::Newline)) {
+                while matches!(
+                    self.tokens.get(i).map(|t| &t.kind),
+                    Some(TokenKind::Newline)
+                ) {
                     i += 1;
                 }
                 match self.tokens.get(i).map(|t| &t.kind) {
@@ -5074,7 +5081,10 @@ impl Parser {
                     _ => return false,
                 }
             }
-            while matches!(self.tokens.get(i).map(|t| &t.kind), Some(TokenKind::Newline)) {
+            while matches!(
+                self.tokens.get(i).map(|t| &t.kind),
+                Some(TokenKind::Newline)
+            ) {
                 i += 1;
             }
             return matches!(
@@ -5084,7 +5094,10 @@ impl Parser {
         }
 
         loop {
-            while matches!(self.tokens.get(i).map(|t| &t.kind), Some(TokenKind::Newline)) {
+            while matches!(
+                self.tokens.get(i).map(|t| &t.kind),
+                Some(TokenKind::Newline)
+            ) {
                 i += 1;
             }
             match self.tokens.get(i).map(|t| &t.kind) {
@@ -6323,9 +6336,9 @@ mod tests {
     fn parse_with_requires_following_body() {
         let errors = parse_mod_err("fn main() -> Int\n  with State.with_state(0)");
         assert!(
-            errors
-                .iter()
-                .any(|d| d.message.contains("`with` must be followed by a body expression")),
+            errors.iter().any(|d| d
+                .message
+                .contains("`with` must be followed by a body expression")),
             "expected missing-with-body diagnostic, got {errors:?}"
         );
     }
@@ -7571,9 +7584,7 @@ mod tests {
 
     #[test]
     fn parse_impl_with_type_params() {
-        let m = parse_mod(
-            "List(t) as Show where t: Show\n  fn show(self) -> String\n    \"list\"",
-        );
+        let m = parse_mod("List(t) as Show where t: Show\n  fn show(self) -> String\n    \"list\"");
         match &m.declarations[0].node {
             DeclKind::ImplBlock(ib) => {
                 assert_eq!(ib.trait_name.node, "Show");
@@ -8466,8 +8477,7 @@ mod tests {
 
     #[test]
     fn parse_impl_with_where_clause() {
-        let m =
-            parse_mod("Int as From where Source = String\n  fn from(value) -> Int\n    0");
+        let m = parse_mod("Int as From where Source = String\n  fn from(value) -> Int\n    0");
         match &m.declarations[0].node {
             DeclKind::ImplBlock(ib) => {
                 assert_eq!(ib.trait_name.node, "From");

@@ -155,7 +155,9 @@ impl<'a> MonoPass<'a> {
                         // a concrete type.
                         extract_bindings(&ft.ret, &expr.ty, &mut bindings);
 
-                        if !bindings.is_empty() && bindings.values().all(|t| free_type_vars(t).is_empty()) {
+                        if !bindings.is_empty()
+                            && bindings.values().all(|t| free_type_vars(t).is_empty())
+                        {
                             let mangled = self.get_or_enqueue(resolved, &bindings, depth);
                             // Build the concrete function type for the rewritten callee.
                             let mut subst = Substitution::new();
@@ -229,7 +231,10 @@ impl<'a> MonoPass<'a> {
                 sum_type: sum_type.clone(),
                 variant: variant.clone(),
                 tag: *tag,
-                fields: fields.iter().map(|e| self.rewrite_calls(e, depth)).collect(),
+                fields: fields
+                    .iter()
+                    .map(|e| self.rewrite_calls(e, depth))
+                    .collect(),
             },
 
             HirExprKind::SumPayloadAccess {
@@ -337,10 +342,8 @@ impl<'a> MonoPass<'a> {
         bindings: &BTreeMap<TypeVarId, Type>,
         depth: usize,
     ) -> String {
-        let key: Vec<(TypeVarId, String)> = bindings
-            .iter()
-            .map(|(k, v)| (*k, format!("{v}")))
-            .collect();
+        let key: Vec<(TypeVarId, String)> =
+            bindings.iter().map(|(k, v)| (*k, format!("{v}"))).collect();
         let cache_key = (orig_name.to_string(), key);
         if let Some(mangled) = self.generated.get(&cache_key) {
             return mangled.clone();
@@ -348,8 +351,7 @@ impl<'a> MonoPass<'a> {
 
         let mangled = mangle_name(orig_name, bindings, self.next_id);
         self.next_id += 1;
-        self.generated
-            .insert(cache_key, mangled.clone());
+        self.generated.insert(cache_key, mangled.clone());
 
         if depth < MAX_DEPTH {
             let mut subst = Substitution::new();
@@ -509,16 +511,26 @@ fn apply_subst_to_expr(expr: &HirExpr, subst: &Substitution) -> HirExpr {
                 .map(|e| Box::new(apply_subst_to_expr(e, subst))),
         },
 
-        HirExprKind::Block(exprs) => {
-            HirExprKind::Block(exprs.iter().map(|e| apply_subst_to_expr(e, subst)).collect())
-        }
+        HirExprKind::Block(exprs) => HirExprKind::Block(
+            exprs
+                .iter()
+                .map(|e| apply_subst_to_expr(e, subst))
+                .collect(),
+        ),
 
-        HirExprKind::Tuple(exprs) => {
-            HirExprKind::Tuple(exprs.iter().map(|e| apply_subst_to_expr(e, subst)).collect())
-        }
+        HirExprKind::Tuple(exprs) => HirExprKind::Tuple(
+            exprs
+                .iter()
+                .map(|e| apply_subst_to_expr(e, subst))
+                .collect(),
+        ),
     };
 
-    HirExpr { kind, ty, span: expr.span }
+    HirExpr {
+        kind,
+        ty,
+        span: expr.span,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -672,14 +684,8 @@ mod tests {
     fn extract_bindings_function() {
         let var_a = TypeVarId(1);
         let var_b = TypeVarId(2);
-        let poly = make_fn_type(
-            vec![Type::Var(var_a)],
-            Type::Var(var_b),
-        );
-        let concrete = make_fn_type(
-            vec![Type::Int],
-            Type::Bool,
-        );
+        let poly = make_fn_type(vec![Type::Var(var_a)], Type::Var(var_b));
+        let concrete = make_fn_type(vec![Type::Int], Type::Bool);
         let mut bindings = BTreeMap::new();
         extract_bindings(&poly, &concrete, &mut bindings);
         assert_eq!(bindings.get(&var_a), Some(&Type::Int));
@@ -708,10 +714,7 @@ mod tests {
             name: "main".to_string(),
             params: vec![],
             body: call_expr(
-                var_expr(
-                    "identity",
-                    make_fn_type(vec![Type::Int], Type::Int),
-                ),
+                var_expr("identity", make_fn_type(vec![Type::Int], Type::Int)),
                 vec![lit_int(42)],
                 Type::Int,
             ),
@@ -721,10 +724,7 @@ mod tests {
         };
 
         let module = HirModule {
-            declarations: vec![
-                HirDecl::Function(identity_fn),
-                HirDecl::Function(main_fn),
-            ],
+            declarations: vec![HirDecl::Function(identity_fn), HirDecl::Function(main_fn)],
         };
 
         let result = monomorphize(&module);
@@ -754,10 +754,7 @@ mod tests {
                 _ => None,
             })
             .unwrap();
-        assert_eq!(
-            spec_fn.ty,
-            make_fn_type(vec![Type::Int], Type::Int),
-        );
+        assert_eq!(spec_fn.ty, make_fn_type(vec![Type::Int], Type::Int),);
         // The body should also have concrete type.
         assert_eq!(spec_fn.body.ty, Type::Int);
     }

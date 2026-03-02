@@ -570,8 +570,7 @@ fn inline_known_handler_callbacks(
                     ..
                 } => {
                     if let Some(entry_name) = fn_ref_map.get(entry) {
-                        closure_map
-                            .insert(dest.clone(), (entry_name.clone(), captures.clone()));
+                        closure_map.insert(dest.clone(), (entry_name.clone(), captures.clone()));
                     }
                 }
                 _ => {}
@@ -635,7 +634,10 @@ fn inline_known_handler_callbacks(
             }
             if !matches!(
                 &wrapper_block.instructions[0],
-                MirInst::ClosureCaptureLoad { capture_index: 0, .. }
+                MirInst::ClosureCaptureLoad {
+                    capture_index: 0,
+                    ..
+                }
             ) {
                 continue;
             }
@@ -643,8 +645,7 @@ fn inline_known_handler_callbacks(
             if target_block.instructions.len() != 1 {
                 continue;
             }
-            let MirInst::StateCellLoad { dest: loaded, .. } = &target_block.instructions[0]
-            else {
+            let MirInst::StateCellLoad { dest: loaded, .. } = &target_block.instructions[0] else {
                 continue;
             };
             // Verify terminator returns the loaded value
@@ -675,7 +676,10 @@ fn inline_known_handler_callbacks(
             }
             if !matches!(
                 &wrapper_block.instructions[0],
-                MirInst::ClosureCaptureLoad { capture_index: 0, .. }
+                MirInst::ClosureCaptureLoad {
+                    capture_index: 0,
+                    ..
+                }
             ) {
                 continue;
             }
@@ -683,7 +687,10 @@ fn inline_known_handler_callbacks(
             if target_block.instructions.len() != 2 {
                 continue;
             }
-            if !matches!(&target_block.instructions[0], MirInst::StateCellStore { .. }) {
+            if !matches!(
+                &target_block.instructions[0],
+                MirInst::StateCellStore { .. }
+            ) {
                 continue;
             }
             let MirInst::Const {
@@ -743,7 +750,10 @@ fn inline_known_handler_callbacks(
                 continue;
             }
             // Determine what the target returns
-            let MirTerminator::Return { value: Some(ret_val) } = &target_block.terminator else {
+            let MirTerminator::Return {
+                value: Some(ret_val),
+            } = &target_block.terminator
+            else {
                 continue;
             };
             if target_block.instructions.len() == 1 {
@@ -840,8 +850,7 @@ fn inline_known_handler_callbacks(
                                 }],
                             ));
                         } else {
-                            replacements
-                                .push((block_idx, inst_idx, vec![MirInst::Nop]));
+                            replacements.push((block_idx, inst_idx, vec![MirInst::Nop]));
                         }
                     }
                     InlinableCallback::StatePut { state_cell } => {
@@ -984,8 +993,7 @@ fn inline_known_handler_callbacks(
                     MirInst::RecordFieldLoad { record, .. } => {
                         referenced.insert(record.clone());
                     }
-                    MirInst::SumTagLoad { sum, .. }
-                    | MirInst::SumPayloadLoad { sum, .. } => {
+                    MirInst::SumTagLoad { sum, .. } | MirInst::SumPayloadLoad { sum, .. } => {
                         referenced.insert(sum.clone());
                     }
                     MirInst::Move { src, .. }
@@ -1013,33 +1021,25 @@ fn inline_known_handler_callbacks(
                             referenced.insert(u.value.clone());
                         }
                     }
-                    MirInst::RecordInitReuse {
-                        source, fields, ..
-                    } => {
+                    MirInst::RecordInitReuse { source, fields, .. } => {
                         referenced.insert(source.clone());
                         for (_, v) in fields {
                             referenced.insert(v.clone());
                         }
                     }
-                    MirInst::SumInitReuse {
-                        source, fields, ..
-                    } => {
+                    MirInst::SumInitReuse { source, fields, .. } => {
                         referenced.insert(source.clone());
                         for v in fields {
                             referenced.insert(v.clone());
                         }
                     }
-                    MirInst::RecordInitFromToken {
-                        token, fields, ..
-                    } => {
+                    MirInst::RecordInitFromToken { token, fields, .. } => {
                         referenced.insert(token.clone());
                         for (_, v) in fields {
                             referenced.insert(v.clone());
                         }
                     }
-                    MirInst::SumInitFromToken {
-                        token, fields, ..
-                    } => {
+                    MirInst::SumInitFromToken { token, fields, .. } => {
                         referenced.insert(token.clone());
                         for v in fields {
                             referenced.insert(v.clone());
@@ -1058,9 +1058,7 @@ fn inline_known_handler_callbacks(
             }
             // Also check terminator
             match &block.terminator {
-                MirTerminator::Return {
-                    value: Some(v),
-                } => {
+                MirTerminator::Return { value: Some(v) } => {
                     referenced.insert(v.clone());
                 }
                 MirTerminator::Jump { args, .. } => {
@@ -1071,16 +1069,17 @@ fn inline_known_handler_callbacks(
                 MirTerminator::Branch { condition, .. } => {
                     referenced.insert(condition.clone());
                 }
-                MirTerminator::Return { value: None }
-                | MirTerminator::Unreachable => {}
+                MirTerminator::Return { value: None } | MirTerminator::Unreachable => {}
             }
         }
 
         // Kill unreferenced FunctionRef and ClosureInit instructions
         for block in &mut function.blocks {
             for inst in &mut block.instructions {
-                if matches!(inst, MirInst::FunctionRef { .. } | MirInst::ClosureInit { .. })
-                    && let Some(dest) = inst_defined_value(inst)
+                if matches!(
+                    inst,
+                    MirInst::FunctionRef { .. } | MirInst::ClosureInit { .. }
+                ) && let Some(dest) = inst_defined_value(inst)
                     && !referenced.contains(dest)
                 {
                     *inst = MirInst::Nop;
@@ -1120,12 +1119,7 @@ fn rewrite_trmc_descending_sum_chain(function: &mut MirFunction) {
         return;
     };
 
-    let (
-        then_join_target,
-        then_value,
-        else_join_target,
-        else_value,
-    ) = match (
+    let (then_join_target, then_value, else_join_target, else_value) = match (
         &function.blocks[then_idx].terminator,
         &function.blocks[else_idx].terminator,
     ) {
@@ -1172,8 +1166,10 @@ fn rewrite_trmc_descending_sum_chain(function: &mut MirFunction) {
         ) if return_value == id => {}
         _ => return,
     }
-    let then_is_recursive = block_has_recursive_self_call(&function.blocks[then_idx], &function.name);
-    let else_is_recursive = block_has_recursive_self_call(&function.blocks[else_idx], &function.name);
+    let then_is_recursive =
+        block_has_recursive_self_call(&function.blocks[then_idx], &function.name);
+    let else_is_recursive =
+        block_has_recursive_self_call(&function.blocks[else_idx], &function.name);
     if then_is_recursive == else_is_recursive {
         return;
     }
@@ -1210,24 +1206,22 @@ fn rewrite_trmc_descending_sum_chain(function: &mut MirFunction) {
         &condition_value,
         &recursive_param_value,
         recurse_on_then,
-    )
-    else {
+    ) else {
         return;
     };
 
     let pre_call = &recurse_block.instructions[..call_idx];
-    if !pre_call
-        .iter()
-        .all(|inst| match inst {
-            MirInst::Const { .. } | MirInst::Unary { .. } | MirInst::Binary { .. } | MirInst::Nop => true,
-            MirInst::Call {
-                callee: MirCallee::Local(name),
-                ..
-            } => name != &function.name,
-            MirInst::Call { .. } => true,
-            _ => false,
-        })
-    {
+    if !pre_call.iter().all(|inst| match inst {
+        MirInst::Const { .. } | MirInst::Unary { .. } | MirInst::Binary { .. } | MirInst::Nop => {
+            true
+        }
+        MirInst::Call {
+            callee: MirCallee::Local(name),
+            ..
+        } => name != &function.name,
+        MirInst::Call { .. } => true,
+        _ => false,
+    }) {
         return;
     }
     let mut step_consts = int_const_map_from_insts(&function.blocks[entry_idx].instructions);
@@ -1246,10 +1240,16 @@ fn rewrite_trmc_descending_sum_chain(function: &mut MirFunction) {
 
     let base_block = &function.blocks[base_idx];
     let base_instructions = &base_block.instructions;
-    if !base_instructions
-        .iter()
-        .all(|inst| matches!(inst, MirInst::Const { .. } | MirInst::Unary { .. } | MirInst::Binary { .. } | MirInst::SumInit { .. } | MirInst::Nop))
-    {
+    if !base_instructions.iter().all(|inst| {
+        matches!(
+            inst,
+            MirInst::Const { .. }
+                | MirInst::Unary { .. }
+                | MirInst::Binary { .. }
+                | MirInst::SumInit { .. }
+                | MirInst::Nop
+        )
+    }) {
         return;
     }
 
@@ -1463,9 +1463,10 @@ fn extract_descending_base_threshold(
         let base_threshold = if recurse_on_then {
             match op {
                 MirBinaryOp::Gt if left == param_value => int_consts.get(right).copied(),
-                MirBinaryOp::Gte if left == param_value => {
-                    int_consts.get(right).copied().and_then(|v| v.checked_sub(1))
-                }
+                MirBinaryOp::Gte if left == param_value => int_consts
+                    .get(right)
+                    .copied()
+                    .and_then(|v| v.checked_sub(1)),
                 MirBinaryOp::Lt if right == param_value => int_consts.get(left).copied(),
                 MirBinaryOp::Lte if right == param_value => {
                     int_consts.get(left).copied().and_then(|v| v.checked_sub(1))
@@ -1475,9 +1476,10 @@ fn extract_descending_base_threshold(
         } else {
             match op {
                 MirBinaryOp::Lte if left == param_value => int_consts.get(right).copied(),
-                MirBinaryOp::Lt if left == param_value => {
-                    int_consts.get(right).copied().and_then(|v| v.checked_sub(1))
-                }
+                MirBinaryOp::Lt if left == param_value => int_consts
+                    .get(right)
+                    .copied()
+                    .and_then(|v| v.checked_sub(1)),
                 MirBinaryOp::Gte if right == param_value => int_consts.get(left).copied(),
                 MirBinaryOp::Gt if right == param_value => {
                     int_consts.get(left).copied().and_then(|v| v.checked_sub(1))
@@ -1762,9 +1764,9 @@ fn clone_insts_with_remap(
                 cc_manifest_id,
             } => {
                 let new_callee = match callee {
-                    MirCallee::Value(value) => MirCallee::Value(
-                        remap_value(remap, value).unwrap_or_else(|| value.clone()),
-                    ),
+                    MirCallee::Value(value) => {
+                        MirCallee::Value(remap_value(remap, value).unwrap_or_else(|| value.clone()))
+                    }
                     MirCallee::Local(name) => MirCallee::Local(name.clone()),
                     MirCallee::External(name) => MirCallee::External(name.clone()),
                 };
@@ -1995,7 +1997,10 @@ fn fuse_release_alloc_cross_block_jump(function: &mut MirFunction, layouts: &Mir
     let mut predecessors = BTreeMap::<MirBlockId, Vec<usize>>::new();
     for (block_idx, block) in function.blocks.iter().enumerate() {
         if let MirTerminator::Jump { target, .. } = &block.terminator {
-            predecessors.entry(target.clone()).or_default().push(block_idx);
+            predecessors
+                .entry(target.clone())
+                .or_default()
+                .push(block_idx);
         }
     }
 
@@ -2013,12 +2018,9 @@ fn fuse_release_alloc_cross_block_jump(function: &mut MirFunction, layouts: &Mir
         let successor = &function.blocks[succ_block_idx];
         for (arg_pos, param) in successor.params.iter().enumerate() {
             let source_param = param.id.clone();
-            let Some((succ_inst_idx, candidate)) = find_reuse_candidate_in_block(
-                successor,
-                &source_param,
-                layouts,
-                &layout_keys,
-            ) else {
+            let Some((succ_inst_idx, candidate)) =
+                find_reuse_candidate_in_block(successor, &source_param, layouts, &layout_keys)
+            else {
                 continue;
             };
 
@@ -2145,7 +2147,10 @@ fn emit_reuse_tokens_for_mixed_predecessor_joins(
     let mut predecessors = BTreeMap::<MirBlockId, Vec<usize>>::new();
     for (block_idx, block) in function.blocks.iter().enumerate() {
         if let MirTerminator::Jump { target, .. } = &block.terminator {
-            predecessors.entry(target.clone()).or_default().push(block_idx);
+            predecessors
+                .entry(target.clone())
+                .or_default()
+                .push(block_idx);
         }
     }
 
@@ -2160,12 +2165,9 @@ fn emit_reuse_tokens_for_mixed_predecessor_joins(
         };
         let target_block = &function.blocks[target_block_idx];
         for (arg_pos, param) in target_block.params.iter().enumerate() {
-            let Some((target_inst_idx, candidate)) = find_reuse_candidate_in_block(
-                target_block,
-                &param.id,
-                layouts,
-                &layout_keys,
-            ) else {
+            let Some((target_inst_idx, candidate)) =
+                find_reuse_candidate_in_block(target_block, &param.id, layouts, &layout_keys)
+            else {
                 continue;
             };
 
@@ -2300,7 +2302,10 @@ fn emit_reuse_tokens_for_loop_backedge_joins(
     let mut predecessors = BTreeMap::<MirBlockId, Vec<usize>>::new();
     for (block_idx, block) in function.blocks.iter().enumerate() {
         if let MirTerminator::Jump { target, .. } = &block.terminator {
-            predecessors.entry(target.clone()).or_default().push(block_idx);
+            predecessors
+                .entry(target.clone())
+                .or_default()
+                .push(block_idx);
         }
     }
 
@@ -2319,12 +2324,9 @@ fn emit_reuse_tokens_for_loop_backedge_joins(
 
         let target_block = &function.blocks[target_block_idx];
         for (arg_pos, param) in target_block.params.iter().enumerate() {
-            let Some((target_inst_idx, candidate)) = find_reuse_candidate_in_block(
-                target_block,
-                &param.id,
-                layouts,
-                &layout_keys,
-            ) else {
+            let Some((target_inst_idx, candidate)) =
+                find_reuse_candidate_in_block(target_block, &param.id, layouts, &layout_keys)
+            else {
                 continue;
             };
 
@@ -2617,7 +2619,9 @@ fn next_fresh_value_id(function: &MirFunction) -> u32 {
 
 fn inst_read_values(inst: &MirInst) -> Vec<MirValueId> {
     match inst {
-        MirInst::Const { .. } | MirInst::FunctionRef { .. } | MirInst::HandlerEnter { .. } => Vec::new(),
+        MirInst::Const { .. } | MirInst::FunctionRef { .. } | MirInst::HandlerEnter { .. } => {
+            Vec::new()
+        }
         MirInst::Binary { left, right, .. } => vec![left.clone(), right.clone()],
         MirInst::Unary { operand, .. } => vec![operand.clone()],
         MirInst::RecordInit { fields, .. } => fields.iter().map(|(_, v)| v.clone()).collect(),
@@ -2646,7 +2650,9 @@ fn inst_read_values(inst: &MirInst) -> Vec<MirValueId> {
         MirInst::SumTagLoad { sum, .. } => vec![sum.clone()],
         MirInst::SumPayloadLoad { sum, .. } => vec![sum.clone()],
         MirInst::RecordFieldLoad { record, .. } => vec![record.clone()],
-        MirInst::ClosureInit { entry, captures, .. } => {
+        MirInst::ClosureInit {
+            entry, captures, ..
+        } => {
             let mut reads = vec![entry.clone()];
             reads.extend(captures.clone());
             reads
@@ -2660,7 +2666,9 @@ fn inst_read_values(inst: &MirInst) -> Vec<MirValueId> {
         | MirInst::Borrow { src, .. }
         | MirInst::TryClaim { src, .. }
         | MirInst::Freeze { src, .. } => vec![src.clone()],
-        MirInst::CowUpdate { target, updates, .. } => {
+        MirInst::CowUpdate {
+            target, updates, ..
+        } => {
             let mut reads = vec![target.clone()];
             reads.extend(updates.iter().map(|update| update.value.clone()));
             reads
@@ -2757,8 +2765,9 @@ fn find_reuse_probe(
                 let alloc_layout = format!("sum:{sum_type}");
                 let layout_matches = alloc_layout == *release_layout;
                 let layout_is_reusable = sum_layout_is_reuse_eligible(layouts, sum_type);
-                let source_mentioned_in_fields =
-                    fields.iter().any(|field_value| field_value == released_value);
+                let source_mentioned_in_fields = fields
+                    .iter()
+                    .any(|field_value| field_value == released_value);
                 if layout_matches && layout_is_reusable && !source_mentioned_in_fields {
                     return Some((
                         probe,
@@ -2924,7 +2933,11 @@ fn type_layout_key(ty: &Type) -> Option<String> {
 }
 
 fn record_layout_is_reuse_eligible(layouts: &MirLayoutCatalog, record_type: &str) -> bool {
-    let Some(layout) = layouts.records.iter().find(|layout| layout.name == record_type) else {
+    let Some(layout) = layouts
+        .records
+        .iter()
+        .find(|layout| layout.name == record_type)
+    else {
         return false;
     };
     layout
@@ -2953,26 +2966,24 @@ fn sum_layout_is_reuse_eligible(layouts: &MirLayoutCatalog, sum_type: &str) -> b
 
 fn annotation_is_heap_managed(annotation: &TypeAnnotation) -> bool {
     match annotation {
-        TypeAnnotation::Named(name) => {
-            !matches!(
-                name.as_str(),
-                "Int"
-                    | "Bool"
-                    | "Float"
-                    | "Unit"
-                    | "Int8"
-                    | "Int16"
-                    | "Int32"
-                    | "Int64"
-                    | "UInt8"
-                    | "UInt16"
-                    | "UInt32"
-                    | "UInt64"
-                    | "Float16"
-                    | "Float32"
-                    | "Float64"
-            )
-        }
+        TypeAnnotation::Named(name) => !matches!(
+            name.as_str(),
+            "Int"
+                | "Bool"
+                | "Float"
+                | "Unit"
+                | "Int8"
+                | "Int16"
+                | "Int32"
+                | "Int64"
+                | "UInt8"
+                | "UInt16"
+                | "UInt32"
+                | "UInt64"
+                | "Float16"
+                | "Float32"
+                | "Float64"
+        ),
         TypeAnnotation::Tuple(items) => items.iter().any(annotation_is_heap_managed),
         _ => true,
     }
@@ -3083,8 +3094,13 @@ fn inst_reads_value(inst: &MirInst, value: &MirValueId) -> bool {
         MirInst::ClosureCaptureLoad { closure, .. } => closure == value,
         MirInst::StateCellNew { initial, .. } => initial == value,
         MirInst::StateCellLoad { cell, .. } => cell == value,
-        MirInst::StateCellStore { cell, value: stored } => cell == value || stored == value,
-        MirInst::Retain { value: retained } | MirInst::Release { value: retained } => retained == value,
+        MirInst::StateCellStore {
+            cell,
+            value: stored,
+        } => cell == value || stored == value,
+        MirInst::Retain { value: retained } | MirInst::Release { value: retained } => {
+            retained == value
+        }
         MirInst::Move { src, .. }
         | MirInst::Borrow { src, .. }
         | MirInst::TryClaim { src, .. }
@@ -3096,7 +3112,9 @@ fn inst_reads_value(inst: &MirInst, value: &MirValueId) -> bool {
         MirInst::HandlerExit { .. } => false,
         MirInst::Resume { value: resumed } => resumed == value,
         MirInst::Call { callee, args, .. } => match callee {
-            MirCallee::Value(callee_value) => callee_value == value || args.iter().any(|arg| arg == value),
+            MirCallee::Value(callee_value) => {
+                callee_value == value || args.iter().any(|arg| arg == value)
+            }
             MirCallee::Local(_) | MirCallee::External(_) => args.iter().any(|arg| arg == value),
         },
         MirInst::Unsupported { .. } | MirInst::Nop => false,
@@ -3626,12 +3644,9 @@ fn split_non_tail_resume(
     for expr in &post_resume_body {
         collect_hir_var_refs(expr, &mut post_refs);
     }
-    let captured_bindings: Vec<String> =
-        pre_bound.intersection(&post_refs).cloned().collect();
-    let clause_arg_captures: Vec<String> = clause_arg_names
-        .intersection(&post_refs)
-        .cloned()
-        .collect();
+    let captured_bindings: Vec<String> = pre_bound.intersection(&post_refs).cloned().collect();
+    let clause_arg_captures: Vec<String> =
+        clause_arg_names.intersection(&post_refs).cloned().collect();
 
     Some(NonTailResumeSplit {
         pre_resume_stmts,
@@ -3738,7 +3753,9 @@ fn collect_hir_dispatch_effect_ops(
                 collect_hir_dispatch_effect_ops(arg, effect_operations, out);
             }
         }
-        HirExprKind::Let { value, .. } => collect_hir_dispatch_effect_ops(value, effect_operations, out),
+        HirExprKind::Let { value, .. } => {
+            collect_hir_dispatch_effect_ops(value, effect_operations, out)
+        }
         HirExprKind::Block(exprs) | HirExprKind::Tuple(exprs) => {
             for item in exprs {
                 collect_hir_dispatch_effect_ops(item, effect_operations, out);
@@ -3766,7 +3783,9 @@ fn collect_hir_dispatch_effect_ops(
                 collect_hir_dispatch_effect_ops(field_expr, effect_operations, out);
             }
         }
-        HirExprKind::Catch { expr } => collect_hir_dispatch_effect_ops(expr, effect_operations, out),
+        HirExprKind::Catch { expr } => {
+            collect_hir_dispatch_effect_ops(expr, effect_operations, out)
+        }
         HirExprKind::Handle {
             expr,
             clauses,
@@ -4114,7 +4133,8 @@ fn lower_hir_function(
         if let Some(param_ty) = declared_params.get(index)
             && let Some(sum_type) = ctx.infer_sum_type_from_type(param_ty)
         {
-            ctx.sum_value_types.insert(MirValueId(index as u32), sum_type);
+            ctx.sum_value_types
+                .insert(MirValueId(index as u32), sum_type);
         }
     }
     // Entry-point functions create default capability cells (closures wrapping
@@ -4250,10 +4270,7 @@ struct CapturedBinding {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum HandlerCellOpLowering {
-    InvokeCallback {
-        arity: usize,
-        returns_unit: bool,
-    },
+    InvokeCallback { arity: usize, returns_unit: bool },
 }
 
 #[derive(Debug, Clone, Default)]
@@ -4521,14 +4538,13 @@ impl FunctionLoweringCtx {
 
         // Closure entry: captures = [prev_chain, extra_0, ...], call param = [result]
         let n_extra = extra_capture_names.len();
-        let capture_types: Vec<Type> =
-            std::iter::repeat_n(Type::Dynamic, 1 + n_extra).collect();
+        let capture_types: Vec<Type> = std::iter::repeat_n(Type::Dynamic, 1 + n_extra).collect();
         let entry_name = self.allocate_generated_closure_entry_name("post_resume");
         let wrapper = self.build_closure_entry_wrapper(
             entry_name.clone(),
             fn_name,
-            capture_types,        // captures: prev_chain + extras
-            vec![Type::Dynamic],  // call param: result
+            capture_types,       // captures: prev_chain + extras
+            vec![Type::Dynamic], // call param: result
             Vec::new(),
             Vec::new(),
             Type::Dynamic,
@@ -4694,10 +4710,7 @@ impl FunctionLoweringCtx {
         self.register_generated_function(wrapper_fn);
 
         // Create closure: captures = [inner_callback, chain_cell, binding_cells...]
-        let mut outer_captures = vec![
-            (inner_callback, Type::Dynamic),
-            (chain_cell, Type::Dynamic),
-        ];
+        let mut outer_captures = vec![(inner_callback, Type::Dynamic), (chain_cell, Type::Dynamic)];
         for cell in binding_capture_cells {
             outer_captures.push((cell.clone(), Type::Dynamic));
         }
@@ -4877,7 +4890,9 @@ impl FunctionLoweringCtx {
             call_arg_types.push(param_ty.clone());
         }
         for dispatch_idx in 0..dispatch_effects.len() {
-            call_args.push(MirValueId(1 + call_param_types.len() as u32 + dispatch_idx as u32));
+            call_args.push(MirValueId(
+                1 + call_param_types.len() as u32 + dispatch_idx as u32,
+            ));
             call_arg_types.push(Type::Dynamic);
         }
         for dispatch_value in bound_dispatch_args {
@@ -5092,7 +5107,8 @@ impl FunctionLoweringCtx {
                     });
                     return None;
                 };
-                let Some(dispatch_cell) = self.lookup_effect_cell(dispatch_effect, dispatch_operation)
+                let Some(dispatch_cell) =
+                    self.lookup_effect_cell(dispatch_effect, dispatch_operation)
                 else {
                     self.emit_inst(MirInst::Unsupported {
                         detail: format!(
@@ -5126,10 +5142,7 @@ impl FunctionLoweringCtx {
             .map(|(_, ty, value)| (value, ty))
             .collect::<Vec<_>>();
         all_captures.extend(bound_dispatch_captures);
-        self.emit_closure_value(
-            entry_name,
-            all_captures,
-        )
+        self.emit_closure_value(entry_name, all_captures)
     }
 
     fn finish(mut self, return_value: Option<MirValueId>, ret_ty: &Type) -> Vec<MirBlock> {
@@ -5325,12 +5338,15 @@ impl FunctionLoweringCtx {
                     let source_used_later = self.name_maybe_referenced_later_in_block(source_name);
                     let source_from_outer_scope =
                         self.name_captured_from_outer_block_scope(source_name);
-                    let source_read_in_update_fields = flattened_updates.iter().any(|(_, field_expr)| {
-                        let mut refs = BTreeSet::new();
-                        collect_hir_var_refs(field_expr, &mut refs);
-                        refs.contains(source_name)
-                    });
-                    if !source_used_later && !source_from_outer_scope && !source_read_in_update_fields
+                    let source_read_in_update_fields =
+                        flattened_updates.iter().any(|(_, field_expr)| {
+                            let mut refs = BTreeSet::new();
+                            collect_hir_var_refs(field_expr, &mut refs);
+                            refs.contains(source_name)
+                        });
+                    if !source_used_later
+                        && !source_from_outer_scope
+                        && !source_read_in_update_fields
                     {
                         self.drop_local_binding_metadata(source_name);
                         retain_target = false;
@@ -5373,7 +5389,9 @@ impl FunctionLoweringCtx {
                         Type::AnonRecord(row) => self.infer_unique_record_type_for_row(row),
                         _ => match &flattened_base.kind {
                             HirExprKind::Var(name) => self.var_record_types.get(name).cloned(),
-                            HirExprKind::Call { func, .. } => self.infer_record_type_from_call(func),
+                            HirExprKind::Call { func, .. } => {
+                                self.infer_record_type_from_call(func)
+                            }
                             _ => self.record_value_types.get(&target).cloned(),
                         },
                     }?
@@ -5563,7 +5581,8 @@ impl FunctionLoweringCtx {
                 self.block_incoming_bindings_stack
                     .push(incoming_scope.vars.keys().cloned().collect());
                 for (index, expr) in exprs.iter().enumerate() {
-                    self.block_tail_refs_stack.push(tail_refs[index + 1].clone());
+                    self.block_tail_refs_stack
+                        .push(tail_refs[index + 1].clone());
                     last = self.lower_expr(expr);
                     self.block_tail_refs_stack.pop();
                     if self.current_block().terminator.is_some() {
@@ -5797,7 +5816,7 @@ impl FunctionLoweringCtx {
                             get_callback,
                             chain_cell,
                             &post_resume_entry,
-                            0, // zero-arg
+                            0,   // zero-arg
                             &[], // no clause arg captures
                             &[], // no binding capture cells
                         )?
@@ -5811,8 +5830,7 @@ impl FunctionLoweringCtx {
                             returns_unit: false,
                         },
                     );
-                    operation_callback_values
-                        .insert(clause.operation.clone(), final_callback);
+                    operation_callback_values.insert(clause.operation.clone(), final_callback);
                     continue;
                 }
 
@@ -5821,9 +5839,9 @@ impl FunctionLoweringCtx {
                     && (matches!(
                         resume_value,
                         Some(value) if matches!(value.kind, HirExprKind::Lit(kea_ast::Lit::Unit))
-                    ) || non_tail_split
-                        .as_ref()
-                        .is_some_and(|s| matches!(s.resume_value.kind, HirExprKind::Lit(kea_ast::Lit::Unit))))
+                    ) || non_tail_split.as_ref().is_some_and(|s| {
+                        matches!(s.resume_value.kind, HirExprKind::Lit(kea_ast::Lit::Unit))
+                    }))
                 {
                     let put_callback = self.build_state_put_callback(state_cell.clone())?;
                     // If non-tail, wrap with chain augmentation
@@ -5882,8 +5900,7 @@ impl FunctionLoweringCtx {
                             returns_unit: true,
                         },
                     );
-                    operation_callback_values
-                        .insert(clause.operation.clone(), final_callback);
+                    operation_callback_values.insert(clause.operation.clone(), final_callback);
                     continue;
                 }
                 // Other operations in stateful effect: fall through to general path
@@ -5932,8 +5949,7 @@ impl FunctionLoweringCtx {
                                 returns_unit: false,
                             },
                         );
-                        operation_callback_values
-                            .insert(clause.operation.clone(), callback);
+                        operation_callback_values.insert(clause.operation.clone(), callback);
                         continue;
                     }
                     // Non-tail zero-arg: fall through to InvokeCallback path below
@@ -5941,8 +5957,7 @@ impl FunctionLoweringCtx {
                     self.emit_inst(MirInst::Unsupported {
                         detail: format!(
                             "zero-argument handler clause `{target_effect}.{} {}`",
-                            clause.operation,
-                            "must use `resume ...` for compiled lowering"
+                            clause.operation, "must use `resume ...` for compiled lowering"
                         ),
                     });
                     return None;
@@ -6023,8 +6038,7 @@ impl FunctionLoweringCtx {
                     self.emit_inst(MirInst::Unsupported {
                         detail: format!(
                             "single-argument handler clause `{target_effect}.{} {}`",
-                            clause.operation,
-                            "must end with `resume ()` for compiled lowering"
+                            clause.operation, "must end with `resume ()` for compiled lowering"
                         ),
                     });
                     return None;
@@ -6035,8 +6049,7 @@ impl FunctionLoweringCtx {
                     self.emit_inst(MirInst::Unsupported {
                         detail: format!(
                             "handler clause `{target_effect}.{} {}`",
-                            clause.operation,
-                            "must use `resume ...` for callback lowering"
+                            clause.operation, "must use `resume ...` for callback lowering"
                         ),
                     });
                     return None;
@@ -6061,7 +6074,9 @@ impl FunctionLoweringCtx {
                 });
             }
             let callback_return_ty = match &callback_body.kind {
-                HirExprKind::Lambda { params, body } if !matches!(callback_body.ty, Type::Function(_)) => {
+                HirExprKind::Lambda { params, body }
+                    if !matches!(callback_body.ty, Type::Function(_)) =>
+                {
                     synth_lambda_type(params, body)
                 }
                 _ => callback_body.ty.clone(),
@@ -6275,14 +6290,16 @@ impl FunctionLoweringCtx {
                 if let HirExprKind::Lambda { params, body } = &then_expr.kind {
                     if params.len() != 1 {
                         self.emit_inst(MirInst::Unsupported {
-                            detail: "handle then-clause lambda must accept exactly one parameter".to_string(),
+                            detail: "handle then-clause lambda must accept exactly one parameter"
+                                .to_string(),
                         });
                         return None;
                     }
                     let incoming_scope = self.snapshot_var_scope();
                     if let Some(param_name) = &params[0].name {
                         self.vars.insert(param_name.clone(), handled_value);
-                        self.var_types.insert(param_name.clone(), handled.ty.clone());
+                        self.var_types
+                            .insert(param_name.clone(), handled.ty.clone());
                     }
                     lowered_result = self.lower_expr(body);
                     self.restore_var_scope(&incoming_scope);
@@ -6807,8 +6824,13 @@ impl FunctionLoweringCtx {
                 continue;
             }
             if let HirExprKind::Lambda { params, body } = &arg.kind {
-                let value =
-                    self.lower_lambda_to_closure_value(arg, params, body.as_ref(), expected, false)?;
+                let value = self.lower_lambda_to_closure_value(
+                    arg,
+                    params,
+                    body.as_ref(),
+                    expected,
+                    false,
+                )?;
                 arg_types.push(expected.cloned().unwrap_or_else(|| arg.ty.clone()));
                 lowered_args.push(value);
                 continue;
@@ -6912,7 +6934,11 @@ impl FunctionLoweringCtx {
             if effect == "Fail" {
                 continue;
             }
-            for op in self.effect_operations.values().filter(|op| op.effect == effect) {
+            for op in self
+                .effect_operations
+                .values()
+                .filter(|op| op.effect == effect)
+            {
                 dispatch_ops.insert(format!("{effect}.{}", op.operation));
             }
         }
@@ -6961,7 +6987,11 @@ impl FunctionLoweringCtx {
     }
 
     fn lower_named_const_expr(&mut self, name: &str, raw_expr: &AstExprKind) -> Option<MirValueId> {
-        if self.const_lowering_stack.iter().any(|active| active == name) {
+        if self
+            .const_lowering_stack
+            .iter()
+            .any(|active| active == name)
+        {
             self.emit_inst(MirInst::Unsupported {
                 detail: format!("circular const reference detected while lowering `{name}`"),
             });
@@ -8193,10 +8223,7 @@ mod tests {
                         }),
                         args: vec![HirExpr {
                             kind: HirExprKind::Var("x".to_string()),
-                            ty: Type::IntN(
-                                kea_types::IntWidth::I8,
-                                kea_types::Signedness::Signed,
-                            ),
+                            ty: Type::IntN(kea_types::IntWidth::I8, kea_types::Signedness::Signed),
                             span: kea_ast::Span::synthetic(),
                         }],
                     },
@@ -8767,7 +8794,9 @@ mod tests {
                                                     left: Box::new(HirExpr {
                                                         kind: HirExprKind::FieldAccess {
                                                             expr: Box::new(HirExpr {
-                                                                kind: HirExprKind::Var("user".to_string()),
+                                                                kind: HirExprKind::Var(
+                                                                    "user".to_string(),
+                                                                ),
                                                                 ty: user_ty.clone(),
                                                                 span: kea_ast::Span::synthetic(),
                                                             }),
@@ -8777,7 +8806,9 @@ mod tests {
                                                         span: kea_ast::Span::synthetic(),
                                                     }),
                                                     right: Box::new(HirExpr {
-                                                        kind: HirExprKind::Lit(kea_ast::Lit::Int(1)),
+                                                        kind: HirExprKind::Lit(kea_ast::Lit::Int(
+                                                            1,
+                                                        )),
                                                         ty: Type::Int,
                                                         span: kea_ast::Span::synthetic(),
                                                     }),
@@ -10294,28 +10325,28 @@ mod tests {
 
         let mir = lower_hir_module(&hir);
         let function = &mir.functions[0];
-        let has_retain = function
-            .blocks[0]
+        let has_retain = function.blocks[0]
             .instructions
             .iter()
             .any(|inst| matches!(inst, MirInst::Retain { .. }));
-        let has_adjacent_retain_release_same = function.blocks[0]
-            .instructions
-            .windows(2)
-            .any(|pair| matches!(
-                (&pair[0], &pair[1]),
-                (MirInst::Retain { value: lhs }, MirInst::Release { value: rhs }) if lhs == rhs
-            ));
+        let has_adjacent_retain_release_same =
+            function.blocks[0].instructions.windows(2).any(|pair| {
+                matches!(
+                    (&pair[0], &pair[1]),
+                    (MirInst::Retain { value: lhs }, MirInst::Release { value: rhs }) if lhs == rhs
+                )
+            });
         assert!(
             !has_adjacent_retain_release_same,
             "heap alias lowering should not leave adjacent retain/release churn: {:?}",
             function.blocks[0].instructions
         );
         assert!(
-            has_retain || function.blocks[0]
-                .instructions
-                .iter()
-                .any(|inst| matches!(inst, MirInst::Release { .. })),
+            has_retain
+                || function.blocks[0]
+                    .instructions
+                    .iter()
+                    .any(|inst| matches!(inst, MirInst::Release { .. })),
             "heap alias lowering should keep memory lifecycle ops observable"
         );
     }
@@ -10542,7 +10573,15 @@ mod tests {
         let instructions = &mir.functions[0].blocks[0].instructions;
         let int_const_idx = instructions
             .iter()
-            .position(|inst| matches!(inst, MirInst::Const { literal: MirLiteral::Int(1), .. }))
+            .position(|inst| {
+                matches!(
+                    inst,
+                    MirInst::Const {
+                        literal: MirLiteral::Int(1),
+                        ..
+                    }
+                )
+            })
             .expect("expected final int literal in lowered block");
         let release_indices = instructions
             .iter()
@@ -10753,17 +10792,14 @@ mod tests {
         fuse_release_alloc_same_layout(&mut function, &layouts);
 
         assert!(
-            function.blocks[0]
-                .instructions
-                .iter()
-                .any(|inst| matches!(
-                    inst,
-                    MirInst::RecordInitReuse {
-                        source,
-                        record_type,
-                        ..
-                    } if *source == MirValueId(1) && record_type == "Point"
-                )),
+            function.blocks[0].instructions.iter().any(|inst| matches!(
+                inst,
+                MirInst::RecordInitReuse {
+                    source,
+                    record_type,
+                    ..
+                } if *source == MirValueId(1) && record_type == "Point"
+            )),
             "expected release+alloc pair to fuse into RecordInitReuse: {:?}",
             function.blocks[0].instructions
         );
@@ -11045,18 +11081,15 @@ mod tests {
         fuse_release_alloc_same_layout(&mut function, &layouts);
 
         assert!(
-            function.blocks[0]
-                .instructions
-                .iter()
-                .any(|inst| matches!(
-                    inst,
-                    MirInst::SumInitReuse {
-                        source,
-                        sum_type,
-                        variant,
-                        ..
-                    } if *source == MirValueId(1) && sum_type == "Pairish" && variant == "Right"
-                )),
+            function.blocks[0].instructions.iter().any(|inst| matches!(
+                inst,
+                MirInst::SumInitReuse {
+                    source,
+                    sum_type,
+                    variant,
+                    ..
+                } if *source == MirValueId(1) && sum_type == "Pairish" && variant == "Right"
+            )),
             "expected release+sum init pair to fuse into SumInitReuse: {:?}",
             function.blocks[0].instructions
         );
@@ -12662,7 +12695,9 @@ mod tests {
             } => Some(dest.clone()),
             _ => None,
         }) else {
-            panic!("rewritten entry block should materialize loop start literal threshold+1 for folded `n <= 1 + 1`");
+            panic!(
+                "rewritten entry block should materialize loop start literal threshold+1 for folded `n <= 1 + 1`"
+            );
         };
         assert!(
             entry_block.instructions.iter().any(|inst| matches!(
@@ -12789,13 +12824,17 @@ mod tests {
 
         let loop_i = function.blocks[1].params[0].id.clone();
         assert!(
-            function.blocks.iter().flat_map(|block| block.instructions.iter()).all(|inst| !matches!(
-                inst,
-                MirInst::Call {
-                    callee: MirCallee::Local(name),
-                    ..
-                } if name == "build"
-            )),
+            function
+                .blocks
+                .iter()
+                .flat_map(|block| block.instructions.iter())
+                .all(|inst| !matches!(
+                    inst,
+                    MirInst::Call {
+                        callee: MirCallee::Local(name),
+                        ..
+                    } if name == "build"
+                )),
             "rewrite should remove recursive self call even when recurse branch has a pre-call helper invocation"
         );
         assert!(
@@ -13506,18 +13545,15 @@ mod tests {
             "rewrite should remove recursive call from constructor branch"
         );
         assert!(
-            function.blocks[2]
-                .instructions
-                .iter()
-                .any(|inst| matches!(
-                    inst,
-                    MirInst::Binary {
-                        op: MirBinaryOp::Add,
-                        left,
-                        right,
-                        ..
-                    } if *left == loop_i && *right == loop_i
-                )),
+            function.blocks[2].instructions.iter().any(|inst| matches!(
+                inst,
+                MirInst::Binary {
+                    op: MirBinaryOp::Add,
+                    left,
+                    right,
+                    ..
+                } if *left == loop_i && *right == loop_i
+            )),
             "step block should keep pre-call constructor field expressions remapped to loop index"
         );
     }
@@ -13631,13 +13667,10 @@ mod tests {
             "rewrite should remove recursive call when non-recursive params are passthrough"
         );
         assert!(
-            function.blocks[2]
-                .instructions
-                .iter()
-                .any(|inst| matches!(
-                    inst,
-                    MirInst::SumInit { fields, .. } if fields.first() == Some(&MirValueId(1))
-                )),
+            function.blocks[2].instructions.iter().any(|inst| matches!(
+                inst,
+                MirInst::SumInit { fields, .. } if fields.first() == Some(&MirValueId(1))
+            )),
             "step block should preserve passthrough extra parameter in constructor fields"
         );
     }

@@ -508,10 +508,7 @@ impl<'src> Lexer<'src> {
                 } else if self.match_char(b'{') {
                     self.emit(TokenKind::HashBrace, start, self.pos);
                 } else {
-                    self.error(
-                        start,
-                        "unexpected character '#'; expected '#[' or '#{'",
-                    );
+                    self.error(start, "unexpected character '#'; expected '#[' or '#{'");
                 }
             }
 
@@ -960,15 +957,14 @@ impl<'src> Lexer<'src> {
             }
             let text = std::str::from_utf8(&self.source[start..self.pos]).unwrap();
             let digits = std::str::from_utf8(&self.source[(start + 2)..self.pos]).unwrap();
-            let normalized = match Self::normalize_digit_run(digits, |c| {
-                Self::digit_matches_radix(c, radix)
-            }) {
-                Ok(d) => d,
-                Err(_) => {
-                    self.error(start, format!("invalid integer literal: {text}"));
-                    return;
-                }
-            };
+            let normalized =
+                match Self::normalize_digit_run(digits, |c| Self::digit_matches_radix(c, radix)) {
+                    Ok(d) => d,
+                    Err(_) => {
+                        self.error(start, format!("invalid integer literal: {text}"));
+                        return;
+                    }
+                };
             match i64::from_str_radix(&normalized, radix) {
                 Ok(v) => self.emit(TokenKind::Int(v), start, self.pos),
                 Err(_) => self.error(start, format!("invalid integer literal: {text}")),
@@ -976,20 +972,14 @@ impl<'src> Lexer<'src> {
             return;
         }
 
-        while self
-            .peek()
-            .is_some_and(|c| c.is_ascii_digit() || c == b'_')
-        {
+        while self.peek().is_some_and(|c| c.is_ascii_digit() || c == b'_') {
             self.advance();
         }
 
         // Check for float: `.` followed by a digit
         if self.peek() == Some(b'.') && self.peek_next().is_some_and(|c| c.is_ascii_digit()) {
             self.advance(); // consume '.'
-            while self
-                .peek()
-                .is_some_and(|c| c.is_ascii_digit() || c == b'_')
-            {
+            while self.peek().is_some_and(|c| c.is_ascii_digit() || c == b'_') {
                 self.advance();
             }
             let text = std::str::from_utf8(&self.source[start..self.pos]).unwrap();
@@ -1445,7 +1435,6 @@ impl<'src> Lexer<'src> {
                 }),
             );
     }
-
 }
 
 #[cfg(test)]
@@ -1570,7 +1559,9 @@ mod tests {
     fn string_escaped_braces_are_literal() {
         assert_eq!(
             lex_kinds(r#""literal braces: {{not interpolated}}""#),
-            vec![TokenKind::String("literal braces: {not interpolated}".into())]
+            vec![TokenKind::String(
+                "literal braces: {not interpolated}".into()
+            )]
         );
     }
 

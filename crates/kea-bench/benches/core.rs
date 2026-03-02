@@ -235,9 +235,8 @@ fn fail_propagation_depth_n(bencher: Bencher, depth: usize) {
 #[divan::bench(args = [8, 32, 128])]
 fn fail_propagation_depth_n_manual_result(bencher: Bencher, depth: usize) {
     let source = build_fail_result_manual_source(depth);
-    let ctx = compile_module(&source, FileId(0)).unwrap_or_else(|err| {
-        panic!("manual fail/result benchmark setup should compile: {err}")
-    });
+    let ctx = compile_module(&source, FileId(0))
+        .unwrap_or_else(|err| panic!("manual fail/result benchmark setup should compile: {err}"));
     bencher.bench(|| {
         let run = execute_jit(black_box(&ctx))
             .unwrap_or_else(|err| panic!("manual fail/result benchmark run should succeed: {err}"));

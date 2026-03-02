@@ -179,7 +179,8 @@ fn is_unique_constructor_type(ty: &Type) -> bool {
 fn is_unique_type(ty: &Type) -> bool {
     match ty {
         Type::App(constructor, args) => {
-            args.len() == 1 && (is_unique_constructor_type(constructor) || is_unique_type(constructor))
+            args.len() == 1
+                && (is_unique_constructor_type(constructor) || is_unique_type(constructor))
         }
         _ => is_unique_constructor_type(ty),
     }
@@ -213,11 +214,10 @@ fn consume_unique_binding(
             format!("use of moved value `{name}`"),
         )
         .at(span_to_location(span))
-        .with_help("`Unique` values move on use; pass by `borrow` (step 2) or avoid reusing after move.");
-        diag = diag.with_label(
-            span_to_location(moved_at),
-            "value was moved here",
+        .with_help(
+            "`Unique` values move on use; pass by `borrow` (step 2) or avoid reusing after move.",
         );
+        diag = diag.with_label(span_to_location(moved_at), "value was moved here");
         diagnostics.push(diag);
         return;
     }
@@ -252,17 +252,15 @@ fn merge_branch_move_states(
     diagnostics: &mut Vec<Diagnostic>,
 ) {
     for name in before.keys() {
-        let then_move = then_state
-            .get(name)
-            .and_then(|binding| binding.moved_at);
-        let else_move = else_state
-            .get(name)
-            .and_then(|binding| binding.moved_at);
+        let then_move = then_state.get(name).and_then(|binding| binding.moved_at);
+        let else_move = else_state.get(name).and_then(|binding| binding.moved_at);
         if then_move.is_some() != else_move.is_some() {
             diagnostics.push(
                 Diagnostic::error(
                     Category::TypeError,
-                    format!("branch move mismatch for `{name}`: both branches must agree on move state"),
+                    format!(
+                        "branch move mismatch for `{name}`: both branches must agree on move state"
+                    ),
                 )
                 .at(span_to_location(span))
                 .with_help("move the value in both branches or keep it live in both branches."),
@@ -307,25 +305,27 @@ fn annotation_is_unique(ann: &TypeAnnotation) -> bool {
     }
 }
 
-fn borrow_positions_for_hir_call(func: &HirExpr, borrow_param_map: &BorrowParamMap) -> BTreeSet<usize> {
+fn borrow_positions_for_hir_call(
+    func: &HirExpr,
+    borrow_param_map: &BorrowParamMap,
+) -> BTreeSet<usize> {
     match &func.kind {
         HirExprKind::Var(name) => borrow_param_map.get(name).cloned().unwrap_or_default(),
         _ => BTreeSet::new(),
     }
 }
 
-fn borrow_positions_for_ast_call(func: &Expr, borrow_param_map: &BorrowParamMap) -> BTreeSet<usize> {
+fn borrow_positions_for_ast_call(
+    func: &Expr,
+    borrow_param_map: &BorrowParamMap,
+) -> BTreeSet<usize> {
     match &func.node {
         ExprKind::Var(name) => borrow_param_map.get(name).cloned().unwrap_or_default(),
         _ => BTreeSet::new(),
     }
 }
 
-fn collect_hir_free_vars(
-    expr: &HirExpr,
-    bound: &mut BTreeSet<String>,
-    out: &mut BTreeSet<String>,
-) {
+fn collect_hir_free_vars(expr: &HirExpr, bound: &mut BTreeSet<String>, out: &mut BTreeSet<String>) {
     match &expr.kind {
         HirExprKind::Lit(_) => {}
         HirExprKind::Var(name) => {
@@ -454,7 +454,9 @@ fn merge_case_arm_move_states(
             diagnostics.push(
                 Diagnostic::error(
                     Category::TypeError,
-                    format!("branch move mismatch for `{name}`: all case arms must agree on move state"),
+                    format!(
+                        "branch move mismatch for `{name}`: all case arms must agree on move state"
+                    ),
                 )
                 .at(span_to_location(span))
                 .with_help("move the value in every arm or keep it live in every arm."),
@@ -589,7 +591,12 @@ fn check_unique_moves_ast_expr(
             );
             let mut else_state = before.clone();
             if let Some(else_expr) = else_branch {
-                check_unique_moves_ast_expr(else_expr, &mut else_state, diagnostics, borrow_param_map);
+                check_unique_moves_ast_expr(
+                    else_expr,
+                    &mut else_state,
+                    diagnostics,
+                    borrow_param_map,
+                );
             }
             merge_branch_move_states(
                 expr.span,
@@ -607,9 +614,19 @@ fn check_unique_moves_ast_expr(
             for arm in arms {
                 let mut arm_state = before.clone();
                 if let Some(guard) = &arm.guard {
-                    check_unique_moves_ast_expr(guard, &mut arm_state, diagnostics, borrow_param_map);
+                    check_unique_moves_ast_expr(
+                        guard,
+                        &mut arm_state,
+                        diagnostics,
+                        borrow_param_map,
+                    );
                 }
-                check_unique_moves_ast_expr(&arm.body, &mut arm_state, diagnostics, borrow_param_map);
+                check_unique_moves_ast_expr(
+                    &arm.body,
+                    &mut arm_state,
+                    diagnostics,
+                    borrow_param_map,
+                );
                 arm_states.push(arm_state);
             }
             merge_case_arm_move_states(expr.span, &before, &arm_states, state, diagnostics);
@@ -648,9 +665,7 @@ fn check_unique_moves_ast_expr(
             check_unique_moves_ast_expr(right, state, diagnostics, borrow_param_map);
         }
         ExprKind::UnaryOp { operand, .. }
-        | ExprKind::WhenGuard {
-            body: operand, ..
-        }
+        | ExprKind::WhenGuard { body: operand, .. }
         | ExprKind::Await { expr: operand, .. } => {
             check_unique_moves_ast_expr(operand, state, diagnostics, borrow_param_map);
         }
@@ -725,7 +740,12 @@ fn check_unique_moves_ast_expr(
                     diagnostics,
                     borrow_param_map,
                 );
-                check_unique_moves_ast_expr(&arm.body, &mut arm_state, diagnostics, borrow_param_map);
+                check_unique_moves_ast_expr(
+                    &arm.body,
+                    &mut arm_state,
+                    diagnostics,
+                    borrow_param_map,
+                );
                 arm_states.push(arm_state);
             }
             merge_case_arm_move_states(expr.span, &before, &arm_states, state, diagnostics);
@@ -946,7 +966,9 @@ pub fn collect_borrow_param_positions(
 
 fn diagnostics_report_borrow_consumption(diagnostics: &[Diagnostic], name: &str) -> bool {
     let needle = format!("borrowed value `{name}` cannot be consumed");
-    diagnostics.iter().any(|diag| diag.message.contains(&needle))
+    diagnostics
+        .iter()
+        .any(|diag| diag.message.contains(&needle))
 }
 
 /// Infer additional borrow parameter positions from typed HIR usage.
@@ -976,7 +998,9 @@ pub fn infer_auto_borrow_param_positions(
 
             let mut borrowed_positions = inferred.get(&function.name).cloned().unwrap_or_default();
 
-            for (index, (param, param_ty)) in function.params.iter().zip(ft.params.iter()).enumerate() {
+            for (index, (param, param_ty)) in
+                function.params.iter().zip(ft.params.iter()).enumerate()
+            {
                 if borrowed_positions.contains(&index) || !is_unique_type(param_ty) {
                     continue;
                 }
@@ -991,12 +1015,7 @@ pub fn infer_auto_borrow_param_positions(
 
                 let mut diagnostics = Vec::new();
                 let mut state = seed_unique_function_params(function, Some(&trial_positions));
-                check_unique_moves_expr(
-                    &function.body,
-                    &mut state,
-                    &mut diagnostics,
-                    &trial_map,
-                );
+                check_unique_moves_expr(&function.body, &mut state, &mut diagnostics, &trial_map);
 
                 if !diagnostics_report_borrow_consumption(&diagnostics, param_name) {
                     borrowed_positions.insert(index);
@@ -1530,13 +1549,7 @@ fn lower_constructor_fields(
     if !has_labeled_args {
         return Some(
             args.iter()
-                .map(|arg| {
-                    lower_expr(
-                        &arg.value,
-                        None,
-                        ctx,
-                    )
-                })
+                .map(|arg| lower_expr(&arg.value, None, ctx))
                 .collect(),
         );
     }
@@ -1558,11 +1571,7 @@ fn lower_constructor_fields(
         if lowered_by_slot[field_index].is_some() {
             return None;
         }
-        lowered_by_slot[field_index] = Some(lower_expr(
-            &arg.value,
-            None,
-            ctx,
-        ));
+        lowered_by_slot[field_index] = Some(lower_expr(&arg.value, None, ctx));
     }
     lowered_by_slot.into_iter().collect()
 }
@@ -1588,9 +1597,7 @@ pub fn lower_module(
         match &decl.node {
             DeclKind::Function(fn_decl) => {
                 declarations.push(HirDecl::Function(lower_function_with_variants(
-                    fn_decl,
-                    env,
-                    &ctx,
+                    fn_decl, env, &ctx,
                 )));
                 if intrinsic_symbol_from_annotations(&fn_decl.annotations).is_some() {
                     declarations.push(HirDecl::Raw(DeclKind::Function(fn_decl.clone())));
@@ -1624,11 +1631,7 @@ pub fn lower_function(fn_decl: &FnDecl, env: &TypeEnv) -> HirFunction {
     lower_function_with_variants(fn_decl, env, &ctx)
 }
 
-fn lower_function_with_variants(
-    fn_decl: &FnDecl,
-    env: &TypeEnv,
-    ctx: &LowerCtx,
-) -> HirFunction {
+fn lower_function_with_variants(fn_decl: &FnDecl, env: &TypeEnv, ctx: &LowerCtx) -> HirFunction {
     let mut fn_ty = env
         .lookup(&fn_decl.name.node)
         .map(|scheme| scheme.ty.clone())
@@ -1668,11 +1671,7 @@ fn lower_function_with_variants(
     HirFunction {
         name: fn_decl.name.node.clone(),
         params: fn_decl.params.iter().map(lower_param).collect(),
-        body: lower_expr(
-            &fn_decl.body,
-            Some(ret_ty),
-            ctx,
-        ),
+        body: lower_expr(&fn_decl.body, Some(ret_ty), ctx),
         ty: fn_ty,
         effects,
         span: fn_decl.span,
@@ -1704,7 +1703,9 @@ fn merge_function_param_effect_hints_from_annotations(fn_decl: &FnDecl, fn_ty: &
 
 fn function_effect_hint_from_annotation(annotation: &TypeAnnotation) -> Option<EffectRow> {
     match annotation {
-        TypeAnnotation::FunctionWithEffect(_, effect, _) => Some(lower_effect_annotation(&effect.node)),
+        TypeAnnotation::FunctionWithEffect(_, effect, _) => {
+            Some(lower_effect_annotation(&effect.node))
+        }
         TypeAnnotation::Forall { ty, .. } => function_effect_hint_from_annotation(ty),
         _ => None,
     }
@@ -1779,10 +1780,9 @@ fn lower_effect_row_annotation(row: &EffectRowAnnotation) -> EffectRow {
         .effects
         .iter()
         .map(|item| {
-            let payload = item
-                .payload
-                .as_ref()
-                .map_or(Type::Unit, |ty| lower_type_annotation(&TypeAnnotation::Named(ty.clone())));
+            let payload = item.payload.as_ref().map_or(Type::Unit, |ty| {
+                lower_type_annotation(&TypeAnnotation::Named(ty.clone()))
+            });
             (kea_types::Label::new(item.name.clone()), payload)
         })
         .collect::<Vec<_>>();
@@ -1826,11 +1826,7 @@ fn intrinsic_symbol_from_annotations(annotations: &[Annotation]) -> Option<Strin
     None
 }
 
-fn lower_expr(
-    expr: &Expr,
-    ty_hint: Option<Type>,
-    ctx: &LowerCtx,
-) -> HirExpr {
+fn lower_expr(expr: &Expr, ty_hint: Option<Type>, ctx: &LowerCtx) -> HirExpr {
     // NOTE: expr_types are available via ctx.expr_types for future use by
     // monomorphization.  We do NOT use them for default_ty yet because MIR
     // handler lowering relies on Dynamic expression types.
@@ -1854,24 +1850,12 @@ fn lower_expr(
         }
         ExprKind::BinaryOp { op, left, right } => HirExprKind::Binary {
             op: op.node,
-            left: Box::new(lower_expr(
-                left,
-                None,
-                ctx,
-            )),
-            right: Box::new(lower_expr(
-                right,
-                None,
-                ctx,
-            )),
+            left: Box::new(lower_expr(left, None, ctx)),
+            right: Box::new(lower_expr(right, None, ctx)),
         },
         ExprKind::UnaryOp { op, operand } => HirExprKind::Unary {
             op: op.node,
-            operand: Box::new(lower_expr(
-                operand,
-                None,
-                ctx,
-            )),
+            operand: Box::new(lower_expr(operand, None, ctx)),
         },
         ExprKind::With {
             call,
@@ -1879,11 +1863,7 @@ fn lower_expr(
             body,
         } => {
             let lowered = desugar_with_ast_expr(call, binding.as_ref(), body);
-            return lower_expr(
-                &lowered,
-                ty_hint,
-                ctx,
-            );
+            return lower_expr(&lowered, ty_hint, ctx);
         }
         ExprKind::Call { func, args } => {
             if let ExprKind::Var(name) = &func.node
@@ -1896,11 +1876,7 @@ fn lower_expr(
                         ty: Type::Dynamic,
                         span: func.span,
                     }),
-                    args: vec![lower_expr(
-                        &args[0].value,
-                        None,
-                        ctx,
-                    )],
+                    args: vec![lower_expr(&args[0].value, None, ctx)],
                 }
             } else if let ExprKind::FieldAccess {
                 expr: qualifier,
@@ -1913,11 +1889,7 @@ fn lower_expr(
                     args.len(),
                     ctx.pattern_qualified_tags,
                 )
-                && let Some(fields) = lower_constructor_fields(
-                    args,
-                    &meta,
-                    ctx,
-                )
+                && let Some(fields) = lower_constructor_fields(args, &meta, ctx)
             {
                 HirExprKind::SumConstructor {
                     sum_type: meta.sum_type,
@@ -1927,70 +1899,35 @@ fn lower_expr(
                 }
             } else {
                 HirExprKind::Call {
-                    func: Box::new(lower_expr(
-                        func,
-                        None,
-                        ctx,
-                    )),
+                    func: Box::new(lower_expr(func, None, ctx)),
                     args: args
                         .iter()
-                        .map(|arg| {
-                            lower_expr(
-                                &arg.value,
-                                None,
-                                ctx,
-                            )
-                        })
+                        .map(|arg| lower_expr(&arg.value, None, ctx))
                         .collect(),
                 }
             }
         }
         ExprKind::Lambda { params, body, .. } => HirExprKind::Lambda {
             params: params.iter().map(lower_param).collect(),
-            body: Box::new(lower_expr(
-                body,
-                None,
-                ctx,
-            )),
+            body: Box::new(lower_expr(body, None, ctx)),
         },
         ExprKind::Let { pattern, value, .. } => HirExprKind::Let {
             pattern: lower_pattern(pattern),
-            value: Box::new(lower_expr(
-                value,
-                None,
-                ctx,
-            )),
+            value: Box::new(lower_expr(value, None, ctx)),
         },
         ExprKind::If {
             condition,
             then_branch,
             else_branch,
         } => HirExprKind::If {
-            condition: Box::new(lower_expr(
-                condition,
-                None,
-                ctx,
-            )),
-            then_branch: Box::new(lower_expr(
-                then_branch,
-                ty_hint.clone(),
-                ctx,
-            )),
-            else_branch: else_branch.as_ref().map(|expr| {
-                Box::new(lower_expr(
-                    expr,
-                    ty_hint.clone(),
-                    ctx,
-                ))
-            }),
+            condition: Box::new(lower_expr(condition, None, ctx)),
+            then_branch: Box::new(lower_expr(then_branch, ty_hint.clone(), ctx)),
+            else_branch: else_branch
+                .as_ref()
+                .map(|expr| Box::new(lower_expr(expr, ty_hint.clone(), ctx))),
         },
         ExprKind::Case { scrutinee, arms } => {
-            if let Some(case_kind) = lower_bool_case(
-                scrutinee,
-                arms,
-                ty_hint.clone(),
-                ctx,
-            ) {
+            if let Some(case_kind) = lower_bool_case(scrutinee, arms, ty_hint.clone(), ctx) {
                 case_kind
             } else {
                 HirExprKind::Raw(expr.node.clone())
@@ -2008,11 +1945,7 @@ fn lower_expr(
                         } else {
                             None
                         };
-                        lower_expr(
-                            inner,
-                            hint,
-                            ctx,
-                        )
+                        lower_expr(inner, hint, ctx)
                     })
                     .collect(),
             )
@@ -2020,13 +1953,7 @@ fn lower_expr(
         ExprKind::Tuple(exprs) => HirExprKind::Tuple(
             exprs
                 .iter()
-                .map(|inner| {
-                    lower_expr(
-                        inner,
-                        None,
-                        ctx,
-                    )
-                })
+                .map(|inner| lower_expr(inner, None, ctx))
                 .collect(),
         ),
         ExprKind::Record {
@@ -2037,24 +1964,13 @@ fn lower_expr(
             let lowered_fields = fields
                 .iter()
                 .map(|(field_name, field_value)| {
-                    (
-                        field_name.node.clone(),
-                        lower_expr(
-                            field_value,
-                            None,
-                            ctx,
-                        ),
-                    )
+                    (field_name.node.clone(), lower_expr(field_value, None, ctx))
                 })
                 .collect();
             if let Some(base) = spread {
                 HirExprKind::RecordUpdate {
                     record_type: name.node.clone(),
-                    base: Box::new(lower_expr(
-                        base,
-                        None,
-                        ctx,
-                    )),
+                    base: Box::new(lower_expr(base, None, ctx)),
                     fields: lowered_fields,
                 }
             } else {
@@ -2065,22 +1981,11 @@ fn lower_expr(
             }
         }
         ExprKind::Update { base, fields } => {
-            let lowered_base = lower_expr(
-                base,
-                None,
-                ctx,
-            );
+            let lowered_base = lower_expr(base, None, ctx);
             let lowered_fields = fields
                 .iter()
                 .map(|(field_name, field_value)| {
-                    (
-                        field_name.node.clone(),
-                        lower_expr(
-                            field_value,
-                            None,
-                            ctx,
-                        ),
-                    )
+                    (field_name.node.clone(), lower_expr(field_value, None, ctx))
                 })
                 .collect();
             let record_type = match &lowered_base.ty {
@@ -2104,14 +2009,12 @@ fn lower_expr(
                 } else {
                     HirExprKind::Raw(expr.node.clone())
                 }
-            } else if let Some(meta) =
-                resolve_unqualified_constructor_meta(&name.node, args.len(), ctx.pattern_variant_tags)
-            {
-                if let Some(fields) = lower_constructor_fields(
-                    args,
-                    &meta,
-                    ctx,
-                ) {
+            } else if let Some(meta) = resolve_unqualified_constructor_meta(
+                &name.node,
+                args.len(),
+                ctx.pattern_variant_tags,
+            ) {
+                if let Some(fields) = lower_constructor_fields(args, &meta, ctx) {
                     HirExprKind::SumConstructor {
                         sum_type: meta.sum_type,
                         variant: name.node.clone(),
@@ -2130,29 +2033,22 @@ fn lower_expr(
             field,
         } => {
             if let ExprKind::Var(type_name) = &qualifier.node {
-                if let Some(tag) =
-                    ctx.qualified_variant_tags.get(&(type_name.clone(), field.node.clone()))
+                if let Some(tag) = ctx
+                    .qualified_variant_tags
+                    .get(&(type_name.clone(), field.node.clone()))
                 {
                     HirExprKind::Lit(Lit::Int(*tag))
                 } else if is_namespace_qualifier(type_name) {
                     HirExprKind::Var(format!("{type_name}.{}", field.node))
                 } else {
                     HirExprKind::FieldAccess {
-                        expr: Box::new(lower_expr(
-                            qualifier,
-                            None,
-                            ctx,
-                        )),
+                        expr: Box::new(lower_expr(qualifier, None, ctx)),
                         field: field.node.clone(),
                     }
                 }
             } else {
                 HirExprKind::FieldAccess {
-                    expr: Box::new(lower_expr(
-                        qualifier,
-                        None,
-                        ctx,
-                    )),
+                    expr: Box::new(lower_expr(qualifier, None, ctx)),
                     field: field.node.clone(),
                 }
             }
@@ -2162,50 +2058,30 @@ fn lower_expr(
             clauses,
             then_clause,
         } if is_catch_desugar_shape(clauses, then_clause.as_deref()) => HirExprKind::Catch {
-            expr: Box::new(lower_expr(
-                handled,
-                None,
-                ctx,
-            )),
+            expr: Box::new(lower_expr(handled, None, ctx)),
         },
         ExprKind::Handle {
             expr: handled,
             clauses,
             then_clause,
         } => HirExprKind::Handle {
-            expr: Box::new(lower_expr(
-                handled,
-                None,
-                ctx,
-            )),
+            expr: Box::new(lower_expr(handled, None, ctx)),
             clauses: clauses
                 .iter()
                 .map(|clause| HirHandleClause {
                     effect: clause.effect.node.clone(),
                     operation: clause.operation.node.clone(),
                     args: clause.args.iter().map(lower_pattern).collect(),
-                    body: lower_expr(
-                        &clause.body,
-                        None,
-                        ctx,
-                    ),
+                    body: lower_expr(&clause.body, None, ctx),
                     span: clause.span,
                 })
                 .collect(),
-            then_clause: then_clause.as_ref().map(|then_expr| {
-                Box::new(lower_expr(
-                    then_expr,
-                    None,
-                    ctx,
-                ))
-            }),
+            then_clause: then_clause
+                .as_ref()
+                .map(|then_expr| Box::new(lower_expr(then_expr, None, ctx))),
         },
         ExprKind::Resume { value } => HirExprKind::Resume {
-            value: Box::new(lower_expr(
-                value,
-                None,
-                ctx,
-            )),
+            value: Box::new(lower_expr(value, None, ctx)),
         },
         other => HirExprKind::Raw(other.clone()),
     };
@@ -2254,9 +2130,11 @@ fn lower_expr(
                 Type::Int
             } else if default_ty != Type::Dynamic {
                 default_ty
-            } else if let Some(meta) =
-                resolve_unqualified_constructor_meta(&name.node, args.len(), ctx.pattern_variant_tags)
-            {
+            } else if let Some(meta) = resolve_unqualified_constructor_meta(
+                &name.node,
+                args.len(),
+                ctx.pattern_variant_tags,
+            ) {
                 Type::Sum(kea_types::SumType {
                     name: meta.sum_type,
                     type_args: vec![],
@@ -2271,7 +2149,10 @@ fn lower_expr(
             field,
         } => {
             if let ExprKind::Var(type_name) = &qualifier.node {
-                if ctx.qualified_variant_tags.contains_key(&(type_name.clone(), field.node.clone())) {
+                if ctx
+                    .qualified_variant_tags
+                    .contains_key(&(type_name.clone(), field.node.clone()))
+                {
                     Type::Int
                 } else {
                     default_ty
@@ -2404,21 +2285,11 @@ fn lower_bool_case(
     ty_hint: Option<Type>,
     ctx: &LowerCtx,
 ) -> Option<HirExprKind> {
-    if let Some(kind) = lower_literal_case(
-        scrutinee,
-        arms,
-        ty_hint.clone(),
-        ctx,
-    ) {
+    if let Some(kind) = lower_literal_case(scrutinee, arms, ty_hint.clone(), ctx) {
         return Some(kind);
     }
 
-    if let Some(kind) = lower_record_case(
-        scrutinee,
-        arms,
-        ty_hint.clone(),
-        ctx,
-    ) {
+    if let Some(kind) = lower_record_case(scrutinee, arms, ty_hint.clone(), ctx) {
         return Some(kind);
     }
 
@@ -2427,11 +2298,7 @@ fn lower_bool_case(
     }
 
     let return_ty = ty_hint.clone().unwrap_or(Type::Dynamic);
-    let lowered_scrutinee = lower_expr(
-        scrutinee,
-        None,
-        ctx,
-    );
+    let lowered_scrutinee = lower_expr(scrutinee, None, ctx);
     let safe_scrutinee = matches!(
         lowered_scrutinee.kind,
         HirExprKind::Var(_) | HirExprKind::Lit(_)
@@ -2460,11 +2327,7 @@ fn lower_bool_case(
     };
 
     let lower_branch_with_bind = |body: &Expr, bind: Option<String>| {
-        let lowered_body = lower_expr(
-            body,
-            ty_hint.clone(),
-            ctx,
-        );
+        let lowered_body = lower_expr(body, ty_hint.clone(), ctx);
         match bind {
             Some(name) => HirExpr {
                 kind: HirExprKind::Block(vec![
@@ -2622,22 +2485,18 @@ fn lower_literal_case(
         }
     }
 
-    let has_true = literal_arms
-        .iter()
-        .any(|(matcher, _, _, _, _, _)| {
-            matches!(
-                matcher,
-                LiteralCaseMatcher::Literal(LiteralCaseValue::Bool(true))
-            )
-        });
-    let has_false = literal_arms
-        .iter()
-        .any(|(matcher, _, _, _, _, _)| {
-            matches!(
-                matcher,
-                LiteralCaseMatcher::Literal(LiteralCaseValue::Bool(false))
-            )
-        });
+    let has_true = literal_arms.iter().any(|(matcher, _, _, _, _, _)| {
+        matches!(
+            matcher,
+            LiteralCaseMatcher::Literal(LiteralCaseValue::Bool(true))
+        )
+    });
+    let has_false = literal_arms.iter().any(|(matcher, _, _, _, _, _)| {
+        matches!(
+            matcher,
+            LiteralCaseMatcher::Literal(LiteralCaseValue::Bool(false))
+        )
+    });
     if fallback_arms.is_empty()
         && (has_true || has_false)
         && arms.iter().all(|arm| arm.guard.is_none())
@@ -2654,11 +2513,7 @@ fn lower_literal_case(
     // missing-value paths for non-Unit expressions.
     let return_ty = ty_hint.clone().unwrap_or(Type::Dynamic);
 
-    let lowered_scrutinee = lower_expr(
-        scrutinee,
-        None,
-        ctx,
-    );
+    let lowered_scrutinee = lower_expr(scrutinee, None, ctx);
     let safe_scrutinee = matches!(
         lowered_scrutinee.kind,
         HirExprKind::Var(_) | HirExprKind::Lit(_)
@@ -2696,21 +2551,13 @@ fn lower_literal_case(
     for fallback in fallback_arms.into_iter().rev() {
         match fallback {
             LiteralFallbackArm::Wild { body, guard } => {
-                let then_branch = lower_expr(
-                    body,
-                    ty_hint.clone(),
-                    ctx,
-                );
+                let then_branch = lower_expr(body, ty_hint.clone(), ctx);
                 let Some(guard_expr) = guard else {
                     // Unconditional fallback shadows any later fallback arm.
                     else_expr = Some(then_branch);
                     continue;
                 };
-                let condition = lower_expr(
-                    guard_expr,
-                    None,
-                    ctx,
-                );
+                let condition = lower_expr(guard_expr, None, ctx);
                 let next_else = else_expr.clone().or_else(|| {
                     if return_ty == Type::Unit {
                         Some(unit_else.clone())
@@ -2740,11 +2587,7 @@ fn lower_literal_case(
                 let then_branch = HirExpr {
                     kind: HirExprKind::Block(vec![
                         bind_expr.clone(),
-                        lower_expr(
-                            body,
-                            ty_hint.clone(),
-                            ctx,
-                        ),
+                        lower_expr(body, ty_hint.clone(), ctx),
                     ]),
                     ty: return_ty.clone(),
                     span: scrutinee.span,
@@ -2755,14 +2598,7 @@ fn lower_literal_case(
                     continue;
                 };
                 let condition = HirExpr {
-                    kind: HirExprKind::Block(vec![
-                        bind_expr,
-                        lower_expr(
-                            guard_expr,
-                            None,
-                            ctx,
-                        ),
-                    ]),
+                    kind: HirExprKind::Block(vec![bind_expr, lower_expr(guard_expr, None, ctx)]),
                     ty: Type::Bool,
                     span: scrutinee.span,
                 };
@@ -2831,11 +2667,7 @@ fn lower_literal_case(
                     },
                     span: scrutinee.span,
                 };
-                lower_expr(
-                    &qualified_const,
-                    None,
-                    ctx,
-                )
+                lower_expr(&qualified_const, None, ctx)
             }
         };
         let mut condition = HirExpr {
@@ -2874,11 +2706,7 @@ fn lower_literal_case(
             };
         }
         if let Some(guard_expr) = guard {
-            let guard_expr = lower_expr(
-                guard_expr,
-                None,
-                ctx,
-            );
+            let guard_expr = lower_expr(guard_expr, None, ctx);
             let mut binds =
                 build_literal_arm_bindings(bind_name.as_deref(), &payload_binds, &scrutinee_expr);
             let lowered_guard = if binds.is_empty() {
@@ -2987,11 +2815,7 @@ fn lower_record_case(
 
     let return_ty = ty_hint.clone().unwrap_or(Type::Dynamic);
 
-    let lowered_scrutinee = lower_expr(
-        scrutinee,
-        None,
-        ctx,
-    );
+    let lowered_scrutinee = lower_expr(scrutinee, None, ctx);
     let safe_scrutinee = matches!(
         lowered_scrutinee.kind,
         HirExprKind::Var(_) | HirExprKind::Lit(_)
@@ -3029,21 +2853,13 @@ fn lower_record_case(
     for fallback in fallback_arms.into_iter().rev() {
         match fallback {
             RecordFallbackArm::Wild { body, guard } => {
-                let then_branch = lower_expr(
-                    body,
-                    ty_hint.clone(),
-                    ctx,
-                );
+                let then_branch = lower_expr(body, ty_hint.clone(), ctx);
                 let Some(guard_expr) = guard else {
                     // Unconditional fallback shadows any later fallback arm.
                     else_expr = Some(then_branch);
                     continue;
                 };
-                let condition = lower_expr(
-                    guard_expr,
-                    None,
-                    ctx,
-                );
+                let condition = lower_expr(guard_expr, None, ctx);
                 else_expr = Some(HirExpr {
                     kind: HirExprKind::If {
                         condition: Box::new(condition),
@@ -3060,11 +2876,7 @@ fn lower_record_case(
             }
             RecordFallbackArm::Var { name, body, guard } => {
                 let binds = build_record_arm_bindings(Some(name.as_str()), &[], &scrutinee_expr);
-                let then_body = lower_expr(
-                    body,
-                    ty_hint.clone(),
-                    ctx,
-                );
+                let then_body = lower_expr(body, ty_hint.clone(), ctx);
                 let then_branch = if binds.is_empty() {
                     then_body
                 } else {
@@ -3082,11 +2894,7 @@ fn lower_record_case(
                     span: scrutinee.span,
                 });
                 if let Some(guard_expr) = guard {
-                    let lowered_guard = lower_expr(
-                        guard_expr,
-                        None,
-                        ctx,
-                    );
+                    let lowered_guard = lower_expr(guard_expr, None, ctx);
                     let mut guard_bindings =
                         build_record_arm_bindings(Some(name.as_str()), &[], &scrutinee_expr);
                     let condition = if guard_bindings.is_empty() {
@@ -3155,11 +2963,7 @@ fn lower_record_case(
         }
 
         if let Some(guard_expr) = guard_expr {
-            let guard_expr = lower_expr(
-                guard_expr,
-                None,
-                ctx,
-            );
+            let guard_expr = lower_expr(guard_expr, None, ctx);
             let mut binds =
                 build_record_arm_bindings(bind_name.as_deref(), &field_binds, &scrutinee_expr);
             let lowered_guard = if binds.is_empty() {
@@ -3230,7 +3034,9 @@ fn literal_case_values_from_pattern(
         PatternKind::Lit(lit @ Lit::Int(_))
         | PatternKind::Lit(lit @ Lit::Float(_))
         | PatternKind::Lit(lit @ Lit::Bool(_)) => Some((
-            vec![LiteralCaseMatcher::Literal(literal_case_value_from_lit(lit)?)],
+            vec![LiteralCaseMatcher::Literal(literal_case_value_from_lit(
+                lit,
+            )?)],
             None,
             Vec::new(),
             Vec::new(),
@@ -3618,11 +3424,7 @@ fn lower_arm_body(
     ty_hint: Option<Type>,
     ctx: &LowerCtx,
 ) -> HirExpr {
-    let lowered_body = lower_expr(
-        body,
-        ty_hint,
-        ctx,
-    );
+    let lowered_body = lower_expr(body, ty_hint, ctx);
     let mut bind_exprs =
         build_literal_arm_bindings(bind_name.as_deref(), &payload_binds, scrutinee_expr);
     if bind_exprs.is_empty() {
@@ -4035,11 +3837,7 @@ fn lower_record_arm_body(
     ty_hint: Option<Type>,
     ctx: &LowerCtx,
 ) -> HirExpr {
-    let lowered_body = lower_expr(
-        body,
-        ty_hint,
-        ctx,
-    );
+    let lowered_body = lower_expr(body, ty_hint, ctx);
     let mut bind_exprs =
         build_record_arm_bindings(bind_name.as_deref(), &field_binds, scrutinee_expr);
     if bind_exprs.is_empty() {
@@ -4590,13 +4388,15 @@ mod tests {
         else {
             panic!("expected const-pattern condition to compare against const expression");
         };
-        assert!(matches!(
-            right.kind,
-            HirExprKind::FieldAccess { ref field, .. } if field == "answer"
-        ) || matches!(
-            right.kind,
-            HirExprKind::Var(ref name) if name == "Math.answer"
-        ));
+        assert!(
+            matches!(
+                right.kind,
+                HirExprKind::FieldAccess { ref field, .. } if field == "answer"
+            ) || matches!(
+                right.kind,
+                HirExprKind::Var(ref name) if name == "Math.answer"
+            )
+        );
     }
 
     #[test]

@@ -2638,12 +2638,10 @@ fn type_mismatch_message(
             format!("case arms have different types: `{expected}` vs `{actual}`"),
             Some("all arms must return the same type".into()),
         ),
-        Reason::RecordField { label } => {
-            (
-                format!("field `{label}` has type `{expected}`, but got `{actual}`"),
-                None,
-            )
-        }
+        Reason::RecordField { label } => (
+            format!("field `{label}` has type `{expected}`, but got `{actual}`"),
+            None,
+        ),
         Reason::TraitBound { trait_name } => (
             format!("type `{actual}` does not implement trait `{trait_name}`"),
             Some(format!(

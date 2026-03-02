@@ -1253,8 +1253,7 @@ impl RecordRegistry {
 
             let mut fields: Vec<(Label, Type)> = Vec::new();
             for (name, ann) in &def.fields {
-                match resolve_annotation_with_type_params(ann, &type_param_scope, self, sum_types)
-                {
+                match resolve_annotation_with_type_params(ann, &type_param_scope, self, sum_types) {
                     Some(ty) => fields.push((Label::new(name.node.clone()), ty)),
                     None => {
                         for rollback in defs {
@@ -1422,19 +1421,11 @@ impl RecordRegistry {
     ) -> Result<(), Diagnostic> {
         for (name, info) in &self.aliases {
             let mut unknown = Vec::new();
-            collect_unknown_type_names(
-                &info.target,
-                &info.params,
-                self,
-                sum_types,
-                &mut unknown,
-            );
+            collect_unknown_type_names(&info.target, &info.params, self, sum_types, &mut unknown);
             if let Some(first_unknown) = unknown.first() {
                 let mut diag = Diagnostic::error(
                     Category::TypeMismatch,
-                    format!(
-                        "unknown type `{first_unknown}` in alias `{name}` target",
-                    ),
+                    format!("unknown type `{first_unknown}` in alias `{name}` target",),
                 );
                 if let Some(span) = info.definition_span {
                     diag = diag.at(SourceLocation {
@@ -3777,7 +3768,7 @@ tie it to at least one function-typed parameter effect annotation",
                             .iter()
                             .map(|s| format!("`{s}`"))
                             .collect::<Vec<_>>()
-                        .join(", "),
+                            .join(", "),
                     ),
                 ));
             }
@@ -6096,11 +6087,8 @@ fn validate_annotation_arguments(
             }
             if !ann.args.is_empty() {
                 diagnostics.push(
-                    Diagnostic::error(
-                        Category::TypeError,
-                        "`@fip` does not accept arguments",
-                    )
-                    .at(span_to_loc(ann.span)),
+                    Diagnostic::error(Category::TypeError, "`@fip` does not accept arguments")
+                        .at(span_to_loc(ann.span)),
                 );
             }
         }
@@ -7132,11 +7120,9 @@ pub fn resolve_annotation(
                 return resolve_decimal_annotation(args);
             }
             match (name.as_str(), args.as_slice()) {
-                ("List", [elem]) if !has_named_type_definition("List", records, sum_types) => {
-                    Some(Type::List(Box::new(resolve_annotation(
-                        elem, records, sum_types,
-                    )?)))
-                }
+                ("List", [elem]) if !has_named_type_definition("List", records, sum_types) => Some(
+                    Type::List(Box::new(resolve_annotation(elem, records, sum_types)?)),
+                ),
                 ("Option", [inner]) => Some(Type::Option(Box::new(resolve_annotation(
                     inner, records, sum_types,
                 )?))),
@@ -8311,9 +8297,7 @@ fn infer_lambda_type_effect_row(
 
     let resolved_row = effect_unifier.substitution.apply_row(&root.row);
 
-    EffectRow {
-        row: resolved_row,
-    }
+    EffectRow { row: resolved_row }
 }
 
 fn callable_effect_metadata_from_call_return_type(
@@ -9225,8 +9209,9 @@ pub fn resolve_declared_effect_row(
             let mut fields = Vec::new();
             for item in &row.effects {
                 let payload = match &item.payload {
-                    Some(name) => resolve_effect_payload_type(name, Some(records))
-                        .unwrap_or(Type::Unit),
+                    Some(name) => {
+                        resolve_effect_payload_type(name, Some(records)).unwrap_or(Type::Unit)
+                    }
                     None => Type::Unit,
                 };
                 fields.push((Label::new(&item.name), payload));
@@ -10679,9 +10664,7 @@ fn pattern_is_irrefutable(pattern: &kea_ast::Pattern) -> bool {
         PatternKind::Record { fields, .. } | PatternKind::AnonRecord { fields, .. } => fields
             .iter()
             .all(|(_, field_pattern)| pattern_is_irrefutable(field_pattern)),
-        PatternKind::Lit(_) | PatternKind::Constructor { .. } | PatternKind::Const { .. } => {
-            false
-        }
+        PatternKind::Lit(_) | PatternKind::Constructor { .. } | PatternKind::Const { .. } => false,
         PatternKind::Or(_) => false, // or-patterns are refutable
         PatternKind::As { pattern, .. } => pattern_is_irrefutable(pattern),
         // List patterns are refutable — [] doesn't match [1,2], [h,..t] doesn't match []
@@ -12086,7 +12069,9 @@ fn validate_with_target_annotation(call: &Expr, env: &TypeEnv, unifier: &mut Uni
                 "cannot use `with` here — expected a direct named function call",
             )
             .at(span_to_loc(call.span))
-            .with_help("`with` requires calling a named function whose last parameter is marked `@with`"),
+            .with_help(
+                "`with` requires calling a named function whose last parameter is marked `@with`",
+            ),
         );
         return;
     };
@@ -12177,7 +12162,9 @@ fn maybe_warn_with_ordering(exprs: &[Expr], unifier: &mut Unifier) {
             "`with` should appear before non-`let` expressions in a block",
         )
         .at(span_to_loc(with_expr.span))
-        .with_help("move this `with` above preceding expressions, keeping only `let` bindings before it")
+        .with_help(
+            "move this `with` above preceding expressions, keeping only `let` bindings before it",
+        )
         .with_code("W0902"),
     );
 }
@@ -13527,12 +13514,7 @@ fn infer_handle_expr_type(
                                 trait_name: trait_name.clone(),
                             },
                         };
-                        constrain_trait_obligation(
-                            unifier,
-                            &Type::Var(new_tv),
-                            trait_name,
-                            &prov,
-                        );
+                        constrain_trait_obligation(unifier, &Type::Var(new_tv), trait_name, &prov);
                     }
                 }
             }
@@ -13688,9 +13670,7 @@ fn infer_expr_bidir(
 
         // -- Variable reference --
         ExprKind::Var(name) => match env.lookup(name) {
-            Some(scheme) => {
-                instantiate_with_span(scheme, unifier, expr.span)
-            }
+            Some(scheme) => instantiate_with_span(scheme, unifier, expr.span),
             None => {
                 unifier.push_error(
                     Diagnostic::error(
@@ -13898,9 +13878,8 @@ fn infer_expr_bidir(
             //
             // Fresh vars let Rémy row unification determine the actual
             // payload types through constraints from function calls.
-            let mut lambda_effects = infer_lambda_type_effect_row(
-                params, &param_types, body, env, unifier,
-            );
+            let mut lambda_effects =
+                infer_lambda_type_effect_row(params, &param_types, body, env, unifier);
             for (_label, payload) in &mut lambda_effects.row.fields {
                 *payload = Type::Var(unifier.fresh_type_var());
             }
@@ -13935,14 +13914,8 @@ fn infer_expr_bidir(
                 && name == INTERP_SHOW_FN_NAME
                 && args.len() == 1
             {
-                let arg_ty = infer_expr_bidir(
-                    &args[0].value,
-                    env,
-                    unifier,
-                    records,
-                    traits,
-                    sum_types,
-                );
+                let arg_ty =
+                    infer_expr_bidir(&args[0].value, env, unifier, records, traits, sum_types);
                 constrain_trait_obligation(
                     unifier,
                     &arg_ty,
@@ -14080,7 +14053,10 @@ fn infer_expr_bidir(
                 if let Some(ambient_rv) = env.current_ambient_effect_row() {
                     let callee_open = RowType::open(
                         ft.effects.row.fields.clone(),
-                        ft.effects.row.rest.unwrap_or_else(|| unifier.fresh_row_var()),
+                        ft.effects
+                            .row
+                            .rest
+                            .unwrap_or_else(|| unifier.fresh_row_var()),
                     );
                     constrain_row_eq(
                         unifier,
@@ -15488,10 +15464,7 @@ fn infer_expr_bidir(
                             "functional update base must be a struct value",
                         )
                         .at(span_to_loc(base.span))
-                        .with_label(
-                            span_to_loc(base.span),
-                            format!("found `{other}`"),
-                        ),
+                        .with_label(span_to_loc(base.span), format!("found `{other}`")),
                     );
                     return unifier.fresh_type();
                 }
@@ -15503,10 +15476,7 @@ fn infer_expr_bidir(
                     unifier.push_error(
                         Diagnostic::error(
                             Category::TypeMismatch,
-                            format!(
-                                "duplicate field `{}` in functional update",
-                                field_name.node
-                            ),
+                            format!("duplicate field `{}` in functional update", field_name.node),
                         )
                         .at(span_to_loc(field_name.span)),
                     );
@@ -15515,14 +15485,8 @@ fn infer_expr_bidir(
 
             for (field_name, field_expr) in fields {
                 let label = Label::new(field_name.node.clone());
-                let inferred_field_ty = infer_expr_bidir(
-                    field_expr,
-                    env,
-                    unifier,
-                    records,
-                    traits,
-                    sum_types,
-                );
+                let inferred_field_ty =
+                    infer_expr_bidir(field_expr, env, unifier, records, traits, sum_types);
                 if let Some((_, expected_field_ty)) = record_row
                     .fields
                     .iter()
@@ -16236,9 +16200,7 @@ fn report_zero_division_literal_if_present(op: BinOp, right: &Expr, unifier: &mu
         _ => return,
     };
 
-    unifier.push_error(
-        Diagnostic::error(Category::TypeError, message).at(span_to_loc(right.span)),
-    );
+    unifier.push_error(Diagnostic::error(Category::TypeError, message).at(span_to_loc(right.span)));
 }
 
 fn is_try_from_function_reference(func: &Expr) -> bool {
@@ -16292,10 +16254,7 @@ fn widened_integer_arithmetic_result_type(left: &Type, right: &Type) -> Option<T
         (lhs, Type::Int) if lhs.is_integer() => Some(Type::Int),
         (Type::IntN(left_w, left_sign), Type::IntN(right_w, right_sign)) => {
             if left_sign == right_sign {
-                Some(Type::IntN(
-                    max_int_width(*left_w, *right_w),
-                    *left_sign,
-                ))
+                Some(Type::IntN(max_int_width(*left_w, *right_w), *left_sign))
             } else {
                 // Mixed signed/unsigned arithmetic widens to `Int` in v0.
                 Some(Type::Int)
@@ -16401,7 +16360,10 @@ fn check_expr_bidir(
     traits: &TraitRegistry,
     sum_types: &SumTypeRegistry,
 ) -> Type {
-    if matches!(expr.node, ExprKind::BinaryOp { .. } | ExprKind::UnaryOp { .. }) {
+    if matches!(
+        expr.node,
+        ExprKind::BinaryOp { .. } | ExprKind::UnaryOp { .. }
+    ) {
         let _ = check_precision_literal_against_expected(expr, expected, unifier, expr.span);
     }
 
@@ -17283,14 +17245,8 @@ fn check_expr_bidir(
                 && name == INTERP_SHOW_FN_NAME
                 && args.len() == 1
             {
-                let arg_ty = infer_expr_bidir(
-                    &args[0].value,
-                    env,
-                    unifier,
-                    records,
-                    traits,
-                    sum_types,
-                );
+                let arg_ty =
+                    infer_expr_bidir(&args[0].value, env, unifier, records, traits, sum_types);
                 constrain_trait_obligation(
                     unifier,
                     &arg_ty,
@@ -18654,13 +18610,15 @@ fn resolve_annotation_with_self_and_assoc(
                     )?),
                 )),
                 ("List", [inner]) if !has_named_type_definition("List", records, sum_types) => {
-                    Some(Type::List(Box::new(resolve_annotation_with_self_and_assoc(
-                        inner,
-                        records,
-                        sum_types,
-                        self_type,
-                        assoc_types,
-                    )?)))
+                    Some(Type::List(Box::new(
+                        resolve_annotation_with_self_and_assoc(
+                            inner,
+                            records,
+                            sum_types,
+                            self_type,
+                            assoc_types,
+                        )?,
+                    )))
                 }
                 ("Map", [key, val]) => Some(Type::Map(
                     Box::new(resolve_annotation_with_self_and_assoc(
@@ -18678,15 +18636,15 @@ fn resolve_annotation_with_self_and_assoc(
                         assoc_types,
                     )?),
                 )),
-                ("Set", [inner]) => Some(Type::Set(Box::new(
-                    resolve_annotation_with_self_and_assoc(
+                ("Set", [inner]) => {
+                    Some(Type::Set(Box::new(resolve_annotation_with_self_and_assoc(
                         inner,
                         records,
                         sum_types,
                         self_type,
                         assoc_types,
-                    )?,
-                ))),
+                    )?)))
+                }
                 ("Actor", [inner]) => Some(Type::Actor(Box::new(
                     resolve_annotation_with_self_and_assoc(
                         inner,
@@ -18696,15 +18654,15 @@ fn resolve_annotation_with_self_and_assoc(
                         assoc_types,
                     )?,
                 ))),
-                ("Arc", [inner]) => Some(Type::Arc(Box::new(
-                    resolve_annotation_with_self_and_assoc(
+                ("Arc", [inner]) => {
+                    Some(Type::Arc(Box::new(resolve_annotation_with_self_and_assoc(
                         inner,
                         records,
                         sum_types,
                         self_type,
                         assoc_types,
-                    )?,
-                ))),
+                    )?)))
+                }
                 ("Stream", [inner]) => Some(Type::Stream(Box::new(
                     resolve_annotation_with_self_and_assoc(
                         inner,

@@ -265,12 +265,11 @@ fn build_isa(config: &BackendConfig) -> Result<Arc<dyn isa::TargetIsa>, CodegenE
         // CPUID and enables features like AVX that may not be available in
         // all execution environments (Rosetta, older CI runners, VMs).
         // The baseline x86_64 feature set (SSE2) is sufficient and portable.
-        let isa_builder =
-            cranelift_native::builder_with_options(false).map_err(|detail| {
-                CodegenError::Module {
-                    detail: format!("host ISA not supported: {detail}"),
-                }
-            })?;
+        let isa_builder = cranelift_native::builder_with_options(false).map_err(|detail| {
+            CodegenError::Module {
+                detail: format!("host ISA not supported: {detail}"),
+            }
+        })?;
         return isa_builder
             .finish(settings::Flags::new(flag_builder))
             .map_err(|detail| CodegenError::Module {
@@ -448,8 +447,7 @@ unsafe extern "C" fn kea_io_read_file_stub(path: *const c_char) -> *const c_char
     static EMPTY: &[u8] = b"\0";
     if path.is_null() {
         EMPTY.as_ptr() as *const c_char
-    }
-    else {
+    } else {
         let Ok(path) = (unsafe { CStr::from_ptr(path) }).to_str() else {
             return EMPTY.as_ptr() as *const c_char;
         };
@@ -510,15 +508,12 @@ fn register_jit_runtime_symbols(builder: &mut JITBuilder) {
     builder.symbol("__kea_io_write_file", kea_io_write_file_stub as *const u8);
     builder.symbol("__kea_io_read_file", kea_io_read_file_stub as *const u8);
     builder.symbol("__kea_clock_now", kea_clock_now_stub as *const u8);
-    builder.symbol("__kea_clock_monotonic", kea_clock_monotonic_stub as *const u8);
     builder.symbol(
-        "__kea_panic_div_zero",
-        kea_panic_div_zero_stub as *const u8,
+        "__kea_clock_monotonic",
+        kea_clock_monotonic_stub as *const u8,
     );
-    builder.symbol(
-        "__kea_panic_mod_zero",
-        kea_panic_mod_zero_stub as *const u8,
-    );
+    builder.symbol("__kea_panic_div_zero", kea_panic_div_zero_stub as *const u8);
+    builder.symbol("__kea_panic_mod_zero", kea_panic_mod_zero_stub as *const u8);
 }
 
 fn compile_with_jit(
@@ -1135,7 +1130,8 @@ fn execute_mir_main_jit(module: &MirModule, config: &BackendConfig) -> Result<i3
             detail: "JIT entrypoint requires zero-argument `main`".to_string(),
         });
     }
-    if !main_runtime_sig.logical_return.is_integer() && main_runtime_sig.logical_return != Type::Unit
+    if !main_runtime_sig.logical_return.is_integer()
+        && main_runtime_sig.logical_return != Type::Unit
     {
         return Err(CodegenError::UnsupportedMir {
             function: "main".to_string(),
@@ -1576,14 +1572,16 @@ fn store_record_fields(
 ) -> Result<(), CodegenError> {
     for (field_name, field_value_id) in fields {
         let field_value = get_value(values, function_name, field_value_id)?;
-        let offset = *layout.field_offsets.get(field_name).ok_or_else(|| {
-            CodegenError::UnsupportedMir {
-                function: function_name.to_string(),
-                detail: format!(
-                    "record layout `{record_type}` missing field `{field_name}` during init"
-                ),
-            }
-        })?;
+        let offset =
+            *layout
+                .field_offsets
+                .get(field_name)
+                .ok_or_else(|| CodegenError::UnsupportedMir {
+                    function: function_name.to_string(),
+                    detail: format!(
+                        "record layout `{record_type}` missing field `{field_name}` during init"
+                    ),
+                })?;
         let offset = i32::try_from(offset).map_err(|_| CodegenError::UnsupportedMir {
             function: function_name.to_string(),
             detail: format!("record field `{record_type}.{field_name}` offset does not fit i32"),
@@ -1613,15 +1611,13 @@ fn store_sum_init_payload(
     let expected_fields = *layout
         .variant_field_counts
         .get(spec.variant)
-        .ok_or_else(|| {
-        CodegenError::UnsupportedMir {
+        .ok_or_else(|| CodegenError::UnsupportedMir {
             function: function_name.to_string(),
             detail: format!(
                 "sum layout `{}` missing variant `{}` during init",
                 spec.sum_type, spec.variant
             ),
-        }
-    })?;
+        })?;
     if expected_fields as usize != spec.fields.len() {
         return Err(CodegenError::UnsupportedMir {
             function: function_name.to_string(),
@@ -1635,10 +1631,11 @@ fn store_sum_init_payload(
         });
     }
 
-    let tag_offset = i32::try_from(layout.tag_offset).map_err(|_| CodegenError::UnsupportedMir {
-        function: function_name.to_string(),
-        detail: format!("sum tag offset for `{}` does not fit i32", spec.sum_type),
-    })?;
+    let tag_offset =
+        i32::try_from(layout.tag_offset).map_err(|_| CodegenError::UnsupportedMir {
+            function: function_name.to_string(),
+            detail: format!("sum tag offset for `{}` does not fit i32", spec.sum_type),
+        })?;
     let tag_value = builder.ins().iconst(types::I32, i64::from(spec.tag));
     builder
         .ins()
@@ -1647,13 +1644,14 @@ fn store_sum_init_payload(
     for (idx, field_value_id) in spec.fields.iter().enumerate() {
         let field_value = get_value(values, function_name, field_value_id)?;
         let field_offset = layout.payload_offset + (idx as u32 * 8);
-        let field_offset = i32::try_from(field_offset).map_err(|_| CodegenError::UnsupportedMir {
-            function: function_name.to_string(),
-            detail: format!(
-                "sum payload offset `{}.{}`[{idx}] does not fit i32",
-                spec.sum_type, spec.variant
-            ),
-        })?;
+        let field_offset =
+            i32::try_from(field_offset).map_err(|_| CodegenError::UnsupportedMir {
+                function: function_name.to_string(),
+                detail: format!(
+                    "sum payload offset `{}.{}`[{idx}] does not fit i32",
+                    spec.sum_type, spec.variant
+                ),
+            })?;
         builder
             .ins()
             .store(MemFlags::new(), field_value, base_ptr, field_offset);
@@ -1754,7 +1752,12 @@ fn drop_function_for_type(ty: &Type, drop_func_ids: &DropFunctionIds) -> Option<
 fn sum_type_has_immediate_variants(ty: &Type, layout_plan: &BackendLayoutPlan) -> bool {
     drop_sum_name_for_type(ty)
         .and_then(|name| layout_plan.sums.get(name))
-        .is_some_and(|layout| layout.variant_field_counts.values().any(|count| *count == 0))
+        .is_some_and(|layout| {
+            layout
+                .variant_field_counts
+                .values()
+                .any(|count| *count == 0)
+        })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1787,7 +1790,10 @@ fn state_cell_rc_mode_for_type(ty: &Type, layout_plan: &BackendLayoutPlan) -> St
             StateCellRcMode::Never
         };
     };
-    let has_unit_variant = layout.variant_field_counts.values().any(|count| *count == 0);
+    let has_unit_variant = layout
+        .variant_field_counts
+        .values()
+        .any(|count| *count == 0);
     let has_payload_variant = layout.variant_field_counts.values().any(|count| *count > 0);
     if has_payload_variant && has_unit_variant {
         let max_immediate_tag = i64::try_from(layout.variant_field_counts.len())
@@ -2055,9 +2061,13 @@ fn emit_generic_release<M: Module>(
     let after_release_block = builder.create_block();
     let tagged_bits = builder.ins().band_imm(payload_ptr, 1);
     let is_tagged_thin = builder.ins().icmp_imm(IntCC::NotEqual, tagged_bits, 0);
-    builder
-        .ins()
-        .brif(is_tagged_thin, skip_release_block, &[], do_release_block, &[]);
+    builder.ins().brif(
+        is_tagged_thin,
+        skip_release_block,
+        &[],
+        do_release_block,
+        &[],
+    );
     builder.switch_to_block(skip_release_block);
     builder.ins().jump(after_release_block, &[]);
 
@@ -2171,9 +2181,11 @@ fn emit_state_cell_flag_and_retain(
             let join_block = builder.create_block();
             builder.append_block_param(join_block, types::I8);
 
-            let is_immediate = builder
-                .ins()
-                .icmp_imm(IntCC::UnsignedLessThanOrEqual, payload_value, max_immediate_tag);
+            let is_immediate = builder.ins().icmp_imm(
+                IntCC::UnsignedLessThanOrEqual,
+                payload_value,
+                max_immediate_tag,
+            );
             builder
                 .ins()
                 .brif(is_immediate, immediate_block, &[], managed_block, &[]);
@@ -2260,13 +2272,14 @@ fn define_record_drop_function<M: Module>(
     drop_func_ids: &DropFunctionIds,
     free_func_id: Option<FuncId>,
 ) -> Result<(), CodegenError> {
-    let func_id = *drop_func_ids
-        .records
-        .get(type_name)
-        .ok_or_else(|| CodegenError::UnsupportedMir {
-            function: type_name.to_string(),
-            detail: format!("missing declared drop function for record `{type_name}`"),
-        })?;
+    let func_id =
+        *drop_func_ids
+            .records
+            .get(type_name)
+            .ok_or_else(|| CodegenError::UnsupportedMir {
+                function: type_name.to_string(),
+                detail: format!("missing declared drop function for record `{type_name}`"),
+            })?;
 
     let mut context = module.make_context();
     let ptr_ty = module.target_config().pointer_type();
@@ -2357,13 +2370,14 @@ fn define_sum_drop_function<M: Module>(
     drop_func_ids: &DropFunctionIds,
     free_func_id: Option<FuncId>,
 ) -> Result<(), CodegenError> {
-    let func_id = *drop_func_ids
-        .sums
-        .get(type_name)
-        .ok_or_else(|| CodegenError::UnsupportedMir {
-            function: type_name.to_string(),
-            detail: format!("missing declared drop function for sum `{type_name}`"),
-        })?;
+    let func_id =
+        *drop_func_ids
+            .sums
+            .get(type_name)
+            .ok_or_else(|| CodegenError::UnsupportedMir {
+                function: type_name.to_string(),
+                detail: format!("missing declared drop function for sum `{type_name}`"),
+            })?;
 
     let mut context = module.make_context();
     let ptr_ty = module.target_config().pointer_type();
@@ -2387,7 +2401,10 @@ fn define_sum_drop_function<M: Module>(
             function: type_name.to_string(),
             detail: "drop function missing payload parameter".to_string(),
         })?;
-    let has_unit_variant = layout.variant_field_counts.values().any(|count| *count == 0);
+    let has_unit_variant = layout
+        .variant_field_counts
+        .values()
+        .any(|count| *count == 0);
     let has_payload_variant = layout.variant_field_counts.values().any(|count| *count > 0);
     let max_immediate_tag = if has_unit_variant && has_payload_variant {
         Some(
@@ -2420,10 +2437,11 @@ fn define_sum_drop_function<M: Module>(
         module.clear_context(&mut context);
         return Ok(());
     }
-    let tag_offset = i32::try_from(layout.tag_offset).map_err(|_| CodegenError::UnsupportedMir {
-        function: type_name.to_string(),
-        detail: format!("sum `{type_name}` tag offset does not fit i32"),
-    })?;
+    let tag_offset =
+        i32::try_from(layout.tag_offset).map_err(|_| CodegenError::UnsupportedMir {
+            function: type_name.to_string(),
+            detail: format!("sum `{type_name}` tag offset does not fit i32"),
+        })?;
     let payload_offset =
         i32::try_from(layout.payload_offset).map_err(|_| CodegenError::UnsupportedMir {
             function: type_name.to_string(),
@@ -2447,15 +2465,24 @@ fn define_sum_drop_function<M: Module>(
                 }
             }
             if field_types.iter().any(is_managed_heap_type) {
-                Some((*tag, field_types.as_slice(), self_field_count, self_field_index))
+                Some((
+                    *tag,
+                    field_types.as_slice(),
+                    self_field_count,
+                    self_field_index,
+                ))
             } else {
                 None
             }
         })
         .collect::<Vec<_>>();
     variants.sort_by_key(|(tag, _, _, _)| *tag);
-    let iterative_self_chain_supported = variants.iter().all(|(_, _, self_count, _)| *self_count <= 1)
-        && variants.iter().any(|(_, _, self_count, _)| *self_count == 1);
+    let iterative_self_chain_supported = variants
+        .iter()
+        .all(|(_, _, self_count, _)| *self_count <= 1)
+        && variants
+            .iter()
+            .any(|(_, _, self_count, _)| *self_count == 1);
 
     if iterative_self_chain_supported {
         let loop_block = builder.create_block();
@@ -2473,10 +2500,11 @@ fn define_sum_drop_function<M: Module>(
         if let Some(max_tag) = max_immediate_tag {
             let pointer_block = builder.create_block();
             let max_tag_value = builder.ins().iconst(ptr_ty, max_tag);
-            let is_immediate =
-                builder
-                    .ins()
-                    .icmp(IntCC::UnsignedLessThanOrEqual, current_payload_ptr, max_tag_value);
+            let is_immediate = builder.ins().icmp(
+                IntCC::UnsignedLessThanOrEqual,
+                current_payload_ptr,
+                max_tag_value,
+            );
             builder
                 .ins()
                 .brif(is_immediate, ret_block, &[], pointer_block, &[]);
@@ -2492,9 +2520,10 @@ fn define_sum_drop_function<M: Module>(
             .brif(is_zero, unique_block, &[], ret_block, &[]);
 
         builder.switch_to_block(unique_block);
-        let tag_value = builder
-            .ins()
-            .load(types::I32, MemFlags::new(), current_payload_ptr, tag_offset);
+        let tag_value =
+            builder
+                .ins()
+                .load(types::I32, MemFlags::new(), current_payload_ptr, tag_offset);
         let mut check_block = unique_block;
         for (idx, (variant_tag, field_types, _self_count, self_field_index)) in
             variants.iter().enumerate()
@@ -2536,9 +2565,10 @@ fn define_sum_drop_function<M: Module>(
                             "sum `{type_name}` variant tag `{variant_tag}` field offset overflow"
                         ),
                     })?;
-                let field_ptr = builder
-                    .ins()
-                    .load(ptr_ty, MemFlags::new(), current_payload_ptr, field_offset);
+                let field_ptr =
+                    builder
+                        .ins()
+                        .load(ptr_ty, MemFlags::new(), current_payload_ptr, field_offset);
                 if self_field_index.is_some_and(|self_idx| self_idx == field_idx)
                     && matches!(field_ty, Type::Sum(sum_ty) if sum_ty.name == type_name)
                 {
@@ -2623,9 +2653,13 @@ fn define_sum_drop_function<M: Module>(
 
                 let expected_tag = builder.ins().iconst(types::I32, i64::from(*variant_tag));
                 let is_match = builder.ins().icmp(IntCC::Equal, tag_value, expected_tag);
-                builder
-                    .ins()
-                    .brif(is_match, variant_release_block, &[], next_check_or_free, &[]);
+                builder.ins().brif(
+                    is_match,
+                    variant_release_block,
+                    &[],
+                    next_check_or_free,
+                    &[],
+                );
 
                 builder.switch_to_block(variant_release_block);
                 for (field_idx, field_ty) in field_types.iter().enumerate() {
@@ -2647,9 +2681,10 @@ fn define_sum_drop_function<M: Module>(
                                 "sum `{type_name}` variant tag `{variant_tag}` field offset overflow"
                             ),
                         })?;
-                    let field_ptr = builder
-                        .ins()
-                        .load(ptr_ty, MemFlags::new(), payload_ptr, field_offset);
+                    let field_ptr =
+                        builder
+                            .ins()
+                            .load(ptr_ty, MemFlags::new(), payload_ptr, field_offset);
                     emit_typed_release(
                         module,
                         &mut builder,
@@ -2935,7 +2970,9 @@ fn lower_instruction<M: Module>(
                 .copied()
                 .ok_or_else(|| CodegenError::UnsupportedMir {
                     function: function_name.to_string(),
-                    detail: format!("record token-init join block missing result for `{record_type}`"),
+                    detail: format!(
+                        "record token-init join block missing result for `{record_type}`"
+                    ),
                 })?;
             values.insert(dest.clone(), result_ptr);
             Ok(false)
@@ -2997,7 +3034,11 @@ fn lower_instruction<M: Module>(
                         function: function_name.to_string(),
                         detail: format!("sum layout `{sum_type}` not found"),
                     })?;
-            if layout.variant_field_counts.values().any(|count| *count == 0) {
+            if layout
+                .variant_field_counts
+                .values()
+                .any(|count| *count == 0)
+            {
                 return Err(CodegenError::UnsupportedMir {
                     function: function_name.to_string(),
                     detail: format!(
@@ -3101,7 +3142,11 @@ fn lower_instruction<M: Module>(
                         function: function_name.to_string(),
                         detail: format!("sum layout `{sum_type}` not found"),
                     })?;
-            if layout.variant_field_counts.values().any(|count| *count == 0) {
+            if layout
+                .variant_field_counts
+                .values()
+                .any(|count| *count == 0)
+            {
                 return Err(CodegenError::UnsupportedMir {
                     function: function_name.to_string(),
                     detail: format!(
@@ -3466,18 +3511,11 @@ fn lower_instruction<M: Module>(
                 STATE_CELL_PAYLOAD_SIZE,
                 "state cell allocation requested but malloc import was not declared",
             )?;
-            let managed_flag = emit_state_cell_flag_and_retain(
-                builder,
-                initial,
-                initial_rc_mode,
-                ptr_ty,
-            );
-            builder.ins().store(
-                MemFlags::new(),
-                initial,
-                cell_ptr,
-                STATE_CELL_VALUE_OFFSET,
-            );
+            let managed_flag =
+                emit_state_cell_flag_and_retain(builder, initial, initial_rc_mode, ptr_ty);
+            builder
+                .ins()
+                .store(MemFlags::new(), initial, cell_ptr, STATE_CELL_VALUE_OFFSET);
             builder.ins().store(
                 MemFlags::new(),
                 managed_flag,
@@ -3491,12 +3529,18 @@ fn lower_instruction<M: Module>(
             let ptr_ty = module.target_config().pointer_type();
             let cell_ptr = get_value(values, function_name, cell)?;
             let cell_ptr = coerce_value_to_clif_type(builder, cell_ptr, ptr_ty);
-            let value = builder
-                .ins()
-                .load(types::I64, MemFlags::new(), cell_ptr, STATE_CELL_VALUE_OFFSET);
-            let managed_flag = builder
-                .ins()
-                .load(types::I8, MemFlags::new(), cell_ptr, STATE_CELL_MANAGED_OFFSET);
+            let value = builder.ins().load(
+                types::I64,
+                MemFlags::new(),
+                cell_ptr,
+                STATE_CELL_VALUE_OFFSET,
+            );
+            let managed_flag = builder.ins().load(
+                types::I8,
+                MemFlags::new(),
+                cell_ptr,
+                STATE_CELL_MANAGED_OFFSET,
+            );
             emit_retain_if_managed_flag(builder, value, managed_flag, ptr_ty);
             values.insert(dest.clone(), value);
             Ok(false)
@@ -3506,12 +3550,18 @@ fn lower_instruction<M: Module>(
             let rc_mode = state_cell_rc_mode_for_value(value, ctx);
             let cell_ptr = get_value(values, function_name, cell)?;
             let cell_ptr = coerce_value_to_clif_type(builder, cell_ptr, ptr_ty);
-            let previous = builder
-                .ins()
-                .load(types::I64, MemFlags::new(), cell_ptr, STATE_CELL_VALUE_OFFSET);
-            let previous_managed = builder
-                .ins()
-                .load(types::I8, MemFlags::new(), cell_ptr, STATE_CELL_MANAGED_OFFSET);
+            let previous = builder.ins().load(
+                types::I64,
+                MemFlags::new(),
+                cell_ptr,
+                STATE_CELL_VALUE_OFFSET,
+            );
+            let previous_managed = builder.ins().load(
+                types::I8,
+                MemFlags::new(),
+                cell_ptr,
+                STATE_CELL_MANAGED_OFFSET,
+            );
             emit_release_if_managed_flag(
                 module,
                 builder,
@@ -3524,8 +3574,7 @@ fn lower_instruction<M: Module>(
 
             let value = get_value(values, function_name, value)?;
             let value = coerce_value_to_clif_type(builder, value, types::I64);
-            let managed_flag =
-                emit_state_cell_flag_and_retain(builder, value, rc_mode, ptr_ty);
+            let managed_flag = emit_state_cell_flag_and_retain(builder, value, rc_mode, ptr_ty);
             builder
                 .ins()
                 .store(MemFlags::new(), value, cell_ptr, STATE_CELL_VALUE_OFFSET);
@@ -3613,7 +3662,9 @@ fn lower_instruction<M: Module>(
                 }
                 MirCallee::Value(_) => {
                     if std::env::var("KEA_DUMP_CLIF").is_ok() {
-                        eprintln!("[codegen] Value call in {function_name}: ret_type={ret_type:?}, arg_types={arg_types:?}");
+                        eprintln!(
+                            "[codegen] Value call in {function_name}: ret_type={ret_type:?}, arg_types={arg_types:?}"
+                        );
                     }
                     callee_uses_fail_result_abi = *callee_fail_result_abi;
                     let callee_value = if let MirCallee::Value(callee_value) = callee {
@@ -3624,16 +3675,20 @@ fn lower_instruction<M: Module>(
                     let ptr_ty = module.target_config().pointer_type();
                     let closure_ptr = coerce_value_to_clif_type(builder, callee_value, ptr_ty);
                     let thin_flag_bits = builder.ins().band_imm(closure_ptr, 1);
-                    let is_thin_closure = builder.ins().icmp_imm(IntCC::NotEqual, thin_flag_bits, 0);
+                    let is_thin_closure =
+                        builder.ins().icmp_imm(IntCC::NotEqual, thin_flag_bits, 0);
                     let thin_callee_ptr = builder.ins().band_imm(closure_ptr, -2);
-                    let thick_callee_ptr = builder.ins().load(ptr_ty, MemFlags::new(), closure_ptr, 0);
-                    let callee_ptr = builder
-                        .ins()
-                        .select(is_thin_closure, thin_callee_ptr, thick_callee_ptr);
+                    let thick_callee_ptr =
+                        builder.ins().load(ptr_ty, MemFlags::new(), closure_ptr, 0);
+                    let callee_ptr =
+                        builder
+                            .ins()
+                            .select(is_thin_closure, thin_callee_ptr, thick_callee_ptr);
                     let null_closure_ptr = builder.ins().iconst(ptr_ty, 0);
-                    let closure_arg = builder
-                        .ins()
-                        .select(is_thin_closure, null_closure_ptr, closure_ptr);
+                    let closure_arg =
+                        builder
+                            .ins()
+                            .select(is_thin_closure, null_closure_ptr, closure_ptr);
                     let mut signature = module.make_signature();
                     signature.params.push(AbiParam::new(ptr_ty));
                     for arg_ty in arg_types {
@@ -3925,7 +3980,10 @@ fn lower_instruction<M: Module>(
                                 detail: format!("Clock.{operation} call returned no value"),
                             })?;
                         let ptr_ty = module.target_config().pointer_type();
-                        values.insert(dest.clone(), coerce_value_to_clif_type(builder, timestamp, ptr_ty));
+                        values.insert(
+                            dest.clone(),
+                            coerce_value_to_clif_type(builder, timestamp, ptr_ty),
+                        );
                     }
                     Ok(false)
                 } else if effect == "Rand" && matches!(operation.as_str(), "int" | "seed") {
@@ -4189,11 +4247,13 @@ fn lower_instruction<M: Module>(
                 value_ty,
                 Some(Type::Opaque { name, .. }) if name == STATE_CELL_TYPE_MARKER
             ) {
-                let free_func_id = ctx.free_func_id.ok_or_else(|| CodegenError::UnsupportedMir {
-                    function: function_name.to_string(),
-                    detail: "state-cell release lowering requires imported `free` symbol"
-                        .to_string(),
-                })?;
+                let free_func_id =
+                    ctx.free_func_id
+                        .ok_or_else(|| CodegenError::UnsupportedMir {
+                            function: function_name.to_string(),
+                            detail: "state-cell release lowering requires imported `free` symbol"
+                                .to_string(),
+                        })?;
                 let rc_ptr = builder.ins().iadd_imm(payload_ptr, -8);
                 let rc_value = builder.ins().load(types::I64, MemFlags::new(), rc_ptr, 0);
                 let next = builder.ins().iadd_imm(rc_value, -1);
@@ -4515,10 +4575,7 @@ fn lower_string_concat(
     Ok(out_ptr)
 }
 
-fn declare_void_panic_func(
-    module: &mut impl Module,
-    name: &str,
-) -> Result<FuncId, CodegenError> {
+fn declare_void_panic_func(module: &mut impl Module, name: &str) -> Result<FuncId, CodegenError> {
     let mut sig = module.make_signature();
     sig.params.clear();
     sig.returns.clear();
@@ -4801,13 +4858,13 @@ fn lower_terminator(
                         .to_string(),
             })?;
             let mut value = get_value(ctx.values, ctx.function_name, value_id)?;
-            let expected_ret_clif_ty =
-                if ctx.function_name == "main" && ctx.current_runtime_sig.logical_return == Type::Int
-                {
-                    types::I32
-                } else {
-                    clif_type(&ctx.current_runtime_sig.runtime_return)?
-                };
+            let expected_ret_clif_ty = if ctx.function_name == "main"
+                && ctx.current_runtime_sig.logical_return == Type::Int
+            {
+                types::I32
+            } else {
+                clif_type(&ctx.current_runtime_sig.runtime_return)?
+            };
             value = coerce_value_to_clif_type(builder, value, expected_ret_clif_ty);
             builder.ins().return_(&[value]);
             Ok(())
@@ -4873,7 +4930,10 @@ struct TailSelfCall {
     args: Vec<MirValueId>,
 }
 
-fn detect_tail_self_call(function: &MirFunction, block: &kea_mir::MirBlock) -> Option<TailSelfCall> {
+fn detect_tail_self_call(
+    function: &MirFunction,
+    block: &kea_mir::MirBlock,
+) -> Option<TailSelfCall> {
     let MirInst::Call {
         callee: MirCallee::Local(callee_name),
         args,
@@ -4900,14 +4960,27 @@ fn detect_tail_self_call(function: &MirFunction, block: &kea_mir::MirBlock) -> O
         return Some(TailSelfCall { args: args.clone() });
     }
 
-    if matches!((&block.terminator, result), (MirTerminator::Return { value: None }, None)) {
+    if matches!(
+        (&block.terminator, result),
+        (MirTerminator::Return { value: None }, None)
+    ) {
         return Some(TailSelfCall { args: args.clone() });
     }
 
-    let (MirTerminator::Jump { target, args: jump_args }, Some(call_result)) = (&block.terminator, result) else {
+    let (
+        MirTerminator::Jump {
+            target,
+            args: jump_args,
+        },
+        Some(call_result),
+    ) = (&block.terminator, result)
+    else {
         return None;
     };
-    let target_block = function.blocks.iter().find(|candidate| candidate.id == *target)?;
+    let target_block = function
+        .blocks
+        .iter()
+        .find(|candidate| candidate.id == *target)?;
     if !target_block
         .instructions
         .iter()
@@ -4921,7 +4994,10 @@ fn detect_tail_self_call(function: &MirFunction, block: &kea_mir::MirBlock) -> O
     let MirTerminator::Return { value: Some(ret) } = &target_block.terminator else {
         return None;
     };
-    let ret_param_idx = target_block.params.iter().position(|param| &param.id == ret)?;
+    let ret_param_idx = target_block
+        .params
+        .iter()
+        .position(|param| &param.id == ret)?;
     if jump_args.get(ret_param_idx) != Some(call_result) {
         return None;
     }
@@ -5201,7 +5277,9 @@ fn plan_layout_catalog(module: &MirModule) -> Result<BackendLayoutPlan, CodegenE
             let fields = variant
                 .fields
                 .iter()
-                .map(|field| annotation_to_backend_type(&field.annotation, &record_names, &sum_names))
+                .map(|field| {
+                    annotation_to_backend_type(&field.annotation, &record_names, &sum_names)
+                })
                 .collect::<Vec<_>>();
             variant_field_types.insert(variant.name.clone(), fields);
         }
@@ -5389,8 +5467,7 @@ fn collect_function_stats(function: &MirFunction) -> FunctionPassStats {
     }
 
     let layout_keys = infer_heap_layout_keys_for_stats(function);
-    stats.reuse_token_candidate_count =
-        collect_reuse_token_candidate_count(function, &layout_keys);
+    stats.reuse_token_candidate_count = collect_reuse_token_candidate_count(function, &layout_keys);
     stats.trmc_candidate_count = collect_trmc_candidate_count(function);
 
     stats
@@ -5410,16 +5487,16 @@ fn block_contains_trmc_candidate(function: &MirFunction, block: &kea_mir::MirBlo
     };
     for (idx, inst) in block.instructions.iter().enumerate().rev() {
         let recursive_value = match inst {
-            MirInst::RecordInit { dest, fields, .. } if dest == &return_value => fields
-                .iter()
-                .find_map(|(_, value)| {
+            MirInst::RecordInit { dest, fields, .. } if dest == &return_value => {
+                fields.iter().find_map(|(_, value)| {
                     inst_is_recursive_self_call_result(function, &block.instructions[..idx], value)
-                }),
-            MirInst::SumInit { dest, fields, .. } if dest == &return_value => fields
-                .iter()
-                .find_map(|value| {
+                })
+            }
+            MirInst::SumInit { dest, fields, .. } if dest == &return_value => {
+                fields.iter().find_map(|value| {
                     inst_is_recursive_self_call_result(function, &block.instructions[..idx], value)
-                }),
+                })
+            }
             _ => None,
         };
         if recursive_value.is_some() {
@@ -5436,7 +5513,10 @@ fn block_return_value(function: &MirFunction, block: &kea_mir::MirBlock) -> Opti
     match &block.terminator {
         MirTerminator::Return { value: Some(value) } => Some(value.clone()),
         MirTerminator::Jump { target, args } => {
-            let target_block = function.blocks.iter().find(|candidate| candidate.id == *target)?;
+            let target_block = function
+                .blocks
+                .iter()
+                .find(|candidate| candidate.id == *target)?;
             if !target_block
                 .instructions
                 .iter()
@@ -5735,8 +5815,9 @@ mod tests {
     use super::*;
     use kea_hir::{HirDecl, HirExpr, HirExprKind, HirFunction, HirParam};
     use kea_mir::{
-        MirBlock, MirBlockId, MirBlockParam, MirFunctionSignature, MirLayoutCatalog, MirRecordFieldLayout,
-        MirRecordLayout, MirSumLayout, MirTerminator, MirVariantFieldLayout, MirVariantLayout,
+        MirBlock, MirBlockId, MirBlockParam, MirFunctionSignature, MirLayoutCatalog,
+        MirRecordFieldLayout, MirRecordLayout, MirSumLayout, MirTerminator, MirVariantFieldLayout,
+        MirVariantLayout,
     };
     use kea_types::{FunctionType, Label, RecordType, RowType, SumType};
 
@@ -5762,8 +5843,14 @@ mod tests {
 
     #[test]
     fn clif_type_maps_precision_float_widths() {
-        assert_eq!(clif_type(&Type::FloatN(FloatWidth::F32)).unwrap(), types::F32);
-        assert_eq!(clif_type(&Type::FloatN(FloatWidth::F64)).unwrap(), types::F64);
+        assert_eq!(
+            clif_type(&Type::FloatN(FloatWidth::F32)).unwrap(),
+            types::F32
+        );
+        assert_eq!(
+            clif_type(&Type::FloatN(FloatWidth::F64)).unwrap(),
+            types::F64
+        );
     }
 
     fn sample_stats_module() -> MirModule {
@@ -7949,10 +8036,7 @@ mod tests {
         assert_eq!(result.variant_tags.get("Err"), Some(&1));
         assert_eq!(result.variant_field_counts.get("Ok"), Some(&1));
         assert_eq!(result.variant_field_counts.get("Err"), Some(&2));
-        assert_eq!(
-            result.variant_field_types.get("Ok"),
-            Some(&vec![Type::Int])
-        );
+        assert_eq!(result.variant_field_types.get("Ok"), Some(&vec![Type::Int]));
         assert_eq!(
             result.variant_field_types.get("Err"),
             Some(&vec![Type::Int, Type::String])

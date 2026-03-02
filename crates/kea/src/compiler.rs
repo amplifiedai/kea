@@ -9,24 +9,21 @@ use kea_ast::{
 };
 use kea_codegen::{
     Backend, BackendConfig, CodegenMode, CraneliftBackend, PassStats, collect_pass_stats,
-    default_abi_manifest,
-    execute_hir_main_jit,
+    default_abi_manifest, execute_hir_main_jit,
 };
 use kea_diag::{Diagnostic, Severity, SourceLocation};
 use kea_hir::{
-    check_unique_moves_with_borrow_map, collect_borrow_param_positions,
-    infer_auto_borrow_param_positions, lower_module, HirDecl, HirExpr, HirExprKind, HirFunction,
-    HirModule,
+    HirDecl, HirExpr, HirExprKind, HirFunction, HirModule, check_unique_moves_with_borrow_map,
+    collect_borrow_param_positions, infer_auto_borrow_param_positions, lower_module,
 };
 use kea_infer::typeck::{
     RecordRegistry, SumTypeRegistry, TraitRegistry, TypeEnv, apply_where_clause,
-    concrete_method_types_from_decls,
-    infer_and_resolve_in_context, infer_fn_decl_effect_row, register_builtin_int_bitwise_methods,
-    register_effect_decl, register_fn_effect_signature, register_fn_signature,
-    resolve_annotation, resolve_declared_effect_row,
-    check_expr_in_context,
-    seed_fn_where_type_params_in_context, validate_declared_fn_effect_row_with_env_and_records,
-    validate_module_annotations, validate_module_fn_annotations, validate_where_clause_traits,
+    check_expr_in_context, concrete_method_types_from_decls, infer_and_resolve_in_context,
+    infer_fn_decl_effect_row, register_builtin_int_bitwise_methods, register_effect_decl,
+    register_fn_effect_signature, register_fn_signature, resolve_annotation,
+    resolve_declared_effect_row, seed_fn_where_type_params_in_context,
+    validate_declared_fn_effect_row_with_env_and_records, validate_module_annotations,
+    validate_module_fn_annotations, validate_where_clause_traits,
 };
 use kea_infer::{Category, InferenceContext, Reason};
 use kea_mir::{MirLoweringConfig, lower_hir_module_with_config};
@@ -145,7 +142,10 @@ fn compile_module_inner(source: &str, file_id: FileId) -> Result<CompilationCont
     }
     diagnostics.extend(validate_fip_annotations(&module, &hir));
     if has_errors(&diagnostics) {
-        return Err(format_diagnostics("`@fip` verification failed", &diagnostics));
+        return Err(format_diagnostics(
+            "`@fip` verification failed",
+            &diagnostics,
+        ));
     }
 
     Ok(CompilationContext {
@@ -200,9 +200,8 @@ pub fn execute_jit(ctx: &CompilationContext) -> Result<RunResult, String> {
     let module = ctx.module.clone();
     let diagnostics = ctx.diagnostics.clone();
     run_on_compiler_stack("execute_jit", move || {
-        let exit_code = execute_hir_main_jit(&hir, &BackendConfig::default()).map_err(|err| {
-            format_codegen_error_with_fip_context(&module, &format!("{err}"))
-        })?;
+        let exit_code = execute_hir_main_jit(&hir, &BackendConfig::default())
+            .map_err(|err| format_codegen_error_with_fip_context(&module, &format!("{err}")))?;
 
         Ok(RunResult {
             exit_code,
@@ -238,7 +237,10 @@ fn collect_fip_annotated_function_names(module: &Module) -> Vec<String> {
                 names.push(fn_decl.name.node.clone());
             }
             DeclKind::ExprFn(expr_decl)
-                if expr_decl.annotations.iter().any(|ann| ann.name.node == "fip") =>
+                if expr_decl
+                    .annotations
+                    .iter()
+                    .any(|ann| ann.name.node == "fip") =>
             {
                 names.push(expr_decl.name.node.clone());
             }
@@ -323,9 +325,7 @@ pub fn run_test_file(input: &Path) -> Result<TestRunResult, String> {
                 continue;
             }
         };
-        result
-            .diagnostics
-            .extend(compiled_ctx.diagnostics.clone());
+        result.diagnostics.extend(compiled_ctx.diagnostics.clone());
 
         for _ in 0..test.iterations {
             match execute_jit(&compiled_ctx) {
@@ -1075,7 +1075,10 @@ fn typecheck_loaded_modules(
     let hir = kea_hir::monomorphize::monomorphize(&hir);
     diagnostics.extend(validate_fip_annotations(&module, &hir));
     if has_errors(&diagnostics) {
-        return Err(format_diagnostics("`@fip` verification failed", &diagnostics));
+        return Err(format_diagnostics(
+            "`@fip` verification failed",
+            &diagnostics,
+        ));
     }
     Ok(CompilationContext {
         module,
@@ -1176,7 +1179,9 @@ fn prune_type_scheme_quantifiers(mut scheme: TypeScheme) -> TypeScheme {
     scheme
         .bounds
         .retain(|tv, _| quantified_type_vars.contains(tv));
-    scheme.kinds.retain(|tv, _| quantified_type_vars.contains(tv));
+    scheme
+        .kinds
+        .retain(|tv, _| quantified_type_vars.contains(tv));
     scheme
         .lacks
         .retain(|rv, _| quantified_row_vars.contains(rv));
@@ -1511,7 +1516,10 @@ fn register_top_level_declarations(
 
     if let Err(diag) = records.register_names(&record_defs) {
         diagnostics.push(diag);
-        return Err(format_diagnostics("record registration failed", diagnostics));
+        return Err(format_diagnostics(
+            "record registration failed",
+            diagnostics,
+        ));
     }
 
     let type_defs: Vec<&TypeDef> = module
@@ -1533,7 +1541,10 @@ fn register_top_level_declarations(
 
     if let Err(diag) = records.resolve_registered_fields(&record_defs, Some(sum_types)) {
         diagnostics.push(diag);
-        return Err(format_diagnostics("record registration failed", diagnostics));
+        return Err(format_diagnostics(
+            "record registration failed",
+            diagnostics,
+        ));
     }
 
     if let Err(diag) = sum_types.resolve_registered_variants(&type_defs, records) {
@@ -1638,7 +1649,15 @@ fn register_top_level_declarations(
         }
     }
 
-    register_record_const_fields(module, env, records, traits, sum_types, diagnostics, module_path)?;
+    register_record_const_fields(
+        module,
+        env,
+        records,
+        traits,
+        sum_types,
+        diagnostics,
+        module_path,
+    )?;
 
     Ok(())
 }
@@ -1753,9 +1772,12 @@ fn const_expr_supported(expr: &Expr) -> bool {
                     .is_none_or(|base| const_expr_supported(base))
         }
         ExprKind::Update { base, fields } => {
-            const_expr_supported(base) && fields.iter().all(|(_, value)| const_expr_supported(value))
+            const_expr_supported(base)
+                && fields.iter().all(|(_, value)| const_expr_supported(value))
         }
-        ExprKind::Constructor { args, .. } => args.iter().all(|arg| const_expr_supported(&arg.value)),
+        ExprKind::Constructor { args, .. } => {
+            args.iter().all(|arg| const_expr_supported(&arg.value))
+        }
         ExprKind::StringInterp(parts) => parts.iter().all(|part| match part {
             kea_ast::StringInterpPart::Literal(_) => true,
             kea_ast::StringInterpPart::Expr(value) => const_expr_supported(value),
@@ -1822,10 +1844,7 @@ fn topo_sort_const_fields(def: &RecordDef) -> Result<Vec<String>, BTreeSet<Strin
             return Ok(());
         }
         if matches!(marks.get(name), Some(Mark::Temp)) {
-            let start = stack
-                .iter()
-                .position(|item| item == name)
-                .unwrap_or(0);
+            let start = stack.iter().position(|item| item == name).unwrap_or(0);
             return Err(stack[start..].iter().cloned().collect());
         }
 
@@ -1870,7 +1889,8 @@ fn register_record_const_fields(
 
         let mut const_types = BTreeMap::<String, Type>::new();
         for const_field in &def.const_fields {
-            let Some(resolved) = resolve_annotation(&const_field.annotation, records, Some(sum_types))
+            let Some(resolved) =
+                resolve_annotation(&const_field.annotation, records, Some(sum_types))
             else {
                 diagnostics.push(
                     Diagnostic::error(
@@ -2027,11 +2047,8 @@ fn typecheck_functions(
 
         // Also pre-register the effect row so transitive effect inference
         // sees the declared effects of forward-referenced callees.
-        let effects = resolve_effect_annotation_simple(
-            &fn_decl.effect_annotation,
-            records,
-            sum_types,
-        );
+        let effects =
+            resolve_effect_annotation_simple(&fn_decl.effect_annotation, records, sum_types);
         env.set_function_effect_row(fn_decl.name.node.clone(), effects);
     }
 
@@ -2189,8 +2206,7 @@ fn resolve_effect_annotation_simple(
             for item in &row.effects {
                 let payload = if let Some(ref payload_name) = item.payload {
                     let ann = TypeAnnotation::Named(payload_name.clone());
-                    resolve_annotation(&ann, records, Some(sum_types))
-                        .unwrap_or(Type::Unit)
+                    resolve_annotation(&ann, records, Some(sum_types)).unwrap_or(Type::Unit)
                 } else {
                     Type::Unit
                 };
@@ -2234,13 +2250,11 @@ fn validate_fip_annotations(module: &Module, hir: &HirModule) -> Vec<Diagnostic>
                         .params
                         .iter()
                         .filter_map(|param| {
-                            param.annotation
-                                .as_ref()
-                                .and_then(|ann| {
-                                    is_unique_type_annotation(&ann.node)
-                                        .then(|| param.name().map(str::to_string))
-                                        .flatten()
-                                })
+                            param.annotation.as_ref().and_then(|ann| {
+                                is_unique_type_annotation(&ann.node)
+                                    .then(|| param.name().map(str::to_string))
+                                    .flatten()
+                            })
                         })
                         .collect::<BTreeSet<_>>();
                     annotated_functions
@@ -2252,18 +2266,20 @@ fn validate_fip_annotations(module: &Module, hir: &HirModule) -> Vec<Diagnostic>
                 }
             }
             DeclKind::ExprFn(expr_decl) => {
-                if expr_decl.annotations.iter().any(|ann| ann.name.node == "fip") {
+                if expr_decl
+                    .annotations
+                    .iter()
+                    .any(|ann| ann.name.node == "fip")
+                {
                     let unique_param_names = expr_decl
                         .params
                         .iter()
                         .filter_map(|param| {
-                            param.annotation
-                                .as_ref()
-                                .and_then(|ann| {
-                                    is_unique_type_annotation(&ann.node)
-                                        .then(|| param.name().map(str::to_string))
-                                        .flatten()
-                                })
+                            param.annotation.as_ref().and_then(|ann| {
+                                is_unique_type_annotation(&ann.node)
+                                    .then(|| param.name().map(str::to_string))
+                                    .flatten()
+                            })
                         })
                         .collect::<BTreeSet<_>>();
                     annotated_functions
@@ -2320,7 +2336,9 @@ fn validate_fip_annotations(module: &Module, hir: &HirModule) -> Vec<Diagnostic>
             continue;
         };
 
-        let profile = mir_function.map(collect_fip_mir_profile).unwrap_or_default();
+        let profile = mir_function
+            .map(collect_fip_mir_profile)
+            .unwrap_or_default();
         let hir_function = find_hir_function_by_name(hir, &name);
         let flow = hir_function
             .map(|function| {
@@ -2371,11 +2389,7 @@ fn validate_fip_annotations(module: &Module, hir: &HirModule) -> Vec<Diagnostic>
                 }
                 _ => {}
             }
-            let call_escape_count = flow
-                .call_escape_counts
-                .get(root)
-                .copied()
-                .unwrap_or(0);
+            let call_escape_count = flow.call_escape_counts.get(root).copied().unwrap_or(0);
             if call_escape_count > 0 {
                 if move_boundary_count > 0 || freeze_boundary_count > 0 {
                     unique_flow_issues.push(format!(
@@ -2390,7 +2404,10 @@ fn validate_fip_annotations(module: &Module, hir: &HirModule) -> Vec<Diagnostic>
         }
         let mut failures = Vec::new();
         if profile.disallowed_alloc_count > 0 {
-            failures.push(format!("disallowed_alloc_count={}", profile.disallowed_alloc_count));
+            failures.push(format!(
+                "disallowed_alloc_count={}",
+                profile.disallowed_alloc_count
+            ));
         }
         if profile.retain_count > 0 {
             failures.push(format!("retain_count={}", profile.retain_count));
@@ -2408,10 +2425,16 @@ fn validate_fip_annotations(module: &Module, hir: &HirModule) -> Vec<Diagnostic>
             ));
         }
         if stats.trmc_candidate_count > 0 {
-            failures.push(format!("trmc_candidate_count={}", stats.trmc_candidate_count));
+            failures.push(format!(
+                "trmc_candidate_count={}",
+                stats.trmc_candidate_count
+            ));
         }
         if !unique_flow_issues.is_empty() {
-            failures.push(format!("unique_flow_violations={}", unique_flow_issues.len()));
+            failures.push(format!(
+                "unique_flow_violations={}",
+                unique_flow_issues.len()
+            ));
         }
 
         if !failures.is_empty() {
@@ -2422,10 +2445,7 @@ fn validate_fip_annotations(module: &Module, hir: &HirModule) -> Vec<Diagnostic>
             if let Some(function) = mir_function {
                 let sites = collect_fip_offending_sites(function, 5);
                 if !sites.is_empty() {
-                    help_parts.push(format!(
-                        "first offending MIR sites:\n{}",
-                        sites.join("\n")
-                    ));
+                    help_parts.push(format!("first offending MIR sites:\n{}", sites.join("\n")));
                 }
             }
             if !unique_flow_issues.is_empty() {
@@ -2498,10 +2518,7 @@ fn is_unique_type_annotation(annotation: &TypeAnnotation) -> bool {
     match annotation {
         TypeAnnotation::Named(name) => name == "Unique",
         TypeAnnotation::Applied(name, args) => {
-            name == "Unique"
-                || args
-                    .iter()
-                    .any(is_unique_type_annotation)
+            name == "Unique" || args.iter().any(is_unique_type_annotation)
         }
         _ => false,
     }
@@ -2538,7 +2555,8 @@ fn is_unique_constructor_type(ty: &Type) -> bool {
 fn is_unique_type(ty: &Type) -> bool {
     match ty {
         Type::App(constructor, args) => {
-            args.len() == 1 && (is_unique_constructor_type(constructor) || is_unique_type(constructor))
+            args.len() == 1
+                && (is_unique_constructor_type(constructor) || is_unique_type(constructor))
         }
         _ => is_unique_constructor_type(ty),
     }
@@ -2569,10 +2587,7 @@ fn matches_higher_order_forwarder_body(
     }
 }
 
-fn collect_safe_unique_forwarders(
-    hir: &HirModule,
-    _mir: &kea_mir::MirModule,
-) -> BTreeSet<String> {
+fn collect_safe_unique_forwarders(hir: &HirModule, _mir: &kea_mir::MirModule) -> BTreeSet<String> {
     let mut safe = BTreeSet::new();
     let mut short_name_counts = BTreeMap::new();
     for decl in &hir.declarations {
@@ -2711,10 +2726,7 @@ fn collect_safe_unique_higher_order_forwarders(
     safe
 }
 
-fn add_ref_counts(
-    dst: &mut BTreeMap<String, usize>,
-    src: &BTreeMap<String, usize>,
-) {
+fn add_ref_counts(dst: &mut BTreeMap<String, usize>, src: &BTreeMap<String, usize>) {
     for (name, count) in src {
         *dst.entry(name.clone()).or_default() += *count;
     }
@@ -2753,10 +2765,7 @@ fn find_hir_function_by_name<'a>(hir: &'a HirModule, name: &str) -> Option<&'a H
     None
 }
 
-fn resolve_unique_root(
-    name: &str,
-    aliases: &BTreeMap<String, String>,
-) -> Option<String> {
+fn resolve_unique_root(name: &str, aliases: &BTreeMap<String, String>) -> Option<String> {
     aliases.get(name).cloned()
 }
 
@@ -2974,15 +2983,13 @@ fn analyze_hir_unique_flow_expr_scoped(
             );
             summary
         }
-        HirExprKind::Unary { operand, .. } => {
-            analyze_hir_unique_flow_expr_scoped(
-                operand,
-                aliases,
-                safe_handoff_callees,
-                safe_higher_order_handoff_callees,
-                local_bindings,
-            )
-        }
+        HirExprKind::Unary { operand, .. } => analyze_hir_unique_flow_expr_scoped(
+            operand,
+            aliases,
+            safe_handoff_callees,
+            safe_higher_order_handoff_callees,
+            local_bindings,
+        ),
         HirExprKind::If {
             condition,
             then_branch,
@@ -3077,9 +3084,7 @@ fn analyze_hir_unique_flow_expr_scoped(
                     && let Some(root) = arg_summary.result_alias_root.clone()
                 {
                     safe_handoff_root = Some(root);
-                } else if crosses_boundary
-                    && let Some(root) = arg_summary.result_alias_root
-                {
+                } else if crosses_boundary && let Some(root) = arg_summary.result_alias_root {
                     *summary.call_escape_counts.entry(root).or_default() += 1;
                 }
             }
@@ -3251,15 +3256,13 @@ fn analyze_hir_unique_flow_expr_scoped(
             summary.result_alias_root = None;
             summary
         }
-        HirExprKind::Catch { expr } => {
-            analyze_hir_unique_flow_expr_scoped(
-                expr,
-                aliases,
-                safe_handoff_callees,
-                safe_higher_order_handoff_callees,
-                local_bindings,
-            )
-        }
+        HirExprKind::Catch { expr } => analyze_hir_unique_flow_expr_scoped(
+            expr,
+            aliases,
+            safe_handoff_callees,
+            safe_higher_order_handoff_callees,
+            local_bindings,
+        ),
         HirExprKind::Handle {
             expr,
             clauses,
@@ -3289,10 +3292,8 @@ fn analyze_hir_unique_flow_expr_scoped(
                     &clause_bindings,
                 );
                 clause_count_max = max_ref_counts(&clause_count_max, &clause_summary.ref_counts);
-                clause_escapes_max = max_ref_counts(
-                    &clause_escapes_max,
-                    &clause_summary.call_escape_counts,
-                );
+                clause_escapes_max =
+                    max_ref_counts(&clause_escapes_max, &clause_summary.call_escape_counts);
             }
             add_ref_counts(&mut summary.ref_counts, &clause_count_max);
             add_ref_counts(&mut summary.call_escape_counts, &clause_escapes_max);
@@ -3313,15 +3314,13 @@ fn analyze_hir_unique_flow_expr_scoped(
             summary.result_alias_root = None;
             summary
         }
-        HirExprKind::Resume { value } => {
-            analyze_hir_unique_flow_expr_scoped(
-                value,
-                aliases,
-                safe_handoff_callees,
-                safe_higher_order_handoff_callees,
-                local_bindings,
-            )
-        }
+        HirExprKind::Resume { value } => analyze_hir_unique_flow_expr_scoped(
+            value,
+            aliases,
+            safe_handoff_callees,
+            safe_higher_order_handoff_callees,
+            local_bindings,
+        ),
         HirExprKind::Raw(_) => HirUniqueFlowSummary::default(),
     }
 }
@@ -3347,7 +3346,11 @@ fn collect_mir_unique_flow_summary(
 ) -> MirUniqueFlowSummary {
     let mut summary = MirUniqueFlowSummary::default();
 
-    let Some(entry_block) = function.blocks.iter().find(|block| block.id == function.entry) else {
+    let Some(entry_block) = function
+        .blocks
+        .iter()
+        .find(|block| block.id == function.entry)
+    else {
         return summary;
     };
 
@@ -3404,7 +3407,10 @@ fn collect_mir_unique_flow_summary(
                 changed |= merge_value_roots(&mut value_roots, dest, &roots);
             }
             if let kea_mir::MirTerminator::Jump { target, args } = &block.terminator
-                && let Some(target_block) = function.blocks.iter().find(|candidate| candidate.id == *target)
+                && let Some(target_block) = function
+                    .blocks
+                    .iter()
+                    .find(|candidate| candidate.id == *target)
             {
                 for (arg, param) in args.iter().zip(target_block.params.iter()) {
                     let Some(roots) = value_roots.get(arg).cloned() else {
@@ -3422,14 +3428,20 @@ fn collect_mir_unique_flow_summary(
                 kea_mir::MirInst::Move { src, .. } => {
                     if let Some(roots) = value_roots.get(src) {
                         for root in roots {
-                            *summary.move_boundary_counts.entry(root.clone()).or_default() += 1;
+                            *summary
+                                .move_boundary_counts
+                                .entry(root.clone())
+                                .or_default() += 1;
                         }
                     }
                 }
                 kea_mir::MirInst::Freeze { src, .. } => {
                     if let Some(roots) = value_roots.get(src) {
                         for root in roots {
-                            *summary.freeze_boundary_counts.entry(root.clone()).or_default() += 1;
+                            *summary
+                                .freeze_boundary_counts
+                                .entry(root.clone())
+                                .or_default() += 1;
                         }
                     }
                 }

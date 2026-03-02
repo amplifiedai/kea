@@ -225,6 +225,5 @@ fn link_object_bytes(object: &[u8], output: &Path) -> Result<(), String> {
     Ok(())
 }
 
-
 #[cfg(test)]
 mod main_tests;

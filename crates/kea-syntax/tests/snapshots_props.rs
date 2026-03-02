@@ -53,10 +53,7 @@ fn lexer_layout_snapshot_corpus() {
         ("anon_record", "#{ ..base, retries: 3, timeout: 30 }"),
         ("record_pattern", "case x\n  User { name, .. } -> name"),
         ("string_interp", "\"hello {name}, total: {1 + 2}\""),
-        (
-            "escaped_braces",
-            "\"literal braces: {{not interpolated}}\"",
-        ),
+        ("escaped_braces", "\"literal braces: {{not interpolated}}\""),
         ("tab_indent_error", "fn bad() -> Int\n\t1"),
     ];
 

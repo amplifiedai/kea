@@ -347,10 +347,7 @@ pub enum PatternKind {
     ///
     /// This is distinct from qualified constructor patterns (`Type.Variant`)
     /// because const members are lower-case identifiers.
-    Const {
-        qualifier: String,
-        name: String,
-    },
+    Const { qualifier: String, name: String },
 
     /// Matches a tuple: `(a, b)`.
     Tuple(Vec<Pattern>),
