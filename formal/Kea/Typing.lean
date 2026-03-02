@@ -1980,6 +1980,35 @@ theorem native_handler_step_ext_with_mismatch_soundness_of_core_preservation_and
     clauseSem mismatchSem bodyStep h_core_pres h_handle_progress
 
 /--
+Specialized soundness target for the concrete pass-through mismatch semantics.
+-/
+def native_handler_step_ext_with_passThroughMismatch_soundness_prop
+    (clauseSem : NativeHandlerClauseSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) : Prop :=
+  native_handler_step_ext_with_mismatch_soundness_prop
+    clauseSem nativeHandlerMismatchPassThroughSem bodyStep
+
+/--
+Specialized pass-through mismatch soundness route from body-step preservation
+and typed-handle body-shape progress obligation.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_soundness_of_handle_progress_obligation
+    (clauseSem : NativeHandlerClauseSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_body_pres :
+      ∀ env body body' ty,
+        HasTypeScopedTop env body ty →
+        bodyStep body body' →
+        HasTypeScopedTop env body' ty)
+    (h_handle_progress :
+      native_handler_handle_progress_obligation_ext_with_mismatch_prop bodyStep) :
+    native_handler_step_ext_with_passThroughMismatch_soundness_prop
+      clauseSem bodyStep := by
+  exact native_handler_step_ext_with_mismatch_soundness_of_handle_progress_obligation
+    clauseSem nativeHandlerMismatchPassThroughSem bodyStep
+    h_body_pres h_handle_progress
+
+/--
 Typed op-mismatch handled-`perform` expressions always make one step under the
 mismatched-perform extension.
 -/

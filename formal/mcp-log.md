@@ -16674,3 +16674,34 @@ The witness models mismatched handled `perform` as pass-through of the same
 **Outcome**:
 - Structural mismatch-extension path now has a concrete semantics witness in
   the corpus, reducing abstraction in the remaining capstone gap.
+
+### 2026-03-02: concrete pass-through mismatch soundness wrappers
+
+**Context**: Added specialized wrapper theorems so consumers can use the
+concrete pass-through mismatch semantics without generic `mismatchSem`
+plumbing.
+
+Lean changes:
+- Added in `Kea/Typing.lean`:
+  - `native_handler_step_ext_with_passThroughMismatch_soundness_prop`
+  - `native_handler_step_ext_with_passThroughMismatch_soundness_of_handle_progress_obligation`
+
+**Build check**:
+- `cd formal && lake build Kea.Typing` passes.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Probe (direct `kea` MCP)**:
+1. Spoof attempt still rejected:
+   - `fn spoof(__kea_resume_ctx: fn(Int) -> Int) -> Int; resume 1`
+   - `status = error`, `E0012`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Concrete mismatch semantics now has direct packaged soundness wrappers on the
+  theorem surface.

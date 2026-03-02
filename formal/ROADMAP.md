@@ -500,6 +500,11 @@ Concrete milestone checklist for moving from the current fuel model to an implem
   (`native_handler_step_ext_with_mismatch_exists_of_op_mismatch_passThrough`),
   so mismatch-extension progress is now instantiable without leaving semantics
   abstract.
+  Update: added specialized pass-through mismatch soundness packaging
+  (`native_handler_step_ext_with_passThroughMismatch_soundness_prop`,
+  `native_handler_step_ext_with_passThroughMismatch_soundness_of_handle_progress_obligation`)
+  so call sites can consume concrete mismatch-semantics soundness without
+  threading generic `mismatchSem` parameters.
   Update: added explicit theorem exports for that gate
   (`hasType_resume_requires_ctx`, `resume_not_typable_without_ctx`,
   `inferExpr_resume_none_without_ctx`), so out-of-handler `resume` rejection is
