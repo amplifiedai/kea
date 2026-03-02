@@ -2004,6 +2004,27 @@ theorem native_handler_perform_metadata_coherence_of_strict_typing
   exact (h_strict_typing env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed).2
 
 /--
+Global metadata coherence is sufficient to reconstruct the global strict-typing
+contract.
+-/
+theorem native_handler_strict_typing_of_metadata_coherence
+    (h_coherence : native_handler_perform_metadata_coherence_prop) :
+    native_handler_strict_typing_prop := by
+  intro env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed
+  exact ⟨h_typed, h_coherence env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed⟩
+
+/--
+Strict-typing and metadata-coherence are equivalent global contracts at current
+native handle sites.
+-/
+theorem native_handler_strict_typing_prop_iff_metadata_coherence :
+    native_handler_strict_typing_prop
+      ↔ native_handler_perform_metadata_coherence_prop := by
+  constructor
+  · exact native_handler_perform_metadata_coherence_of_strict_typing
+  · exact native_handler_strict_typing_of_metadata_coherence
+
+/--
 Full mismatch-extension progress from core body progress plus a global strict
 typing contract.
 -/

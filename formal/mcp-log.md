@@ -16825,3 +16825,38 @@ strict-typing contract, and returns packaged mismatch-extension soundness.
 - Capstone closure route is now expressible as
   `core soundness + strict typing => mismatch-extension soundness` in one
   theorem statement.
+
+### 2026-03-02: strict-typing <-> metadata-coherence contract equivalence
+
+**Context**: Made the strict-typing extension contract explicit as equivalent
+to the previously isolated metadata-coherence contract.
+
+Lean changes:
+- Added in `Kea/Typing.lean`:
+  - `native_handler_strict_typing_of_metadata_coherence`
+  - `native_handler_strict_typing_prop_iff_metadata_coherence`
+
+This pins down the exact formal gap: strengthening native typing to enforce
+strict handle metadata is equivalent to discharging the metadata-coherence
+premise used in mismatch-progress routes.
+
+**Build check**:
+- `cd formal && lake build Kea.Typing` passes.
+- `cd formal && lake build` passes.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Probe (direct `kea` MCP)**:
+1. Spoofed resume context variable remains rejected (`E0012`).
+2. Single-resume matching handler clause remains accepted (`status = ok`).
+3. Double-resume handler clause remains rejected (`E0012`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- The boundary between current `HasTypeScoped` and the next native typing
+  extension is now reduced to one explicit equivalence class of obligations.
