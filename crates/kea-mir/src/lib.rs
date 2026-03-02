@@ -1092,9 +1092,6 @@ fn inline_known_handler_callbacks(
 }
 
 fn rewrite_trmc_descending_sum_chain(function: &mut MirFunction) {
-    if function.signature.params.first() != Some(&Type::Int) {
-        return;
-    }
     let function_arity = function.signature.params.len();
     if function_arity == 0 {
         return;
@@ -1175,12 +1172,6 @@ fn rewrite_trmc_descending_sum_chain(function: &mut MirFunction) {
         ) if return_value == id => {}
         _ => return,
     }
-    let Some(base_threshold) =
-        extract_descending_base_threshold(&function.blocks[entry_idx], &condition_value, &MirValueId(0))
-    else {
-        return;
-    };
-
     let then_is_recursive = block_has_recursive_self_call(&function.blocks[then_idx], &function.name);
     let else_is_recursive = block_has_recursive_self_call(&function.blocks[else_idx], &function.name);
     if then_is_recursive == else_is_recursive {
@@ -1193,13 +1184,28 @@ fn rewrite_trmc_descending_sum_chain(function: &mut MirFunction) {
     };
 
     let recurse_block = &function.blocks[recurse_idx];
-    let Some((call_idx, call_result, call_arg, constructor_idx, constructor)) =
-        find_recursive_constructor_pattern(
-            recurse_block,
-            &function.name,
-            &recurse_value,
-            function_arity,
-        )
+    let Some((
+        call_idx,
+        call_result,
+        call_arg,
+        recursive_param_idx,
+        recursive_param_value,
+        constructor_idx,
+        constructor,
+    )) = find_recursive_constructor_pattern(
+        recurse_block,
+        &function.name,
+        &recurse_value,
+        function_arity,
+    )
+    else {
+        return;
+    };
+    if function.signature.params.get(recursive_param_idx) != Some(&Type::Int) {
+        return;
+    }
+    let Some(base_threshold) =
+        extract_descending_base_threshold(&function.blocks[entry_idx], &condition_value, &recursive_param_value)
     else {
         return;
     };
@@ -1211,7 +1217,7 @@ fn rewrite_trmc_descending_sum_chain(function: &mut MirFunction) {
     {
         return;
     }
-    if !value_is_param_minus_one(pre_call, &call_arg, &MirValueId(0)) {
+    if !value_is_param_minus_one(pre_call, &call_arg, &recursive_param_value) {
         return;
     }
     if recurse_block.instructions[constructor_idx + 1..]
@@ -1271,14 +1277,16 @@ fn rewrite_trmc_descending_sum_chain(function: &mut MirFunction) {
         dest: loop_condition.clone(),
         op: MirBinaryOp::Gt,
         left: loop_i.clone(),
-        right: MirValueId(0),
+        right: recursive_param_value.clone(),
     }];
 
     let mut step_context_remap = BTreeMap::new();
-    step_context_remap.insert(MirValueId(0), loop_i.clone());
-    for passthrough_param in 1..function_arity {
+    step_context_remap.insert(recursive_param_value.clone(), loop_i.clone());
+    for passthrough_param in 0..function_arity {
         let param_id = MirValueId(passthrough_param as u32);
-        step_context_remap.insert(param_id.clone(), param_id);
+        if param_id != recursive_param_value {
+            step_context_remap.insert(param_id.clone(), param_id);
+        }
     }
     let mut step_context_insts =
         clone_insts_with_remap(pre_call, &mut step_context_remap, &mut next_value_id);
@@ -1457,7 +1465,15 @@ fn find_recursive_constructor_pattern<'a>(
     function_name: &str,
     recurse_block_value: &MirValueId,
     function_arity: usize,
-) -> Option<(usize, &'a MirValueId, MirValueId, usize, RecurseConstructorPattern)> {
+) -> Option<(
+    usize,
+    &'a MirValueId,
+    MirValueId,
+    usize,
+    MirValueId,
+    usize,
+    RecurseConstructorPattern,
+)> {
     for (idx, inst) in block.instructions.iter().enumerate() {
         let MirInst::Call {
             callee: MirCallee::Local(name),
@@ -1471,17 +1487,27 @@ fn find_recursive_constructor_pattern<'a>(
         if name != function_name || args.len() != function_arity {
             continue;
         }
+        let mut recursive_param_idx = None;
         let mut passthrough_ok = true;
-        for (arg_idx, arg) in args.iter().enumerate().skip(1) {
-            if *arg != MirValueId(arg_idx as u32) {
+        for (arg_idx, arg) in args.iter().enumerate() {
+            let param_id = MirValueId(arg_idx as u32);
+            if *arg == param_id {
+                continue;
+            }
+            if recursive_param_idx.is_some() {
                 passthrough_ok = false;
                 break;
             }
+            recursive_param_idx = Some(arg_idx);
         }
+        let Some(recursive_param_idx) = recursive_param_idx else {
+            continue;
+        };
         if !passthrough_ok {
             continue;
         }
-        let call_arg = args[0].clone();
+        let recursive_param_value = MirValueId(recursive_param_idx as u32);
+        let call_arg = args[recursive_param_idx].clone();
         for (next_idx, next_inst) in block.instructions.iter().enumerate().skip(idx + 1) {
             if let MirInst::SumInit {
                 dest,
@@ -1497,6 +1523,8 @@ fn find_recursive_constructor_pattern<'a>(
                     idx,
                     call_result,
                     call_arg,
+                    recursive_param_idx,
+                    recursive_param_value,
                     next_idx,
                     RecurseConstructorPattern::Sum {
                         sum_type: sum_type.clone(),
@@ -12660,6 +12688,117 @@ mod tests {
                     MirInst::SumInit { fields, .. } if fields.first() == Some(&MirValueId(1))
                 )),
             "step block should preserve passthrough extra parameter in constructor fields"
+        );
+    }
+
+    #[test]
+    fn rewrite_trmc_descending_sum_chain_supports_recursive_second_param() {
+        let mut function = MirFunction {
+            name: "build".to_string(),
+            signature: MirFunctionSignature {
+                params: vec![Type::Int, Type::Int],
+                ret: Type::Dynamic,
+                effects: EffectRow::pure(),
+            },
+            entry: MirBlockId(0),
+            blocks: vec![
+                MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: MirValueId(2),
+                            literal: MirLiteral::Int(0),
+                        },
+                        MirInst::Binary {
+                            dest: MirValueId(3),
+                            op: MirBinaryOp::Lte,
+                            left: MirValueId(1),
+                            right: MirValueId(2),
+                        },
+                    ],
+                    terminator: MirTerminator::Branch {
+                        condition: MirValueId(3),
+                        then_block: MirBlockId(1),
+                        else_block: MirBlockId(2),
+                    },
+                },
+                MirBlock {
+                    id: MirBlockId(1),
+                    params: vec![],
+                    instructions: vec![MirInst::SumInit {
+                        dest: MirValueId(4),
+                        sum_type: "Chain".to_string(),
+                        variant: "End".to_string(),
+                        tag: 0,
+                        fields: vec![],
+                    }],
+                    terminator: MirTerminator::Jump {
+                        target: MirBlockId(3),
+                        args: vec![MirValueId(4)],
+                    },
+                },
+                MirBlock {
+                    id: MirBlockId(2),
+                    params: vec![],
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: MirValueId(5),
+                            literal: MirLiteral::Int(1),
+                        },
+                        MirInst::Binary {
+                            dest: MirValueId(6),
+                            op: MirBinaryOp::Sub,
+                            left: MirValueId(1),
+                            right: MirValueId(5),
+                        },
+                        MirInst::Call {
+                            callee: MirCallee::Local("build".to_string()),
+                            args: vec![MirValueId(0), MirValueId(6)],
+                            arg_types: vec![Type::Int, Type::Int],
+                            result: Some(MirValueId(7)),
+                            ret_type: Type::Dynamic,
+                            callee_fail_result_abi: false,
+                            capture_fail_result: false,
+                            cc_manifest_id: "default".to_string(),
+                        },
+                        MirInst::SumInit {
+                            dest: MirValueId(8),
+                            sum_type: "Chain".to_string(),
+                            variant: "Node".to_string(),
+                            tag: 1,
+                            fields: vec![MirValueId(1), MirValueId(7)],
+                        },
+                    ],
+                    terminator: MirTerminator::Jump {
+                        target: MirBlockId(3),
+                        args: vec![MirValueId(8)],
+                    },
+                },
+                MirBlock {
+                    id: MirBlockId(3),
+                    params: vec![MirBlockParam {
+                        id: MirValueId(9),
+                        ty: Type::Dynamic,
+                    }],
+                    instructions: vec![MirInst::Nop],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirValueId(9)),
+                    },
+                },
+            ],
+        };
+
+        rewrite_trmc_descending_sum_chain(&mut function);
+
+        assert_eq!(function.blocks.len(), 4);
+        assert!(
+            function
+                .blocks
+                .iter()
+                .flat_map(|block| block.instructions.iter())
+                .all(|inst| !matches!(inst, MirInst::Call { .. })),
+            "rewrite should support descending recursion when the recursive parameter is not arg0"
         );
     }
 
