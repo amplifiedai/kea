@@ -17144,3 +17144,36 @@ Together with existing equivalences, this yields:
 **Outcome**:
 - The open native extension target is now minimized to handle-site coherence
   only; no additional global obligation shape remains.
+
+### 2026-03-02: explicit non-derivability of strict-handle contract
+
+**Context**: Added explicit theorem that current native scoped typing cannot
+satisfy global strict-handle typing.
+
+Lean changes:
+- Added in `Kea/Typing.lean`:
+  - `not_native_handler_strict_typing_prop`
+
+This gives a direct machine-checked statement that native typing extension is
+required (not just scoped->strict lift, but strict-handle contract itself).
+
+**Build check**:
+- `cd formal && lake build Kea.Typing` passes.
+- `cd formal && lake build` passes.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Probe (direct `kea` MCP)**:
+1. Spoofed resume context variable remains rejected (`E0012`).
+2. Single-resume matching handler clause remains accepted (`status = ok`).
+3. Double-resume handler clause remains rejected (`E0012`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- The formal corpus now states directly: current native typing does not satisfy
+  strict handle metadata constraints.

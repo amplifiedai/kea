@@ -2263,6 +2263,16 @@ theorem native_handler_strict_typing_prop_iff_metadata_coherence :
   · exact native_handler_strict_typing_of_metadata_coherence
 
 /--
+Current native scoped typing does not satisfy the global strict-handle typing
+contract.
+-/
+theorem not_native_handler_strict_typing_prop :
+    ¬ native_handler_strict_typing_prop := by
+  intro h_strict_typing
+  exact not_native_handler_perform_metadata_coherence_prop
+    (native_handler_perform_metadata_coherence_of_strict_typing h_strict_typing)
+
+/--
 Global metadata coherence is sufficient to build the scoped-to-strict lift
 contract.
 -/
