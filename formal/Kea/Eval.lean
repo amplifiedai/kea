@@ -3649,6 +3649,15 @@ inductive HandlerStep : HandlerExpr → HandlerExpr → Prop where
         (.core e)
 
 /--
+Body-shape support predicate for one-step boundary reduction of
+`.handle body handler clause`.
+-/
+def handlerStepSupportedShape (body : HandlerExpr) (clause : HandlerClauseSem) : Prop :=
+  (∃ e : CoreExpr, body = .core e)
+  ∨
+  (∃ arg k, body = .perform clause.handled clause.opArgTy clause.opRetTy arg k)
+
+/--
 Any handler step from `.handle body handler clause` has a body shape supported
 by the current boundary rules: either matching `perform` redex or `core`.
 -/
@@ -3658,15 +3667,63 @@ theorem handler_step_requires_perform_redex
     {clause : HandlerClauseSem}
     {e' : HandlerExpr}
     (h_step : HandlerStep (.handle body handler clause) e') :
-    (∃ arg k,
-      body = .perform clause.handled clause.opArgTy clause.opRetTy arg k)
-    ∨
-    (∃ e : CoreExpr, body = .core e) := by
+    handlerStepSupportedShape body clause := by
   cases h_step with
   | handle_perform_tail _ _ arg k _ _ _ _ =>
-      exact Or.inl ⟨arg, k, rfl⟩
+      exact Or.inr ⟨arg, k, rfl⟩
   | handle_core _ _ e =>
-      exact Or.inr ⟨e, rfl⟩
+      exact Or.inl ⟨e, rfl⟩
+
+/--
+Boundary-step existence from supported body shape, with explicit perform-branch
+premises.
+-/
+theorem handler_step_exists_of_supported_shape
+    {body : HandlerExpr}
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    (h_contract_shape : clause.contract.handled = clause.handled)
+    (h_mem : clause.contract ∈ handler.clauses)
+    (h_tail_resumptive : clause.contract.resumeUse = .zero ∨ clause.contract.resumeUse = .one)
+    (h_shape : handlerStepSupportedShape body clause) :
+    ∃ e', HandlerStep (.handle body handler clause) e' := by
+  rcases h_shape with ⟨e, h_core⟩ | ⟨arg, k, h_perform⟩
+  · subst h_core
+    exact ⟨.core e, HandlerStep.handle_core handler clause e⟩
+  · subst h_perform
+    have h_summary :
+        HandleClauseContract.handlerClauseHasResumeSummary
+          handler clause.contract clause.contract.resumeUse :=
+      HandleClauseContract.handlerClauseHasResumeSummary.mk
+        clause.contract
+        clause.contract.resumeUse
+        h_mem
+        (HandleClauseContract.clauseHasResumeSummary.mk clause.contract)
+    exact
+      ⟨.core (bindTailResumptive clause arg k),
+        HandlerStep.handle_perform_tail
+          handler clause arg k h_contract_shape h_mem h_summary h_tail_resumptive⟩
+
+/--
+Boundary-step shape completeness under explicit perform-branch premises.
+-/
+theorem handler_step_exists_iff_supported_shape
+    {body : HandlerExpr}
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    (h_contract_shape : clause.contract.handled = clause.handled)
+    (h_mem : clause.contract ∈ handler.clauses)
+    (h_tail_resumptive : clause.contract.resumeUse = .zero ∨ clause.contract.resumeUse = .one) :
+    (∃ e', HandlerStep (.handle body handler clause) e')
+      ↔ handlerStepSupportedShape body clause := by
+  constructor
+  · intro h_exists
+    rcases h_exists with ⟨e', h_step⟩
+    exact handler_step_requires_perform_redex h_step
+  · intro h_shape
+    exact
+      handler_step_exists_of_supported_shape
+        h_contract_shape h_mem h_tail_resumptive h_shape
 
 /--
 Core-body progress witness at the boundary:

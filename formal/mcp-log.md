@@ -14946,3 +14946,33 @@ All now project from:
 **Outcome**:
 - The redex capstone theorem family now has one canonical proof route through
   shape-capstone projections, with MCP behavior still aligned.
+
+### 2026-03-02: supported-shape completeness with explicit perform premises
+
+**Context**: Added boundary-shape completeness theorems and refined their
+premise boundary to make perform-branch requirements explicit.
+
+Lean changes:
+- `handlerStepSupportedShape`
+- `handler_step_exists_of_supported_shape`
+- `handler_step_exists_iff_supported_shape`
+- `handler_step_requires_perform_redex` now returns the new shape predicate.
+
+**Predict (Lean side)**:
+- A plain shape-based reverse implication is too strong without explicit
+  perform-branch premises (membership + tail-resumptive assumptions).
+- After making those premises explicit, theorem surface should remain coherent.
+
+**Probe (direct `kea` MCP)**:
+1. Single-resume clause accepted.
+2. Branch double-resume rejected with `E0012`.
+3. `resume` outside handler rejected with `E0012`.
+4. Overlap residual remains normalized (`handled : () -[IO]> ()`).
+
+**Classify**: Agreement (precondition refinement, no semantic divergence).
+
+**Divergence**: none.
+
+**Outcome**:
+- Boundary step completeness is now machine-checkable with explicit
+  perform-branch premises, avoiding an over-strong theorem statement.
