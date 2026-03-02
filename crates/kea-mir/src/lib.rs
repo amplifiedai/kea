@@ -1218,7 +1218,15 @@ fn rewrite_trmc_descending_sum_chain(function: &mut MirFunction) {
     let pre_call = &recurse_block.instructions[..call_idx];
     if !pre_call
         .iter()
-        .all(|inst| matches!(inst, MirInst::Const { .. } | MirInst::Unary { .. } | MirInst::Binary { .. } | MirInst::Nop))
+        .all(|inst| match inst {
+            MirInst::Const { .. } | MirInst::Unary { .. } | MirInst::Binary { .. } | MirInst::Nop => true,
+            MirInst::Call {
+                callee: MirCallee::Local(name),
+                ..
+            } => name != &function.name,
+            MirInst::Call { .. } => true,
+            _ => false,
+        })
     {
         return;
     }
@@ -1741,6 +1749,43 @@ fn clone_insts_with_remap(
                         .iter()
                         .map(|field| remap_value(remap, field).unwrap_or_else(|| field.clone()))
                         .collect(),
+                }
+            }
+            MirInst::Call {
+                callee,
+                args,
+                arg_types,
+                result,
+                ret_type,
+                callee_fail_result_abi,
+                capture_fail_result,
+                cc_manifest_id,
+            } => {
+                let new_callee = match callee {
+                    MirCallee::Value(value) => MirCallee::Value(
+                        remap_value(remap, value).unwrap_or_else(|| value.clone()),
+                    ),
+                    MirCallee::Local(name) => MirCallee::Local(name.clone()),
+                    MirCallee::External(name) => MirCallee::External(name.clone()),
+                };
+                let new_result = result.as_ref().map(|dest| {
+                    let new_dest = MirValueId(*next_value_id);
+                    *next_value_id = next_value_id.saturating_add(1);
+                    remap.insert(dest.clone(), new_dest.clone());
+                    new_dest
+                });
+                MirInst::Call {
+                    callee: new_callee,
+                    args: args
+                        .iter()
+                        .map(|arg| remap_value(remap, arg).unwrap_or_else(|| arg.clone()))
+                        .collect(),
+                    arg_types: arg_types.clone(),
+                    result: new_result,
+                    ret_type: ret_type.clone(),
+                    callee_fail_result_abi: *callee_fail_result_abi,
+                    capture_fail_result: *capture_fail_result,
+                    cc_manifest_id: cc_manifest_id.clone(),
                 }
             }
             MirInst::Nop => MirInst::Nop,
@@ -12629,6 +12674,140 @@ mod tests {
                 } if *left == base_start_const
             )),
             "rewritten entry block should compute loop start from folded threshold expression"
+        );
+    }
+
+    #[test]
+    fn rewrite_trmc_descending_sum_chain_supports_pre_call_non_recursive_helper_call() {
+        let mut function = MirFunction {
+            name: "build".to_string(),
+            signature: MirFunctionSignature {
+                params: vec![Type::Int],
+                ret: Type::Dynamic,
+                effects: EffectRow::pure(),
+            },
+            entry: MirBlockId(0),
+            blocks: vec![
+                MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: MirValueId(1),
+                            literal: MirLiteral::Int(0),
+                        },
+                        MirInst::Binary {
+                            dest: MirValueId(2),
+                            op: MirBinaryOp::Lte,
+                            left: MirValueId(0),
+                            right: MirValueId(1),
+                        },
+                    ],
+                    terminator: MirTerminator::Branch {
+                        condition: MirValueId(2),
+                        then_block: MirBlockId(1),
+                        else_block: MirBlockId(2),
+                    },
+                },
+                MirBlock {
+                    id: MirBlockId(1),
+                    params: vec![],
+                    instructions: vec![MirInst::SumInit {
+                        dest: MirValueId(3),
+                        sum_type: "Chain".to_string(),
+                        variant: "End".to_string(),
+                        tag: 0,
+                        fields: vec![],
+                    }],
+                    terminator: MirTerminator::Jump {
+                        target: MirBlockId(3),
+                        args: vec![MirValueId(3)],
+                    },
+                },
+                MirBlock {
+                    id: MirBlockId(2),
+                    params: vec![],
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: MirValueId(4),
+                            literal: MirLiteral::Int(1),
+                        },
+                        MirInst::Binary {
+                            dest: MirValueId(5),
+                            op: MirBinaryOp::Sub,
+                            left: MirValueId(0),
+                            right: MirValueId(4),
+                        },
+                        MirInst::Call {
+                            callee: MirCallee::Local("weight".to_string()),
+                            args: vec![MirValueId(0)],
+                            arg_types: vec![Type::Int],
+                            result: Some(MirValueId(6)),
+                            ret_type: Type::Int,
+                            callee_fail_result_abi: false,
+                            capture_fail_result: false,
+                            cc_manifest_id: "default".to_string(),
+                        },
+                        MirInst::Call {
+                            callee: MirCallee::Local("build".to_string()),
+                            args: vec![MirValueId(5)],
+                            arg_types: vec![Type::Int],
+                            result: Some(MirValueId(7)),
+                            ret_type: Type::Dynamic,
+                            callee_fail_result_abi: false,
+                            capture_fail_result: false,
+                            cc_manifest_id: "default".to_string(),
+                        },
+                        MirInst::SumInit {
+                            dest: MirValueId(8),
+                            sum_type: "Chain".to_string(),
+                            variant: "Node".to_string(),
+                            tag: 1,
+                            fields: vec![MirValueId(6), MirValueId(7)],
+                        },
+                    ],
+                    terminator: MirTerminator::Jump {
+                        target: MirBlockId(3),
+                        args: vec![MirValueId(8)],
+                    },
+                },
+                MirBlock {
+                    id: MirBlockId(3),
+                    params: vec![MirBlockParam {
+                        id: MirValueId(9),
+                        ty: Type::Dynamic,
+                    }],
+                    instructions: vec![MirInst::Nop],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirValueId(9)),
+                    },
+                },
+            ],
+        };
+
+        rewrite_trmc_descending_sum_chain(&mut function);
+
+        let loop_i = function.blocks[1].params[0].id.clone();
+        assert!(
+            function.blocks.iter().flat_map(|block| block.instructions.iter()).all(|inst| !matches!(
+                inst,
+                MirInst::Call {
+                    callee: MirCallee::Local(name),
+                    ..
+                } if name == "build"
+            )),
+            "rewrite should remove recursive self call even when recurse branch has a pre-call helper invocation"
+        );
+        assert!(
+            function.blocks[2].instructions.iter().any(|inst| matches!(
+                inst,
+                MirInst::Call {
+                    callee: MirCallee::Local(name),
+                    args,
+                    ..
+                } if name == "weight" && args.len() == 1 && args[0] == loop_i
+            )),
+            "step block should preserve/remap non-recursive helper call before constructor assembly"
         );
     }
 
