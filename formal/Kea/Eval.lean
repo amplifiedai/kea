@@ -4037,6 +4037,70 @@ theorem handler_clause_contract_capstone_of_handlerHasType
   · exact handler_clause_tail_resumptive_bundle_of_handlerHasType h_typed
 
 /--
+Singleton-handler bridge: a typed `handle` with exactly one clause contract
+induces handler-level `handlerWellTypedSlice`.
+-/
+theorem handlerWellTypedSlice_singleton_of_handlerHasType
+    {tenv : TermEnv}
+    {body : HandlerExpr}
+    {clause : HandlerClauseSem}
+    {ty : Ty}
+    (h_typed : HandlerHasType tenv
+      (.handle body { clauses := [clause.contract] } clause)
+      ty) :
+    HandleClauseContract.handlerWellTypedSlice { clauses := [clause.contract] } := by
+  intro c h_mem
+  have h_clause :
+      HandleClauseContract.wellTypedSlice clause.contract :=
+    handler_clause_wellTypedSlice_of_handlerHasType h_typed
+  simp at h_mem
+  rcases h_mem with rfl
+  exact h_clause
+
+/--
+Singleton-handler bridge into packaged handler-level resume-linearity bundle.
+-/
+theorem handlerResumeLinearityBundle_singleton_of_handlerHasType
+    {tenv : TermEnv}
+    {body : HandlerExpr}
+    {clause : HandlerClauseSem}
+    {ty : Ty}
+    (h_typed : HandlerHasType tenv
+      (.handle body { clauses := [clause.contract] } clause)
+      ty) :
+    HandleClauseContract.HandlerResumeLinearityBundle { clauses := [clause.contract] } :=
+  HandleClauseContract.handlerResumeLinearityBundle_of_handlerWellTypedSlice
+    { clauses := [clause.contract] }
+    (handlerWellTypedSlice_singleton_of_handlerHasType h_typed)
+
+/--
+Recover handler-step clause linearity through the existing handler-level route
+on singleton handlers, starting from typed handler-redex premises.
+-/
+theorem handler_step_tail_resumptive_atMostOnce_of_typed_singleton
+    {tenv : TermEnv}
+    {clause : HandlerClauseSem}
+    {arg k : CoreExpr}
+    {ty : Ty}
+    {e' : HandlerExpr}
+    (h_typed : HandlerHasType tenv
+      (.handle (.perform clause.handled clause.opArgTy clause.opRetTy arg k)
+        { clauses := [clause.contract] }
+        clause)
+      ty)
+    (h_step :
+      HandlerStep
+        (.handle (.perform clause.handled clause.opArgTy clause.opRetTy arg k)
+          { clauses := [clause.contract] }
+          clause)
+        e') :
+    resume_at_most_once clause.contract.resumeUse := by
+  have h_handler_typed :
+      HandleClauseContract.handlerWellTypedSlice { clauses := [clause.contract] } :=
+    handlerWellTypedSlice_singleton_of_handlerHasType h_typed
+  exact handler_step_tail_resumptive_atMostOnce h_handler_typed h_step
+
+/--
 Determinism for the one-step handler boundary relation.
 -/
 theorem handler_step_deterministic

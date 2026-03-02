@@ -14601,3 +14601,40 @@ tail-capability bundle outputs under explicit capability-origin premises.
 **Outcome**:
 - Handler boundary routing now has an integrated evaluator+contract capstone
   surface, with MCP behavior still aligned to the underlying assumptions.
+
+### 2026-03-02: singleton-handler compatibility bridge into handler-level contracts
+
+**Context**: Added compatibility theorems that recover the handler-level
+`handlerWellTypedSlice`/resume-linearity route from typed handle premises on
+the one-clause handler shape.
+
+Lean changes:
+- `handlerWellTypedSlice_singleton_of_handlerHasType`
+- `handlerResumeLinearityBundle_singleton_of_handlerHasType`
+- `handler_step_tail_resumptive_atMostOnce_of_typed_singleton`
+
+This explicitly connects `HandlerStepBoundary` typed premises to the existing
+handler-level contract APIs in `HandlerTypingContracts`.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+- `diagnose`
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; this is theorem-route compatibility.
+- Existing linearity diagnostics and overlap normalization should remain stable.
+
+**Probe (direct `kea` MCP)**:
+1. Single-resume clause accepted.
+2. Branch double-resume rejected with `E0012`.
+3. `resume` outside handler rejected with `E0012`.
+4. Overlap residual remains normalized (`handled : () -[IO]> ()`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Typed singleton-handler premises now have a direct machine-checked bridge
+  into handler-level linearity bundles while MCP behavior remains aligned.
