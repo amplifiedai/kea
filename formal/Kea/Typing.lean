@@ -2434,6 +2434,23 @@ theorem native_handler_step_ext_with_mismatch_progress_of_core_progress_and_stri
     clauseSem mismatchSem bodyStep h_core_progress h_strict
 
 /--
+Global progress route from core body progress plus scoped-to-strict lift.
+-/
+theorem native_handler_step_ext_with_mismatch_progress_of_core_progress_and_scoped_to_strict_lift
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core_progress :
+      ∀ env body ty,
+        HasTypeScopedTop env body ty →
+        CoreValue body ∨ ∃ body', bodyStep body body')
+    (h_lift : native_handler_scoped_to_strict_lift_prop) :
+    native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep := by
+  exact native_handler_step_ext_with_mismatch_progress_of_core_progress_and_strict_typing
+    clauseSem mismatchSem bodyStep h_core_progress
+    (native_handler_strict_typing_prop_of_scoped_to_strict_lift h_lift)
+
+/--
 Full mismatch-extension soundness from core body preservation/progress plus a
 global strict typing contract.
 -/
