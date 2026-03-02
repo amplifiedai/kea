@@ -404,6 +404,10 @@ Concrete milestone checklist for moving from the current fuel model to an implem
   `hasTypeScopedTop_resume_spoof_rejected_witness`,
   `scoped_resume_nonforgeable_boundary_witness`) and re-probed MCP to confirm
   spoof/out-of-handler `resume` remain rejected with `E0012`.
+  Update: added scoped-resume equivalence exports
+  (`hasTypeScoped_resume_requires_ctx`,
+  `hasTypeScoped_resume_iff_ctx_and_value`) so the non-forgeable context gate
+  is directly citable as both one-way and two-way theorem contracts.
   Update: added explicit theorem exports for that gate
   (`hasType_resume_requires_ctx`, `resume_not_typable_without_ctx`,
   `inferExpr_resume_none_without_ctx`), so out-of-handler `resume` rejection is

@@ -16143,3 +16143,34 @@ Lean changes:
 **Outcome**:
 - Non-forgeability boundary now has explicit theorem witnesses plus fresh MCP
   confirmation on the spoofing surface.
+
+### 2026-03-02: scoped resume-context equivalence lemmas
+
+**Context**: Added direct theorem-level characterization for `resume` in the
+scoped native judgment so callers can consume scoped context conditions via a
+single `↔` surface.
+
+Lean changes:
+- Added in `Kea/Typing.lean`:
+  - `hasTypeScoped_resume_requires_ctx`
+  - `hasTypeScoped_resume_iff_ctx_and_value`
+
+**Build check**:
+- `cd formal && lake build Kea.Typing` passes.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Probe (direct `kea` MCP)**:
+1. Spoof attempt remains rejected:
+   - `fn spoof(__kea_resume_ctx: fn(Int) -> Int) -> Int; resume 1`
+   - `status = error`, `E0012`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Scoped resume admissibility now has explicit one-way and two-way theorem
+  contracts aligned with MCP diagnostics.

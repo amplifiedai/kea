@@ -835,6 +835,38 @@ abbrev HasTypeScopedTop (env : TermEnv) (e : CoreExpr) (ty : Ty) : Prop :=
   HasTypeScoped none env e ty
 
 /--
+Any scoped declarative typing derivation of `resume` carries an explicit
+non-forgeable resume-context witness.
+-/
+theorem hasTypeScoped_resume_requires_ctx
+    {ctx : ScopedResumeCtx} {env : TermEnv} {value : CoreExpr} {ty : Ty}
+    (h : HasTypeScoped ctx env (.resume value) ty) :
+    ∃ opRetTy,
+      ctx = some (opRetTy, ty) ∧
+      HasTypeScoped ctx env value opRetTy := by
+  cases h with
+  | resume _ _ _ opRetTy _ h_ctx h_value =>
+    exact ⟨opRetTy, h_ctx, h_value⟩
+
+/--
+Scoped `resume` typing is equivalent to having a matching scoped context and a
+value typed at that context's operation return type.
+-/
+theorem hasTypeScoped_resume_iff_ctx_and_value
+    (ctx : ScopedResumeCtx) (env : TermEnv) (value : CoreExpr) (handlerTy : Ty) :
+    HasTypeScoped ctx env (.resume value) handlerTy
+      ↔
+      ∃ opRetTy,
+        ctx = some (opRetTy, handlerTy) ∧
+        HasTypeScoped ctx env value opRetTy := by
+  constructor
+  · intro h
+    exact hasTypeScoped_resume_requires_ctx h
+  · intro h
+    rcases h with ⟨opRetTy, h_ctx, h_value⟩
+    exact HasTypeScoped.resume ctx env value opRetTy handlerTy h_ctx h_value
+
+/--
 `resume` is not typable at top-level in the scoped judgment.
 -/
 theorem hasTypeScopedTop_resume_not_typable
