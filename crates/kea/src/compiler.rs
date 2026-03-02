@@ -2463,6 +2463,7 @@ fn collect_fip_mir_profile(function: &kea_mir::MirFunction) -> FipMirProfile {
                 | kea_mir::MirInst::SumInitFromToken { .. } => {
                     profile.reuse_token_consumed_count += 1
                 }
+                kea_mir::MirInst::ClosureInit { captures, .. } if captures.is_empty() => {}
                 kea_mir::MirInst::RecordInit { .. }
                 | kea_mir::MirInst::SumInit { .. }
                 | kea_mir::MirInst::ClosureInit { .. }
@@ -3374,6 +3375,7 @@ fn collect_fip_offending_sites(function: &kea_mir::MirFunction, limit: usize) ->
                 kea_mir::MirInst::Release { .. } => Some("Release"),
                 kea_mir::MirInst::RecordInit { .. } => Some("RecordInit"),
                 kea_mir::MirInst::SumInit { .. } => Some("SumInit"),
+                kea_mir::MirInst::ClosureInit { captures, .. } if captures.is_empty() => None,
                 kea_mir::MirInst::ClosureInit { .. } => Some("ClosureInit"),
                 kea_mir::MirInst::CowUpdate { .. } => Some("CowUpdate"),
                 kea_mir::MirInst::StateCellNew { .. } => Some("StateCellNew"),

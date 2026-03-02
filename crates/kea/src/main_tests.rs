@@ -2666,12 +2666,12 @@
             "expected @fip verification failure, got: {err}"
         );
         assert!(
-            err.contains("ClosureInit"),
-            "expected closure-allocation site in diagnostics, got: {err}"
-        );
-        assert!(
             err.contains("escapes through 1 call argument(s)"),
             "expected higher-order call-boundary escape diagnostic, got: {err}"
+        );
+        assert!(
+            !err.contains("ClosureInit"),
+            "zero-capture function-item forwarding should no longer report ClosureInit as an allocation-site blocker, got: {err}"
         );
 
         let _ = std::fs::remove_file(source_path);
