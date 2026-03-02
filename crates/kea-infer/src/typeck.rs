@@ -8262,6 +8262,7 @@ fn function_effect_signature_from_type(ty: &Type) -> Option<FunctionEffectSignat
     }
 }
 
+#[allow(dead_code)] // Will be removed when the separate effect system is deleted.
 fn infer_lambda_type_effect_row(
     params: &[Param],
     param_types: &[Type],
@@ -13387,18 +13388,32 @@ fn infer_handle_expr_type(
 
     // Propagate residual (unhandled) effects to the outer ambient so
     // nested handle expressions accumulate correctly.
+    //
+    // We can't directly equate `rest` with the outer ambient because the
+    // Rémy decomposition gives `rest` a `lacks <handled_effect>` constraint.
+    // If the same effect is also performed OUTSIDE the handle (e.g.
+    // Reader.ask() after a `handle ... Reader.ask() -> ...`), the lacks
+    // constraint would conflict.
+    //
+    // Instead, resolve `rest` and add only its concrete fields to the
+    // outer ambient via a fresh rest variable, which doesn't inherit the
+    // lacks constraint for the handled effect.
     if let Some(rest) = rest_var
         && let Some(outer_ambient) = env.current_ambient_effect_row()
     {
-        constrain_row_eq(
-            unifier,
-            &RowType::empty_open(rest),
-            &RowType::empty_open(outer_ambient),
-            &Provenance {
-                span: expr_span,
-                reason: Reason::HandleEffectPayload,
-            },
-        );
+        let resolved_rest = unifier.substitution.apply_row(&RowType::empty_open(rest));
+        if !resolved_rest.fields.is_empty() {
+            let fresh_rest = unifier.fresh_row_var();
+            constrain_row_eq(
+                unifier,
+                &RowType::open(resolved_rest.fields.clone(), fresh_rest),
+                &RowType::empty_open(outer_ambient),
+                &Provenance {
+                    span: expr_span,
+                    reason: Reason::HandleEffectPayload,
+                },
+            );
+        }
     }
 
     // ── Catch-on-non-failing body check ─────────────────────────────────
@@ -13830,8 +13845,8 @@ fn infer_expr_bidir(
                 param_types.push(param_ty);
             }
             // Seed function-typed parameter effect signatures so that
-            // `catch` pre-checks (infer_resolved_expr_effect_row) can
-            // see the Fail effect in higher-order parameter types.
+            // the catch pre-check (`infer_resolved_expr_effect_row`) can
+            // see Fail effects in higher-order parameter types.
             {
                 let mut effect_var_bindings = BTreeMap::new();
                 let mut next_effect_var = 0u32;
@@ -13842,6 +13857,14 @@ fn infer_expr_bidir(
                     &mut next_effect_var,
                 );
             }
+
+            // Push an ambient effect row for the lambda body.  Every
+            // function call inside constrains its effects against this
+            // ambient via the Call arm, so after inference the ambient
+            // contains the full effect row — no separate system needed.
+            let lambda_ambient = unifier.fresh_row_var();
+            env.push_ambient_effect_row(lambda_ambient);
+
             let mut body_ty = infer_expr_bidir(body, env, unifier, records, traits, sum_types);
             if let Some(ann) = return_annotation {
                 if let Some(declared_ret) =
@@ -13864,29 +13887,23 @@ fn infer_expr_bidir(
                 }
             }
 
-            // Use the separate effect system for label discovery, then
-            // replace each payload with a fresh type var from the MAIN
-            // unifier.  This avoids two problems:
-            //
-            // 1. Unit payloads from the separate system would cause
-            //    mismatches when unified with concrete types like
-            //    [State: Int] from a higher-order function's scheme.
-            //
-            // 2. Type vars from register_effect_decl (Var(s_var)) would
-            //    leak across functions in the main unifier's namespace,
-            //    creating spurious linkages.
-            //
-            // Fresh vars let Rémy row unification determine the actual
-            // payload types through constraints from function calls.
-            let mut lambda_effects =
-                infer_lambda_type_effect_row(params, &param_types, body, env, unifier);
-            for (_label, payload) in &mut lambda_effects.row.fields {
-                *payload = Type::Var(unifier.fresh_type_var());
-            }
-
+            env.pop_ambient_effect_row();
             env.pop_scope();
             unifier.exit_lambda();
 
+            // Resolve the ambient row var through the substitution to see what
+            // effects the body actually performed.  If the row var is
+            // unconstrained (pure lambda), produce a closed empty row.
+            let ambient_row = EffectRow::open(vec![], lambda_ambient);
+            let resolved_effects = unifier.substitution.apply_effect_row(&ambient_row);
+            let lambda_effects = if resolved_effects.row.fields.is_empty()
+                && resolved_effects.row.rest.is_some()
+            {
+                // Unconstrained — pure lambda.
+                EffectRow::pure()
+            } else {
+                resolved_effects
+            };
             Type::Function(FunctionType {
                 params: param_types,
                 ret: Box::new(body_ty),
