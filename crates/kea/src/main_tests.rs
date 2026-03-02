@@ -2611,6 +2611,29 @@
 
     #[test]
     #[cfg(not(target_os = "windows"))]
+    fn compile_rejects_fip_when_closure_alloc_remains() {
+        let source_path = write_temp_source(
+            "@fip\nfn closure_alloc(delta: Int) -> Int\n  let add = |x| x + delta\n  add(1)\n\nfn main() -> Int\n  0\n",
+            "kea-cli-fip-reject-closure-alloc",
+            "kea",
+        );
+
+        let err = run_file(&source_path)
+            .expect_err("@fip verifier should reject closure-allocating function");
+        assert!(
+            err.contains("`@fip` verification failed for `closure_alloc`"),
+            "expected @fip verification failure, got: {err}"
+        );
+        assert!(
+            err.contains("ClosureInit"),
+            "expected closure-allocation site in diagnostics, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
     fn compile_rejects_fip_annotation_with_arguments() {
         let source_path = write_temp_source(
             "@fip(\"strict\")\nfn id(x: Int) -> Int\n  x\n\nfn main() -> Int\n  id(1)\n",

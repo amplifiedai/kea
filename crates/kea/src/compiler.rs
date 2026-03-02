@@ -2134,15 +2134,25 @@ fn validate_fip_annotations(module: &Module, hir: &HirModule) -> Vec<Diagnostic>
             continue;
         };
 
+        let profile = mir_function.map(collect_fip_mir_profile).unwrap_or_default();
         let mut failures = Vec::new();
-        if stats.alloc_count > 0 {
-            failures.push(format!("alloc_count={}", stats.alloc_count));
+        if profile.disallowed_alloc_count > 0 {
+            failures.push(format!("disallowed_alloc_count={}", profile.disallowed_alloc_count));
         }
-        if stats.retain_count > 0 {
-            failures.push(format!("retain_count={}", stats.retain_count));
+        if profile.retain_count > 0 {
+            failures.push(format!("retain_count={}", profile.retain_count));
         }
-        if stats.release_count > 0 {
-            failures.push(format!("release_count={}", stats.release_count));
+        if profile.explicit_release_count > 0 {
+            failures.push(format!(
+                "explicit_release_count={}",
+                profile.explicit_release_count
+            ));
+        }
+        if profile.reuse_token_consumed_count > profile.reuse_token_produced_count {
+            failures.push(format!(
+                "reuse_token_flow={} consumed > {} produced",
+                profile.reuse_token_consumed_count, profile.reuse_token_produced_count
+            ));
         }
         if stats.trmc_candidate_count > 0 {
             failures.push(format!("trmc_candidate_count={}", stats.trmc_candidate_count));
@@ -2150,7 +2160,7 @@ fn validate_fip_annotations(module: &Module, hir: &HirModule) -> Vec<Diagnostic>
 
         if !failures.is_empty() {
             let mut help_parts = vec![
-                "expected zero alloc/retain/release and no remaining TRMC candidates after MIR lowering."
+                "expected no disallowed heap allocation ops, no retain/explicit release ops, valid reuse-token flow, and no remaining TRMC candidates after MIR lowering."
                     .to_string(),
             ];
             if let Some(function) = mir_function {
@@ -2183,6 +2193,39 @@ fn validate_fip_annotations(module: &Module, hir: &HirModule) -> Vec<Diagnostic>
     diagnostics
 }
 
+#[derive(Debug, Clone, Default)]
+struct FipMirProfile {
+    disallowed_alloc_count: usize,
+    retain_count: usize,
+    explicit_release_count: usize,
+    reuse_token_produced_count: usize,
+    reuse_token_consumed_count: usize,
+}
+
+fn collect_fip_mir_profile(function: &kea_mir::MirFunction) -> FipMirProfile {
+    let mut profile = FipMirProfile::default();
+    for block in &function.blocks {
+        for inst in &block.instructions {
+            match inst {
+                kea_mir::MirInst::Retain { .. } => profile.retain_count += 1,
+                kea_mir::MirInst::Release { .. } => profile.explicit_release_count += 1,
+                kea_mir::MirInst::ReuseToken { .. } => profile.reuse_token_produced_count += 1,
+                kea_mir::MirInst::RecordInitFromToken { .. }
+                | kea_mir::MirInst::SumInitFromToken { .. } => {
+                    profile.reuse_token_consumed_count += 1
+                }
+                kea_mir::MirInst::RecordInit { .. }
+                | kea_mir::MirInst::SumInit { .. }
+                | kea_mir::MirInst::ClosureInit { .. }
+                | kea_mir::MirInst::CowUpdate { .. }
+                | kea_mir::MirInst::StateCellNew { .. } => profile.disallowed_alloc_count += 1,
+                _ => {}
+            }
+        }
+    }
+    profile
+}
+
 fn collect_fip_offending_sites(function: &kea_mir::MirFunction, limit: usize) -> Vec<String> {
     let mut sites = Vec::new();
     for block in &function.blocks {
@@ -2192,6 +2235,9 @@ fn collect_fip_offending_sites(function: &kea_mir::MirFunction, limit: usize) ->
                 kea_mir::MirInst::Release { .. } => Some("Release"),
                 kea_mir::MirInst::RecordInit { .. } => Some("RecordInit"),
                 kea_mir::MirInst::SumInit { .. } => Some("SumInit"),
+                kea_mir::MirInst::ClosureInit { .. } => Some("ClosureInit"),
+                kea_mir::MirInst::CowUpdate { .. } => Some("CowUpdate"),
+                kea_mir::MirInst::StateCellNew { .. } => Some("StateCellNew"),
                 _ => None,
             };
             if let Some(op) = op {
