@@ -3453,6 +3453,20 @@
     }
 
     #[test]
+    fn compile_and_execute_case_match_on_recursive_enum_from_function_return_exit_code() {
+        let source_path = write_temp_source(
+            "enum Chain\n  End\n  Link(Int, Chain)\n\nfn build(n: Int) -> Chain\n  if n <= 0\n    Chain.End\n  else\n    Chain.Link(n, build(n - 1))\n\nfn is_end(c: Chain) -> Int\n  case c\n    Chain.End -> 1\n    Chain.Link(_, _) -> 0\n\nfn main() -> Int\n  is_end(build(3))\n",
+            "kea-cli-recursive-enum-case-from-call",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("run should succeed");
+        assert_eq!(run.exit_code, 0);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
     fn compile_and_execute_forward_reference_exit_code() {
         let source_path = write_temp_source(
             "fn caller() -> Int\n  callee(40)\n\nfn callee(x: Int) -> Int\n  x + 2\n\nfn main() -> Int\n  caller()\n",

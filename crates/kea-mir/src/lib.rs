@@ -501,7 +501,10 @@ pub fn lower_hir_module_with_config(module: &HirModule, config: &MirLoweringConf
     }
 
     for function in &mut functions {
-        rewrite_trmc_descending_sum_chain(function);
+        // NOTE: Keep the descending-sum TRMC prototype out of the default
+        // lowering pipeline for now. It is not yet semantics-safe for
+        // recursively-constructed enum values consumed by downstream case
+        // matching and can miscompile into invalid sum handles.
         emit_reuse_tokens_for_trailing_release_alloc(function, &layouts);
         schedule_trailing_releases_after_last_use(function);
         elide_adjacent_retain_release_pairs(function);
@@ -1091,6 +1094,7 @@ fn inline_known_handler_callbacks(
     (state_get_count, state_put_count, pure_count)
 }
 
+#[cfg(test)]
 fn rewrite_trmc_descending_sum_chain(function: &mut MirFunction) {
     if function.signature.params.first() != Some(&Type::Int) {
         return;
@@ -1359,6 +1363,7 @@ fn rewrite_trmc_descending_sum_chain(function: &mut MirFunction) {
     ];
 }
 
+#[cfg(test)]
 fn block_has_recursive_self_call(block: &MirBlock, function_name: &str) -> bool {
     block.instructions.iter().any(|inst| {
         matches!(
@@ -1371,6 +1376,7 @@ fn block_has_recursive_self_call(block: &MirBlock, function_name: &str) -> bool 
     })
 }
 
+#[cfg(test)]
 enum RecurseConstructorPattern {
     Sum {
         sum_type: String,
@@ -1380,6 +1386,7 @@ enum RecurseConstructorPattern {
     },
 }
 
+#[cfg(test)]
 fn find_recursive_constructor_pattern<'a>(
     block: &'a MirBlock,
     function_name: &str,
@@ -1439,6 +1446,7 @@ fn find_recursive_constructor_pattern<'a>(
     None
 }
 
+#[cfg(test)]
 fn value_is_param_minus_one(
     pre_call: &[MirInst],
     call_arg: &MirValueId,
@@ -1467,10 +1475,12 @@ fn value_is_param_minus_one(
     })
 }
 
+#[cfg(test)]
 fn remap_value(remap: &BTreeMap<MirValueId, MirValueId>, value: &MirValueId) -> Option<MirValueId> {
     remap.get(value).cloned().or_else(|| Some(value.clone()))
 }
 
+#[cfg(test)]
 fn clone_insts_with_remap(
     insts: &[MirInst],
     remap: &mut BTreeMap<MirValueId, MirValueId>,
