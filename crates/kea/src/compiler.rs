@@ -163,6 +163,7 @@ pub fn compile_project(entry: &Path) -> Result<CompilationContext, String> {
 
 pub fn emit_object(ctx: &CompilationContext, mode: CodegenMode) -> Result<CompileResult, String> {
     let hir = ctx.hir.clone();
+    let module = ctx.module.clone();
     let diagnostics = ctx.diagnostics.clone();
     run_on_compiler_stack("emit_object", move || {
         let lowering_config = match mode {
@@ -182,7 +183,7 @@ pub fn emit_object(ctx: &CompilationContext, mode: CodegenMode) -> Result<Compil
                     ..BackendConfig::default()
                 },
             )
-            .map_err(|err| format!("codegen failed: {err}"))?;
+            .map_err(|err| format_codegen_error_with_fip_context(&module, &format!("{err}")))?;
 
         Ok(CompileResult {
             object: artifact.object,
@@ -194,16 +195,55 @@ pub fn emit_object(ctx: &CompilationContext, mode: CodegenMode) -> Result<Compil
 
 pub fn execute_jit(ctx: &CompilationContext) -> Result<RunResult, String> {
     let hir = ctx.hir.clone();
+    let module = ctx.module.clone();
     let diagnostics = ctx.diagnostics.clone();
     run_on_compiler_stack("execute_jit", move || {
-        let exit_code = execute_hir_main_jit(&hir, &BackendConfig::default())
-            .map_err(|err| format!("codegen failed: {err}"))?;
+        let exit_code = execute_hir_main_jit(&hir, &BackendConfig::default()).map_err(|err| {
+            format_codegen_error_with_fip_context(&module, &format!("{err}"))
+        })?;
 
         Ok(RunResult {
             exit_code,
             diagnostics,
         })
     })
+}
+
+fn format_codegen_error_with_fip_context(module: &Module, backend_error: &str) -> String {
+    let mut message = format!("codegen failed: {backend_error}");
+    if backend_error.contains("unresolved qualified call target") {
+        let fip_functions = collect_fip_annotated_function_names(module);
+        if !fip_functions.is_empty() {
+            message.push_str(
+                "\nnote: `@fip` ownership verification succeeded before backend lowering; this unresolved qualified target is a backend/module-lowering gap.",
+            );
+            message.push_str(&format!(
+                "\nnote: verified `@fip` function(s): {}",
+                fip_functions.join(", ")
+            ));
+        }
+    }
+    message
+}
+
+fn collect_fip_annotated_function_names(module: &Module) -> Vec<String> {
+    let mut names = Vec::new();
+    for decl in &module.declarations {
+        match &decl.node {
+            DeclKind::Function(fn_decl)
+                if fn_decl.annotations.iter().any(|ann| ann.name.node == "fip") =>
+            {
+                names.push(fn_decl.name.node.clone());
+            }
+            DeclKind::ExprFn(expr_decl)
+                if expr_decl.annotations.iter().any(|ann| ann.name.node == "fip") =>
+            {
+                names.push(expr_decl.name.node.clone());
+            }
+            _ => {}
+        }
+    }
+    names
 }
 
 pub fn compile_file(input: &Path, mode: CodegenMode) -> Result<CompileResult, String> {

@@ -2752,6 +2752,10 @@
             err.contains("unresolved qualified call target `A.forward_once`"),
             "expected unresolved qualified call target codegen error, got: {err}"
         );
+        assert!(
+            err.contains("`@fip` ownership verification succeeded before backend lowering"),
+            "expected explicit @fip/backend gap separation note, got: {err}"
+        );
 
         let _ = std::fs::remove_dir_all(project_dir);
     }
@@ -2784,6 +2788,10 @@
         assert!(
             err.contains("unresolved qualified call target `A.forward_once`"),
             "expected unresolved qualified call target codegen error, got: {err}"
+        );
+        assert!(
+            err.contains("`@fip` ownership verification succeeded before backend lowering"),
+            "expected explicit @fip/backend gap separation note, got: {err}"
         );
 
         let _ = std::fs::remove_dir_all(project_dir);
