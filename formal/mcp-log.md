@@ -14077,3 +14077,57 @@ New theorem surface:
 **Impact**:
 - Tightens the handler-soundness boundary and reduces ambiguity in what remains
   to prove.
+
+### 2026-03-02: direct `kea` MCP stress audit on recent evaluator/handler assumptions
+
+**Context**: User-requested 48-hour divergence sanity pass using direct in-session
+MCP tool calls (not `kea-mcp` unit-test proxy runs). Focused on assumptions
+behind recent `Kea/Eval.lean` capstone/handler-boundary commits.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+- `get_type`
+- `diagnose`
+
+**Predict (Lean side)**:
+1. Pure route sanity should hold (`type_check` + `get_type`/`diagnose`).
+2. Effect-row overlap handling should remain normalized in practical handler
+   residual cases (no duplicate residual labels like `[IO, IO]`).
+3. Resume linearity policy should match Phase-2 contracts:
+   - zero-resume clause accepted,
+   - multi-resume clause rejected with `E0012`.
+
+**Probe (direct `kea` MCP)**:
+1. Pure typing route sanity:
+   - `fn id(x: Int) -> Int` checks.
+   - `get_type "id(1)"` => `Int`.
+   - `diagnose "id(true)"` => `type_mismatch` (`expected Int, got Bool`).
+2. Effect-row declaration/callback surfaces:
+   - `write : (String) -[Log]> ()` checks without phantom `IO`.
+   - Curried callback case (`trap`) checks as `() -[Log]> ()`.
+3. Overlap normalization stress:
+   - `mixed : () -[IO, Log]> ()` with handler clause that performs `IO`.
+   - `handled : () -[IO]> ()` checks (no duplicate `[IO, IO]` residual row).
+4. Resume-linearity stress:
+   - Sequential double-resume clause rejected with `E0012`
+     (`handler clause may resume at most once`).
+   - Branch-double-resume clause rejected with `E0012`.
+   - Zero-resume clause (`Ping.ask() -> 41`) accepted.
+   - `resume` outside handler rejected with `E0012`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Key assumptions from the recent evaluator/handler formal checkpoint set are
+  currently aligned with direct `kea` MCP behavior.
+- The remaining open handler-preservation work in Lean is proof-scope only
+  (`handler_step_instantiation_obligation`), not a newly observed Lean↔MCP
+  semantic mismatch.
+
+**Impact**:
+- Restores the intended verification loop discipline for this track
+  (Lean build + direct MCP probes), and confirms no new divergence signal on
+  the targeted high-risk assumptions.

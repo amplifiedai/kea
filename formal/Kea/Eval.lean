@@ -3759,10 +3759,74 @@ def handler_step_preservation_prop : Prop :=
     HandlerHasType tenv e' ty
 
 /--
-Open proof target for handler-step preservation at the current boundary.
-This theorem is intentionally left as the explicit formal gap.
+Precise remaining preservation-side obligation for the current boundary model:
+typing the clause-body instantiation produced by a handler step.
 -/
-theorem handler_step_preservation : handler_step_preservation_prop := by
+def handler_step_instantiation_obligation_prop : Prop :=
+  ∀ {tenv : TermEnv}
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    {arg k : CoreExpr}
+    {ty : Ty}
+    {e' : HandlerExpr},
+    HandlerHasType tenv
+      (.handle (.perform clause.handled clause.opArgTy clause.opRetTy arg k)
+        handler
+        clause)
+      ty →
+    HandlerStep
+      (.handle (.perform clause.handled clause.opArgTy clause.opRetTy arg k)
+        handler
+        clause)
+      e' →
+    HasType tenv (bindTailResumptive clause arg k) ty
+
+/--
+Lift an untyped handler step into `HandlerStepTyped` using the explicit
+instantiation typing obligation.
+-/
+theorem handler_step_typed_of_handler_step
+    (h_instantiation : handler_step_instantiation_obligation_prop)
+    {tenv : TermEnv}
+    {e e' : HandlerExpr}
+    {ty : Ty}
+    (h_typed : HandlerHasType tenv e ty)
+    (h_step : HandlerStep e e') :
+    HandlerStepTyped tenv ty e e' := by
+  cases h_step with
+  | handle_perform_tail handler clause arg k h_contract_shape h_mem h_summary h_tail =>
+      have h_inst :
+          HasType tenv (bindTailResumptive clause arg k) ty :=
+        h_instantiation h_typed
+          (HandlerStep.handle_perform_tail
+            handler clause arg k h_contract_shape h_mem h_summary h_tail)
+      exact
+        HandlerStepTyped.handle_perform_tail
+          handler clause arg k h_contract_shape h_mem h_summary h_tail h_inst
+
+/--
+Preservation follows from the explicit instantiation typing obligation.
+-/
+theorem handler_step_preservation_of_instantiation_obligation
+    (h_instantiation : handler_step_instantiation_obligation_prop) :
+    handler_step_preservation_prop := by
+  intro tenv e e' ty h_typed h_step
+  exact handler_step_typed_preservation h_typed
+    (handler_step_typed_of_handler_step h_instantiation h_typed h_step)
+
+/--
+Open proof target for the exact remaining handler-step obligation.
+-/
+theorem handler_step_instantiation_obligation :
+    handler_step_instantiation_obligation_prop := by
   sorry
+
+/--
+Handler-step preservation at the current boundary, reduced to the explicit
+instantiation obligation above.
+-/
+theorem handler_step_preservation : handler_step_preservation_prop :=
+  handler_step_preservation_of_instantiation_obligation
+    handler_step_instantiation_obligation
 
 end HandlerStepBoundary
