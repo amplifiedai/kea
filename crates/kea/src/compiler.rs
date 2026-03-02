@@ -30,7 +30,9 @@ use kea_infer::typeck::{
 use kea_infer::{Category, InferenceContext, Reason};
 use kea_mir::{MirLoweringConfig, lower_hir_module_with_config};
 use kea_syntax::{lex_layout, parse_module};
-use kea_types::{Type, TypeScheme, sanitize_type_display};
+use kea_types::{
+    Type, TypeScheme, free_dim_vars, free_row_vars, free_type_vars, sanitize_type_display,
+};
 
 const COMPILER_WORKER_STACK_BYTES: usize = 16 * 1024 * 1024;
 
@@ -1094,7 +1096,7 @@ fn bind_imported_item(
         return;
     };
 
-    env.bind(item_name.to_string(), scheme);
+    env.bind(item_name.to_string(), prune_type_scheme_quantifiers(scheme));
     imported_symbols.push(item_name.to_string());
 
     if let Some(signature) = env
@@ -1112,6 +1114,28 @@ fn bind_imported_item(
     if let Some(effect_row) = env.resolve_qualified_effect_row(module_path, item_name) {
         env.set_function_effect_row(item_name.to_string(), effect_row);
     }
+}
+
+fn prune_type_scheme_quantifiers(mut scheme: TypeScheme) -> TypeScheme {
+    let free_tvs = free_type_vars(&scheme.ty);
+    let free_rvs = free_row_vars(&scheme.ty);
+    let free_dvs = free_dim_vars(&scheme.ty);
+
+    scheme.type_vars.retain(|tv| free_tvs.contains(tv));
+    scheme.row_vars.retain(|rv| free_rvs.contains(rv));
+    scheme.dim_vars.retain(|dv| free_dvs.contains(dv));
+
+    let quantified_type_vars = scheme.type_vars.iter().copied().collect::<BTreeSet<_>>();
+    let quantified_row_vars = scheme.row_vars.iter().copied().collect::<BTreeSet<_>>();
+
+    scheme
+        .bounds
+        .retain(|tv, _| quantified_type_vars.contains(tv));
+    scheme.kinds.retain(|tv, _| quantified_type_vars.contains(tv));
+    scheme
+        .lacks
+        .retain(|rv, _| quantified_row_vars.contains(rv));
+    scheme
 }
 
 fn apply_module_imports(
