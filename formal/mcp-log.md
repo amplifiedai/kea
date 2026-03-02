@@ -17343,3 +17343,36 @@ This theorem packages the strict-top handle route as:
 **Outcome**:
 - Strict-top route now has a direct local capstone theorem (existence +
   preservation) for handler-step proofs.
+
+### 2026-03-02: strict top-level rejection witness for metadata mismatch
+
+**Context**: Added an explicit strict-top non-derivability witness showing the
+typed metadata-mismatch counterexample cannot inhabit `HasTypeScopedStrictTop`.
+
+Lean changes:
+- Added in `Kea/Typing.lean`:
+  - `hasTypeScopedStrictTop_typed_metadata_mismatch_counterexample_not_typable`
+
+This theorem closes the local strict-typing branch by deriving contradiction
+from handler metadata equality under strict top-level typing.
+
+**Build check**:
+- `cd formal && lake build Kea.Typing` passes.
+- `cd formal && lake build` passes.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Probe (direct `kea` MCP)**:
+1. Spoofed resume context variable remains rejected (`E0012`).
+2. Single-resume matching handler clause remains accepted (`status = ok`).
+3. Double-resume handler clause remains rejected (`E0012`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Strict-top mismatch reasoning now has an explicit non-derivability witness
+  aligned with runtime resume-context enforcement behavior.

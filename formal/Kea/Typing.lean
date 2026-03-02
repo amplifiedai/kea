@@ -2854,6 +2854,24 @@ theorem native_handler_step_ext_with_mismatch_typed_metadata_mismatch_counterexa
       clauseSem mismatchSem bodyStep h_no_body_step
 
 /--
+The metadata-mismatch counterexample handle is rejected by strict top-level
+typing.
+-/
+theorem hasTypeScopedStrictTop_typed_metadata_mismatch_counterexample_not_typable :
+    ¬ HasTypeScopedStrictTop []
+      (.handle
+        (.perform "Op" .bool .bool (.boolLit true) (.lam "x" .bool (.intLit 0)))
+        "Op" "x" "k" .int .int (.intLit 2))
+      .int := by
+  intro h_strict
+  have h_meta := hasTypeScopedStrict_handle_metadata h_strict
+    "Op" .bool .bool
+    (.boolLit true)
+    (.lam "x" .bool (.intLit 0))
+    rfl
+  exact Ty.noConfusion h_meta.1
+
+/--
 With no body-step semantics (`False` relation), mismatch-extension progress is
 not derivable under current typing (metadata-mismatch typed witness is stuck).
 -/
