@@ -15146,3 +15146,42 @@ shape-specific evaluator theorems only.
 **Outcome**:
 - Evaluator+contract consequences are now available on one generic
 supported-shape theorem path, with MCP behavior still aligned.
+
+### 2026-03-02: generic shape-based evaluator+contract+capability capstone
+
+**Context**: Added the capability-extended generic evaluator/contract route for
+typed supported-shape handlers.
+
+Lean changes:
+- `handler_typed_handle_shape_eval_and_capability_contract_capstone`
+
+This extends the existing generic shape-based evaluator+contract theorem path
+to also emit:
+- `TailCapabilityBundle`
+- `TailCapabilityClosedAwareBundle`
+
+under explicit capability-origin premises.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+- `diagnose`
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; theorem-route extension only.
+- Existing resume-linearity diagnostics and overlap normalization should remain
+  stable.
+
+**Probe (direct `kea` MCP)**:
+1. Single-resume clause accepted.
+2. Branch double-resume rejected with `E0012`.
+3. `resume` outside handler rejected with `E0012`.
+4. Overlap residual remains normalized (`handled : () -[Log]> ()`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Generic supported-shape evaluator routes now have one capability-extended
+  capstone surface, and MCP behavior remains aligned.

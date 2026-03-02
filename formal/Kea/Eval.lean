@@ -4920,6 +4920,74 @@ theorem handler_typed_handle_shape_eval_and_contract_capstone
   exact ⟨h_eval, h_contract.1, h_contract.2.1, h_contract.2.2.1, h_contract.2.2.2⟩
 
 /--
+Generic shape-based evaluator+contract capstone with capability composition
+outputs.
+-/
+theorem handler_typed_handle_shape_eval_and_capability_contract_capstone
+    {tenv : TermEnv}
+    {venv : ValueEnv}
+    {body : HandlerExpr}
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    {ty : Ty}
+    {baseEffects : EffectRow}
+    {capability : Label}
+    (h_env : EnvWellTyped tenv venv)
+    (h_typed : HandlerHasType tenv (.handle body handler clause) ty)
+    (h_shape : handlerStepSupportedShape body clause)
+    (h_frag :
+      ∀ target : CoreExpr,
+        HandlerStep (.handle body handler clause) (.core target) →
+        EvalFragmentFull target)
+    (h_expr :
+      clause.contract.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_ne : capability ≠ clause.contract.handled) :
+    (∃ target v,
+      HandlerStep (.handle body handler clause) (.core target)
+      ∧ eval venv target = some v
+      ∧ ValueHasType v ty)
+    ∧ HandleClauseContract.wellTypedSlice clause.contract
+    ∧ resume_at_most_once clause.contract.resumeUse
+    ∧ (TailResumptiveClassification.classifyClause clause.contract ≠
+        TailResumptiveClassification.TailResumptiveClass.invalid)
+    ∧ TailResumptiveClassification.TailResumptiveBundle clause.contract
+    ∧ TailCapabilityComposition.TailCapabilityBundle clause.contract capability
+    ∧ TailCapabilityComposition.TailCapabilityClosedAwareBundle
+        clause.contract
+        capability := by
+  have h_base :
+      (∃ target v,
+        HandlerStep (.handle body handler clause) (.core target)
+        ∧ eval venv target = some v
+        ∧ ValueHasType v ty)
+      ∧ HandleClauseContract.wellTypedSlice clause.contract
+      ∧ resume_at_most_once clause.contract.resumeUse
+      ∧ (TailResumptiveClassification.classifyClause clause.contract ≠
+          TailResumptiveClassification.TailResumptiveClass.invalid)
+      ∧ TailResumptiveClassification.TailResumptiveBundle clause.contract :=
+    handler_typed_handle_shape_eval_and_contract_capstone
+      h_env h_typed h_shape h_frag
+  have h_cap :
+      TailCapabilityComposition.TailCapabilityBundle clause.contract capability :=
+    handler_clause_tail_capability_bundle_of_handlerHasType h_typed h_expr h_ne
+  have h_cap_closed :
+      TailCapabilityComposition.TailCapabilityClosedAwareBundle
+        clause.contract
+        capability :=
+    handler_clause_tail_capability_closedAware_bundle_of_handlerHasType
+      h_typed h_expr h_ne
+  exact ⟨
+    h_base.1,
+    h_base.2.1,
+    h_base.2.2.1,
+    h_base.2.2.2.1,
+    h_base.2.2.2.2,
+    h_cap,
+    h_cap_closed
+  ⟩
+
+/--
 Bridge theorem: once a typed handler redex takes its one-step boundary
 reduction to a core expression, existing core evaluator soundness applies.
 -/
