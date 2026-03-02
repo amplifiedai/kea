@@ -14492,3 +14492,39 @@ Lean changes:
 **Outcome**:
 - The handle-typing to clause-contract bridge is now explicit at theorem level
   for general handle expressions, and direct MCP behavior remains aligned.
+
+### 2026-03-02: generalized bridge projection parity + redex-route consolidation
+
+**Context**: Continued `HandlerStepBoundary` to add projection/compatibility
+parity on top of the new generalized `HandlerHasType(.handle ...)` bridge, and
+to route typed-redex bundle theorems through those generalized APIs.
+
+Lean changes:
+- `handler_clause_tail_resumptive_classification_of_handlerHasType`
+- `handler_clause_tail_capability_as_components_of_handlerHasType`
+- `handler_clause_tail_capability_closedAware_as_components_of_handlerHasType`
+- typed-redex bundle routes now reuse the generalized bridge theorems.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+- `diagnose`
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; theorem-route consolidation only.
+- Existing linearity diagnostics and overlap normalization should remain stable.
+
+**Probe (direct `kea` MCP)**:
+1. Single-resume clause accepted.
+2. Branch double-resume rejected with `E0012`.
+3. `resume` outside handler rejected with `E0012`.
+4. Overlap residual remains normalized (`handled : () -[IO]> ()`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Handler typing -> contract consequences now have projection-route parity and
+  typed-redex routes consume the same generalized bridge layer, with MCP
+  behavior still aligned.

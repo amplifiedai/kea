@@ -3876,6 +3876,24 @@ theorem handler_clause_tail_resumptive_bundle_of_handlerHasType
       (handler_clause_wellTypedSlice_of_handlerHasType h_typed)
 
 /--
+General typed-handle bridge to tail-resumptive classification alternatives.
+-/
+theorem handler_clause_tail_resumptive_classification_of_handlerHasType
+    {tenv : TermEnv}
+    {body : HandlerExpr}
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    {ty : Ty}
+    (h_typed : HandlerHasType tenv (.handle body handler clause) ty) :
+    TailResumptiveClassification.classifyClause clause.contract =
+      TailResumptiveClassification.TailResumptiveClass.nonResumptive
+      ∨
+    TailResumptiveClassification.classifyClause clause.contract =
+      TailResumptiveClassification.TailResumptiveClass.tailResumptive := by
+  exact
+    (handler_clause_tail_resumptive_bundle_of_handlerHasType h_typed).classification
+
+/--
 General typed-handle bridge to packaged tail-capability bundle under explicit
 capability-origin premises.
 -/
@@ -3901,6 +3919,39 @@ theorem handler_clause_tail_capability_bundle_of_handlerHasType
       (handler_clause_wellTypedSlice_of_handlerHasType h_typed)
       h_expr
       h_ne
+
+/--
+General typed-handle projection to tail-capability bundle components under
+explicit capability-origin premises.
+-/
+theorem handler_clause_tail_capability_as_components_of_handlerHasType
+    {tenv : TermEnv}
+    {body : HandlerExpr}
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    {ty : Ty}
+    {baseEffects : EffectRow}
+    {capability : Label}
+    (h_typed : HandlerHasType tenv (.handle body handler clause) ty)
+    (h_expr :
+      clause.contract.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_ne : capability ≠ clause.contract.handled) :
+    (RowFields.has
+        (EffectRow.fields (HandleClauseContract.resultEffectsCore clause.contract))
+        capability = true)
+    ∧
+    (RowFields.has
+        (EffectRow.fields (HandleClauseContract.resultEffects clause.contract))
+        capability = true)
+    ∧
+    (TailResumptiveClassification.classifyClause clause.contract ≠
+      TailResumptiveClassification.TailResumptiveClass.invalid) := by
+  exact
+    TailCapabilityComposition.tailCapabilityBundle_as_components
+      clause.contract
+      capability
+      (handler_clause_tail_capability_bundle_of_handlerHasType h_typed h_expr h_ne)
 
 /--
 General typed-handle bridge to packaged closed-aware tail-capability bundle
@@ -3930,6 +3981,37 @@ theorem handler_clause_tail_capability_closedAware_bundle_of_handlerHasType
       (handler_clause_wellTypedSlice_of_handlerHasType h_typed)
       h_expr
       h_ne
+
+/--
+General typed-handle projection to closed-aware tail-capability bundle
+components under explicit capability-origin premises.
+-/
+theorem handler_clause_tail_capability_closedAware_as_components_of_handlerHasType
+    {tenv : TermEnv}
+    {body : HandlerExpr}
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    {ty : Ty}
+    {baseEffects : EffectRow}
+    {capability : Label}
+    (h_typed : HandlerHasType tenv (.handle body handler clause) ty)
+    (h_expr :
+      clause.contract.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_ne : capability ≠ clause.contract.handled) :
+    (RowFields.has
+        (EffectRow.fields
+          (HandlerClosedAwareContracts.resultEffectsClosedAware clause.contract))
+        capability = true)
+    ∧
+    (TailResumptiveClassification.classifyClause clause.contract ≠
+      TailResumptiveClassification.TailResumptiveClass.invalid) := by
+  exact
+    TailCapabilityComposition.tailCapabilityClosedAwareBundle_as_components
+      clause.contract
+      capability
+      (handler_clause_tail_capability_closedAware_bundle_of_handlerHasType
+        h_typed h_expr h_ne)
 
 /--
 Determinism for the one-step handler boundary relation.
@@ -4066,9 +4148,7 @@ theorem handler_typed_redex_clause_wellTypedSlice
         clause)
       ty) :
     HandleClauseContract.wellTypedSlice clause.contract := by
-  cases h_typed with
-  | handle _ _ _ _ _ _ _ _ h_clause_contract _ =>
-      exact h_clause_contract
+  exact handler_clause_wellTypedSlice_of_handlerHasType h_typed
 
 /--
 Typed-redex bridge into the packaged tail-resumptive bundle surface.
@@ -4085,10 +4165,7 @@ theorem handler_typed_redex_tail_resumptive_bundle
         clause)
       ty) :
     TailResumptiveClassification.TailResumptiveBundle clause.contract := by
-  exact
-    TailResumptiveClassification.tail_resumptive_bundle_of_wellTyped
-      clause.contract
-      (handler_typed_redex_clause_wellTypedSlice h_typed)
+  exact handler_clause_tail_resumptive_bundle_of_handlerHasType h_typed
 
 /--
 Extended capstone route for typed handler redexes with the packaged
@@ -4140,14 +4217,7 @@ theorem handler_typed_redex_tail_capability_bundle
         EffectOperationTyping.performOperationEffects baseEffects capability)
     (h_ne : capability ≠ clause.contract.handled) :
     TailCapabilityComposition.TailCapabilityBundle clause.contract capability := by
-  exact
-    TailCapabilityComposition.tailCapabilityBundle_of_wellTyped
-      clause.contract
-      baseEffects
-      capability
-      (handler_typed_redex_clause_wellTypedSlice h_typed)
-      h_expr
-      h_ne
+  exact handler_clause_tail_capability_bundle_of_handlerHasType h_typed h_expr h_ne
 
 /--
 Extended capstone route for typed handler redexes with tail-capability bundle
@@ -4208,13 +4278,8 @@ theorem handler_typed_redex_tail_capability_closedAware_bundle
       clause.contract
       capability := by
   exact
-    TailCapabilityComposition.tailCapabilityClosedAwareBundle_of_wellTyped
-      clause.contract
-      baseEffects
-      capability
-      (handler_typed_redex_clause_wellTypedSlice h_typed)
-      h_expr
-      h_ne
+    handler_clause_tail_capability_closedAware_bundle_of_handlerHasType
+      h_typed h_expr h_ne
 
 /--
 Extended capstone route for typed handler redexes with closed-aware
