@@ -1204,8 +1204,13 @@ fn rewrite_trmc_descending_sum_chain(function: &mut MirFunction) {
     if function.signature.params.get(recursive_param_idx) != Some(&Type::Int) {
         return;
     }
-    let Some(base_threshold) =
-        extract_descending_base_threshold(&function.blocks[entry_idx], &condition_value, &recursive_param_value)
+    let recurse_on_then = recurse_idx == then_idx;
+    let Some(base_threshold) = extract_descending_base_threshold(
+        &function.blocks[entry_idx],
+        &condition_value,
+        &recursive_param_value,
+        recurse_on_then,
+    )
     else {
         return;
     };
@@ -1430,6 +1435,7 @@ fn extract_descending_base_threshold(
     entry_block: &MirBlock,
     condition_value: &MirValueId,
     param_value: &MirValueId,
+    recurse_on_then: bool,
 ) -> Option<i64> {
     let mut int_consts = BTreeMap::new();
     for inst in &entry_block.instructions {
@@ -1455,28 +1461,33 @@ fn extract_descending_base_threshold(
         if dest != condition_value {
             continue;
         }
-        match op {
-            MirBinaryOp::Lte if left == param_value => {
-                if let Some(threshold) = int_consts.get(right) {
-                    return Some(*threshold);
+        let base_threshold = if recurse_on_then {
+            match op {
+                MirBinaryOp::Gt if left == param_value => int_consts.get(right).copied(),
+                MirBinaryOp::Gte if left == param_value => {
+                    int_consts.get(right).copied().and_then(|v| v.checked_sub(1))
                 }
-            }
-            MirBinaryOp::Lt if left == param_value => {
-                if let Some(threshold) = int_consts.get(right) {
-                    return threshold.checked_sub(1);
+                MirBinaryOp::Lt if right == param_value => int_consts.get(left).copied(),
+                MirBinaryOp::Lte if right == param_value => {
+                    int_consts.get(left).copied().and_then(|v| v.checked_sub(1))
                 }
+                _ => None,
             }
-            MirBinaryOp::Gte if right == param_value => {
-                if let Some(threshold) = int_consts.get(left) {
-                    return Some(*threshold);
+        } else {
+            match op {
+                MirBinaryOp::Lte if left == param_value => int_consts.get(right).copied(),
+                MirBinaryOp::Lt if left == param_value => {
+                    int_consts.get(right).copied().and_then(|v| v.checked_sub(1))
                 }
-            }
-            MirBinaryOp::Gt if right == param_value => {
-                if let Some(threshold) = int_consts.get(left) {
-                    return threshold.checked_sub(1);
+                MirBinaryOp::Gte if right == param_value => int_consts.get(left).copied(),
+                MirBinaryOp::Gt if right == param_value => {
+                    int_consts.get(left).copied().and_then(|v| v.checked_sub(1))
                 }
+                _ => None,
             }
-            _ => {}
+        };
+        if let Some(threshold) = base_threshold {
+            return Some(threshold);
         }
     }
 
@@ -12540,6 +12551,116 @@ mod tests {
             args.first(),
             Some(&loop_start_value),
             "loop should start at 3 for `n < 3` (equivalent to `n <= 2`)"
+        );
+    }
+
+    #[test]
+    fn rewrite_trmc_descending_sum_chain_supports_gt_recurse_branch() {
+        let mut function = MirFunction {
+            name: "build".to_string(),
+            signature: MirFunctionSignature {
+                params: vec![Type::Int],
+                ret: Type::Dynamic,
+                effects: EffectRow::pure(),
+            },
+            entry: MirBlockId(0),
+            blocks: vec![
+                MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: MirValueId(1),
+                            literal: MirLiteral::Int(0),
+                        },
+                        MirInst::Binary {
+                            dest: MirValueId(2),
+                            op: MirBinaryOp::Gt,
+                            left: MirValueId(0),
+                            right: MirValueId(1),
+                        },
+                    ],
+                    terminator: MirTerminator::Branch {
+                        condition: MirValueId(2),
+                        then_block: MirBlockId(2),
+                        else_block: MirBlockId(1),
+                    },
+                },
+                MirBlock {
+                    id: MirBlockId(1),
+                    params: vec![],
+                    instructions: vec![MirInst::SumInit {
+                        dest: MirValueId(3),
+                        sum_type: "Chain".to_string(),
+                        variant: "End".to_string(),
+                        tag: 0,
+                        fields: vec![],
+                    }],
+                    terminator: MirTerminator::Jump {
+                        target: MirBlockId(3),
+                        args: vec![MirValueId(3)],
+                    },
+                },
+                MirBlock {
+                    id: MirBlockId(2),
+                    params: vec![],
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: MirValueId(4),
+                            literal: MirLiteral::Int(1),
+                        },
+                        MirInst::Binary {
+                            dest: MirValueId(5),
+                            op: MirBinaryOp::Sub,
+                            left: MirValueId(0),
+                            right: MirValueId(4),
+                        },
+                        MirInst::Call {
+                            callee: MirCallee::Local("build".to_string()),
+                            args: vec![MirValueId(5)],
+                            arg_types: vec![Type::Int],
+                            result: Some(MirValueId(6)),
+                            ret_type: Type::Dynamic,
+                            callee_fail_result_abi: false,
+                            capture_fail_result: false,
+                            cc_manifest_id: "default".to_string(),
+                        },
+                        MirInst::SumInit {
+                            dest: MirValueId(7),
+                            sum_type: "Chain".to_string(),
+                            variant: "Node".to_string(),
+                            tag: 1,
+                            fields: vec![MirValueId(0), MirValueId(6)],
+                        },
+                    ],
+                    terminator: MirTerminator::Jump {
+                        target: MirBlockId(3),
+                        args: vec![MirValueId(7)],
+                    },
+                },
+                MirBlock {
+                    id: MirBlockId(3),
+                    params: vec![MirBlockParam {
+                        id: MirValueId(8),
+                        ty: Type::Dynamic,
+                    }],
+                    instructions: vec![MirInst::Nop],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirValueId(8)),
+                    },
+                },
+            ],
+        };
+
+        rewrite_trmc_descending_sum_chain(&mut function);
+
+        assert!(
+            function
+                .blocks
+                .iter()
+                .flat_map(|block| block.instructions.iter())
+                .all(|inst| !matches!(inst, MirInst::Call { .. })),
+            "rewrite should support `if n > c then recurse else base` orientation"
         );
     }
 
