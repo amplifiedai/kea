@@ -3771,6 +3771,39 @@ theorem handler_step_exists_and_preserves_iff_supported_shape_of_typed
     exact ⟨e', h_step, handler_step_preservation h_typed h_step⟩
 
 /--
+Every one-step boundary reduction produces a core expression.
+-/
+theorem handler_step_result_is_core
+    {e e' : HandlerExpr}
+    (h_step : HandlerStep e e') :
+    ∃ target : CoreExpr, e' = .core target := by
+  cases h_step with
+  | handle_perform_tail _ clause arg k _ _ _ _ =>
+      exact ⟨bindTailResumptive clause arg k, rfl⟩
+  | handle_core _ _ e =>
+      exact ⟨e, rfl⟩
+
+/--
+Typed supported-shape bridge to a typed core step target.
+-/
+theorem handler_typed_handle_shape_steps_to_typed_core
+    {tenv : TermEnv}
+    {body : HandlerExpr}
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    {ty : Ty}
+    (h_typed : HandlerHasType tenv (.handle body handler clause) ty)
+    (h_shape : handlerStepSupportedShape body clause) :
+    ∃ target : CoreExpr,
+      HandlerStep (.handle body handler clause) (.core target)
+      ∧ HasType tenv target ty := by
+  rcases (handler_step_exists_and_preserves_iff_supported_shape_of_typed h_typed).2 h_shape with
+    ⟨e', h_step, h_typed'⟩
+  rcases handler_step_result_is_core h_step with ⟨target, h_target⟩
+  subst h_target
+  exact ⟨target, h_step, handlerHasType_core_inv h_typed'⟩
+
+/--
 Core-body progress witness at the boundary:
 handled core bodies step directly to the same core payload.
 -/

@@ -15070,3 +15070,43 @@ handles.
 **Outcome**:
 - Both supported boundary step shapes (perform-redex and core-body) now have
   evaluator+contract capstone theorem surfaces, with MCP behavior aligned.
+
+### 2026-03-02: boundary step-to-core target bridge
+
+**Context**: Added theorems that make the boundary target shape explicit and
+lift typed supported-shape handles to typed core targets.
+
+Lean changes:
+- `handler_step_result_is_core`
+- `handler_typed_handle_shape_steps_to_typed_core`
+
+The second theorem combines:
+- typed supported-shape completeness,
+- step preservation,
+- core-inversion,
+
+to produce `∃ target, HandlerStep ... (.core target) ∧ HasType tenv target ty`.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+- `diagnose`
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; theorem-route strengthening only.
+- Existing linearity diagnostics and overlap normalization should remain stable.
+
+**Probe (direct `kea` MCP)**:
+1. Single-resume clause accepted.
+2. Branch double-resume rejected with `E0012`.
+3. `resume` outside handler rejected with `E0012`.
+4. Overlap residual remains normalized (`handled : () -[IO]> ()`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Boundary-step targets are now explicitly characterized as core expressions,
+  and typed supported-shape handles can be projected directly to typed core
+  targets via one theorem path.
