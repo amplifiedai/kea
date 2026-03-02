@@ -16972,3 +16972,39 @@ The capstone route is now explicit:
 **Outcome**:
 - “Extending the judgment” is now a machine-checkable bridge premise rather
   than prose: the remaining work is to realize/prove the scoped->strict lift.
+
+### 2026-03-02: scoped->strict lift equivalence and non-derivability witness
+
+**Context**: Tightened the strict-extension boundary by proving the
+scoped->strict lift contract is equivalent to metadata coherence, then showing
+it is currently not derivable.
+
+Lean changes:
+- Added in `Kea/Typing.lean`:
+  - `native_handler_scoped_to_strict_lift_of_metadata_coherence`
+  - `native_handler_scoped_to_strict_lift_prop_iff_metadata_coherence`
+  - `not_native_handler_scoped_to_strict_lift_prop`
+
+This means the remaining gap is now one exact obligation class, with explicit
+negative witness under current typing.
+
+**Build check**:
+- `cd formal && lake build Kea.Typing` passes.
+- `cd formal && lake build` passes.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Probe (direct `kea` MCP)**:
+1. Spoofed resume context variable remains rejected (`E0012`).
+2. Single-resume matching handler clause remains accepted (`status = ok`).
+3. Double-resume handler clause remains rejected (`E0012`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- The unresolved native-judgment closure is now maximally explicit:
+  proving a scoped->strict lift is equivalent to proving metadata coherence.

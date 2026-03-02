@@ -548,6 +548,11 @@ Concrete milestone checklist for moving from the current fuel model to an implem
   `native_handler_perform_metadata_coherence_of_scoped_to_strict_lift`,
   `native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_scoped_to_strict_lift`),
   so the remaining closure target is now a precise lift proof obligation.
+  Update: proved lift/coherence equivalence and explicit non-derivability
+  (`native_handler_scoped_to_strict_lift_of_metadata_coherence`,
+  `native_handler_scoped_to_strict_lift_prop_iff_metadata_coherence`,
+  `not_native_handler_scoped_to_strict_lift_prop`), collapsing the open native
+  typing-extension gap to one named obligation class.
   Update: re-ran direct in-session `kea` MCP stress probes (spoofed
   `__kea_resume_ctx`, out-of-handler `resume`, single-resume handler acceptance,
   double-resume rejection) and observed agreement with Lean assumptions

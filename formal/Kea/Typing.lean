@@ -2124,6 +2124,44 @@ theorem native_handler_strict_typing_prop_iff_metadata_coherence :
   · exact native_handler_strict_typing_of_metadata_coherence
 
 /--
+Global metadata coherence is sufficient to build the scoped-to-strict lift
+contract.
+-/
+theorem native_handler_scoped_to_strict_lift_of_metadata_coherence
+    (h_coherence : native_handler_perform_metadata_coherence_prop) :
+    native_handler_scoped_to_strict_lift_prop := by
+  intro env e ty h_typed
+  refine ⟨h_typed, ?_⟩
+  intro body opHandle argName resumeName argTy opRetTy clauseBody h_eq
+  intro opBody argTyBody opRetTyBody arg k h_body_eq
+  have h_typed_handle :
+      HasTypeScopedTop env
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        ty := by
+    simpa [h_eq] using h_typed
+  exact h_coherence env body opHandle argName resumeName argTy opRetTy clauseBody ty
+    h_typed_handle opBody argTyBody opRetTyBody arg k h_body_eq
+
+/--
+Scoped-to-strict lift and metadata coherence are equivalent global obligations.
+-/
+theorem native_handler_scoped_to_strict_lift_prop_iff_metadata_coherence :
+    native_handler_scoped_to_strict_lift_prop
+      ↔ native_handler_perform_metadata_coherence_prop := by
+  constructor
+  · exact native_handler_perform_metadata_coherence_of_scoped_to_strict_lift
+  · exact native_handler_scoped_to_strict_lift_of_metadata_coherence
+
+/--
+The scoped-to-strict lift contract is not derivable from current scoped typing.
+-/
+theorem not_native_handler_scoped_to_strict_lift_prop :
+    ¬ native_handler_scoped_to_strict_lift_prop := by
+  intro h_lift
+  exact not_native_handler_perform_metadata_coherence_prop
+    (native_handler_perform_metadata_coherence_of_scoped_to_strict_lift h_lift)
+
+/--
 Full mismatch-extension progress from core body progress plus a global strict
 typing contract.
 -/
