@@ -399,6 +399,11 @@ Concrete milestone checklist for moving from the current fuel model to an implem
   surfaces). MCP re-probes confirm `resume` outside handler remains rejected
   with `E0012`, including spoof attempts that bind `__kea_resume_ctx` as an
   ordinary parameter.
+  Update: added explicit non-forgeability boundary witnesses in
+  `Kea/Typing.lean` (`hasType_resume_spoofable_witness`,
+  `hasTypeScopedTop_resume_spoof_rejected_witness`,
+  `scoped_resume_nonforgeable_boundary_witness`) and re-probed MCP to confirm
+  spoof/out-of-handler `resume` remain rejected with `E0012`.
   Update: added explicit theorem exports for that gate
   (`hasType_resume_requires_ctx`, `resume_not_typable_without_ctx`,
   `inferExpr_resume_none_without_ctx`), so out-of-handler `resume` rejection is

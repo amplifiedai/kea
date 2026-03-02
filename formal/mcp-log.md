@@ -16105,3 +16105,41 @@ Lean changes:
 **Outcome**:
 - Native handler typing now has a non-forgeable, machine-checked resume-context
   judgment aligned with MCP `E0012` behavior.
+
+### 2026-03-02: scoped non-forgeability witness theorems + MCP re-check
+
+**Context**: Added explicit witness theorems that separate the legacy marker
+model from the new scoped native model at the spoofing boundary.
+
+Lean changes:
+- Added in `Kea/Typing.lean`:
+  - `hasType_resume_spoofable_witness`
+  - `hasTypeScopedTop_resume_spoof_rejected_witness`
+  - `scoped_resume_nonforgeable_boundary_witness`
+- These make the key boundary machine-checkable:
+  legacy `HasType` admits a spoofed `resumeCtxName` env witness, while
+  `HasTypeScopedTop` rejects the same expression.
+
+**Build check**:
+- `cd formal && lake build` passes.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Probe (direct `kea` MCP)**:
+1. Valid single-resume handler accepted (`status = ok`).
+2. Spoof attempt rejected:
+   - `fn spoof(__kea_resume_ctx: fn(Int) -> Int) -> Int; resume 1`
+   - `status = error`, `E0012`.
+3. Out-of-handler `resume` rejected:
+   - `fn bad() -> Int; resume 1`
+   - `status = error`, `E0012`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Non-forgeability boundary now has explicit theorem witnesses plus fresh MCP
+  confirmation on the spoofing surface.

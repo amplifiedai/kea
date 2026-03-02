@@ -845,6 +845,40 @@ theorem hasTypeScopedTop_resume_not_typable
   | resume ctx _ _ opRetTy handlerTy h_ctx _ =>
     cases h_ctx
 
+/--
+Legacy marker-based native typing is forgeable: binding `resumeCtxName` as an
+ordinary variable makes out-of-handler `resume` typable.
+-/
+theorem hasType_resume_spoofable_witness :
+    let env : TermEnv := [(resumeCtxName, .function (.cons .int .nil) .int)]
+    HasType env (.resume (.intLit 1)) .int := by
+  intro env
+  refine HasType.resume env (.intLit 1) .int .int ?_ ?_
+  · simp [env, TermEnv.lookup, resumeCtxName]
+  · exact HasType.int env 1
+
+/--
+The scoped native judgment is non-forgeable at top-level: the same lexical
+spoofing environment does not admit `resume`.
+-/
+theorem hasTypeScopedTop_resume_spoof_rejected_witness :
+    let env : TermEnv := [(resumeCtxName, .function (.cons .int .nil) .int)]
+    ¬ HasTypeScopedTop env (.resume (.intLit 1)) .int := by
+  intro env
+  exact hasTypeScopedTop_resume_not_typable
+
+/--
+Combined non-forgeability boundary witness: the legacy marker judgment accepts
+the spoofing environment while the scoped top-level judgment rejects it.
+-/
+theorem scoped_resume_nonforgeable_boundary_witness :
+    ∃ env,
+      HasType env (.resume (.intLit 1)) .int ∧
+      ¬ HasTypeScopedTop env (.resume (.intLit 1)) .int := by
+  refine ⟨[(resumeCtxName, .function (.cons .int .nil) .int)], ?_, ?_⟩
+  · simpa using hasType_resume_spoofable_witness
+  · simpa using hasTypeScopedTop_resume_spoof_rejected_witness
+
 /- =========================================================================
    Native handler-step judgment on `Typing.CoreExpr`
    ========================================================================= -/
