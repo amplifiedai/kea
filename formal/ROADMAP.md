@@ -558,6 +558,10 @@ Concrete milestone checklist for moving from the current fuel model to an implem
   `not_native_handler_step_ext_with_mismatch_soundness_prop_of_bodyStepFalse`),
   proving full mismatch soundness cannot hold on empty body-step semantics under
   current typing.
+  Update: added constructive scoped->strict lift fragments
+  (`hasTypeScopedTop_lifts_strict_of_not_handle`,
+  `hasTypeScopedTop_handle_lifts_strict_of_local_coherence`), isolating the
+  remaining extension work to handle sites lacking local metadata coherence.
   Update: re-ran direct in-session `kea` MCP stress probes (spoofed
   `__kea_resume_ctx`, out-of-handler `resume`, single-resume handler acceptance,
   double-resume rejection) and observed agreement with Lean assumptions

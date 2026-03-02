@@ -17042,3 +17042,37 @@ no-step lemma under `bodyStep = False`.
 **Outcome**:
 - The formal boundary now includes a negative capstone: without body-step
   semantics (or stricter typing), mismatch-extension soundness cannot hold.
+
+### 2026-03-02: constructive scoped->strict lift fragments
+
+**Context**: Added constructive theorems for directly lifting current scoped
+typing derivations into the strict layer on two concrete fragments.
+
+Lean changes:
+- Added in `Kea/Typing.lean`:
+  - `hasTypeScopedTop_lifts_strict_of_not_handle`
+  - `hasTypeScopedTop_handle_lifts_strict_of_local_coherence`
+
+These isolate the remaining lift proof to exactly handle sites lacking local
+coherence evidence.
+
+**Build check**:
+- `cd formal && lake build Kea.Typing` passes.
+- `cd formal && lake build` passes.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Probe (direct `kea` MCP)**:
+1. Spoofed resume context variable remains rejected (`E0012`).
+2. Single-resume matching handler clause remains accepted (`status = ok`).
+3. Double-resume handler clause remains rejected (`E0012`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- The scoped->strict extension path now has concrete constructive footholds
+  rather than only global assumptions.

@@ -1928,6 +1928,49 @@ def native_handler_scoped_to_strict_lift_prop : Prop :=
   ∀ env e ty, HasTypeScopedTop env e ty → HasTypeScopedStrictTop env e ty
 
 /--
+Constructive lift fragment: any top-level scoped typing derivation for a
+non-`handle` expression lifts to strict typing.
+-/
+theorem hasTypeScopedTop_lifts_strict_of_not_handle
+    {env : TermEnv} {e : CoreExpr} {ty : Ty}
+    (h_typed : HasTypeScopedTop env e ty)
+    (h_not_handle :
+      ∀ body opHandle argName resumeName argTy opRetTy clauseBody,
+        e ≠ .handle body opHandle argName resumeName argTy opRetTy clauseBody) :
+    HasTypeScopedStrictTop env e ty := by
+  refine ⟨h_typed, ?_⟩
+  intro body opHandle argName resumeName argTy opRetTy clauseBody h_eq
+  exact False.elim (h_not_handle body opHandle argName resumeName argTy opRetTy clauseBody h_eq)
+
+/--
+Constructive lift fragment: a top-level scoped typed `handle` lifts to strict
+typing when given local perform-metadata coherence for that handle body.
+-/
+theorem hasTypeScopedTop_handle_lifts_strict_of_local_coherence
+    {env : TermEnv}
+    {body : CoreExpr}
+    {opHandle : Label}
+    {argName resumeName : String}
+    {argTy opRetTy : Ty}
+    {clauseBody : CoreExpr}
+    {ty : Ty}
+    (h_typed :
+      HasTypeScopedTop env
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        ty)
+    (h_local_coh :
+      ∀ opBody argTyBody opRetTyBody arg k,
+        body = .perform opBody argTyBody opRetTyBody arg k →
+        argTyBody = argTy ∧ opRetTyBody = opRetTy) :
+    HasTypeScopedStrictTop env
+      (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+      ty := by
+  refine ⟨h_typed, ?_⟩
+  intro body' opHandle' argName' resumeName' argTy' opRetTy' clauseBody' h_eq
+  cases h_eq
+  exact h_local_coh
+
+/--
 One-step mismatch-extension progress from:
 1) core body progress (`CoreValue ∨ bodyStep`), and
 2) strict handle-typing at this handle site.
