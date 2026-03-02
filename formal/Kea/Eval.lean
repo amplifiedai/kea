@@ -1,5 +1,6 @@
 import Kea.Typing
 import Kea.Properties.HandlerTypingContracts
+import Kea.Properties.TailResumptiveClassification
 
 /-
   Kea.Eval — Minimal evaluator spike.
@@ -3872,6 +3873,59 @@ theorem handler_typed_redex_capstone
     resume_at_most_once clause.contract.resumeUse := by
   refine ⟨handler_step_exists_and_preserves_of_typed_redex h_typed, ?_⟩
   exact handler_step_clause_atMostOnce_of_typed_redex h_typed
+
+/--
+Bridge theorem: typed-redex linearity excludes the invalid tail-resumptive
+classification bucket for the selected handler clause.
+-/
+theorem handler_step_clause_notInvalid_of_typed_redex
+    {tenv : TermEnv}
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    {arg k : CoreExpr}
+    {ty : Ty}
+    (h_typed : HandlerHasType tenv
+      (.handle (.perform clause.handled clause.opArgTy clause.opRetTy arg k)
+        handler
+        clause)
+      ty) :
+    TailResumptiveClassification.classifyClause clause.contract ≠
+      TailResumptiveClassification.TailResumptiveClass.invalid := by
+  have h_linear : resume_at_most_once clause.contract.resumeUse :=
+    handler_step_clause_atMostOnce_of_typed_redex h_typed
+  exact
+    (TailResumptiveClassification.classifyClause_notInvalid_iff_atMostOnce
+      clause.contract).2 (by simpa [resume_at_most_once] using h_linear)
+
+/--
+Extended capstone route for typed handler redexes: one-step existence,
+preservation, linearity, and non-invalid tail-resumptive classification.
+-/
+theorem handler_typed_redex_capstone_with_classification
+    {tenv : TermEnv}
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    {arg k : CoreExpr}
+    {ty : Ty}
+    (h_typed : HandlerHasType tenv
+      (.handle (.perform clause.handled clause.opArgTy clause.opRetTy arg k)
+        handler
+        clause)
+      ty) :
+    (∃ e',
+      HandlerStep
+        (.handle (.perform clause.handled clause.opArgTy clause.opRetTy arg k)
+          handler
+          clause)
+        e' ∧
+      HandlerHasType tenv e' ty) ∧
+    resume_at_most_once clause.contract.resumeUse ∧
+    TailResumptiveClassification.classifyClause clause.contract ≠
+      TailResumptiveClassification.TailResumptiveClass.invalid := by
+  refine ⟨?_, ?_, ?_⟩
+  · exact handler_step_exists_and_preserves_of_typed_redex h_typed
+  · exact handler_step_clause_atMostOnce_of_typed_redex h_typed
+  · exact handler_step_clause_notInvalid_of_typed_redex h_typed
 
 /-- Inversion lemma for the `core` constructor of `HandlerHasType`. -/
 theorem handlerHasType_core_inv

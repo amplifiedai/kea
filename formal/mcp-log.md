@@ -14289,3 +14289,48 @@ value typing result.
 - Handler-boundary redex reasoning is now theorem-level connected to the
   existing core evaluator soundness stack, reducing separation between the
   handler-boundary slice and core-calculus soundness routes.
+
+### 2026-03-02: typed redex classification bridge (linearity -> not-invalid)
+
+**Context**: Extended `HandlerStepBoundary` in `Kea/Eval.lean` to connect
+typed-redex linearity output to the tail-resumptive classification surface.
+
+Lean changes:
+- `handler_step_clause_notInvalid_of_typed_redex`
+- `handler_typed_redex_capstone_with_classification`
+
+The new route adds a machine-checked `classifyClause ≠ .invalid` consequence
+on top of step existence, post-step preservation, and at-most-once.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+- `diagnose`
+
+**Predict (Lean side)**:
+- No runtime behavior change expected; this is theorem-surface strengthening.
+- Resume-linearity controls and overlap normalization should remain stable.
+
+**Probe (direct `kea` MCP)**:
+1. Single-resume clause accepted:
+   - `effect Ping ... handle run() ... Ping.ask() -> resume 1`
+   - `status = ok`, binding `main : () -> Int`.
+2. Branch double-resume rejected:
+   - same `Ping` setup with `if/else` each resuming once
+   - `status = ok` with diagnostic `E0012` (`handler clause may resume at most once`).
+3. `resume` outside handler rejected:
+   - `fn main() -> Int; resume 1`
+   - `status = ok` with diagnostic `E0012` (`resume` only valid in matching clause).
+4. Overlap residual normalization remains stable:
+   - `mixed : () -[IO, Log]> ()`
+   - `handled : () -[IO]> ()`
+   - `status = ok` with `handled` inferred exactly as `() -[IO]> ()`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- The new classification bridge in Lean is consistent with the same MCP
+  linearity/normalization controls already used by the handler-boundary
+  capstone route.
