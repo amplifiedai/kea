@@ -4014,6 +4014,29 @@ theorem handler_clause_tail_capability_closedAware_as_components_of_handlerHasTy
         h_typed h_expr h_ne)
 
 /--
+General typed-handle contract capstone:
+from one `HandlerHasType` witness we can recover clause well-typedness,
+linearity, non-invalid classification, and the packaged tail-resumptive bundle.
+-/
+theorem handler_clause_contract_capstone_of_handlerHasType
+    {tenv : TermEnv}
+    {body : HandlerExpr}
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    {ty : Ty}
+    (h_typed : HandlerHasType tenv (.handle body handler clause) ty) :
+    HandleClauseContract.wellTypedSlice clause.contract
+    ∧ resume_at_most_once clause.contract.resumeUse
+    ∧ (TailResumptiveClassification.classifyClause clause.contract ≠
+        TailResumptiveClassification.TailResumptiveClass.invalid)
+    ∧ TailResumptiveClassification.TailResumptiveBundle clause.contract := by
+  refine ⟨?_, ?_, ?_, ?_⟩
+  · exact handler_clause_wellTypedSlice_of_handlerHasType h_typed
+  · exact handler_clause_atMostOnce_of_handlerHasType h_typed
+  · exact handler_clause_notInvalid_of_handlerHasType h_typed
+  · exact handler_clause_tail_resumptive_bundle_of_handlerHasType h_typed
+
+/--
 Determinism for the one-step handler boundary relation.
 -/
 theorem handler_step_deterministic

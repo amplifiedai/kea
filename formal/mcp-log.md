@@ -14528,3 +14528,41 @@ Lean changes:
 - Handler typing -> contract consequences now have projection-route parity and
   typed-redex routes consume the same generalized bridge layer, with MCP
   behavior still aligned.
+
+### 2026-03-02: general typed-handle contract capstone witness
+
+**Context**: Added a one-theorem capstone witness for clause contract
+consequences from a typed handle premise.
+
+Lean change:
+- `handler_clause_contract_capstone_of_handlerHasType`
+
+This theorem packages the key consequences into one route:
+- `wellTypedSlice`
+- `resume_at_most_once`
+- `classifyClause ≠ invalid`
+- `TailResumptiveBundle`
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+- `diagnose`
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; this is theorem-surface packaging.
+- Existing linearly-safe handler diagnostics and overlap normalization should
+  remain stable.
+
+**Probe (direct `kea` MCP)**:
+1. Single-resume clause accepted (`status = ok`).
+2. Branch double-resume rejected with `E0012`.
+3. `resume` outside handler rejected with `E0012`.
+4. Overlap residual still normalized (`handled : () -[IO]> ()`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- The general handle-typing bridge now has a single capstone witness while
+  direct MCP behavior remains unchanged and aligned.
