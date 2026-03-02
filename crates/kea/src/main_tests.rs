@@ -2589,6 +2589,44 @@
 
     #[test]
     #[cfg(not(target_os = "windows"))]
+    fn compile_and_execute_fip_unique_return_handoff_exit_code() {
+        let source_path = write_temp_source(
+            "@fip\nfn forward(x: Unique Int) -> Unique Int\n  x\n\nfn main() -> Int\n  0\n",
+            "kea-cli-fip-unique-return",
+            "kea",
+        );
+
+        let run = run_file(&source_path).expect("@fip unique return handoff should verify");
+        assert_eq!(run.exit_code, 0);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn compile_rejects_fip_when_unique_handoff_missing() {
+        let source_path = write_temp_source(
+            "@fip\nfn leak(x: Unique Int) -> Int\n  1\n\nfn main() -> Int\n  0\n",
+            "kea-cli-fip-unique-missing-handoff",
+            "kea",
+        );
+
+        let err =
+            run_file(&source_path).expect_err("@fip verifier should reject missing unique handoff");
+        assert!(
+            err.contains("`@fip` verification failed for `leak`"),
+            "expected @fip verification failure, got: {err}"
+        );
+        assert!(
+            err.contains("never referenced in function body"),
+            "expected unique ownership-flow detail, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
     fn compile_rejects_fip_when_allocations_remain() {
         let source_path = write_temp_source(
             "enum Chain\n  End\n  Link(Int, Chain)\n\n@fip\nfn build(n: Int) -> Chain\n  if n <= 0\n    Chain.End\n  else\n    Chain.Link(n, build(n - 1))\n\nfn main() -> Int\n  0\n",

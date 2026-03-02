@@ -15,7 +15,7 @@ use kea_codegen::{
 use kea_diag::{Diagnostic, Severity, SourceLocation};
 use kea_hir::{
     check_unique_moves_with_borrow_map, collect_borrow_param_positions,
-    infer_auto_borrow_param_positions, lower_module, HirModule,
+    infer_auto_borrow_param_positions, lower_module, HirDecl, HirExpr, HirExprKind, HirModule,
 };
 use kea_infer::typeck::{
     RecordRegistry, SumTypeRegistry, TraitRegistry, TypeEnv, apply_where_clause,
@@ -2080,21 +2080,59 @@ fn expr_decl_to_fn_decl(expr: &ExprDecl) -> FnDecl {
 }
 
 fn validate_fip_annotations(module: &Module, hir: &HirModule) -> Vec<Diagnostic> {
-    let mut annotated_functions: BTreeMap<String, Span> = BTreeMap::new();
+    #[derive(Debug, Clone)]
+    struct FipFunctionSpec {
+        span: Span,
+        unique_param_names: BTreeSet<String>,
+    }
+
+    let mut annotated_functions: BTreeMap<String, FipFunctionSpec> = BTreeMap::new();
     for decl in &module.declarations {
         match &decl.node {
             DeclKind::Function(fn_decl) => {
                 if fn_decl.annotations.iter().any(|ann| ann.name.node == "fip") {
+                    let unique_param_names = fn_decl
+                        .params
+                        .iter()
+                        .filter_map(|param| {
+                            param.annotation
+                                .as_ref()
+                                .and_then(|ann| {
+                                    is_unique_type_annotation(&ann.node)
+                                        .then(|| param.name().map(str::to_string))
+                                        .flatten()
+                                })
+                        })
+                        .collect::<BTreeSet<_>>();
                     annotated_functions
                         .entry(fn_decl.name.node.clone())
-                        .or_insert(fn_decl.name.span);
+                        .or_insert(FipFunctionSpec {
+                            span: fn_decl.name.span,
+                            unique_param_names,
+                        });
                 }
             }
             DeclKind::ExprFn(expr_decl) => {
                 if expr_decl.annotations.iter().any(|ann| ann.name.node == "fip") {
+                    let unique_param_names = expr_decl
+                        .params
+                        .iter()
+                        .filter_map(|param| {
+                            param.annotation
+                                .as_ref()
+                                .and_then(|ann| {
+                                    is_unique_type_annotation(&ann.node)
+                                        .then(|| param.name().map(str::to_string))
+                                        .flatten()
+                                })
+                        })
+                        .collect::<BTreeSet<_>>();
                     annotated_functions
                         .entry(expr_decl.name.node.clone())
-                        .or_insert(expr_decl.name.span);
+                        .or_insert(FipFunctionSpec {
+                            span: expr_decl.name.span,
+                            unique_param_names,
+                        });
                 }
             }
             _ => {}
@@ -2113,7 +2151,8 @@ fn validate_fip_annotations(module: &Module, hir: &HirModule) -> Vec<Diagnostic>
         .collect::<BTreeMap<_, _>>();
 
     let mut diagnostics = Vec::new();
-    for (name, span) in annotated_functions {
+    for (name, fip_spec) in annotated_functions {
+        let span = fip_spec.span;
         let mir_function = mir.functions.iter().find(|function| function.name == name);
         let Some(stats) = stats_by_name.get(name.as_str()) else {
             diagnostics.push(
@@ -2135,6 +2174,17 @@ fn validate_fip_annotations(module: &Module, hir: &HirModule) -> Vec<Diagnostic>
         };
 
         let profile = mir_function.map(collect_fip_mir_profile).unwrap_or_default();
+        let hir_var_refs = collect_hir_var_refs_by_function_name(hir, &name);
+        let unique_flow_issues = fip_spec
+            .unique_param_names
+            .iter()
+            .filter(|name| !hir_var_refs.contains(*name))
+            .map(|name| {
+                format!(
+                    "Unique parameter `{name}` is never referenced in function body (expected exactly-once consume/forward)"
+                )
+            })
+            .collect::<Vec<_>>();
         let mut failures = Vec::new();
         if profile.disallowed_alloc_count > 0 {
             failures.push(format!("disallowed_alloc_count={}", profile.disallowed_alloc_count));
@@ -2157,6 +2207,9 @@ fn validate_fip_annotations(module: &Module, hir: &HirModule) -> Vec<Diagnostic>
         if stats.trmc_candidate_count > 0 {
             failures.push(format!("trmc_candidate_count={}", stats.trmc_candidate_count));
         }
+        if !unique_flow_issues.is_empty() {
+            failures.push(format!("unique_flow_violations={}", unique_flow_issues.len()));
+        }
 
         if !failures.is_empty() {
             let mut help_parts = vec![
@@ -2171,6 +2224,17 @@ fn validate_fip_annotations(module: &Module, hir: &HirModule) -> Vec<Diagnostic>
                         sites.join("\n")
                     ));
                 }
+            }
+            if !unique_flow_issues.is_empty() {
+                let lines = unique_flow_issues
+                    .iter()
+                    .take(5)
+                    .map(|issue| format!("- {issue}"))
+                    .collect::<Vec<_>>();
+                help_parts.push(format!(
+                    "unique ownership flow issues:\n{}",
+                    lines.join("\n")
+                ));
             }
             diagnostics.push(
                 Diagnostic::error(
@@ -2224,6 +2288,106 @@ fn collect_fip_mir_profile(function: &kea_mir::MirFunction) -> FipMirProfile {
         }
     }
     profile
+}
+
+fn is_unique_type_annotation(annotation: &TypeAnnotation) -> bool {
+    match annotation {
+        TypeAnnotation::Named(name) => name == "Unique",
+        TypeAnnotation::Applied(name, args) => {
+            name == "Unique"
+                || args
+                    .iter()
+                    .any(is_unique_type_annotation)
+        }
+        _ => false,
+    }
+}
+
+fn collect_hir_var_refs_by_function_name(hir: &HirModule, name: &str) -> BTreeSet<String> {
+    let mut refs = BTreeSet::new();
+    for decl in &hir.declarations {
+        let HirDecl::Function(function) = decl else {
+            continue;
+        };
+        if function.name != name && !function.name.ends_with(&format!(".{name}")) {
+            continue;
+        }
+        collect_hir_var_refs(&function.body, &mut refs);
+        break;
+    }
+    refs
+}
+
+fn collect_hir_var_refs(expr: &HirExpr, refs: &mut BTreeSet<String>) {
+    match &expr.kind {
+        HirExprKind::Lit(_) => {}
+        HirExprKind::Var(name) => {
+            refs.insert(name.clone());
+        }
+        HirExprKind::Binary { left, right, .. } => {
+            collect_hir_var_refs(left, refs);
+            collect_hir_var_refs(right, refs);
+        }
+        HirExprKind::Unary { operand, .. } => collect_hir_var_refs(operand, refs),
+        HirExprKind::If {
+            condition,
+            then_branch,
+            else_branch,
+        } => {
+            collect_hir_var_refs(condition, refs);
+            collect_hir_var_refs(then_branch, refs);
+            if let Some(else_expr) = else_branch {
+                collect_hir_var_refs(else_expr, refs);
+            }
+        }
+        HirExprKind::Call { func, args } => {
+            collect_hir_var_refs(func, refs);
+            for arg in args {
+                collect_hir_var_refs(arg, refs);
+            }
+        }
+        HirExprKind::Let { value, .. } => collect_hir_var_refs(value, refs),
+        HirExprKind::Block(exprs) | HirExprKind::Tuple(exprs) => {
+            for item in exprs {
+                collect_hir_var_refs(item, refs);
+            }
+        }
+        HirExprKind::Lambda { body, .. } => collect_hir_var_refs(body, refs),
+        HirExprKind::RecordLit { fields, .. } => {
+            for (_, field_expr) in fields {
+                collect_hir_var_refs(field_expr, refs);
+            }
+        }
+        HirExprKind::RecordUpdate { base, fields, .. } => {
+            collect_hir_var_refs(base, refs);
+            for (_, field_expr) in fields {
+                collect_hir_var_refs(field_expr, refs);
+            }
+        }
+        HirExprKind::FieldAccess { expr, .. } => collect_hir_var_refs(expr, refs),
+        HirExprKind::SumConstructor { fields, .. } => {
+            for field_expr in fields {
+                collect_hir_var_refs(field_expr, refs);
+            }
+        }
+        HirExprKind::SumPayloadAccess { expr, .. } => collect_hir_var_refs(expr, refs),
+        HirExprKind::Catch { expr } => collect_hir_var_refs(expr, refs),
+        HirExprKind::Handle {
+            expr,
+            clauses,
+            then_clause,
+        } => {
+            collect_hir_var_refs(expr, refs);
+            for clause in clauses {
+                collect_hir_var_refs(&clause.body, refs);
+            }
+            if let Some(then_expr) = then_clause {
+                collect_hir_var_refs(then_expr, refs);
+            }
+        }
+        HirExprKind::Resume { value } => collect_hir_var_refs(value, refs),
+        HirExprKind::Raw(_) => {}
+    }
 }
 
 fn collect_fip_offending_sites(function: &kea_mir::MirFunction, limit: usize) -> Vec<String> {
