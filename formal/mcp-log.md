@@ -14638,3 +14638,41 @@ handler-level contract APIs in `HandlerTypingContracts`.
 **Outcome**:
 - Typed singleton-handler premises now have a direct machine-checked bridge
   into handler-level linearity bundles while MCP behavior remains aligned.
+
+### 2026-03-02: explicit boundary progress-gap witness for non-redex handles
+
+**Context**: Added theorem-level shape and no-step witnesses that make the
+current `HandlerStep` boundary limitation explicit in Lean.
+
+Lean changes:
+- `handler_step_requires_perform_redex`
+- `handler_core_body_cannot_step`
+- `handler_progress_gap_core_body`
+
+These state that in the current boundary model, handler stepping only applies
+to perform-redex bodies; typed `.handle (.core ...) ...` terms do not step.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+- `diagnose`
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; this is an explicit scope boundary.
+- Existing linearly-safe handler diagnostics and overlap normalization should
+  remain stable.
+
+**Probe (direct `kea` MCP)**:
+1. Single-resume clause accepted.
+2. Branch double-resume rejected with `E0012`.
+3. `resume` outside handler rejected with `E0012`.
+4. Overlap residual remains normalized (`handled : () -[IO]> ()`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- The remaining progress-side boundary for the current handler-step relation is
+  now explicitly represented as theorem statements, while runtime behavior
+  remains aligned with prior assumptions.

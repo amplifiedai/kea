@@ -3641,6 +3641,52 @@ inductive HandlerStep : HandlerExpr → HandlerExpr → Prop where
         (.core (bindTailResumptive clause arg k))
 
 /--
+Any handler step from `.handle body handler clause` requires the body to be a
+matching `.perform` redex for that clause shape.
+-/
+theorem handler_step_requires_perform_redex
+    {body : HandlerExpr}
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    {e' : HandlerExpr}
+    (h_step : HandlerStep (.handle body handler clause) e') :
+    ∃ arg k,
+      body = .perform clause.handled clause.opArgTy clause.opRetTy arg k := by
+  cases h_step with
+  | handle_perform_tail _ _ arg k _ _ _ _ =>
+      exact ⟨arg, k, rfl⟩
+
+/--
+Boundary limitation witness: a handled core body has no outgoing handler step
+under the current one-rule `HandlerStep` relation.
+-/
+theorem handler_core_body_cannot_step
+    {e : CoreExpr}
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    {e' : HandlerExpr}
+    (h_step : HandlerStep (.handle (.core e) handler clause) e') :
+    False := by
+  rcases handler_step_requires_perform_redex h_step with ⟨arg, k, h_body⟩
+  cases h_body
+
+/--
+Typed-form progress gap witness for the current boundary model:
+typed handles whose body is already core do not step via `HandlerStep`.
+-/
+theorem handler_progress_gap_core_body
+    {tenv : TermEnv}
+    {e : CoreExpr}
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    {ty : Ty}
+    (h_typed : HandlerHasType tenv (.handle (.core e) handler clause) ty) :
+    ¬ ∃ e', HandlerStep (.handle (.core e) handler clause) e' := by
+  intro h_exists
+  rcases h_exists with ⟨e', h_step⟩
+  exact handler_core_body_cannot_step h_step
+
+/--
 Typed refinement of `HandlerStep` that records the precise preservation-side
 obligation: the tail-resumptive clause-body instantiation is well-typed in the
 ambient environment.
