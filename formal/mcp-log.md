@@ -15110,3 +15110,39 @@ to produce `∃ target, HandlerStep ... (.core target) ∧ HasType tenv target t
 - Boundary-step targets are now explicitly characterized as core expressions,
   and typed supported-shape handles can be projected directly to typed core
   targets via one theorem path.
+
+### 2026-03-02: generic shape-based evaluator+contract bridges
+
+**Context**: Added generic evaluator theorem routes for typed supported-shape
+handles, parameterized by per-target `EvalFragmentFull` evidence.
+
+Lean changes:
+- `handler_typed_handle_shape_eval_sound`
+- `handler_typed_handle_shape_eval_and_contract_capstone`
+
+These unify evaluator+contract reasoning across both supported boundary body
+shapes (core passthrough and matching perform-redex), rather than requiring
+shape-specific evaluator theorems only.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+- `diagnose`
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; theorem-route generalization only.
+- Existing linearity diagnostics and overlap normalization should remain stable.
+
+**Probe (direct `kea` MCP)**:
+1. Single-resume clause accepted.
+2. Branch double-resume rejected with `E0012`.
+3. `resume` outside handler rejected with `E0012`.
+4. Overlap residual remains normalized (`handled : () -[IO]> ()`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Evaluator+contract consequences are now available on one generic
+supported-shape theorem path, with MCP behavior still aligned.

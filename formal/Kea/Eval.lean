@@ -4848,6 +4848,78 @@ theorem handlerHasType_core_inv
       exact h_core
 
 /--
+Generic evaluator bridge for supported-shape typed handles:
+if every reachable core target from this boundary step satisfies
+`EvalFragmentFull`, evaluation is sound for that target.
+-/
+theorem handler_typed_handle_shape_eval_sound
+    {tenv : TermEnv}
+    {venv : ValueEnv}
+    {body : HandlerExpr}
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    {ty : Ty}
+    (h_env : EnvWellTyped tenv venv)
+    (h_typed : HandlerHasType tenv (.handle body handler clause) ty)
+    (h_shape : handlerStepSupportedShape body clause)
+    (h_frag :
+      ∀ target : CoreExpr,
+        HandlerStep (.handle body handler clause) (.core target) →
+        EvalFragmentFull target) :
+    ∃ target v,
+      HandlerStep (.handle body handler clause) (.core target)
+      ∧ eval venv target = some v
+      ∧ ValueHasType v ty := by
+  rcases handler_typed_handle_shape_steps_to_typed_core h_typed h_shape with
+    ⟨target, h_step, h_target_typed⟩
+  have h_eval :
+      ∃ v, eval venv target = some v ∧ ValueHasType v ty :=
+    eval_sound_evalFragmentFull h_env h_target_typed (h_frag target h_step)
+  rcases h_eval with ⟨v, h_eval_eq, h_v_ty⟩
+  exact ⟨target, v, h_step, h_eval_eq, h_v_ty⟩
+
+/--
+Generic shape-based evaluator+contract capstone.
+-/
+theorem handler_typed_handle_shape_eval_and_contract_capstone
+    {tenv : TermEnv}
+    {venv : ValueEnv}
+    {body : HandlerExpr}
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    {ty : Ty}
+    (h_env : EnvWellTyped tenv venv)
+    (h_typed : HandlerHasType tenv (.handle body handler clause) ty)
+    (h_shape : handlerStepSupportedShape body clause)
+    (h_frag :
+      ∀ target : CoreExpr,
+        HandlerStep (.handle body handler clause) (.core target) →
+        EvalFragmentFull target) :
+    (∃ target v,
+      HandlerStep (.handle body handler clause) (.core target)
+      ∧ eval venv target = some v
+      ∧ ValueHasType v ty)
+    ∧ HandleClauseContract.wellTypedSlice clause.contract
+    ∧ resume_at_most_once clause.contract.resumeUse
+    ∧ (TailResumptiveClassification.classifyClause clause.contract ≠
+        TailResumptiveClassification.TailResumptiveClass.invalid)
+    ∧ TailResumptiveClassification.TailResumptiveBundle clause.contract := by
+  have h_eval :
+      ∃ target v,
+        HandlerStep (.handle body handler clause) (.core target)
+        ∧ eval venv target = some v
+        ∧ ValueHasType v ty :=
+    handler_typed_handle_shape_eval_sound h_env h_typed h_shape h_frag
+  have h_contract :
+      HandleClauseContract.wellTypedSlice clause.contract
+      ∧ resume_at_most_once clause.contract.resumeUse
+      ∧ (TailResumptiveClassification.classifyClause clause.contract ≠
+          TailResumptiveClassification.TailResumptiveClass.invalid)
+      ∧ TailResumptiveClassification.TailResumptiveBundle clause.contract :=
+    handler_clause_contract_capstone_of_handlerHasType h_typed
+  exact ⟨h_eval, h_contract.1, h_contract.2.1, h_contract.2.2.1, h_contract.2.2.2⟩
+
+/--
 Bridge theorem: once a typed handler redex takes its one-step boundary
 reduction to a core expression, existing core evaluator soundness applies.
 -/
