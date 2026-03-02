@@ -2178,6 +2178,52 @@ theorem native_handler_step_ext_with_mismatch_exists_and_preserves_of_core_sound
     h_step
 
 /--
+Core-judgment local handler soundness route:
+for any `HasTypeScopedTop`-typed handle, core body preservation/progress plus
+scoped-to-strict lift yields one-step existence and post-step typing.
+-/
+theorem native_handler_step_ext_with_mismatch_exists_and_preserves_of_core_soundness_and_scoped_to_strict_lift
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_body_pres :
+      ∀ env body body' ty,
+        HasTypeScopedTop env body ty →
+        bodyStep body body' →
+        HasTypeScopedTop env body' ty)
+    (h_core_progress :
+      ∀ env body ty,
+        HasTypeScopedTop env body ty →
+        CoreValue body ∨ ∃ body', bodyStep body body')
+    (h_lift : native_handler_scoped_to_strict_lift_prop)
+    {env : TermEnv}
+    {body : CoreExpr}
+    {opHandle : Label}
+    {argName resumeName : String}
+    {argTy opRetTy : Ty}
+    {clauseBody : CoreExpr}
+    {ty : Ty}
+    (h_typed :
+      HasTypeScopedTop env
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        ty) :
+    ∃ e',
+      NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        e'
+      ∧ HasTypeScopedTop env e' ty := by
+  have h_strict_top :
+      HasTypeScopedStrictTop env
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        ty :=
+    h_lift env
+      (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+      ty
+      h_typed
+  exact native_handler_step_ext_with_mismatch_exists_and_preserves_of_core_soundness_and_strict_top_handle
+    clauseSem mismatchSem bodyStep h_body_pres h_core_progress h_strict_top
+
+/--
 Global progress target for mismatched-perform extension under strict top-level
 typing of handled expressions.
 -/
@@ -2453,6 +2499,46 @@ theorem native_handler_scoped_to_strict_lift_prop_of_strict_typing
     refine ⟨h_typed, ?_⟩
     intro body opHandle argName resumeName argTy opRetTy clauseBody h_eq
     cases h_eq
+
+/--
+Core-judgment local handler soundness route from global strict typing:
+strict typing is converted to scoped-to-strict lift and then applied at the
+typed handle site.
+-/
+theorem native_handler_step_ext_with_mismatch_exists_and_preserves_of_core_soundness_and_strict_typing
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_body_pres :
+      ∀ env body body' ty,
+        HasTypeScopedTop env body ty →
+        bodyStep body body' →
+        HasTypeScopedTop env body' ty)
+    (h_core_progress :
+      ∀ env body ty,
+        HasTypeScopedTop env body ty →
+        CoreValue body ∨ ∃ body', bodyStep body body')
+    (h_strict_typing : native_handler_strict_typing_prop)
+    {env : TermEnv}
+    {body : CoreExpr}
+    {opHandle : Label}
+    {argName resumeName : String}
+    {argTy opRetTy : Ty}
+    {clauseBody : CoreExpr}
+    {ty : Ty}
+    (h_typed :
+      HasTypeScopedTop env
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        ty) :
+    ∃ e',
+      NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        e'
+      ∧ HasTypeScopedTop env e' ty := by
+  exact native_handler_step_ext_with_mismatch_exists_and_preserves_of_core_soundness_and_scoped_to_strict_lift
+    clauseSem mismatchSem bodyStep h_body_pres h_core_progress
+    (native_handler_scoped_to_strict_lift_prop_of_strict_typing h_strict_typing)
+    h_typed
 
 /--
 Scoped-to-strict lifting implies global metadata coherence on typed handles.
