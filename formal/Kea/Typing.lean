@@ -1787,6 +1787,63 @@ theorem native_handler_step_ext_with_mismatch_progress_of_handle_progress_obliga
         (NativeHandlerStepExt.handle_congr body body' opHandle argName resumeName argTy opRetTy clauseBody h_body_step)⟩
 
 /--
+Soundness target (preservation + progress) for the mismatched-perform
+extension.
+-/
+def native_handler_step_ext_with_mismatch_soundness_prop
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) : Prop :=
+  native_handler_step_ext_with_mismatch_preservation_prop
+      clauseSem mismatchSem bodyStep
+    ∧
+    native_handler_step_ext_with_mismatch_progress_prop
+      clauseSem mismatchSem bodyStep
+
+/--
+Capstone route: mismatch-extension soundness from body-step preservation plus
+typed-handle body-shape progress obligation.
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_of_handle_progress_obligation
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_body_pres :
+      ∀ env body body' ty,
+        HasTypeScopedTop env body ty →
+        bodyStep body body' →
+        HasTypeScopedTop env body' ty)
+    (h_handle_progress :
+      native_handler_handle_progress_obligation_ext_with_mismatch_prop bodyStep) :
+    native_handler_step_ext_with_mismatch_soundness_prop
+      clauseSem mismatchSem bodyStep := by
+  refine ⟨?_, ?_⟩
+  · exact native_handler_step_ext_with_mismatch_preservation
+      clauseSem mismatchSem bodyStep h_body_pres
+  · exact native_handler_step_ext_with_mismatch_progress_of_handle_progress_obligation
+      clauseSem mismatchSem bodyStep h_handle_progress
+
+/--
+One-hop mismatch-extension soundness route from packaged core preservation and
+typed-handle body-shape progress obligation.
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_of_core_preservation_and_handle_progress
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core_pres :
+      ∀ env body body' ty,
+        HasTypeScopedTop env body ty →
+        bodyStep body body' →
+        HasTypeScopedTop env body' ty)
+    (h_handle_progress :
+      native_handler_handle_progress_obligation_ext_with_mismatch_prop bodyStep) :
+    native_handler_step_ext_with_mismatch_soundness_prop
+      clauseSem mismatchSem bodyStep := by
+  exact native_handler_step_ext_with_mismatch_soundness_of_handle_progress_obligation
+    clauseSem mismatchSem bodyStep h_core_pres h_handle_progress
+
+/--
 Typed op-mismatch handled-`perform` expressions always make one step under the
 mismatched-perform extension.
 -/

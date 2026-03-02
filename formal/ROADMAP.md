@@ -475,6 +475,12 @@ Concrete milestone checklist for moving from the current fuel model to an implem
   `native_handler_step_ext_with_mismatch_progress_prop`,
   `native_handler_handle_progress_obligation_ext_with_mismatch_prop`,
   `native_handler_step_ext_with_mismatch_progress_of_handle_progress_obligation`.
+  Update: added capstone soundness packaging for the mismatch extension:
+  `native_handler_step_ext_with_mismatch_soundness_prop`,
+  `native_handler_step_ext_with_mismatch_soundness_of_handle_progress_obligation`,
+  `native_handler_step_ext_with_mismatch_soundness_of_core_preservation_and_handle_progress`.
+  This gives one-hop preservation+progress discharge routes once body-step
+  preservation and typed-handle body-shape obligations are available.
   Update: added explicit theorem exports for that gate
   (`hasType_resume_requires_ctx`, `resume_not_typable_without_ctx`,
   `inferExpr_resume_none_without_ctx`), so out-of-handler `resume` rejection is
