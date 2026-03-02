@@ -1217,9 +1217,10 @@ fn rewrite_trmc_descending_sum_chain(function: &mut MirFunction) {
     {
         return;
     }
-    if !value_is_param_minus_one(pre_call, &call_arg, &recursive_param_value) {
+    let Some(step_amount) = extract_descending_step(pre_call, &call_arg, &recursive_param_value)
+    else {
         return;
-    }
+    };
     if recurse_block.instructions[constructor_idx + 1..]
         .iter()
         .any(|inst| !matches!(inst, MirInst::Nop))
@@ -1258,16 +1259,56 @@ fn rewrite_trmc_descending_sum_chain(function: &mut MirFunction) {
     next_value_id = next_value_id.saturating_add(1);
     entry_new_insts.push(MirInst::Const {
         dest: step_value.clone(),
-        literal: MirLiteral::Int(1),
+        literal: MirLiteral::Int(step_amount),
     });
-    let loop_start_value = MirValueId(next_value_id);
+    let base_start_value = MirValueId(next_value_id);
     next_value_id = next_value_id.saturating_add(1);
     let Some(loop_start_literal) = base_threshold.checked_add(1) else {
         return;
     };
     entry_new_insts.push(MirInst::Const {
-        dest: loop_start_value.clone(),
+        dest: base_start_value.clone(),
         literal: MirLiteral::Int(loop_start_literal),
+    });
+    let diff_value = MirValueId(next_value_id);
+    next_value_id = next_value_id.saturating_add(1);
+    entry_new_insts.push(MirInst::Binary {
+        dest: diff_value.clone(),
+        op: MirBinaryOp::Sub,
+        left: recursive_param_value.clone(),
+        right: base_start_value.clone(),
+    });
+    let remainder_value = MirValueId(next_value_id);
+    next_value_id = next_value_id.saturating_add(1);
+    entry_new_insts.push(MirInst::Binary {
+        dest: remainder_value.clone(),
+        op: MirBinaryOp::Mod,
+        left: diff_value.clone(),
+        right: step_value.clone(),
+    });
+    let normalized_remainder_seed = MirValueId(next_value_id);
+    next_value_id = next_value_id.saturating_add(1);
+    entry_new_insts.push(MirInst::Binary {
+        dest: normalized_remainder_seed.clone(),
+        op: MirBinaryOp::Add,
+        left: remainder_value.clone(),
+        right: step_value.clone(),
+    });
+    let normalized_remainder = MirValueId(next_value_id);
+    next_value_id = next_value_id.saturating_add(1);
+    entry_new_insts.push(MirInst::Binary {
+        dest: normalized_remainder.clone(),
+        op: MirBinaryOp::Mod,
+        left: normalized_remainder_seed,
+        right: step_value.clone(),
+    });
+    let loop_start_value = MirValueId(next_value_id);
+    next_value_id = next_value_id.saturating_add(1);
+    entry_new_insts.push(MirInst::Binary {
+        dest: loop_start_value.clone(),
+        op: MirBinaryOp::Add,
+        left: base_start_value,
+        right: normalized_remainder,
     });
     entry_new_insts.retain(|inst| !matches!(inst, MirInst::Nop));
 
@@ -1539,31 +1580,39 @@ fn find_recursive_constructor_pattern<'a>(
     None
 }
 
-fn value_is_param_minus_one(
+fn extract_descending_step(
     pre_call: &[MirInst],
     call_arg: &MirValueId,
     param_value: &MirValueId,
-) -> bool {
-    let mut ones = BTreeSet::new();
+) -> Option<i64> {
+    let mut int_consts = BTreeMap::new();
     for inst in pre_call {
         if let MirInst::Const {
             dest,
-            literal: MirLiteral::Int(1),
+            literal: MirLiteral::Int(value),
         } = inst
         {
-            ones.insert(dest.clone());
+            int_consts.insert(dest.clone(), *value);
         }
     }
-    pre_call.iter().any(|inst| {
-        matches!(
-            inst,
-            MirInst::Binary {
-                dest,
-                op: MirBinaryOp::Sub,
-                left,
-                right,
-            } if dest == call_arg && left == param_value && ones.contains(right)
-        )
+    pre_call.iter().find_map(|inst| {
+        let MirInst::Binary {
+            dest,
+            op: MirBinaryOp::Sub,
+            left,
+            right,
+        } = inst
+        else {
+            return None;
+        };
+        if dest != call_arg || left != param_value {
+            return None;
+        }
+        let step = int_consts.get(right).copied()?;
+        if step <= 0 {
+            return None;
+        }
+        Some(step)
     })
 }
 
@@ -12072,7 +12121,7 @@ mod tests {
         );
 
         let entry_block = &function.blocks[0];
-        let Some(loop_start_const) = entry_block.instructions.iter().find_map(|inst| match inst {
+        let Some(base_start_const) = entry_block.instructions.iter().find_map(|inst| match inst {
             MirInst::Const {
                 dest,
                 literal: MirLiteral::Int(3),
@@ -12081,13 +12130,159 @@ mod tests {
         }) else {
             panic!("rewritten entry block should materialize loop start literal threshold+1");
         };
+        let Some(loop_start_value) = entry_block.instructions.iter().find_map(|inst| match inst {
+            MirInst::Binary {
+                dest,
+                op: MirBinaryOp::Add,
+                left,
+                ..
+            } if *left == base_start_const => Some(dest.clone()),
+            _ => None,
+        }) else {
+            panic!("rewritten entry block should compute loop start from threshold+1");
+        };
         let MirTerminator::Jump { args, .. } = &entry_block.terminator else {
             panic!("rewritten entry block should terminate with jump");
         };
         assert_eq!(
             args.first(),
-            Some(&loop_start_const),
+            Some(&loop_start_value),
             "loop should start at threshold+1 for non-zero base thresholds"
+        );
+    }
+
+    #[test]
+    fn rewrite_trmc_descending_sum_chain_supports_step_two_decrement() {
+        let mut function = MirFunction {
+            name: "build".to_string(),
+            signature: MirFunctionSignature {
+                params: vec![Type::Int],
+                ret: Type::Dynamic,
+                effects: EffectRow::pure(),
+            },
+            entry: MirBlockId(0),
+            blocks: vec![
+                MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: MirValueId(1),
+                            literal: MirLiteral::Int(0),
+                        },
+                        MirInst::Binary {
+                            dest: MirValueId(2),
+                            op: MirBinaryOp::Lte,
+                            left: MirValueId(0),
+                            right: MirValueId(1),
+                        },
+                    ],
+                    terminator: MirTerminator::Branch {
+                        condition: MirValueId(2),
+                        then_block: MirBlockId(1),
+                        else_block: MirBlockId(2),
+                    },
+                },
+                MirBlock {
+                    id: MirBlockId(1),
+                    params: vec![],
+                    instructions: vec![MirInst::SumInit {
+                        dest: MirValueId(3),
+                        sum_type: "Chain".to_string(),
+                        variant: "End".to_string(),
+                        tag: 0,
+                        fields: vec![],
+                    }],
+                    terminator: MirTerminator::Jump {
+                        target: MirBlockId(3),
+                        args: vec![MirValueId(3)],
+                    },
+                },
+                MirBlock {
+                    id: MirBlockId(2),
+                    params: vec![],
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: MirValueId(4),
+                            literal: MirLiteral::Int(2),
+                        },
+                        MirInst::Binary {
+                            dest: MirValueId(5),
+                            op: MirBinaryOp::Sub,
+                            left: MirValueId(0),
+                            right: MirValueId(4),
+                        },
+                        MirInst::Call {
+                            callee: MirCallee::Local("build".to_string()),
+                            args: vec![MirValueId(5)],
+                            arg_types: vec![Type::Int],
+                            result: Some(MirValueId(6)),
+                            ret_type: Type::Dynamic,
+                            callee_fail_result_abi: false,
+                            capture_fail_result: false,
+                            cc_manifest_id: "default".to_string(),
+                        },
+                        MirInst::SumInit {
+                            dest: MirValueId(7),
+                            sum_type: "Chain".to_string(),
+                            variant: "Node".to_string(),
+                            tag: 1,
+                            fields: vec![MirValueId(0), MirValueId(6)],
+                        },
+                    ],
+                    terminator: MirTerminator::Jump {
+                        target: MirBlockId(3),
+                        args: vec![MirValueId(7)],
+                    },
+                },
+                MirBlock {
+                    id: MirBlockId(3),
+                    params: vec![MirBlockParam {
+                        id: MirValueId(8),
+                        ty: Type::Dynamic,
+                    }],
+                    instructions: vec![MirInst::Nop],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirValueId(8)),
+                    },
+                },
+            ],
+        };
+
+        rewrite_trmc_descending_sum_chain(&mut function);
+
+        let loop_i = function.blocks[1].params[0].id.clone();
+        assert!(
+            function
+                .blocks
+                .iter()
+                .flat_map(|block| block.instructions.iter())
+                .all(|inst| !matches!(inst, MirInst::Call { .. })),
+            "rewrite should remove recursive call for descending n - 2 recursion"
+        );
+
+        let step_const = function.blocks[0]
+            .instructions
+            .iter()
+            .find_map(|inst| match inst {
+                MirInst::Const {
+                    dest,
+                    literal: MirLiteral::Int(2),
+                } => Some(dest.clone()),
+                _ => None,
+            })
+            .expect("entry block should contain step=2 literal");
+        assert!(
+            function.blocks[2].instructions.iter().any(|inst| matches!(
+                inst,
+                MirInst::Binary {
+                    op: MirBinaryOp::Add,
+                    left,
+                    right,
+                    ..
+                } if *left == loop_i && *right == step_const
+            )),
+            "step block should advance loop index by the extracted decrement amount"
         );
     }
 
@@ -12200,7 +12395,7 @@ mod tests {
             "rewrite should support `<` threshold guards by translating them to equivalent <= threshold"
         );
         let entry_block = &function.blocks[0];
-        let Some(loop_start_const) = entry_block.instructions.iter().find_map(|inst| match inst {
+        let Some(base_start_const) = entry_block.instructions.iter().find_map(|inst| match inst {
             MirInst::Const {
                 dest,
                 literal: MirLiteral::Int(3),
@@ -12209,12 +12404,23 @@ mod tests {
         }) else {
             panic!("rewritten entry block should materialize loop start literal 3 for `n < 3`");
         };
+        let Some(loop_start_value) = entry_block.instructions.iter().find_map(|inst| match inst {
+            MirInst::Binary {
+                dest,
+                op: MirBinaryOp::Add,
+                left,
+                ..
+            } if *left == base_start_const => Some(dest.clone()),
+            _ => None,
+        }) else {
+            panic!("rewritten entry block should compute loop start from translated threshold");
+        };
         let MirTerminator::Jump { args, .. } = &entry_block.terminator else {
             panic!("rewritten entry block should terminate with jump");
         };
         assert_eq!(
             args.first(),
-            Some(&loop_start_const),
+            Some(&loop_start_value),
             "loop should start at 3 for `n < 3` (equivalent to `n <= 2`)"
         );
     }
