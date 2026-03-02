@@ -3726,6 +3726,29 @@ theorem handler_step_exists_iff_supported_shape
         h_contract_shape h_mem h_tail_resumptive h_shape
 
 /--
+Typed-handle boundary completeness: typing premises supply the explicit
+perform-branch requirements, so one-step existence is equivalent to the
+supported-shape predicate.
+-/
+theorem handler_step_exists_iff_supported_shape_of_typed
+    {tenv : TermEnv}
+    {body : HandlerExpr}
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    {ty : Ty}
+    (h_typed : HandlerHasType tenv (.handle body handler clause) ty) :
+    (∃ e', HandlerStep (.handle body handler clause) e')
+      ↔ handlerStepSupportedShape body clause := by
+  cases h_typed with
+  | handle _ _ _ _ _ _ h_contract_shape h_mem h_clause_contract _ =>
+      have h_tail :
+          clause.contract.resumeUse = .zero ∨ clause.contract.resumeUse = .one :=
+        HandleClauseContract.wellTypedSlice_implies_resumeProvenance
+          clause.contract
+          h_clause_contract
+      exact handler_step_exists_iff_supported_shape h_contract_shape h_mem h_tail
+
+/--
 Core-body progress witness at the boundary:
 handled core bodies step directly to the same core payload.
 -/
@@ -3766,11 +3789,8 @@ theorem handler_step_progress_of_typed_handle_core_or_matching_perform
       (∃ arg k,
         body = .perform clause.handled clause.opArgTy clause.opRetTy arg k)) :
     ∃ e', HandlerStep (.handle body handler clause) e' := by
-  rcases h_shape with h_core | h_perform
-  · rcases h_core with ⟨e, rfl⟩
-    exact ⟨.core e, HandlerStep.handle_core handler clause e⟩
-  · rcases h_perform with ⟨arg, k, rfl⟩
-    exact handler_step_progress_of_typed_redex h_typed
+  exact
+    (handler_step_exists_iff_supported_shape_of_typed h_typed).2 h_shape
 
 /--
 Typed refinement of `HandlerStep` that records the precise preservation-side

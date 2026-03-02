@@ -14976,3 +14976,32 @@ Lean changes:
 **Outcome**:
 - Boundary step completeness is now machine-checkable with explicit
   perform-branch premises, avoiding an over-strong theorem statement.
+
+### 2026-03-02: typed supported-shape completeness characterization
+
+**Context**: Added typed-handle `iff` characterization so supported-shape
+completeness can be consumed without manually threading perform-branch
+membership/tail premises.
+
+Lean changes:
+- `handler_step_exists_iff_supported_shape_of_typed`
+- `handler_step_progress_of_typed_handle_core_or_matching_perform` now uses this
+  typed `iff` route.
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; theorem-route strengthening only.
+- Existing linearity diagnostics and overlap normalization should remain stable.
+
+**Probe (direct `kea` MCP)**:
+1. Single-resume clause accepted.
+2. Branch double-resume rejected with `E0012`.
+3. `resume` outside handler rejected with `E0012`.
+4. Overlap residual remains normalized (`handled : () -[IO]> ()`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Boundary step existence is now characterized by supported shape directly on
+  typed handles, with MCP behavior still aligned.
