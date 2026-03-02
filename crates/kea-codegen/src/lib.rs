@@ -2574,11 +2574,7 @@ fn define_sum_drop_function<M: Module>(
                     builder.switch_to_block(check_block);
                 }
                 let variant_release_block = builder.create_block();
-                let next_check_or_free = if idx + 1 < variants.len() {
-                    builder.create_block()
-                } else {
-                    free_block
-                };
+                let next_check_or_free = builder.create_block();
 
                 let expected_tag = builder.ins().iconst(types::I32, i64::from(*variant_tag));
                 let is_match = builder.ins().icmp(IntCC::Equal, tag_value, expected_tag);
@@ -2623,10 +2619,8 @@ fn define_sum_drop_function<M: Module>(
                 check_block = next_check_or_free;
             }
 
-            if check_block != free_block {
-                builder.switch_to_block(check_block);
-                builder.ins().jump(free_block, &[rc_ptr]);
-            }
+            builder.switch_to_block(check_block);
+            builder.ins().jump(free_block, &[rc_ptr]);
         }
     }
 

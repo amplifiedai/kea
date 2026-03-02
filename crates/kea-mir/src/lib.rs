@@ -1107,7 +1107,7 @@ fn rewrite_trmc_descending_sum_chain(function: &mut MirFunction) {
     else {
         return;
     };
-    let (_condition_value, then_id, else_id) = match &function.blocks[entry_idx].terminator {
+    let (condition_value, then_id, else_id) = match &function.blocks[entry_idx].terminator {
         MirTerminator::Branch {
             condition,
             then_block,
@@ -1175,6 +1175,11 @@ fn rewrite_trmc_descending_sum_chain(function: &mut MirFunction) {
         ) if return_value == id => {}
         _ => return,
     }
+    let Some(base_threshold) =
+        extract_descending_base_threshold(&function.blocks[entry_idx], &condition_value, &MirValueId(0))
+    else {
+        return;
+    };
 
     let then_is_recursive = block_has_recursive_self_call(&function.blocks[then_idx], &function.name);
     let else_is_recursive = block_has_recursive_self_call(&function.blocks[else_idx], &function.name);
@@ -1243,11 +1248,20 @@ fn rewrite_trmc_descending_sum_chain(function: &mut MirFunction) {
     let Some(base_value_new) = remap_value(&entry_remap, &base_value) else {
         return;
     };
-    let one_value = MirValueId(next_value_id);
+    let step_value = MirValueId(next_value_id);
     next_value_id = next_value_id.saturating_add(1);
     entry_new_insts.push(MirInst::Const {
-        dest: one_value.clone(),
+        dest: step_value.clone(),
         literal: MirLiteral::Int(1),
+    });
+    let loop_start_value = MirValueId(next_value_id);
+    next_value_id = next_value_id.saturating_add(1);
+    let Some(loop_start_literal) = base_threshold.checked_add(1) else {
+        return;
+    };
+    entry_new_insts.push(MirInst::Const {
+        dest: loop_start_value.clone(),
+        literal: MirLiteral::Int(loop_start_literal),
     });
     entry_new_insts.retain(|inst| !matches!(inst, MirInst::Nop));
 
@@ -1308,7 +1322,7 @@ fn rewrite_trmc_descending_sum_chain(function: &mut MirFunction) {
         dest: next_i_value.clone(),
         op: MirBinaryOp::Add,
         left: loop_i.clone(),
-        right: one_value.clone(),
+        right: step_value.clone(),
     });
 
     function.blocks = vec![
@@ -1318,7 +1332,7 @@ fn rewrite_trmc_descending_sum_chain(function: &mut MirFunction) {
             instructions: entry_new_insts,
             terminator: MirTerminator::Jump {
                 target: loop_id.clone(),
-                args: vec![one_value.clone(), base_value_new],
+                args: vec![loop_start_value.clone(), base_value_new],
             },
         },
         MirBlock {
@@ -1358,6 +1372,53 @@ fn rewrite_trmc_descending_sum_chain(function: &mut MirFunction) {
             },
         },
     ];
+}
+
+fn extract_descending_base_threshold(
+    entry_block: &MirBlock,
+    condition_value: &MirValueId,
+    param_value: &MirValueId,
+) -> Option<i64> {
+    let mut int_consts = BTreeMap::new();
+    for inst in &entry_block.instructions {
+        if let MirInst::Const {
+            dest,
+            literal: MirLiteral::Int(value),
+        } = inst
+        {
+            int_consts.insert(dest.clone(), *value);
+        }
+    }
+
+    for inst in &entry_block.instructions {
+        let MirInst::Binary {
+            dest,
+            op,
+            left,
+            right,
+        } = inst
+        else {
+            continue;
+        };
+        if dest != condition_value {
+            continue;
+        }
+        match op {
+            MirBinaryOp::Lte if left == param_value => {
+                if let Some(threshold) = int_consts.get(right) {
+                    return Some(*threshold);
+                }
+            }
+            MirBinaryOp::Lt if left == param_value => {
+                if let Some(threshold) = int_consts.get(right) {
+                    return threshold.checked_sub(1);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    None
 }
 
 fn block_has_recursive_self_call(block: &MirBlock, function_name: &str) -> bool {
@@ -11860,6 +11921,245 @@ mod tests {
         assert_ne!(
             step_sum_dest, step_next_i_dest,
             "rewritten accumulator sum value and next loop index must use distinct SSA value IDs"
+        );
+    }
+
+    #[test]
+    fn rewrite_trmc_descending_sum_chain_supports_nonzero_base_threshold() {
+        let mut function = MirFunction {
+            name: "build".to_string(),
+            signature: MirFunctionSignature {
+                params: vec![Type::Int],
+                ret: Type::Dynamic,
+                effects: EffectRow::pure(),
+            },
+            entry: MirBlockId(0),
+            blocks: vec![
+                MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: MirValueId(1),
+                            literal: MirLiteral::Int(2),
+                        },
+                        MirInst::Binary {
+                            dest: MirValueId(2),
+                            op: MirBinaryOp::Lte,
+                            left: MirValueId(0),
+                            right: MirValueId(1),
+                        },
+                    ],
+                    terminator: MirTerminator::Branch {
+                        condition: MirValueId(2),
+                        then_block: MirBlockId(1),
+                        else_block: MirBlockId(2),
+                    },
+                },
+                MirBlock {
+                    id: MirBlockId(1),
+                    params: vec![],
+                    instructions: vec![MirInst::SumInit {
+                        dest: MirValueId(3),
+                        sum_type: "Chain".to_string(),
+                        variant: "End".to_string(),
+                        tag: 0,
+                        fields: vec![],
+                    }],
+                    terminator: MirTerminator::Jump {
+                        target: MirBlockId(3),
+                        args: vec![MirValueId(3)],
+                    },
+                },
+                MirBlock {
+                    id: MirBlockId(2),
+                    params: vec![],
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: MirValueId(4),
+                            literal: MirLiteral::Int(1),
+                        },
+                        MirInst::Binary {
+                            dest: MirValueId(5),
+                            op: MirBinaryOp::Sub,
+                            left: MirValueId(0),
+                            right: MirValueId(4),
+                        },
+                        MirInst::Call {
+                            callee: MirCallee::Local("build".to_string()),
+                            args: vec![MirValueId(5)],
+                            arg_types: vec![Type::Int],
+                            result: Some(MirValueId(6)),
+                            ret_type: Type::Dynamic,
+                            callee_fail_result_abi: false,
+                            capture_fail_result: false,
+                            cc_manifest_id: "default".to_string(),
+                        },
+                        MirInst::SumInit {
+                            dest: MirValueId(7),
+                            sum_type: "Chain".to_string(),
+                            variant: "Node".to_string(),
+                            tag: 1,
+                            fields: vec![MirValueId(0), MirValueId(6)],
+                        },
+                    ],
+                    terminator: MirTerminator::Jump {
+                        target: MirBlockId(3),
+                        args: vec![MirValueId(7)],
+                    },
+                },
+                MirBlock {
+                    id: MirBlockId(3),
+                    params: vec![MirBlockParam {
+                        id: MirValueId(8),
+                        ty: Type::Dynamic,
+                    }],
+                    instructions: vec![MirInst::Nop],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirValueId(8)),
+                    },
+                },
+            ],
+        };
+
+        rewrite_trmc_descending_sum_chain(&mut function);
+
+        assert!(
+            function
+                .blocks
+                .iter()
+                .flat_map(|block| block.instructions.iter())
+                .all(|inst| !matches!(inst, MirInst::Call { .. })),
+            "rewrite should remove recursive call for non-zero lte base thresholds"
+        );
+
+        let entry_block = &function.blocks[0];
+        let Some(loop_start_const) = entry_block.instructions.iter().find_map(|inst| match inst {
+            MirInst::Const {
+                dest,
+                literal: MirLiteral::Int(3),
+            } => Some(dest.clone()),
+            _ => None,
+        }) else {
+            panic!("rewritten entry block should materialize loop start literal threshold+1");
+        };
+        let MirTerminator::Jump { args, .. } = &entry_block.terminator else {
+            panic!("rewritten entry block should terminate with jump");
+        };
+        assert_eq!(
+            args.first(),
+            Some(&loop_start_const),
+            "loop should start at threshold+1 for non-zero base thresholds"
+        );
+    }
+
+    #[test]
+    fn rewrite_trmc_descending_sum_chain_rejects_non_ordering_base_condition() {
+        let mut function = MirFunction {
+            name: "build".to_string(),
+            signature: MirFunctionSignature {
+                params: vec![Type::Int],
+                ret: Type::Dynamic,
+                effects: EffectRow::pure(),
+            },
+            entry: MirBlockId(0),
+            blocks: vec![
+                MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: MirValueId(1),
+                            literal: MirLiteral::Int(0),
+                        },
+                        MirInst::Binary {
+                            dest: MirValueId(2),
+                            op: MirBinaryOp::Eq,
+                            left: MirValueId(0),
+                            right: MirValueId(1),
+                        },
+                    ],
+                    terminator: MirTerminator::Branch {
+                        condition: MirValueId(2),
+                        then_block: MirBlockId(1),
+                        else_block: MirBlockId(2),
+                    },
+                },
+                MirBlock {
+                    id: MirBlockId(1),
+                    params: vec![],
+                    instructions: vec![MirInst::SumInit {
+                        dest: MirValueId(3),
+                        sum_type: "Chain".to_string(),
+                        variant: "End".to_string(),
+                        tag: 0,
+                        fields: vec![],
+                    }],
+                    terminator: MirTerminator::Jump {
+                        target: MirBlockId(3),
+                        args: vec![MirValueId(3)],
+                    },
+                },
+                MirBlock {
+                    id: MirBlockId(2),
+                    params: vec![],
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: MirValueId(4),
+                            literal: MirLiteral::Int(1),
+                        },
+                        MirInst::Binary {
+                            dest: MirValueId(5),
+                            op: MirBinaryOp::Sub,
+                            left: MirValueId(0),
+                            right: MirValueId(4),
+                        },
+                        MirInst::Call {
+                            callee: MirCallee::Local("build".to_string()),
+                            args: vec![MirValueId(5)],
+                            arg_types: vec![Type::Int],
+                            result: Some(MirValueId(6)),
+                            ret_type: Type::Dynamic,
+                            callee_fail_result_abi: false,
+                            capture_fail_result: false,
+                            cc_manifest_id: "default".to_string(),
+                        },
+                        MirInst::SumInit {
+                            dest: MirValueId(7),
+                            sum_type: "Chain".to_string(),
+                            variant: "Node".to_string(),
+                            tag: 1,
+                            fields: vec![MirValueId(0), MirValueId(6)],
+                        },
+                    ],
+                    terminator: MirTerminator::Jump {
+                        target: MirBlockId(3),
+                        args: vec![MirValueId(7)],
+                    },
+                },
+                MirBlock {
+                    id: MirBlockId(3),
+                    params: vec![MirBlockParam {
+                        id: MirValueId(8),
+                        ty: Type::Dynamic,
+                    }],
+                    instructions: vec![MirInst::Nop],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirValueId(8)),
+                    },
+                },
+            ],
+        };
+
+        rewrite_trmc_descending_sum_chain(&mut function);
+
+        assert!(
+            function
+                .blocks
+                .iter()
+                .flat_map(|block| block.instructions.iter())
+                .any(|inst| matches!(inst, MirInst::Call { .. })),
+            "rewrite must not fire when the base condition is not an ordering threshold check"
         );
     }
 
