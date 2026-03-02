@@ -2522,6 +2522,38 @@ theorem native_handler_step_ext_soundness_of_core_soundness
     clauseSem bodyStep
     (native_handler_body_step_obligations_of_core_soundness bodyStep h_core)
 
+/--
+Packaged route: mismatch-extension soundness from packaged core soundness plus
+typed-handle metadata coherence.
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_metadata_coherence
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core : native_core_soundness_prop bodyStep)
+    (h_coherence : native_handler_perform_metadata_coherence_prop) :
+    native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep := by
+  refine ⟨?_, ?_⟩
+  · exact native_handler_step_ext_with_mismatch_preservation
+      clauseSem mismatchSem bodyStep h_core.1
+  · exact native_handler_step_ext_with_mismatch_progress_of_core_progress_and_metadata_coherence
+      clauseSem mismatchSem bodyStep h_core.2 h_coherence
+
+/--
+Packaged route: mismatch-extension soundness from packaged core soundness plus
+global strict typing (via strict->coherence bridge).
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_strict_typing_packaged
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core : native_core_soundness_prop bodyStep)
+    (h_strict_typing : native_handler_strict_typing_prop) :
+    native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep := by
+  exact native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_metadata_coherence
+    clauseSem mismatchSem bodyStep h_core
+    (native_handler_perform_metadata_coherence_of_strict_typing h_strict_typing)
+
 /-- Declarative field typing is functional on the core slice. -/
 theorem hasFieldsType_unique
     {env : TermEnv} {fs : CoreFields} {row₁ row₂ : RowFields}

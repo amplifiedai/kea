@@ -16860,3 +16860,39 @@ premise used in mismatch-progress routes.
 **Outcome**:
 - The boundary between current `HasTypeScoped` and the next native typing
   extension is now reduced to one explicit equivalence class of obligations.
+
+### 2026-03-02: packaged core-soundness routes for mismatch semantics
+
+**Context**: Added packaged capstone routes that consume `native_core_soundness_prop`
+directly for mismatch-extension soundness, under either metadata coherence or
+strict typing.
+
+Lean changes:
+- Added in `Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_metadata_coherence`
+  - `native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_strict_typing_packaged`
+
+These package the closure shape as:
+- `core soundness + metadata coherence => mismatch soundness`
+- `core soundness + strict typing => mismatch soundness`
+
+**Build check**:
+- `cd formal && lake build Kea.Typing` passes.
+- `cd formal && lake build` passes.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Probe (direct `kea` MCP)**:
+1. Spoofed resume context variable remains rejected (`E0012`).
+2. Single-resume matching handler clause remains accepted (`status = ok`).
+3. Double-resume handler clause remains rejected (`E0012`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Mismatch-extension capstone consumption is now aligned with existing packaged
+  core soundness surfaces, reducing theorem-integration friction.

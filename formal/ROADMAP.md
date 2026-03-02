@@ -530,6 +530,11 @@ Concrete milestone checklist for moving from the current fuel model to an implem
   `native_handler_strict_typing_prop_iff_metadata_coherence`), making the
   typing-extension gap to discharge mismatch-progress premises explicit and
   bidirectional.
+  Update: added packaged mismatch capstone routes consuming
+  `native_core_soundness_prop` directly:
+  `native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_metadata_coherence`
+  and
+  `native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_strict_typing_packaged`.
   Update: re-ran direct in-session `kea` MCP stress probes (spoofed
   `__kea_resume_ctx`, out-of-handler `resume`, single-resume handler acceptance,
   double-resume rejection) and observed agreement with Lean assumptions
