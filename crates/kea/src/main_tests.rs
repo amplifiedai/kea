@@ -2635,6 +2635,22 @@
 
     #[test]
     #[cfg(not(target_os = "windows"))]
+    fn compile_and_execute_fip_unique_known_forwarder_call_exit_code() {
+        let source_path = write_temp_source(
+            "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\n@fip\nfn call_forward_once(x: Unique Int) -> Unique Int\n  forward_once(x)\n\nfn main() -> Int\n  0\n",
+            "kea-cli-fip-unique-known-forwarder-call",
+            "kea",
+        );
+
+        let run =
+            run_file(&source_path).expect("@fip verifier should accept known safe forwarder calls");
+        assert_eq!(run.exit_code, 0);
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
     fn compile_rejects_fip_when_unique_handoff_missing() {
         let source_path = write_temp_source(
             "@fip\nfn leak(x: Unique Int) -> Int\n  1\n\nfn main() -> Int\n  0\n",
