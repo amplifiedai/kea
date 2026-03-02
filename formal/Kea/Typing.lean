@@ -1986,6 +1986,70 @@ theorem native_handler_step_ext_with_mismatch_soundness_strict_of_core_progress_
       clauseSem mismatchSem bodyStep h_core_progress
 
 /--
+Global strict-handle typing contract: every typed handle in `HasTypeScopedTop`
+also satisfies local strictness metadata at that handle site.
+-/
+def native_handler_strict_typing_prop : Prop :=
+  ∀ env body opHandle argName resumeName argTy opRetTy clauseBody ty,
+    HasTypeScopedTop env (.handle body opHandle argName resumeName argTy opRetTy clauseBody) ty →
+    HasTypeScopedHandleStrict env body opHandle argName resumeName argTy opRetTy clauseBody ty
+
+/--
+Strict-typing implies global perform-metadata coherence for typed handles.
+-/
+theorem native_handler_perform_metadata_coherence_of_strict_typing
+    (h_strict_typing : native_handler_strict_typing_prop) :
+    native_handler_perform_metadata_coherence_prop := by
+  intro env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed
+  exact (h_strict_typing env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed).2
+
+/--
+Full mismatch-extension progress from core body progress plus a global strict
+typing contract.
+-/
+theorem native_handler_step_ext_with_mismatch_progress_of_core_progress_and_strict_typing
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core_progress :
+      ∀ env body ty,
+        HasTypeScopedTop env body ty →
+        CoreValue body ∨ ∃ body', bodyStep body body')
+    (h_strict_typing : native_handler_strict_typing_prop) :
+    native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep := by
+  intro env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed
+  have h_strict :=
+    h_strict_typing env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed
+  exact native_handler_step_ext_with_mismatch_step_of_core_progress_and_strict_handle
+    clauseSem mismatchSem bodyStep h_core_progress h_strict
+
+/--
+Full mismatch-extension soundness from core body preservation/progress plus a
+global strict typing contract.
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_of_core_progress_and_body_preservation_and_strict_typing
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_body_pres :
+      ∀ env body body' ty,
+        HasTypeScopedTop env body ty →
+        bodyStep body body' →
+        HasTypeScopedTop env body' ty)
+    (h_core_progress :
+      ∀ env body ty,
+        HasTypeScopedTop env body ty →
+        CoreValue body ∨ ∃ body', bodyStep body body')
+    (h_strict_typing : native_handler_strict_typing_prop) :
+    native_handler_step_ext_with_mismatch_preservation_prop clauseSem mismatchSem bodyStep
+      ∧ native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep := by
+  refine ⟨?_, ?_⟩
+  · exact native_handler_step_ext_with_mismatch_preservation
+      clauseSem mismatchSem bodyStep h_body_pres
+  · exact native_handler_step_ext_with_mismatch_progress_of_core_progress_and_strict_typing
+      clauseSem mismatchSem bodyStep h_core_progress h_strict_typing
+
+/--
 Derive the mismatch-extension typed-handle progress obligation from:
 1) core body progress (`value ∨ body-step`), and
 2) typed-handle perform-metadata coherence.

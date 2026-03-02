@@ -16750,3 +16750,44 @@ Lean changes:
 **Outcome**:
 - Progress closure now has a strict-premise route that is machine-checkable and
   composable with existing preservation infrastructure.
+
+### 2026-03-02: strict-typing global bridge to full mismatch progress/soundness
+
+**Context**: Extended the strict-handle route with a global strict-typing
+contract, so strengthened typing can discharge full mismatch-extension progress
+and soundness directly.
+
+Lean changes:
+- Added in `Kea/Typing.lean`:
+  - `native_handler_strict_typing_prop`
+  - `native_handler_perform_metadata_coherence_of_strict_typing`
+  - `native_handler_step_ext_with_mismatch_progress_of_core_progress_and_strict_typing`
+  - `native_handler_step_ext_with_mismatch_soundness_of_core_progress_and_body_preservation_and_strict_typing`
+
+**Build check**:
+- `cd formal && lake build Kea.Typing` passes.
+- `cd formal && lake build` passes.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Probe (direct `kea` MCP)**:
+1. Spoofed resume context variable remains rejected:
+   - `fn spoof(__kea_resume_ctx: fn(Int) -> Int) -> Int; resume 1`
+   - `status = error`, `E0012`.
+2. Double-resume handler clause remains rejected:
+   - branch-resume handler with two `resume` sites
+   - `status = error`, `E0012` (`handler clause may resume at most once`).
+3. Single-resume handler remains accepted:
+   - `Reader.ask() -> resume 42`
+   - `status = ok`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- We now have an explicit theorem route from a native strict-typing extension
+  to full mismatch-extension progress/soundness, keeping the gap machine-scoped
+  as a typing-rule strengthening rather than an implicit prose caveat.
