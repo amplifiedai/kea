@@ -1764,6 +1764,44 @@ def native_handler_perform_metadata_coherence_prop : Prop :=
       argTyBody = argTy ∧ opRetTyBody = opRetTy
 
 /--
+The current scoped handle typing rule does not imply perform-metadata coherence
+by itself (body metadata is not constrained by `HasTypeScoped.handle`).
+-/
+theorem not_native_handler_perform_metadata_coherence_prop :
+    ¬ native_handler_perform_metadata_coherence_prop := by
+  intro h_coherence
+  let body : CoreExpr :=
+    .perform "Op" .bool .bool (.boolLit true) (.lam "x" .bool (.intLit 0))
+  have h_typed :
+      HasTypeScopedTop []
+        (.handle body "Op" "x" "k" .int .int (.intLit 2))
+        .int := by
+    exact HasTypeScoped.handle none [] body "Op" "x" "k" .int .int .int (.intLit 2)
+      (HasTypeScoped.perform none [] "Op" .bool .bool .int
+        (.boolLit true) (.lam "x" .bool (.intLit 0))
+        (HasTypeScoped.bool none [] true)
+        (HasTypeScoped.lam none [] "x" .bool .int (.intLit 0)
+          (HasTypeScoped.int none [("x", .bool)] 0)))
+      (HasTypeScoped.int (some (.int, .int))
+        (("k", .function (.cons .int .nil) .int) ::
+          ("x", .int) ::
+          [])
+        2)
+  have h_meta :=
+    h_coherence []
+      body
+      "Op" "x" "k"
+      .int .int
+      (.intLit 2)
+      .int
+      h_typed
+      "Op" .bool .bool
+      (.boolLit true)
+      (.lam "x" .bool (.intLit 0))
+      rfl
+  cases h_meta.1
+
+/--
 Derive the mismatch-extension typed-handle progress obligation from:
 1) core body progress (`value ∨ body-step`), and
 2) typed-handle perform-metadata coherence.

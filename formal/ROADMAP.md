@@ -488,6 +488,12 @@ Concrete milestone checklist for moving from the current fuel model to an implem
   `native_handler_step_ext_with_mismatch_progress_of_core_progress_and_metadata_coherence`.
   Remaining progress gap is now cleanly split into core body progress plus a
   single typed-handle metadata coherence premise.
+  Update: proved the metadata-coherence premise is not derivable from the
+  current scoped handle typing rule:
+  `not_native_handler_perform_metadata_coherence_prop`.
+  This makes the next step explicit: either strengthen typing with metadata
+  coherence constraints or rely on structural mismatch bubbling semantics as the
+  primary closure route.
   Update: added explicit theorem exports for that gate
   (`hasType_resume_requires_ctx`, `resume_not_typable_without_ctx`,
   `inferExpr_resume_none_without_ctx`), so out-of-handler `resume` rejection is

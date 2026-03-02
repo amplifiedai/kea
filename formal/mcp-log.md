@@ -16605,3 +16605,38 @@ These show mismatch-extension progress can be derived from:
 **Outcome**:
 - The mismatch-extension progress boundary is now narrowed to two explicit
   premises (core progress + metadata coherence).
+
+### 2026-03-02: metadata-coherence non-derivability witness
+
+**Context**: Checked whether the new metadata-coherence premise can be proved
+from the current scoped handle typing rule. It cannot.
+
+Lean changes:
+- Added in `Kea/Typing.lean`:
+  - `not_native_handler_perform_metadata_coherence_prop`
+
+Proof builds a concrete typed handle where body `perform` metadata
+(`Bool → Bool`) differs from handle metadata (`Int → Int`), which is admitted
+by current `HasTypeScoped.handle`; therefore metadata coherence does not follow
+from the present judgment.
+
+**Build check**:
+- `cd formal && lake build Kea.Typing` passes.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Probe (direct `kea` MCP)**:
+1. Spoof attempt still rejected:
+   - `fn spoof(__kea_resume_ctx: fn(Int) -> Int) -> Int; resume 1`
+   - `status = error`, `E0012`.
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- The next closure step is now explicit and unavoidable:
+  strengthen typing with metadata coherence, or take structural mismatch
+  semantics as the primary capstone path.
