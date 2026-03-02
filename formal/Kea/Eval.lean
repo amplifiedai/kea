@@ -4385,6 +4385,102 @@ theorem handler_typed_redex_core_eval_sound
   exact eval_sound_evalFragmentFull h_env h_core_ty h_frag
 
 /--
+Unified typed-redex capstone combining evaluator soundness and clause contract
+consequences on the same boundary route.
+-/
+theorem handler_typed_redex_eval_and_contract_capstone
+    {tenv : TermEnv}
+    {venv : ValueEnv}
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    {arg k : CoreExpr}
+    {ty : Ty}
+    (h_env : EnvWellTyped tenv venv)
+    (h_typed : HandlerHasType tenv
+      (.handle (.perform clause.handled clause.opArgTy clause.opRetTy arg k)
+        handler
+        clause)
+      ty)
+    (h_frag : EvalFragmentFull (bindTailResumptive clause arg k)) :
+    (∃ v, eval venv (bindTailResumptive clause arg k) = some v ∧ ValueHasType v ty)
+    ∧ HandleClauseContract.wellTypedSlice clause.contract
+    ∧ resume_at_most_once clause.contract.resumeUse
+    ∧ (TailResumptiveClassification.classifyClause clause.contract ≠
+        TailResumptiveClassification.TailResumptiveClass.invalid)
+    ∧ TailResumptiveClassification.TailResumptiveBundle clause.contract := by
+  have h_eval :
+      ∃ v, eval venv (bindTailResumptive clause arg k) = some v ∧ ValueHasType v ty :=
+    handler_typed_redex_core_eval_sound h_env h_typed h_frag
+  have h_contract :
+      HandleClauseContract.wellTypedSlice clause.contract
+      ∧ resume_at_most_once clause.contract.resumeUse
+      ∧ (TailResumptiveClassification.classifyClause clause.contract ≠
+          TailResumptiveClassification.TailResumptiveClass.invalid)
+      ∧ TailResumptiveClassification.TailResumptiveBundle clause.contract :=
+    handler_clause_contract_capstone_of_handlerHasType h_typed
+  exact ⟨h_eval, h_contract.1, h_contract.2.1, h_contract.2.2.1, h_contract.2.2.2⟩
+
+/--
+Capability-extended typed-redex capstone: evaluator soundness plus clause
+contracts and both normalized/closed-aware capability bundle outputs.
+-/
+theorem handler_typed_redex_eval_and_capability_contract_capstone
+    {tenv : TermEnv}
+    {venv : ValueEnv}
+    {handler : HandleContract}
+    {clause : HandlerClauseSem}
+    {arg k : CoreExpr}
+    {ty : Ty}
+    {baseEffects : EffectRow}
+    {capability : Label}
+    (h_env : EnvWellTyped tenv venv)
+    (h_typed : HandlerHasType tenv
+      (.handle (.perform clause.handled clause.opArgTy clause.opRetTy arg k)
+        handler
+        clause)
+      ty)
+    (h_frag : EvalFragmentFull (bindTailResumptive clause arg k))
+    (h_expr :
+      clause.contract.exprEffects =
+        EffectOperationTyping.performOperationEffects baseEffects capability)
+    (h_ne : capability ≠ clause.contract.handled) :
+    (∃ v, eval venv (bindTailResumptive clause arg k) = some v ∧ ValueHasType v ty)
+    ∧ HandleClauseContract.wellTypedSlice clause.contract
+    ∧ resume_at_most_once clause.contract.resumeUse
+    ∧ (TailResumptiveClassification.classifyClause clause.contract ≠
+        TailResumptiveClassification.TailResumptiveClass.invalid)
+    ∧ TailResumptiveClassification.TailResumptiveBundle clause.contract
+    ∧ TailCapabilityComposition.TailCapabilityBundle clause.contract capability
+    ∧ TailCapabilityComposition.TailCapabilityClosedAwareBundle
+        clause.contract
+        capability := by
+  have h_base :
+      (∃ v, eval venv (bindTailResumptive clause arg k) = some v ∧ ValueHasType v ty)
+      ∧ HandleClauseContract.wellTypedSlice clause.contract
+      ∧ resume_at_most_once clause.contract.resumeUse
+      ∧ (TailResumptiveClassification.classifyClause clause.contract ≠
+          TailResumptiveClassification.TailResumptiveClass.invalid)
+      ∧ TailResumptiveClassification.TailResumptiveBundle clause.contract :=
+    handler_typed_redex_eval_and_contract_capstone h_env h_typed h_frag
+  have h_cap :
+      TailCapabilityComposition.TailCapabilityBundle clause.contract capability :=
+    handler_typed_redex_tail_capability_bundle h_typed h_expr h_ne
+  have h_cap_closed :
+      TailCapabilityComposition.TailCapabilityClosedAwareBundle
+        clause.contract
+        capability :=
+    handler_typed_redex_tail_capability_closedAware_bundle h_typed h_expr h_ne
+  exact ⟨
+    h_base.1,
+    h_base.2.1,
+    h_base.2.2.1,
+    h_base.2.2.2.1,
+    h_base.2.2.2.2,
+    h_cap,
+    h_cap_closed
+  ⟩
+
+/--
 Preservation for the typed handler-step refinement.
 
 This theorem isolates the remaining untyped-preservation gap to proving

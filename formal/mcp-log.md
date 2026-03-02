@@ -14566,3 +14566,38 @@ This theorem packages the key consequences into one route:
 **Outcome**:
 - The general handle-typing bridge now has a single capstone witness while
   direct MCP behavior remains unchanged and aligned.
+
+### 2026-03-02: unified typed-redex evaluator + contract capstones
+
+**Context**: Added integrated typed-redex capstones that combine evaluator
+soundness and clause-contract outputs on one theorem route.
+
+Lean changes:
+- `handler_typed_redex_eval_and_contract_capstone`
+- `handler_typed_redex_eval_and_capability_contract_capstone`
+
+The second theorem extends the first with normalized + closed-aware
+tail-capability bundle outputs under explicit capability-origin premises.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+- `diagnose`
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; this is theorem-route integration.
+- Existing `resume` legality and overlap normalization should remain stable.
+
+**Probe (direct `kea` MCP)**:
+1. Single-resume handler clause accepted.
+2. Branch double-resume rejected with `E0012`.
+3. `resume` outside handler rejected with `E0012`.
+4. Overlap residual remains normalized (`handled : () -[IO]> ()`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- Handler boundary routing now has an integrated evaluator+contract capstone
+  surface, with MCP behavior still aligned to the underlying assumptions.
