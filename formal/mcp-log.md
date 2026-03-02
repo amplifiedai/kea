@@ -17562,3 +17562,60 @@ Lean changes:
 **Outcome**:
 - Sentinel validation now includes a broader slice sanity suite aligned with
   current handler theorems, not only the minimal 3-probe loop.
+
+### 2026-03-02: process correction — checkpoint protocol enforced with slice-specific probes
+
+**Context**: Enforcing the MCP-first workflow at checkpoint boundaries for the
+strict-top handler boundary slice (`native_handler_strict_top_typing_*`,
+strict-top/global soundness routes).
+
+**MCP tools used**: `reset_session`, `type_check`
+
+**Predict (Lean side)**:
+- Non-forgeable resume context: `resume` must be rejected outside handler
+  clauses, including lexical spoof attempts.
+- Coherent matching handler should discharge handled effect in pure `main`.
+- Clause mismatch should preserve unhandled effect (purity violation in pure
+  contexts).
+- Nested disjoint handlers should compose and fully discharge when both effects
+  are handled.
+- Non-tail/out-of-handler lambda resume must be rejected.
+
+**Probe (Rust side via MCP)**:
+1. `fn spoof_param(__kea_resume_ctx: fn(Int) -> Int) -> Int; resume 1`
+   -> `error`, `E0012`.
+2. `fn spoof_let() -> Int; let __kea_resume_ctx = |x| x; resume 1`
+   -> `error`, `E0012`.
+3. `handle count(); Counter.next() -> resume 42` in pure `main`
+   -> `ok`, `main : () -> Int`.
+4. double `resume` in one clause
+   -> `error`, `E0012` (`handler clause may resume at most once`).
+5. handle `Counter` body with only `State` clauses in pure `main`
+   -> `error`, `E0001` (effect leak `[Counter]`).
+6. nested handlers across disjoint effects (`A` inner, `B` outer)
+   -> `ok`, outer `main : () -> Int`.
+7. `resume` inside lambda outside handler
+   -> `error`, `E0012`.
+
+**Classify**: Agreement.
+
+**Act**:
+- Keep strict-top metadata boundary theorem set unchanged.
+- Adopt slice-specific probe matrix at each formal checkpoint, with sentinel
+  probes retained as minimum safety checks.
+
+**Traceability**:
+- Lean slice: `formal/Kea/Typing.lean`
+  - `native_handler_strict_top_typing_prop`
+  - `native_handler_strict_top_typing_prop_iff_strict_typing`
+  - `native_handler_strict_top_typing_of_metadata_coherence`
+  - `native_handler_strict_top_typing_prop_iff_metadata_coherence`
+  - `not_native_handler_strict_top_typing_prop`
+  - `not_native_handler_strict_top_typing_prop_iff_not_metadata_coherence`
+  - `native_handler_step_ext_with_mismatch_progress_of_core_progress_and_strict_top_typing`
+  - `native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_strict_top_typing`
+- Log/process evidence: this entry.
+
+**Impact**:
+- Checkpoint validation now explicitly follows the required `Predict -> Probe ->
+  Classify -> Act -> Traceability` structure with new slice-relevant probes.
