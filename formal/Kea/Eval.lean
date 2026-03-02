@@ -4474,8 +4474,8 @@ theorem handler_typed_redex_capstone
         e' ∧
       HandlerHasType tenv e' ty) ∧
     resume_at_most_once clause.contract.resumeUse := by
-  refine ⟨handler_step_exists_and_preserves_of_typed_redex h_typed, ?_⟩
-  exact handler_step_clause_atMostOnce_of_typed_redex h_typed
+  have h_shape := handler_typed_redex_shape_capstone h_typed
+  exact ⟨h_shape.1, h_shape.2.2.1⟩
 
 /--
 Bridge theorem: typed-redex linearity excludes the invalid tail-resumptive
@@ -4494,11 +4494,7 @@ theorem handler_step_clause_notInvalid_of_typed_redex
       ty) :
     TailResumptiveClassification.classifyClause clause.contract ≠
       TailResumptiveClassification.TailResumptiveClass.invalid := by
-  have h_linear : resume_at_most_once clause.contract.resumeUse :=
-    handler_step_clause_atMostOnce_of_typed_redex h_typed
-  exact
-    (TailResumptiveClassification.classifyClause_notInvalid_iff_atMostOnce
-      clause.contract).2 (by simpa [resume_at_most_once] using h_linear)
+  exact (handler_typed_redex_shape_capstone h_typed).2.2.2.1
 
 /--
 Extended capstone route for typed handler redexes: one-step existence,
@@ -4525,10 +4521,8 @@ theorem handler_typed_redex_capstone_with_classification
     resume_at_most_once clause.contract.resumeUse ∧
     TailResumptiveClassification.classifyClause clause.contract ≠
       TailResumptiveClassification.TailResumptiveClass.invalid := by
-  refine ⟨?_, ?_, ?_⟩
-  · exact handler_step_exists_and_preserves_of_typed_redex h_typed
-  · exact handler_step_clause_atMostOnce_of_typed_redex h_typed
-  · exact handler_step_clause_notInvalid_of_typed_redex h_typed
+  have h_shape := handler_typed_redex_shape_capstone h_typed
+  exact ⟨h_shape.1, h_shape.2.2.1, h_shape.2.2.2.1⟩
 
 /--
 Extract the clause well-typed slice from a typed handler redex premise.
@@ -4588,10 +4582,8 @@ theorem handler_typed_redex_capstone_with_tail_resumptive_bundle
       HandlerHasType tenv e' ty) ∧
     resume_at_most_once clause.contract.resumeUse ∧
     TailResumptiveClassification.TailResumptiveBundle clause.contract := by
-  refine ⟨?_, ?_, ?_⟩
-  · exact handler_step_exists_and_preserves_of_typed_redex h_typed
-  · exact handler_step_clause_atMostOnce_of_typed_redex h_typed
-  · exact handler_typed_redex_tail_resumptive_bundle h_typed
+  have h_shape := handler_typed_redex_shape_capstone h_typed
+  exact ⟨h_shape.1, h_shape.2.2.1, h_shape.2.2.2.2⟩
 
 /--
 Typed-redex bridge into packaged tail-capability composition contracts.
@@ -4646,10 +4638,9 @@ theorem handler_typed_redex_capstone_with_tail_capability_bundle
       HandlerHasType tenv e' ty) ∧
     resume_at_most_once clause.contract.resumeUse ∧
     TailCapabilityComposition.TailCapabilityBundle clause.contract capability := by
-  refine ⟨?_, ?_, ?_⟩
-  · exact handler_step_exists_and_preserves_of_typed_redex h_typed
-  · exact handler_step_clause_atMostOnce_of_typed_redex h_typed
-  · exact handler_typed_redex_tail_capability_bundle h_typed h_expr h_ne
+  rcases handler_typed_redex_shape_capstone_with_capability h_typed h_expr h_ne with
+    ⟨h_step, _h_wellTyped, h_linear, _h_not_invalid, _h_tail_bundle, h_cap, _h_cap_closed⟩
+  exact ⟨h_step, h_linear, h_cap⟩
 
 /--
 Typed-redex bridge into packaged closed-aware tail-capability contracts.
@@ -4710,10 +4701,9 @@ theorem handler_typed_redex_capstone_with_tail_capability_closedAware_bundle
     TailCapabilityComposition.TailCapabilityClosedAwareBundle
       clause.contract
       capability := by
-  refine ⟨?_, ?_, ?_⟩
-  · exact handler_step_exists_and_preserves_of_typed_redex h_typed
-  · exact handler_step_clause_atMostOnce_of_typed_redex h_typed
-  · exact handler_typed_redex_tail_capability_closedAware_bundle h_typed h_expr h_ne
+  rcases handler_typed_redex_shape_capstone_with_capability h_typed h_expr h_ne with
+    ⟨h_step, _h_wellTyped, h_linear, _h_not_invalid, _h_tail_bundle, _h_cap, h_cap_closed⟩
+  exact ⟨h_step, h_linear, h_cap_closed⟩
 
 /-- Inversion lemma for the `core` constructor of `HandlerHasType`. -/
 theorem handlerHasType_core_inv

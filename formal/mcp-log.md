@@ -14905,3 +14905,44 @@ perform-redex shape witness.
 **Outcome**:
 - Redex routes and core-body routes now share one shape-capstone foundation,
   with direct MCP behavior still aligned.
+
+### 2026-03-02: redex capstone family rerouted through shape-capstone layer
+
+**Context**: Refactored existing typed-redex capstone theorem proofs to consume
+the new perform-redex shape capstone routes instead of duplicating proof
+structure.
+
+Lean changes:
+- `handler_typed_redex_capstone`
+- `handler_typed_redex_capstone_with_classification`
+- `handler_typed_redex_capstone_with_tail_resumptive_bundle`
+- `handler_typed_redex_capstone_with_tail_capability_bundle`
+- `handler_typed_redex_capstone_with_tail_capability_closedAware_bundle`
+
+All now project from:
+- `handler_typed_redex_shape_capstone`
+- `handler_typed_redex_shape_capstone_with_capability`
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+- `diagnose`
+
+**Predict (Lean side)**:
+- No runtime semantic change expected; theorem-route refactor only.
+- Existing handler linearity diagnostics and overlap normalization should remain
+  stable.
+
+**Probe (direct `kea` MCP)**:
+1. Single-resume clause accepted.
+2. Branch double-resume rejected with `E0012`.
+3. `resume` outside handler rejected with `E0012`.
+4. Overlap residual remains normalized (`handled : () -[IO]> ()`).
+
+**Classify**: Agreement.
+
+**Divergence**: none.
+
+**Outcome**:
+- The redex capstone theorem family now has one canonical proof route through
+  shape-capstone projections, with MCP behavior still aligned.
