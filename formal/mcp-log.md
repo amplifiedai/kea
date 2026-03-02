@@ -16051,3 +16051,57 @@ minimal relation.
 **Outcome**:
 - Native progress limitation now has explicit no-step theorem routes and a
   concrete typed counterexample witness.
+
+### 2026-03-02: native scoped resume-context judgment (non-forgeable)
+
+**Context**: The previous native resume gate in `Kea/Typing.lean` depended on a
+name lookup marker (`__kea_resume_ctx`), which is forgeable by ordinary term
+bindings. Added a native scoped typing layer that threads a non-forgeable
+context value instead of relying on lexical names.
+
+Lean changes:
+- Added scoped native judgment:
+  - `HasTypeScoped : Option (Ty × Ty) → TermEnv → CoreExpr → Ty → Prop`
+  - `HasFieldsTypeScoped`
+  - `HasTypeScopedTop := HasTypeScoped none`
+- In this layer:
+  - `.handle` types clause body under `some (opRetTy, bodyTy)`.
+  - `.resume` requires `ctx = some (opRetTy, handlerTy)`.
+  - Top-level `resume` is explicitly untypable:
+    `hasTypeScopedTop_resume_not_typable`.
+- Switched native handler-step contracts to scoped typing:
+  - `NativeHandlerClauseSem.instantiate_sound`
+  - `native_handler_step_preservation_prop`
+  - downstream typed-step/progress/counterexample theorems.
+
+**Build check**:
+- `cd formal && lake build` passes.
+
+**MCP tools used**: direct in-session `kea` MCP tools:
+- `reset_session`
+- `type_check`
+
+**Probe (direct `kea` MCP)**:
+1. Single-resume handler accepted:
+   - `effect Log ...; fn once() -> Unit; handle Log.log(1) { Log.log(msg) -> resume () }`
+   - result: `status = ok`.
+2. Sequential double-resume rejected:
+   - same handler shape with clause body containing two `resume ()`.
+   - result: `status = error`, `E0012` (`handler clause may resume at most once`).
+3. Out-of-handler `resume` rejected:
+   - `fn out() -> Int; resume 1`
+   - result: `status = error`, `E0012` (`resume` only valid in matching clause).
+4. Marker-spoof attempt rejected:
+   - `fn spoof(__kea_resume_ctx: fn(Int) -> Int) -> Int; resume 1`
+   - result: `status = error`, `E0012` (`resume` only valid in matching clause).
+
+**Classify**: Agreement on active native scoped layer.
+
+**Divergence**:
+- none on the active scoped native judgment/proof surface.
+- legacy name-marker judgment remains in file as historical/compatibility model
+  and is not used by native handler-step theorem routes.
+
+**Outcome**:
+- Native handler typing now has a non-forgeable, machine-checked resume-context
+  judgment aligned with MCP `E0012` behavior.

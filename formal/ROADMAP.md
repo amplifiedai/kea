@@ -388,15 +388,17 @@ Concrete milestone checklist for moving from the current fuel model to an implem
   non-`perform` bodies, so full native one-step progress is not derivable
   without extending native step semantics. `Kea/Typing.lean` now builds with no
   `sorry` declarations.
-  Update: closed the critical native resume-scoping divergence against MCP by
-  introducing an explicit resume-context gate in `Kea/Typing.lean`
-  (`resumeCtxName`): `inferExpr.handle` now seeds context in clause env,
-  `inferExpr.resume` requires that context and continuation-shape checks, and
-  `HasType{,U}.resume` require matching context witnesses. Core proof stack and
-  native clause-semantics contracts were updated accordingly
-  (`hasType_to_hasTypeU`, `inferExpr_{sound,complete}`,
-  `hasType_lookup_congr`, `NativeHandlerClauseSem.instantiate_sound`), and MCP
-  re-probes confirm out-of-handler `resume` remains rejected with `E0012`.
+  Update: replaced the forgeable name-marker gate with a native scoped typing
+  layer in `Kea/Typing.lean`:
+  `HasTypeScoped : Option (Ty × Ty) → TermEnv → CoreExpr → Ty → Prop`
+  (`HasTypeScopedTop := HasTypeScoped none`) where `.handle` sets clause typing
+  context to `some (opRetTy, bodyTy)` and `.resume` requires
+  `ctx = some (opRetTy, handlerTy)`. Native handler-step contracts now use this
+  non-forgeable context (`NativeHandlerClauseSem.instantiate_sound`,
+  `native_handler_step_preservation_prop`, and downstream typed-step/progress
+  surfaces). MCP re-probes confirm `resume` outside handler remains rejected
+  with `E0012`, including spoof attempts that bind `__kea_resume_ctx` as an
+  ordinary parameter.
   Update: added explicit theorem exports for that gate
   (`hasType_resume_requires_ctx`, `resume_not_typable_without_ctx`,
   `inferExpr_resume_none_without_ctx`), so out-of-handler `resume` rejection is

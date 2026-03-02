@@ -753,6 +753,99 @@ theorem hasType_resume_iff_ctx_and_value
     exact HasType.resume env value opRetTy handlerTy h_ctx h_value
 
 /- =========================================================================
+   Native scoped resume typing (non-forgeable handler context)
+   ========================================================================= -/
+
+/-- Non-forgeable native resume context (separate from lexical bindings). -/
+abbrev ScopedResumeCtx := Option (Ty × Ty)
+
+mutual
+  /--
+  Native declarative typing with an explicit, non-forgeable resume context.
+  `resume` is typable only when this context is `some (opRetTy, handlerTy)`.
+  -/
+  inductive HasTypeScoped : ScopedResumeCtx → TermEnv → CoreExpr → Ty → Prop where
+    | int (ctx : ScopedResumeCtx) (env : TermEnv) (n : Int) :
+        HasTypeScoped ctx env (.intLit n) .int
+    | bool (ctx : ScopedResumeCtx) (env : TermEnv) (b : Bool) :
+        HasTypeScoped ctx env (.boolLit b) .bool
+    | string (ctx : ScopedResumeCtx) (env : TermEnv) (s : String) :
+        HasTypeScoped ctx env (.stringLit s) .string
+    | var (ctx : ScopedResumeCtx) (env : TermEnv) (name : String) (ty : Ty)
+        (h_lookup : TermEnv.lookup env name = some ty) :
+        HasTypeScoped ctx env (.var name) ty
+    | lam (ctx : ScopedResumeCtx) (env : TermEnv) (param : String) (paramTy bodyTy : Ty) (body : CoreExpr)
+        (h_body : HasTypeScoped ctx ((param, paramTy) :: env) body bodyTy) :
+        HasTypeScoped ctx env (.lam param paramTy body) (.function (.cons paramTy .nil) bodyTy)
+    | app (ctx : ScopedResumeCtx) (env : TermEnv) (fn arg : CoreExpr) (paramTy retTy : Ty)
+        (h_fn : HasTypeScoped ctx env fn (.function (.cons paramTy .nil) retTy))
+        (h_arg : HasTypeScoped ctx env arg paramTy) :
+        HasTypeScoped ctx env (.app fn arg) retTy
+    | letE (ctx : ScopedResumeCtx) (env : TermEnv)
+        (name : String) (value body : CoreExpr) (valueTy bodyTy : Ty)
+        (h_value : HasTypeScoped ctx env value valueTy)
+        (h_body : HasTypeScoped ctx ((name, valueTy) :: env) body bodyTy) :
+        HasTypeScoped ctx env (.letE name value body) bodyTy
+    | record (ctx : ScopedResumeCtx) (env : TermEnv) (fields : CoreFields) (rowFields : RowFields)
+        (h_fields : HasFieldsTypeScoped ctx env fields rowFields) :
+        HasTypeScoped ctx env (.record fields) (.anonRecord (.mk rowFields none))
+    | proj (ctx : ScopedResumeCtx) (env : TermEnv)
+        (e : CoreExpr) (rowFields : RowFields) (label : Label) (ty : Ty)
+        (h_e : HasTypeScoped ctx env e (.anonRecord (.mk rowFields none)))
+        (h_get : RowFields.get rowFields label = some ty) :
+        HasTypeScoped ctx env (.proj e label) ty
+    | perform (ctx : ScopedResumeCtx) (env : TermEnv) (op : Label)
+        (argTy opRetTy bodyTy : Ty) (arg k : CoreExpr)
+        (h_arg : HasTypeScoped ctx env arg argTy)
+        (h_k : HasTypeScoped ctx env k (.function (.cons opRetTy .nil) bodyTy)) :
+        HasTypeScoped ctx env (.perform op argTy opRetTy arg k) bodyTy
+    | handle (ctx : ScopedResumeCtx) (env : TermEnv) (body : CoreExpr) (op : Label)
+        (argName resumeName : String) (argTy opRetTy bodyTy : Ty) (clauseBody : CoreExpr)
+        (h_body : HasTypeScoped ctx env body bodyTy)
+        (h_clause :
+          HasTypeScoped
+            (some (opRetTy, bodyTy))
+            ((resumeName, .function (.cons opRetTy .nil) bodyTy) ::
+              (argName, argTy) ::
+              env)
+            clauseBody
+            bodyTy) :
+        HasTypeScoped ctx env
+          (.handle body op argName resumeName argTy opRetTy clauseBody)
+          bodyTy
+    | resume (ctx : ScopedResumeCtx) (env : TermEnv) (value : CoreExpr) (opRetTy handlerTy : Ty)
+        (h_ctx : ctx = some (opRetTy, handlerTy))
+        (h_value : HasTypeScoped ctx env value opRetTy) :
+        HasTypeScoped ctx env (.resume value) handlerTy
+
+  /-- Field typing for `HasTypeScoped`. -/
+  inductive HasFieldsTypeScoped : ScopedResumeCtx → TermEnv → CoreFields → RowFields → Prop where
+    | nil (ctx : ScopedResumeCtx) (env : TermEnv) :
+        HasFieldsTypeScoped ctx env .nil .nil
+    | cons (ctx : ScopedResumeCtx) (env : TermEnv)
+        (label : Label) (e : CoreExpr) (rest : CoreFields)
+        (ty : Ty) (restFields : RowFields)
+        (h_head : HasTypeScoped ctx env e ty)
+        (h_rest : HasFieldsTypeScoped ctx env rest restFields) :
+        HasFieldsTypeScoped ctx env (.cons label e rest) (.cons label ty restFields)
+end
+
+/-- Top-level native scoped typing (outside any handler clause). -/
+abbrev HasTypeScopedTop (env : TermEnv) (e : CoreExpr) (ty : Ty) : Prop :=
+  HasTypeScoped none env e ty
+
+/--
+`resume` is not typable at top-level in the scoped judgment.
+-/
+theorem hasTypeScopedTop_resume_not_typable
+    {env : TermEnv} {value : CoreExpr} {ty : Ty} :
+    ¬ HasTypeScopedTop env (.resume value) ty := by
+  intro h_resume
+  cases h_resume with
+  | resume ctx _ _ opRetTy handlerTy h_ctx _ =>
+    cases h_ctx
+
+/- =========================================================================
    Native handler-step judgment on `Typing.CoreExpr`
    ========================================================================= -/
 
@@ -763,16 +856,16 @@ structure NativeHandlerClauseSem : Type where
   instantiate : CoreExpr → CoreExpr → CoreExpr → CoreExpr
   instantiate_sound :
     ∀ env argName resumeName argTy opRetTy ty clauseBody arg k,
-      HasType env arg argTy →
-      HasType env k (.function (.cons opRetTy .nil) ty) →
-      HasType
-        ((resumeCtxName, .function (.cons opRetTy .nil) ty) ::
-          (resumeName, .function (.cons opRetTy .nil) ty) ::
+      HasTypeScopedTop env arg argTy →
+      HasTypeScopedTop env k (.function (.cons opRetTy .nil) ty) →
+      HasTypeScoped
+        (some (opRetTy, ty))
+        ((resumeName, .function (.cons opRetTy .nil) ty) ::
           (argName, argTy) ::
           env)
         clauseBody
         ty →
-      HasType env (instantiate clauseBody arg k) ty
+      HasTypeScopedTop env (instantiate clauseBody arg k) ty
 
 /--
 Native one-step handler reduction on `Typing.CoreExpr`.
@@ -792,9 +885,9 @@ inductive NativeHandlerStep (clauseSem : NativeHandlerClauseSem) : CoreExpr → 
 /-- Preservation target for native handler-step reduction in `Typing.lean`. -/
 def native_handler_step_preservation_prop (clauseSem : NativeHandlerClauseSem) : Prop :=
   ∀ env e e' ty,
-    HasType env e ty →
+    HasTypeScopedTop env e ty →
     NativeHandlerStep clauseSem e e' →
-    HasType env e' ty
+    HasTypeScopedTop env e' ty
 
 /--
 Native preservation for one handler step under abstract clause semantics.
@@ -806,9 +899,9 @@ theorem native_handler_step_preservation
   cases h_step with
   | handle_perform op argTy opRetTy arg k argName resumeName clauseBody =>
     cases h_ty with
-    | handle _ _ _ _ _ _ _ _ _ h_body h_clause =>
+    | handle _ _ _ _ _ _ _ _ _ _ h_body h_clause =>
       cases h_body with
-      | perform _ _ _ _ _ _ _ h_arg h_k =>
+      | perform _ _ _ _ _ _ _ _ h_arg h_k =>
         exact clauseSem.instantiate_sound
           env argName resumeName argTy opRetTy ty clauseBody arg k
           h_arg h_k h_clause
@@ -901,7 +994,7 @@ theorem native_handler_step_progress_of_typed_redex
     {env : TermEnv} {op : Label} {argTy opRetTy ty : Ty}
     {arg k : CoreExpr} {argName resumeName : String} {clauseBody : CoreExpr}
     (_h_typed :
-      HasType env
+      HasTypeScopedTop env
         (.handle (.perform op argTy opRetTy arg k) op argName resumeName argTy opRetTy clauseBody)
         ty) :
     ∃ e',
@@ -919,14 +1012,14 @@ theorem native_handler_step_exists_and_preserves_of_typed_redex
     {env : TermEnv} {op : Label} {argTy opRetTy ty : Ty}
     {arg k : CoreExpr} {argName resumeName : String} {clauseBody : CoreExpr}
     (h_typed :
-      HasType env
+      HasTypeScopedTop env
         (.handle (.perform op argTy opRetTy arg k) op argName resumeName argTy opRetTy clauseBody)
         ty) :
     ∃ e',
       NativeHandlerStep clauseSem
         (.handle (.perform op argTy opRetTy arg k) op argName resumeName argTy opRetTy clauseBody)
         e' ∧
-      HasType env e' ty := by
+      HasTypeScopedTop env e' ty := by
   refine ⟨clauseSem.instantiate clauseBody arg k, ?_, ?_⟩
   · exact NativeHandlerStep.handle_perform op argTy opRetTy arg k argName resumeName clauseBody
   · exact native_handler_step_preservation clauseSem env
@@ -945,11 +1038,11 @@ theorem native_handler_step_exists_and_preserves_iff_supported_shape_of_typed
     {argName resumeName : String} {argTy opRetTy : Ty}
     {clauseBody : CoreExpr} {ty : Ty}
     (h_typed :
-      HasType env (.handle body op argName resumeName argTy opRetTy clauseBody) ty) :
+      HasTypeScopedTop env (.handle body op argName resumeName argTy opRetTy clauseBody) ty) :
     (∃ e',
       NativeHandlerStep clauseSem
         (.handle body op argName resumeName argTy opRetTy clauseBody) e' ∧
-      HasType env e' ty)
+      HasTypeScopedTop env e' ty)
       ↔ NativeHandlerStepSupportedShape body op argTy opRetTy := by
   constructor
   · intro h_exists
@@ -972,19 +1065,19 @@ theorem native_handler_step_exists_and_preserves_of_typed_handle_and_supported_s
     {argName resumeName : String} {argTy opRetTy : Ty}
     {clauseBody : CoreExpr} {ty : Ty}
     (h_typed :
-      HasType env (.handle body op argName resumeName argTy opRetTy clauseBody) ty)
+      HasTypeScopedTop env (.handle body op argName resumeName argTy opRetTy clauseBody) ty)
     (h_shape : NativeHandlerStepSupportedShape body op argTy opRetTy) :
     ∃ e',
       NativeHandlerStep clauseSem
         (.handle body op argName resumeName argTy opRetTy clauseBody) e' ∧
-      HasType env e' ty := by
+      HasTypeScopedTop env e' ty := by
   exact (native_handler_step_exists_and_preserves_iff_supported_shape_of_typed
     clauseSem h_typed).2 h_shape
 
 /-- Progress target for native `handle` expressions in `Typing.lean`. -/
 def native_handler_step_progress_prop (clauseSem : NativeHandlerClauseSem) : Prop :=
   ∀ env body op argName resumeName argTy opRetTy clauseBody ty,
-    HasType env (.handle body op argName resumeName argTy opRetTy clauseBody) ty →
+    HasTypeScopedTop env (.handle body op argName resumeName argTy opRetTy clauseBody) ty →
     ∃ e', NativeHandlerStep clauseSem
       (.handle body op argName resumeName argTy opRetTy clauseBody) e'
 
@@ -994,7 +1087,7 @@ the currently supported redex shape.
 -/
 def native_handler_body_progress_obligation_prop : Prop :=
   ∀ env body op argName resumeName argTy opRetTy clauseBody ty,
-    HasType env (.handle body op argName resumeName argTy opRetTy clauseBody) ty →
+    HasTypeScopedTop env (.handle body op argName resumeName argTy opRetTy clauseBody) ty →
     NativeHandlerStepSupportedShape body op argTy opRetTy
 
 /--
@@ -1045,12 +1138,12 @@ theorem native_handler_body_progress_obligation_false :
   let ty : Ty := .int
   let clauseBody : CoreExpr := .intLit 1
   have h_typed :
-      HasType env (.handle body op argName resumeName argTy opRetTy clauseBody) ty := by
-    exact HasType.handle env body op argName resumeName argTy opRetTy ty clauseBody
-      (HasType.int env 0)
-      (HasType.int
-        ((resumeCtxName, .function (.cons opRetTy .nil) ty) ::
-          (resumeName, .function (.cons opRetTy .nil) ty) ::
+      HasTypeScopedTop env (.handle body op argName resumeName argTy opRetTy clauseBody) ty := by
+    exact HasTypeScoped.handle none env body op argName resumeName argTy opRetTy ty clauseBody
+      (HasTypeScoped.int none env 0)
+      (HasTypeScoped.int
+        (some (opRetTy, ty))
+        ((resumeName, .function (.cons opRetTy .nil) ty) ::
           (argName, argTy) ::
           env)
         1)
@@ -1080,15 +1173,15 @@ there exists a well-typed native handle expression with no one-step successor.
 theorem native_handler_typed_progress_counterexample
     (clauseSem : NativeHandlerClauseSem) :
     ∃ env body op argName resumeName argTy opRetTy clauseBody ty,
-      HasType env (.handle body op argName resumeName argTy opRetTy clauseBody) ty ∧
+      HasTypeScopedTop env (.handle body op argName resumeName argTy opRetTy clauseBody) ty ∧
       ¬ ∃ e', NativeHandlerStep clauseSem
         (.handle body op argName resumeName argTy opRetTy clauseBody) e' := by
   refine ⟨[], .intLit 0, "Op", "x", "k", .int, .int, .intLit 1, .int, ?_, ?_⟩
-  · exact HasType.handle [] (.intLit 0) "Op" "x" "k" .int .int .int (.intLit 1)
-      (HasType.int [] 0)
-      (HasType.int
-        ((resumeCtxName, .function (.cons .int .nil) .int) ::
-          ("k", .function (.cons .int .nil) .int) ::
+  · exact HasTypeScoped.handle none [] (.intLit 0) "Op" "x" "k" .int .int .int (.intLit 1)
+      (HasTypeScoped.int none [] 0)
+      (HasTypeScoped.int
+        (some (.int, .int))
+        (("k", .function (.cons .int .nil) .int) ::
           ("x", .int) ::
           [])
         1)
