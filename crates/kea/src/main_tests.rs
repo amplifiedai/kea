@@ -4323,6 +4323,62 @@ fn compile_rejects_fip_unique_then_lambda_unshadowed_forwarder_without_boundary_
 
 #[test]
 #[cfg(not(target_os = "windows"))]
+fn compile_rejects_fip_unique_with_binding_shadowed_forwarder_name_call_escape() {
+    let source_path = write_temp_source(
+        "fn with_forwarder(f: fn(Unique Int) -> Unique Int, @with k: fn(fn(Unique Int) -> Unique Int) -> Unique Int) -> Unique Int\n  k(f)\n\nfn forward_once(x: Unique Int) -> Unique Int\n  x\n\n@fip\nfn call_via_with_shadow(x: Unique Int, g: fn(Unique Int) -> Unique Int) -> Unique Int\n  with forward_once <- with_forwarder(g)\n  forward_once(x)\n\nfn main() -> Int\n  0\n",
+        "kea-cli-fip-unique-with-shadowed-forwarder-name",
+        "kea",
+    );
+
+    let err = run_file(&source_path).expect_err(
+        "@fip verifier should reject call-boundary escape through with-binding-shadowed forwarder name",
+    );
+    assert!(
+        err.contains("`@fip` verification failed for `call_via_with_shadow`"),
+        "expected @fip verification failure, got: {err}"
+    );
+    assert!(
+        err.contains("unsupported cross-function call boundaries (2):"),
+        "expected two unsupported boundaries (`with_forwarder` and shadowed local callable), got: {err}"
+    );
+    assert!(
+        err.contains("forward_once$m0$Dyn"),
+        "expected mangled local callable site from with-binding shadow, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn compile_rejects_fip_unique_with_binding_unshadowed_forwarder_without_local_boundary_escape() {
+    let source_path = write_temp_source(
+        "fn with_forwarder(f: fn(Unique Int) -> Unique Int, @with k: fn(fn(Unique Int) -> Unique Int) -> Unique Int) -> Unique Int\n  k(f)\n\nfn forward_once(x: Unique Int) -> Unique Int\n  x\n\n@fip\nfn call_via_with_no_shadow(x: Unique Int, g: fn(Unique Int) -> Unique Int) -> Unique Int\n  with fwd <- with_forwarder(g)\n  forward_once(x)\n\nfn main() -> Int\n  0\n",
+        "kea-cli-fip-unique-with-unshadowed-forwarder",
+        "kea",
+    );
+
+    let err = run_file(&source_path).expect_err(
+        "@fip verifier should still fail this shape for non-boundary reasons, but must not report shadowed local callable boundaries",
+    );
+    assert!(
+        err.contains("`@fip` verification failed for `call_via_with_no_shadow`"),
+        "expected @fip verification failure, got: {err}"
+    );
+    assert!(
+        err.contains("unsupported cross-function call boundaries (1):"),
+        "expected only the `with_forwarder` boundary, got: {err}"
+    );
+    assert!(
+        !err.contains("forward_once$m0$Dyn"),
+        "expected no local shadow callable boundary in unshadowed with-binding path, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
 fn compile_rejects_fip_when_unique_handoff_missing() {
     let source_path = write_temp_source(
         "@fip\nfn leak(x: Unique Int) -> Int\n  1\n\nfn main() -> Int\n  0\n",
