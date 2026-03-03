@@ -279,9 +279,17 @@ fn builtin_unsafe_call_names() -> BTreeSet<String> {
         "Ptr.null",
         "Ptr.read",
         "Ptr.write",
+        "Ptr.offset",
+        "Ptr.cast",
+        "Ptr.alloc",
+        "Ptr.free",
         "Kea.Ptr.null",
         "Kea.Ptr.read",
         "Kea.Ptr.write",
+        "Kea.Ptr.offset",
+        "Kea.Ptr.cast",
+        "Kea.Ptr.alloc",
+        "Kea.Ptr.free",
     ]
     .into_iter()
     .map(|name| name.to_string())

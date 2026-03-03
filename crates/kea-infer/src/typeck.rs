@@ -7734,6 +7734,7 @@ pub fn register_builtin_ptr_ops(env: &mut TypeEnv) {
     env.register_module_alias("Ptr", module_path);
 
     let type_var = TypeVarId(0);
+    let cast_target_var = TypeVarId(1);
     let ptr_a = Type::Opaque {
         name: "Ptr".to_string(),
         params: vec![Type::Var(type_var)],
@@ -7784,12 +7785,67 @@ pub fn register_builtin_ptr_ops(env: &mut TypeEnv) {
         bounds: BTreeMap::new(),
         kinds: BTreeMap::new(),
         ty: Type::Function(FunctionType::pure(
-            vec![ptr_a, Type::Var(type_var)],
+            vec![ptr_a.clone(), Type::Var(type_var)],
             Type::Unit,
         )),
     };
     env.register_module_function(module_path, "write");
     env.register_module_type_scheme_exact(module_path, "write", write_scheme);
+
+    let offset_scheme = TypeScheme {
+        type_vars: vec![type_var],
+        row_vars: Vec::new(),
+        dim_vars: Vec::new(),
+        lacks: BTreeMap::new(),
+        bounds: BTreeMap::new(),
+        kinds: BTreeMap::new(),
+        ty: Type::Function(FunctionType::pure(
+            vec![ptr_a.clone(), Type::Int],
+            ptr_a.clone(),
+        )),
+    };
+    env.register_module_function(module_path, "offset");
+    env.register_module_type_scheme_exact(module_path, "offset", offset_scheme);
+
+    let ptr_b = Type::Opaque {
+        name: "Ptr".to_string(),
+        params: vec![Type::Var(cast_target_var)],
+    };
+    let cast_scheme = TypeScheme {
+        type_vars: vec![type_var, cast_target_var],
+        row_vars: Vec::new(),
+        dim_vars: Vec::new(),
+        lacks: BTreeMap::new(),
+        bounds: BTreeMap::new(),
+        kinds: BTreeMap::new(),
+        ty: Type::Function(FunctionType::pure(vec![ptr_a.clone()], ptr_b)),
+    };
+    env.register_module_function(module_path, "cast");
+    env.register_module_type_scheme_exact(module_path, "cast", cast_scheme);
+
+    let alloc_scheme = TypeScheme {
+        type_vars: vec![type_var],
+        row_vars: Vec::new(),
+        dim_vars: Vec::new(),
+        lacks: BTreeMap::new(),
+        bounds: BTreeMap::new(),
+        kinds: BTreeMap::new(),
+        ty: Type::Function(FunctionType::pure(vec![Type::Int], ptr_a.clone())),
+    };
+    env.register_module_function(module_path, "alloc");
+    env.register_module_type_scheme_exact(module_path, "alloc", alloc_scheme);
+
+    let free_scheme = TypeScheme {
+        type_vars: vec![type_var],
+        row_vars: Vec::new(),
+        dim_vars: Vec::new(),
+        lacks: BTreeMap::new(),
+        bounds: BTreeMap::new(),
+        kinds: BTreeMap::new(),
+        ty: Type::Function(FunctionType::pure(vec![ptr_a], Type::Unit)),
+    };
+    env.register_module_function(module_path, "free");
+    env.register_module_type_scheme_exact(module_path, "free", free_scheme);
 }
 
 /// Register an effect declaration's operations as qualified call targets.

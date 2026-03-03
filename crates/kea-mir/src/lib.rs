@@ -3190,6 +3190,52 @@ fn ptr_intrinsic_symbol(name: &str) -> Option<&'static str> {
         "Ptr.is_null" | "Kea.Ptr.is_null" => Some("__kea_ptr_is_null"),
         "Ptr.read" | "Kea.Ptr.read" => Some("__kea_ptr_read_i64"),
         "Ptr.write" | "Kea.Ptr.write" => Some("__kea_ptr_write_i64"),
+        "Ptr.offset" | "Kea.Ptr.offset" => Some("__kea_ptr_offset"),
+        "Ptr.cast" | "Kea.Ptr.cast" => Some("__kea_ptr_cast"),
+        "Ptr.alloc" | "Kea.Ptr.alloc" => Some("__kea_ptr_alloc"),
+        "Ptr.free" | "Kea.Ptr.free" => Some("__kea_ptr_free"),
+        _ => None,
+    }
+}
+
+fn ptr_pointee_size_bytes(ty: &Type) -> i64 {
+    match ty {
+        Type::IntN(width, _) => match width {
+            kea_types::IntWidth::I8 => 1,
+            kea_types::IntWidth::I16 => 2,
+            kea_types::IntWidth::I32 => 4,
+            kea_types::IntWidth::I64 => 8,
+        },
+        Type::FloatN(width) => match width {
+            kea_types::FloatWidth::F16 | kea_types::FloatWidth::F32 => 4,
+            kea_types::FloatWidth::F64 => 8,
+        },
+        Type::Bool => 1,
+        Type::Char => 4,
+        Type::Unit => 1,
+        Type::Int | Type::Float => 8,
+        // Bootstrap aggregates and other opaque/runtime carriers flow as words.
+        _ => 8,
+    }
+}
+
+fn ptr_element_size_from_ptr_type(ty: &Type) -> Option<i64> {
+    match ty {
+        Type::Opaque { name, params } if name == "Ptr" && params.len() == 1 => {
+            Some(ptr_pointee_size_bytes(&params[0]))
+        }
+        _ => None,
+    }
+}
+
+fn ptr_intrinsic_extra_int_arg(name: &str, arg_types: &[Type], ret_type: &Type) -> Option<i64> {
+    match name {
+        "Ptr.offset" | "Kea.Ptr.offset" => arg_types
+            .first()
+            .and_then(ptr_element_size_from_ptr_type)
+            .or_else(|| ptr_element_size_from_ptr_type(ret_type))
+            .or(Some(8)),
+        "Ptr.alloc" | "Kea.Ptr.alloc" => ptr_element_size_from_ptr_type(ret_type).or(Some(8)),
         _ => None,
     }
 }
@@ -6860,6 +6906,17 @@ impl FunctionLoweringCtx {
             }
             arg_types.push(arg.ty.clone());
             lowered_args.push(self.lower_expr(arg)?);
+        }
+        if let HirExprKind::Var(name) = &func.kind
+            && let Some(extra_arg) = ptr_intrinsic_extra_int_arg(name, &arg_types, &expr.ty)
+        {
+            let extra_value = self.new_value();
+            self.emit_inst(MirInst::Const {
+                dest: extra_value.clone(),
+                literal: MirLiteral::Int(extra_arg),
+            });
+            arg_types.push(Type::Int);
+            lowered_args.push(extra_value);
         }
         for dispatch_op_key in dispatch_effects {
             let Some((effect, operation)) = dispatch_op_key.split_once('.') else {

@@ -3795,6 +3795,70 @@ fn compile_accepts_builtin_ptr_null_inside_inline_unsafe_expression() {
 
 #[test]
 #[cfg(not(target_os = "windows"))]
+fn compile_rejects_builtin_ptr_alloc_from_safe_context() {
+    let source_path = write_temp_source(
+        "fn alloc_ptr() -> Ptr Int\n  Ptr.alloc(1)\n\nfn main() -> Int\n  0\n",
+        "kea-cli-ptr-alloc-safe-reject",
+        "kea",
+    );
+
+    let err = run_file(&source_path)
+        .expect_err("Ptr.alloc should require unsafe context in safe functions");
+    assert!(
+        err.contains("call to `@unsafe` function `Ptr.alloc` requires unsafe context"),
+        "expected unsafe diagnostic for Ptr.alloc, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn compile_and_execute_builtin_ptr_alloc_read_write_free_exit_code() {
+    let source_path = write_temp_source(
+        "fn main() -> Int\n  unsafe\n    let p = Ptr.alloc(1)\n    Ptr.write(p, 42)\n    let value = Ptr.read(p)\n    Ptr.free(p)\n    value\n",
+        "kea-cli-ptr-alloc-read-write-free",
+        "kea",
+    );
+
+    let run = run_file(&source_path).expect("Ptr alloc/read/write/free should execute");
+    assert_eq!(run.exit_code, 42);
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn compile_and_execute_builtin_ptr_offset_second_slot_exit_code() {
+    let source_path = write_temp_source(
+        "fn main() -> Int\n  unsafe\n    let p = Ptr.alloc(2)\n    Ptr.write(p, 10)\n    let p1 = Ptr.offset(p, 1)\n    Ptr.write(p1, 20)\n    let total = Ptr.read(p) + Ptr.read(p1)\n    Ptr.free(p)\n    total\n",
+        "kea-cli-ptr-offset-slot",
+        "kea",
+    );
+
+    let run = run_file(&source_path).expect("Ptr.offset should advance by element size");
+    assert_eq!(run.exit_code, 30);
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn compile_and_execute_builtin_ptr_cast_round_trip_exit_code() {
+    let source_path = write_temp_source(
+        "fn main() -> Int\n  unsafe\n    let p = Ptr.alloc(1)\n    let q: Ptr Int = Ptr.cast(p)\n    Ptr.write(q, 7)\n    let value = Ptr.read(q)\n    Ptr.free(q)\n    value\n",
+        "kea-cli-ptr-cast-round-trip",
+        "kea",
+    );
+
+    let run = run_file(&source_path).expect("Ptr.cast should preserve pointer value");
+    assert_eq!(run.exit_code, 7);
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
 fn compile_rejects_unsafe_annotation_with_arguments() {
     let source_path = write_temp_source(
         "@unsafe(\"strict\")\nfn raw_add_one(x: Int) -> Int\n  x + 1\n\nfn main() -> Int\n  raw_add_one(1)\n",
