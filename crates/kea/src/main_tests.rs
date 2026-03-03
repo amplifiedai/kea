@@ -4271,6 +4271,58 @@ fn compile_rejects_fip_unique_handle_clause_unshadowed_forwarder_without_boundar
 
 #[test]
 #[cfg(not(target_os = "windows"))]
+fn compile_rejects_fip_unique_then_lambda_shadowed_forwarder_name_call_escape() {
+    let source_path = write_temp_source(
+        "effect Dummy\n  fn noop() -> Unit\n\nfn forward_once(x: Unique Int) -> Unique Int\n  x\n\n@fip\nfn call_via_then_shadow(x: Unique Int, g: fn(Unique Int) -> Unique Int) -> Unique Int\n  handle g\n    Dummy.noop() -> resume ()\n    then forward_once -> forward_once(x)\n\nfn main() -> Int\n  0\n",
+        "kea-cli-fip-unique-then-shadowed-forwarder-name",
+        "kea",
+    );
+
+    let err = run_file(&source_path).expect_err(
+        "@fip verifier should reject call-boundary escape through then-lambda-shadowed forwarder name",
+    );
+    assert!(
+        err.contains("`@fip` verification failed for `call_via_then_shadow`"),
+        "expected @fip verification failure, got: {err}"
+    );
+    assert!(
+        err.contains("unsupported cross-function call boundaries (1):"),
+        "expected call-boundary escape diagnostic, got: {err}"
+    );
+    assert!(
+        err.contains("forward_once$m0$Dyn"),
+        "expected mangled then-lambda local callable site in diagnostic, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn compile_rejects_fip_unique_then_lambda_unshadowed_forwarder_without_boundary_escape() {
+    let source_path = write_temp_source(
+        "effect Dummy\n  fn noop() -> Unit\n\nfn forward_once(x: Unique Int) -> Unique Int\n  x\n\n@fip\nfn call_via_then_no_shadow(x: Unique Int, g: fn(Unique Int) -> Unique Int) -> Unique Int\n  handle g\n    Dummy.noop() -> resume ()\n    then f -> forward_once(x)\n\nfn main() -> Int\n  0\n",
+        "kea-cli-fip-unique-then-unshadowed-forwarder",
+        "kea",
+    );
+
+    let err = run_file(&source_path).expect_err(
+        "@fip verifier should still fail this shape for non-boundary reasons (release), but must not report unsupported call boundaries",
+    );
+    assert!(
+        err.contains("`@fip` verification failed for `call_via_then_no_shadow`"),
+        "expected @fip verification failure, got: {err}"
+    );
+    assert!(
+        !err.contains("unsupported cross-function call boundaries"),
+        "expected no unsupported call-boundary diagnostics for unshadowed then-lambda global forwarder call, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
 fn compile_rejects_fip_when_unique_handoff_missing() {
     let source_path = write_temp_source(
         "@fip\nfn leak(x: Unique Int) -> Int\n  1\n\nfn main() -> Int\n  0\n",
