@@ -8310,6 +8310,224 @@ mod tests {
         }
     }
 
+    fn sample_payload_sum_init_forwarded_into_call_module() -> MirModule {
+        MirModule {
+            functions: vec![MirFunction {
+                name: "main".to_string(),
+                signature: MirFunctionSignature {
+                    params: vec![],
+                    ret: Type::Int,
+                    effects: EffectRow::pure(),
+                },
+                entry: MirBlockId(0),
+                blocks: vec![
+                    MirBlock {
+                        id: MirBlockId(0),
+                        params: vec![],
+                        instructions: vec![
+                            MirInst::Const {
+                                dest: MirValueId(0),
+                                literal: MirLiteral::Int(20),
+                            },
+                            MirInst::Const {
+                                dest: MirValueId(1),
+                                literal: MirLiteral::Int(22),
+                            },
+                            MirInst::SumInit {
+                                dest: MirValueId(2),
+                                sum_type: "Pairish".to_string(),
+                                variant: "Pair".to_string(),
+                                tag: 0,
+                                fields: vec![MirValueId(0), MirValueId(1)],
+                            },
+                        ],
+                        terminator: MirTerminator::Jump {
+                            target: MirBlockId(1),
+                            args: vec![MirValueId(2)],
+                        },
+                    },
+                    MirBlock {
+                        id: MirBlockId(1),
+                        params: vec![MirBlockParam {
+                            id: MirValueId(3),
+                            ty: Type::Sum(SumType {
+                                name: "Pairish".to_string(),
+                                type_args: vec![],
+                                variants: vec![
+                                    ("Pair".to_string(), vec![Type::Int, Type::Int]),
+                                    ("Swap".to_string(), vec![Type::Int, Type::Int]),
+                                ],
+                            }),
+                        }],
+                        instructions: vec![MirInst::Call {
+                            callee: MirCallee::Local("sink".to_string()),
+                            args: vec![MirValueId(3)],
+                            arg_types: vec![Type::Sum(SumType {
+                                name: "Pairish".to_string(),
+                                type_args: vec![],
+                                variants: vec![
+                                    ("Pair".to_string(), vec![Type::Int, Type::Int]),
+                                    ("Swap".to_string(), vec![Type::Int, Type::Int]),
+                                ],
+                            })],
+                            result: Some(MirValueId(4)),
+                            ret_type: Type::Int,
+                            callee_fail_result_abi: false,
+                            capture_fail_result: false,
+                            cc_manifest_id: "default".to_string(),
+                        }],
+                        terminator: MirTerminator::Return {
+                            value: Some(MirValueId(4)),
+                        },
+                    },
+                ],
+            }],
+            layouts: MirLayoutCatalog {
+                records: vec![],
+                sums: vec![MirSumLayout {
+                    name: "Pairish".to_string(),
+                    variants: vec![
+                        MirVariantLayout {
+                            name: "Pair".to_string(),
+                            tag: 0,
+                            fields: vec![
+                                MirVariantFieldLayout {
+                                    name: None,
+                                    annotation: kea_ast::TypeAnnotation::Named("Int".to_string()),
+                                },
+                                MirVariantFieldLayout {
+                                    name: None,
+                                    annotation: kea_ast::TypeAnnotation::Named("Int".to_string()),
+                                },
+                            ],
+                        },
+                        MirVariantLayout {
+                            name: "Swap".to_string(),
+                            tag: 1,
+                            fields: vec![
+                                MirVariantFieldLayout {
+                                    name: None,
+                                    annotation: kea_ast::TypeAnnotation::Named("Int".to_string()),
+                                },
+                                MirVariantFieldLayout {
+                                    name: None,
+                                    annotation: kea_ast::TypeAnnotation::Named("Int".to_string()),
+                                },
+                            ],
+                        },
+                    ],
+                }],
+            },
+        }
+    }
+
+    fn sample_payload_sum_init_forwarded_into_effect_op_module() -> MirModule {
+        MirModule {
+            functions: vec![MirFunction {
+                name: "main".to_string(),
+                signature: MirFunctionSignature {
+                    params: vec![],
+                    ret: Type::Int,
+                    effects: EffectRow::closed(vec![(Label::new("IO"), Type::Unit)]),
+                },
+                entry: MirBlockId(0),
+                blocks: vec![
+                    MirBlock {
+                        id: MirBlockId(0),
+                        params: vec![],
+                        instructions: vec![
+                            MirInst::Const {
+                                dest: MirValueId(0),
+                                literal: MirLiteral::Int(20),
+                            },
+                            MirInst::Const {
+                                dest: MirValueId(1),
+                                literal: MirLiteral::Int(22),
+                            },
+                            MirInst::SumInit {
+                                dest: MirValueId(2),
+                                sum_type: "Pairish".to_string(),
+                                variant: "Pair".to_string(),
+                                tag: 0,
+                                fields: vec![MirValueId(0), MirValueId(1)],
+                            },
+                        ],
+                        terminator: MirTerminator::Jump {
+                            target: MirBlockId(1),
+                            args: vec![MirValueId(2)],
+                        },
+                    },
+                    MirBlock {
+                        id: MirBlockId(1),
+                        params: vec![MirBlockParam {
+                            id: MirValueId(3),
+                            ty: Type::Sum(SumType {
+                                name: "Pairish".to_string(),
+                                type_args: vec![],
+                                variants: vec![
+                                    ("Pair".to_string(), vec![Type::Int, Type::Int]),
+                                    ("Swap".to_string(), vec![Type::Int, Type::Int]),
+                                ],
+                            }),
+                        }],
+                        instructions: vec![
+                            MirInst::EffectOp {
+                                class: MirEffectOpClass::Direct,
+                                effect: "IO".to_string(),
+                                operation: "stdout".to_string(),
+                                args: vec![MirValueId(3)],
+                                result: None,
+                            },
+                            MirInst::Const {
+                                dest: MirValueId(4),
+                                literal: MirLiteral::Int(0),
+                            },
+                        ],
+                        terminator: MirTerminator::Return {
+                            value: Some(MirValueId(4)),
+                        },
+                    },
+                ],
+            }],
+            layouts: MirLayoutCatalog {
+                records: vec![],
+                sums: vec![MirSumLayout {
+                    name: "Pairish".to_string(),
+                    variants: vec![
+                        MirVariantLayout {
+                            name: "Pair".to_string(),
+                            tag: 0,
+                            fields: vec![
+                                MirVariantFieldLayout {
+                                    name: None,
+                                    annotation: kea_ast::TypeAnnotation::Named("Int".to_string()),
+                                },
+                                MirVariantFieldLayout {
+                                    name: None,
+                                    annotation: kea_ast::TypeAnnotation::Named("Int".to_string()),
+                                },
+                            ],
+                        },
+                        MirVariantLayout {
+                            name: "Swap".to_string(),
+                            tag: 1,
+                            fields: vec![
+                                MirVariantFieldLayout {
+                                    name: None,
+                                    annotation: kea_ast::TypeAnnotation::Named("Int".to_string()),
+                                },
+                                MirVariantFieldLayout {
+                                    name: None,
+                                    annotation: kea_ast::TypeAnnotation::Named("Int".to_string()),
+                                },
+                            ],
+                        },
+                    ],
+                }],
+            },
+        }
+    }
+
     fn sample_record_init_from_token_and_load_main_module() -> MirModule {
         MirModule {
             functions: vec![MirFunction {
@@ -9707,6 +9925,26 @@ mod tests {
     #[test]
     fn collect_pass_stats_counts_jump_forwarded_payload_sum_init_when_returned() {
         let module = sample_payload_sum_init_forwarded_and_returned_module();
+        let stats = collect_pass_stats(&module);
+
+        assert_eq!(stats.per_function.len(), 1);
+        let function = &stats.per_function[0];
+        assert_eq!(function.alloc_count, 1);
+    }
+
+    #[test]
+    fn collect_pass_stats_counts_jump_forwarded_payload_sum_init_when_called() {
+        let module = sample_payload_sum_init_forwarded_into_call_module();
+        let stats = collect_pass_stats(&module);
+
+        assert_eq!(stats.per_function.len(), 1);
+        let function = &stats.per_function[0];
+        assert_eq!(function.alloc_count, 1);
+    }
+
+    #[test]
+    fn collect_pass_stats_counts_jump_forwarded_payload_sum_init_when_used_in_effect_op() {
+        let module = sample_payload_sum_init_forwarded_into_effect_op_module();
         let stats = collect_pass_stats(&module);
 
         assert_eq!(stats.per_function.len(), 1);
