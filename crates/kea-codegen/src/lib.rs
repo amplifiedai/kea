@@ -375,6 +375,141 @@ fn is_direct_capability_effect(effect: &str) -> bool {
         .any(|capability| capability.effect == effect)
 }
 
+// ---------------------------------------------------------------------------
+// Demand-driven runtime import registry
+// ---------------------------------------------------------------------------
+// Instead of scanning MIR to pre-declare all possible imports, this registry
+// lazily declares imports on first use during lowering. Cranelift's
+// `declare_function` is idempotent, so repeated calls are safe.
+
+struct RuntimeImports {
+    cache: BTreeMap<&'static str, FuncId>,
+}
+
+impl RuntimeImports {
+    fn new() -> Self {
+        Self {
+            cache: BTreeMap::new(),
+        }
+    }
+
+    fn get<M: Module>(
+        &mut self,
+        module: &mut M,
+        name: &'static str,
+    ) -> Result<FuncId, CodegenError> {
+        if let Some(&id) = self.cache.get(name) {
+            return Ok(id);
+        }
+        let sig = runtime_import_signature(module, name);
+        let func_id = module
+            .declare_function(name, Linkage::Import, &sig)
+            .map_err(|detail| CodegenError::Module {
+                detail: detail.to_string(),
+            })?;
+        self.cache.insert(name, func_id);
+        Ok(func_id)
+    }
+}
+
+fn runtime_import_signature(module: &impl Module, name: &str) -> cranelift_codegen::ir::Signature {
+    let ptr = module.target_config().pointer_type();
+    let mut sig = module.make_signature();
+    match name {
+        // Memory management
+        "malloc" => {
+            sig.params.push(AbiParam::new(ptr));
+            sig.returns.push(AbiParam::new(ptr));
+        }
+        "free" => {
+            sig.params.push(AbiParam::new(ptr));
+        }
+        // IO capabilities
+        "puts" => {
+            sig.params.push(AbiParam::new(ptr));
+            sig.returns.push(AbiParam::new(types::I32));
+        }
+        "write" => {
+            sig.params.push(AbiParam::new(types::I32));
+            sig.params.push(AbiParam::new(ptr));
+            sig.params.push(AbiParam::new(ptr));
+            sig.returns.push(AbiParam::new(ptr));
+        }
+        "__kea_io_write_file" => {
+            sig.params.push(AbiParam::new(ptr));
+            sig.params.push(AbiParam::new(ptr));
+            sig.returns.push(AbiParam::new(types::I8));
+        }
+        "__kea_io_read_file" => {
+            sig.params.push(AbiParam::new(ptr));
+            sig.returns.push(AbiParam::new(ptr));
+        }
+        "__kea_io_exit" => {
+            sig.params.push(AbiParam::new(types::I64));
+        }
+        "__kea_io_file_exists" => {
+            sig.params.push(AbiParam::new(ptr));
+            sig.returns.push(AbiParam::new(types::I8));
+        }
+        "__kea_io_env_var" => {
+            sig.params.push(AbiParam::new(ptr));
+            sig.returns.push(AbiParam::new(ptr));
+        }
+        "__kea_io_mkdir" => {
+            sig.params.push(AbiParam::new(ptr));
+            sig.returns.push(AbiParam::new(types::I8));
+        }
+        // Clock capabilities
+        "__kea_clock_now" | "__kea_clock_monotonic" => {
+            sig.returns.push(AbiParam::new(types::I64));
+        }
+        // Rand capabilities
+        "rand" => {
+            sig.returns.push(AbiParam::new(types::I32));
+        }
+        "srand" => {
+            sig.params.push(AbiParam::new(types::I32));
+        }
+        // Net capabilities
+        "__kea_net_connect" => {
+            sig.params.push(AbiParam::new(ptr));
+            sig.returns.push(AbiParam::new(types::I64));
+        }
+        "__kea_net_send" => {
+            sig.params.push(AbiParam::new(types::I64));
+            sig.params.push(AbiParam::new(ptr));
+            sig.returns.push(AbiParam::new(types::I8));
+        }
+        "__kea_net_recv" => {
+            sig.params.push(AbiParam::new(types::I64));
+            sig.params.push(AbiParam::new(types::I64));
+            sig.returns.push(AbiParam::new(types::I64));
+        }
+        // String/memory utilities
+        "strcmp" => {
+            sig.params.push(AbiParam::new(ptr));
+            sig.params.push(AbiParam::new(ptr));
+            sig.returns.push(AbiParam::new(types::I32));
+        }
+        "strlen" => {
+            sig.params.push(AbiParam::new(ptr));
+            sig.returns.push(AbiParam::new(ptr));
+        }
+        "memcpy" => {
+            sig.params.push(AbiParam::new(ptr));
+            sig.params.push(AbiParam::new(ptr));
+            sig.params.push(AbiParam::new(ptr));
+            sig.returns.push(AbiParam::new(ptr));
+        }
+        // Panic handlers
+        "__kea_panic_div_zero" | "__kea_panic_mod_zero" => {
+            // void -> void
+        }
+        _ => panic!("unknown runtime import: {name}"),
+    }
+    sig
+}
+
 unsafe extern "C" fn kea_net_connect_stub(addr: *const c_char) -> i64 {
     if addr.is_null() {
         return -1;
@@ -645,116 +780,27 @@ fn compile_into_module<M: Module>(
     let mut external_func_ids: BTreeMap<String, FuncId> = BTreeMap::new();
     let mut signatures: BTreeMap<String, cranelift_codegen::ir::Signature> = BTreeMap::new();
     let external_signatures = collect_external_call_signatures(module, mir)?;
-    let mut requires_heap_alloc = false;
-    let mut requires_io_stdout = false;
-    let mut requires_io_stderr = false;
-    let mut requires_io_read_file = false;
-    let mut requires_io_write_file = false;
-    let mut requires_io_exit = false;
-    let mut requires_io_file_exists = false;
-    let mut requires_io_env_var = false;
-    let mut requires_io_mkdir = false;
-    let mut requires_clock_now = false;
-    let mut requires_clock_monotonic = false;
-    let mut requires_rand_int = false;
-    let mut requires_rand_seed = false;
-    let mut requires_net_connect = false;
-    let mut requires_net_send = false;
-    let mut requires_net_recv = false;
-    let mut requires_string_concat = false;
+    let mut runtime_imports = RuntimeImports::new();
+
+    // Scan for structural properties that affect function signatures and
+    // drop function generation. Runtime imports are demand-driven (no scan needed).
     let mut requires_free = false;
     for function in &mir.functions {
-        let runtime_sig = runtime_signatures.get(&function.name).ok_or_else(|| {
-            CodegenError::UnknownFunction {
-                function: function.name.clone(),
-            }
-        })?;
-        let needs_aggregate_alloc = function.blocks.iter().any(|block| {
-            block.instructions.iter().any(|inst| {
-                matches!(
-                    inst,
-                    MirInst::RecordInit { .. }
-                        | MirInst::RecordInitReuse { .. }
-                        | MirInst::RecordInitFromToken { .. }
-                        | MirInst::SumInitReuse { .. }
-                        | MirInst::SumInitFromToken { .. }
-                        | MirInst::ClosureInit { .. }
-                        | MirInst::SumInit { .. }
-                        | MirInst::Const {
-                            literal: MirLiteral::String(_),
-                            ..
-                        }
-                )
-            })
-        });
-        let mut has_fail_zero_resume = false;
         for block in &function.blocks {
             for inst in &block.instructions {
                 match inst {
-                    MirInst::EffectOp {
-                        class: MirEffectOpClass::Direct,
-                        effect,
-                        operation,
-                        ..
-                    } => {
-                        if !is_known_direct_capability_operation(effect, operation) {
-                            continue;
-                        }
-                        match (effect.as_str(), operation.as_str()) {
-                            ("IO", "stdout") => requires_io_stdout = true,
-                            ("IO", "stderr") => requires_io_stderr = true,
-                            ("IO", "read_file") => requires_io_read_file = true,
-                            ("IO", "write_file") => requires_io_write_file = true,
-                            ("IO", "exit") => requires_io_exit = true,
-                            ("IO", "file_exists") => requires_io_file_exists = true,
-                            ("IO", "env_var") => requires_io_env_var = true,
-                            ("IO", "mkdir") => requires_io_mkdir = true,
-                            ("Clock", "now") => requires_clock_now = true,
-                            ("Clock", "monotonic") => requires_clock_monotonic = true,
-                            ("Rand", "int") => requires_rand_int = true,
-                            ("Rand", "seed") => requires_rand_seed = true,
-                            ("Net", "connect") => requires_net_connect = true,
-                            ("Net", "send") => requires_net_send = true,
-                            ("Net", "recv") => requires_net_recv = true,
-                            _ => {}
-                        }
-                    }
-                    MirInst::Binary {
-                        op: MirBinaryOp::Concat,
-                        ..
-                    } => {
-                        requires_string_concat = true;
-                        requires_heap_alloc = true;
-                    }
-                    MirInst::StateCellNew { .. } => {
-                        requires_heap_alloc = true;
-                        requires_free = true;
-                    }
-                    MirInst::Release { .. }
+                    MirInst::StateCellNew { .. }
+                    | MirInst::Release { .. }
                     | MirInst::ReuseToken { .. }
                     | MirInst::RecordInitReuse { .. }
                     | MirInst::RecordInitFromToken { .. }
                     | MirInst::SumInitReuse { .. }
                     | MirInst::SumInitFromToken { .. } => {
-                        requires_heap_alloc = true;
                         requires_free = true;
-                    }
-                    MirInst::EffectOp {
-                        class: MirEffectOpClass::ZeroResume,
-                        effect,
-                        operation,
-                        ..
-                    } if effect == "Fail" && operation == "fail" => {
-                        has_fail_zero_resume = true;
                     }
                     _ => {}
                 }
             }
-        }
-        let needs_fail_result_alloc = runtime_sig.fail_result_abi
-            || (matches!(runtime_sig.runtime_return, Type::Result(_, _)) && has_fail_zero_resume);
-        if needs_aggregate_alloc || needs_fail_result_alloc {
-            requires_heap_alloc = true;
         }
     }
 
@@ -789,326 +835,9 @@ fn compile_into_module<M: Module>(
         external_func_ids.insert(name, func_id);
     }
 
-    let malloc_func_id = if requires_heap_alloc {
-        let ptr_ty = module.target_config().pointer_type();
-        let mut signature = module.make_signature();
-        signature.params.push(AbiParam::new(ptr_ty));
-        signature.returns.push(AbiParam::new(ptr_ty));
-        Some(
-            module
-                .declare_function("malloc", Linkage::Import, &signature)
-                .map_err(|detail| CodegenError::Module {
-                    detail: detail.to_string(),
-                })?,
-        )
-    } else {
-        None
-    };
-
-    let free_func_id = if requires_free {
-        let ptr_ty = module.target_config().pointer_type();
-        let mut signature = module.make_signature();
-        signature.params.push(AbiParam::new(ptr_ty));
-        Some(
-            module
-                .declare_function("free", Linkage::Import, &signature)
-                .map_err(|detail| CodegenError::Module {
-                    detail: detail.to_string(),
-                })?,
-        )
-    } else {
-        None
-    };
-
     let drop_func_ids = declare_drop_functions(module, layout_plan, requires_free)?;
-
-    let stdout_func_id = if requires_io_stdout {
-        let ptr_ty = module.target_config().pointer_type();
-        let mut signature = module.make_signature();
-        signature.params.push(AbiParam::new(ptr_ty));
-        signature.returns.push(AbiParam::new(types::I32));
-        Some(
-            module
-                .declare_function("puts", Linkage::Import, &signature)
-                .map_err(|detail| CodegenError::Module {
-                    detail: detail.to_string(),
-                })?,
-        )
-    } else {
-        None
-    };
-
-    let write_func_id = if requires_io_stderr {
-        let ptr_ty = module.target_config().pointer_type();
-        let mut signature = module.make_signature();
-        signature.params.push(AbiParam::new(types::I32));
-        signature.params.push(AbiParam::new(ptr_ty));
-        signature.params.push(AbiParam::new(ptr_ty));
-        signature.returns.push(AbiParam::new(ptr_ty));
-        Some(
-            module
-                .declare_function("write", Linkage::Import, &signature)
-                .map_err(|detail| CodegenError::Module {
-                    detail: detail.to_string(),
-                })?,
-        )
-    } else {
-        None
-    };
-
-    let io_write_file_func_id = if requires_io_write_file {
-        let ptr_ty = module.target_config().pointer_type();
-        let mut signature = module.make_signature();
-        signature.params.push(AbiParam::new(ptr_ty));
-        signature.params.push(AbiParam::new(ptr_ty));
-        signature.returns.push(AbiParam::new(types::I8));
-        Some(
-            module
-                .declare_function("__kea_io_write_file", Linkage::Import, &signature)
-                .map_err(|detail| CodegenError::Module {
-                    detail: detail.to_string(),
-                })?,
-        )
-    } else {
-        None
-    };
-
-    let io_read_file_func_id = if requires_io_read_file {
-        let ptr_ty = module.target_config().pointer_type();
-        let mut signature = module.make_signature();
-        signature.params.push(AbiParam::new(ptr_ty));
-        signature.returns.push(AbiParam::new(ptr_ty));
-        Some(
-            module
-                .declare_function("__kea_io_read_file", Linkage::Import, &signature)
-                .map_err(|detail| CodegenError::Module {
-                    detail: detail.to_string(),
-                })?,
-        )
-    } else {
-        None
-    };
-
-    let io_exit_func_id = if requires_io_exit {
-        let mut signature = module.make_signature();
-        signature.params.push(AbiParam::new(types::I64));
-        Some(
-            module
-                .declare_function("__kea_io_exit", Linkage::Import, &signature)
-                .map_err(|detail| CodegenError::Module {
-                    detail: detail.to_string(),
-                })?,
-        )
-    } else {
-        None
-    };
-
-    let io_file_exists_func_id = if requires_io_file_exists {
-        let ptr_ty = module.target_config().pointer_type();
-        let mut signature = module.make_signature();
-        signature.params.push(AbiParam::new(ptr_ty));
-        signature.returns.push(AbiParam::new(types::I8));
-        Some(
-            module
-                .declare_function("__kea_io_file_exists", Linkage::Import, &signature)
-                .map_err(|detail| CodegenError::Module {
-                    detail: detail.to_string(),
-                })?,
-        )
-    } else {
-        None
-    };
-
-    let io_env_var_func_id = if requires_io_env_var {
-        let ptr_ty = module.target_config().pointer_type();
-        let mut signature = module.make_signature();
-        signature.params.push(AbiParam::new(ptr_ty));
-        signature.returns.push(AbiParam::new(ptr_ty));
-        Some(
-            module
-                .declare_function("__kea_io_env_var", Linkage::Import, &signature)
-                .map_err(|detail| CodegenError::Module {
-                    detail: detail.to_string(),
-                })?,
-        )
-    } else {
-        None
-    };
-
-    let io_mkdir_func_id = if requires_io_mkdir {
-        let ptr_ty = module.target_config().pointer_type();
-        let mut signature = module.make_signature();
-        signature.params.push(AbiParam::new(ptr_ty));
-        signature.returns.push(AbiParam::new(types::I8));
-        Some(
-            module
-                .declare_function("__kea_io_mkdir", Linkage::Import, &signature)
-                .map_err(|detail| CodegenError::Module {
-                    detail: detail.to_string(),
-                })?,
-        )
-    } else {
-        None
-    };
-
-    let clock_now_func_id = if requires_clock_now {
-        let mut signature = module.make_signature();
-        signature.returns.push(AbiParam::new(types::I64));
-        Some(
-            module
-                .declare_function("__kea_clock_now", Linkage::Import, &signature)
-                .map_err(|detail| CodegenError::Module {
-                    detail: detail.to_string(),
-                })?,
-        )
-    } else {
-        None
-    };
-
-    let clock_monotonic_func_id = if requires_clock_monotonic {
-        let mut signature = module.make_signature();
-        signature.returns.push(AbiParam::new(types::I64));
-        Some(
-            module
-                .declare_function("__kea_clock_monotonic", Linkage::Import, &signature)
-                .map_err(|detail| CodegenError::Module {
-                    detail: detail.to_string(),
-                })?,
-        )
-    } else {
-        None
-    };
-
-    let rand_func_id = if requires_rand_int {
-        let mut signature = module.make_signature();
-        signature.returns.push(AbiParam::new(types::I32));
-        Some(
-            module
-                .declare_function("rand", Linkage::Import, &signature)
-                .map_err(|detail| CodegenError::Module {
-                    detail: detail.to_string(),
-                })?,
-        )
-    } else {
-        None
-    };
-
-    let srand_func_id = if requires_rand_seed {
-        let mut signature = module.make_signature();
-        signature.params.push(AbiParam::new(types::I32));
-        Some(
-            module
-                .declare_function("srand", Linkage::Import, &signature)
-                .map_err(|detail| CodegenError::Module {
-                    detail: detail.to_string(),
-                })?,
-        )
-    } else {
-        None
-    };
-
-    let net_connect_func_id = if requires_net_connect {
-        let ptr_ty = module.target_config().pointer_type();
-        let mut signature = module.make_signature();
-        signature.params.push(AbiParam::new(ptr_ty));
-        signature.returns.push(AbiParam::new(types::I64));
-        Some(
-            module
-                .declare_function("__kea_net_connect", Linkage::Import, &signature)
-                .map_err(|detail| CodegenError::Module {
-                    detail: detail.to_string(),
-                })?,
-        )
-    } else {
-        None
-    };
-
-    let net_send_func_id = if requires_net_send {
-        let ptr_ty = module.target_config().pointer_type();
-        let mut signature = module.make_signature();
-        signature.params.push(AbiParam::new(types::I64));
-        signature.params.push(AbiParam::new(ptr_ty));
-        signature.returns.push(AbiParam::new(types::I8));
-        Some(
-            module
-                .declare_function("__kea_net_send", Linkage::Import, &signature)
-                .map_err(|detail| CodegenError::Module {
-                    detail: detail.to_string(),
-                })?,
-        )
-    } else {
-        None
-    };
-
-    let net_recv_func_id = if requires_net_recv {
-        let mut signature = module.make_signature();
-        signature.params.push(AbiParam::new(types::I64));
-        signature.params.push(AbiParam::new(types::I64));
-        signature.returns.push(AbiParam::new(types::I64));
-        Some(
-            module
-                .declare_function("__kea_net_recv", Linkage::Import, &signature)
-                .map_err(|detail| CodegenError::Module {
-                    detail: detail.to_string(),
-                })?,
-        )
-    } else {
-        None
-    };
-
-    // Always declare strcmp — used for string comparison (==, !=).
-    // Libc function, resolved automatically by the JIT/linker.
-    let strcmp_func_id = {
-        let ptr_ty = module.target_config().pointer_type();
-        let mut signature = module.make_signature();
-        signature.params.push(AbiParam::new(ptr_ty));
-        signature.params.push(AbiParam::new(ptr_ty));
-        signature.returns.push(AbiParam::new(types::I32));
-        Some(
-            module
-                .declare_function("strcmp", Linkage::Import, &signature)
-                .map_err(|detail| CodegenError::Module {
-                    detail: detail.to_string(),
-                })?,
-        )
-    };
-
-    let strlen_func_id = if requires_string_concat || requires_io_stderr {
-        let ptr_ty = module.target_config().pointer_type();
-        let mut signature = module.make_signature();
-        signature.params.push(AbiParam::new(ptr_ty));
-        signature.returns.push(AbiParam::new(ptr_ty));
-        Some(
-            module
-                .declare_function("strlen", Linkage::Import, &signature)
-                .map_err(|detail| CodegenError::Module {
-                    detail: detail.to_string(),
-                })?,
-        )
-    } else {
-        None
-    };
-
-    let memcpy_func_id = if requires_string_concat {
-        let ptr_ty = module.target_config().pointer_type();
-        let mut signature = module.make_signature();
-        signature.params.push(AbiParam::new(ptr_ty));
-        signature.params.push(AbiParam::new(ptr_ty));
-        signature.params.push(AbiParam::new(ptr_ty));
-        signature.returns.push(AbiParam::new(ptr_ty));
-        Some(
-            module
-                .declare_function("memcpy", Linkage::Import, &signature)
-                .map_err(|detail| CodegenError::Module {
-                    detail: detail.to_string(),
-                })?,
-        )
-    } else {
-        None
-    };
-
     if requires_free {
-        define_drop_functions(module, layout_plan, &drop_func_ids, free_func_id)?;
+        define_drop_functions(module, layout_plan, &drop_func_ids, &mut runtime_imports)?;
     }
 
     let mut builder_context = FunctionBuilderContext::new();
@@ -1207,26 +936,6 @@ fn compile_into_module<M: Module>(
                     func_ids: &func_ids,
                     external_func_ids: &external_func_ids,
                     layout_plan,
-                    malloc_func_id,
-                    free_func_id,
-                    stdout_func_id,
-                    write_func_id,
-                    io_write_file_func_id,
-                    io_read_file_func_id,
-                    io_exit_func_id,
-                    io_file_exists_func_id,
-                    io_env_var_func_id,
-                    io_mkdir_func_id,
-                    clock_now_func_id,
-                    clock_monotonic_func_id,
-                    rand_func_id,
-                    srand_func_id,
-                    net_connect_func_id,
-                    net_send_func_id,
-                    net_recv_func_id,
-                    strcmp_func_id,
-                    strlen_func_id,
-                    memcpy_func_id,
                     drop_func_ids: &drop_func_ids,
                     value_types: &value_types,
                     runtime_signatures: &runtime_signatures,
@@ -1240,6 +949,7 @@ fn compile_into_module<M: Module>(
                         inst,
                         &mut values,
                         &lower_inst_ctx,
+                        &mut runtime_imports,
                     )? {
                         block_terminated = true;
                         break;
@@ -1250,12 +960,11 @@ fn compile_into_module<M: Module>(
                         function_name: &function.name,
                         function,
                         current_runtime_sig,
-                        malloc_func_id,
                         values: &values,
                         block_map: &block_map,
                         func_ids: &func_ids,
                     };
-                    lower_terminator(module, &mut builder, block, &terminator_ctx)?;
+                    lower_terminator(module, &mut builder, block, &terminator_ctx, &mut runtime_imports)?;
                 }
             }
             builder.seal_all_blocks();
@@ -1681,7 +1390,7 @@ fn lower_result_allocation(
     module: &mut impl Module,
     builder: &mut FunctionBuilder,
     function_name: &str,
-    malloc_func_id: Option<FuncId>,
+    imports: &mut RuntimeImports,
     tag: i32,
     payload: Value,
     payload_ty: &Type,
@@ -1690,9 +1399,8 @@ fn lower_result_allocation(
         module,
         builder,
         function_name,
-        malloc_func_id,
+        imports,
         16,
-        "Result lowering requires malloc import",
     )?;
     let tag_value = builder.ins().iconst(types::I32, i64::from(tag));
     builder
@@ -1707,7 +1415,7 @@ fn lower_string_literal<M: Module>(
     module: &mut M,
     builder: &mut FunctionBuilder,
     function_name: &str,
-    malloc_func_id: Option<FuncId>,
+    imports: &mut RuntimeImports,
     text: &str,
 ) -> Result<Value, CodegenError> {
     let bytes = text.as_bytes();
@@ -1720,9 +1428,8 @@ fn lower_string_literal<M: Module>(
         module,
         builder,
         function_name,
-        malloc_func_id,
+        imports,
         alloc_size,
-        "string literal lowering requires malloc import",
     )?;
     for (idx, byte) in bytes.iter().enumerate() {
         let offset = i32::try_from(idx).map_err(|_| CodegenError::UnsupportedMir {
@@ -1845,14 +1552,10 @@ fn allocate_heap_payload(
     module: &mut impl Module,
     builder: &mut FunctionBuilder,
     function_name: &str,
-    malloc_func_id: Option<FuncId>,
+    imports: &mut RuntimeImports,
     payload_bytes: u32,
-    missing_malloc_detail: &str,
 ) -> Result<Value, CodegenError> {
-    let malloc_func_id = malloc_func_id.ok_or_else(|| CodegenError::UnsupportedMir {
-        function: function_name.to_string(),
-        detail: missing_malloc_detail.to_string(),
-    })?;
+    let malloc_func_id = imports.get(module, "malloc")?;
     let malloc_ref = module.declare_func_in_func(malloc_func_id, builder.func);
     let ptr_ty = module.target_config().pointer_type();
     let alloc_bytes = payload_bytes.max(1).saturating_add(8);
@@ -1875,14 +1578,10 @@ fn allocate_heap_payload_dynamic(
     module: &mut impl Module,
     builder: &mut FunctionBuilder,
     function_name: &str,
-    malloc_func_id: Option<FuncId>,
+    imports: &mut RuntimeImports,
     payload_bytes: Value,
-    missing_malloc_detail: &str,
 ) -> Result<Value, CodegenError> {
-    let malloc_func_id = malloc_func_id.ok_or_else(|| CodegenError::UnsupportedMir {
-        function: function_name.to_string(),
-        detail: missing_malloc_detail.to_string(),
-    })?;
+    let malloc_func_id = imports.get(module, "malloc")?;
     let malloc_ref = module.declare_func_in_func(malloc_func_id, builder.func);
     let ptr_ty = module.target_config().pointer_type();
     let payload_bytes = coerce_value_to_clif_type(builder, payload_bytes, ptr_ty);
@@ -2209,26 +1908,6 @@ struct LowerInstCtx<'a> {
     func_ids: &'a BTreeMap<String, FuncId>,
     external_func_ids: &'a BTreeMap<String, FuncId>,
     layout_plan: &'a BackendLayoutPlan,
-    malloc_func_id: Option<FuncId>,
-    free_func_id: Option<FuncId>,
-    stdout_func_id: Option<FuncId>,
-    write_func_id: Option<FuncId>,
-    io_write_file_func_id: Option<FuncId>,
-    io_read_file_func_id: Option<FuncId>,
-    io_exit_func_id: Option<FuncId>,
-    io_file_exists_func_id: Option<FuncId>,
-    io_env_var_func_id: Option<FuncId>,
-    io_mkdir_func_id: Option<FuncId>,
-    clock_now_func_id: Option<FuncId>,
-    clock_monotonic_func_id: Option<FuncId>,
-    rand_func_id: Option<FuncId>,
-    srand_func_id: Option<FuncId>,
-    net_connect_func_id: Option<FuncId>,
-    net_send_func_id: Option<FuncId>,
-    net_recv_func_id: Option<FuncId>,
-    strcmp_func_id: Option<FuncId>,
-    strlen_func_id: Option<FuncId>,
-    memcpy_func_id: Option<FuncId>,
     drop_func_ids: &'a DropFunctionIds,
     value_types: &'a BTreeMap<MirValueId, Type>,
     runtime_signatures: &'a BTreeMap<String, RuntimeFunctionSig>,
@@ -2238,14 +1917,11 @@ struct LowerInstCtx<'a> {
 fn emit_generic_release<M: Module>(
     module: &mut M,
     builder: &mut FunctionBuilder,
-    function_name: &str,
+    _function_name: &str,
     payload_ptr: Value,
-    free_func_id: Option<FuncId>,
+    imports: &mut RuntimeImports,
 ) -> Result<(), CodegenError> {
-    let free_func_id = free_func_id.ok_or_else(|| CodegenError::UnsupportedMir {
-        function: function_name.to_string(),
-        detail: "release lowering requires imported `free` symbol".to_string(),
-    })?;
+    let free_func_id = imports.get(module, "free")?;
     let rc_ptr = builder.ins().iadd_imm(payload_ptr, -8);
     let rc_value = builder.ins().load(types::I64, MemFlags::new(), rc_ptr, 0);
     let next = builder.ins().iadd_imm(rc_value, -1);
@@ -2298,7 +1974,7 @@ fn emit_release_if_managed_flag<M: Module>(
     payload_value: Value,
     managed_flag: Value,
     ptr_ty: cranelift::prelude::Type,
-    free_func_id: Option<FuncId>,
+    imports: &mut RuntimeImports,
 ) -> Result<(), CodegenError> {
     let release_block = builder.create_block();
     let cont_block = builder.create_block();
@@ -2308,7 +1984,7 @@ fn emit_release_if_managed_flag<M: Module>(
         .brif(is_managed, release_block, &[], cont_block, &[]);
     builder.switch_to_block(release_block);
     let payload_ptr = coerce_value_to_clif_type(builder, payload_value, ptr_ty);
-    emit_generic_release(module, builder, function_name, payload_ptr, free_func_id)?;
+    emit_generic_release(module, builder, function_name, payload_ptr, imports)?;
     builder.ins().jump(cont_block, &[]);
     builder.switch_to_block(cont_block);
     Ok(())
@@ -2369,7 +2045,7 @@ fn emit_typed_release<M: Module>(
     payload_ptr: Value,
     value_ty: Option<&Type>,
     drop_func_ids: &DropFunctionIds,
-    free_func_id: Option<FuncId>,
+    imports: &mut RuntimeImports,
 ) -> Result<(), CodegenError> {
     if let Some(ty) = value_ty
         && is_managed_heap_type(ty)
@@ -2380,7 +2056,7 @@ fn emit_typed_release<M: Module>(
         return Ok(());
     }
 
-    emit_generic_release(module, builder, function_name, payload_ptr, free_func_id)
+    emit_generic_release(module, builder, function_name, payload_ptr, imports)
 }
 
 fn declare_drop_functions<M: Module>(
@@ -2422,7 +2098,7 @@ fn define_record_drop_function<M: Module>(
     type_name: &str,
     layout: &BackendRecordLayout,
     drop_func_ids: &DropFunctionIds,
-    free_func_id: Option<FuncId>,
+    imports: &mut RuntimeImports,
 ) -> Result<(), CodegenError> {
     let func_id =
         *drop_func_ids
@@ -2488,15 +2164,12 @@ fn define_record_drop_function<M: Module>(
             field_ptr,
             Some(field_ty),
             drop_func_ids,
-            free_func_id,
+            imports,
         )?;
     }
     builder.ins().jump(free_block, &[]);
     builder.switch_to_block(free_block);
-    let free_func_id = free_func_id.ok_or_else(|| CodegenError::UnsupportedMir {
-        function: type_name.to_string(),
-        detail: "drop lowering requires imported `free` symbol".to_string(),
-    })?;
+    let free_func_id = imports.get(module, "free")?;
     let free_ref = module.declare_func_in_func(free_func_id, builder.func);
     let _ = builder.ins().call(free_ref, &[rc_ptr]);
     builder.ins().jump(ret_block, &[]);
@@ -2520,7 +2193,7 @@ fn define_sum_drop_function<M: Module>(
     type_name: &str,
     layout: &BackendSumLayout,
     drop_func_ids: &DropFunctionIds,
-    free_func_id: Option<FuncId>,
+    imports: &mut RuntimeImports,
 ) -> Result<(), CodegenError> {
     let func_id =
         *drop_func_ids
@@ -2571,10 +2244,7 @@ fn define_sum_drop_function<M: Module>(
         None
     };
 
-    let free_func_id = free_func_id.ok_or_else(|| CodegenError::UnsupportedMir {
-        function: type_name.to_string(),
-        detail: "drop lowering requires imported `free` symbol".to_string(),
-    })?;
+    let free_func_id = imports.get(module, "free")?;
     let free_ref = module.declare_func_in_func(free_func_id, builder.func);
 
     if has_unit_variant && !has_payload_variant {
@@ -2734,7 +2404,7 @@ fn define_sum_drop_function<M: Module>(
                     field_ptr,
                     Some(field_ty),
                     drop_func_ids,
-                    Some(free_func_id),
+                    imports,
                 )?;
             }
             let _ = builder.ins().call(free_ref, &[rc_ptr]);
@@ -2844,7 +2514,7 @@ fn define_sum_drop_function<M: Module>(
                         field_ptr,
                         Some(field_ty),
                         drop_func_ids,
-                        Some(free_func_id),
+                        imports,
                     )?;
                 }
                 builder.ins().jump(free_block, &[rc_ptr]);
@@ -2886,13 +2556,13 @@ fn define_drop_functions<M: Module>(
     module: &mut M,
     layout_plan: &BackendLayoutPlan,
     drop_func_ids: &DropFunctionIds,
-    free_func_id: Option<FuncId>,
+    imports: &mut RuntimeImports,
 ) -> Result<(), CodegenError> {
     for (record_name, layout) in &layout_plan.records {
-        define_record_drop_function(module, record_name, layout, drop_func_ids, free_func_id)?;
+        define_record_drop_function(module, record_name, layout, drop_func_ids, imports)?;
     }
     for (sum_name, layout) in &layout_plan.sums {
-        define_sum_drop_function(module, sum_name, layout, drop_func_ids, free_func_id)?;
+        define_sum_drop_function(module, sum_name, layout, drop_func_ids, imports)?;
     }
     Ok(())
 }
@@ -2904,12 +2574,13 @@ fn lower_instruction<M: Module>(
     inst: &MirInst,
     values: &mut BTreeMap<MirValueId, Value>,
     ctx: &LowerInstCtx<'_>,
+    imports: &mut RuntimeImports,
 ) -> Result<bool, CodegenError> {
     match inst {
         MirInst::Const { dest, literal } => {
             let value = match literal {
                 MirLiteral::String(text) => {
-                    lower_string_literal(module, builder, function_name, ctx.malloc_func_id, text)?
+                    lower_string_literal(module, builder, function_name, imports, text)?
                 }
                 _ => lower_literal(builder, literal, function_name)?,
             };
@@ -2925,11 +2596,11 @@ fn lower_instruction<M: Module>(
             let lhs = get_value(values, function_name, left)?;
             let rhs = get_value(values, function_name, right)?;
             let result = if *op == MirBinaryOp::Concat {
-                lower_string_concat(module, builder, function_name, lhs, rhs, ctx)?
+                lower_string_concat(module, builder, function_name, lhs, rhs, imports)?
             } else if matches!(op, MirBinaryOp::Eq | MirBinaryOp::Neq)
                 && ctx.value_types.get(left) == Some(&Type::String)
             {
-                lower_string_compare(module, builder, function_name, *op, lhs, rhs, ctx)?
+                lower_string_compare(module, builder, function_name, *op, lhs, rhs, imports)?
             } else {
                 lower_binary(module, builder, function_name, *op, lhs, rhs)?
             };
@@ -2957,11 +2628,8 @@ fn lower_instruction<M: Module>(
                 module,
                 builder,
                 function_name,
-                ctx.malloc_func_id,
+                imports,
                 layout.size_bytes,
-                &format!(
-                    "record allocation requested for `{record_type}` but malloc import was not declared"
-                ),
             )?;
             store_record_fields(
                 builder,
@@ -3024,17 +2692,14 @@ fn lower_instruction<M: Module>(
                 source_ptr,
                 source_ty,
                 ctx.drop_func_ids,
-                ctx.free_func_id,
+                imports,
             )?;
             let fresh_ptr = allocate_heap_payload(
                 module,
                 builder,
                 function_name,
-                ctx.malloc_func_id,
+                imports,
                 layout.size_bytes,
-                &format!(
-                    "record allocation requested for `{record_type}` but malloc import was not declared"
-                ),
             )?;
             store_record_fields(
                 builder,
@@ -3102,11 +2767,8 @@ fn lower_instruction<M: Module>(
                 module,
                 builder,
                 function_name,
-                ctx.malloc_func_id,
+                imports,
                 layout.size_bytes,
-                &format!(
-                    "record allocation requested for `{record_type}` but malloc import was not declared"
-                ),
             )?;
             store_record_fields(
                 builder,
@@ -3152,11 +2814,8 @@ fn lower_instruction<M: Module>(
                 module,
                 builder,
                 function_name,
-                ctx.malloc_func_id,
+                imports,
                 layout.size_bytes,
-                &format!(
-                    "sum allocation requested for `{sum_type}` but malloc import was not declared"
-                ),
             )?;
             store_sum_init_payload(
                 builder,
@@ -3243,17 +2902,14 @@ fn lower_instruction<M: Module>(
                 source_ptr,
                 source_ty,
                 ctx.drop_func_ids,
-                ctx.free_func_id,
+                imports,
             )?;
             let fresh_ptr = allocate_heap_payload(
                 module,
                 builder,
                 function_name,
-                ctx.malloc_func_id,
+                imports,
                 layout.size_bytes,
-                &format!(
-                    "sum allocation requested for `{sum_type}` but malloc import was not declared"
-                ),
             )?;
             store_sum_init_payload(
                 builder,
@@ -3345,11 +3001,8 @@ fn lower_instruction<M: Module>(
                 module,
                 builder,
                 function_name,
-                ctx.malloc_func_id,
+                imports,
                 layout.size_bytes,
-                &format!(
-                    "sum allocation requested for `{sum_type}` but malloc import was not declared"
-                ),
             )?;
             store_sum_init_payload(
                 builder,
@@ -3606,9 +3259,8 @@ fn lower_instruction<M: Module>(
                 module,
                 builder,
                 function_name,
-                ctx.malloc_func_id,
+                imports,
                 (1 + captures.len()) as u32 * 8,
-                "closure lowering requires malloc import",
             )?;
             builder
                 .ins()
@@ -3656,9 +3308,8 @@ fn lower_instruction<M: Module>(
                 module,
                 builder,
                 function_name,
-                ctx.malloc_func_id,
+                imports,
                 STATE_CELL_PAYLOAD_SIZE,
-                "state cell allocation requested but malloc import was not declared",
             )?;
             let managed_flag =
                 emit_state_cell_flag_and_retain(builder, initial, initial_rc_mode, ptr_ty);
@@ -3718,7 +3369,7 @@ fn lower_instruction<M: Module>(
                 previous,
                 previous_managed,
                 ptr_ty,
-                ctx.free_func_id,
+                imports,
             )?;
 
             let value = get_value(values, function_name, value)?;
@@ -3948,14 +3599,7 @@ fn lower_instruction<M: Module>(
                             }
                             let arg_value = get_value(values, function_name, arg)?;
                             let arg_ptr = coerce_value_to_clif_type(builder, arg_value, ptr_ty);
-                            let stdout_func_id =
-                                ctx.stdout_func_id
-                                    .ok_or_else(|| CodegenError::UnsupportedMir {
-                                        function: function_name.to_string(),
-                                        detail:
-                                            "IO.stdout lowering requires imported `puts` symbol"
-                                                .to_string(),
-                                    })?;
+                            let stdout_func_id = imports.get(module, "puts")?;
                             let stdout_ref =
                                 module.declare_func_in_func(stdout_func_id, builder.func);
                             let _ = builder.ins().call(stdout_ref, &[arg_ptr]);
@@ -3978,22 +3622,8 @@ fn lower_instruction<M: Module>(
                             }
                             let arg_value = get_value(values, function_name, arg)?;
                             let arg_ptr = coerce_value_to_clif_type(builder, arg_value, ptr_ty);
-                            let write_func_id =
-                                ctx.write_func_id
-                                    .ok_or_else(|| CodegenError::UnsupportedMir {
-                                        function: function_name.to_string(),
-                                        detail:
-                                            "IO.stderr lowering requires imported `write` symbol"
-                                                .to_string(),
-                                    })?;
-                            let strlen_func_id =
-                                ctx.strlen_func_id
-                                    .ok_or_else(|| CodegenError::UnsupportedMir {
-                                        function: function_name.to_string(),
-                                        detail:
-                                            "IO.stderr lowering requires imported `strlen` symbol"
-                                                .to_string(),
-                                    })?;
+                            let write_func_id = imports.get(module, "write")?;
+                            let strlen_func_id = imports.get(module, "strlen")?;
                             let strlen_ref =
                                 module.declare_func_in_func(strlen_func_id, builder.func);
                             let strlen_call = builder.ins().call(strlen_ref, &[arg_ptr]);
@@ -4027,12 +3657,7 @@ fn lower_instruction<M: Module>(
                             let data_value = get_value(values, function_name, &args[1])?;
                             let path_ptr = coerce_value_to_clif_type(builder, path_value, ptr_ty);
                             let data_ptr = coerce_value_to_clif_type(builder, data_value, ptr_ty);
-                            let write_file_func_id = ctx.io_write_file_func_id.ok_or_else(|| {
-                                    CodegenError::UnsupportedMir {
-                                        function: function_name.to_string(),
-                                        detail: "IO.write_file lowering requires imported `__kea_io_write_file` symbol".to_string(),
-                                    }
-                                })?;
+                            let write_file_func_id = imports.get(module, "__kea_io_write_file")?;
                             let write_file_ref =
                                 module.declare_func_in_func(write_file_func_id, builder.func);
                             let _ = builder.ins().call(write_file_ref, &[path_ptr, data_ptr]);
@@ -4055,12 +3680,7 @@ fn lower_instruction<M: Module>(
                             }
                             let path_value = get_value(values, function_name, arg)?;
                             let path_ptr = coerce_value_to_clif_type(builder, path_value, ptr_ty);
-                            let read_file_func_id = ctx.io_read_file_func_id.ok_or_else(|| {
-                                    CodegenError::UnsupportedMir {
-                                        function: function_name.to_string(),
-                                        detail: "IO.read_file lowering requires imported `__kea_io_read_file` symbol".to_string(),
-                                    }
-                                })?;
+                            let read_file_func_id = imports.get(module, "__kea_io_read_file")?;
                             let read_file_ref =
                                 module.declare_func_in_func(read_file_func_id, builder.func);
                             let read_call = builder.ins().call(read_file_ref, &[path_ptr]);
@@ -4087,12 +3707,7 @@ fn lower_instruction<M: Module>(
                             })?;
                             let code_value = get_value(values, function_name, arg)?;
                             let code_i64 = coerce_value_to_clif_type(builder, code_value, types::I64);
-                            let exit_func_id = ctx.io_exit_func_id.ok_or_else(|| {
-                                    CodegenError::UnsupportedMir {
-                                        function: function_name.to_string(),
-                                        detail: "IO.exit lowering requires imported `__kea_io_exit` symbol".to_string(),
-                                    }
-                                })?;
+                            let exit_func_id = imports.get(module, "__kea_io_exit")?;
                             let exit_ref =
                                 module.declare_func_in_func(exit_func_id, builder.func);
                             builder.ins().call(exit_ref, &[code_i64]);
@@ -4108,10 +3723,7 @@ fn lower_instruction<M: Module>(
                             })?;
                             let path_value = get_value(values, function_name, arg)?;
                             let path_ptr = coerce_value_to_clif_type(builder, path_value, ptr_ty);
-                            let func_id = ctx.io_file_exists_func_id.ok_or_else(|| CodegenError::UnsupportedMir {
-                                function: function_name.to_string(),
-                                detail: "IO.file_exists lowering requires imported `__kea_io_file_exists` symbol".to_string(),
-                            })?;
+                            let func_id = imports.get(module, "__kea_io_file_exists")?;
                             let func_ref = module.declare_func_in_func(func_id, builder.func);
                             let call = builder.ins().call(func_ref, &[path_ptr]);
                             if let Some(dest) = result {
@@ -4130,10 +3742,7 @@ fn lower_instruction<M: Module>(
                             })?;
                             let name_value = get_value(values, function_name, arg)?;
                             let name_ptr = coerce_value_to_clif_type(builder, name_value, ptr_ty);
-                            let func_id = ctx.io_env_var_func_id.ok_or_else(|| CodegenError::UnsupportedMir {
-                                function: function_name.to_string(),
-                                detail: "IO.env_var lowering requires imported `__kea_io_env_var` symbol".to_string(),
-                            })?;
+                            let func_id = imports.get(module, "__kea_io_env_var")?;
                             let func_ref = module.declare_func_in_func(func_id, builder.func);
                             let call = builder.ins().call(func_ref, &[name_ptr]);
                             if let Some(dest) = result {
@@ -4152,10 +3761,7 @@ fn lower_instruction<M: Module>(
                             })?;
                             let path_value = get_value(values, function_name, arg)?;
                             let path_ptr = coerce_value_to_clif_type(builder, path_value, ptr_ty);
-                            let func_id = ctx.io_mkdir_func_id.ok_or_else(|| CodegenError::UnsupportedMir {
-                                function: function_name.to_string(),
-                                detail: "IO.mkdir lowering requires imported `__kea_io_mkdir` symbol".to_string(),
-                            })?;
+                            let func_id = imports.get(module, "__kea_io_mkdir")?;
                             let func_ref = module.declare_func_in_func(func_id, builder.func);
                             builder.ins().call(func_ref, &[path_ptr]);
                             if let Some(dest) = result {
@@ -4178,16 +3784,17 @@ fn lower_instruction<M: Module>(
                         });
                     }
                     let clock_func_id = match operation.as_str() {
-                        "now" => ctx.clock_now_func_id,
-                        "monotonic" => ctx.clock_monotonic_func_id,
-                        _ => None,
-                    }
-                    .ok_or_else(|| CodegenError::UnsupportedMir {
-                        function: function_name.to_string(),
-                        detail: format!(
-                            "Clock.{operation} lowering requires imported clock runtime symbol"
-                        ),
-                    })?;
+                        "now" => imports.get(module, "__kea_clock_now")?,
+                        "monotonic" => imports.get(module, "__kea_clock_monotonic")?,
+                        _ => {
+                            return Err(CodegenError::UnsupportedMir {
+                                function: function_name.to_string(),
+                                detail: format!(
+                                    "Clock.{operation} lowering requires imported clock runtime symbol"
+                                ),
+                            });
+                        }
+                    };
                     let clock_ref = module.declare_func_in_func(clock_func_id, builder.func);
                     let clock_call = builder.ins().call(clock_ref, &[]);
                     if let Some(dest) = result {
@@ -4215,13 +3822,7 @@ fn lower_instruction<M: Module>(
                                     detail: "Rand.int expects no arguments".to_string(),
                                 });
                             }
-                            let rand_func_id =
-                                ctx.rand_func_id
-                                    .ok_or_else(|| CodegenError::UnsupportedMir {
-                                        function: function_name.to_string(),
-                                        detail: "Rand.int lowering requires imported `rand` symbol"
-                                            .to_string(),
-                                    })?;
+                            let rand_func_id = imports.get(module, "rand")?;
                             let rand_ref = module.declare_func_in_func(rand_func_id, builder.func);
                             let rand_call = builder.ins().call(rand_ref, &[]);
                             if let Some(dest) = result {
@@ -4254,14 +3855,7 @@ fn lower_instruction<M: Module>(
                             let seed_value = get_value(values, function_name, seed_value_id)?;
                             let seed_value =
                                 coerce_value_to_clif_type(builder, seed_value, types::I32);
-                            let srand_func_id =
-                                ctx.srand_func_id
-                                    .ok_or_else(|| CodegenError::UnsupportedMir {
-                                        function: function_name.to_string(),
-                                        detail:
-                                            "Rand.seed lowering requires imported `srand` symbol"
-                                                .to_string(),
-                                    })?;
+                            let srand_func_id = imports.get(module, "srand")?;
                             let srand_ref =
                                 module.declare_func_in_func(srand_func_id, builder.func);
                             let _ = builder.ins().call(srand_ref, &[seed_value]);
@@ -4292,14 +3886,7 @@ fn lower_instruction<M: Module>(
                             let addr_value = get_value(values, function_name, addr_value_id)?;
                             let ptr_ty = module.target_config().pointer_type();
                             let addr_ptr = coerce_value_to_clif_type(builder, addr_value, ptr_ty);
-                            let connect_func_id = ctx.net_connect_func_id.ok_or_else(|| {
-                                CodegenError::UnsupportedMir {
-                                    function: function_name.to_string(),
-                                    detail:
-                                        "Net.connect lowering requires imported `__kea_net_connect` symbol"
-                                            .to_string(),
-                                }
-                            })?;
+                            let connect_func_id = imports.get(module, "__kea_net_connect")?;
                             let connect_ref =
                                 module.declare_func_in_func(connect_func_id, builder.func);
                             let connect_call = builder.ins().call(connect_ref, &[addr_ptr]);
@@ -4332,14 +3919,7 @@ fn lower_instruction<M: Module>(
                                 coerce_value_to_clif_type(builder, conn_value, types::I64);
                             let ptr_ty = module.target_config().pointer_type();
                             let data_ptr = coerce_value_to_clif_type(builder, data_value, ptr_ty);
-                            let send_func_id = ctx.net_send_func_id.ok_or_else(|| {
-                                CodegenError::UnsupportedMir {
-                                    function: function_name.to_string(),
-                                    detail:
-                                        "Net.send lowering requires imported `__kea_net_send` symbol"
-                                            .to_string(),
-                                }
-                            })?;
+                            let send_func_id = imports.get(module, "__kea_net_send")?;
                             let send_ref = module.declare_func_in_func(send_func_id, builder.func);
                             let _ = builder.ins().call(send_ref, &[conn_value, data_ptr]);
                             if let Some(dest) = result {
@@ -4360,14 +3940,7 @@ fn lower_instruction<M: Module>(
                                 coerce_value_to_clif_type(builder, conn_value, types::I64);
                             let size_value =
                                 coerce_value_to_clif_type(builder, size_value, types::I64);
-                            let recv_func_id = ctx.net_recv_func_id.ok_or_else(|| {
-                                CodegenError::UnsupportedMir {
-                                    function: function_name.to_string(),
-                                    detail:
-                                        "Net.recv lowering requires imported `__kea_net_recv` symbol"
-                                            .to_string(),
-                                }
-                            })?;
+                            let recv_func_id = imports.get(module, "__kea_net_recv")?;
                             let recv_ref = module.declare_func_in_func(recv_func_id, builder.func);
                             let recv_call = builder.ins().call(recv_ref, &[conn_value, size_value]);
                             if let Some(dest) = result {
@@ -4420,7 +3993,7 @@ fn lower_instruction<M: Module>(
                         module,
                         builder,
                         function_name,
-                        ctx.malloc_func_id,
+                        imports,
                         1,
                         payload,
                         err_ty,
@@ -4467,13 +4040,7 @@ fn lower_instruction<M: Module>(
                 value_ty,
                 Some(Type::Opaque { name, .. }) if name == STATE_CELL_TYPE_MARKER
             ) {
-                let free_func_id =
-                    ctx.free_func_id
-                        .ok_or_else(|| CodegenError::UnsupportedMir {
-                            function: function_name.to_string(),
-                            detail: "state-cell release lowering requires imported `free` symbol"
-                                .to_string(),
-                        })?;
+                let free_func_id = imports.get(module, "free")?;
                 let rc_ptr = builder.ins().iadd_imm(payload_ptr, -8);
                 let rc_value = builder.ins().load(types::I64, MemFlags::new(), rc_ptr, 0);
                 let next = builder.ins().iadd_imm(rc_value, -1);
@@ -4506,7 +4073,7 @@ fn lower_instruction<M: Module>(
                     stored_value,
                     stored_managed,
                     ptr_ty,
-                    ctx.free_func_id,
+                    imports,
                 )?;
                 let free_ref = module.declare_func_in_func(free_func_id, builder.func);
                 let _ = builder.ins().call(free_ref, &[rc_ptr]);
@@ -4521,7 +4088,7 @@ fn lower_instruction<M: Module>(
                 payload_ptr,
                 value_ty,
                 ctx.drop_func_ids,
-                ctx.free_func_id,
+                imports,
             )?;
             Ok(false)
         }
@@ -4554,7 +4121,7 @@ fn lower_instruction<M: Module>(
                 source_ptr,
                 source_ty,
                 ctx.drop_func_ids,
-                ctx.free_func_id,
+                imports,
             )?;
             let null_token = builder.ins().iconst(ptr_ty, 0);
             builder.ins().jump(join_block, &[null_token]);
@@ -4661,11 +4228,8 @@ fn lower_instruction<M: Module>(
                 module,
                 builder,
                 function_name,
-                ctx.malloc_func_id,
+                imports,
                 layout.size_bytes,
-                &format!(
-                    "record allocation requested for `{record_type}` but malloc import was not declared"
-                ),
             )?;
             for (field_name, offset_u32) in &layout.field_offsets {
                 let offset =
@@ -4731,24 +4295,14 @@ fn lower_string_concat(
     function_name: &str,
     lhs: Value,
     rhs: Value,
-    ctx: &LowerInstCtx<'_>,
+    imports: &mut RuntimeImports,
 ) -> Result<Value, CodegenError> {
     let ptr_ty = module.target_config().pointer_type();
     let lhs_ptr = coerce_value_to_clif_type(builder, lhs, ptr_ty);
     let rhs_ptr = coerce_value_to_clif_type(builder, rhs, ptr_ty);
 
-    let strlen_func_id = ctx
-        .strlen_func_id
-        .ok_or_else(|| CodegenError::UnsupportedMir {
-            function: function_name.to_string(),
-            detail: "string concat lowering requires imported `strlen` symbol".to_string(),
-        })?;
-    let memcpy_func_id = ctx
-        .memcpy_func_id
-        .ok_or_else(|| CodegenError::UnsupportedMir {
-            function: function_name.to_string(),
-            detail: "string concat lowering requires imported `memcpy` symbol".to_string(),
-        })?;
+    let strlen_func_id = imports.get(module, "strlen")?;
+    let memcpy_func_id = imports.get(module, "memcpy")?;
 
     let strlen_ref = module.declare_func_in_func(strlen_func_id, builder.func);
     let memcpy_ref = module.declare_func_in_func(memcpy_func_id, builder.func);
@@ -4779,9 +4333,8 @@ fn lower_string_concat(
         module,
         builder,
         function_name,
-        ctx.malloc_func_id,
+        imports,
         alloc_payload_bytes,
-        "string concat lowering requires malloc import",
     )?;
 
     let _ = builder.ins().call(memcpy_ref, &[out_ptr, lhs_ptr, lhs_len]);
@@ -4951,15 +4504,12 @@ fn lower_string_compare<M: Module>(
     op: MirBinaryOp,
     lhs: Value,
     rhs: Value,
-    ctx: &LowerInstCtx<'_>,
+    imports: &mut RuntimeImports,
 ) -> Result<Value, CodegenError> {
     let ptr_ty = module.target_config().pointer_type();
     let lhs_ptr = coerce_value_to_clif_type(builder, lhs, ptr_ty);
     let rhs_ptr = coerce_value_to_clif_type(builder, rhs, ptr_ty);
-    let strcmp_func_id = ctx.strcmp_func_id.ok_or_else(|| CodegenError::UnsupportedMir {
-        function: function_name.to_string(),
-        detail: "string comparison requires imported `strcmp` symbol".to_string(),
-    })?;
+    let strcmp_func_id = imports.get(module, "strcmp")?;
     let strcmp_ref = module.declare_func_in_func(strcmp_func_id, builder.func);
     let call = builder.ins().call(strcmp_ref, &[lhs_ptr, rhs_ptr]);
     let cmp_result = builder
@@ -5041,7 +4591,6 @@ struct LowerTerminatorCtx<'a> {
     function_name: &'a str,
     function: &'a MirFunction,
     current_runtime_sig: &'a RuntimeFunctionSig,
-    malloc_func_id: Option<FuncId>,
     values: &'a BTreeMap<MirValueId, Value>,
     block_map: &'a BTreeMap<kea_mir::MirBlockId, cranelift::prelude::Block>,
     func_ids: &'a BTreeMap<String, FuncId>,
@@ -5052,6 +4601,7 @@ fn lower_terminator(
     builder: &mut FunctionBuilder,
     block: &kea_mir::MirBlock,
     ctx: &LowerTerminatorCtx<'_>,
+    imports: &mut RuntimeImports,
 ) -> Result<(), CodegenError> {
     if builder.is_unreachable() {
         // Instructions like `trap` terminate the block immediately.
@@ -5093,7 +4643,7 @@ fn lower_terminator(
                     module,
                     builder,
                     ctx.function_name,
-                    ctx.malloc_func_id,
+                    imports,
                     0,
                     payload,
                     &ctx.current_runtime_sig.logical_return,
