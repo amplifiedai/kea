@@ -18354,3 +18354,44 @@ core-soundness premise.
 - Local consequence surfaces are now symmetric: one core-soundness theorem
   yields both local `step` route bundles and local `step`+preserves route
   bundles across all four assumption families.
+
+### 2026-03-03: concrete pass-through specialization of route suites
+
+**Context**: Added concrete `nativeHandlerMismatchPassThroughSem`
+specializations for the assumption-route suite and local consequence route
+suite, both derivable from packaged core soundness.
+
+**MCP tools used**: `reset_session`, `type_check`
+
+**Predict (Lean side)**:
+- Coherent `Log` handler should type-check as pure.
+- Clause/effect mismatch should leak source effect in pure context.
+- Bad resume payload should reject.
+- Out-of-handler resume should reject.
+
+**Probe (Rust side via MCP)**:
+1. Coherent `Log.info(msg) -> resume ()` handler -> `ok` (`main : () -> Int`).
+2. Mismatched `Reader` clause around `IO` body -> `error`, `E0001` (pure body performs `[IO]`).
+3. Bad `Reader Int` resume payload (`resume ()`) -> `error`, `E0001`.
+4. Out-of-handler resume control (`resume 0`) -> `error`, `E0012`.
+
+**Classify**: Agreement.
+
+**Act**:
+- Kept concrete pass-through suite specialization additions.
+- Continued checkpoint loop without model revision.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_passThroughMismatch_assumption_route_suite_prop`
+  - `native_handler_step_ext_with_passThroughMismatch_assumption_route_suite_of_core_soundness`
+  - `native_handler_step_ext_with_passThroughMismatch_local_consequence_assumption_route_suite_prop`
+  - `native_handler_step_ext_with_passThroughMismatch_local_consequence_assumption_route_suite_of_core_soundness`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The concrete pass-through mismatch path now has direct, one-hop suite
+  theorems from core soundness for both global route bundles and local
+  consequence route bundles.
