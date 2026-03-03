@@ -19,17 +19,17 @@ use kea_hir::{
 use kea_infer::typeck::{
     RecordRegistry, SumTypeRegistry, TraitRegistry, TypeEnv, apply_where_clause,
     check_expr_in_context, concrete_method_types_from_decls, infer_and_resolve_in_context,
-    infer_fn_decl_effect_row, register_builtin_int_bitwise_methods, register_effect_decl,
-    register_fn_effect_signature, register_fn_signature, resolve_annotation,
-    resolve_declared_effect_row, seed_fn_where_type_params_in_context,
-    validate_declared_fn_effect_row_with_env_and_records, validate_module_annotations,
+    register_builtin_int_bitwise_methods, register_effect_decl,
+    register_fn_signature, resolve_annotation, seed_fn_where_type_params_in_context,
+    validate_module_annotations,
     validate_module_fn_annotations, validate_where_clause_traits,
 };
 use kea_infer::{Category, InferenceContext, Reason};
 use kea_mir::{MirLoweringConfig, lower_hir_module_with_config};
 use kea_syntax::{lex_layout, parse_module};
 use kea_types::{
-    Type, TypeScheme, free_dim_vars, free_row_vars, free_type_vars, sanitize_type_display,
+    EffectRow, Type, TypeScheme, free_dim_vars, free_row_vars, free_type_vars,
+    sanitize_type_display,
 };
 
 const COMPILER_WORKER_STACK_BYTES: usize = 16 * 1024 * 1024;
@@ -754,10 +754,12 @@ fn build_test_main_decl(test_fn_name: &str, file_id: FileId) -> Result<kea_ast::
         .into_iter()
         .next()
         .ok_or_else(|| "failed to build synthetic test main declaration".to_string())?;
-    // Clear return_annotation so the purity validator treats this as a
+    // Clear annotations so the purity validator treats this as a
     // synthetic node rather than a user-written fn declaration.
+    // Test functions may use any effects.
     if let DeclKind::Function(ref mut fn_decl) = decl.node {
         fn_decl.return_annotation = None;
+        fn_decl.effect_annotation = None;
     }
     Ok(decl)
 }
@@ -2099,33 +2101,19 @@ fn typecheck_functions(
             env.bind(fn_decl.name.node.clone(), scheme);
         }
 
-        let inferred_effect_row = infer_fn_decl_effect_row(&fn_decl, env);
-        if let Err(diag) = validate_declared_fn_effect_row_with_env_and_records(
-            &fn_decl,
-            &inferred_effect_row,
-            env,
-            records,
-        ) {
-            diagnostics.push(diag);
-            return Err(format_diagnostics("effect contract failed", diagnostics));
-        }
+        // The Lambda arm now constrains inferred effects against the
+        // declared annotation via the main unifier's Rémy row unification.
+        // Extract the scheme's effect row for HIR/MIR metadata.
+        let effect_row = env
+            .lookup(&fn_decl.name.node)
+            .and_then(|scheme| match &scheme.ty {
+                Type::Function(ft) => Some(ft.effects.clone()),
+                _ => None,
+            })
+            .unwrap_or_else(EffectRow::pure);
 
-        register_fn_effect_signature(&fn_decl, env);
-        let runtime_effect_row = env
-            .function_effect_signature(&fn_decl.name.node)
-            .map(|sig| sig.effect_row.clone())
-            .unwrap_or(inferred_effect_row);
-        env.set_function_effect_row(fn_decl.name.node.clone(), runtime_effect_row);
+        env.set_function_effect_row(fn_decl.name.node.clone(), effect_row);
         register_fn_signature(&fn_decl, env);
-
-        // Update the bound scheme's effect row to match the declared
-        // annotation with properly resolved payloads.  This must happen
-        // AFTER set_function_effect_row, which calls update_bound_function_effect
-        // with the separate system's Unit payloads.  Our resolved annotation
-        // has the authoritative payload types (e.g. [State: Int]).
-        if let Some(declared_row) = resolve_declared_effect_row(&fn_decl, records) {
-            env.update_bound_function_effect(&fn_decl.name.node, &declared_row);
-        }
 
         if let Some(module_path) = module_path {
             let module_short = module_struct_name(module_path).to_string();
@@ -2143,9 +2131,6 @@ fn typecheck_functions(
             let qualified_name = format!("{module_path}.{}", fn_decl.name.node);
             if let Some(signature) = env.function_signature(&fn_decl.name.node).cloned() {
                 env.set_function_signature(qualified_name.clone(), signature);
-            }
-            if let Some(effect_sig) = env.function_effect_signature(&fn_decl.name.node).cloned() {
-                env.set_function_effect_signature(qualified_name.clone(), effect_sig);
             }
             if let Some(effect_row) = env.function_effect_row(&fn_decl.name.node) {
                 env.set_function_effect_row(qualified_name, effect_row);

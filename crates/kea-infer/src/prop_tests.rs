@@ -1789,6 +1789,7 @@ proptest! {
                 arms,
             })),
             return_annotation: None,
+            effect_annotation: None,
         });
 
         let mut env = TypeEnv::new();

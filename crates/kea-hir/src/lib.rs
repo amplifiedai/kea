@@ -487,6 +487,7 @@ fn desugar_with_ast_expr(call: &Expr, binding: Option<&Pattern>, body: &Expr) ->
             params,
             body: Box::new(body.clone()),
             return_annotation: None,
+            effect_annotation: None,
         },
         body.span,
     );

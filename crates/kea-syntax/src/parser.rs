@@ -1661,7 +1661,11 @@ impl Parser {
         missing_msg: &str,
     ) -> Option<Option<Spanned<EffectAnnotation>>> {
         if self.match_token(&TokenKind::Arrow) {
-            return Some(None);
+            // `->` means pure: explicitly mark with EffectAnnotation::Pure
+            // so the Lambda arm can distinguish fn declarations (Pure)
+            // from plain lambdas (None).
+            let span = self.current_span();
+            return Some(Some(Spanned::new(EffectAnnotation::Pure, span)));
         }
 
         if !self.match_token(&TokenKind::Minus) {
@@ -3087,6 +3091,7 @@ impl Parser {
                             }],
                             body: Box::new(body),
                             return_annotation: None,
+                            effect_annotation: None,
                         },
                         span,
                     )
@@ -3240,6 +3245,7 @@ impl Parser {
                 }],
                 body: Box::new(then_body),
                 return_annotation: None,
+                effect_annotation: None,
             },
             value_span,
         );
@@ -4072,6 +4078,7 @@ impl Parser {
                 params,
                 body: Box::new(body),
                 return_annotation: None,
+                effect_annotation: None,
             },
             span,
         ))

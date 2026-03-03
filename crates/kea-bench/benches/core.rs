@@ -10,7 +10,7 @@ use kea_hir::{HirDecl, HirExpr, HirExprKind, HirFunction, HirModule, HirPattern}
 use kea_infer::InferenceContext;
 use kea_infer::typeck::{
     RecordRegistry, SumTypeRegistry, TraitRegistry, TypeEnv, infer_and_resolve_in_context,
-    infer_fn_decl_effect_row, register_fn_effect_signature, register_fn_signature,
+    register_fn_signature,
 };
 use kea_mir::lower_hir_module;
 use kea_syntax::{lex_layout, parse_module};
@@ -95,10 +95,15 @@ fn infer_numeric_module(bencher: Bencher, line_count: usize) {
                 );
             }
 
-            let effect_row = infer_fn_decl_effect_row(fn_decl, &env);
+            let effect_row = env
+                .lookup(&fn_decl.name.node)
+                .and_then(|scheme| match &scheme.ty {
+                    Type::Function(ft) => Some(ft.effects.clone()),
+                    _ => None,
+                })
+                .unwrap_or_else(EffectRow::pure);
             env.set_function_effect_row(fn_decl.name.node.clone(), effect_row);
             register_fn_signature(fn_decl, &mut env);
-            register_fn_effect_signature(fn_decl, &mut env);
             inferred_fns += 1;
         }
 

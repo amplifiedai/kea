@@ -87,6 +87,7 @@ fn lambda(params: &[&str], body: Expr) -> Expr {
             .collect(),
         body: Box::new(body),
         return_annotation: None,
+        effect_annotation: None,
     })
 }
 
@@ -4292,6 +4293,7 @@ fn infer_precision_lambda_return_annotation_accepts_float_literal() {
         params: vec![],
         body: Box::new(lit_float(3.25)),
         return_annotation: Some(sp(TypeAnnotation::Named("Float32".to_string()))),
+        effect_annotation: None,
     });
     let (ty, u) = infer(&expr);
     assert!(!u.has_errors(), "Errors: {:?}", u.errors());
@@ -4344,6 +4346,7 @@ fn infer_rank2_forall_parameter_allows_polymorphic_callback() {
             call(var("f"), vec![var("y")]),
         ])),
         return_annotation: None,
+        effect_annotation: None,
     });
 
     let expr = block(vec![
@@ -4388,6 +4391,7 @@ fn infer_rank2_forall_parameter_rejects_monomorphic_callback() {
         ],
         body: Box::new(call(var("f"), vec![var("x")])),
         return_annotation: None,
+        effect_annotation: None,
     });
 
     let expr = block(vec![
@@ -4432,6 +4436,7 @@ fn infer_left_arg_application_rejects_monomorphic_callback_for_rank2_parameter()
         }],
         body: Box::new(call(var("f"), vec![lit_int(1)])),
         return_annotation: None,
+        effect_annotation: None,
     });
 
     let expr = block(vec![
@@ -4477,6 +4482,7 @@ fn infer_left_arg_application_accepts_polymorphic_callback_for_rank2_parameter()
         }],
         body: Box::new(call(var("f"), vec![lit_int(1)])),
         return_annotation: None,
+        effect_annotation: None,
     });
 
     let expr = block(vec![
@@ -4522,6 +4528,7 @@ fn infer_left_arg_application_call_rejects_monomorphic_callback_for_rank2_parame
         ],
         body: Box::new(call(var("f"), vec![var("x")])),
         return_annotation: None,
+        effect_annotation: None,
     });
 
     let expr = block(vec![
@@ -4576,6 +4583,7 @@ fn infer_left_arg_application_call_accepts_polymorphic_callback_for_rank2_parame
         ],
         body: Box::new(call(var("f"), vec![var("x")])),
         return_annotation: None,
+        effect_annotation: None,
     });
 
     let expr = block(vec![
@@ -5804,6 +5812,7 @@ fn infer_bare_decimal_annotation_is_not_erased_to_generic_var() {
         }],
         body: Box::new(var("x")),
         return_annotation: Some(sp(TypeAnnotation::Named("Decimal".to_string()))),
+        effect_annotation: None,
     });
     let (ty, u) = infer(&expr);
     assert!(
@@ -5842,6 +5851,7 @@ fn infer_list_of_bare_decimal_annotation_typechecks() {
         }],
         body: Box::new(var("xs")),
         return_annotation: Some(sp(list_decimal_ann)),
+        effect_annotation: None,
     });
     let (ty, u) = infer(&expr);
     assert!(
@@ -5880,6 +5890,7 @@ fn dim_literal_in_non_dim_constructor_emits_diagnostic() {
         }],
         body: Box::new(var("xs")),
         return_annotation: Some(sp(ann)),
+        effect_annotation: None,
     });
     let (_ty, u) = infer(&expr);
     assert!(u.has_errors(), "List(1) should produce a type error");
@@ -5926,6 +5937,7 @@ fn anon_record_arg_to_named_record_param_errors() {
                     field: sp("name".to_string()),
                 })),
                 return_annotation: None,
+                effect_annotation: None,
             })),
         }),
         sp(ExprKind::Call {
@@ -5984,6 +5996,7 @@ fn anon_record_var_arg_to_named_record_param_errors() {
                     field: sp("name".to_string()),
                 })),
                 return_annotation: None,
+                effect_annotation: None,
             })),
         }),
         sp(ExprKind::Let {
@@ -6043,6 +6056,7 @@ fn lambda_return_annotation_rejects_anon_record_indirection() {
             var("tmp"),
         ])),
         return_annotation: Some(sp(TypeAnnotation::Named("User".into()))),
+        effect_annotation: None,
     });
 
     let (_ty, u) = infer_with_records(&expr, &registry);
@@ -6115,6 +6129,7 @@ fn bare_record_annotation_creates_open_row() {
                 }],
                 body: Box::new(var("r")),
                 return_annotation: None,
+                effect_annotation: None,
             })),
         }),
         var("identity"),
@@ -6164,6 +6179,7 @@ fn partial_type_op_wraps_record_fields_in_option() {
                 }],
                 body: Box::new(var("u")),
                 return_annotation: None,
+                effect_annotation: None,
             })),
         }),
         var("f"),
@@ -6219,6 +6235,7 @@ fn omit_type_op_drops_selected_fields() {
                 }],
                 body: Box::new(var("u")),
                 return_annotation: None,
+                effect_annotation: None,
             })),
         }),
         var("f"),
@@ -6282,6 +6299,7 @@ fn merge_type_op_prefers_right_field_types() {
                 }],
                 body: Box::new(var("r")),
                 return_annotation: None,
+                effect_annotation: None,
             })),
         }),
         var("f"),
@@ -7147,8 +7165,10 @@ fn curried_annotated_callback_param_uses_effect_row_unification_not_pure_functio
             )],
             body: Box::new(call(var("f"), vec![var("x")])),
             return_annotation: Some(sp(TypeAnnotation::Named("Unit".to_string()))),
+            effect_annotation: None,
         })),
         return_annotation: None,
+        effect_annotation: None,
     });
     let logger = sp(ExprKind::Lambda {
         params: vec![annotated_param(
@@ -7157,6 +7177,7 @@ fn curried_annotated_callback_param_uses_effect_row_unification_not_pure_functio
         )],
         body: Box::new(call(field_access(var("Log"), "log"), vec![var("y")])),
         return_annotation: Some(sp(TypeAnnotation::Named("Unit".to_string()))),
+        effect_annotation: None,
     });
 
     let trap = make_fn_decl(
@@ -7219,6 +7240,7 @@ fn curried_unannotated_callback_application_propagates_effect_row_from_argument(
         )],
         body: Box::new(call(field_access(var("Log"), "log"), vec![var("y")])),
         return_annotation: Some(sp(TypeAnnotation::Named("Unit".to_string()))),
+        effect_annotation: None,
     });
     let trap = make_fn_decl(
         "trap",
@@ -7974,6 +7996,7 @@ fn catch_over_higher_order_fail_parameter_is_accepted() {
         params: vec![param],
         body: Box::new(body),
         return_annotation: None,
+        effect_annotation: None,
     });
 
     let mut unifier = Unifier::new();
@@ -8461,6 +8484,7 @@ fn infer_expr_effects_let_alias_lambda_preserves_callback_effect_constraints() {
         }],
         body: Box::new(call(var("f"), vec![lit_int(1)])),
         return_annotation: None,
+        effect_annotation: None,
     });
 
     env.set_function_effect_row("pure_cb".to_string(), EffectRow::pure());

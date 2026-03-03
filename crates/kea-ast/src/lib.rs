@@ -105,10 +105,15 @@ pub enum ExprKind {
     },
 
     /// Lambda: `|params| body`.
+    ///
+    /// `effect_annotation` is populated from `FnDecl::to_let_expr` so the
+    /// main unifier can constrain inferred effects against the declared
+    /// annotation via Rémy row unification — no separate validation needed.
     Lambda {
         params: Vec<Param>,
         body: Box<Expr>,
         return_annotation: Option<Spanned<TypeAnnotation>>,
+        effect_annotation: Option<Spanned<EffectAnnotation>>,
     },
 
     /// Function application: `func(args)`.
@@ -695,6 +700,7 @@ impl FnDecl {
                 params: self.params.clone(),
                 body: Box::new(self.body.clone()),
                 return_annotation: self.return_annotation.clone(),
+                effect_annotation: self.effect_annotation.clone(),
             },
             self.span,
         );
@@ -739,6 +745,7 @@ impl ExprDecl {
                 params: self.params.clone(),
                 body: Box::new(self.body.clone()),
                 return_annotation: self.return_annotation.clone(),
+                effect_annotation: self.effect_annotation.clone(),
             },
             self.span,
         );
@@ -1294,6 +1301,7 @@ mod tests {
             }],
             body: Box::new(body),
             return_annotation: None,
+            effect_annotation: None,
         });
         let fv = free_vars(&lambda);
         assert!(fv.contains("y"));
@@ -1344,6 +1352,7 @@ mod tests {
             }],
             body: Box::new(body.clone()),
             return_annotation: None,
+            effect_annotation: None,
         });
         assert!(free_vars(&lambda).is_empty());
     }
@@ -1370,6 +1379,7 @@ mod tests {
             }],
             body: Box::new(inner_body),
             return_annotation: None,
+            effect_annotation: None,
         });
         let outer_lambda = mk(ExprKind::Lambda {
             params: vec![Param {
@@ -1381,6 +1391,7 @@ mod tests {
             }],
             body: Box::new(inner_lambda),
             return_annotation: None,
+            effect_annotation: None,
         });
         let fv = free_vars(&outer_lambda);
         assert_eq!(fv, ["z".to_string()].into_iter().collect());

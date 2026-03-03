@@ -9223,6 +9223,42 @@ pub fn resolve_declared_effect_row(
     }
 }
 
+/// Resolve an effect annotation to an EffectRow through the main unifier,
+/// producing concrete payload types (not Unit placeholders).
+fn resolve_effect_annotation_row(
+    ann: &kea_ast::EffectAnnotation,
+    records: &RecordRegistry,
+    sum_types: &SumTypeRegistry,
+    unifier: &mut Unifier,
+) -> Option<EffectRow> {
+    match ann {
+        kea_ast::EffectAnnotation::Row(row) => {
+            let mut fields = Vec::new();
+            for item in &row.effects {
+                let payload = match &item.payload {
+                    Some(name) => {
+                        let payload_ann = TypeAnnotation::Named(name.to_string());
+                        resolve_annotation(&payload_ann, records, Some(sum_types))
+                            .unwrap_or_else(|| {
+                                Type::Var(unifier.fresh_type_var())
+                            })
+                    }
+                    None => Type::Unit,
+                };
+                fields.push((Label::new(&item.name), payload));
+            }
+            fields.sort_by(|(a, _), (b, _)| a.cmp(b));
+            let rest = row.rest.as_ref().map(|_| unifier.fresh_row_var());
+            Some(EffectRow { row: RowType { fields, rest } })
+        }
+        kea_ast::EffectAnnotation::Var(_) => {
+            Some(EffectRow::open(vec![], unifier.fresh_row_var()))
+        }
+        kea_ast::EffectAnnotation::Pure => Some(EffectRow::pure()),
+        _ => None,
+    }
+}
+
 pub fn validate_declared_fn_effect_row(
     fn_decl: &FnDecl,
     inferred_row: &EffectRow,
@@ -10568,6 +10604,7 @@ fn mk_lambda(param: &str, body: Expr, span: Span) -> Expr {
             }],
             body: Box::new(body),
             return_annotation: None,
+            effect_annotation: None,
         },
         span,
     )
@@ -12118,6 +12155,7 @@ fn desugar_with_expr(call: &Expr, binding: Option<&Pattern>, body: &Expr) -> Exp
             params,
             body: Box::new(body.clone()),
             return_annotation: None,
+            effect_annotation: None,
         },
         body.span,
     );
@@ -13315,10 +13353,11 @@ fn infer_handle_expr_type(
     if let Some(then_expr) = then_clause {
         let then_ty = infer_expr_bidir(then_expr, env, unifier, records, traits, sum_types);
         let out_ty = unifier.fresh_type();
+        let then_effect_rv = unifier.fresh_row_var();
         let expected = Type::Function(FunctionType {
             params: vec![handled_ty.clone()],
             ret: Box::new(out_ty.clone()),
-            effects: EffectRow::open(vec![], unifier.fresh_row_var()),
+            effects: EffectRow::open(vec![], then_effect_rv),
         });
         constrain_type_eq(
             unifier,
@@ -13329,10 +13368,48 @@ fn infer_handle_expr_type(
                 reason: Reason::TypeAscription,
             },
         );
+        // Propagate then-clause effects to the body ambient so they are
+        // visible for decomposition and residual propagation.
+        let resolved_then_effects =
+            unifier.substitution.apply_row(&RowType::empty_open(then_effect_rv));
+        if !resolved_then_effects.fields.is_empty() {
+            let fresh_rest = unifier.fresh_row_var();
+            constrain_row_eq(
+                unifier,
+                &RowType::open(resolved_then_effects.fields.clone(), fresh_rest),
+                &RowType::empty_open(body_ambient),
+                &Provenance {
+                    span: then_expr.span,
+                    reason: Reason::HandleEffectPayload,
+                },
+            );
+        }
         result_ty = out_ty;
     }
 
     env.pop_ambient_effect_row();
+
+    // ── Catch-on-non-failing body check ─────────────────────────────────
+    //
+    // Check BEFORE decomposition because the decomposition forces the
+    // target effect into body_ambient.  Resolve body_ambient to see
+    // whether the body actually performs the target effect.
+
+    let resolved_body_effects =
+        unifier.substitution.apply_row(&RowType::empty_open(body_ambient));
+    if is_catch_desugar_shape(clauses, then_clause)
+        && target_effect == "Fail"
+        && !resolved_body_effects.has(&Label::new("Fail"))
+    {
+        unifier.push_error(
+            Diagnostic::error(
+                Category::TypeError,
+                "expression cannot fail; catch is unnecessary".to_string(),
+            )
+            .at(span_to_loc(expr_span)),
+        );
+        return unifier.fresh_type();
+    }
 
     // ── Decompose ambient to extract residual effects ───────────────────
     //
@@ -13340,34 +13417,27 @@ fn infer_handle_expr_type(
     // then clause (both are inside the handler's scope).  Decompose it to
     // strip the handled effect and propagate residuals to the outer ambient.
     //
-    // We decompose with a fresh throwaway payload variable so that
-    // imprecise annotation payloads (e.g. Unit for unresolvable generic
-    // type params) don't poison shared_payload_var.  Then, if the resolved
-    // ambient has a PRECISE (non-Unit) payload for the target effect, we
-    // separately constrain shared_payload_var to that payload.
+    // Always decompose regardless of whether the effect has type parameters,
+    // so that residual effects propagate to outer handlers (e.g. Fail through
+    // a Gate handler).
+    let decompose_payload = unifier.fresh_type();
+    let rest_var = unifier.fresh_row_var();
+    constrain_row_eq(
+        unifier,
+        &RowType::open(
+            vec![(Label::new(target_effect.clone()), decompose_payload.clone())],
+            rest_var,
+        ),
+        &RowType::empty_open(body_ambient),
+        &Provenance {
+            span: expr_span,
+            reason: Reason::HandleEffectPayload,
+        },
+    );
 
-    let rest_var = if !shared_type_mapping.is_empty() {
-        let shared_payload_var = shared_type_mapping.values().next().copied().unwrap();
-        let decompose_payload = unifier.fresh_type();
-        let rest = unifier.fresh_row_var();
-        constrain_row_eq(
-            unifier,
-            &RowType::open(
-                vec![(Label::new(target_effect.clone()), decompose_payload.clone())],
-                rest,
-            ),
-            &RowType::empty_open(body_ambient),
-            &Provenance {
-                span: expr_span,
-                reason: Reason::HandleEffectPayload,
-            },
-        );
-
-        // Link shared_payload_var to the ambient payload when it's precise.
-        // The resolved decompose_payload may be a concrete type (e.g. Int
-        // from `base: () -[Reader Int]> Int`) or Unit (placeholder from an
-        // annotation that couldn't resolve a generic type param like C).
-        // Only constrain when non-Unit to avoid false conflicts.
+    // Link shared_payload_var to the ambient payload when the effect
+    // has type parameters and the resolved payload is precise (non-Unit).
+    if let Some(&shared_payload_var) = shared_type_mapping.values().next() {
         let resolved_payload = unifier.substitution.apply(&decompose_payload);
         if resolved_payload != Type::Unit {
             constrain_type_eq(
@@ -13380,11 +13450,7 @@ fn infer_handle_expr_type(
                 },
             );
         }
-
-        Some(rest)
-    } else {
-        None
-    };
+    }
 
     // Propagate residual (unhandled) effects to the outer ambient so
     // nested handle expressions accumulate correctly.
@@ -13398,10 +13464,8 @@ fn infer_handle_expr_type(
     // Instead, resolve `rest` and add only its concrete fields to the
     // outer ambient via a fresh rest variable, which doesn't inherit the
     // lacks constraint for the handled effect.
-    if let Some(rest) = rest_var
-        && let Some(outer_ambient) = env.current_ambient_effect_row()
-    {
-        let resolved_rest = unifier.substitution.apply_row(&RowType::empty_open(rest));
+    if let Some(outer_ambient) = env.current_ambient_effect_row() {
+        let resolved_rest = unifier.substitution.apply_row(&RowType::empty_open(rest_var));
         if !resolved_rest.fields.is_empty() {
             let fresh_rest = unifier.fresh_row_var();
             constrain_row_eq(
@@ -13414,23 +13478,6 @@ fn infer_handle_expr_type(
                 },
             );
         }
-    }
-
-    // ── Catch-on-non-failing body check ─────────────────────────────────
-
-    if is_catch_desugar_shape(clauses, then_clause)
-        && target_effect == "Fail"
-        && let Some(resolved_handled_row) = infer_resolved_expr_effect_row(handled, env)
-        && !resolved_handled_row.row.has(&Label::new("Fail"))
-    {
-        unifier.push_error(
-            Diagnostic::error(
-                Category::TypeError,
-                "expression cannot fail; catch is unnecessary".to_string(),
-            )
-            .at(span_to_loc(expr_span)),
-        );
-        return unifier.fresh_type();
     }
 
     // ── Process handler clauses ─────────────────────────────────────────
@@ -13800,6 +13847,7 @@ fn infer_expr_bidir(
             params,
             body,
             return_annotation,
+            effect_annotation,
         } => {
             unifier.enter_lambda();
             env.push_scope();
@@ -13901,13 +13949,68 @@ fn infer_expr_bidir(
             {
                 // Unconstrained — pure lambda.
                 EffectRow::pure()
+            } else if resolved_effects.row.rest.is_some() {
+                // Has concrete effects but an unconstrained tail from the
+                // ambient.  Close the row so the function type has a precise
+                // effect signature (monomorphic functions need closed rows).
+                EffectRow {
+                    row: RowType {
+                        fields: resolved_effects.row.fields,
+                        rest: None,
+                    },
+                }
             } else {
                 resolved_effects
             };
+
+            // If a declared effect annotation is present, use it as the
+            // function's effect signature.  Purity violations (declared `->` but
+            // body performs effects) are detected here; subsumption of
+            // effectful annotations is left to the declaration-level validator.
+            let final_effects = if let Some(eff_ann) = effect_annotation {
+                let parsed = parse_declared_effect(eff_ann);
+                if let Some(declared_effects) =
+                    resolve_effect_annotation_row(&parsed, records, sum_types, unifier)
+                {
+                    if let Err(diag) = validate_effect_row_fail_cardinality(
+                        &declared_effects,
+                        eff_ann.span,
+                        "declaration",
+                    ) {
+                        unifier.push_error(diag);
+                    }
+                    if declared_effects == EffectRow::pure()
+                        && !lambda_effects.row.fields.is_empty()
+                    {
+                        // Declared pure but body has effects — purity violation.
+                        unifier.push_error(
+                            Diagnostic::error(
+                                Category::TypeMismatch,
+                                format!(
+                                    "lambda declared pure (`->`) but body performs effects `{}`",
+                                    lambda_effects,
+                                ),
+                            )
+                            .at(span_to_loc(eff_ann.span))
+                            .with_help(
+                                "add an effect annotation: replace `->` with `-[effects]>` to declare the required effects".to_string(),
+                            ),
+                        );
+                        lambda_effects
+                    } else {
+                        declared_effects
+                    }
+                } else {
+                    lambda_effects
+                }
+            } else {
+                lambda_effects
+            };
+
             Type::Function(FunctionType {
                 params: param_types,
                 ret: Box::new(body_ty),
-                effects: lambda_effects,
+                effects: final_effects,
             })
         }
 
@@ -16390,6 +16493,7 @@ fn check_expr_bidir(
                 params,
                 body,
                 return_annotation,
+                ..
             },
             Type::Function(expected_fn),
         ) if params.len() == expected_fn.params.len() => {
@@ -16460,6 +16564,12 @@ fn check_expr_bidir(
                 );
             }
 
+            // Push an ambient for the check_expr_bidir Lambda arm so that
+            // inner effects (e.g. Reader.ask() inside a callback) accumulate
+            // here instead of leaking to the enclosing function's ambient.
+            let check_lambda_ambient = unifier.fresh_row_var();
+            env.push_ambient_effect_row(check_lambda_ambient);
+
             let expected_ret = expected_fn.ret.as_ref().clone();
             if let Some(ann) = return_annotation {
                 if let Some(declared_ret) =
@@ -16516,6 +16626,7 @@ fn check_expr_bidir(
                 );
             }
 
+            env.pop_ambient_effect_row();
             env.pop_scope();
             unifier.exit_lambda();
 
@@ -17361,6 +17472,26 @@ fn check_expr_bidir(
                         reason: Reason::FunctionArg { param_index: 0 },
                     },
                 );
+                // §5.13 mirror: propagate callee effects into ambient
+                // so handle expressions see effects from check_expr_bidir calls too.
+                if let Some(ambient_rv) = env.current_ambient_effect_row() {
+                    let callee_open = RowType::open(
+                        ft.effects.row.fields.clone(),
+                        ft.effects
+                            .row
+                            .rest
+                            .unwrap_or_else(|| unifier.fresh_row_var()),
+                    );
+                    constrain_row_eq(
+                        unifier,
+                        &callee_open,
+                        &RowType::empty_open(ambient_rv),
+                        &Provenance {
+                            span: expr.span,
+                            reason: Reason::HandleEffectPayload,
+                        },
+                    );
+                }
                 unifier.note_evidence_site(expr.span, &callable_ty);
                 note_existential_pack_sites(unifier, expr.span, &callable_ty, &arg_types);
                 return expected.clone();
