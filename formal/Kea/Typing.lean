@@ -1088,6 +1088,22 @@ theorem hasTypeScoped_doubleResumeWitnessExpr_not_atMostOnce :
     resumeSummary_atMostOnce]
 
 /--
+The double-resume witness remains typable in any surrounding scoped environment.
+-/
+theorem hasTypeScoped_doubleResumeWitnessExpr_under_env
+    (env : TermEnv) :
+    HasTypeScoped (some (.int, .int)) env doubleResumeWitnessExpr .int := by
+  unfold doubleResumeWitnessExpr
+  refine HasTypeScoped.letE (some (.int, .int)) env "x"
+      (.resume (.intLit 1)) (.resume (.intLit 2)) .int .int ?_ ?_
+  · exact HasTypeScoped.resume (some (.int, .int)) env (.intLit 1) .int .int
+      rfl
+      (HasTypeScoped.int (some (.int, .int)) env 1)
+  · exact HasTypeScoped.resume (some (.int, .int)) (("x", .int) :: env) (.intLit 2) .int .int
+      rfl
+      (HasTypeScoped.int (some (.int, .int)) (("x", .int) :: env) 2)
+
+/--
 Scoped native typing alone does not enforce syntactic resume at-most-once.
 -/
 theorem hasTypeScoped_does_not_imply_resumeSummary_atMostOnce :
@@ -1101,6 +1117,46 @@ theorem hasTypeScoped_does_not_imply_resumeSummary_atMostOnce :
     doubleResumeWitnessExpr,
     .int,
     hasTypeScoped_doubleResumeWitnessExpr,
+    hasTypeScoped_doubleResumeWitnessExpr_not_atMostOnce
+  ⟩
+
+/--
+Concrete top-level typed `handle` witness whose clause body has non-at-most-once
+resume summary.
+-/
+theorem hasTypeScopedTop_handle_with_doubleResume_clause :
+    HasTypeScopedTop []
+      (.handle (.intLit 0) "Op" "x" "k" .int .int doubleResumeWitnessExpr)
+      .int := by
+  dsimp [HasTypeScopedTop]
+  refine HasTypeScoped.handle none [] (.intLit 0) "Op" "x" "k" .int .int .int
+      doubleResumeWitnessExpr
+      (HasTypeScoped.int none [] 0)
+      ?_
+  exact hasTypeScoped_doubleResumeWitnessExpr_under_env
+    [("k", .function (.cons .int .nil) .int), ("x", .int)]
+
+/--
+Handler-level witness: top-level native handle typing does not imply
+clause-body syntactic resume at-most-once.
+-/
+theorem hasTypeScopedTop_handle_does_not_imply_clause_resumeSummary_atMostOnce :
+    ∃ env body op argName resumeName argTy opRetTy clauseBody ty,
+      HasTypeScopedTop env
+        (.handle body op argName resumeName argTy opRetTy clauseBody) ty
+        ∧
+      ¬ resumeSummary_atMostOnce (resumeSummary clauseBody) := by
+  exact ⟨
+    [],
+    .intLit 0,
+    "Op",
+    "x",
+    "k",
+    .int,
+    .int,
+    doubleResumeWitnessExpr,
+    .int,
+    hasTypeScopedTop_handle_with_doubleResume_clause,
     hasTypeScoped_doubleResumeWitnessExpr_not_atMostOnce
   ⟩
 

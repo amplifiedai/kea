@@ -24111,3 +24111,44 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - The corpus now machine-checks that scoped typing and at-most-once resume linearity are distinct properties, clarifying what still requires contract-level or stronger typing constraints.
+
+### 2026-03-04: handler-level linearity boundary witness at top-level `handle` typing
+
+**Context**: Lifted the resume-linearity gap witness from standalone scoped expressions to actual top-level handle typing in `Kea/Typing.lean`:
+- `hasTypeScoped_doubleResumeWitnessExpr_under_env`
+- `hasTypeScopedTop_handle_with_doubleResume_clause`
+- `hasTypeScopedTop_handle_does_not_imply_clause_resumeSummary_atMostOnce`
+
+This establishes the boundary in the judgment shape reviewers care about: a `HasTypeScopedTop` handle can have a clause body with resume summary `.many`.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- Coherent handler should type-check.
+- Mismatch effect-leak handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. Coherent handler (`probe_coherent_20260304bm`) -> `ok`.
+2. Mismatch effect-leak handler (`probe_mismatch_20260304bm`) -> `error`, `E0001`.
+3. Bad resume payload (`probe_bad_resume_20260304bm`) -> `error`, `E0001`.
+4. Out-of-handler resume (`probe_outside_resume_20260304bm`) -> `error`, `E0012`.
+5. Forged-name out-of-handler resume (`probe_forged_resume_ctx_20260304bm`) -> `error`, `E0012`.
+6. Double-resume clause (`probe_double_resume_20260304bm`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the top-level handle-typing linearity-boundary witness layer.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`: theorem names listed in Context above.
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The corpus now machine-checks that native top-level handle typing and at-most-once resume linearity are distinct at the clause-body level, not just in standalone expressions.
