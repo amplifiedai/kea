@@ -2925,6 +2925,53 @@ theorem native_handler_step_ext_with_mismatch_progress_assumption_equivalence_ma
       clauseSem mismatchSem bodyStep h_core_progress
 
 /--
+Packaged progress-route surface across all four handler-assumption families.
+-/
+def native_handler_step_ext_with_mismatch_progress_assumption_routes_prop
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) : Prop :=
+  (native_handler_strict_top_typing_prop →
+      native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep
+    )
+    ∧
+    (native_handler_strict_typing_prop →
+      native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep)
+    ∧
+    (native_handler_scoped_to_strict_lift_prop →
+      native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep)
+    ∧
+    (native_handler_perform_metadata_coherence_prop →
+      native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep)
+
+/--
+From a strict-top progress route and fixed core obligations, derive packaged
+progress routes for strict-typing, scoped-lift, and metadata-coherence.
+-/
+theorem native_handler_step_ext_with_mismatch_progress_assumption_routes_of_strict_top
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core_progress :
+      ∀ env body ty,
+        HasTypeScopedTop env body ty →
+        CoreValue body ∨ ∃ body', bodyStep body body')
+    (h_from_strict_top :
+      native_handler_strict_top_typing_prop →
+        native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep) :
+    native_handler_step_ext_with_mismatch_progress_assumption_routes_prop
+      clauseSem mismatchSem bodyStep := by
+  have h_matrix :=
+    native_handler_step_ext_with_mismatch_progress_assumption_equivalence_matrix
+      clauseSem mismatchSem bodyStep h_core_progress
+  rcases h_matrix with
+    ⟨h_top_strict, h_top_lift, h_top_meta, _h_strict_lift, _h_strict_meta, _h_lift_meta⟩
+  refine ⟨h_from_strict_top, ?_, ?_, ?_⟩
+  · exact h_top_strict.1 h_from_strict_top
+  · exact h_top_lift.1 h_from_strict_top
+  · exact h_top_meta.1 h_from_strict_top
+
+/--
 Strict-top handle typing and metadata coherence are equivalent global
 contracts.
 -/
@@ -3664,6 +3711,58 @@ theorem native_handler_step_ext_with_mismatch_soundness_assumption_equivalence_m
       clauseSem mismatchSem bodyStep h_core
   · exact native_handler_step_ext_with_mismatch_soundness_assumption_iff_scoped_to_strict_lift_metadata_coherence
       clauseSem mismatchSem bodyStep h_core
+
+/--
+Packaged soundness-route surface across all four handler-assumption families.
+-/
+def native_handler_step_ext_with_mismatch_soundness_assumption_routes_prop
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) : Prop :=
+  (native_handler_strict_top_typing_prop →
+      native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep
+    )
+    ∧
+    (native_handler_strict_typing_prop →
+      native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep)
+    ∧
+    (native_handler_scoped_to_strict_lift_prop →
+      native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep)
+    ∧
+    (native_handler_perform_metadata_coherence_prop →
+      native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep)
+
+/--
+From a strict-top soundness route and fixed core obligations, derive packaged
+soundness routes for strict-typing, scoped-lift, and metadata-coherence.
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_assumption_routes_of_strict_top
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core :
+      (∀ env body body' ty,
+        HasTypeScopedTop env body ty →
+        bodyStep body body' →
+        HasTypeScopedTop env body' ty)
+      ∧
+      (∀ env body ty,
+        HasTypeScopedTop env body ty →
+        CoreValue body ∨ ∃ body', bodyStep body body'))
+    (h_from_strict_top :
+      native_handler_strict_top_typing_prop →
+        native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep) :
+    native_handler_step_ext_with_mismatch_soundness_assumption_routes_prop
+      clauseSem mismatchSem bodyStep := by
+  have h_matrix :=
+    native_handler_step_ext_with_mismatch_soundness_assumption_equivalence_matrix
+      clauseSem mismatchSem bodyStep h_core
+  rcases h_matrix with
+    ⟨h_top_strict, h_top_lift, h_top_meta, _h_strict_lift, _h_strict_meta, _h_lift_meta⟩
+  refine ⟨h_from_strict_top, ?_, ?_, ?_⟩
+  · exact h_top_strict.1 h_from_strict_top
+  · exact h_top_lift.1 h_from_strict_top
+  · exact h_top_meta.1 h_from_strict_top
 
 /--
 Specialized soundness target for the concrete pass-through mismatch semantics.

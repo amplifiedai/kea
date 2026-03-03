@@ -18192,3 +18192,43 @@ and soundness.
 - A single matrix-level theorem witness now captures complete direct pairwise
   assumption-route equivalence for both mismatch-extension progress and
   soundness, reducing theorem-by-theorem threading at call sites.
+
+### 2026-03-03: strict-top route capstones to packaged four-route bundles
+
+**Context**: Added packaged route propositions and strict-top-entry theorems
+that derive all four assumption-route forms (strict-top, strict-typing,
+scoped-lift, metadata) for mismatch-extension progress/soundness.
+
+**MCP tools used**: `reset_session`, `type_check`
+
+**Predict (Lean side)**:
+- Coherent handled reader program should type-check to pure.
+- Effect-clause mismatch should leak the body effect in pure context.
+- Resume payload type mismatch should reject.
+- Out-of-handler resume should reject.
+
+**Probe (Rust side via MCP)**:
+1. Coherent `Reader` handler with `then` (`Reader.ask() -> resume 2`) -> `ok` (`main : () -> Int`).
+2. Mismatched `Log` clause around `Reader` body -> `error`, `E0001` (pure body performs `[Reader(Int)]`).
+3. Bad resume payload (`Counter.next() -> resume true`) -> `error`, `E0001`.
+4. Out-of-handler resume in helper function (`bad`) -> `error`, `E0012`.
+
+**Classify**: Agreement.
+
+**Act**:
+- Kept strict-top-entry route capstone additions.
+- Continued checkpoint loop without model revision.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_progress_assumption_routes_prop`
+  - `native_handler_step_ext_with_mismatch_progress_assumption_routes_of_strict_top`
+  - `native_handler_step_ext_with_mismatch_soundness_assumption_routes_prop`
+  - `native_handler_step_ext_with_mismatch_soundness_assumption_routes_of_strict_top`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Consumers can now prove one strict-top route and immediately obtain packaged
+  strict-typing/scoped-lift/metadata routes for both progress and soundness.
