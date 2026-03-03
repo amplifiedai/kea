@@ -23041,3 +23041,48 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - The strongest packaged route now has a single capstone witness for full mismatch-extension handler soundness plus direct typed-handle local consequence.
+
+### 2026-03-04: extended mismatch full-soundness capstone with projection and alternate-route constructors
+
+**Context**: Extended the new mismatch-extension full-soundness capstone layer in `Kea/Typing.lean` with:
+- `native_handler_step_ext_with_mismatch_full_soundness_capstone_soundness`
+- `native_handler_step_ext_with_mismatch_full_soundness_capstone_exists_and_preserves`
+- `native_handler_step_ext_with_mismatch_full_soundness_capstone_of_core_soundness_and_strict_typing_packaged`
+- `native_handler_step_ext_with_mismatch_full_soundness_capstone_of_core_soundness_and_metadata_coherence_via_strict_top_typing_packaged`
+- `native_handler_step_ext_with_mismatch_full_soundness_capstone_of_core_soundness_and_scoped_to_strict_lift_via_strict_top_typing_packaged`
+
+This keeps goal (4) moving vertically: one capstone witness now has direct one-hop projections and is reachable from all existing packaged closure assumptions.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- Coherent handler should type-check.
+- Mismatch effect-leak handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. Coherent handler (`probe_coherent_20260304am`) -> `ok`.
+2. Mismatch effect-leak handler (`probe_mismatch_20260304am`) -> `error`, `E0001`.
+3. Bad resume payload (`probe_bad_resume_20260304am`) -> `error`, `E0001`.
+4. Out-of-handler resume (`probe_outside_resume_20260304am`) -> `error`, `E0012`.
+5. Forged-name out-of-handler resume (`probe_forged_resume_ctx_20260304am`) -> `error`, `E0012`.
+6. Double-resume clause (`probe_double_resume_20260304am`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the capstone-projection and alternate-route constructor additions.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_full_soundness_capstone_{soundness,exists_and_preserves}`
+  - `native_handler_step_ext_with_mismatch_full_soundness_capstone_of_core_soundness_and_{strict_typing_packaged,metadata_coherence_via_strict_top_typing_packaged,scoped_to_strict_lift_via_strict_top_typing_packaged}`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The mismatch-extension full-soundness capstone is now directly consumable (global + local projections) and uniformly reachable from strict typing / metadata coherence / scoped-lift closure routes.
