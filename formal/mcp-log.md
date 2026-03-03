@@ -19398,3 +19398,44 @@ No MCP divergence found at this checkpoint.
 **Impact**:
 - Consumers can now request one reusable route function from the boundary
   capstone instead of re-threading bodyStep/core/strict-top assumptions manually.
+
+### 2026-03-03: native/ext inclusion bridges into mismatch-extension + pure-body sentinel
+
+**Context**: Added direct inclusion theorems showing both base extended steps and native minimal steps embed into `NativeHandlerStepExtWithMismatch`, then revalidated active handler assumptions with a fresh slice-specific MCP matrix.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- A coherent self-contained handler should type-check.
+- A pure-body `handle` expression with clauses should type-check (body-step-false sentinel surface).
+- Mismatched pure handler clauses should reject with effect leakage (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Double-resume and out-of-handler `resume` should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Counter` -> `ok`.
+2. Coherent self-contained handler (`effect Math ...`; `handle Math.add(1, 2)` with `Math.add(a,b) -> resume (a + b)`) -> `ok`.
+3. Pure-body sentinel (`handle 1` with `Math.add` clause) -> `ok`.
+4. Mismatched pure handler (`handle Math.add(1, 2)` with only `Reader.ask` clause) -> `error`, `E0001` (pure body performs `[Math]`).
+5. Bad resume payload (`effect Log ... -> Unit`; `Log.info(msg) -> resume 1`) -> `error`, `E0001`.
+6. Double resume in one clause -> `error`, `E0012` (`handler clause may resume at most once`).
+7. Out-of-handler resume (`fn out_of_handler() -> Int; resume 1`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No MCP divergence found at this checkpoint.
+
+**Act**:
+- Kept the inclusion-bridge theorem additions.
+- Continued MCP-first checkpoint loop with fresh slice-specific probes.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_of_ext_step`
+  - `native_handler_step_ext_with_mismatch_of_native_handler_step`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Inclusion routes into `NativeHandlerStepExtWithMismatch` are now explicit at theorem level, reducing downstream proof friction when lifting facts from native/base-ext layers into mismatch-extension arguments.

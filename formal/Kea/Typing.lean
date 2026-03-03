@@ -1791,6 +1791,34 @@ inductive NativeHandlerStepExtWithMismatch
           opBody argTy opRetTy arg k opHandle argName resumeName argTy opRetTy clauseBody)
 
 /--
+Base extended handler steps embed directly into mismatch-extension steps.
+-/
+theorem native_handler_step_ext_with_mismatch_of_ext_step
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    {e e' : CoreExpr}
+    (h_ext : NativeHandlerStepExt clauseSem bodyStep e e') :
+    NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep e e' := by
+  exact NativeHandlerStepExtWithMismatch.ext h_ext
+
+/--
+Native minimal handler steps embed directly into mismatch-extension steps.
+-/
+theorem native_handler_step_ext_with_mismatch_of_native_handler_step
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    {e e' : CoreExpr}
+    (h_native : NativeHandlerStep clauseSem e e') :
+    NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep e e' := by
+  cases h_native with
+  | handle_perform op argTy opRetTy arg k argName resumeName clauseBody =>
+    exact NativeHandlerStepExtWithMismatch.ext
+      (NativeHandlerStepExt.handle_perform
+        op argTy opRetTy arg k argName resumeName clauseBody)
+
+/--
 Value-body passthrough witness in the mismatched-perform extension:
 the extension preserves the base extended relation's value case.
 -/

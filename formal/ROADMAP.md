@@ -904,3 +904,4 @@ Update: added core+strict-top contrast route packaging (`native_handler_step_ext
 - [ ] `FORMAL.md` table updated for every new theorem.
 - [ ] If MCP is used for validation, append session details to `formal/mcp-log.md`.
 - [ ] Keep changes formal-only unless explicitly requested otherwise.
+Update: added direct inclusion bridges into mismatch-extension (`native_handler_step_ext_with_mismatch_of_ext_step`, `native_handler_step_ext_with_mismatch_of_native_handler_step`) and revalidated with a fresh slice-specific MCP matrix including a pure-body `handle` sentinel plus mismatch/bad-resume/double-resume/out-of-handler controls; no divergence observed.
