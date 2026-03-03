@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use kea_ast::{
     DeclKind, Expr, ExprDecl, ExprKind, FileId, FnDecl, ImportItems, Module, RecordDef, Span,
-    Spanned, TestDecl, TypeAnnotation, TypeDef,
+    Spanned, TestDecl, TypeAnnotation, TypeDef, collect_pattern_bindings_pub,
 };
 use kea_codegen::{
     Backend, BackendConfig, CodegenMode, CraneliftBackend, PassStats, collect_pass_stats,
@@ -3785,6 +3785,19 @@ fn hir_function_param_bindings(function: &HirFunction) -> BTreeSet<String> {
         .collect()
 }
 
+fn extend_hir_pattern_bindings(pattern: &kea_hir::HirPattern, out: &mut BTreeSet<String>) {
+    match pattern {
+        kea_hir::HirPattern::Var(name) => {
+            out.insert(name.clone());
+        }
+        kea_hir::HirPattern::Raw(pattern) => {
+            let mut names = HashSet::new();
+            collect_pattern_bindings_pub(pattern, &mut names);
+            out.extend(names);
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 struct FipCallBoundaryIssues {
     total_unsupported_calls: usize,
@@ -3968,10 +3981,8 @@ fn collect_fip_call_boundary_issues(
                         ),
                         site_limit,
                     );
-                    if let HirExprKind::Let { pattern, .. } = &item.kind
-                        && let kea_hir::HirPattern::Var(name) = pattern
-                    {
-                        scoped_bindings.insert(name.clone());
+                    if let HirExprKind::Let { pattern, .. } = &item.kind {
+                        extend_hir_pattern_bindings(pattern, &mut scoped_bindings);
                     }
                 }
                 issues
@@ -4096,9 +4107,7 @@ fn collect_fip_call_boundary_issues(
                 for clause in clauses {
                     let mut clause_bindings = local_bindings.clone();
                     for arg in &clause.args {
-                        if let kea_hir::HirPattern::Var(name) = arg {
-                            clause_bindings.insert(name.clone());
-                        }
+                        extend_hir_pattern_bindings(arg, &mut clause_bindings);
                     }
                     merge_fip_call_boundary_issues(
                         &mut issues,
@@ -4359,6 +4368,13 @@ fn analyze_hir_unique_flow_expr_scoped(
                     scoped_local_bindings.insert(binding.clone());
                     summary.result_alias_root = None;
                     continue;
+                } else if let HirExprKind::Let { pattern, .. } = &item.kind {
+                    // Non-var patterns still introduce local names (e.g.
+                    // destructuring). Track them so ownership/call-boundary
+                    // checks don't treat shadowed names as global callees.
+                    extend_hir_pattern_bindings(pattern, &mut scoped_local_bindings);
+                    summary.result_alias_root = None;
+                    continue;
                 }
                 summary.result_alias_root = item_summary.result_alias_root;
             }
@@ -4504,9 +4520,7 @@ fn analyze_hir_unique_flow_expr_scoped(
             for clause in clauses {
                 let mut clause_bindings = local_bindings.clone();
                 for arg in &clause.args {
-                    if let kea_hir::HirPattern::Var(name) = arg {
-                        clause_bindings.insert(name.clone());
-                    }
+                    extend_hir_pattern_bindings(arg, &mut clause_bindings);
                 }
                 let clause_summary = analyze_hir_unique_flow_expr_scoped(
                     &clause.body,
