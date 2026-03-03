@@ -11128,6 +11128,99 @@ theorem native_typed_handle_correspondence_capstone_pair_small_of_aggressive
   exact tier_scheduler_pair_small_of_aggressive_erasure
     yielding blocking [opHandle] erasable h_aggressive
 
+/--
+Completeness-facing scheduler consequence: any declared capability that is not
+erasable prevents a `pure` residual scheduler classification.
+-/
+theorem schedulerClassOfResidual_ne_pure_of_nonerasable_declared
+    (blocking declared erasable : List Label)
+    {l : Label}
+    (h_declared : l ∈ declared)
+    (h_not_erasable : l ∉ erasable) :
+    schedulerClassOfResidual blocking (eraseCapabilities declared erasable) ≠ .pure := by
+  intro h_pure
+  have h_empty : eraseCapabilities declared erasable = [] :=
+    (schedulerClassOfResidual_eq_pure_iff
+      blocking (eraseCapabilities declared erasable)).1 h_pure
+  have h_mem : l ∈ eraseCapabilities declared erasable :=
+    (mem_eraseCapabilities_iff declared erasable l).2
+      ⟨h_declared, h_not_erasable⟩
+  rw [h_empty] at h_mem
+  cases h_mem
+
+/--
+Completeness-facing tier consequence: any declared non-erasable capability
+prevents Tier 1 classification at the residual boundary.
+-/
+theorem handlerTierOfResidual_ne_tier1_of_nonerasable_declared
+    (yielding blocking declared erasable : List Label)
+    {l : Label}
+    (h_declared : l ∈ declared)
+    (h_not_erasable : l ∉ erasable) :
+    handlerTierOfResidual yielding blocking (eraseCapabilities declared erasable) ≠ .tier1 := by
+  intro h_tier1
+  have h_empty : eraseCapabilities declared erasable = [] :=
+    (handlerTierOfResidual_eq_tier1_iff
+      yielding blocking (eraseCapabilities declared erasable)).1 h_tier1
+  have h_mem : l ∈ eraseCapabilities declared erasable :=
+    (mem_eraseCapabilities_iff declared erasable l).2
+      ⟨h_declared, h_not_erasable⟩
+  rw [h_empty] at h_mem
+  cases h_mem
+
+/--
+Joint completeness-facing consequence: with a declared non-erasable
+capability, the residual pair cannot be `(tier1, pure)`.
+-/
+theorem tier_scheduler_pair_ne_tier1_pure_of_nonerasable_declared
+    (yielding blocking declared erasable : List Label)
+    {l : Label}
+    (h_declared : l ∈ declared)
+    (h_not_erasable : l ∉ erasable) :
+    (handlerTierOfResidual yielding blocking (eraseCapabilities declared erasable),
+      schedulerClassOfResidual blocking (eraseCapabilities declared erasable))
+      ≠
+    (.tier1, .pure) := by
+  intro h_pair
+  have h_tier1 :
+      handlerTierOfResidual yielding blocking (eraseCapabilities declared erasable) = .tier1 :=
+    congrArg Prod.fst h_pair
+  exact handlerTierOfResidual_ne_tier1_of_nonerasable_declared
+    yielding blocking declared erasable h_declared h_not_erasable h_tier1
+
+/--
+Singleton typed-handle corollary: if the handled capability is not erasable,
+the boundary pair cannot be `(tier1, pure)`.
+-/
+theorem native_typed_handle_correspondence_capstone_pair_ne_tier1_pure_of_not_erasable
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (yielding blocking erasable : List Label)
+    (env : TermEnv)
+    (body : CoreExpr)
+    (opHandle : Label)
+    (argName resumeName : String)
+    (argTy opRetTy : Ty)
+    (clauseBody : CoreExpr)
+    (ty : Ty)
+    (h_cap :
+      NativeTypedHandleCorrespondenceCapstone
+        clauseSem mismatchSem bodyStep
+        yielding blocking erasable
+        env body opHandle argName resumeName argTy opRetTy clauseBody ty)
+    (h_not_erasable : opHandle ∉ erasable) :
+    (handlerTierOfResidual yielding blocking (eraseCapabilities [opHandle] erasable),
+      schedulerClassOfResidual blocking (eraseCapabilities [opHandle] erasable))
+      ≠
+    (.tier1, .pure) := by
+  intro h_pair
+  have h_erasable : opHandle ∈ erasable :=
+    (native_typed_handle_correspondence_capstone_pair_eq_tier1_pure_iff_erasable
+      clauseSem mismatchSem bodyStep yielding blocking erasable
+      env body opHandle argName resumeName argTy opRetTy clauseBody ty h_cap).1 h_pair
+  exact h_not_erasable h_erasable
+
 /-- Declarative field typing is functional on the core slice. -/
 theorem hasFieldsType_unique
     {env : TermEnv} {fs : CoreFields} {row₁ row₂ : RowFields}

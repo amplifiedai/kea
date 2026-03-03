@@ -22820,3 +22820,49 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - Aggressive-erasure consequences are now available directly on the joint `(tier, scheduler)` surface, not only as separate scheduler/tier facts.
+
+### 2026-03-04: proved non-erasable-declared completeness consequences on scheduler/tier/joint pair
+
+**Context**: Added completeness-facing consequence theorems in `Kea/Typing.lean`:
+- `schedulerClassOfResidual_ne_pure_of_nonerasable_declared`
+- `handlerTierOfResidual_ne_tier1_of_nonerasable_declared`
+- `tier_scheduler_pair_ne_tier1_pure_of_nonerasable_declared`
+- `native_typed_handle_correspondence_capstone_pair_ne_tier1_pure_of_not_erasable`
+
+These make “pipeline erases what it should, but not what it must retain” operational at the classification boundary: if some declared capability is non-erasable, the residual boundary cannot classify as `(tier1, pure)`.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- Coherent typed handle should type-check.
+- Mismatched handler clause that leaves handled effect unremoved should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. Coherent handler (`probe_coherent_20260304ah`) -> `ok`.
+2. Mismatch effect-leak handler (`probe_mismatch_20260304ah`) -> `error`, `E0001`.
+3. Bad resume payload (`probe_bad_resume_20260304ah`) -> `error`, `E0001`.
+4. Out-of-handler resume (`probe_outside_resume_20260304ah`) -> `error`, `E0012`.
+5. Forged-name out-of-handler resume (`probe_forged_resume_ctx_20260304ah`) -> `error`, `E0012`.
+6. Double-resume clause (`probe_double_resume_20260304ah`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the non-erasable completeness consequences and linked them through a singleton native typed-handle corollary.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `schedulerClassOfResidual_ne_pure_of_nonerasable_declared`
+  - `handlerTierOfResidual_ne_tier1_of_nonerasable_declared`
+  - `tier_scheduler_pair_ne_tier1_pure_of_nonerasable_declared`
+  - `native_typed_handle_correspondence_capstone_pair_ne_tier1_pure_of_not_erasable`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Completeness now has explicit boundary-level consequences: retained non-erasable capabilities force non-`pure` and non-`tier1` classifications.
