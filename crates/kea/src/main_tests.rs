@@ -3355,6 +3355,24 @@ fn compile_and_execute_fip_unique_higher_order_forwarder_result_if_alias_chain_c
 
 #[test]
 #[cfg(not(target_os = "windows"))]
+fn compile_and_execute_fip_unique_higher_order_forwarder_combo_alias_prelude_and_result_if_exit_code(
+) {
+    let source_path = write_temp_source(
+        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_combo(flag_f: Bool, flag_x: Bool, seed: Int, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed2 = if seed > 0\n    seed\n  else\n    seed\n  let g = if flag_f\n    f\n  else\n    f\n  let y = if flag_x\n    x\n  else\n    x\n  let out0 = g(y)\n  let out1 = if flag_f\n    out0\n  else\n    out0\n  let out2 = out1\n  out2\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_combo(true, false, 42, forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "kea-cli-fip-unique-higher-order-forwarder-combo-alias",
+        "kea",
+    );
+
+    let run = run_file(&source_path).expect(
+        "@fip verifier should accept wrappers that combine pre-forward alias selection with post-forward result-if alias shaping",
+    );
+    assert_eq!(run.exit_code, 0);
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
 fn compile_and_execute_fip_unique_higher_order_forwarder_result_alias_with_benign_noncall_let_exit_code(
 ) {
     let source_path = write_temp_source(
@@ -3821,6 +3839,33 @@ fn compile_and_execute_fip_unique_higher_order_module_alias_wrapper_mixed_result
 
     let run = run_file(&source_path).expect(
         "@fip verifier and backend lowering should accept module-alias wrappers that mix forwarded-result and passthrough branch forms",
+    );
+    assert_eq!(run.exit_code, 0);
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn compile_and_execute_fip_unique_higher_order_module_alias_wrapper_combo_alias_prelude_and_result_if_exit_code(
+) {
+    let project_dir = temp_workspace_project_dir("kea-cli-fip-unique-higher-order-alias-combo");
+    let src_dir = project_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+    let source_path = src_dir.join("main.kea");
+    std::fs::write(
+        src_dir.join("alpha.kea"),
+        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_combo(flag_f: Bool, flag_x: Bool, seed: Int, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed2 = if seed > 0\n    seed\n  else\n    seed\n  let g = if flag_f\n    f\n  else\n    f\n  let y = if flag_x\n    x\n  else\n    x\n  let out0 = g(y)\n  let out1 = if flag_f\n    out0\n  else\n    out0\n  let out2 = out1\n  out2\n",
+    )
+    .expect("alpha module write should succeed");
+    std::fs::write(
+        &source_path,
+        "use Alpha as A\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_combo(true, false, 42, A.forward_once, x)\n\nfn main() -> Int\n  0\n",
+    )
+    .expect("source write should succeed");
+
+    let run = run_file(&source_path).expect(
+        "@fip verifier and backend lowering should accept module-alias wrappers that combine pre-forward alias selection with post-forward result-if alias shaping",
     );
     assert_eq!(run.exit_code, 0);
 
