@@ -23943,3 +23943,44 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - The subsumption regime is now formally closed as an equivalence class between mismatch-extended and extended-native theorem surfaces.
+
+### 2026-03-04: canonical bodyStep-false non-subsumption consequences
+
+**Context**: Added direct bodyStep-false consequences in `Kea/Typing.lean`:
+- `not_native_handler_mismatch_steps_subsumed_by_ext_bodyStepFalse`
+- `not_native_handler_step_ext_with_passThroughMismatch_subsumed_by_ext_bodyStepFalse`
+- `native_handler_mismatch_steps_subsumed_by_ext_bodyStepFalse_iff_false`
+
+These remove boilerplate by exposing the canonical strict-extension witness as immediate non-subsumption (`↔ False`) facts.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- Coherent handler should type-check.
+- Mismatch effect-leak handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. Coherent handler (`probe_coherent_20260304bi`) -> `ok`.
+2. Mismatch effect-leak handler (`probe_mismatch_20260304bi`) -> `error`, `E0001`.
+3. Bad resume payload (`probe_bad_resume_20260304bi`) -> `error`, `E0001`.
+4. Out-of-handler resume (`probe_outside_resume_20260304bi`) -> `error`, `E0012`.
+5. Forged-name out-of-handler resume (`probe_forged_resume_ctx_20260304bi`) -> `error`, `E0012`.
+6. Double-resume clause (`probe_double_resume_20260304bi`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the canonical bodyStep-false non-subsumption theorem layer.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`: theorem names listed in Context above.
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The strict-extension canonical witness now has direct `not-subsumed` and `↔ False` corollaries at the default `bodyStep = False` boundary.
