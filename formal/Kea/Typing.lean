@@ -3243,6 +3243,72 @@ theorem native_handler_step_ext_with_mismatch_soundness_strict_top_prop_iff_prog
       clauseSem mismatchSem bodyStep h_sound_handle
 
 /--
+Under global preservation, strict-top one-step soundness is equivalent to the
+packaged strict-local soundness surface (`preservation ∧ strict-local progress`).
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_strict_top_prop_iff_soundness_strict_prop_of_preservation
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_pres :
+      native_handler_step_ext_with_mismatch_preservation_prop
+        clauseSem mismatchSem bodyStep) :
+    native_handler_step_ext_with_mismatch_soundness_strict_top_prop
+      clauseSem mismatchSem bodyStep
+      ↔
+    native_handler_step_ext_with_mismatch_soundness_strict_prop
+      clauseSem mismatchSem bodyStep := by
+  constructor
+  · intro h_sound_top
+    have h_prog_top :
+        native_handler_step_ext_with_mismatch_progress_strict_top_prop
+          clauseSem mismatchSem bodyStep :=
+      (native_handler_step_ext_with_mismatch_soundness_strict_top_prop_iff_progress_strict_top_prop_of_preservation
+        clauseSem mismatchSem bodyStep h_pres).1 h_sound_top
+    have h_prog_strict :
+        native_handler_step_ext_with_mismatch_progress_strict_prop
+          clauseSem mismatchSem bodyStep :=
+      (native_handler_step_ext_with_mismatch_progress_strict_top_prop_iff_progress_strict_prop
+        clauseSem mismatchSem bodyStep).1 h_prog_top
+    exact ⟨h_pres, h_prog_strict⟩
+  · intro h_sound_strict
+    have h_prog_top :
+        native_handler_step_ext_with_mismatch_progress_strict_top_prop
+          clauseSem mismatchSem bodyStep :=
+      (native_handler_step_ext_with_mismatch_progress_strict_top_prop_iff_progress_strict_prop
+        clauseSem mismatchSem bodyStep).2 h_sound_strict.2
+    exact (native_handler_step_ext_with_mismatch_soundness_strict_top_prop_iff_progress_strict_top_prop_of_preservation
+      clauseSem mismatchSem bodyStep h_pres).2 h_prog_top
+
+/--
+Under global preservation, strict-handle one-step soundness is equivalent to
+the packaged strict-local soundness surface (`preservation ∧ strict-local progress`).
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_strict_handle_prop_iff_soundness_strict_prop_of_preservation
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_pres :
+      native_handler_step_ext_with_mismatch_preservation_prop
+        clauseSem mismatchSem bodyStep) :
+    native_handler_step_ext_with_mismatch_soundness_strict_handle_prop
+      clauseSem mismatchSem bodyStep
+      ↔
+    native_handler_step_ext_with_mismatch_soundness_strict_prop
+      clauseSem mismatchSem bodyStep := by
+  constructor
+  · intro h_sound_handle
+    have h_prog_strict :
+        native_handler_step_ext_with_mismatch_progress_strict_prop
+          clauseSem mismatchSem bodyStep :=
+      native_handler_step_ext_with_mismatch_progress_strict_of_soundness_strict_handle
+        clauseSem mismatchSem bodyStep h_sound_handle
+    exact ⟨h_pres, h_prog_strict⟩
+  · intro h_sound_strict
+    exact native_handler_step_ext_with_mismatch_soundness_strict_handle_of_preservation_and_progress_strict
+      clauseSem mismatchSem bodyStep h_pres h_sound_strict.2
+
+/--
 Lift strict-local packaged soundness into strict-top one-step soundness.
 -/
 theorem native_handler_step_ext_with_mismatch_soundness_strict_top_of_soundness_strict
