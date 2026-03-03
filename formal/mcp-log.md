@@ -24024,3 +24024,45 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - Boundary consumers can now reason in either normal form (`strict ↔ ¬subsumed` or `subsumed ↔ ¬strict`) without propositional rewrites.
+
+### 2026-03-04: progress-gap closure from mismatch soundness + subsumption (including full-route route)
+
+**Context**: Added new closure-route theorems in `Kea/Typing.lean`:
+- `native_handler_progress_gap_closure_of_mismatch_soundness_and_subsumed`
+- `native_handler_progress_gap_closure_of_passThroughMismatch_soundness_and_subsumed`
+- `native_handler_progress_gap_closure_of_full_route_integration_and_subsumed`
+- `native_handler_progress_gap_closure_of_core_soundness_and_strict_top_typing_and_subsumed`
+
+This connects the newer subsumption boundary directly to the earlier `NativeHandlerProgressGapClosure` capstone and the integrated full-route layer.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- Coherent handler should type-check.
+- Mismatch effect-leak handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. Coherent handler (`probe_coherent_20260304bk`) -> `ok`.
+2. Mismatch effect-leak handler (`probe_mismatch_20260304bk`) -> `error`, `E0001`.
+3. Bad resume payload (`probe_bad_resume_20260304bk`) -> `error`, `E0001`.
+4. Out-of-handler resume (`probe_outside_resume_20260304bk`) -> `error`, `E0012`.
+5. Forged-name out-of-handler resume (`probe_forged_resume_ctx_20260304bk`) -> `error`, `E0012`.
+6. Double-resume clause (`probe_double_resume_20260304bk`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept mismatch/subsumption -> progress-gap-closure bridges (generic, pass-through, and integrated-route forms).
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`: theorem names listed in Context above.
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The new subsumption boundary now feeds directly into the existing capstone closure surface, reducing theorem-route friction between boundary analyses and closure bundles.

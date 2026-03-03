@@ -6818,6 +6818,45 @@ theorem native_handler_progress_gap_closure_ext_progress
   h_closure.extSoundness.2
 
 /--
+Build the native progress-gap closure package from mismatch-extended
+soundness, provided mismatch steps are subsumed by extended-native steps.
+-/
+theorem native_handler_progress_gap_closure_of_mismatch_soundness_and_subsumed
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_sound :
+      native_handler_step_ext_with_mismatch_soundness_prop
+        clauseSem mismatchSem bodyStep)
+    (h_subsumed :
+      native_handler_mismatch_steps_subsumed_by_ext_prop
+        clauseSem mismatchSem bodyStep) :
+    NativeHandlerProgressGapClosure clauseSem bodyStep := by
+  exact {
+    legacyProgressFalse := native_handler_step_progress_prop_false clauseSem
+    extSoundness :=
+      native_handler_step_ext_soundness_of_mismatch_soundness_of_subsumed
+        clauseSem mismatchSem bodyStep h_sound h_subsumed
+  }
+
+/--
+Concrete pass-through specialization of
+`native_handler_progress_gap_closure_of_mismatch_soundness_and_subsumed`.
+-/
+theorem native_handler_progress_gap_closure_of_passThroughMismatch_soundness_and_subsumed
+    (clauseSem : NativeHandlerClauseSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_sound :
+      native_handler_step_ext_with_mismatch_soundness_prop
+        clauseSem nativeHandlerMismatchPassThroughSem bodyStep)
+    (h_subsumed :
+      native_handler_mismatch_steps_subsumed_by_ext_prop
+        clauseSem nativeHandlerMismatchPassThroughSem bodyStep) :
+    NativeHandlerProgressGapClosure clauseSem bodyStep := by
+  exact native_handler_progress_gap_closure_of_mismatch_soundness_and_subsumed
+    clauseSem nativeHandlerMismatchPassThroughSem bodyStep h_sound h_subsumed
+
+/--
 Packaged route: mismatch-extension soundness from packaged core soundness plus
 typed-handle metadata coherence.
 -/
@@ -9852,6 +9891,52 @@ theorem native_handler_full_route_integration_capstone
     clauseSem mismatchSem bodyStep h_core
     (native_handler_step_ext_with_mismatch_full_soundness_capstone_route_of_core_soundness_and_strict_top_typing
       clauseSem mismatchSem)
+
+/--
+From a full-route integration capstone, recover a native progress-gap closure
+whenever mismatch steps are subsumed by extended-native steps.
+-/
+theorem native_handler_progress_gap_closure_of_full_route_integration_and_subsumed
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_cap : NativeHandlerFullRouteIntegrationCapstone clauseSem mismatchSem)
+    (h_core : native_core_soundness_prop bodyStep)
+    (h_strict_top : native_handler_strict_top_typing_prop)
+    (h_subsumed :
+      native_handler_mismatch_steps_subsumed_by_ext_prop
+        clauseSem mismatchSem bodyStep) :
+    NativeHandlerProgressGapClosure clauseSem bodyStep := by
+  have h_master :
+      native_handler_step_ext_with_mismatch_master_suite_prop
+        clauseSem mismatchSem bodyStep :=
+    h_cap.master bodyStep h_core
+  have h_sound :
+      native_handler_step_ext_with_mismatch_soundness_prop
+        clauseSem mismatchSem bodyStep :=
+    native_handler_step_ext_with_mismatch_soundness_of_master_suite_and_strict_top_typing
+      clauseSem mismatchSem bodyStep h_master h_strict_top
+  exact native_handler_progress_gap_closure_of_mismatch_soundness_and_subsumed
+    clauseSem mismatchSem bodyStep h_sound h_subsumed
+
+/--
+Canonical route: full-route integration + core soundness + strict-top typing +
+subsumption yields the native progress-gap closure package.
+-/
+theorem native_handler_progress_gap_closure_of_core_soundness_and_strict_top_typing_and_subsumed
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core : native_core_soundness_prop bodyStep)
+    (h_strict_top : native_handler_strict_top_typing_prop)
+    (h_subsumed :
+      native_handler_mismatch_steps_subsumed_by_ext_prop
+        clauseSem mismatchSem bodyStep) :
+    NativeHandlerProgressGapClosure clauseSem bodyStep := by
+  exact native_handler_progress_gap_closure_of_full_route_integration_and_subsumed
+    clauseSem mismatchSem bodyStep
+    (native_handler_full_route_integration_capstone clauseSem mismatchSem)
+    h_core h_strict_top h_subsumed
 
 /--
 Concrete pass-through specialization of the integrated full-route capstone
