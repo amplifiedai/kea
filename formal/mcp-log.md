@@ -17831,3 +17831,41 @@ metadata assumption family.
 - Local consequence surfaces are now complete for both packaged
   `step` and `step+preserves` forms across strict-top/scoped-lift/metadata
   routes.
+
+### 2026-03-03: strict-typing packaged local parity closure
+
+**Context**: Closed the remaining strict-typing packaged local parity gap by
+adding direct `step` and `step+preserves` routes (routed via strict-top).
+
+**MCP tools used**: `reset_session`, `type_check`
+
+**Predict (Lean side)**:
+- Matching strict local handling remains accepted and pure.
+- Resume payload mismatch rejects.
+- Mismatched clauses leak source effect in pure local scope.
+- Out-of-handler resume rejects.
+
+**Probe (Rust side via MCP)**:
+1. Local strict case (`Counter.next() -> resume 9`) -> `ok`, pure local fn.
+2. Local bad resume payload (`resume "oops"`) -> `error`, `E0001`.
+3. Local clause mismatch (`IO.stdout` clause around `Counter` body)
+   -> `error`, purity/effect leak (`Counter` required).
+4. Out-of-handler resume control -> `error`, `E0012`.
+
+**Classify**: Agreement.
+
+**Act**:
+- Kept strict-typing packaged local route additions.
+- Continued checkpoint flow with no model adjustments.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_exists_and_preserves_of_core_soundness_and_strict_typing_packaged`
+  - `native_handler_step_ext_with_mismatch_step_of_core_progress_and_strict_typing_packaged`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Packaged local consequence parity is now complete across strict-typing,
+  strict-top, scoped-lift, and metadata assumption families.
