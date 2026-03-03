@@ -9359,6 +9359,42 @@ theorem erasure_pipeline_completeness_of_effect_compiler_scheduler_correspondenc
       l ∉ eraseCapabilities declared erasable := by
   exact h_corr.correspondence.pipelineCompleteness.erasedDeclaredRemoved
 
+/--
+Named formal statement: tier structure (Tier 1/2/3/4) at a fixed residual
+capability set.
+-/
+theorem formal_statement_tier_structure
+    (yielding blocking residual : List Label) :
+    HandlerTierStructureSlice yielding blocking residual :=
+  handler_tier_structure_slice yielding blocking residual
+
+/--
+Named formal statement: erasure correspondence between declared capabilities,
+erasable capabilities, and the residual set.
+-/
+theorem formal_statement_erasure_correspondence
+    (declared erasable : List Label) :
+    ErasureCorrespondenceSlice declared erasable (eraseCapabilities declared erasable) :=
+  erasure_correspondence_slice declared erasable
+
+/--
+Named formal statement: scheduler classification soundness (`pure` implies no
+blocking residual capability).
+-/
+theorem scheduler_classification_soundness
+    (blocking residual : List Label) :
+    SchedulerClassificationSoundnessSlice blocking residual :=
+  scheduler_classification_soundness_slice blocking residual
+
+/--
+Named formal statement: tier-pipeline erasure completeness (every declared
+erasable capability is removed).
+-/
+theorem tier_pipeline_erasure_completeness
+    (declared erasable : List Label) :
+    ErasurePipelineCompletenessSlice declared erasable :=
+  erasure_pipeline_completeness_slice declared erasable
+
 /-- Declarative field typing is functional on the core slice. -/
 theorem hasFieldsType_unique
     {env : TermEnv} {fs : CoreFields} {row₁ row₂ : RowFields}

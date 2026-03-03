@@ -21846,3 +21846,52 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - The correspondence claim now has a single named top-level object with direct scheduler-soundness and erasure-completeness theorem projections.
+
+### 2026-03-04: added explicit named theorem statements matching correspondence milestone language
+
+**Context**: Added named theorem aliases:
+- `formal_statement_tier_structure`
+- `formal_statement_erasure_correspondence`
+- `scheduler_classification_soundness`
+- `tier_pipeline_erasure_completeness`
+
+These map directly to the requested milestone statements and project the packaged slice theorems without additional unpacking.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent handler should type-check.
+- Mismatched pure handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Codec` + trivial fn -> `ok`.
+2. Coherent handler (`handle ProbeFB.run(); ProbeFB.run() -> resume 341`) -> `ok`.
+3. Mismatched pure handler (`handle ProbeFC.left(); ProbeFD.right() -> resume 0`) -> `error`, `E0001`.
+4. Bad resume payload (`ProbeFE.read() -> resume "bad"`) -> `error`, `E0001`.
+5. Out-of-handler resume (`fn fresh_outside_resume_probe_20260304m() -> Int; resume 38`) -> `error`, `E0012`.
+6. Forged-name out-of-handler resume (`let __kea_resume_ctx = 38; resume 38`) -> `error`, `E0012`.
+7. Double-resume clause (`resume 1` then `resume 2`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the explicit named theorem statements for tier structure / erasure correspondence / scheduler soundness / pipeline completeness.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `formal_statement_tier_structure`
+  - `formal_statement_erasure_correspondence`
+  - `scheduler_classification_soundness`
+  - `tier_pipeline_erasure_completeness`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The exact milestone claims are now available as directly named theorem surfaces in the corpus.
