@@ -6581,6 +6581,47 @@ fn has_named_type_definition(
         || sum_types.and_then(|st| st.lookup(name)).is_some()
 }
 
+/// Check whether `sum_types` contains a user-defined `List a` with `Nil` and
+/// `Cons(a, List a)` variants — the stdlib linked-list shape.  When true, list
+/// literal syntax `[1, 2, 3]` and list patterns `[h, ..t]` should produce
+/// `Type::Sum` rather than the builtin `Type::List`.
+fn has_stdlib_list_sum_type(sum_types: Option<&SumTypeRegistry>) -> bool {
+    let Some(st) = sum_types else { return false };
+    let Some(info) = st.lookup("List") else {
+        return false;
+    };
+    // Must have exactly one type parameter and two variants named Nil and Cons.
+    if info.params.len() != 1 {
+        return false;
+    }
+    let has_nil = info.variants.iter().any(|v| v.name == "Nil" && v.fields.is_empty());
+    let has_cons = info.variants.iter().any(|v| v.name == "Cons" && v.fields.len() == 2);
+    has_nil && has_cons
+}
+
+/// Build a `Type::Sum(List elem_ty)` from the stdlib List definition.
+fn make_stdlib_list_type(elem_ty: Type, sum_types: &SumTypeRegistry) -> Type {
+    let info = sum_types.lookup("List").expect("stdlib List must exist");
+    let type_args = vec![elem_ty.clone()];
+    let variants = info
+        .variants
+        .iter()
+        .map(|v| {
+            let fields = v
+                .fields
+                .iter()
+                .map(|field| substitute_params(&field.ty, &info.params, &type_args))
+                .collect();
+            (v.name.clone(), fields)
+        })
+        .collect();
+    Type::Sum(SumType {
+        name: "List".to_string(),
+        type_args,
+        variants,
+    })
+}
+
 fn named_type_param_arity(
     name: &str,
     records: &RecordRegistry,
@@ -11158,17 +11199,23 @@ fn infer_expr_bidir(
 
         // -- List --
         ExprKind::List(elems) => {
-            if elems.is_empty() {
-                let elem_ty = unifier.fresh_type();
-                Type::List(Box::new(elem_ty))
+            let elem_ty = if elems.is_empty() {
+                unifier.fresh_type()
             } else {
                 let first_ty =
                     infer_expr_bidir(&elems[0], env, unifier, records, traits, sum_types);
                 for elem in &elems[1..] {
-                    let elem_ty = infer_expr_bidir(elem, env, unifier, records, traits, sum_types);
-                    constrain_type_eq(unifier, &first_ty, &elem_ty, &prov(Reason::LetAnnotation));
+                    let et = infer_expr_bidir(elem, env, unifier, records, traits, sum_types);
+                    constrain_type_eq(unifier, &first_ty, &et, &prov(Reason::LetAnnotation));
                 }
-                Type::List(Box::new(first_ty))
+                first_ty
+            };
+            // When the stdlib defines `enum List a` with Nil/Cons, produce
+            // Type::Sum so list literals unify with stdlib List functions.
+            if has_stdlib_list_sum_type(Some(sum_types)) {
+                make_stdlib_list_type(elem_ty, sum_types)
+            } else {
+                Type::List(Box::new(elem_ty))
             }
         }
 
@@ -14464,17 +14511,23 @@ fn constrain_case_pattern_shape(
         }
         PatternKind::List { elements, rest } => {
             let elem_ty = unifier.fresh_type();
-            constrain_type_eq(
-                unifier,
-                &Type::List(Box::new(elem_ty.clone())),
-                expected_ty,
-                &prov,
-            );
+            // When stdlib List is in scope, constrain against Type::Sum(List ...)
+            // so patterns unify with stdlib List values.
+            let list_ty = if has_stdlib_list_sum_type(Some(sum_types)) {
+                make_stdlib_list_type(elem_ty.clone(), sum_types)
+            } else {
+                Type::List(Box::new(elem_ty.clone()))
+            };
+            constrain_type_eq(unifier, &list_ty, expected_ty, &prov);
             for elem in elements {
                 constrain_case_pattern_shape(elem, &elem_ty, unifier, sum_types);
             }
             if let Some(rest_pat) = rest {
-                let rest_ty = Type::List(Box::new(elem_ty));
+                let rest_ty = if has_stdlib_list_sum_type(Some(sum_types)) {
+                    make_stdlib_list_type(elem_ty, sum_types)
+                } else {
+                    Type::List(Box::new(elem_ty))
+                };
                 constrain_case_pattern_shape(rest_pat, &rest_ty, unifier, sum_types);
             }
         }
@@ -15216,13 +15269,21 @@ fn infer_pattern(
 
         PatternKind::List { elements, rest } => {
             let elem_ty = unifier.fresh_type();
-            let list_ty = Type::List(Box::new(elem_ty.clone()));
+            let list_ty = if has_stdlib_list_sum_type(Some(sum_types)) {
+                make_stdlib_list_type(elem_ty.clone(), sum_types)
+            } else {
+                Type::List(Box::new(elem_ty.clone()))
+            };
             constrain_type_eq(unifier, &list_ty, expected_ty, &prov);
             for elem_pat in elements {
                 infer_pattern(elem_pat, &elem_ty, env, unifier, records, sum_types);
             }
             if let Some(rest_pat) = rest {
-                let rest_ty = Type::List(Box::new(elem_ty));
+                let rest_ty = if has_stdlib_list_sum_type(Some(sum_types)) {
+                    make_stdlib_list_type(elem_ty, sum_types)
+                } else {
+                    Type::List(Box::new(elem_ty))
+                };
                 infer_pattern(rest_pat, &rest_ty, env, unifier, records, sum_types);
             }
         }

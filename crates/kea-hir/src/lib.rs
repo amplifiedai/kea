@@ -2078,6 +2078,35 @@ fn lower_expr(expr: &Expr, ty_hint: Option<Type>, ctx: &LowerCtx) -> HirExpr {
         ExprKind::Resume { value } => HirExprKind::Resume {
             value: Box::new(lower_expr(value, None, ctx)),
         },
+        ExprKind::List(items) => {
+            // When stdlib List is in scope (Nil/Cons registered), desugar
+            // [a, b, c] → Cons(a, Cons(b, Cons(c, Nil))) as SumConstructor nodes.
+            let nil_tag = ctx.unit_variant_tags.get("Nil");
+            let cons_meta = ctx.pattern_variant_tags.get("Cons");
+            if let (Some(&nil_tag), Some(cons_meta)) = (nil_tag, cons_meta) {
+                // Build from right to left: start with Nil, wrap each element in Cons
+                let nil_expr = HirExpr {
+                    kind: HirExprKind::Lit(Lit::Int(nil_tag)),
+                    ty: Type::Int,
+                    span: expr.span,
+                };
+                items.iter().rev().fold(nil_expr, |acc, item| {
+                    let lowered_item = lower_expr(item, None, ctx);
+                    HirExpr {
+                        kind: HirExprKind::SumConstructor {
+                            sum_type: cons_meta.sum_type.clone(),
+                            variant: "Cons".to_string(),
+                            tag: cons_meta.tag,
+                            fields: vec![lowered_item, acc],
+                        },
+                        ty: default_ty.clone(),
+                        span: expr.span,
+                    }
+                }).kind
+            } else {
+                HirExprKind::Raw(expr.node.clone())
+            }
+        }
         other => HirExprKind::Raw(other.clone()),
     };
 

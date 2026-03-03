@@ -813,6 +813,63 @@ fn compile_and_execute_real_stdlib_list_module_exit_code() {
 }
 
 #[test]
+fn compile_and_execute_list_literal_with_stdlib_list_exit_code() {
+    let project_dir = temp_workspace_project_dir("kea-cli-project-list-literal-stdlib");
+    let src_dir = project_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+
+    let app_path = src_dir.join("app.kea");
+    std::fs::write(
+            &app_path,
+            "use List\n\nfn main() -> Int\n  let xs = [10, 20, 30]\n  List.length(xs)\n",
+        )
+            .expect("app module write should succeed");
+
+    let run = run_file(&app_path).expect("run should succeed");
+    assert_eq!(run.exit_code, 3);
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
+fn compile_and_execute_list_literal_with_pattern_match_exit_code() {
+    let project_dir = temp_workspace_project_dir("kea-cli-project-list-literal-pattern");
+    let src_dir = project_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+
+    let app_path = src_dir.join("app.kea");
+    std::fs::write(
+            &app_path,
+            "use List\n\nfn head_or_zero(xs: List Int) -> Int\n  case xs\n    Cons(h, _) -> h\n    Nil -> 0\n\nfn main() -> Int\n  let xs = [10, 20, 30]\n  head_or_zero(xs)\n",
+        )
+            .expect("app module write should succeed");
+
+    let run = run_file(&app_path).expect("run should succeed");
+    assert_eq!(run.exit_code, 10);
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
+fn compile_and_execute_empty_list_literal_with_stdlib_list_exit_code() {
+    let project_dir = temp_workspace_project_dir("kea-cli-project-empty-list-literal");
+    let src_dir = project_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+
+    let app_path = src_dir.join("app.kea");
+    std::fs::write(
+            &app_path,
+            "use List\n\nfn main() -> Int\n  let xs: List Int = []\n  List.length(xs)\n",
+        )
+            .expect("app module write should succeed");
+
+    let run = run_file(&app_path).expect("run should succeed");
+    assert_eq!(run.exit_code, 0);
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
 fn compile_and_execute_generic_list_enum_exit_code() {
     let project_dir = temp_project_dir("kea-cli-generic-list-enum");
     let src_dir = project_dir.join("src");
