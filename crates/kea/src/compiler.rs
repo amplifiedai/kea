@@ -3775,6 +3775,14 @@ fn hir_callable_name(func: &HirExpr) -> Option<String> {
     }
 }
 
+fn local_binding_lookup_key(name: &str) -> &str {
+    // HIR can carry monomorphized helper suffixes (for example
+    // `name$m0$Dyn`) on locally-bound callable values. Local binding scopes
+    // are source-named, so normalize to the source prefix before shadowing
+    // checks.
+    name.split('$').next().unwrap_or(name)
+}
+
 fn hir_call_safe_unique_handoff_arg_index(
     func: &HirExpr,
     args: &[HirExpr],
@@ -3786,7 +3794,7 @@ fn hir_call_safe_unique_handoff_arg_index(
         return None;
     }
     if let Some(root) = hir_callable_root_name(func)
-        && local_bindings.contains(&root)
+        && local_bindings.contains(local_binding_lookup_key(&root))
     {
         return None;
     }
@@ -3832,7 +3840,7 @@ fn hir_call_safe_unique_handoff_arg_index_from_spec(
     }
     let forwarder_expr = &args[spec.forwarder_arg_index];
     if let Some(root) = hir_callable_root_name(forwarder_expr)
-        && local_bindings.contains(&root)
+        && local_bindings.contains(local_binding_lookup_key(&root))
     {
         return None;
     }
