@@ -2615,6 +2615,13 @@ impl Parser {
             return Some(Spanned::new(ExprKind::Lit(Lit::String(s)), start));
         }
 
+        // Char literal
+        if let Some(TokenKind::Char(c)) = self.peek_kind() {
+            let c = *c;
+            self.advance();
+            return Some(Spanned::new(ExprKind::Lit(Lit::Char(c)), start));
+        }
+
         // String interpolation
         if let Some(TokenKind::StringInterp(parts)) = self.peek_kind() {
             let parts = parts.clone();
@@ -3585,6 +3592,11 @@ impl Parser {
             let f = *f;
             self.advance();
             return Some(Spanned::new(PatternKind::Lit(Lit::Float(f)), start));
+        }
+        if let Some(TokenKind::Char(c)) = self.peek_kind() {
+            let c = *c;
+            self.advance();
+            return Some(Spanned::new(PatternKind::Lit(Lit::Char(c)), start));
         }
         if let Some(TokenKind::String(s)) = self.peek_kind() {
             let s = s.clone();

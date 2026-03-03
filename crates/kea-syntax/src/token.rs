@@ -72,6 +72,7 @@ pub enum TokenKind {
     // -- Literals --
     Int(i64),
     Float(f64),
+    Char(char),
     String(String),
     /// String with interpolation: `"hello {name}"`.
     StringInterp(Vec<StringPart>),

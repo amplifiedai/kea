@@ -870,6 +870,30 @@ fn compile_and_execute_empty_list_literal_with_stdlib_list_exit_code() {
 }
 
 #[test]
+fn compile_and_execute_char_literal_exit_code() {
+    let source_path = write_temp_source(
+        "fn main() -> Int\n  let c = 'A'\n  65\n",
+        "kea-cli-char-lit",
+        "kea",
+    );
+    let run = run_file(&source_path).expect("run should succeed");
+    assert_eq!(run.exit_code, 65);
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_and_execute_char_escape_newline_exit_code() {
+    let source_path = write_temp_source(
+        "fn main() -> Int\n  let c = '\\n'\n  10\n",
+        "kea-cli-char-escape",
+        "kea",
+    );
+    let run = run_file(&source_path).expect("run should succeed");
+    assert_eq!(run.exit_code, 10);
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
 fn compile_and_execute_generic_list_enum_exit_code() {
     let project_dir = temp_project_dir("kea-cli-generic-list-enum");
     let src_dir = project_dir.join("src");

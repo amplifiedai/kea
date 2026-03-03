@@ -79,6 +79,7 @@ pub enum Lit {
     Int(i64),
     Float(f64),
     Bool(bool),
+    Char(char),
     String(String),
     Unit,
 }

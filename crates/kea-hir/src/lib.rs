@@ -2114,6 +2114,7 @@ fn lower_expr(expr: &Expr, ty_hint: Option<Type>, ctx: &LowerCtx) -> HirExpr {
         ExprKind::Lit(Lit::Int(_)) => Type::Int,
         ExprKind::Lit(Lit::Float(_)) => Type::Float,
         ExprKind::Lit(Lit::Bool(_)) => Type::Bool,
+        ExprKind::Lit(Lit::Char(_)) => Type::Char,
         ExprKind::Lit(Lit::String(_)) => Type::String,
         ExprKind::Lit(Lit::Unit) => Type::Unit,
         ExprKind::None if ctx.unit_variant_tags.contains_key("None") => Type::Int,

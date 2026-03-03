@@ -35,6 +35,10 @@ fn lit_bool(b: bool) -> Expr {
     sp(ExprKind::Lit(Lit::Bool(b)))
 }
 
+fn lit_char(c: char) -> Expr {
+    sp(ExprKind::Lit(Lit::Char(c)))
+}
+
 fn lit_str(s_val: &str) -> Expr {
     sp(ExprKind::Lit(Lit::String(s_val.to_string())))
 }
@@ -13563,5 +13567,12 @@ fn dynamic_param_call_accepts_negative_literal_argument() {
         "unexpected diagnostics for dynamic-parameter call: {:?}",
         ctx.errors()
     );
+}
+
+#[test]
+fn infer_char_literal() {
+    let (ty, u) = infer(&lit_char('A'));
+    assert!(!u.has_errors());
+    assert_eq!(ty, Type::Char);
 }
 

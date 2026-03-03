@@ -125,6 +125,7 @@ pub enum Type {
         scale: Dim,
     },
     Bool,
+    Char,
     String,
     Html,
     Markdown,
@@ -540,6 +541,7 @@ impl fmt::Display for Type {
             },
             Type::Decimal { precision, scale } => write!(f, "Decimal({precision}, {scale})"),
             Type::Bool => write!(f, "Bool"),
+            Type::Char => write!(f, "Char"),
             Type::String => write!(f, "String"),
             Type::Html => write!(f, "Html"),
             Type::Markdown => write!(f, "Markdown"),
@@ -937,6 +939,7 @@ fn collect_free_type_vars(ty: &Type, vars: &mut BTreeSet<TypeVarId>) {
         | Type::FloatN(_)
         | Type::Decimal { .. }
         | Type::Bool
+        | Type::Char
         | Type::String
         | Type::Html
         | Type::Markdown
@@ -1049,6 +1052,7 @@ fn collect_free_row_vars(ty: &Type, vars: &mut BTreeSet<RowVarId>) {
         | Type::FloatN(_)
         | Type::Decimal { .. }
         | Type::Bool
+        | Type::Char
         | Type::String
         | Type::Html
         | Type::Markdown
@@ -1182,6 +1186,7 @@ fn collect_free_dim_vars(ty: &Type, vars: &mut BTreeSet<DimVarId>) {
         | Type::Float
         | Type::FloatN(_)
         | Type::Bool
+        | Type::Char
         | Type::String
         | Type::Html
         | Type::Markdown
@@ -1417,6 +1422,7 @@ pub fn type_constructor_for_trait(ty: &Type) -> Option<(String, Vec<Type>)> {
         Type::FloatN(FloatWidth::F64) => Some(("Float64".into(), vec![])),
         Type::Decimal { .. } => Some(("Decimal".into(), vec![])),
         Type::Bool => Some(("Bool".into(), vec![])),
+        Type::Char => Some(("Char".into(), vec![])),
         Type::String => Some(("String".into(), vec![])),
         Type::Html => Some(("Html".into(), vec![])),
         Type::Markdown => Some(("Markdown".into(), vec![])),
@@ -1544,6 +1550,7 @@ pub fn rebuild_type(constructor: &str, args: &[Type]) -> Option<Type> {
         "Float32" if args.is_empty() => Type::FloatN(FloatWidth::F32),
         "Float64" if args.is_empty() => Type::FloatN(FloatWidth::F64),
         "Bool" if args.is_empty() => Type::Bool,
+        "Char" if args.is_empty() => Type::Char,
         "String" if args.is_empty() => Type::String,
         "Html" if args.is_empty() => Type::Html,
         "Markdown" if args.is_empty() => Type::Markdown,
@@ -1587,6 +1594,7 @@ pub fn is_sendable(ty: &Type) -> bool {
         | Type::FloatN(_)
         | Type::Decimal { .. }
         | Type::Bool
+        | Type::Char
         | Type::String
         | Type::Html
         | Type::Markdown
@@ -1813,6 +1821,7 @@ fn sendable_violation_inner(ty: &Type, path: &str) -> Option<SendableViolation> 
         | Type::FloatN(_)
         | Type::Decimal { .. }
         | Type::Bool
+        | Type::Char
         | Type::String
         | Type::Html
         | Type::Markdown
@@ -2218,6 +2227,7 @@ impl Substitution {
             | Type::Float
             | Type::FloatN(_)
             | Type::Bool
+            | Type::Char
             | Type::String
             | Type::Html
             | Type::Markdown

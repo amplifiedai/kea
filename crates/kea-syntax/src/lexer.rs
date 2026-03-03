@@ -543,6 +543,9 @@ impl<'src> Lexer<'src> {
                 }
             }
 
+            // Character literals
+            b'\'' => self.scan_char_literal(start),
+
             // Numbers
             b'0'..=b'9' => self.scan_number(start),
 
@@ -937,6 +940,100 @@ impl<'src> Lexer<'src> {
                 .to_string();
             self.emit(TokenKind::DocBody(content), body_start, self.pos);
         }
+    }
+
+    fn scan_char_literal(&mut self, start: usize) {
+        if self.is_at_end() {
+            self.error(start, "unterminated character literal");
+            return;
+        }
+        let ch = self.advance();
+        let c = match ch {
+            b'\\' => {
+                if self.is_at_end() {
+                    self.error(start, "unterminated character literal");
+                    return;
+                }
+                let esc = self.advance();
+                match esc {
+                    b'n' => '\n',
+                    b't' => '\t',
+                    b'r' => '\r',
+                    b'\\' => '\\',
+                    b'\'' => '\'',
+                    b'0' => '\0',
+                    b'u' => {
+                        if self.peek() != Some(b'{') {
+                            self.error(start, "expected '{' after \\u in character literal");
+                            return;
+                        }
+                        self.advance(); // consume '{'
+                        let hex_start = self.pos;
+                        while !self.is_at_end() && self.peek() != Some(b'}') {
+                            self.advance();
+                        }
+                        if self.is_at_end() {
+                            self.error(start, "unterminated unicode escape in character literal");
+                            return;
+                        }
+                        let hex = std::str::from_utf8(&self.source[hex_start..self.pos])
+                            .unwrap_or("");
+                        self.advance(); // consume '}'
+                        match u32::from_str_radix(hex, 16) {
+                            Ok(val) => match char::from_u32(val) {
+                                Some(c) => c,
+                                None => {
+                                    self.error(
+                                        start,
+                                        format!("invalid unicode scalar value: \\u{{{hex}}}"),
+                                    );
+                                    return;
+                                }
+                            },
+                            Err(_) => {
+                                self.error(
+                                    start,
+                                    format!("invalid hex in unicode escape: \\u{{{hex}}}"),
+                                );
+                                return;
+                            }
+                        }
+                    }
+                    _ => {
+                        self.error(
+                            self.pos - 1,
+                            format!("unknown escape sequence '\\{}'", esc as char),
+                        );
+                        return;
+                    }
+                }
+            }
+            b'\'' => {
+                self.error(start, "empty character literal");
+                return;
+            }
+            _ => {
+                // UTF-8 multi-byte: decode from the current byte
+                let remaining = &self.source[self.pos - 1..];
+                match std::str::from_utf8(remaining) {
+                    Ok(s) => {
+                        let c = s.chars().next().unwrap();
+                        // Advance past the remaining bytes of this character
+                        self.pos += c.len_utf8() - 1;
+                        c
+                    }
+                    Err(_) => {
+                        self.error(start, "invalid UTF-8 in character literal");
+                        return;
+                    }
+                }
+            }
+        };
+        if self.is_at_end() || self.advance() != b'\'' {
+            self.error(start, "unterminated character literal (expected closing ')");
+            return;
+        }
+        self.emit(TokenKind::Char(c), start, self.pos);
     }
 
     fn scan_number(&mut self, start: usize) {

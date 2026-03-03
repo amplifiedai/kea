@@ -4540,6 +4540,7 @@ fn instantiate_impl_type(
         | Type::Float
         | Type::FloatN(_)
         | Type::Bool
+        | Type::Char
         | Type::String
         | Type::Html
         | Type::Markdown
@@ -4825,6 +4826,7 @@ fn is_builtin_type_name(name: &str) -> bool {
             | "Float64"
             | "Decimal"
             | "Bool"
+            | "Char"
             | "String"
             | "Unit"
             | "Dynamic"
@@ -4869,6 +4871,7 @@ fn impl_self_type_hint(type_name: &str) -> Type {
         "Float32" => Type::FloatN(kea_types::FloatWidth::F32),
         "Float64" => Type::FloatN(kea_types::FloatWidth::F64),
         "Bool" => Type::Bool,
+        "Char" => Type::Char,
         "String" => Type::String,
         "Unit" => Type::Unit,
         "Date" => Type::Date,
@@ -5739,6 +5742,7 @@ fn literal_matches_type_annotation(expr: &Expr, ann: &kea_ast::TypeAnnotation) -
             Some(name == "String")
         }
         (ExprKind::Lit(Lit::Bool(_)), kea_ast::TypeAnnotation::Named(name)) => Some(name == "Bool"),
+        (ExprKind::Lit(Lit::Char(_)), kea_ast::TypeAnnotation::Named(name)) => Some(name == "Char"),
         (ExprKind::None, kea_ast::TypeAnnotation::Optional(_)) => Some(true),
         _ => None,
     }
@@ -6301,6 +6305,7 @@ fn rename_type(
         | Type::Float
         | Type::FloatN(_)
         | Type::Bool
+        | Type::Char
         | Type::String
         | Type::Html
         | Type::Markdown
@@ -7024,6 +7029,7 @@ pub fn resolve_annotation(
             "Float32" => Some(Type::FloatN(kea_types::FloatWidth::F32)),
             "Float64" => Some(Type::FloatN(kea_types::FloatWidth::F64)),
             "Bool" => Some(Type::Bool),
+            "Char" => Some(Type::Char),
             "String" => Some(Type::String),
             "Html" => Some(Type::Html),
             "Markdown" => Some(Type::Markdown),
@@ -10444,6 +10450,7 @@ fn infer_expr_bidir(
             Lit::Int(_) => Type::Int,
             Lit::Float(_) => Type::Float,
             Lit::Bool(_) => Type::Bool,
+            Lit::Char(_) => Type::Char,
             Lit::String(_) => Type::String,
             Lit::Unit => Type::Unit,
         },
@@ -14396,6 +14403,7 @@ fn constrain_case_pattern_shape(
                 Lit::Int(_) => Type::Int,
                 Lit::Float(_) => Type::Float,
                 Lit::Bool(_) => Type::Bool,
+                Lit::Char(_) => Type::Char,
                 Lit::String(_) => Type::String,
                 Lit::Unit => Type::Unit,
             };
@@ -14659,6 +14667,7 @@ fn infer_pattern(
                 Lit::Int(_) => Type::Int,
                 Lit::Float(_) => Type::Float,
                 Lit::Bool(_) => Type::Bool,
+                Lit::Char(_) => Type::Char,
                 Lit::String(_) => Type::String,
                 Lit::Unit => Type::Unit,
             };

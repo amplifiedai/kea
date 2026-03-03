@@ -303,6 +303,7 @@ pub enum MirLiteral {
     Int(i64),
     Float(f64),
     Bool(bool),
+    Char(char),
     String(String),
     Unit,
 }
@@ -7521,6 +7522,7 @@ fn lower_literal(lit: &kea_ast::Lit) -> MirLiteral {
         kea_ast::Lit::Int(value) => MirLiteral::Int(*value),
         kea_ast::Lit::Float(value) => MirLiteral::Float(*value),
         kea_ast::Lit::Bool(value) => MirLiteral::Bool(*value),
+        kea_ast::Lit::Char(value) => MirLiteral::Char(*value),
         kea_ast::Lit::String(value) => MirLiteral::String(value.clone()),
         kea_ast::Lit::Unit => MirLiteral::Unit,
     }

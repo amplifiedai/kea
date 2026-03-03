@@ -1395,6 +1395,7 @@ fn clif_type(ty: &Type) -> Result<cranelift::prelude::Type, CodegenError> {
         Type::Float => Ok(types::F64),
         Type::FloatN(width) => clif_float_type(*width),
         Type::Bool => Ok(types::I8),
+        Type::Char => Ok(types::I32),
         Type::Unit => Ok(types::I8),
         Type::Never => Ok(types::I64),
         Type::String => Ok(types::I64),
@@ -1854,6 +1855,7 @@ fn infer_mir_value_types(
                         MirLiteral::Int(_) => Type::Int,
                         MirLiteral::Float(_) => Type::Float,
                         MirLiteral::Bool(_) => Type::Bool,
+                        MirLiteral::Char(_) => Type::Char,
                         MirLiteral::String(_) => Type::String,
                         MirLiteral::Unit => Type::Unit,
                     };
@@ -4447,6 +4449,7 @@ fn lower_literal(
         MirLiteral::Int(value) => Ok(builder.ins().iconst(types::I64, *value)),
         MirLiteral::Float(value) => Ok(builder.ins().f64const(*value)),
         MirLiteral::Bool(value) => Ok(builder.ins().iconst(types::I8, if *value { 1 } else { 0 })),
+        MirLiteral::Char(value) => Ok(builder.ins().iconst(types::I32, *value as i64)),
         MirLiteral::Unit => Ok(builder.ins().iconst(types::I8, 0)),
         MirLiteral::String(_) => Err(CodegenError::UnsupportedMir {
             function: function_name.to_string(),
