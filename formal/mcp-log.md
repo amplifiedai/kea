@@ -24193,3 +24193,36 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - The corpus now carries a direct theorem-level “current linearity bridge is not implied by native handle typing” boundary claim, suitable as a concrete target for future strengthened judgments.
+
+### 2026-03-04: **DIVERGENCE** — native scoped handle typing accepts double-resume clause shape rejected by MCP
+
+**Context**: While extending the linearity boundary statements in `Kea/Typing.lean`, Lean now has explicit witnesses:
+- `hasTypeScopedTop_handle_with_doubleResume_clause`
+- `hasTypeScopedTop_handle_does_not_imply_clause_resumeSummary_atMostOnce`
+- `native_handler_clause_resumeSummary_linearity_false`
+
+These assert that the current native scoped typing model accepts a top-level `handle` whose clause body has two `resume` sites.
+
+**Probe (Rust side via MCP)**:
+- `probe_double_resume_let_20260304bo`:
+  ```kea
+  effect Ping
+    fn ask() -> Int
+
+  fn run() -[Ping]> Int
+    Ping.ask()
+
+  fn probe_double_resume_let_20260304bo() -> Int
+    handle run()
+      Ping.ask() ->
+        let x = resume 1
+        resume 2
+  ```
+  Result: `error`, `E0012`, message `handler clause may resume at most once`.
+
+**Classify**: **Divergence (critical)**.
+
+Lean typing model and MCP typing behavior disagree on whether double-resume clause bodies are typable.
+
+**Status**:
+- Stopping forward formal expansion here pending user direction, per divergence protocol.
