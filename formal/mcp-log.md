@@ -20939,3 +20939,51 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - Strict-handle/strict-top soundness-to-progress reductions are now directly consumable from the standard body-preservation premise.
+
+### 2026-03-04: added unified body-preservation reduction capstone across strict-handle/strict-top/full layers
+
+**Context**: Added a single packaged reduction capstone:
+- `native_handler_step_ext_with_mismatch_body_preservation_reduction_capstone_prop`
+- `native_handler_step_ext_with_mismatch_body_preservation_reduction_capstone`
+
+This bundles three `h_body_pres`-based reductions in one object:
+1. strict-handle soundness ↔ strict-handle progress,
+2. strict-top soundness ↔ strict-top progress,
+3. full soundness ↔ full progress.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent handler should type-check.
+- Mismatched pure handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Collections` + trivial fn -> `ok`.
+2. Coherent handler (`ProbeBD.call() -> resume 141`) -> `ok`.
+3. Mismatched pure handler (`handle ProbeBE.left()` with only `ProbeBF.right`) -> `error`, `E0001`.
+4. Bad resume payload (`ProbeBG.read() -> resume true`) -> `error`, `E0001`.
+5. Out-of-handler resume (`fn outside_resume_probe11() -> Int; resume 18`) -> `error`, `E0012`.
+6. Forged-name out-of-handler resume (`let __kea_resume_ctx = 18; resume 18`) -> `error`, `E0012`.
+7. Double-resume clause (`resume 1` then `resume 2`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the unified body-preservation reduction capstone.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_body_preservation_reduction_capstone_prop`
+  - `native_handler_step_ext_with_mismatch_body_preservation_reduction_capstone`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The strict/full soundness-to-progress reduction story is now one-hop consumable from a single `h_body_pres` capstone theorem.

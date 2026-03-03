@@ -4367,6 +4367,56 @@ theorem native_handler_step_ext_with_mismatch_soundness_prop_iff_progress_prop_o
       clauseSem mismatchSem bodyStep h_body_pres)
 
 /--
+One-hop unified strict/full reduction capstone under body preservation.
+
+This packages all key soundness↔progress reductions (strict-handle,
+strict-top, and full) behind the same `h_body_pres` hypothesis.
+-/
+def native_handler_step_ext_with_mismatch_body_preservation_reduction_capstone_prop
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) : Prop :=
+  (native_handler_step_ext_with_mismatch_soundness_strict_handle_prop
+    clauseSem mismatchSem bodyStep
+      ↔
+   native_handler_step_ext_with_mismatch_progress_strict_prop
+    clauseSem mismatchSem bodyStep)
+  ∧
+  (native_handler_step_ext_with_mismatch_soundness_strict_top_prop
+    clauseSem mismatchSem bodyStep
+      ↔
+   native_handler_step_ext_with_mismatch_progress_strict_top_prop
+    clauseSem mismatchSem bodyStep)
+  ∧
+  (native_handler_step_ext_with_mismatch_soundness_prop
+    clauseSem mismatchSem bodyStep
+      ↔
+   native_handler_step_ext_with_mismatch_progress_prop
+    clauseSem mismatchSem bodyStep)
+
+/--
+Construct the unified strict/full reduction capstone from body preservation.
+-/
+theorem native_handler_step_ext_with_mismatch_body_preservation_reduction_capstone
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_body_pres :
+      ∀ env body body' ty,
+        HasTypeScopedTop env body ty →
+        bodyStep body body' →
+        HasTypeScopedTop env body' ty) :
+    native_handler_step_ext_with_mismatch_body_preservation_reduction_capstone_prop
+      clauseSem mismatchSem bodyStep := by
+  refine ⟨?_, ?_, ?_⟩
+  · exact native_handler_step_ext_with_mismatch_soundness_strict_handle_prop_iff_progress_strict_prop_of_body_preservation
+      clauseSem mismatchSem bodyStep h_body_pres
+  · exact native_handler_step_ext_with_mismatch_soundness_strict_top_prop_iff_progress_strict_top_prop_of_body_preservation
+      clauseSem mismatchSem bodyStep h_body_pres
+  · exact native_handler_step_ext_with_mismatch_soundness_prop_iff_progress_prop_of_body_preservation
+      clauseSem mismatchSem bodyStep h_body_pres
+
+/--
 Generic local consequence of packaged mismatch soundness:
 typed handles take one mismatch-extension step.
 -/
