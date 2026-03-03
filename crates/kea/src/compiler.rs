@@ -3385,14 +3385,23 @@ fn matches_higher_order_forwarder_body(
 
                         match &item.kind {
                             HirExprKind::Let { pattern, value }
-                                if matches!(pattern, kea_hir::HirPattern::Var(_))
-                                    && matches_result_alias_shape(value, &result_aliases) =>
+                                if matches!(pattern, kea_hir::HirPattern::Var(_)) =>
                             {
-                                let binding_name = match pattern {
-                                    kea_hir::HirPattern::Var(name) => name,
-                                    _ => unreachable!("guarded by match"),
-                                };
-                                result_aliases.insert(binding_name.to_string());
+                                if matches_result_alias_shape(value, &result_aliases) {
+                                    let binding_name = match pattern {
+                                        kea_hir::HirPattern::Var(name) => name,
+                                        _ => unreachable!("guarded by match"),
+                                    };
+                                    result_aliases.insert(binding_name.to_string());
+                                    continue;
+                                }
+                                // Benign call-free lets that do not participate in
+                                // result alias shaping are allowed after the single
+                                // forward handoff.
+                                if !contains_call(value) {
+                                    continue;
+                                }
+                                return false;
                             }
                             _ => return false,
                         }
@@ -3472,15 +3481,22 @@ fn matches_higher_order_forwarder_body(
 
                     match &item.kind {
                         HirExprKind::Let { pattern, value }
-                            if matches!(pattern, kea_hir::HirPattern::Var(_))
-                                && matches_result_alias_shape(value, result_aliases) =>
+                            if matches!(pattern, kea_hir::HirPattern::Var(_)) =>
                         {
-                            let binding_name = match pattern {
-                                kea_hir::HirPattern::Var(name) => name,
-                                _ => unreachable!("guarded by match"),
-                            };
-                            result_aliases.insert(binding_name.to_string());
-                            continue;
+                            if matches_result_alias_shape(value, result_aliases) {
+                                let binding_name = match pattern {
+                                    kea_hir::HirPattern::Var(name) => name,
+                                    _ => unreachable!("guarded by match"),
+                                };
+                                result_aliases.insert(binding_name.to_string());
+                                continue;
+                            }
+                            // Benign call-free lets are allowed after forward-call
+                            // result shaping as long as they introduce no calls.
+                            if !contains_call(value) {
+                                continue;
+                            }
+                            return false;
                         }
                         _ => return false,
                     }
