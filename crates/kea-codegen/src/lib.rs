@@ -1001,7 +1001,16 @@ fn compile_into_module<M: Module>(
                 }
 
                 let tail_self_call = detect_tail_self_call(function, block);
-                let instruction_count = if tail_self_call.is_some() {
+                let lower_tail_self_call = tail_self_call
+                    .as_ref()
+                    .is_some_and(|tail_call| {
+                        !tail_self_call_references_stack_values(
+                            tail_call,
+                            &stack_record_release_elision_values,
+                            &stack_sum_release_elision_values,
+                        )
+                    });
+                let instruction_count = if lower_tail_self_call {
                     block.instructions.len().saturating_sub(1)
                 } else {
                     block.instructions.len()
@@ -1038,11 +1047,15 @@ fn compile_into_module<M: Module>(
                 if !block_terminated {
                     let terminator_ctx = LowerTerminatorCtx {
                         function_name: &function.name,
-                        function,
                         current_runtime_sig,
                         values: &values,
                         block_map: &block_map,
                         func_ids: &func_ids,
+                        tail_self_call: if lower_tail_self_call {
+                            tail_self_call.clone()
+                        } else {
+                            None
+                        },
                     };
                     lower_terminator(module, &mut builder, block, &terminator_ctx, &mut runtime_imports)?;
                 }
@@ -2131,6 +2144,11 @@ fn collect_non_escaping_record_aliases(
     while changed {
         changed = false;
         for block in &function.blocks {
+            let block_tail_self_call = if function.signature.ret == Type::Unit {
+                detect_tail_self_call(function, block)
+            } else {
+                None
+            };
             for inst in &block.instructions {
                 let alias_dest = match inst {
                     MirInst::Move { dest, src }
@@ -2156,11 +2174,23 @@ fn collect_non_escaping_record_aliases(
                     }
                 }
             }
+            if let Some(tail_self_call) = &block_tail_self_call {
+                for (idx, arg) in tail_self_call.args.iter().enumerate() {
+                    if aliases.contains(arg) {
+                        changed |= aliases.insert(MirValueId(idx as u32));
+                    }
+                }
+            }
         }
     }
 
     for block in &function.blocks {
-        for inst in &block.instructions {
+        let block_tail_self_call = if function.signature.ret == Type::Unit {
+            detect_tail_self_call(function, block)
+        } else {
+            None
+        };
+        for (inst_idx, inst) in block.instructions.iter().enumerate() {
             match inst {
                 MirInst::RecordFieldLoad { record, .. } if aliases.contains(record) => {}
                 MirInst::Move { src, .. }
@@ -2168,6 +2198,16 @@ fn collect_non_escaping_record_aliases(
                 | MirInst::TryClaim { src, .. }
                 | MirInst::Freeze { src, .. }
                     if aliases.contains(src) => {}
+                MirInst::Call {
+                    callee: MirCallee::Local(callee_name),
+                    args,
+                    result: None,
+                    ..
+                } if callee_name == &function.name
+                    && function.signature.ret == Type::Unit
+                    && inst_idx + 1 == block.instructions.len()
+                    && block_tail_self_call.is_some()
+                    && args.iter().any(|arg| aliases.contains(arg)) => {}
                 MirInst::Release { value } if aliases.contains(value) => {}
                 _ if inst_references_any_value(inst, &aliases) => return None,
                 _ => {}
@@ -2231,6 +2271,11 @@ fn collect_non_escaping_sum_aliases(
     while changed {
         changed = false;
         for block in &function.blocks {
+            let block_tail_self_call = if function.signature.ret == Type::Unit {
+                detect_tail_self_call(function, block)
+            } else {
+                None
+            };
             for inst in &block.instructions {
                 let alias_dest = match inst {
                     MirInst::Move { dest, src }
@@ -2256,11 +2301,23 @@ fn collect_non_escaping_sum_aliases(
                     }
                 }
             }
+            if let Some(tail_self_call) = &block_tail_self_call {
+                for (idx, arg) in tail_self_call.args.iter().enumerate() {
+                    if aliases.contains(arg) {
+                        changed |= aliases.insert(MirValueId(idx as u32));
+                    }
+                }
+            }
         }
     }
 
     for block in &function.blocks {
-        for inst in &block.instructions {
+        let block_tail_self_call = if function.signature.ret == Type::Unit {
+            detect_tail_self_call(function, block)
+        } else {
+            None
+        };
+        for (inst_idx, inst) in block.instructions.iter().enumerate() {
             match inst {
                 MirInst::SumTagLoad { sum, .. } | MirInst::SumPayloadLoad { sum, .. }
                     if aliases.contains(sum) => {}
@@ -2269,6 +2326,16 @@ fn collect_non_escaping_sum_aliases(
                 | MirInst::TryClaim { src, .. }
                 | MirInst::Freeze { src, .. }
                     if aliases.contains(src) => {}
+                MirInst::Call {
+                    callee: MirCallee::Local(callee_name),
+                    args,
+                    result: None,
+                    ..
+                } if callee_name == &function.name
+                    && function.signature.ret == Type::Unit
+                    && inst_idx + 1 == block.instructions.len()
+                    && block_tail_self_call.is_some()
+                    && args.iter().any(|arg| aliases.contains(arg)) => {}
                 MirInst::Release { value } if aliases.contains(value) => {}
                 _ if inst_references_any_value(inst, &aliases) => return None,
                 _ => {}
@@ -5270,11 +5337,11 @@ fn b1_to_i8(builder: &mut FunctionBuilder, predicate: Value) -> Value {
 
 struct LowerTerminatorCtx<'a> {
     function_name: &'a str,
-    function: &'a MirFunction,
     current_runtime_sig: &'a RuntimeFunctionSig,
     values: &'a BTreeMap<MirValueId, Value>,
     block_map: &'a BTreeMap<kea_mir::MirBlockId, cranelift::prelude::Block>,
     func_ids: &'a BTreeMap<String, FuncId>,
+    tail_self_call: Option<TailSelfCall>,
 }
 
 fn lower_terminator(
@@ -5290,7 +5357,7 @@ fn lower_terminator(
         return Ok(());
     }
 
-    if let Some(tail_call) = detect_tail_self_call(ctx.function, block) {
+    if let Some(tail_call) = ctx.tail_self_call.as_ref() {
         let callee_id =
             *ctx.func_ids
                 .get(ctx.function_name)
@@ -5415,6 +5482,17 @@ fn lower_terminator(
             Ok(())
         }
     }
+}
+
+fn tail_self_call_references_stack_values(
+    tail_call: &TailSelfCall,
+    stack_record_release_elision_values: &BTreeSet<MirValueId>,
+    stack_sum_release_elision_values: &BTreeSet<MirValueId>,
+) -> bool {
+    tail_call.args.iter().any(|arg| {
+        stack_record_release_elision_values.contains(arg)
+            || stack_sum_release_elision_values.contains(arg)
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

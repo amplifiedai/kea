@@ -4376,8 +4376,25 @@ fn compile_loop_mixed_unit_walk_keeps_record_alloc_floor_in_stats() {
     );
     let alloc_count: usize = app_stats.iter().map(|f| f.alloc_count).sum();
     assert!(
-        alloc_count <= 2,
-        "expected loop mixed-unit walk kernel to stay at current alloc floor (<=2) until cross-call stack forwarding lands, stats: {:?}",
+        alloc_count <= 1,
+        "expected loop mixed-unit walk kernel to drop app alloc floor to <=1 after guarded tail-self stack forwarding, stats: {:?}",
+        compiled.stats
+    );
+    let walk_stats = compiled
+        .stats
+        .per_function
+        .iter()
+        .filter(|f| f.function == "walk")
+        .collect::<Vec<_>>();
+    assert!(
+        !walk_stats.is_empty(),
+        "expected walk stats to exist, stats: {:?}",
+        compiled.stats
+    );
+    let walk_alloc_count: usize = walk_stats.iter().map(|f| f.alloc_count).sum();
+    assert_eq!(
+        walk_alloc_count, 0,
+        "expected loop mixed-unit walk core path to be stack-lowered (0 walk allocs), stats: {:?}",
         compiled.stats
     );
     let release_count: usize = app_stats.iter().map(|f| f.release_count).sum();
