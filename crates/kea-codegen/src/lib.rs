@@ -960,6 +960,7 @@ fn compile_into_module<M: Module>(
             let value_types = infer_mir_value_types(function, layout_plan);
             let stack_unboxed_record_inits =
                 collect_stack_eligible_unboxed_record_inits(function, layout_plan);
+            let stack_sum_inits = collect_stack_eligible_sum_inits(function, layout_plan);
 
             for block in &function.blocks {
                 let clif_block =
@@ -1009,6 +1010,7 @@ fn compile_into_module<M: Module>(
                     drop_func_ids: &drop_func_ids,
                     value_types: &value_types,
                     stack_unboxed_record_inits: &stack_unboxed_record_inits,
+                    stack_sum_inits: &stack_sum_inits,
                     runtime_signatures: &runtime_signatures,
                     current_runtime_sig,
                 };
@@ -1998,6 +2000,7 @@ struct LowerInstCtx<'a> {
     drop_func_ids: &'a DropFunctionIds,
     value_types: &'a BTreeMap<MirValueId, Type>,
     stack_unboxed_record_inits: &'a BTreeSet<MirValueId>,
+    stack_sum_inits: &'a BTreeSet<MirValueId>,
     runtime_signatures: &'a BTreeMap<String, RuntimeFunctionSig>,
     current_runtime_sig: &'a RuntimeFunctionSig,
 }
@@ -2028,6 +2031,33 @@ fn collect_stack_eligible_unboxed_record_inits(
     candidates
         .into_iter()
         .filter(|candidate| is_non_escaping_unboxed_record_init(function, candidate))
+        .collect()
+}
+
+fn collect_stack_eligible_sum_inits(
+    function: &MirFunction,
+    layout_plan: &BackendLayoutPlan,
+) -> BTreeSet<MirValueId> {
+    let mut candidates = BTreeSet::new();
+    for block in &function.blocks {
+        for inst in &block.instructions {
+            let MirInst::SumInit { dest, sum_type, .. } = inst else {
+                continue;
+            };
+            let Some(layout) = layout_plan.sums.get(sum_type.as_str()) else {
+                continue;
+            };
+            // Keep this conservative for now: payload-only sums avoid mixed/unit
+            // immediate-tag carrier semantics.
+            if layout.variant_field_counts.values().all(|count| *count > 0) {
+                candidates.insert(dest.clone());
+            }
+        }
+    }
+
+    candidates
+        .into_iter()
+        .filter(|candidate| is_non_escaping_sum_init(function, candidate))
         .collect()
 }
 
@@ -2085,6 +2115,88 @@ fn is_non_escaping_unboxed_record_init(function: &MirFunction, candidate: &MirVa
         for inst in &block.instructions {
             match inst {
                 MirInst::RecordFieldLoad { record, .. } if aliases.contains(record) => {}
+                MirInst::Move { src, .. }
+                | MirInst::Borrow { src, .. }
+                | MirInst::TryClaim { src, .. }
+                | MirInst::Freeze { src, .. }
+                    if aliases.contains(src) => {}
+                _ if inst_references_any_value(inst, &aliases) => return false,
+                _ => {}
+            }
+        }
+        match &block.terminator {
+            MirTerminator::Jump { target, args } => {
+                let Some(params) = block_params.get(target) else {
+                    return false;
+                };
+                for (arg, param) in args.iter().zip(params.iter()) {
+                    if aliases.contains(arg) && !aliases.contains(param) {
+                        return false;
+                    }
+                }
+            }
+            _ if terminator_references_any_value(&block.terminator, &aliases) => return false,
+            _ => {}
+        }
+    }
+    true
+}
+
+fn is_non_escaping_sum_init(function: &MirFunction, candidate: &MirValueId) -> bool {
+    let block_params = function
+        .blocks
+        .iter()
+        .map(|block| {
+            (
+                block.id.clone(),
+                block
+                    .params
+                    .iter()
+                    .map(|param| param.id.clone())
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+
+    // Conservative alias closure over local forwarding ops.
+    let mut aliases = BTreeSet::from([candidate.clone()]);
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for block in &function.blocks {
+            for inst in &block.instructions {
+                let alias_dest = match inst {
+                    MirInst::Move { dest, src }
+                    | MirInst::Borrow { dest, src }
+                    | MirInst::TryClaim { dest, src }
+                    | MirInst::Freeze { dest, src }
+                        if aliases.contains(src) =>
+                    {
+                        Some(dest)
+                    }
+                    _ => None,
+                };
+                if let Some(dest) = alias_dest {
+                    changed |= aliases.insert(dest.clone());
+                }
+            }
+            if let MirTerminator::Jump { target, args } = &block.terminator
+                && let Some(params) = block_params.get(target)
+            {
+                for (arg, param) in args.iter().zip(params.iter()) {
+                    if aliases.contains(arg) {
+                        changed |= aliases.insert(param.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    for block in &function.blocks {
+        for inst in &block.instructions {
+            match inst {
+                MirInst::SumTagLoad { sum, .. } | MirInst::SumPayloadLoad { sum, .. }
+                    if aliases.contains(sum) => {}
                 MirInst::Move { src, .. }
                 | MirInst::Borrow { src, .. }
                 | MirInst::TryClaim { src, .. }
@@ -3128,13 +3240,32 @@ fn lower_instruction<M: Module>(
                         function: function_name.to_string(),
                         detail: format!("sum layout `{sum_type}` not found"),
                     })?;
-            let base_ptr = allocate_heap_payload(
-                module,
-                builder,
-                function_name,
-                imports,
-                layout.size_bytes,
-            )?;
+            let ptr_ty = module.target_config().pointer_type();
+            let base_ptr = if ctx.stack_sum_inits.contains(dest) {
+                let align_shift =
+                    u8::try_from(layout.align_bytes.trailing_zeros()).map_err(|_| {
+                        CodegenError::UnsupportedMir {
+                            function: function_name.to_string(),
+                            detail: format!(
+                                "sum layout `{sum_type}` alignment shift does not fit u8"
+                            ),
+                        }
+                    })?;
+                let stack_slot = builder.create_sized_stack_slot(StackSlotData::new(
+                    StackSlotKind::ExplicitSlot,
+                    layout.size_bytes.max(1),
+                    align_shift,
+                ));
+                builder.ins().stack_addr(ptr_ty, stack_slot, 0)
+            } else {
+                allocate_heap_payload(
+                    module,
+                    builder,
+                    function_name,
+                    imports,
+                    layout.size_bytes,
+                )?
+            };
             store_sum_init_payload(
                 builder,
                 function_name,
@@ -5700,6 +5831,9 @@ fn collect_function_stats(
     let stack_unboxed_record_inits = layout_plan
         .map(|plan| collect_stack_eligible_unboxed_record_inits(function, plan))
         .unwrap_or_default();
+    let stack_sum_inits = layout_plan
+        .map(|plan| collect_stack_eligible_sum_inits(function, plan))
+        .unwrap_or_default();
 
     for block in &function.blocks {
         if detect_tail_self_call(function, block).is_some() {
@@ -5739,8 +5873,12 @@ fn collect_function_stats(
                         stats.alloc_count += 1;
                     }
                 }
+                MirInst::SumInit { dest, .. } => {
+                    if !stack_sum_inits.contains(dest) {
+                        stats.alloc_count += 1;
+                    }
+                }
                 MirInst::CowUpdate { .. }
-                | MirInst::SumInit { .. }
                 | MirInst::ClosureInit { .. }
                 | MirInst::StateCellNew { .. } => stats.alloc_count += 1,
                 MirInst::Const { .. }
@@ -7720,6 +7858,254 @@ mod tests {
         }
     }
 
+    fn sample_payload_sum_stack_eligible_module() -> MirModule {
+        MirModule {
+            functions: vec![MirFunction {
+                name: "main".to_string(),
+                signature: MirFunctionSignature {
+                    params: vec![],
+                    ret: Type::Int,
+                    effects: EffectRow::pure(),
+                },
+                entry: MirBlockId(0),
+                blocks: vec![MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: MirValueId(0),
+                            literal: MirLiteral::Int(20),
+                        },
+                        MirInst::Const {
+                            dest: MirValueId(1),
+                            literal: MirLiteral::Int(22),
+                        },
+                        MirInst::SumInit {
+                            dest: MirValueId(2),
+                            sum_type: "Pairish".to_string(),
+                            variant: "Pair".to_string(),
+                            tag: 0,
+                            fields: vec![MirValueId(0), MirValueId(1)],
+                        },
+                        MirInst::SumPayloadLoad {
+                            dest: MirValueId(3),
+                            sum: MirValueId(2),
+                            sum_type: "Pairish".to_string(),
+                            variant: "Pair".to_string(),
+                            field_index: 0,
+                            field_ty: Type::Int,
+                        },
+                    ],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirValueId(3)),
+                    },
+                }],
+            }],
+            layouts: MirLayoutCatalog {
+                records: vec![],
+                sums: vec![MirSumLayout {
+                    name: "Pairish".to_string(),
+                    variants: vec![
+                        MirVariantLayout {
+                            name: "Pair".to_string(),
+                            tag: 0,
+                            fields: vec![
+                                MirVariantFieldLayout {
+                                    name: None,
+                                    annotation: kea_ast::TypeAnnotation::Named("Int".to_string()),
+                                },
+                                MirVariantFieldLayout {
+                                    name: None,
+                                    annotation: kea_ast::TypeAnnotation::Named("Int".to_string()),
+                                },
+                            ],
+                        },
+                        MirVariantLayout {
+                            name: "Swap".to_string(),
+                            tag: 1,
+                            fields: vec![
+                                MirVariantFieldLayout {
+                                    name: None,
+                                    annotation: kea_ast::TypeAnnotation::Named("Int".to_string()),
+                                },
+                                MirVariantFieldLayout {
+                                    name: None,
+                                    annotation: kea_ast::TypeAnnotation::Named("Int".to_string()),
+                                },
+                            ],
+                        },
+                    ],
+                }],
+            },
+        }
+    }
+
+    fn sample_payload_sum_stack_rejected_when_returned_module() -> MirModule {
+        MirModule {
+            functions: vec![MirFunction {
+                name: "main".to_string(),
+                signature: MirFunctionSignature {
+                    params: vec![],
+                    ret: Type::Sum(SumType {
+                        name: "Pairish".to_string(),
+                        type_args: vec![],
+                        variants: vec![
+                            ("Pair".to_string(), vec![Type::Int, Type::Int]),
+                            ("Swap".to_string(), vec![Type::Int, Type::Int]),
+                        ],
+                    }),
+                    effects: EffectRow::pure(),
+                },
+                entry: MirBlockId(0),
+                blocks: vec![MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: MirValueId(0),
+                            literal: MirLiteral::Int(20),
+                        },
+                        MirInst::Const {
+                            dest: MirValueId(1),
+                            literal: MirLiteral::Int(22),
+                        },
+                        MirInst::SumInit {
+                            dest: MirValueId(2),
+                            sum_type: "Pairish".to_string(),
+                            variant: "Pair".to_string(),
+                            tag: 0,
+                            fields: vec![MirValueId(0), MirValueId(1)],
+                        },
+                    ],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirValueId(2)),
+                    },
+                }],
+            }],
+            layouts: MirLayoutCatalog {
+                records: vec![],
+                sums: vec![MirSumLayout {
+                    name: "Pairish".to_string(),
+                    variants: vec![
+                        MirVariantLayout {
+                            name: "Pair".to_string(),
+                            tag: 0,
+                            fields: vec![
+                                MirVariantFieldLayout {
+                                    name: None,
+                                    annotation: kea_ast::TypeAnnotation::Named("Int".to_string()),
+                                },
+                                MirVariantFieldLayout {
+                                    name: None,
+                                    annotation: kea_ast::TypeAnnotation::Named("Int".to_string()),
+                                },
+                            ],
+                        },
+                        MirVariantLayout {
+                            name: "Swap".to_string(),
+                            tag: 1,
+                            fields: vec![
+                                MirVariantFieldLayout {
+                                    name: None,
+                                    annotation: kea_ast::TypeAnnotation::Named("Int".to_string()),
+                                },
+                                MirVariantFieldLayout {
+                                    name: None,
+                                    annotation: kea_ast::TypeAnnotation::Named("Int".to_string()),
+                                },
+                            ],
+                        },
+                    ],
+                }],
+            },
+        }
+    }
+
+    fn sample_payload_sum_stack_rejected_by_effect_op_module() -> MirModule {
+        MirModule {
+            functions: vec![MirFunction {
+                name: "main".to_string(),
+                signature: MirFunctionSignature {
+                    params: vec![],
+                    ret: Type::Int,
+                    effects: EffectRow::closed(vec![(Label::new("IO"), Type::Unit)]),
+                },
+                entry: MirBlockId(0),
+                blocks: vec![MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: MirValueId(0),
+                            literal: MirLiteral::Int(20),
+                        },
+                        MirInst::Const {
+                            dest: MirValueId(1),
+                            literal: MirLiteral::Int(22),
+                        },
+                        MirInst::SumInit {
+                            dest: MirValueId(2),
+                            sum_type: "Pairish".to_string(),
+                            variant: "Pair".to_string(),
+                            tag: 0,
+                            fields: vec![MirValueId(0), MirValueId(1)],
+                        },
+                        MirInst::EffectOp {
+                            class: MirEffectOpClass::Direct,
+                            effect: "IO".to_string(),
+                            operation: "stdout".to_string(),
+                            args: vec![MirValueId(2)],
+                            result: None,
+                        },
+                        MirInst::Const {
+                            dest: MirValueId(3),
+                            literal: MirLiteral::Int(0),
+                        },
+                    ],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirValueId(3)),
+                    },
+                }],
+            }],
+            layouts: MirLayoutCatalog {
+                records: vec![],
+                sums: vec![MirSumLayout {
+                    name: "Pairish".to_string(),
+                    variants: vec![
+                        MirVariantLayout {
+                            name: "Pair".to_string(),
+                            tag: 0,
+                            fields: vec![
+                                MirVariantFieldLayout {
+                                    name: None,
+                                    annotation: kea_ast::TypeAnnotation::Named("Int".to_string()),
+                                },
+                                MirVariantFieldLayout {
+                                    name: None,
+                                    annotation: kea_ast::TypeAnnotation::Named("Int".to_string()),
+                                },
+                            ],
+                        },
+                        MirVariantLayout {
+                            name: "Swap".to_string(),
+                            tag: 1,
+                            fields: vec![
+                                MirVariantFieldLayout {
+                                    name: None,
+                                    annotation: kea_ast::TypeAnnotation::Named("Int".to_string()),
+                                },
+                                MirVariantFieldLayout {
+                                    name: None,
+                                    annotation: kea_ast::TypeAnnotation::Named("Int".to_string()),
+                                },
+                            ],
+                        },
+                    ],
+                }],
+            },
+        }
+    }
+
     fn sample_record_init_from_token_and_load_main_module() -> MirModule {
         MirModule {
             functions: vec![MirFunction {
@@ -9067,6 +9453,36 @@ mod tests {
     #[test]
     fn collect_pass_stats_counts_unboxed_jump_forwarded_record_init_when_used_in_effect_op() {
         let module = sample_unboxed_record_init_forwarded_into_effect_op_module();
+        let stats = collect_pass_stats(&module);
+
+        assert_eq!(stats.per_function.len(), 1);
+        let function = &stats.per_function[0];
+        assert_eq!(function.alloc_count, 1);
+    }
+
+    #[test]
+    fn collect_pass_stats_treats_non_escaping_payload_sum_init_as_non_allocating() {
+        let module = sample_payload_sum_stack_eligible_module();
+        let stats = collect_pass_stats(&module);
+
+        assert_eq!(stats.per_function.len(), 1);
+        let function = &stats.per_function[0];
+        assert_eq!(function.alloc_count, 0);
+    }
+
+    #[test]
+    fn collect_pass_stats_counts_payload_sum_init_when_returned() {
+        let module = sample_payload_sum_stack_rejected_when_returned_module();
+        let stats = collect_pass_stats(&module);
+
+        assert_eq!(stats.per_function.len(), 1);
+        let function = &stats.per_function[0];
+        assert_eq!(function.alloc_count, 1);
+    }
+
+    #[test]
+    fn collect_pass_stats_counts_payload_sum_init_when_used_in_effect_op() {
+        let module = sample_payload_sum_stack_rejected_by_effect_op_module();
         let stats = collect_pass_stats(&module);
 
         assert_eq!(stats.per_function.len(), 1);
