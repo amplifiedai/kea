@@ -7459,7 +7459,7 @@ impl FunctionLoweringCtx {
         let then_terminated = self.current_block().terminator.is_some();
         if !then_terminated {
             let then_args = match &result_value {
-                Some(_) => vec![then_value?],
+                Some(_) => vec![then_value.clone()?],
                 None => vec![],
             };
             self.ensure_jump_to(join_block.clone(), then_args);
@@ -7471,7 +7471,7 @@ impl FunctionLoweringCtx {
         let else_terminated = self.current_block().terminator.is_some();
         if !else_terminated {
             let else_args = match &result_value {
-                Some(_) => vec![else_value?],
+                Some(_) => vec![else_value.clone()?],
                 None => vec![],
             };
             self.ensure_jump_to(join_block.clone(), else_args);
@@ -7482,6 +7482,62 @@ impl FunctionLoweringCtx {
         if then_terminated && else_terminated {
             self.set_terminator(MirTerminator::Unreachable);
             return None;
+        }
+        if let Some(result) = &result_value {
+            let mut record_type = match &expr.ty {
+                Type::Record(record_ty) => Some(record_ty.name.clone()),
+                Type::AnonRecord(row) => self.infer_unique_record_type_for_row(row),
+                Type::Tuple(items) => Some(tuple_layout_name(items.len())),
+                _ => None,
+            };
+            if record_type.is_none() {
+                let mut branch_record_types = Vec::new();
+                if !then_terminated
+                    && let Some(value) = &then_value
+                    && let Some(name) = self.record_value_types.get(value)
+                {
+                    branch_record_types.push(name.clone());
+                }
+                if !else_terminated
+                    && let Some(value) = &else_value
+                    && let Some(name) = self.record_value_types.get(value)
+                {
+                    branch_record_types.push(name.clone());
+                }
+                if let Some(first) = branch_record_types.first().cloned()
+                    && branch_record_types.iter().all(|name| name == &first)
+                {
+                    record_type = Some(first);
+                }
+            }
+            if let Some(name) = record_type {
+                self.record_value_types.insert(result.clone(), name);
+            }
+
+            let mut sum_type = self.infer_sum_type_from_type(&expr.ty);
+            if sum_type.is_none() {
+                let mut branch_sum_types = Vec::new();
+                if !then_terminated
+                    && let Some(value) = &then_value
+                    && let Some(name) = self.sum_value_types.get(value)
+                {
+                    branch_sum_types.push(name.clone());
+                }
+                if !else_terminated
+                    && let Some(value) = &else_value
+                    && let Some(name) = self.sum_value_types.get(value)
+                {
+                    branch_sum_types.push(name.clone());
+                }
+                if let Some(first) = branch_sum_types.first().cloned()
+                    && branch_sum_types.iter().all(|name| name == &first)
+                {
+                    sum_type = Some(first);
+                }
+            }
+            if let Some(name) = sum_type {
+                self.sum_value_types.insert(result.clone(), name);
+            }
         }
         result_value
     }
