@@ -3729,6 +3729,40 @@ fn compile_rejects_fip_unique_higher_order_module_alias_wrapper_tuple_alias_chai
 
 #[test]
 #[cfg(not(target_os = "windows"))]
+fn compile_rejects_fip_unique_higher_order_named_import_wrapper_tuple_alias_chain() {
+    let project_dir =
+        temp_workspace_project_dir("kea-cli-fip-unique-higher-order-named-wrapper-tuple-alias");
+    let src_dir = project_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+    let source_path = src_dir.join("main.kea");
+    std::fs::write(
+        src_dir.join("alpha.kea"),
+        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_tuple_alias(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let (g, y) = (f, x)\n  g(y)\n",
+    )
+    .expect("alpha module write should succeed");
+    std::fs::write(
+        &source_path,
+        "use Alpha.{apply_tuple_alias, forward_once}\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_tuple_alias(forward_once, x)\n\nfn main() -> Int\n  0\n",
+    )
+    .expect("source write should succeed");
+
+    let err = run_file(&source_path).expect_err(
+        "@fip verifier should reject named-import tuple-pattern wrapper boundaries until tuple-let lowering is allocation-free",
+    );
+    assert!(
+        err.contains("unsupported_call_boundaries=1"),
+        "expected unresolved call-boundary failure, got: {err}"
+    );
+    assert!(
+        err.contains("apply_tuple_alias"),
+        "expected tuple-wrapper named-import call site in diagnostics, got: {err}"
+    );
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
 fn compile_rejects_fip_unique_higher_order_module_alias_wrapper_param_escape() {
         let project_dir = temp_workspace_project_dir("kea-cli-fip-unique-higher-order-alias-param");
         let src_dir = project_dir.join("src");
