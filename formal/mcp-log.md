@@ -20714,3 +20714,50 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - Local strict-handle and strict-top one-step soundness are now propositionally aligned, making local non-vacuous consumption first-class without losing strict-top compatibility.
+
+### 2026-03-04: characterized strict-handle one-step soundness via progress under preservation
+
+**Context**: Added strict-handle one-step soundness characterization layer:
+- `native_handler_step_ext_with_mismatch_soundness_strict_handle_of_preservation_and_progress_strict`
+- `native_handler_step_ext_with_mismatch_progress_strict_of_soundness_strict_handle`
+- `native_handler_step_ext_with_mismatch_soundness_strict_handle_prop_iff_progress_strict_prop_of_preservation`
+
+Together these show: with global preservation fixed, strict-handle one-step soundness is equivalent to strict-handle progress.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent handler should type-check.
+- Mismatched pure handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Core` + trivial fn -> `ok`.
+2. Coherent handler (`ProbeAE.run() -> resume 91`) -> `ok`.
+3. Mismatched pure handler (`handle ProbeAF.one()` with only `ProbeAG.two`) -> `error`, `E0001`.
+4. Bad resume payload (`ProbeAH.get() -> resume false`) -> `error`, `E0001`.
+5. Out-of-handler resume (`fn outside_resume_probe6() -> Int; resume 13`) -> `error`, `E0012`.
+6. Forged-name out-of-handler resume (`let __kea_resume_ctx = 13; resume 13`) -> `error`, `E0012`.
+7. Double-resume clause (`resume 1` then `resume 2`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the preservation-parametric strict-handle soundness characterization theorems.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_soundness_strict_handle_of_preservation_and_progress_strict`
+  - `native_handler_step_ext_with_mismatch_progress_strict_of_soundness_strict_handle`
+  - `native_handler_step_ext_with_mismatch_soundness_strict_handle_prop_iff_progress_strict_prop_of_preservation`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Strict-handle one-step soundness is now reducible to progress once preservation is provided, tightening the proof API around the actual hard obligation boundaries.

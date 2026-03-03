@@ -3070,6 +3070,74 @@ theorem native_handler_step_ext_with_mismatch_progress_strict_of_core_progress
     clauseSem mismatchSem bodyStep h_core_progress h_strict
 
 /--
+Build strict-handle one-step soundness from global preservation and strict-
+handle progress.
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_strict_handle_of_preservation_and_progress_strict
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_pres :
+      native_handler_step_ext_with_mismatch_preservation_prop
+        clauseSem mismatchSem bodyStep)
+    (h_prog :
+      native_handler_step_ext_with_mismatch_progress_strict_prop
+        clauseSem mismatchSem bodyStep) :
+    native_handler_step_ext_with_mismatch_soundness_strict_handle_prop
+      clauseSem mismatchSem bodyStep := by
+  intro env body opHandle argName resumeName argTy opRetTy clauseBody ty h_strict
+  rcases h_prog env body opHandle argName resumeName argTy opRetTy clauseBody ty h_strict with
+    ⟨e', h_step⟩
+  refine ⟨e', h_step, ?_⟩
+  exact h_pres env
+    (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+    e'
+    ty
+    h_strict.1
+    h_step
+
+/--
+Project strict-handle progress from strict-handle one-step soundness.
+-/
+theorem native_handler_step_ext_with_mismatch_progress_strict_of_soundness_strict_handle
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_sound_handle :
+      native_handler_step_ext_with_mismatch_soundness_strict_handle_prop
+        clauseSem mismatchSem bodyStep) :
+    native_handler_step_ext_with_mismatch_progress_strict_prop
+      clauseSem mismatchSem bodyStep := by
+  intro env body opHandle argName resumeName argTy opRetTy clauseBody ty h_strict
+  rcases h_sound_handle env body opHandle argName resumeName argTy opRetTy clauseBody ty h_strict with
+    ⟨e', h_step, _h_typed'⟩
+  exact ⟨e', h_step⟩
+
+/--
+Under global preservation, strict-handle one-step soundness is equivalent to
+strict-handle progress.
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_strict_handle_prop_iff_progress_strict_prop_of_preservation
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_pres :
+      native_handler_step_ext_with_mismatch_preservation_prop
+        clauseSem mismatchSem bodyStep) :
+    native_handler_step_ext_with_mismatch_soundness_strict_handle_prop
+      clauseSem mismatchSem bodyStep
+      ↔
+    native_handler_step_ext_with_mismatch_progress_strict_prop
+      clauseSem mismatchSem bodyStep := by
+  constructor
+  · intro h_sound_handle
+    exact native_handler_step_ext_with_mismatch_progress_strict_of_soundness_strict_handle
+      clauseSem mismatchSem bodyStep h_sound_handle
+  · intro h_prog
+    exact native_handler_step_ext_with_mismatch_soundness_strict_handle_of_preservation_and_progress_strict
+      clauseSem mismatchSem bodyStep h_pres h_prog
+
+/--
 Soundness target (preservation + progress) for mismatched-perform extension
 under strict local handle typing premises.
 -/
