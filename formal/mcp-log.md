@@ -22130,3 +22130,52 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - Native typed handler evolution and the tier/erasure/scheduler correspondence now meet at one theorem route instead of living as disconnected layers.
+
+### 2026-03-04: packaged native typed-handle correspondence capstone with direct projections
+
+**Context**: Added proposition-level packaging and projections in `Kea/Typing.lean`:
+- `NativeTypedHandleCorrespondenceCapstone`
+- `native_typed_handle_correspondence_capstone_of_core_soundness_and_strict_top`
+- `native_typed_handle_correspondence_capstone_supporting_material`
+- `native_typed_handle_correspondence_capstone_scheduler_small_of_aggressive`
+
+This turns the prior bridge lemmas into a reusable capstone surface tying typed native one-step handler evolution to correspondence obligations and aggressive-erasure scheduler smallness.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent handler should type-check.
+- Mismatched clause that leaks an unhandled effect should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Height` + trivial fn -> `ok`.
+2. Coherent handler (`handle runProbeGF(); ProbeGF.run() -> resume 411`) -> `ok`.
+3. Mismatched handler clause (effect leak remains `[ProbeGG]`) -> `error`, `E0001`.
+4. Bad resume payload -> `error`, `E0001`.
+5. Out-of-handler resume (`fresh_outside_resume_probe_20260304s`) -> `error`, `E0012`.
+6. Forged-name out-of-handler resume (`forged_ctx_probe_20260304s`) -> `error`, `E0012`.
+7. Double-resume clause -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the capstone package and direct projections.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `NativeTypedHandleCorrespondenceCapstone`
+  - `native_typed_handle_correspondence_capstone_of_core_soundness_and_strict_top`
+  - `native_typed_handle_correspondence_capstone_supporting_material`
+  - `native_typed_handle_correspondence_capstone_scheduler_small_of_aggressive`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The native typing/step layer now has a single packaged route into correspondence support obligations and aggressive-erasure runtime-classification consequences.

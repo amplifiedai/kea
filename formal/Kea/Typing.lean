@@ -9753,6 +9753,117 @@ theorem native_typed_handle_step_scheduler_small_of_core_soundness_and_strict_to
   rcases h_unity with ⟨_h_support, _h_pure_tier1, _h_block_tier4, _h_coop_tier23, h_small_imp⟩
   exact ⟨e', h_step, h_typed', h_small_imp h_aggressive⟩
 
+/--
+Typed native-handle correspondence capstone proposition: there exists a
+one-step native successor preserving typing together with the instantiated
+tier/erasure/scheduler-unity witness.
+-/
+def NativeTypedHandleCorrespondenceCapstone
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (yielding blocking erasable : List Label)
+    (env : TermEnv)
+    (body : CoreExpr)
+    (opHandle : Label)
+    (argName resumeName : String)
+    (argTy opRetTy : Ty)
+    (clauseBody : CoreExpr)
+    (ty : Ty) : Prop :=
+  ∃ e',
+    NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep
+      (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+      e'
+    ∧
+    HasTypeScopedTop env e' ty
+    ∧
+    effect_compiler_scheduler_unity_prop
+      yielding blocking [opHandle] erasable
+
+/--
+Build the typed native-handle correspondence capstone from core soundness,
+strict-top typing, and a typed native handle premise.
+-/
+theorem native_typed_handle_correspondence_capstone_of_core_soundness_and_strict_top
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (yielding blocking erasable : List Label)
+    (h_core : native_core_soundness_prop bodyStep)
+    (h_strict_top : native_handler_strict_top_typing_prop)
+    {env : TermEnv}
+    {body : CoreExpr}
+    {opHandle : Label}
+    {argName resumeName : String}
+    {argTy opRetTy : Ty}
+    {clauseBody : CoreExpr}
+    {ty : Ty}
+    (h_typed :
+      HasTypeScopedTop env
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        ty) :
+    NativeTypedHandleCorrespondenceCapstone
+      clauseSem mismatchSem bodyStep
+      yielding blocking erasable
+      env body opHandle argName resumeName argTy opRetTy clauseBody ty := by
+  exact native_typed_handle_step_and_effect_compiler_scheduler_unity_of_core_soundness_and_strict_top
+    clauseSem mismatchSem bodyStep yielding blocking erasable h_core h_strict_top h_typed
+
+/--
+Project the four-item supporting-material bundle from the typed native-handle
+correspondence capstone.
+-/
+theorem native_typed_handle_correspondence_capstone_supporting_material
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (yielding blocking erasable : List Label)
+    (env : TermEnv)
+    (body : CoreExpr)
+    (opHandle : Label)
+    (argName resumeName : String)
+    (argTy opRetTy : Ty)
+    (clauseBody : CoreExpr)
+    (ty : Ty)
+    (h_cap :
+      NativeTypedHandleCorrespondenceCapstone
+        clauseSem mismatchSem bodyStep
+        yielding blocking erasable
+        env body opHandle argName resumeName argTy opRetTy clauseBody ty) :
+    effect_compiler_scheduler_supporting_material_prop
+      yielding blocking [opHandle] erasable := by
+  rcases h_cap with ⟨_e', _h_step, _h_typed', h_unity⟩
+  exact h_unity.1
+
+/--
+Project scheduler-smallness under aggressive erasure from the typed
+native-handle correspondence capstone.
+-/
+theorem native_typed_handle_correspondence_capstone_scheduler_small_of_aggressive
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (yielding blocking erasable : List Label)
+    (env : TermEnv)
+    (body : CoreExpr)
+    (opHandle : Label)
+    (argName resumeName : String)
+    (argTy opRetTy : Ty)
+    (clauseBody : CoreExpr)
+    (ty : Ty)
+    (h_cap :
+      NativeTypedHandleCorrespondenceCapstone
+        clauseSem mismatchSem bodyStep
+        yielding blocking erasable
+        env body opHandle argName resumeName argTy opRetTy clauseBody ty)
+  (h_aggressive :
+      aggressiveErasureRemovesDeclaredBlocking [opHandle] erasable blocking) :
+    let cls := schedulerClassOfResidual blocking (eraseCapabilities [opHandle] erasable)
+    cls = .pure ∨ cls = .cooperative := by
+  rcases h_cap with ⟨_e', _h_step, _h_typed', h_unity⟩
+  rcases h_unity with ⟨_h_support, _h_pure_tier1, _h_block_tier4, _h_coop_tier23, h_small_imp⟩
+  exact h_small_imp h_aggressive
+
 /-- Declarative field typing is functional on the core slice. -/
 theorem hasFieldsType_unique
     {env : TermEnv} {fs : CoreFields} {row₁ row₂ : RowFields}
