@@ -2989,6 +2989,18 @@ fn validate_fip_annotations(module: &Module, hir: &HirModule) -> Vec<Diagnostic>
                 )
             })
             .unwrap_or_default();
+        let call_boundary_summary = hir_function
+            .map(|function| {
+                let local_bindings = hir_function_param_bindings(function);
+                collect_fip_call_boundary_issues(
+                    &function.body,
+                    &local_bindings,
+                    &safe_handoff_callees,
+                    &safe_higher_order_handoff_callees,
+                    5,
+                )
+            })
+            .unwrap_or_default();
         let mir_unique_flow = match (mir_function, hir_function) {
             (Some(mir_fn), Some(hir_fn)) => {
                 collect_mir_unique_flow_summary(mir_fn, hir_fn, &fip_spec.unique_param_names)
@@ -3071,6 +3083,12 @@ fn validate_fip_annotations(module: &Module, hir: &HirModule) -> Vec<Diagnostic>
                 unique_flow_issues.len()
             ));
         }
+        if call_boundary_summary.total_unsupported_calls > 0 {
+            failures.push(format!(
+                "unsupported_call_boundaries={}",
+                call_boundary_summary.total_unsupported_calls
+            ));
+        }
 
         if !failures.is_empty() {
             let mut help_parts = vec![
@@ -3091,6 +3109,18 @@ fn validate_fip_annotations(module: &Module, hir: &HirModule) -> Vec<Diagnostic>
                     .collect::<Vec<_>>();
                 help_parts.push(format!(
                     "unique ownership flow issues:\n{}",
+                    lines.join("\n")
+                ));
+            }
+            if call_boundary_summary.total_unsupported_calls > 0 {
+                let lines = call_boundary_summary
+                    .sites
+                    .iter()
+                    .map(|site| format!("- {site}"))
+                    .collect::<Vec<_>>();
+                help_parts.push(format!(
+                    "unsupported cross-function call boundaries ({}):\n{}\n\n@fip currently allows only verified single-handoff forwarder calls across function boundaries.",
+                    call_boundary_summary.total_unsupported_calls,
                     lines.join("\n")
                 ));
             }
@@ -3574,6 +3604,358 @@ fn hir_function_param_bindings(function: &HirFunction) -> BTreeSet<String> {
         .iter()
         .filter_map(|param| param.name.clone())
         .collect()
+}
+
+#[derive(Debug, Clone, Default)]
+struct FipCallBoundaryIssues {
+    total_unsupported_calls: usize,
+    sites: Vec<String>,
+}
+
+fn merge_fip_call_boundary_issues(
+    dst: &mut FipCallBoundaryIssues,
+    src: FipCallBoundaryIssues,
+    site_limit: usize,
+) {
+    dst.total_unsupported_calls += src.total_unsupported_calls;
+    for site in src.sites {
+        if dst.sites.len() >= site_limit {
+            break;
+        }
+        dst.sites.push(site);
+    }
+}
+
+fn record_fip_call_boundary_issue(
+    issues: &mut FipCallBoundaryIssues,
+    site: String,
+    site_limit: usize,
+) {
+    issues.total_unsupported_calls += 1;
+    if issues.sites.len() < site_limit {
+        issues.sites.push(site);
+    }
+}
+
+fn collect_fip_call_boundary_issues(
+    expr: &HirExpr,
+    local_bindings: &BTreeSet<String>,
+    safe_handoff_callees: &BTreeSet<String>,
+    safe_higher_order_handoff_callees: &BTreeMap<String, SafeHigherOrderForwarder>,
+    site_limit: usize,
+) -> FipCallBoundaryIssues {
+    fn walk(
+        expr: &HirExpr,
+        local_bindings: &BTreeSet<String>,
+        safe_handoff_callees: &BTreeSet<String>,
+        safe_higher_order_handoff_callees: &BTreeMap<String, SafeHigherOrderForwarder>,
+        site_limit: usize,
+    ) -> FipCallBoundaryIssues {
+        match &expr.kind {
+            HirExprKind::Lit(_) | HirExprKind::Var(_) | HirExprKind::Raw(_) => {
+                FipCallBoundaryIssues::default()
+            }
+            HirExprKind::Unary { operand, .. } => walk(
+                operand,
+                local_bindings,
+                safe_handoff_callees,
+                safe_higher_order_handoff_callees,
+                site_limit,
+            ),
+            HirExprKind::Binary { left, right, .. } => {
+                let mut issues = walk(
+                    left,
+                    local_bindings,
+                    safe_handoff_callees,
+                    safe_higher_order_handoff_callees,
+                    site_limit,
+                );
+                merge_fip_call_boundary_issues(
+                    &mut issues,
+                    walk(
+                        right,
+                        local_bindings,
+                        safe_handoff_callees,
+                        safe_higher_order_handoff_callees,
+                        site_limit,
+                    ),
+                    site_limit,
+                );
+                issues
+            }
+            HirExprKind::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                let mut issues = walk(
+                    condition,
+                    local_bindings,
+                    safe_handoff_callees,
+                    safe_higher_order_handoff_callees,
+                    site_limit,
+                );
+                merge_fip_call_boundary_issues(
+                    &mut issues,
+                    walk(
+                        then_branch,
+                        local_bindings,
+                        safe_handoff_callees,
+                        safe_higher_order_handoff_callees,
+                        site_limit,
+                    ),
+                    site_limit,
+                );
+                if let Some(else_expr) = else_branch {
+                    merge_fip_call_boundary_issues(
+                        &mut issues,
+                        walk(
+                            else_expr,
+                            local_bindings,
+                            safe_handoff_callees,
+                            safe_higher_order_handoff_callees,
+                            site_limit,
+                        ),
+                        site_limit,
+                    );
+                }
+                issues
+            }
+            HirExprKind::Call { func, args } => {
+                let mut issues = walk(
+                    func,
+                    local_bindings,
+                    safe_handoff_callees,
+                    safe_higher_order_handoff_callees,
+                    site_limit,
+                );
+                for arg in args {
+                    merge_fip_call_boundary_issues(
+                        &mut issues,
+                        walk(
+                            arg,
+                            local_bindings,
+                            safe_handoff_callees,
+                            safe_higher_order_handoff_callees,
+                            site_limit,
+                        ),
+                        site_limit,
+                    );
+                }
+                if hir_call_crosses_ownership_boundary(func)
+                    && hir_call_safe_unique_handoff_arg_index(
+                        func,
+                        args,
+                        safe_handoff_callees,
+                        safe_higher_order_handoff_callees,
+                        local_bindings,
+                    )
+                    .is_none()
+                {
+                    let call_name = hir_callable_name(func)
+                        .unwrap_or_else(|| "<local callable>".to_string());
+                    record_fip_call_boundary_issue(&mut issues, call_name, site_limit);
+                }
+                issues
+            }
+            HirExprKind::Let { value, .. } => walk(
+                value,
+                local_bindings,
+                safe_handoff_callees,
+                safe_higher_order_handoff_callees,
+                site_limit,
+            ),
+            HirExprKind::Block(exprs) => {
+                let mut scoped_bindings = local_bindings.clone();
+                let mut issues = FipCallBoundaryIssues::default();
+                for item in exprs {
+                    merge_fip_call_boundary_issues(
+                        &mut issues,
+                        walk(
+                            item,
+                            &scoped_bindings,
+                            safe_handoff_callees,
+                            safe_higher_order_handoff_callees,
+                            site_limit,
+                        ),
+                        site_limit,
+                    );
+                    if let HirExprKind::Let { pattern, .. } = &item.kind
+                        && let kea_hir::HirPattern::Var(name) = pattern
+                    {
+                        scoped_bindings.insert(name.clone());
+                    }
+                }
+                issues
+            }
+            HirExprKind::Tuple(exprs) => {
+                let mut issues = FipCallBoundaryIssues::default();
+                for item in exprs {
+                    merge_fip_call_boundary_issues(
+                        &mut issues,
+                        walk(
+                            item,
+                            local_bindings,
+                            safe_handoff_callees,
+                            safe_higher_order_handoff_callees,
+                            site_limit,
+                        ),
+                        site_limit,
+                    );
+                }
+                issues
+            }
+            HirExprKind::Lambda { params, body } => {
+                let mut lambda_bindings = local_bindings.clone();
+                for param in params {
+                    if let Some(name) = &param.name {
+                        lambda_bindings.insert(name.clone());
+                    }
+                }
+                walk(
+                    body,
+                    &lambda_bindings,
+                    safe_handoff_callees,
+                    safe_higher_order_handoff_callees,
+                    site_limit,
+                )
+            }
+            HirExprKind::RecordLit { fields, .. } => {
+                let mut issues = FipCallBoundaryIssues::default();
+                for (_, field_expr) in fields {
+                    merge_fip_call_boundary_issues(
+                        &mut issues,
+                        walk(
+                            field_expr,
+                            local_bindings,
+                            safe_handoff_callees,
+                            safe_higher_order_handoff_callees,
+                            site_limit,
+                        ),
+                        site_limit,
+                    );
+                }
+                issues
+            }
+            HirExprKind::RecordUpdate { base, fields, .. } => {
+                let mut issues = walk(
+                    base,
+                    local_bindings,
+                    safe_handoff_callees,
+                    safe_higher_order_handoff_callees,
+                    site_limit,
+                );
+                for (_, field_expr) in fields {
+                    merge_fip_call_boundary_issues(
+                        &mut issues,
+                        walk(
+                            field_expr,
+                            local_bindings,
+                            safe_handoff_callees,
+                            safe_higher_order_handoff_callees,
+                            site_limit,
+                        ),
+                        site_limit,
+                    );
+                }
+                issues
+            }
+            HirExprKind::FieldAccess { expr, .. } | HirExprKind::SumPayloadAccess { expr, .. } => {
+                walk(
+                    expr,
+                    local_bindings,
+                    safe_handoff_callees,
+                    safe_higher_order_handoff_callees,
+                    site_limit,
+                )
+            }
+            HirExprKind::SumConstructor { fields, .. } => {
+                let mut issues = FipCallBoundaryIssues::default();
+                for field_expr in fields {
+                    merge_fip_call_boundary_issues(
+                        &mut issues,
+                        walk(
+                            field_expr,
+                            local_bindings,
+                            safe_handoff_callees,
+                            safe_higher_order_handoff_callees,
+                            site_limit,
+                        ),
+                        site_limit,
+                    );
+                }
+                issues
+            }
+            HirExprKind::Catch { expr } => walk(
+                expr,
+                local_bindings,
+                safe_handoff_callees,
+                safe_higher_order_handoff_callees,
+                site_limit,
+            ),
+            HirExprKind::Handle {
+                expr,
+                clauses,
+                then_clause,
+            } => {
+                let mut issues = walk(
+                    expr,
+                    local_bindings,
+                    safe_handoff_callees,
+                    safe_higher_order_handoff_callees,
+                    site_limit,
+                );
+                for clause in clauses {
+                    let mut clause_bindings = local_bindings.clone();
+                    for arg in &clause.args {
+                        if let kea_hir::HirPattern::Var(name) = arg {
+                            clause_bindings.insert(name.clone());
+                        }
+                    }
+                    merge_fip_call_boundary_issues(
+                        &mut issues,
+                        walk(
+                            &clause.body,
+                            &clause_bindings,
+                            safe_handoff_callees,
+                            safe_higher_order_handoff_callees,
+                            site_limit,
+                        ),
+                        site_limit,
+                    );
+                }
+                if let Some(then_expr) = then_clause {
+                    merge_fip_call_boundary_issues(
+                        &mut issues,
+                        walk(
+                            then_expr,
+                            local_bindings,
+                            safe_handoff_callees,
+                            safe_higher_order_handoff_callees,
+                            site_limit,
+                        ),
+                        site_limit,
+                    );
+                }
+                issues
+            }
+            HirExprKind::Resume { value } => walk(
+                value,
+                local_bindings,
+                safe_handoff_callees,
+                safe_higher_order_handoff_callees,
+                site_limit,
+            ),
+        }
+    }
+
+    walk(
+        expr,
+        local_bindings,
+        safe_handoff_callees,
+        safe_higher_order_handoff_callees,
+        site_limit,
+    )
 }
 
 fn analyze_hir_unique_flow_function(

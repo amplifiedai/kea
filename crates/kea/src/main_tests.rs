@@ -3521,6 +3521,30 @@ fn compile_rejects_fip_when_unique_alias_escapes_via_call() {
 
 #[test]
 #[cfg(not(target_os = "windows"))]
+fn compile_rejects_fip_when_call_boundary_is_unproven() {
+    let source_path = write_temp_source(
+        "struct Box\n  n: Int\n\nfn alloc_inner(x: Int) -> Int\n  let b = Box { n: x }\n  b.n\n\n@fip\nfn outer(x: Int) -> Int\n  alloc_inner(x)\n\nfn main() -> Int\n  0\n",
+        "kea-cli-fip-unproven-call-boundary",
+        "kea",
+    );
+
+    let err = run_file(&source_path).expect_err(
+        "@fip verifier should reject cross-function calls without a verified handoff proof",
+    );
+    assert!(
+        err.contains("`@fip` verification failed for `outer`"),
+        "expected @fip verification failure, got: {err}"
+    );
+    assert!(
+        err.contains("unsupported_call_boundaries="),
+        "expected unsupported call-boundary detail in @fip diagnostics, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
 fn compile_rejects_fip_when_allocations_remain() {
     let source_path = write_temp_source(
         "enum Chain\n  End\n  Link(Int, Chain)\n\n@fip\nfn build(n: Int) -> Chain\n  if n <= 0\n    Chain.End\n  else\n    Chain.Link(n, build(n - 1))\n\nfn main() -> Int\n  0\n",
