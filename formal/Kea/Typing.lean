@@ -10408,6 +10408,111 @@ theorem native_typed_handle_correspondence_capstone_not_erasable_and_not_blockin
     simp [eraseCapabilities, h_not_erasable]
   simp [schedulerClassOfResidual, hasBlockingCapability, h_residual_singleton, h_not_blocking]
 
+/--
+Exact singleton-boundary law for `blocking` classification on the typed
+native-handle capstone.
+-/
+theorem native_typed_handle_correspondence_capstone_blocking_iff_not_erasable_and_blocking
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (yielding blocking erasable : List Label)
+    (env : TermEnv)
+    (body : CoreExpr)
+    (opHandle : Label)
+    (argName resumeName : String)
+    (argTy opRetTy : Ty)
+    (clauseBody : CoreExpr)
+    (ty : Ty)
+    (h_cap :
+      NativeTypedHandleCorrespondenceCapstone
+        clauseSem mismatchSem bodyStep
+        yielding blocking erasable
+        env body opHandle argName resumeName argTy opRetTy clauseBody ty) :
+    schedulerClassOfResidual blocking (eraseCapabilities [opHandle] erasable) = .blocking
+      ↔
+    opHandle ∉ erasable ∧ opHandle ∈ blocking := by
+  constructor
+  · intro h_cls
+    have h_not_erasable : opHandle ∉ erasable := by
+      intro h_mem_erasable
+      have h_pure :
+          schedulerClassOfResidual blocking (eraseCapabilities [opHandle] erasable) = .pure :=
+        (native_typed_handle_correspondence_capstone_handled_erased_implies_pure
+          clauseSem mismatchSem bodyStep yielding blocking erasable
+          env body opHandle argName resumeName argTy opRetTy clauseBody ty
+          h_cap h_mem_erasable)
+      rw [h_cls] at h_pure
+      cases h_pure
+    have h_residual_singleton :
+        eraseCapabilities [opHandle] erasable = [opHandle] := by
+      simp [eraseCapabilities, h_not_erasable]
+    have h_has_block :
+        hasBlockingCapability blocking (eraseCapabilities [opHandle] erasable) = true :=
+      (schedulerClassOfResidual_eq_blocking_iff
+        blocking (eraseCapabilities [opHandle] erasable)).1 h_cls |>.2
+    have h_elem_true : blocking.elem opHandle = true := by
+      simpa [hasBlockingCapability, h_residual_singleton] using h_has_block
+    exact ⟨h_not_erasable, List.mem_of_elem_eq_true h_elem_true⟩
+  · intro h
+    exact native_typed_handle_correspondence_capstone_not_erasable_and_blocking_implies_blocking
+      clauseSem mismatchSem bodyStep yielding blocking erasable
+      env body opHandle argName resumeName argTy opRetTy clauseBody ty
+      h_cap h.1 h.2
+
+/--
+Exact singleton-boundary law for `cooperative` classification on the typed
+native-handle capstone.
+-/
+theorem native_typed_handle_correspondence_capstone_cooperative_iff_not_erasable_and_not_blocking
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (yielding blocking erasable : List Label)
+    (env : TermEnv)
+    (body : CoreExpr)
+    (opHandle : Label)
+    (argName resumeName : String)
+    (argTy opRetTy : Ty)
+    (clauseBody : CoreExpr)
+    (ty : Ty)
+    (h_cap :
+      NativeTypedHandleCorrespondenceCapstone
+        clauseSem mismatchSem bodyStep
+        yielding blocking erasable
+        env body opHandle argName resumeName argTy opRetTy clauseBody ty) :
+    schedulerClassOfResidual blocking (eraseCapabilities [opHandle] erasable) = .cooperative
+      ↔
+    opHandle ∉ erasable ∧ opHandle ∉ blocking := by
+  constructor
+  · intro h_cls
+    have h_not_erasable : opHandle ∉ erasable := by
+      intro h_mem_erasable
+      have h_pure :
+          schedulerClassOfResidual blocking (eraseCapabilities [opHandle] erasable) = .pure :=
+        (native_typed_handle_correspondence_capstone_handled_erased_implies_pure
+          clauseSem mismatchSem bodyStep yielding blocking erasable
+          env body opHandle argName resumeName argTy opRetTy clauseBody ty
+          h_cap h_mem_erasable)
+      rw [h_cls] at h_pure
+      cases h_pure
+    have h_not_blocking : opHandle ∉ blocking := by
+      intro h_blocking_mem
+      have h_blocking :
+          schedulerClassOfResidual blocking (eraseCapabilities [opHandle] erasable) = .blocking :=
+        native_typed_handle_correspondence_capstone_not_erasable_and_blocking_implies_blocking
+          clauseSem mismatchSem bodyStep yielding blocking erasable
+          env body opHandle argName resumeName argTy opRetTy clauseBody ty
+          h_cap h_not_erasable h_blocking_mem
+      rw [h_cls] at h_blocking
+      cases h_blocking
+    exact ⟨h_not_erasable, h_not_blocking⟩
+  · intro h
+    exact native_typed_handle_correspondence_capstone_not_erasable_and_not_blocking_implies_cooperative
+      clauseSem mismatchSem bodyStep yielding blocking erasable
+      env body opHandle argName resumeName argTy opRetTy clauseBody ty
+      h_cap h.1 h.2
+
 /-- Declarative field typing is functional on the core slice. -/
 theorem hasFieldsType_unique
     {env : TermEnv} {fs : CoreFields} {row₁ row₂ : RowFields}

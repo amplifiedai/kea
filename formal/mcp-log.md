@@ -22463,3 +22463,51 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - The typed-handle correspondence boundary now gives exact scheduler outcomes in both non-erased branches (blocking vs cooperative).
+
+### 2026-03-04: completed blocking/cooperative iff laws for non-erased singleton typed-handle boundary
+
+**Context**: Added exact `iff` laws in `Kea/Typing.lean`:
+- `native_typed_handle_correspondence_capstone_blocking_iff_not_erasable_and_blocking`
+- `native_typed_handle_correspondence_capstone_cooperative_iff_not_erasable_and_not_blocking`
+
+This completes the singleton typed-handle scheduler partition with theorem-level iff characterizations for all three classes:
+- `pure ↔ erased`
+- `blocking ↔ (not erased ∧ blocking)`
+- `cooperative ↔ (not erased ∧ not blocking)`
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent handler should type-check.
+- Mismatched clause that leaks an unhandled effect should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Circumference` + trivial fn -> `ok`.
+2. Coherent handler (`handle runProbeHO(); ProbeHO.run() -> resume 481`) -> `ok`.
+3. Mismatched handler clause (effect leak remains `[ProbeHP]`) -> `error`, `E0001`.
+4. Bad resume payload -> `error`, `E0001`.
+5. Out-of-handler resume (`fresh_outside_resume_probe_20260304z`) -> `error`, `E0012`.
+6. Forged-name out-of-handler resume (`forged_ctx_probe_20260304z`) -> `error`, `E0012`.
+7. Double-resume clause -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the exact blocking/cooperative `iff` laws.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_typed_handle_correspondence_capstone_blocking_iff_not_erasable_and_blocking`
+  - `native_typed_handle_correspondence_capstone_cooperative_iff_not_erasable_and_not_blocking`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The typed native-handle correspondence boundary now has a full exact scheduler classification partition.
