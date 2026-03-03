@@ -654,12 +654,6 @@ fn apply_hardcoded_prelude_reexports(env: &mut TypeEnv, traits: &TraitRegistry) 
             {
                 env.set_function_signature(item_name.clone(), signature);
             }
-            if let Some(effect_signature) = env
-                .resolve_qualified_effect_signature(&module_path, &item_name)
-                .cloned()
-            {
-                env.set_function_effect_signature(item_name.clone(), effect_signature);
-            }
             if let Some(effect_row) = env.resolve_qualified_effect_row(&module_path, &item_name) {
                 env.set_function_effect_row(item_name.clone(), effect_row);
             }
@@ -1155,12 +1149,6 @@ fn bind_imported_item(
     {
         env.set_function_signature(item_name.to_string(), signature);
     }
-    if let Some(effect_signature) = env
-        .resolve_qualified_effect_signature(module_path, item_name)
-        .cloned()
-    {
-        env.set_function_effect_signature(item_name.to_string(), effect_signature);
-    }
     if let Some(effect_row) = env.resolve_qualified_effect_row(module_path, item_name) {
         env.set_function_effect_row(item_name.to_string(), effect_row);
     }
@@ -1627,15 +1615,6 @@ fn register_top_level_declarations(
                                 .cloned()
                             {
                                 env.set_function_signature(qualified_name.clone(), signature);
-                            }
-                            if let Some(effect_signature) = env
-                                .resolve_qualified_effect_signature(&effect_module, &op_name)
-                                .cloned()
-                            {
-                                env.set_function_effect_signature(
-                                    qualified_name.clone(),
-                                    effect_signature,
-                                );
                             }
                             if let Some(effect_row) =
                                 env.resolve_qualified_effect_row(&effect_module, &op_name)

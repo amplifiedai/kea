@@ -81,23 +81,6 @@ pub struct ExistentialPackSite {
     pub associated_types: BTreeMap<String, Type>,
 }
 
-/// Effect-signature template for a function used during effect inference.
-///
-/// This captures declared effect variables in parameter function types and the
-/// function's own declared effect term. Templates are instantiated with fresh
-/// effect variables at each call site.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FunctionEffectSignature {
-    pub param_effect_rows: Vec<Option<EffectRow>>,
-    pub effect_row: EffectRow,
-    /// Whether this signature is a polymorphic template that should be
-    /// instantiated with fresh effect vars at each call site.
-    ///
-    /// Local callback parameters use `false` so their effect variables stay
-    /// linked within the current inference scope.
-    pub instantiate_on_call: bool,
-}
-
 /// Call-site signature metadata for named/labeled argument binding.
 ///
 /// Labels/defaults are call-resolution metadata only; they are erased from
@@ -268,7 +251,6 @@ pub struct TypeEnv {
     bindings: Vec<BTreeMap<String, TypeScheme>>,
     function_effects: BTreeMap<String, Effects>,
     function_effect_rows: BTreeMap<String, EffectRow>,
-    function_effect_signatures: BTreeMap<String, FunctionEffectSignature>,
     function_signatures: BTreeMap<String, FnSignature>,
     module_functions: BTreeMap<String, Vec<String>>,
     /// Module path → declared effect operation names.
@@ -369,7 +351,6 @@ impl TypeEnv {
             bindings: vec![BTreeMap::new()],
             function_effects: BTreeMap::new(),
             function_effect_rows: BTreeMap::new(),
-            function_effect_signatures: BTreeMap::new(),
             function_signatures: BTreeMap::new(),
             module_functions: BTreeMap::new(),
             effect_operations: BTreeMap::new(),
@@ -404,15 +385,6 @@ impl TypeEnv {
         self.update_module_function_effect(&name, &row);
     }
 
-    /// Register a function effect-signature template for call-site instantiation.
-    pub fn set_function_effect_signature(
-        &mut self,
-        name: String,
-        signature: FunctionEffectSignature,
-    ) {
-        self.function_effect_signatures.insert(name, signature);
-    }
-
     /// Register call-site signature metadata for a function binding.
     pub fn set_function_signature(&mut self, name: String, signature: FnSignature) {
         self.function_signatures.insert(name, signature);
@@ -425,7 +397,6 @@ impl TypeEnv {
     pub fn clear_function_metadata(&mut self, name: &str) {
         self.function_effects.remove(name);
         self.function_effect_rows.remove(name);
-        self.function_effect_signatures.remove(name);
         self.function_signatures.remove(name);
     }
 
@@ -447,11 +418,6 @@ impl TypeEnv {
             }
         }
         None
-    }
-
-    /// Get effect-signature template for a function binding, if present.
-    pub fn function_effect_signature(&self, name: &str) -> Option<&FunctionEffectSignature> {
-        self.function_effect_signatures.get(name)
     }
 
     /// Get call-site signature metadata for a function binding.
@@ -691,41 +657,6 @@ impl TypeEnv {
             }
         }
         None
-    }
-
-    /// Resolve effect-signature template for a qualified function reference.
-    pub fn resolve_qualified_effect_signature(
-        &self,
-        module_short: &str,
-        field: &str,
-    ) -> Option<&FunctionEffectSignature> {
-        if let Some(module_path) = self.resolve_module_path(module_short)
-            && let Some(candidates) = self.module_functions.get(&module_path)
-        {
-            // Try module-qualified key first to avoid collision with bare-name globals.
-            let qualified_key = format!("{module_path}.{field}");
-            if candidates.iter().any(|name| name == field) {
-                if let Some(sig) = self.function_effect_signature(&qualified_key) {
-                    return Some(sig);
-                }
-                if let Some(sig) = self.function_effect_signature(field) {
-                    return Some(sig);
-                }
-                let prefixed = format!("{}_{}", module_short.to_lowercase(), field);
-                return self.function_effect_signature(&prefixed);
-            }
-            let prefixed = format!("{}_{}", module_short.to_lowercase(), field);
-            if candidates.iter().any(|name| name == &prefixed) {
-                let prefixed_qualified = format!("{module_path}.{prefixed}");
-                if let Some(sig) = self.function_effect_signature(&prefixed_qualified) {
-                    return Some(sig);
-                }
-                return self.function_effect_signature(&prefixed);
-            }
-        }
-        // Fall through to trait-qualified lookup: `Comprehensible.map`, etc.
-        let trait_key = format!("{module_short}.{field}");
-        self.function_effect_signature(&trait_key)
     }
 
     /// Resolve call-signature metadata for a qualified function reference.
@@ -7843,32 +7774,6 @@ pub fn register_effect_decl(
             function_signature_from_params(&op.params),
         );
 
-        let mut effect_var_bindings = BTreeMap::new();
-        let mut next_effect_var = 0u32;
-        let param_effect_rows = op
-            .params
-            .iter()
-            .map(|param| {
-                param.annotation.as_ref().and_then(|ann| {
-                    function_param_effect_row_from_type_annotation(
-                        &ann.node,
-                        &mut effect_var_bindings,
-                        &mut next_effect_var,
-                    )
-                })
-            })
-            .collect();
-        env.set_function_effect_signature(
-            qualified_name,
-            FunctionEffectSignature {
-                param_effect_rows,
-                effect_row: EffectRow::closed(vec![(
-                    Label::new(module_short.clone()),
-                    effect_payload.clone(),
-                )]),
-                instantiate_on_call: true,
-            },
-        );
     }
 
     diagnostics
