@@ -4629,6 +4629,60 @@ fn compile_rejects_fip_unique_named_import_forwarder_with_no_shadow_without_loca
 
 #[test]
 #[cfg(not(target_os = "windows"))]
+fn compile_and_execute_fip_unique_module_alias_forwarder_case_pattern_unshadowed_exit_code() {
+    let project_dir = temp_workspace_project_dir(
+        "kea-cli-fip-unique-module-alias-forwarder-case-pattern-unshadowed",
+    );
+    let src_dir = project_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+    std::fs::write(
+        src_dir.join("alpha.kea"),
+        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n",
+    )
+    .expect("alpha module write should succeed");
+    let source_path = src_dir.join("main.kea");
+    std::fs::write(
+        &source_path,
+        "use Alpha as A\n\nenum Wrap a\n  Wrap(a)\n\n@fip\nfn call_via_module_alias_case_pattern_no_shadow(x: Unique Int, w: Wrap(fn(Unique Int) -> Unique Int)) -> Unique Int\n  case w\n    Wrap(cb) ->\n      A.forward_once(x)\n\nfn main() -> Int\n  let w = Wrap(A.forward_once)\n  call_via_module_alias_case_pattern_no_shadow(7, w)\n",
+    )
+    .expect("source write should succeed");
+
+    let run = run_file(&source_path)
+        .expect("module-alias case-pattern no-shadow path should compile and execute");
+    assert_eq!(run.exit_code, 7);
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn compile_and_execute_fip_unique_named_import_forwarder_case_pattern_unshadowed_exit_code() {
+    let project_dir = temp_workspace_project_dir(
+        "kea-cli-fip-unique-named-import-forwarder-case-pattern-unshadowed",
+    );
+    let src_dir = project_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+    std::fs::write(
+        src_dir.join("alpha.kea"),
+        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n",
+    )
+    .expect("alpha module write should succeed");
+    let source_path = src_dir.join("main.kea");
+    std::fs::write(
+        &source_path,
+        "use Alpha.{forward_once}\n\nenum Wrap a\n  Wrap(a)\n\n@fip\nfn call_via_named_import_case_pattern_no_shadow(x: Unique Int, w: Wrap(fn(Unique Int) -> Unique Int)) -> Unique Int\n  case w\n    Wrap(cb) ->\n      forward_once(x)\n\nfn main() -> Int\n  let w = Wrap(forward_once)\n  call_via_named_import_case_pattern_no_shadow(7, w)\n",
+    )
+    .expect("source write should succeed");
+
+    let run = run_file(&source_path)
+        .expect("named-import case-pattern no-shadow path should compile and execute");
+    assert_eq!(run.exit_code, 7);
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
 fn compile_rejects_fip_unique_shadowed_forwarder_name_call_escape() {
     let project_dir = temp_workspace_project_dir("kea-cli-fip-unique-shadowed-forwarder-name");
     let src_dir = project_dir.join("src");
