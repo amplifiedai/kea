@@ -6467,6 +6467,58 @@ theorem not_native_handler_mismatch_steps_subsumed_by_ext_of_op_mismatch_no_body
       h_op_ne h_no_body_step)
 
 /--
+Mismatch-step subsumption is equivalent to failure of strict extension:
+`ext-with-mismatch` strictly extends `ext` exactly when mismatch-steps are not
+all subsumed by `ext` steps.
+-/
+theorem native_handler_step_ext_with_mismatch_strictly_extends_ext_prop_iff_not_subsumed
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) :
+    native_handler_step_ext_with_mismatch_strictly_extends_ext_prop
+      clauseSem mismatchSem bodyStep
+      ↔
+    ¬ native_handler_mismatch_steps_subsumed_by_ext_prop
+      clauseSem mismatchSem bodyStep := by
+  constructor
+  · intro h_strict
+    exact not_native_handler_mismatch_steps_subsumed_by_ext_of_strict_extension
+      clauseSem mismatchSem bodyStep h_strict
+  · intro h_not_subsumed
+    refine ⟨?_, ?_⟩
+    · intro e e' h_ext
+      exact native_handler_step_ext_with_mismatch_of_ext_step
+        clauseSem mismatchSem bodyStep h_ext
+    · classical
+      by_cases h_gap :
+          ∃ e e',
+            NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep e e'
+              ∧ ¬ NativeHandlerStepExt clauseSem bodyStep e e'
+      · exact h_gap
+      · exfalso
+        apply h_not_subsumed
+        intro e e' h_step_mismatch
+        by_cases h_ext : NativeHandlerStepExt clauseSem bodyStep e e'
+        · exact h_ext
+        · exfalso
+          exact h_gap ⟨e, e', h_step_mismatch, h_ext⟩
+
+/--
+Concrete pass-through specialization of
+`native_handler_step_ext_with_mismatch_strictly_extends_ext_prop_iff_not_subsumed`.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_strictly_extends_ext_prop_iff_not_subsumed
+    (clauseSem : NativeHandlerClauseSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) :
+    native_handler_step_ext_with_mismatch_strictly_extends_ext_prop
+      clauseSem nativeHandlerMismatchPassThroughSem bodyStep
+      ↔
+    ¬ native_handler_mismatch_steps_subsumed_by_ext_prop
+      clauseSem nativeHandlerMismatchPassThroughSem bodyStep := by
+  exact native_handler_step_ext_with_mismatch_strictly_extends_ext_prop_iff_not_subsumed
+    clauseSem nativeHandlerMismatchPassThroughSem bodyStep
+
+/--
 Core preservation obligation for a candidate body-step relation.
 -/
 def native_core_preservation_prop
