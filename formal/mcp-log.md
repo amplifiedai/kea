@@ -23133,3 +23133,47 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - Goal-(4) full-capstone witnesses now project into legacy/strengthened boundary-capstone layers directly, reducing route fragmentation.
+
+### 2026-03-04: lifted full-soundness route into unified boundary-status capstones (including pass-through specialization)
+
+**Context**: Extended the new mismatch full-soundness route integration to the boundary-status layer in `Kea/Typing.lean`:
+- `native_handler_soundness_boundary_status_capstone{,_strengthened}_of_full_soundness_capstone_route`
+- `native_handler_soundness_boundary_status_capstone{,_strengthened}_of_core_soundness_and_strict_top_typing_via_full_soundness_capstone`
+- `native_handler_step_ext_with_passThroughMismatch_soundness_boundary_status_capstone{,_strengthened}_via_full_soundness_capstone`
+
+This keeps goal (4) vertical: the same full-soundness route now composes through boundary, boundary-status, and concrete pass-through status-capstone APIs.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- Coherent handler should type-check.
+- Mismatch effect-leak handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. Coherent handler (`probe_coherent_20260304ao`) -> `ok`.
+2. Mismatch effect-leak handler (`probe_mismatch_20260304ao`) -> `error`, `E0001`.
+3. Bad resume payload (`probe_bad_resume_20260304ao`) -> `error`, `E0001`.
+4. Out-of-handler resume (`probe_outside_resume_20260304ao`) -> `error`, `E0012`.
+5. Forged-name out-of-handler resume (`probe_forged_resume_ctx_20260304ao`) -> `error`, `E0012`.
+6. Double-resume clause (`probe_double_resume_20260304ao`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the status-capstone route constructors and pass-through route wrappers.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_soundness_boundary_status_capstone{,_strengthened}_of_full_soundness_capstone_route`
+  - `native_handler_soundness_boundary_status_capstone{,_strengthened}_of_core_soundness_and_strict_top_typing_via_full_soundness_capstone`
+  - `native_handler_step_ext_with_passThroughMismatch_soundness_boundary_status_capstone{,_strengthened}_via_full_soundness_capstone`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Full-soundness route evidence is now consumable at unified status-capstone level (generic and pass-through) without dropping back to lower route layers.

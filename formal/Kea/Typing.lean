@@ -7410,6 +7410,70 @@ theorem native_handler_soundness_boundary_status_capstone_strengthened
   }
 
 /--
+Build the unified status capstone from a route that returns full
+mismatch-soundness capstones.
+-/
+theorem native_handler_soundness_boundary_status_capstone_of_full_soundness_capstone_route
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (h_route :
+      native_handler_step_ext_with_mismatch_full_soundness_capstone_route_prop
+        clauseSem mismatchSem) :
+    NativeHandlerSoundnessBoundaryStatusCapstone clauseSem mismatchSem := by
+  exact {
+    boundary :=
+      native_handler_soundness_boundary_capstone_of_full_soundness_capstone_route
+        clauseSem mismatchSem h_route
+    typingGap := native_handler_current_typing_gap_slice
+    dualWitnessBodyStepFalse := native_handler_dual_witness_bodyStepFalse clauseSem mismatchSem
+  }
+
+/--
+Build the strengthened unified status capstone from a route that returns full
+mismatch-soundness capstones.
+-/
+theorem native_handler_soundness_boundary_status_capstone_strengthened_of_full_soundness_capstone_route
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (h_route :
+      native_handler_step_ext_with_mismatch_full_soundness_capstone_route_prop
+        clauseSem mismatchSem) :
+    NativeHandlerSoundnessBoundaryStatusCapstoneStrengthened clauseSem mismatchSem := by
+  exact {
+    boundary :=
+      native_handler_soundness_boundary_capstone_strengthened_of_full_soundness_capstone_route
+        clauseSem mismatchSem h_route
+    typingGap := native_handler_current_typing_gap_slice
+    dualWitnessBodyStepFalse := native_handler_dual_witness_bodyStepFalse clauseSem mismatchSem
+  }
+
+/--
+Canonical unified status capstone route via the full mismatch-soundness
+capstone layer.
+-/
+theorem native_handler_soundness_boundary_status_capstone_of_core_soundness_and_strict_top_typing_via_full_soundness_capstone
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) :
+    NativeHandlerSoundnessBoundaryStatusCapstone clauseSem mismatchSem := by
+  exact native_handler_soundness_boundary_status_capstone_of_full_soundness_capstone_route
+    clauseSem mismatchSem
+    (native_handler_step_ext_with_mismatch_full_soundness_capstone_route_of_core_soundness_and_strict_top_typing
+      clauseSem mismatchSem)
+
+/--
+Canonical strengthened unified status capstone route via the full
+mismatch-soundness capstone layer.
+-/
+theorem native_handler_soundness_boundary_status_capstone_strengthened_of_core_soundness_and_strict_top_typing_via_full_soundness_capstone
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) :
+    NativeHandlerSoundnessBoundaryStatusCapstoneStrengthened clauseSem mismatchSem := by
+  exact native_handler_soundness_boundary_status_capstone_strengthened_of_full_soundness_capstone_route
+    clauseSem mismatchSem
+    (native_handler_step_ext_with_mismatch_full_soundness_capstone_route_of_core_soundness_and_strict_top_typing
+      clauseSem mismatchSem)
+
+/--
 Strengthened unified status capstone built from the packaged boundary-model gap
 slice.
 -/
@@ -9027,6 +9091,17 @@ theorem native_handler_step_ext_with_passThroughMismatch_soundness_boundary_stat
     clauseSem nativeHandlerMismatchPassThroughSem
 
 /--
+Build the concrete pass-through unified boundary status capstone through the
+full mismatch-soundness capstone route.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_soundness_boundary_status_capstone_via_full_soundness_capstone
+    (clauseSem : NativeHandlerClauseSem) :
+    native_handler_step_ext_with_passThroughMismatch_soundness_boundary_status_capstone_prop
+      clauseSem := by
+  exact native_handler_soundness_boundary_status_capstone_of_core_soundness_and_strict_top_typing_via_full_soundness_capstone
+    clauseSem nativeHandlerMismatchPassThroughSem
+
+/--
 Build the concrete pass-through unified boundary status capstone from a
 boundary-model gap slice witness.
 -/
@@ -9048,6 +9123,17 @@ theorem native_handler_step_ext_with_passThroughMismatch_soundness_boundary_stat
     native_handler_step_ext_with_passThroughMismatch_soundness_boundary_status_capstone_strengthened_prop
       clauseSem := by
   exact native_handler_soundness_boundary_status_capstone_strengthened
+    clauseSem nativeHandlerMismatchPassThroughSem
+
+/--
+Build the concrete pass-through strengthened unified boundary status capstone
+through the full mismatch-soundness capstone route.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_soundness_boundary_status_capstone_strengthened_via_full_soundness_capstone
+    (clauseSem : NativeHandlerClauseSem) :
+    native_handler_step_ext_with_passThroughMismatch_soundness_boundary_status_capstone_strengthened_prop
+      clauseSem := by
+  exact native_handler_soundness_boundary_status_capstone_strengthened_of_core_soundness_and_strict_top_typing_via_full_soundness_capstone
     clauseSem nativeHandlerMismatchPassThroughSem
 
 /--
