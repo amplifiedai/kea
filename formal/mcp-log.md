@@ -20300,3 +20300,49 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - Boundary failures are now consumable as direct proposition-level equivalences, improving downstream theorem ergonomics and reducing repeated negation-to-elimination boilerplate.
+
+### 2026-03-03: typing-gap package now carries strict-typed handle existence witness
+
+**Context**: Added a concrete strict-typed handle existence theorem and threaded it into `NativeHandlerCurrentTypingGapSlice`:
+- `exists_native_handler_strict_top_typed_handle_witness`
+- `NativeHandlerCurrentTypingGapSlice.strictTopTypedHandleExists`
+
+This makes the gap package explicit that the strict-top relation is non-empty, while the global strict-top lifting contract still fails.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent self-contained handler should type-check.
+- Mismatched pure handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume in one clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Prelude` -> `ok`.
+2. Coherent Rho2 handler (`Rho2.read() -> resume 2221`) -> `ok`.
+3. Mismatched pure handler (`handle Rho2.read()` with only `Sigma2.read_other` clause) -> `error`, `E0001` (pure body performs `[Rho2]`).
+4. Bad resume payload (`Rho2.read() -> resume "bad"`) -> `error`, `E0001`.
+5. Out-of-handler resume (`fn rho2_resume_outside() -> Int; resume 2221`) -> `error`, `E0012`.
+6. Forged-name out-of-handler resume (`let __kea_resume_ctx = 9; resume 2221`) -> `error`, `E0012`.
+7. Double-resume clause (`resume 1` then `resume 2`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the strict-typed handle existence witness and gap-package field addition.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `exists_native_handler_strict_top_typed_handle_witness`
+  - `NativeHandlerCurrentTypingGapSlice.strictTopTypedHandleExists`
+  - `native_handler_current_typing_gap_slice` (updated constructor)
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The current typing-gap package now explicitly distinguishes “global lift contract fails” from “strict-top handler typing has no inhabitants,” reducing interpretation ambiguity in downstream boundary arguments.

@@ -3732,6 +3732,45 @@ theorem not_native_handler_strict_top_typing_prop_iff_not_scoped_to_strict_lift 
       (native_handler_scoped_to_strict_lift_prop_of_strict_top_typing h_strict_top)
 
 /--
+Strict top-level handler typing is non-empty: there exists a concrete handled
+`perform` expression typable under `HasTypeScopedStrictTop`.
+-/
+theorem exists_native_handler_strict_top_typed_handle_witness :
+    ∃ body op argName resumeName argTy opRetTy clauseBody ty,
+      HasTypeScopedStrictTop []
+        (.handle body op argName resumeName argTy opRetTy clauseBody)
+        ty := by
+  refine ⟨
+    .perform "Op" .int .int (.intLit 1) (.lam "x" .int (.intLit 0)),
+    "Op", "x", "k", .int, .int, .intLit 2, .int,
+    ?_⟩
+  have h_typed :
+      HasTypeScopedTop []
+        (.handle
+          (.perform "Op" .int .int (.intLit 1) (.lam "x" .int (.intLit 0)))
+          "Op" "x" "k" .int .int (.intLit 2))
+        .int := by
+    exact HasTypeScoped.handle none []
+      (.perform "Op" .int .int (.intLit 1) (.lam "x" .int (.intLit 0)))
+      "Op" "x" "k" .int .int .int (.intLit 2)
+      (HasTypeScoped.perform none [] "Op" .int .int .int
+        (.intLit 1) (.lam "x" .int (.intLit 0))
+        (HasTypeScoped.int none [] 1)
+        (HasTypeScoped.lam none [] "x" .int .int (.intLit 0)
+          (HasTypeScoped.int none [("x", .int)] 0)))
+      (HasTypeScoped.int (some (.int, .int))
+        (("k", .function (.cons .int .nil) .int) ::
+          ("x", .int) ::
+          [])
+        2)
+  exact hasTypeScopedTop_handle_lifts_strict_of_local_coherence
+    h_typed
+    (by
+      intro opBody argTyBody opRetTyBody arg k h_eq
+      cases h_eq
+      exact ⟨rfl, rfl⟩)
+
+/--
 Packaged current-typing boundary gap: all strict/coherence routes required for
 non-vacuous handler soundness fail on the present native scoped typing judgment.
 -/
@@ -3744,6 +3783,11 @@ structure NativeHandlerCurrentTypingGapSlice : Prop where
     ¬ native_handler_scoped_to_strict_lift_prop
   metadataCoherenceFalse :
     ¬ native_handler_perform_metadata_coherence_prop
+  strictTopTypedHandleExists :
+    ∃ body op argName resumeName argTy opRetTy clauseBody ty,
+      HasTypeScopedStrictTop []
+        (.handle body op argName resumeName argTy opRetTy clauseBody)
+        ty
 
 /--
 Canonical packaged witness for the current strict/coherence typing gap.
@@ -3755,6 +3799,7 @@ theorem native_handler_current_typing_gap_slice :
     strictTypingFalse := not_native_handler_strict_typing_prop
     scopedToStrictLiftFalse := not_native_handler_scoped_to_strict_lift_prop
     metadataCoherenceFalse := not_native_handler_perform_metadata_coherence_prop
+    strictTopTypedHandleExists := exists_native_handler_strict_top_typed_handle_witness
   }
 
 /--
