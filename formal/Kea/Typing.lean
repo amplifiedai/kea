@@ -3138,6 +3138,29 @@ theorem native_handler_step_ext_with_mismatch_soundness_strict_handle_prop_iff_p
       clauseSem mismatchSem bodyStep h_pres h_prog
 
 /--
+Body-preservation corollary of
+`native_handler_step_ext_with_mismatch_soundness_strict_handle_prop_iff_progress_strict_prop_of_preservation`.
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_strict_handle_prop_iff_progress_strict_prop_of_body_preservation
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_body_pres :
+      ∀ env body body' ty,
+        HasTypeScopedTop env body ty →
+        bodyStep body body' →
+        HasTypeScopedTop env body' ty) :
+    native_handler_step_ext_with_mismatch_soundness_strict_handle_prop
+      clauseSem mismatchSem bodyStep
+      ↔
+    native_handler_step_ext_with_mismatch_progress_strict_prop
+      clauseSem mismatchSem bodyStep := by
+  exact native_handler_step_ext_with_mismatch_soundness_strict_handle_prop_iff_progress_strict_prop_of_preservation
+    clauseSem mismatchSem bodyStep
+    (native_handler_step_ext_with_mismatch_preservation
+      clauseSem mismatchSem bodyStep h_body_pres)
+
+/--
 Soundness target (preservation + progress) for mismatched-perform extension
 under strict local handle typing premises.
 -/
@@ -3241,6 +3264,29 @@ theorem native_handler_step_ext_with_mismatch_soundness_strict_top_prop_iff_prog
         clauseSem mismatchSem bodyStep h_pres h_prog_strict
     exact native_handler_step_ext_with_mismatch_soundness_strict_top_of_soundness_strict_handle
       clauseSem mismatchSem bodyStep h_sound_handle
+
+/--
+Body-preservation corollary of
+`native_handler_step_ext_with_mismatch_soundness_strict_top_prop_iff_progress_strict_top_prop_of_preservation`.
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_strict_top_prop_iff_progress_strict_top_prop_of_body_preservation
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_body_pres :
+      ∀ env body body' ty,
+        HasTypeScopedTop env body ty →
+        bodyStep body body' →
+        HasTypeScopedTop env body' ty) :
+    native_handler_step_ext_with_mismatch_soundness_strict_top_prop
+      clauseSem mismatchSem bodyStep
+      ↔
+    native_handler_step_ext_with_mismatch_progress_strict_top_prop
+      clauseSem mismatchSem bodyStep := by
+  exact native_handler_step_ext_with_mismatch_soundness_strict_top_prop_iff_progress_strict_top_prop_of_preservation
+    clauseSem mismatchSem bodyStep
+    (native_handler_step_ext_with_mismatch_preservation
+      clauseSem mismatchSem bodyStep h_body_pres)
 
 /--
 Under global preservation, strict-top one-step soundness is equivalent to the
