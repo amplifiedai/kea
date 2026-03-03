@@ -18685,3 +18685,44 @@ concrete pass-through mismatch semantics.
 **Impact**:
 - A single core-soundness premise now yields one named theorem witness that
   bundles both global and local route surfaces (generic and concrete pass-through).
+
+### 2026-03-03: master-suite equivalence to soundness routes
+
+**Context**: Added master-suite equivalence theorems showing master suites are
+determined by soundness-route bundles (generic mismatch and concrete
+pass-through), and routed pass-through master-suite core derivation through the
+new equivalence.
+
+**MCP tools used**: `reset_session`, `type_check`
+
+**Predict (Lean side)**:
+- Coherent handled reader program (with `then`) should type-check.
+- Clause/effect mismatch should leak source effect in pure context.
+- Bad resume payload should reject.
+- Out-of-handler resume should reject.
+
+**Probe (Rust side via MCP)**:
+1. Coherent `handle Reader.ask(); Reader.ask() -> resume 9; then ...` -> `ok`.
+2. Mismatched `Log.info` clause around `Reader.ask()` body -> `error`, `E0001` (pure body performs `[Reader(Int)]`).
+3. Bad `Reader Int` resume payload (`resume "x"`) -> `error`, `E0001`.
+4. Out-of-handler resume control (`resume 6`) -> `error`, `E0012`.
+
+**Classify**: Agreement.
+
+**Act**:
+- Kept master-suite equivalence additions and pass-through core-route refactor.
+- Continued checkpoint loop without model revision.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_master_suite_prop_iff_soundness_assumption_routes`
+  - `native_handler_step_ext_with_passThroughMismatch_master_suite_prop_iff_soundness_assumption_routes`
+  - refactor:
+    - `native_handler_step_ext_with_passThroughMismatch_master_suite_of_core_soundness`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Master-suite consumption now has explicit reduction to soundness-route bundles
+  on both generic and concrete pass-through semantics.
