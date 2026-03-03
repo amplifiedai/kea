@@ -23309,3 +23309,49 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - Full-soundness route has become a single constructor spine across core mismatch capstone layers up to master-suite packaging.
+
+### 2026-03-04: added direct via-full-route master-level projections (generic + pass-through)
+
+**Context**: Added direct full-route projections for master-level consumer APIs in `Kea/Typing.lean`:
+- Generic:
+  - `native_handler_step_ext_with_mismatch_soundness_progress_equiv_of_core_soundness_and_strict_top_typing_via_full_soundness_capstone`
+  - `native_handler_step_ext_with_mismatch_soundness_prop_iff_progress_prop_of_core_soundness_and_strict_top_typing_via_full_soundness_capstone`
+  - `native_handler_step_ext_with_mismatch_local_exists_and_preserves_of_core_soundness_and_strict_top_typing_via_full_soundness_capstone`
+- Pass-through:
+  - `native_handler_step_ext_with_passThroughMismatch_soundness_progress_equiv_of_core_soundness_and_strict_top_typing_via_full_soundness_capstone`
+  - `native_handler_step_ext_with_passThroughMismatch_soundness_prop_iff_progress_prop_of_core_soundness_and_strict_top_typing_via_full_soundness_capstone`
+  - `native_handler_step_ext_with_passThroughMismatch_local_exists_and_preserves_of_core_soundness_and_strict_top_typing_via_full_soundness_capstone`
+
+This makes full-route consumption direct at master-level theorem APIs, instead of requiring route consumers to go via the `...via_master_suite` wrappers first.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- Coherent handler should type-check.
+- Mismatch effect-leak handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. Coherent handler (`probe_coherent_20260304as`) -> `ok`.
+2. Mismatch effect-leak handler (`probe_mismatch_20260304as`) -> `error`, `E0001`.
+3. Bad resume payload (`probe_bad_resume_20260304as`) -> `error`, `E0001`.
+4. Out-of-handler resume (`probe_outside_resume_20260304as`) -> `error`, `E0012`.
+5. Forged-name out-of-handler resume (`probe_forged_resume_ctx_20260304as`) -> `error`, `E0012`.
+6. Double-resume clause (`probe_double_resume_20260304as`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the master-level direct full-route projection wrappers (generic and pass-through).
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`: theorem names listed in Context above.
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The full-soundness constructor path now has direct consumer-facing projections at the master layer across both generic and pass-through routes.
