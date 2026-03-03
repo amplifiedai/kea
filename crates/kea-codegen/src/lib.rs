@@ -961,6 +961,8 @@ fn compile_into_module<M: Module>(
             let value_types = infer_mir_value_types(function, layout_plan);
             let stack_unboxed_record_inits =
                 collect_stack_eligible_unboxed_record_inits(function, layout_plan);
+            let stack_record_release_elision_values =
+                collect_stack_record_release_elision_values(function, &stack_unboxed_record_inits);
             let stack_sum_inits = collect_stack_eligible_sum_inits(function, layout_plan);
             let stack_sum_release_elision_values =
                 collect_stack_sum_release_elision_values(function, &stack_sum_inits);
@@ -1013,6 +1015,7 @@ fn compile_into_module<M: Module>(
                     drop_func_ids: &drop_func_ids,
                     value_types: &value_types,
                     stack_unboxed_record_inits: &stack_unboxed_record_inits,
+                    stack_record_release_elision_values: &stack_record_release_elision_values,
                     stack_sum_inits: &stack_sum_inits,
                     stack_sum_release_elision_values: &stack_sum_release_elision_values,
                     runtime_signatures: &runtime_signatures,
@@ -2004,6 +2007,7 @@ struct LowerInstCtx<'a> {
     drop_func_ids: &'a DropFunctionIds,
     value_types: &'a BTreeMap<MirValueId, Type>,
     stack_unboxed_record_inits: &'a BTreeSet<MirValueId>,
+    stack_record_release_elision_values: &'a BTreeSet<MirValueId>,
     stack_sum_inits: &'a BTreeSet<MirValueId>,
     stack_sum_release_elision_values: &'a BTreeSet<MirValueId>,
     runtime_signatures: &'a BTreeMap<String, RuntimeFunctionSig>,
@@ -2026,7 +2030,7 @@ fn collect_stack_eligible_unboxed_record_inits(
             if layout_plan
                 .records
                 .get(record_type.as_str())
-                .is_some_and(|layout| layout.is_unboxed)
+                .is_some_and(|layout| record_layout_is_stack_kernel_eligible(layout, layout_plan))
             {
                 candidates.insert(dest.clone());
             }
@@ -2035,8 +2039,19 @@ fn collect_stack_eligible_unboxed_record_inits(
 
     candidates
         .into_iter()
-        .filter(|candidate| is_non_escaping_unboxed_record_init(function, candidate))
+        .filter(|candidate| is_non_escaping_stack_record_init(function, candidate))
         .collect()
+}
+
+fn record_layout_is_stack_kernel_eligible(
+    layout: &BackendRecordLayout,
+    layout_plan: &BackendLayoutPlan,
+) -> bool {
+    layout.is_unboxed
+        || layout
+            .field_types
+            .values()
+            .all(|ty| !is_managed_heap_type(ty, layout_plan))
 }
 
 fn collect_stack_eligible_sum_inits(
@@ -2087,7 +2102,14 @@ fn count_stack_excluded_mixed_sum_inits(
         .count()
 }
 
-fn is_non_escaping_unboxed_record_init(function: &MirFunction, candidate: &MirValueId) -> bool {
+fn is_non_escaping_stack_record_init(function: &MirFunction, candidate: &MirValueId) -> bool {
+    collect_non_escaping_record_aliases(function, candidate).is_some()
+}
+
+fn collect_non_escaping_record_aliases(
+    function: &MirFunction,
+    candidate: &MirValueId,
+) -> Option<BTreeSet<MirValueId>> {
     let block_params = function
         .blocks
         .iter()
@@ -2146,26 +2168,38 @@ fn is_non_escaping_unboxed_record_init(function: &MirFunction, candidate: &MirVa
                 | MirInst::TryClaim { src, .. }
                 | MirInst::Freeze { src, .. }
                     if aliases.contains(src) => {}
-                _ if inst_references_any_value(inst, &aliases) => return false,
+                MirInst::Release { value } if aliases.contains(value) => {}
+                _ if inst_references_any_value(inst, &aliases) => return None,
                 _ => {}
             }
         }
         match &block.terminator {
             MirTerminator::Jump { target, args } => {
-                let Some(params) = block_params.get(target) else {
-                    return false;
-                };
+                let params = block_params.get(target)?;
                 for (arg, param) in args.iter().zip(params.iter()) {
                     if aliases.contains(arg) && !aliases.contains(param) {
-                        return false;
+                        return None;
                     }
                 }
             }
-            _ if terminator_references_any_value(&block.terminator, &aliases) => return false,
+            _ if terminator_references_any_value(&block.terminator, &aliases) => return None,
             _ => {}
         }
     }
-    true
+    Some(aliases)
+}
+
+fn collect_stack_record_release_elision_values(
+    function: &MirFunction,
+    stack_record_inits: &BTreeSet<MirValueId>,
+) -> BTreeSet<MirValueId> {
+    let mut elision_values = BTreeSet::new();
+    for candidate in stack_record_inits {
+        if let Some(aliases) = collect_non_escaping_record_aliases(function, candidate) {
+            elision_values.extend(aliases);
+        }
+    }
+    elision_values
 }
 
 fn is_non_escaping_sum_init(function: &MirFunction, candidate: &MirValueId) -> bool {
@@ -4672,7 +4706,9 @@ fn lower_instruction<M: Module>(
             Ok(false)
         }
         MirInst::Release { value } => {
-            if ctx.stack_sum_release_elision_values.contains(value) {
+            if ctx.stack_record_release_elision_values.contains(value)
+                || ctx.stack_sum_release_elision_values.contains(value)
+            {
                 return Ok(false);
             }
             let ptr_ty = module.target_config().pointer_type();
@@ -5879,6 +5915,8 @@ fn collect_function_stats(
     let stack_unboxed_record_inits = layout_plan
         .map(|plan| collect_stack_eligible_unboxed_record_inits(function, plan))
         .unwrap_or_default();
+    let stack_record_release_elision_values =
+        collect_stack_record_release_elision_values(function, &stack_unboxed_record_inits);
     let stack_sum_inits = layout_plan
         .map(|plan| collect_stack_eligible_sum_inits(function, plan))
         .unwrap_or_default();
@@ -5897,7 +5935,9 @@ fn collect_function_stats(
             match inst {
                 MirInst::Retain { .. } => stats.retain_count += 1,
                 MirInst::Release { value } => {
-                    if !stack_sum_release_elision_values.contains(value) {
+                    if !stack_record_release_elision_values.contains(value)
+                        && !stack_sum_release_elision_values.contains(value)
+                    {
                         stats.release_count += 1;
                     }
                 }
@@ -7404,6 +7444,59 @@ mod tests {
                         is_unboxed: false,
                     fields: vec![MirRecordFieldLayout {
                         name: "age".to_string(),
+                        annotation: kea_ast::TypeAnnotation::Named("Int".to_string()),
+                    }],
+                }],
+                sums: vec![],
+            },
+        }
+    }
+
+    fn sample_value_only_record_non_escaping_module() -> MirModule {
+        MirModule {
+            functions: vec![MirFunction {
+                name: "main".to_string(),
+                signature: MirFunctionSignature {
+                    params: vec![],
+                    ret: Type::Int,
+                    effects: EffectRow::pure(),
+                },
+                entry: MirBlockId(0),
+                blocks: vec![MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: MirValueId(0),
+                            literal: MirLiteral::Int(20),
+                        },
+                        MirInst::RecordInit {
+                            dest: MirValueId(1),
+                            record_type: "Point".to_string(),
+                            fields: vec![("x".to_string(), MirValueId(0))],
+                        },
+                        MirInst::RecordFieldLoad {
+                            dest: MirValueId(2),
+                            record: MirValueId(1),
+                            record_type: "Point".to_string(),
+                            field: "x".to_string(),
+                            field_ty: Type::Int,
+                        },
+                        MirInst::Release {
+                            value: MirValueId(1),
+                        },
+                    ],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirValueId(2)),
+                    },
+                }],
+            }],
+            layouts: MirLayoutCatalog {
+                records: vec![MirRecordLayout {
+                    name: "Point".to_string(),
+                    is_unboxed: false,
+                    fields: vec![MirRecordFieldLayout {
+                        name: "x".to_string(),
                         annotation: kea_ast::TypeAnnotation::Named("Int".to_string()),
                     }],
                 }],
@@ -9971,6 +10064,17 @@ mod tests {
         assert_eq!(stats.per_function.len(), 1);
         let function = &stats.per_function[0];
         assert_eq!(function.alloc_count, 0);
+    }
+
+    #[test]
+    fn collect_pass_stats_treats_value_only_record_init_as_non_allocating() {
+        let module = sample_value_only_record_non_escaping_module();
+        let stats = collect_pass_stats(&module);
+
+        assert_eq!(stats.per_function.len(), 1);
+        let function = &stats.per_function[0];
+        assert_eq!(function.alloc_count, 0);
+        assert_eq!(function.release_count, 0);
     }
 
     #[test]

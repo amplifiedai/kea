@@ -4316,6 +4316,39 @@ fn compile_mixed_sum_if_join_kernel_elides_alloc_and_release_in_stats() {
 }
 
 #[test]
+fn compile_value_only_record_if_join_reduces_consume_alloc_in_stats() {
+    let source_path = write_temp_source(
+        "struct Point\n  x: Int\n\nfn consume(flag: Bool, p: Point) -> Unit\n  let q = if flag\n    p\n  else\n    Point { x: 1 }\n  let out = Point { x: q.x + 1 }\n  ()\n\nfn main() -> Int\n  consume(true, Point { x: 0 })\n  consume(false, Point { x: 0 })\n  0\n",
+        "kea-cli-value-only-record-if-join-reuse-stats",
+        "kea",
+    );
+
+    let compiled = compile_file(&source_path, CodegenMode::Jit).expect("compile should work");
+    let consume_stats = compiled
+        .stats
+        .per_function
+        .iter()
+        .filter(|f| f.function == "consume" || f.function.ends_with(".consume"))
+        .collect::<Vec<_>>();
+    assert!(
+        !consume_stats.is_empty(),
+        "expected consume stats to exist, stats: {:?}",
+        compiled.stats
+    );
+    let alloc_count: usize = consume_stats.iter().map(|f| f.alloc_count).sum();
+    assert!(
+        alloc_count <= 2,
+        "expected value-only record if-join consume path to keep alloc count at most one per lowered function, stats: {:?}",
+        compiled.stats
+    );
+
+    let run = run_file(&source_path).expect("run should succeed");
+    assert_eq!(run.exit_code, 0);
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
 fn compile_unboxed_struct_emits_no_retain_release_in_stats() {
     let source_path = write_temp_source(
         "@unboxed\nstruct Pair\n  left: Int\n  right: Int\n\nfn mk(n: Int) -> Pair\n  Pair { left: n, right: n + 1 }\n\nfn main() -> Int\n  let p0 = mk(20)\n  let p1 = p0\n  p1.left + p1.right\n",
@@ -5441,7 +5474,7 @@ fn compile_and_execute_refcount_allocation_churn_exit_code() {
 }
 
 #[test]
-fn compile_emits_release_ops_for_allocation_churn_program() {
+fn compile_elides_release_ops_for_value_only_record_churn_program() {
     let project_dir = temp_project_dir("kea-cli-refcount-stats");
     let src_dir = project_dir.join("src");
     let stdlib_dir = project_dir.join("stdlib");
@@ -5476,15 +5509,15 @@ fn compile_emits_release_ops_for_allocation_churn_program() {
         .map(|f| f.release_count)
         .sum();
 
-    assert!(alloc_count > 0, "expected allocation ops in churn program");
-    assert!(
-        release_count > 0,
-        "expected release ops in churn program, stats: {:?}",
+    assert_eq!(
+        alloc_count, 0,
+        "expected value-only record churn to avoid heap allocations, stats: {:?}",
         compiled.stats
     );
-    assert!(
-        release_count >= alloc_count.saturating_sub(2),
-        "expected release count to track allocations closely, alloc={alloc_count}, release={release_count}"
+    assert_eq!(
+        release_count, 0,
+        "expected value-only record churn to avoid release churn, stats: {:?}",
+        compiled.stats
     );
 
     let _ = std::fs::remove_dir_all(project_dir);
@@ -5541,9 +5574,22 @@ fn compile_elides_linear_heap_alias_chain_retain_churn_in_stats() {
         .iter()
         .map(|f| f.retain_count)
         .sum();
-    let release_count: usize = compiled
+    let app_main_stats = compiled
         .stats
         .per_function
+        .iter()
+        .filter(|f| f.function == "main" || f.function.ends_with(".main"))
+        .collect::<Vec<_>>();
+    assert!(
+        !app_main_stats.is_empty(),
+        "expected app main stats to exist, stats: {:?}",
+        compiled.stats
+    );
+    let alloc_count: usize = app_main_stats
+        .iter()
+        .map(|f| f.alloc_count)
+        .sum();
+    let main_release_count: usize = app_main_stats
         .iter()
         .map(|f| f.release_count)
         .sum();
@@ -5553,9 +5599,14 @@ fn compile_elides_linear_heap_alias_chain_retain_churn_in_stats() {
         "expected linear alias ownership transfer to avoid retain churn, stats: {:?}",
         compiled.stats
     );
-    assert!(
-        release_count > 0,
-        "expected release ops to remain for heap lifecycle balance, stats: {:?}",
+    assert_eq!(
+        main_release_count, 0,
+        "expected value-only record alias chain to elide release churn in main path, stats: {:?}",
+        compiled.stats
+    );
+    assert_eq!(
+        alloc_count, 0,
+        "expected value-only record alias chain to avoid heap allocation churn in main path, stats: {:?}",
         compiled.stats
     );
 
