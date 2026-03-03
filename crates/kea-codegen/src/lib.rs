@@ -7314,6 +7314,90 @@ mod tests {
         }
     }
 
+    fn sample_unboxed_record_init_forwarded_and_returned_module() -> MirModule {
+        MirModule {
+            functions: vec![MirFunction {
+                name: "main".to_string(),
+                signature: MirFunctionSignature {
+                    params: vec![],
+                    ret: Type::Record(RecordType {
+                        name: "Pair".to_string(),
+                        params: vec![],
+                        row: RowType::closed(vec![
+                            (Label::new("left"), Type::Int),
+                            (Label::new("right"), Type::Int),
+                        ]),
+                    }),
+                    effects: EffectRow::pure(),
+                },
+                entry: MirBlockId(0),
+                blocks: vec![
+                    MirBlock {
+                        id: MirBlockId(0),
+                        params: vec![],
+                        instructions: vec![
+                            MirInst::Const {
+                                dest: MirValueId(0),
+                                literal: MirLiteral::Int(20),
+                            },
+                            MirInst::Const {
+                                dest: MirValueId(1),
+                                literal: MirLiteral::Int(22),
+                            },
+                            MirInst::RecordInit {
+                                dest: MirValueId(2),
+                                record_type: "Pair".to_string(),
+                                fields: vec![
+                                    ("left".to_string(), MirValueId(0)),
+                                    ("right".to_string(), MirValueId(1)),
+                                ],
+                            },
+                        ],
+                        terminator: MirTerminator::Jump {
+                            target: MirBlockId(1),
+                            args: vec![MirValueId(2)],
+                        },
+                    },
+                    MirBlock {
+                        id: MirBlockId(1),
+                        params: vec![MirBlockParam {
+                            id: MirValueId(3),
+                            ty: Type::Record(RecordType {
+                                name: "Pair".to_string(),
+                                params: vec![],
+                                row: RowType::closed(vec![
+                                    (Label::new("left"), Type::Int),
+                                    (Label::new("right"), Type::Int),
+                                ]),
+                            }),
+                        }],
+                        instructions: vec![],
+                        terminator: MirTerminator::Return {
+                            value: Some(MirValueId(3)),
+                        },
+                    },
+                ],
+            }],
+            layouts: MirLayoutCatalog {
+                records: vec![MirRecordLayout {
+                    name: "Pair".to_string(),
+                    is_unboxed: true,
+                    fields: vec![
+                        MirRecordFieldLayout {
+                            name: "left".to_string(),
+                            annotation: kea_ast::TypeAnnotation::Named("Int".to_string()),
+                        },
+                        MirRecordFieldLayout {
+                            name: "right".to_string(),
+                            annotation: kea_ast::TypeAnnotation::Named("Int".to_string()),
+                        },
+                    ],
+                }],
+                sums: vec![],
+            },
+        }
+    }
+
     fn sample_record_init_reuse_and_load_main_module() -> MirModule {
         MirModule {
             functions: vec![MirFunction {
@@ -8686,6 +8770,16 @@ mod tests {
         assert_eq!(stats.per_function.len(), 1);
         let function = &stats.per_function[0];
         assert_eq!(function.alloc_count, 0);
+    }
+
+    #[test]
+    fn collect_pass_stats_counts_unboxed_jump_forwarded_record_init_when_returned() {
+        let module = sample_unboxed_record_init_forwarded_and_returned_module();
+        let stats = collect_pass_stats(&module);
+
+        assert_eq!(stats.per_function.len(), 1);
+        let function = &stats.per_function[0];
+        assert_eq!(function.alloc_count, 1);
     }
 
     #[test]
