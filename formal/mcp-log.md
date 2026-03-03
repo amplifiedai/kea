@@ -19316,3 +19316,44 @@ No MCP divergence found at this checkpoint.
 **Impact**:
 - Downstream proofs can now consume the combined contrast theorem via the
   packaged boundary capstone directly, not only via standalone lemmas.
+
+### 2026-03-03: packaged extension-ladder projection from boundary capstone
+
+**Context**: Added a packaged `native_handler_extension_ladder_bodyStepFalse_prop`
+and projection theorem from `NativeHandlerBoundaryModelGapSlice`, bundling all
+strictness/typed-gap witnesses across `native -> ext -> ext-with-mismatch`.
+
+**MCP tools used**: `reset_session`, `type_check`
+
+**Predict (Lean side)**:
+- `use` parsing should remain stable.
+- Coherent Reader handler should type-check.
+- Mismatched pure handler should reject with effect leak.
+- Bad resume payload should reject.
+- Out-of-handler resume should reject.
+
+**Probe (Rust side via MCP)**:
+1. `use State` -> `ok`.
+2. Coherent Reader handler (`Reader.ask() -> resume 42`) -> `ok`.
+3. Mismatched pure handler (`handle Reader.ask()` with only `State.get` clause) -> `error`, `E0001` (pure body performs `[Reader(Int)]`).
+4. Bad resume payload (`Log.info(msg) -> resume 1` where op returns `Unit`) -> `error`, `E0001`.
+5. Out-of-handler resume control (`if true then resume 1`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No MCP divergence found at this checkpoint.
+
+**Act**:
+- Kept extension-ladder packaged projection additions.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_extension_ladder_bodyStepFalse_prop`
+  - `native_handler_extension_ladder_bodyStepFalse_of_boundary_model_gap_slice`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The full strictness/typed-gap ladder is now consumable from one projection
+  theorem over the boundary capstone, reducing downstream theorem plumbing.

@@ -4518,6 +4518,50 @@ theorem native_handler_boundary_model_gap_slice
   }
 
 /--
+Packaged strict-extension/typed-gap ladder on `bodyStep = False`:
+`native -> ext -> ext-with-mismatch`.
+-/
+def native_handler_extension_ladder_bodyStepFalse_prop
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) : Prop :=
+  native_handler_step_ext_strictly_extends_native_prop
+      clauseSem (fun _ _ => False)
+    ∧
+  native_handler_step_ext_with_mismatch_strictly_extends_ext_bodyStepFalse_prop
+      clauseSem mismatchSem
+    ∧
+  native_handler_step_ext_with_mismatch_strictly_extends_native_prop
+      clauseSem mismatchSem (fun _ _ => False)
+    ∧
+  native_handler_step_ext_vs_native_typed_int_body_gap_prop
+      clauseSem (fun _ _ => False)
+    ∧
+  native_handler_step_ext_with_mismatch_vs_ext_typed_op_mismatch_gap_bodyStepFalse_prop
+      clauseSem mismatchSem
+    ∧
+  native_handler_step_ext_with_mismatch_vs_native_typed_int_body_gap_prop
+      clauseSem mismatchSem (fun _ _ => False)
+
+/--
+Project the full strict-extension/typed-gap ladder from a packaged
+`NativeHandlerBoundaryModelGapSlice` witness.
+-/
+theorem native_handler_extension_ladder_bodyStepFalse_of_boundary_model_gap_slice
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (h_gap : NativeHandlerBoundaryModelGapSlice clauseSem mismatchSem) :
+    native_handler_extension_ladder_bodyStepFalse_prop
+      clauseSem mismatchSem := by
+  exact ⟨
+    h_gap.extStrictlyExtendsNativeBodyStepFalse,
+    h_gap.mismatchExtStrictlyExtendsExtBodyStepFalse,
+    h_gap.mismatchExtStrictlyExtendsNativeBodyStepFalse,
+    h_gap.typedExtVsNativeGapBodyStepFalse,
+    h_gap.typedMismatchExtVsExtOpMismatchGapBodyStepFalse,
+    h_gap.typedMismatchExtVsNativeGapBodyStepFalse
+  ⟩
+
+/--
 Original native handler steps embed into the extended relation.
 -/
 theorem native_handler_step_ext_of_native_handler_step
