@@ -19146,3 +19146,45 @@ No MCP divergence found at this checkpoint.
 **Impact**:
 - One packaged theorem witness now carries both base-ext and mismatch-ext
   boundary gap surfaces, reducing cross-record stitching for downstream proofs.
+
+### 2026-03-03: combined ext soundness+progress vs native-progress gap theorem
+
+**Context**: Added one theorem that jointly states:
+- mismatch-extension soundness derivable,
+- mismatch-extension progress derivable,
+- native minimal progress still refutable,
+from one `core_soundness + strict_top_typing` premise set.
+
+**MCP tools used**: `reset_session`, `type_check`
+
+**Predict (Lean side)**:
+- `use` parsing should remain stable.
+- Coherent Math handler should type-check.
+- Mismatched pure handler should reject with effect leak.
+- Bad resume payload should reject.
+- Out-of-handler resume should reject.
+
+**Probe (Rust side via MCP)**:
+1. `use IO` -> `ok`.
+2. Coherent Math handler (`Math.add(a,b) -> resume a + b`) -> `ok`.
+3. Mismatched pure handler (`handle Reader.ask()` with only `Math.add` clause) -> `error`, `E0001` (pure body performs `[Reader(Int)]`).
+4. Bad resume payload (`State.put(next) -> resume 1` where op returns `Unit`) -> `error`, `E0001`.
+5. Out-of-handler resume control (`let r = 3; resume r`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No MCP divergence found at this checkpoint.
+
+**Act**:
+- Kept combined contrast theorem addition.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_soundness_progress_and_native_progress_gap_of_core_soundness_and_strict_top_typing`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Boundary contrast now has a single “all-at-once” theorem route, reducing
+  assumption threading across separate soundness/progress gap lemmas.

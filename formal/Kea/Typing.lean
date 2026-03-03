@@ -4715,6 +4715,28 @@ theorem native_handler_step_ext_with_mismatch_progress_and_native_progress_gap_o
   · exact native_handler_step_progress_prop_false clauseSem
 
 /--
+Combined boundary contrast under core soundness + strict-top typing:
+- mismatch-extension soundness is derivable,
+- mismatch-extension progress is derivable,
+- native minimal handler progress remains refutable.
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_progress_and_native_progress_gap_of_core_soundness_and_strict_top_typing
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core : native_core_soundness_prop bodyStep)
+    (h_strict_top_typing : native_handler_strict_top_typing_prop) :
+    native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep
+      ∧
+    native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep
+      ∧
+    ¬ native_handler_step_progress_prop clauseSem := by
+  have h_sound :=
+    native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_strict_top_typing_packaged
+      clauseSem mismatchSem bodyStep h_core h_strict_top_typing
+  exact ⟨h_sound, h_sound.2, native_handler_step_progress_prop_false clauseSem⟩
+
+/--
 Packaged route: mismatch-extension progress from packaged core progress plus
 global strict typing, routed through strict-top typing.
 -/
