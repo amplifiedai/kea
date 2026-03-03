@@ -4775,6 +4775,24 @@ structure NativeHandlerBoundaryModelGapSlice
   typedMismatchExtVsExtOpMismatchGapBodyStepFalse :
     native_handler_step_ext_with_mismatch_vs_ext_typed_op_mismatch_gap_bodyStepFalse_prop
       clauseSem mismatchSem
+  extensionLadderGenericBodyStepFalse :
+    native_handler_step_ext_strictly_extends_native_prop
+        clauseSem (fun _ _ => False)
+      ∧
+    native_handler_step_ext_with_mismatch_strictly_extends_ext_prop
+        clauseSem mismatchSem (fun _ _ => False)
+      ∧
+    native_handler_step_ext_with_mismatch_strictly_extends_native_prop
+        clauseSem mismatchSem (fun _ _ => False)
+      ∧
+    native_handler_step_ext_vs_native_typed_int_body_gap_prop
+        clauseSem (fun _ _ => False)
+      ∧
+    native_handler_step_ext_with_mismatch_vs_ext_typed_op_mismatch_gap_bodyStepFalse_prop
+        clauseSem mismatchSem
+      ∧
+    native_handler_step_ext_with_mismatch_vs_native_typed_int_body_gap_prop
+        clauseSem mismatchSem (fun _ _ => False)
 
 /--
 Canonical packaged boundary-model status witness.
@@ -4805,6 +4823,23 @@ theorem native_handler_boundary_model_gap_slice
     typedMismatchExtVsExtOpMismatchGapBodyStepFalse :=
       native_handler_step_ext_with_mismatch_vs_ext_typed_op_mismatch_gap_bodyStepFalse
         clauseSem mismatchSem
+    extensionLadderGenericBodyStepFalse :=
+      ⟨
+        native_handler_step_ext_strictly_extends_native clauseSem,
+        by
+          simpa [native_handler_step_ext_with_mismatch_strictly_extends_ext_bodyStepFalse_prop,
+            native_handler_step_ext_with_mismatch_strictly_extends_ext_prop] using
+            (native_handler_step_ext_with_mismatch_strictly_extends_ext_bodyStepFalse
+              clauseSem mismatchSem),
+        native_handler_step_ext_with_mismatch_strictly_extends_native
+          clauseSem mismatchSem (fun _ _ => False),
+        native_handler_step_ext_vs_native_typed_int_body_witness
+          clauseSem (fun _ _ => False),
+        native_handler_step_ext_with_mismatch_vs_ext_typed_op_mismatch_gap_bodyStepFalse
+          clauseSem mismatchSem,
+        native_handler_step_ext_with_mismatch_vs_native_typed_int_body_witness
+          clauseSem mismatchSem (fun _ _ => False)
+      ⟩
   }
 
 /--

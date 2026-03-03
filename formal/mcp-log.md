@@ -19736,3 +19736,42 @@ No MCP divergence found at this checkpoint.
 
 **Impact**:
 - The bodyStep-false ladder surface is now available in both legacy and generic forms with explicit equivalence, making downstream consumption resilient to API-surface choice.
+
+### 2026-03-03: boundary capstone now stores generic bodyStep-false ladder field
+
+**Context**: Extended `NativeHandlerBoundaryModelGapSlice` with a stored generic ladder field (`extensionLadderGenericBodyStepFalse`) so the capstone exports generic strictness/typed-gap ladder data directly, not only via legacy reconstructions.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent self-contained handlers should type-check.
+- Pure-body `handle` sentinel should type-check.
+- Mismatched pure handlers should reject (`E0001`).
+- Double-resume and out-of-handler `resume` should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Log` -> `ok`.
+2. Coherent Meter handler (`Meter.read() -> resume 89`) -> `ok`.
+3. Pure-body sentinel (`handle 89` with `Meter.read` clause) -> `ok`.
+4. Mismatched pure handler (`handle Meter.read()` with only `Probe.sample` clause) -> `error`, `E0001` (pure body performs `[Meter]`).
+5. Double-resume control -> `error`, `E0012`.
+6. Out-of-handler resume (`fn out_resume_boundary_field() -> Int; resume 89`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No MCP divergence found at this checkpoint.
+
+**Act**:
+- Kept boundary-capstone generic-ladder field addition.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `NativeHandlerBoundaryModelGapSlice.extensionLadderGenericBodyStepFalse`
+  - `native_handler_boundary_model_gap_slice` (updated constructor)
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The boundary capstone now carries the generic ladder witness natively, reducing downstream recomposition and making generic-vs-legacy ladder interoperability explicit at the source package.
