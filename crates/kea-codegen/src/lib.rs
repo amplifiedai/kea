@@ -1492,6 +1492,12 @@ fn coerce_value_to_clif_type(
             return builder.ins().ireduce(expected_ty, value);
         }
     }
+    // Same-width cross-class conversion (e.g. I64↔F64 through Dynamic-typed
+    // closure captures). Without this, Float values stored as Dynamic (I64)
+    // load into integer registers instead of float registers.
+    if actual_ty.bits() == expected_ty.bits() && actual_ty != expected_ty {
+        return builder.ins().bitcast(expected_ty, MemFlags::new(), value);
+    }
     value
 }
 

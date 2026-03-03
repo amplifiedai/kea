@@ -4093,6 +4093,20 @@ fn compile_and_execute_higher_order_lambda_argument_exit_code() {
 }
 
 #[test]
+fn compile_and_execute_float_captured_in_lambda_exit_code() {
+    let source_path = write_temp_source(
+        "fn apply(f: fn(Float) -> Float, x: Float) -> Float\n  f(x)\n\nfn main() -> Int\n  let offset = 1.5\n  let result = apply(|x| x + offset, 40.0)\n  if result == 41.5\n    42\n  else\n    0\n",
+        "kea-cli-float-lambda-capture",
+        "kea",
+    );
+
+    let run = run_file(&source_path).expect("run should succeed");
+    assert_eq!(run.exit_code, 42);
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
 fn compile_and_execute_direct_lambda_call_exit_code() {
     let source_path = write_temp_source(
         "fn main() -> Int\n  (|x| x + 1)(41)\n",
