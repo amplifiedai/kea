@@ -22555,3 +22555,48 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - Scheduler classification at the typed-handle singleton boundary is now available as a single decision equation theorem.
+
+### 2026-03-04: completed singleton typed-handle tier equation and tier2/tier3 iff boundary laws
+
+**Context**: Finished the in-progress tier slice in `Kea/Typing.lean` by adding three theorem surfaces:
+- `native_typed_handle_correspondence_capstone_handlerTier_eq_if_erased_then_tier1_else_blocking_yield_split`
+- `native_typed_handle_correspondence_capstone_tier2_iff_not_erasable_and_not_blocking_and_yielding`
+- `native_typed_handle_correspondence_capstone_tier3_iff_not_erasable_and_not_blocking_and_not_yielding`
+
+This closes the singleton typed-handle boundary tier side in the same explicit style as the already-landed scheduler closed form and scheduler iff partition laws.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- Coherent typed handle should type-check.
+- Mismatched handler clause that leaves the handled effect unremoved should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler `resume` and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. Coherent handler (`probe_coherent_20260304ab`) -> `ok`.
+2. Mismatch effect-leak handler (`probe_mismatch_20260304ab`) -> `error`, `E0001`.
+3. Bad resume payload (`probe_bad_resume_20260304ab`) -> `error`, `E0001`.
+4. Out-of-handler resume (`probe_outside_resume_20260304ab`) -> `error`, `E0012`.
+5. Forged-name out-of-handler resume (`probe_forged_resume_ctx_20260304ab`) -> `error`, `E0012`.
+6. Double-resume clause (`probe_double_resume_20260304ab`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept and finalized the tier closed-form/iff boundary theorems.
+- Repaired binder-hygiene regressions in projection theorems (`h_cap` vs `_h_cap`) so `Kea/Typing.lean` builds cleanly.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_typed_handle_correspondence_capstone_handlerTier_eq_if_erased_then_tier1_else_blocking_yield_split`
+  - `native_typed_handle_correspondence_capstone_tier2_iff_not_erasable_and_not_blocking_and_yielding`
+  - `native_typed_handle_correspondence_capstone_tier3_iff_not_erasable_and_not_blocking_and_not_yielding`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The singleton typed-handle boundary now has an explicit tier closed form and exact tier2/tier3 iff laws, aligned with the scheduler-side exact partition already in place.

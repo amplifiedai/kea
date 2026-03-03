@@ -10562,6 +10562,192 @@ theorem native_typed_handle_correspondence_capstone_schedulerClass_eq_if_erased_
           h_cap h_erasable h_blocking
       simp [h_erasable, h_blocking, h_cls]
 
+/--
+Closed-form tier classification at the singleton typed-handle boundary:
+tier is exactly determined by (1) whether handled capability is erased,
+(2) whether it is runtime-blocking when not erased, and
+(3) whether it is yielding when non-blocking and not erased.
+-/
+theorem native_typed_handle_correspondence_capstone_handlerTier_eq_if_erased_then_tier1_else_blocking_yield_split
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (yielding blocking erasable : List Label)
+    (env : TermEnv)
+    (body : CoreExpr)
+    (opHandle : Label)
+    (argName resumeName : String)
+    (argTy opRetTy : Ty)
+    (clauseBody : CoreExpr)
+    (ty : Ty)
+    (_h_cap :
+      NativeTypedHandleCorrespondenceCapstone
+        clauseSem mismatchSem bodyStep
+        yielding blocking erasable
+        env body opHandle argName resumeName argTy opRetTy clauseBody ty) :
+    handlerTierOfResidual yielding blocking (eraseCapabilities [opHandle] erasable)
+      =
+    (if opHandle ∈ erasable then .tier1
+     else if opHandle ∈ blocking then .tier4
+     else if opHandle ∈ yielding then .tier2
+     else .tier3) := by
+  by_cases h_erasable : opHandle ∈ erasable
+  · have h_residual_empty : eraseCapabilities [opHandle] erasable = [] := by
+      simp [eraseCapabilities, h_erasable]
+    simp [h_erasable, handlerTierOfResidual, h_residual_empty]
+  · have h_residual_singleton : eraseCapabilities [opHandle] erasable = [opHandle] := by
+      simp [eraseCapabilities, h_erasable]
+    by_cases h_blocking : opHandle ∈ blocking
+    · simp [h_erasable, h_blocking, handlerTierOfResidual, h_residual_singleton,
+        hasBlockingCapability]
+    · by_cases h_yielding : opHandle ∈ yielding
+      · simp [h_erasable, h_blocking, h_yielding, handlerTierOfResidual,
+          h_residual_singleton, hasBlockingCapability, allYieldingCapabilities]
+      · simp [h_erasable, h_blocking, h_yielding, handlerTierOfResidual,
+          h_residual_singleton, hasBlockingCapability, allYieldingCapabilities]
+
+/--
+Exact singleton-boundary law for Tier 2 on the typed native-handle capstone.
+-/
+theorem native_typed_handle_correspondence_capstone_tier2_iff_not_erasable_and_not_blocking_and_yielding
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (yielding blocking erasable : List Label)
+    (env : TermEnv)
+    (body : CoreExpr)
+    (opHandle : Label)
+    (argName resumeName : String)
+    (argTy opRetTy : Ty)
+    (clauseBody : CoreExpr)
+    (ty : Ty)
+    (_h_cap :
+      NativeTypedHandleCorrespondenceCapstone
+        clauseSem mismatchSem bodyStep
+        yielding blocking erasable
+        env body opHandle argName resumeName argTy opRetTy clauseBody ty) :
+    handlerTierOfResidual yielding blocking (eraseCapabilities [opHandle] erasable) = .tier2
+      ↔
+    opHandle ∉ erasable ∧ opHandle ∉ blocking ∧ opHandle ∈ yielding := by
+  constructor
+  · intro h_tier2
+    have h_not_erasable : opHandle ∉ erasable := by
+      intro h_mem_erasable
+      have h_tier1 :
+          handlerTierOfResidual yielding blocking (eraseCapabilities [opHandle] erasable) = .tier1 := by
+        have h_residual_empty : eraseCapabilities [opHandle] erasable = [] := by
+          simp [eraseCapabilities, h_mem_erasable]
+        exact (handlerTierOfResidual_eq_tier1_iff
+          yielding blocking (eraseCapabilities [opHandle] erasable)).2 h_residual_empty
+      rw [h_tier2] at h_tier1
+      cases h_tier1
+    have h_residual_singleton : eraseCapabilities [opHandle] erasable = [opHandle] := by
+      simp [eraseCapabilities, h_not_erasable]
+    have h_shape :
+        eraseCapabilities [opHandle] erasable ≠ []
+          ∧
+        hasBlockingCapability blocking (eraseCapabilities [opHandle] erasable) = false
+          ∧
+        allYieldingCapabilities yielding (eraseCapabilities [opHandle] erasable) = true :=
+      (handlerTierOfResidual_eq_tier2_iff
+        yielding blocking (eraseCapabilities [opHandle] erasable)).1 h_tier2
+    have h_not_blocking : opHandle ∉ blocking := by
+      intro h_mem_blocking
+      have h_has_block : hasBlockingCapability blocking (eraseCapabilities [opHandle] erasable) = true := by
+        simp [hasBlockingCapability, h_residual_singleton, h_mem_blocking]
+      have h_no_block : hasBlockingCapability blocking (eraseCapabilities [opHandle] erasable) = false :=
+        h_shape.2.1
+      rw [h_has_block] at h_no_block
+      cases h_no_block
+    have h_yielding : opHandle ∈ yielding := by
+      have h_all_yield : allYieldingCapabilities yielding (eraseCapabilities [opHandle] erasable) = true :=
+        h_shape.2.2
+      simpa [allYieldingCapabilities, h_residual_singleton] using h_all_yield
+    exact ⟨h_not_erasable, h_not_blocking, h_yielding⟩
+  · intro h
+    have h_residual_singleton : eraseCapabilities [opHandle] erasable = [opHandle] := by
+      simp [eraseCapabilities, h.1]
+    have h_has_block_false : hasBlockingCapability blocking (eraseCapabilities [opHandle] erasable) = false := by
+      simp [hasBlockingCapability, h_residual_singleton, h.2.1]
+    have h_all_yield_true : allYieldingCapabilities yielding (eraseCapabilities [opHandle] erasable) = true := by
+      simp [allYieldingCapabilities, h_residual_singleton, h.2.2]
+    exact (handlerTierOfResidual_eq_tier2_iff
+      yielding blocking (eraseCapabilities [opHandle] erasable)).2
+        ⟨by simp [h_residual_singleton], h_has_block_false, h_all_yield_true⟩
+
+/--
+Exact singleton-boundary law for Tier 3 on the typed native-handle capstone.
+-/
+theorem native_typed_handle_correspondence_capstone_tier3_iff_not_erasable_and_not_blocking_and_not_yielding
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (yielding blocking erasable : List Label)
+    (env : TermEnv)
+    (body : CoreExpr)
+    (opHandle : Label)
+    (argName resumeName : String)
+    (argTy opRetTy : Ty)
+    (clauseBody : CoreExpr)
+    (ty : Ty)
+    (_h_cap :
+      NativeTypedHandleCorrespondenceCapstone
+        clauseSem mismatchSem bodyStep
+        yielding blocking erasable
+        env body opHandle argName resumeName argTy opRetTy clauseBody ty) :
+    handlerTierOfResidual yielding blocking (eraseCapabilities [opHandle] erasable) = .tier3
+      ↔
+    opHandle ∉ erasable ∧ opHandle ∉ blocking ∧ opHandle ∉ yielding := by
+  constructor
+  · intro h_tier3
+    have h_not_erasable : opHandle ∉ erasable := by
+      intro h_mem_erasable
+      have h_tier1 :
+          handlerTierOfResidual yielding blocking (eraseCapabilities [opHandle] erasable) = .tier1 := by
+        have h_residual_empty : eraseCapabilities [opHandle] erasable = [] := by
+          simp [eraseCapabilities, h_mem_erasable]
+        exact (handlerTierOfResidual_eq_tier1_iff
+          yielding blocking (eraseCapabilities [opHandle] erasable)).2 h_residual_empty
+      rw [h_tier3] at h_tier1
+      cases h_tier1
+    have h_residual_singleton : eraseCapabilities [opHandle] erasable = [opHandle] := by
+      simp [eraseCapabilities, h_not_erasable]
+    have h_shape :
+        eraseCapabilities [opHandle] erasable ≠ []
+          ∧
+        hasBlockingCapability blocking (eraseCapabilities [opHandle] erasable) = false
+          ∧
+        allYieldingCapabilities yielding (eraseCapabilities [opHandle] erasable) = false :=
+      (handlerTierOfResidual_eq_tier3_iff
+        yielding blocking (eraseCapabilities [opHandle] erasable)).1 h_tier3
+    have h_not_blocking : opHandle ∉ blocking := by
+      intro h_mem_blocking
+      have h_has_block : hasBlockingCapability blocking (eraseCapabilities [opHandle] erasable) = true := by
+        simp [hasBlockingCapability, h_residual_singleton, h_mem_blocking]
+      have h_no_block : hasBlockingCapability blocking (eraseCapabilities [opHandle] erasable) = false :=
+        h_shape.2.1
+      rw [h_has_block] at h_no_block
+      cases h_no_block
+    have h_not_yielding : opHandle ∉ yielding := by
+      intro h_mem_yielding
+      have h_all_yield : allYieldingCapabilities yielding (eraseCapabilities [opHandle] erasable) = true := by
+        simp [allYieldingCapabilities, h_residual_singleton, h_mem_yielding]
+      have h_not_all_yield : allYieldingCapabilities yielding (eraseCapabilities [opHandle] erasable) = false :=
+        h_shape.2.2
+      rw [h_all_yield] at h_not_all_yield
+      cases h_not_all_yield
+    exact ⟨h_not_erasable, h_not_blocking, h_not_yielding⟩
+  · intro h
+    have h_residual_singleton : eraseCapabilities [opHandle] erasable = [opHandle] := by
+      simp [eraseCapabilities, h.1]
+    have h_has_block_false : hasBlockingCapability blocking (eraseCapabilities [opHandle] erasable) = false := by
+      simp [hasBlockingCapability, h_residual_singleton, h.2.1]
+    have h_all_yield_false : allYieldingCapabilities yielding (eraseCapabilities [opHandle] erasable) = false := by
+      simp [allYieldingCapabilities, h_residual_singleton, h.2.2]
+    exact (handlerTierOfResidual_eq_tier3_iff
+      yielding blocking (eraseCapabilities [opHandle] erasable)).2
+        ⟨by simp [h_residual_singleton], h_has_block_false, h_all_yield_false⟩
+
 /-- Declarative field typing is functional on the core slice. -/
 theorem hasFieldsType_unique
     {env : TermEnv} {fs : CoreFields} {row₁ row₂ : RowFields}
