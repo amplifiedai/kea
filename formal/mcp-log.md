@@ -21796,3 +21796,53 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - The “type declares -> compiler erases -> scheduler classifies” story now has a single machine-checkable capstone witness at theorem level.
+
+### 2026-03-04: added top-level effect/compiler/scheduler correspondence object with soundness/completeness projections
+
+**Context**: Added:
+- `EffectCompilerSchedulerCorrespondence`
+- constructor `effect_compiler_scheduler_correspondence`
+- one-hop projections:
+  - `scheduler_classification_soundness_of_effect_compiler_scheduler_correspondence`
+  - `erasure_pipeline_completeness_of_effect_compiler_scheduler_correspondence`
+
+This gives an explicit theorem-level object aligned to the narrative “type system declares, compiler erases, scheduler classifies,” with direct soundness/completeness projection routes.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent handler should type-check.
+- Mismatched pure handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Audio` + trivial fn -> `ok`.
+2. Coherent handler (`handle ProbeEW.run(); ProbeEW.run() -> resume 331`) -> `ok`.
+3. Mismatched pure handler (`handle ProbeEX.left(); ProbeEY.right() -> resume 0`) -> `error`, `E0001`.
+4. Bad resume payload (`ProbeEZ.read() -> resume false`) -> `error`, `E0001`.
+5. Out-of-handler resume (`fn fresh_outside_resume_probe_20260304l() -> Int; resume 37`) -> `error`, `E0012`.
+6. Forged-name out-of-handler resume (`let __kea_resume_ctx = 37; resume 37`) -> `error`, `E0012`.
+7. Double-resume clause (`resume 1` then `resume 2`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the top-level effect/compiler/scheduler correspondence object and direct projection APIs.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `EffectCompilerSchedulerCorrespondence`
+  - `effect_compiler_scheduler_correspondence`
+  - `scheduler_classification_soundness_of_effect_compiler_scheduler_correspondence`
+  - `erasure_pipeline_completeness_of_effect_compiler_scheduler_correspondence`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The correspondence claim now has a single named top-level object with direct scheduler-soundness and erasure-completeness theorem projections.

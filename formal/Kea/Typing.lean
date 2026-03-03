@@ -9306,6 +9306,59 @@ theorem tier_erasure_scheduler_correspondence_capstone
     pipelineCompleteness := erasure_pipeline_completeness_slice declared erasable
   }
 
+/--
+Top-level correspondence object: the effect declarations (declared
+capabilities), compiler erasure stage, and scheduler classification are exposed
+as one formal surface.
+-/
+structure EffectCompilerSchedulerCorrespondence
+    (yielding blocking declared erasable : List Label) : Prop where
+  correspondence :
+    TierErasureSchedulerCorrespondenceCapstone
+      yielding blocking declared erasable
+  aggressiveSmallness :
+    aggressiveErasureRemovesDeclaredBlocking declared erasable blocking →
+      let cls := schedulerClassOfResidual blocking (eraseCapabilities declared erasable)
+      cls = .pure ∨ cls = .cooperative
+
+/--
+Build the top-level effect/compiler/scheduler correspondence object.
+-/
+theorem effect_compiler_scheduler_correspondence
+    (yielding blocking declared erasable : List Label) :
+    EffectCompilerSchedulerCorrespondence yielding blocking declared erasable := by
+  exact {
+    correspondence :=
+      tier_erasure_scheduler_correspondence_capstone
+        yielding blocking declared erasable
+    aggressiveSmallness :=
+      scheduler_class_small_of_aggressive_erasure declared erasable blocking
+  }
+
+/--
+One-hop projection: scheduler soundness (`pure` tasks cannot block) from the
+top-level correspondence object.
+-/
+theorem scheduler_classification_soundness_of_effect_compiler_scheduler_correspondence
+    (yielding blocking declared erasable : List Label)
+    (h_corr : EffectCompilerSchedulerCorrespondence yielding blocking declared erasable) :
+    schedulerClassOfResidual blocking (eraseCapabilities declared erasable) = .pure →
+      hasBlockingCapability blocking (eraseCapabilities declared erasable) = false := by
+  exact h_corr.correspondence.schedulerSoundness.pureNonBlocking
+
+/--
+One-hop projection: erasure completeness (every declared erasable capability is
+removed) from the top-level correspondence object.
+-/
+theorem erasure_pipeline_completeness_of_effect_compiler_scheduler_correspondence
+    (yielding blocking declared erasable : List Label)
+    (h_corr : EffectCompilerSchedulerCorrespondence yielding blocking declared erasable) :
+    ∀ {l : Label},
+      l ∈ declared →
+      l ∈ erasable →
+      l ∉ eraseCapabilities declared erasable := by
+  exact h_corr.correspondence.pipelineCompleteness.erasedDeclaredRemoved
+
 /-- Declarative field typing is functional on the core slice. -/
 theorem hasFieldsType_unique
     {env : TermEnv} {fs : CoreFields} {row₁ row₂ : RowFields}
