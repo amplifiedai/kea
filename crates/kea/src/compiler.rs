@@ -3280,7 +3280,10 @@ fn matches_higher_order_forwarder_body(
                             forwarder_aliases.insert(binding_name.to_string());
                             continue;
                         }
-                        return false;
+                        // Benign passthrough alias lets on unrelated params are
+                        // allowed before the unique handoff call. They don't
+                        // affect forwarder/unique root tracking.
+                        continue;
                     }
 
                     match &item.kind {
