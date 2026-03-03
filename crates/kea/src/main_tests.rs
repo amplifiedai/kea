@@ -3061,6 +3061,80 @@ fn compile_rejects_fip_unique_higher_order_forwarder_param_escape() {
         let _ = std::fs::remove_file(source_path);
     }
 
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn compile_fip_unique_higher_order_module_alias_wrapper_call_reaches_codegen_alias_gap() {
+        let project_dir =
+            temp_workspace_project_dir("kea-cli-fip-unique-higher-order-alias-wrapper");
+        let src_dir = project_dir.join("src");
+        std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+        let source_path = src_dir.join("main.kea");
+        std::fs::write(
+            src_dir.join("alpha.kea"),
+            "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_forwarder(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  f(x)\n",
+        )
+        .expect("alpha module write should succeed");
+        std::fs::write(
+            &source_path,
+            "use Alpha as A\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_forwarder(A.forward_once, x)\n\nfn main() -> Int\n  0\n",
+        )
+        .expect("source write should succeed");
+
+        let err = run_file(&source_path)
+            .expect_err("module-alias qualified wrapper call is not lowered in codegen yet");
+        assert!(
+            !err.contains("`@fip` verification failed"),
+            "expected @fip verification to pass before codegen gap, got: {err}"
+        );
+        assert!(
+            err.contains("unresolved qualified call target `A.apply_forwarder`"),
+            "expected unresolved qualified wrapper call target codegen error, got: {err}"
+        );
+        assert!(
+            err.contains("`@fip` ownership verification succeeded before backend lowering"),
+            "expected explicit @fip/backend gap separation note, got: {err}"
+        );
+
+        let _ = std::fs::remove_dir_all(project_dir);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn compile_rejects_fip_unique_higher_order_module_alias_wrapper_param_escape() {
+        let project_dir = temp_workspace_project_dir("kea-cli-fip-unique-higher-order-alias-param");
+        let src_dir = project_dir.join("src");
+        std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+        let source_path = src_dir.join("main.kea");
+        std::fs::write(
+            src_dir.join("alpha.kea"),
+            "fn apply_forwarder(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  f(x)\n",
+        )
+        .expect("alpha module write should succeed");
+        std::fs::write(
+            &source_path,
+            "use Alpha as A\n\n@fip\nfn call_via_apply(x: Unique Int, f: fn(Unique Int) -> Unique Int) -> Unique Int\n  A.apply_forwarder(f, x)\n\nfn main() -> Int\n  0\n",
+        )
+        .expect("source write should succeed");
+
+        let err = run_file(&source_path).expect_err(
+            "@fip verifier should reject higher-order alias wrapper calls when forwarded callee remains unresolved at call boundary",
+        );
+        assert!(
+            err.contains("`@fip` verification failed for `call_via_apply`"),
+            "expected @fip verification failure, got: {err}"
+        );
+        assert!(
+            err.contains("Unique parameter `x` escapes through 1 call argument(s)"),
+            "expected escape diagnostic for `x`, got: {err}"
+        );
+        assert!(
+            !err.contains("unresolved qualified call target `A.apply_forwarder`"),
+            "expected @fip rejection before codegen alias-gap diagnostics, got: {err}"
+        );
+
+        let _ = std::fs::remove_dir_all(project_dir);
+    }
+
 #[test]
 #[cfg(not(target_os = "windows"))]
 fn compile_and_execute_fip_unique_known_qualified_forwarder_call_exit_code() {
