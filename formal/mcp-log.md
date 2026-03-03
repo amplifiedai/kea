@@ -21401,3 +21401,53 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - Core+strict-top contrast routes can now be consumed on either API shape with a proved route-level equivalence.
+
+### 2026-03-04: added pass-through route-level parity for legacy↔strengthened contrast APIs
+
+**Context**: Added concrete pass-through parity surfaces:
+- `native_handler_step_ext_with_passThroughMismatch_core_strict_top_contrast_route_prop`
+- `native_handler_step_ext_with_passThroughMismatch_core_strict_top_contrast_route_strengthened_prop`
+- `native_handler_step_ext_with_passThroughMismatch_core_strict_top_contrast_route_prop_of_strengthened`
+- `native_handler_step_ext_with_passThroughMismatch_core_strict_top_contrast_route_strengthened_prop_of_legacy`
+- `native_handler_step_ext_with_passThroughMismatch_core_strict_top_contrast_route_prop_iff_strengthened`
+- boundary-slice legacy/strengthened constructors
+
+This mirrors the generic route-level capstone at `nativeHandlerMismatchPassThroughSem`, preserving API-shape symmetry across mismatch semantics.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent handler should type-check.
+- Mismatched pure handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use File` + trivial fn -> `ok`.
+2. Coherent handler (`handle ProbeDI.run(); ProbeDI.run() -> resume 251`) -> `ok`.
+3. Mismatched pure handler (`handle ProbeDJ.left(); ProbeDK.right() -> resume 0`) -> `error`, `E0001`.
+4. Bad resume payload (`ProbeDL.read() -> resume "bad"`) -> `error`, `E0001`.
+5. Out-of-handler resume (`fn fresh_outside_resume_probe_20260304d() -> Int; resume 29`) -> `error`, `E0012`.
+6. Forged-name out-of-handler resume (`let __kea_resume_ctx = 29; resume 29`) -> `error`, `E0012`.
+7. Double-resume clause (`resume 1` then `resume 2`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept pass-through legacy↔strengthened route-level parity theorems and boundary-slice constructors.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_passThroughMismatch_core_strict_top_contrast_route_prop`
+  - `native_handler_step_ext_with_passThroughMismatch_core_strict_top_contrast_route_prop_iff_strengthened`
+  - `native_handler_step_ext_with_passThroughMismatch_core_strict_top_contrast_route_strengthened_of_boundary_model_gap_slice`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Legacy/strengthened contrast route interop is now symmetrical across both generic and concrete pass-through mismatch semantics.

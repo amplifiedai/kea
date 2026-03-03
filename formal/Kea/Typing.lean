@@ -8265,6 +8265,96 @@ theorem native_handler_step_ext_with_passThroughMismatch_master_suite_of_core_so
     (native_handler_step_ext_with_passThroughMismatch_soundness_assumption_routes_of_core_soundness
       clauseSem bodyStep h_core)
 
+/--
+Concrete pass-through specialization of the core+strict-top contrast route.
+-/
+def native_handler_step_ext_with_passThroughMismatch_core_strict_top_contrast_route_prop
+    (clauseSem : NativeHandlerClauseSem) : Prop :=
+  native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_prop
+    clauseSem nativeHandlerMismatchPassThroughSem
+
+/--
+Concrete pass-through specialization of the strengthened core+strict-top
+contrast route (with mismatch soundness↔progress equivalence).
+-/
+def native_handler_step_ext_with_passThroughMismatch_core_strict_top_contrast_route_strengthened_prop
+    (clauseSem : NativeHandlerClauseSem) : Prop :=
+  native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_strengthened_prop
+    clauseSem nativeHandlerMismatchPassThroughSem
+
+/--
+Project the concrete pass-through legacy contrast route from the concrete
+pass-through strengthened route.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_core_strict_top_contrast_route_prop_of_strengthened
+    (clauseSem : NativeHandlerClauseSem)
+    (h_route :
+      native_handler_step_ext_with_passThroughMismatch_core_strict_top_contrast_route_strengthened_prop
+        clauseSem) :
+    native_handler_step_ext_with_passThroughMismatch_core_strict_top_contrast_route_prop
+      clauseSem := by
+  exact
+    native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_prop_of_strengthened
+      clauseSem nativeHandlerMismatchPassThroughSem h_route
+
+/--
+Lift the concrete pass-through legacy contrast route into the concrete
+pass-through strengthened route.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_core_strict_top_contrast_route_strengthened_prop_of_legacy
+    (clauseSem : NativeHandlerClauseSem)
+    (h_route :
+      native_handler_step_ext_with_passThroughMismatch_core_strict_top_contrast_route_prop
+        clauseSem) :
+    native_handler_step_ext_with_passThroughMismatch_core_strict_top_contrast_route_strengthened_prop
+      clauseSem := by
+  exact
+    native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_strengthened_prop_of_legacy
+      clauseSem nativeHandlerMismatchPassThroughSem h_route
+
+/--
+Concrete pass-through route-level equivalence between legacy and strengthened
+core+strict-top contrast APIs.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_core_strict_top_contrast_route_prop_iff_strengthened
+    (clauseSem : NativeHandlerClauseSem) :
+    native_handler_step_ext_with_passThroughMismatch_core_strict_top_contrast_route_prop
+        clauseSem
+      ↔
+    native_handler_step_ext_with_passThroughMismatch_core_strict_top_contrast_route_strengthened_prop
+        clauseSem := by
+  exact
+    native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_prop_iff_strengthened
+      clauseSem nativeHandlerMismatchPassThroughSem
+
+/--
+Build the concrete pass-through legacy contrast route from a boundary-model
+gap slice witness.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_core_strict_top_contrast_route_of_boundary_model_gap_slice
+    (clauseSem : NativeHandlerClauseSem)
+    (h_gap :
+      NativeHandlerBoundaryModelGapSlice clauseSem nativeHandlerMismatchPassThroughSem) :
+    native_handler_step_ext_with_passThroughMismatch_core_strict_top_contrast_route_prop
+      clauseSem := by
+  exact
+    native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_of_boundary_model_gap_slice
+      clauseSem nativeHandlerMismatchPassThroughSem h_gap
+
+/--
+Build the concrete pass-through strengthened contrast route from a
+boundary-model gap slice witness.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_core_strict_top_contrast_route_strengthened_of_boundary_model_gap_slice
+    (clauseSem : NativeHandlerClauseSem)
+    (h_gap :
+      NativeHandlerBoundaryModelGapSlice clauseSem nativeHandlerMismatchPassThroughSem) :
+    native_handler_step_ext_with_passThroughMismatch_core_strict_top_contrast_route_strengthened_prop
+      clauseSem := by
+  exact
+    native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_strengthened_of_boundary_model_gap_slice
+      clauseSem nativeHandlerMismatchPassThroughSem h_gap
+
 /-- Declarative field typing is functional on the core slice. -/
 theorem hasFieldsType_unique
     {env : TermEnv} {fs : CoreFields} {row₁ row₂ : RowFields}
