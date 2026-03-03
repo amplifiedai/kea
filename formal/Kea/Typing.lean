@@ -9261,6 +9261,136 @@ theorem native_handler_step_ext_with_passThroughMismatch_full_route_integration_
     clauseSem nativeHandlerMismatchPassThroughSem
 
 /--
+One-hop projection: master-suite witness from the integrated full-route
+capstone.
+-/
+theorem native_handler_full_route_integration_capstone_master
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (h_cap : NativeHandlerFullRouteIntegrationCapstone clauseSem mismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core : native_core_soundness_prop bodyStep) :
+    native_handler_step_ext_with_mismatch_master_suite_prop
+      clauseSem mismatchSem bodyStep := by
+  exact h_cap.master bodyStep h_core
+
+/--
+From the integrated full-route capstone, derive
+`(soundness, progress, soundness↔progress)` for any `bodyStep` and strict-top
+typing assumption.
+-/
+theorem native_handler_full_route_integration_capstone_soundness_progress_equiv_of_core_soundness_and_strict_top_typing
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (h_cap : NativeHandlerFullRouteIntegrationCapstone clauseSem mismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core : native_core_soundness_prop bodyStep)
+    (h_strict_top : native_handler_strict_top_typing_prop) :
+    native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep
+      ∧
+    native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep
+      ∧
+    (native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep
+      ↔ native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep) := by
+  exact native_handler_step_ext_with_mismatch_soundness_progress_equiv_of_master_suite_and_strict_top_typing
+    clauseSem mismatchSem bodyStep (h_cap.master bodyStep h_core) h_strict_top
+
+/--
+From the integrated full-route capstone, derive direct `soundness ↔ progress`
+for any `bodyStep` and strict-top typing assumption.
+-/
+theorem native_handler_full_route_integration_capstone_soundness_prop_iff_progress_prop_of_core_soundness_and_strict_top_typing
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (h_cap : NativeHandlerFullRouteIntegrationCapstone clauseSem mismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core : native_core_soundness_prop bodyStep)
+    (h_strict_top : native_handler_strict_top_typing_prop) :
+    native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep
+      ↔
+    native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep := by
+  exact (native_handler_full_route_integration_capstone_soundness_progress_equiv_of_core_soundness_and_strict_top_typing
+    clauseSem mismatchSem h_cap bodyStep h_core h_strict_top).2.2
+
+/--
+From the integrated full-route capstone, derive local typed-handle
+`step ∧ preserves` for any `bodyStep` and strict-top typing assumption.
+-/
+theorem native_handler_full_route_integration_capstone_local_exists_and_preserves_of_core_soundness_and_strict_top_typing
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (h_cap : NativeHandlerFullRouteIntegrationCapstone clauseSem mismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core : native_core_soundness_prop bodyStep)
+    (h_strict_top : native_handler_strict_top_typing_prop) :
+    native_handler_step_ext_with_mismatch_local_exists_and_preserves_prop
+      clauseSem mismatchSem bodyStep := by
+  exact native_handler_step_ext_with_mismatch_local_exists_and_preserves_of_master_suite_and_strict_top_typing
+    clauseSem mismatchSem bodyStep (h_cap.master bodyStep h_core) h_strict_top
+
+/--
+Pass-through specialization: derive `(soundness, progress, soundness↔progress)`
+from the integrated full-route capstone.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_soundness_progress_equiv_of_core_soundness_and_strict_top_typing
+    (clauseSem : NativeHandlerClauseSem)
+    (h_cap :
+      native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_prop
+        clauseSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core : native_core_soundness_prop bodyStep)
+    (h_strict_top : native_handler_strict_top_typing_prop) :
+    native_handler_step_ext_with_mismatch_soundness_prop
+        clauseSem nativeHandlerMismatchPassThroughSem bodyStep
+      ∧
+    native_handler_step_ext_with_mismatch_progress_prop
+        clauseSem nativeHandlerMismatchPassThroughSem bodyStep
+      ∧
+    (native_handler_step_ext_with_mismatch_soundness_prop
+        clauseSem nativeHandlerMismatchPassThroughSem bodyStep
+      ↔ native_handler_step_ext_with_mismatch_progress_prop
+        clauseSem nativeHandlerMismatchPassThroughSem bodyStep) := by
+  exact native_handler_full_route_integration_capstone_soundness_progress_equiv_of_core_soundness_and_strict_top_typing
+    clauseSem nativeHandlerMismatchPassThroughSem h_cap bodyStep h_core h_strict_top
+
+/--
+Pass-through specialization: derive direct `soundness ↔ progress` from the
+integrated full-route capstone.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_soundness_prop_iff_progress_prop_of_core_soundness_and_strict_top_typing
+    (clauseSem : NativeHandlerClauseSem)
+    (h_cap :
+      native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_prop
+        clauseSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core : native_core_soundness_prop bodyStep)
+    (h_strict_top : native_handler_strict_top_typing_prop) :
+    native_handler_step_ext_with_mismatch_soundness_prop
+        clauseSem nativeHandlerMismatchPassThroughSem bodyStep
+      ↔
+    native_handler_step_ext_with_mismatch_progress_prop
+        clauseSem nativeHandlerMismatchPassThroughSem bodyStep := by
+  exact (native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_soundness_progress_equiv_of_core_soundness_and_strict_top_typing
+    clauseSem h_cap bodyStep h_core h_strict_top).2.2
+
+/--
+Pass-through specialization: derive local typed-handle `step ∧ preserves` from
+the integrated full-route capstone.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_local_exists_and_preserves_of_core_soundness_and_strict_top_typing
+    (clauseSem : NativeHandlerClauseSem)
+    (h_cap :
+      native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_prop
+        clauseSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core : native_core_soundness_prop bodyStep)
+    (h_strict_top : native_handler_strict_top_typing_prop) :
+    native_handler_step_ext_with_mismatch_local_exists_and_preserves_prop
+      clauseSem nativeHandlerMismatchPassThroughSem bodyStep := by
+  exact native_handler_full_route_integration_capstone_local_exists_and_preserves_of_core_soundness_and_strict_top_typing
+    clauseSem nativeHandlerMismatchPassThroughSem h_cap bodyStep h_core h_strict_top
+
+/--
 Concrete pass-through specialization of the core+strict-top contrast route.
 -/
 def native_handler_step_ext_with_passThroughMismatch_core_strict_top_contrast_route_prop

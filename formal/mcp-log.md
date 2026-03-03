@@ -23397,3 +23397,50 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - Full-route consequences are now available as one top-level theorem object rather than only as dispersed route wrappers.
+
+### 2026-03-04: added one-hop consequence projections from integrated full-route capstone
+
+**Context**: Extended `NativeHandlerFullRouteIntegrationCapstone` with direct consumer projections in `Kea/Typing.lean`:
+- Generic projections:
+  - `native_handler_full_route_integration_capstone_master`
+  - `native_handler_full_route_integration_capstone_soundness_progress_equiv_of_core_soundness_and_strict_top_typing`
+  - `native_handler_full_route_integration_capstone_soundness_prop_iff_progress_prop_of_core_soundness_and_strict_top_typing`
+  - `native_handler_full_route_integration_capstone_local_exists_and_preserves_of_core_soundness_and_strict_top_typing`
+- Pass-through projections:
+  - `native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_soundness_progress_equiv_of_core_soundness_and_strict_top_typing`
+  - `native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_soundness_prop_iff_progress_prop_of_core_soundness_and_strict_top_typing`
+  - `native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_local_exists_and_preserves_of_core_soundness_and_strict_top_typing`
+
+This makes the integrated capstone directly usable as an API surface instead of requiring manual record destructuring at each call site.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- Coherent handler should type-check.
+- Mismatch effect-leak handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. Coherent handler (`probe_coherent_20260304au`) -> `ok`.
+2. Mismatch effect-leak handler (`probe_mismatch_20260304au`) -> `error`, `E0001`.
+3. Bad resume payload (`probe_bad_resume_20260304au`) -> `error`, `E0001`.
+4. Out-of-handler resume (`probe_outside_resume_20260304au`) -> `error`, `E0012`.
+5. Forged-name out-of-handler resume (`probe_forged_resume_ctx_20260304au`) -> `error`, `E0012`.
+6. Double-resume clause (`probe_double_resume_20260304au`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the new one-hop integrated-capstone projection wrappers (generic + pass-through).
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`: theorem names listed in Context above.
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The integrated full-route capstone is now a practical theorem API, not just a packaging record.
