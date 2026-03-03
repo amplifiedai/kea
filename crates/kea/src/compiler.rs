@@ -3424,6 +3424,58 @@ fn matches_higher_order_forwarder_body(
             }
         }
 
+        fn matches_forwarder_alias_shape(
+            expr: &HirExpr,
+            forwarder_aliases: &BTreeSet<String>,
+        ) -> bool {
+            match &expr.kind {
+                HirExprKind::Var(name) => forwarder_aliases.contains(name),
+                HirExprKind::Block(exprs) if !exprs.is_empty() => {
+                    let mut forwarder_aliases = forwarder_aliases.clone();
+                    for (index, item) in exprs.iter().enumerate() {
+                        let is_last = index + 1 == exprs.len();
+                        if is_last {
+                            return matches_forwarder_alias_shape(item, &forwarder_aliases);
+                        }
+
+                        match &item.kind {
+                            HirExprKind::Let { pattern, value }
+                                if matches!(pattern, kea_hir::HirPattern::Var(_)) =>
+                            {
+                                if matches_forwarder_alias_shape(value, &forwarder_aliases) {
+                                    let binding_name = match pattern {
+                                        kea_hir::HirPattern::Var(name) => name,
+                                        _ => unreachable!("guarded by match"),
+                                    };
+                                    forwarder_aliases.insert(binding_name.to_string());
+                                    continue;
+                                }
+                                if !contains_call(value) {
+                                    continue;
+                                }
+                                return false;
+                            }
+                            _ => return false,
+                        }
+                    }
+                    false
+                }
+                HirExprKind::If {
+                    condition,
+                    then_branch,
+                    else_branch,
+                } => {
+                    let Some(else_branch) = else_branch.as_ref() else {
+                        return false;
+                    };
+                    !contains_call(condition)
+                        && matches_forwarder_alias_shape(then_branch, forwarder_aliases)
+                        && matches_forwarder_alias_shape(else_branch, forwarder_aliases)
+                }
+                _ => false,
+            }
+        }
+
         match &expr.kind {
             HirExprKind::Call { .. } => {
                 matches_forwarder_call(expr, forwarder_aliases, unique_aliases)
@@ -3457,6 +3509,22 @@ fn matches_higher_order_forwarder_body(
                             HirExprKind::Let { pattern, value }
                                 if matches!(pattern, kea_hir::HirPattern::Var(_)) =>
                             {
+                                if matches_passthrough_shape(value, &unique_aliases) {
+                                    let binding_name = match pattern {
+                                        kea_hir::HirPattern::Var(name) => name,
+                                        _ => unreachable!("guarded by match"),
+                                    };
+                                    unique_aliases.insert(binding_name.to_string());
+                                    continue;
+                                }
+                                if matches_forwarder_alias_shape(value, &forwarder_aliases) {
+                                    let binding_name = match pattern {
+                                        kea_hir::HirPattern::Var(name) => name,
+                                        _ => unreachable!("guarded by match"),
+                                    };
+                                    forwarder_aliases.insert(binding_name.to_string());
+                                    continue;
+                                }
                                 if matches_shape(value, &forwarder_aliases, &unique_aliases) {
                                     let binding_name = match pattern {
                                         kea_hir::HirPattern::Var(name) => name,

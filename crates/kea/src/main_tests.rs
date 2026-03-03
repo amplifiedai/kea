@@ -3367,6 +3367,41 @@ fn compile_and_execute_fip_unique_higher_order_forwarder_with_benign_noncall_pre
 
 #[test]
 #[cfg(not(target_os = "windows"))]
+fn compile_and_execute_fip_unique_higher_order_forwarder_with_if_selected_unique_alias_exit_code() {
+    let source_path = write_temp_source(
+        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_pick_unique(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = if flag\n    x\n  else\n    x\n  f(y)\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_pick_unique(true, forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "kea-cli-fip-unique-higher-order-forwarder-if-selected-unique-alias",
+        "kea",
+    );
+
+    let run = run_file(&source_path).expect(
+        "@fip verifier should accept wrappers that select the unique handoff alias through a call-free if",
+    );
+    assert_eq!(run.exit_code, 0);
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn compile_and_execute_fip_unique_higher_order_forwarder_with_if_selected_forwarder_alias_exit_code(
+) {
+    let source_path = write_temp_source(
+        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_pick_forwarder(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let g = if flag\n    f\n  else\n    f\n  g(x)\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_pick_forwarder(true, forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "kea-cli-fip-unique-higher-order-forwarder-if-selected-forwarder-alias",
+        "kea",
+    );
+
+    let run = run_file(&source_path).expect(
+        "@fip verifier should accept wrappers that select the forwarder alias through a call-free if",
+    );
+    assert_eq!(run.exit_code, 0);
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
 fn compile_rejects_fip_unique_higher_order_forwarder_param_escape() {
     let source_path = write_temp_source(
         "fn apply_forwarder(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  f(x)\n\n@fip\nfn call_via_apply(x: Unique Int, f: fn(Unique Int) -> Unique Int) -> Unique Int\n  apply_forwarder(f, x)\n\nfn main() -> Int\n  0\n",
@@ -3623,6 +3658,64 @@ fn compile_and_execute_fip_unique_higher_order_module_alias_wrapper_with_benign_
 
     let run = run_file(&source_path).expect(
         "@fip verifier and backend lowering should accept module-alias wrappers with benign call-free prelude lets",
+    );
+    assert_eq!(run.exit_code, 0);
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn compile_and_execute_fip_unique_higher_order_module_alias_wrapper_with_if_selected_unique_alias_exit_code(
+) {
+    let project_dir = temp_workspace_project_dir(
+        "kea-cli-fip-unique-higher-order-alias-if-selected-unique-alias",
+    );
+    let src_dir = project_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+    let source_path = src_dir.join("main.kea");
+    std::fs::write(
+        src_dir.join("alpha.kea"),
+        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_pick_unique(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = if flag\n    x\n  else\n    x\n  f(y)\n",
+    )
+    .expect("alpha module write should succeed");
+    std::fs::write(
+        &source_path,
+        "use Alpha as A\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_pick_unique(true, A.forward_once, x)\n\nfn main() -> Int\n  0\n",
+    )
+    .expect("source write should succeed");
+
+    let run = run_file(&source_path).expect(
+        "@fip verifier and backend lowering should accept module-alias wrappers with if-selected unique aliases",
+    );
+    assert_eq!(run.exit_code, 0);
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn compile_and_execute_fip_unique_higher_order_module_alias_wrapper_with_if_selected_forwarder_alias_exit_code(
+) {
+    let project_dir = temp_workspace_project_dir(
+        "kea-cli-fip-unique-higher-order-alias-if-selected-forwarder-alias",
+    );
+    let src_dir = project_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+    let source_path = src_dir.join("main.kea");
+    std::fs::write(
+        src_dir.join("alpha.kea"),
+        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_pick_forwarder(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let g = if flag\n    f\n  else\n    f\n  g(x)\n",
+    )
+    .expect("alpha module write should succeed");
+    std::fs::write(
+        &source_path,
+        "use Alpha as A\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_pick_forwarder(true, A.forward_once, x)\n\nfn main() -> Int\n  0\n",
+    )
+    .expect("source write should succeed");
+
+    let run = run_file(&source_path).expect(
+        "@fip verifier and backend lowering should accept module-alias wrappers with if-selected forwarder aliases",
     );
     assert_eq!(run.exit_code, 0);
 
