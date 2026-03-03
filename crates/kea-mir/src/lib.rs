@@ -3184,6 +3184,16 @@ fn direct_capability_operation(name: &str) -> Option<(&'static str, &'static str
     None
 }
 
+fn ptr_intrinsic_symbol(name: &str) -> Option<&'static str> {
+    match name {
+        "Ptr.null" | "Kea.Ptr.null" => Some("__kea_ptr_null"),
+        "Ptr.is_null" | "Kea.Ptr.is_null" => Some("__kea_ptr_is_null"),
+        "Ptr.read" | "Kea.Ptr.read" => Some("__kea_ptr_read_i64"),
+        "Ptr.write" | "Kea.Ptr.write" => Some("__kea_ptr_write_i64"),
+        _ => None,
+    }
+}
+
 fn is_direct_capability_effect(effect: &str) -> bool {
     DIRECT_CAPABILITIES
         .iter()
@@ -6733,6 +6743,8 @@ impl FunctionLoweringCtx {
             && is_namespaced_symbol_name(name)
             && !self.effect_operations.contains_key(name)
             && !self.known_function_types.contains_key(name)
+            && ptr_intrinsic_symbol(name).is_none()
+            && !self.intrinsic_symbols.contains_key(name)
         {
             self.emit_inst(MirInst::Unsupported {
                 detail: format!("unresolved qualified call target `{name}`"),
@@ -6758,6 +6770,8 @@ impl FunctionLoweringCtx {
                 HirExprKind::Var(name) => {
                     if let Some(symbol) = self.intrinsic_symbols.get(name) {
                         MirCallee::External(symbol.clone())
+                    } else if let Some(symbol) = ptr_intrinsic_symbol(name) {
+                        MirCallee::External(symbol.to_string())
                     } else if self.known_function_types.contains_key(name) {
                         MirCallee::Local(name.clone())
                     } else if is_namespaced_symbol_name(name) {

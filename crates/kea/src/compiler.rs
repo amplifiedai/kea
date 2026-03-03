@@ -19,7 +19,7 @@ use kea_hir::{
 use kea_infer::typeck::{
     RecordRegistry, SumTypeRegistry, TraitRegistry, TypeEnv, apply_where_clause,
     check_expr_in_context, concrete_method_types_from_decls, infer_and_resolve_in_context,
-    register_builtin_int_bitwise_methods, register_effect_decl,
+    register_builtin_int_bitwise_methods, register_builtin_ptr_ops, register_effect_decl,
     register_fn_signature, resolve_annotation, seed_fn_where_type_params_in_context,
     validate_module_annotations,
     validate_module_fn_annotations, validate_where_clause_traits,
@@ -99,6 +99,7 @@ fn compile_module_inner(source: &str, file_id: FileId) -> Result<CompilationCont
 
     let mut env = TypeEnv::new();
     register_builtin_int_bitwise_methods(&mut env);
+    register_builtin_ptr_ops(&mut env);
     let mut records = RecordRegistry::new();
     let mut traits = TraitRegistry::new();
     let mut sum_types = SumTypeRegistry::new();
@@ -273,6 +274,20 @@ fn collect_unsafe_annotated_function_names(module: &Module) -> BTreeSet<String> 
     names
 }
 
+fn builtin_unsafe_call_names() -> BTreeSet<String> {
+    [
+        "Ptr.null",
+        "Ptr.read",
+        "Ptr.write",
+        "Kea.Ptr.null",
+        "Kea.Ptr.read",
+        "Kea.Ptr.write",
+    ]
+    .into_iter()
+    .map(|name| name.to_string())
+    .collect()
+}
+
 fn collect_unsafe_function_registry(
     loaded_modules: &[LoadedModule],
 ) -> BTreeMap<String, BTreeSet<String>> {
@@ -293,6 +308,7 @@ fn collect_unsafe_call_targets(
     ambient_unsafe_names: Option<&BTreeSet<String>>,
 ) -> BTreeSet<String> {
     let mut unsafe_callees = collect_unsafe_annotated_function_names(module);
+    unsafe_callees.extend(builtin_unsafe_call_names());
     if let Some(ambient_unsafe_names) = ambient_unsafe_names {
         unsafe_callees.extend(ambient_unsafe_names.iter().cloned());
     }
@@ -1569,6 +1585,7 @@ fn typecheck_loaded_modules(
     let prelude_modules: BTreeSet<String> = configured_prelude_modules().into_iter().collect();
     let mut env = TypeEnv::new();
     register_builtin_int_bitwise_methods(&mut env);
+    register_builtin_ptr_ops(&mut env);
     let mut records = RecordRegistry::new();
     let mut traits = TraitRegistry::new();
     let mut sum_types = SumTypeRegistry::new();

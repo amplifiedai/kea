@@ -708,6 +708,31 @@ unsafe extern "C" fn kea_panic_mod_zero_stub() -> ! {
     std::process::exit(101);
 }
 
+unsafe extern "C" fn kea_ptr_null_stub() -> i64 {
+    0
+}
+
+unsafe extern "C" fn kea_ptr_is_null_stub(ptr: i64) -> i8 {
+    if ptr == 0 { 1 } else { 0 }
+}
+
+unsafe extern "C" fn kea_ptr_read_i64_stub(ptr: i64) -> i64 {
+    if ptr == 0 {
+        0
+    } else {
+        unsafe { *(ptr as *const i64) }
+    }
+}
+
+unsafe extern "C" fn kea_ptr_write_i64_stub(ptr: i64, value: i64) -> i8 {
+    if ptr == 0 {
+        -1
+    } else {
+        unsafe { *(ptr as *mut i64) = value };
+        0
+    }
+}
+
 fn register_jit_runtime_symbols(builder: &mut JITBuilder) {
     builder.symbol("__kea_net_connect", kea_net_connect_stub as *const u8);
     builder.symbol("__kea_net_send", kea_net_send_stub as *const u8);
@@ -726,6 +751,10 @@ fn register_jit_runtime_symbols(builder: &mut JITBuilder) {
     );
     builder.symbol("__kea_panic_div_zero", kea_panic_div_zero_stub as *const u8);
     builder.symbol("__kea_panic_mod_zero", kea_panic_mod_zero_stub as *const u8);
+    builder.symbol("__kea_ptr_null", kea_ptr_null_stub as *const u8);
+    builder.symbol("__kea_ptr_is_null", kea_ptr_is_null_stub as *const u8);
+    builder.symbol("__kea_ptr_read_i64", kea_ptr_read_i64_stub as *const u8);
+    builder.symbol("__kea_ptr_write_i64", kea_ptr_write_i64_stub as *const u8);
 }
 
 fn compile_with_jit(

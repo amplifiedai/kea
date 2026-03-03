@@ -4679,6 +4679,12 @@ fn resolve_annotation_with_type_params(
                         sum_types,
                     )?)))
                 }
+                ("Ptr", [inner]) => Some(ptr_opaque_type(resolve_annotation_with_type_params(
+                    inner,
+                    type_param_scope,
+                    records,
+                    sum_types,
+                )?)),
                 ("Arc", [inner]) => Some(Type::Arc(Box::new(resolve_annotation_with_type_params(
                     inner,
                     type_param_scope,
@@ -4866,6 +4872,7 @@ fn is_builtin_type_name(name: &str) -> bool {
             | "Map"
             | "Set"
             | "Actor"
+            | "Ptr"
             | "Stream"
             | "Task"
             | "Connection"
@@ -6779,6 +6786,7 @@ const BUILTIN_ARITIES: &[(&str, usize)] = &[
     ("Task", 1),
     ("Actor", 1),
     ("Arc", 1),
+    ("Ptr", 1),
     ("Stream", 1),
     ("Seq", 1),
     ("Tagged", 1),
@@ -6820,6 +6828,13 @@ fn connection_opaque_type() -> Type {
     Type::Opaque {
         name: "Connection".to_string(),
         params: vec![],
+    }
+}
+
+fn ptr_opaque_type(inner: Type) -> Type {
+    Type::Opaque {
+        name: "Ptr".to_string(),
+        params: vec![inner],
     }
 }
 
@@ -7160,6 +7175,9 @@ pub fn resolve_annotation(
                 ("Actor", [inner]) => Some(Type::Actor(Box::new(resolve_annotation(
                     inner, records, sum_types,
                 )?))),
+                ("Ptr", [inner]) => Some(ptr_opaque_type(resolve_annotation(
+                    inner, records, sum_types,
+                )?)),
                 ("Arc", [inner]) => Some(Type::Arc(Box::new(resolve_annotation(
                     inner, records, sum_types,
                 )?))),
@@ -7345,6 +7363,9 @@ fn resolve_annotation_or_bare_df(
                 ("Actor", [inner]) => Some(Type::Actor(Box::new(resolve_annotation_or_bare_df(
                     inner, records, sum_types, unifier,
                 )?))),
+                ("Ptr", [inner]) => Some(ptr_opaque_type(resolve_annotation_or_bare_df(
+                    inner, records, sum_types, unifier,
+                )?)),
                 ("Arc", [inner]) => Some(Type::Arc(Box::new(resolve_annotation_or_bare_df(
                     inner, records, sum_types, unifier,
                 )?))),
@@ -7702,6 +7723,73 @@ pub fn register_builtin_int_bitwise_methods(env: &mut TypeEnv) {
             ))),
         );
     }
+}
+
+/// Register builtin Ptr operations needed for Step 4 unsafe infrastructure.
+///
+/// These are compiler-provided operation types; lowering is handled through
+/// intrinsic symbols (`__kea_ptr_*`) in MIR/codegen.
+pub fn register_builtin_ptr_ops(env: &mut TypeEnv) {
+    let module_path = "Kea.Ptr";
+    env.register_module_alias("Ptr", module_path);
+
+    let type_var = TypeVarId(0);
+    let ptr_a = Type::Opaque {
+        name: "Ptr".to_string(),
+        params: vec![Type::Var(type_var)],
+    };
+
+    let null_scheme = TypeScheme {
+        type_vars: vec![type_var],
+        row_vars: Vec::new(),
+        dim_vars: Vec::new(),
+        lacks: BTreeMap::new(),
+        bounds: BTreeMap::new(),
+        kinds: BTreeMap::new(),
+        ty: Type::Function(FunctionType::pure(vec![], ptr_a.clone())),
+    };
+    env.register_module_function(module_path, "null");
+    env.register_module_type_scheme_exact(module_path, "null", null_scheme);
+
+    let is_null_scheme = TypeScheme {
+        type_vars: vec![type_var],
+        row_vars: Vec::new(),
+        dim_vars: Vec::new(),
+        lacks: BTreeMap::new(),
+        bounds: BTreeMap::new(),
+        kinds: BTreeMap::new(),
+        ty: Type::Function(FunctionType::pure(vec![ptr_a.clone()], Type::Bool)),
+    };
+    env.register_module_function(module_path, "is_null");
+    env.register_module_type_scheme_exact(module_path, "is_null", is_null_scheme);
+    env.register_inherent_method("Ptr", "is_null");
+
+    let read_scheme = TypeScheme {
+        type_vars: vec![type_var],
+        row_vars: Vec::new(),
+        dim_vars: Vec::new(),
+        lacks: BTreeMap::new(),
+        bounds: BTreeMap::new(),
+        kinds: BTreeMap::new(),
+        ty: Type::Function(FunctionType::pure(vec![ptr_a.clone()], Type::Var(type_var))),
+    };
+    env.register_module_function(module_path, "read");
+    env.register_module_type_scheme_exact(module_path, "read", read_scheme);
+
+    let write_scheme = TypeScheme {
+        type_vars: vec![type_var],
+        row_vars: Vec::new(),
+        dim_vars: Vec::new(),
+        lacks: BTreeMap::new(),
+        bounds: BTreeMap::new(),
+        kinds: BTreeMap::new(),
+        ty: Type::Function(FunctionType::pure(
+            vec![ptr_a, Type::Var(type_var)],
+            Type::Unit,
+        )),
+    };
+    env.register_module_function(module_path, "write");
+    env.register_module_type_scheme_exact(module_path, "write", write_scheme);
 }
 
 /// Register an effect declaration's operations as qualified call targets.
@@ -15575,6 +15663,15 @@ fn resolve_annotation_with_self_and_assoc(
                         assoc_types,
                     )?,
                 ))),
+                ("Ptr", [inner]) => Some(ptr_opaque_type(
+                    resolve_annotation_with_self_and_assoc(
+                        inner,
+                        records,
+                        sum_types,
+                        self_type,
+                        assoc_types,
+                    )?,
+                )),
                 ("Arc", [inner]) => {
                     Some(Type::Arc(Box::new(resolve_annotation_with_self_and_assoc(
                         inner,
@@ -15909,6 +16006,17 @@ fn resolve_annotation_with_self_assoc_and_params(
                         placeholder_id,
                     )?,
                 ))),
+                ("Ptr", [inner]) => Some(ptr_opaque_type(
+                    resolve_annotation_with_self_assoc_and_params(
+                        inner,
+                        records,
+                        sum_types,
+                        self_type,
+                        assoc_types,
+                        type_params,
+                        placeholder_id,
+                    )?,
+                )),
                 ("Arc", [inner]) => Some(Type::Arc(Box::new(
                     resolve_annotation_with_self_assoc_and_params(
                         inner,

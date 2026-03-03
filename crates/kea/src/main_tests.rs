@@ -3731,6 +3731,70 @@ fn compile_accepts_calling_imported_unsafe_function_inside_unsafe_block() {
 
 #[test]
 #[cfg(not(target_os = "windows"))]
+fn compile_accepts_builtin_ptr_is_null_in_safe_context() {
+    let source_path = write_temp_source(
+        "fn check(p: Ptr Int) -> Bool\n  Ptr.is_null(p)\n\nfn main() -> Int\n  0\n",
+        "kea-cli-ptr-is-null-safe",
+        "kea",
+    );
+
+    let run = run_file(&source_path).expect("Ptr.is_null should be callable in safe context");
+    assert_eq!(run.exit_code, 0);
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn compile_rejects_builtin_ptr_read_from_safe_context() {
+    let source_path = write_temp_source(
+        "fn read_ptr(p: Ptr Int) -> Int\n  Ptr.read(p)\n\nfn main() -> Int\n  0\n",
+        "kea-cli-ptr-read-safe-reject",
+        "kea",
+    );
+
+    let err = run_file(&source_path)
+        .expect_err("Ptr.read should require unsafe context in safe functions");
+    assert!(
+        err.contains("call to `@unsafe` function `Ptr.read` requires unsafe context"),
+        "expected unsafe diagnostic for Ptr.read, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn compile_accepts_builtin_ptr_read_inside_inline_unsafe_expression() {
+    let source_path = write_temp_source(
+        "fn read_ptr(p: Ptr Int) -> Int\n  unsafe Ptr.read(p)\n\nfn main() -> Int\n  0\n",
+        "kea-cli-ptr-read-unsafe-inline",
+        "kea",
+    );
+
+    let run = run_file(&source_path).expect("unsafe Ptr.read call should compile");
+    assert_eq!(run.exit_code, 0);
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn compile_accepts_builtin_ptr_null_inside_inline_unsafe_expression() {
+    let source_path = write_temp_source(
+        "fn null_ptr() -> Ptr Int\n  unsafe Ptr.null()\n\nfn main() -> Int\n  0\n",
+        "kea-cli-ptr-null-unsafe-inline",
+        "kea",
+    );
+
+    let run = run_file(&source_path).expect("unsafe Ptr.null call should compile");
+    assert_eq!(run.exit_code, 0);
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
 fn compile_rejects_unsafe_annotation_with_arguments() {
     let source_path = write_temp_source(
         "@unsafe(\"strict\")\nfn raw_add_one(x: Int) -> Int\n  x + 1\n\nfn main() -> Int\n  raw_add_one(1)\n",
