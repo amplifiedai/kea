@@ -4417,6 +4417,69 @@ theorem native_handler_step_ext_with_mismatch_body_preservation_reduction_capsto
       clauseSem mismatchSem bodyStep h_body_pres
 
 /--
+One-hop projection: strict-handle soundness↔progress reduction from the unified
+body-preservation reduction capstone.
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_strict_handle_prop_iff_progress_strict_prop_of_body_preservation_via_capstone
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_body_pres :
+      ∀ env body body' ty,
+        HasTypeScopedTop env body ty →
+        bodyStep body body' →
+        HasTypeScopedTop env body' ty) :
+    native_handler_step_ext_with_mismatch_soundness_strict_handle_prop
+      clauseSem mismatchSem bodyStep
+      ↔
+    native_handler_step_ext_with_mismatch_progress_strict_prop
+      clauseSem mismatchSem bodyStep := by
+  exact (native_handler_step_ext_with_mismatch_body_preservation_reduction_capstone
+    clauseSem mismatchSem bodyStep h_body_pres).1
+
+/--
+One-hop projection: strict-top soundness↔progress reduction from the unified
+body-preservation reduction capstone.
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_strict_top_prop_iff_progress_strict_top_prop_of_body_preservation_via_capstone
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_body_pres :
+      ∀ env body body' ty,
+        HasTypeScopedTop env body ty →
+        bodyStep body body' →
+        HasTypeScopedTop env body' ty) :
+    native_handler_step_ext_with_mismatch_soundness_strict_top_prop
+      clauseSem mismatchSem bodyStep
+      ↔
+    native_handler_step_ext_with_mismatch_progress_strict_top_prop
+      clauseSem mismatchSem bodyStep := by
+  exact (native_handler_step_ext_with_mismatch_body_preservation_reduction_capstone
+    clauseSem mismatchSem bodyStep h_body_pres).2.1
+
+/--
+One-hop projection: full soundness↔progress reduction from the unified
+body-preservation reduction capstone.
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_prop_iff_progress_prop_of_body_preservation_via_capstone
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_body_pres :
+      ∀ env body body' ty,
+        HasTypeScopedTop env body ty →
+        bodyStep body body' →
+        HasTypeScopedTop env body' ty) :
+    native_handler_step_ext_with_mismatch_soundness_prop
+      clauseSem mismatchSem bodyStep
+      ↔
+    native_handler_step_ext_with_mismatch_progress_prop
+      clauseSem mismatchSem bodyStep := by
+  exact (native_handler_step_ext_with_mismatch_body_preservation_reduction_capstone
+    clauseSem mismatchSem bodyStep h_body_pres).2.2
+
+/--
 Generic local consequence of packaged mismatch soundness:
 typed handles take one mismatch-extension step.
 -/

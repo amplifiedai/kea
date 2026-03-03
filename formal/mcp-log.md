@@ -20987,3 +20987,48 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - The strict/full soundness-to-progress reduction story is now one-hop consumable from a single `h_body_pres` capstone theorem.
+
+### 2026-03-04: projected unified body-preservation capstone into one-hop strict/full route APIs
+
+**Context**: Added direct projections from the unified capstone:
+- `native_handler_step_ext_with_mismatch_soundness_strict_handle_prop_iff_progress_strict_prop_of_body_preservation_via_capstone`
+- `native_handler_step_ext_with_mismatch_soundness_strict_top_prop_iff_progress_strict_top_prop_of_body_preservation_via_capstone`
+- `native_handler_step_ext_with_mismatch_soundness_prop_iff_progress_prop_of_body_preservation_via_capstone`
+
+These remove manual tuple projection from capstone consumers.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent handler should type-check.
+- Mismatched pure handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Runtime` + trivial fn -> `ok`.
+2. Coherent handler (`ProbeBI.run() -> resume 151`) -> `ok`.
+3. Mismatched pure handler (`handle ProbeBJ.left()` with only `ProbeBK.right`) -> `error`, `E0001`.
+4. Bad resume payload (`ProbeBL.read() -> resume "oops"`) -> `error`, `E0001`.
+5. Out-of-handler resume (`fn outside_resume_probe12() -> Int; resume 19`) -> `error`, `E0012`.
+6. Forged-name out-of-handler resume (`let __kea_resume_ctx = 19; resume 19`) -> `error`, `E0012`.
+7. Double-resume clause (`resume 1` then `resume 2`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept capstone projection theorems.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `..._of_body_preservation_via_capstone` (strict-handle / strict-top / full)
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Unified body-preservation capstone is now directly usable through one-hop route APIs for strict-handle, strict-top, and full layers.
