@@ -2106,6 +2106,50 @@ def native_handler_step_ext_with_mismatch_strictly_extends_ext_prop
       ¬ NativeHandlerStepExt clauseSem bodyStep e e')
 
 /--
+API coherence: the legacy bodyStep-false strictness proposition is definitionally
+the generic strictness proposition instantiated at `bodyStep = False`.
+-/
+theorem native_handler_step_ext_with_mismatch_strictly_extends_ext_bodyStepFalse_prop_iff_generic
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) :
+    native_handler_step_ext_with_mismatch_strictly_extends_ext_bodyStepFalse_prop
+      clauseSem mismatchSem
+      ↔
+    native_handler_step_ext_with_mismatch_strictly_extends_ext_prop
+      clauseSem mismatchSem (fun _ _ => False) := by
+  rfl
+
+/--
+One-hop projection from legacy bodyStep-false strictness to the generic
+instantiation at `bodyStep = False`.
+-/
+theorem native_handler_step_ext_with_mismatch_strictly_extends_ext_bodyStepFalse_generic_of_legacy
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (h_legacy :
+      native_handler_step_ext_with_mismatch_strictly_extends_ext_bodyStepFalse_prop
+        clauseSem mismatchSem) :
+    native_handler_step_ext_with_mismatch_strictly_extends_ext_prop
+      clauseSem mismatchSem (fun _ _ => False) := by
+  exact (native_handler_step_ext_with_mismatch_strictly_extends_ext_bodyStepFalse_prop_iff_generic
+    clauseSem mismatchSem).1 h_legacy
+
+/--
+One-hop projection from generic strictness at `bodyStep = False` back to the
+legacy bodyStep-false strictness proposition.
+-/
+theorem native_handler_step_ext_with_mismatch_strictly_extends_ext_bodyStepFalse_legacy_of_generic
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (h_generic :
+      native_handler_step_ext_with_mismatch_strictly_extends_ext_prop
+        clauseSem mismatchSem (fun _ _ => False)) :
+    native_handler_step_ext_with_mismatch_strictly_extends_ext_bodyStepFalse_prop
+      clauseSem mismatchSem := by
+  exact (native_handler_step_ext_with_mismatch_strictly_extends_ext_bodyStepFalse_prop_iff_generic
+    clauseSem mismatchSem).2 h_generic
+
+/--
 Under a local no-body-step premise for one mismatched handled `perform`,
 `ext-with-mismatch` has a strictness witness over `ext` at that site.
 -/

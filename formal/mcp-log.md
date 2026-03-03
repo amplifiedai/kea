@@ -19644,3 +19644,49 @@ No MCP divergence found at this checkpoint.
 
 **Impact**:
 - The canonical `bodyStep = False` boundary now projects directly into the generic strict-extension theorem family, improving interoperability between old specialized and new generalized boundary APIs.
+
+### 2026-03-03: API coherence between legacy and generic bodyStep-false strictness props
+
+**Context**: Added explicit coherence/projection theorems between:
+- legacy `native_handler_step_ext_with_mismatch_strictly_extends_ext_bodyStepFalse_prop`
+- generic `native_handler_step_ext_with_mismatch_strictly_extends_ext_prop ... (fun _ _ => False)`
+
+New surfaces:
+- `native_handler_step_ext_with_mismatch_strictly_extends_ext_bodyStepFalse_prop_iff_generic`
+- `native_handler_step_ext_with_mismatch_strictly_extends_ext_bodyStepFalse_generic_of_legacy`
+- `native_handler_step_ext_with_mismatch_strictly_extends_ext_bodyStepFalse_legacy_of_generic`
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent self-contained handlers should type-check.
+- Pure-body `handle` sentinel should type-check.
+- Mismatched pure handlers should reject (`E0001`).
+- Out-of-handler `resume` should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Reader` -> `ok`.
+2. Coherent Sensor handler (`Sensor.read() -> resume 34`) -> `ok`.
+3. Mismatched pure handler (`handle Sensor.read()` with only `Device.poll` clause) -> `error`, `E0001` (pure body performs `[Sensor]`).
+4. Pure-body sentinel (`handle 34` with `Sensor.read` clause) -> `ok`.
+5. Out-of-handler resume (`fn out_resume_api_bridge() -> Int; resume 34`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No MCP divergence found at this checkpoint.
+
+**Act**:
+- Kept bodyStep-false legacy/generic coherence additions.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_strictly_extends_ext_bodyStepFalse_prop_iff_generic`
+  - `native_handler_step_ext_with_mismatch_strictly_extends_ext_bodyStepFalse_generic_of_legacy`
+  - `native_handler_step_ext_with_mismatch_strictly_extends_ext_bodyStepFalse_legacy_of_generic`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The bodyStep-false strictness API is now explicitly coherent across old/new theorem surfaces, reducing ambiguity for downstream consumers and capstone projections.
