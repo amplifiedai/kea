@@ -21261,3 +21261,48 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - End-to-end core→master strict-top route now has direct equivalence APIs at both generic and pass-through semantics.
+
+### 2026-03-04: strengthened core+strict-top boundary contrast with explicit mismatch soundness↔progress equivalence
+
+**Context**: Added strengthened contrast theorems:
+- `native_handler_step_ext_with_mismatch_soundness_progress_equiv_and_native_progress_gap_of_core_soundness_and_strict_top_typing`
+- `native_handler_step_ext_with_mismatch_soundness_progress_equiv_and_native_progress_gap_of_core_soundness_and_strict_top_typing_of_boundary_model_gap_slice`
+
+These extend existing contrast surfaces by explicitly carrying mismatch-extension `soundness ↔ progress` equivalence alongside soundness/progress and native-progress refutation.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent handler should type-check.
+- Mismatched pure handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Clock` + trivial fn -> `ok`.
+2. Coherent handler (`ProbeCM.run() -> resume 211`) -> `ok`.
+3. Mismatched pure handler (`handle ProbeCN.left()` with only `ProbeCO.right`) -> `error`, `E0001`.
+4. Bad resume payload (`ProbeCP.read() -> resume "bad"`) -> `error`, `E0001`.
+5. Out-of-handler resume (`fn outside_resume_probe18() -> Int; resume 25`) -> `error`, `E0012`.
+6. Forged-name out-of-handler resume (`let __kea_resume_ctx = 25; resume 25`) -> `error`, `E0012`.
+7. Double-resume clause (`resume 1` then `resume 2`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept strengthened boundary-contrast theorems with explicit mismatch equivalence field.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_soundness_progress_equiv_and_native_progress_gap_of_core_soundness_and_strict_top_typing`
+  - `..._of_boundary_model_gap_slice`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Core+strict-top boundary contrast now exports the full mismatch-extension reduction picture (soundness, progress, and equivalence) while preserving the native-progress gap witness.

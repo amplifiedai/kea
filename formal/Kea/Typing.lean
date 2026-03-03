@@ -6613,6 +6613,38 @@ theorem native_handler_step_ext_with_mismatch_soundness_progress_and_native_prog
   exact ⟨h_sound, h_sound.2, native_handler_step_progress_prop_false clauseSem⟩
 
 /--
+Strengthened combined boundary contrast under core soundness + strict-top
+typing:
+- mismatch-extension soundness is derivable,
+- mismatch-extension progress is derivable,
+- mismatch-extension soundness and progress are propositionally equivalent,
+- native minimal handler progress remains refutable.
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_progress_equiv_and_native_progress_gap_of_core_soundness_and_strict_top_typing
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core : native_core_soundness_prop bodyStep)
+    (h_strict_top_typing : native_handler_strict_top_typing_prop) :
+    native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep
+      ∧
+    native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep
+      ∧
+    (native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep
+      ↔ native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep)
+      ∧
+    ¬ native_handler_step_progress_prop clauseSem := by
+  have h_sound :=
+    native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_strict_top_typing_packaged
+      clauseSem mismatchSem bodyStep h_core h_strict_top_typing
+  have h_iff :
+      native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep
+        ↔ native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep :=
+    native_handler_step_ext_with_mismatch_soundness_prop_iff_progress_prop_of_preservation
+      clauseSem mismatchSem bodyStep h_sound.1
+  exact ⟨h_sound, h_sound.2, h_iff, native_handler_step_progress_prop_false clauseSem⟩
+
+/--
 Combined boundary contrast routed through the packaged boundary-model gap slice.
 -/
 theorem native_handler_step_ext_with_mismatch_soundness_progress_and_native_progress_gap_of_core_soundness_and_strict_top_typing_of_boundary_model_gap_slice
@@ -6631,6 +6663,35 @@ theorem native_handler_step_ext_with_mismatch_soundness_progress_and_native_prog
     native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_strict_top_typing_packaged
       clauseSem mismatchSem bodyStep h_core h_strict_top_typing
   exact ⟨h_sound, h_sound.2, h_gap.nativeProgressFalse⟩
+
+/--
+Strengthened combined boundary contrast routed through the packaged
+boundary-model gap slice, including mismatch soundness↔progress equivalence.
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_progress_equiv_and_native_progress_gap_of_core_soundness_and_strict_top_typing_of_boundary_model_gap_slice
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_gap : NativeHandlerBoundaryModelGapSlice clauseSem mismatchSem)
+    (h_core : native_core_soundness_prop bodyStep)
+    (h_strict_top_typing : native_handler_strict_top_typing_prop) :
+    native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep
+      ∧
+    native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep
+      ∧
+    (native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep
+      ↔ native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep)
+      ∧
+    ¬ native_handler_step_progress_prop clauseSem := by
+  have h_sound :=
+    native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_strict_top_typing_packaged
+      clauseSem mismatchSem bodyStep h_core h_strict_top_typing
+  have h_iff :
+      native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep
+        ↔ native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep :=
+    native_handler_step_ext_with_mismatch_soundness_prop_iff_progress_prop_of_preservation
+      clauseSem mismatchSem bodyStep h_sound.1
+  exact ⟨h_sound, h_sound.2, h_iff, h_gap.nativeProgressFalse⟩
 
 /--
 Core+strict-top contrast route surface for mismatch-extension soundness/progress
