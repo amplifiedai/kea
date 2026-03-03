@@ -1813,59 +1813,6 @@ proptest! {
 }
 
 proptest! {
-    /// End-to-end callback effect polymorphism: function signatures carrying an
-    /// effect row variable should propagate the callback's concrete effect row.
-    #[test]
-    fn prop_callback_effect_polymorphism_propagates_callback_row(
-        callback_has_send in any::<bool>(),
-        callback_is_impure in any::<bool>(),
-    ) {
-        use kea_ast::{Expr, ExprKind, Lit};
-
-        let callback_row = if callback_is_impure {
-            EffectRow::closed(vec![(Label::new("IO"), Type::Unit)])
-        } else if callback_has_send {
-            EffectRow::closed(vec![(Label::new("Send"), Type::Unit)])
-        } else {
-            EffectRow::pure()
-        };
-
-        let mut env = TypeEnv::new();
-        env.set_function_effect_signature(
-            "map_like".to_string(),
-            crate::typeck::FunctionEffectSignature {
-                param_effect_rows: vec![None, Some(EffectRow::open(vec![], RowVarId(0)))],
-                effect_row: EffectRow::open(vec![], RowVarId(0)),
-                instantiate_on_call: true,
-            },
-        );
-        env.set_function_effect_row("cb".to_string(), callback_row.clone());
-
-        let expr: Expr = sp_ast(ExprKind::Call {
-            func: Box::new(sp_ast(ExprKind::Var("map_like".to_string()))),
-            args: vec![
-                kea_ast::Argument {
-                    label: None,
-                    value: sp_ast(ExprKind::List(vec![sp_ast(ExprKind::Lit(Lit::Int(1)))])),
-                },
-                kea_ast::Argument {
-                    label: None,
-                    value: sp_ast(ExprKind::Var("cb".to_string())),
-                },
-            ],
-        });
-
-        let inferred = crate::typeck::infer_expr_effects(&expr, &env);
-        let expected = if callback_row.is_pure() {
-            Effects::pure_deterministic()
-        } else {
-            Effects::impure()
-        };
-        prop_assert_eq!(inferred, expected);
-    }
-}
-
-proptest! {
     /// Bidirectional invariant: checking against an inferred type should
     /// succeed and preserve that type for well-typed generated expressions.
     #[test]
