@@ -17869,3 +17869,44 @@ adding direct `step` and `step+preserves` routes (routed via strict-top).
 **Impact**:
 - Packaged local consequence parity is now complete across strict-typing,
   strict-top, scoped-lift, and metadata assumption families.
+
+### 2026-03-03: packaged global progress parity across strict assumption families
+
+**Context**: Added explicit packaged global progress routes for strict-top,
+strict-typing, scoped-lift, and metadata coherence assumptions.
+
+**MCP tools used**: `reset_session`, `type_check`
+
+**Predict (Lean side)**:
+- Matching handlers over performed bodies should type-check and discharge
+  effects in pure local contexts.
+- Resume payload mismatch rejects.
+- Clause mismatch leaks original effect in pure local contexts.
+- Out-of-handler resume rejects.
+
+**Probe (Rust side via MCP)**:
+1. Matching `Ping` handler (`Ping.ping() -> resume 40`) -> `ok`, pure local fn.
+2. Bad resume payload (`resume "bad"` for `Ping.ping() : Int`) -> `error`, `E0001`.
+3. Mismatched clause (`Clock.now` clause around `Ping` body) -> `error`,
+   purity/effect leak (`Ping` required).
+4. Out-of-handler resume control -> `error`, `E0012`.
+
+**Classify**: Agreement.
+
+**Act**:
+- Kept packaged global progress routes as added.
+- Continued with protocol logging and roadmap update.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_progress_of_core_progress_and_strict_top_typing_packaged`
+  - `native_handler_step_ext_with_mismatch_progress_of_core_progress_and_strict_typing_packaged`
+  - `native_handler_step_ext_with_mismatch_progress_of_core_progress_and_scoped_to_strict_lift_via_strict_top_typing_packaged`
+  - `native_handler_step_ext_with_mismatch_progress_of_core_progress_and_metadata_coherence_via_strict_top_typing_packaged`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Packaged global progress surfaces now match packaged global soundness/local
+  consequence coverage across all strict assumption families.

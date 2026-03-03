@@ -3636,6 +3636,65 @@ theorem native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_sc
     (native_handler_strict_top_typing_prop_of_scoped_to_strict_lift h_lift)
 
 /--
+Packaged route: mismatch-extension progress from packaged core progress plus
+global strict-top typing.
+-/
+theorem native_handler_step_ext_with_mismatch_progress_of_core_progress_and_strict_top_typing_packaged
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core_progress : native_core_progress_prop bodyStep)
+    (h_strict_top_typing : native_handler_strict_top_typing_prop) :
+    native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep := by
+  exact native_handler_step_ext_with_mismatch_progress_of_core_progress_and_strict_top_typing
+    clauseSem mismatchSem bodyStep h_core_progress h_strict_top_typing
+
+/--
+Packaged route: mismatch-extension progress from packaged core progress plus
+global strict typing, routed through strict-top typing.
+-/
+theorem native_handler_step_ext_with_mismatch_progress_of_core_progress_and_strict_typing_packaged
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core_progress : native_core_progress_prop bodyStep)
+    (h_strict_typing : native_handler_strict_typing_prop) :
+    native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep := by
+  exact native_handler_step_ext_with_mismatch_progress_of_core_progress_and_strict_top_typing_packaged
+    clauseSem mismatchSem bodyStep h_core_progress
+    ((native_handler_strict_top_typing_prop_iff_strict_typing).2 h_strict_typing)
+
+/--
+Packaged route: mismatch-extension progress from packaged core progress plus
+scoped-to-strict lift, routed through strict-top typing.
+-/
+theorem native_handler_step_ext_with_mismatch_progress_of_core_progress_and_scoped_to_strict_lift_via_strict_top_typing_packaged
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core_progress : native_core_progress_prop bodyStep)
+    (h_lift : native_handler_scoped_to_strict_lift_prop) :
+    native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep := by
+  exact native_handler_step_ext_with_mismatch_progress_of_core_progress_and_strict_top_typing_packaged
+    clauseSem mismatchSem bodyStep h_core_progress
+    (native_handler_strict_top_typing_prop_of_scoped_to_strict_lift h_lift)
+
+/--
+Packaged route: mismatch-extension progress from packaged core progress plus
+metadata coherence, routed through strict-top typing.
+-/
+theorem native_handler_step_ext_with_mismatch_progress_of_core_progress_and_metadata_coherence_via_strict_top_typing_packaged
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core_progress : native_core_progress_prop bodyStep)
+    (h_coherence : native_handler_perform_metadata_coherence_prop) :
+    native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep := by
+  exact native_handler_step_ext_with_mismatch_progress_of_core_progress_and_strict_top_typing_packaged
+    clauseSem mismatchSem bodyStep h_core_progress
+    (native_handler_strict_top_typing_of_metadata_coherence h_coherence)
+
+/--
 Local typed-handle consequence from packaged core soundness and strict-top
 typing: one-step existence plus post-step typing.
 -/
