@@ -4379,6 +4379,51 @@ fn compile_rejects_fip_unique_with_binding_unshadowed_forwarder_without_local_bo
 
 #[test]
 #[cfg(not(target_os = "windows"))]
+fn compile_rejects_fip_unique_case_pattern_binder_shadowed_forwarder_name_call_escape() {
+    let source_path = write_temp_source(
+        "enum Wrap a\n  Wrap(a)\n\nfn forward_once(x: Unique Int) -> Unique Int\n  x\n\n@fip\nfn call_via_case_pattern_binder_shadow(x: Unique Int, w: Wrap(fn(Unique Int) -> Unique Int)) -> Unique Int\n  case w\n    Wrap(forward_once) ->\n      forward_once(x)\n\nfn main() -> Int\n  0\n",
+        "kea-cli-fip-unique-case-pattern-binder-shadowed-forwarder-name",
+        "kea",
+    );
+
+    let err = run_file(&source_path).expect_err(
+        "@fip verifier should reject call-boundary escape through case-pattern-binder shadowed forwarder name",
+    );
+    assert!(
+        err.contains("`@fip` verification failed for `call_via_case_pattern_binder_shadow`"),
+        "expected @fip verification failure, got: {err}"
+    );
+    assert!(
+        err.contains("unsupported_call_boundaries="),
+        "expected call-boundary escape diagnostic, got: {err}"
+    );
+    assert!(
+        err.contains("forward_once"),
+        "expected local binder callable boundary site naming `forward_once`, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn compile_and_execute_fip_unique_case_pattern_binder_unshadowed_forwarder_exit_code() {
+    let source_path = write_temp_source(
+        "enum Wrap a\n  Wrap(a)\n\nfn forward_once(x: Unique Int) -> Unique Int\n  x\n\n@fip\nfn call_via_case_pattern_binder_no_shadow(x: Unique Int, w: Wrap(fn(Unique Int) -> Unique Int)) -> Unique Int\n  case w\n    Wrap(cb) ->\n      forward_once(x)\n\nfn main() -> Int\n  0\n",
+        "kea-cli-fip-unique-case-pattern-binder-unshadowed-forwarder",
+        "kea",
+    );
+
+    let run = run_file(&source_path).expect(
+        "@fip verifier should accept case-pattern-binder path when forwarder name is not shadowed",
+    );
+    assert_eq!(run.exit_code, 0, "expected successful execution, got: {run:?}");
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
 fn compile_rejects_fip_when_unique_handoff_missing() {
     let source_path = write_temp_source(
         "@fip\nfn leak(x: Unique Int) -> Int\n  1\n\nfn main() -> Int\n  0\n",
