@@ -21502,3 +21502,54 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - Boundary-capstone consumers can now choose legacy or strengthened surfaces with an explicit theorem-level equivalence, while status-capstone flows can project directly to the strengthened object.
+
+### 2026-03-04: added pass-through boundary/status capstone specializations with strengthened projection
+
+**Context**: Added concrete pass-through capstone surfaces:
+- `native_handler_step_ext_with_passThroughMismatch_soundness_boundary_capstone_prop`
+- `native_handler_step_ext_with_passThroughMismatch_soundness_boundary_capstone_strengthened_prop`
+- direct and boundary-slice constructors for both
+- `native_handler_step_ext_with_passThroughMismatch_soundness_boundary_capstone_prop_iff_strengthened`
+- `native_handler_step_ext_with_passThroughMismatch_soundness_boundary_status_capstone_prop`
+- direct and boundary-slice status constructors
+- `native_handler_step_ext_with_passThroughMismatch_soundness_boundary_status_capstone_strengthened_boundary`
+
+This closes concrete API parity at the capstone layer (legacy/strengthened boundary objects and status-to-strengthened projection).
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent handler should type-check.
+- Mismatched pure handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Parse` + trivial fn -> `ok`.
+2. Coherent handler (`handle ProbeDS.run(); ProbeDS.run() -> resume 271`) -> `ok`.
+3. Mismatched pure handler (`handle ProbeDT.left(); ProbeDU.right() -> resume 0`) -> `error`, `E0001`.
+4. Bad resume payload (`ProbeDV.read() -> resume true`) -> `error`, `E0001`.
+5. Out-of-handler resume (`fn fresh_outside_resume_probe_20260304f() -> Int; resume 31`) -> `error`, `E0012`.
+6. Forged-name out-of-handler resume (`let __kea_resume_ctx = 31; resume 31`) -> `error`, `E0012`.
+7. Double-resume clause (`resume 1` then `resume 2`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the concrete pass-through boundary/status capstone specialization layer and strengthened projection theorem.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_passThroughMismatch_soundness_boundary_capstone_prop`
+  - `native_handler_step_ext_with_passThroughMismatch_soundness_boundary_capstone_prop_iff_strengthened`
+  - `native_handler_step_ext_with_passThroughMismatch_soundness_boundary_status_capstone_strengthened_boundary`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Pass-through capstone consumers now have full legacy/strengthened/status API symmetry with generic mismatch semantics.

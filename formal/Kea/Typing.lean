@@ -8489,6 +8489,128 @@ theorem native_handler_step_ext_with_passThroughMismatch_core_strict_top_contras
     native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_strengthened_of_boundary_model_gap_slice
       clauseSem nativeHandlerMismatchPassThroughSem h_gap
 
+/--
+Concrete pass-through specialization of the legacy boundary capstone package.
+-/
+def native_handler_step_ext_with_passThroughMismatch_soundness_boundary_capstone_prop
+    (clauseSem : NativeHandlerClauseSem) : Prop :=
+  NativeHandlerSoundnessBoundaryCapstone clauseSem nativeHandlerMismatchPassThroughSem
+
+/--
+Concrete pass-through specialization of the strengthened boundary capstone
+package.
+-/
+def native_handler_step_ext_with_passThroughMismatch_soundness_boundary_capstone_strengthened_prop
+    (clauseSem : NativeHandlerClauseSem) : Prop :=
+  NativeHandlerSoundnessBoundaryCapstoneStrengthened
+    clauseSem nativeHandlerMismatchPassThroughSem
+
+/--
+Build the concrete pass-through legacy boundary capstone package directly.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_soundness_boundary_capstone
+    (clauseSem : NativeHandlerClauseSem) :
+    native_handler_step_ext_with_passThroughMismatch_soundness_boundary_capstone_prop
+      clauseSem := by
+  exact native_handler_soundness_boundary_capstone
+    clauseSem nativeHandlerMismatchPassThroughSem
+
+/--
+Build the concrete pass-through legacy boundary capstone package from a
+boundary-model gap slice witness.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_soundness_boundary_capstone_of_boundary_model_gap_slice
+    (clauseSem : NativeHandlerClauseSem)
+    (h_gap :
+      NativeHandlerBoundaryModelGapSlice clauseSem nativeHandlerMismatchPassThroughSem) :
+    native_handler_step_ext_with_passThroughMismatch_soundness_boundary_capstone_prop
+      clauseSem := by
+  exact native_handler_soundness_boundary_capstone_of_boundary_model_gap_slice
+    clauseSem nativeHandlerMismatchPassThroughSem h_gap
+
+/--
+Build the concrete pass-through strengthened boundary capstone package
+directly.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_soundness_boundary_capstone_strengthened
+    (clauseSem : NativeHandlerClauseSem) :
+    native_handler_step_ext_with_passThroughMismatch_soundness_boundary_capstone_strengthened_prop
+      clauseSem := by
+  exact native_handler_soundness_boundary_capstone_strengthened
+    clauseSem nativeHandlerMismatchPassThroughSem
+
+/--
+Build the concrete pass-through strengthened boundary capstone package from a
+boundary-model gap slice witness.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_soundness_boundary_capstone_strengthened_of_boundary_model_gap_slice
+    (clauseSem : NativeHandlerClauseSem)
+    (h_gap :
+      NativeHandlerBoundaryModelGapSlice clauseSem nativeHandlerMismatchPassThroughSem) :
+    native_handler_step_ext_with_passThroughMismatch_soundness_boundary_capstone_strengthened_prop
+      clauseSem := by
+  exact native_handler_soundness_boundary_capstone_strengthened_of_boundary_model_gap_slice
+    clauseSem nativeHandlerMismatchPassThroughSem h_gap
+
+/--
+Capstone-level equivalence between legacy and strengthened concrete pass-through
+boundary packages.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_soundness_boundary_capstone_prop_iff_strengthened
+    (clauseSem : NativeHandlerClauseSem) :
+    native_handler_step_ext_with_passThroughMismatch_soundness_boundary_capstone_prop
+        clauseSem
+      ↔
+    native_handler_step_ext_with_passThroughMismatch_soundness_boundary_capstone_strengthened_prop
+        clauseSem := by
+  exact native_handler_soundness_boundary_capstone_iff_strengthened
+    clauseSem nativeHandlerMismatchPassThroughSem
+
+/--
+Concrete pass-through specialization of the unified boundary status capstone.
+-/
+def native_handler_step_ext_with_passThroughMismatch_soundness_boundary_status_capstone_prop
+    (clauseSem : NativeHandlerClauseSem) : Prop :=
+  NativeHandlerSoundnessBoundaryStatusCapstone
+    clauseSem nativeHandlerMismatchPassThroughSem
+
+/--
+Build the concrete pass-through unified boundary status capstone directly.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_soundness_boundary_status_capstone
+    (clauseSem : NativeHandlerClauseSem) :
+    native_handler_step_ext_with_passThroughMismatch_soundness_boundary_status_capstone_prop
+      clauseSem := by
+  exact native_handler_soundness_boundary_status_capstone
+    clauseSem nativeHandlerMismatchPassThroughSem
+
+/--
+Build the concrete pass-through unified boundary status capstone from a
+boundary-model gap slice witness.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_soundness_boundary_status_capstone_of_boundary_model_gap_slice
+    (clauseSem : NativeHandlerClauseSem)
+    (h_gap :
+      NativeHandlerBoundaryModelGapSlice clauseSem nativeHandlerMismatchPassThroughSem) :
+    native_handler_step_ext_with_passThroughMismatch_soundness_boundary_status_capstone_prop
+      clauseSem := by
+  exact native_handler_soundness_boundary_status_capstone_of_boundary_model_gap_slice
+    clauseSem nativeHandlerMismatchPassThroughSem h_gap
+
+/--
+Project the concrete pass-through strengthened boundary capstone from the
+concrete pass-through unified status capstone.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_soundness_boundary_status_capstone_strengthened_boundary
+    (clauseSem : NativeHandlerClauseSem)
+    (h_status :
+      native_handler_step_ext_with_passThroughMismatch_soundness_boundary_status_capstone_prop
+        clauseSem) :
+    native_handler_step_ext_with_passThroughMismatch_soundness_boundary_capstone_strengthened_prop
+      clauseSem := by
+  exact native_handler_soundness_boundary_status_capstone_strengthened_boundary
+    clauseSem nativeHandlerMismatchPassThroughSem h_status
+
 /-- Declarative field typing is functional on the core slice. -/
 theorem hasFieldsType_unique
     {env : TermEnv} {fs : CoreFields} {row₁ row₂ : RowFields}
