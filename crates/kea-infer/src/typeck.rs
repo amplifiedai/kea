@@ -2519,6 +2519,7 @@ pub fn derive_dispatch_semantics(type_name: &str, return_type: &Type) -> Dispatc
 fn ast_kind_to_kind(kind: &kea_ast::KindAnnotation) -> Kind {
     match kind {
         kea_ast::KindAnnotation::Star => Kind::Star,
+        kea_ast::KindAnnotation::Eff => Kind::Eff,
     }
 }
 

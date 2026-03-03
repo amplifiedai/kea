@@ -581,6 +581,7 @@ pub struct EffectRowItem {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum KindAnnotation {
     Star,
+    Eff,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

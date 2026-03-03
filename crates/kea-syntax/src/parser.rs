@@ -1233,6 +1233,10 @@ impl Parser {
         if self.match_token(&TokenKind::Star) {
             return Some(KindAnnotation::Star);
         }
+        if matches!(self.peek_kind(), Some(TokenKind::UpperIdent(s)) if s == "Eff") {
+            self.advance();
+            return Some(KindAnnotation::Eff);
+        }
         if self.match_token(&TokenKind::LParen) {
             self.skip_newlines();
             let inner = self.kind_annotation()?;
@@ -1240,7 +1244,7 @@ impl Parser {
             self.expect(&TokenKind::RParen, "expected ')' in kind annotation")?;
             return Some(inner);
         }
-        self.error_at_current("expected kind annotation (`*` or parenthesized kind)");
+        self.error_at_current("expected kind annotation (`*`, `Eff`, or parenthesized kind)");
         None
     }
 
@@ -7411,6 +7415,21 @@ mod tests {
             }),
             "expected HKT-kind diagnostic, got {errors:?}"
         );
+    }
+
+    #[test]
+    fn parse_trait_with_eff_kind_param() {
+        let m = parse_mod("trait Effectful(f: Eff)\n  fn run(x: Int) -> Int");
+        match &m.declarations[0].node {
+            DeclKind::TraitDef(td) => {
+                assert_eq!(td.name.node, "Effectful");
+                assert_eq!(td.type_params.len(), 1);
+                assert_eq!(td.type_params[0].name.node, "f");
+                assert_eq!(td.type_params[0].kind, KindAnnotation::Eff);
+                assert_eq!(td.methods.len(), 1);
+            }
+            other => panic!("expected TraitDef, got {other:?}"),
+        }
     }
 
     #[test]
