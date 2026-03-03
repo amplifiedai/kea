@@ -21943,3 +21943,48 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - The exact four-item support checklist now has a single machine-checkable theorem bundle.
+
+### 2026-03-04: strengthened completeness to exactness with correspondence projection
+
+**Context**: Added:
+- converse exactness theorem `erasure_pipeline_nonerasable_preserved`
+- one-hop projection `erasure_pipeline_exactness_of_effect_compiler_scheduler_correspondence`
+
+This upgrades the completeness story from “erasable gets removed” to full membership exactness (`in residual` iff `declared and not erasable`) with a direct projection from the top-level correspondence object.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent handler should type-check.
+- Mismatched pure handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Frame` + trivial fn -> `ok`.
+2. Coherent handler (`handle ProbeFL.run(); ProbeFL.run() -> resume 361`) -> `ok`.
+3. Mismatched pure handler (`handle ProbeFM.left(); ProbeFN.right() -> resume 0`) -> `error`, `E0001`.
+4. Bad resume payload (`ProbeFO.read() -> resume false`) -> `error`, `E0001`.
+5. Out-of-handler resume (`fn fresh_outside_resume_probe_20260304o() -> Int; resume 40`) -> `error`, `E0012`.
+6. Forged-name out-of-handler resume (`let __kea_resume_ctx = 40; resume 40`) -> `error`, `E0012`.
+7. Double-resume clause (`resume 1` then `resume 2`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the exactness-converse theorem and correspondence-level exactness projection.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `erasure_pipeline_nonerasable_preserved`
+  - `erasure_pipeline_exactness_of_effect_compiler_scheduler_correspondence`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Erasure completeness is now formalized as exactness, not only one-way removal.

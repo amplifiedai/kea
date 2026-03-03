@@ -9123,6 +9123,18 @@ theorem erasure_pipeline_completeness
   exact (mem_eraseCapabilities_iff declared erasable l).1 h_mem |>.2 h_erasable
 
 /--
+Exactness converse: any declared capability not marked erasable remains in the
+residual capability set.
+-/
+theorem erasure_pipeline_nonerasable_preserved
+    (declared erasable : List Label)
+    {l : Label}
+    (h_declared : l ∈ declared)
+    (h_not_erasable : l ∉ erasable) :
+    l ∈ eraseCapabilities declared erasable := by
+  exact (mem_eraseCapabilities_iff declared erasable l).2 ⟨h_declared, h_not_erasable⟩
+
+/--
 Aggressive erasure assumption: every declared blocking capability is erasable.
 -/
 def aggressiveErasureRemovesDeclaredBlocking
@@ -9358,6 +9370,19 @@ theorem erasure_pipeline_completeness_of_effect_compiler_scheduler_correspondenc
       l ∈ erasable →
       l ∉ eraseCapabilities declared erasable := by
   exact h_corr.correspondence.pipelineCompleteness.erasedDeclaredRemoved
+
+/--
+One-hop projection: erasure exactness correspondence (`in residual` iff
+`declared and not erasable`) from the top-level correspondence object.
+-/
+theorem erasure_pipeline_exactness_of_effect_compiler_scheduler_correspondence
+    (yielding blocking declared erasable : List Label)
+    (h_corr : EffectCompilerSchedulerCorrespondence yielding blocking declared erasable)
+    (l : Label) :
+    l ∈ eraseCapabilities declared erasable
+      ↔
+    l ∈ declared ∧ l ∉ erasable := by
+  exact h_corr.correspondence.erasureCorrespondence.membershipIff l
 
 /--
 Named formal statement: tier structure (Tier 1/2/3/4) at a fixed residual
