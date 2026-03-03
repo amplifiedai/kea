@@ -2187,6 +2187,73 @@ theorem native_handler_step_ext_with_mismatch_strictly_extends_ext_of_op_mismatc
       h_op_ne h_no_body_step
 
 /--
+Lift any typed mismatch-gap witness at a fixed handled `perform` site into the
+global strict-extension contract (`ext` included, with a non-`ext` witness).
+-/
+theorem native_handler_step_ext_with_mismatch_strictly_extends_ext_of_typed_op_mismatch_gap
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    {opBody opHandle : Label} :
+    (∃ env argName resumeName clauseBody ty,
+      HasTypeScopedTop env
+        (.handle
+          (.perform opBody .int .int (.intLit 1) (.lam "x" .int (.intLit 0)))
+          opHandle argName resumeName .int .int clauseBody)
+        ty
+      ∧
+      (∃ e', NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep
+        (.handle
+          (.perform opBody .int .int (.intLit 1) (.lam "x" .int (.intLit 0)))
+          opHandle argName resumeName .int .int clauseBody)
+        e')
+      ∧
+      ¬ ∃ e', NativeHandlerStepExt clauseSem bodyStep
+        (.handle
+          (.perform opBody .int .int (.intLit 1) (.lam "x" .int (.intLit 0)))
+          opHandle argName resumeName .int .int clauseBody)
+        e') →
+    native_handler_step_ext_with_mismatch_strictly_extends_ext_prop
+      clauseSem mismatchSem bodyStep := by
+  intro h_gap
+  refine ⟨?_, ?_⟩
+  · intro e e' h_ext
+    exact native_handler_step_ext_with_mismatch_of_ext_step
+      clauseSem mismatchSem bodyStep h_ext
+  · rcases h_gap with ⟨env, argName, resumeName, clauseBody, ty, _h_typed, h_mismatch, h_no_ext⟩
+    rcases h_mismatch with ⟨e', h_mismatch_step⟩
+    refine ⟨
+      (.handle
+        (.perform opBody .int .int (.intLit 1) (.lam "x" .int (.intLit 0)))
+        opHandle argName resumeName .int .int clauseBody),
+      e',
+      h_mismatch_step,
+      ?_⟩
+    intro h_ext
+    exact h_no_ext ⟨e', h_ext⟩
+
+/--
+Typed mismatch-gap witnesses obtained from a local no-body-step premise yield
+global strict extension of `ext-with-mismatch` over `ext`.
+-/
+theorem native_handler_step_ext_with_mismatch_strictly_extends_ext_of_typed_op_mismatch_gap_no_body_step
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    {opBody opHandle : Label}
+    (h_op_ne : opBody ≠ opHandle)
+    (h_no_body_step :
+      ∀ body', ¬ bodyStep
+        (.perform opBody .int .int (.intLit 1) (.lam "x" .int (.intLit 0)))
+        body') :
+    native_handler_step_ext_with_mismatch_strictly_extends_ext_prop
+      clauseSem mismatchSem bodyStep := by
+  exact native_handler_step_ext_with_mismatch_strictly_extends_ext_of_typed_op_mismatch_gap
+    clauseSem mismatchSem bodyStep
+    (native_handler_step_ext_with_mismatch_vs_ext_typed_op_mismatch_gap_of_no_body_step
+      clauseSem mismatchSem bodyStep h_op_ne h_no_body_step)
+
+/--
 Preservation target for the mismatched-perform-extended native relation.
 -/
 def native_handler_step_ext_with_mismatch_preservation_prop
