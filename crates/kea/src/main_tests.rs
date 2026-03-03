@@ -3391,6 +3391,23 @@ fn compile_and_execute_fip_unique_higher_order_forwarder_combo_alias_with_benign
 
 #[test]
 #[cfg(not(target_os = "windows"))]
+fn compile_and_execute_fip_unique_higher_order_forwarder_combo_case_alias_exit_code() {
+    let source_path = write_temp_source(
+        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_combo_case(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let g = case flag\n    true ->\n      f\n    false ->\n      f\n  let y = case flag\n    true ->\n      x\n    false ->\n      x\n  let out0 = g(y)\n  let out1 = case flag\n    true ->\n      out0\n    false ->\n      out0\n  out1\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_combo_case(true, forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "kea-cli-fip-unique-higher-order-forwarder-combo-case-alias",
+        "kea",
+    );
+
+    let run = run_file(&source_path).expect(
+        "@fip verifier should accept wrappers that use case-based alias selection and result shaping around a single forward handoff",
+    );
+    assert_eq!(run.exit_code, 0);
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
 fn compile_and_execute_fip_unique_higher_order_forwarder_result_alias_with_benign_noncall_let_exit_code(
 ) {
     let source_path = write_temp_source(
