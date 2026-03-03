@@ -23263,3 +23263,49 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - Full-soundness route is now a shared constructor path across contrast, boundary, and status capstone layers (generic and pass-through).
+
+### 2026-03-04: integrated full-soundness route into master-suite layer (generic + pass-through)
+
+**Context**: Added master-suite constructors on the full-soundness route in `Kea/Typing.lean`:
+- `native_handler_step_ext_with_mismatch_master_suite_of_full_soundness_capstone_route`
+- `native_handler_step_ext_with_mismatch_master_suite_of_core_soundness_via_full_soundness_capstone`
+- `native_handler_step_ext_with_passThroughMismatch_master_suite_of_full_soundness_capstone_route`
+- `native_handler_step_ext_with_passThroughMismatch_master_suite_of_core_soundness_via_full_soundness_capstone`
+
+This extends the same route to the master-suite boundary, so one path now feeds contrast, boundary, boundary-status, and master-suite artifacts.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- Coherent handler should type-check.
+- Mismatch effect-leak handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. Coherent handler (`probe_coherent_20260304ar`) -> `ok`.
+2. Mismatch effect-leak handler (`probe_mismatch_20260304ar`) -> `error`, `E0001`.
+3. Bad resume payload (`probe_bad_resume_20260304ar`) -> `error`, `E0001`.
+4. Out-of-handler resume (`probe_outside_resume_20260304ar`) -> `error`, `E0012`.
+5. Forged-name out-of-handler resume (`probe_forged_resume_ctx_20260304ar`) -> `error`, `E0012`.
+6. Double-resume clause (`probe_double_resume_20260304ar`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the master-suite full-route constructors (generic and pass-through).
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_master_suite_of_full_soundness_capstone_route`
+  - `native_handler_step_ext_with_mismatch_master_suite_of_core_soundness_via_full_soundness_capstone`
+  - `native_handler_step_ext_with_passThroughMismatch_master_suite_of_full_soundness_capstone_route`
+  - `native_handler_step_ext_with_passThroughMismatch_master_suite_of_core_soundness_via_full_soundness_capstone`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Full-soundness route has become a single constructor spine across core mismatch capstone layers up to master-suite packaging.
