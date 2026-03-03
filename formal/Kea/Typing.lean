@@ -7229,6 +7229,22 @@ theorem native_handler_soundness_boundary_status_bodyStepFalse_snapshot
   ⟩
 
 /--
+Extract the same `bodyStep = False` boundary snapshot directly from the
+strengthened unified status capstone.
+-/
+theorem native_handler_soundness_boundary_status_bodyStepFalse_snapshot_of_strengthened
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (h_status :
+      NativeHandlerSoundnessBoundaryStatusCapstoneStrengthened clauseSem mismatchSem) :
+    native_handler_soundness_boundary_status_bodyStepFalse_snapshot_prop
+      clauseSem mismatchSem := by
+  exact native_handler_soundness_boundary_status_bodyStepFalse_snapshot
+    clauseSem mismatchSem
+    (native_handler_soundness_boundary_status_capstone_of_strengthened
+      clauseSem mismatchSem h_status)
+
+/--
 Vacuity profile extracted from the unified status capstone:
 - the global strict-top typing contract is uninhabited,
 - yet strict-top handler typing itself has concrete inhabitants.
@@ -7248,6 +7264,26 @@ theorem native_handler_soundness_boundary_status_strict_top_vacuity_profile
   cases h_nonempty with
   | intro h_strict_top =>
     exact h_status.typingGap.strictTopTypingFalse h_strict_top
+
+/--
+Extract the same strict-top vacuity profile directly from the strengthened
+unified status capstone.
+-/
+theorem native_handler_soundness_boundary_status_strict_top_vacuity_profile_of_strengthened
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (h_status :
+      NativeHandlerSoundnessBoundaryStatusCapstoneStrengthened clauseSem mismatchSem) :
+    (¬ Nonempty native_handler_strict_top_typing_prop)
+      ∧
+    (∃ body op argName resumeName argTy opRetTy clauseBody ty,
+      HasTypeScopedStrictTop []
+        (.handle body op argName resumeName argTy opRetTy clauseBody)
+        ty) := by
+  exact native_handler_soundness_boundary_status_strict_top_vacuity_profile
+    clauseSem mismatchSem
+    (native_handler_soundness_boundary_status_capstone_of_strengthened
+      clauseSem mismatchSem h_status)
 
 /--
 Extract the strengthened boundary capstone directly from a unified status

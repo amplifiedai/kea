@@ -21603,3 +21603,48 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - Unified status-capstone consumers can now move between legacy and strengthened status surfaces with an explicit theorem-level `↔`, matching the boundary-capstone layer.
+
+### 2026-03-04: added strengthened-status direct extraction for snapshot and strict-top vacuity profile
+
+**Context**: Added strengthened-status extraction routes:
+- `native_handler_soundness_boundary_status_bodyStepFalse_snapshot_of_strengthened`
+- `native_handler_soundness_boundary_status_strict_top_vacuity_profile_of_strengthened`
+
+These expose the existing snapshot/vacuity views directly on strengthened status-capstone witnesses (without requiring manual conversion at call sites).
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent handler should type-check.
+- Mismatched pure handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Bits` + trivial fn -> `ok`.
+2. Coherent handler (`handle ProbeEC.run(); ProbeEC.run() -> resume 291`) -> `ok`.
+3. Mismatched pure handler (`handle ProbeED.left(); ProbeEE.right() -> resume 0`) -> `error`, `E0001`.
+4. Bad resume payload (`ProbeEF.read() -> resume false`) -> `error`, `E0001`.
+5. Out-of-handler resume (`fn fresh_outside_resume_probe_20260304h() -> Int; resume 33`) -> `error`, `E0012`.
+6. Forged-name out-of-handler resume (`let __kea_resume_ctx = 33; resume 33`) -> `error`, `E0012`.
+7. Double-resume clause (`resume 1` then `resume 2`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept strengthened-status snapshot and vacuity extraction routes.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_soundness_boundary_status_bodyStepFalse_snapshot_of_strengthened`
+  - `native_handler_soundness_boundary_status_strict_top_vacuity_profile_of_strengthened`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Both legacy and strengthened status-capstone families now expose identical high-level diagnostic extraction surfaces.
