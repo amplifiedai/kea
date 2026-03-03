@@ -20761,3 +20761,46 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - Strict-handle one-step soundness is now reducible to progress once preservation is provided, tightening the proof API around the actual hard obligation boundaries.
+
+### 2026-03-04: reduced strict-top one-step soundness to strict-top progress under preservation
+
+**Context**: Added theorem:
+- `native_handler_step_ext_with_mismatch_soundness_strict_top_prop_iff_progress_strict_top_prop_of_preservation`
+
+This lifts the prior strict-handle characterization to strict-top: with global preservation fixed, strict-top one-step soundness is equivalent to strict-top progress.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent handler should type-check.
+- Mismatched pure handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Runtime` + trivial fn -> `ok`.
+2. Coherent handler (`ProbeAJ.fire() -> resume 101`) -> `ok`.
+3. Mismatched pure handler (`handle ProbeAK.alpha()` with only `ProbeAL.beta`) -> `error`, `E0001`.
+4. Bad resume payload (`ProbeAM.read() -> resume "no"`) -> `error`, `E0001`.
+5. Out-of-handler resume (`fn outside_resume_probe7() -> Int; resume 14`) -> `error`, `E0012`.
+6. Forged-name out-of-handler resume (`let __kea_resume_ctx = 14; resume 14`) -> `error`, `E0012`.
+7. Double-resume clause (`resume 1` then `resume 2`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the strict-top preservation-parametric soundness/progress equivalence theorem.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_soundness_strict_top_prop_iff_progress_strict_top_prop_of_preservation`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The strict-top one-step soundness surface now clearly isolates progress as the remaining obligation once preservation is fixed.
