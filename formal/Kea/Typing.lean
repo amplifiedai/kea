@@ -11301,6 +11301,95 @@ theorem native_typed_handle_correspondence_capstone_pair_tier23_of_aggressive_an
     (by simp)
     h_not_erasable
 
+/--
+One-hop pair-level aggressive-smallness projection from the top-level
+effect/compiler/scheduler correspondence object.
+-/
+theorem tier_scheduler_pair_small_of_effect_compiler_scheduler_correspondence
+    (yielding blocking declared erasable : List Label)
+    (h_corr : EffectCompilerSchedulerCorrespondence yielding blocking declared erasable)
+    (h_aggressive : aggressiveErasureRemovesDeclaredBlocking declared erasable blocking) :
+    (handlerTierOfResidual yielding blocking (eraseCapabilities declared erasable),
+      schedulerClassOfResidual blocking (eraseCapabilities declared erasable))
+      = (.tier1, .pure)
+      ∨
+    (handlerTierOfResidual yielding blocking (eraseCapabilities declared erasable),
+      schedulerClassOfResidual blocking (eraseCapabilities declared erasable))
+      = (.tier2, .cooperative)
+      ∨
+    (handlerTierOfResidual yielding blocking (eraseCapabilities declared erasable),
+      schedulerClassOfResidual blocking (eraseCapabilities declared erasable))
+      = (.tier3, .cooperative) := by
+  have h_small_cls :
+      schedulerClassOfResidual blocking (eraseCapabilities declared erasable) = .pure
+        ∨
+      schedulerClassOfResidual blocking (eraseCapabilities declared erasable) = .cooperative :=
+    h_corr.aggressiveSmallness h_aggressive
+  rcases h_small_cls with h_pure | h_coop
+  · left
+    have h_tier1 :
+        handlerTierOfResidual yielding blocking (eraseCapabilities declared erasable) = .tier1 :=
+      (schedulerClassOfResidual_eq_pure_iff_tier1
+        yielding blocking (eraseCapabilities declared erasable)).1 h_pure
+    simp [h_tier1, h_pure]
+  · have h_tier23 :
+        handlerTierOfResidual yielding blocking (eraseCapabilities declared erasable) = .tier2
+          ∨
+        handlerTierOfResidual yielding blocking (eraseCapabilities declared erasable) = .tier3 :=
+      (schedulerClassOfResidual_eq_cooperative_iff_tier2_or_tier3
+        yielding blocking (eraseCapabilities declared erasable)).1 h_coop
+    rcases h_tier23 with h_tier2 | h_tier3
+    · right
+      left
+      simp [h_tier2, h_coop]
+    · right
+      right
+      simp [h_tier3, h_coop]
+
+/--
+One-hop pair-level cooperative-region projection from the top-level
+effect/compiler/scheduler correspondence object under aggressive erasure and
+retained capability witness.
+-/
+theorem tier_scheduler_pair_tier23_of_effect_compiler_scheduler_correspondence
+    (yielding blocking declared erasable : List Label)
+    (h_corr : EffectCompilerSchedulerCorrespondence yielding blocking declared erasable)
+    (h_aggressive : aggressiveErasureRemovesDeclaredBlocking declared erasable blocking)
+    {l : Label}
+    (h_declared : l ∈ declared)
+    (h_not_erasable : l ∉ erasable) :
+    (handlerTierOfResidual yielding blocking (eraseCapabilities declared erasable),
+      schedulerClassOfResidual blocking (eraseCapabilities declared erasable))
+      = (.tier2, .cooperative)
+      ∨
+    (handlerTierOfResidual yielding blocking (eraseCapabilities declared erasable),
+      schedulerClassOfResidual blocking (eraseCapabilities declared erasable))
+      = (.tier3, .cooperative) := by
+  have h_small :
+      (handlerTierOfResidual yielding blocking (eraseCapabilities declared erasable),
+        schedulerClassOfResidual blocking (eraseCapabilities declared erasable))
+        = (.tier1, .pure)
+        ∨
+      (handlerTierOfResidual yielding blocking (eraseCapabilities declared erasable),
+        schedulerClassOfResidual blocking (eraseCapabilities declared erasable))
+        = (.tier2, .cooperative)
+        ∨
+      (handlerTierOfResidual yielding blocking (eraseCapabilities declared erasable),
+        schedulerClassOfResidual blocking (eraseCapabilities declared erasable))
+        = (.tier3, .cooperative) :=
+    tier_scheduler_pair_small_of_effect_compiler_scheduler_correspondence
+      yielding blocking declared erasable h_corr h_aggressive
+  have h_not_tier1_pure :
+      (handlerTierOfResidual yielding blocking (eraseCapabilities declared erasable),
+        schedulerClassOfResidual blocking (eraseCapabilities declared erasable))
+        ≠ (.tier1, .pure) :=
+    tier_scheduler_pair_ne_tier1_pure_of_nonerasable_declared
+      yielding blocking declared erasable h_declared h_not_erasable
+  rcases h_small with h_t1p | h_t2 | h_t3
+  · exact False.elim (h_not_tier1_pure h_t1p)
+  · exact Or.inl h_t2
+  · exact Or.inr h_t3
+
 /-- Declarative field typing is functional on the core slice. -/
 theorem hasFieldsType_unique
     {env : TermEnv} {fs : CoreFields} {row₁ row₂ : RowFields}

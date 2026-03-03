@@ -22909,3 +22909,45 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - The correspondence now states not only “aggressive erasure avoids blocking,” but also the sharper condition that retained capabilities force cooperative (Tier 2/3) outcomes.
+
+### 2026-03-04: lifted pair-level aggressive/cooperative projections onto top-level correspondence object
+
+**Context**: Added one-hop correspondence-object projection theorems in `Kea/Typing.lean`:
+- `tier_scheduler_pair_small_of_effect_compiler_scheduler_correspondence`
+- `tier_scheduler_pair_tier23_of_effect_compiler_scheduler_correspondence`
+
+These provide direct object-level routes from `EffectCompilerSchedulerCorrespondence` to pair-level non-blocking/cooperative-region outcomes under aggressive erasure (and retained-capability witness), without dropping to lower-level lemmas.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- Coherent typed handle should type-check.
+- Mismatched handler clause that leaves handled effect unremoved should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. Coherent handler (`probe_coherent_20260304aj`) -> `ok`.
+2. Mismatch effect-leak handler (`probe_mismatch_20260304aj`) -> `error`, `E0001`.
+3. Bad resume payload (`probe_bad_resume_20260304aj`) -> `error`, `E0001`.
+4. Out-of-handler resume (`probe_outside_resume_20260304aj`) -> `error`, `E0012`.
+5. Forged-name out-of-handler resume (`probe_forged_resume_ctx_20260304aj`) -> `error`, `E0012`.
+6. Double-resume clause (`probe_double_resume_20260304aj`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept object-level pair projections and removed local style warnings (`simpa` -> `simp`) in the new proofs.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `tier_scheduler_pair_small_of_effect_compiler_scheduler_correspondence`
+  - `tier_scheduler_pair_tier23_of_effect_compiler_scheduler_correspondence`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The top-level correspondence artifact now directly exports joint tier/scheduler aggressive-erasure consequences.
