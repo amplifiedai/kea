@@ -6509,6 +6509,84 @@ theorem native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_st
     ((native_handler_strict_top_typing_prop_iff_metadata_coherence).1 h_strict_top_typing)
 
 /--
+One-hop local consequence from the strongest packaged route:
+under core soundness plus strict-top typing, every typed handle site has a
+one-step mismatch-extension successor that preserves its type.
+-/
+theorem native_handler_step_ext_with_mismatch_exists_and_preserves_of_core_soundness_and_strict_top_typing_packaged_via_soundness
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core : native_core_soundness_prop bodyStep)
+    (h_strict_top_typing : native_handler_strict_top_typing_prop)
+    {env : TermEnv}
+    {body : CoreExpr}
+    {opHandle : Label}
+    {argName resumeName : String}
+    {argTy opRetTy : Ty}
+    {clauseBody : CoreExpr}
+    {ty : Ty}
+    (h_typed :
+      HasTypeScopedTop env
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        ty) :
+    ∃ e',
+      NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        e'
+      ∧
+      HasTypeScopedTop env e' ty := by
+  have h_sound :
+      native_handler_step_ext_with_mismatch_soundness_prop
+        clauseSem mismatchSem bodyStep :=
+    native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_strict_top_typing_packaged
+      clauseSem mismatchSem bodyStep h_core h_strict_top_typing
+  rcases h_sound.2 env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed with ⟨e', h_step⟩
+  refine ⟨e', h_step, ?_⟩
+  exact h_sound.1 env
+    (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+    e' ty h_typed h_step
+
+/--
+Main packaged full-soundness capstone for native handler stepping at this
+layer: global mismatch-extension soundness together with the pointwise local
+typed-handle `step ∧ preserves` consequence.
+-/
+def native_handler_step_ext_with_mismatch_full_soundness_capstone_prop
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) : Prop :=
+  native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep
+    ∧
+  (∀ env body opHandle argName resumeName argTy opRetTy clauseBody ty,
+    HasTypeScopedTop env (.handle body opHandle argName resumeName argTy opRetTy clauseBody) ty →
+    ∃ e',
+      NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        e'
+      ∧
+      HasTypeScopedTop env e' ty)
+
+/--
+Construct the packaged full-soundness capstone from core soundness plus
+strict-top typing.
+-/
+theorem native_handler_step_ext_with_mismatch_full_soundness_capstone_of_core_soundness_and_strict_top_typing
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core : native_core_soundness_prop bodyStep)
+    (h_strict_top_typing : native_handler_strict_top_typing_prop) :
+    native_handler_step_ext_with_mismatch_full_soundness_capstone_prop
+      clauseSem mismatchSem bodyStep := by
+  refine ⟨?_, ?_⟩
+  · exact native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_strict_top_typing_packaged
+      clauseSem mismatchSem bodyStep h_core h_strict_top_typing
+  · intro env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed
+    exact native_handler_step_ext_with_mismatch_exists_and_preserves_of_core_soundness_and_strict_top_typing_packaged_via_soundness
+      clauseSem mismatchSem bodyStep h_core h_strict_top_typing h_typed
+
+/--
 Boundary contrast under core soundness + strict-top typing:
 mismatch-extension soundness is derivable, while native minimal handler-step
 progress remains refutable.

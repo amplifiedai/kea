@@ -22995,3 +22995,49 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - The correspondence now has direct cooperative-classification theorem routes aligned with aggressive-erasure + retained-capability assumptions.
+
+### 2026-03-04: added full-soundness capstone route surface for mismatch extension
+
+**Context**: Added new full-soundness capstone surfaces in `Kea/Typing.lean`:
+- `native_handler_step_ext_with_mismatch_exists_and_preserves_of_core_soundness_and_strict_top_typing_packaged_via_soundness`
+- `native_handler_step_ext_with_mismatch_full_soundness_capstone_prop`
+- `native_handler_step_ext_with_mismatch_full_soundness_capstone_of_core_soundness_and_strict_top_typing`
+
+This closes a route-level gap for goal (4): from the strongest packaged assumptions (`h_core` + strict-top typing), we now have one capstone witness that carries both:
+1. global mismatch-extension soundness, and
+2. direct pointwise typed-handle `step ∧ preserves` consequence.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- Coherent typed handle should type-check.
+- Mismatched handler clause that leaves handled effect unremoved should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. Coherent handler (`probe_coherent_20260304al`) -> `ok`.
+2. Mismatch effect-leak handler (`probe_mismatch_20260304al`) -> `error`, `E0001`.
+3. Bad resume payload (`probe_bad_resume_20260304al`) -> `error`, `E0001`.
+4. Out-of-handler resume (`probe_outside_resume_20260304al`) -> `error`, `E0012`.
+5. Forged-name out-of-handler resume (`probe_forged_resume_ctx_20260304al`) -> `error`, `E0012`.
+6. Double-resume clause (`probe_double_resume_20260304al`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the new capstone route surface and renamed the local theorem to avoid collision with an existing theorem of the same name later in the file.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_exists_and_preserves_of_core_soundness_and_strict_top_typing_packaged_via_soundness`
+  - `native_handler_step_ext_with_mismatch_full_soundness_capstone_prop`
+  - `native_handler_step_ext_with_mismatch_full_soundness_capstone_of_core_soundness_and_strict_top_typing`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The strongest packaged route now has a single capstone witness for full mismatch-extension handler soundness plus direct typed-handle local consequence.
