@@ -9092,6 +9092,127 @@ theorem schedulerClassOfResidual_eq_cooperative_of_tier3
   simp [schedulerClassOfResidual, h_nonempty, h_no_block]
 
 /--
+Scheduler classifier characterization for `pure`.
+-/
+theorem schedulerClassOfResidual_eq_pure_iff
+    (blocking residual : List Label) :
+    schedulerClassOfResidual blocking residual = .pure
+      ↔
+    residual = [] := by
+  unfold schedulerClassOfResidual
+  by_cases h_empty : residual = []
+  · simp [h_empty]
+  · by_cases h_block : hasBlockingCapability blocking residual = true
+    · simp [h_empty, h_block]
+    · simp [h_empty, h_block]
+
+/--
+Scheduler classifier characterization for `blocking`.
+-/
+theorem schedulerClassOfResidual_eq_blocking_iff
+    (blocking residual : List Label) :
+    schedulerClassOfResidual blocking residual = .blocking
+      ↔
+    residual ≠ []
+      ∧
+    hasBlockingCapability blocking residual = true := by
+  unfold schedulerClassOfResidual
+  by_cases h_empty : residual = []
+  · simp [h_empty]
+  · by_cases h_block : hasBlockingCapability blocking residual = true
+    · simp [h_empty, h_block]
+    · simp [h_empty, h_block]
+
+/--
+Scheduler classifier characterization for `cooperative`.
+-/
+theorem schedulerClassOfResidual_eq_cooperative_iff
+    (blocking residual : List Label) :
+    schedulerClassOfResidual blocking residual = .cooperative
+      ↔
+    residual ≠ []
+      ∧
+    hasBlockingCapability blocking residual = false := by
+  unfold schedulerClassOfResidual
+  by_cases h_empty : residual = []
+  · simp [h_empty]
+  · by_cases h_block : hasBlockingCapability blocking residual = true
+    · simp [h_empty, h_block]
+    · simp [h_empty, h_block]
+
+/--
+Tier/scheduler equivalence: `pure` classification iff Tier 1.
+-/
+theorem schedulerClassOfResidual_eq_pure_iff_tier1
+    (yielding blocking residual : List Label) :
+    schedulerClassOfResidual blocking residual = .pure
+      ↔
+    handlerTierOfResidual yielding blocking residual = .tier1 := by
+  constructor
+  · intro h_pure
+    have h_empty : residual = [] :=
+      (schedulerClassOfResidual_eq_pure_iff blocking residual).1 h_pure
+    exact (handlerTierOfResidual_eq_tier1_iff yielding blocking residual).2 h_empty
+  · intro h_tier1
+    exact schedulerClassOfResidual_eq_pure_of_tier1
+      yielding blocking residual h_tier1
+
+/--
+Tier/scheduler equivalence: `blocking` classification iff Tier 4.
+-/
+theorem schedulerClassOfResidual_eq_blocking_iff_tier4
+    (yielding blocking residual : List Label) :
+    schedulerClassOfResidual blocking residual = .blocking
+      ↔
+    handlerTierOfResidual yielding blocking residual = .tier4 := by
+  constructor
+  · intro h_blocking
+    have h_shape :
+        residual ≠ []
+          ∧
+        hasBlockingCapability blocking residual = true :=
+      (schedulerClassOfResidual_eq_blocking_iff blocking residual).1 h_blocking
+    exact (handlerTierOfResidual_eq_tier4_iff yielding blocking residual).2 h_shape
+  · intro h_tier4
+    exact schedulerClassOfResidual_eq_blocking_of_tier4
+      yielding blocking residual h_tier4
+
+/--
+Tier/scheduler equivalence: `cooperative` classification iff Tier 2 or Tier 3.
+-/
+theorem schedulerClassOfResidual_eq_cooperative_iff_tier2_or_tier3
+    (yielding blocking residual : List Label) :
+    schedulerClassOfResidual blocking residual = .cooperative
+      ↔
+    handlerTierOfResidual yielding blocking residual = .tier2
+      ∨
+    handlerTierOfResidual yielding blocking residual = .tier3 := by
+  constructor
+  · intro h_coop
+    have h_shape :
+        residual ≠ []
+          ∧
+        hasBlockingCapability blocking residual = false :=
+      (schedulerClassOfResidual_eq_cooperative_iff blocking residual).1 h_coop
+    by_cases h_yield : allYieldingCapabilities yielding residual = true
+    · left
+      exact (handlerTierOfResidual_eq_tier2_iff yielding blocking residual).2
+        ⟨h_shape.1, h_shape.2, h_yield⟩
+    · right
+      have h_yield_false : allYieldingCapabilities yielding residual = false := by
+        cases h_val : allYieldingCapabilities yielding residual <;> simp [h_val] at h_yield ⊢
+      exact (handlerTierOfResidual_eq_tier3_iff yielding blocking residual).2
+        ⟨h_shape.1, h_shape.2, h_yield_false⟩
+  · intro h_tier
+    cases h_tier with
+    | inl h_tier2 =>
+      exact schedulerClassOfResidual_eq_cooperative_of_tier2
+        yielding blocking residual h_tier2
+    | inr h_tier3 =>
+      exact schedulerClassOfResidual_eq_cooperative_of_tier3
+        yielding blocking residual h_tier3
+
+/--
 Scheduler soundness statement: if the classifier reports `pure`, no blocking
 capability remains.
 -/
@@ -9413,9 +9534,8 @@ theorem tier4_absent_after_aggressive_erasure
   have h_no_block :
       hasBlockingCapability blocking (eraseCapabilities declared erasable) = false :=
     aggressive_erasure_removes_all_blocking_residual declared erasable blocking h_aggressive
-  have h_tf : true = false := by
-    simpa [h_shape.2] using h_no_block
-  exact Bool.noConfusion h_tf
+  rw [h_shape.2] at h_no_block
+  cases h_no_block
 
 /--
 Named formal statement: tier structure (Tier 1/2/3/4) at a fixed residual

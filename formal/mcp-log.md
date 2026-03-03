@@ -22033,3 +22033,55 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - The “aggressive erasure shrinks runtime classification” claim now has both scheduler-level and tier-level formal consequences.
+
+### 2026-03-04: added bidirectional scheduler↔tier correspondence theorems
+
+**Context**: Added:
+- scheduler shape characterizations:
+  - `schedulerClassOfResidual_eq_pure_iff`
+  - `schedulerClassOfResidual_eq_blocking_iff`
+  - `schedulerClassOfResidual_eq_cooperative_iff`
+- bidirectional tier/scheduler correspondences:
+  - `schedulerClassOfResidual_eq_pure_iff_tier1`
+  - `schedulerClassOfResidual_eq_blocking_iff_tier4`
+  - `schedulerClassOfResidual_eq_cooperative_iff_tier2_or_tier3`
+
+This makes the scheduler view and tier view explicitly equivalent (not only one-way projections).
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent handler should type-check.
+- Mismatched pure handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Width` + trivial fn -> `ok`.
+2. Coherent handler (`handle ProbeFV.run(); ProbeFV.run() -> resume 381`) -> `ok`.
+3. Mismatched pure handler (`handle ProbeFW.left(); ProbeFX.right() -> resume 0`) -> `error`, `E0001`.
+4. Bad resume payload (`ProbeFY.read() -> resume "bad"`) -> `error`, `E0001`.
+5. Out-of-handler resume (`fn fresh_outside_resume_probe_20260304q() -> Int; resume 42`) -> `error`, `E0012`.
+6. Forged-name out-of-handler resume (`let __kea_resume_ctx = 42; resume 42`) -> `error`, `E0012`.
+7. Double-resume clause (`resume 1` then `resume 2`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the bidirectional scheduler↔tier correspondence layer.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `schedulerClassOfResidual_eq_pure_iff_tier1`
+  - `schedulerClassOfResidual_eq_blocking_iff_tier4`
+  - `schedulerClassOfResidual_eq_cooperative_iff_tier2_or_tier3`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Tier structure and scheduler classification are now theorem-level equivalent views over the same residual-capability state.
