@@ -3637,6 +3637,84 @@ fn compile_accepts_calling_unsafe_function_inside_unsafe_block() {
 
 #[test]
 #[cfg(not(target_os = "windows"))]
+fn compile_rejects_calling_imported_unsafe_function_from_safe_context() {
+    let project_dir = temp_project_dir("kea-cli-unsafe-import-qualified");
+    let src_dir = project_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+
+    std::fs::write(
+        src_dir.join("raw.kea"),
+        "@unsafe\nfn raw_add_one(x: Int) -> Int\n  x + 1\n",
+    )
+    .expect("raw module write should succeed");
+    let app_path = src_dir.join("app.kea");
+    std::fs::write(&app_path, "use Raw\nfn main() -> Int\n  Raw.raw_add_one(1)\n")
+        .expect("app module write should succeed");
+
+    let err = run_file(&app_path)
+        .expect_err("safe function should not be able to call imported @unsafe callee");
+    assert!(
+        err.contains("call to `@unsafe` function `Raw.raw_add_one` requires unsafe context"),
+        "expected imported unsafe call-site diagnostic, got: {err}"
+    );
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn compile_rejects_calling_named_imported_unsafe_function_from_safe_context() {
+    let project_dir = temp_project_dir("kea-cli-unsafe-import-named");
+    let src_dir = project_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+
+    std::fs::write(
+        src_dir.join("raw.kea"),
+        "@unsafe\nfn raw_add_one(x: Int) -> Int\n  x + 1\n",
+    )
+    .expect("raw module write should succeed");
+    let app_path = src_dir.join("app.kea");
+    std::fs::write(&app_path, "use Raw.{raw_add_one}\nfn main() -> Int\n  raw_add_one(1)\n")
+        .expect("app module write should succeed");
+
+    let err = run_file(&app_path)
+        .expect_err("safe function should not be able to call named-imported @unsafe callee");
+    assert!(
+        err.contains("call to `@unsafe` function `raw_add_one` requires unsafe context"),
+        "expected named-import unsafe call-site diagnostic, got: {err}"
+    );
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn compile_accepts_calling_imported_unsafe_function_inside_unsafe_block() {
+    let project_dir = temp_project_dir("kea-cli-unsafe-import-local-block");
+    let src_dir = project_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+
+    std::fs::write(
+        src_dir.join("raw.kea"),
+        "@unsafe\nfn raw_add_one(x: Int) -> Int\n  x + 1\n",
+    )
+    .expect("raw module write should succeed");
+    let app_path = src_dir.join("app.kea");
+    std::fs::write(
+        &app_path,
+        "use Raw\nfn main() -> Int\n  unsafe\n    Raw.raw_add_one(41)\n",
+    )
+    .expect("app module write should succeed");
+
+    let run =
+        run_file(&app_path).expect("unsafe block should permit imported @unsafe call from safe fn");
+    assert_eq!(run.exit_code, 42);
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
 fn compile_rejects_unsafe_annotation_with_arguments() {
     let source_path = write_temp_source(
         "@unsafe(\"strict\")\nfn raw_add_one(x: Int) -> Int\n  x + 1\n\nfn main() -> Int\n  raw_add_one(1)\n",

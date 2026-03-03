@@ -105,7 +105,7 @@ fn compile_module_inner(source: &str, file_id: FileId) -> Result<CompilationCont
 
     diagnostics.extend(validate_module_fn_annotations(&parsed_module));
     diagnostics.extend(validate_module_annotations(&parsed_module));
-    diagnostics.extend(validate_unsafe_call_sites(&parsed_module));
+    diagnostics.extend(validate_unsafe_call_sites(&parsed_module, None, None));
     if has_errors(&diagnostics) {
         return Err(format_diagnostics(
             "type annotation validation failed",
@@ -271,6 +271,75 @@ fn collect_unsafe_annotated_function_names(module: &Module) -> BTreeSet<String> 
         }
     }
     names
+}
+
+fn collect_unsafe_function_registry(
+    loaded_modules: &[LoadedModule],
+) -> BTreeMap<String, BTreeSet<String>> {
+    let mut registry = BTreeMap::new();
+    for loaded in loaded_modules {
+        registry.insert(
+            loaded.module_path.clone(),
+            collect_unsafe_annotated_function_names(&loaded.module),
+        );
+    }
+    registry
+}
+
+fn collect_unsafe_call_targets(
+    module: &Module,
+    module_path: Option<&str>,
+    unsafe_registry: Option<&BTreeMap<String, BTreeSet<String>>>,
+) -> BTreeSet<String> {
+    let mut unsafe_callees = collect_unsafe_annotated_function_names(module);
+
+    if let Some(module_path) = module_path {
+        for name in collect_unsafe_annotated_function_names(module) {
+            unsafe_callees.insert(format!("{module_path}.{name}"));
+        }
+    }
+
+    let Some(unsafe_registry) = unsafe_registry else {
+        return unsafe_callees;
+    };
+
+    // Fully qualified project names remain valid call targets for unsafe checks.
+    for (known_module, items) in unsafe_registry {
+        for item in items {
+            unsafe_callees.insert(format!("{known_module}.{item}"));
+        }
+    }
+
+    // Imported module aliases (`use Mod`, `use Mod as Alias`) should preserve
+    // unsafe gating on qualified calls (Alias.fn()).
+    let import_aliases = collect_import_aliases(module);
+    for (alias, imported_module) in &import_aliases {
+        if let Some(items) = unsafe_registry.get(imported_module) {
+            for item in items {
+                unsafe_callees.insert(format!("{alias}.{item}"));
+            }
+        }
+    }
+
+    // Named imports (`use Mod.{fn}`) should also gate bare calls (`fn()`).
+    for decl in &module.declarations {
+        let DeclKind::Import(import) = &decl.node else {
+            continue;
+        };
+        let ImportItems::Named(items) = &import.items else {
+            continue;
+        };
+        let Some(unsafe_items) = unsafe_registry.get(&import.module.node) else {
+            continue;
+        };
+        for item in items {
+            if unsafe_items.contains(&item.node) {
+                unsafe_callees.insert(item.node.clone());
+            }
+        }
+    }
+
+    unsafe_callees
 }
 
 fn ast_callable_name(expr: &Expr) -> Option<String> {
@@ -756,8 +825,12 @@ fn collect_unsafe_call_site_diagnostics_in_expr(
     }
 }
 
-fn validate_unsafe_call_sites(module: &Module) -> Vec<Diagnostic> {
-    let unsafe_callees = collect_unsafe_annotated_function_names(module);
+fn validate_unsafe_call_sites(
+    module: &Module,
+    module_path: Option<&str>,
+    unsafe_registry: Option<&BTreeMap<String, BTreeSet<String>>>,
+) -> Vec<Diagnostic> {
+    let unsafe_callees = collect_unsafe_call_targets(module, module_path, unsafe_registry);
     if unsafe_callees.is_empty() {
         return Vec::new();
     }
@@ -942,7 +1015,7 @@ pub fn process_module_in_env(
 ) -> Result<ModuleProcessResult, Vec<Diagnostic>> {
     diagnostics.extend(validate_module_fn_annotations(module));
     diagnostics.extend(validate_module_annotations(module));
-    diagnostics.extend(validate_unsafe_call_sites(module));
+    diagnostics.extend(validate_unsafe_call_sites(module, None, None));
     if has_errors(&diagnostics) {
         return Err(diagnostics);
     }
@@ -1486,6 +1559,7 @@ fn typecheck_loaded_modules(
     let mut typed_modules = Vec::new();
     let mut all_expr_types = std::collections::BTreeMap::new();
     let mut qualified_borrow_param_map = BTreeMap::new();
+    let unsafe_registry = collect_unsafe_function_registry(loaded_modules);
     for loaded in loaded_modules {
         let expanded = expand_impl_methods_for_codegen(&loaded.module);
         for (name, positions) in
@@ -1510,7 +1584,11 @@ fn typecheck_loaded_modules(
 
         diagnostics.extend(validate_module_fn_annotations(&loaded.module));
         diagnostics.extend(validate_module_annotations(&loaded.module));
-        diagnostics.extend(validate_unsafe_call_sites(&loaded.module));
+        diagnostics.extend(validate_unsafe_call_sites(
+            &loaded.module,
+            Some(&loaded.module_path),
+            Some(&unsafe_registry),
+        ));
         if has_errors(&diagnostics) {
             if !is_entry_module {
                 env.pop_scope();
