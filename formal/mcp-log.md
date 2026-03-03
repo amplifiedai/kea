@@ -18726,3 +18726,42 @@ new equivalence.
 **Impact**:
 - Master-suite consumption now has explicit reduction to soundness-route bundles
   on both generic and concrete pass-through semantics.
+
+### 2026-03-03: strict-top route equivalence layer (soundness + master suites)
+
+**Context**: Added equivalence theorems reducing packaged soundness-route
+bundles and packaged master suites (generic and pass-through) to a single
+strict-top soundness route under fixed core obligations.
+
+**MCP tools used**: `reset_session`, `type_check`
+
+**Predict (Lean side)**:
+- Coherent state handler should type-check as pure.
+- Clause/effect mismatch should leak source effect in pure context.
+- Resume payload mismatch should reject.
+- Out-of-handler resume should reject.
+
+**Probe (Rust side via MCP)**:
+1. Coherent `State` counter handler -> `ok`.
+2. Mismatched `Reader` clause around `Math` body -> `error`, `E0001` (pure body performs `[Math]`).
+3. Bad `Log.info` resume payload (`resume "bad"` where op returns `Unit`) -> `error`, `E0001`.
+4. Out-of-handler resume control (`let v = 0; resume v`) -> `error`, `E0012`.
+
+**Classify**: Agreement.
+
+**Act**:
+- Kept strict-top equivalence theorem additions.
+- Continued checkpoint loop without model revision.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_soundness_assumption_routes_prop_iff_strict_top_soundness_route_of_core`
+  - `native_handler_step_ext_with_mismatch_master_suite_prop_iff_strict_top_soundness_route_of_core`
+  - `native_handler_step_ext_with_passThroughMismatch_master_suite_prop_iff_strict_top_soundness_route_of_core`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Under fixed core obligations, the route surface is now explicitly reducible to
+  one strict-top soundness-route function (generic and pass-through).

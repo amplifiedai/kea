@@ -3784,6 +3784,36 @@ theorem native_handler_step_ext_with_mismatch_soundness_assumption_routes_of_str
   · exact h_top_meta.1 h_from_strict_top
 
 /--
+Under fixed core obligations, packaged soundness-route bundles are equivalent
+to the strict-top soundness route.
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_assumption_routes_prop_iff_strict_top_soundness_route_of_core
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core :
+      (∀ env body body' ty,
+        HasTypeScopedTop env body ty →
+        bodyStep body body' →
+        HasTypeScopedTop env body' ty)
+      ∧
+      (∀ env body ty,
+        HasTypeScopedTop env body ty →
+        CoreValue body ∨ ∃ body', bodyStep body body')) :
+    native_handler_step_ext_with_mismatch_soundness_assumption_routes_prop
+      clauseSem mismatchSem bodyStep
+      ↔
+    (native_handler_strict_top_typing_prop →
+      native_handler_step_ext_with_mismatch_soundness_prop
+        clauseSem mismatchSem bodyStep) := by
+  constructor
+  · intro h_routes
+    exact h_routes.1
+  · intro h_strict_top_route
+    exact native_handler_step_ext_with_mismatch_soundness_assumption_routes_of_strict_top
+      clauseSem mismatchSem bodyStep h_core h_strict_top_route
+
+/--
 From packaged core soundness, derive the full packaged soundness-route bundle
 across strict-top/strict-typing/scoped-lift/metadata assumptions.
 -/
@@ -5063,6 +5093,39 @@ theorem native_handler_step_ext_with_mismatch_master_suite_prop_iff_soundness_as
         clauseSem mismatchSem bodyStep h_sound_routes
 
 /--
+Under fixed core obligations, mismatch-extension master suites are equivalent
+to the strict-top soundness route.
+-/
+theorem native_handler_step_ext_with_mismatch_master_suite_prop_iff_strict_top_soundness_route_of_core
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core :
+      (∀ env body body' ty,
+        HasTypeScopedTop env body ty →
+        bodyStep body body' →
+        HasTypeScopedTop env body' ty)
+      ∧
+      (∀ env body ty,
+        HasTypeScopedTop env body ty →
+        CoreValue body ∨ ∃ body', bodyStep body body')) :
+    native_handler_step_ext_with_mismatch_master_suite_prop
+      clauseSem mismatchSem bodyStep
+      ↔
+    (native_handler_strict_top_typing_prop →
+      native_handler_step_ext_with_mismatch_soundness_prop
+        clauseSem mismatchSem bodyStep) := by
+  constructor
+  · intro h_master
+    exact (native_handler_step_ext_with_mismatch_master_suite_prop_iff_soundness_assumption_routes
+      clauseSem mismatchSem bodyStep).1 h_master |>.1
+  · intro h_strict_top_route
+    exact (native_handler_step_ext_with_mismatch_master_suite_prop_iff_soundness_assumption_routes
+      clauseSem mismatchSem bodyStep).2
+      ((native_handler_step_ext_with_mismatch_soundness_assumption_routes_prop_iff_strict_top_soundness_route_of_core
+        clauseSem mismatchSem bodyStep h_core).2 h_strict_top_route)
+
+/--
 Specialized concrete pass-through mismatch assumption-route suite
 (progress-routes + soundness-routes).
 -/
@@ -5223,6 +5286,23 @@ theorem native_handler_step_ext_with_passThroughMismatch_master_suite_prop_iff_s
       clauseSem nativeHandlerMismatchPassThroughSem bodyStep := by
   exact native_handler_step_ext_with_mismatch_master_suite_prop_iff_soundness_assumption_routes
     clauseSem nativeHandlerMismatchPassThroughSem bodyStep
+
+/--
+Under fixed core obligations, concrete pass-through master suites are
+equivalent to the concrete pass-through strict-top soundness route.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_master_suite_prop_iff_strict_top_soundness_route_of_core
+    (clauseSem : NativeHandlerClauseSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core : native_core_soundness_prop bodyStep) :
+    native_handler_step_ext_with_passThroughMismatch_master_suite_prop
+      clauseSem bodyStep
+      ↔
+    (native_handler_strict_top_typing_prop →
+      native_handler_step_ext_with_mismatch_soundness_prop
+        clauseSem nativeHandlerMismatchPassThroughSem bodyStep) := by
+  exact native_handler_step_ext_with_mismatch_master_suite_prop_iff_strict_top_soundness_route_of_core
+    clauseSem nativeHandlerMismatchPassThroughSem bodyStep h_core
 
 /--
 From packaged core soundness, derive the concrete pass-through master suite
