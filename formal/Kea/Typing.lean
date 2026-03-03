@@ -4833,6 +4833,33 @@ def native_handler_extension_ladder_bodyStepFalse_prop
       clauseSem mismatchSem (fun _ _ => False)
 
 /--
+Generic-bodyStep-false ladder package:
+same as `native_handler_extension_ladder_bodyStepFalse_prop`, but uses the
+generic `ext-with-mismatch`-over-`ext` strictness surface instantiated at
+`bodyStep = False`.
+-/
+def native_handler_extension_ladder_bodyStepFalse_generic_prop
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) : Prop :=
+  native_handler_step_ext_strictly_extends_native_prop
+      clauseSem (fun _ _ => False)
+    ∧
+  native_handler_step_ext_with_mismatch_strictly_extends_ext_prop
+      clauseSem mismatchSem (fun _ _ => False)
+    ∧
+  native_handler_step_ext_with_mismatch_strictly_extends_native_prop
+      clauseSem mismatchSem (fun _ _ => False)
+    ∧
+  native_handler_step_ext_vs_native_typed_int_body_gap_prop
+      clauseSem (fun _ _ => False)
+    ∧
+  native_handler_step_ext_with_mismatch_vs_ext_typed_op_mismatch_gap_bodyStepFalse_prop
+      clauseSem mismatchSem
+    ∧
+  native_handler_step_ext_with_mismatch_vs_native_typed_int_body_gap_prop
+      clauseSem mismatchSem (fun _ _ => False)
+
+/--
 Project the full strict-extension/typed-gap ladder from a packaged
 `NativeHandlerBoundaryModelGapSlice` witness.
 -/
@@ -4850,6 +4877,62 @@ theorem native_handler_extension_ladder_bodyStepFalse_of_boundary_model_gap_slic
     h_gap.typedMismatchExtVsExtOpMismatchGapBodyStepFalse,
     h_gap.typedMismatchExtVsNativeGapBodyStepFalse
   ⟩
+
+/--
+Project the full strict-extension/typed-gap ladder from a packaged
+`NativeHandlerBoundaryModelGapSlice` witness, using the generic strictness
+surface at `bodyStep = False`.
+-/
+theorem native_handler_extension_ladder_bodyStepFalse_generic_of_boundary_model_gap_slice
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (h_gap : NativeHandlerBoundaryModelGapSlice clauseSem mismatchSem) :
+    native_handler_extension_ladder_bodyStepFalse_generic_prop
+      clauseSem mismatchSem := by
+  exact ⟨
+    h_gap.extStrictlyExtendsNativeBodyStepFalse,
+    native_handler_step_ext_with_mismatch_strictly_extends_ext_bodyStepFalse_generic_of_legacy
+      clauseSem mismatchSem h_gap.mismatchExtStrictlyExtendsExtBodyStepFalse,
+    h_gap.mismatchExtStrictlyExtendsNativeBodyStepFalse,
+    h_gap.typedExtVsNativeGapBodyStepFalse,
+    h_gap.typedMismatchExtVsExtOpMismatchGapBodyStepFalse,
+    h_gap.typedMismatchExtVsNativeGapBodyStepFalse
+  ⟩
+
+/--
+API coherence between legacy and generic bodyStep-false ladder packages.
+-/
+theorem native_handler_extension_ladder_bodyStepFalse_prop_iff_generic
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) :
+    native_handler_extension_ladder_bodyStepFalse_prop clauseSem mismatchSem
+      ↔
+    native_handler_extension_ladder_bodyStepFalse_generic_prop clauseSem mismatchSem := by
+  constructor
+  · intro h_legacy
+    rcases h_legacy with
+      ⟨h_ext_nat, h_mismatch_ext_legacy, h_mismatch_nat, h_typed_ext_nat, h_typed_mismatch_ext, h_typed_mismatch_nat⟩
+    exact ⟨
+      h_ext_nat,
+      native_handler_step_ext_with_mismatch_strictly_extends_ext_bodyStepFalse_generic_of_legacy
+        clauseSem mismatchSem h_mismatch_ext_legacy,
+      h_mismatch_nat,
+      h_typed_ext_nat,
+      h_typed_mismatch_ext,
+      h_typed_mismatch_nat
+    ⟩
+  · intro h_generic
+    rcases h_generic with
+      ⟨h_ext_nat, h_mismatch_ext_generic, h_mismatch_nat, h_typed_ext_nat, h_typed_mismatch_ext, h_typed_mismatch_nat⟩
+    exact ⟨
+      h_ext_nat,
+      native_handler_step_ext_with_mismatch_strictly_extends_ext_bodyStepFalse_legacy_of_generic
+        clauseSem mismatchSem h_mismatch_ext_generic,
+      h_mismatch_nat,
+      h_typed_ext_nat,
+      h_typed_mismatch_ext,
+      h_typed_mismatch_nat
+    ⟩
 
 /--
 Local mismatched-perform ladder package for arbitrary `bodyStep`:

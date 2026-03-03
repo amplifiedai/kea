@@ -19690,3 +19690,49 @@ No MCP divergence found at this checkpoint.
 
 **Impact**:
 - The bodyStep-false strictness API is now explicitly coherent across old/new theorem surfaces, reducing ambiguity for downstream consumers and capstone projections.
+
+### 2026-03-03: generic bodyStep-false ladder package + legacy/generic ladder equivalence
+
+**Context**: Added a generic bodyStep-false ladder package and coherence bridge:
+- `native_handler_extension_ladder_bodyStepFalse_generic_prop`
+- `native_handler_extension_ladder_bodyStepFalse_generic_of_boundary_model_gap_slice`
+- `native_handler_extension_ladder_bodyStepFalse_prop_iff_generic`
+
+This lifts ladder consumption to the generic strictness API while preserving compatibility with the legacy ladder proposition.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent self-contained handlers should type-check.
+- Pure-body `handle` sentinel should type-check.
+- Mismatched pure handlers should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler `resume` should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use State` -> `ok`.
+2. Coherent Gauge handler (`Gauge.value() -> resume 55`) -> `ok`.
+3. Pure-body sentinel (`handle 55` with `Gauge.value` clause) -> `ok`.
+4. Mismatched pure handler (`handle Gauge.value()` with only `Timer.now` clause) -> `error`, `E0001` (pure body performs `[Gauge]`).
+5. Bad resume payload (`Alert.raise(v) -> resume 1` for `raise : Int -> Unit`) -> `error`, `E0001`.
+6. Out-of-handler resume (`fn out_resume_generic_ladder() -> Int; resume 55`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No MCP divergence found at this checkpoint.
+
+**Act**:
+- Kept generic ladder package + ladder-API coherence additions.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_extension_ladder_bodyStepFalse_generic_prop`
+  - `native_handler_extension_ladder_bodyStepFalse_generic_of_boundary_model_gap_slice`
+  - `native_handler_extension_ladder_bodyStepFalse_prop_iff_generic`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The bodyStep-false ladder surface is now available in both legacy and generic forms with explicit equivalence, making downstream consumption resilient to API-surface choice.
