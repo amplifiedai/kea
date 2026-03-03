@@ -5996,6 +5996,8 @@ structure NativeHandlerSoundnessBoundaryStatusCapstone
     NativeHandlerSoundnessBoundaryCapstone clauseSem mismatchSem
   typingGap :
     NativeHandlerCurrentTypingGapSlice
+  dualWitnessBodyStepFalse :
+    native_handler_dual_witness_bodyStepFalse_prop clauseSem mismatchSem
 
 /--
 Canonical unified status capstone from direct route construction.
@@ -6007,6 +6009,7 @@ theorem native_handler_soundness_boundary_status_capstone
   exact {
     boundary := native_handler_soundness_boundary_capstone clauseSem mismatchSem
     typingGap := native_handler_current_typing_gap_slice
+    dualWitnessBodyStepFalse := native_handler_dual_witness_bodyStepFalse clauseSem mismatchSem
   }
 
 /--
@@ -6022,6 +6025,7 @@ theorem native_handler_soundness_boundary_status_capstone_of_boundary_model_gap_
       native_handler_soundness_boundary_capstone_of_boundary_model_gap_slice
         clauseSem mismatchSem h_gap
     typingGap := native_handler_current_typing_gap_slice
+    dualWitnessBodyStepFalse := native_handler_dual_witness_bodyStepFalse clauseSem mismatchSem
   }
 
 /--

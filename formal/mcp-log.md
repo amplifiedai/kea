@@ -20346,3 +20346,48 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - The current typing-gap package now explicitly distinguishes “global lift contract fails” from “strict-top handler typing has no inhabitants,” reducing interpretation ambiguity in downstream boundary arguments.
+
+### 2026-03-03: status capstone now carries concrete dual witness field
+
+**Context**: Extended `NativeHandlerSoundnessBoundaryStatusCapstone` with a concrete witness field:
+- `dualWitnessBodyStepFalse : native_handler_dual_witness_bodyStepFalse_prop ...`
+
+and updated both constructors to populate it.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent self-contained handler should type-check.
+- Mismatched pure handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume in one clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Runtime` -> `ok`.
+2. Coherent Tau2 handler (`Tau2.read() -> resume 2423`) -> `ok`.
+3. Mismatched pure handler (`handle Tau2.read()` with only `Upsilon2.read_other` clause) -> `error`, `E0001` (pure body performs `[Tau2]`).
+4. Bad resume payload (`Tau2.read() -> resume "bad"`) -> `error`, `E0001`.
+5. Out-of-handler resume (`fn tau2_resume_outside() -> Int; resume 2423`) -> `error`, `E0012`.
+6. Forged-name out-of-handler resume (`let __kea_resume_ctx = 10; resume 2423`) -> `error`, `E0012`.
+7. Double-resume clause (`resume 1` then `resume 2`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the status-capstone dual-witness field and constructor updates.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `NativeHandlerSoundnessBoundaryStatusCapstone.dualWitnessBodyStepFalse`
+  - `native_handler_soundness_boundary_status_capstone` (updated constructor)
+  - `native_handler_soundness_boundary_status_capstone_of_boundary_model_gap_slice` (updated constructor)
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- One status object now carries both abstract boundary routes and a concrete bodyStep-false dual witness, reducing cross-package lookup overhead at checkpoint consumption sites.
