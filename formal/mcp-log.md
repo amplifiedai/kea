@@ -19105,3 +19105,44 @@ No MCP divergence found at this checkpoint.
 **Impact**:
 - Strict-extension relation is now explicit at the same semantic layer used by
   mismatch-route soundness/progress theorems, reducing cross-layer reasoning.
+
+### 2026-03-03: boundary-gap capstone expanded with mismatch-layer fields
+
+**Context**: Expanded `NativeHandlerBoundaryModelGapSlice` so the packaged
+boundary witness now includes mismatch-layer strict-extension and mismatch-layer
+typed-gap fields, not just the base extended relation fields.
+
+**MCP tools used**: `reset_session`, `type_check`
+
+**Predict (Lean side)**:
+- `use` parsing should remain stable.
+- Coherent handled Reader program with `then` should type-check.
+- Mismatched pure handler should reject with effect leak.
+- Bad resume payload should reject.
+- Out-of-handler resume should reject.
+
+**Probe (Rust side via MCP)**:
+1. `use Factory` -> `ok`.
+2. Coherent Reader handler with `then` (`Reader.ask() -> resume 41`) -> `ok`.
+3. Mismatched pure handler (`handle State.get()` with only `Log.info` clause) -> `error`, `E0001` (pure body performs `[State(Int)]`).
+4. Bad resume payload (`Math.add(a,b) -> resume ()` where op returns `Int`) -> `error`, `E0001`.
+5. Out-of-handler resume control (`fn bad_resume_top2() -> Int; resume 2`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No MCP divergence found at this checkpoint.
+
+**Act**:
+- Kept boundary-gap capstone expansion additions.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `NativeHandlerBoundaryModelGapSlice` (new mismatch-layer fields)
+  - `native_handler_boundary_model_gap_slice` (updated constructor witness)
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- One packaged theorem witness now carries both base-ext and mismatch-ext
+  boundary gap surfaces, reducing cross-record stitching for downstream proofs.
