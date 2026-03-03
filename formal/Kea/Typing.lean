@@ -6879,6 +6879,27 @@ structure NativeHandlerSoundnessBoundaryCapstone
       clauseSem mismatchSem
 
 /--
+Strengthened capstone boundary package: extends the positive route with an
+explicit mismatch soundness↔progress equivalence field at each `bodyStep`.
+-/
+structure NativeHandlerSoundnessBoundaryCapstoneStrengthened
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) : Prop where
+  successRoute :
+    ∀ bodyStep,
+      native_core_soundness_prop bodyStep →
+      native_handler_strict_top_typing_prop →
+      native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep
+        ∧
+      native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep
+        ∧
+      (native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep
+        ↔ native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep)
+  metadataMismatchNoBodyStepFailureRoute :
+    native_handler_step_ext_with_mismatch_metadata_mismatch_no_body_step_failure_route_prop
+      clauseSem mismatchSem
+
+/--
 Construct the capstone boundary package from existing positive/negative route
 theorems.
 -/
@@ -6899,6 +6920,26 @@ theorem native_handler_soundness_boundary_capstone
   exact ⟨h_contrast.1, h_contrast.2.1⟩
 
 /--
+Construct the strengthened capstone boundary package from existing
+positive/negative route theorems.
+-/
+theorem native_handler_soundness_boundary_capstone_strengthened
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) :
+    NativeHandlerSoundnessBoundaryCapstoneStrengthened clauseSem mismatchSem := by
+  refine {
+    successRoute := ?_
+    metadataMismatchNoBodyStepFailureRoute :=
+      native_handler_step_ext_with_mismatch_metadata_mismatch_no_body_step_failure_route
+        clauseSem mismatchSem
+  }
+  intro bodyStep h_core h_strict_top
+  have h_contrast :=
+    native_handler_step_ext_with_mismatch_soundness_progress_equiv_and_native_progress_gap_of_core_soundness_and_strict_top_typing
+      clauseSem mismatchSem bodyStep h_core h_strict_top
+  exact ⟨h_contrast.1, h_contrast.2.1, h_contrast.2.2.1⟩
+
+/--
 Construct the same capstone boundary package from `NativeHandlerBoundaryModelGapSlice`.
 -/
 theorem native_handler_soundness_boundary_capstone_of_boundary_model_gap_slice
@@ -6917,6 +6958,87 @@ theorem native_handler_soundness_boundary_capstone_of_boundary_model_gap_slice
     native_handler_step_ext_with_mismatch_soundness_progress_and_native_progress_gap_of_core_soundness_and_strict_top_typing_of_boundary_model_gap_slice
       clauseSem mismatchSem bodyStep h_gap h_core h_strict_top
   exact ⟨h_contrast.1, h_contrast.2.1⟩
+
+/--
+Construct the strengthened capstone boundary package from
+`NativeHandlerBoundaryModelGapSlice`.
+-/
+theorem native_handler_soundness_boundary_capstone_strengthened_of_boundary_model_gap_slice
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (h_gap : NativeHandlerBoundaryModelGapSlice clauseSem mismatchSem) :
+    NativeHandlerSoundnessBoundaryCapstoneStrengthened clauseSem mismatchSem := by
+  refine {
+    successRoute := ?_
+    metadataMismatchNoBodyStepFailureRoute :=
+      native_handler_step_ext_with_mismatch_metadata_mismatch_no_body_step_failure_route_of_boundary_model_gap_slice
+        clauseSem mismatchSem h_gap
+  }
+  intro bodyStep h_core h_strict_top
+  have h_contrast :=
+    native_handler_step_ext_with_mismatch_soundness_progress_equiv_and_native_progress_gap_of_core_soundness_and_strict_top_typing_of_boundary_model_gap_slice
+      clauseSem mismatchSem bodyStep h_gap h_core h_strict_top
+  exact ⟨h_contrast.1, h_contrast.2.1, h_contrast.2.2.1⟩
+
+/--
+Project the legacy capstone boundary package from the strengthened package.
+-/
+theorem native_handler_soundness_boundary_capstone_of_strengthened
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (h_cap :
+      NativeHandlerSoundnessBoundaryCapstoneStrengthened clauseSem mismatchSem) :
+    NativeHandlerSoundnessBoundaryCapstone clauseSem mismatchSem := by
+  refine {
+    successRoute := ?_
+    metadataMismatchNoBodyStepFailureRoute :=
+      h_cap.metadataMismatchNoBodyStepFailureRoute
+  }
+  intro bodyStep h_core h_strict_top
+  rcases h_cap.successRoute bodyStep h_core h_strict_top with
+    ⟨h_sound, h_progress, _h_equiv⟩
+  exact ⟨h_sound, h_progress⟩
+
+/--
+Lift the legacy capstone boundary package to the strengthened package.
+-/
+theorem native_handler_soundness_boundary_capstone_strengthened_of_legacy
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (h_cap :
+      NativeHandlerSoundnessBoundaryCapstone clauseSem mismatchSem) :
+    NativeHandlerSoundnessBoundaryCapstoneStrengthened clauseSem mismatchSem := by
+  refine {
+    successRoute := ?_
+    metadataMismatchNoBodyStepFailureRoute :=
+      h_cap.metadataMismatchNoBodyStepFailureRoute
+  }
+  intro bodyStep h_core h_strict_top
+  rcases h_cap.successRoute bodyStep h_core h_strict_top with
+    ⟨h_sound, h_progress⟩
+  have h_iff :
+      native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep
+        ↔ native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep :=
+    native_handler_step_ext_with_mismatch_soundness_prop_iff_progress_prop_of_preservation
+      clauseSem mismatchSem bodyStep h_sound.1
+  exact ⟨h_sound, h_progress, h_iff⟩
+
+/--
+Capstone-level equivalence between legacy and strengthened boundary packages.
+-/
+theorem native_handler_soundness_boundary_capstone_iff_strengthened
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) :
+    NativeHandlerSoundnessBoundaryCapstone clauseSem mismatchSem
+      ↔
+    NativeHandlerSoundnessBoundaryCapstoneStrengthened clauseSem mismatchSem := by
+  constructor
+  · intro h_cap
+    exact native_handler_soundness_boundary_capstone_strengthened_of_legacy
+      clauseSem mismatchSem h_cap
+  · intro h_cap
+    exact native_handler_soundness_boundary_capstone_of_strengthened
+      clauseSem mismatchSem h_cap
 
 /--
 Unified status capstone: packages the soundness-boundary capstone together with
@@ -7027,6 +7149,18 @@ theorem native_handler_soundness_boundary_status_strict_top_vacuity_profile
   cases h_nonempty with
   | intro h_strict_top =>
     exact h_status.typingGap.strictTopTypingFalse h_strict_top
+
+/--
+Extract the strengthened boundary capstone directly from a unified status
+capstone.
+-/
+theorem native_handler_soundness_boundary_status_capstone_strengthened_boundary
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (h_status : NativeHandlerSoundnessBoundaryStatusCapstone clauseSem mismatchSem) :
+    NativeHandlerSoundnessBoundaryCapstoneStrengthened clauseSem mismatchSem := by
+  exact native_handler_soundness_boundary_capstone_strengthened_of_legacy
+    clauseSem mismatchSem h_status.boundary
 
 /--
 Packaged route: mismatch-extension progress from packaged core progress plus
