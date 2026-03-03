@@ -2903,6 +2903,11 @@ impl TraitRegistry {
         }
     }
 
+    /// Check if a trait with the given name has been registered.
+    pub fn has_trait(&self, name: &str) -> bool {
+        self.traits.contains_key(name)
+    }
+
     /// Register a trait definition from its AST.
     pub fn register_trait(
         &mut self,
@@ -12129,6 +12134,10 @@ fn infer_expr_bidir(
                 constrain_type_eq(unifier, &key_ty, &kt, &prov(Reason::LetAnnotation));
                 constrain_type_eq(unifier, &val_ty, &vt, &prov(Reason::LetAnnotation));
             }
+            // NOTE: Hash constraint on map keys requires deferred trait
+            // obligations (not yet implemented). For now, Hash impls exist
+            // in stdlib but the constraint is not enforced at map literal
+            // sites. See plan: "Hash trait + Map key constraints".
             Type::Map(Box::new(key_ty), Box::new(val_ty))
         }
 

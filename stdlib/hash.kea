@@ -1,0 +1,29 @@
+doc
+  Hash defines hashing for use as map keys and set elements.
+
+  Implement `Hash` when values of a type need to be used as keys
+  in maps or elements in sets.
+trait Hash a
+  doc
+    Compute a hash value for the given value.
+
+      Hash.hash(42)   -- => 42
+  fn hash(x: a) -> Int
+
+doc
+  Hash an integer (identity function).
+
+    Hash.hash(42)   -- => 42
+fn hash(x: Int) -> Int
+  x
+
+Int as Hash
+  fn hash(x: Int) -> Int
+    x
+
+Bool as Hash
+  fn hash(x: Bool) -> Int
+    if x
+      1
+    else
+      0
