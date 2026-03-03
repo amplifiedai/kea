@@ -9289,6 +9289,82 @@ theorem native_handler_full_route_integration_capstone_iff_components
       clauseSem mismatchSem h
 
 /--
+One-hop projection: full-route witness from the integrated capstone.
+-/
+theorem native_handler_full_route_integration_capstone_fullRoute
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (h_cap : NativeHandlerFullRouteIntegrationCapstone clauseSem mismatchSem) :
+    native_handler_step_ext_with_mismatch_full_soundness_capstone_route_prop
+      clauseSem mismatchSem := by
+  exact h_cap.fullRoute
+
+/--
+One-hop projection: legacy contrast route from the integrated capstone.
+-/
+theorem native_handler_full_route_integration_capstone_contrast
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (h_cap : NativeHandlerFullRouteIntegrationCapstone clauseSem mismatchSem) :
+    native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_prop
+      clauseSem mismatchSem := by
+  exact h_cap.contrast
+
+/--
+One-hop projection: strengthened contrast route from the integrated capstone.
+-/
+theorem native_handler_full_route_integration_capstone_contrastStrengthened
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (h_cap : NativeHandlerFullRouteIntegrationCapstone clauseSem mismatchSem) :
+    native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_strengthened_prop
+      clauseSem mismatchSem := by
+  exact h_cap.contrastStrengthened
+
+/--
+One-hop projection: legacy boundary capstone from the integrated capstone.
+-/
+theorem native_handler_full_route_integration_capstone_boundary
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (h_cap : NativeHandlerFullRouteIntegrationCapstone clauseSem mismatchSem) :
+    NativeHandlerSoundnessBoundaryCapstone clauseSem mismatchSem := by
+  exact h_cap.boundary
+
+/--
+One-hop projection: strengthened boundary capstone from the integrated
+capstone.
+-/
+theorem native_handler_full_route_integration_capstone_boundaryStrengthened
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (h_cap : NativeHandlerFullRouteIntegrationCapstone clauseSem mismatchSem) :
+    NativeHandlerSoundnessBoundaryCapstoneStrengthened clauseSem mismatchSem := by
+  exact h_cap.boundaryStrengthened
+
+/--
+One-hop projection: legacy boundary-status capstone from the integrated
+capstone.
+-/
+theorem native_handler_full_route_integration_capstone_status
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (h_cap : NativeHandlerFullRouteIntegrationCapstone clauseSem mismatchSem) :
+    NativeHandlerSoundnessBoundaryStatusCapstone clauseSem mismatchSem := by
+  exact h_cap.status
+
+/--
+One-hop projection: strengthened boundary-status capstone from the integrated
+capstone.
+-/
+theorem native_handler_full_route_integration_capstone_statusStrengthened
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (h_cap : NativeHandlerFullRouteIntegrationCapstone clauseSem mismatchSem) :
+    NativeHandlerSoundnessBoundaryStatusCapstoneStrengthened clauseSem mismatchSem := by
+  exact h_cap.statusStrengthened
+
+/--
 Canonical integrated capstone witness from the full mismatch-soundness route.
 -/
 theorem native_handler_full_route_integration_capstone
@@ -9343,6 +9419,102 @@ theorem native_handler_step_ext_with_passThroughMismatch_full_route_integration_
       clauseSem := by
   exact native_handler_full_route_integration_capstone
     clauseSem nativeHandlerMismatchPassThroughSem
+
+/--
+Pass-through projection: full-route witness from the integrated capstone.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_fullRoute
+    (clauseSem : NativeHandlerClauseSem)
+    (h_cap :
+      native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_prop
+        clauseSem) :
+    native_handler_step_ext_with_mismatch_full_soundness_capstone_route_prop
+      clauseSem nativeHandlerMismatchPassThroughSem := by
+  exact native_handler_full_route_integration_capstone_fullRoute
+    clauseSem nativeHandlerMismatchPassThroughSem h_cap
+
+/--
+Pass-through projection: legacy contrast route from the integrated capstone.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_contrast
+    (clauseSem : NativeHandlerClauseSem)
+    (h_cap :
+      native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_prop
+        clauseSem) :
+    native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_prop
+      clauseSem nativeHandlerMismatchPassThroughSem := by
+  exact native_handler_full_route_integration_capstone_contrast
+    clauseSem nativeHandlerMismatchPassThroughSem h_cap
+
+/--
+Pass-through projection: strengthened contrast route from the integrated
+capstone.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_contrastStrengthened
+    (clauseSem : NativeHandlerClauseSem)
+    (h_cap :
+      native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_prop
+        clauseSem) :
+    native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_strengthened_prop
+      clauseSem nativeHandlerMismatchPassThroughSem := by
+  exact native_handler_full_route_integration_capstone_contrastStrengthened
+    clauseSem nativeHandlerMismatchPassThroughSem h_cap
+
+/--
+Pass-through projection: legacy boundary capstone from the integrated
+capstone.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_boundary
+    (clauseSem : NativeHandlerClauseSem)
+    (h_cap :
+      native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_prop
+        clauseSem) :
+    NativeHandlerSoundnessBoundaryCapstone
+      clauseSem nativeHandlerMismatchPassThroughSem := by
+  exact native_handler_full_route_integration_capstone_boundary
+    clauseSem nativeHandlerMismatchPassThroughSem h_cap
+
+/--
+Pass-through projection: strengthened boundary capstone from the integrated
+capstone.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_boundaryStrengthened
+    (clauseSem : NativeHandlerClauseSem)
+    (h_cap :
+      native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_prop
+        clauseSem) :
+    NativeHandlerSoundnessBoundaryCapstoneStrengthened
+      clauseSem nativeHandlerMismatchPassThroughSem := by
+  exact native_handler_full_route_integration_capstone_boundaryStrengthened
+    clauseSem nativeHandlerMismatchPassThroughSem h_cap
+
+/--
+Pass-through projection: legacy boundary-status capstone from the integrated
+capstone.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_status
+    (clauseSem : NativeHandlerClauseSem)
+    (h_cap :
+      native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_prop
+        clauseSem) :
+    NativeHandlerSoundnessBoundaryStatusCapstone
+      clauseSem nativeHandlerMismatchPassThroughSem := by
+  exact native_handler_full_route_integration_capstone_status
+    clauseSem nativeHandlerMismatchPassThroughSem h_cap
+
+/--
+Pass-through projection: strengthened boundary-status capstone from the
+integrated capstone.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_statusStrengthened
+    (clauseSem : NativeHandlerClauseSem)
+    (h_cap :
+      native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_prop
+        clauseSem) :
+    NativeHandlerSoundnessBoundaryStatusCapstoneStrengthened
+      clauseSem nativeHandlerMismatchPassThroughSem := by
+  exact native_handler_full_route_integration_capstone_statusStrengthened
+    clauseSem nativeHandlerMismatchPassThroughSem h_cap
 
 /--
 From the integrated full-route capstone, derive
