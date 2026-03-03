@@ -753,6 +753,64 @@ theorem hasType_resume_iff_ctx_and_value
     exact HasType.resume env value opRetTy handlerTy h_ctx h_value
 
 /- =========================================================================
+   Syntactic resume-summary helpers (linearity checking)
+   ========================================================================= -/
+
+/--
+Saturated summary of how many `resume` sites appear in an expression.
+-/
+inductive ResumeSummary : Type where
+  | zero
+  | one
+  | many
+deriving DecidableEq, Repr
+
+/--
+At-most-once property on saturated resume summaries.
+-/
+def resumeSummary_atMostOnce : ResumeSummary → Prop
+  | .zero => True
+  | .one => True
+  | .many => False
+
+/--
+Saturating addition for resume summaries.
+-/
+def resumeSummaryCombine : ResumeSummary → ResumeSummary → ResumeSummary
+  | .many, _ => .many
+  | _, .many => .many
+  | .zero, s => s
+  | s, .zero => s
+  | .one, .one => .many
+
+mutual
+  /--
+  Syntactic resume-summary extraction for core expressions.
+  -/
+  def resumeSummary : CoreExpr → ResumeSummary
+    | .intLit _ => .zero
+    | .boolLit _ => .zero
+    | .stringLit _ => .zero
+    | .var _ => .zero
+    | .lam _ _ body => resumeSummary body
+    | .app fn arg => resumeSummaryCombine (resumeSummary fn) (resumeSummary arg)
+    | .letE _ value body => resumeSummaryCombine (resumeSummary value) (resumeSummary body)
+    | .record fields => resumeSummaryFields fields
+    | .proj e _ => resumeSummary e
+    | .perform _ _ _ arg k => resumeSummaryCombine (resumeSummary arg) (resumeSummary k)
+    | .handle body _ _ _ _ _ clauseBody =>
+      resumeSummaryCombine (resumeSummary body) (resumeSummary clauseBody)
+    | .resume value => resumeSummaryCombine .one (resumeSummary value)
+
+  /--
+  Syntactic resume-summary extraction for field lists.
+  -/
+  def resumeSummaryFields : CoreFields → ResumeSummary
+    | .nil => .zero
+    | .cons _ e rest => resumeSummaryCombine (resumeSummary e) (resumeSummaryFields rest)
+end
+
+/- =========================================================================
    Native scoped resume typing (non-forgeable handler context)
    ========================================================================= -/
 
@@ -802,6 +860,7 @@ mutual
     | handle (ctx : ScopedResumeCtx) (env : TermEnv) (body : CoreExpr) (op : Label)
         (argName resumeName : String) (argTy opRetTy bodyTy : Ty) (clauseBody : CoreExpr)
         (h_body : HasTypeScoped ctx env body bodyTy)
+        (h_linear : resumeSummary_atMostOnce (resumeSummary clauseBody))
         (h_clause :
           HasTypeScoped
             (some (opRetTy, bodyTy))
@@ -993,64 +1052,6 @@ theorem scoped_resume_nonforgeable_boundary_witness :
   · simpa using hasType_resume_spoofable_witness
   · simpa using hasTypeScopedTop_resume_spoof_rejected_witness
 
-/- =========================================================================
-   Syntactic resume-summary witnesses (linearity boundary)
-   ========================================================================= -/
-
-/--
-Saturated summary of how many `resume` sites appear in an expression.
--/
-inductive ResumeSummary : Type where
-  | zero
-  | one
-  | many
-deriving DecidableEq, Repr
-
-/--
-At-most-once property on saturated resume summaries.
--/
-def resumeSummary_atMostOnce : ResumeSummary → Prop
-  | .zero => True
-  | .one => True
-  | .many => False
-
-/--
-Saturating addition for resume summaries.
--/
-def resumeSummaryCombine : ResumeSummary → ResumeSummary → ResumeSummary
-  | .many, _ => .many
-  | _, .many => .many
-  | .zero, s => s
-  | s, .zero => s
-  | .one, .one => .many
-
-mutual
-  /--
-  Syntactic resume-summary extraction for core expressions.
-  -/
-  def resumeSummary : CoreExpr → ResumeSummary
-    | .intLit _ => .zero
-    | .boolLit _ => .zero
-    | .stringLit _ => .zero
-    | .var _ => .zero
-    | .lam _ _ body => resumeSummary body
-    | .app fn arg => resumeSummaryCombine (resumeSummary fn) (resumeSummary arg)
-    | .letE _ value body => resumeSummaryCombine (resumeSummary value) (resumeSummary body)
-    | .record fields => resumeSummaryFields fields
-    | .proj e _ => resumeSummary e
-    | .perform _ _ _ arg k => resumeSummaryCombine (resumeSummary arg) (resumeSummary k)
-    | .handle body _ _ _ _ _ clauseBody =>
-      resumeSummaryCombine (resumeSummary body) (resumeSummary clauseBody)
-    | .resume value => resumeSummaryCombine .one (resumeSummary value)
-
-  /--
-  Syntactic resume-summary extraction for field lists.
-  -/
-  def resumeSummaryFields : CoreFields → ResumeSummary
-    | .nil => .zero
-    | .cons _ e rest => resumeSummaryCombine (resumeSummary e) (resumeSummaryFields rest)
-end
-
 /--
 Concrete clause/body witness with two resumptions.
 -/
@@ -1121,48 +1122,22 @@ theorem hasTypeScoped_does_not_imply_resumeSummary_atMostOnce :
   ⟩
 
 /--
-Concrete top-level typed `handle` witness whose clause body has non-at-most-once
-resume summary.
+Concrete top-level `handle` with a double-resume clause is not typable in the
+scoped native judgment (because the handle rule requires at-most-once summary).
 -/
-theorem hasTypeScopedTop_handle_with_doubleResume_clause :
-    HasTypeScopedTop []
+theorem not_hasTypeScopedTop_handle_with_doubleResume_clause :
+    ¬ HasTypeScopedTop []
       (.handle (.intLit 0) "Op" "x" "k" .int .int doubleResumeWitnessExpr)
       .int := by
-  dsimp [HasTypeScopedTop]
-  refine HasTypeScoped.handle none [] (.intLit 0) "Op" "x" "k" .int .int .int
-      doubleResumeWitnessExpr
-      (HasTypeScoped.int none [] 0)
-      ?_
-  exact hasTypeScoped_doubleResumeWitnessExpr_under_env
-    [("k", .function (.cons .int .nil) .int), ("x", .int)]
+  intro h_typed
+  dsimp [HasTypeScopedTop] at h_typed
+  cases h_typed with
+  | handle _ _ _ _ _ _ _ _ _ _ _h_body h_linear _h_clause =>
+      exact hasTypeScoped_doubleResumeWitnessExpr_not_atMostOnce h_linear
 
 /--
-Handler-level witness: top-level native handle typing does not imply
-clause-body syntactic resume at-most-once.
--/
-theorem hasTypeScopedTop_handle_does_not_imply_clause_resumeSummary_atMostOnce :
-    ∃ env body op argName resumeName argTy opRetTy clauseBody ty,
-      HasTypeScopedTop env
-        (.handle body op argName resumeName argTy opRetTy clauseBody) ty
-        ∧
-      ¬ resumeSummary_atMostOnce (resumeSummary clauseBody) := by
-  exact ⟨
-    [],
-    .intLit 0,
-    "Op",
-    "x",
-    "k",
-    .int,
-    .int,
-    doubleResumeWitnessExpr,
-    .int,
-    hasTypeScopedTop_handle_with_doubleResume_clause,
-    hasTypeScoped_doubleResumeWitnessExpr_not_atMostOnce
-  ⟩
-
-/--
-Boundary proposition: native top-level handle typing would enforce clause-body
-saturated resume at-most-once if true.
+Boundary proposition: native top-level handle typing enforces clause-body
+saturated resume at-most-once.
 -/
 def native_handler_clause_resumeSummary_linearity_prop : Prop :=
   ∀ env body op argName resumeName argTy opRetTy clauseBody ty,
@@ -1171,28 +1146,28 @@ def native_handler_clause_resumeSummary_linearity_prop : Prop :=
     resumeSummary_atMostOnce (resumeSummary clauseBody)
 
 /--
-The current native top-level handle typing rules do not satisfy
+Native top-level handle typing satisfies
 `native_handler_clause_resumeSummary_linearity_prop`.
 -/
-theorem native_handler_clause_resumeSummary_linearity_false :
-    ¬ native_handler_clause_resumeSummary_linearity_prop := by
-  intro h_linear
-  rcases hasTypeScopedTop_handle_does_not_imply_clause_resumeSummary_atMostOnce with
-    ⟨env, body, op, argName, resumeName, argTy, opRetTy, clauseBody, ty, h_typed, h_not_atMostOnce⟩
-  exact h_not_atMostOnce
-    (h_linear env body op argName resumeName argTy opRetTy clauseBody ty h_typed)
+theorem native_handler_clause_resumeSummary_linearity :
+    native_handler_clause_resumeSummary_linearity_prop := by
+  intro env body op argName resumeName argTy opRetTy clauseBody ty h_typed
+  dsimp [HasTypeScopedTop] at h_typed
+  cases h_typed with
+  | handle _ _ _ _ _ _ _ _ _ _ _h_body h_linear _h_clause =>
+      exact h_linear
 
 /--
 Current boundary characterization: clause-body resume linearity under native
-top-level handle typing is propositionally equivalent to `False`.
+top-level handle typing is propositionally equivalent to `True`.
 -/
-theorem native_handler_clause_resumeSummary_linearity_prop_iff_false :
-    native_handler_clause_resumeSummary_linearity_prop ↔ False := by
+theorem native_handler_clause_resumeSummary_linearity_prop_iff_true :
+    native_handler_clause_resumeSummary_linearity_prop ↔ True := by
   constructor
   · intro h_linear
-    exact native_handler_clause_resumeSummary_linearity_false h_linear
-  · intro h_false
-    exact False.elim h_false
+    trivial
+  · intro _h_true
+    exact native_handler_clause_resumeSummary_linearity
 
 /- =========================================================================
    Native handler-step judgment on `Typing.CoreExpr`
@@ -1248,7 +1223,7 @@ theorem native_handler_step_preservation
   cases h_step with
   | handle_perform op argTy opRetTy arg k argName resumeName clauseBody =>
     cases h_ty with
-    | handle _ _ _ _ _ _ _ _ _ _ h_body h_clause =>
+    | handle _ _ _ _ _ _ _ _ _ _ h_body _h_linear h_clause =>
       cases h_body with
       | perform _ _ _ _ _ _ _ _ h_arg h_k =>
         exact clauseSem.instantiate_sound
@@ -1490,6 +1465,8 @@ theorem native_handler_body_progress_obligation_false :
       HasTypeScopedTop env (.handle body op argName resumeName argTy opRetTy clauseBody) ty := by
     exact HasTypeScoped.handle none env body op argName resumeName argTy opRetTy ty clauseBody
       (HasTypeScoped.int none env 0)
+      (by
+        simp [clauseBody, resumeSummary_atMostOnce, resumeSummary])
       (HasTypeScoped.int
         (some (opRetTy, ty))
         ((resumeName, .function (.cons opRetTy .nil) ty) ::
@@ -1553,6 +1530,7 @@ theorem native_handler_typed_progress_counterexample
   refine ⟨[], .intLit 0, "Op", "x", "k", .int, .int, .intLit 1, .int, ?_, ?_⟩
   · exact HasTypeScoped.handle none [] (.intLit 0) "Op" "x" "k" .int .int .int (.intLit 1)
       (HasTypeScoped.int none [] 0)
+      (by simp [resumeSummary_atMostOnce, resumeSummary])
       (HasTypeScoped.int
         (some (.int, .int))
         (("k", .function (.cons .int .nil) .int) ::
@@ -1688,7 +1666,7 @@ theorem native_handler_step_ext_preservation
   cases h_step with
   | handle_perform op argTy opRetTy arg k argName resumeName clauseBody =>
     cases h_ty with
-    | handle _ _ _ _ _ _ _ _ _ _ h_body h_clause =>
+    | handle _ _ _ _ _ _ _ _ _ _ h_body _h_linear h_clause =>
       cases h_body with
       | perform _ _ _ _ _ _ _ _ h_arg h_k =>
         exact clauseSem.instantiate_sound
@@ -1696,15 +1674,15 @@ theorem native_handler_step_ext_preservation
           h_arg h_k h_clause
   | handle_value body op argName resumeName argTy opRetTy clauseBody _h_value =>
     cases h_ty with
-    | handle _ _ _ _ _ _ _ _ _ _ h_body _h_clause =>
+    | handle _ _ _ _ _ _ _ _ _ _ h_body _h_linear _h_clause =>
       exact h_body
   | handle_congr body body' op argName resumeName argTy opRetTy clauseBody h_body_step =>
     cases h_ty with
-    | handle _ _ _ _ _ _ _ _ _ _ h_body h_clause =>
+    | handle _ _ _ _ _ _ _ _ _ _ h_body h_linear h_clause =>
       have h_body' : HasTypeScoped none env body' ty :=
         h_body_pres env body body' ty h_body h_body_step
       exact HasTypeScoped.handle none env body' op argName resumeName argTy opRetTy ty clauseBody
-        h_body' h_clause
+        h_body' h_linear h_clause
 
 /--
 Body-progress obligation for extended native handler progress:
@@ -1750,7 +1728,7 @@ theorem native_handler_step_ext_progress_of_body_progress_obligation
   intro env body op argName resumeName argTy opRetTy clauseBody ty h_typed
   dsimp [HasTypeScopedTop] at h_typed
   cases h_typed with
-  | handle _ _ _ _ _ _ _ _ _ _ h_body h_clause =>
+  | handle _ _ _ _ _ _ _ _ _ _ h_body _h_linear h_clause =>
     have h_cases :
         (∃ arg k, body = .perform op argTy opRetTy arg k)
         ∨ CoreValue body
@@ -1777,7 +1755,7 @@ theorem native_handler_handle_progress_obligation_ext_of_body_progress_obligatio
   intro env body op argName resumeName argTy opRetTy clauseBody ty h_typed
   dsimp [HasTypeScopedTop] at h_typed
   cases h_typed with
-  | handle _ _ _ _ _ _ _ _ _ _ h_body _h_clause =>
+  | handle _ _ _ _ _ _ _ _ _ _ h_body _h_linear _h_clause =>
     exact h_body_progress env body op argTy opRetTy ty h_body
 
 /--
@@ -1875,6 +1853,7 @@ theorem native_handler_step_ext_vs_native_typed_int_body_witness
   refine ⟨[], "Op", "x", "k", .int, .int, (.intLit 1), .int, ?_, ?_, ?_⟩
   · exact HasTypeScoped.handle none [] (.intLit 0) "Op" "x" "k" .int .int .int (.intLit 1)
       (HasTypeScoped.int none [] 0)
+      (by simp [resumeSummary_atMostOnce, resumeSummary])
       (HasTypeScoped.int
         (some (.int, .int))
         (("k", .function (.cons .int .nil) .int) ::
@@ -1953,6 +1932,7 @@ theorem native_handler_step_ext_typed_mismatch_counterexample
         (HasTypeScoped.int none [] 1)
         (HasTypeScoped.lam none [] "x" .int .int (.intLit 0)
           (HasTypeScoped.int none [("x", .int)] 0)))
+      (by simp [resumeSummary_atMostOnce, resumeSummary])
       (HasTypeScoped.int (some (.int, .int))
         (("k", .function (.cons .int .nil) .int) ::
           ("x", .int) ::
@@ -1991,7 +1971,7 @@ def nativeHandlerMismatchPassThroughSem : NativeHandlerMismatchSem where
     intro env opBody argTy opRetTy arg k opHandle argName resumeName clauseBody ty _h_op_ne h_typed
     dsimp [HasTypeScopedTop] at h_typed ⊢
     cases h_typed with
-    | handle _ _ _ _ _ _ _ _ _ _ h_body _h_clause =>
+    | handle _ _ _ _ _ _ _ _ _ _ h_body _h_linear _h_clause =>
       exact h_body
 
 /--
@@ -2095,6 +2075,7 @@ theorem native_handler_step_ext_with_mismatch_vs_native_typed_int_body_witness
   refine ⟨[], "Op", "x", "k", .int, .int, (.intLit 1), .int, ?_, ?_, ?_⟩
   · exact HasTypeScoped.handle none [] (.intLit 0) "Op" "x" "k" .int .int .int (.intLit 1)
       (HasTypeScoped.int none [] 0)
+      (by simp [resumeSummary_atMostOnce, resumeSummary])
       (HasTypeScoped.int
         (some (.int, .int))
         (("k", .function (.cons .int .nil) .int) ::
@@ -2651,6 +2632,7 @@ theorem not_native_handler_perform_metadata_coherence_prop :
         (HasTypeScoped.bool none [] true)
         (HasTypeScoped.lam none [] "x" .bool .int (.intLit 0)
           (HasTypeScoped.int none [("x", .bool)] 0)))
+      (by simp [resumeSummary_atMostOnce, resumeSummary])
       (HasTypeScoped.int (some (.int, .int))
         (("k", .function (.cons .int .nil) .int) ::
           ("x", .int) ::
@@ -2880,7 +2862,7 @@ theorem native_handler_step_ext_with_mismatch_step_of_core_progress_and_strict_h
   have h_body_typed : HasTypeScopedTop env body ty := by
     dsimp [HasTypeScopedTop] at h_typed ⊢
     cases h_typed with
-    | handle _ _ _ _ _ _ _ _ _ _ h_body _h_clause =>
+    | handle _ _ _ _ _ _ _ _ _ _ h_body _h_linear _h_clause =>
       exact h_body
   by_cases h_isPerform :
     ∃ opBody argTyBody opRetTyBody arg k,
@@ -4313,6 +4295,7 @@ theorem exists_native_handler_strict_top_typed_handle_witness :
         (HasTypeScoped.int none [] 1)
         (HasTypeScoped.lam none [] "x" .int .int (.intLit 0)
           (HasTypeScoped.int none [("x", .int)] 0)))
+      (by simp [resumeSummary_atMostOnce, resumeSummary])
       (HasTypeScoped.int (some (.int, .int))
         (("k", .function (.cons .int .nil) .int) ::
           ("x", .int) ::
@@ -4436,14 +4419,14 @@ theorem native_handler_handle_progress_obligation_ext_with_mismatch_of_core_prog
   intro env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed
   dsimp [HasTypeScopedTop] at h_typed
   cases h_typed with
-  | handle _ _ _ _ _ _ _ _ _ _ h_body _h_clause =>
+  | handle _ _ _ _ _ _ _ _ _ _ h_body h_linear _h_clause =>
     by_cases h_isPerform :
       ∃ opBody argTyBody opRetTyBody arg k,
         body = .perform opBody argTyBody opRetTyBody arg k
     · rcases h_isPerform with ⟨opBody, argTyBody, opRetTyBody, arg, k, h_eq⟩
       have h_meta :=
         h_coherence env body opHandle argName resumeName argTy opRetTy clauseBody ty
-          (HasTypeScoped.handle none env body opHandle argName resumeName argTy opRetTy ty clauseBody h_body _h_clause)
+          (HasTypeScoped.handle none env body opHandle argName resumeName argTy opRetTy ty clauseBody h_body h_linear _h_clause)
           opBody argTyBody opRetTyBody arg k h_eq
       rcases h_meta with ⟨h_argTy, h_opRetTy⟩
       subst h_argTy
@@ -5652,6 +5635,7 @@ theorem native_handler_step_ext_with_mismatch_typed_mismatch_counterexample_reso
         (HasTypeScoped.int none [] 1)
         (HasTypeScoped.lam none [] "x" .int .int (.intLit 0)
           (HasTypeScoped.int none [("x", .int)] 0)))
+      (by simp [resumeSummary_atMostOnce, resumeSummary])
       (HasTypeScoped.int (some (.int, .int))
         (("k", .function (.cons .int .nil) .int) ::
           ("x", .int) ::
@@ -5721,6 +5705,7 @@ theorem native_handler_step_ext_with_mismatch_typed_metadata_mismatch_counterexa
         (HasTypeScoped.bool none [] true)
         (HasTypeScoped.lam none [] "x" .bool .int (.intLit 0)
           (HasTypeScoped.int none [("x", .bool)] 0)))
+      (by simp [resumeSummary_atMostOnce, resumeSummary])
       (HasTypeScoped.int (some (.int, .int))
         (("k", .function (.cons .int .nil) .int) ::
           ("x", .int) ::
@@ -5779,6 +5764,7 @@ theorem hasTypeScopedStrictTop_native_handler_matching_perform_witness :
         (HasTypeScoped.int none [] 1)
         (HasTypeScoped.lam none [] "x" .int .int (.intLit 0)
           (HasTypeScoped.int none [("x", .int)] 0)))
+      (by simp [resumeSummary_atMostOnce, resumeSummary])
       (HasTypeScoped.int (some (.int, .int))
         (("k", .function (.cons .int .nil) .int) ::
           ("x", .int) ::
@@ -6918,7 +6904,7 @@ theorem native_handler_handle_progress_obligation_ext_of_core_progress
   intro env body op argName resumeName argTy opRetTy clauseBody ty h_typed
   dsimp [HasTypeScopedTop] at h_typed
   cases h_typed with
-  | handle _ _ _ _ _ _ _ _ _ _ h_body _h_clause =>
+  | handle _ _ _ _ _ _ _ _ _ _ h_body _h_linear _h_clause =>
     have h_prog := h_core_progress env body ty h_body
     rcases h_prog with h_val | h_step
     · exact Or.inr (Or.inl h_val)

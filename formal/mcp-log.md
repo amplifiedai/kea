@@ -24226,3 +24226,42 @@ Lean typing model and MCP typing behavior disagree on whether double-resume clau
 
 **Status**:
 - Stopping forward formal expansion here pending user direction, per divergence protocol.
+
+### 2026-03-04: divergence closure — native scoped handle typing now enforces clause at-most-once
+
+**Context**: Closed the critical Lean↔MCP mismatch logged at 14:02 by tightening `HasTypeScoped.handle` in `Kea/Typing.lean` with an explicit linearity premise:
+`resumeSummary_atMostOnce (resumeSummary clauseBody)`.
+
+**MCP tools used**: `reset_session`, `type_check` (direct `kea` MCP in-session probes).
+
+**Predict (Lean side)**:
+1. A coherent single-resume handler clause should type-check.
+2. A zero-resume handler clause should type-check.
+3. A double-resume handler clause should be rejected.
+4. Out-of-handler `resume` should be rejected.
+
+**Probe (Rust side via MCP)**:
+1. Single-resume handler:
+   - `handle run(); Reader.ask() -> resume 1`
+   - result: `ok`.
+2. Zero-resume handler:
+   - `handle run(); Ping.ask() -> 42`
+   - result: `ok`.
+3. Double-resume handler:
+   - clause body with both branches resuming (`if true ... resume 1 ... resume 2`)
+   - result: `error`, `E0012`, `handler clause may resume at most once`.
+4. Out-of-handler resume:
+   - `fn main() -> Int\n  resume 1`
+   - result: `error`, `E0012`, `` `resume` is only valid inside a matching handler clause ``.
+
+**Classify**: Agreement.
+
+**Outcome**:
+- Lean now models clause linearity as a typing premise at the native scoped handle rule.
+- Build is green after the rule tightening and theorem refactor:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Critical divergence is closed: Lean and MCP now agree on rejecting double-resume handler clauses.
+- The old positive double-resume top-level handle witness is replaced by rejection-side boundary theorems in `Kea/Typing.lean`.
