@@ -10054,6 +10054,92 @@ theorem native_typed_handle_correspondence_capstone_scheduler_cooperative_iff_ti
   rcases h_cap with ⟨_e', _h_step, _h_typed', h_unity⟩
   exact h_unity.2.2.2.1
 
+/--
+Claim-level soundness projection from the typed native-handle capstone:
+`pure` scheduler classification implies no residual blocking capability.
+-/
+theorem native_typed_handle_correspondence_capstone_scheduler_pure_implies_no_blocking
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (yielding blocking erasable : List Label)
+    (env : TermEnv)
+    (body : CoreExpr)
+    (opHandle : Label)
+    (argName resumeName : String)
+    (argTy opRetTy : Ty)
+    (clauseBody : CoreExpr)
+    (ty : Ty)
+    (h_cap :
+      NativeTypedHandleCorrespondenceCapstone
+        clauseSem mismatchSem bodyStep
+        yielding blocking erasable
+        env body opHandle argName resumeName argTy opRetTy clauseBody ty) :
+    schedulerClassOfResidual blocking (eraseCapabilities [opHandle] erasable) = .pure →
+      hasBlockingCapability blocking (eraseCapabilities [opHandle] erasable) = false := by
+  exact (native_typed_handle_correspondence_capstone_scheduler_soundness
+    clauseSem mismatchSem bodyStep yielding blocking erasable
+    env body opHandle argName resumeName argTy opRetTy clauseBody ty h_cap).pureNonBlocking
+
+/--
+Claim-level completeness projection from the typed native-handle capstone:
+declared-and-erasable handled capabilities are removed by erasure.
+-/
+theorem native_typed_handle_correspondence_capstone_erasure_completeness_member
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (yielding blocking erasable : List Label)
+    (env : TermEnv)
+    (body : CoreExpr)
+    (opHandle : Label)
+    (argName resumeName : String)
+    (argTy opRetTy : Ty)
+    (clauseBody : CoreExpr)
+    (ty : Ty)
+    (h_cap :
+      NativeTypedHandleCorrespondenceCapstone
+        clauseSem mismatchSem bodyStep
+        yielding blocking erasable
+        env body opHandle argName resumeName argTy opRetTy clauseBody ty)
+    {l : Label}
+    (h_declared : l ∈ [opHandle])
+    (h_erasable : l ∈ erasable) :
+    l ∉ eraseCapabilities [opHandle] erasable := by
+  exact (native_typed_handle_correspondence_capstone_erasure_completeness
+    clauseSem mismatchSem bodyStep yielding blocking erasable
+    env body opHandle argName resumeName argTy opRetTy clauseBody ty h_cap).erasedDeclaredRemoved
+      h_declared h_erasable
+
+/--
+Claim-level exactness projection from the typed native-handle capstone:
+residual membership is exactly declared-and-not-erasable membership.
+-/
+theorem native_typed_handle_correspondence_capstone_erasure_exactness_member
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (yielding blocking erasable : List Label)
+    (env : TermEnv)
+    (body : CoreExpr)
+    (opHandle : Label)
+    (argName resumeName : String)
+    (argTy opRetTy : Ty)
+    (clauseBody : CoreExpr)
+    (ty : Ty)
+    (h_cap :
+      NativeTypedHandleCorrespondenceCapstone
+        clauseSem mismatchSem bodyStep
+        yielding blocking erasable
+        env body opHandle argName resumeName argTy opRetTy clauseBody ty)
+    (l : Label) :
+    l ∈ eraseCapabilities [opHandle] erasable
+      ↔
+    l ∈ [opHandle] ∧ l ∉ erasable := by
+  exact (native_typed_handle_correspondence_capstone_erasure_correspondence
+    clauseSem mismatchSem bodyStep yielding blocking erasable
+    env body opHandle argName resumeName argTy opRetTy clauseBody ty h_cap).membershipIff l
+
 /-- Declarative field typing is functional on the core slice. -/
 theorem hasFieldsType_unique
     {env : TermEnv} {fs : CoreFields} {row₁ row₂ : RowFields}

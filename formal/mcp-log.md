@@ -22236,3 +22236,50 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - The typed native-handle capstone now directly exports the four supporting statements and scheduler↔tier equivalences needed by the correspondence narrative.
+
+### 2026-03-04: added claim-level soundness/completeness/exactness projections from typed-handle capstone
+
+**Context**: Added direct claim-level projections in `Kea/Typing.lean` from `NativeTypedHandleCorrespondenceCapstone`:
+- `native_typed_handle_correspondence_capstone_scheduler_pure_implies_no_blocking`
+- `native_typed_handle_correspondence_capstone_erasure_completeness_member`
+- `native_typed_handle_correspondence_capstone_erasure_exactness_member`
+
+This exposes scheduler soundness and erasure completeness/exactness as direct theorem routes at the native typed-handle boundary (no intermediate slice-object unpacking needed).
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent handler should type-check.
+- Mismatched clause that leaks an unhandled effect should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Density` + trivial fn -> `ok`.
+2. Coherent handler (`handle runProbeGP(); ProbeGP.run() -> resume 431`) -> `ok`.
+3. Mismatched handler clause (effect leak remains `[ProbeGQ]`) -> `error`, `E0001`.
+4. Bad resume payload -> `error`, `E0001`.
+5. Out-of-handler resume (`fresh_outside_resume_probe_20260304u`) -> `error`, `E0012`.
+6. Forged-name out-of-handler resume (`forged_ctx_probe_20260304u`) -> `error`, `E0012`.
+7. Double-resume clause -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the claim-level projection theorems.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_typed_handle_correspondence_capstone_scheduler_pure_implies_no_blocking`
+  - `native_typed_handle_correspondence_capstone_erasure_completeness_member`
+  - `native_typed_handle_correspondence_capstone_erasure_exactness_member`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Native typed-handle capstones now expose the correspondence soundness/completeness claims in directly citable theorem form.
