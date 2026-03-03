@@ -6576,6 +6576,49 @@ theorem native_handler_step_ext_with_passThroughMismatch_strictly_extends_ext_pr
     clauseSem nativeHandlerMismatchPassThroughSem bodyStep
 
 /--
+Dual orientation of the strict-extension/subsumption boundary:
+subsumption holds exactly when strict extension does not.
+-/
+theorem native_handler_mismatch_steps_subsumed_by_ext_prop_iff_not_strictly_extends_ext
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) :
+    native_handler_mismatch_steps_subsumed_by_ext_prop
+        clauseSem mismatchSem bodyStep
+      ↔
+    ¬ native_handler_step_ext_with_mismatch_strictly_extends_ext_prop
+        clauseSem mismatchSem bodyStep := by
+  constructor
+  · intro h_subsumed
+    intro h_strict
+    exact (native_handler_step_ext_with_mismatch_strictly_extends_ext_prop_iff_not_subsumed
+      clauseSem mismatchSem bodyStep).1 h_strict h_subsumed
+  · intro h_not_strict
+    by_cases h_subsumed :
+        native_handler_mismatch_steps_subsumed_by_ext_prop
+          clauseSem mismatchSem bodyStep
+    · exact h_subsumed
+    · exfalso
+      exact h_not_strict
+        ((native_handler_step_ext_with_mismatch_strictly_extends_ext_prop_iff_not_subsumed
+          clauseSem mismatchSem bodyStep).2 h_subsumed)
+
+/--
+Concrete pass-through specialization of
+`native_handler_mismatch_steps_subsumed_by_ext_prop_iff_not_strictly_extends_ext`.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_subsumed_by_ext_prop_iff_not_strictly_extends_ext
+    (clauseSem : NativeHandlerClauseSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) :
+    native_handler_mismatch_steps_subsumed_by_ext_prop
+        clauseSem nativeHandlerMismatchPassThroughSem bodyStep
+      ↔
+    ¬ native_handler_step_ext_with_mismatch_strictly_extends_ext_prop
+        clauseSem nativeHandlerMismatchPassThroughSem bodyStep := by
+  exact native_handler_mismatch_steps_subsumed_by_ext_prop_iff_not_strictly_extends_ext
+    clauseSem nativeHandlerMismatchPassThroughSem bodyStep
+
+/--
 For `bodyStep = False`, mismatch-step subsumption into extended-native steps is
 impossible (generic mismatch semantics), by the canonical strict-extension
 witness.
