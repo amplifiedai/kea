@@ -23219,3 +23219,47 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - Concrete pass-through boundary and status capstone layers now share the same explicit full-soundness-route constructor style.
+
+### 2026-03-04: connected full-soundness route into contrast-route layer (generic + pass-through)
+
+**Context**: Added full-route bridge theorems for contrast APIs in `Kea/Typing.lean`:
+- `native_handler_step_ext_with_mismatch_core_strict_top_contrast_route{,_strengthened}_of_full_soundness_capstone_route`
+- `native_handler_step_ext_with_mismatch_core_strict_top_contrast_route{,_strengthened}_via_full_soundness_capstone`
+- `native_handler_step_ext_with_passThroughMismatch_core_strict_top_contrast_route{,_strengthened}_via_full_soundness_capstone`
+
+This extends the same full-soundness route beyond boundary/status packaging into the contrast layer (`ext sound/progress` + native-progress gap).
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- Coherent handler should type-check.
+- Mismatch effect-leak handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. Coherent handler (`probe_coherent_20260304aq`) -> `ok`.
+2. Mismatch effect-leak handler (`probe_mismatch_20260304aq`) -> `error`, `E0001`.
+3. Bad resume payload (`probe_bad_resume_20260304aq`) -> `error`, `E0001`.
+4. Out-of-handler resume (`probe_outside_resume_20260304aq`) -> `error`, `E0012`.
+5. Forged-name out-of-handler resume (`probe_forged_resume_ctx_20260304aq`) -> `error`, `E0012`.
+6. Double-resume clause (`probe_double_resume_20260304aq`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the contrast-layer full-route bridge and pass-through wrappers.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_core_strict_top_contrast_route{,_strengthened}_of_full_soundness_capstone_route`
+  - `native_handler_step_ext_with_mismatch_core_strict_top_contrast_route{,_strengthened}_via_full_soundness_capstone`
+  - `native_handler_step_ext_with_passThroughMismatch_core_strict_top_contrast_route{,_strengthened}_via_full_soundness_capstone`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Full-soundness route is now a shared constructor path across contrast, boundary, and status capstone layers (generic and pass-through).

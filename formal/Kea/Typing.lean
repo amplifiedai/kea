@@ -7051,6 +7051,75 @@ theorem native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_pro
         clauseSem mismatchSem h_route
 
 /--
+Build the core+strict-top contrast route from a route that returns full
+mismatch-soundness capstones.
+-/
+theorem native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_of_full_soundness_capstone_route
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (h_route :
+      native_handler_step_ext_with_mismatch_full_soundness_capstone_route_prop
+        clauseSem mismatchSem) :
+    native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_prop
+      clauseSem mismatchSem := by
+  intro bodyStep h_core h_strict_top_typing
+  have h_sound_progress :=
+    native_handler_step_ext_with_mismatch_soundness_progress_of_full_soundness_capstone
+      clauseSem mismatchSem bodyStep (h_route bodyStep h_core h_strict_top_typing)
+  exact ⟨h_sound_progress.1, h_sound_progress.2, native_handler_step_progress_prop_false clauseSem⟩
+
+/--
+Build the strengthened core+strict-top contrast route from a route that
+returns full mismatch-soundness capstones.
+-/
+theorem native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_strengthened_of_full_soundness_capstone_route
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (h_route :
+      native_handler_step_ext_with_mismatch_full_soundness_capstone_route_prop
+        clauseSem mismatchSem) :
+    native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_strengthened_prop
+      clauseSem mismatchSem := by
+  intro bodyStep h_core h_strict_top_typing
+  have h_sound_progress :=
+    native_handler_step_ext_with_mismatch_soundness_progress_of_full_soundness_capstone
+      clauseSem mismatchSem bodyStep (h_route bodyStep h_core h_strict_top_typing)
+  have h_iff :
+      native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep
+        ↔ native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep :=
+    native_handler_step_ext_with_mismatch_soundness_prop_iff_progress_prop_of_preservation
+      clauseSem mismatchSem bodyStep h_sound_progress.1.1
+  exact ⟨h_sound_progress.1, h_sound_progress.2, h_iff, native_handler_step_progress_prop_false clauseSem⟩
+
+/--
+Canonical core+strict-top contrast route through the full mismatch-soundness
+capstone route.
+-/
+theorem native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_via_full_soundness_capstone
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) :
+    native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_prop
+      clauseSem mismatchSem := by
+  exact native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_of_full_soundness_capstone_route
+    clauseSem mismatchSem
+    (native_handler_step_ext_with_mismatch_full_soundness_capstone_route_of_core_soundness_and_strict_top_typing
+      clauseSem mismatchSem)
+
+/--
+Canonical strengthened core+strict-top contrast route through the full
+mismatch-soundness capstone route.
+-/
+theorem native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_strengthened_via_full_soundness_capstone
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) :
+    native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_strengthened_prop
+      clauseSem mismatchSem := by
+  exact native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_strengthened_of_full_soundness_capstone_route
+    clauseSem mismatchSem
+    (native_handler_step_ext_with_mismatch_full_soundness_capstone_route_of_core_soundness_and_strict_top_typing
+      clauseSem mismatchSem)
+
+/--
 Build the core+strict-top contrast route from a packaged boundary-model gap
 slice witness.
 -/
@@ -8957,6 +9026,28 @@ theorem native_handler_step_ext_with_passThroughMismatch_core_strict_top_contras
   exact
     native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_prop_iff_strengthened
       clauseSem nativeHandlerMismatchPassThroughSem
+
+/--
+Canonical concrete pass-through legacy contrast route via the full
+mismatch-soundness capstone route.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_core_strict_top_contrast_route_via_full_soundness_capstone
+    (clauseSem : NativeHandlerClauseSem) :
+    native_handler_step_ext_with_passThroughMismatch_core_strict_top_contrast_route_prop
+      clauseSem := by
+  exact native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_via_full_soundness_capstone
+    clauseSem nativeHandlerMismatchPassThroughSem
+
+/--
+Canonical concrete pass-through strengthened contrast route via the full
+mismatch-soundness capstone route.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_core_strict_top_contrast_route_strengthened_via_full_soundness_capstone
+    (clauseSem : NativeHandlerClauseSem) :
+    native_handler_step_ext_with_passThroughMismatch_core_strict_top_contrast_route_strengthened_prop
+      clauseSem := by
+  exact native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_strengthened_via_full_soundness_capstone
+    clauseSem nativeHandlerMismatchPassThroughSem
 
 /--
 Build the concrete pass-through legacy contrast route from a boundary-model
