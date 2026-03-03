@@ -4638,6 +4638,77 @@ theorem native_handler_step_ext_with_mismatch_step_of_core_progress_and_strict_t
     h_typed
 
 /--
+Packaged local typed-handle `step` consequence surface.
+-/
+def native_handler_step_ext_with_mismatch_local_step_prop
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) : Prop :=
+  ∀ {env : TermEnv}
+    {body : CoreExpr}
+    {opHandle : Label}
+    {argName resumeName : String}
+    {argTy opRetTy : Ty}
+    {clauseBody : CoreExpr}
+    {ty : Ty},
+    HasTypeScopedTop env
+      (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+      ty →
+    ∃ e',
+      NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        e'
+
+/--
+Packaged local typed-handle `step` consequence routes across
+strict-top/strict-typing/scoped-lift/metadata assumptions.
+-/
+def native_handler_step_ext_with_mismatch_local_step_assumption_routes_prop
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) : Prop :=
+  (native_handler_strict_top_typing_prop →
+      native_handler_step_ext_with_mismatch_local_step_prop
+        clauseSem mismatchSem bodyStep)
+    ∧
+    (native_handler_strict_typing_prop →
+      native_handler_step_ext_with_mismatch_local_step_prop
+        clauseSem mismatchSem bodyStep)
+    ∧
+    (native_handler_scoped_to_strict_lift_prop →
+      native_handler_step_ext_with_mismatch_local_step_prop
+        clauseSem mismatchSem bodyStep)
+    ∧
+    (native_handler_perform_metadata_coherence_prop →
+      native_handler_step_ext_with_mismatch_local_step_prop
+        clauseSem mismatchSem bodyStep)
+
+/--
+From packaged core progress, derive all four packaged local typed-handle
+`step` consequence routes.
+-/
+theorem native_handler_step_ext_with_mismatch_local_step_assumption_routes_of_core_progress
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core_progress : native_core_progress_prop bodyStep) :
+    native_handler_step_ext_with_mismatch_local_step_assumption_routes_prop
+      clauseSem mismatchSem bodyStep := by
+  have h_progress_routes :=
+    native_handler_step_ext_with_mismatch_progress_assumption_routes_of_core_progress
+      clauseSem mismatchSem bodyStep h_core_progress
+  rcases h_progress_routes with ⟨h_top, h_strict, h_lift, h_meta⟩
+  refine ⟨?_, ?_, ?_, ?_⟩
+  · intro h_strict_top env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed
+    exact h_top h_strict_top env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed
+  · intro h_strict_typing env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed
+    exact h_strict h_strict_typing env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed
+  · intro h_scoped_lift env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed
+    exact h_lift h_scoped_lift env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed
+  · intro h_coherence env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed
+    exact h_meta h_coherence env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed
+
+/--
 Packaged local typed-handle consequence surface (`step` + preserved typing).
 -/
 def native_handler_step_ext_with_mismatch_local_exists_and_preserves_prop
@@ -4716,6 +4787,37 @@ theorem native_handler_step_ext_with_mismatch_local_exists_and_preserves_assumpt
     exact native_handler_step_ext_with_mismatch_exists_and_preserves_of_soundness
       clauseSem mismatchSem bodyStep
       (h_meta h_coherence) h_typed
+
+/--
+Combined packaged local consequence route suite (`step` routes and
+`step`+preserves routes).
+-/
+def native_handler_step_ext_with_mismatch_local_consequence_assumption_route_suite_prop
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) : Prop :=
+  native_handler_step_ext_with_mismatch_local_step_assumption_routes_prop
+      clauseSem mismatchSem bodyStep
+    ∧
+    native_handler_step_ext_with_mismatch_local_exists_and_preserves_assumption_routes_prop
+      clauseSem mismatchSem bodyStep
+
+/--
+From packaged core soundness, derive the combined packaged local consequence
+route suite (`step` routes and `step`+preserves routes).
+-/
+theorem native_handler_step_ext_with_mismatch_local_consequence_assumption_route_suite_of_core_soundness
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core : native_core_soundness_prop bodyStep) :
+    native_handler_step_ext_with_mismatch_local_consequence_assumption_route_suite_prop
+      clauseSem mismatchSem bodyStep := by
+  refine ⟨?_, ?_⟩
+  · exact native_handler_step_ext_with_mismatch_local_step_assumption_routes_of_core_progress
+      clauseSem mismatchSem bodyStep h_core.2
+  · exact native_handler_step_ext_with_mismatch_local_exists_and_preserves_assumption_routes_of_core_soundness
+      clauseSem mismatchSem bodyStep h_core
 
 /-- Declarative field typing is functional on the core slice. -/
 theorem hasFieldsType_unique

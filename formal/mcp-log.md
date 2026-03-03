@@ -18312,3 +18312,45 @@ soundness.
 **Impact**:
 - One core-soundness premise now yields all four assumption-specific local
   typed-handle consequence routes (`∃ step ∧ preserves`) from a single theorem.
+
+### 2026-03-03: balanced local consequence suite (step routes + step/preserve routes)
+
+**Context**: Added local `step` route bundles from core progress and a combined
+local consequence suite theorem that exports both local route families from one
+core-soundness premise.
+
+**MCP tools used**: `reset_session`, `type_check`
+
+**Predict (Lean side)**:
+- Coherent stateful counter handler should type-check as pure.
+- Clause/effect mismatch should leak body effect in pure context.
+- Resume payload mismatch for higher-order op should reject.
+- Out-of-handler resume should reject.
+
+**Probe (Rust side via MCP)**:
+1. Coherent `Counter` handler (`read -> resume 0`, `write -> resume ()`) -> `ok` (`main : () -> Int`).
+2. Mismatched `Counter` clauses around `Math` body -> `error`, `E0001` (pure body performs `[Math]`).
+3. Bad higher-order `Factory.build` resume payload (`resume 1`) -> `error`, `E0001`.
+4. Out-of-handler resume control (`helper` uses `resume 9`) -> `error`, `E0012`.
+
+**Classify**: Agreement.
+
+**Act**:
+- Kept balanced local consequence suite additions.
+- Continued checkpoint loop without model revision.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_local_step_prop`
+  - `native_handler_step_ext_with_mismatch_local_step_assumption_routes_prop`
+  - `native_handler_step_ext_with_mismatch_local_step_assumption_routes_of_core_progress`
+  - `native_handler_step_ext_with_mismatch_local_consequence_assumption_route_suite_prop`
+  - `native_handler_step_ext_with_mismatch_local_consequence_assumption_route_suite_of_core_soundness`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Local consequence surfaces are now symmetric: one core-soundness theorem
+  yields both local `step` route bundles and local `step`+preserves route
+  bundles across all four assumption families.
