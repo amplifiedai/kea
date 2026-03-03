@@ -7662,6 +7662,32 @@ theorem native_handler_step_ext_with_mismatch_soundness_progress_equiv_of_master
   exact ⟨h_sound, h_prog, h_iff⟩
 
 /--
+Core-soundness + strict-top one-hop bundle route (generic mismatch semantics):
+derive `(soundness, progress, soundness↔progress)` via the master-suite path.
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_progress_equiv_of_core_soundness_and_strict_top_typing_via_master_suite
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core : native_core_soundness_prop bodyStep)
+    (h_strict_top : native_handler_strict_top_typing_prop) :
+    native_handler_step_ext_with_mismatch_soundness_prop
+        clauseSem mismatchSem bodyStep
+      ∧
+    native_handler_step_ext_with_mismatch_progress_prop
+        clauseSem mismatchSem bodyStep
+      ∧
+    (native_handler_step_ext_with_mismatch_soundness_prop
+        clauseSem mismatchSem bodyStep
+      ↔ native_handler_step_ext_with_mismatch_progress_prop
+        clauseSem mismatchSem bodyStep) := by
+  exact native_handler_step_ext_with_mismatch_soundness_progress_equiv_of_master_suite_and_strict_top_typing
+    clauseSem mismatchSem bodyStep
+    (native_handler_step_ext_with_mismatch_master_suite_of_core_soundness
+      clauseSem mismatchSem bodyStep h_core)
+    h_strict_top
+
+/--
 Project the strict-top local `step`+preserves consequence route from a
 mismatch-extension master suite witness.
 -/
@@ -7911,6 +7937,32 @@ theorem native_handler_step_ext_with_passThroughMismatch_soundness_progress_equi
         clauseSem nativeHandlerMismatchPassThroughSem bodyStep) := by
   exact native_handler_step_ext_with_mismatch_soundness_progress_equiv_of_master_suite_and_strict_top_typing
     clauseSem nativeHandlerMismatchPassThroughSem bodyStep h_master h_strict_top
+
+/--
+Core-soundness + strict-top one-hop bundle route (concrete pass-through
+mismatch semantics): derive `(soundness, progress, soundness↔progress)` via
+the master-suite path.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_soundness_progress_equiv_of_core_soundness_and_strict_top_typing_via_master_suite
+    (clauseSem : NativeHandlerClauseSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core : native_core_soundness_prop bodyStep)
+    (h_strict_top : native_handler_strict_top_typing_prop) :
+    native_handler_step_ext_with_mismatch_soundness_prop
+        clauseSem nativeHandlerMismatchPassThroughSem bodyStep
+      ∧
+    native_handler_step_ext_with_mismatch_progress_prop
+        clauseSem nativeHandlerMismatchPassThroughSem bodyStep
+      ∧
+    (native_handler_step_ext_with_mismatch_soundness_prop
+        clauseSem nativeHandlerMismatchPassThroughSem bodyStep
+      ↔ native_handler_step_ext_with_mismatch_progress_prop
+        clauseSem nativeHandlerMismatchPassThroughSem bodyStep) := by
+  exact native_handler_step_ext_with_passThroughMismatch_soundness_progress_equiv_of_master_suite_and_strict_top_typing
+    clauseSem bodyStep
+    (native_handler_step_ext_with_mismatch_master_suite_of_core_soundness
+      clauseSem nativeHandlerMismatchPassThroughSem bodyStep h_core)
+    h_strict_top
 
 /--
 Project the strict-top local `step`+preserves consequence route from a
