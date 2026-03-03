@@ -6680,6 +6680,56 @@ theorem native_handler_step_ext_with_mismatch_full_soundness_capstone_of_core_so
     (native_handler_strict_top_typing_prop_of_scoped_to_strict_lift h_lift)
 
 /--
+Route package: for every `bodyStep`, core soundness plus strict-top typing
+produces the mismatch full-soundness capstone witness.
+-/
+def native_handler_step_ext_with_mismatch_full_soundness_capstone_route_prop
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) : Prop :=
+  ∀ bodyStep,
+    native_core_soundness_prop bodyStep →
+    native_handler_strict_top_typing_prop →
+    native_handler_step_ext_with_mismatch_full_soundness_capstone_prop
+      clauseSem mismatchSem bodyStep
+
+/--
+Canonical route witness for the mismatch full-soundness capstone.
+-/
+theorem native_handler_step_ext_with_mismatch_full_soundness_capstone_route_of_core_soundness_and_strict_top_typing
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) :
+    native_handler_step_ext_with_mismatch_full_soundness_capstone_route_prop
+      clauseSem mismatchSem := by
+  intro bodyStep h_core h_strict_top_typing
+  exact native_handler_step_ext_with_mismatch_full_soundness_capstone_of_core_soundness_and_strict_top_typing
+    clauseSem mismatchSem bodyStep h_core h_strict_top_typing
+
+/--
+From a mismatch full-soundness capstone witness, recover both global
+mismatch-extension soundness and global mismatch-extension progress.
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_progress_of_full_soundness_capstone
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_cap :
+      native_handler_step_ext_with_mismatch_full_soundness_capstone_prop
+        clauseSem mismatchSem bodyStep) :
+    native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep
+      ∧
+    native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep := by
+  have h_sound :
+      native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep :=
+    native_handler_step_ext_with_mismatch_full_soundness_capstone_soundness
+      clauseSem mismatchSem bodyStep h_cap
+  have h_iff :
+      native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep
+        ↔ native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep :=
+    native_handler_step_ext_with_mismatch_soundness_prop_iff_progress_prop_of_preservation
+      clauseSem mismatchSem bodyStep h_sound.1
+  exact ⟨h_sound, h_iff.1 h_sound⟩
+
+/--
 Boundary contrast under core soundness + strict-top typing:
 mismatch-extension soundness is derivable, while native minimal handler-step
 progress remains refutable.
@@ -7109,6 +7159,83 @@ theorem native_handler_soundness_boundary_capstone_strengthened
     native_handler_step_ext_with_mismatch_soundness_progress_equiv_and_native_progress_gap_of_core_soundness_and_strict_top_typing
       clauseSem mismatchSem bodyStep h_core h_strict_top
   exact ⟨h_contrast.1, h_contrast.2.1, h_contrast.2.2.1⟩
+
+/--
+Build `NativeHandlerSoundnessBoundaryCapstone` from a route that returns full
+mismatch-soundness capstones.
+-/
+theorem native_handler_soundness_boundary_capstone_of_full_soundness_capstone_route
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (h_route :
+      native_handler_step_ext_with_mismatch_full_soundness_capstone_route_prop
+        clauseSem mismatchSem) :
+    NativeHandlerSoundnessBoundaryCapstone clauseSem mismatchSem := by
+  refine {
+    successRoute := ?_
+    metadataMismatchNoBodyStepFailureRoute :=
+      native_handler_step_ext_with_mismatch_metadata_mismatch_no_body_step_failure_route
+        clauseSem mismatchSem
+  }
+  intro bodyStep h_core h_strict_top
+  exact native_handler_step_ext_with_mismatch_soundness_progress_of_full_soundness_capstone
+    clauseSem mismatchSem bodyStep (h_route bodyStep h_core h_strict_top)
+
+/--
+Build `NativeHandlerSoundnessBoundaryCapstoneStrengthened` from a route that
+returns full mismatch-soundness capstones.
+-/
+theorem native_handler_soundness_boundary_capstone_strengthened_of_full_soundness_capstone_route
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (h_route :
+      native_handler_step_ext_with_mismatch_full_soundness_capstone_route_prop
+        clauseSem mismatchSem) :
+    NativeHandlerSoundnessBoundaryCapstoneStrengthened clauseSem mismatchSem := by
+  refine {
+    successRoute := ?_
+    metadataMismatchNoBodyStepFailureRoute :=
+      native_handler_step_ext_with_mismatch_metadata_mismatch_no_body_step_failure_route
+        clauseSem mismatchSem
+  }
+  intro bodyStep h_core h_strict_top
+  have h_sound_progress :
+      native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep
+        ∧ native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep :=
+    native_handler_step_ext_with_mismatch_soundness_progress_of_full_soundness_capstone
+      clauseSem mismatchSem bodyStep (h_route bodyStep h_core h_strict_top)
+  have h_iff :
+      native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep
+        ↔ native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep :=
+    native_handler_step_ext_with_mismatch_soundness_prop_iff_progress_prop_of_preservation
+      clauseSem mismatchSem bodyStep h_sound_progress.1.1
+  exact ⟨h_sound_progress.1, h_sound_progress.2, h_iff⟩
+
+/--
+Canonical boundary capstone route through the full mismatch-soundness capstone
+layer.
+-/
+theorem native_handler_soundness_boundary_capstone_of_core_soundness_and_strict_top_typing_via_full_soundness_capstone
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) :
+    NativeHandlerSoundnessBoundaryCapstone clauseSem mismatchSem := by
+  exact native_handler_soundness_boundary_capstone_of_full_soundness_capstone_route
+    clauseSem mismatchSem
+    (native_handler_step_ext_with_mismatch_full_soundness_capstone_route_of_core_soundness_and_strict_top_typing
+      clauseSem mismatchSem)
+
+/--
+Canonical strengthened boundary capstone route through the full
+mismatch-soundness capstone layer.
+-/
+theorem native_handler_soundness_boundary_capstone_strengthened_of_core_soundness_and_strict_top_typing_via_full_soundness_capstone
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) :
+    NativeHandlerSoundnessBoundaryCapstoneStrengthened clauseSem mismatchSem := by
+  exact native_handler_soundness_boundary_capstone_strengthened_of_full_soundness_capstone_route
+    clauseSem mismatchSem
+    (native_handler_step_ext_with_mismatch_full_soundness_capstone_route_of_core_soundness_and_strict_top_typing
+      clauseSem mismatchSem)
 
 /--
 Construct the same capstone boundary package from `NativeHandlerBoundaryModelGapSlice`.
