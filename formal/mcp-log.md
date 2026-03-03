@@ -22328,3 +22328,48 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - Native typed-handle capstones now expose aggressive-erasure non-blocking and Tier-4-elimination consequences directly.
+
+### 2026-03-04: proved pure-classification forces handled-capability erasure at typed-handle boundary
+
+**Context**: Added typed-handle capstone erasure obligations in `Kea/Typing.lean`:
+- `native_typed_handle_correspondence_capstone_pure_implies_handled_erased`
+- `native_typed_handle_correspondence_capstone_not_erasable_implies_not_pure`
+
+This is a non-packaging capstone consequence: at the native typed-handle boundary, scheduler `pure` classification now formally forces the handled capability to have been erased by the compiler stage.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent handler should type-check.
+- Mismatched clause that leaks an unhandled effect should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Volume` + trivial fn -> `ok`.
+2. Coherent handler (`handle runProbeGZ(); ProbeGZ.run() -> resume 451`) -> `ok`.
+3. Mismatched handler clause (effect leak remains `[ProbeHA]`) -> `error`, `E0001`.
+4. Bad resume payload -> `error`, `E0001`.
+5. Out-of-handler resume (`fresh_outside_resume_probe_20260304w`) -> `error`, `E0012`.
+6. Forged-name out-of-handler resume (`forged_ctx_probe_20260304w`) -> `error`, `E0012`.
+7. Double-resume clause -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the pure→erased and not-erased→not-pure bridge theorems.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_typed_handle_correspondence_capstone_pure_implies_handled_erased`
+  - `native_typed_handle_correspondence_capstone_not_erasable_implies_not_pure`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The typed native-handle correspondence layer now states a concrete compiler obligation: scheduler-pure outcomes require erasing the handled capability.
