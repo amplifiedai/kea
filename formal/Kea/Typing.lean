@@ -1618,6 +1618,38 @@ theorem native_handler_step_ext_exists_of_int_body
       (.intLit n) op argName resumeName argTy opRetTy clauseBody
       (CoreValue.int n)⟩
 
+/--
+Typed boundary witness for the native-vs-extended step gap: on the same typed
+handle, the extended relation steps while the native minimal relation does not.
+-/
+theorem native_handler_step_ext_vs_native_typed_int_body_witness
+    (clauseSem : NativeHandlerClauseSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) :
+    ∃ env op argName resumeName argTy opRetTy clauseBody ty,
+      HasTypeScopedTop env
+        (.handle (.intLit 0) op argName resumeName argTy opRetTy clauseBody)
+        ty
+      ∧
+      (∃ e', NativeHandlerStepExt clauseSem bodyStep
+        (.handle (.intLit 0) op argName resumeName argTy opRetTy clauseBody)
+        e')
+      ∧
+      ¬ ∃ e', NativeHandlerStep clauseSem
+        (.handle (.intLit 0) op argName resumeName argTy opRetTy clauseBody)
+        e' := by
+  refine ⟨[], "Op", "x", "k", .int, .int, (.intLit 1), .int, ?_, ?_, ?_⟩
+  · exact HasTypeScoped.handle none [] (.intLit 0) "Op" "x" "k" .int .int .int (.intLit 1)
+      (HasTypeScoped.int none [] 0)
+      (HasTypeScoped.int
+        (some (.int, .int))
+        (("k", .function (.cons .int .nil) .int) ::
+          ("x", .int) ::
+          [])
+        1)
+  · exact native_handler_step_ext_exists_of_int_body
+      clauseSem bodyStep
+  · exact native_handler_step_not_exists_of_int_body clauseSem
+
 /-- `perform` expressions are not values in the extended value grammar. -/
 theorem coreValue_not_perform
     {op : Label} {argTy opRetTy : Ty} {arg k : CoreExpr} :

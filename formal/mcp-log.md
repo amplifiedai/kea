@@ -18855,3 +18855,83 @@ effect declarations (no `use` import).
   strict extension of the native minimal step relation.
 - MCP verification loop remains usable with self-contained effect declarations
   while the `use` classifier divergence is outstanding.
+
+### 2026-03-03: typed gap witness (native no-step vs extended step) + divergence recheck
+
+**Context**: Added a typed witness theorem that packages the native-vs-extended
+step gap on one concrete typed handle site (`HasTypeScopedTop` + `Ext` step
+exists + native step does not).
+
+**MCP tools used**: `reset_session`, `type_check`
+
+**Predict (Lean side)**:
+- The native-vs-extended gap should be consumable as one typed witness theorem.
+- Coherent handler typing should still succeed.
+- Mismatched clauses in pure context should still reject with effect leakage.
+- Bad resume payloads should reject.
+- Out-of-handler resume should reject.
+- Existing MCP `use` parse-path divergence should persist until classifier fix.
+
+**Probe (Rust side via MCP)**:
+1. `use Math` -> `error`, `E0006` (`expected '<-' in use expression`) [divergence persists].
+2. Coherent two-arg handler (`Math.add(a,b) -> resume a + b`) -> `ok`.
+3. Mismatched clause (`handle Math.add...` with only `Log.info` clause in pure `fn bad2() -> Int`) -> `error`, `E0001` (pure body performs `[Math]`).
+4. Bad resume payload (`Log.info(msg) -> resume 0` where op returns `Unit`) -> `error`, `E0001`.
+5. Out-of-handler resume control (`let y = 1; resume y`) -> `error`, `E0012`.
+
+**Classify**: Divergence found (same MCP tooling parse-path bug for `use`).  
+No Lean↔MCP semantic divergence on handler/resume typing probes.
+
+**Act**:
+- Kept typed gap witness theorem addition.
+- Continued no-`use` self-contained effect probes for semantic validation.
+- Reconfirmed divergence persistence for the MCP classifier follow-up.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_vs_native_typed_int_body_witness`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Native-vs-extended boundary is now available as a one-hop typed theorem,
+  reducing proof-consumer stitching overhead.
+- MCP validation remains semantically useful with the no-`use` workaround while
+  the classifier divergence remains open.
+
+### 2026-03-03: MCP `use` parse-path divergence resolved (recheck)
+
+**Context**: Rechecked the previously logged MCP `use` parse-path divergence
+after user-reported fix, then reran a mixed handler/resume sanity probe.
+
+**MCP tools used**: `reset_session`, `type_check`
+
+**Predict (Lean side)**:
+- `use` declarations should parse as declarations again in MCP.
+- Handler/resume semantics should remain unchanged (`resume` outside handlers
+  still rejected).
+
+**Probe (Rust side via MCP)**:
+1. `use Math` -> `ok` (no `<-` parse error).
+2. Mixed sanity snippet:
+   - `effect Ping`, typed handler (`Ping.ask() -> resume 1`) present
+   - out-of-handler `resume 1` in `fn bad() -> Int`
+   -> `error`, `E0012` at the out-of-handler site.
+
+**Classify**: Agreement.  
+Prior MCP tooling divergence is resolved.
+
+**Act**:
+- Marked the `use` classifier divergence closed.
+- Restored confidence that MCP checkpoints can include `use` declarations
+  directly when needed.
+
+**Traceability**:
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- MCP checkpoint protocol no longer requires the temporary no-`use` workaround.
+- Handler/resume validation expectations remain stable post-fix.
