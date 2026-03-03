@@ -324,6 +324,10 @@ impl Parser {
                 let tok = self.advance();
                 Spanned::new("with".to_string(), tok.span)
             }
+            Some(TokenKind::Unsafe) => {
+                let tok = self.advance();
+                Spanned::new("unsafe".to_string(), tok.span)
+            }
             _ => {
                 self.error_at_current("expected annotation name after '@'");
                 return None;
@@ -2655,6 +2659,11 @@ impl Parser {
             return self.let_binding();
         }
 
+        // Unsafe block
+        if self.check(&TokenKind::Unsafe) {
+            return self.unsafe_expr();
+        }
+
         // Handle expression: handle expr ...
         if self.check_ident("handle") {
             return self.handle_expr();
@@ -3044,6 +3053,20 @@ impl Parser {
                 pattern,
                 annotation,
                 value: Box::new(value),
+            },
+            span,
+        ))
+    }
+
+    fn unsafe_expr(&mut self) -> Option<Expr> {
+        let start = self.current_span();
+        self.advance(); // consume `unsafe`
+        self.skip_newlines();
+        let body = self.parse_block_expr("expected indented block after `unsafe`")?;
+        let span = start.merge(body.span);
+        Some(Spanned::new(
+            ExprKind::Unsafe {
+                body: Box::new(body),
             },
             span,
         ))
@@ -6150,6 +6173,28 @@ mod tests {
     }
 
     #[test]
+    fn parse_unsafe_block_expression() {
+        let expr = parse("unsafe\n  let x = 1\n  x + 2");
+        match &expr.node {
+            ExprKind::Unsafe { body } => match &body.node {
+                ExprKind::Block(items) => {
+                    assert_eq!(items.len(), 2);
+                    assert!(matches!(items[0].node, ExprKind::Let { .. }));
+                    assert!(matches!(items[1].node, ExprKind::BinaryOp { .. }));
+                }
+                other => panic!("expected block body, got {other:?}"),
+            },
+            other => panic!("expected unsafe expression, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_unsafe_requires_indented_block() {
+        let errors = parse_err("unsafe 1");
+        assert!(!errors.is_empty(), "unsafe requires an indented block");
+    }
+
+    #[test]
     fn parse_with_nonbinding_statement_in_block() {
         let module = parse_mod("fn main() -> Int\n  with State.with_state(0)\n  1");
         match &module.declarations[0].node {
@@ -6325,6 +6370,18 @@ mod tests {
                 assert_eq!(def.annotations.len(), 1);
                 assert_eq!(def.annotations[0].name.node, "deprecated");
                 assert_eq!(def.annotations[0].args.len(), 1);
+            }
+            other => panic!("expected function declaration, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_keyword_named_annotation_unsafe() {
+        let module = parse_mod("@unsafe fn raw_add_one(x: Int) -> Int\n  x + 1");
+        match &module.declarations[0].node {
+            DeclKind::Function(def) => {
+                assert_eq!(def.annotations.len(), 1);
+                assert_eq!(def.annotations[0].name.node, "unsafe");
             }
             other => panic!("expected function declaration, got {other:?}"),
         }

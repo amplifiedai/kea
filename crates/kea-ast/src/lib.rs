@@ -228,6 +228,9 @@ pub enum ExprKind {
     /// Block of expressions. Value is the last expression.
     Block(Vec<Expr>),
 
+    /// Unsafe block: `unsafe` followed by an indented expression block.
+    Unsafe { body: Box<Expr> },
+
     /// `None` literal (general Kea expressions).
     None,
 
@@ -1082,6 +1085,9 @@ fn collect_free_vars(
         }
         ExprKind::UnaryOp { operand, .. } => {
             collect_free_vars(&operand.node, free, bound);
+        }
+        ExprKind::Unsafe { body } => {
+            collect_free_vars(&body.node, free, bound);
         }
         ExprKind::WhenGuard { body, condition } => {
             collect_free_vars(&body.node, free, bound);

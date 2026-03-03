@@ -1200,6 +1200,7 @@ impl<'src> Lexer<'src> {
                 return;
             }
             "borrow" => TokenKind::Borrow,
+            "unsafe" => TokenKind::Unsafe,
             "in" => TokenKind::In,
             "nil" => {
                 self.error(start, "`nil` is not supported; use `None`");
@@ -1745,7 +1746,7 @@ mod tests {
     fn keywords() {
         assert_eq!(
             lex_kinds(
-                "let fn expr test property pub if when else case cond struct enum type alias opaque deriving testing use with effect const forall borrow"
+                "let fn expr test property pub if when else case cond struct enum type alias opaque deriving testing use with effect const forall borrow unsafe"
             ),
             vec![
                 TokenKind::Let,
@@ -1772,6 +1773,7 @@ mod tests {
                 TokenKind::Const,
                 TokenKind::Forall,
                 TokenKind::Borrow,
+                TokenKind::Unsafe,
             ]
         );
     }

@@ -306,7 +306,7 @@ fn collect_unsafe_call_site_diagnostics_in_expr(
                     )
                     .at(span_to_source_location(expr.span))
                     .with_help(format!(
-                        "enclosing function `{caller_name}` is safe; mark it `@unsafe` for now (unsafe blocks land in a follow-up step)."
+                        "enclosing function `{caller_name}` is safe; wrap this call in `unsafe` or mark the enclosing function `@unsafe`."
                     )),
                 );
             }
@@ -341,6 +341,15 @@ fn collect_unsafe_call_site_diagnostics_in_expr(
                 body,
                 unsafe_callees,
                 in_unsafe_context,
+                caller_name,
+                diagnostics,
+            );
+        }
+        ExprKind::Unsafe { body } => {
+            collect_unsafe_call_site_diagnostics_in_expr(
+                body,
+                unsafe_callees,
+                true,
                 caller_name,
                 diagnostics,
             );
@@ -2201,6 +2210,7 @@ fn const_expr_references(
         }
         ExprKind::Lit(_) | ExprKind::None | ExprKind::Atom(_) => {}
         ExprKind::UnaryOp { operand, .. } => const_expr_references(operand, owner, known, refs),
+        ExprKind::Unsafe { body } => const_expr_references(body, owner, known, refs),
         ExprKind::BinaryOp { left, right, .. } => {
             const_expr_references(left, owner, known, refs);
             const_expr_references(right, owner, known, refs);
@@ -2274,6 +2284,7 @@ fn const_expr_supported(expr: &Expr) -> bool {
     match &expr.node {
         ExprKind::Lit(_) | ExprKind::None | ExprKind::Atom(_) | ExprKind::Var(_) => true,
         ExprKind::UnaryOp { operand, .. } => const_expr_supported(operand),
+        ExprKind::Unsafe { .. } => false,
         ExprKind::BinaryOp { left, right, .. } => {
             const_expr_supported(left) && const_expr_supported(right)
         }

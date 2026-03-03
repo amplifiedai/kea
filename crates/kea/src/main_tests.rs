@@ -3622,6 +3622,21 @@ fn compile_rejects_calling_unsafe_function_from_safe_context() {
 
 #[test]
 #[cfg(not(target_os = "windows"))]
+fn compile_accepts_calling_unsafe_function_inside_unsafe_block() {
+    let source_path = write_temp_source(
+        "@unsafe\nfn raw_add_one(x: Int) -> Int\n  x + 1\n\nfn main() -> Int\n  unsafe\n    raw_add_one(41)\n",
+        "kea-cli-unsafe-block-safe-caller",
+        "kea",
+    );
+
+    let run = run_file(&source_path).expect("unsafe block should permit @unsafe call from safe fn");
+    assert_eq!(run.exit_code, 42);
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
 fn compile_rejects_unsafe_annotation_with_arguments() {
     let source_path = write_temp_source(
         "@unsafe(\"strict\")\nfn raw_add_one(x: Int) -> Int\n  x + 1\n\nfn main() -> Int\n  raw_add_one(1)\n",

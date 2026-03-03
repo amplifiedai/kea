@@ -672,6 +672,9 @@ fn check_unique_moves_ast_expr(
         | ExprKind::Await { expr: operand, .. } => {
             check_unique_moves_ast_expr(operand, state, diagnostics, borrow_param_map);
         }
+        ExprKind::Unsafe { body } => {
+            check_unique_moves_ast_expr(body, state, diagnostics, borrow_param_map);
+        }
         ExprKind::Range { start, end, .. } => {
             check_unique_moves_ast_expr(start, state, diagnostics, borrow_param_map);
             check_unique_moves_ast_expr(end, state, diagnostics, borrow_param_map);
@@ -1844,6 +1847,7 @@ fn lower_expr(expr: &Expr, ty_hint: Option<Type>, ctx: &LowerCtx) -> HirExpr {
             op: op.node,
             operand: Box::new(lower_expr(operand, None, ctx)),
         },
+        ExprKind::Unsafe { body } => return lower_expr(body, ty_hint, ctx),
         ExprKind::With {
             call,
             binding,

@@ -9878,6 +9878,9 @@ fn collect_resume_usage(
                 diagnostics,
             );
         }
+        ExprKind::Unsafe { body } => {
+            collect_resume_usage(body, inside_loop, inside_lambda, resume_count, diagnostics);
+        }
         ExprKind::WhenGuard { body, condition } => {
             collect_resume_usage(body, inside_loop, inside_lambda, resume_count, diagnostics);
             collect_resume_usage(
@@ -10491,6 +10494,9 @@ fn infer_expr_bidir(
 
         // -- Atom literal --
         ExprKind::Atom(_) => Type::Atom,
+
+        // -- Unsafe block --
+        ExprKind::Unsafe { body } => infer_expr_bidir(body, env, unifier, records, traits, sum_types),
 
         // -- Variable reference --
         ExprKind::Var(name) => match env.lookup(name) {
