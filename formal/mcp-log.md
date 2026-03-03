@@ -20251,3 +20251,52 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - One theorem now captures the boundary asymmetry concretely at the same step relation: strict-positive branch exists, metadata-mismatch branch is stuck/non-strict.
+
+### 2026-03-03: explicit false-equivalence surfaces for native and mismatch no-step boundaries
+
+**Context**: Added proposition-level `↔ False` theorem surfaces for key boundary failures:
+- `native_handler_body_progress_obligation_prop_iff_false`
+- `native_handler_step_progress_prop_iff_false`
+- `native_handler_step_ext_with_mismatch_progress_prop_iff_false_of_metadata_mismatch_without_body_step`
+- `native_handler_step_ext_with_mismatch_soundness_prop_iff_false_of_metadata_mismatch_without_body_step`
+
+This converts non-derivability statements into reusable equivalence contracts.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent self-contained handler should type-check.
+- Mismatched pure handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume in one clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Collections` -> `ok`.
+2. Coherent Omicron handler (`Omicron.next() -> resume 2019`) -> `ok`.
+3. Mismatched pure handler (`handle Omicron.next()` with only `Pi.other` clause) -> `error`, `E0001` (pure body performs `[Omicron]`).
+4. Bad resume payload (`Omicron.next() -> resume "bad"`) -> `error`, `E0001`.
+5. Out-of-handler resume (`fn omicron_resume_outside() -> Int; resume 2019`) -> `error`, `E0012`.
+6. Forged-name out-of-handler resume (`let __kea_resume_ctx = 8; resume 2019`) -> `error`, `E0012`.
+7. Double-resume clause (`resume 1` then `resume 2`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the new `↔ False` boundary-equivalence theorem additions.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_body_progress_obligation_prop_iff_false`
+  - `native_handler_step_progress_prop_iff_false`
+  - `native_handler_step_ext_with_mismatch_progress_prop_iff_false_of_metadata_mismatch_without_body_step`
+  - `native_handler_step_ext_with_mismatch_soundness_prop_iff_false_of_metadata_mismatch_without_body_step`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Boundary failures are now consumable as direct proposition-level equivalences, improving downstream theorem ergonomics and reducing repeated negation-to-elimination boilerplate.

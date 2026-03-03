@@ -1302,6 +1302,18 @@ theorem native_handler_body_progress_obligation_false :
   simp [body] at h_eq
 
 /--
+The current native body-progress obligation is propositionally equivalent to
+`False`.
+-/
+theorem native_handler_body_progress_obligation_prop_iff_false :
+    native_handler_body_progress_obligation_prop ↔ False := by
+  constructor
+  · intro h_body_progress
+    exact native_handler_body_progress_obligation_false h_body_progress
+  · intro h_false
+    exact False.elim h_false
+
+/--
 For any fixed clause semantics, full native progress is impossible under the
 current minimal step relation.
 -/
@@ -1313,6 +1325,19 @@ theorem native_handler_step_progress_prop_false
       native_handler_body_progress_obligation_prop :=
     (native_handler_step_progress_prop_iff_body_progress_obligation clauseSem).1 h_progress
   exact native_handler_body_progress_obligation_false h_body_progress
+
+/--
+For the current minimal native handler-step relation, progress is
+propositionally equivalent to `False`.
+-/
+theorem native_handler_step_progress_prop_iff_false
+    (clauseSem : NativeHandlerClauseSem) :
+    native_handler_step_progress_prop clauseSem ↔ False := by
+  constructor
+  · intro h_progress
+    exact native_handler_step_progress_prop_false clauseSem h_progress
+  · intro h_false
+    exact False.elim h_false
 
 /--
 Typed native progress counterexample for the current minimal relation:
@@ -4994,6 +5019,27 @@ theorem not_native_handler_step_ext_with_mismatch_progress_prop_of_metadata_mism
   exact h_no_step h_exists
 
 /--
+Under the metadata-mismatch no-body-step premise, mismatch-extension progress
+is propositionally equivalent to `False`.
+-/
+theorem native_handler_step_ext_with_mismatch_progress_prop_iff_false_of_metadata_mismatch_without_body_step
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_no_body_step :
+      ∀ body', ¬ bodyStep
+        (.perform "Op" .bool .bool (.boolLit true) (.lam "x" .bool (.intLit 0)))
+        body') :
+    native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep
+      ↔ False := by
+  constructor
+  · intro h_progress
+    exact not_native_handler_step_ext_with_mismatch_progress_prop_of_metadata_mismatch_without_body_step
+      clauseSem mismatchSem bodyStep h_no_body_step h_progress
+  · intro h_false
+    exact False.elim h_false
+
+/--
 With no body-step semantics (`False` relation), mismatch-extension progress is
 not derivable under current typing (metadata-mismatch typed witness is stuck).
 -/
@@ -5027,6 +5073,27 @@ theorem not_native_handler_step_ext_with_mismatch_soundness_prop_of_metadata_mis
   intro h_sound
   exact not_native_handler_step_ext_with_mismatch_progress_prop_of_metadata_mismatch_without_body_step
     clauseSem mismatchSem bodyStep h_no_body_step h_sound.2
+
+/--
+Under the metadata-mismatch no-body-step premise, mismatch-extension soundness
+is propositionally equivalent to `False`.
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_prop_iff_false_of_metadata_mismatch_without_body_step
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_no_body_step :
+      ∀ body', ¬ bodyStep
+        (.perform "Op" .bool .bool (.boolLit true) (.lam "x" .bool (.intLit 0)))
+        body') :
+    native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep
+      ↔ False := by
+  constructor
+  · intro h_sound
+    exact not_native_handler_step_ext_with_mismatch_soundness_prop_of_metadata_mismatch_without_body_step
+      clauseSem mismatchSem bodyStep h_no_body_step h_sound
+  · intro h_false
+    exact False.elim h_false
 
 /--
 With no body-step semantics (`False` relation), mismatch-extension soundness is
