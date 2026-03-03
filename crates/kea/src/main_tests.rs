@@ -4420,6 +4420,108 @@ fn compile_rejects_fip_unique_named_import_forwarder_if_shadow_escape() {
 
 #[test]
 #[cfg(not(target_os = "windows"))]
+fn compile_rejects_fip_unique_named_import_forwarder_handle_clause_shadow_escape() {
+    let project_dir =
+        temp_workspace_project_dir("kea-cli-fip-unique-named-import-forwarder-handle-shadow");
+    let src_dir = project_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+    std::fs::write(
+        src_dir.join("alpha.kea"),
+        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n",
+    )
+    .expect("alpha module write should succeed");
+    let source_path = src_dir.join("main.kea");
+    std::fs::write(
+        &source_path,
+        "use Alpha.{forward_once}\n\neffect Wrap C\n  fn op(v: C, forward_once: fn(C) -> C) -> C\n\n@fip\nfn call_via_named_import_handle_shadow(x: Unique Int) -> Unique Int\n  handle x\n    Wrap.op(v, forward_once) -> resume forward_once(v)\n\nfn main() -> Int\n  0\n",
+    )
+    .expect("source write should succeed");
+
+    let err = run_file(&source_path).expect_err(
+        "@fip verifier should reject call-boundary escape through named-import handle-clause shadow",
+    );
+    assert!(
+        err.contains("`@fip` verification failed for `call_via_named_import_handle_shadow`"),
+        "expected @fip verification failure, got: {err}"
+    );
+    assert!(
+        err.contains("unsupported_call_boundaries=1"),
+        "expected unresolved call-boundary signal for named-import handle-clause shadow path, got: {err}"
+    );
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn compile_rejects_fip_unique_named_import_forwarder_then_shadow_escape() {
+    let project_dir =
+        temp_workspace_project_dir("kea-cli-fip-unique-named-import-forwarder-then-shadow");
+    let src_dir = project_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+    std::fs::write(
+        src_dir.join("alpha.kea"),
+        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n",
+    )
+    .expect("alpha module write should succeed");
+    let source_path = src_dir.join("main.kea");
+    std::fs::write(
+        &source_path,
+        "use Alpha.{forward_once}\n\neffect Dummy\n  fn noop() -> Unit\n\n@fip\nfn call_via_named_import_then_shadow(x: Unique Int, g: fn(Unique Int) -> Unique Int) -> Unique Int\n  handle g\n    Dummy.noop() -> resume ()\n    then forward_once -> forward_once(x)\n\nfn main() -> Int\n  0\n",
+    )
+    .expect("source write should succeed");
+
+    let err = run_file(&source_path).expect_err(
+        "@fip verifier should reject call-boundary escape through named-import then-lambda shadow",
+    );
+    assert!(
+        err.contains("`@fip` verification failed for `call_via_named_import_then_shadow`"),
+        "expected @fip verification failure, got: {err}"
+    );
+    assert!(
+        err.contains("unsupported_call_boundaries=1"),
+        "expected unresolved call-boundary signal for named-import then-lambda shadow path, got: {err}"
+    );
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn compile_rejects_fip_unique_named_import_forwarder_with_shadow_escape() {
+    let project_dir =
+        temp_workspace_project_dir("kea-cli-fip-unique-named-import-forwarder-with-shadow");
+    let src_dir = project_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+    std::fs::write(
+        src_dir.join("alpha.kea"),
+        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n",
+    )
+    .expect("alpha module write should succeed");
+    let source_path = src_dir.join("main.kea");
+    std::fs::write(
+        &source_path,
+        "use Alpha.{forward_once}\n\nfn with_forwarder(f: fn(Unique Int) -> Unique Int, @with k: fn(fn(Unique Int) -> Unique Int) -> Unique Int) -> Unique Int\n  k(f)\n\n@fip\nfn call_via_named_import_with_shadow(x: Unique Int, g: fn(Unique Int) -> Unique Int) -> Unique Int\n  with forward_once <- with_forwarder(g)\n  forward_once(x)\n\nfn main() -> Int\n  0\n",
+    )
+    .expect("source write should succeed");
+
+    let err = run_file(&source_path).expect_err(
+        "@fip verifier should reject call-boundary escape through named-import with-binding shadow",
+    );
+    assert!(
+        err.contains("`@fip` verification failed for `call_via_named_import_with_shadow`"),
+        "expected @fip verification failure, got: {err}"
+    );
+    assert!(
+        err.contains("unsupported_call_boundaries=2"),
+        "expected unresolved call-boundary count for with-forwarder + named-import with-shadow path, got: {err}"
+    );
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
 fn compile_rejects_fip_unique_shadowed_forwarder_name_call_escape() {
     let project_dir = temp_workspace_project_dir("kea-cli-fip-unique-shadowed-forwarder-name");
     let src_dir = project_dir.join("src");
