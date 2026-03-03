@@ -22,7 +22,7 @@ pub struct Chunk {
 /// Returns `true` if the first significant token indicates a declaration:
 /// `fn`, `pub fn`, `struct`/`record`, `pub struct`/`pub record`, `enum`, `pub enum`, `type`, `pub type`,
 /// `alias`, `pub alias`, `opaque`, `pub opaque`, `trait`, `pub trait`, `impl`,
-/// `test`, or `import`.
+/// `test`, `import`, or `use`.
 pub fn classify_as_declaration(tokens: &[crate::Token]) -> bool {
     // Skip newlines, doc comments, and leading #[...] blocks to find the
     // first "significant" token. This ensures `/// doc\nstruct Foo { ... }`
@@ -88,6 +88,7 @@ pub fn classify_as_declaration(tokens: &[crate::Token]) -> bool {
     let second = iter.next();
 
     matches!(first, Some(TokenKind::Import))
+        || matches!(first, Some(TokenKind::Use))
         || matches!(first, Some(TokenKind::Struct))
         || matches!(first, Some(TokenKind::Enum))
         || matches!(first, Some(TokenKind::TypeKw))
@@ -397,6 +398,12 @@ mod tests {
         let tokens = crate::lex("effect Log\n  fn log(msg: String) -> Unit", FileId(0))
             .unwrap()
             .0;
+        assert!(classify_as_declaration(&tokens));
+    }
+
+    #[test]
+    fn classify_use_as_declaration() {
+        let tokens = crate::lex("use Foo", FileId(0)).unwrap().0;
         assert!(classify_as_declaration(&tokens));
     }
 

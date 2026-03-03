@@ -138,11 +138,8 @@ pub enum ExprKind {
     /// Scrutinee-free conditional: `cond { condition -> body, _ -> fallback }`.
     Cond { arms: Vec<CondArm> },
 
-    /// For comprehension: `for x in xs, x > 0 { x * 2 } [into Set]`.
+    /// For loop: `for x in xs`.
     For(ForExpr),
-
-    /// Use expression: `use pattern <- expr` or `use <- expr`.
-    Use(UseExpr),
 
     /// `with call` / `with pattern <- call` callback-flattening sugar.
     ///
@@ -419,15 +416,9 @@ pub struct CondArm {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ForExpr {
-    pub clauses: Vec<ForClause>,
+    pub pattern: Pattern,
+    pub source: Box<Expr>,
     pub body: Box<Expr>,
-    pub into_type: Option<Spanned<TypeAnnotation>>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct UseExpr {
-    pub pattern: Option<Pattern>,
-    pub rhs: Box<Expr>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -437,12 +428,6 @@ pub struct HandleClause {
     pub args: Vec<Pattern>,
     pub body: Expr,
     pub span: Span,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum ForClause {
-    Generator { pattern: Pattern, source: Box<Expr> },
-    Guard(Box<Expr>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1053,21 +1038,9 @@ fn collect_free_vars(
         }
         ExprKind::For(for_expr) => {
             let mut scoped_bound = bound.clone();
-            for clause in &for_expr.clauses {
-                match clause {
-                    ForClause::Generator { pattern, source } => {
-                        collect_free_vars(&source.node, free, &mut scoped_bound);
-                        collect_pattern_bindings(&pattern.node, &mut scoped_bound);
-                    }
-                    ForClause::Guard(guard) => {
-                        collect_free_vars(&guard.node, free, &mut scoped_bound);
-                    }
-                }
-            }
+            collect_free_vars(&for_expr.source.node, free, &mut scoped_bound);
+            collect_pattern_bindings(&for_expr.pattern.node, &mut scoped_bound);
             collect_free_vars(&for_expr.body.node, free, &mut scoped_bound);
-        }
-        ExprKind::Use(use_expr) => {
-            collect_free_vars(&use_expr.rhs.node, free, bound);
         }
         ExprKind::With {
             call,

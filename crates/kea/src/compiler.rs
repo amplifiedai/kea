@@ -1719,7 +1719,6 @@ fn const_expr_references(
         | ExprKind::Case { .. }
         | ExprKind::Cond { .. }
         | ExprKind::For(_)
-        | ExprKind::Use(_)
         | ExprKind::With { .. }
         | ExprKind::Handle { .. }
         | ExprKind::Resume { .. }
@@ -1778,7 +1777,6 @@ fn const_expr_supported(expr: &Expr) -> bool {
         | ExprKind::Case { .. }
         | ExprKind::Cond { .. }
         | ExprKind::For(_)
-        | ExprKind::Use(_)
         | ExprKind::With { .. }
         | ExprKind::Handle { .. }
         | ExprKind::Resume { .. }

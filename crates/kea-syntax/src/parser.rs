@@ -2679,14 +2679,9 @@ impl Parser {
             return self.cond_expr();
         }
 
-        // For comprehension: for x in xs, x > 0 { x * 2 } [into Set]
+        // For loop: for x in xs
         if self.check_ident("for") {
             return self.for_expr();
-        }
-
-        // Use expression: use pattern <- expr / use <- expr
-        if self.check(&TokenKind::Use) {
-            return self.use_expr();
         }
 
         // Kea v0 does not include frame literals.
@@ -3471,133 +3466,32 @@ impl Parser {
         self.advance(); // consume `for`
         self.skip_newlines();
 
-        let first_clause = self.parse_for_generator_clause()?;
-        let (first_clause, first_guard) = split_for_generator_when_guard(first_clause);
-        let mut clauses = vec![first_clause];
-        if let Some(guard) = first_guard {
-            clauses.push(ForClause::Guard(Box::new(guard)));
-        } else {
-            self.skip_newlines();
-            if self.match_token(&TokenKind::When) {
-                self.skip_newlines();
-                clauses.push(ForClause::Guard(Box::new(self.expression()?)));
-            }
-        }
+        let (pattern, source) = self.parse_for_generator()?;
 
-        loop {
-            self.skip_newlines();
-            if !self.match_token(&TokenKind::Comma) {
-                break;
-            }
-            self.skip_newlines();
-
-            // Allow trailing comma before the body block.
-            if self.check(&TokenKind::Indent) {
-                break;
-            }
-
-            if let Some(generator) = self.try_parse_for_generator_clause() {
-                let (generator, inline_guard) = split_for_generator_when_guard(generator);
-                clauses.push(generator);
-                if let Some(guard) = inline_guard {
-                    clauses.push(ForClause::Guard(Box::new(guard)));
-                } else {
-                    self.skip_newlines();
-                    if self.match_token(&TokenKind::When) {
-                        self.skip_newlines();
-                        clauses.push(ForClause::Guard(Box::new(self.expression()?)));
-                    }
-                }
-                continue;
-            }
-
-            if self.match_token(&TokenKind::When) {
-                self.skip_newlines();
-                clauses.push(ForClause::Guard(Box::new(self.expression()?)));
-                continue;
-            }
-
-            self.error_at_current("expected generator clause or `when` guard in for comprehension");
-            return None;
-        }
-
-        let body = self.parse_block_expr("expected block before for-comprehension body")?;
-        let mut end = body.span;
-
-        self.skip_newlines();
-        let into_type = if self.check_ident("into") {
-            self.advance(); // consume `into`
-            self.skip_newlines();
-            let ann = self.type_annotation()?;
-            end = ann.span;
-            Some(ann)
-        } else {
-            None
-        };
+        let body = self.parse_block_expr("expected block body for `for` loop")?;
+        let end = body.span;
 
         Some(Spanned::new(
             ExprKind::For(ForExpr {
-                clauses,
-                body: Box::new(body),
-                into_type,
-            }),
-            start.merge(end),
-        ))
-    }
-
-    fn use_expr(&mut self) -> Option<Expr> {
-        let start = self.current_span();
-        self.advance(); // consume `use`
-        self.skip_newlines();
-
-        let pattern = if self.match_token(&TokenKind::LeftArrow) {
-            None
-        } else {
-            let pattern = self.pattern()?;
-            self.skip_newlines();
-            self.expect(&TokenKind::LeftArrow, "expected '<-' in use expression")?;
-            Some(pattern)
-        };
-
-        self.skip_newlines();
-        let rhs = self.expression()?;
-        let end = rhs.span;
-
-        Some(Spanned::new(
-            ExprKind::Use(UseExpr {
                 pattern,
-                rhs: Box::new(rhs),
+                source: Box::new(source),
+                body: Box::new(body),
             }),
             start.merge(end),
         ))
     }
 
-    fn try_parse_for_generator_clause(&mut self) -> Option<ForClause> {
-        let save_pos = self.pos;
-        let save_errors = self.errors.len();
-        let parsed = self.parse_for_generator_clause();
-        if parsed.is_some() {
-            return parsed;
-        }
-        self.pos = save_pos;
-        self.errors.truncate(save_errors);
-        None
-    }
-
-    fn parse_for_generator_clause(&mut self) -> Option<ForClause> {
+    fn parse_for_generator(&mut self) -> Option<(Pattern, Expr)> {
         let pattern = self.pattern()?;
         self.skip_newlines();
         if !self.check(&TokenKind::In) {
-            self.error_at_current("expected `in` in for generator clause");
+            self.error_at_current("expected `in` in for loop");
             return None;
         }
         self.advance(); // consume `in`
         self.skip_newlines();
         let source = self.expression()?;
-        Some(ForClause::Generator {
-            pattern,
-            source: Box::new(source),
-        })
+        Some((pattern, source))
     }
 
     fn case_arm(&mut self) -> Option<CaseArm> {
@@ -5343,22 +5237,6 @@ fn token_to_binop(kind: &TokenKind) -> Option<BinOp> {
         TokenKind::In => Some(BinOp::In),
         // NotIn is handled in the pratt loop (two-token compound)
         _ => None,
-    }
-}
-
-fn split_for_generator_when_guard(clause: ForClause) -> (ForClause, Option<Expr>) {
-    match clause {
-        ForClause::Generator { pattern, source } => match source.node {
-            ExprKind::WhenGuard { body, condition } => (
-                ForClause::Generator {
-                    pattern,
-                    source: body,
-                },
-                Some(*condition),
-            ),
-            _ => (ForClause::Generator { pattern, source }, None),
-        },
-        other => (other, None),
     }
 }
 
@@ -8990,101 +8868,26 @@ mod tests {
         let expr = parse("for x in [1, 2, 3]\n  x + 1");
         match &expr.node {
             ExprKind::For(f) => {
-                assert_eq!(f.clauses.len(), 1);
-                match &f.clauses[0] {
-                    ForClause::Generator { pattern, source } => {
-                        assert!(matches!(&pattern.node, PatternKind::Var(name) if name == "x"));
-                        assert!(matches!(&source.node, ExprKind::List(_)));
-                    }
-                    other => panic!("expected generator clause, got {other:?}"),
-                }
-                assert!(f.into_type.is_none());
+                assert!(matches!(&f.pattern.node, PatternKind::Var(name) if name == "x"));
+                assert!(matches!(&f.source.node, ExprKind::List(_)));
             }
             other => panic!("expected For expression, got {other:?}"),
         }
     }
 
     #[test]
-    fn parse_for_simple_generator_indented_body() {
-        let expr = parse("for x in [1, 2, 3]\n  x + 1");
-        match &expr.node {
-            ExprKind::For(f) => {
-                assert_eq!(f.clauses.len(), 1);
-                assert!(f.into_type.is_none());
-            }
-            other => panic!("expected For expression, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn parse_for_generators_guards_and_into() {
-        let expr = parse("for x in xs when x > 0, y in ys when y != x\n  (x, y)\ninto Set");
-        match &expr.node {
-            ExprKind::For(f) => {
-                assert_eq!(f.clauses.len(), 4);
-                assert!(matches!(f.clauses[0], ForClause::Generator { .. }));
-                assert!(matches!(f.clauses[1], ForClause::Guard(_)));
-                assert!(matches!(f.clauses[2], ForClause::Generator { .. }));
-                assert!(matches!(f.clauses[3], ForClause::Guard(_)));
-                let into = f.into_type.as_ref().expect("expected into type");
-                assert!(matches!(&into.node, TypeAnnotation::Named(name) if name == "Set"));
-            }
-            other => panic!("expected For expression, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn parse_for_pattern_generator_clause() {
+    fn parse_for_pattern_generator() {
         let expr = parse("for Ok(x) in results\n  x");
         match &expr.node {
-            ExprKind::For(f) => match &f.clauses[0] {
-                ForClause::Generator { pattern, .. } => match &pattern.node {
-                    PatternKind::Constructor { name, args, .. } => {
-                        assert_eq!(name, "Ok");
-                        assert_eq!(args.len(), 1);
-                    }
-                    other => panic!("expected constructor pattern, got {other:?}"),
-                },
-                other => panic!("expected generator clause, got {other:?}"),
+            ExprKind::For(f) => match &f.pattern.node {
+                PatternKind::Constructor { name, args, .. } => {
+                    assert_eq!(name, "Ok");
+                    assert_eq!(args.len(), 1);
+                }
+                other => panic!("expected constructor pattern, got {other:?}"),
             },
             other => panic!("expected For expression, got {other:?}"),
         }
-    }
-
-    #[test]
-    fn parse_use_with_binding_pattern() {
-        let expr = parse("use value <- load()");
-        match &expr.node {
-            ExprKind::Use(u) => {
-                match u.pattern.as_ref() {
-                    Some(pattern) => {
-                        assert!(matches!(&pattern.node, PatternKind::Var(name) if name == "value"));
-                    }
-                    None => panic!("expected binding pattern"),
-                }
-                assert!(matches!(&u.rhs.node, ExprKind::Call { .. }));
-            }
-            other => panic!("expected Use expression, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn parse_use_without_binding() {
-        let expr = parse("use <- lock()");
-        match &expr.node {
-            ExprKind::Use(u) => {
-                assert!(u.pattern.is_none());
-                assert!(matches!(&u.rhs.node, ExprKind::Call { .. }));
-            }
-            other => panic!("expected Use expression, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn parse_use_requires_left_arrow() {
-        let errors = parse_err("use value = lock()");
-        let msg = format!("{errors:?}");
-        assert!(msg.contains("expected '<-' in use expression"), "got {msg}");
     }
 
     #[test]

@@ -700,12 +700,6 @@ fn check_unique_moves_ast_expr(
         | ExprKind::StreamBlock { body: expr, .. } => {
             check_unique_moves_ast_expr(expr, state, diagnostics, borrow_param_map);
         }
-        ExprKind::Use(kea_ast::UseExpr { pattern, rhs }) => {
-            check_unique_moves_ast_expr(rhs, state, diagnostics, borrow_param_map);
-            if let Some(name) = pattern.as_ref().and_then(|pat| pat.node.as_var()) {
-                state.insert(name.to_string(), MoveBindingState::default());
-            }
-        }
         ExprKind::Constructor { args, .. } => {
             for arg in args {
                 check_unique_moves_ast_expr(&arg.value, state, diagnostics, borrow_param_map);
@@ -752,18 +746,9 @@ fn check_unique_moves_ast_expr(
             merge_case_arm_move_states(expr.span, &before, &arm_states, state, diagnostics);
         }
         ExprKind::For(for_expr) => {
-            for clause in &for_expr.clauses {
-                match clause {
-                    kea_ast::ForClause::Generator { pattern, source } => {
-                        check_unique_moves_ast_expr(source, state, diagnostics, borrow_param_map);
-                        if let Some(name) = pattern.node.as_var() {
-                            state.insert(name.to_string(), MoveBindingState::default());
-                        }
-                    }
-                    kea_ast::ForClause::Guard(guard) => {
-                        check_unique_moves_ast_expr(guard, state, diagnostics, borrow_param_map);
-                    }
-                }
+            check_unique_moves_ast_expr(&for_expr.source, state, diagnostics, borrow_param_map);
+            if let Some(name) = for_expr.pattern.node.as_var() {
+                state.insert(name.to_string(), MoveBindingState::default());
             }
             check_unique_moves_ast_expr(&for_expr.body, state, diagnostics, borrow_param_map);
         }

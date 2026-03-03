@@ -173,7 +173,7 @@ warnings: []
 
 ## for_expr
 source:
-|for·x·in·xs·when·x·>·0
+|for·x·in·xs
 |··x·+·1
 status: ok
 tokens:
@@ -181,30 +181,12 @@ tokens:
 - Ident("x")
 - In
 - Ident("xs")
-- When
-- Ident("x")
-- Gt
-- Int(0)
 - Newline
 - Indent
 - Ident("x")
 - Plus
 - Int(1)
 - Dedent
-- Eof
-warnings: []
-
-## use_expr
-source:
-|use·value·<-·load()
-status: ok
-tokens:
-- Use
-- Ident("value")
-- LeftArrow
-- Ident("load")
-- LParen
-- RParen
 - Eof
 warnings: []
 

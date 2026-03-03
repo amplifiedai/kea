@@ -24,7 +24,7 @@ struct ParseCase {
 
 #[test]
 fn lexer_layout_snapshot_corpus() {
-    let cases: [(&str, &str); 18] = [
+    let cases: [(&str, &str); 17] = [
         ("fn_decl", "fn add(x, y) -> Int\n  x + y"),
         ("if_else_block", "if ready\n  start()\nelse\n  wait()"),
         ("case_block", "case x\n  Some(v) -> v\n  _ -> 0"),
@@ -35,8 +35,7 @@ fn lexer_layout_snapshot_corpus() {
             "impl_decl",
             "Int as Show\n  fn show(self) -> String\n    \"int\"",
         ),
-        ("for_expr", "for x in xs when x > 0\n  x + 1"),
-        ("use_expr", "use value <- load()"),
+        ("for_expr", "for x in xs\n  x + 1"),
         (
             "spawn_with_config",
             "spawn Counter { count: 0 } with\n  mailbox_size: 100",
@@ -70,7 +69,7 @@ fn lexer_layout_snapshot_corpus() {
 
 #[test]
 fn parser_snapshot_corpus() {
-    let cases: [ParseCase; 28] = [
+    let cases: [ParseCase; 26] = [
         ParseCase {
             name: "module_fn_decl",
             mode: ParseMode::Module,
@@ -170,16 +169,6 @@ fn parser_snapshot_corpus() {
             name: "expr_record_pattern",
             mode: ParseMode::Expr,
             source: "case x\n  User { name, .. } -> name",
-        },
-        ParseCase {
-            name: "expr_for_generators_guards_into",
-            mode: ParseMode::Expr,
-            source: "for x in xs when x > 0, y in ys when y != x\n  (x, y)\ninto Set",
-        },
-        ParseCase {
-            name: "expr_use_binding",
-            mode: ParseMode::Expr,
-            source: "use value <- load()",
         },
         ParseCase {
             name: "expr_spawn_with_config",

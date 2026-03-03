@@ -808,10 +808,10 @@ impl Unifier {
         } else {
             Vec::new()
         };
-        // Preserve type annotations (spawn_kinds, evidence_sites, use_desugared,
-        // for_desugared, resolved_variants, etc.) across scope rollback. These
-        // are semantic decisions that the evaluator needs regardless of whether
-        // the unification scope commits or rolls back.
+        // Preserve type annotations (spawn_kinds, evidence_sites,
+        // resolved_variants, etc.) across scope rollback. These are semantic
+        // decisions that the evaluator needs regardless of whether the
+        // unification scope commits or rolls back.
         let annotations = std::mem::take(&mut self.type_annotations);
 
         *self = *scope.snapshot;
@@ -825,12 +825,6 @@ impl Unifier {
         }
         for (span, packs) in annotations.existential_packs {
             self.type_annotations.existential_packs.insert(span, packs);
-        }
-        for (span, lowered) in annotations.for_desugared {
-            self.type_annotations.for_desugared.insert(span, lowered);
-        }
-        for (span, lowered) in annotations.use_desugared {
-            self.type_annotations.use_desugared.insert(span, lowered);
         }
         for (span, kind) in annotations.spawn_kinds {
             self.type_annotations.spawn_kinds.insert(span, kind);
