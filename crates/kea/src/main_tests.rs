@@ -3403,6 +3403,32 @@ fn compile_and_execute_fip_unique_higher_order_forwarder_named_import_call_exit_
 
 #[test]
 #[cfg(not(target_os = "windows"))]
+fn compile_and_execute_fip_unique_higher_order_named_import_wrapper_call_exit_code() {
+    let project_dir = temp_workspace_project_dir("kea-cli-fip-unique-higher-order-named-wrapper");
+    let src_dir = project_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+    let source_path = src_dir.join("main.kea");
+    std::fs::write(
+        src_dir.join("alpha.kea"),
+        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_forwarder(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  f(x)\n",
+    )
+    .expect("alpha module write should succeed");
+    std::fs::write(
+        &source_path,
+        "use Alpha.{apply_forwarder, forward_once}\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_forwarder(forward_once, x)\n\nfn main() -> Int\n  0\n",
+    )
+    .expect("source write should succeed");
+
+    let run = run_file(&source_path).expect(
+        "@fip verifier should accept named-import higher-order wrapper calls with known-safe function items",
+    );
+    assert_eq!(run.exit_code, 0);
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
 fn compile_and_execute_fip_unique_higher_order_forwarder_alias_chain_call_exit_code() {
     let source_path = write_temp_source(
         "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_alias(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = x\n  f(y)\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_alias(forward_once, x)\n\nfn main() -> Int\n  0\n",
