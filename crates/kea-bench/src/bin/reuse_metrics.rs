@@ -14,6 +14,14 @@ struct KernelMetric {
     trmc_candidate_count: usize,
     alloc_count: usize,
     release_count: usize,
+    focus_alloc_count: Option<usize>,
+    focus_release_count: Option<usize>,
+}
+
+struct KernelSpec {
+    name: &'static str,
+    source: &'static str,
+    focus_functions: &'static [&'static str],
 }
 
 struct Totals {
@@ -172,6 +180,10 @@ fn main() -> Int
     Node(head, _) -> head
 "#;
 
+const NO_FOCUS_FUNCTIONS: &[&str] = &[];
+const MIXED_JOIN_UNIT_FOCUS_FUNCTIONS: &[&str] = &["consume"];
+const LOOP_MIXED_UNIT_WALK_FOCUS_FUNCTIONS: &[&str] = &["walk"];
+
 fn main() {
     if let Err(err) = run() {
         eprintln!("{err}");
@@ -181,16 +193,56 @@ fn main() {
 
 fn run() -> Result<(), String> {
     let metrics = vec![
-        compile_kernel("record_build", RECORD_REUSE_SOURCE)?,
-        compile_kernel("sum_build", SUM_REUSE_SOURCE)?,
-        compile_kernel("loop_backedge_rotate", LOOP_BACKEDGE_REUSE_SOURCE)?,
-        compile_kernel("recursive_churn", RECURSIVE_CHURN_SOURCE)?,
-        compile_kernel("mixed_sum_if_join", MIXED_SUM_IF_JOIN_SOURCE)?,
-        compile_kernel("mixed_join_unit", MIXED_JOIN_UNIT_SOURCE)?,
-        compile_kernel("loop_mixed_unit_walk", LOOP_MIXED_UNIT_WALK_SOURCE)?,
-        compile_kernel("mixed_join_token", MIXED_JOIN_TOKEN_SOURCE)?,
-        compile_kernel("trmc_chain", TRMC_CHAIN_SOURCE)?,
-        compile_kernel("trmc_chain_weighted", TRMC_CHAIN_WEIGHTED_SOURCE)?,
+        compile_kernel(&KernelSpec {
+            name: "record_build",
+            source: RECORD_REUSE_SOURCE,
+            focus_functions: NO_FOCUS_FUNCTIONS,
+        })?,
+        compile_kernel(&KernelSpec {
+            name: "sum_build",
+            source: SUM_REUSE_SOURCE,
+            focus_functions: NO_FOCUS_FUNCTIONS,
+        })?,
+        compile_kernel(&KernelSpec {
+            name: "loop_backedge_rotate",
+            source: LOOP_BACKEDGE_REUSE_SOURCE,
+            focus_functions: NO_FOCUS_FUNCTIONS,
+        })?,
+        compile_kernel(&KernelSpec {
+            name: "recursive_churn",
+            source: RECURSIVE_CHURN_SOURCE,
+            focus_functions: NO_FOCUS_FUNCTIONS,
+        })?,
+        compile_kernel(&KernelSpec {
+            name: "mixed_sum_if_join",
+            source: MIXED_SUM_IF_JOIN_SOURCE,
+            focus_functions: NO_FOCUS_FUNCTIONS,
+        })?,
+        compile_kernel(&KernelSpec {
+            name: "mixed_join_unit",
+            source: MIXED_JOIN_UNIT_SOURCE,
+            focus_functions: MIXED_JOIN_UNIT_FOCUS_FUNCTIONS,
+        })?,
+        compile_kernel(&KernelSpec {
+            name: "loop_mixed_unit_walk",
+            source: LOOP_MIXED_UNIT_WALK_SOURCE,
+            focus_functions: LOOP_MIXED_UNIT_WALK_FOCUS_FUNCTIONS,
+        })?,
+        compile_kernel(&KernelSpec {
+            name: "mixed_join_token",
+            source: MIXED_JOIN_TOKEN_SOURCE,
+            focus_functions: NO_FOCUS_FUNCTIONS,
+        })?,
+        compile_kernel(&KernelSpec {
+            name: "trmc_chain",
+            source: TRMC_CHAIN_SOURCE,
+            focus_functions: NO_FOCUS_FUNCTIONS,
+        })?,
+        compile_kernel(&KernelSpec {
+            name: "trmc_chain_weighted",
+            source: TRMC_CHAIN_WEIGHTED_SOURCE,
+            focus_functions: NO_FOCUS_FUNCTIONS,
+        })?,
     ];
     let total_reuse: usize = metrics.iter().map(|m| m.reuse_count).sum();
     let total_reuse_token_candidates: usize =
@@ -231,11 +283,11 @@ fn run() -> Result<(), String> {
     Ok(())
 }
 
-fn compile_kernel(name: &'static str, source: &str) -> Result<KernelMetric, String> {
-    let ctx = compile_module(source, FileId(0))
-        .map_err(|err| format!("failed to compile benchmark kernel `{name}`: {err}"))?;
+fn compile_kernel(spec: &KernelSpec) -> Result<KernelMetric, String> {
+    let ctx = compile_module(spec.source, FileId(0))
+        .map_err(|err| format!("failed to compile benchmark kernel `{}`: {err}", spec.name))?;
     let artifact = emit_object(&ctx, CodegenMode::Jit)
-        .map_err(|err| format!("failed to lower benchmark kernel `{name}`: {err}"))?;
+        .map_err(|err| format!("failed to lower benchmark kernel `{}`: {err}", spec.name))?;
     let reuse_count = artifact
         .stats
         .per_function
@@ -284,9 +336,31 @@ fn compile_kernel(name: &'static str, source: &str) -> Result<KernelMetric, Stri
         .iter()
         .map(|f| f.release_count)
         .sum();
+    let (focus_alloc_count, focus_release_count) = if spec.focus_functions.is_empty() {
+        (None, None)
+    } else {
+        let focused = artifact
+            .stats
+            .per_function
+            .iter()
+            .filter(|f| {
+                spec.focus_functions.iter().any(|focus| {
+                    f.function == *focus || f.function.ends_with(&format!(".{focus}"))
+                })
+            })
+            .collect::<Vec<_>>();
+        if focused.is_empty() {
+            (Some(0), Some(0))
+        } else {
+            (
+                Some(focused.iter().map(|f| f.alloc_count).sum()),
+                Some(focused.iter().map(|f| f.release_count).sum()),
+            )
+        }
+    };
 
     Ok(KernelMetric {
-        name,
+        name: spec.name,
         reuse_count,
         reuse_token_candidate_count,
         reuse_token_produced_count,
@@ -295,6 +369,8 @@ fn compile_kernel(name: &'static str, source: &str) -> Result<KernelMetric, Stri
         trmc_candidate_count,
         alloc_count,
         release_count,
+        focus_alloc_count,
+        focus_release_count,
     })
 }
 
@@ -310,7 +386,7 @@ fn render_metrics_json(metrics: &[KernelMetric], totals: &Totals) -> String {
                 0.0
             };
             format!(
-                "    {{\"name\":\"{}\",\"reuse_count\":{},\"reuse_token_candidate_count\":{},\"reuse_token_produced_count\":{},\"reuse_token_consumed_count\":{},\"reuse_token_coverage_pct\":{:.3},\"stack_sum_mixed_excluded_count\":{},\"trmc_candidate_count\":{},\"alloc_count\":{},\"release_count\":{}}}",
+                "    {{\"name\":\"{}\",\"reuse_count\":{},\"reuse_token_candidate_count\":{},\"reuse_token_produced_count\":{},\"reuse_token_consumed_count\":{},\"reuse_token_coverage_pct\":{:.3},\"stack_sum_mixed_excluded_count\":{},\"trmc_candidate_count\":{},\"alloc_count\":{},\"release_count\":{},\"focus_alloc_count\":{},\"focus_release_count\":{}}}",
                 metric.name,
                 metric.reuse_count,
                 metric.reuse_token_candidate_count,
@@ -320,7 +396,15 @@ fn render_metrics_json(metrics: &[KernelMetric], totals: &Totals) -> String {
                 metric.stack_sum_mixed_excluded_count,
                 metric.trmc_candidate_count,
                 metric.alloc_count,
-                metric.release_count
+                metric.release_count,
+                metric
+                    .focus_alloc_count
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "null".to_string()),
+                metric
+                    .focus_release_count
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "null".to_string())
             )
         })
         .collect::<Vec<_>>()
