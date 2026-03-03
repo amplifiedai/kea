@@ -23355,3 +23355,45 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - The full-soundness constructor path now has direct consumer-facing projections at the master layer across both generic and pass-through routes.
+
+### 2026-03-04: added integrated full-route capstone witness across contrast/boundary/status/master layers
+
+**Context**: Added a top-level integration package for the full-soundness constructor path in `Kea/Typing.lean`:
+- `NativeHandlerFullRouteIntegrationCapstone`
+- `native_handler_full_route_integration_capstone`
+- `native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_prop`
+- `native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone`
+
+This creates one citable witness object that carries full-route consequences across contrast, boundary, boundary-status, and master-suite surfaces.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- Coherent handler should type-check.
+- Mismatch effect-leak handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. Coherent handler (`probe_coherent_20260304at`) -> `ok`.
+2. Mismatch effect-leak handler (`probe_mismatch_20260304at`) -> `error`, `E0001`.
+3. Bad resume payload (`probe_bad_resume_20260304at`) -> `error`, `E0001`.
+4. Out-of-handler resume (`probe_outside_resume_20260304at`) -> `error`, `E0012`.
+5. Forged-name out-of-handler resume (`probe_forged_resume_ctx_20260304at`) -> `error`, `E0012`.
+6. Double-resume clause (`probe_double_resume_20260304at`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the integrated full-route capstone structure and its generic + pass-through constructors.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`: theorem/structure names listed in Context above.
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Full-route consequences are now available as one top-level theorem object rather than only as dispersed route wrappers.

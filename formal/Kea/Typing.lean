@@ -9174,6 +9174,93 @@ theorem native_handler_step_ext_with_passThroughMismatch_master_suite_of_core_so
       clauseSem nativeHandlerMismatchPassThroughSem)
 
 /--
+Integrated capstone witness for the full mismatch-soundness constructor route:
+one object carrying route-level consequences across contrast, boundary,
+status, and master-suite layers.
+-/
+structure NativeHandlerFullRouteIntegrationCapstone
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) : Prop where
+  fullRoute :
+    native_handler_step_ext_with_mismatch_full_soundness_capstone_route_prop
+      clauseSem mismatchSem
+  contrast :
+    native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_prop
+      clauseSem mismatchSem
+  contrastStrengthened :
+    native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_strengthened_prop
+      clauseSem mismatchSem
+  boundary :
+    NativeHandlerSoundnessBoundaryCapstone clauseSem mismatchSem
+  boundaryStrengthened :
+    NativeHandlerSoundnessBoundaryCapstoneStrengthened clauseSem mismatchSem
+  status :
+    NativeHandlerSoundnessBoundaryStatusCapstone clauseSem mismatchSem
+  statusStrengthened :
+    NativeHandlerSoundnessBoundaryStatusCapstoneStrengthened clauseSem mismatchSem
+  master :
+    ∀ bodyStep,
+      native_core_soundness_prop bodyStep →
+      native_handler_step_ext_with_mismatch_master_suite_prop
+        clauseSem mismatchSem bodyStep
+
+/--
+Canonical integrated capstone witness from the full mismatch-soundness route.
+-/
+theorem native_handler_full_route_integration_capstone
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) :
+    NativeHandlerFullRouteIntegrationCapstone clauseSem mismatchSem := by
+  refine {
+    fullRoute :=
+      native_handler_step_ext_with_mismatch_full_soundness_capstone_route_of_core_soundness_and_strict_top_typing
+        clauseSem mismatchSem
+    contrast :=
+      native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_via_full_soundness_capstone
+        clauseSem mismatchSem
+    contrastStrengthened :=
+      native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_strengthened_via_full_soundness_capstone
+        clauseSem mismatchSem
+    boundary :=
+      native_handler_soundness_boundary_capstone_of_core_soundness_and_strict_top_typing_via_full_soundness_capstone
+        clauseSem mismatchSem
+    boundaryStrengthened :=
+      native_handler_soundness_boundary_capstone_strengthened_of_core_soundness_and_strict_top_typing_via_full_soundness_capstone
+        clauseSem mismatchSem
+    status :=
+      native_handler_soundness_boundary_status_capstone_of_core_soundness_and_strict_top_typing_via_full_soundness_capstone
+        clauseSem mismatchSem
+    statusStrengthened :=
+      native_handler_soundness_boundary_status_capstone_strengthened_of_core_soundness_and_strict_top_typing_via_full_soundness_capstone
+        clauseSem mismatchSem
+    master := ?_
+  }
+  intro bodyStep h_core
+  exact native_handler_step_ext_with_mismatch_master_suite_of_full_soundness_capstone_route
+    clauseSem mismatchSem bodyStep h_core
+    (native_handler_step_ext_with_mismatch_full_soundness_capstone_route_of_core_soundness_and_strict_top_typing
+      clauseSem mismatchSem)
+
+/--
+Concrete pass-through specialization of the integrated full-route capstone
+witness.
+-/
+def native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_prop
+    (clauseSem : NativeHandlerClauseSem) : Prop :=
+  NativeHandlerFullRouteIntegrationCapstone
+    clauseSem nativeHandlerMismatchPassThroughSem
+
+/--
+Build the concrete pass-through integrated full-route capstone witness.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone
+    (clauseSem : NativeHandlerClauseSem) :
+    native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_prop
+      clauseSem := by
+  exact native_handler_full_route_integration_capstone
+    clauseSem nativeHandlerMismatchPassThroughSem
+
+/--
 Concrete pass-through specialization of the core+strict-top contrast route.
 -/
 def native_handler_step_ext_with_passThroughMismatch_core_strict_top_contrast_route_prop
