@@ -5001,6 +5001,108 @@ impl FunctionLoweringCtx {
         self.emit_closure_value(entry_name, Vec::new())
     }
 
+    /// Lift a `catch` body to a local function and call it directly with
+    /// `capture_fail_result: true`. This avoids the thin-closure indirect-call
+    /// path that produces incorrect results on x86_64.
+    fn lower_catch_body_as_local_call(&mut self, caught: &HirExpr) -> Option<MirValueId> {
+        let fail_effects = EffectRow::closed(vec![(Label::new("Fail"), Type::Dynamic)]);
+        // Collect captures: variables referenced in the caught expression
+        // that are defined in the parent scope.
+        let mut var_refs = BTreeSet::new();
+        collect_hir_var_refs(caught, &mut var_refs);
+        let captures: Vec<(String, Type, MirValueId)> = var_refs
+            .into_iter()
+            .filter(|name| self.vars.contains_key(name))
+            .map(|name| {
+                let ty = self.var_types.get(&name).cloned().unwrap_or(Type::Dynamic);
+                let value = self
+                    .vars
+                    .get(&name)
+                    .cloned()
+                    .expect("capture values must exist in lowering scope");
+                (name, ty, value)
+            })
+            .collect();
+
+        let catch_fn_name = format!(
+            "{}::catch${}",
+            self.function_name, self.next_lifted_lambda_id
+        );
+        self.next_lifted_lambda_id = self.next_lifted_lambda_id.saturating_add(1);
+
+        let lifted_params: Vec<kea_hir::HirParam> = captures
+            .iter()
+            .map(|(name, _, _)| kea_hir::HirParam {
+                name: Some(name.clone()),
+                span: caught.span,
+            })
+            .collect();
+        let lifted_fn_ty = FunctionType::with_effects(
+            captures.iter().map(|(_, ty, _)| ty.clone()).collect(),
+            caught.ty.clone(),
+            fail_effects.clone(),
+        );
+        let lifted = HirFunction {
+            name: catch_fn_name.clone(),
+            params: lifted_params,
+            body: caught.clone(),
+            ty: Type::Function(lifted_fn_ty),
+            effects: fail_effects,
+            span: caught.span,
+        };
+
+        let mut known = self.known_functions.clone();
+        known.insert(catch_fn_name.clone());
+        let mut known_types = self.known_function_types.clone();
+        known_types.insert(catch_fn_name.clone(), lifted.ty.clone());
+
+        // Collect dispatch effects from the caught body.
+        let mut dispatch_set = BTreeSet::new();
+        collect_hir_dispatch_effect_ops(caught, &self.effect_operations, &mut dispatch_set);
+        let dispatch_effects: Vec<String> = dispatch_set.into_iter().collect();
+        let mut known_dispatch_effects = self.known_function_dispatch_effects.clone();
+        if !dispatch_effects.is_empty() {
+            known_dispatch_effects.insert(catch_fn_name.clone(), dispatch_effects.clone());
+        }
+
+        let lowered_functions = lower_hir_function(
+            &lifted,
+            &self.layouts,
+            &known,
+            &known_types,
+            &self.known_const_exprs,
+            &self.intrinsic_symbols,
+            &self.effect_operations,
+            &known_dispatch_effects,
+            &self.lambda_factories,
+        );
+        for lowered in lowered_functions {
+            self.register_generated_function(lowered);
+        }
+
+        // Emit a direct local call with capture_fail_result: true.
+        let mut call_args = Vec::new();
+        let mut call_arg_types = Vec::new();
+        for (_, ty, value) in &captures {
+            call_args.push(value.clone());
+            call_arg_types.push(ty.clone());
+        }
+
+        let call_result = self.new_value();
+        self.emit_inst(MirInst::Call {
+            callee: MirCallee::Local(catch_fn_name),
+            args: call_args,
+            arg_types: call_arg_types,
+            result: Some(call_result.clone()),
+            ret_type: caught.ty.clone(),
+            callee_fail_result_abi: true,
+            capture_fail_result: true,
+            cc_manifest_id: "default".to_string(),
+        });
+
+        Some(call_result)
+    }
+
     fn lower_lambda_to_closure_value(
         &mut self,
         expr: &HirExpr,
@@ -5506,28 +5608,7 @@ impl FunctionLoweringCtx {
                 } else if let HirExprKind::Call { func, args } = &caught.kind {
                     self.lower_call_expr(caught, func, args, true)?
                 } else {
-                    let wrapped_fn_ty = Type::Function(FunctionType::with_effects(
-                        vec![],
-                        caught.ty.clone(),
-                        EffectRow::closed(vec![(Label::new("Fail"), Type::Dynamic)]),
-                    ));
-                    let wrapped_lambda = HirExpr {
-                        kind: HirExprKind::Lambda {
-                            params: Vec::new(),
-                            body: Box::new(caught.as_ref().clone()),
-                        },
-                        ty: wrapped_fn_ty,
-                        span: caught.span,
-                    };
-                    let wrapped_call = HirExpr {
-                        kind: HirExprKind::Call {
-                            func: Box::new(wrapped_lambda.clone()),
-                            args: Vec::new(),
-                        },
-                        ty: caught.ty.clone(),
-                        span: caught.span,
-                    };
-                    self.lower_call_expr(&wrapped_call, &wrapped_lambda, &[], true)?
+                    self.lower_catch_body_as_local_call(caught)?
                 };
                 self.sum_value_types
                     .insert(result.clone(), "Result".to_string());
