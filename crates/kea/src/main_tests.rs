@@ -3426,6 +3426,24 @@ fn compile_and_execute_fip_unique_higher_order_forwarder_combo_case_with_benign_
 
 #[test]
 #[cfg(not(target_os = "windows"))]
+fn compile_and_execute_fip_unique_higher_order_forwarder_combo_mixed_if_case_with_benign_lets_exit_code(
+) {
+    let source_path = write_temp_source(
+        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_combo_mixed(flag: Bool, inner: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed = if flag\n    7\n  else\n    8\n  let g = case flag\n    true ->\n      if inner\n        f\n      else\n        f\n    false ->\n      f\n  let y = if flag\n    case inner\n      true ->\n        x\n      false ->\n        x\n  else\n    x\n  let out0 = g(y)\n  let keep = seed\n  let out1 = if inner\n    case flag\n      true ->\n        out0\n      false ->\n        out0\n  else\n    out0\n  let out2 = out1\n  out2\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_combo_mixed(true, false, forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "kea-cli-fip-unique-higher-order-forwarder-combo-mixed-if-case-benign",
+        "kea",
+    );
+
+    let run = run_file(&source_path).expect(
+        "@fip verifier should accept wrappers that combine nested call-free if/case alias shaping with benign prelude/result lets",
+    );
+    assert_eq!(run.exit_code, 0);
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
 fn compile_and_execute_fip_unique_higher_order_forwarder_result_alias_with_benign_noncall_let_exit_code(
 ) {
     let source_path = write_temp_source(
