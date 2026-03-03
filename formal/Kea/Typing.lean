@@ -2817,6 +2817,32 @@ theorem native_handler_step_ext_with_mismatch_progress_assumption_iff_strict_typ
       (native_handler_scoped_to_strict_lift_prop_of_strict_typing h_strict)
 
 /--
+For fixed core progress obligations, scoped-to-strict lift and metadata
+coherence are equivalent assumptions for deriving mismatch-extension progress.
+-/
+theorem native_handler_step_ext_with_mismatch_progress_assumption_iff_scoped_to_strict_lift_metadata_coherence
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (_h_core_progress :
+      ∀ env body ty,
+        HasTypeScopedTop env body ty →
+        CoreValue body ∨ ∃ body', bodyStep body body') :
+    (native_handler_scoped_to_strict_lift_prop →
+      native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep)
+      ↔
+    (native_handler_perform_metadata_coherence_prop →
+      native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep) := by
+  constructor
+  · intro h_from_lift h_coherence
+    exact h_from_lift
+      (native_handler_scoped_to_strict_lift_prop_of_strict_top_typing
+        (native_handler_strict_top_typing_of_metadata_coherence h_coherence))
+  · intro h_from_coherence h_lift
+    exact h_from_coherence
+      (native_handler_perform_metadata_coherence_of_scoped_to_strict_lift h_lift)
+
+/--
 Strict-top handle typing and metadata coherence are equivalent global
 contracts.
 -/
@@ -3433,6 +3459,37 @@ theorem native_handler_step_ext_with_mismatch_soundness_assumption_iff_strict_ty
   · intro h_from_lift h_strict
     exact h_from_lift
       (native_handler_scoped_to_strict_lift_prop_of_strict_typing h_strict)
+
+/--
+For fixed core soundness obligations, scoped-to-strict lift and metadata
+coherence are equivalent assumptions for deriving mismatch-extension soundness.
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_assumption_iff_scoped_to_strict_lift_metadata_coherence
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (_h_core :
+      (∀ env body body' ty,
+        HasTypeScopedTop env body ty →
+        bodyStep body body' →
+        HasTypeScopedTop env body' ty)
+      ∧
+      (∀ env body ty,
+        HasTypeScopedTop env body ty →
+        CoreValue body ∨ ∃ body', bodyStep body body')) :
+    (native_handler_scoped_to_strict_lift_prop →
+      native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep)
+      ↔
+    (native_handler_perform_metadata_coherence_prop →
+      native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep) := by
+  constructor
+  · intro h_from_lift h_coherence
+    exact h_from_lift
+      (native_handler_scoped_to_strict_lift_prop_of_strict_top_typing
+        (native_handler_strict_top_typing_of_metadata_coherence h_coherence))
+  · intro h_from_coherence h_lift
+    exact h_from_coherence
+      (native_handler_perform_metadata_coherence_of_scoped_to_strict_lift h_lift)
 
 /--
 Specialized soundness target for the concrete pass-through mismatch semantics.
