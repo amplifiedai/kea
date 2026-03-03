@@ -19561,3 +19561,44 @@ No MCP divergence found at this checkpoint.
 
 **Impact**:
 - Typed mismatch-gap witnesses are now first-class inputs to the generic strict-extension API, connecting typed counterexample surfaces directly to global relation-level contrast claims.
+
+### 2026-03-03: local no-body-step ladder capstone (strictness + typed gap)
+
+**Context**: Added `native_handler_extension_ladder_local_no_body_step`, packaging two consequences from one local mismatched-perform no-body-step witness on arbitrary `bodyStep`:
+1. `native_handler_step_ext_with_mismatch_strictly_extends_ext_prop ...`
+2. a typed `ext-with-mismatch` vs `ext` mismatch-gap witness at that site.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent self-contained handlers should type-check.
+- Pure-body `handle` sentinel should type-check.
+- Mismatched pure handlers should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler `resume` should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use IO` -> `ok`.
+2. Coherent Node handler (`Node.fetch() -> resume 13`) -> `ok`.
+3. Mismatched pure handler (`handle Node.fetch()` with only `Other.get` clause) -> `error`, `E0001` (pure body performs `[Node]`).
+4. Pure-body sentinel (`handle 13` with `Node.fetch` clause) -> `ok`.
+5. Bad resume payload (`Signal.emit(v) -> resume 99` for `emit : Int -> Unit`) -> `error`, `E0001`.
+6. Out-of-handler resume (`fn out_resume_local_ladder() -> Int; resume 13`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No MCP divergence found at this checkpoint.
+
+**Act**:
+- Kept local no-body-step ladder capstone addition.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_extension_ladder_local_no_body_step`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The generic mismatch boundary now has a compact local capstone surface for arbitrary `bodyStep`, reducing theorem plumbing when moving from local witness assumptions to relation-level contrast + typed-gap consequences.

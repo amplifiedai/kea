@@ -4808,6 +4808,49 @@ theorem native_handler_extension_ladder_bodyStepFalse_of_boundary_model_gap_slic
   ⟩
 
 /--
+Local mismatched-perform ladder package for arbitrary `bodyStep`:
+from one op-mismatch no-body-step witness, obtain both
+1) generic strictness of `ext-with-mismatch` over `ext`, and
+2) a typed mismatch-gap witness at that handled site.
+-/
+theorem native_handler_extension_ladder_local_no_body_step
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    {opBody opHandle : Label}
+    (h_op_ne : opBody ≠ opHandle)
+    (h_no_body_step :
+      ∀ body', ¬ bodyStep
+        (.perform opBody .int .int (.intLit 1) (.lam "x" .int (.intLit 0)))
+        body') :
+    native_handler_step_ext_with_mismatch_strictly_extends_ext_prop
+      clauseSem mismatchSem bodyStep
+      ∧
+    (∃ env argName resumeName clauseBody ty,
+      HasTypeScopedTop env
+        (.handle
+          (.perform opBody .int .int (.intLit 1) (.lam "x" .int (.intLit 0)))
+          opHandle argName resumeName .int .int clauseBody)
+        ty
+      ∧
+      (∃ e', NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep
+        (.handle
+          (.perform opBody .int .int (.intLit 1) (.lam "x" .int (.intLit 0)))
+          opHandle argName resumeName .int .int clauseBody)
+        e')
+      ∧
+      ¬ ∃ e', NativeHandlerStepExt clauseSem bodyStep
+        (.handle
+          (.perform opBody .int .int (.intLit 1) (.lam "x" .int (.intLit 0)))
+          opHandle argName resumeName .int .int clauseBody)
+        e') := by
+  refine ⟨?_, ?_⟩
+  · exact native_handler_step_ext_with_mismatch_strictly_extends_ext_of_typed_op_mismatch_gap_no_body_step
+      clauseSem mismatchSem bodyStep h_op_ne h_no_body_step
+  · exact native_handler_step_ext_with_mismatch_vs_ext_typed_op_mismatch_gap_of_no_body_step
+      clauseSem mismatchSem bodyStep h_op_ne h_no_body_step
+
+/--
 Original native handler steps embed into the extended relation.
 -/
 theorem native_handler_step_ext_of_native_handler_step
