@@ -2054,24 +2054,6 @@ fn emit_generic_release<M: Module>(
     payload_ptr: Value,
     free_func_id: Option<FuncId>,
 ) -> Result<(), CodegenError> {
-    // Thin closures are encoded as tagged function pointers (low bit set).
-    // They do not carry an RC header and must bypass generic RC release paths.
-    let skip_release_block = builder.create_block();
-    let do_release_block = builder.create_block();
-    let after_release_block = builder.create_block();
-    let tagged_bits = builder.ins().band_imm(payload_ptr, 1);
-    let is_tagged_thin = builder.ins().icmp_imm(IntCC::NotEqual, tagged_bits, 0);
-    builder.ins().brif(
-        is_tagged_thin,
-        skip_release_block,
-        &[],
-        do_release_block,
-        &[],
-    );
-    builder.switch_to_block(skip_release_block);
-    builder.ins().jump(after_release_block, &[]);
-
-    builder.switch_to_block(do_release_block);
     let free_func_id = free_func_id.ok_or_else(|| CodegenError::UnsupportedMir {
         function: function_name.to_string(),
         detail: "release lowering requires imported `free` symbol".to_string(),
@@ -2092,32 +2074,14 @@ fn emit_generic_release<M: Module>(
     let _ = builder.ins().call(free_ref, &[rc_ptr]);
     builder.ins().jump(cont_block, &[]);
     builder.switch_to_block(cont_block);
-    builder.ins().jump(after_release_block, &[]);
-    builder.switch_to_block(after_release_block);
     Ok(())
 }
 
 fn emit_retain(builder: &mut FunctionBuilder, payload_ptr: Value) {
-    // Thin closures are encoded as tagged function pointers (low bit set).
-    // They do not carry an RC header and must bypass generic RC retain paths.
-    let skip_retain_block = builder.create_block();
-    let do_retain_block = builder.create_block();
-    let after_retain_block = builder.create_block();
-    let tagged_bits = builder.ins().band_imm(payload_ptr, 1);
-    let is_tagged_thin = builder.ins().icmp_imm(IntCC::NotEqual, tagged_bits, 0);
-    builder
-        .ins()
-        .brif(is_tagged_thin, skip_retain_block, &[], do_retain_block, &[]);
-    builder.switch_to_block(skip_retain_block);
-    builder.ins().jump(after_retain_block, &[]);
-
-    builder.switch_to_block(do_retain_block);
     let rc_ptr = builder.ins().iadd_imm(payload_ptr, -8);
     let rc_value = builder.ins().load(types::I64, MemFlags::new(), rc_ptr, 0);
     let next = builder.ins().iadd_imm(rc_value, 1);
     builder.ins().store(MemFlags::new(), next, rc_ptr, 0);
-    builder.ins().jump(after_retain_block, &[]);
-    builder.switch_to_block(after_retain_block);
 }
 
 fn emit_retain_if_managed_flag(
@@ -3446,13 +3410,6 @@ fn lower_instruction<M: Module>(
             let ptr_ty = module.target_config().pointer_type();
             let entry_value = get_value(values, function_name, entry)?;
             let entry_ptr = coerce_value_to_clif_type(builder, entry_value, ptr_ty);
-            if captures.is_empty() {
-                // Tag low bit to encode a thin closure: value is function pointer,
-                // no heap closure object allocation required.
-                let tagged_entry = builder.ins().bor_imm(entry_ptr, 1);
-                values.insert(dest.clone(), tagged_entry);
-                return Ok(false);
-            }
             let closure_ptr = allocate_heap_payload(
                 module,
                 builder,
@@ -3674,21 +3631,9 @@ fn lower_instruction<M: Module>(
                     };
                     let ptr_ty = module.target_config().pointer_type();
                     let closure_ptr = coerce_value_to_clif_type(builder, callee_value, ptr_ty);
-                    let thin_flag_bits = builder.ins().band_imm(closure_ptr, 1);
-                    let is_thin_closure =
-                        builder.ins().icmp_imm(IntCC::NotEqual, thin_flag_bits, 0);
-                    let thin_callee_ptr = builder.ins().band_imm(closure_ptr, -2);
-                    let thick_callee_ptr =
-                        builder.ins().load(ptr_ty, MemFlags::new(), closure_ptr, 0);
                     let callee_ptr =
-                        builder
-                            .ins()
-                            .select(is_thin_closure, thin_callee_ptr, thick_callee_ptr);
-                    let null_closure_ptr = builder.ins().iconst(ptr_ty, 0);
-                    let closure_arg =
-                        builder
-                            .ins()
-                            .select(is_thin_closure, null_closure_ptr, closure_ptr);
+                        builder.ins().load(ptr_ty, MemFlags::new(), closure_ptr, 0);
+                    let closure_arg = closure_ptr;
                     let mut signature = module.make_signature();
                     signature.params.push(AbiParam::new(ptr_ty));
                     for arg_ty in arg_types {

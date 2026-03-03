@@ -18765,3 +18765,45 @@ strict-top soundness route under fixed core obligations.
 **Impact**:
 - Under fixed core obligations, the route surface is now explicitly reducible to
   one strict-top soundness-route function (generic and pass-through).
+
+### 2026-03-03: master-suite projection APIs (strict-top consumers)
+
+**Context**: Added direct projection APIs from master-suite witnesses to strict-top
+consumers (global soundness, global progress, local `step`+preserves), for both
+generic mismatch and concrete pass-through semantics.
+
+**MCP tools used**: `reset_session`, `type_check`
+
+**Predict (Lean side)**:
+- Coherent log handler should type-check as pure.
+- Clause/effect mismatch should leak source effect in pure context.
+- Resume payload mismatch should reject.
+- Out-of-handler resume should reject.
+
+**Probe (Rust side via MCP)**:
+1. Coherent `Log.info(msg) -> resume ()` handler -> `ok`.
+2. Mismatched `Log.info` clause around `Reader` body -> `error`, `E0001` (pure body performs `[Reader(Int)]`).
+3. Bad `Log.info` resume payload (`resume "bad"` where op returns `Unit`) -> `error`, `E0001`.
+4. Out-of-handler resume control (`let x = 7; resume x`) -> `error`, `E0012`.
+
+**Classify**: Agreement.
+
+**Act**:
+- Kept master-suite projection API theorem additions.
+- Continued checkpoint loop without model revision.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_soundness_of_master_suite_and_strict_top_typing`
+  - `native_handler_step_ext_with_mismatch_progress_of_master_suite_and_strict_top_typing`
+  - `native_handler_step_ext_with_mismatch_local_exists_and_preserves_of_master_suite_and_strict_top_typing`
+  - `native_handler_step_ext_with_passThroughMismatch_soundness_of_master_suite_and_strict_top_typing`
+  - `native_handler_step_ext_with_passThroughMismatch_progress_of_master_suite_and_strict_top_typing`
+  - `native_handler_step_ext_with_passThroughMismatch_local_exists_and_preserves_of_master_suite_and_strict_top_typing`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Master-suite witnesses now expose direct strict-top consumption APIs for
+  global and local obligations on both generic and concrete semantics paths.
