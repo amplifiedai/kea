@@ -9385,6 +9385,39 @@ theorem erasure_pipeline_exactness_of_effect_compiler_scheduler_correspondence
   exact h_corr.correspondence.erasureCorrespondence.membershipIff l
 
 /--
+One-hop projection: scheduler-classification smallness under aggressive erasure
+from the top-level correspondence object.
+-/
+theorem scheduler_class_small_of_effect_compiler_scheduler_correspondence
+    (yielding blocking declared erasable : List Label)
+    (h_corr : EffectCompilerSchedulerCorrespondence yielding blocking declared erasable)
+    (h_aggressive : aggressiveErasureRemovesDeclaredBlocking declared erasable blocking) :
+    let cls := schedulerClassOfResidual blocking (eraseCapabilities declared erasable)
+    cls = .pure ∨ cls = .cooperative := by
+  exact h_corr.aggressiveSmallness h_aggressive
+
+/--
+Under aggressive erasure, Tier 4 is unreachable after the erasure stage.
+-/
+theorem tier4_absent_after_aggressive_erasure
+    (yielding blocking declared erasable : List Label)
+    (h_aggressive : aggressiveErasureRemovesDeclaredBlocking declared erasable blocking) :
+    handlerTierOfResidual yielding blocking (eraseCapabilities declared erasable) ≠ .tier4 := by
+  intro h_tier4
+  have h_shape :
+      eraseCapabilities declared erasable ≠ []
+        ∧
+      hasBlockingCapability blocking (eraseCapabilities declared erasable) = true :=
+    (handlerTierOfResidual_eq_tier4_iff
+      yielding blocking (eraseCapabilities declared erasable)).1 h_tier4
+  have h_no_block :
+      hasBlockingCapability blocking (eraseCapabilities declared erasable) = false :=
+    aggressive_erasure_removes_all_blocking_residual declared erasable blocking h_aggressive
+  have h_tf : true = false := by
+    simpa [h_shape.2] using h_no_block
+  exact Bool.noConfusion h_tf
+
+/--
 Named formal statement: tier structure (Tier 1/2/3/4) at a fixed residual
 capability set.
 -/

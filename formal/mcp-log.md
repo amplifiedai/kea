@@ -21988,3 +21988,48 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - Erasure completeness is now formalized as exactness, not only one-way removal.
+
+### 2026-03-04: projected classification-smallness from correspondence and proved Tier 4 absence under aggressive erasure
+
+**Context**: Added:
+- `scheduler_class_small_of_effect_compiler_scheduler_correspondence`
+- `tier4_absent_after_aggressive_erasure`
+
+This ties the “classification is small because compiler erasure is aggressive” statement directly to the top-level correspondence object and gives an explicit tier-level consequence (`Tier 4` eliminated).
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent handler should type-check.
+- Mismatched pure handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Pixel` + trivial fn -> `ok`.
+2. Coherent handler (`handle ProbeFQ.run(); ProbeFQ.run() -> resume 371`) -> `ok`.
+3. Mismatched pure handler (`handle ProbeFR.left(); ProbeFS.right() -> resume 0`) -> `error`, `E0001`.
+4. Bad resume payload (`ProbeFT.read() -> resume true`) -> `error`, `E0001`.
+5. Out-of-handler resume (`fn fresh_outside_resume_probe_20260304p() -> Int; resume 41`) -> `error`, `E0012`.
+6. Forged-name out-of-handler resume (`let __kea_resume_ctx = 41; resume 41`) -> `error`, `E0012`.
+7. Double-resume clause (`resume 1` then `resume 2`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept correspondence-level smallness projection and Tier-4-elimination theorem.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `scheduler_class_small_of_effect_compiler_scheduler_correspondence`
+  - `tier4_absent_after_aggressive_erasure`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The “aggressive erasure shrinks runtime classification” claim now has both scheduler-level and tier-level formal consequences.
