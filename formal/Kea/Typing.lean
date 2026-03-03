@@ -4272,8 +4272,53 @@ def native_handler_step_ext_with_mismatch_soundness_prop
   native_handler_step_ext_with_mismatch_preservation_prop
       clauseSem mismatchSem bodyStep
     ∧
-    native_handler_step_ext_with_mismatch_progress_prop
+  native_handler_step_ext_with_mismatch_progress_prop
       clauseSem mismatchSem bodyStep
+
+/--
+With preservation fixed, full mismatch-extension soundness is equivalent to
+full mismatch-extension progress.
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_prop_iff_progress_prop_of_preservation
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_pres :
+      native_handler_step_ext_with_mismatch_preservation_prop
+        clauseSem mismatchSem bodyStep) :
+    native_handler_step_ext_with_mismatch_soundness_prop
+      clauseSem mismatchSem bodyStep
+      ↔
+    native_handler_step_ext_with_mismatch_progress_prop
+      clauseSem mismatchSem bodyStep := by
+  constructor
+  · intro h_sound
+    exact h_sound.2
+  · intro h_progress
+    exact ⟨h_pres, h_progress⟩
+
+/--
+Body-preservation corollary of
+`native_handler_step_ext_with_mismatch_soundness_prop_iff_progress_prop_of_preservation`.
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_prop_iff_progress_prop_of_body_preservation
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_body_pres :
+      ∀ env body body' ty,
+        HasTypeScopedTop env body ty →
+        bodyStep body body' →
+        HasTypeScopedTop env body' ty) :
+    native_handler_step_ext_with_mismatch_soundness_prop
+      clauseSem mismatchSem bodyStep
+      ↔
+    native_handler_step_ext_with_mismatch_progress_prop
+      clauseSem mismatchSem bodyStep := by
+  exact native_handler_step_ext_with_mismatch_soundness_prop_iff_progress_prop_of_preservation
+    clauseSem mismatchSem bodyStep
+    (native_handler_step_ext_with_mismatch_preservation
+      clauseSem mismatchSem bodyStep h_body_pres)
 
 /--
 Generic local consequence of packaged mismatch soundness:

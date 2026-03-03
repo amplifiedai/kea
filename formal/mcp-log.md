@@ -20849,3 +20849,48 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - Packaged strict-local soundness is now a common interchange format for strict-top and strict-handle one-step soundness APIs under fixed preservation.
+
+### 2026-03-04: reduced full mismatch soundness to progress under fixed preservation
+
+**Context**: Added global reduction theorems:
+- `native_handler_step_ext_with_mismatch_soundness_prop_iff_progress_prop_of_preservation`
+- `native_handler_step_ext_with_mismatch_soundness_prop_iff_progress_prop_of_body_preservation`
+
+These isolate the remaining work for full mismatch-extension soundness: once preservation is fixed (directly or via body-preservation), full soundness is equivalent to progress.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent handler should type-check.
+- Mismatched pure handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use System` + trivial fn -> `ok`.
+2. Coherent handler (`ProbeAT.ping() -> resume 121`) -> `ok`.
+3. Mismatched pure handler (`handle ProbeAU.left()` with only `ProbeAV.right`) -> `error`, `E0001`.
+4. Bad resume payload (`ProbeAW.read() -> resume "bad"`) -> `error`, `E0001`.
+5. Out-of-handler resume (`fn outside_resume_probe9() -> Int; resume 16`) -> `error`, `E0012`.
+6. Forged-name out-of-handler resume (`let __kea_resume_ctx = 16; resume 16`) -> `error`, `E0012`.
+7. Double-resume clause (`resume 1` then `resume 2`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the full soundness-to-progress reduction theorems.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_soundness_prop_iff_progress_prop_of_preservation`
+  - `native_handler_step_ext_with_mismatch_soundness_prop_iff_progress_prop_of_body_preservation`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The full mismatch-extension soundness objective now cleanly factors to progress once preservation assumptions are available.
