@@ -1,6 +1,6 @@
 ---
 source: crates/kea-syntax/tests/snapshots_props.rs
-assertion_line: 227
+assertion_line: 224
 expression: output
 ---
 ## module_fn_decl
@@ -47,7 +47,11 @@ Function(
                 ),
             },
         ),
-        effect_annotation: None,
+        effect_annotation: Some(
+            Spanned {
+                node: Pure,
+            },
+        ),
         body: Spanned {
             node: BinaryOp {
                 op: Spanned {
@@ -145,7 +149,11 @@ ExprFn(
                 ),
             },
         ),
-        effect_annotation: None,
+        effect_annotation: Some(
+            Spanned {
+                node: Pure,
+            },
+        ),
         body: Spanned {
             node: BinaryOp {
                 op: Spanned {
@@ -411,7 +419,11 @@ TraitDef(
                         ),
                     },
                 ),
-                effect_annotation: None,
+                effect_annotation: Some(
+                    Spanned {
+                        node: Pure,
+                    },
+                ),
                 where_clause: [],
                 default_body: None,
                 doc: None,
@@ -457,7 +469,11 @@ TraitDef(
                         ),
                     },
                 ),
-                effect_annotation: None,
+                effect_annotation: Some(
+                    Spanned {
+                        node: Pure,
+                    },
+                ),
                 where_clause: [],
                 default_body: None,
                 doc: None,
@@ -531,7 +547,11 @@ TraitDef(
                         ),
                     },
                 ),
-                effect_annotation: None,
+                effect_annotation: Some(
+                    Spanned {
+                        node: Pure,
+                    },
+                ),
                 where_clause: [],
                 default_body: None,
                 doc: None,
@@ -583,7 +603,11 @@ ImplBlock(
                         ),
                     },
                 ),
-                effect_annotation: None,
+                effect_annotation: Some(
+                    Spanned {
+                        node: Pure,
+                    },
+                ),
                 body: Spanned {
                     node: Lit(
                         Int(
@@ -720,7 +744,11 @@ TraitDef(
                         ),
                     },
                 ),
-                effect_annotation: None,
+                effect_annotation: Some(
+                    Spanned {
+                        node: Pure,
+                    },
+                ),
                 where_clause: [],
                 default_body: None,
                 doc: None,
@@ -755,7 +783,11 @@ ImplBlock(
                         ),
                     },
                 ),
-                effect_annotation: None,
+                effect_annotation: Some(
+                    Spanned {
+                        node: Pure,
+                    },
+                ),
                 body: Spanned {
                     node: Lit(
                         Int(
@@ -788,7 +820,11 @@ Function(
                 ),
             },
         ),
-        effect_annotation: None,
+        effect_annotation: Some(
+            Spanned {
+                node: Pure,
+            },
+        ),
         body: Spanned {
             node: Lit(
                 Int(
@@ -1009,6 +1045,7 @@ Lambda {
         },
     },
     return_annotation: None,
+    effect_annotation: None,
 }
 
 ## expr_anon_record_spread
