@@ -6880,6 +6880,38 @@ def native_core_soundness_prop
   native_core_preservation_prop bodyStep ∧ native_core_progress_prop bodyStep
 
 /--
+Canonical stutter body-step relation: one body-step may leave the body
+expression unchanged.
+-/
+def native_core_stutter_step : CoreExpr → CoreExpr → Prop :=
+  fun body body' => body' = body
+
+/--
+The stutter body-step relation satisfies native core preservation.
+-/
+theorem native_core_preservation_stutter :
+    native_core_preservation_prop native_core_stutter_step := by
+  intro env body body' ty h_typed h_step
+  dsimp [native_core_stutter_step] at h_step
+  cases h_step
+  exact h_typed
+
+/--
+The stutter body-step relation satisfies native core progress.
+-/
+theorem native_core_progress_stutter :
+    native_core_progress_prop native_core_stutter_step := by
+  intro _env body _ty _h_typed
+  exact Or.inr ⟨body, rfl⟩
+
+/--
+Packaged native core soundness witness for the stutter body-step relation.
+-/
+theorem native_core_soundness_stutter :
+    native_core_soundness_prop native_core_stutter_step := by
+  exact ⟨native_core_preservation_stutter, native_core_progress_stutter⟩
+
+/--
 Capstone route: full extended native handler-step soundness follows directly
 from the packaged body-step obligations.
 -/
@@ -6981,6 +7013,53 @@ theorem native_handler_progress_gap_closure_of_core_soundness
     extSoundness := native_handler_step_ext_soundness_of_core_soundness
       clauseSem bodyStep h_core
   }
+
+/--
+Assumption-free extended-native soundness route under the canonical stutter
+body-step relation.
+-/
+theorem native_handler_step_ext_soundness_of_stutter_core_soundness
+    (clauseSem : NativeHandlerClauseSem) :
+    native_handler_step_ext_soundness_prop clauseSem native_core_stutter_step := by
+  exact native_handler_step_ext_soundness_of_core_soundness
+    clauseSem native_core_stutter_step native_core_soundness_stutter
+
+/--
+Assumption-free native progress-gap closure under the canonical stutter
+body-step relation.
+-/
+theorem native_handler_progress_gap_closure_of_stutter_core_soundness
+    (clauseSem : NativeHandlerClauseSem) :
+    NativeHandlerProgressGapClosure clauseSem native_core_stutter_step := by
+  exact native_handler_progress_gap_closure_of_core_soundness
+    clauseSem native_core_stutter_step native_core_soundness_stutter
+
+/--
+Assumption-free local strict-handle mismatch-extension route under the
+canonical stutter body-step relation.
+-/
+theorem native_handler_step_ext_with_mismatch_exists_and_preserves_of_stutter_core_soundness_and_strict_handle
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    {env : TermEnv}
+    {body : CoreExpr}
+    {opHandle : Label}
+    {argName resumeName : String}
+    {argTy opRetTy : Ty}
+    {clauseBody : CoreExpr}
+    {ty : Ty}
+    (h_strict :
+      HasTypeScopedHandleStrict env body opHandle argName resumeName argTy opRetTy clauseBody ty) :
+    ∃ e',
+      NativeHandlerStepExtWithMismatch clauseSem mismatchSem native_core_stutter_step
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        e'
+      ∧ HasTypeScopedTop env e' ty := by
+  exact native_handler_step_ext_with_mismatch_exists_and_preserves_of_core_soundness_and_strict_handle
+    clauseSem mismatchSem native_core_stutter_step
+    native_core_preservation_stutter
+    native_core_progress_stutter
+    h_strict
 
 /--
 One-hop projection: the extended native relation is sound from the closure

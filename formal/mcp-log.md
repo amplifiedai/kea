@@ -24265,3 +24265,48 @@ Lean typing model and MCP typing behavior disagree on whether double-resume clau
 **Impact**:
 - Critical divergence is closed: Lean and MCP now agree on rejecting double-resume handler clauses.
 - The old positive double-resume top-level handle witness is replaced by rejection-side boundary theorems in `Kea/Typing.lean`.
+
+### 2026-03-04: stutter-core soundness witness + local strict-handle route checkpoint
+
+**Context**: Added a concrete witness for `native_core_soundness_prop` in `Kea/Typing.lean` via a canonical stutter body-step relation (`native_core_stutter_step`), then instantiated it to derive assumption-free local/native handler consequences:
+- `native_handler_step_ext_soundness_of_stutter_core_soundness`
+- `native_handler_progress_gap_closure_of_stutter_core_soundness`
+- `native_handler_step_ext_with_mismatch_exists_and_preserves_of_stutter_core_soundness_and_strict_handle`
+
+**MCP tools used**: `reset_session`, `type_check` (direct `kea` MCP probes).
+
+**Predict (Lean side)**:
+- This slice introduces concrete witness/instantiation routes over existing step semantics (no new runtime syntax/typing rules).
+- Existing handler sentinels should remain stable:
+  - coherent/single-resume `ok`
+  - zero-resume `ok`
+  - double-resume rejected (`E0012`)
+  - out-of-handler `resume` rejected (`E0012`)
+  - bad resume payload rejected (`E0001`)
+
+**Probe (Rust side via MCP)**:
+1. `probe_coherent_20260304bs` -> `ok`.
+2. `probe_zero_resume_20260304bs` -> `ok`.
+3. `probe_double_resume_20260304bs` -> `error`, `E0012`, `handler clause may resume at most once`.
+4. `probe_outside_resume_20260304bs` -> `error`, `E0012`, `` `resume` is only valid inside a matching handler clause ``.
+5. `probe_bad_resume_20260304bs` -> `error`, `E0001` (resume payload type mismatch).
+6. `probe_mismatch_20260304bs` -> `error`, `E0001`.
+
+**Classify**: Agreement.
+
+**Outcome**:
+- Added a concrete, machine-checked inhabitant for the previously abstract
+  `native_core_soundness_prop` assumption family.
+- Derived assumption-free local strict-handle existence+preservation route under
+  that witness relation.
+
+**Traceability**:
+- Lean edits: `formal/Kea/Typing.lean` (new `native_core_stutter_step` and theorems listed above).
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- No Lean↔MCP divergence at this checkpoint.
+- Core-obligation routes now have a concrete witness instantiation that can be
+  consumed without introducing new external assumptions.
