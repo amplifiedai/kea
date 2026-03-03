@@ -20391,3 +20391,48 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - One status object now carries both abstract boundary routes and a concrete bodyStep-false dual witness, reducing cross-package lookup overhead at checkpoint consumption sites.
+
+### 2026-03-03: extracted one-shot bodyStep-false snapshot from unified status capstone
+
+**Context**: Added a one-shot bodyStep-false snapshot proposition and extractor theorem:
+- `native_handler_soundness_boundary_status_bodyStepFalse_snapshot_prop`
+- `native_handler_soundness_boundary_status_bodyStepFalse_snapshot`
+
+This pulls, in one theorem route, the dual witness, mismatch progress/soundness failure at `bodyStep = False`, and strict-top typing failure from `NativeHandlerSoundnessBoundaryStatusCapstone`.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent self-contained handler should type-check.
+- Mismatched pure handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume in one clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Effects` -> `ok`.
+2. Coherent Phi2 handler (`Phi2.read() -> resume 2627`) -> `ok`.
+3. Mismatched pure handler (`handle Phi2.read()` with only `Chi2.read_other` clause) -> `error`, `E0001` (pure body performs `[Phi2]`).
+4. Bad resume payload (`Phi2.read() -> resume "bad"`) -> `error`, `E0001`.
+5. Out-of-handler resume (`fn phi2_resume_outside() -> Int; resume 2627`) -> `error`, `E0012`.
+6. Forged-name out-of-handler resume (`let __kea_resume_ctx = 11; resume 2627`) -> `error`, `E0012`.
+7. Double-resume clause (`resume 1` then `resume 2`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the snapshot proposition and extractor theorem additions.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_soundness_boundary_status_bodyStepFalse_snapshot_prop`
+  - `native_handler_soundness_boundary_status_bodyStepFalse_snapshot`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Consumers now have a single theorem for the full bodyStep-false checkpoint state, reducing multi-field manual extraction from the status capstone.

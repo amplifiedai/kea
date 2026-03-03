@@ -6029,6 +6029,52 @@ theorem native_handler_soundness_boundary_status_capstone_of_boundary_model_gap_
   }
 
 /--
+`bodyStep = False` snapshot extracted from a unified status capstone:
+- concrete dual witness,
+- mismatch-extension progress/soundness failure,
+- strict-top typing failure.
+-/
+def native_handler_soundness_boundary_status_bodyStepFalse_snapshot_prop
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) : Prop :=
+  native_handler_dual_witness_bodyStepFalse_prop clauseSem mismatchSem
+    ∧
+  ¬ native_handler_step_ext_with_mismatch_progress_prop
+      clauseSem mismatchSem (fun _ _ => False)
+    ∧
+  ¬ native_handler_step_ext_with_mismatch_soundness_prop
+      clauseSem mismatchSem (fun _ _ => False)
+    ∧
+  ¬ native_handler_strict_top_typing_prop
+
+/--
+Extract the full `bodyStep = False` boundary snapshot directly from the unified
+status capstone.
+-/
+theorem native_handler_soundness_boundary_status_bodyStepFalse_snapshot
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (h_status : NativeHandlerSoundnessBoundaryStatusCapstone clauseSem mismatchSem) :
+    native_handler_soundness_boundary_status_bodyStepFalse_snapshot_prop
+      clauseSem mismatchSem := by
+  have h_no_body_step_false :
+      ∀ body' : CoreExpr, ¬ (fun _ _ => False)
+        (CoreExpr.perform "Op" .bool .bool (.boolLit true) (.lam "x" .bool (.intLit 0)))
+        body' := by
+    intro body' h_step
+    cases h_step
+  have h_fail_false :=
+    h_status.boundary.metadataMismatchNoBodyStepFailureRoute
+      (fun _ _ => False)
+      h_no_body_step_false
+  exact ⟨
+    h_status.dualWitnessBodyStepFalse,
+    h_fail_false.1,
+    h_fail_false.2,
+    h_status.typingGap.strictTopTypingFalse
+  ⟩
+
+/--
 Packaged route: mismatch-extension progress from packaged core progress plus
 global strict typing, routed through strict-top typing.
 -/
