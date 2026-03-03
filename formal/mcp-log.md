@@ -18273,3 +18273,42 @@ and soundness bundles from one core-soundness premise.
 - A single core-soundness premise now discharges one packaged theorem that
   yields both progress and soundness route bundles across strict-top,
   strict-typing, scoped-lift, and metadata assumptions.
+
+### 2026-03-03: local consequence route bundle from core soundness
+
+**Context**: Added a packaged local consequence contract (`step` + preserved
+typing) and a four-assumption route bundle theorem derived from core
+soundness.
+
+**MCP tools used**: `reset_session`, `type_check`
+
+**Predict (Lean side)**:
+- Coherent nontrivial handler (closure resume payload) should type-check.
+- Clause/effect mismatch should leak body effect in pure context.
+- Resume payload mismatch should reject.
+- Out-of-handler resume should reject.
+
+**Probe (Rust side via MCP)**:
+1. Coherent `Factory.build(seed) -> resume (|x| x + seed)` handler -> `ok` (`main : () -> Int`).
+2. Mismatched `Reader` clause around `Log` body -> `error`, `E0001` (pure body performs `[Log]`).
+3. Bad `Math.add` resume payload (`resume false`) -> `error`, `E0001`.
+4. Out-of-handler resume control (`let k = 1; resume k`) -> `error`, `E0012`.
+
+**Classify**: Agreement.
+
+**Act**:
+- Kept local consequence route-bundle theorem additions.
+- Continued checkpoint loop without model revision.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_local_exists_and_preserves_prop`
+  - `native_handler_step_ext_with_mismatch_local_exists_and_preserves_assumption_routes_prop`
+  - `native_handler_step_ext_with_mismatch_local_exists_and_preserves_assumption_routes_of_core_soundness`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- One core-soundness premise now yields all four assumption-specific local
+  typed-handle consequence routes (`∃ step ∧ preserves`) from a single theorem.
