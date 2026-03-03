@@ -6416,6 +6416,63 @@ theorem native_handler_step_ext_soundness_of_mismatch_soundness_of_subsumed
       clauseSem mismatchSem bodyStep h_sound.2 h_subsumed
 
 /--
+Under mismatch-step subsumption, mismatch-extended progress is equivalent to
+extended-native progress.
+-/
+theorem native_handler_step_ext_with_mismatch_progress_prop_iff_ext_progress_of_subsumed
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_subsumed :
+      native_handler_mismatch_steps_subsumed_by_ext_prop
+        clauseSem mismatchSem bodyStep) :
+    native_handler_step_ext_with_mismatch_progress_prop
+        clauseSem mismatchSem bodyStep
+      ↔
+    native_handler_step_ext_progress_prop clauseSem bodyStep := by
+  constructor
+  · intro h_progress_mismatch
+    exact native_handler_step_ext_progress_of_mismatch_progress_of_subsumed
+      clauseSem mismatchSem bodyStep h_progress_mismatch h_subsumed
+  · intro h_progress_ext
+    intro env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed
+    rcases h_progress_ext env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed
+      with ⟨e', h_step_ext⟩
+    exact ⟨e',
+      native_handler_step_ext_with_mismatch_of_ext_step
+        clauseSem mismatchSem bodyStep h_step_ext⟩
+
+/--
+Under mismatch-step subsumption, mismatch-extended soundness is equivalent to
+extended-native soundness.
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_prop_iff_ext_soundness_of_subsumed
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_subsumed :
+      native_handler_mismatch_steps_subsumed_by_ext_prop
+        clauseSem mismatchSem bodyStep) :
+    native_handler_step_ext_with_mismatch_soundness_prop
+        clauseSem mismatchSem bodyStep
+      ↔
+    native_handler_step_ext_soundness_prop clauseSem bodyStep := by
+  constructor
+  · intro h_sound_mismatch
+    exact native_handler_step_ext_soundness_of_mismatch_soundness_of_subsumed
+      clauseSem mismatchSem bodyStep h_sound_mismatch h_subsumed
+  · intro h_sound_ext
+    refine ⟨?_, ?_⟩
+    · intro env e e' ty h_typed h_step_mismatch
+      exact h_sound_ext.1 env e e' ty h_typed (h_subsumed h_step_mismatch)
+    · intro env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed
+      rcases h_sound_ext.2 env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed
+        with ⟨e', h_step_ext⟩
+      exact ⟨e',
+        native_handler_step_ext_with_mismatch_of_ext_step
+          clauseSem mismatchSem bodyStep h_step_ext⟩
+
+/--
 Any strict-extension witness (`ext-with-mismatch` strictly extends `ext`)
 refutes mismatch-step subsumption.
 -/
