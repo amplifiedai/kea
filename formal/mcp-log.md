@@ -24066,3 +24066,48 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - The new subsumption boundary now feeds directly into the existing capstone closure surface, reducing theorem-route friction between boundary analyses and closure bundles.
+
+### 2026-03-04: scoped-typing linearity boundary witness (typing does not imply syntactic at-most-once)
+
+**Context**: Added a direct semantic witness in `Kea/Typing.lean` showing scoped typing alone does not enforce syntactic resume at-most-once:
+- `ResumeSummary`, `resumeSummary_atMostOnce`, `resumeSummaryCombine`
+- `resumeSummary` / `resumeSummaryFields`
+- `doubleResumeWitnessExpr`
+- `doubleResumeWitnessExpr_summary_many`
+- `hasTypeScoped_doubleResumeWitnessExpr`
+- `hasTypeScoped_doubleResumeWitnessExpr_not_atMostOnce`
+- `hasTypeScoped_does_not_imply_resumeSummary_atMostOnce`
+
+This makes the linearity boundary explicit at the core typing layer: scoped `HasTypeScoped` admits a typed expression whose saturated resume summary is `.many`.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- Coherent handler should type-check.
+- Mismatch effect-leak handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. Coherent handler (`probe_coherent_20260304bl`) -> `ok`.
+2. Mismatch effect-leak handler (`probe_mismatch_20260304bl`) -> `error`, `E0001`.
+3. Bad resume payload (`probe_bad_resume_20260304bl`) -> `error`, `E0001`.
+4. Out-of-handler resume (`probe_outside_resume_20260304bl`) -> `error`, `E0012`.
+5. Forged-name out-of-handler resume (`probe_forged_resume_ctx_20260304bl`) -> `error`, `E0012`.
+6. Double-resume clause (`probe_double_resume_20260304bl`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the scoped-typing linearity-boundary witness and summary definitions.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`: names listed in Context above.
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The corpus now machine-checks that scoped typing and at-most-once resume linearity are distinct properties, clarifying what still requires contract-level or stronger typing constraints.

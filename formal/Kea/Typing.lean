@@ -994,6 +994,117 @@ theorem scoped_resume_nonforgeable_boundary_witness :
   · simpa using hasTypeScopedTop_resume_spoof_rejected_witness
 
 /- =========================================================================
+   Syntactic resume-summary witnesses (linearity boundary)
+   ========================================================================= -/
+
+/--
+Saturated summary of how many `resume` sites appear in an expression.
+-/
+inductive ResumeSummary : Type where
+  | zero
+  | one
+  | many
+deriving DecidableEq, Repr
+
+/--
+At-most-once property on saturated resume summaries.
+-/
+def resumeSummary_atMostOnce : ResumeSummary → Prop
+  | .zero => True
+  | .one => True
+  | .many => False
+
+/--
+Saturating addition for resume summaries.
+-/
+def resumeSummaryCombine : ResumeSummary → ResumeSummary → ResumeSummary
+  | .many, _ => .many
+  | _, .many => .many
+  | .zero, s => s
+  | s, .zero => s
+  | .one, .one => .many
+
+mutual
+  /--
+  Syntactic resume-summary extraction for core expressions.
+  -/
+  def resumeSummary : CoreExpr → ResumeSummary
+    | .intLit _ => .zero
+    | .boolLit _ => .zero
+    | .stringLit _ => .zero
+    | .var _ => .zero
+    | .lam _ _ body => resumeSummary body
+    | .app fn arg => resumeSummaryCombine (resumeSummary fn) (resumeSummary arg)
+    | .letE _ value body => resumeSummaryCombine (resumeSummary value) (resumeSummary body)
+    | .record fields => resumeSummaryFields fields
+    | .proj e _ => resumeSummary e
+    | .perform _ _ _ arg k => resumeSummaryCombine (resumeSummary arg) (resumeSummary k)
+    | .handle body _ _ _ _ _ clauseBody =>
+      resumeSummaryCombine (resumeSummary body) (resumeSummary clauseBody)
+    | .resume value => resumeSummaryCombine .one (resumeSummary value)
+
+  /--
+  Syntactic resume-summary extraction for field lists.
+  -/
+  def resumeSummaryFields : CoreFields → ResumeSummary
+    | .nil => .zero
+    | .cons _ e rest => resumeSummaryCombine (resumeSummary e) (resumeSummaryFields rest)
+end
+
+/--
+Concrete clause/body witness with two resumptions.
+-/
+def doubleResumeWitnessExpr : CoreExpr :=
+  .letE "x" (.resume (.intLit 1)) (.resume (.intLit 2))
+
+/--
+The witness expression has summary `.many`.
+-/
+theorem doubleResumeWitnessExpr_summary_many :
+    resumeSummary doubleResumeWitnessExpr = .many := by
+  simp [doubleResumeWitnessExpr, resumeSummary, resumeSummaryCombine]
+
+/--
+The witness expression is typable in the scoped judgment.
+-/
+theorem hasTypeScoped_doubleResumeWitnessExpr :
+    HasTypeScoped (some (.int, .int)) [] doubleResumeWitnessExpr .int := by
+  unfold doubleResumeWitnessExpr
+  refine HasTypeScoped.letE (some (.int, .int)) [] "x"
+      (.resume (.intLit 1)) (.resume (.intLit 2)) .int .int ?_ ?_
+  · exact HasTypeScoped.resume (some (.int, .int)) [] (.intLit 1) .int .int
+      rfl
+      (HasTypeScoped.int (some (.int, .int)) [] 1)
+  · exact HasTypeScoped.resume (some (.int, .int)) [("x", .int)] (.intLit 2) .int .int
+      rfl
+      (HasTypeScoped.int (some (.int, .int)) [("x", .int)] 2)
+
+/--
+The witness expression violates syntactic at-most-once.
+-/
+theorem hasTypeScoped_doubleResumeWitnessExpr_not_atMostOnce :
+    ¬ resumeSummary_atMostOnce (resumeSummary doubleResumeWitnessExpr) := by
+  simp [doubleResumeWitnessExpr, resumeSummary, resumeSummaryCombine,
+    resumeSummary_atMostOnce]
+
+/--
+Scoped native typing alone does not enforce syntactic resume at-most-once.
+-/
+theorem hasTypeScoped_does_not_imply_resumeSummary_atMostOnce :
+    ∃ ctx env e ty,
+      HasTypeScoped ctx env e ty
+        ∧
+      ¬ resumeSummary_atMostOnce (resumeSummary e) := by
+  exact ⟨
+    some (.int, .int),
+    [],
+    doubleResumeWitnessExpr,
+    .int,
+    hasTypeScoped_doubleResumeWitnessExpr,
+    hasTypeScoped_doubleResumeWitnessExpr_not_atMostOnce
+  ⟩
+
+/- =========================================================================
    Native handler-step judgment on `Typing.CoreExpr`
    ========================================================================= -/
 
