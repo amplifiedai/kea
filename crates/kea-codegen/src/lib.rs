@@ -2032,6 +2032,21 @@ fn collect_stack_eligible_unboxed_record_inits(
 }
 
 fn is_non_escaping_unboxed_record_init(function: &MirFunction, candidate: &MirValueId) -> bool {
+    let block_params = function
+        .blocks
+        .iter()
+        .map(|block| {
+            (
+                block.id.clone(),
+                block
+                    .params
+                    .iter()
+                    .map(|param| param.id.clone())
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+
     // Conservative alias closure over local forwarding ops.
     let mut aliases = BTreeSet::from([candidate.clone()]);
     let mut changed = true;
@@ -2054,6 +2069,15 @@ fn is_non_escaping_unboxed_record_init(function: &MirFunction, candidate: &MirVa
                     changed |= aliases.insert(dest.clone());
                 }
             }
+            if let MirTerminator::Jump { target, args } = &block.terminator
+                && let Some(params) = block_params.get(target)
+            {
+                for (arg, param) in args.iter().zip(params.iter()) {
+                    if aliases.contains(arg) {
+                        changed |= aliases.insert(param.clone());
+                    }
+                }
+            }
         }
     }
 
@@ -2070,8 +2094,19 @@ fn is_non_escaping_unboxed_record_init(function: &MirFunction, candidate: &MirVa
                 _ => {}
             }
         }
-        if terminator_references_any_value(&block.terminator, &aliases) {
-            return false;
+        match &block.terminator {
+            MirTerminator::Jump { target, args } => {
+                let Some(params) = block_params.get(target) else {
+                    return false;
+                };
+                for (arg, param) in args.iter().zip(params.iter()) {
+                    if aliases.contains(arg) && !aliases.contains(param) {
+                        return false;
+                    }
+                }
+            }
+            _ if terminator_references_any_value(&block.terminator, &aliases) => return false,
+            _ => {}
         }
     }
     true
@@ -7181,6 +7216,104 @@ mod tests {
         }
     }
 
+    fn sample_unboxed_record_init_forwarded_through_jump_param_module() -> MirModule {
+        MirModule {
+            functions: vec![MirFunction {
+                name: "main".to_string(),
+                signature: MirFunctionSignature {
+                    params: vec![],
+                    ret: Type::Int,
+                    effects: EffectRow::pure(),
+                },
+                entry: MirBlockId(0),
+                blocks: vec![
+                    MirBlock {
+                        id: MirBlockId(0),
+                        params: vec![],
+                        instructions: vec![
+                            MirInst::Const {
+                                dest: MirValueId(0),
+                                literal: MirLiteral::Int(20),
+                            },
+                            MirInst::Const {
+                                dest: MirValueId(1),
+                                literal: MirLiteral::Int(22),
+                            },
+                            MirInst::RecordInit {
+                                dest: MirValueId(2),
+                                record_type: "Pair".to_string(),
+                                fields: vec![
+                                    ("left".to_string(), MirValueId(0)),
+                                    ("right".to_string(), MirValueId(1)),
+                                ],
+                            },
+                        ],
+                        terminator: MirTerminator::Jump {
+                            target: MirBlockId(1),
+                            args: vec![MirValueId(2)],
+                        },
+                    },
+                    MirBlock {
+                        id: MirBlockId(1),
+                        params: vec![MirBlockParam {
+                            id: MirValueId(3),
+                            ty: Type::Record(RecordType {
+                                name: "Pair".to_string(),
+                                params: vec![],
+                                row: RowType::closed(vec![
+                                    (Label::new("left"), Type::Int),
+                                    (Label::new("right"), Type::Int),
+                                ]),
+                            }),
+                        }],
+                        instructions: vec![
+                            MirInst::RecordFieldLoad {
+                                dest: MirValueId(4),
+                                record: MirValueId(3),
+                                record_type: "Pair".to_string(),
+                                field: "left".to_string(),
+                                field_ty: Type::Int,
+                            },
+                            MirInst::RecordFieldLoad {
+                                dest: MirValueId(5),
+                                record: MirValueId(3),
+                                record_type: "Pair".to_string(),
+                                field: "right".to_string(),
+                                field_ty: Type::Int,
+                            },
+                            MirInst::Binary {
+                                dest: MirValueId(6),
+                                op: MirBinaryOp::Add,
+                                left: MirValueId(4),
+                                right: MirValueId(5),
+                            },
+                        ],
+                        terminator: MirTerminator::Return {
+                            value: Some(MirValueId(6)),
+                        },
+                    },
+                ],
+            }],
+            layouts: MirLayoutCatalog {
+                records: vec![MirRecordLayout {
+                    name: "Pair".to_string(),
+                    is_unboxed: true,
+                    fields: vec![
+                        MirRecordFieldLayout {
+                            name: "left".to_string(),
+                            annotation: kea_ast::TypeAnnotation::Named("Int".to_string()),
+                        },
+                        MirRecordFieldLayout {
+                            name: "right".to_string(),
+                            annotation: kea_ast::TypeAnnotation::Named("Int".to_string()),
+                        },
+                    ],
+                }],
+                sums: vec![],
+            },
+        }
+    }
+
     fn sample_record_init_reuse_and_load_main_module() -> MirModule {
         MirModule {
             functions: vec![MirFunction {
@@ -8543,6 +8676,16 @@ mod tests {
         assert_eq!(function.reuse_count, 1);
         assert_eq!(function.reuse_token_candidate_count, 0);
         assert_eq!(function.alloc_count, 2);
+    }
+
+    #[test]
+    fn collect_pass_stats_treats_unboxed_jump_forwarded_record_init_as_non_allocating() {
+        let module = sample_unboxed_record_init_forwarded_through_jump_param_module();
+        let stats = collect_pass_stats(&module);
+
+        assert_eq!(stats.per_function.len(), 1);
+        let function = &stats.per_function[0];
+        assert_eq!(function.alloc_count, 0);
     }
 
     #[test]
