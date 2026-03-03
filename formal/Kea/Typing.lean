@@ -9626,6 +9626,133 @@ theorem effect_compiler_scheduler_supporting_material
     yielding blocking declared erasable
     (effect_compiler_scheduler_correspondence yielding blocking declared erasable)
 
+/--
+Unified “same underlying structure” proposition: the correspondence exposes
+supporting-material obligations, scheduler↔tier equivalence, and aggressive
+erasure smallness on one theorem surface.
+-/
+def effect_compiler_scheduler_unity_prop
+    (yielding blocking declared erasable : List Label) : Prop :=
+  effect_compiler_scheduler_supporting_material_prop
+      yielding blocking declared erasable
+    ∧
+  (schedulerClassOfResidual blocking (eraseCapabilities declared erasable) = .pure
+      ↔
+    handlerTierOfResidual yielding blocking (eraseCapabilities declared erasable) = .tier1)
+    ∧
+  (schedulerClassOfResidual blocking (eraseCapabilities declared erasable) = .blocking
+      ↔
+    handlerTierOfResidual yielding blocking (eraseCapabilities declared erasable) = .tier4)
+    ∧
+  (schedulerClassOfResidual blocking (eraseCapabilities declared erasable) = .cooperative
+      ↔
+    handlerTierOfResidual yielding blocking (eraseCapabilities declared erasable) = .tier2
+      ∨
+    handlerTierOfResidual yielding blocking (eraseCapabilities declared erasable) = .tier3)
+    ∧
+  (aggressiveErasureRemovesDeclaredBlocking declared erasable blocking →
+      let cls := schedulerClassOfResidual blocking (eraseCapabilities declared erasable)
+      cls = .pure ∨ cls = .cooperative)
+
+/--
+Canonical unity theorem for the effect/compiler/scheduler correspondence.
+-/
+theorem effect_compiler_scheduler_unity
+    (yielding blocking declared erasable : List Label) :
+    effect_compiler_scheduler_unity_prop
+      yielding blocking declared erasable := by
+  refine ⟨?_, ?_, ?_, ?_, ?_⟩
+  · exact effect_compiler_scheduler_supporting_material
+      yielding blocking declared erasable
+  · exact schedulerClassOfResidual_eq_pure_iff_tier1
+      yielding blocking (eraseCapabilities declared erasable)
+  · exact schedulerClassOfResidual_eq_blocking_iff_tier4
+      yielding blocking (eraseCapabilities declared erasable)
+  · exact schedulerClassOfResidual_eq_cooperative_iff_tier2_or_tier3
+      yielding blocking (eraseCapabilities declared erasable)
+  · intro h_aggressive
+    exact scheduler_class_small_of_aggressive_erasure
+      declared erasable blocking h_aggressive
+
+/--
+Native typed-handle capstone route: from core soundness + strict-top typing,
+derive one-step native handler evolution with preservation together with the
+tier/erasure/scheduler unity theorem instantiated at the handled capability.
+-/
+theorem native_typed_handle_step_and_effect_compiler_scheduler_unity_of_core_soundness_and_strict_top
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (yielding blocking erasable : List Label)
+    (h_core : native_core_soundness_prop bodyStep)
+    (h_strict_top : native_handler_strict_top_typing_prop)
+    {env : TermEnv}
+    {body : CoreExpr}
+    {opHandle : Label}
+    {argName resumeName : String}
+    {argTy opRetTy : Ty}
+    {clauseBody : CoreExpr}
+    {ty : Ty}
+    (h_typed :
+      HasTypeScopedTop env
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        ty) :
+    ∃ e',
+      NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        e'
+      ∧
+      HasTypeScopedTop env e' ty
+      ∧
+      effect_compiler_scheduler_unity_prop
+        yielding blocking [opHandle] erasable := by
+  rcases native_handler_step_ext_with_mismatch_exists_and_preserves_of_core_soundness_and_strict_top_typing_packaged
+      clauseSem mismatchSem bodyStep h_core h_strict_top h_typed with
+    ⟨e', h_step, h_typed'⟩
+  refine ⟨e', h_step, h_typed', ?_⟩
+  exact effect_compiler_scheduler_unity yielding blocking [opHandle] erasable
+
+/--
+Native typed-handle scheduler-smallness consequence: from the same route,
+aggressive erasure for the handled capability yields a non-blocking scheduler
+classification (`pure` or `cooperative`) while preserving typed one-step
+native evolution.
+-/
+theorem native_typed_handle_step_scheduler_small_of_core_soundness_and_strict_top_and_aggressive
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (yielding blocking erasable : List Label)
+    (h_core : native_core_soundness_prop bodyStep)
+    (h_strict_top : native_handler_strict_top_typing_prop)
+    {env : TermEnv}
+    {body : CoreExpr}
+    {opHandle : Label}
+    {argName resumeName : String}
+    {argTy opRetTy : Ty}
+    {clauseBody : CoreExpr}
+    {ty : Ty}
+    (h_typed :
+      HasTypeScopedTop env
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        ty)
+    (h_aggressive :
+      aggressiveErasureRemovesDeclaredBlocking [opHandle] erasable blocking) :
+    ∃ e',
+      NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        e'
+      ∧
+      HasTypeScopedTop env e' ty
+      ∧
+      (let cls := schedulerClassOfResidual blocking (eraseCapabilities [opHandle] erasable)
+       cls = .pure ∨ cls = .cooperative) := by
+  rcases native_typed_handle_step_and_effect_compiler_scheduler_unity_of_core_soundness_and_strict_top
+      clauseSem mismatchSem bodyStep yielding blocking erasable h_core h_strict_top h_typed with
+    ⟨e', h_step, h_typed', h_unity⟩
+  rcases h_unity with ⟨_h_support, _h_pure_tier1, _h_block_tier4, _h_coop_tier23, h_small_imp⟩
+  exact ⟨e', h_step, h_typed', h_small_imp h_aggressive⟩
+
 /-- Declarative field typing is functional on the core slice. -/
 theorem hasFieldsType_unique
     {env : TermEnv} {fs : CoreFields} {row₁ row₂ : RowFields}

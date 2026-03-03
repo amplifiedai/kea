@@ -22085,3 +22085,48 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - Tier structure and scheduler classification are now theorem-level equivalent views over the same residual-capability state.
+
+### 2026-03-04: bridged native typed handler steps to tier/erasure/scheduler unity
+
+**Context**: Added native bridge theorems in `Kea/Typing.lean` that connect typed native handler stepping to the correspondence layer:
+- `native_typed_handle_step_and_effect_compiler_scheduler_unity_of_core_soundness_and_strict_top`
+- `native_typed_handle_step_scheduler_small_of_core_soundness_and_strict_top_and_aggressive`
+
+This closes the immediate “set-only” gap by routing one-step native typed evolution (`step ∧ preserves`) and correspondence-level scheduler/tier claims through one theorem surface instantiated at the handled capability.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent handler should type-check.
+- Mismatched clause that leaks an unhandled effect should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Depth` + trivial fn -> `ok`.
+2. Coherent handler (`handle runProbeGA(); ProbeGA.run() -> resume 401`) -> `ok`.
+3. Mismatched handler clause (effect leak remains `[ProbeGB]`) -> `error`, `E0001`.
+4. Bad resume payload -> `error`, `E0001`.
+5. Out-of-handler resume (`fresh_outside_resume_probe_20260304r`) -> `error`, `E0012`.
+6. Forged-name out-of-handler resume (`forged_ctx_probe_20260304r`) -> `error`, `E0012`.
+7. Double-resume clause -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the native-step ↔ correspondence bridge theorems.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_typed_handle_step_and_effect_compiler_scheduler_unity_of_core_soundness_and_strict_top`
+  - `native_typed_handle_step_scheduler_small_of_core_soundness_and_strict_top_and_aggressive`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Native typed handler evolution and the tier/erasure/scheduler correspondence now meet at one theorem route instead of living as disconnected layers.
