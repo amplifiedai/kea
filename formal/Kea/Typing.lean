@@ -3635,6 +3635,108 @@ theorem native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_sc
     clauseSem mismatchSem bodyStep h_core
     (native_handler_strict_top_typing_prop_of_scoped_to_strict_lift h_lift)
 
+/--
+Local typed-handle consequence from packaged core soundness and strict-top
+typing: one-step existence plus post-step typing.
+-/
+theorem native_handler_step_ext_with_mismatch_exists_and_preserves_of_core_soundness_and_strict_top_typing_packaged
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core : native_core_soundness_prop bodyStep)
+    (h_strict_top_typing : native_handler_strict_top_typing_prop)
+    {env : TermEnv}
+    {body : CoreExpr}
+    {opHandle : Label}
+    {argName resumeName : String}
+    {argTy opRetTy : Ty}
+    {clauseBody : CoreExpr}
+    {ty : Ty}
+    (h_typed :
+      HasTypeScopedTop env
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        ty) :
+    ∃ e',
+      NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        e'
+      ∧ HasTypeScopedTop env e' ty := by
+  have h_sound :=
+    native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_strict_top_typing_packaged
+      clauseSem mismatchSem bodyStep h_core h_strict_top_typing
+  have h_step :=
+    h_sound.2 env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed
+  rcases h_step with ⟨e', h_step'⟩
+  refine ⟨e', h_step', ?_⟩
+  exact h_sound.1 env
+    (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+    e'
+    ty
+    h_typed
+    h_step'
+
+/--
+Local typed-handle consequence from packaged core soundness and scoped-to-strict
+lift, routed through strict-top typing.
+-/
+theorem native_handler_step_ext_with_mismatch_exists_and_preserves_of_core_soundness_and_scoped_to_strict_lift_via_strict_top_typing_packaged
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core : native_core_soundness_prop bodyStep)
+    (h_lift : native_handler_scoped_to_strict_lift_prop)
+    {env : TermEnv}
+    {body : CoreExpr}
+    {opHandle : Label}
+    {argName resumeName : String}
+    {argTy opRetTy : Ty}
+    {clauseBody : CoreExpr}
+    {ty : Ty}
+    (h_typed :
+      HasTypeScopedTop env
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        ty) :
+    ∃ e',
+      NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        e'
+      ∧ HasTypeScopedTop env e' ty := by
+  exact native_handler_step_ext_with_mismatch_exists_and_preserves_of_core_soundness_and_strict_top_typing_packaged
+    clauseSem mismatchSem bodyStep h_core
+    (native_handler_strict_top_typing_prop_of_scoped_to_strict_lift h_lift)
+    h_typed
+
+/--
+Local typed-handle consequence from packaged core soundness and metadata
+coherence, routed through strict-top typing.
+-/
+theorem native_handler_step_ext_with_mismatch_exists_and_preserves_of_core_soundness_and_metadata_coherence_via_strict_top_typing_packaged
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core : native_core_soundness_prop bodyStep)
+    (h_coherence : native_handler_perform_metadata_coherence_prop)
+    {env : TermEnv}
+    {body : CoreExpr}
+    {opHandle : Label}
+    {argName resumeName : String}
+    {argTy opRetTy : Ty}
+    {clauseBody : CoreExpr}
+    {ty : Ty}
+    (h_typed :
+      HasTypeScopedTop env
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        ty) :
+    ∃ e',
+      NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        e'
+      ∧ HasTypeScopedTop env e' ty := by
+  exact native_handler_step_ext_with_mismatch_exists_and_preserves_of_core_soundness_and_strict_top_typing_packaged
+    clauseSem mismatchSem bodyStep h_core
+    (native_handler_strict_top_typing_of_metadata_coherence h_coherence)
+    h_typed
+
 /-- Declarative field typing is functional on the core slice. -/
 theorem hasFieldsType_unique
     {env : TermEnv} {fs : CoreFields} {row₁ row₂ : RowFields}

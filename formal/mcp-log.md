@@ -17745,3 +17745,45 @@ theorems through strict-top typing to align assumption surfaces.
 **Impact**:
 - Metadata coherence now has direct one-hop routes into strict-top progress and
   soundness capstones, reducing assumption-routing ambiguity.
+
+### 2026-03-03: local typed-handle consequence capstones from packaged core soundness
+
+**Context**: Added local consequence theorems yielding `∃ step ∧ preserves`
+from packaged core soundness and strict-top/scoped-lift/metadata assumptions.
+
+**MCP tools used**: `reset_session`, `type_check`
+
+**Predict (Lean side)**:
+- Local handled expression with matching clause should remain pure and accepted.
+- Clause mismatch should leak the original effect and fail in pure local scope.
+- Resume payload mismatch should be rejected.
+- Out-of-handler resume remains rejected.
+
+**Probe (Rust side via MCP)**:
+1. Local coherent handle (`Counter.next() -> resume 41`, then `handled + 1`)
+   -> `ok`, `local : () -> Int`.
+2. Local mismatch handle (only `Log` clause around `Counter` body)
+   -> `error`, purity/effect leak (`Counter` required).
+3. Local bad resume payload (`resume "bad"` for `Counter.next() : Int`)
+   -> `error`, `E0001`.
+4. Out-of-handler resume control
+   -> `error`, `E0012`.
+
+**Classify**: Agreement.
+
+**Act**:
+- Kept local consequence capstones as added.
+- Continued formal route-surface closure using the same protocol.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_exists_and_preserves_of_core_soundness_and_strict_top_typing_packaged`
+  - `native_handler_step_ext_with_mismatch_exists_and_preserves_of_core_soundness_and_scoped_to_strict_lift_via_strict_top_typing_packaged`
+  - `native_handler_step_ext_with_mismatch_exists_and_preserves_of_core_soundness_and_metadata_coherence_via_strict_top_typing_packaged`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The strict-top/scoped-lift/metadata assumption families now each expose
+  packaged local `∃ step ∧ preserves` consequences for typed handle sites.
