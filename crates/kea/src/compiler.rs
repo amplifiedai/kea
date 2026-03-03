@@ -3119,7 +3119,18 @@ fn validate_fip_annotations(module: &Module, hir: &HirModule) -> Vec<Diagnostic>
                 let lines = call_boundary_summary
                     .sites
                     .iter()
-                    .map(|site| format!("- {site}"))
+                    .map(|site| {
+                        let count = call_boundary_summary
+                            .site_counts
+                            .get(site)
+                            .copied()
+                            .unwrap_or(1);
+                        if count > 1 {
+                            format!("- {site} ({count} occurrences)")
+                        } else {
+                            format!("- {site}")
+                        }
+                    })
                     .collect::<Vec<_>>();
                 help_parts.push(format!(
                     "unsupported cross-function call boundaries ({}):\n{}\n\n@fip currently allows only verified single-handoff forwarder calls across function boundaries.",
@@ -3626,6 +3637,7 @@ fn hir_function_param_bindings(function: &HirFunction) -> BTreeSet<String> {
 struct FipCallBoundaryIssues {
     total_unsupported_calls: usize,
     sites: Vec<String>,
+    site_counts: BTreeMap<String, usize>,
 }
 
 fn merge_fip_call_boundary_issues(
@@ -3634,7 +3646,13 @@ fn merge_fip_call_boundary_issues(
     site_limit: usize,
 ) {
     dst.total_unsupported_calls += src.total_unsupported_calls;
+    for (site, count) in src.site_counts {
+        *dst.site_counts.entry(site).or_default() += count;
+    }
     for site in src.sites {
+        if dst.sites.contains(&site) {
+            continue;
+        }
         if dst.sites.len() >= site_limit {
             break;
         }
@@ -3648,7 +3666,9 @@ fn record_fip_call_boundary_issue(
     site_limit: usize,
 ) {
     issues.total_unsupported_calls += 1;
-    if issues.sites.len() < site_limit {
+    let count = issues.site_counts.entry(site.clone()).or_default();
+    *count += 1;
+    if *count == 1 && issues.sites.len() < site_limit {
         issues.sites.push(site);
     }
 }
