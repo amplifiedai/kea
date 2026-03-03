@@ -4924,15 +4924,7 @@ theorem native_handler_extension_ladder_bodyStepFalse_generic_of_boundary_model_
     (h_gap : NativeHandlerBoundaryModelGapSlice clauseSem mismatchSem) :
     native_handler_extension_ladder_bodyStepFalse_generic_prop
       clauseSem mismatchSem := by
-  exact ⟨
-    h_gap.extStrictlyExtendsNativeBodyStepFalse,
-    native_handler_step_ext_with_mismatch_strictly_extends_ext_bodyStepFalse_generic_of_legacy
-      clauseSem mismatchSem h_gap.mismatchExtStrictlyExtendsExtBodyStepFalse,
-    h_gap.mismatchExtStrictlyExtendsNativeBodyStepFalse,
-    h_gap.typedExtVsNativeGapBodyStepFalse,
-    h_gap.typedMismatchExtVsExtOpMismatchGapBodyStepFalse,
-    h_gap.typedMismatchExtVsNativeGapBodyStepFalse
-  ⟩
+  exact h_gap.extensionLadderGenericBodyStepFalse
 
 /--
 API coherence between legacy and generic bodyStep-false ladder packages.

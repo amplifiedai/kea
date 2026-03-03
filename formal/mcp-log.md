@@ -19775,3 +19775,40 @@ No MCP divergence found at this checkpoint.
 
 **Impact**:
 - The boundary capstone now carries the generic ladder witness natively, reducing downstream recomposition and making generic-vs-legacy ladder interoperability explicit at the source package.
+
+### 2026-03-03: generic ladder projection now sourced directly from boundary field
+
+**Context**: Refined `native_handler_extension_ladder_bodyStepFalse_generic_of_boundary_model_gap_slice` to project directly from `NativeHandlerBoundaryModelGapSlice.extensionLadderGenericBodyStepFalse` (single source of truth) instead of reconstructing the tuple manually.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent self-contained handlers should type-check.
+- Pure-body `handle` sentinel should type-check.
+- Mismatched pure handlers should reject (`E0001`).
+- Out-of-handler `resume` should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use IO` -> `ok`.
+2. Coherent Sample handler (`Sample.next() -> resume 144`) -> `ok`.
+3. Mismatched pure handler (`handle Sample.next()` with only `Alt.next_alt` clause) -> `error`, `E0001` (pure body performs `[Sample]`).
+4. Pure-body sentinel (`handle 144` with `Sample.next` clause) -> `ok`.
+5. Out-of-handler resume (`fn out_resume_projection_field() -> Int; resume 144`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No MCP divergence found at this checkpoint.
+
+**Act**:
+- Kept direct-field projection refactor.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_extension_ladder_bodyStepFalse_generic_of_boundary_model_gap_slice` (direct field projection)
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The generic ladder projection now cannot drift from capstone construction logic, improving maintainability and reducing duplicate proof plumbing.
