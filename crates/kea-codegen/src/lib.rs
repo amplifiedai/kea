@@ -7940,6 +7940,66 @@ mod tests {
         }
     }
 
+    fn sample_mixed_sum_non_escaping_module() -> MirModule {
+        MirModule {
+            functions: vec![MirFunction {
+                name: "main".to_string(),
+                signature: MirFunctionSignature {
+                    params: vec![],
+                    ret: Type::Int,
+                    effects: EffectRow::pure(),
+                },
+                entry: MirBlockId(0),
+                blocks: vec![MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: MirValueId(0),
+                            literal: MirLiteral::Int(20),
+                        },
+                        MirInst::SumInit {
+                            dest: MirValueId(1),
+                            sum_type: "MaybeInt".to_string(),
+                            variant: "Some".to_string(),
+                            tag: 0,
+                            fields: vec![MirValueId(0)],
+                        },
+                        MirInst::SumTagLoad {
+                            dest: MirValueId(2),
+                            sum: MirValueId(1),
+                            sum_type: "MaybeInt".to_string(),
+                        },
+                    ],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirValueId(2)),
+                    },
+                }],
+            }],
+            layouts: MirLayoutCatalog {
+                records: vec![],
+                sums: vec![MirSumLayout {
+                    name: "MaybeInt".to_string(),
+                    variants: vec![
+                        MirVariantLayout {
+                            name: "Some".to_string(),
+                            tag: 0,
+                            fields: vec![MirVariantFieldLayout {
+                                name: None,
+                                annotation: kea_ast::TypeAnnotation::Named("Int".to_string()),
+                            }],
+                        },
+                        MirVariantLayout {
+                            name: "None".to_string(),
+                            tag: 1,
+                            fields: vec![],
+                        },
+                    ],
+                }],
+            },
+        }
+    }
+
     fn sample_payload_sum_stack_rejected_when_returned_module() -> MirModule {
         MirModule {
             functions: vec![MirFunction {
@@ -9890,6 +9950,16 @@ mod tests {
         assert_eq!(stats.per_function.len(), 1);
         let function = &stats.per_function[0];
         assert_eq!(function.alloc_count, 0);
+    }
+
+    #[test]
+    fn collect_pass_stats_counts_non_escaping_mixed_sum_init_as_allocating() {
+        let module = sample_mixed_sum_non_escaping_module();
+        let stats = collect_pass_stats(&module);
+
+        assert_eq!(stats.per_function.len(), 1);
+        let function = &stats.per_function[0];
+        assert_eq!(function.alloc_count, 1);
     }
 
     #[test]

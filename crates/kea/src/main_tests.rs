@@ -4229,6 +4229,39 @@ fn compile_local_payload_sum_if_join_call_escape_counts_alloc_in_stats() {
 }
 
 #[test]
+fn compile_local_mixed_sum_non_escaping_still_counts_alloc_in_stats() {
+    let source_path = write_temp_source(
+        "fn main() -> Int\n  let x = Some(20)\n  case x\n    Some(v) -> v\n    None -> 0\n",
+        "kea-cli-mixed-sum-non-escaping-alloc-stats",
+        "kea",
+    );
+
+    let compiled = compile_file(&source_path, CodegenMode::Jit).expect("compile should work");
+    let app_main_stats = compiled
+        .stats
+        .per_function
+        .iter()
+        .filter(|f| f.function == "main" || f.function.ends_with(".main"))
+        .collect::<Vec<_>>();
+    assert!(
+        !app_main_stats.is_empty(),
+        "expected app main stats to exist, stats: {:?}",
+        compiled.stats
+    );
+    let alloc_count: usize = app_main_stats.iter().map(|f| f.alloc_count).sum();
+    assert!(
+        alloc_count >= 1,
+        "expected heap alloc ops for mixed/unit sum kernel (payload-only stack path is intentional), stats: {:?}",
+        compiled.stats
+    );
+
+    let run = run_file(&source_path).expect("run should succeed");
+    assert_eq!(run.exit_code, 20);
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
 fn compile_unboxed_struct_emits_no_retain_release_in_stats() {
     let source_path = write_temp_source(
         "@unboxed\nstruct Pair\n  left: Int\n  right: Int\n\nfn mk(n: Int) -> Pair\n  Pair { left: n, right: n + 1 }\n\nfn main() -> Int\n  let p0 = mk(20)\n  let p1 = p0\n  p1.left + p1.right\n",
