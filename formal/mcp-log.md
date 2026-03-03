@@ -21648,3 +21648,101 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - Both legacy and strengthened status-capstone families now expose identical high-level diagnostic extraction surfaces.
+
+### 2026-03-04: completed pass-through strengthened-status parity (status constructors, iff, and diagnostic extractors)
+
+**Context**: Added concrete pass-through strengthened-status parity surfaces:
+- `native_handler_step_ext_with_passThroughMismatch_soundness_boundary_status_capstone_strengthened_prop`
+- direct and boundary-slice constructors for strengthened status
+- legacy↔strengthened status bridges (`..._of_strengthened`, `..._strengthened_of_legacy`, `..._prop_iff_strengthened`)
+- direct pass-through snapshot/vacuity extractors on both legacy and strengthened status witnesses
+
+This closes the remaining concrete status-layer parity gap for `nativeHandlerMismatchPassThroughSem`.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent handler should type-check.
+- Mismatched pure handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Graph` + trivial fn -> `ok`.
+2. Coherent handler (`handle ProbeEH.run(); ProbeEH.run() -> resume 301`) -> `ok`.
+3. Mismatched pure handler (`handle ProbeEI.left(); ProbeEJ.right() -> resume 0`) -> `error`, `E0001`.
+4. Bad resume payload (`ProbeEK.read() -> resume true`) -> `error`, `E0001`.
+5. Out-of-handler resume (`fn fresh_outside_resume_probe_20260304i() -> Int; resume 34`) -> `error`, `E0012`.
+6. Forged-name out-of-handler resume (`let __kea_resume_ctx = 34; resume 34`) -> `error`, `E0012`.
+7. Double-resume clause (`resume 1` then `resume 2`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept concrete pass-through strengthened-status constructors/bridges and direct diagnostic extractors.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_passThroughMismatch_soundness_boundary_status_capstone_strengthened_prop`
+  - `native_handler_step_ext_with_passThroughMismatch_soundness_boundary_status_capstone_prop_iff_strengthened`
+  - `native_handler_step_ext_with_passThroughMismatch_soundness_boundary_status_strict_top_vacuity_profile_of_strengthened`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Concrete pass-through status packaging now has full legacy/strengthened parity and direct diagnostic extraction symmetry.
+
+### 2026-03-04: added tier/erasure/scheduler correspondence layer with soundness and completeness surfaces
+
+**Context**: Added explicit correspondence surfaces in `Typing.lean`:
+- tier structure: `HandlerTier`, `handlerTierOfResidual`, and tier characterizations (`..._eq_tier{1,2,3,4}_iff`)
+- erasure correspondence: `eraseCapabilities` + `mem_eraseCapabilities_iff`
+- scheduler classification: `SchedulerClass`, `schedulerClassOfResidual`, tier→scheduler projections
+- scheduler soundness: `scheduler_pure_implies_no_blocking`
+- pipeline completeness: `erasure_pipeline_completeness`
+- aggressive-erasure smallness: `aggressiveErasureRemovesDeclaredBlocking`, `aggressive_erasure_removes_all_blocking_residual`, `scheduler_class_small_of_aggressive_erasure`
+
+This is the first machine-checked formal layer that states the tier structure and ties erasure/classification behavior together directly.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent handler should type-check.
+- Mismatched pure handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Queue` + trivial fn -> `ok`.
+2. Coherent handler (`handle ProbeEM.run(); ProbeEM.run() -> resume 311`) -> `ok`.
+3. Mismatched pure handler (`handle ProbeEN.left(); ProbeEO.right() -> resume 0`) -> `error`, `E0001`.
+4. Bad resume payload (`ProbeEP.read() -> resume false`) -> `error`, `E0001`.
+5. Out-of-handler resume (`fn fresh_outside_resume_probe_20260304j() -> Int; resume 35`) -> `error`, `E0012`.
+6. Forged-name out-of-handler resume (`let __kea_resume_ctx = 35; resume 35`) -> `error`, `E0012`.
+7. Double-resume clause (`resume 1` then `resume 2`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the new tier/erasure/scheduler correspondence layer and proofs.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `HandlerTier`, `SchedulerClass`
+  - `mem_eraseCapabilities_iff`, `scheduler_pure_implies_no_blocking`, `erasure_pipeline_completeness`
+  - `scheduler_class_small_of_aggressive_erasure`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The corpus now has explicit formal statements for tier structure, erasure correspondence, scheduler soundness (`pure` => non-blocking), and erasure completeness.

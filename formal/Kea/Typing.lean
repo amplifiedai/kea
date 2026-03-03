@@ -8710,6 +8710,15 @@ def native_handler_step_ext_with_passThroughMismatch_soundness_boundary_status_c
     clauseSem nativeHandlerMismatchPassThroughSem
 
 /--
+Concrete pass-through specialization of the strengthened unified boundary
+status capstone.
+-/
+def native_handler_step_ext_with_passThroughMismatch_soundness_boundary_status_capstone_strengthened_prop
+    (clauseSem : NativeHandlerClauseSem) : Prop :=
+  NativeHandlerSoundnessBoundaryStatusCapstoneStrengthened
+    clauseSem nativeHandlerMismatchPassThroughSem
+
+/--
 Build the concrete pass-through unified boundary status capstone directly.
 -/
 theorem native_handler_step_ext_with_passThroughMismatch_soundness_boundary_status_capstone
@@ -8733,6 +8742,72 @@ theorem native_handler_step_ext_with_passThroughMismatch_soundness_boundary_stat
     clauseSem nativeHandlerMismatchPassThroughSem h_gap
 
 /--
+Build the concrete pass-through strengthened unified boundary status capstone
+directly.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_soundness_boundary_status_capstone_strengthened
+    (clauseSem : NativeHandlerClauseSem) :
+    native_handler_step_ext_with_passThroughMismatch_soundness_boundary_status_capstone_strengthened_prop
+      clauseSem := by
+  exact native_handler_soundness_boundary_status_capstone_strengthened
+    clauseSem nativeHandlerMismatchPassThroughSem
+
+/--
+Build the concrete pass-through strengthened unified boundary status capstone
+from a boundary-model gap slice witness.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_soundness_boundary_status_capstone_strengthened_of_boundary_model_gap_slice
+    (clauseSem : NativeHandlerClauseSem)
+    (h_gap :
+      NativeHandlerBoundaryModelGapSlice clauseSem nativeHandlerMismatchPassThroughSem) :
+    native_handler_step_ext_with_passThroughMismatch_soundness_boundary_status_capstone_strengthened_prop
+      clauseSem := by
+  exact native_handler_soundness_boundary_status_capstone_strengthened_of_boundary_model_gap_slice
+    clauseSem nativeHandlerMismatchPassThroughSem h_gap
+
+/--
+Project the concrete pass-through legacy status capstone from the concrete
+pass-through strengthened status capstone.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_soundness_boundary_status_capstone_of_strengthened
+    (clauseSem : NativeHandlerClauseSem)
+    (h_status :
+      native_handler_step_ext_with_passThroughMismatch_soundness_boundary_status_capstone_strengthened_prop
+        clauseSem) :
+    native_handler_step_ext_with_passThroughMismatch_soundness_boundary_status_capstone_prop
+      clauseSem := by
+  exact native_handler_soundness_boundary_status_capstone_of_strengthened
+    clauseSem nativeHandlerMismatchPassThroughSem h_status
+
+/--
+Lift the concrete pass-through legacy status capstone to the concrete
+pass-through strengthened status capstone.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_soundness_boundary_status_capstone_strengthened_of_legacy
+    (clauseSem : NativeHandlerClauseSem)
+    (h_status :
+      native_handler_step_ext_with_passThroughMismatch_soundness_boundary_status_capstone_prop
+        clauseSem) :
+    native_handler_step_ext_with_passThroughMismatch_soundness_boundary_status_capstone_strengthened_prop
+      clauseSem := by
+  exact native_handler_soundness_boundary_status_capstone_strengthened_of_legacy
+    clauseSem nativeHandlerMismatchPassThroughSem h_status
+
+/--
+Status-capstone-level equivalence between legacy and strengthened concrete
+pass-through status packages.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_soundness_boundary_status_capstone_prop_iff_strengthened
+    (clauseSem : NativeHandlerClauseSem) :
+    native_handler_step_ext_with_passThroughMismatch_soundness_boundary_status_capstone_prop
+        clauseSem
+      ↔
+    native_handler_step_ext_with_passThroughMismatch_soundness_boundary_status_capstone_strengthened_prop
+        clauseSem := by
+  exact native_handler_soundness_boundary_status_capstone_iff_strengthened
+    clauseSem nativeHandlerMismatchPassThroughSem
+
+/--
 Project the concrete pass-through strengthened boundary capstone from the
 concrete pass-through unified status capstone.
 -/
@@ -8745,6 +8820,352 @@ theorem native_handler_step_ext_with_passThroughMismatch_soundness_boundary_stat
       clauseSem := by
   exact native_handler_soundness_boundary_status_capstone_strengthened_boundary
     clauseSem nativeHandlerMismatchPassThroughSem h_status
+
+/--
+Extract the `bodyStep = False` snapshot directly from the concrete pass-through
+legacy status capstone.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_soundness_boundary_status_bodyStepFalse_snapshot
+    (clauseSem : NativeHandlerClauseSem)
+    (h_status :
+      native_handler_step_ext_with_passThroughMismatch_soundness_boundary_status_capstone_prop
+        clauseSem) :
+    native_handler_soundness_boundary_status_bodyStepFalse_snapshot_prop
+      clauseSem nativeHandlerMismatchPassThroughSem := by
+  exact native_handler_soundness_boundary_status_bodyStepFalse_snapshot
+    clauseSem nativeHandlerMismatchPassThroughSem h_status
+
+/--
+Extract the `bodyStep = False` snapshot directly from the concrete pass-through
+strengthened status capstone.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_soundness_boundary_status_bodyStepFalse_snapshot_of_strengthened
+    (clauseSem : NativeHandlerClauseSem)
+    (h_status :
+      native_handler_step_ext_with_passThroughMismatch_soundness_boundary_status_capstone_strengthened_prop
+        clauseSem) :
+    native_handler_soundness_boundary_status_bodyStepFalse_snapshot_prop
+      clauseSem nativeHandlerMismatchPassThroughSem := by
+  exact native_handler_soundness_boundary_status_bodyStepFalse_snapshot_of_strengthened
+    clauseSem nativeHandlerMismatchPassThroughSem h_status
+
+/--
+Extract the strict-top vacuity profile directly from the concrete pass-through
+legacy status capstone.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_soundness_boundary_status_strict_top_vacuity_profile
+    (clauseSem : NativeHandlerClauseSem)
+    (h_status :
+      native_handler_step_ext_with_passThroughMismatch_soundness_boundary_status_capstone_prop
+        clauseSem) :
+    (¬ Nonempty native_handler_strict_top_typing_prop)
+      ∧
+    (∃ body op argName resumeName argTy opRetTy clauseBody ty,
+      HasTypeScopedStrictTop []
+        (.handle body op argName resumeName argTy opRetTy clauseBody)
+        ty) := by
+  exact native_handler_soundness_boundary_status_strict_top_vacuity_profile
+    clauseSem nativeHandlerMismatchPassThroughSem h_status
+
+/--
+Extract the strict-top vacuity profile directly from the concrete pass-through
+strengthened status capstone.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_soundness_boundary_status_strict_top_vacuity_profile_of_strengthened
+    (clauseSem : NativeHandlerClauseSem)
+    (h_status :
+      native_handler_step_ext_with_passThroughMismatch_soundness_boundary_status_capstone_strengthened_prop
+        clauseSem) :
+    (¬ Nonempty native_handler_strict_top_typing_prop)
+      ∧
+    (∃ body op argName resumeName argTy opRetTy clauseBody ty,
+      HasTypeScopedStrictTop []
+        (.handle body op argName resumeName argTy opRetTy clauseBody)
+        ty) := by
+  exact native_handler_soundness_boundary_status_strict_top_vacuity_profile_of_strengthened
+    clauseSem nativeHandlerMismatchPassThroughSem h_status
+
+/--
+Abstract four-tier handler classification used by the tier/erasure/scheduler
+correspondence layer.
+-/
+inductive HandlerTier : Type where
+  | tier1
+  | tier2
+  | tier3
+  | tier4
+deriving DecidableEq, Repr
+
+/--
+Runtime scheduling classes used by the correspondence layer.
+-/
+inductive SchedulerClass : Type where
+  | pure
+  | cooperative
+  | blocking
+deriving DecidableEq, Repr
+
+/--
+Compiler erasure on declared capabilities: remove every capability listed in
+the erasable set.
+-/
+def eraseCapabilities (declared erasable : List Label) : List Label :=
+  declared.filter (fun l => l ∉ erasable)
+
+/--
+Residual capability set contains at least one capability classified as
+blocking by the runtime.
+-/
+def hasBlockingCapability (blocking residual : List Label) : Bool :=
+  residual.any (fun l => blocking.elem l)
+
+/--
+All residual capabilities are in the designated yielding set.
+-/
+def allYieldingCapabilities (yielding residual : List Label) : Bool :=
+  residual.all (fun l => yielding.elem l)
+
+/--
+Tier classifier over residual capabilities.
+
+- `tier1`: no residual capabilities.
+- `tier4`: at least one blocking residual capability.
+- `tier2`: non-empty residual set, no blocking residuals, and all residuals are yielding.
+- `tier3`: non-empty residual set, no blocking residuals, and not all residuals are yielding.
+-/
+def handlerTierOfResidual
+    (yielding blocking residual : List Label) : HandlerTier :=
+  if residual = [] then .tier1
+  else if hasBlockingCapability blocking residual = true then .tier4
+  else if allYieldingCapabilities yielding residual = true then .tier2
+  else .tier3
+
+/--
+Scheduler classifier over residual capabilities.
+-/
+def schedulerClassOfResidual
+    (blocking residual : List Label) : SchedulerClass :=
+  if residual = [] then .pure
+  else if hasBlockingCapability blocking residual = true then .blocking
+  else .cooperative
+
+/--
+Formal erasure correspondence: residual capability membership is exactly
+declared-and-not-erased membership.
+-/
+theorem mem_eraseCapabilities_iff
+    (declared erasable : List Label)
+    (l : Label) :
+    l ∈ eraseCapabilities declared erasable
+      ↔
+    l ∈ declared ∧ l ∉ erasable := by
+  simp [eraseCapabilities]
+
+/-- Tier-structure characterization for `tier1`. -/
+theorem handlerTierOfResidual_eq_tier1_iff
+    (yielding blocking residual : List Label) :
+    handlerTierOfResidual yielding blocking residual = .tier1
+      ↔
+    residual = [] := by
+  classical
+  unfold handlerTierOfResidual
+  by_cases h_empty : residual = []
+  · simp [h_empty]
+  · by_cases h_block : hasBlockingCapability blocking residual = true
+    · simp [h_empty, h_block]
+    · by_cases h_yield : allYieldingCapabilities yielding residual = true
+      · simp [h_empty, h_block, h_yield]
+      · simp [h_empty, h_block, h_yield]
+
+/-- Tier-structure characterization for `tier4`. -/
+theorem handlerTierOfResidual_eq_tier4_iff
+    (yielding blocking residual : List Label) :
+    handlerTierOfResidual yielding blocking residual = .tier4
+      ↔
+    residual ≠ [] ∧ hasBlockingCapability blocking residual = true := by
+  classical
+  unfold handlerTierOfResidual
+  by_cases h_empty : residual = []
+  · simp [h_empty]
+  · by_cases h_block : hasBlockingCapability blocking residual = true
+    · simp [h_empty, h_block]
+    · by_cases h_yield : allYieldingCapabilities yielding residual = true
+      · simp [h_empty, h_block, h_yield]
+      · simp [h_empty, h_block, h_yield]
+
+/-- Tier-structure characterization for `tier2`. -/
+theorem handlerTierOfResidual_eq_tier2_iff
+    (yielding blocking residual : List Label) :
+    handlerTierOfResidual yielding blocking residual = .tier2
+      ↔
+    residual ≠ []
+      ∧
+    hasBlockingCapability blocking residual = false
+      ∧
+    allYieldingCapabilities yielding residual = true := by
+  classical
+  unfold handlerTierOfResidual
+  by_cases h_empty : residual = []
+  · simp [h_empty]
+  · by_cases h_block : hasBlockingCapability blocking residual = true
+    · simp [h_empty, h_block]
+    · by_cases h_yield : allYieldingCapabilities yielding residual = true
+      · simp [h_empty, h_block, h_yield]
+      · simp [h_empty, h_block, h_yield]
+
+/-- Tier-structure characterization for `tier3`. -/
+theorem handlerTierOfResidual_eq_tier3_iff
+    (yielding blocking residual : List Label) :
+    handlerTierOfResidual yielding blocking residual = .tier3
+      ↔
+    residual ≠ []
+      ∧
+    hasBlockingCapability blocking residual = false
+      ∧
+    allYieldingCapabilities yielding residual = false := by
+  classical
+  unfold handlerTierOfResidual
+  by_cases h_empty : residual = []
+  · simp [h_empty]
+  · by_cases h_block : hasBlockingCapability blocking residual = true
+    · simp [h_empty, h_block]
+    · by_cases h_yield : allYieldingCapabilities yielding residual = true
+      · simp [h_empty, h_block, h_yield]
+      · simp [h_empty, h_block, h_yield]
+
+/--
+Tier/scheduler correspondence: Tier 1 programs classify as scheduler-pure.
+-/
+theorem schedulerClassOfResidual_eq_pure_of_tier1
+    (yielding blocking residual : List Label)
+    (h_tier : handlerTierOfResidual yielding blocking residual = .tier1) :
+    schedulerClassOfResidual blocking residual = .pure := by
+  have h_empty :
+      residual = [] := (handlerTierOfResidual_eq_tier1_iff yielding blocking residual).1 h_tier
+  simp [schedulerClassOfResidual, h_empty]
+
+/--
+Tier/scheduler correspondence: Tier 4 programs classify as scheduler-blocking.
+-/
+theorem schedulerClassOfResidual_eq_blocking_of_tier4
+    (yielding blocking residual : List Label)
+    (h_tier : handlerTierOfResidual yielding blocking residual = .tier4) :
+    schedulerClassOfResidual blocking residual = .blocking := by
+  have h_tier4 :
+      residual ≠ [] ∧ hasBlockingCapability blocking residual = true :=
+    (handlerTierOfResidual_eq_tier4_iff yielding blocking residual).1 h_tier
+  rcases h_tier4 with ⟨h_nonempty, h_block⟩
+  simp [schedulerClassOfResidual, h_nonempty, h_block]
+
+/--
+Tier/scheduler correspondence: Tier 2 programs classify as scheduler-cooperative.
+-/
+theorem schedulerClassOfResidual_eq_cooperative_of_tier2
+    (yielding blocking residual : List Label)
+    (h_tier : handlerTierOfResidual yielding blocking residual = .tier2) :
+    schedulerClassOfResidual blocking residual = .cooperative := by
+  have h_tier2 :
+      residual ≠ []
+        ∧
+      hasBlockingCapability blocking residual = false
+        ∧
+      allYieldingCapabilities yielding residual = true :=
+    (handlerTierOfResidual_eq_tier2_iff yielding blocking residual).1 h_tier
+  rcases h_tier2 with ⟨h_nonempty, h_no_block, _h_yield⟩
+  simp [schedulerClassOfResidual, h_nonempty, h_no_block]
+
+/--
+Tier/scheduler correspondence: Tier 3 programs classify as scheduler-cooperative.
+-/
+theorem schedulerClassOfResidual_eq_cooperative_of_tier3
+    (yielding blocking residual : List Label)
+    (h_tier : handlerTierOfResidual yielding blocking residual = .tier3) :
+    schedulerClassOfResidual blocking residual = .cooperative := by
+  have h_tier3 :
+      residual ≠ []
+        ∧
+      hasBlockingCapability blocking residual = false
+        ∧
+      allYieldingCapabilities yielding residual = false :=
+    (handlerTierOfResidual_eq_tier3_iff yielding blocking residual).1 h_tier
+  rcases h_tier3 with ⟨h_nonempty, h_no_block, _h_not_yield⟩
+  simp [schedulerClassOfResidual, h_nonempty, h_no_block]
+
+/--
+Scheduler soundness statement: if the classifier reports `pure`, no blocking
+capability remains.
+-/
+theorem scheduler_pure_implies_no_blocking
+    (blocking residual : List Label)
+    (h_class : schedulerClassOfResidual blocking residual = .pure) :
+    hasBlockingCapability blocking residual = false := by
+  have h_empty : residual = [] := by
+    unfold schedulerClassOfResidual at h_class
+    by_cases h_residual_empty : residual = []
+    · exact h_residual_empty
+    · by_cases h_block : hasBlockingCapability blocking residual = true
+      · simp [h_residual_empty, h_block] at h_class
+      · simp [h_residual_empty, h_block] at h_class
+  simp [hasBlockingCapability, h_empty]
+
+/--
+Tier-pipeline completeness statement: any declared capability marked erasable
+is removed by the erasure pipeline.
+-/
+theorem erasure_pipeline_completeness
+    (declared erasable : List Label)
+    {l : Label}
+    (h_declared : l ∈ declared)
+    (h_erasable : l ∈ erasable) :
+    l ∉ eraseCapabilities declared erasable := by
+  have _h_declared := h_declared
+  intro h_mem
+  exact (mem_eraseCapabilities_iff declared erasable l).1 h_mem |>.2 h_erasable
+
+/--
+Aggressive erasure assumption: every declared blocking capability is erasable.
+-/
+def aggressiveErasureRemovesDeclaredBlocking
+    (declared erasable blocking : List Label) : Prop :=
+  ∀ l, l ∈ declared → l ∈ blocking → l ∈ erasable
+
+/--
+Under aggressive erasure, no blocking capability survives in the residual set.
+-/
+theorem aggressive_erasure_removes_all_blocking_residual
+    (declared erasable blocking : List Label)
+    (h_aggressive : aggressiveErasureRemovesDeclaredBlocking declared erasable blocking) :
+    hasBlockingCapability blocking (eraseCapabilities declared erasable) = false := by
+  unfold hasBlockingCapability
+  apply List.any_eq_false.2
+  intro l h_mem_residual
+  have h_corr := (mem_eraseCapabilities_iff declared erasable l).1 h_mem_residual
+  have h_not_mem_blocking : l ∉ blocking := by
+    intro h_mem_blocking
+    exact h_corr.2 (h_aggressive l h_corr.1 h_mem_blocking)
+  by_cases h_elem : blocking.elem l = true
+  · have h_mem_blocking : l ∈ blocking := List.mem_of_elem_eq_true h_elem
+    exact False.elim (h_not_mem_blocking h_mem_blocking)
+  · exact h_elem
+
+/--
+Classification-smallness consequence: under aggressive erasure, the scheduler
+classification after erasure is never `blocking`.
+-/
+theorem scheduler_class_small_of_aggressive_erasure
+    (declared erasable blocking : List Label)
+    (h_aggressive : aggressiveErasureRemovesDeclaredBlocking declared erasable blocking) :
+    let cls := schedulerClassOfResidual blocking (eraseCapabilities declared erasable)
+    cls = .pure ∨ cls = .cooperative := by
+  dsimp
+  by_cases h_empty : eraseCapabilities declared erasable = []
+  · left
+    simp [schedulerClassOfResidual, h_empty]
+  · right
+    have h_no_block :
+        hasBlockingCapability blocking (eraseCapabilities declared erasable) = false :=
+      aggressive_erasure_removes_all_blocking_residual declared erasable blocking h_aggressive
+    simp [schedulerClassOfResidual, h_empty, h_no_block]
 
 /-- Declarative field typing is functional on the core slice. -/
 theorem hasFieldsType_unique
