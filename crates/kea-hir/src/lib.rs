@@ -56,6 +56,8 @@ pub struct HirHandleClause {
     pub effect: String,
     pub operation: String,
     pub args: Vec<HirPattern>,
+    pub arg_types: Vec<Type>,
+    pub return_type: Type,
     pub body: HirExpr,
     pub span: Span,
 }
@@ -1519,10 +1521,9 @@ struct LowerCtx<'a> {
     pattern_variant_tags: &'a PatternVariantTags,
     pattern_qualified_tags: &'a QualifiedPatternVariantTags,
     known_record_defs: &'a KnownRecordDefs,
-    /// Per-expression inferred types from type inference, available for
-    /// monomorphization.  Not yet used in `lower_expr` default_ty because
-    /// MIR handler lowering currently depends on Dynamic expression types.
-    #[allow(dead_code)]
+    /// Per-expression inferred types from type inference. Used to populate
+    /// `HirHandleClause.arg_types` with concrete operation parameter types
+    /// from the type checker.
     expr_types: &'a std::collections::BTreeMap<Span, Type>,
 }
 
@@ -2054,12 +2055,20 @@ fn lower_expr(expr: &Expr, ty_hint: Option<Type>, ctx: &LowerCtx) -> HirExpr {
             expr: Box::new(lower_expr(handled, None, ctx)),
             clauses: clauses
                 .iter()
-                .map(|clause| HirHandleClause {
-                    effect: clause.effect.node.clone(),
-                    operation: clause.operation.node.clone(),
-                    args: clause.args.iter().map(lower_pattern).collect(),
-                    body: lower_expr(&clause.body, None, ctx),
-                    span: clause.span,
+                .map(|clause| {
+                    let (arg_types, return_type) = match ctx.expr_types.get(&clause.span) {
+                        Some(Type::Function(ft)) => (ft.params.clone(), *ft.ret.clone()),
+                        _ => (vec![Type::Dynamic; clause.args.len()], Type::Dynamic),
+                    };
+                    HirHandleClause {
+                        effect: clause.effect.node.clone(),
+                        operation: clause.operation.node.clone(),
+                        args: clause.args.iter().map(lower_pattern).collect(),
+                        arg_types,
+                        return_type,
+                        body: lower_expr(&clause.body, None, ctx),
+                        span: clause.span,
+                    }
                 })
                 .collect(),
             then_clause: then_clause

@@ -286,6 +286,8 @@ impl<'a> MonoPass<'a> {
                         effect: c.effect.clone(),
                         operation: c.operation.clone(),
                         args: c.args.clone(),
+                        arg_types: c.arg_types.clone(),
+                        return_type: c.return_type.clone(),
                         body: self.rewrite_calls(&c.body, depth),
                         span: c.span,
                     })
@@ -481,6 +483,8 @@ fn apply_subst_to_expr(expr: &HirExpr, subst: &Substitution) -> HirExpr {
                     effect: c.effect.clone(),
                     operation: c.operation.clone(),
                     args: c.args.clone(),
+                    arg_types: c.arg_types.iter().map(|t| subst.apply(t)).collect(),
+                    return_type: subst.apply(&c.return_type),
                     body: apply_subst_to_expr(&c.body, subst),
                     span: c.span,
                 })

@@ -10267,6 +10267,9 @@ fn infer_handle_expr_type(
         };
 
         let resolved_op_ty = unifier.substitution.apply(&op_ty);
+        // Record the resolved operation type on the clause span so HIR lowering
+        // can populate HirHandleClause.arg_types with concrete param types.
+        unifier.record_expr_type(clause.span, resolved_op_ty.clone());
         let Type::Function(op_fn) = resolved_op_ty else {
             unifier.push_error(
                 Diagnostic::error(

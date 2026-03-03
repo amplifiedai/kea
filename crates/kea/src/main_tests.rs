@@ -6883,6 +6883,40 @@ fn compile_and_execute_payload_constructor_or_guard_across_variants_exit_code() 
     let _ = std::fs::remove_file(source_path);
 }
 
+#[test]
+fn compile_and_execute_float_in_handler_callback() {
+    // Verify that concrete Float types are threaded through handler callback
+    // closures. The handler clause receives a Float arg and resumes with it.
+    // Previously, Float args were erased to Dynamic (I64) which would cause
+    // wrong register class at the Cranelift ABI level.
+    let source_path = write_temp_source(
+        "effect FloatEff\n  fn send(value: Float) -> Unit\n\nfn do_send() -[FloatEff]> Int\n  FloatEff.send(3.14)\n  42\n\nfn main() -> Int\n  handle do_send()\n    FloatEff.send(value) -> resume ()\n",
+        "kea-cli-float-handler-callback",
+        "kea",
+    );
+
+    let run = run_file(&source_path).expect("float handler callback should compile and run");
+    assert_eq!(run.exit_code, 42);
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+fn compile_and_execute_float_state_handler() {
+    // Float state type threaded through State effect handler.
+    // State.get() returns Float, State.put() accepts Float.
+    let source_path = write_temp_source(
+        "effect State S\n  fn get() -> S\n  fn put(next: S) -> Unit\n\nfn use_state() -[State Float]> Float\n  let x = State.get()\n  State.put(x)\n  State.get()\n\nfn main() -> Int\n  handle use_state()\n    State.get() -> resume 2.71\n    State.put(next) -> resume ()\n  0\n",
+        "kea-cli-float-state-handler",
+        "kea",
+    );
+
+    let run = run_file(&source_path).expect("float state handler should compile and run");
+    assert_eq!(run.exit_code, 0);
+
+    let _ = std::fs::remove_file(source_path);
+}
+
 fn write_temp_source(contents: &str, prefix: &str, extension: &str) -> PathBuf {
     let path = temp_artifact_path(prefix, extension);
     std::fs::write(&path, contents).expect("temp source write should succeed");

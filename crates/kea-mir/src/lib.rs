@@ -4425,10 +4425,11 @@ impl FunctionLoweringCtx {
 
     /// Create an identity closure `|x| x` for use as the initial chain value
     /// in callback stacking. Returns a closure MirValueId.
-    fn create_identity_closure(&mut self) -> Option<MirValueId> {
+    fn create_identity_closure(&mut self, _value_type: &Type) -> Option<MirValueId> {
         let entry_name = self.allocate_generated_closure_entry_name("chain_identity");
         // Entry function: (env: Dynamic, x: Dynamic) -> Dynamic
-        // env = param 0 (unused), x = param 1 — just return x.
+        // env = param 0 (unused, always I64 closure ptr), x = param 1 — just return x.
+        // Uses Dynamic because chain values flow through opaque cell stores/loads.
         let identity_fn = MirFunction {
             name: entry_name.clone(),
             signature: MirFunctionSignature {
@@ -4462,6 +4463,7 @@ impl FunctionLoweringCtx {
         operation: &str,
         split: &NonTailResumeSplit,
         extra_capture_names: &[String],
+        _clause_return_type: &Type,
         span: kea_ast::Span,
     ) -> Option<String> {
         // Param order must match closure wrapper: captures first, then call params.
@@ -4550,7 +4552,7 @@ impl FunctionLoweringCtx {
             entry_name.clone(),
             fn_name,
             capture_types,       // captures: prev_chain + extras
-            vec![Type::Dynamic], // call param: result
+            vec![Type::Dynamic], // call param: result (Dynamic — chain value flows through opaque cells)
             Vec::new(),
             Vec::new(),
             Type::Dynamic,
@@ -4666,7 +4668,7 @@ impl FunctionLoweringCtx {
                                 },
                                 HirExpr {
                                     kind: HirExprKind::Var(binding.clone()),
-                                    ty: Type::Dynamic,
+                                    ty: self.var_types.get(binding).cloned().unwrap_or(Type::Dynamic),
                                     span: clause.span,
                                 },
                             ],
@@ -4718,9 +4720,10 @@ impl FunctionLoweringCtx {
             _ => callback_body.ty.clone(),
         };
 
-        // Synthesize and lower callback lambda
+        // Synthesize and lower callback lambda — use concrete arg types from
+        // type checker when available (threaded through HirHandleClause.arg_types).
         let callback_ty = Type::Function(FunctionType::with_effects(
-            vec![Type::Dynamic; callback_params.len()],
+            clause.arg_types.clone(),
             callback_return_ty.clone(),
             EffectRow::pure(),
         ));
@@ -4764,6 +4767,8 @@ impl FunctionLoweringCtx {
         operation: &str,
         split: &NonTailResumeSplit,
         clause_args: &[kea_hir::HirPattern],
+        clause_arg_types: &[Type],
+        clause_return_type: &Type,
         pre_resume_capture_cells: &[MirValueId],
         span: kea_ast::Span,
     ) -> Option<MirValueId> {
@@ -4776,10 +4781,11 @@ impl FunctionLoweringCtx {
             operation,
             split,
             &all_extra_captures,
+            clause_return_type,
             span,
         )?;
 
-        let identity = self.create_identity_closure()?;
+        let identity = self.create_identity_closure(clause_return_type)?;
         let chain_cell = self.new_value();
         self.emit_inst(MirInst::StateCellNew {
             dest: chain_cell.clone(),
@@ -4815,6 +4821,8 @@ impl FunctionLoweringCtx {
             chain_cell,
             &post_resume_entry,
             arity,
+            clause_arg_types,
+            clause_return_type,
             &capture_indices,
             pre_resume_capture_cells,
         )
@@ -4827,12 +4835,15 @@ impl FunctionLoweringCtx {
     /// 5. Returns the resume value
     ///
     /// Returns a closure MirValueId for the augmented callback.
+    #[allow(clippy::too_many_arguments)]
     fn build_chain_augmented_callback(
         &mut self,
         inner_callback: MirValueId,
         chain_cell: MirValueId,
         post_resume_entry: &str,
         arity: usize,
+        clause_arg_types: &[Type],
+        _clause_return_type: &Type,
         clause_arg_capture_indices: &[usize],
         binding_capture_cells: &[MirValueId],
     ) -> Option<MirValueId> {
@@ -4884,10 +4895,13 @@ impl FunctionLoweringCtx {
         let inner_args: Vec<MirValueId> = (1..=arity as u32).map(MirValueId).collect();
         let resume_value = MirValueId(next_id);
         next_id += 1;
+        // The inner callback returns the resume value. Use Dynamic for the call's
+        // ret_type because even Unit resume values need to flow through the chain
+        // as concrete I64 values (the chain stores/loads them as opaque data).
         instructions.push(MirInst::Call {
             callee: MirCallee::Value(cap_inner),
             args: inner_args,
-            arg_types: vec![Type::Dynamic; arity],
+            arg_types: clause_arg_types.to_vec(),
             result: Some(resume_value.clone()),
             ret_type: Type::Dynamic,
             callee_fail_result_abi: false,
@@ -4925,14 +4939,20 @@ impl FunctionLoweringCtx {
             function: post_resume_entry.to_string(),
         });
         let mut chain_captures = vec![prev_chain];
+        let mut chain_capture_types = vec![Type::Dynamic]; // prev_chain is a closure ptr
         for &idx in clause_arg_capture_indices {
             // Clause args are MirValueId(1..=arity) in the wrapper function
             chain_captures.push(MirValueId(1 + idx as u32));
+            chain_capture_types.push(
+                clause_arg_types.get(idx).cloned().unwrap_or(Type::Dynamic),
+            );
         }
         for val in &loaded_binding_values {
             chain_captures.push(val.clone());
+            // Binding values loaded from cells — use Dynamic since we don't have
+            // their types threaded through (cell stores erase type info).
+            chain_capture_types.push(Type::Dynamic);
         }
-        let chain_capture_types = vec![Type::Dynamic; chain_captures.len()];
         let new_chain = MirValueId(next_id);
         next_id += 1;
         instructions.push(MirInst::ClosureInit {
@@ -4954,9 +4974,11 @@ impl FunctionLoweringCtx {
         let wrapper_fn = MirFunction {
             name: wrapper_fn_name.clone(),
             signature: MirFunctionSignature {
-                params: std::iter::once(Type::Dynamic) // env
-                    .chain(std::iter::repeat_n(Type::Dynamic, arity)) // args
+                params: std::iter::once(Type::Dynamic) // env (closure ptr, always I64)
+                    .chain(clause_arg_types.iter().cloned()) // args with concrete types
                     .collect(),
+                // Use Dynamic for ret because the chain passes resume values
+                // through opaque stores/loads even when the value is Unit.
                 ret: Type::Dynamic,
                 effects: EffectRow::pure(),
             },
@@ -6139,6 +6161,8 @@ impl FunctionLoweringCtx {
                         &clause.operation,
                         split,
                         &clause.args,
+                        &clause.arg_types,
+                        &clause.return_type,
                         &pre_resume_capture_cells,
                         clause.span,
                     )?,
