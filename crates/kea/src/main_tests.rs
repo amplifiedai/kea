@@ -3967,6 +3967,28 @@ fn compile_rejects_unboxed_struct_with_heap_field() {
 
 #[test]
 #[cfg(not(target_os = "windows"))]
+fn compile_build_and_execute_aot_ptr_alloc_read_write_free_exit_code() {
+    let source_path = write_temp_source(
+        "fn main() -> Int\n  unsafe\n    let p = Ptr.alloc(1)\n    Ptr.write(p, 42)\n    let value = Ptr.read(p)\n    Ptr.free(p)\n    value\n",
+        "kea-cli-aot-ptr-alloc-read-write-free",
+        "kea",
+    );
+    let output_path = temp_artifact_path("kea-cli-aot-ptr-alloc-read-write-free", "bin");
+
+    let compiled = compile_file(&source_path, CodegenMode::Aot).expect("aot compile should work");
+    link_object_bytes(&compiled.object, &output_path).expect("link should work");
+
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("aot executable should run");
+    assert_eq!(status.code(), Some(42));
+
+    let _ = std::fs::remove_file(source_path);
+    let _ = std::fs::remove_file(output_path);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
 fn compile_build_and_execute_aot_payload_constructor_case_exit_code() {
     let source_path = write_temp_source(
         "enum Flag\n  Yep(Int)\n  Nope\n\nfn main() -> Int\n  case Yep(1 + 6)\n    Yep(n) -> n\n    Nope -> 0\n",

@@ -3514,18 +3514,163 @@ fn lower_instruction<M: Module>(
                     builder.inst_results(call).first().copied()
                 }
                 MirCallee::External(name) => {
-                    let callee_id = *ctx.external_func_ids.get(name).ok_or_else(|| {
-                        CodegenError::UnknownFunction {
-                            function: name.clone(),
+                    let ptr_ty = module.target_config().pointer_type();
+                    match name.as_str() {
+                        "__kea_ptr_null" => {
+                            if !lowered_args.is_empty() {
+                                return Err(CodegenError::UnsupportedMir {
+                                    function: function_name.to_string(),
+                                    detail: "__kea_ptr_null expects no arguments".to_string(),
+                                });
+                            }
+                            Some(builder.ins().iconst(ptr_ty, 0))
                         }
-                    })?;
-                    let external_ref = module.declare_func_in_func(callee_id, builder.func);
-                    let call = builder.ins().call(external_ref, &lowered_args);
-                    let call_result = builder.inst_results(call).first().copied();
-                    if *ret_type == Type::Unit {
-                        None
-                    } else {
-                        call_result
+                        "__kea_ptr_is_null" => {
+                            if lowered_args.len() != 1 {
+                                return Err(CodegenError::UnsupportedMir {
+                                    function: function_name.to_string(),
+                                    detail: "__kea_ptr_is_null expects one pointer argument"
+                                        .to_string(),
+                                });
+                            }
+                            let ptr = coerce_value_to_clif_type(builder, lowered_args[0], ptr_ty);
+                            let is_null = builder.ins().icmp_imm(IntCC::Equal, ptr, 0);
+                            let one = builder.ins().iconst(types::I8, 1);
+                            let zero = builder.ins().iconst(types::I8, 0);
+                            Some(builder.ins().select(is_null, one, zero))
+                        }
+                        "__kea_ptr_read_i64" => {
+                            if lowered_args.len() != 1 {
+                                return Err(CodegenError::UnsupportedMir {
+                                    function: function_name.to_string(),
+                                    detail: "__kea_ptr_read_i64 expects one pointer argument"
+                                        .to_string(),
+                                });
+                            }
+                            if *ret_type == Type::Unit {
+                                return Err(CodegenError::UnsupportedMir {
+                                    function: function_name.to_string(),
+                                    detail: "__kea_ptr_read_i64 cannot return Unit".to_string(),
+                                });
+                            }
+                            let ptr = coerce_value_to_clif_type(builder, lowered_args[0], ptr_ty);
+                            let value_ty = clif_type(ret_type)?;
+                            Some(builder.ins().load(value_ty, MemFlags::new(), ptr, 0))
+                        }
+                        "__kea_ptr_write_i64" => {
+                            if lowered_args.len() != 2 {
+                                return Err(CodegenError::UnsupportedMir {
+                                    function: function_name.to_string(),
+                                    detail: "__kea_ptr_write_i64 expects pointer + value"
+                                        .to_string(),
+                                });
+                            }
+                            let ptr = coerce_value_to_clif_type(builder, lowered_args[0], ptr_ty);
+                            let value_ty = clif_type(&arg_types[1])?;
+                            let value =
+                                coerce_value_to_clif_type(builder, lowered_args[1], value_ty);
+                            builder.ins().store(MemFlags::new(), value, ptr, 0);
+                            if *ret_type == Type::Unit {
+                                None
+                            } else {
+                                Some(builder.ins().iconst(clif_type(ret_type)?, 0))
+                            }
+                        }
+                        "__kea_ptr_offset" => {
+                            if lowered_args.len() != 3 {
+                                return Err(CodegenError::UnsupportedMir {
+                                    function: function_name.to_string(),
+                                    detail:
+                                        "__kea_ptr_offset expects pointer + count + elem_size"
+                                            .to_string(),
+                                });
+                            }
+                            let ptr = coerce_value_to_clif_type(builder, lowered_args[0], ptr_ty);
+                            let count =
+                                coerce_value_to_clif_type(builder, lowered_args[1], ptr_ty);
+                            let elem_size =
+                                coerce_value_to_clif_type(builder, lowered_args[2], ptr_ty);
+                            let offset = builder.ins().imul(count, elem_size);
+                            Some(builder.ins().iadd(ptr, offset))
+                        }
+                        "__kea_ptr_cast" => {
+                            if lowered_args.len() != 1 {
+                                return Err(CodegenError::UnsupportedMir {
+                                    function: function_name.to_string(),
+                                    detail: "__kea_ptr_cast expects one pointer argument"
+                                        .to_string(),
+                                });
+                            }
+                            let value = coerce_value_to_clif_type(builder, lowered_args[0], ptr_ty);
+                            if *ret_type == Type::Unit {
+                                None
+                            } else {
+                                Some(coerce_value_to_type(builder, value, ret_type)?)
+                            }
+                        }
+                        "__kea_ptr_alloc" => {
+                            if lowered_args.len() != 2 {
+                                return Err(CodegenError::UnsupportedMir {
+                                    function: function_name.to_string(),
+                                    detail: "__kea_ptr_alloc expects count + elem_size"
+                                        .to_string(),
+                                });
+                            }
+                            let count =
+                                coerce_value_to_clif_type(builder, lowered_args[0], ptr_ty);
+                            let elem_size =
+                                coerce_value_to_clif_type(builder, lowered_args[1], ptr_ty);
+                            let requested = builder.ins().imul(count, elem_size);
+                            let one = builder.ins().iconst(ptr_ty, 1);
+                            let needs_floor =
+                                builder.ins().icmp_imm(IntCC::SignedLessThanOrEqual, requested, 0);
+                            let alloc_size = builder.ins().select(needs_floor, one, requested);
+                            let malloc_func_id = imports.get(module, "malloc")?;
+                            let malloc_ref = module.declare_func_in_func(malloc_func_id, builder.func);
+                            let alloc_call = builder.ins().call(malloc_ref, &[alloc_size]);
+                            let raw_ptr = builder
+                                .inst_results(alloc_call)
+                                .first()
+                                .copied()
+                                .ok_or_else(|| CodegenError::UnsupportedMir {
+                                    function: function_name.to_string(),
+                                    detail: "malloc call returned no pointer value".to_string(),
+                                })?;
+                            Some(coerce_value_to_clif_type(builder, raw_ptr, ptr_ty))
+                        }
+                        "__kea_ptr_free" => {
+                            if lowered_args.len() != 1 {
+                                return Err(CodegenError::UnsupportedMir {
+                                    function: function_name.to_string(),
+                                    detail: "__kea_ptr_free expects one pointer argument"
+                                        .to_string(),
+                                });
+                            }
+                            let ptr = coerce_value_to_clif_type(builder, lowered_args[0], ptr_ty);
+                            let free_func_id = imports.get(module, "free")?;
+                            let free_ref = module.declare_func_in_func(free_func_id, builder.func);
+                            let _ = builder.ins().call(free_ref, &[ptr]);
+                            if *ret_type == Type::Unit {
+                                None
+                            } else {
+                                Some(builder.ins().iconst(clif_type(ret_type)?, 0))
+                            }
+                        }
+                        _ => {
+                            let callee_id = *ctx.external_func_ids.get(name).ok_or_else(|| {
+                                CodegenError::UnknownFunction {
+                                    function: name.clone(),
+                                }
+                            })?;
+                            let external_ref = module.declare_func_in_func(callee_id, builder.func);
+                            let call = builder.ins().call(external_ref, &lowered_args);
+                            let call_result = builder.inst_results(call).first().copied();
+                            if *ret_type == Type::Unit {
+                                None
+                            } else {
+                                call_result
+                            }
+                        }
                     }
                 }
                 MirCallee::Value(_) => {
