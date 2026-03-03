@@ -4286,6 +4286,29 @@ fn compile_rejects_fip_when_call_boundary_is_unproven() {
 
 #[test]
 #[cfg(not(target_os = "windows"))]
+fn compile_rejects_fip_when_function_body_contains_raw_hir_expr() {
+    let source_path = write_temp_source(
+        "@fip\nfn raw_when_guard_passthrough(x: Unique Int) -> Unique Int\n  x when true\n\nfn main() -> Int\n  0\n",
+        "kea-cli-fip-raw-hir-body",
+        "kea",
+    );
+
+    let err = run_file(&source_path)
+        .expect_err("@fip verifier should reject functions that still contain raw HIR fallback nodes");
+    assert!(
+        err.contains("`@fip` verification failed for `raw_when_guard_passthrough`"),
+        "expected @fip verification failure, got: {err}"
+    );
+    assert!(
+        err.contains("raw_hir_expr_count="),
+        "expected raw HIR fallback detail in diagnostics, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
 fn compile_rejects_fip_when_candidate_safe_forwarder_allocates() {
     let source_path = write_temp_source(
         "struct Box\n  n: Int\n\nfn alloc_and_return(x: Unique Int) -> Unique Int\n  let b = Box { n: 1 }\n  x\n\n@fip\nfn outer(x: Unique Int) -> Unique Int\n  alloc_and_return(x)\n\nfn main() -> Int\n  0\n",

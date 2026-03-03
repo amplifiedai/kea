@@ -2993,6 +2993,9 @@ fn validate_fip_annotations(module: &Module, hir: &HirModule) -> Vec<Diagnostic>
                 )
             })
             .unwrap_or_default();
+        let raw_hir_expr_count = hir_function
+            .map(|function| count_raw_hir_expr_nodes(&function.body))
+            .unwrap_or(0);
         let call_boundary_summary = hir_function
             .map(|function| {
                 let local_bindings = hir_function_param_bindings(function);
@@ -3087,6 +3090,9 @@ fn validate_fip_annotations(module: &Module, hir: &HirModule) -> Vec<Diagnostic>
                 unique_flow_issues.len()
             ));
         }
+        if raw_hir_expr_count > 0 {
+            failures.push(format!("raw_hir_expr_count={raw_hir_expr_count}"));
+        }
         if call_boundary_summary.total_unsupported_calls > 0 {
             failures.push(format!(
                 "unsupported_call_boundaries={}",
@@ -3114,6 +3120,11 @@ fn validate_fip_annotations(module: &Module, hir: &HirModule) -> Vec<Diagnostic>
                 help_parts.push(format!(
                     "unique ownership flow issues:\n{}",
                     lines.join("\n")
+                ));
+            }
+            if raw_hir_expr_count > 0 {
+                help_parts.push(format!(
+                    "function body contains {raw_hir_expr_count} raw HIR fallback expression node(s); @fip verification only runs on fully lowered HIR."
                 ));
             }
             if call_boundary_summary.total_unsupported_calls > 0 {
@@ -4229,6 +4240,72 @@ fn analyze_hir_unique_flow_function(
         safe_higher_order_handoff_callees,
         &local_bindings,
     )
+}
+
+fn count_raw_hir_expr_nodes(expr: &HirExpr) -> usize {
+    match &expr.kind {
+        HirExprKind::Raw(_) => 1,
+        HirExprKind::Lit(_) | HirExprKind::Var(_) => 0,
+        HirExprKind::Unary { operand, .. } => count_raw_hir_expr_nodes(operand),
+        HirExprKind::Binary { left, right, .. } => {
+            count_raw_hir_expr_nodes(left) + count_raw_hir_expr_nodes(right)
+        }
+        HirExprKind::If {
+            condition,
+            then_branch,
+            else_branch,
+        } => {
+            let mut count =
+                count_raw_hir_expr_nodes(condition) + count_raw_hir_expr_nodes(then_branch);
+            if let Some(else_expr) = else_branch {
+                count += count_raw_hir_expr_nodes(else_expr);
+            }
+            count
+        }
+        HirExprKind::Call { func, args } => {
+            count_raw_hir_expr_nodes(func) + args.iter().map(count_raw_hir_expr_nodes).sum::<usize>()
+        }
+        HirExprKind::Let { value, .. } => count_raw_hir_expr_nodes(value),
+        HirExprKind::Block(exprs) | HirExprKind::Tuple(exprs) => {
+            exprs.iter().map(count_raw_hir_expr_nodes).sum()
+        }
+        HirExprKind::Lambda { body, .. } | HirExprKind::Catch { expr: body } => {
+            count_raw_hir_expr_nodes(body)
+        }
+        HirExprKind::RecordLit { fields, .. } => fields
+            .iter()
+            .map(|(_, field_expr)| count_raw_hir_expr_nodes(field_expr))
+            .sum(),
+        HirExprKind::RecordUpdate { base, fields, .. } => {
+            count_raw_hir_expr_nodes(base)
+                + fields
+                    .iter()
+                    .map(|(_, field_expr)| count_raw_hir_expr_nodes(field_expr))
+                    .sum::<usize>()
+        }
+        HirExprKind::FieldAccess { expr, .. } | HirExprKind::SumPayloadAccess { expr, .. } => {
+            count_raw_hir_expr_nodes(expr)
+        }
+        HirExprKind::SumConstructor { fields, .. } => {
+            fields.iter().map(count_raw_hir_expr_nodes).sum()
+        }
+        HirExprKind::Handle {
+            expr,
+            clauses,
+            then_clause,
+        } => {
+            let mut count = count_raw_hir_expr_nodes(expr)
+                + clauses
+                    .iter()
+                    .map(|clause| count_raw_hir_expr_nodes(&clause.body))
+                    .sum::<usize>();
+            if let Some(then_expr) = then_clause {
+                count += count_raw_hir_expr_nodes(then_expr);
+            }
+            count
+        }
+        HirExprKind::Resume { value } => count_raw_hir_expr_nodes(value),
+    }
 }
 
 fn analyze_hir_unique_flow_expr_scoped(
