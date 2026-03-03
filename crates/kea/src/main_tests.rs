@@ -3098,6 +3098,52 @@ fn compile_and_execute_fip_unique_higher_order_module_alias_wrapper_if_branches_
 
 #[test]
 #[cfg(not(target_os = "windows"))]
+fn compile_and_execute_fip_unique_higher_order_forwarder_block_alias_then_if_exit_code() {
+    let source_path = write_temp_source(
+        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_forwarder_block_if(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = x\n  if flag\n    f(y)\n  else\n    f(y)\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_forwarder_block_if(true, forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "kea-cli-fip-unique-higher-order-forwarder-block-alias-then-if",
+        "kea",
+    );
+
+    let run = run_file(&source_path).expect(
+        "@fip verifier should accept wrappers that alias the unique root before a branch-equivalent forward handoff",
+    );
+    assert_eq!(run.exit_code, 0);
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn compile_and_execute_fip_unique_higher_order_module_alias_wrapper_block_alias_then_if_exit_code()
+{
+    let project_dir = temp_workspace_project_dir(
+        "kea-cli-fip-unique-higher-order-module-alias-block-alias-then-if",
+    );
+    let src_dir = project_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+    let source_path = src_dir.join("main.kea");
+    std::fs::write(
+        src_dir.join("alpha.kea"),
+        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_forwarder_block_if(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = x\n  if flag\n    f(y)\n  else\n    f(y)\n",
+    )
+    .expect("alpha module write should succeed");
+    std::fs::write(
+            &source_path,
+            "use Alpha as A\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_forwarder_block_if(true, A.forward_once, x)\n\nfn main() -> Int\n  0\n",
+        )
+        .expect("source write should succeed");
+
+    let run = run_file(&source_path).expect(
+        "@fip verifier and backend lowering should accept module-alias wrappers that alias the unique root before equivalent branch handoff",
+    );
+    assert_eq!(run.exit_code, 0);
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
 fn compile_and_execute_fip_unique_higher_order_forwarder_named_import_call_exit_code() {
     let project_dir =
         temp_workspace_project_dir("kea-cli-fip-unique-higher-order-forwarder-imported");

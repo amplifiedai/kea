@@ -3302,106 +3302,102 @@ fn matches_higher_order_forwarder_body(
         }
     }
 
-    match &expr.kind {
-        HirExprKind::Call { .. } => matches_forwarder_call(
-            expr,
-            &BTreeSet::from([forwarder_param_name.to_string()]),
-            &BTreeSet::from([unique_param_name.to_string()]),
-        ),
-        HirExprKind::Block(exprs) if !exprs.is_empty() => {
-            let mut forwarder_aliases = BTreeSet::from([forwarder_param_name.to_string()]);
-            let mut unique_aliases = BTreeSet::from([unique_param_name.to_string()]);
-            let mut result_aliases: Option<BTreeSet<String>> = None;
-            for (index, item) in exprs.iter().enumerate() {
-                let is_last = index + 1 == exprs.len();
-                if result_aliases.is_none() {
+    fn matches_shape(
+        expr: &HirExpr,
+        forwarder_aliases: &BTreeSet<String>,
+        unique_aliases: &BTreeSet<String>,
+    ) -> bool {
+        match &expr.kind {
+            HirExprKind::Call { .. } => {
+                matches_forwarder_call(expr, forwarder_aliases, unique_aliases)
+            }
+            HirExprKind::Block(exprs) if !exprs.is_empty() => {
+                let mut forwarder_aliases = forwarder_aliases.clone();
+                let mut unique_aliases = unique_aliases.clone();
+                let mut result_aliases: Option<BTreeSet<String>> = None;
+                for (index, item) in exprs.iter().enumerate() {
+                    let is_last = index + 1 == exprs.len();
+                    if result_aliases.is_none() {
+                        if is_last {
+                            return matches_shape(item, &forwarder_aliases, &unique_aliases);
+                        }
+
+                        if let Some((binding_name, source_name)) = extract_var_alias_let(item) {
+                            if unique_aliases.contains(source_name) {
+                                unique_aliases.insert(binding_name.to_string());
+                                continue;
+                            }
+                            if forwarder_aliases.contains(source_name) {
+                                forwarder_aliases.insert(binding_name.to_string());
+                                continue;
+                            }
+                            // Benign passthrough alias lets on unrelated params
+                            // are allowed before the unique handoff call.
+                            continue;
+                        }
+
+                        match &item.kind {
+                            HirExprKind::Let { pattern, value }
+                                if matches!(pattern, kea_hir::HirPattern::Var(_)) =>
+                            {
+                                if !matches_shape(value, &forwarder_aliases, &unique_aliases) {
+                                    return false;
+                                }
+                                let binding_name = match pattern {
+                                    kea_hir::HirPattern::Var(name) => name,
+                                    _ => unreachable!("guarded by match"),
+                                };
+                                result_aliases = Some(BTreeSet::from([binding_name.clone()]));
+                            }
+                            _ => return false,
+                        }
+                        continue;
+                    }
+
+                    let Some(result_aliases) = result_aliases.as_mut() else {
+                        unreachable!("guarded by is_none check");
+                    };
+
                     if is_last {
-                        return matches_forwarder_call(
-                            item,
-                            &forwarder_aliases,
-                            &unique_aliases,
+                        return matches!(
+                            &item.kind,
+                            HirExprKind::Var(name) if result_aliases.contains(name)
                         );
                     }
 
                     if let Some((binding_name, source_name)) = extract_var_alias_let(item) {
-                        if unique_aliases.contains(source_name) {
-                            unique_aliases.insert(binding_name.to_string());
-                            continue;
+                        if !result_aliases.contains(source_name) {
+                            return false;
                         }
-                        if forwarder_aliases.contains(source_name) {
-                            forwarder_aliases.insert(binding_name.to_string());
-                            continue;
-                        }
-                        // Benign passthrough alias lets on unrelated params are
-                        // allowed before the unique handoff call. They don't
-                        // affect forwarder/unique root tracking.
+                        result_aliases.insert(binding_name.to_string());
                         continue;
                     }
 
-                    match &item.kind {
-                        HirExprKind::Let { pattern, value }
-                            if matches!(pattern, kea_hir::HirPattern::Var(_)) =>
-                        {
-                            if !matches_forwarder_call(
-                                value,
-                                &forwarder_aliases,
-                                &unique_aliases,
-                            ) {
-                                return false;
-                            }
-                            let binding_name = match pattern {
-                                kea_hir::HirPattern::Var(name) => name,
-                                _ => unreachable!("guarded by match"),
-                            };
-                            result_aliases = Some(BTreeSet::from([binding_name.clone()]));
-                        }
-                        _ => return false,
-                    }
-                    continue;
+                    return false;
                 }
-
-                let Some(result_aliases) = result_aliases.as_mut() else {
-                    unreachable!("guarded by is_none check");
-                };
-
-                if is_last {
-                    return matches!(&item.kind, HirExprKind::Var(name) if result_aliases.contains(name));
-                }
-
-                if let Some((binding_name, source_name)) = extract_var_alias_let(item) {
-                    if !result_aliases.contains(source_name) {
-                        return false;
-                    }
-                    result_aliases.insert(binding_name.to_string());
-                    continue;
-                }
-
-                return false;
+                false
             }
-            false
+            HirExprKind::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                let Some(else_branch) = else_branch.as_ref() else {
+                    return false;
+                };
+                !contains_call(condition)
+                    && matches_shape(then_branch, forwarder_aliases, unique_aliases)
+                    && matches_shape(else_branch, forwarder_aliases, unique_aliases)
+            }
+            _ => false,
         }
-        HirExprKind::If {
-            condition,
-            then_branch,
-            else_branch,
-        } => {
-            let Some(else_branch) = else_branch.as_ref() else {
-                return false;
-            };
-            !contains_call(condition)
-                && matches_higher_order_forwarder_body(
-                    then_branch,
-                    forwarder_param_name,
-                    unique_param_name,
-                )
-                && matches_higher_order_forwarder_body(
-                    else_branch,
-                    forwarder_param_name,
-                    unique_param_name,
-                )
-        }
-        _ => false,
     }
+
+    matches_shape(
+        expr,
+        &BTreeSet::from([forwarder_param_name.to_string()]),
+        &BTreeSet::from([unique_param_name.to_string()]),
+    )
 }
 
 fn collect_safe_unique_forwarders(
