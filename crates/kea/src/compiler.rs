@@ -105,6 +105,7 @@ fn compile_module_inner(source: &str, file_id: FileId) -> Result<CompilationCont
 
     diagnostics.extend(validate_module_fn_annotations(&parsed_module));
     diagnostics.extend(validate_module_annotations(&parsed_module));
+    diagnostics.extend(validate_unsafe_call_sites(&parsed_module));
     if has_errors(&diagnostics) {
         return Err(format_diagnostics(
             "type annotation validation failed",
@@ -248,6 +249,538 @@ fn collect_fip_annotated_function_names(module: &Module) -> Vec<String> {
         }
     }
     names
+}
+
+fn has_annotation_named(annotations: &[kea_ast::Annotation], name: &str) -> bool {
+    annotations.iter().any(|ann| ann.name.node == name)
+}
+
+fn collect_unsafe_annotated_function_names(module: &Module) -> BTreeSet<String> {
+    let mut names = BTreeSet::new();
+    for decl in &module.declarations {
+        match &decl.node {
+            DeclKind::Function(fn_decl) if has_annotation_named(&fn_decl.annotations, "unsafe") => {
+                names.insert(fn_decl.name.node.clone());
+            }
+            DeclKind::ExprFn(expr_decl)
+                if has_annotation_named(&expr_decl.annotations, "unsafe") =>
+            {
+                names.insert(expr_decl.name.node.clone());
+            }
+            _ => {}
+        }
+    }
+    names
+}
+
+fn ast_callable_name(expr: &Expr) -> Option<String> {
+    match &expr.node {
+        ExprKind::Var(name) => Some(name.clone()),
+        ExprKind::FieldAccess { expr, field } => {
+            let owner = ast_callable_name(expr)?;
+            Some(format!("{owner}.{}", field.node))
+        }
+        _ => None,
+    }
+}
+
+fn collect_unsafe_call_site_diagnostics_in_expr(
+    expr: &Expr,
+    unsafe_callees: &BTreeSet<String>,
+    in_unsafe_context: bool,
+    caller_name: &str,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    match &expr.node {
+        ExprKind::Call { func, args } => {
+            if !in_unsafe_context
+                && let Some(callee_name) = ast_callable_name(func)
+                && unsafe_callees.contains(&callee_name)
+            {
+                diagnostics.push(
+                    Diagnostic::error(
+                        Category::TypeError,
+                        format!(
+                            "call to `@unsafe` function `{callee_name}` requires unsafe context"
+                        ),
+                    )
+                    .at(span_to_source_location(expr.span))
+                    .with_help(format!(
+                        "enclosing function `{caller_name}` is safe; mark it `@unsafe` for now (unsafe blocks land in a follow-up step)."
+                    )),
+                );
+            }
+            collect_unsafe_call_site_diagnostics_in_expr(
+                func,
+                unsafe_callees,
+                in_unsafe_context,
+                caller_name,
+                diagnostics,
+            );
+            for arg in args {
+                collect_unsafe_call_site_diagnostics_in_expr(
+                    &arg.value,
+                    unsafe_callees,
+                    in_unsafe_context,
+                    caller_name,
+                    diagnostics,
+                );
+            }
+        }
+        ExprKind::Let { value, .. } => {
+            collect_unsafe_call_site_diagnostics_in_expr(
+                value,
+                unsafe_callees,
+                in_unsafe_context,
+                caller_name,
+                diagnostics,
+            );
+        }
+        ExprKind::Lambda { body, .. } => {
+            collect_unsafe_call_site_diagnostics_in_expr(
+                body,
+                unsafe_callees,
+                in_unsafe_context,
+                caller_name,
+                diagnostics,
+            );
+        }
+        ExprKind::If {
+            condition,
+            then_branch,
+            else_branch,
+        } => {
+            collect_unsafe_call_site_diagnostics_in_expr(
+                condition,
+                unsafe_callees,
+                in_unsafe_context,
+                caller_name,
+                diagnostics,
+            );
+            collect_unsafe_call_site_diagnostics_in_expr(
+                then_branch,
+                unsafe_callees,
+                in_unsafe_context,
+                caller_name,
+                diagnostics,
+            );
+            if let Some(else_branch) = else_branch {
+                collect_unsafe_call_site_diagnostics_in_expr(
+                    else_branch,
+                    unsafe_callees,
+                    in_unsafe_context,
+                    caller_name,
+                    diagnostics,
+                );
+            }
+        }
+        ExprKind::Case { scrutinee, arms } => {
+            collect_unsafe_call_site_diagnostics_in_expr(
+                scrutinee,
+                unsafe_callees,
+                in_unsafe_context,
+                caller_name,
+                diagnostics,
+            );
+            for arm in arms {
+                if let Some(guard) = &arm.guard {
+                    collect_unsafe_call_site_diagnostics_in_expr(
+                        guard,
+                        unsafe_callees,
+                        in_unsafe_context,
+                        caller_name,
+                        diagnostics,
+                    );
+                }
+                collect_unsafe_call_site_diagnostics_in_expr(
+                    &arm.body,
+                    unsafe_callees,
+                    in_unsafe_context,
+                    caller_name,
+                    diagnostics,
+                );
+            }
+        }
+        ExprKind::Cond { arms } => {
+            for arm in arms {
+                collect_unsafe_call_site_diagnostics_in_expr(
+                    &arm.condition,
+                    unsafe_callees,
+                    in_unsafe_context,
+                    caller_name,
+                    diagnostics,
+                );
+                collect_unsafe_call_site_diagnostics_in_expr(
+                    &arm.body,
+                    unsafe_callees,
+                    in_unsafe_context,
+                    caller_name,
+                    diagnostics,
+                );
+            }
+        }
+        ExprKind::For(for_expr) => {
+            collect_unsafe_call_site_diagnostics_in_expr(
+                &for_expr.source,
+                unsafe_callees,
+                in_unsafe_context,
+                caller_name,
+                diagnostics,
+            );
+            collect_unsafe_call_site_diagnostics_in_expr(
+                &for_expr.body,
+                unsafe_callees,
+                in_unsafe_context,
+                caller_name,
+                diagnostics,
+            );
+        }
+        ExprKind::With { call, body, .. } => {
+            collect_unsafe_call_site_diagnostics_in_expr(
+                call,
+                unsafe_callees,
+                in_unsafe_context,
+                caller_name,
+                diagnostics,
+            );
+            collect_unsafe_call_site_diagnostics_in_expr(
+                body,
+                unsafe_callees,
+                in_unsafe_context,
+                caller_name,
+                diagnostics,
+            );
+        }
+        ExprKind::Handle {
+            expr,
+            clauses,
+            then_clause,
+        } => {
+            collect_unsafe_call_site_diagnostics_in_expr(
+                expr,
+                unsafe_callees,
+                in_unsafe_context,
+                caller_name,
+                diagnostics,
+            );
+            for clause in clauses {
+                collect_unsafe_call_site_diagnostics_in_expr(
+                    &clause.body,
+                    unsafe_callees,
+                    in_unsafe_context,
+                    caller_name,
+                    diagnostics,
+                );
+            }
+            if let Some(then_clause) = then_clause {
+                collect_unsafe_call_site_diagnostics_in_expr(
+                    then_clause,
+                    unsafe_callees,
+                    in_unsafe_context,
+                    caller_name,
+                    diagnostics,
+                );
+            }
+        }
+        ExprKind::Resume { value } => {
+            collect_unsafe_call_site_diagnostics_in_expr(
+                value,
+                unsafe_callees,
+                in_unsafe_context,
+                caller_name,
+                diagnostics,
+            );
+        }
+        ExprKind::BinaryOp { left, right, .. } => {
+            collect_unsafe_call_site_diagnostics_in_expr(
+                left,
+                unsafe_callees,
+                in_unsafe_context,
+                caller_name,
+                diagnostics,
+            );
+            collect_unsafe_call_site_diagnostics_in_expr(
+                right,
+                unsafe_callees,
+                in_unsafe_context,
+                caller_name,
+                diagnostics,
+            );
+        }
+        ExprKind::UnaryOp { operand, .. } => {
+            collect_unsafe_call_site_diagnostics_in_expr(
+                operand,
+                unsafe_callees,
+                in_unsafe_context,
+                caller_name,
+                diagnostics,
+            );
+        }
+        ExprKind::WhenGuard { body, condition } => {
+            collect_unsafe_call_site_diagnostics_in_expr(
+                body,
+                unsafe_callees,
+                in_unsafe_context,
+                caller_name,
+                diagnostics,
+            );
+            collect_unsafe_call_site_diagnostics_in_expr(
+                condition,
+                unsafe_callees,
+                in_unsafe_context,
+                caller_name,
+                diagnostics,
+            );
+        }
+        ExprKind::Range { start, end, .. } => {
+            collect_unsafe_call_site_diagnostics_in_expr(
+                start,
+                unsafe_callees,
+                in_unsafe_context,
+                caller_name,
+                diagnostics,
+            );
+            collect_unsafe_call_site_diagnostics_in_expr(
+                end,
+                unsafe_callees,
+                in_unsafe_context,
+                caller_name,
+                diagnostics,
+            );
+        }
+        ExprKind::As { expr, .. }
+        | ExprKind::Await { expr, .. }
+        | ExprKind::FieldAccess { expr, .. } => {
+            collect_unsafe_call_site_diagnostics_in_expr(
+                expr,
+                unsafe_callees,
+                in_unsafe_context,
+                caller_name,
+                diagnostics,
+            );
+        }
+        ExprKind::Tuple(items) | ExprKind::List(items) | ExprKind::Block(items) => {
+            for item in items {
+                collect_unsafe_call_site_diagnostics_in_expr(
+                    item,
+                    unsafe_callees,
+                    in_unsafe_context,
+                    caller_name,
+                    diagnostics,
+                );
+            }
+        }
+        ExprKind::Record { fields, spread, .. } | ExprKind::AnonRecord { fields, spread } => {
+            for (_, value) in fields {
+                collect_unsafe_call_site_diagnostics_in_expr(
+                    value,
+                    unsafe_callees,
+                    in_unsafe_context,
+                    caller_name,
+                    diagnostics,
+                );
+            }
+            if let Some(spread) = spread {
+                collect_unsafe_call_site_diagnostics_in_expr(
+                    spread,
+                    unsafe_callees,
+                    in_unsafe_context,
+                    caller_name,
+                    diagnostics,
+                );
+            }
+        }
+        ExprKind::Update { base, fields } => {
+            collect_unsafe_call_site_diagnostics_in_expr(
+                base,
+                unsafe_callees,
+                in_unsafe_context,
+                caller_name,
+                diagnostics,
+            );
+            for (_, value) in fields {
+                collect_unsafe_call_site_diagnostics_in_expr(
+                    value,
+                    unsafe_callees,
+                    in_unsafe_context,
+                    caller_name,
+                    diagnostics,
+                );
+            }
+        }
+        ExprKind::Constructor { args, .. } => {
+            for arg in args {
+                collect_unsafe_call_site_diagnostics_in_expr(
+                    &arg.value,
+                    unsafe_callees,
+                    in_unsafe_context,
+                    caller_name,
+                    diagnostics,
+                );
+            }
+        }
+        ExprKind::StringInterp(parts) => {
+            for part in parts {
+                if let kea_ast::StringInterpPart::Expr(expr) = part {
+                    collect_unsafe_call_site_diagnostics_in_expr(
+                        expr,
+                        unsafe_callees,
+                        in_unsafe_context,
+                        caller_name,
+                        diagnostics,
+                    );
+                }
+            }
+        }
+        ExprKind::MapLiteral(entries) => {
+            for (key, value) in entries {
+                collect_unsafe_call_site_diagnostics_in_expr(
+                    key,
+                    unsafe_callees,
+                    in_unsafe_context,
+                    caller_name,
+                    diagnostics,
+                );
+                collect_unsafe_call_site_diagnostics_in_expr(
+                    value,
+                    unsafe_callees,
+                    in_unsafe_context,
+                    caller_name,
+                    diagnostics,
+                );
+            }
+        }
+        ExprKind::Spawn { value, config } => {
+            collect_unsafe_call_site_diagnostics_in_expr(
+                value,
+                unsafe_callees,
+                in_unsafe_context,
+                caller_name,
+                diagnostics,
+            );
+            if let Some(config) = config {
+                for expr in [
+                    &config.mailbox_size,
+                    &config.supervision,
+                    &config.max_restarts,
+                    &config.call_timeout,
+                ]
+                .into_iter()
+                .flatten()
+                {
+                    collect_unsafe_call_site_diagnostics_in_expr(
+                        expr,
+                        unsafe_callees,
+                        in_unsafe_context,
+                        caller_name,
+                        diagnostics,
+                    );
+                }
+            }
+        }
+        ExprKind::StreamBlock { body, .. } => {
+            collect_unsafe_call_site_diagnostics_in_expr(
+                body,
+                unsafe_callees,
+                in_unsafe_context,
+                caller_name,
+                diagnostics,
+            );
+        }
+        ExprKind::Yield { value } => {
+            collect_unsafe_call_site_diagnostics_in_expr(
+                value,
+                unsafe_callees,
+                in_unsafe_context,
+                caller_name,
+                diagnostics,
+            );
+        }
+        ExprKind::YieldFrom { source } => {
+            collect_unsafe_call_site_diagnostics_in_expr(
+                source,
+                unsafe_callees,
+                in_unsafe_context,
+                caller_name,
+                diagnostics,
+            );
+        }
+        ExprKind::ActorSend { actor, args, .. } | ExprKind::ActorCall { actor, args, .. } => {
+            collect_unsafe_call_site_diagnostics_in_expr(
+                actor,
+                unsafe_callees,
+                in_unsafe_context,
+                caller_name,
+                diagnostics,
+            );
+            for arg in args {
+                collect_unsafe_call_site_diagnostics_in_expr(
+                    arg,
+                    unsafe_callees,
+                    in_unsafe_context,
+                    caller_name,
+                    diagnostics,
+                );
+            }
+        }
+        ExprKind::ControlSend { actor, signal } => {
+            collect_unsafe_call_site_diagnostics_in_expr(
+                actor,
+                unsafe_callees,
+                in_unsafe_context,
+                caller_name,
+                diagnostics,
+            );
+            collect_unsafe_call_site_diagnostics_in_expr(
+                signal,
+                unsafe_callees,
+                in_unsafe_context,
+                caller_name,
+                diagnostics,
+            );
+        }
+        ExprKind::Lit(_)
+        | ExprKind::Var(_)
+        | ExprKind::None
+        | ExprKind::Atom(_)
+        | ExprKind::Wildcard => {}
+    }
+}
+
+fn validate_unsafe_call_sites(module: &Module) -> Vec<Diagnostic> {
+    let unsafe_callees = collect_unsafe_annotated_function_names(module);
+    if unsafe_callees.is_empty() {
+        return Vec::new();
+    }
+
+    let mut diagnostics = Vec::new();
+    for decl in &module.declarations {
+        match &decl.node {
+            DeclKind::Function(fn_decl) => {
+                let in_unsafe_context = has_annotation_named(&fn_decl.annotations, "unsafe");
+                collect_unsafe_call_site_diagnostics_in_expr(
+                    &fn_decl.body,
+                    &unsafe_callees,
+                    in_unsafe_context,
+                    &fn_decl.name.node,
+                    &mut diagnostics,
+                );
+            }
+            DeclKind::ExprFn(expr_decl) => {
+                let in_unsafe_context = has_annotation_named(&expr_decl.annotations, "unsafe");
+                collect_unsafe_call_site_diagnostics_in_expr(
+                    &expr_decl.body,
+                    &unsafe_callees,
+                    in_unsafe_context,
+                    &expr_decl.name.node,
+                    &mut diagnostics,
+                );
+            }
+            _ => {}
+        }
+    }
+
+    diagnostics
 }
 
 pub fn compile_file(input: &Path, mode: CodegenMode) -> Result<CompileResult, String> {
@@ -400,6 +933,7 @@ pub fn process_module_in_env(
 ) -> Result<ModuleProcessResult, Vec<Diagnostic>> {
     diagnostics.extend(validate_module_fn_annotations(module));
     diagnostics.extend(validate_module_annotations(module));
+    diagnostics.extend(validate_unsafe_call_sites(module));
     if has_errors(&diagnostics) {
         return Err(diagnostics);
     }
@@ -967,6 +1501,7 @@ fn typecheck_loaded_modules(
 
         diagnostics.extend(validate_module_fn_annotations(&loaded.module));
         diagnostics.extend(validate_module_annotations(&loaded.module));
+        diagnostics.extend(validate_unsafe_call_sites(&loaded.module));
         if has_errors(&diagnostics) {
             if !is_entry_module {
                 env.pop_scope();
@@ -3466,6 +4001,14 @@ fn has_errors(diags: &[Diagnostic]) -> bool {
 
 fn is_error(diag: &Diagnostic) -> bool {
     matches!(diag.severity, Severity::Error)
+}
+
+fn span_to_source_location(span: Span) -> SourceLocation {
+    SourceLocation {
+        file_id: span.file.0,
+        start: span.start,
+        end: span.end,
+    }
 }
 
 fn format_diagnostics(prefix: &str, diagnostics: &[Diagnostic]) -> String {

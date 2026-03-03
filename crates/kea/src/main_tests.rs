@@ -3586,13 +3586,36 @@ fn compile_rejects_fip_annotation_with_arguments() {
 #[cfg(not(target_os = "windows"))]
 fn compile_accepts_unsafe_annotation_on_function() {
     let source_path = write_temp_source(
-        "@unsafe\nfn raw_add_one(x: Int) -> Int\n  x + 1\n\nfn main() -> Int\n  raw_add_one(41)\n",
+        "@unsafe\nfn raw_add_one(x: Int) -> Int\n  x + 1\n\n@unsafe\nfn main() -> Int\n  raw_add_one(41)\n",
         "kea-cli-unsafe-annotation-function",
         "kea",
     );
 
     let run = run_file(&source_path).expect("@unsafe function annotation should be accepted");
     assert_eq!(run.exit_code, 42);
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn compile_rejects_calling_unsafe_function_from_safe_context() {
+    let source_path = write_temp_source(
+        "@unsafe\nfn raw_add_one(x: Int) -> Int\n  x + 1\n\nfn main() -> Int\n  raw_add_one(1)\n",
+        "kea-cli-unsafe-call-safe-context",
+        "kea",
+    );
+
+    let err = run_file(&source_path)
+        .expect_err("safe function should not be able to call @unsafe callee");
+    assert!(
+        err.contains("call to `@unsafe` function `raw_add_one` requires unsafe context"),
+        "expected unsafe call-site diagnostic, got: {err}"
+    );
+    assert!(
+        err.contains("enclosing function `main` is safe"),
+        "expected caller-context help message, got: {err}"
+    );
 
     let _ = std::fs::remove_file(source_path);
 }
