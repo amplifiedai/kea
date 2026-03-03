@@ -3349,6 +3349,24 @@ fn compile_and_execute_fip_unique_higher_order_forwarder_result_alias_with_benig
 
 #[test]
 #[cfg(not(target_os = "windows"))]
+fn compile_and_execute_fip_unique_higher_order_forwarder_with_benign_noncall_prelude_let_exit_code(
+) {
+    let source_path = write_temp_source(
+        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_with_prelude_setup(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed = if flag\n    1\n  else\n    2\n  let y = x\n  let out = f(y)\n  out\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_with_prelude_setup(true, forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "kea-cli-fip-unique-higher-order-forwarder-benign-prelude-let",
+        "kea",
+    );
+
+    let run = run_file(&source_path).expect(
+        "@fip verifier should accept wrappers with benign call-free prelude lets before forwarding",
+    );
+    assert_eq!(run.exit_code, 0);
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
 fn compile_rejects_fip_unique_higher_order_forwarder_param_escape() {
     let source_path = write_temp_source(
         "fn apply_forwarder(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  f(x)\n\n@fip\nfn call_via_apply(x: Unique Int, f: fn(Unique Int) -> Unique Int) -> Unique Int\n  apply_forwarder(f, x)\n\nfn main() -> Int\n  0\n",
@@ -3577,6 +3595,34 @@ fn compile_and_execute_fip_unique_higher_order_module_alias_wrapper_result_alias
 
     let run = run_file(&source_path).expect(
         "@fip verifier and backend lowering should accept module-alias wrappers with benign call-free non-alias lets after forwarding",
+    );
+    assert_eq!(run.exit_code, 0);
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn compile_and_execute_fip_unique_higher_order_module_alias_wrapper_with_benign_noncall_prelude_let_exit_code(
+) {
+    let project_dir =
+        temp_workspace_project_dir("kea-cli-fip-unique-higher-order-alias-benign-prelude-let");
+    let src_dir = project_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+    let source_path = src_dir.join("main.kea");
+    std::fs::write(
+        src_dir.join("alpha.kea"),
+        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_with_prelude_setup(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed = if flag\n    1\n  else\n    2\n  let y = x\n  let out = f(y)\n  out\n",
+    )
+    .expect("alpha module write should succeed");
+    std::fs::write(
+        &source_path,
+        "use Alpha as A\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_with_prelude_setup(true, A.forward_once, x)\n\nfn main() -> Int\n  0\n",
+    )
+    .expect("source write should succeed");
+
+    let run = run_file(&source_path).expect(
+        "@fip verifier and backend lowering should accept module-alias wrappers with benign call-free prelude lets",
     );
     assert_eq!(run.exit_code, 0);
 
@@ -3870,6 +3916,30 @@ fn compile_rejects_fip_unique_higher_order_forwarder_result_alias_with_callful_n
 
     let err = run_file(&source_path).expect_err(
         "@fip verifier should reject wrappers when post-forward non-alias lets contain calls",
+    );
+    assert!(
+        err.contains("`@fip` verification failed for `call_via_apply`"),
+        "expected @fip verification failure, got: {err}"
+    );
+    assert!(
+        err.contains("Unique parameter `x` escapes through 1 call argument(s)"),
+        "expected escape diagnostic for `x`, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn compile_rejects_fip_unique_higher_order_forwarder_with_callful_prelude_let() {
+    let source_path = write_temp_source(
+        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn bool_id(flag: Bool) -> Bool\n  flag\n\nfn apply_with_callful_prelude_setup(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed = bool_id(flag)\n  let y = x\n  let out = f(y)\n  out\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_with_callful_prelude_setup(true, forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "kea-cli-fip-unique-higher-order-forwarder-callful-prelude-let",
+        "kea",
+    );
+
+    let err = run_file(&source_path).expect_err(
+        "@fip verifier should reject wrappers when pre-forward setup lets contain calls",
     );
     assert!(
         err.contains("`@fip` verification failed for `call_via_apply`"),

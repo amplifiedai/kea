@@ -3457,18 +3457,23 @@ fn matches_higher_order_forwarder_body(
                             HirExprKind::Let { pattern, value }
                                 if matches!(pattern, kea_hir::HirPattern::Var(_)) =>
                             {
-                                if !matches_shape(value, &forwarder_aliases, &unique_aliases) {
-                                    return false;
+                                if matches_shape(value, &forwarder_aliases, &unique_aliases) {
+                                    let binding_name = match pattern {
+                                        kea_hir::HirPattern::Var(name) => name,
+                                        _ => unreachable!("guarded by match"),
+                                    };
+                                    result_aliases = Some(BTreeSet::from([binding_name.clone()]));
+                                    continue;
                                 }
-                                let binding_name = match pattern {
-                                    kea_hir::HirPattern::Var(name) => name,
-                                    _ => unreachable!("guarded by match"),
-                                };
-                                result_aliases = Some(BTreeSet::from([binding_name.clone()]));
+                                // Benign call-free setup lets are allowed before the
+                                // single forward handoff.
+                                if !contains_call(value) {
+                                    continue;
+                                }
+                                return false;
                             }
                             _ => return false,
                         }
-                        continue;
                     }
 
                     let Some(result_aliases) = result_aliases.as_mut() else {
