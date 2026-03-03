@@ -3937,6 +3937,34 @@ fn compile_and_execute_fip_unique_higher_order_named_import_wrapper_combo_alias_
 
 #[test]
 #[cfg(not(target_os = "windows"))]
+fn compile_and_execute_fip_unique_higher_order_named_import_wrapper_combo_case_with_benign_let_and_result_case_exit_code(
+) {
+    let project_dir =
+        temp_workspace_project_dir("kea-cli-fip-unique-higher-order-named-combo-case-plus");
+    let src_dir = project_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+    let source_path = src_dir.join("main.kea");
+    std::fs::write(
+        src_dir.join("alpha.kea"),
+        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_combo_case_plus(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let seed = if flag\n    1\n  else\n    2\n  let g = case flag\n    true ->\n      f\n    false ->\n      f\n  let y = case flag\n    true ->\n      x\n    false ->\n      x\n  let out0 = g(y)\n  let keep = seed\n  let out1 = case flag\n    true ->\n      out0\n    false ->\n      out0\n  let out2 = out1\n  out2\n",
+    )
+    .expect("alpha module write should succeed");
+    std::fs::write(
+        &source_path,
+        "use Alpha.{apply_combo_case_plus, forward_once}\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_combo_case_plus(true, forward_once, x)\n\nfn main() -> Int\n  0\n",
+    )
+    .expect("source write should succeed");
+
+    let run = run_file(&source_path).expect(
+        "@fip verifier and backend lowering should accept named-import wrappers combining case-based alias shaping with benign call-free lets",
+    );
+    assert_eq!(run.exit_code, 0);
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
 fn compile_and_execute_fip_unique_higher_order_forwarder_mixed_result_and_passthrough_if_exit_code()
 {
     let source_path = write_temp_source(
