@@ -17955,3 +17955,43 @@ through the generic capstone.
 **Impact**:
 - Local `step` / `step+preserves` consequences now have a single generic
   packaged-soundness capstone, reducing duplication across assumption families.
+
+### 2026-03-03: strict-top vs metadata assumption equivalence under fixed core obligations
+
+**Context**: Added proposition-level equivalence theorems showing that, with
+fixed core obligations, strict-top typing assumptions and metadata-coherence
+assumptions are interchangeable for mismatch-extension progress/soundness.
+
+**MCP tools used**: `reset_session`, `type_check`
+
+**Predict (Lean side)**:
+- Assumption-boundary theorem additions should not alter runtime behavior:
+  coherent handler accepted, bad resume payload rejected, clause mismatch leaks
+  effect in pure scope, out-of-handler resume rejected.
+
+**Probe (Rust side via MCP)**:
+1. Coherent `G` handler (`G.g() -> resume 3`) -> `ok`, pure `n`.
+2. Bad resume payload (`resume false` where op result is `Int`)
+   -> `error`, `E0001`.
+3. Mismatched clause (`H.h` clause around `G` body) -> `error`, purity/effect
+   leak (`G` required).
+4. Out-of-handler resume control -> `error`, `E0012`.
+
+**Classify**: Agreement.
+
+**Act**:
+- Kept assumption-equivalence theorem additions.
+- Continued with checkpoint protocol and route closure.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_progress_assumption_iff_strict_top_typing_metadata_coherence`
+  - `native_handler_step_ext_with_mismatch_soundness_assumption_iff_strict_top_typing_metadata_coherence`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Assumption boundaries are now explicit: strict-top typing and metadata
+  coherence are propositionally equivalent inputs for derived progress/soundness
+  once core obligations are fixed.
