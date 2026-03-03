@@ -7491,6 +7491,95 @@ mod tests {
         }
     }
 
+    fn sample_unboxed_record_init_forwarded_into_effect_op_module() -> MirModule {
+        MirModule {
+            functions: vec![MirFunction {
+                name: "main".to_string(),
+                signature: MirFunctionSignature {
+                    params: vec![],
+                    ret: Type::Int,
+                    effects: EffectRow::closed(vec![(Label::new("IO"), Type::Unit)]),
+                },
+                entry: MirBlockId(0),
+                blocks: vec![
+                    MirBlock {
+                        id: MirBlockId(0),
+                        params: vec![],
+                        instructions: vec![
+                            MirInst::Const {
+                                dest: MirValueId(0),
+                                literal: MirLiteral::Int(20),
+                            },
+                            MirInst::Const {
+                                dest: MirValueId(1),
+                                literal: MirLiteral::Int(22),
+                            },
+                            MirInst::RecordInit {
+                                dest: MirValueId(2),
+                                record_type: "Pair".to_string(),
+                                fields: vec![
+                                    ("left".to_string(), MirValueId(0)),
+                                    ("right".to_string(), MirValueId(1)),
+                                ],
+                            },
+                        ],
+                        terminator: MirTerminator::Jump {
+                            target: MirBlockId(1),
+                            args: vec![MirValueId(2)],
+                        },
+                    },
+                    MirBlock {
+                        id: MirBlockId(1),
+                        params: vec![MirBlockParam {
+                            id: MirValueId(3),
+                            ty: Type::Record(RecordType {
+                                name: "Pair".to_string(),
+                                params: vec![],
+                                row: RowType::closed(vec![
+                                    (Label::new("left"), Type::Int),
+                                    (Label::new("right"), Type::Int),
+                                ]),
+                            }),
+                        }],
+                        instructions: vec![
+                            MirInst::EffectOp {
+                                class: MirEffectOpClass::Direct,
+                                effect: "IO".to_string(),
+                                operation: "stdout".to_string(),
+                                args: vec![MirValueId(3)],
+                                result: None,
+                            },
+                            MirInst::Const {
+                                dest: MirValueId(4),
+                                literal: MirLiteral::Int(0),
+                            },
+                        ],
+                        terminator: MirTerminator::Return {
+                            value: Some(MirValueId(4)),
+                        },
+                    },
+                ],
+            }],
+            layouts: MirLayoutCatalog {
+                records: vec![MirRecordLayout {
+                    name: "Pair".to_string(),
+                    is_unboxed: true,
+                    fields: vec![
+                        MirRecordFieldLayout {
+                            name: "left".to_string(),
+                            annotation: kea_ast::TypeAnnotation::Named("Int".to_string()),
+                        },
+                        MirRecordFieldLayout {
+                            name: "right".to_string(),
+                            annotation: kea_ast::TypeAnnotation::Named("Int".to_string()),
+                        },
+                    ],
+                }],
+                sums: vec![],
+            },
+        }
+    }
+
     fn sample_record_init_reuse_and_load_main_module() -> MirModule {
         MirModule {
             functions: vec![MirFunction {
@@ -8878,6 +8967,16 @@ mod tests {
     #[test]
     fn collect_pass_stats_counts_unboxed_jump_forwarded_record_init_when_called() {
         let module = sample_unboxed_record_init_forwarded_into_call_module();
+        let stats = collect_pass_stats(&module);
+
+        assert_eq!(stats.per_function.len(), 1);
+        let function = &stats.per_function[0];
+        assert_eq!(function.alloc_count, 1);
+    }
+
+    #[test]
+    fn collect_pass_stats_counts_unboxed_jump_forwarded_record_init_when_used_in_effect_op() {
+        let module = sample_unboxed_record_init_forwarded_into_effect_op_module();
         let stats = collect_pass_stats(&module);
 
         assert_eq!(stats.per_function.len(), 1);
