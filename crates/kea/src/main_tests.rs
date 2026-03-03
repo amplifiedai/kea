@@ -3008,6 +3008,23 @@ fn compile_and_execute_fip_unique_higher_order_forwarder_alias_chain_call_exit_c
 
 #[test]
 #[cfg(not(target_os = "windows"))]
+fn compile_and_execute_fip_unique_higher_order_forwarder_function_alias_chain_call_exit_code() {
+    let source_path = write_temp_source(
+        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_forwarder_alias(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let g = f\n  let y = x\n  g(y)\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_forwarder_alias(forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "kea-cli-fip-unique-higher-order-forwarder-fn-alias-chain",
+        "kea",
+    );
+
+    let run = run_file(&source_path).expect(
+        "@fip verifier should accept higher-order wrappers that alias the forwarder function parameter before single forwarding",
+    );
+    assert_eq!(run.exit_code, 0);
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
 fn compile_and_execute_fip_unique_higher_order_forwarder_result_alias_chain_call_exit_code() {
     let source_path = write_temp_source(
         "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_alias_result(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = x\n  let z = y\n  let out0 = f(z)\n  let out1 = out0\n  out1\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_alias_result(forward_once, x)\n\nfn main() -> Int\n  0\n",
@@ -3082,6 +3099,30 @@ fn compile_rejects_fip_unique_higher_order_forwarder_wrong_unique_arg_escape() {
 
         let err = run_file(&source_path).expect_err(
             "@fip verifier should reject when the known-safe function item is not passed in the wrapper's body-selected forwarder slot",
+        );
+        assert!(
+            err.contains("`@fip` verification failed for `call_via_apply`"),
+            "expected @fip verification failure, got: {err}"
+        );
+        assert!(
+            err.contains("Unique parameter `x` escapes through 1 call argument(s)"),
+            "expected escape diagnostic for `x`, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn compile_rejects_fip_unique_higher_order_function_alias_wrapper_when_safe_forwarder_is_not_body_slot() {
+        let source_path = write_temp_source(
+            "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_pick_alias(f: fn(Unique Int) -> Unique Int, g: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let h = f\n  h(x)\n\n@fip\nfn call_via_apply(x: Unique Int, f: fn(Unique Int) -> Unique Int) -> Unique Int\n  apply_pick_alias(f, forward_once, x)\n\nfn main() -> Int\n  0\n",
+            "kea-cli-fip-unique-higher-order-forwarder-fn-alias-wrong-slot",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err(
+            "@fip verifier should reject when a known-safe function item is passed outside the body-selected forwarder slot, even with forwarder-param aliasing",
         );
         assert!(
             err.contains("`@fip` verification failed for `call_via_apply`"),
