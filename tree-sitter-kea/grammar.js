@@ -622,7 +622,6 @@ module.exports = grammar({
         $.unit,
         $.list_expression,
         $.struct_expression,
-        $.receiver_placeholder,
         $.resume_expression,
         $.parenthesized_expression,
       ),
@@ -658,8 +657,6 @@ module.exports = grammar({
         field("name", $.identifier),
         optional(seq(":", field("value", $._expression))),
       ),
-
-    receiver_placeholder: (_$) => "$",
 
     // ── Patterns ──────────────────────────────────────────────────
 

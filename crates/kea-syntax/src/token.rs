@@ -180,7 +180,6 @@ pub enum TokenKind {
     Comma,      // ,
     Dot,        // .
     Pipe,       // |
-    Dollar,     // $
     At,         // @
 
     // -- SQL --

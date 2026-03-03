@@ -422,10 +422,6 @@ impl<'src> Lexer<'src> {
             b',' => self.emit(TokenKind::Comma, start, self.pos),
             b'?' => self.emit(TokenKind::Question, start, self.pos),
             b'@' => self.emit(TokenKind::At, start, self.pos),
-            b'$' => {
-                self.emit(TokenKind::Dollar, start, self.pos);
-            }
-
             // Two-char possibilities
             b'-' => {
                 if self.match_char(b'>') {
@@ -2106,19 +2102,6 @@ mod tests {
                 TokenKind::Ident("x".into()),
                 TokenKind::Plus,
                 TokenKind::Int(1),
-            ]
-        );
-    }
-
-    #[test]
-    fn dollar_token() {
-        assert_eq!(
-            lex_kinds("$x $threshold"),
-            vec![
-                TokenKind::Dollar,
-                TokenKind::Ident("x".into()),
-                TokenKind::Dollar,
-                TokenKind::Ident("threshold".into()),
             ]
         );
     }

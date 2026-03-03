@@ -112,10 +112,6 @@
 ["(" ")" "[" "]" "{" "}"] @punctuation.bracket
 ["," "." ":" "|"] @punctuation.delimiter
 
-; ── Receiver placeholder ─────────────────────────────────────────
-
-(receiver_placeholder) @variable.builtin
-
 ; ── Variables ────────────────────────────────────────────────────
 
 (identifier) @variable

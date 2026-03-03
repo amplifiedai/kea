@@ -2894,22 +2894,6 @@ impl Parser {
             }
         }
 
-        if self.check(&TokenKind::Dollar) {
-            let tok = self.advance();
-            self.errors.push(
-                Diagnostic::error(
-                    Category::Syntax,
-                    "`$` placeholder expressions are not yet implemented",
-                )
-                .at(SourceLocation {
-                    file_id: self.file.0,
-                    start: tok.span.start,
-                    end: tok.span.end,
-                }),
-            );
-            return None;
-        }
-
         // Lowercase identifier: variable
         if let Some(TokenKind::Ident(name)) = self.peek_kind() {
             let name = name.clone();
