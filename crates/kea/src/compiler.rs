@@ -2510,6 +2510,26 @@ fn matches_higher_order_forwarder_body(
     forwarder_param_name: &str,
     unique_param_name: &str,
 ) -> bool {
+    fn extract_var_alias_let(expr: &HirExpr) -> Option<(&str, &str)> {
+        match &expr.kind {
+            HirExprKind::Let { pattern, value }
+                if matches!(pattern, kea_hir::HirPattern::Var(_))
+                    && matches!(value.kind, HirExprKind::Var(_)) =>
+            {
+                let source_name = match &value.kind {
+                    HirExprKind::Var(name) => name.as_str(),
+                    _ => unreachable!("guarded by match"),
+                };
+                let binding_name = match pattern {
+                    kea_hir::HirPattern::Var(name) => name.as_str(),
+                    _ => unreachable!("guarded by match"),
+                };
+                Some((binding_name, source_name))
+            }
+            _ => None,
+        }
+    }
+
     fn matches_forwarder_call(
         expr: &HirExpr,
         forwarder_param_name: &str,
@@ -2532,31 +2552,57 @@ fn matches_higher_order_forwarder_body(
         ),
         HirExprKind::Block(exprs) if !exprs.is_empty() => {
             let mut unique_aliases = BTreeSet::from([unique_param_name.to_string()]);
+            let mut result_aliases: Option<BTreeSet<String>> = None;
             for (index, item) in exprs.iter().enumerate() {
                 let is_last = index + 1 == exprs.len();
-                if is_last {
-                    return matches_forwarder_call(item, forwarder_param_name, &unique_aliases);
-                }
-                match &item.kind {
-                    HirExprKind::Let { pattern, value }
-                        if matches!(pattern, kea_hir::HirPattern::Var(_))
-                            && matches!(value.kind, HirExprKind::Var(_)) =>
-                    {
-                        let source_name = match &value.kind {
-                            HirExprKind::Var(name) => name,
-                            _ => unreachable!("guarded by match"),
-                        };
+                if result_aliases.is_none() {
+                    if is_last {
+                        return matches_forwarder_call(item, forwarder_param_name, &unique_aliases);
+                    }
+
+                    if let Some((binding_name, source_name)) = extract_var_alias_let(item) {
                         if !unique_aliases.contains(source_name) {
                             return false;
                         }
-                        let binding_name = match pattern {
-                            kea_hir::HirPattern::Var(name) => name,
-                            _ => unreachable!("guarded by match"),
-                        };
-                        unique_aliases.insert(binding_name.clone());
+                        unique_aliases.insert(binding_name.to_string());
+                        continue;
                     }
-                    _ => return false,
+
+                    match &item.kind {
+                        HirExprKind::Let { pattern, value }
+                            if matches!(pattern, kea_hir::HirPattern::Var(_)) =>
+                        {
+                            if !matches_forwarder_call(value, forwarder_param_name, &unique_aliases) {
+                                return false;
+                            }
+                            let binding_name = match pattern {
+                                kea_hir::HirPattern::Var(name) => name,
+                                _ => unreachable!("guarded by match"),
+                            };
+                            result_aliases = Some(BTreeSet::from([binding_name.clone()]));
+                        }
+                        _ => return false,
+                    }
+                    continue;
                 }
+
+                let Some(result_aliases) = result_aliases.as_mut() else {
+                    unreachable!("guarded by is_none check");
+                };
+
+                if is_last {
+                    return matches!(&item.kind, HirExprKind::Var(name) if result_aliases.contains(name));
+                }
+
+                if let Some((binding_name, source_name)) = extract_var_alias_let(item) {
+                    if !result_aliases.contains(source_name) {
+                        return false;
+                    }
+                    result_aliases.insert(binding_name.to_string());
+                    continue;
+                }
+
+                return false;
             }
             false
         }

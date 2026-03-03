@@ -3008,6 +3008,23 @@ fn compile_and_execute_fip_unique_higher_order_forwarder_alias_chain_call_exit_c
 
 #[test]
 #[cfg(not(target_os = "windows"))]
+fn compile_and_execute_fip_unique_higher_order_forwarder_result_alias_chain_call_exit_code() {
+    let source_path = write_temp_source(
+        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_alias_result(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = x\n  let z = y\n  let out0 = f(z)\n  let out1 = out0\n  out1\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_alias_result(forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "kea-cli-fip-unique-higher-order-forwarder-result-alias-chain",
+        "kea",
+    );
+
+    let run = run_file(&source_path).expect(
+        "@fip verifier should accept higher-order wrappers that alias the unique input and return through result aliases after a single forward call",
+    );
+    assert_eq!(run.exit_code, 0);
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
 fn compile_rejects_fip_unique_higher_order_forwarder_param_escape() {
     let source_path = write_temp_source(
         "fn apply_forwarder(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  f(x)\n\n@fip\nfn call_via_apply(x: Unique Int, f: fn(Unique Int) -> Unique Int) -> Unique Int\n  apply_forwarder(f, x)\n\nfn main() -> Int\n  0\n",
@@ -3362,6 +3379,30 @@ fn compile_rejects_fip_unique_higher_order_forwarder_alias_chain_with_extra_call
 
     let err = run_file(&source_path).expect_err(
         "@fip verifier should reject wrappers that do extra calls before forwarding the unique value",
+    );
+    assert!(
+        err.contains("`@fip` verification failed for `call_via_apply`"),
+        "expected @fip verification failure, got: {err}"
+    );
+    assert!(
+        err.contains("Unique parameter `x` escapes through 1 call argument(s)"),
+        "expected escape diagnostic for `x`, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn compile_rejects_fip_unique_higher_order_forwarder_result_alias_chain_with_extra_call() {
+    let source_path = write_temp_source(
+        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_alias_result_with_extra_call(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = x\n  let out = f(y)\n  forward_once(out)\n  out\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_alias_result_with_extra_call(forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "kea-cli-fip-unique-higher-order-forwarder-result-alias-chain-extra-call",
+        "kea",
+    );
+
+    let err = run_file(&source_path).expect_err(
+        "@fip verifier should reject wrappers that do extra calls after forwarding and before returning result aliases",
     );
     assert!(
         err.contains("`@fip` verification failed for `call_via_apply`"),
