@@ -3236,6 +3236,118 @@ fn compile_and_execute_fip_unique_higher_order_module_alias_wrapper_if_nested_pa
 
 #[test]
 #[cfg(not(target_os = "windows"))]
+fn compile_and_execute_fip_unique_higher_order_named_import_wrapper_if_branches_exit_code() {
+    let project_dir =
+        temp_workspace_project_dir("kea-cli-fip-unique-higher-order-named-if-branches");
+    let src_dir = project_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+    let source_path = src_dir.join("main.kea");
+    std::fs::write(
+        src_dir.join("alpha.kea"),
+        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_forwarder_if(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  if flag\n    f(x)\n  else\n    f(x)\n",
+    )
+    .expect("alpha module write should succeed");
+    std::fs::write(
+        &source_path,
+        "use Alpha.{apply_forwarder_if, forward_once}\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_forwarder_if(true, forward_once, x)\n\nfn main() -> Int\n  0\n",
+    )
+    .expect("source write should succeed");
+
+    let run = run_file(&source_path).expect(
+        "@fip verifier and backend lowering should accept named-import wrappers with equivalent branch handoff bodies",
+    );
+    assert_eq!(run.exit_code, 0);
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn compile_and_execute_fip_unique_higher_order_named_import_wrapper_block_alias_then_if_exit_code()
+{
+    let project_dir =
+        temp_workspace_project_dir("kea-cli-fip-unique-higher-order-named-block-alias-then-if");
+    let src_dir = project_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+    let source_path = src_dir.join("main.kea");
+    std::fs::write(
+        src_dir.join("alpha.kea"),
+        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_forwarder_block_if(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = x\n  if flag\n    f(y)\n  else\n    f(y)\n",
+    )
+    .expect("alpha module write should succeed");
+    std::fs::write(
+        &source_path,
+        "use Alpha.{apply_forwarder_block_if, forward_once}\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_forwarder_block_if(true, forward_once, x)\n\nfn main() -> Int\n  0\n",
+    )
+    .expect("source write should succeed");
+
+    let run = run_file(&source_path).expect(
+        "@fip verifier and backend lowering should accept named-import wrappers that alias the unique root before equivalent branch handoff",
+    );
+    assert_eq!(run.exit_code, 0);
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn compile_and_execute_fip_unique_higher_order_named_import_wrapper_if_passthrough_branch_exit_code()
+{
+    let project_dir =
+        temp_workspace_project_dir("kea-cli-fip-unique-higher-order-named-if-passthrough-branch");
+    let src_dir = project_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+    let source_path = src_dir.join("main.kea");
+    std::fs::write(
+        src_dir.join("alpha.kea"),
+        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_forwarder_or_passthrough(flag: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  if flag\n    f(x)\n  else\n    x\n",
+    )
+    .expect("alpha module write should succeed");
+    std::fs::write(
+        &source_path,
+        "use Alpha.{apply_forwarder_or_passthrough, forward_once}\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_forwarder_or_passthrough(true, forward_once, x)\n\nfn main() -> Int\n  0\n",
+    )
+    .expect("source write should succeed");
+
+    let run = run_file(&source_path).expect(
+        "@fip verifier and backend lowering should accept named-import wrappers with forward-or-passthrough branch shapes",
+    );
+    assert_eq!(run.exit_code, 0);
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn compile_and_execute_fip_unique_higher_order_named_import_wrapper_if_nested_passthrough_alias_exit_code(
+) {
+    let project_dir = temp_workspace_project_dir(
+        "kea-cli-fip-unique-higher-order-named-if-nested-passthrough-alias",
+    );
+    let src_dir = project_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+    let source_path = src_dir.join("main.kea");
+    std::fs::write(
+        src_dir.join("alpha.kea"),
+        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_forwarder_or_nested_passthrough(flag: Bool, inner: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  if flag\n    f(x)\n  else\n    let out = if inner\n      x\n    else\n      x\n    out\n",
+    )
+    .expect("alpha module write should succeed");
+    std::fs::write(
+        &source_path,
+        "use Alpha.{apply_forwarder_or_nested_passthrough, forward_once}\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_forwarder_or_nested_passthrough(true, false, forward_once, x)\n\nfn main() -> Int\n  0\n",
+    )
+    .expect("source write should succeed");
+
+    let run = run_file(&source_path).expect(
+        "@fip verifier and backend lowering should accept named-import wrappers with nested passthrough alias branches",
+    );
+    assert_eq!(run.exit_code, 0);
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
 fn compile_and_execute_fip_unique_higher_order_forwarder_named_import_call_exit_code() {
     let project_dir =
         temp_workspace_project_dir("kea-cli-fip-unique-higher-order-forwarder-imported");
