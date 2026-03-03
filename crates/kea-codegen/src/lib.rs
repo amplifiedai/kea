@@ -117,6 +117,7 @@ pub struct FunctionPassStats {
     pub retain_count: usize,
     pub release_count: usize,
     pub alloc_count: usize,
+    pub stack_sum_mixed_excluded_count: usize,
     pub reuse_count: usize,
     pub reuse_token_produced_count: usize,
     pub reuse_token_consumed_count: usize,
@@ -2059,6 +2060,22 @@ fn collect_stack_eligible_sum_inits(
         .into_iter()
         .filter(|candidate| is_non_escaping_sum_init(function, candidate))
         .collect()
+}
+
+fn count_stack_excluded_mixed_sum_inits(
+    function: &MirFunction,
+    layout_plan: &BackendLayoutPlan,
+) -> usize {
+    function
+        .blocks
+        .iter()
+        .flat_map(|block| block.instructions.iter())
+        .filter_map(|inst| match inst {
+            MirInst::SumInit { sum_type, .. } => layout_plan.sums.get(sum_type.as_str()),
+            _ => None,
+        })
+        .filter(|layout| layout.variant_field_counts.values().any(|count| *count == 0))
+        .count()
 }
 
 fn is_non_escaping_unboxed_record_init(function: &MirFunction, candidate: &MirValueId) -> bool {
@@ -5834,6 +5851,10 @@ fn collect_function_stats(
     let stack_sum_inits = layout_plan
         .map(|plan| collect_stack_eligible_sum_inits(function, plan))
         .unwrap_or_default();
+    let stack_sum_mixed_excluded_count = layout_plan
+        .map(|plan| count_stack_excluded_mixed_sum_inits(function, plan))
+        .unwrap_or_default();
+    stats.stack_sum_mixed_excluded_count = stack_sum_mixed_excluded_count;
 
     for block in &function.blocks {
         if detect_tail_self_call(function, block).is_some() {
@@ -9950,6 +9971,7 @@ mod tests {
         assert_eq!(stats.per_function.len(), 1);
         let function = &stats.per_function[0];
         assert_eq!(function.alloc_count, 0);
+        assert_eq!(function.stack_sum_mixed_excluded_count, 0);
     }
 
     #[test]
@@ -9960,6 +9982,7 @@ mod tests {
         assert_eq!(stats.per_function.len(), 1);
         let function = &stats.per_function[0];
         assert_eq!(function.alloc_count, 1);
+        assert_eq!(function.stack_sum_mixed_excluded_count, 1);
     }
 
     #[test]
