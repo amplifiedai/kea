@@ -10140,6 +10140,79 @@ theorem native_typed_handle_correspondence_capstone_erasure_exactness_member
     clauseSem mismatchSem bodyStep yielding blocking erasable
     env body opHandle argName resumeName argTy opRetTy clauseBody ty h_cap).membershipIff l
 
+/--
+Under aggressive erasure, the typed native-handle capstone implies scheduler
+classification is not `blocking`.
+-/
+theorem native_typed_handle_correspondence_capstone_scheduler_not_blocking_of_aggressive
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (yielding blocking erasable : List Label)
+    (env : TermEnv)
+    (body : CoreExpr)
+    (opHandle : Label)
+    (argName resumeName : String)
+    (argTy opRetTy : Ty)
+    (clauseBody : CoreExpr)
+    (ty : Ty)
+    (h_cap :
+      NativeTypedHandleCorrespondenceCapstone
+        clauseSem mismatchSem bodyStep
+        yielding blocking erasable
+        env body opHandle argName resumeName argTy opRetTy clauseBody ty)
+    (h_aggressive :
+      aggressiveErasureRemovesDeclaredBlocking [opHandle] erasable blocking) :
+    schedulerClassOfResidual blocking (eraseCapabilities [opHandle] erasable) ≠ .blocking := by
+  have h_small :=
+    native_typed_handle_correspondence_capstone_scheduler_small_of_aggressive
+      clauseSem mismatchSem bodyStep yielding blocking erasable
+      env body opHandle argName resumeName argTy opRetTy clauseBody ty
+      h_cap h_aggressive
+  intro h_blocking
+  rcases h_small with h_pure | h_coop
+  · rw [h_blocking] at h_pure
+    cases h_pure
+  · rw [h_blocking] at h_coop
+    cases h_coop
+
+/--
+Under aggressive erasure, the typed native-handle capstone implies Tier 4 is
+unreachable.
+-/
+theorem native_typed_handle_correspondence_capstone_tier4_absent_of_aggressive
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (yielding blocking erasable : List Label)
+    (env : TermEnv)
+    (body : CoreExpr)
+    (opHandle : Label)
+    (argName resumeName : String)
+    (argTy opRetTy : Ty)
+    (clauseBody : CoreExpr)
+    (ty : Ty)
+    (h_cap :
+      NativeTypedHandleCorrespondenceCapstone
+        clauseSem mismatchSem bodyStep
+        yielding blocking erasable
+        env body opHandle argName resumeName argTy opRetTy clauseBody ty)
+    (h_aggressive :
+      aggressiveErasureRemovesDeclaredBlocking [opHandle] erasable blocking) :
+    handlerTierOfResidual yielding blocking (eraseCapabilities [opHandle] erasable) ≠ .tier4 := by
+  intro h_tier4
+  have h_blocking :
+      schedulerClassOfResidual blocking (eraseCapabilities [opHandle] erasable) = .blocking :=
+    (native_typed_handle_correspondence_capstone_scheduler_blocking_iff_tier4
+      clauseSem mismatchSem bodyStep yielding blocking erasable
+      env body opHandle argName resumeName argTy opRetTy clauseBody ty h_cap).2 h_tier4
+  exact
+    (native_typed_handle_correspondence_capstone_scheduler_not_blocking_of_aggressive
+      clauseSem mismatchSem bodyStep yielding blocking erasable
+      env body opHandle argName resumeName argTy opRetTy clauseBody ty
+      h_cap h_aggressive)
+      h_blocking
+
 /-- Declarative field typing is functional on the core slice. -/
 theorem hasFieldsType_unique
     {env : TermEnv} {fs : CoreFields} {row₁ row₂ : RowFields}

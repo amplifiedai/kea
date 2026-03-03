@@ -22283,3 +22283,48 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - Native typed-handle capstones now expose the correspondence soundness/completeness claims in directly citable theorem form.
+
+### 2026-03-04: added aggressive-erasure non-blocking/tier4-absence consequences on typed-handle capstone
+
+**Context**: Added aggressive-erasure consequence theorems in `Kea/Typing.lean`:
+- `native_typed_handle_correspondence_capstone_scheduler_not_blocking_of_aggressive`
+- `native_typed_handle_correspondence_capstone_tier4_absent_of_aggressive`
+
+This tightens the capstone consequence layer by exposing direct non-blocking and Tier-4-elimination results at the typed native-handle boundary.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent handler should type-check.
+- Mismatched clause that leaks an unhandled effect should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Mass` + trivial fn -> `ok`.
+2. Coherent handler (`handle runProbeGU(); ProbeGU.run() -> resume 441`) -> `ok`.
+3. Mismatched handler clause (effect leak remains `[ProbeGV]`) -> `error`, `E0001`.
+4. Bad resume payload -> `error`, `E0001`.
+5. Out-of-handler resume (`fresh_outside_resume_probe_20260304v`) -> `error`, `E0012`.
+6. Forged-name out-of-handler resume (`forged_ctx_probe_20260304v`) -> `error`, `E0012`.
+7. Double-resume clause -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the aggressive-erasure consequence layer on the typed-handle capstone.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_typed_handle_correspondence_capstone_scheduler_not_blocking_of_aggressive`
+  - `native_typed_handle_correspondence_capstone_tier4_absent_of_aggressive`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Native typed-handle capstones now expose aggressive-erasure non-blocking and Tier-4-elimination consequences directly.
