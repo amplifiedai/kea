@@ -10805,6 +10805,208 @@ theorem native_typed_handle_correspondence_capstone_tier_scheduler_pair_eq_if_er
       · simp [h_erasable, h_blocking, h_yielding]
       · simp [h_erasable, h_blocking, h_yielding]
 
+/--
+Exact singleton boundary law for the `(tier1, pure)` branch.
+-/
+theorem native_typed_handle_correspondence_capstone_pair_eq_tier1_pure_iff_erasable
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (yielding blocking erasable : List Label)
+    (env : TermEnv)
+    (body : CoreExpr)
+    (opHandle : Label)
+    (argName resumeName : String)
+    (argTy opRetTy : Ty)
+    (clauseBody : CoreExpr)
+    (ty : Ty)
+    (h_cap :
+      NativeTypedHandleCorrespondenceCapstone
+        clauseSem mismatchSem bodyStep
+        yielding blocking erasable
+        env body opHandle argName resumeName argTy opRetTy clauseBody ty) :
+    (handlerTierOfResidual yielding blocking (eraseCapabilities [opHandle] erasable),
+      schedulerClassOfResidual blocking (eraseCapabilities [opHandle] erasable))
+      = (.tier1, .pure)
+      ↔
+    opHandle ∈ erasable := by
+  have h_pair :
+      (handlerTierOfResidual yielding blocking (eraseCapabilities [opHandle] erasable),
+        schedulerClassOfResidual blocking (eraseCapabilities [opHandle] erasable))
+        =
+      (if opHandle ∈ erasable then (.tier1, .pure)
+       else if opHandle ∈ blocking then (.tier4, .blocking)
+       else if opHandle ∈ yielding then (.tier2, .cooperative)
+       else (.tier3, .cooperative)) :=
+    native_typed_handle_correspondence_capstone_tier_scheduler_pair_eq_if_erased_then_tier1_pure_else_blocking_yield_split
+      clauseSem mismatchSem bodyStep yielding blocking erasable
+      env body opHandle argName resumeName argTy opRetTy clauseBody ty h_cap
+  constructor
+  · intro h_eq
+    rw [h_pair] at h_eq
+    by_cases h_erasable : opHandle ∈ erasable
+    · exact h_erasable
+    · have h_false : False := by
+        by_cases h_blocking : opHandle ∈ blocking
+        · simp [h_erasable, h_blocking] at h_eq
+        · by_cases h_yielding : opHandle ∈ yielding
+          · simp [h_erasable, h_blocking, h_yielding] at h_eq
+          · simp [h_erasable, h_blocking, h_yielding] at h_eq
+      exact False.elim h_false
+  · intro h_erasable
+    rw [h_pair]
+    simp [h_erasable]
+
+/--
+Exact singleton boundary law for the `(tier4, blocking)` branch.
+-/
+theorem native_typed_handle_correspondence_capstone_pair_eq_tier4_blocking_iff_not_erasable_and_blocking
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (yielding blocking erasable : List Label)
+    (env : TermEnv)
+    (body : CoreExpr)
+    (opHandle : Label)
+    (argName resumeName : String)
+    (argTy opRetTy : Ty)
+    (clauseBody : CoreExpr)
+    (ty : Ty)
+    (h_cap :
+      NativeTypedHandleCorrespondenceCapstone
+        clauseSem mismatchSem bodyStep
+        yielding blocking erasable
+        env body opHandle argName resumeName argTy opRetTy clauseBody ty) :
+    (handlerTierOfResidual yielding blocking (eraseCapabilities [opHandle] erasable),
+      schedulerClassOfResidual blocking (eraseCapabilities [opHandle] erasable))
+      = (.tier4, .blocking)
+      ↔
+    opHandle ∉ erasable ∧ opHandle ∈ blocking := by
+  have h_pair :
+      (handlerTierOfResidual yielding blocking (eraseCapabilities [opHandle] erasable),
+        schedulerClassOfResidual blocking (eraseCapabilities [opHandle] erasable))
+        =
+      (if opHandle ∈ erasable then (.tier1, .pure)
+       else if opHandle ∈ blocking then (.tier4, .blocking)
+       else if opHandle ∈ yielding then (.tier2, .cooperative)
+       else (.tier3, .cooperative)) :=
+    native_typed_handle_correspondence_capstone_tier_scheduler_pair_eq_if_erased_then_tier1_pure_else_blocking_yield_split
+      clauseSem mismatchSem bodyStep yielding blocking erasable
+      env body opHandle argName resumeName argTy opRetTy clauseBody ty h_cap
+  constructor
+  · intro h_eq
+    rw [h_pair] at h_eq
+    by_cases h_erasable : opHandle ∈ erasable
+    · simp [h_erasable] at h_eq
+    · by_cases h_blocking : opHandle ∈ blocking
+      · exact ⟨h_erasable, h_blocking⟩
+      · by_cases h_yielding : opHandle ∈ yielding
+        · simp [h_erasable, h_blocking, h_yielding] at h_eq
+        · simp [h_erasable, h_blocking, h_yielding] at h_eq
+  · intro h
+    rw [h_pair]
+    simp [h.1, h.2]
+
+/--
+Exact singleton boundary law for the `(tier2, cooperative)` branch.
+-/
+theorem native_typed_handle_correspondence_capstone_pair_eq_tier2_cooperative_iff_not_erasable_and_not_blocking_and_yielding
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (yielding blocking erasable : List Label)
+    (env : TermEnv)
+    (body : CoreExpr)
+    (opHandle : Label)
+    (argName resumeName : String)
+    (argTy opRetTy : Ty)
+    (clauseBody : CoreExpr)
+    (ty : Ty)
+    (h_cap :
+      NativeTypedHandleCorrespondenceCapstone
+        clauseSem mismatchSem bodyStep
+        yielding blocking erasable
+        env body opHandle argName resumeName argTy opRetTy clauseBody ty) :
+    (handlerTierOfResidual yielding blocking (eraseCapabilities [opHandle] erasable),
+      schedulerClassOfResidual blocking (eraseCapabilities [opHandle] erasable))
+      = (.tier2, .cooperative)
+      ↔
+    opHandle ∉ erasable ∧ opHandle ∉ blocking ∧ opHandle ∈ yielding := by
+  have h_pair :
+      (handlerTierOfResidual yielding blocking (eraseCapabilities [opHandle] erasable),
+        schedulerClassOfResidual blocking (eraseCapabilities [opHandle] erasable))
+        =
+      (if opHandle ∈ erasable then (.tier1, .pure)
+       else if opHandle ∈ blocking then (.tier4, .blocking)
+       else if opHandle ∈ yielding then (.tier2, .cooperative)
+       else (.tier3, .cooperative)) :=
+    native_typed_handle_correspondence_capstone_tier_scheduler_pair_eq_if_erased_then_tier1_pure_else_blocking_yield_split
+      clauseSem mismatchSem bodyStep yielding blocking erasable
+      env body opHandle argName resumeName argTy opRetTy clauseBody ty h_cap
+  constructor
+  · intro h_eq
+    rw [h_pair] at h_eq
+    by_cases h_erasable : opHandle ∈ erasable
+    · simp [h_erasable] at h_eq
+    · by_cases h_blocking : opHandle ∈ blocking
+      · simp [h_erasable, h_blocking] at h_eq
+      · by_cases h_yielding : opHandle ∈ yielding
+        · exact ⟨h_erasable, h_blocking, h_yielding⟩
+        · simp [h_erasable, h_blocking, h_yielding] at h_eq
+  · intro h
+    rw [h_pair]
+    simp [h.1, h.2.1, h.2.2]
+
+/--
+Exact singleton boundary law for the `(tier3, cooperative)` branch.
+-/
+theorem native_typed_handle_correspondence_capstone_pair_eq_tier3_cooperative_iff_not_erasable_and_not_blocking_and_not_yielding
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (yielding blocking erasable : List Label)
+    (env : TermEnv)
+    (body : CoreExpr)
+    (opHandle : Label)
+    (argName resumeName : String)
+    (argTy opRetTy : Ty)
+    (clauseBody : CoreExpr)
+    (ty : Ty)
+    (h_cap :
+      NativeTypedHandleCorrespondenceCapstone
+        clauseSem mismatchSem bodyStep
+        yielding blocking erasable
+        env body opHandle argName resumeName argTy opRetTy clauseBody ty) :
+    (handlerTierOfResidual yielding blocking (eraseCapabilities [opHandle] erasable),
+      schedulerClassOfResidual blocking (eraseCapabilities [opHandle] erasable))
+      = (.tier3, .cooperative)
+      ↔
+    opHandle ∉ erasable ∧ opHandle ∉ blocking ∧ opHandle ∉ yielding := by
+  have h_pair :
+      (handlerTierOfResidual yielding blocking (eraseCapabilities [opHandle] erasable),
+        schedulerClassOfResidual blocking (eraseCapabilities [opHandle] erasable))
+        =
+      (if opHandle ∈ erasable then (.tier1, .pure)
+       else if opHandle ∈ blocking then (.tier4, .blocking)
+       else if opHandle ∈ yielding then (.tier2, .cooperative)
+       else (.tier3, .cooperative)) :=
+    native_typed_handle_correspondence_capstone_tier_scheduler_pair_eq_if_erased_then_tier1_pure_else_blocking_yield_split
+      clauseSem mismatchSem bodyStep yielding blocking erasable
+      env body opHandle argName resumeName argTy opRetTy clauseBody ty h_cap
+  constructor
+  · intro h_eq
+    rw [h_pair] at h_eq
+    by_cases h_erasable : opHandle ∈ erasable
+    · simp [h_erasable] at h_eq
+    · by_cases h_blocking : opHandle ∈ blocking
+      · simp [h_erasable, h_blocking] at h_eq
+      · by_cases h_yielding : opHandle ∈ yielding
+        · simp [h_erasable, h_blocking, h_yielding] at h_eq
+        · exact ⟨h_erasable, h_blocking, h_yielding⟩
+  · intro h
+    rw [h_pair]
+    simp [h.1, h.2.1, h.2.2]
+
 /-- Declarative field typing is functional on the core slice. -/
 theorem hasFieldsType_unique
     {env : TermEnv} {fs : CoreFields} {row₁ row₂ : RowFields}

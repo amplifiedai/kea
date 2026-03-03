@@ -22643,3 +22643,49 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - The native typed-handle boundary now exposes a single theorem that jointly classifies compiler tier and runtime scheduler class from the same erased/blocking/yielding predicates.
+
+### 2026-03-04: completed exact pair-branch iff partition for singleton typed-handle three-view boundary
+
+**Context**: Extended the new pair-valued boundary equation with exact branch iff laws in `Kea/Typing.lean`:
+- `native_typed_handle_correspondence_capstone_pair_eq_tier1_pure_iff_erasable`
+- `native_typed_handle_correspondence_capstone_pair_eq_tier4_blocking_iff_not_erasable_and_blocking`
+- `native_typed_handle_correspondence_capstone_pair_eq_tier2_cooperative_iff_not_erasable_and_not_blocking_and_yielding`
+- `native_typed_handle_correspondence_capstone_pair_eq_tier3_cooperative_iff_not_erasable_and_not_blocking_and_not_yielding`
+
+Together with the closed-form pair theorem, this gives an exact four-way partition linking erased/blocking/yielding predicates to `(compiler tier, runtime scheduler)` at the native typed-handle singleton boundary.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- Coherent typed handle should type-check.
+- Mismatched handler clause that leaves handled effect unremoved should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. Coherent handler (`probe_coherent_20260304ad`) -> `ok`.
+2. Mismatch effect-leak handler (`probe_mismatch_20260304ad`) -> `error`, `E0001`.
+3. Bad resume payload (`probe_bad_resume_20260304ad`) -> `error`, `E0001`.
+4. Out-of-handler resume (`probe_outside_resume_20260304ad`) -> `error`, `E0012`.
+5. Forged-name out-of-handler resume (`probe_forged_resume_ctx_20260304ad`) -> `error`, `E0012`.
+6. Double-resume clause (`probe_double_resume_20260304ad`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the full pair-branch iff partition and fixed one proof branch by deriving contradiction explicitly under `¬erasable` for the `(tier1, pure)` converse.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_typed_handle_correspondence_capstone_pair_eq_tier1_pure_iff_erasable`
+  - `native_typed_handle_correspondence_capstone_pair_eq_tier4_blocking_iff_not_erasable_and_blocking`
+  - `native_typed_handle_correspondence_capstone_pair_eq_tier2_cooperative_iff_not_erasable_and_not_blocking_and_yielding`
+  - `native_typed_handle_correspondence_capstone_pair_eq_tier3_cooperative_iff_not_erasable_and_not_blocking_and_not_yielding`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The singleton typed-handle boundary now has an exact joint-tier/scheduler branch partition, not just one-way implications or closed forms.
