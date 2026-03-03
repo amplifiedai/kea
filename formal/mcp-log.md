@@ -20055,3 +20055,52 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - The no-body-step metadata-mismatch boundary is now consumable as a first-class theorem route (direct and capstone-projected), tightening boundary traceability for downstream soundness/progress arguments.
+
+### 2026-03-03: soundness boundary capstone packages positive and negative routes together
+
+**Context**: Added a new capstone package in `Typing.lean` that combines:
+- positive route: under `native_core_soundness_prop` + `native_handler_strict_top_typing_prop`, mismatch-extension soundness and progress both hold;
+- negative route: under metadata-mismatch no-body-step conditions, mismatch-extension progress and soundness both fail.
+
+New surfaces:
+- `NativeHandlerSoundnessBoundaryCapstone`
+- `native_handler_soundness_boundary_capstone`
+- `native_handler_soundness_boundary_capstone_of_boundary_model_gap_slice`
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent self-contained handler should type-check.
+- Mismatched pure handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume in one clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Kernel` -> `ok`.
+2. Coherent Lambda handler (`Lambda.pop() -> resume 1211`) -> `ok`.
+3. Mismatched pure handler (`handle Lambda.pop()` with only `Psi.pop_other` clause) -> `error`, `E0001` (pure body performs `[Lambda]`).
+4. Bad resume payload (`Lambda.pop() -> resume "wrong"`) -> `error`, `E0001`.
+5. Out-of-handler resume (`fn lambda_resume_outside() -> Int; resume 1211`) -> `error`, `E0012`.
+6. Forged-name out-of-handler resume (`let __kea_resume_ctx = 4; resume 1211`) -> `error`, `E0012`.
+7. Double-resume clause (`resume 1` then `resume 2`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the new boundary capstone package and constructors.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `NativeHandlerSoundnessBoundaryCapstone`
+  - `native_handler_soundness_boundary_capstone`
+  - `native_handler_soundness_boundary_capstone_of_boundary_model_gap_slice`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The core boundary is now one citable object instead of split theorem families, making the current “what is proved vs what fails under mismatch/no-step” status explicit in a single machine-checked package.

@@ -5656,6 +5656,66 @@ theorem native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_of_
     clauseSem mismatchSem bodyStep h_gap h_core h_strict_top_typing
 
 /--
+Capstone boundary package: one object carrying both the positive route
+(core soundness + strict-top typing implies mismatch-extension soundness/progress)
+and the negative route (metadata-mismatch no-body-step implies mismatch-extension
+progress/soundness failure).
+-/
+structure NativeHandlerSoundnessBoundaryCapstone
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) : Prop where
+  successRoute :
+    ∀ bodyStep,
+      native_core_soundness_prop bodyStep →
+      native_handler_strict_top_typing_prop →
+      native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep
+        ∧
+      native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep
+  metadataMismatchNoBodyStepFailureRoute :
+    native_handler_step_ext_with_mismatch_metadata_mismatch_no_body_step_failure_route_prop
+      clauseSem mismatchSem
+
+/--
+Construct the capstone boundary package from existing positive/negative route
+theorems.
+-/
+theorem native_handler_soundness_boundary_capstone
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) :
+    NativeHandlerSoundnessBoundaryCapstone clauseSem mismatchSem := by
+  refine {
+    successRoute := ?_
+    metadataMismatchNoBodyStepFailureRoute :=
+      native_handler_step_ext_with_mismatch_metadata_mismatch_no_body_step_failure_route
+        clauseSem mismatchSem
+  }
+  intro bodyStep h_core h_strict_top
+  have h_contrast :=
+    native_handler_step_ext_with_mismatch_soundness_progress_and_native_progress_gap_of_core_soundness_and_strict_top_typing
+      clauseSem mismatchSem bodyStep h_core h_strict_top
+  exact ⟨h_contrast.1, h_contrast.2.1⟩
+
+/--
+Construct the same capstone boundary package from `NativeHandlerBoundaryModelGapSlice`.
+-/
+theorem native_handler_soundness_boundary_capstone_of_boundary_model_gap_slice
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (h_gap : NativeHandlerBoundaryModelGapSlice clauseSem mismatchSem) :
+    NativeHandlerSoundnessBoundaryCapstone clauseSem mismatchSem := by
+  refine {
+    successRoute := ?_
+    metadataMismatchNoBodyStepFailureRoute :=
+      native_handler_step_ext_with_mismatch_metadata_mismatch_no_body_step_failure_route_of_boundary_model_gap_slice
+        clauseSem mismatchSem h_gap
+  }
+  intro bodyStep h_core h_strict_top
+  have h_contrast :=
+    native_handler_step_ext_with_mismatch_soundness_progress_and_native_progress_gap_of_core_soundness_and_strict_top_typing_of_boundary_model_gap_slice
+      clauseSem mismatchSem bodyStep h_gap h_core h_strict_top
+  exact ⟨h_contrast.1, h_contrast.2.1⟩
+
+/--
 Packaged route: mismatch-extension progress from packaged core progress plus
 global strict typing, routed through strict-top typing.
 -/
