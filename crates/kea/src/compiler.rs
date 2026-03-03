@@ -3333,10 +3333,20 @@ fn matches_higher_order_forwarder_body(
 
                         match &item.kind {
                             HirExprKind::Let { pattern, value }
-                                if matches!(pattern, kea_hir::HirPattern::Var(_))
-                                    && !contains_call(value) =>
+                                if matches!(pattern, kea_hir::HirPattern::Var(_)) =>
                             {
-                                continue;
+                                if matches_passthrough_shape(value, &unique_aliases) {
+                                    let binding_name = match pattern {
+                                        kea_hir::HirPattern::Var(name) => name,
+                                        _ => unreachable!("guarded by match"),
+                                    };
+                                    unique_aliases.insert(binding_name.to_string());
+                                    continue;
+                                }
+                                if !contains_call(value) {
+                                    continue;
+                                }
+                                return false;
                             }
                             _ => return false,
                         }
