@@ -3584,6 +3584,59 @@ fn compile_rejects_fip_annotation_with_arguments() {
 
 #[test]
 #[cfg(not(target_os = "windows"))]
+fn compile_accepts_unsafe_annotation_on_function() {
+    let source_path = write_temp_source(
+        "@unsafe\nfn raw_add_one(x: Int) -> Int\n  x + 1\n\nfn main() -> Int\n  raw_add_one(41)\n",
+        "kea-cli-unsafe-annotation-function",
+        "kea",
+    );
+
+    let run = run_file(&source_path).expect("@unsafe function annotation should be accepted");
+    assert_eq!(run.exit_code, 42);
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn compile_rejects_unsafe_annotation_with_arguments() {
+    let source_path = write_temp_source(
+        "@unsafe(\"strict\")\nfn raw_add_one(x: Int) -> Int\n  x + 1\n\nfn main() -> Int\n  raw_add_one(1)\n",
+        "kea-cli-unsafe-annotation-args",
+        "kea",
+    );
+
+    let err =
+        run_file(&source_path).expect_err("@unsafe annotation with args should fail validation");
+    assert!(
+        err.contains("`@unsafe` does not accept arguments"),
+        "expected @unsafe argument validation failure, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn compile_rejects_unsafe_annotation_on_record_declaration() {
+    let source_path = write_temp_source(
+        "@unsafe\nstruct Box\n  value: Int\n\nfn main() -> Int\n  0\n",
+        "kea-cli-unsafe-annotation-record",
+        "kea",
+    );
+
+    let err = run_file(&source_path)
+        .expect_err("@unsafe annotation on record declaration should fail validation");
+    assert!(
+        err.contains("`@unsafe` is not valid on record declaration"),
+        "expected @unsafe target validation failure, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
 fn compile_build_and_execute_aot_payload_constructor_case_exit_code() {
     let source_path = write_temp_source(
         "enum Flag\n  Yep(Int)\n  Nope\n\nfn main() -> Int\n  case Yep(1 + 6)\n    Yep(n) -> n\n    Nope -> 0\n",

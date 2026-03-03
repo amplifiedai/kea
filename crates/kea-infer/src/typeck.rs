@@ -5609,11 +5609,12 @@ fn annotation_name_known(name: &str) -> bool {
     matches!(
         name,
         "rename" | "default" | "skip_if" | "tagged" | "deprecated" | "intrinsic" | "fip"
+            | "unsafe"
     )
 }
 
 fn annotation_name_suggestion(name: &str) -> Option<&'static str> {
-    const KNOWN: [&str; 7] = [
+    const KNOWN: [&str; 8] = [
         "rename",
         "default",
         "skip_if",
@@ -5621,6 +5622,7 @@ fn annotation_name_suggestion(name: &str) -> Option<&'static str> {
         "deprecated",
         "intrinsic",
         "fip",
+        "unsafe",
     ];
     let mut best: Option<(&str, usize)> = None;
     for candidate in KNOWN {
@@ -6019,6 +6021,26 @@ fn validate_annotation_arguments(
             if !ann.args.is_empty() {
                 diagnostics.push(
                     Diagnostic::error(Category::TypeError, "`@fip` does not accept arguments")
+                        .at(span_to_loc(ann.span)),
+                );
+            }
+        }
+        "unsafe" => {
+            if !matches!(
+                target,
+                AnnotationTargetKind::Function | AnnotationTargetKind::ExprFunction
+            ) {
+                diagnostics.push(
+                    Diagnostic::error(
+                        Category::TypeError,
+                        format!("`@unsafe` is not valid on {}", target.label()),
+                    )
+                    .at(span_to_loc(ann.span)),
+                );
+            }
+            if !ann.args.is_empty() {
+                diagnostics.push(
+                    Diagnostic::error(Category::TypeError, "`@unsafe` does not accept arguments")
                         .at(span_to_loc(ann.span)),
                 );
             }
