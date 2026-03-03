@@ -20665,3 +20665,52 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - The constructive and refutational branches are now theorem-coupled at a shared no-body-step boundary, reducing manual cross-branch assembly in downstream arguments.
+
+### 2026-03-04: added strict-top ↔ strict-handle one-step soundness bridges
+
+**Context**: Added a direct local one-step soundness surface and bridge theorems:
+- `native_handler_step_ext_with_mismatch_soundness_strict_handle_prop`
+- `native_handler_step_ext_with_mismatch_soundness_strict_handle_of_soundness_strict_top`
+- `native_handler_step_ext_with_mismatch_soundness_strict_top_of_soundness_strict_handle`
+- `native_handler_step_ext_with_mismatch_soundness_strict_top_prop_iff_soundness_strict_handle_prop`
+- `native_handler_step_ext_with_mismatch_soundness_strict_handle_of_core_soundness`
+
+This closes the shape gap between strict-top and local strict-handle one-step soundness APIs.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent handler should type-check.
+- Mismatched pure handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Algebra` + trivial fn -> `ok`.
+2. Coherent handler (`ProbeZ.op() -> resume 81`) -> `ok`.
+3. Mismatched pure handler (`handle ProbeAA.lhs()` with only `ProbeAB.rhs`) -> `error`, `E0001`.
+4. Bad resume payload (`ProbeAC.read() -> resume "x"`) -> `error`, `E0001`.
+5. Out-of-handler resume (`fn outside_resume_probe5() -> Int; resume 12`) -> `error`, `E0012`.
+6. Forged-name out-of-handler resume (`let __kea_resume_ctx = 12; resume 12`) -> `error`, `E0012`.
+7. Double-resume clause (`resume 1` then `resume 2`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the strict-top/strict-handle one-step soundness bridge additions.
+- Continued MCP-first checkpoint loop with fresh probe names.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_soundness_strict_handle_prop`
+  - `native_handler_step_ext_with_mismatch_soundness_strict_top_prop_iff_soundness_strict_handle_prop`
+  - `native_handler_step_ext_with_mismatch_soundness_strict_handle_of_core_soundness`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Local strict-handle and strict-top one-step soundness are now propositionally aligned, making local non-vacuous consumption first-class without losing strict-top compatibility.

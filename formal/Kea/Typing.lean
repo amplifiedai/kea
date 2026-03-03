@@ -2945,6 +2945,100 @@ theorem native_handler_step_ext_with_mismatch_soundness_strict_top_of_core_sound
     clauseSem mismatchSem bodyStep h_body_pres h_core_progress h_strict_top
 
 /--
+Local one-step soundness target under strict handle typing (non-vacuous handle
+site form): from one strict handle root, produce a one-step successor with
+preserved top-level typing.
+-/
+def native_handler_step_ext_with_mismatch_soundness_strict_handle_prop
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) : Prop :=
+  ∀ env body opHandle argName resumeName argTy opRetTy clauseBody ty,
+    HasTypeScopedHandleStrict env body opHandle argName resumeName argTy opRetTy clauseBody ty →
+    ∃ e',
+      NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        e'
+      ∧
+      HasTypeScopedTop env e' ty
+
+/--
+Project strict-handle one-step soundness from strict-top one-step soundness.
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_strict_handle_of_soundness_strict_top
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_top :
+      native_handler_step_ext_with_mismatch_soundness_strict_top_prop
+        clauseSem mismatchSem bodyStep) :
+    native_handler_step_ext_with_mismatch_soundness_strict_handle_prop
+      clauseSem mismatchSem bodyStep := by
+  intro env body opHandle argName resumeName argTy opRetTy clauseBody ty h_strict
+  exact h_top env body opHandle argName resumeName argTy opRetTy clauseBody ty
+    (hasTypeScopedStrictTop_of_handleStrict h_strict)
+
+/--
+Lift strict-handle one-step soundness to strict-top one-step soundness.
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_strict_top_of_soundness_strict_handle
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_handle :
+      native_handler_step_ext_with_mismatch_soundness_strict_handle_prop
+        clauseSem mismatchSem bodyStep) :
+    native_handler_step_ext_with_mismatch_soundness_strict_top_prop
+      clauseSem mismatchSem bodyStep := by
+  intro env body opHandle argName resumeName argTy opRetTy clauseBody ty h_strict_top
+  exact h_handle env body opHandle argName resumeName argTy opRetTy clauseBody ty
+    ((hasTypeScopedStrictTop_handle_iff_handleStrict).1 h_strict_top)
+
+/--
+Strict-top and strict-handle one-step soundness surfaces are equivalent at
+handle roots.
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_strict_top_prop_iff_soundness_strict_handle_prop
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) :
+    native_handler_step_ext_with_mismatch_soundness_strict_top_prop
+      clauseSem mismatchSem bodyStep
+      ↔
+    native_handler_step_ext_with_mismatch_soundness_strict_handle_prop
+      clauseSem mismatchSem bodyStep := by
+  constructor
+  · intro h_top
+    exact native_handler_step_ext_with_mismatch_soundness_strict_handle_of_soundness_strict_top
+      clauseSem mismatchSem bodyStep h_top
+  · intro h_handle
+    exact native_handler_step_ext_with_mismatch_soundness_strict_top_of_soundness_strict_handle
+      clauseSem mismatchSem bodyStep h_handle
+
+/--
+Strict-handle one-step soundness route from core body preservation/progress.
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_strict_handle_of_core_soundness
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_body_pres :
+      ∀ env body body' ty,
+        HasTypeScopedTop env body ty →
+        bodyStep body body' →
+        HasTypeScopedTop env body' ty)
+    (h_core_progress :
+      ∀ env body ty,
+        HasTypeScopedTop env body ty →
+        CoreValue body ∨ ∃ body', bodyStep body body') :
+    native_handler_step_ext_with_mismatch_soundness_strict_handle_prop
+      clauseSem mismatchSem bodyStep := by
+  exact native_handler_step_ext_with_mismatch_soundness_strict_handle_of_soundness_strict_top
+    clauseSem mismatchSem bodyStep
+    (native_handler_step_ext_with_mismatch_soundness_strict_top_of_core_soundness
+      clauseSem mismatchSem bodyStep h_body_pres h_core_progress)
+
+/--
 Progress target for the mismatched-perform extension under strict local handle
 typing premises.
 -/
