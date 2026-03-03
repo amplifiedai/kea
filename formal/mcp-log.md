@@ -18232,3 +18232,44 @@ scoped-lift, metadata) for mismatch-extension progress/soundness.
 **Impact**:
 - Consumers can now prove one strict-top route and immediately obtain packaged
   strict-typing/scoped-lift/metadata routes for both progress and soundness.
+
+### 2026-03-03: core-obligation route suite capstone (progress + soundness)
+
+**Context**: Added direct core-obligation entry routes that produce packaged
+four-assumption bundles, plus a combined suite theorem exporting both progress
+and soundness bundles from one core-soundness premise.
+
+**MCP tools used**: `reset_session`, `type_check`
+
+**Predict (Lean side)**:
+- Coherent `State Int` handler should type-check as pure.
+- `Reader` body with `State` clauses should leak `Reader(Int)` in pure context.
+- Polymorphic `Reader Int` bad resume payload should reject.
+- Out-of-handler resume should reject.
+
+**Probe (Rust side via MCP)**:
+1. Coherent `State` handler (`get -> resume 0`, `put -> resume ()`) -> `ok` (`main : () -> Int`).
+2. Mismatched `State` clauses around `Reader` body -> `error`, `E0001` (pure body performs `[Reader(Int)]`).
+3. Bad `Reader Int` resume payload (`resume "bad"`) -> `error`, `E0001`.
+4. Out-of-handler resume control (`let x = 2; resume x`) -> `error`, `E0012`.
+
+**Classify**: Agreement.
+
+**Act**:
+- Kept the new core-obligation route suite theorem additions.
+- Continued checkpoint loop without model revision.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_progress_assumption_routes_of_core_progress`
+  - `native_handler_step_ext_with_mismatch_soundness_assumption_routes_of_core_soundness`
+  - `native_handler_step_ext_with_mismatch_assumption_route_suite_prop`
+  - `native_handler_step_ext_with_mismatch_assumption_route_suite_of_core_soundness`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- A single core-soundness premise now discharges one packaged theorem that
+  yields both progress and soundness route bundles across strict-top,
+  strict-typing, scoped-lift, and metadata assumptions.

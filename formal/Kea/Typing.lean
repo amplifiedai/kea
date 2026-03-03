@@ -2972,6 +2972,25 @@ theorem native_handler_step_ext_with_mismatch_progress_assumption_routes_of_stri
   · exact h_top_meta.1 h_from_strict_top
 
 /--
+From packaged core progress, derive the full packaged progress-route bundle
+across strict-top/strict-typing/scoped-lift/metadata assumptions.
+-/
+theorem native_handler_step_ext_with_mismatch_progress_assumption_routes_of_core_progress
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core_progress :
+      ∀ env body ty,
+        HasTypeScopedTop env body ty →
+        CoreValue body ∨ ∃ body', bodyStep body body') :
+    native_handler_step_ext_with_mismatch_progress_assumption_routes_prop
+      clauseSem mismatchSem bodyStep := by
+  exact native_handler_step_ext_with_mismatch_progress_assumption_routes_of_strict_top
+    clauseSem mismatchSem bodyStep h_core_progress
+    (native_handler_step_ext_with_mismatch_progress_of_core_progress_and_strict_top_typing
+      clauseSem mismatchSem bodyStep h_core_progress)
+
+/--
 Strict-top handle typing and metadata coherence are equivalent global
 contracts.
 -/
@@ -3763,6 +3782,69 @@ theorem native_handler_step_ext_with_mismatch_soundness_assumption_routes_of_str
   · exact h_top_strict.1 h_from_strict_top
   · exact h_top_lift.1 h_from_strict_top
   · exact h_top_meta.1 h_from_strict_top
+
+/--
+From packaged core soundness, derive the full packaged soundness-route bundle
+across strict-top/strict-typing/scoped-lift/metadata assumptions.
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_assumption_routes_of_core_soundness
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core :
+      (∀ env body body' ty,
+        HasTypeScopedTop env body ty →
+        bodyStep body body' →
+        HasTypeScopedTop env body' ty)
+      ∧
+      (∀ env body ty,
+        HasTypeScopedTop env body ty →
+        CoreValue body ∨ ∃ body', bodyStep body body')) :
+    native_handler_step_ext_with_mismatch_soundness_assumption_routes_prop
+      clauseSem mismatchSem bodyStep := by
+  exact native_handler_step_ext_with_mismatch_soundness_assumption_routes_of_strict_top
+    clauseSem mismatchSem bodyStep h_core
+    (native_handler_step_ext_with_mismatch_soundness_of_core_soundness_and_strict_top_typing
+      clauseSem mismatchSem bodyStep h_core)
+
+/--
+Combined packaged assumption-route suite for mismatch-extension progress and
+soundness.
+-/
+def native_handler_step_ext_with_mismatch_assumption_route_suite_prop
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) : Prop :=
+  native_handler_step_ext_with_mismatch_progress_assumption_routes_prop
+      clauseSem mismatchSem bodyStep
+    ∧
+    native_handler_step_ext_with_mismatch_soundness_assumption_routes_prop
+      clauseSem mismatchSem bodyStep
+
+/--
+From packaged core soundness, derive the combined packaged assumption-route
+suite (progress routes + soundness routes).
+-/
+theorem native_handler_step_ext_with_mismatch_assumption_route_suite_of_core_soundness
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core :
+      (∀ env body body' ty,
+        HasTypeScopedTop env body ty →
+        bodyStep body body' →
+        HasTypeScopedTop env body' ty)
+      ∧
+      (∀ env body ty,
+        HasTypeScopedTop env body ty →
+        CoreValue body ∨ ∃ body', bodyStep body body')) :
+    native_handler_step_ext_with_mismatch_assumption_route_suite_prop
+      clauseSem mismatchSem bodyStep := by
+  refine ⟨?_, ?_⟩
+  · exact native_handler_step_ext_with_mismatch_progress_assumption_routes_of_core_progress
+      clauseSem mismatchSem bodyStep h_core.2
+  · exact native_handler_step_ext_with_mismatch_soundness_assumption_routes_of_core_soundness
+      clauseSem mismatchSem bodyStep h_core
 
 /--
 Specialized soundness target for the concrete pass-through mismatch semantics.
