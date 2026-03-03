@@ -20104,3 +20104,54 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - The core boundary is now one citable object instead of split theorem families, making the current “what is proved vs what fails under mismatch/no-step” status explicit in a single machine-checked package.
+
+### 2026-03-03: unified status capstone adds typing-gap witness to boundary package
+
+**Context**: Added a typing-gap package and then a unified status capstone that pairs it with `NativeHandlerSoundnessBoundaryCapstone`.
+
+New surfaces:
+- `NativeHandlerCurrentTypingGapSlice`
+- `native_handler_current_typing_gap_slice`
+- `NativeHandlerSoundnessBoundaryStatusCapstone`
+- `native_handler_soundness_boundary_status_capstone`
+- `native_handler_soundness_boundary_status_capstone_of_boundary_model_gap_slice`
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent self-contained handler should type-check.
+- Mismatched pure handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume in one clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Algebra` -> `ok`.
+2. Coherent Nu handler (`Nu.step() -> resume 1413`) -> `ok`.
+3. Mismatched pure handler (`handle Nu.step()` with only `Xi.other` clause) -> `error`, `E0001` (pure body performs `[Nu]`).
+4. Bad resume payload (`Nu.step() -> resume "bad"`) -> `error`, `E0001`.
+5. Out-of-handler resume (`fn nu_resume_outside() -> Int; resume 1413`) -> `error`, `E0012`.
+6. Forged-name out-of-handler resume (`let __kea_resume_ctx = 5; resume 1413`) -> `error`, `E0012`.
+7. Double-resume clause (`resume 1` then `resume 2`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the typing-gap package and unified status capstone additions.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `NativeHandlerCurrentTypingGapSlice`
+  - `native_handler_current_typing_gap_slice`
+  - `NativeHandlerSoundnessBoundaryStatusCapstone`
+  - `native_handler_soundness_boundary_status_capstone`
+  - `native_handler_soundness_boundary_status_capstone_of_boundary_model_gap_slice`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Boundary status is now packaged as one theorem object that includes both semantic routes and the present typing-side blocker, making checkpoint communication and downstream consumption more direct.

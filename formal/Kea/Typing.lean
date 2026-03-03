@@ -3707,6 +3707,32 @@ theorem not_native_handler_strict_top_typing_prop_iff_not_scoped_to_strict_lift 
       (native_handler_scoped_to_strict_lift_prop_of_strict_top_typing h_strict_top)
 
 /--
+Packaged current-typing boundary gap: all strict/coherence routes required for
+non-vacuous handler soundness fail on the present native scoped typing judgment.
+-/
+structure NativeHandlerCurrentTypingGapSlice : Prop where
+  strictTopTypingFalse :
+    ¬ native_handler_strict_top_typing_prop
+  strictTypingFalse :
+    ¬ native_handler_strict_typing_prop
+  scopedToStrictLiftFalse :
+    ¬ native_handler_scoped_to_strict_lift_prop
+  metadataCoherenceFalse :
+    ¬ native_handler_perform_metadata_coherence_prop
+
+/--
+Canonical packaged witness for the current strict/coherence typing gap.
+-/
+theorem native_handler_current_typing_gap_slice :
+    NativeHandlerCurrentTypingGapSlice := by
+  exact {
+    strictTopTypingFalse := not_native_handler_strict_top_typing_prop
+    strictTypingFalse := not_native_handler_strict_typing_prop
+    scopedToStrictLiftFalse := not_native_handler_scoped_to_strict_lift_prop
+    metadataCoherenceFalse := not_native_handler_perform_metadata_coherence_prop
+  }
+
+/--
 Full mismatch-extension progress from core body progress plus a global strict
 typing contract.
 -/
@@ -5714,6 +5740,45 @@ theorem native_handler_soundness_boundary_capstone_of_boundary_model_gap_slice
     native_handler_step_ext_with_mismatch_soundness_progress_and_native_progress_gap_of_core_soundness_and_strict_top_typing_of_boundary_model_gap_slice
       clauseSem mismatchSem bodyStep h_gap h_core h_strict_top
   exact ⟨h_contrast.1, h_contrast.2.1⟩
+
+/--
+Unified status capstone: packages the soundness-boundary capstone together with
+the current strict/coherence typing-gap witness.
+-/
+structure NativeHandlerSoundnessBoundaryStatusCapstone
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) : Prop where
+  boundary :
+    NativeHandlerSoundnessBoundaryCapstone clauseSem mismatchSem
+  typingGap :
+    NativeHandlerCurrentTypingGapSlice
+
+/--
+Canonical unified status capstone from direct route construction.
+-/
+theorem native_handler_soundness_boundary_status_capstone
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) :
+    NativeHandlerSoundnessBoundaryStatusCapstone clauseSem mismatchSem := by
+  exact {
+    boundary := native_handler_soundness_boundary_capstone clauseSem mismatchSem
+    typingGap := native_handler_current_typing_gap_slice
+  }
+
+/--
+Unified status capstone built from the packaged boundary-model gap slice.
+-/
+theorem native_handler_soundness_boundary_status_capstone_of_boundary_model_gap_slice
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (h_gap : NativeHandlerBoundaryModelGapSlice clauseSem mismatchSem) :
+    NativeHandlerSoundnessBoundaryStatusCapstone clauseSem mismatchSem := by
+  exact {
+    boundary :=
+      native_handler_soundness_boundary_capstone_of_boundary_model_gap_slice
+        clauseSem mismatchSem h_gap
+    typingGap := native_handler_current_typing_gap_slice
+  }
 
 /--
 Packaged route: mismatch-extension progress from packaged core progress plus
