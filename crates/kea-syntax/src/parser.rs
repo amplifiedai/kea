@@ -3062,7 +3062,14 @@ impl Parser {
         let start = self.current_span();
         self.advance(); // consume `unsafe`
         self.skip_newlines();
-        let body = self.parse_block_expr("expected indented block after `unsafe`")?;
+        let body = if self.check(&TokenKind::Indent) {
+            self.parse_block_expr("expected expression after `unsafe`")?
+        } else if self.at_eof() {
+            self.error_at_current("expected expression after `unsafe`");
+            return None;
+        } else {
+            self.expression()?
+        };
         let span = start.merge(body.span);
         Some(Spanned::new(
             ExprKind::Unsafe {
@@ -6189,9 +6196,24 @@ mod tests {
     }
 
     #[test]
-    fn parse_unsafe_requires_indented_block() {
-        let errors = parse_err("unsafe 1");
-        assert!(!errors.is_empty(), "unsafe requires an indented block");
+    fn parse_inline_unsafe_expression() {
+        let expr = parse("unsafe raw_add_one(41)");
+        match &expr.node {
+            ExprKind::Unsafe { body } => match &body.node {
+                ExprKind::Call { func, args } => {
+                    assert_eq!(args.len(), 1);
+                    assert!(matches!(func.node, ExprKind::Var(ref name) if name == "raw_add_one"));
+                }
+                other => panic!("expected call body, got {other:?}"),
+            },
+            other => panic!("expected unsafe expression, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_unsafe_requires_expression() {
+        let errors = parse_err("unsafe");
+        assert!(!errors.is_empty(), "unsafe requires a body expression");
     }
 
     #[test]
