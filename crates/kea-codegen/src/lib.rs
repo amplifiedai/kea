@@ -7314,6 +7314,86 @@ mod tests {
         }
     }
 
+    fn sample_unboxed_record_init_forwarded_through_borrow_alias_module() -> MirModule {
+        MirModule {
+            functions: vec![MirFunction {
+                name: "main".to_string(),
+                signature: MirFunctionSignature {
+                    params: vec![],
+                    ret: Type::Int,
+                    effects: EffectRow::pure(),
+                },
+                entry: MirBlockId(0),
+                blocks: vec![MirBlock {
+                    id: MirBlockId(0),
+                    params: vec![],
+                    instructions: vec![
+                        MirInst::Const {
+                            dest: MirValueId(0),
+                            literal: MirLiteral::Int(20),
+                        },
+                        MirInst::Const {
+                            dest: MirValueId(1),
+                            literal: MirLiteral::Int(22),
+                        },
+                        MirInst::RecordInit {
+                            dest: MirValueId(2),
+                            record_type: "Pair".to_string(),
+                            fields: vec![
+                                ("left".to_string(), MirValueId(0)),
+                                ("right".to_string(), MirValueId(1)),
+                            ],
+                        },
+                        MirInst::Borrow {
+                            dest: MirValueId(3),
+                            src: MirValueId(2),
+                        },
+                        MirInst::RecordFieldLoad {
+                            dest: MirValueId(4),
+                            record: MirValueId(3),
+                            record_type: "Pair".to_string(),
+                            field: "left".to_string(),
+                            field_ty: Type::Int,
+                        },
+                        MirInst::RecordFieldLoad {
+                            dest: MirValueId(5),
+                            record: MirValueId(3),
+                            record_type: "Pair".to_string(),
+                            field: "right".to_string(),
+                            field_ty: Type::Int,
+                        },
+                        MirInst::Binary {
+                            dest: MirValueId(6),
+                            op: MirBinaryOp::Add,
+                            left: MirValueId(4),
+                            right: MirValueId(5),
+                        },
+                    ],
+                    terminator: MirTerminator::Return {
+                        value: Some(MirValueId(6)),
+                    },
+                }],
+            }],
+            layouts: MirLayoutCatalog {
+                records: vec![MirRecordLayout {
+                    name: "Pair".to_string(),
+                    is_unboxed: true,
+                    fields: vec![
+                        MirRecordFieldLayout {
+                            name: "left".to_string(),
+                            annotation: kea_ast::TypeAnnotation::Named("Int".to_string()),
+                        },
+                        MirRecordFieldLayout {
+                            name: "right".to_string(),
+                            annotation: kea_ast::TypeAnnotation::Named("Int".to_string()),
+                        },
+                    ],
+                }],
+                sums: vec![],
+            },
+        }
+    }
+
     fn sample_unboxed_record_init_forwarded_and_returned_module() -> MirModule {
         MirModule {
             functions: vec![MirFunction {
@@ -8947,6 +9027,16 @@ mod tests {
     #[test]
     fn collect_pass_stats_treats_unboxed_jump_forwarded_record_init_as_non_allocating() {
         let module = sample_unboxed_record_init_forwarded_through_jump_param_module();
+        let stats = collect_pass_stats(&module);
+
+        assert_eq!(stats.per_function.len(), 1);
+        let function = &stats.per_function[0];
+        assert_eq!(function.alloc_count, 0);
+    }
+
+    #[test]
+    fn collect_pass_stats_treats_unboxed_borrow_forwarded_record_init_as_non_allocating() {
+        let module = sample_unboxed_record_init_forwarded_through_borrow_alias_module();
         let stats = collect_pass_stats(&module);
 
         assert_eq!(stats.per_function.len(), 1);
