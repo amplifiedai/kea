@@ -2536,14 +2536,55 @@ fn matches_higher_order_forwarder_body(
     forwarder_param_name: &str,
     unique_param_name: &str,
 ) -> bool {
-    match &expr.kind {
-        HirExprKind::Call { func, args } => {
-            args.len() == 1
-                && matches!(&func.kind, HirExprKind::Var(name) if name == forwarder_param_name)
-                && matches!(&args[0].kind, HirExprKind::Var(name) if name == unique_param_name)
+    fn matches_forwarder_call(
+        expr: &HirExpr,
+        forwarder_param_name: &str,
+        allowed_unique_aliases: &BTreeSet<String>,
+    ) -> bool {
+        match &expr.kind {
+            HirExprKind::Call { func, args } if args.len() == 1 => {
+                matches!(&func.kind, HirExprKind::Var(name) if name == forwarder_param_name)
+                    && matches!(&args[0].kind, HirExprKind::Var(name) if allowed_unique_aliases.contains(name))
+            }
+            _ => false,
         }
-        HirExprKind::Block(exprs) if exprs.len() == 1 => {
-            matches_higher_order_forwarder_body(&exprs[0], forwarder_param_name, unique_param_name)
+    }
+
+    match &expr.kind {
+        HirExprKind::Call { .. } => matches_forwarder_call(
+            expr,
+            forwarder_param_name,
+            &BTreeSet::from([unique_param_name.to_string()]),
+        ),
+        HirExprKind::Block(exprs) if !exprs.is_empty() => {
+            let mut unique_aliases = BTreeSet::from([unique_param_name.to_string()]);
+            for (index, item) in exprs.iter().enumerate() {
+                let is_last = index + 1 == exprs.len();
+                if is_last {
+                    return matches_forwarder_call(item, forwarder_param_name, &unique_aliases);
+                }
+                match &item.kind {
+                    HirExprKind::Let { pattern, value }
+                        if matches!(pattern, kea_hir::HirPattern::Var(_))
+                            && matches!(value.kind, HirExprKind::Var(_)) =>
+                    {
+                        let source_name = match &value.kind {
+                            HirExprKind::Var(name) => name,
+                            _ => unreachable!("guarded by match"),
+                        };
+                        if !unique_aliases.contains(source_name) {
+                            return false;
+                        }
+                        let binding_name = match pattern {
+                            kea_hir::HirPattern::Var(name) => name,
+                            _ => unreachable!("guarded by match"),
+                        };
+                        unique_aliases.insert(binding_name.clone());
+                    }
+                    _ => return false,
+                }
+            }
+            false
         }
         _ => false,
     }
