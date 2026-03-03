@@ -20202,3 +20202,52 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - The boundary is now evidenced on both sides with explicit witnesses: a strict-typed matching positive branch and a metadata-mismatch negative branch, reducing ambiguity about whether strict routes are vacuous by construction.
+
+### 2026-03-03: packaged dual positive/negative witness at bodyStep-false boundary
+
+**Context**: Added a single bodyStep-false dual witness package that carries both:
+- positive side: strict-typed matching-metadata handle with mismatch-extension step + post-step typing;
+- negative side: typed metadata-mismatch handle that is non-strict and has no mismatch-extension step.
+
+New surfaces:
+- `native_handler_metadata_mismatch_witness_expr`
+- `native_handler_dual_witness_bodyStepFalse_prop`
+- `native_handler_dual_witness_bodyStepFalse`
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent self-contained handler should type-check.
+- Mismatched pure handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume in one clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Core` -> `ok`.
+2. Coherent Iota handler (`Iota.step() -> resume 1817`) -> `ok`.
+3. Mismatched pure handler (`handle Iota.step()` with only `Ksi.mismatch` clause) -> `error`, `E0001` (pure body performs `[Iota]`).
+4. Bad resume payload (`Iota.step() -> resume "bad"`) -> `error`, `E0001`.
+5. Out-of-handler resume (`fn iota_resume_outside() -> Int; resume 1817`) -> `error`, `E0012`.
+6. Forged-name out-of-handler resume (`let __kea_resume_ctx = 7; resume 1817`) -> `error`, `E0012`.
+7. Double-resume clause (`resume 1` then `resume 2`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the bodyStep-false dual witness package additions.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_metadata_mismatch_witness_expr`
+  - `native_handler_dual_witness_bodyStepFalse_prop`
+  - `native_handler_dual_witness_bodyStepFalse`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- One theorem now captures the boundary asymmetry concretely at the same step relation: strict-positive branch exists, metadata-mismatch branch is stuck/non-strict.
