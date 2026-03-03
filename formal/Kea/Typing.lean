@@ -9289,6 +9289,23 @@ theorem native_handler_full_route_integration_capstone_iff_components
       clauseSem mismatchSem h
 
 /--
+Direct components-route decomposition wrapper for
+`NativeHandlerFullRouteIntegrationCapstone`.
+-/
+theorem native_handler_full_route_integration_capstone_as_components_of_components
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (h :
+      NativeHandlerFullRouteIntegrationCapstoneComponents
+        clauseSem mismatchSem) :
+    NativeHandlerFullRouteIntegrationCapstoneComponents
+      clauseSem mismatchSem := by
+  exact native_handler_full_route_integration_capstone_as_components
+    clauseSem mismatchSem
+    (native_handler_full_route_integration_capstone_of_components
+      clauseSem mismatchSem h)
+
+/--
 One-hop projection: full-route witness from the integrated capstone.
 -/
 theorem native_handler_full_route_integration_capstone_fullRoute
@@ -9411,6 +9428,14 @@ def native_handler_step_ext_with_passThroughMismatch_full_route_integration_caps
     clauseSem nativeHandlerMismatchPassThroughSem
 
 /--
+Concrete pass-through component tuple for the integrated full-route capstone.
+-/
+def native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_components_prop
+    (clauseSem : NativeHandlerClauseSem) : Prop :=
+  NativeHandlerFullRouteIntegrationCapstoneComponents
+    clauseSem nativeHandlerMismatchPassThroughSem
+
+/--
 Build the concrete pass-through integrated full-route capstone witness.
 -/
 theorem native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone
@@ -9419,6 +9444,64 @@ theorem native_handler_step_ext_with_passThroughMismatch_full_route_integration_
       clauseSem := by
   exact native_handler_full_route_integration_capstone
     clauseSem nativeHandlerMismatchPassThroughSem
+
+/--
+Build the concrete pass-through integrated full-route capstone from explicit
+components.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_of_components
+    (clauseSem : NativeHandlerClauseSem)
+    (h :
+      native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_components_prop
+        clauseSem) :
+    native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_prop
+      clauseSem := by
+  exact native_handler_full_route_integration_capstone_of_components
+    clauseSem nativeHandlerMismatchPassThroughSem h
+
+/--
+One-hop decomposition of the concrete pass-through integrated full-route
+capstone to explicit components.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_as_components
+    (clauseSem : NativeHandlerClauseSem)
+    (h_cap :
+      native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_prop
+        clauseSem) :
+    native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_components_prop
+      clauseSem := by
+  exact native_handler_full_route_integration_capstone_as_components
+    clauseSem nativeHandlerMismatchPassThroughSem h_cap
+
+/--
+Equivalence between concrete pass-through integrated full-route capstone and
+its explicit component tuple.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_iff_components
+    (clauseSem : NativeHandlerClauseSem) :
+    native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_prop
+        clauseSem
+      ↔
+    native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_components_prop
+        clauseSem := by
+  exact native_handler_full_route_integration_capstone_iff_components
+    clauseSem nativeHandlerMismatchPassThroughSem
+
+/--
+Direct components-route decomposition wrapper for the concrete pass-through
+integrated full-route capstone.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_as_components_of_components
+    (clauseSem : NativeHandlerClauseSem)
+    (h :
+      native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_components_prop
+        clauseSem) :
+    native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_components_prop
+      clauseSem := by
+  exact native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_as_components
+    clauseSem
+    (native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_of_components
+      clauseSem h)
 
 /--
 Pass-through projection: full-route witness from the integrated capstone.

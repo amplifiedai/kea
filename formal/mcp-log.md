@@ -23533,3 +23533,46 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - Integrated full-route capstone field-level consumption is now entirely theorem-surfaced (no mandatory direct record-field destructuring).
+
+### 2026-03-04: completed decomposition-route parity for integrated full-route capstone (including pass-through components)
+
+**Context**: Added decomposition-route parity wrappers for integrated full-route capstones in `Kea/Typing.lean`:
+- Generic direct components decomposition wrapper:
+  - `native_handler_full_route_integration_capstone_as_components_of_components`
+- Pass-through component route API:
+  - `native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_components_prop`
+  - `native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_{of_components,as_components,iff_components,as_components_of_components}`
+
+This aligns integrated full-route capstone consumption with the corpus-wide `components <-> package` pattern on both generic and pass-through paths.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- Coherent handler should type-check.
+- Mismatch effect-leak handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. Coherent handler (`probe_coherent_20260304ax`) -> `ok`.
+2. Mismatch effect-leak handler (`probe_mismatch_20260304ax`) -> `error`, `E0001`.
+3. Bad resume payload (`probe_bad_resume_20260304ax`) -> `error`, `E0001`.
+4. Out-of-handler resume (`probe_outside_resume_20260304ax`) -> `error`, `E0012`.
+5. Forged-name out-of-handler resume (`probe_forged_resume_ctx_20260304ax`) -> `error`, `E0012`.
+6. Double-resume clause (`probe_double_resume_20260304ax`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept generic+pass-through integrated-capstone components-route wrappers.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`: theorem/def names listed in Context above.
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Integrated full-route capstone now has complete components-route parity and explicit pass-through components APIs.
