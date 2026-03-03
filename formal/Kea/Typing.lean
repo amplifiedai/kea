@@ -1852,6 +1852,55 @@ theorem native_handler_step_ext_with_mismatch_vs_native_typed_int_body_witness
   · exact native_handler_step_not_exists_of_int_body clauseSem
 
 /--
+Proposition-level strict-extension contract at the mismatch-extension layer:
+every native step is admitted, and some mismatch-extension step is not native.
+-/
+def native_handler_step_ext_with_mismatch_strictly_extends_native_prop
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) : Prop :=
+  (∀ e e',
+      NativeHandlerStep clauseSem e e' →
+      NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep e e')
+    ∧
+  (∃ e e',
+      NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep e e' ∧
+      ¬ NativeHandlerStep clauseSem e e')
+
+/--
+Mismatch-extension strictly extends native one-step reduction.
+-/
+theorem native_handler_step_ext_with_mismatch_strictly_extends_native
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) :
+    native_handler_step_ext_with_mismatch_strictly_extends_native_prop
+      clauseSem mismatchSem bodyStep := by
+  refine ⟨?_, ?_⟩
+  · intro e e' h_native
+    cases h_native with
+    | handle_perform op argTy opRetTy arg k argName resumeName clauseBody =>
+      exact NativeHandlerStepExtWithMismatch.ext
+        (NativeHandlerStepExt.handle_perform
+          op argTy opRetTy arg k argName resumeName clauseBody)
+  · refine ⟨.handle (.intLit 0) "Op" "x" "k" .int .int (.intLit 1), .intLit 0, ?_, ?_⟩
+    · exact NativeHandlerStepExtWithMismatch.ext
+        (NativeHandlerStepExt.handle_value
+          (.intLit 0) "Op" "x" "k" .int .int (.intLit 1)
+          (CoreValue.int 0))
+    · intro h_native
+      exact native_handler_step_not_exists_of_int_body
+        (clauseSem := clauseSem)
+        (n := 0)
+        (op := "Op")
+        (argName := "x")
+        (resumeName := "k")
+        (argTy := .int)
+        (opRetTy := .int)
+        (clauseBody := .intLit 1)
+        ⟨.intLit 0, h_native⟩
+
+/--
 Preservation target for the mismatched-perform-extended native relation.
 -/
 def native_handler_step_ext_with_mismatch_preservation_prop

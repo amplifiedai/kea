@@ -19064,3 +19064,44 @@ No MCP divergence found at this checkpoint.
 **Impact**:
 - Native-vs-extended typed-gap evidence is now mirrored directly at the
   mismatch-extension relation, reducing route mismatches between theorem layers.
+
+### 2026-03-03: mismatch-layer strict-extension contract (native -> ext-with-mismatch)
+
+**Context**: Added a proposition/theorem pair stating that
+`NativeHandlerStepExtWithMismatch` strictly extends native minimal
+`NativeHandlerStep` (inclusion + non-native witness).
+
+**MCP tools used**: `reset_session`, `type_check`
+
+**Predict (Lean side)**:
+- `use` parsing should remain stable.
+- Coherent multi-op handler should type-check.
+- Mismatched pure handler should reject with effect leak.
+- Bad resume payload should reject.
+- Out-of-handler resume should reject.
+
+**Probe (Rust side via MCP)**:
+1. `use Counter` -> `ok`.
+2. Coherent `Foo` two-op handler (`Foo.a() -> resume 10`, `Foo.b() -> resume 2`) -> `ok`.
+3. Mismatched pure handler (`handle Foo.a()` with only `Bar.b` clause) -> `error`, `E0001` (pure body performs `[Foo]`).
+4. Bad resume payload (`Log.info(msg) -> resume "oops"` where op returns `Unit`) -> `error`, `E0001`.
+5. Out-of-handler resume control (`fn no_ctx() -> Unit; resume ()`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No MCP divergence found at this checkpoint.
+
+**Act**:
+- Kept mismatch-layer strict-extension additions.
+- Continued MCP-first checkpoint loop with import-enabled probes.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_strictly_extends_native_prop`
+  - `native_handler_step_ext_with_mismatch_strictly_extends_native`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Strict-extension relation is now explicit at the same semantic layer used by
+  mismatch-route soundness/progress theorems, reducing cross-layer reasoning.
