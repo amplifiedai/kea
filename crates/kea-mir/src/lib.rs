@@ -3658,47 +3658,53 @@ fn split_non_tail_resume(
     })
 }
 
-/// Strip a tail-resumptive `resume ()` from a clause body, returning the
-/// side-effecting prefix with a unit literal at the end.
-fn strip_tail_resume_unit_body(body: &HirExpr) -> Option<HirExpr> {
-    match &body.kind {
-        HirExprKind::Resume { value } => {
-            if matches!(value.kind, HirExprKind::Lit(kea_ast::Lit::Unit)) {
-                Some(HirExpr {
-                    kind: HirExprKind::Lit(kea_ast::Lit::Unit),
-                    ty: Type::Unit,
-                    span: body.span,
-                })
-            } else {
-                None
-            }
-        }
-        HirExprKind::Block(exprs) => {
-            let last = exprs.last()?;
-            let HirExprKind::Resume { value } = &last.kind else {
-                return None;
-            };
-            if !matches!(value.kind, HirExprKind::Lit(kea_ast::Lit::Unit)) {
-                return None;
-            }
-            let mut prefix = exprs
-                .iter()
-                .take(exprs.len().saturating_sub(1))
-                .cloned()
-                .collect::<Vec<_>>();
-            prefix.push(HirExpr {
-                kind: HirExprKind::Lit(kea_ast::Lit::Unit),
-                ty: Type::Unit,
-                span: body.span,
-            });
-            Some(HirExpr {
-                kind: HirExprKind::Block(prefix),
-                ty: Type::Unit,
-                span: body.span,
-            })
-        }
-        _ => None,
+/// Classification of a handler clause body for callback lowering.
+enum ClauseBodyClassification {
+    /// Body is `resume value` or a Block ending in `resume value`.
+    /// The callback_body is the expression the callback should return,
+    /// with any preceding side-effect statements included.
+    TailResumptive { callback_body: HirExpr },
+    /// Body uses non-tail resume: `let x = resume val; post_code`.
+    NonTail(NonTailResumeSplit),
+}
+
+/// Classify a handler clause body for callback lowering.
+/// Returns None if the body is neither tail-resumptive nor a valid non-tail split.
+fn classify_clause_body(
+    body: &HirExpr,
+    clause_arg_names: &BTreeSet<String>,
+    span: kea_ast::Span,
+) -> Option<ClauseBodyClassification> {
+    // Direct `resume value` → tail-resumptive, callback returns value
+    if let HirExprKind::Resume { value } = &body.kind {
+        return Some(ClauseBodyClassification::TailResumptive {
+            callback_body: value.as_ref().clone(),
+        });
     }
+    // Block ending in `resume value` → tail-resumptive with side effects.
+    // callback_body = Block(stmts_before_resume..., value).
+    // This subsumes the old Log special case and any effect with
+    // side-effecting code before a tail resume.
+    if let HirExprKind::Block(exprs) = &body.kind
+        && let Some(last) = exprs.last()
+        && let HirExprKind::Resume { value } = &last.kind
+    {
+        let mut stmts: Vec<HirExpr> = exprs[..exprs.len() - 1].to_vec();
+        stmts.push(value.as_ref().clone());
+        let body_ty = value.ty.clone();
+        let callback_body = if stmts.len() == 1 {
+            stmts.pop().unwrap()
+        } else {
+            HirExpr {
+                kind: HirExprKind::Block(stmts),
+                ty: body_ty,
+                span,
+            }
+        };
+        return Some(ClauseBodyClassification::TailResumptive { callback_body });
+    }
+    // Non-tail split: `let x = resume val; post_code`
+    split_non_tail_resume(body, clause_arg_names).map(ClauseBodyClassification::NonTail)
 }
 
 fn synth_lambda_type(params: &[kea_hir::HirParam], body: &HirExpr) -> Type {
@@ -4559,6 +4565,194 @@ impl FunctionLoweringCtx {
     /// building for callback stacking. The wrapper:
     /// Wrap an inner callback with chain augmentation for non-tail resume.
     ///
+    /// Allocate state cells for pre-resume bindings that are captured by
+    /// the post-resume body. The callback stores into these cells; after the
+    /// callback returns, chain augmentation loads the values and passes them
+    /// as captures to the chain closure.
+    fn allocate_pre_resume_capture_cells(
+        &mut self,
+        split: &NonTailResumeSplit,
+        _span: kea_ast::Span,
+    ) -> Vec<MirValueId> {
+        let mut cells = Vec::new();
+        for (i, binding) in split.captured_bindings.iter().enumerate() {
+            let cell = self.new_value();
+            let unit_initial = self.new_value();
+            self.emit_inst(MirInst::Const {
+                dest: unit_initial.clone(),
+                literal: MirLiteral::Int(0),
+            });
+            self.emit_inst(MirInst::StateCellNew {
+                dest: cell.clone(),
+                initial: unit_initial,
+            });
+            let cell_name = format!("__capture_cell_{i}_{binding}");
+            self.vars.insert(cell_name.clone(), cell.clone());
+            self.var_types.insert(cell_name, Type::Dynamic);
+            cells.push(cell);
+        }
+        cells
+    }
+
+    /// Build a handler clause callback closure. Handles stateful get/put as
+    /// special cases, then falls through to the general path which synthesizes
+    /// a lambda from the clause args and classified callback body.
+    ///
+    /// Returns (callback_value, arity, returns_unit).
+    #[allow(clippy::too_many_arguments)]
+    fn build_clause_callback(
+        &mut self,
+        clause: &kea_hir::HirHandleClause,
+        target_effect: &str,
+        internal_state_cell: Option<&MirValueId>,
+        classification: &ClauseBodyClassification,
+        _pre_resume_capture_cells: &[MirValueId],
+    ) -> Option<(MirValueId, usize, bool)> {
+        // Stateful get/put shortcuts: only safe for simple tail-resumptive bodies
+        // (direct `resume value`, not blocks with side effects before resume).
+        // Bodies with side effects before resume must use the general callback path
+        // to avoid silently dropping those side effects.
+        if let Some(state_cell) = internal_state_cell {
+            let is_simple_tail = matches!(
+                classification,
+                ClauseBodyClassification::TailResumptive { callback_body }
+                    if !matches!(callback_body.kind, HirExprKind::Block(_))
+            );
+            // Zero-arg operation in stateful effect → state-get callback
+            if clause.args.is_empty() && is_simple_tail {
+                let callback = self.build_state_get_callback(state_cell.clone())?;
+                return Some((callback, 0, false));
+            }
+            // State-put: 1-arg clause resuming with Unit in stateful effect
+            if clause.args.len() == 1 && is_simple_tail {
+                let resumes_unit = match classification {
+                    ClauseBodyClassification::TailResumptive { callback_body } => {
+                        matches!(callback_body.kind, HirExprKind::Lit(kea_ast::Lit::Unit))
+                    }
+                    ClauseBodyClassification::NonTail(split) => {
+                        matches!(split.resume_value.kind, HirExprKind::Lit(kea_ast::Lit::Unit))
+                    }
+                };
+                if resumes_unit {
+                    let callback = self.build_state_put_callback(state_cell.clone())?;
+                    return Some((callback, 1, true));
+                }
+            }
+            // Other operations or complex bodies: fall through to general path
+        }
+
+        // General path: build callback from classification
+        let callback_body = match classification {
+            ClauseBodyClassification::TailResumptive { callback_body } => callback_body.clone(),
+            ClauseBodyClassification::NonTail(split) => {
+                let mut block_exprs = split.pre_resume_stmts.clone();
+                // Inject capture_store calls for captured bindings
+                for (i, binding) in split.captured_bindings.iter().enumerate() {
+                    let cell_name = format!("__capture_cell_{i}_{binding}");
+                    block_exprs.push(HirExpr {
+                        kind: HirExprKind::Call {
+                            func: Box::new(HirExpr {
+                                kind: HirExprKind::Var(
+                                    "__kea_internal_capture_store".to_string(),
+                                ),
+                                ty: Type::Dynamic,
+                                span: clause.span,
+                            }),
+                            args: vec![
+                                HirExpr {
+                                    kind: HirExprKind::Var(cell_name),
+                                    ty: Type::Dynamic,
+                                    span: clause.span,
+                                },
+                                HirExpr {
+                                    kind: HirExprKind::Var(binding.clone()),
+                                    ty: Type::Dynamic,
+                                    span: clause.span,
+                                },
+                            ],
+                        },
+                        ty: Type::Unit,
+                        span: clause.span,
+                    });
+                }
+                block_exprs.push(split.resume_value.clone());
+                let body_ty = block_exprs.last().map_or(Type::Dynamic, |e| e.ty.clone());
+                if block_exprs.len() == 1 {
+                    block_exprs.pop().unwrap()
+                } else {
+                    HirExpr {
+                        kind: HirExprKind::Block(block_exprs),
+                        ty: body_ty,
+                        span: clause.span,
+                    }
+                }
+            }
+        };
+
+        // Build callback params from clause args
+        let mut callback_params = Vec::with_capacity(clause.args.len());
+        for arg_pattern in &clause.args {
+            let HirPattern::Var(arg_name) = arg_pattern else {
+                self.emit_inst(MirInst::Unsupported {
+                    detail: format!(
+                        "handler clause `{target_effect}.{}` requires simple variable \
+                         argument patterns for callback lowering",
+                        clause.operation,
+                    ),
+                });
+                return None;
+            };
+            callback_params.push(kea_hir::HirParam {
+                name: Some(arg_name.clone()),
+                span: clause.span,
+            });
+        }
+
+        // Determine callback return type
+        let callback_return_ty = match &callback_body.kind {
+            HirExprKind::Lambda { params, body }
+                if !matches!(callback_body.ty, Type::Function(_)) =>
+            {
+                synth_lambda_type(params, body)
+            }
+            _ => callback_body.ty.clone(),
+        };
+
+        // Synthesize and lower callback lambda
+        let callback_ty = Type::Function(FunctionType::with_effects(
+            vec![Type::Dynamic; callback_params.len()],
+            callback_return_ty.clone(),
+            EffectRow::pure(),
+        ));
+        let callback_lambda = HirExpr {
+            kind: HirExprKind::Lambda {
+                params: callback_params.clone(),
+                body: Box::new(callback_body.clone()),
+            },
+            ty: callback_ty.clone(),
+            span: clause.span,
+        };
+        let Some(callback_value) = self.lower_lambda_to_closure_value(
+            &callback_lambda,
+            &callback_params,
+            &callback_body,
+            Some(&callback_ty),
+            true,
+        ) else {
+            self.emit_inst(MirInst::Unsupported {
+                detail: format!(
+                    "failed to lower handler callback body for `{target_effect}.{}`",
+                    clause.operation
+                ),
+            });
+            return None;
+        };
+
+        let arity = callback_params.len();
+        let returns_unit = callback_return_ty == Type::Unit;
+        Some((callback_value, arity, returns_unit))
+    }
+
     /// This is the unified entry point for all non-tail handler clause wrapping.
     /// It builds the post-resume chain function, creates the identity closure and
     /// chain cell, registers in stacking_chains, and calls build_chain_augmented_callback.
@@ -5835,16 +6029,19 @@ impl FunctionLoweringCtx {
         let mut plan = ActiveEffectHandlerPlan::default();
         let mut operation_callback_values: BTreeMap<String, MirValueId> = BTreeMap::new();
 
-        // Pre-scan: detect if this effect is stateful (has a store-like operation).
-        // A store-like operation has arity 1 and returns Unit (e.g. State.put).
-        // Stateful effects need an internal state cell shared between get/put callbacks.
-        let is_stateful = !is_direct_capability_effect(&target_effect)
-            && target_effect != "Log"
-            && self
+        // Pre-scan: detect if this effect is stateful (has both a getter and setter).
+        // A stateful effect has a zero-arg operation (getter) AND a 1-arg Unit-returning
+        // operation (setter), e.g. State with get/put. This replaces the old Log-specific
+        // exclusion with a structural check.
+        let is_stateful = !is_direct_capability_effect(&target_effect) && {
+            let ops: Vec<_> = self
                 .effect_operations
                 .values()
                 .filter(|op| op.effect == target_effect)
-                .any(|op| op.arity == 1 && op.returns_unit);
+                .collect();
+            ops.iter().any(|op| op.arity == 0)
+                && ops.iter().any(|op| op.arity == 1 && op.returns_unit)
+        };
 
         // For stateful effects, create the internal state cell.
         // The initial value comes from the first zero-arg clause's resume value.
@@ -5891,340 +6088,68 @@ impl FunctionLoweringCtx {
                 });
                 return None;
             }
-            // Classify clause body: tail-resumptive (Resume { value }) or
-            // non-tail-resumptive (let x = resume val; post_code).
-            let resume_value;
-            let mut non_tail_split: Option<NonTailResumeSplit> = None;
-            if target_effect == "Log" && clause.args.len() == 1 {
-                resume_value = None;
-            } else {
-                match &clause.body.kind {
-                    HirExprKind::Resume { value } => {
-                        resume_value = Some(value.as_ref());
-                    }
-                    _ => {
-                        let clause_arg_names: BTreeSet<String> = clause
-                            .args
-                            .iter()
-                            .filter_map(|p| {
-                                if let HirPattern::Var(n) = p {
-                                    Some(n.clone())
-                                } else {
-                                    None
-                                }
-                            })
-                            .collect();
-                        match split_non_tail_resume(&clause.body, &clause_arg_names) {
-                            Some(split) => {
-                                resume_value = None;
-                                non_tail_split = Some(split);
-                            }
-                            None => {
-                                self.emit_inst(MirInst::Unsupported {
-                                    detail: format!(
-                                        "handler clause `{target_effect}.{} {}`",
-                                        clause.operation,
-                                        "must be tail-resumptive (`resume ...`) for compiled lowering, \
-                                         or use `let x = resume val; ...` form"
-                                    ),
-                                });
-                                return None;
-                            }
-                        }
-                    }
-                }
-            };
 
-            // Stateful effects: build get/put callbacks from raw MIR.
-            // The callbacks capture the internal state cell.
-            if let Some(ref state_cell) = internal_state_cell {
-                // Zero-arg operation in stateful effect → state-get callback
-                if clause.args.is_empty() {
-                    let get_callback = self.build_state_get_callback(state_cell.clone())?;
-                    // If non-tail, wrap with chain augmentation
-                    let final_callback = if let Some(split) = non_tail_split.take() {
-                        self.wrap_with_chain_augmentation(
-                            get_callback,
-                            &target_effect,
-                            &clause.operation,
-                            &split,
-                            &clause.args,
-                            &[],
-                            clause.span,
-                        )?
-                    } else {
-                        get_callback
-                    };
-                    plan.operation_lowering.insert(
-                        clause.operation.clone(),
-                        HandlerCellOpLowering::InvokeCallback {
-                            arity: 0,
-                            returns_unit: false,
-                        },
-                    );
-                    operation_callback_values.insert(clause.operation.clone(), final_callback);
-                    continue;
-                }
-
-                // 1-arg operation returning Unit in stateful effect → state-put callback
-                if clause.args.len() == 1
-                    && (matches!(
-                        resume_value,
-                        Some(value) if matches!(value.kind, HirExprKind::Lit(kea_ast::Lit::Unit))
-                    ) || non_tail_split.as_ref().is_some_and(|s| {
-                        matches!(s.resume_value.kind, HirExprKind::Lit(kea_ast::Lit::Unit))
-                    }))
-                {
-                    let put_callback = self.build_state_put_callback(state_cell.clone())?;
-                    // If non-tail, wrap with chain augmentation
-                    let final_callback = if let Some(split) = non_tail_split.take() {
-                        self.wrap_with_chain_augmentation(
-                            put_callback,
-                            &target_effect,
-                            &clause.operation,
-                            &split,
-                            &clause.args,
-                            &[],
-                            clause.span,
-                        )?
-                    } else {
-                        put_callback
-                    };
-                    plan.operation_lowering.insert(
-                        clause.operation.clone(),
-                        HandlerCellOpLowering::InvokeCallback {
-                            arity: 1,
-                            returns_unit: true,
-                        },
-                    );
-                    operation_callback_values.insert(clause.operation.clone(), final_callback);
-                    continue;
-                }
-                // Other operations in stateful effect: fall through to general path
-            }
-
-            // Non-stateful zero-arg operations: build constant-returning callback
-            if clause.args.is_empty() && !is_direct_capability_effect(&target_effect) {
-                let callback_value_expr = if let Some(rv) = resume_value {
-                    Some((*rv).clone())
-                } else if let Some(split) = &non_tail_split {
-                    if split.pre_resume_stmts.is_empty() {
-                        Some(split.resume_value.clone())
+            let clause_arg_names: BTreeSet<String> = clause
+                .args
+                .iter()
+                .filter_map(|p| {
+                    if let HirPattern::Var(n) = p {
+                        Some(n.clone())
                     } else {
                         None
                     }
-                } else {
-                    None
-                };
-                if let Some(rv_expr) = callback_value_expr {
-                    if non_tail_split.is_none() {
-                        // Tail-resumptive: build simple constant callback
-                        let inner_callback_body = rv_expr;
-                        let inner_callback_lambda = HirExpr {
-                            kind: HirExprKind::Lambda {
-                                params: vec![],
-                                body: Box::new(inner_callback_body.clone()),
-                            },
-                            ty: Type::Function(FunctionType {
-                                params: vec![],
-                                ret: Box::new(inner_callback_body.ty.clone()),
-                                effects: EffectRow::pure(),
-                            }),
-                            span: clause.span,
-                        };
-                        let callback = self.lower_lambda_to_closure_value(
-                            &inner_callback_lambda,
-                            &[],
-                            &inner_callback_body,
-                            Some(&inner_callback_lambda.ty),
-                            true,
-                        )?;
-                        plan.operation_lowering.insert(
-                            clause.operation.clone(),
-                            HandlerCellOpLowering::InvokeCallback {
-                                arity: 0,
-                                returns_unit: false,
-                            },
-                        );
-                        operation_callback_values.insert(clause.operation.clone(), callback);
-                        continue;
-                    }
-                    // Non-tail zero-arg: fall through to InvokeCallback path below
-                } else if non_tail_split.is_none() {
-                    self.emit_inst(MirInst::Unsupported {
-                        detail: format!(
-                            "zero-argument handler clause `{target_effect}.{} {}`",
-                            clause.operation, "must use `resume ...` for compiled lowering"
-                        ),
-                    });
-                    return None;
-                }
-                // Zero-arg non-tail with pre-resume stmts falls through to InvokeCallback
-            }
+                })
+                .collect();
 
-            // Track whether this callback needs chain augmentation
-            let mut needs_chain_augment: Option<NonTailResumeSplit> = None;
-            let mut pre_resume_capture_cells: Vec<MirValueId> = Vec::new();
-            let callback_body = if let Some(split) = non_tail_split.take() {
-                // Non-tail resume: build inner callback from pre-resume stmts + resume value.
-                // Chain augmentation wraps the callback to build the stacking chain.
-
-                // Allocate capture cells for pre-resume bindings referenced in post-resume body.
-                // The callback body stores into these cells; after callback returns, chain
-                // augmentation loads the values and passes them as captures to the chain closure.
-                for (i, binding) in split.captured_bindings.iter().enumerate() {
-                    let cell = self.new_value();
-                    let unit_initial = self.new_value();
-                    self.emit_inst(MirInst::Const {
-                        dest: unit_initial.clone(),
-                        literal: MirLiteral::Int(0),
-                    });
-                    self.emit_inst(MirInst::StateCellNew {
-                        dest: cell.clone(),
-                        initial: unit_initial,
-                    });
-                    let cell_name = format!("__capture_cell_{i}_{binding}");
-                    self.vars.insert(cell_name.clone(), cell.clone());
-                    self.var_types.insert(cell_name, Type::Dynamic);
-                    pre_resume_capture_cells.push(cell);
-                }
-
-                let mut block_exprs = split.pre_resume_stmts.clone();
-                // Inject __kea_internal_capture_store calls for each captured binding
-                for (i, binding) in split.captured_bindings.iter().enumerate() {
-                    let cell_name = format!("__capture_cell_{i}_{binding}");
-                    block_exprs.push(HirExpr {
-                        kind: HirExprKind::Call {
-                            func: Box::new(HirExpr {
-                                kind: HirExprKind::Var("__kea_internal_capture_store".to_string()),
-                                ty: Type::Dynamic,
-                                span: clause.span,
-                            }),
-                            args: vec![
-                                HirExpr {
-                                    kind: HirExprKind::Var(cell_name),
-                                    ty: Type::Dynamic,
-                                    span: clause.span,
-                                },
-                                HirExpr {
-                                    kind: HirExprKind::Var(binding.clone()),
-                                    ty: Type::Dynamic,
-                                    span: clause.span,
-                                },
-                            ],
-                        },
-                        ty: Type::Unit,
-                        span: clause.span,
-                    });
-                }
-                block_exprs.push(split.resume_value.clone());
-                let body_ty = block_exprs.last().map_or(Type::Dynamic, |e| e.ty.clone());
-                let body = if block_exprs.len() == 1 {
-                    block_exprs.pop().unwrap()
-                } else {
-                    HirExpr {
-                        kind: HirExprKind::Block(block_exprs),
-                        ty: body_ty,
-                        span: clause.span,
+            let classification =
+                match classify_clause_body(&clause.body, &clause_arg_names, clause.span) {
+                    Some(c) => c,
+                    None => {
+                        self.emit_inst(MirInst::Unsupported {
+                            detail: format!(
+                                "handler clause `{target_effect}.{}` must be tail-resumptive \
+                                 (`resume ...`) or use `let x = resume val; ...` form",
+                                clause.operation,
+                            ),
+                        });
+                        return None;
                     }
                 };
-                needs_chain_augment = Some(split);
-                body
-            } else if target_effect == "Log" && clause.args.len() == 1 {
-                let Some(body) = strip_tail_resume_unit_body(&clause.body) else {
-                    self.emit_inst(MirInst::Unsupported {
-                        detail: format!(
-                            "single-argument handler clause `{target_effect}.{} {}`",
-                            clause.operation, "must end with `resume ()` for compiled lowering"
-                        ),
-                    });
-                    return None;
-                };
-                body
-            } else {
-                let Some(resume_value) = resume_value else {
-                    self.emit_inst(MirInst::Unsupported {
-                        detail: format!(
-                            "handler clause `{target_effect}.{} {}`",
-                            clause.operation, "must use `resume ...` for callback lowering"
-                        ),
-                    });
-                    return None;
-                };
-                (*resume_value).clone()
-            };
-            let mut callback_params = Vec::with_capacity(clause.args.len());
-            for arg_pattern in &clause.args {
-                let HirPattern::Var(arg_name) = arg_pattern else {
-                    self.emit_inst(MirInst::Unsupported {
-                        detail: format!(
-                            "handler clause `{target_effect}.{} {}`",
-                            clause.operation,
-                            "requires simple variable argument patterns for callback lowering"
-                        ),
-                    });
-                    return None;
-                };
-                callback_params.push(kea_hir::HirParam {
-                    name: Some(arg_name.clone()),
-                    span: clause.span,
-                });
-            }
-            let callback_return_ty = match &callback_body.kind {
-                HirExprKind::Lambda { params, body }
-                    if !matches!(callback_body.ty, Type::Function(_)) =>
-                {
-                    synth_lambda_type(params, body)
+
+            let pre_resume_capture_cells = match &classification {
+                ClauseBodyClassification::NonTail(split) => {
+                    self.allocate_pre_resume_capture_cells(split, clause.span)
                 }
-                _ => callback_body.ty.clone(),
+                _ => vec![],
             };
-            let callback_ty = Type::Function(FunctionType::with_effects(
-                vec![Type::Dynamic; callback_params.len()],
-                callback_return_ty.clone(),
-                EffectRow::pure(),
-            ));
-            let callback_lambda = HirExpr {
-                kind: HirExprKind::Lambda {
-                    params: callback_params.clone(),
-                    body: Box::new(callback_body.clone()),
-                },
-                ty: callback_ty.clone(),
-                span: clause.span,
+
+            let (inner_cb, arity, returns_unit) = self.build_clause_callback(
+                clause,
+                &target_effect,
+                internal_state_cell.as_ref(),
+                &classification,
+                &pre_resume_capture_cells,
+            )?;
+
+            let final_callback = match &classification {
+                ClauseBodyClassification::NonTail(split) => self
+                    .wrap_with_chain_augmentation(
+                        inner_cb,
+                        &target_effect,
+                        &clause.operation,
+                        split,
+                        &clause.args,
+                        &pre_resume_capture_cells,
+                        clause.span,
+                    )?,
+                _ => inner_cb,
             };
-            let Some(callback_value) = self.lower_lambda_to_closure_value(
-                &callback_lambda,
-                &callback_params,
-                &callback_body,
-                Some(&callback_ty),
-                true,
-            ) else {
-                self.emit_inst(MirInst::Unsupported {
-                    detail: format!(
-                        "failed to lower handler callback body for `{target_effect}.{}`",
-                        clause.operation
-                    ),
-                });
-                return None;
-            };
-            // If this is a non-tail callback, wrap with chain augmentation
-            let final_callback = if let Some(split) = needs_chain_augment {
-                self.wrap_with_chain_augmentation(
-                    callback_value,
-                    &target_effect,
-                    &clause.operation,
-                    &split,
-                    &clause.args,
-                    &pre_resume_capture_cells,
-                    clause.span,
-                )?
-            } else {
-                callback_value
-            };
+
             plan.operation_lowering.insert(
                 clause.operation.clone(),
                 HandlerCellOpLowering::InvokeCallback {
-                    arity: callback_params.len(),
-                    returns_unit: callback_return_ty == Type::Unit,
+                    arity,
+                    returns_unit,
                 },
             );
             operation_callback_values.insert(clause.operation.clone(), final_callback);
