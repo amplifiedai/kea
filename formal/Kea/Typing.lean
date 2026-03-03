@@ -3737,6 +3737,95 @@ theorem native_handler_step_ext_with_mismatch_exists_and_preserves_of_core_sound
     (native_handler_strict_top_typing_of_metadata_coherence h_coherence)
     h_typed
 
+/--
+Local typed-handle step existence from packaged core progress and strict-top
+typing.
+-/
+theorem native_handler_step_ext_with_mismatch_step_of_core_progress_and_strict_top_typing_packaged
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core_progress : native_core_progress_prop bodyStep)
+    (h_strict_top_typing : native_handler_strict_top_typing_prop)
+    {env : TermEnv}
+    {body : CoreExpr}
+    {opHandle : Label}
+    {argName resumeName : String}
+    {argTy opRetTy : Ty}
+    {clauseBody : CoreExpr}
+    {ty : Ty}
+    (h_typed :
+      HasTypeScopedTop env
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        ty) :
+    ∃ e',
+      NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        e' := by
+  exact native_handler_step_ext_with_mismatch_progress_of_core_progress_and_strict_top_typing
+    clauseSem mismatchSem bodyStep h_core_progress h_strict_top_typing
+    env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed
+
+/--
+Local typed-handle step existence from packaged core progress and scoped-to-
+strict lift, routed through strict-top typing.
+-/
+theorem native_handler_step_ext_with_mismatch_step_of_core_progress_and_scoped_to_strict_lift_via_strict_top_typing_packaged
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core_progress : native_core_progress_prop bodyStep)
+    (h_lift : native_handler_scoped_to_strict_lift_prop)
+    {env : TermEnv}
+    {body : CoreExpr}
+    {opHandle : Label}
+    {argName resumeName : String}
+    {argTy opRetTy : Ty}
+    {clauseBody : CoreExpr}
+    {ty : Ty}
+    (h_typed :
+      HasTypeScopedTop env
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        ty) :
+    ∃ e',
+      NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        e' := by
+  exact native_handler_step_ext_with_mismatch_step_of_core_progress_and_strict_top_typing_packaged
+    clauseSem mismatchSem bodyStep h_core_progress
+    (native_handler_strict_top_typing_prop_of_scoped_to_strict_lift h_lift)
+    h_typed
+
+/--
+Local typed-handle step existence from packaged core progress and metadata
+coherence, routed through strict-top typing.
+-/
+theorem native_handler_step_ext_with_mismatch_step_of_core_progress_and_metadata_coherence_via_strict_top_typing_packaged
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core_progress : native_core_progress_prop bodyStep)
+    (h_coherence : native_handler_perform_metadata_coherence_prop)
+    {env : TermEnv}
+    {body : CoreExpr}
+    {opHandle : Label}
+    {argName resumeName : String}
+    {argTy opRetTy : Ty}
+    {clauseBody : CoreExpr}
+    {ty : Ty}
+    (h_typed :
+      HasTypeScopedTop env
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        ty) :
+    ∃ e',
+      NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        e' := by
+  exact native_handler_step_ext_with_mismatch_step_of_core_progress_and_strict_top_typing_packaged
+    clauseSem mismatchSem bodyStep h_core_progress
+    (native_handler_strict_top_typing_of_metadata_coherence h_coherence)
+    h_typed
+
 /-- Declarative field typing is functional on the core slice. -/
 theorem hasFieldsType_unique
     {env : TermEnv} {fs : CoreFields} {row₁ row₂ : RowFields}

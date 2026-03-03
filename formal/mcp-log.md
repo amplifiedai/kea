@@ -17787,3 +17787,47 @@ from packaged core soundness and strict-top/scoped-lift/metadata assumptions.
 **Impact**:
 - The strict-top/scoped-lift/metadata assumption families now each expose
   packaged local `∃ step ∧ preserves` consequences for typed handle sites.
+
+### 2026-03-03: packaged local step-existence routes for strict-top/scoped-lift/metadata
+
+**Context**: Added packaged local step-existence theorem routes
+(`∃ e', step`) from packaged core progress for each strict-top/scoped-lift/
+metadata assumption family.
+
+**MCP tools used**: `reset_session`, `type_check`
+
+**Predict (Lean side)**:
+- Handles over pure bodies should type-check and remain pure.
+- Handles over performed bodies with matching clauses should type-check and
+  remain pure.
+- Mismatched clauses should leak original effects in pure local scope.
+- Out-of-handler resume remains rejected.
+
+**Probe (Rust side via MCP)**:
+1. Handle of pure body with unrelated clause set -> `ok`, pure local function.
+2. Handle of performed `Tick` body with matching `Tick.tick() -> resume ...`
+   -> `ok`, pure local function.
+3. Mismatched clause set (only `Log` clause around `Tick` body)
+   -> `error`, purity/effect leak (`Tick` required).
+4. Out-of-handler resume control
+   -> `error`, `E0012`.
+
+**Classify**: Agreement.
+
+**Act**:
+- Kept the new packaged local step-existence routes.
+- Proceeded with roadmap/log updates.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_step_of_core_progress_and_strict_top_typing_packaged`
+  - `native_handler_step_ext_with_mismatch_step_of_core_progress_and_scoped_to_strict_lift_via_strict_top_typing_packaged`
+  - `native_handler_step_ext_with_mismatch_step_of_core_progress_and_metadata_coherence_via_strict_top_typing_packaged`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Local consequence surfaces are now complete for both packaged
+  `step` and `step+preserves` forms across strict-top/scoped-lift/metadata
+  routes.
