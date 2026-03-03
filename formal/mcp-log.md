@@ -18479,3 +18479,45 @@ to route through it.
 **Impact**:
 - Local suite derivations now follow one explicit theorem spine: global suite
   first, then suite-level lift into local consequences (generic and pass-through).
+
+### 2026-03-03: soundness-route projection spine (global suite simplification)
+
+**Context**: Added explicit projection from packaged global soundness routes to
+packaged global progress routes, then proved the global route suite is
+equivalent to soundness routes alone and refactored the core-soundness suite
+derivation through that simplification.
+
+**MCP tools used**: `reset_session`, `type_check`
+
+**Predict (Lean side)**:
+- Coherent argful handler should type-check as pure.
+- Clause/effect mismatch should leak body effect in pure context.
+- Resume payload mismatch should reject.
+- Out-of-handler resume should reject.
+
+**Probe (Rust side via MCP)**:
+1. Coherent `Math.add(a, b) -> resume a + b` handler -> `ok`.
+2. Mismatched `Math` clause around `Reader` body -> `error`, `E0001` (pure body performs `[Reader(Int)]`).
+3. Bad `Math` resume payload (`resume "bad"`) -> `error`, `E0001`.
+4. Out-of-handler resume control (`resume 3`) -> `error`, `E0012`.
+
+**Classify**: Agreement.
+
+**Act**:
+- Kept soundness-projection and suite-iff theorem additions.
+- Continued checkpoint loop without model revision.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_progress_assumption_routes_of_soundness_assumption_routes`
+  - `native_handler_step_ext_with_mismatch_assumption_route_suite_of_soundness_assumption_routes`
+  - `native_handler_step_ext_with_mismatch_assumption_route_suite_prop_iff_soundness_assumption_routes`
+  - refactor:
+    - `native_handler_step_ext_with_mismatch_assumption_route_suite_of_core_soundness`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Global suite consumption is now cleaner: soundness-route bundles are the
+  canonical source, with progress-route bundles derived by theorem projection.

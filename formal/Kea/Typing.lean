@@ -3808,6 +3808,30 @@ theorem native_handler_step_ext_with_mismatch_soundness_assumption_routes_of_cor
       clauseSem mismatchSem bodyStep h_core)
 
 /--
+Packaged global soundness routes imply packaged global progress routes by
+projection from the soundness pair.
+-/
+theorem native_handler_step_ext_with_mismatch_progress_assumption_routes_of_soundness_assumption_routes
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_sound_routes :
+      native_handler_step_ext_with_mismatch_soundness_assumption_routes_prop
+        clauseSem mismatchSem bodyStep) :
+    native_handler_step_ext_with_mismatch_progress_assumption_routes_prop
+      clauseSem mismatchSem bodyStep := by
+  rcases h_sound_routes with ⟨h_top, h_strict, h_lift, h_meta⟩
+  refine ⟨?_, ?_, ?_, ?_⟩
+  · intro h_strict_top
+    exact (h_top h_strict_top).2
+  · intro h_strict_typing
+    exact (h_strict h_strict_typing).2
+  · intro h_scoped_lift
+    exact (h_lift h_scoped_lift).2
+  · intro h_coherence
+    exact (h_meta h_coherence).2
+
+/--
 Combined packaged assumption-route suite for mismatch-extension progress and
 soundness.
 -/
@@ -3818,8 +3842,45 @@ def native_handler_step_ext_with_mismatch_assumption_route_suite_prop
   native_handler_step_ext_with_mismatch_progress_assumption_routes_prop
       clauseSem mismatchSem bodyStep
     ∧
-    native_handler_step_ext_with_mismatch_soundness_assumption_routes_prop
+  native_handler_step_ext_with_mismatch_soundness_assumption_routes_prop
       clauseSem mismatchSem bodyStep
+
+/--
+Build the combined packaged global route suite from packaged soundness routes
+alone.
+-/
+theorem native_handler_step_ext_with_mismatch_assumption_route_suite_of_soundness_assumption_routes
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_sound_routes :
+      native_handler_step_ext_with_mismatch_soundness_assumption_routes_prop
+        clauseSem mismatchSem bodyStep) :
+    native_handler_step_ext_with_mismatch_assumption_route_suite_prop
+      clauseSem mismatchSem bodyStep := by
+  refine ⟨?_, h_sound_routes⟩
+  exact native_handler_step_ext_with_mismatch_progress_assumption_routes_of_soundness_assumption_routes
+    clauseSem mismatchSem bodyStep h_sound_routes
+
+/--
+The packaged global route suite is equivalent to packaged soundness routes:
+progress routes are derivable by projection.
+-/
+theorem native_handler_step_ext_with_mismatch_assumption_route_suite_prop_iff_soundness_assumption_routes
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) :
+    native_handler_step_ext_with_mismatch_assumption_route_suite_prop
+      clauseSem mismatchSem bodyStep
+      ↔
+    native_handler_step_ext_with_mismatch_soundness_assumption_routes_prop
+      clauseSem mismatchSem bodyStep := by
+  constructor
+  · intro h_suite
+    exact h_suite.2
+  · intro h_sound_routes
+    exact native_handler_step_ext_with_mismatch_assumption_route_suite_of_soundness_assumption_routes
+      clauseSem mismatchSem bodyStep h_sound_routes
 
 /--
 From packaged core soundness, derive the combined packaged assumption-route
@@ -3840,11 +3901,10 @@ theorem native_handler_step_ext_with_mismatch_assumption_route_suite_of_core_sou
         CoreValue body ∨ ∃ body', bodyStep body body')) :
     native_handler_step_ext_with_mismatch_assumption_route_suite_prop
       clauseSem mismatchSem bodyStep := by
-  refine ⟨?_, ?_⟩
-  · exact native_handler_step_ext_with_mismatch_progress_assumption_routes_of_core_progress
-      clauseSem mismatchSem bodyStep h_core.2
-  · exact native_handler_step_ext_with_mismatch_soundness_assumption_routes_of_core_soundness
-      clauseSem mismatchSem bodyStep h_core
+  exact native_handler_step_ext_with_mismatch_assumption_route_suite_of_soundness_assumption_routes
+    clauseSem mismatchSem bodyStep
+    (native_handler_step_ext_with_mismatch_soundness_assumption_routes_of_core_soundness
+      clauseSem mismatchSem bodyStep h_core)
 
 /--
 Specialized soundness target for the concrete pass-through mismatch semantics.
