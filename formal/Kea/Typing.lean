@@ -6416,6 +6416,57 @@ theorem native_handler_step_ext_soundness_of_mismatch_soundness_of_subsumed
       clauseSem mismatchSem bodyStep h_sound.2 h_subsumed
 
 /--
+Any strict-extension witness (`ext-with-mismatch` strictly extends `ext`)
+refutes mismatch-step subsumption.
+-/
+theorem not_native_handler_mismatch_steps_subsumed_by_ext_of_strict_extension
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_strict :
+      native_handler_step_ext_with_mismatch_strictly_extends_ext_prop
+        clauseSem mismatchSem bodyStep) :
+    ¬ native_handler_mismatch_steps_subsumed_by_ext_prop
+      clauseSem mismatchSem bodyStep := by
+  intro h_subsumed
+  rcases h_strict.2 with ⟨e, e', h_step_mismatch, h_not_ext⟩
+  exact h_not_ext (h_subsumed h_step_mismatch)
+
+/--
+Concrete no-subsumption corollary: a local op-mismatch/no-body-step witness
+already forces failure of mismatch-step subsumption.
+-/
+theorem not_native_handler_mismatch_steps_subsumed_by_ext_of_op_mismatch_no_body_step
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    {opBody opHandle : Label}
+    {argName resumeName : String}
+    {argTy opRetTy : Ty}
+    {arg k clauseBody : CoreExpr}
+    (h_op_ne : opBody ≠ opHandle)
+    (h_no_body_step :
+      ∀ body', ¬ bodyStep (.perform opBody argTy opRetTy arg k) body') :
+    ¬ native_handler_mismatch_steps_subsumed_by_ext_prop
+      clauseSem mismatchSem bodyStep := by
+  exact not_native_handler_mismatch_steps_subsumed_by_ext_of_strict_extension
+    clauseSem mismatchSem bodyStep
+    (native_handler_step_ext_with_mismatch_strictly_extends_ext_of_op_mismatch_no_body_step
+      (clauseSem := clauseSem)
+      (mismatchSem := mismatchSem)
+      (bodyStep := bodyStep)
+      (opBody := opBody)
+      (opHandle := opHandle)
+      (argName := argName)
+      (resumeName := resumeName)
+      (argTy := argTy)
+      (opRetTy := opRetTy)
+      (arg := arg)
+      (k := k)
+      (clauseBody := clauseBody)
+      h_op_ne h_no_body_step)
+
+/--
 Core preservation obligation for a candidate body-step relation.
 -/
 def native_core_preservation_prop

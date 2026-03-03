@@ -23823,3 +23823,43 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - The corpus now explicitly states when mismatch-layer soundness/progress can be reused as ext-layer soundness/progress, rather than leaving this as an implicit inference.
+
+### 2026-03-04: strict-extension witness implies non-subsumption
+
+**Context**: Strengthened the new subsumption bridge layer in `Kea/Typing.lean` with explicit negative results:
+- `not_native_handler_mismatch_steps_subsumed_by_ext_of_strict_extension`
+- `not_native_handler_mismatch_steps_subsumed_by_ext_of_op_mismatch_no_body_step`
+
+These prove that strict-extension witnesses (already present in the corpus) formally refute mismatch-step subsumption, making the bridge boundary explicit in both directions.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- Coherent handler should type-check.
+- Mismatch effect-leak handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. Coherent handler (`probe_coherent_20260304bf`) -> `ok`.
+2. Mismatch effect-leak handler (`probe_mismatch_20260304bf`) -> `error`, `E0001`.
+3. Bad resume payload (`probe_bad_resume_20260304bf`) -> `error`, `E0001`.
+4. Out-of-handler resume (`probe_outside_resume_20260304bf`) -> `error`, `E0012`.
+5. Forged-name out-of-handler resume (`probe_forged_resume_ctx_20260304bf`) -> `error`, `E0012`.
+6. Double-resume clause (`probe_double_resume_20260304bf`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the non-subsumption theorem layer tied to strict-extension witnesses.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`: theorem names listed in Context above.
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The mismatch-subsumption bridge now has precise positive and negative theorem surfaces, preventing accidental over-collapse of mismatch semantics into pure extended semantics.
