@@ -22775,3 +22775,48 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - The correspondence now includes a direct theorem-form mapping from compiler tiers to runtime scheduling classes for arbitrary residual capability sets.
+
+### 2026-03-04: added aggressive-erasure joint pair smallness theorems (general + native typed-handle)
+
+**Context**: Added two theorems in `Kea/Typing.lean`:
+- `tier_scheduler_pair_small_of_aggressive_erasure` (general declared/erasable residual lists)
+- `native_typed_handle_correspondence_capstone_pair_small_of_aggressive` (singleton typed-handle projection)
+
+Both state the same capstone consequence at pair level: under aggressive erasure, joint `(tier, scheduler)` classification cannot be blocking and is restricted to:
+- `(tier1, pure)` or
+- `(tier2, cooperative)` or
+- `(tier3, cooperative)`.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- Coherent typed handle should type-check.
+- Mismatched handler clause that leaves handled effect unremoved should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. Coherent handler (`probe_coherent_20260304ag`) -> `ok`.
+2. Mismatch effect-leak handler (`probe_mismatch_20260304ag`) -> `error`, `E0001`.
+3. Bad resume payload (`probe_bad_resume_20260304ag`) -> `error`, `E0001`.
+4. Out-of-handler resume (`probe_outside_resume_20260304ag`) -> `error`, `E0012`.
+5. Forged-name out-of-handler resume (`probe_forged_resume_ctx_20260304ag`) -> `error`, `E0012`.
+6. Double-resume clause (`probe_double_resume_20260304ag`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the pair-level aggressive-erasure smallness theorems and retained prior scheduler-only/tier-only smallness results as components.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `tier_scheduler_pair_small_of_aggressive_erasure`
+  - `native_typed_handle_correspondence_capstone_pair_small_of_aggressive`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Aggressive-erasure consequences are now available directly on the joint `(tier, scheduler)` surface, not only as separate scheduler/tier facts.

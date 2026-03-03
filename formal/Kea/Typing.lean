@@ -11060,6 +11060,74 @@ theorem schedulerClassOfResidual_eq_of_handlerTier
         (schedulerClassOfResidual_eq_blocking_iff_tier4 yielding blocking residual).2 h_tier
       simpa [h_tier] using h_block
 
+/--
+Under aggressive erasure, the joint `(tier, scheduler)` outcome is restricted
+to the non-blocking region: either `(tier1, pure)` or `(tier2/3, cooperative)`.
+-/
+theorem tier_scheduler_pair_small_of_aggressive_erasure
+    (yielding blocking declared erasable : List Label)
+    (h_aggressive : aggressiveErasureRemovesDeclaredBlocking declared erasable blocking) :
+    (handlerTierOfResidual yielding blocking (eraseCapabilities declared erasable),
+      schedulerClassOfResidual blocking (eraseCapabilities declared erasable))
+      = (.tier1, .pure)
+      ∨
+    (handlerTierOfResidual yielding blocking (eraseCapabilities declared erasable),
+      schedulerClassOfResidual blocking (eraseCapabilities declared erasable))
+      = (.tier2, .cooperative)
+      ∨
+    (handlerTierOfResidual yielding blocking (eraseCapabilities declared erasable),
+      schedulerClassOfResidual blocking (eraseCapabilities declared erasable))
+      = (.tier3, .cooperative) := by
+  have h_no_block :
+      hasBlockingCapability blocking (eraseCapabilities declared erasable) = false :=
+    aggressive_erasure_removes_all_blocking_residual declared erasable blocking h_aggressive
+  by_cases h_empty : eraseCapabilities declared erasable = []
+  · left
+    simp [handlerTierOfResidual, schedulerClassOfResidual, h_empty]
+  · by_cases h_yield : allYieldingCapabilities yielding (eraseCapabilities declared erasable) = true
+    · right
+      left
+      simp [handlerTierOfResidual, schedulerClassOfResidual, h_empty, h_no_block, h_yield]
+    · right
+      right
+      simp [handlerTierOfResidual, schedulerClassOfResidual, h_empty, h_no_block, h_yield]
+
+/--
+Singleton typed-handle projection of aggressive-erasure joint-pair smallness.
+-/
+theorem native_typed_handle_correspondence_capstone_pair_small_of_aggressive
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (yielding blocking erasable : List Label)
+    (env : TermEnv)
+    (body : CoreExpr)
+    (opHandle : Label)
+    (argName resumeName : String)
+    (argTy opRetTy : Ty)
+    (clauseBody : CoreExpr)
+    (ty : Ty)
+    (_h_cap :
+      NativeTypedHandleCorrespondenceCapstone
+        clauseSem mismatchSem bodyStep
+        yielding blocking erasable
+        env body opHandle argName resumeName argTy opRetTy clauseBody ty)
+    (h_aggressive :
+      aggressiveErasureRemovesDeclaredBlocking [opHandle] erasable blocking) :
+    (handlerTierOfResidual yielding blocking (eraseCapabilities [opHandle] erasable),
+      schedulerClassOfResidual blocking (eraseCapabilities [opHandle] erasable))
+      = (.tier1, .pure)
+      ∨
+    (handlerTierOfResidual yielding blocking (eraseCapabilities [opHandle] erasable),
+      schedulerClassOfResidual blocking (eraseCapabilities [opHandle] erasable))
+      = (.tier2, .cooperative)
+      ∨
+    (handlerTierOfResidual yielding blocking (eraseCapabilities [opHandle] erasable),
+      schedulerClassOfResidual blocking (eraseCapabilities [opHandle] erasable))
+      = (.tier3, .cooperative) := by
+  exact tier_scheduler_pair_small_of_aggressive_erasure
+    yielding blocking [opHandle] erasable h_aggressive
+
 /-- Declarative field typing is functional on the core slice. -/
 theorem hasFieldsType_unique
     {env : TermEnv} {fs : CoreFields} {row₁ row₂ : RowFields}
