@@ -24,6 +24,11 @@ effect IO
 
       IO.read_file("out.txt")   -- => "data"
   fn read_file(path: String) -[IO]> String
+  doc
+    Terminate the process with an exit code.
+
+      IO.exit(1)
+  fn exit(code: Int) -[IO]> Unit
 
 doc
   Write text to stdout.

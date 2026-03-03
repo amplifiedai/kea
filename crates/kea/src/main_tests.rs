@@ -894,6 +894,26 @@ fn compile_and_execute_char_escape_newline_exit_code() {
 }
 
 #[test]
+fn compile_and_execute_io_exit_exit_code() {
+    // IO.exit stores exit code in thread-local and returns; JIT runner picks it up.
+    let project_dir = temp_workspace_project_dir("kea-cli-project-io-exit");
+    let src_dir = project_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+
+    let app_path = src_dir.join("app.kea");
+    std::fs::write(
+        &app_path,
+        "use IO\n\nfn main() -[IO]> Int\n  IO.exit(42)\n  0\n",
+    )
+    .expect("app module write should succeed");
+
+    let run = run_file(&app_path).expect("IO.exit should compile and execute");
+    assert_eq!(run.exit_code, 42);
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
 fn compile_and_execute_hash_trait_int_impl_exit_code() {
     let project_dir = temp_workspace_project_dir("kea-cli-project-hash-trait");
     let src_dir = project_dir.join("src");
@@ -5166,7 +5186,7 @@ fn compile_and_execute_evidence_through_closure_exit_code() {
 fn compile_and_execute_capability_mock_io_stdout_exit_code() {
     // user handler intercepts IO.stdout, proving capability mocking works
     let source_path = write_temp_source(
-        "use IO\n\nfn program() -[IO]> Int\n  IO.stdout(\"intercepted\")\n  42\n\nfn main() -> Int\n  handle program()\n    IO.stdout(msg) -> resume ()\n    IO.stderr(msg) -> resume ()\n    IO.read_file(path) -> resume \"\"\n    IO.write_file(path, data) -> resume ()\n",
+        "use IO\n\nfn program() -[IO]> Int\n  IO.stdout(\"intercepted\")\n  42\n\nfn main() -> Int\n  handle program()\n    IO.stdout(msg) -> resume ()\n    IO.stderr(msg) -> resume ()\n    IO.read_file(path) -> resume \"\"\n    IO.write_file(path, data) -> resume ()\n    IO.exit(code) -> resume ()\n",
         "kea-cli-capability-mock-io-stdout",
         "kea",
     );

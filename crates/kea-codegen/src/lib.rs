@@ -346,7 +346,7 @@ struct DirectCapabilitySpec {
 const DIRECT_CAPABILITIES: &[DirectCapabilitySpec] = &[
     DirectCapabilitySpec {
         effect: "IO",
-        operations: &["stdout", "stderr", "read_file", "write_file"],
+        operations: &["stdout", "stderr", "read_file", "write_file", "exit"],
     },
     DirectCapabilitySpec {
         effect: "Clock",
@@ -443,6 +443,26 @@ unsafe extern "C" fn kea_io_write_file_stub(path: *const c_char, data: *const c_
     }
 }
 
+// Thread-local exit code set by `IO.exit` in JIT mode.
+// The JIT runner checks this after `main` returns.
+std::thread_local! {
+    static JIT_EXIT_CODE: std::cell::Cell<Option<i32>> = const { std::cell::Cell::new(None) };
+}
+
+/// Reset the JIT exit cell before each JIT run.
+fn reset_jit_exit_code() {
+    JIT_EXIT_CODE.with(|c| c.set(None));
+}
+
+/// Check if IO.exit was called during JIT execution.
+fn take_jit_exit_code() -> Option<i32> {
+    JIT_EXIT_CODE.with(|c| c.take())
+}
+
+unsafe extern "C" fn kea_io_exit_stub(code: i64) {
+    JIT_EXIT_CODE.with(|c| c.set(Some(code as i32)));
+}
+
 unsafe extern "C" fn kea_io_read_file_stub(path: *const c_char) -> *const c_char {
     static EMPTY: &[u8] = b"\0";
     if path.is_null() {
@@ -507,6 +527,7 @@ fn register_jit_runtime_symbols(builder: &mut JITBuilder) {
     builder.symbol("__kea_net_recv", kea_net_recv_stub as *const u8);
     builder.symbol("__kea_io_write_file", kea_io_write_file_stub as *const u8);
     builder.symbol("__kea_io_read_file", kea_io_read_file_stub as *const u8);
+    builder.symbol("__kea_io_exit", kea_io_exit_stub as *const u8);
     builder.symbol("__kea_clock_now", kea_clock_now_stub as *const u8);
     builder.symbol(
         "__kea_clock_monotonic",
@@ -573,6 +594,7 @@ fn compile_into_module<M: Module>(
     let mut requires_io_stderr = false;
     let mut requires_io_read_file = false;
     let mut requires_io_write_file = false;
+    let mut requires_io_exit = false;
     let mut requires_clock_now = false;
     let mut requires_clock_monotonic = false;
     let mut requires_rand_int = false;
@@ -624,6 +646,7 @@ fn compile_into_module<M: Module>(
                             ("IO", "stderr") => requires_io_stderr = true,
                             ("IO", "read_file") => requires_io_read_file = true,
                             ("IO", "write_file") => requires_io_write_file = true,
+                            ("IO", "exit") => requires_io_exit = true,
                             ("Clock", "now") => requires_clock_now = true,
                             ("Clock", "monotonic") => requires_clock_monotonic = true,
                             ("Rand", "int") => requires_rand_int = true,
@@ -796,6 +819,20 @@ fn compile_into_module<M: Module>(
         Some(
             module
                 .declare_function("__kea_io_read_file", Linkage::Import, &signature)
+                .map_err(|detail| CodegenError::Module {
+                    detail: detail.to_string(),
+                })?,
+        )
+    } else {
+        None
+    };
+
+    let io_exit_func_id = if requires_io_exit {
+        let mut signature = module.make_signature();
+        signature.params.push(AbiParam::new(types::I64));
+        Some(
+            module
+                .declare_function("__kea_io_exit", Linkage::Import, &signature)
                 .map_err(|detail| CodegenError::Module {
                     detail: detail.to_string(),
                 })?,
@@ -1049,6 +1086,7 @@ fn compile_into_module<M: Module>(
                     write_func_id,
                     io_write_file_func_id,
                     io_read_file_func_id,
+                    io_exit_func_id,
                     clock_now_func_id,
                     clock_monotonic_func_id,
                     rand_func_id,
@@ -1160,6 +1198,8 @@ fn execute_mir_main_jit(module: &MirModule, config: &BackendConfig) -> Result<i3
             function: "main".to_string(),
         })?;
     let entrypoint = jit_module.get_finalized_function(main_id);
+
+    reset_jit_exit_code();
 
     // SAFETY: `main` signature is validated above before transmuting and calling.
     let exit_code = unsafe {
@@ -1273,6 +1313,10 @@ fn execute_mir_main_jit(module: &MirModule, config: &BackendConfig) -> Result<i3
             }
         }
     };
+    // If IO.exit was called, use its exit code instead of main's return value.
+    if let Some(exit_code) = take_jit_exit_code() {
+        return Ok(exit_code);
+    }
     Ok(exit_code)
 }
 
@@ -2040,6 +2084,7 @@ struct LowerInstCtx<'a> {
     write_func_id: Option<FuncId>,
     io_write_file_func_id: Option<FuncId>,
     io_read_file_func_id: Option<FuncId>,
+    io_exit_func_id: Option<FuncId>,
     clock_now_func_id: Option<FuncId>,
     clock_monotonic_func_id: Option<FuncId>,
     rand_func_id: Option<FuncId>,
@@ -3893,6 +3938,27 @@ fn lower_instruction<M: Module>(
                                     dest.clone(),
                                     coerce_value_to_clif_type(builder, raw, ptr_ty),
                                 );
+                            }
+                            Ok(false)
+                        }
+                        "exit" => {
+                            let arg = args.first().ok_or_else(|| CodegenError::UnsupportedMir {
+                                function: function_name.to_string(),
+                                detail: "IO.exit expects one Int argument".to_string(),
+                            })?;
+                            let code_value = get_value(values, function_name, arg)?;
+                            let code_i64 = coerce_value_to_clif_type(builder, code_value, types::I64);
+                            let exit_func_id = ctx.io_exit_func_id.ok_or_else(|| {
+                                    CodegenError::UnsupportedMir {
+                                        function: function_name.to_string(),
+                                        detail: "IO.exit lowering requires imported `__kea_io_exit` symbol".to_string(),
+                                    }
+                                })?;
+                            let exit_ref =
+                                module.declare_func_in_func(exit_func_id, builder.func);
+                            builder.ins().call(exit_ref, &[code_i64]);
+                            if let Some(dest) = result {
+                                values.insert(dest.clone(), builder.ins().iconst(types::I8, 0));
                             }
                             Ok(false)
                         }
