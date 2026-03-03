@@ -20527,3 +20527,51 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - Local strict-handle consumers now have a direct `∃ step ∧ preserves` route without routing through global strict-top assumptions.
+
+### 2026-03-03: generalized strict-positive matching-perform witness from `bodyStep = False` to arbitrary `bodyStep`
+
+**Context**: Added a generic strict-positive witness theorem and refactored the old specialization through it:
+- `native_handler_step_ext_with_mismatch_exists_and_preserves_of_matching_perform_witness`
+- `native_handler_step_ext_with_mismatch_exists_and_preserves_of_matching_perform_witness_bodyStepFalse` (now via the generic theorem)
+
+This makes the positive branch available under arbitrary body semantics, parameterized by explicit body-step preservation.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent handler should type-check.
+- Mismatched pure handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Vector` + trivial fn -> `ok`.
+2. Coherent handler (`ProbeJ.take() -> resume 52`) -> `ok`.
+3. Mismatched pure handler (`handle ProbeK.pull()` with only `ProbeL.push`) -> `error`, `E0001`.
+4. Bad resume payload (`ProbeM.read() -> resume false`) -> `error`, `E0001`.
+5. Out-of-handler resume (`fn outside_resume_probe2() -> Int; resume 4`) -> `error`, `E0012`.
+6. Forged-name out-of-handler resume (`let __kea_resume_ctx = 7; resume 4`) -> `error`, `E0012`.
+7. Double-resume clause (`resume 1` then `resume 2`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Calibration note**:
+- One attempted sentinel using an inline anonymous function expression hit syntax-only `E0006`; it was replaced by direct out-of-handler probes for semantic classification.
+
+**Act**:
+- Kept the generic positive witness theorem and specialization refactor.
+- Continued MCP-first checkpoint loop with fresh probe names/shapes.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_exists_and_preserves_of_matching_perform_witness`
+  - `native_handler_step_ext_with_mismatch_exists_and_preserves_of_matching_perform_witness_bodyStepFalse`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The strict-positive branch is now reusable beyond `bodyStep = False`, reducing dependence on one specific body-step model for constructive witness reuse.

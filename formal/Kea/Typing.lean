@@ -4986,14 +4986,21 @@ theorem hasTypeScopedStrictTop_native_handler_matching_perform_witness :
       exact ⟨rfl, rfl⟩)
 
 /--
-At `bodyStep = False`, the strict typed matching-metadata witness still has a
-one-step mismatch-extension successor with post-step typing preserved.
+For any `bodyStep` with a body-preservation premise, the strict typed
+matching-metadata witness has a one-step mismatch-extension successor with
+post-step typing preserved.
 -/
-theorem native_handler_step_ext_with_mismatch_exists_and_preserves_of_matching_perform_witness_bodyStepFalse
+theorem native_handler_step_ext_with_mismatch_exists_and_preserves_of_matching_perform_witness
     (clauseSem : NativeHandlerClauseSem)
-    (mismatchSem : NativeHandlerMismatchSem) :
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_body_pres :
+      ∀ env body body' ty,
+        HasTypeScopedTop env body ty →
+        bodyStep body body' →
+        HasTypeScopedTop env body' ty) :
     ∃ e',
-      NativeHandlerStepExtWithMismatch clauseSem mismatchSem (fun _ _ => False)
+      NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep
         native_handler_matching_perform_witness_expr
         e'
       ∧ HasTypeScopedTop [] e' .int := by
@@ -5006,10 +5013,7 @@ theorem native_handler_step_ext_with_mismatch_exists_and_preserves_of_matching_p
         "Op" .int .int (.intLit 1) (.lam "x" .int (.intLit 0))
         "x" "k" (.intLit 2))
   · exact native_handler_step_ext_with_mismatch_preservation
-      clauseSem mismatchSem (fun _ _ => False)
-      (by
-        intro env body body' ty _h_body h_step
-        cases h_step)
+      clauseSem mismatchSem bodyStep h_body_pres
       []
       native_handler_matching_perform_witness_expr
       (clauseSem.instantiate (.intLit 2) (.intLit 1) (.lam "x" .int (.intLit 0)))
@@ -5019,6 +5023,24 @@ theorem native_handler_step_ext_with_mismatch_exists_and_preserves_of_matching_p
         (NativeHandlerStepExt.handle_perform
           "Op" .int .int (.intLit 1) (.lam "x" .int (.intLit 0))
           "x" "k" (.intLit 2)))
+
+/--
+At `bodyStep = False`, the strict typed matching-metadata witness still has a
+one-step mismatch-extension successor with post-step typing preserved.
+-/
+theorem native_handler_step_ext_with_mismatch_exists_and_preserves_of_matching_perform_witness_bodyStepFalse
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) :
+    ∃ e',
+      NativeHandlerStepExtWithMismatch clauseSem mismatchSem (fun _ _ => False)
+        native_handler_matching_perform_witness_expr
+        e'
+      ∧ HasTypeScopedTop [] e' .int := by
+  exact native_handler_step_ext_with_mismatch_exists_and_preserves_of_matching_perform_witness
+    clauseSem mismatchSem (fun _ _ => False)
+    (by
+      intro env body body' ty _h_body h_step
+      cases h_step)
 
 /--
 Dual boundary witness at `bodyStep = False`: a strict-typed matching-metadata
