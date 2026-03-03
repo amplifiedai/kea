@@ -11221,6 +11221,86 @@ theorem native_typed_handle_correspondence_capstone_pair_ne_tier1_pure_of_not_er
       env body opHandle argName resumeName argTy opRetTy clauseBody ty h_cap).1 h_pair
   exact h_not_erasable h_erasable
 
+/--
+If aggressive erasure holds and at least one declared capability is retained
+(non-erasable), the joint boundary classification is necessarily cooperative:
+`(tier2, cooperative)` or `(tier3, cooperative)`.
+-/
+theorem tier_scheduler_pair_tier23_of_aggressive_and_nonerasable_declared
+    (yielding blocking declared erasable : List Label)
+    {l : Label}
+    (h_aggressive : aggressiveErasureRemovesDeclaredBlocking declared erasable blocking)
+    (h_declared : l ∈ declared)
+    (h_not_erasable : l ∉ erasable) :
+    (handlerTierOfResidual yielding blocking (eraseCapabilities declared erasable),
+      schedulerClassOfResidual blocking (eraseCapabilities declared erasable))
+      = (.tier2, .cooperative)
+      ∨
+    (handlerTierOfResidual yielding blocking (eraseCapabilities declared erasable),
+      schedulerClassOfResidual blocking (eraseCapabilities declared erasable))
+      = (.tier3, .cooperative) := by
+  have h_small :
+      (handlerTierOfResidual yielding blocking (eraseCapabilities declared erasable),
+        schedulerClassOfResidual blocking (eraseCapabilities declared erasable))
+        = (.tier1, .pure)
+        ∨
+      (handlerTierOfResidual yielding blocking (eraseCapabilities declared erasable),
+        schedulerClassOfResidual blocking (eraseCapabilities declared erasable))
+        = (.tier2, .cooperative)
+        ∨
+      (handlerTierOfResidual yielding blocking (eraseCapabilities declared erasable),
+        schedulerClassOfResidual blocking (eraseCapabilities declared erasable))
+        = (.tier3, .cooperative) :=
+    tier_scheduler_pair_small_of_aggressive_erasure
+      yielding blocking declared erasable h_aggressive
+  have h_not_tier1_pure :
+      (handlerTierOfResidual yielding blocking (eraseCapabilities declared erasable),
+        schedulerClassOfResidual blocking (eraseCapabilities declared erasable))
+        ≠ (.tier1, .pure) :=
+    tier_scheduler_pair_ne_tier1_pure_of_nonerasable_declared
+      yielding blocking declared erasable h_declared h_not_erasable
+  rcases h_small with h_t1p | h_t2 | h_t3
+  · exact False.elim (h_not_tier1_pure h_t1p)
+  · exact Or.inl h_t2
+  · exact Or.inr h_t3
+
+/--
+Singleton typed-handle corollary of
+`tier_scheduler_pair_tier23_of_aggressive_and_nonerasable_declared`.
+-/
+theorem native_typed_handle_correspondence_capstone_pair_tier23_of_aggressive_and_not_erasable
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (yielding blocking erasable : List Label)
+    (env : TermEnv)
+    (body : CoreExpr)
+    (opHandle : Label)
+    (argName resumeName : String)
+    (argTy opRetTy : Ty)
+    (clauseBody : CoreExpr)
+    (ty : Ty)
+    (_h_cap :
+      NativeTypedHandleCorrespondenceCapstone
+        clauseSem mismatchSem bodyStep
+        yielding blocking erasable
+        env body opHandle argName resumeName argTy opRetTy clauseBody ty)
+    (h_aggressive :
+      aggressiveErasureRemovesDeclaredBlocking [opHandle] erasable blocking)
+    (h_not_erasable : opHandle ∉ erasable) :
+    (handlerTierOfResidual yielding blocking (eraseCapabilities [opHandle] erasable),
+      schedulerClassOfResidual blocking (eraseCapabilities [opHandle] erasable))
+      = (.tier2, .cooperative)
+      ∨
+    (handlerTierOfResidual yielding blocking (eraseCapabilities [opHandle] erasable),
+      schedulerClassOfResidual blocking (eraseCapabilities [opHandle] erasable))
+      = (.tier3, .cooperative) := by
+  exact tier_scheduler_pair_tier23_of_aggressive_and_nonerasable_declared
+    yielding blocking [opHandle] erasable
+    h_aggressive
+    (by simp)
+    h_not_erasable
+
 /-- Declarative field typing is functional on the core slice. -/
 theorem hasFieldsType_unique
     {env : TermEnv} {fs : CoreFields} {row₁ row₂ : RowFields}

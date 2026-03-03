@@ -22866,3 +22866,46 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - Completeness now has explicit boundary-level consequences: retained non-erasable capabilities force non-`pure` and non-`tier1` classifications.
+
+### 2026-03-04: proved aggressive+nonerasable implies cooperative-region pair outcomes
+
+**Context**: Added two theorems in `Kea/Typing.lean`:
+- `tier_scheduler_pair_tier23_of_aggressive_and_nonerasable_declared`
+- `native_typed_handle_correspondence_capstone_pair_tier23_of_aggressive_and_not_erasable`
+
+These combine aggressive-erasure smallness with non-erasable completeness consequences to force exact cooperative-region joint outcomes when some capability is retained:
+- `(tier2, cooperative)` or `(tier3, cooperative)`.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- Coherent typed handle should type-check.
+- Mismatched handler clause that leaves handled effect unremoved should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. Coherent handler (`probe_coherent_20260304ai`) -> `ok`.
+2. Mismatch effect-leak handler (`probe_mismatch_20260304ai`) -> `error`, `E0001`.
+3. Bad resume payload (`probe_bad_resume_20260304ai`) -> `error`, `E0001`.
+4. Out-of-handler resume (`probe_outside_resume_20260304ai`) -> `error`, `E0012`.
+5. Forged-name out-of-handler resume (`probe_forged_resume_ctx_20260304ai`) -> `error`, `E0012`.
+6. Double-resume clause (`probe_double_resume_20260304ai`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the cooperative-region pair theorems and retained prior pair-smallness / non-tier1 lemmas as decomposition components.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `tier_scheduler_pair_tier23_of_aggressive_and_nonerasable_declared`
+  - `native_typed_handle_correspondence_capstone_pair_tier23_of_aggressive_and_not_erasable`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The correspondence now states not only “aggressive erasure avoids blocking,” but also the sharper condition that retained capabilities force cooperative (Tier 2/3) outcomes.
