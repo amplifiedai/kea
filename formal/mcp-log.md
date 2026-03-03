@@ -19022,3 +19022,45 @@ No MCP divergence found at this checkpoint.
 - The boundary contrast is now theorem-level and direct: “ext route derivable
   under core assumptions” and “native minimal progress still fails” are
   available as one-hop statements.
+
+### 2026-03-03: mismatch-extension typed-gap witness (int-body native contrast)
+
+**Context**: Added mismatch-extension typed-gap surfaces mirroring the earlier
+native-vs-extended gap witness, now directly at
+`NativeHandlerStepExtWithMismatch`.
+
+**MCP tools used**: `reset_session`, `type_check`
+
+**Predict (Lean side)**:
+- `use` parsing should remain stable.
+- Coherent State handler should type-check.
+- Mismatched pure handler should reject with effect leak.
+- Bad resume payload should reject.
+- Out-of-handler resume should reject.
+
+**Probe (Rust side via MCP)**:
+1. `use State` -> `ok`.
+2. Coherent State handler (`State.get() -> resume 0`, `State.put(next) -> resume ()`) -> `ok`.
+3. Mismatched pure handler (`handle Reader.ask()` with only `Log.info` clause) -> `error`, `E0001` (pure body performs `[Reader(Int)]`).
+4. Bad resume payload (`Counter.next() -> resume false`) -> `error`, `E0001`.
+5. Out-of-handler resume control (`resume 0` in `if` branch) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No MCP divergence found at this checkpoint.
+
+**Act**:
+- Kept mismatch-extension typed-gap additions.
+- Continued MCP-first checkpoint loop with import-enabled probes.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_exists_of_int_body`
+  - `native_handler_step_ext_with_mismatch_vs_native_typed_int_body_gap_prop`
+  - `native_handler_step_ext_with_mismatch_vs_native_typed_int_body_witness`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Native-vs-extended typed-gap evidence is now mirrored directly at the
+  mismatch-extension relation, reducing route mismatches between theorem layers.

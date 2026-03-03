@@ -1791,6 +1791,67 @@ inductive NativeHandlerStepExtWithMismatch
           opBody argTy opRetTy arg k opHandle argName resumeName argTy opRetTy clauseBody)
 
 /--
+Value-body passthrough witness in the mismatched-perform extension:
+the extension preserves the base extended relation's value case.
+-/
+theorem native_handler_step_ext_with_mismatch_exists_of_int_body
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    {n : Int} {op : Label} {argName resumeName : String}
+    {argTy opRetTy : Ty} {clauseBody : CoreExpr} :
+    ∃ e', NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep
+      (.handle (.intLit n) op argName resumeName argTy opRetTy clauseBody) e' := by
+  refine ⟨.intLit n, ?_⟩
+  exact NativeHandlerStepExtWithMismatch.ext
+    (NativeHandlerStepExt.handle_value
+      (.intLit n) op argName resumeName argTy opRetTy clauseBody
+      (CoreValue.int n))
+
+/--
+Typed gap proposition between mismatch-extension stepping and native minimal
+stepping on int-body handles.
+-/
+def native_handler_step_ext_with_mismatch_vs_native_typed_int_body_gap_prop
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) : Prop :=
+  ∃ env op argName resumeName argTy opRetTy clauseBody ty,
+    HasTypeScopedTop env
+      (.handle (.intLit 0) op argName resumeName argTy opRetTy clauseBody)
+      ty
+    ∧
+    (∃ e', NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep
+      (.handle (.intLit 0) op argName resumeName argTy opRetTy clauseBody)
+      e')
+    ∧
+    ¬ ∃ e', NativeHandlerStep clauseSem
+      (.handle (.intLit 0) op argName resumeName argTy opRetTy clauseBody)
+      e'
+
+/--
+Typed mismatch-extension-vs-native gap witness on int-body handles.
+-/
+theorem native_handler_step_ext_with_mismatch_vs_native_typed_int_body_witness
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) :
+    native_handler_step_ext_with_mismatch_vs_native_typed_int_body_gap_prop
+      clauseSem mismatchSem bodyStep := by
+  refine ⟨[], "Op", "x", "k", .int, .int, (.intLit 1), .int, ?_, ?_, ?_⟩
+  · exact HasTypeScoped.handle none [] (.intLit 0) "Op" "x" "k" .int .int .int (.intLit 1)
+      (HasTypeScoped.int none [] 0)
+      (HasTypeScoped.int
+        (some (.int, .int))
+        (("k", .function (.cons .int .nil) .int) ::
+          ("x", .int) ::
+          [])
+        1)
+  · exact native_handler_step_ext_with_mismatch_exists_of_int_body
+      clauseSem mismatchSem bodyStep
+  · exact native_handler_step_not_exists_of_int_body clauseSem
+
+/--
 Preservation target for the mismatched-perform-extended native relation.
 -/
 def native_handler_step_ext_with_mismatch_preservation_prop
