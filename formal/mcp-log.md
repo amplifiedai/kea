@@ -21081,3 +21081,48 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - Core-assumption-family routes now expose full soundness, progress, and their reduction equivalence in one capstone API per family.
+
+### 2026-03-04: added master-suite one-hop `(soundness, progress, equivalence)` bundle bridges
+
+**Context**: Added master-suite extraction capstones:
+- `native_handler_step_ext_with_mismatch_soundness_progress_equiv_of_master_suite_and_strict_top_typing`
+- `native_handler_step_ext_with_passThroughMismatch_soundness_progress_equiv_of_master_suite_and_strict_top_typing`
+
+These bridge existing master-suite routes to the full bundle `(soundness, progress, soundness↔progress)` in one theorem step.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent handler should type-check.
+- Mismatched pure handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use IO` + trivial fn -> `ok`.
+2. Coherent handler (`ProbeBS.run() -> resume 171`) -> `ok`.
+3. Mismatched pure handler (`handle ProbeBT.left()` with only `ProbeBU.right`) -> `error`, `E0001`.
+4. Bad resume payload (`ProbeBV.read() -> resume false`) -> `error`, `E0001`.
+5. Out-of-handler resume (`fn outside_resume_probe14() -> Int; resume 21`) -> `error`, `E0012`.
+6. Forged-name out-of-handler resume (`let __kea_resume_ctx = 21; resume 21`) -> `error`, `E0012`.
+7. Double-resume clause (`resume 1` then `resume 2`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept master-suite one-hop bundle bridge theorems.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_soundness_progress_equiv_of_master_suite_and_strict_top_typing`
+  - `native_handler_step_ext_with_passThroughMismatch_soundness_progress_equiv_of_master_suite_and_strict_top_typing`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Master-suite consumers now get the full soundness/progress/equivalence bundle directly (generic and pass-through semantics).

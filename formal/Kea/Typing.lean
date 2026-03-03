@@ -7620,6 +7620,48 @@ theorem native_handler_step_ext_with_mismatch_progress_of_master_suite_and_stric
   exact h_master.1.1.1 h_strict_top
 
 /--
+From a mismatch-extension master-suite witness at strict-top typing, extract
+the full `(soundness, progress, soundness↔progress)` bundle in one hop.
+-/
+theorem native_handler_step_ext_with_mismatch_soundness_progress_equiv_of_master_suite_and_strict_top_typing
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_master :
+      native_handler_step_ext_with_mismatch_master_suite_prop
+        clauseSem mismatchSem bodyStep)
+    (h_strict_top : native_handler_strict_top_typing_prop) :
+    native_handler_step_ext_with_mismatch_soundness_prop
+        clauseSem mismatchSem bodyStep
+      ∧
+    native_handler_step_ext_with_mismatch_progress_prop
+        clauseSem mismatchSem bodyStep
+      ∧
+    (native_handler_step_ext_with_mismatch_soundness_prop
+        clauseSem mismatchSem bodyStep
+      ↔ native_handler_step_ext_with_mismatch_progress_prop
+        clauseSem mismatchSem bodyStep) := by
+  have h_sound :
+      native_handler_step_ext_with_mismatch_soundness_prop
+        clauseSem mismatchSem bodyStep :=
+    native_handler_step_ext_with_mismatch_soundness_of_master_suite_and_strict_top_typing
+      clauseSem mismatchSem bodyStep h_master h_strict_top
+  have h_prog :
+      native_handler_step_ext_with_mismatch_progress_prop
+        clauseSem mismatchSem bodyStep :=
+    native_handler_step_ext_with_mismatch_progress_of_master_suite_and_strict_top_typing
+      clauseSem mismatchSem bodyStep h_master h_strict_top
+  have h_iff :
+      native_handler_step_ext_with_mismatch_soundness_prop
+        clauseSem mismatchSem bodyStep
+        ↔
+      native_handler_step_ext_with_mismatch_progress_prop
+        clauseSem mismatchSem bodyStep :=
+    native_handler_step_ext_with_mismatch_soundness_prop_iff_progress_prop_of_preservation
+      clauseSem mismatchSem bodyStep h_sound.1
+  exact ⟨h_sound, h_prog, h_iff⟩
+
+/--
 Project the strict-top local `step`+preserves consequence route from a
 mismatch-extension master suite witness.
 -/
@@ -7841,9 +7883,33 @@ theorem native_handler_step_ext_with_passThroughMismatch_progress_of_master_suit
       native_handler_step_ext_with_passThroughMismatch_master_suite_prop
         clauseSem bodyStep)
     (h_strict_top : native_handler_strict_top_typing_prop) :
-    native_handler_step_ext_with_mismatch_progress_prop
+      native_handler_step_ext_with_mismatch_progress_prop
       clauseSem nativeHandlerMismatchPassThroughSem bodyStep := by
   exact native_handler_step_ext_with_mismatch_progress_of_master_suite_and_strict_top_typing
+    clauseSem nativeHandlerMismatchPassThroughSem bodyStep h_master h_strict_top
+
+/--
+From a concrete pass-through master-suite witness at strict-top typing, extract
+the full `(soundness, progress, soundness↔progress)` bundle in one hop.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_soundness_progress_equiv_of_master_suite_and_strict_top_typing
+    (clauseSem : NativeHandlerClauseSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_master :
+      native_handler_step_ext_with_passThroughMismatch_master_suite_prop
+        clauseSem bodyStep)
+    (h_strict_top : native_handler_strict_top_typing_prop) :
+    native_handler_step_ext_with_mismatch_soundness_prop
+        clauseSem nativeHandlerMismatchPassThroughSem bodyStep
+      ∧
+    native_handler_step_ext_with_mismatch_progress_prop
+        clauseSem nativeHandlerMismatchPassThroughSem bodyStep
+      ∧
+    (native_handler_step_ext_with_mismatch_soundness_prop
+        clauseSem nativeHandlerMismatchPassThroughSem bodyStep
+      ↔ native_handler_step_ext_with_mismatch_progress_prop
+        clauseSem nativeHandlerMismatchPassThroughSem bodyStep) := by
+  exact native_handler_step_ext_with_mismatch_soundness_progress_equiv_of_master_suite_and_strict_top_typing
     clauseSem nativeHandlerMismatchPassThroughSem bodyStep h_master h_strict_top
 
 /--
