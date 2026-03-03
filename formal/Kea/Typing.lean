@@ -1398,6 +1398,43 @@ inductive NativeHandlerStepExt
         (.handle body' op argName resumeName argTy opRetTy clauseBody)
 
 /--
+Proposition-level strict-extension contract: every native step is an extended
+step, and there exists an extended step that is not a native step.
+-/
+def native_handler_step_ext_strictly_extends_native_prop
+    (clauseSem : NativeHandlerClauseSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) : Prop :=
+  (∀ e e',
+      NativeHandlerStep clauseSem e e' →
+      NativeHandlerStepExt clauseSem bodyStep e e')
+    ∧
+  (∃ e e',
+      NativeHandlerStepExt clauseSem bodyStep e e' ∧
+      ¬ NativeHandlerStep clauseSem e e')
+
+/--
+Strict-extension witness: with a no-body-step relation, the extended native
+relation strictly extends native one-step reduction.
+-/
+theorem native_handler_step_ext_strictly_extends_native
+    (clauseSem : NativeHandlerClauseSem) :
+    native_handler_step_ext_strictly_extends_native_prop
+      clauseSem
+      (fun _ _ => False) := by
+  refine ⟨?_, ?_⟩
+  · intro e e' h_native
+    cases h_native with
+    | handle_perform op argTy opRetTy arg k argName resumeName clauseBody =>
+      exact NativeHandlerStepExt.handle_perform
+        op argTy opRetTy arg k argName resumeName clauseBody
+  · refine ⟨.handle (.intLit 0) "Op" "x" "k" .int .int (.intLit 1), .intLit 0, ?_, ?_⟩
+    · exact NativeHandlerStepExt.handle_value
+        (.intLit 0) "Op" "x" "k" .int .int (.intLit 1)
+        (CoreValue.int 0)
+    · intro h_native
+      cases h_native
+
+/--
 Preservation target for the extended native handler-step relation.
 -/
 def native_handler_step_ext_preservation_prop

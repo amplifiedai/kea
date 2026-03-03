@@ -18807,3 +18807,51 @@ generic mismatch and concrete pass-through semantics.
 **Impact**:
 - Master-suite witnesses now expose direct strict-top consumption APIs for
   global and local obligations on both generic and concrete semantics paths.
+
+### 2026-03-03: native-vs-extended step boundary witness + MCP `use` parse-path divergence
+
+**Context**: Added a strict-extension boundary witness in `Typing.lean` making
+the native step relation vs extended step relation distinction explicit at the
+proposition level (inclusion + strictness witness). During checkpoint probes,
+found an MCP tooling divergence for `use` declarations.
+
+**MCP tools used**: `reset_session`, `type_check`
+
+**Predict (Lean side)**:
+- `NativeHandlerStepExt` strictly extends minimal `NativeHandlerStep`.
+- Coherent handler programs should type-check.
+- Mismatched handler clauses in pure context should reject with effect leakage.
+- Bad resume payloads should reject.
+- Out-of-handler resume should reject.
+
+**Probe (Rust side via MCP)**:
+1. `use Clock` import probe was parsed as expression-form `use ... <- ...` and rejected with `E0006` (`expected '<-' in use expression`).
+2. Coherent self-contained Reader handler (`effect Reader`, `handle app()`, `Reader.ask() -> resume 41`) -> `ok`.
+3. Mismatched clause (handle `Reader.ask()` with only `Log.info` clause in pure `fn bad() -> Int`) -> `error`, `E0001` (pure body performs `[Reader(Int)]`).
+4. Bad resume payload (`Counter.next() -> resume "bad"` where op returns `Int`) -> `error`, `E0001`.
+5. Out-of-handler resume control (`fn out() -> Int; resume 1`) -> `error`, `E0012`.
+
+**Classify**: Divergence found (MCP tooling parse-path for `use` declarations).  
+Handler/resume typing probes remain in agreement when using self-contained
+effect declarations (no `use` import).
+
+**Act**:
+- Kept formal theorem additions.
+- Switched checkpoint probe style to self-contained declarations to avoid
+  the MCP `use` classification bug.
+- Flagged divergence explicitly for follow-up in MCP classifier (`Use` should
+  route to declaration parsing).
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_strictly_extends_native_prop`
+  - `native_handler_step_ext_strictly_extends_native`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Boundary gap is now explicit and machine-checkable: extended semantics is a
+  strict extension of the native minimal step relation.
+- MCP verification loop remains usable with self-contained effect declarations
+  while the `use` classifier divergence is outstanding.
