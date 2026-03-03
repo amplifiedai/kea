@@ -18033,3 +18033,42 @@ assumptions are interchangeable for mismatch-extension progress/soundness.
 **Impact**:
 - Strict-top and scoped-lift assumption boundaries are now propositionally
   aligned for both progress and soundness under fixed core obligations.
+
+### 2026-03-03: strict-typing assumption equivalences (metadata and scoped-lift)
+
+**Context**: Added the direct strict-typing assumption equivalence layer for
+fixed core obligations, matching the strict-top equivalence surfaces.
+
+**MCP tools used**: `reset_session`, `type_check`
+
+**Predict (Lean side)**:
+- Matching handler accepted and pure.
+- Mismatched clause leaks source effect in pure context.
+- Bad resume payload rejects.
+- Out-of-handler resume rejects.
+
+**Probe (Rust side via MCP)**:
+1. Matching `Q` handler (`Q.q() -> resume 8`) -> `ok`, pure `v`.
+2. Mismatched clause (`R.r` around `Q` body) -> `error`, purity/effect leak (`Q` required).
+3. Bad resume payload (`resume true` where op returns `Int`) -> `error`, `E0001`.
+4. Out-of-handler resume control -> `error`, `E0012`.
+
+**Classify**: Agreement.
+
+**Act**:
+- Kept strict-typing assumption-equivalence theorem additions.
+- Continued theorem-surface closure with MCP-first protocol.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_progress_assumption_iff_strict_typing_metadata_coherence`
+  - `native_handler_step_ext_with_mismatch_progress_assumption_iff_strict_typing_scoped_to_strict_lift`
+  - `native_handler_step_ext_with_mismatch_soundness_assumption_iff_strict_typing_metadata_coherence`
+  - `native_handler_step_ext_with_mismatch_soundness_assumption_iff_strict_typing_scoped_to_strict_lift`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Strict-typing now has direct proposition-level assumption equivalence surfaces
+  against both metadata and scoped-lift, parallel to strict-top.
