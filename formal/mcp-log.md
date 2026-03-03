@@ -20480,3 +20480,50 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - The current blocker is now more crisply machine-stated: strict-top contract vacuity coexists with strict-top typed-handle witnesses, i.e., the gap is global lifting/coherence, not relation emptiness.
+
+### 2026-03-03: added strict-handle local soundness route and refreshed MCP syntax-calibrated sentinel matrix
+
+**Context**: Added a non-vacuous local handler soundness theorem in `Kea/Typing.lean`:
+- `native_handler_step_ext_with_mismatch_exists_and_preserves_of_core_soundness_and_strict_handle`
+
+This closes the local gap between existing strict-handle progress (`step`) and strict-top local soundness (`step ∧ preserves`) by giving a direct strict-handle route.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- Import/use parsing should still succeed.
+- A coherent handler clause should type-check.
+- Mismatched pure handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Math` + trivial fn -> `ok`.
+2. Coherent effect handler (`ProbeC.read() -> resume 41`) -> `ok`.
+3. Mismatched pure handler (`handle ProbeD.read()` with only `ProbeE.read_other`) -> `error`, `E0001`.
+4. Bad resume payload (`ProbeF.read() -> resume "oops"`) -> `error`, `E0001`.
+5. Out-of-handler resume (`fn outside_resume_probe() -> Int; resume 9`) -> `error`, `E0012`.
+6. Forged-name out-of-handler resume (`let __kea_resume_ctx = 0; resume 1`) -> `error`, `E0012`.
+7. Double-resume clause (`resume 1` then `resume 2`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Calibration note**:
+- Initial probe attempts used stale syntax forms (`fn ...:` and effect members without `fn`), yielding parser `E0006` only.
+- Recalibrated to current MCP grammar (`effect E` with indented `fn op() -> ...`, and `fn name() -> T` with indented body), then re-ran the sentinel matrix above.
+
+**Act**:
+- Kept the strict-handle local soundness theorem addition.
+- Continued MCP-first checkpoint loop with syntax-calibrated probes.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_exists_and_preserves_of_core_soundness_and_strict_handle`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Local strict-handle consumers now have a direct `∃ step ∧ preserves` route without routing through global strict-top assumptions.

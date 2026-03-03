@@ -2788,6 +2788,42 @@ theorem native_handler_step_ext_with_mismatch_exists_and_preserves_of_core_sound
     h_step
 
 /--
+Strict-handle local handler soundness route:
+for one typed strict handle site, core body preservation/progress yields
+one-step existence and post-step typing.
+-/
+theorem native_handler_step_ext_with_mismatch_exists_and_preserves_of_core_soundness_and_strict_handle
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_body_pres :
+      ∀ env body body' ty,
+        HasTypeScopedTop env body ty →
+        bodyStep body body' →
+        HasTypeScopedTop env body' ty)
+    (h_core_progress :
+      ∀ env body ty,
+        HasTypeScopedTop env body ty →
+        CoreValue body ∨ ∃ body', bodyStep body body')
+    {env : TermEnv}
+    {body : CoreExpr}
+    {opHandle : Label}
+    {argName resumeName : String}
+    {argTy opRetTy : Ty}
+    {clauseBody : CoreExpr}
+    {ty : Ty}
+    (h_strict :
+      HasTypeScopedHandleStrict env body opHandle argName resumeName argTy opRetTy clauseBody ty) :
+    ∃ e',
+      NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep
+        (.handle body opHandle argName resumeName argTy opRetTy clauseBody)
+        e'
+      ∧ HasTypeScopedTop env e' ty := by
+  exact native_handler_step_ext_with_mismatch_exists_and_preserves_of_core_soundness_and_strict_top_handle
+    clauseSem mismatchSem bodyStep h_body_pres h_core_progress
+    ((hasTypeScopedStrictTop_handle_iff_handleStrict).2 h_strict)
+
+/--
 Core-judgment local handler soundness route:
 for any `HasTypeScopedTop`-typed handle, core body preservation/progress plus
 scoped-to-strict lift yields one-step existence and post-step typing.
