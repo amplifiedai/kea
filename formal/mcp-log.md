@@ -21746,3 +21746,53 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - The corpus now has explicit formal statements for tier structure, erasure correspondence, scheduler soundness (`pure` => non-blocking), and erasure completeness.
+
+### 2026-03-04: added unified tier-erasure-scheduler correspondence capstone packaging
+
+**Context**: Added packaged correspondence APIs:
+- `HandlerTierStructureSlice` + constructor `handler_tier_structure_slice`
+- `ErasureCorrespondenceSlice` + constructor `erasure_correspondence_slice`
+- `SchedulerClassificationSoundnessSlice` + constructor `scheduler_classification_soundness_slice`
+- `ErasurePipelineCompletenessSlice` + constructor `erasure_pipeline_completeness_slice`
+- unified object `TierErasureSchedulerCorrespondenceCapstone`
+- constructor `tier_erasure_scheduler_correspondence_capstone`
+
+This lifts the raw theorem set into one top-level citable correspondence object.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent handler should type-check.
+- Mismatched pure handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Session` + trivial fn -> `ok`.
+2. Coherent handler (`handle ProbeER.run(); ProbeER.run() -> resume 321`) -> `ok`.
+3. Mismatched pure handler (`handle ProbeES.left(); ProbeET.right() -> resume 0`) -> `error`, `E0001`.
+4. Bad resume payload (`ProbeEU.read() -> resume "bad"`) -> `error`, `E0001`.
+5. Out-of-handler resume (`fn fresh_outside_resume_probe_20260304k() -> Int; resume 36`) -> `error`, `E0012`.
+6. Forged-name out-of-handler resume (`let __kea_resume_ctx = 36; resume 36`) -> `error`, `E0012`.
+7. Double-resume clause (`resume 1` then `resume 2`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept unified correspondence capstone packaging over the tier/erasure/scheduler layer.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `TierErasureSchedulerCorrespondenceCapstone`
+  - `tier_erasure_scheduler_correspondence_capstone`
+  - `handler_tier_structure_slice`, `erasure_correspondence_slice`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The “type declares -> compiler erases -> scheduler classifies” story now has a single machine-checkable capstone witness at theorem level.

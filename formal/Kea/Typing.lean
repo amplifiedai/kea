@@ -9167,6 +9167,145 @@ theorem scheduler_class_small_of_aggressive_erasure
       aggressive_erasure_removes_all_blocking_residual declared erasable blocking h_aggressive
     simp [schedulerClassOfResidual, h_empty, h_no_block]
 
+/--
+Packaged formal statement of the four-tier structure at a fixed residual set.
+-/
+structure HandlerTierStructureSlice
+    (yielding blocking residual : List Label) : Prop where
+  tier1 :
+    handlerTierOfResidual yielding blocking residual = .tier1
+      ↔ residual = []
+  tier2 :
+    handlerTierOfResidual yielding blocking residual = .tier2
+      ↔
+    residual ≠ []
+      ∧
+    hasBlockingCapability blocking residual = false
+      ∧
+    allYieldingCapabilities yielding residual = true
+  tier3 :
+    handlerTierOfResidual yielding blocking residual = .tier3
+      ↔
+    residual ≠ []
+      ∧
+    hasBlockingCapability blocking residual = false
+      ∧
+    allYieldingCapabilities yielding residual = false
+  tier4 :
+    handlerTierOfResidual yielding blocking residual = .tier4
+      ↔
+    residual ≠ []
+      ∧
+    hasBlockingCapability blocking residual = true
+
+/--
+Build the packaged four-tier structure statement.
+-/
+theorem handler_tier_structure_slice
+    (yielding blocking residual : List Label) :
+    HandlerTierStructureSlice yielding blocking residual := by
+  exact {
+    tier1 := handlerTierOfResidual_eq_tier1_iff yielding blocking residual
+    tier2 := handlerTierOfResidual_eq_tier2_iff yielding blocking residual
+    tier3 := handlerTierOfResidual_eq_tier3_iff yielding blocking residual
+    tier4 := handlerTierOfResidual_eq_tier4_iff yielding blocking residual
+  }
+
+/--
+Packaged formal statement of compiler erasure correspondence between declared,
+erasable, and residual capability sets.
+-/
+structure ErasureCorrespondenceSlice
+    (declared erasable residual : List Label) : Prop where
+  membershipIff :
+    ∀ l, l ∈ residual ↔ l ∈ declared ∧ l ∉ erasable
+
+/--
+Canonical erasure correspondence for the concrete residual produced by
+`eraseCapabilities`.
+-/
+theorem erasure_correspondence_slice
+    (declared erasable : List Label) :
+    ErasureCorrespondenceSlice declared erasable (eraseCapabilities declared erasable) := by
+  refine { membershipIff := ?_ }
+  intro l
+  exact mem_eraseCapabilities_iff declared erasable l
+
+/--
+Packaged scheduler-soundness statement at a fixed residual set.
+-/
+structure SchedulerClassificationSoundnessSlice
+    (blocking residual : List Label) : Prop where
+  pureNonBlocking :
+    schedulerClassOfResidual blocking residual = .pure →
+      hasBlockingCapability blocking residual = false
+
+/--
+Canonical scheduler-soundness slice from the classifier definition.
+-/
+theorem scheduler_classification_soundness_slice
+    (blocking residual : List Label) :
+    SchedulerClassificationSoundnessSlice blocking residual := by
+  exact { pureNonBlocking := scheduler_pure_implies_no_blocking blocking residual }
+
+/--
+Packaged tier-pipeline completeness statement at fixed declared/erasable sets.
+-/
+structure ErasurePipelineCompletenessSlice
+    (declared erasable : List Label) : Prop where
+  erasedDeclaredRemoved :
+    ∀ {l : Label}, l ∈ declared → l ∈ erasable → l ∉ eraseCapabilities declared erasable
+
+/--
+Canonical tier-pipeline completeness slice from `eraseCapabilities`.
+-/
+theorem erasure_pipeline_completeness_slice
+    (declared erasable : List Label) :
+    ErasurePipelineCompletenessSlice declared erasable := by
+  refine { erasedDeclaredRemoved := ?_ }
+  intro l h_declared h_erasable
+  exact erasure_pipeline_completeness declared erasable h_declared h_erasable
+
+/--
+Unified correspondence capstone: one object carrying tier structure,
+erasure correspondence, scheduler soundness, and erasure completeness.
+-/
+structure TierErasureSchedulerCorrespondenceCapstone
+    (yielding blocking declared erasable : List Label) : Prop where
+  tierStructure :
+    HandlerTierStructureSlice
+      yielding
+      blocking
+      (eraseCapabilities declared erasable)
+  erasureCorrespondence :
+    ErasureCorrespondenceSlice
+      declared
+      erasable
+      (eraseCapabilities declared erasable)
+  schedulerSoundness :
+    SchedulerClassificationSoundnessSlice
+      blocking
+      (eraseCapabilities declared erasable)
+  pipelineCompleteness :
+    ErasurePipelineCompletenessSlice declared erasable
+
+/--
+Build the unified correspondence capstone directly from the constituent slices.
+-/
+theorem tier_erasure_scheduler_correspondence_capstone
+    (yielding blocking declared erasable : List Label) :
+    TierErasureSchedulerCorrespondenceCapstone
+      yielding blocking declared erasable := by
+  exact {
+    tierStructure :=
+      handler_tier_structure_slice yielding blocking (eraseCapabilities declared erasable)
+    erasureCorrespondence := erasure_correspondence_slice declared erasable
+    schedulerSoundness :=
+      scheduler_classification_soundness_slice
+        blocking (eraseCapabilities declared erasable)
+    pipelineCompleteness := erasure_pipeline_completeness_slice declared erasable
+  }
+
 /-- Declarative field typing is functional on the core slice. -/
 theorem hasFieldsType_unique
     {env : TermEnv} {fs : CoreFields} {row₁ row₂ : RowFields}
