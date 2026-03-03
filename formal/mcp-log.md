@@ -17673,3 +17673,38 @@ strict-top from scoped-lift assumptions.
 **Impact**:
 - Strict-top and scoped-lift contracts now have direct theorem equivalence and
   route-level capstone bridges for global progress/soundness.
+
+### 2026-03-03: divergence resolution check — polymorphic resume type enforcement restored
+
+**Context**: Re-checking the previously reported divergence after MCP/compiler
+restart: polymorphic effect handlers had accepted mismatched `resume` argument
+types.
+
+**MCP tools used**: `reset_session`, `type_check`
+
+**Predict (Lean side)**:
+- For handlers where operation return type is instantiated to `Int`,
+  `resume "bad"` must be rejected.
+- Matching `resume 42` should be accepted.
+- Out-of-handler `resume` remains rejected.
+
+**Probe (Rust side via MCP)**:
+1. `Reader Int` repro (`Reader.ask() -> resume "bad"`) -> `error`, `E0001`.
+2. `State Int` repro (`State.get() -> resume "bad"`) -> `error`, `E0001`.
+3. Positive control (`Reader.ask() -> resume 42`) -> `ok`, `main : () -> Int`.
+4. Out-of-handler control (`fn mk() -> Int; resume 1`) -> `error`, `E0012`.
+
+**Classify**: Agreement (divergence resolved).
+
+**Act**:
+- Cleared the blocker and resumed the formal slice.
+- Continue using per-slice probe matrices plus sentinel controls at each
+  checkpoint.
+
+**Traceability**:
+- Repro snippets from the prior divergence check were rerun unchanged.
+- No theorem statement changes were needed for the strict-top contract slice.
+
+**Impact**:
+- Previously reported polymorphic-resume divergence no longer reproduces on the
+  restarted MCP.
