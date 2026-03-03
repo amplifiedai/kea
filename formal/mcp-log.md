@@ -22600,3 +22600,46 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - The singleton typed-handle boundary now has an explicit tier closed form and exact tier2/tier3 iff laws, aligned with the scheduler-side exact partition already in place.
+
+### 2026-03-04: added closed-form tier+scheduler pair law at singleton typed-handle boundary
+
+**Context**: Added `native_typed_handle_correspondence_capstone_tier_scheduler_pair_eq_if_erased_then_tier1_pure_else_blocking_yield_split` in `Kea/Typing.lean`, coupling tier and scheduler into one pair-valued boundary equation.
+
+This packages the three-view boundary decision in one theorem route:
+- erased -> `(tier1, pure)`
+- non-erased + blocking -> `(tier4, blocking)`
+- non-erased + non-blocking + yielding -> `(tier2, cooperative)`
+- non-erased + non-blocking + non-yielding -> `(tier3, cooperative)`
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- Coherent typed handle should type-check.
+- Mismatched handler clause that leaves handled effect unremoved should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. Coherent handler (`probe_coherent_20260304ac`) -> `ok`.
+2. Mismatch effect-leak handler (`probe_mismatch_20260304ac`) -> `error`, `E0001`.
+3. Bad resume payload (`probe_bad_resume_20260304ac`) -> `error`, `E0001`.
+4. Out-of-handler resume (`probe_outside_resume_20260304ac`) -> `error`, `E0012`.
+5. Forged-name out-of-handler resume (`probe_forged_resume_ctx_20260304ac`) -> `error`, `E0012`.
+6. Double-resume clause (`probe_double_resume_20260304ac`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the new pair-valued closed-form theorem and retained prior tier/scheduler closed forms as its proof inputs.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_typed_handle_correspondence_capstone_tier_scheduler_pair_eq_if_erased_then_tier1_pure_else_blocking_yield_split`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The native typed-handle boundary now exposes a single theorem that jointly classifies compiler tier and runtime scheduler class from the same erased/blocking/yielding predicates.
