@@ -6983,6 +6983,148 @@ fn handler_clause_resume_value_must_match_operation_return() {
 }
 
 #[test]
+fn handler_clause_resume_value_parameterized_effect_accepts_correct_type() {
+    // Regression test: parameterized effects (Reader C, State S) must correctly
+    // type-check resume values.  The operation return type should resolve via
+    // the shared_type_mapping → decomposition → instantiation chain.
+    let mut env = TypeEnv::new();
+    let records = RecordRegistry::new();
+    let sums = SumTypeRegistry::new();
+    let mut traits = TraitRegistry::new();
+    register_hkt_for_use_for_traits(&mut traits, &records);
+
+    // effect Reader C
+    //   fn ask() -> C
+    let reader = make_effect_decl(
+        "Reader",
+        vec!["C"],
+        vec![make_effect_operation(
+            "ask",
+            vec![],
+            TypeAnnotation::Named("C".to_string()),
+        )],
+    );
+    let diags = register_effect_decl(&reader, &records, Some(&sums), &mut env);
+    assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+
+    // handle Reader.ask() with Reader.ask() -> resume 42
+    let handled = call(field_access(var("Reader"), "ask"), vec![]);
+    let clause = handle_clause("Reader", "ask", vec![], resume(lit_int(42)));
+    let expr = handle_expr(handled, vec![clause], None);
+
+    let mut unifier = Unifier::new();
+    let ty = infer_and_resolve(&expr, &mut env, &mut unifier, &records, &traits, &sums);
+    assert!(
+        !unifier.has_errors(),
+        "expected no errors for resume 42 in Reader handler, got {:?}",
+        unifier.errors()
+    );
+    let resolved = unifier.substitution.apply(&ty);
+    assert_eq!(
+        resolved,
+        Type::Int,
+        "handle Reader.ask() with resume 42 should have type Int"
+    );
+}
+
+#[test]
+fn handler_clause_resume_value_parameterized_effect_in_lambda_with_return_annotation() {
+    // Regression test: when wrapped in a Lambda with return annotation (as fn_decl.to_let_expr()
+    // does for `fn main() -> Int`), the Lambda arm processes the body TWICE:
+    // once via infer_expr_bidir, once via check_expr_bidir.  This must not corrupt
+    // the type inference for parameterized effect handler clauses.
+    let mut env = TypeEnv::new();
+    let records = RecordRegistry::new();
+    let sums = SumTypeRegistry::new();
+    let mut traits = TraitRegistry::new();
+    register_hkt_for_use_for_traits(&mut traits, &records);
+
+    let reader = make_effect_decl(
+        "Reader",
+        vec!["C"],
+        vec![make_effect_operation(
+            "ask",
+            vec![],
+            TypeAnnotation::Named("C".to_string()),
+        )],
+    );
+    let diags = register_effect_decl(&reader, &records, Some(&sums), &mut env);
+    assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+
+    // Wrap in a Lambda with return annotation: fn() -> Int { handle Reader.ask() ... }
+    let handled = call(field_access(var("Reader"), "ask"), vec![]);
+    let clause = handle_clause("Reader", "ask", vec![], resume(lit_int(42)));
+    let handle = handle_expr(handled, vec![clause], None);
+
+    let lambda_with_ret = sp(ExprKind::Lambda {
+        params: vec![],
+        body: Box::new(handle),
+        return_annotation: Some(sp(TypeAnnotation::Named("Int".to_string()))),
+        effect_annotation: None,
+    });
+
+    let mut unifier = Unifier::new();
+    let ty = infer_and_resolve(&lambda_with_ret, &mut env, &mut unifier, &records, &traits, &sums);
+    assert!(
+        !unifier.has_errors(),
+        "expected no errors for resume 42 in Reader handler wrapped in Lambda, got {:?}",
+        unifier.errors()
+    );
+    let resolved = unifier.substitution.apply(&ty);
+    // Should be fn() -> Int
+    if let Type::Function(ft) = &resolved {
+        assert_eq!(*ft.ret, Type::Int, "Lambda should return Int");
+    } else {
+        panic!("expected Function type, got {resolved:?}");
+    }
+}
+
+#[test]
+fn handler_clause_resume_value_parameterized_effect_rejects_wrong_type() {
+    // Same as above but resume "bad" (String) where Int is expected.
+    let mut env = TypeEnv::new();
+    let records = RecordRegistry::new();
+    let sums = SumTypeRegistry::new();
+    let mut traits = TraitRegistry::new();
+    register_hkt_for_use_for_traits(&mut traits, &records);
+
+    let reader = make_effect_decl(
+        "Reader",
+        vec!["C"],
+        vec![make_effect_operation(
+            "ask",
+            vec![],
+            TypeAnnotation::Named("C".to_string()),
+        )],
+    );
+    let diags = register_effect_decl(&reader, &records, Some(&sums), &mut env);
+    assert!(diags.is_empty(), "unexpected diagnostics: {diags:?}");
+
+    // Body calls Reader.ask() — body type depends on C.
+    // The handler clause says resume "bad" — String, not Int.
+    // Since C is only constrained by the resume value, the handle expr
+    // should succeed (C = String, body returns String, result = String).
+    // This is NOT a type error — the polymorphic C unifies freely.
+    let handled = call(field_access(var("Reader"), "ask"), vec![]);
+    let clause = handle_clause("Reader", "ask", vec![], resume(lit_str("hello")));
+    let expr = handle_expr(handled, vec![clause], None);
+
+    let mut unifier = Unifier::new();
+    let ty = infer_and_resolve(&expr, &mut env, &mut unifier, &records, &traits, &sums);
+    assert!(
+        !unifier.has_errors(),
+        "expected no errors for resume 'hello' in Reader handler (C is polymorphic), got {:?}",
+        unifier.errors()
+    );
+    let resolved = unifier.substitution.apply(&ty);
+    assert_eq!(
+        resolved,
+        Type::String,
+        "handle Reader.ask() with resume 'hello' should have type String"
+    );
+}
+
+#[test]
 fn handle_requires_clauses_for_all_effect_operations() {
     let mut env = TypeEnv::new();
     let records = RecordRegistry::new();

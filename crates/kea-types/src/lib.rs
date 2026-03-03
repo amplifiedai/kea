@@ -543,7 +543,7 @@ impl fmt::Display for Type {
             Type::String => write!(f, "String"),
             Type::Html => write!(f, "Html"),
             Type::Markdown => write!(f, "Markdown"),
-            Type::Unit => write!(f, "()"),
+            Type::Unit => write!(f, "Unit"),
             Type::Never => write!(f, "Never"),
             Type::Atom => write!(f, "Atom"),
             Type::Date => write!(f, "Date"),
@@ -2479,7 +2479,7 @@ mod tests {
         );
         assert_eq!(Type::Bool.to_string(), "Bool");
         assert_eq!(Type::String.to_string(), "String");
-        assert_eq!(Type::Unit.to_string(), "()");
+        assert_eq!(Type::Unit.to_string(), "Unit");
         assert_eq!(Type::Never.to_string(), "Never");
     }
 

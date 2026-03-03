@@ -11727,7 +11727,7 @@ fn infer_handle_expr_type(
             &expected,
             &Provenance {
                 span: then_expr.span,
-                reason: Reason::TypeAscription,
+                reason: Reason::FunctionArg { param_index: 0 },
             },
         );
         // Propagate then-clause effects to the body ambient so they are
@@ -12025,7 +12025,7 @@ fn infer_handle_expr_type(
             &result_ty,
             &Provenance {
                 span: clause.body.span,
-                reason: Reason::TypeAscription,
+                reason: Reason::HandleClauseBody,
             },
         );
         clause_env.pop_scope();
@@ -13574,7 +13574,7 @@ fn infer_expr_bidir(
                 &ctx.operation_return,
                 &Provenance {
                     span: value.span,
-                    reason: Reason::TypeAscription,
+                    reason: Reason::ResumeValue,
                 },
             );
             ctx.clause_result.clone()

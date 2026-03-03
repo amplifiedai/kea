@@ -95,6 +95,10 @@ pub enum Reason {
     ActorOp,
     /// Handle expression: body's effect type parameter must match handler.
     HandleEffectPayload,
+    /// Resume value must match the operation's return type.
+    ResumeValue,
+    /// Handler clause body must match the handle expression's result type.
+    HandleClauseBody,
 }
 
 // ---------------------------------------------------------------------------
@@ -2647,6 +2651,18 @@ fn type_mismatch_message(
             Some(format!(
                 "required because of a `where` bound: `{trait_name}`"
             )),
+        ),
+        Reason::ResumeValue => (
+            format!(
+                "resume value has type `{actual}`, but the operation returns `{expected}`"
+            ),
+            Some("the resume value must match the effect operation's return type".into()),
+        ),
+        Reason::HandleClauseBody => (
+            format!(
+                "handler clause body has type `{actual}`, but the handle expression expects `{expected}`"
+            ),
+            Some("all handler clauses must produce the same type as the handled body".into()),
         ),
         _ => (
             format!("type mismatch: expected `{expected}`, got `{actual}`"),

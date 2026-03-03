@@ -2365,7 +2365,7 @@ fn compile_rejects_resume_value_type_mismatch_in_handler_clause() {
 
     let err = run_file(&source_path).expect_err("run should reject resume type mismatch");
     assert!(
-        err.contains("type mismatch") && err.contains("Int") && err.contains("String"),
+        err.contains("resume value has type") && err.contains("Int") && err.contains("String"),
         "expected resume type-mismatch diagnostic, got: {err}"
     );
 
@@ -2386,8 +2386,8 @@ fn compile_rejects_polymorphic_effect_resume_type_mismatch() {
     let err =
         run_file(&source_path).expect_err("should reject polymorphic effect resume type mismatch");
     assert!(
-        err.contains("type mismatch"),
-        "expected type mismatch diagnostic for polymorphic effect resume, got: {err}"
+        err.contains("resume value has type"),
+        "expected resume type mismatch diagnostic for polymorphic effect resume, got: {err}"
     );
 
     let _ = std::fs::remove_file(source_path);
@@ -2405,8 +2405,8 @@ fn compile_rejects_state_handler_resume_type_mismatch() {
 
     let err = run_file(&source_path).expect_err("should reject State handler resume type mismatch");
     assert!(
-        err.contains("type mismatch"),
-        "expected type mismatch diagnostic for State resume, got: {err}"
+        err.contains("resume value has type"),
+        "expected resume type mismatch diagnostic for State resume, got: {err}"
     );
 
     let _ = std::fs::remove_file(source_path);
@@ -6893,6 +6893,50 @@ fn temp_workspace_project_dir(prefix: &str) -> PathBuf {
         .join(format!("{prefix}-{timestamp}-{counter}"));
     std::fs::create_dir_all(&path).expect("workspace temp project dir should be created");
     path
+}
+
+/// Regression test: process_module_in_env (the MCP code path) must not
+/// produce type errors for parameterized effect handler clauses.
+#[test]
+fn process_module_in_env_accepts_parameterized_effect_handler() {
+    let source = "effect Reader C\n  fn ask() -> C\n\nfn read() -[Reader Int]> Int\n  Reader.ask()\n\nfn main() -> Int\n  handle read()\n    Reader.ask() -> resume 42\n";
+    let (tokens, warnings) = kea_syntax::lex_layout(source, kea_ast::FileId(0))
+        .expect("lex should succeed");
+    let module = kea_syntax::parse_module(tokens, kea_ast::FileId(0))
+        .expect("parse should succeed");
+
+    use kea_infer::typeck::{TypeEnv, RecordRegistry, TraitRegistry, SumTypeRegistry};
+    let mut env = TypeEnv::new();
+    let mut records = RecordRegistry::new();
+    let mut traits = TraitRegistry::new();
+    let mut sum_types = SumTypeRegistry::new();
+
+    let result = kea::process_module_in_env(
+        &module,
+        &mut env,
+        &mut records,
+        &mut traits,
+        &mut sum_types,
+        warnings,
+    );
+    match result {
+        Ok(processed) => {
+            let errors: Vec<_> = processed
+                .diagnostics
+                .iter()
+                .filter(|d| d.severity == kea_diag::Severity::Error)
+                .collect();
+            assert!(
+                errors.is_empty(),
+                "process_module_in_env should produce no errors for valid Reader handler, got: {errors:?}"
+            );
+        }
+        Err(diags) => {
+            panic!(
+                "process_module_in_env should not fail for valid Reader handler, got: {diags:?}"
+            );
+        }
+    }
 }
 
 fn temp_artifact_path(prefix: &str, extension: &str) -> PathBuf {

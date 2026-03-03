@@ -652,4 +652,15 @@ mod tests {
             "expected trap to preserve Log and avoid phantom IO, got {trap_ty}"
         );
     }
+
+    #[test]
+    fn type_check_parameterized_effect_handler_resume_value() {
+        let server = KeaMcpServer::new();
+        let code = "effect Reader C\n  fn ask() -> C\n\nfn read() -[Reader Int]> Int\n  Reader.ask()\n\nfn main() -> Int\n  handle read()\n    Reader.ask() -> resume 42\n";
+        let value = parse_json(&server.handle_type_check(code));
+        assert_eq!(
+            value["status"], "ok",
+            "parameterized effect handler should type-check, got: {value}"
+        );
+    }
 }
