@@ -55,6 +55,64 @@ mutual
     | cons : Label → CoreExpr → CoreFields → CoreFields
 end
 
+/- =========================================================================
+   Syntactic resume-summary helpers (linearity checking)
+   ========================================================================= -/
+
+/--
+Saturated summary of how many `resume` sites appear in an expression.
+-/
+inductive ResumeSummary : Type where
+  | zero
+  | one
+  | many
+deriving DecidableEq, Repr
+
+/--
+At-most-once property on saturated resume summaries.
+-/
+def resumeSummary_atMostOnce : ResumeSummary → Prop
+  | .zero => True
+  | .one => True
+  | .many => False
+
+/--
+Saturating addition for resume summaries.
+-/
+def resumeSummaryCombine : ResumeSummary → ResumeSummary → ResumeSummary
+  | .many, _ => .many
+  | _, .many => .many
+  | .zero, s => s
+  | s, .zero => s
+  | .one, .one => .many
+
+mutual
+  /--
+  Syntactic resume-summary extraction for core expressions.
+  -/
+  def resumeSummary : CoreExpr → ResumeSummary
+    | .intLit _ => .zero
+    | .boolLit _ => .zero
+    | .stringLit _ => .zero
+    | .var _ => .zero
+    | .lam _ _ body => resumeSummary body
+    | .app fn arg => resumeSummaryCombine (resumeSummary fn) (resumeSummary arg)
+    | .letE _ value body => resumeSummaryCombine (resumeSummary value) (resumeSummary body)
+    | .record fields => resumeSummaryFields fields
+    | .proj e _ => resumeSummary e
+    | .perform _ _ _ arg k => resumeSummaryCombine (resumeSummary arg) (resumeSummary k)
+    | .handle body _ _ _ _ _ clauseBody =>
+      resumeSummaryCombine (resumeSummary body) (resumeSummary clauseBody)
+    | .resume value => resumeSummaryCombine .one (resumeSummary value)
+
+  /--
+  Syntactic resume-summary extraction for field lists.
+  -/
+  def resumeSummaryFields : CoreFields → ResumeSummary
+    | .nil => .zero
+    | .cons _ e rest => resumeSummaryCombine (resumeSummary e) (resumeSummaryFields rest)
+end
+
 mutual
   /-- Algorithmic inference for core expressions. -/
   def inferExpr (env : TermEnv) : CoreExpr → Option Ty
@@ -93,15 +151,18 @@ mutual
     | .handle body _ argName resumeName argTy opRetTy clauseBody =>
       match inferExpr env body with
       | some bodyTy =>
-        let clauseEnv :=
-          (resumeCtxName, .function (.cons opRetTy .nil) bodyTy) ::
-            (resumeName, .function (.cons opRetTy .nil) bodyTy) ::
-            (argName, argTy) ::
-            env
-        match inferExpr clauseEnv clauseBody with
-        | some clauseTy =>
-          if beqTy clauseTy bodyTy then some bodyTy else none
-        | none => none
+        match resumeSummary clauseBody with
+        | .many => none
+        | _ =>
+          let clauseEnv :=
+            (resumeCtxName, .function (.cons opRetTy .nil) bodyTy) ::
+              (resumeName, .function (.cons opRetTy .nil) bodyTy) ::
+              (argName, argTy) ::
+              env
+          match inferExpr clauseEnv clauseBody with
+          | some clauseTy =>
+            if beqTy clauseTy bodyTy then some bodyTy else none
+          | none => none
       | none => none
     | .resume value =>
       match TermEnv.lookup env resumeCtxName with
@@ -158,6 +219,7 @@ mutual
     | handle (env : TermEnv) (body : CoreExpr) (op : Label)
         (argName resumeName : String) (argTy opRetTy bodyTy : Ty) (clauseBody : CoreExpr)
         (h_body : HasType env body bodyTy)
+        (h_linear : resumeSummary_atMostOnce (resumeSummary clauseBody))
         (h_clause :
           HasType
             ((resumeCtxName, .function (.cons opRetTy .nil) bodyTy) ::
@@ -223,6 +285,7 @@ mutual
     | handle (env : TermEnv) (body : CoreExpr) (op : Label)
         (argName resumeName : String) (argTy opRetTy bodyTy : Ty) (clauseBody : CoreExpr)
         (h_body : HasTypeU env body bodyTy)
+        (h_linear : resumeSummary_atMostOnce (resumeSummary clauseBody))
         (h_clause :
           HasTypeU
             ((resumeCtxName, .function (.cons opRetTy .nil) bodyTy) ::
@@ -278,9 +341,10 @@ mutual
       exact HasTypeU.perform env op argTy opRetTy ty arg k
         (hasType_to_hasTypeU h_arg)
         (hasType_to_hasTypeU h_k)
-    | handle env body op argName resumeName argTy opRetTy _ clauseBody h_body h_clause =>
+    | handle env body op argName resumeName argTy opRetTy _ clauseBody h_body h_linear h_clause =>
       exact HasTypeU.handle env body op argName resumeName argTy opRetTy ty clauseBody
         (hasType_to_hasTypeU h_body)
+        h_linear
         (hasType_to_hasTypeU h_clause)
     | resume env value opRetTy _ h_ctx h_value =>
       exact HasTypeU.resume env value opRetTy ty h_ctx
@@ -485,31 +549,65 @@ mutual
       | none =>
         simp [h_body] at h
       | some bodyTy =>
-        let clauseEnv :=
-          (resumeCtxName, .function (.cons opRetTy .nil) bodyTy) ::
-            (resumeName, .function (.cons opRetTy .nil) bodyTy) ::
-            (argName, argTy) ::
-            env
-        cases h_clause : inferExpr clauseEnv clauseBody with
-        | none =>
-          simp [clauseEnv, h_body, h_clause] at h
-        | some clauseTy =>
-          cases h_clause_eq : beqTy clauseTy bodyTy with
-          | false =>
-            simp [clauseEnv, h_body, h_clause, h_clause_eq] at h
-          | true =>
-            have h_ty_eq : bodyTy = ty := by
-              simpa [inferExpr, clauseEnv, h_body, h_clause, h_clause_eq] using h
-            subst ty
-            have h_body_ty : HasType env body bodyTy :=
-              inferExpr_sound env body bodyTy h_body
-            have h_clause_ty : HasType clauseEnv clauseBody clauseTy :=
-              inferExpr_sound clauseEnv clauseBody clauseTy h_clause
-            have h_clause_ty_eq : clauseTy = bodyTy :=
-              beqTy_sound clauseTy bodyTy h_clause_eq
-            rw [h_clause_ty_eq] at h_clause_ty
-            exact HasType.handle env body op argName resumeName argTy opRetTy bodyTy clauseBody
-              h_body_ty h_clause_ty
+        cases h_sum : resumeSummary clauseBody with
+        | many =>
+          simp [h_body, h_sum] at h
+        | zero =>
+          have h_linear : resumeSummary_atMostOnce (resumeSummary clauseBody) := by
+            simp [h_sum, resumeSummary_atMostOnce]
+          let clauseEnv :=
+            (resumeCtxName, .function (.cons opRetTy .nil) bodyTy) ::
+              (resumeName, .function (.cons opRetTy .nil) bodyTy) ::
+              (argName, argTy) ::
+              env
+          cases h_clause : inferExpr clauseEnv clauseBody with
+          | none =>
+            simp [h_body, h_sum, clauseEnv, h_clause] at h
+          | some clauseTy =>
+            cases h_clause_eq : beqTy clauseTy bodyTy with
+            | false =>
+              simp [h_body, h_sum, clauseEnv, h_clause, h_clause_eq] at h
+            | true =>
+              have h_ty_eq : bodyTy = ty := by
+                simpa [inferExpr, h_body, h_sum, clauseEnv, h_clause, h_clause_eq] using h
+              subst ty
+              have h_body_ty : HasType env body bodyTy :=
+                inferExpr_sound env body bodyTy h_body
+              have h_clause_ty : HasType clauseEnv clauseBody clauseTy :=
+                inferExpr_sound clauseEnv clauseBody clauseTy h_clause
+              have h_clause_ty_eq : clauseTy = bodyTy :=
+                beqTy_sound clauseTy bodyTy h_clause_eq
+              rw [h_clause_ty_eq] at h_clause_ty
+              exact HasType.handle env body op argName resumeName argTy opRetTy bodyTy clauseBody
+                h_body_ty h_linear h_clause_ty
+        | one =>
+          have h_linear : resumeSummary_atMostOnce (resumeSummary clauseBody) := by
+            simp [h_sum, resumeSummary_atMostOnce]
+          let clauseEnv :=
+            (resumeCtxName, .function (.cons opRetTy .nil) bodyTy) ::
+              (resumeName, .function (.cons opRetTy .nil) bodyTy) ::
+              (argName, argTy) ::
+              env
+          cases h_clause : inferExpr clauseEnv clauseBody with
+          | none =>
+            simp [h_body, h_sum, clauseEnv, h_clause] at h
+          | some clauseTy =>
+            cases h_clause_eq : beqTy clauseTy bodyTy with
+            | false =>
+              simp [h_body, h_sum, clauseEnv, h_clause, h_clause_eq] at h
+            | true =>
+              have h_ty_eq : bodyTy = ty := by
+                simpa [inferExpr, h_body, h_sum, clauseEnv, h_clause, h_clause_eq] using h
+              subst ty
+              have h_body_ty : HasType env body bodyTy :=
+                inferExpr_sound env body bodyTy h_body
+              have h_clause_ty : HasType clauseEnv clauseBody clauseTy :=
+                inferExpr_sound clauseEnv clauseBody clauseTy h_clause
+              have h_clause_ty_eq : clauseTy = bodyTy :=
+                beqTy_sound clauseTy bodyTy h_clause_eq
+              rw [h_clause_ty_eq] at h_clause_ty
+              exact HasType.handle env body op argName resumeName argTy opRetTy bodyTy clauseBody
+                h_body_ty h_linear h_clause_ty
     | resume value =>
       intro ty h
       simp [inferExpr] at h
@@ -609,18 +707,40 @@ mutual
         inferExpr_complete env k (.function (.cons opRetTy .nil) ty) h_k,
         beqTy_refl argTy,
         beqTy_refl opRetTy]
-    | handle env body op argName resumeName argTy opRetTy _ clauseBody h_body h_clause =>
-      simp [inferExpr,
-        inferExpr_complete env body ty h_body,
-        inferExpr_complete
-          ((resumeCtxName, .function (.cons opRetTy .nil) ty) ::
-            (resumeName, .function (.cons opRetTy .nil) ty) ::
-            (argName, argTy) ::
-            env)
-          clauseBody
-          ty
-          h_clause,
-        beqTy_refl ty]
+    | handle env body op argName resumeName argTy opRetTy _ clauseBody h_body h_linear h_clause =>
+      have h_not_many : resumeSummary clauseBody ≠ .many := by
+        intro h_many
+        have : resumeSummary_atMostOnce (resumeSummary clauseBody) := h_linear
+        simp [h_many, resumeSummary_atMostOnce] at this
+      cases h_sum : resumeSummary clauseBody with
+      | many =>
+        exact False.elim (h_not_many h_sum)
+      | zero =>
+        simp [inferExpr,
+          h_sum,
+          inferExpr_complete env body ty h_body,
+          inferExpr_complete
+            ((resumeCtxName, .function (.cons opRetTy .nil) ty) ::
+              (resumeName, .function (.cons opRetTy .nil) ty) ::
+              (argName, argTy) ::
+              env)
+            clauseBody
+            ty
+            h_clause,
+          beqTy_refl ty]
+      | one =>
+        simp [inferExpr,
+          h_sum,
+          inferExpr_complete env body ty h_body,
+          inferExpr_complete
+            ((resumeCtxName, .function (.cons opRetTy .nil) ty) ::
+              (resumeName, .function (.cons opRetTy .nil) ty) ::
+              (argName, argTy) ::
+              env)
+            clauseBody
+            ty
+            h_clause,
+          beqTy_refl ty]
     | resume env value opRetTy handlerTy h_ctx h_value =>
       simp [inferExpr, h_ctx, inferExpr_complete env value opRetTy h_value, beqTy_refl opRetTy]
 
@@ -751,64 +871,6 @@ theorem hasType_resume_iff_ctx_and_value
   · intro h
     rcases h with ⟨opRetTy, h_ctx, h_value⟩
     exact HasType.resume env value opRetTy handlerTy h_ctx h_value
-
-/- =========================================================================
-   Syntactic resume-summary helpers (linearity checking)
-   ========================================================================= -/
-
-/--
-Saturated summary of how many `resume` sites appear in an expression.
--/
-inductive ResumeSummary : Type where
-  | zero
-  | one
-  | many
-deriving DecidableEq, Repr
-
-/--
-At-most-once property on saturated resume summaries.
--/
-def resumeSummary_atMostOnce : ResumeSummary → Prop
-  | .zero => True
-  | .one => True
-  | .many => False
-
-/--
-Saturating addition for resume summaries.
--/
-def resumeSummaryCombine : ResumeSummary → ResumeSummary → ResumeSummary
-  | .many, _ => .many
-  | _, .many => .many
-  | .zero, s => s
-  | s, .zero => s
-  | .one, .one => .many
-
-mutual
-  /--
-  Syntactic resume-summary extraction for core expressions.
-  -/
-  def resumeSummary : CoreExpr → ResumeSummary
-    | .intLit _ => .zero
-    | .boolLit _ => .zero
-    | .stringLit _ => .zero
-    | .var _ => .zero
-    | .lam _ _ body => resumeSummary body
-    | .app fn arg => resumeSummaryCombine (resumeSummary fn) (resumeSummary arg)
-    | .letE _ value body => resumeSummaryCombine (resumeSummary value) (resumeSummary body)
-    | .record fields => resumeSummaryFields fields
-    | .proj e _ => resumeSummary e
-    | .perform _ _ _ arg k => resumeSummaryCombine (resumeSummary arg) (resumeSummary k)
-    | .handle body _ _ _ _ _ clauseBody =>
-      resumeSummaryCombine (resumeSummary body) (resumeSummary clauseBody)
-    | .resume value => resumeSummaryCombine .one (resumeSummary value)
-
-  /--
-  Syntactic resume-summary extraction for field lists.
-  -/
-  def resumeSummaryFields : CoreFields → ResumeSummary
-    | .nil => .zero
-    | .cons _ e rest => resumeSummaryCombine (resumeSummary e) (resumeSummaryFields rest)
-end
 
 /- =========================================================================
    Native scoped resume typing (non-forgeable handler context)
@@ -1120,6 +1182,33 @@ theorem hasTypeScoped_does_not_imply_resumeSummary_atMostOnce :
     hasTypeScoped_doubleResumeWitnessExpr,
     hasTypeScoped_doubleResumeWitnessExpr_not_atMostOnce
   ⟩
+
+/--
+Algorithmic legacy typing rejects a top-level `handle` whose clause body has
+two `resume` sites.
+-/
+theorem inferExpr_handle_with_doubleResume_clause_none :
+    inferExpr []
+      (.handle (.intLit 0) "Op" "x" "k" .int .int doubleResumeWitnessExpr) = none := by
+  simp [inferExpr, doubleResumeWitnessExpr, resumeSummary, resumeSummaryCombine]
+
+/--
+Legacy declarative typing also rejects that top-level double-resume handle,
+because `inferExpr` and `HasType` coincide.
+-/
+theorem not_hasType_handle_with_doubleResume_clause :
+    ¬ HasType []
+      (.handle (.intLit 0) "Op" "x" "k" .int .int doubleResumeWitnessExpr)
+      .int := by
+  intro h_typed
+  have h_inf :
+      inferExpr []
+        (.handle (.intLit 0) "Op" "x" "k" .int .int doubleResumeWitnessExpr) = some .int :=
+    inferExpr_complete []
+      (.handle (.intLit 0) "Op" "x" "k" .int .int doubleResumeWitnessExpr)
+      .int
+      h_typed
+  simp [inferExpr, doubleResumeWitnessExpr, resumeSummary, resumeSummaryCombine] at h_inf
 
 /--
 Concrete top-level `handle` with a double-resume clause is not typable in the
@@ -14012,7 +14101,7 @@ mutual
       exact HasType.perform env' op argTy opRetTy ty arg k
         (hasType_lookup_congr h_lookup_eq h_arg)
         (hasType_lookup_congr h_lookup_eq h_k)
-    | handle _ body op argName resumeName argTy opRetTy _ clauseBody h_body h_clause =>
+    | handle _ body op argName resumeName argTy opRetTy _ clauseBody h_body h_linear h_clause =>
       let h_lookup_eq_clause :
           ∀ n,
             TermEnv.lookup
@@ -14034,6 +14123,7 @@ mutual
           resumeCtxName (.function (.cons opRetTy .nil) ty)
       exact HasType.handle env' body op argName resumeName argTy opRetTy ty clauseBody
         (hasType_lookup_congr h_lookup_eq h_body)
+        h_linear
         (hasType_lookup_congr h_lookup_eq_clause h_clause)
     | resume _ value opRetTy _ h_ctx h_value =>
       exact HasType.resume env' value opRetTy ty

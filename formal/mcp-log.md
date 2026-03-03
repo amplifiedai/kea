@@ -24310,3 +24310,51 @@ Lean typing model and MCP typing behavior disagree on whether double-resume clau
 - No Lean↔MCP divergence at this checkpoint.
 - Core-obligation routes now have a concrete witness instantiation that can be
   consumed without introducing new external assumptions.
+
+### 2026-03-04: divergence closure — legacy `HasType`/`inferExpr` handle path now enforces at-most-once
+
+**Context**: Closed the remaining Lean↔MCP gap on the legacy typing surface by tightening both:
+- declarative legacy handle rules: `HasType.handle` and `HasTypeU.handle` now require
+  `resumeSummary_atMostOnce (resumeSummary clauseBody)`;
+- algorithmic legacy handle inference: `inferExpr` now rejects `.handle` when
+  `resumeSummary clauseBody = .many`.
+
+Also added explicit regression theorems:
+- `inferExpr_handle_with_doubleResume_clause_none`
+- `not_hasType_handle_with_doubleResume_clause`
+
+**MCP tools used**: `reset_session`, `type_check` (direct `kea` MCP probes).
+
+**Predict (Lean side)**:
+1. Coherent/single-resume handler remains accepted.
+2. Double-resume handler clause is rejected.
+3. Out-of-handler `resume` remains rejected.
+4. Legacy Lean probe for double-resume `inferExpr` should return `none`.
+
+**Probe (Lean + Rust/MCP)**:
+- Lean probe (`lake env lean`):
+  - `#eval` of `inferExpr [] (.handle ... doubleResumeWitnessExpr)` evaluates to `false`
+    (i.e. `none`, not `some _`).
+- MCP probes:
+  1. `probe_coherent_20260304bu` -> `ok`.
+  2. `probe_double_resume_20260304bu` -> `error`, `E0012`,
+     `handler clause may resume at most once`.
+  3. `probe_outside_resume_20260304bu` -> `error`, `E0012`,
+     `` `resume` is only valid inside a matching handler clause ``.
+
+**Classify**: Agreement.
+
+**Outcome**:
+- Both Lean typing surfaces (legacy + scoped/native) now enforce clause
+  at-most-once linearity.
+- Legacy permissive path is removed; divergence is closed.
+
+**Traceability**:
+- Lean edits: `formal/Kea/Typing.lean` (legacy handle premises, `inferExpr`
+  handle gate, and regression theorems listed above).
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- No Lean↔MCP divergence at this checkpoint.
