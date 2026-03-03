@@ -346,7 +346,7 @@ struct DirectCapabilitySpec {
 const DIRECT_CAPABILITIES: &[DirectCapabilitySpec] = &[
     DirectCapabilitySpec {
         effect: "IO",
-        operations: &["stdout", "stderr", "read_file", "write_file", "exit"],
+        operations: &["stdout", "stderr", "read_file", "write_file", "exit", "file_exists", "env_var", "mkdir"],
     },
     DirectCapabilitySpec {
         effect: "Clock",
@@ -463,6 +463,46 @@ unsafe extern "C" fn kea_io_exit_stub(code: i64) {
     JIT_EXIT_CODE.with(|c| c.set(Some(code as i32)));
 }
 
+unsafe extern "C" fn kea_io_file_exists_stub(path: *const c_char) -> i8 {
+    if path.is_null() {
+        return 0;
+    }
+    let Ok(path) = (unsafe { CStr::from_ptr(path) }).to_str() else {
+        return 0;
+    };
+    if std::path::Path::new(path).exists() { 1 } else { 0 }
+}
+
+unsafe extern "C" fn kea_io_env_var_stub(name: *const c_char) -> *const c_char {
+    static EMPTY: &[u8] = b"\0";
+    if name.is_null() {
+        return EMPTY.as_ptr() as *const c_char;
+    }
+    let Ok(name) = (unsafe { CStr::from_ptr(name) }).to_str() else {
+        return EMPTY.as_ptr() as *const c_char;
+    };
+    match std::env::var(name) {
+        Ok(val) => match CString::new(val) {
+            Ok(cstring) => cstring.into_raw(),
+            Err(_) => EMPTY.as_ptr() as *const c_char,
+        },
+        Err(_) => EMPTY.as_ptr() as *const c_char,
+    }
+}
+
+unsafe extern "C" fn kea_io_mkdir_stub(path: *const c_char) -> i8 {
+    if path.is_null() {
+        return -1;
+    }
+    let Ok(path) = (unsafe { CStr::from_ptr(path) }).to_str() else {
+        return -1;
+    };
+    match fs::create_dir_all(path) {
+        Ok(_) => 0,
+        Err(_) => -1,
+    }
+}
+
 unsafe extern "C" fn kea_io_read_file_stub(path: *const c_char) -> *const c_char {
     static EMPTY: &[u8] = b"\0";
     if path.is_null() {
@@ -528,6 +568,9 @@ fn register_jit_runtime_symbols(builder: &mut JITBuilder) {
     builder.symbol("__kea_io_write_file", kea_io_write_file_stub as *const u8);
     builder.symbol("__kea_io_read_file", kea_io_read_file_stub as *const u8);
     builder.symbol("__kea_io_exit", kea_io_exit_stub as *const u8);
+    builder.symbol("__kea_io_file_exists", kea_io_file_exists_stub as *const u8);
+    builder.symbol("__kea_io_env_var", kea_io_env_var_stub as *const u8);
+    builder.symbol("__kea_io_mkdir", kea_io_mkdir_stub as *const u8);
     builder.symbol("__kea_clock_now", kea_clock_now_stub as *const u8);
     builder.symbol(
         "__kea_clock_monotonic",
@@ -595,6 +638,9 @@ fn compile_into_module<M: Module>(
     let mut requires_io_read_file = false;
     let mut requires_io_write_file = false;
     let mut requires_io_exit = false;
+    let mut requires_io_file_exists = false;
+    let mut requires_io_env_var = false;
+    let mut requires_io_mkdir = false;
     let mut requires_clock_now = false;
     let mut requires_clock_monotonic = false;
     let mut requires_rand_int = false;
@@ -647,6 +693,9 @@ fn compile_into_module<M: Module>(
                             ("IO", "read_file") => requires_io_read_file = true,
                             ("IO", "write_file") => requires_io_write_file = true,
                             ("IO", "exit") => requires_io_exit = true,
+                            ("IO", "file_exists") => requires_io_file_exists = true,
+                            ("IO", "env_var") => requires_io_env_var = true,
+                            ("IO", "mkdir") => requires_io_mkdir = true,
                             ("Clock", "now") => requires_clock_now = true,
                             ("Clock", "monotonic") => requires_clock_monotonic = true,
                             ("Rand", "int") => requires_rand_int = true,
@@ -833,6 +882,54 @@ fn compile_into_module<M: Module>(
         Some(
             module
                 .declare_function("__kea_io_exit", Linkage::Import, &signature)
+                .map_err(|detail| CodegenError::Module {
+                    detail: detail.to_string(),
+                })?,
+        )
+    } else {
+        None
+    };
+
+    let io_file_exists_func_id = if requires_io_file_exists {
+        let ptr_ty = module.target_config().pointer_type();
+        let mut signature = module.make_signature();
+        signature.params.push(AbiParam::new(ptr_ty));
+        signature.returns.push(AbiParam::new(types::I8));
+        Some(
+            module
+                .declare_function("__kea_io_file_exists", Linkage::Import, &signature)
+                .map_err(|detail| CodegenError::Module {
+                    detail: detail.to_string(),
+                })?,
+        )
+    } else {
+        None
+    };
+
+    let io_env_var_func_id = if requires_io_env_var {
+        let ptr_ty = module.target_config().pointer_type();
+        let mut signature = module.make_signature();
+        signature.params.push(AbiParam::new(ptr_ty));
+        signature.returns.push(AbiParam::new(ptr_ty));
+        Some(
+            module
+                .declare_function("__kea_io_env_var", Linkage::Import, &signature)
+                .map_err(|detail| CodegenError::Module {
+                    detail: detail.to_string(),
+                })?,
+        )
+    } else {
+        None
+    };
+
+    let io_mkdir_func_id = if requires_io_mkdir {
+        let ptr_ty = module.target_config().pointer_type();
+        let mut signature = module.make_signature();
+        signature.params.push(AbiParam::new(ptr_ty));
+        signature.returns.push(AbiParam::new(types::I8));
+        Some(
+            module
+                .declare_function("__kea_io_mkdir", Linkage::Import, &signature)
                 .map_err(|detail| CodegenError::Module {
                     detail: detail.to_string(),
                 })?,
@@ -1087,6 +1184,9 @@ fn compile_into_module<M: Module>(
                     io_write_file_func_id,
                     io_read_file_func_id,
                     io_exit_func_id,
+                    io_file_exists_func_id,
+                    io_env_var_func_id,
+                    io_mkdir_func_id,
                     clock_now_func_id,
                     clock_monotonic_func_id,
                     rand_func_id,
@@ -2085,6 +2185,9 @@ struct LowerInstCtx<'a> {
     io_write_file_func_id: Option<FuncId>,
     io_read_file_func_id: Option<FuncId>,
     io_exit_func_id: Option<FuncId>,
+    io_file_exists_func_id: Option<FuncId>,
+    io_env_var_func_id: Option<FuncId>,
+    io_mkdir_func_id: Option<FuncId>,
     clock_now_func_id: Option<FuncId>,
     clock_monotonic_func_id: Option<FuncId>,
     rand_func_id: Option<FuncId>,
@@ -3957,6 +4060,68 @@ fn lower_instruction<M: Module>(
                             let exit_ref =
                                 module.declare_func_in_func(exit_func_id, builder.func);
                             builder.ins().call(exit_ref, &[code_i64]);
+                            if let Some(dest) = result {
+                                values.insert(dest.clone(), builder.ins().iconst(types::I8, 0));
+                            }
+                            Ok(false)
+                        }
+                        "file_exists" => {
+                            let arg = args.first().ok_or_else(|| CodegenError::UnsupportedMir {
+                                function: function_name.to_string(),
+                                detail: "IO.file_exists expects one String argument".to_string(),
+                            })?;
+                            let path_value = get_value(values, function_name, arg)?;
+                            let path_ptr = coerce_value_to_clif_type(builder, path_value, ptr_ty);
+                            let func_id = ctx.io_file_exists_func_id.ok_or_else(|| CodegenError::UnsupportedMir {
+                                function: function_name.to_string(),
+                                detail: "IO.file_exists lowering requires imported `__kea_io_file_exists` symbol".to_string(),
+                            })?;
+                            let func_ref = module.declare_func_in_func(func_id, builder.func);
+                            let call = builder.ins().call(func_ref, &[path_ptr]);
+                            if let Some(dest) = result {
+                                let raw = builder.inst_results(call).first().copied().ok_or_else(|| CodegenError::UnsupportedMir {
+                                    function: function_name.to_string(),
+                                    detail: "IO.file_exists call returned no value".to_string(),
+                                })?;
+                                values.insert(dest.clone(), raw);
+                            }
+                            Ok(false)
+                        }
+                        "env_var" => {
+                            let arg = args.first().ok_or_else(|| CodegenError::UnsupportedMir {
+                                function: function_name.to_string(),
+                                detail: "IO.env_var expects one String argument".to_string(),
+                            })?;
+                            let name_value = get_value(values, function_name, arg)?;
+                            let name_ptr = coerce_value_to_clif_type(builder, name_value, ptr_ty);
+                            let func_id = ctx.io_env_var_func_id.ok_or_else(|| CodegenError::UnsupportedMir {
+                                function: function_name.to_string(),
+                                detail: "IO.env_var lowering requires imported `__kea_io_env_var` symbol".to_string(),
+                            })?;
+                            let func_ref = module.declare_func_in_func(func_id, builder.func);
+                            let call = builder.ins().call(func_ref, &[name_ptr]);
+                            if let Some(dest) = result {
+                                let raw = builder.inst_results(call).first().copied().ok_or_else(|| CodegenError::UnsupportedMir {
+                                    function: function_name.to_string(),
+                                    detail: "IO.env_var call returned no value".to_string(),
+                                })?;
+                                values.insert(dest.clone(), coerce_value_to_clif_type(builder, raw, ptr_ty));
+                            }
+                            Ok(false)
+                        }
+                        "mkdir" => {
+                            let arg = args.first().ok_or_else(|| CodegenError::UnsupportedMir {
+                                function: function_name.to_string(),
+                                detail: "IO.mkdir expects one String argument".to_string(),
+                            })?;
+                            let path_value = get_value(values, function_name, arg)?;
+                            let path_ptr = coerce_value_to_clif_type(builder, path_value, ptr_ty);
+                            let func_id = ctx.io_mkdir_func_id.ok_or_else(|| CodegenError::UnsupportedMir {
+                                function: function_name.to_string(),
+                                detail: "IO.mkdir lowering requires imported `__kea_io_mkdir` symbol".to_string(),
+                            })?;
+                            let func_ref = module.declare_func_in_func(func_id, builder.func);
+                            builder.ins().call(func_ref, &[path_ptr]);
                             if let Some(dest) = result {
                                 values.insert(dest.clone(), builder.ins().iconst(types::I8, 0));
                             }

@@ -29,6 +29,21 @@ effect IO
 
       IO.exit(1)
   fn exit(code: Int) -[IO]> Unit
+  doc
+    Check whether a file or directory exists.
+
+      IO.file_exists("config.toml")   -- => True
+  fn file_exists(path: String) -[IO]> Bool
+  doc
+    Read an environment variable. Returns empty string if unset.
+
+      IO.env_var("HOME")   -- => "/home/user"
+  fn env_var(name: String) -[IO]> String
+  doc
+    Create a directory and all parent directories.
+
+      IO.mkdir("build/output")
+  fn mkdir(path: String) -[IO]> Unit
 
 doc
   Write text to stdout.

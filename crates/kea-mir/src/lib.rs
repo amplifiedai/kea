@@ -3149,7 +3149,7 @@ struct DirectCapabilitySpec {
 const DIRECT_CAPABILITIES: &[DirectCapabilitySpec] = &[
     DirectCapabilitySpec {
         effect: "IO",
-        operations: &["stdout", "stderr", "read_file", "write_file", "exit"],
+        operations: &["stdout", "stderr", "read_file", "write_file", "exit", "file_exists", "env_var", "mkdir"],
     },
     DirectCapabilitySpec {
         effect: "Clock",

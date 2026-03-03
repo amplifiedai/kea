@@ -914,6 +914,68 @@ fn compile_and_execute_io_exit_exit_code() {
 }
 
 #[test]
+fn compile_and_execute_io_file_exists_exit_code() {
+    let project_dir = temp_workspace_project_dir("kea-cli-project-io-file-exists");
+    let src_dir = project_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+
+    let app_path = src_dir.join("app.kea");
+    // file_exists on /tmp should return True (always exists on unix)
+    std::fs::write(
+        &app_path,
+        "use IO\n\nfn bool_to_int(b: Bool) -> Int\n  if b\n    1\n  else\n    0\n\nfn main() -[IO]> Int\n  let exists = IO.file_exists(\"/tmp\")\n  bool_to_int(exists) + 41\n",
+    )
+    .expect("app module write should succeed");
+
+    let run = run_file(&app_path).expect("IO.file_exists should compile and execute");
+    assert_eq!(run.exit_code, 42);
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
+fn compile_and_execute_io_env_var_exit_code() {
+    let project_dir = temp_workspace_project_dir("kea-cli-project-io-env-var");
+    let src_dir = project_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+
+    let app_path = src_dir.join("app.kea");
+    // env_var on a non-existent var returns empty string; check length == 0
+    std::fs::write(
+        &app_path,
+        "use IO\nuse Text\n\nfn main() -[IO]> Int\n  let val = IO.env_var(\"__KEA_TEST_NONEXISTENT_VAR__\")\n  if Text.length(val) == 0\n    42\n  else\n    0\n",
+    )
+    .expect("app module write should succeed");
+
+    let run = run_file(&app_path).expect("IO.env_var should compile and execute");
+    assert_eq!(run.exit_code, 42);
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
+fn compile_and_execute_io_mkdir_exit_code() {
+    let project_dir = temp_workspace_project_dir("kea-cli-project-io-mkdir");
+    let src_dir = project_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+
+    let app_path = src_dir.join("app.kea");
+    // mkdir creates a dir, then file_exists confirms it
+    std::fs::write(
+        &app_path,
+        "use IO\n\nfn bool_to_int(b: Bool) -> Int\n  if b\n    1\n  else\n    0\n\nfn main() -[IO]> Int\n  IO.mkdir(\"test_output_dir\")\n  let exists = IO.file_exists(\"test_output_dir\")\n  bool_to_int(exists) + 41\n",
+    )
+    .expect("app module write should succeed");
+
+    let run = run_file(&app_path).expect("IO.mkdir should compile and execute");
+    assert_eq!(run.exit_code, 42);
+
+    // cleanup
+    let _ = std::fs::remove_dir_all(project_dir.join("test_output_dir"));
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
 fn compile_and_execute_hash_trait_int_impl_exit_code() {
     let project_dir = temp_workspace_project_dir("kea-cli-project-hash-trait");
     let src_dir = project_dir.join("src");
@@ -5186,7 +5248,7 @@ fn compile_and_execute_evidence_through_closure_exit_code() {
 fn compile_and_execute_capability_mock_io_stdout_exit_code() {
     // user handler intercepts IO.stdout, proving capability mocking works
     let source_path = write_temp_source(
-        "use IO\n\nfn program() -[IO]> Int\n  IO.stdout(\"intercepted\")\n  42\n\nfn main() -> Int\n  handle program()\n    IO.stdout(msg) -> resume ()\n    IO.stderr(msg) -> resume ()\n    IO.read_file(path) -> resume \"\"\n    IO.write_file(path, data) -> resume ()\n    IO.exit(code) -> resume ()\n",
+        "use IO\n\nfn program() -[IO]> Int\n  IO.stdout(\"intercepted\")\n  42\n\nfn main() -> Int\n  handle program()\n    IO.stdout(msg) -> resume ()\n    IO.stderr(msg) -> resume ()\n    IO.read_file(path) -> resume \"\"\n    IO.write_file(path, data) -> resume ()\n    IO.exit(code) -> resume ()\n    IO.file_exists(path) -> resume True\n    IO.env_var(name) -> resume \"\"\n    IO.mkdir(path) -> resume ()\n",
         "kea-cli-capability-mock-io-stdout",
         "kea",
     );
