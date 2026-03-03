@@ -19274,3 +19274,45 @@ No MCP divergence found at this checkpoint.
 **Impact**:
 - The boundary-model capstone now exports the full three-level contrast ladder
   (`native`, `ext`, `ext-with-mismatch`) from one theorem witness.
+
+### 2026-03-03: combined contrast theorem routed through boundary capstone
+
+**Context**: Added a route theorem that derives the combined
+soundness+progress+native-gap contrast from:
+- `core_soundness`,
+- `strict_top_typing`, and
+- an explicit `NativeHandlerBoundaryModelGapSlice` witness.
+
+**MCP tools used**: `reset_session`, `type_check`
+
+**Predict (Lean side)**:
+- `use` parsing should remain stable.
+- Coherent Log handler should type-check.
+- Mismatched pure handler should reject with effect leak.
+- Bad resume payload should reject.
+- Out-of-handler resume should reject.
+
+**Probe (Rust side via MCP)**:
+1. `use Log` -> `ok`.
+2. Coherent Log handler (`Log.info(msg) -> resume ()`) -> `ok`.
+3. Mismatched pure handler (`handle Math.add(1,2)` with only `Reader.ask` clause) -> `error`, `E0001` (pure body performs `[Math]`).
+4. Bad resume payload (`Reader.ask() -> resume ()` in `fn ... -> Int`) -> `error`, `E0001`.
+5. Out-of-handler resume control (`fn bad_resume5() -> String; resume "x"`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No MCP divergence found at this checkpoint.
+
+**Act**:
+- Kept boundary-routed combined contrast theorem addition.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_soundness_progress_and_native_progress_gap_of_core_soundness_and_strict_top_typing_of_boundary_model_gap_slice`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Downstream proofs can now consume the combined contrast theorem via the
+  packaged boundary capstone directly, not only via standalone lemmas.
