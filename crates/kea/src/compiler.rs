@@ -3227,6 +3227,47 @@ fn matches_higher_order_forwarder_body(
     forwarder_param_name: &str,
     unique_param_name: &str,
 ) -> bool {
+    fn contains_call(expr: &HirExpr) -> bool {
+        match &expr.kind {
+            HirExprKind::Call { .. } => true,
+            HirExprKind::Lit(_) | HirExprKind::Var(_) | HirExprKind::Raw(_) => false,
+            HirExprKind::Unary { operand, .. } => contains_call(operand),
+            HirExprKind::Binary { left, right, .. } => contains_call(left) || contains_call(right),
+            HirExprKind::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                contains_call(condition)
+                    || contains_call(then_branch)
+                    || else_branch.as_ref().is_some_and(|branch| contains_call(branch))
+            }
+            HirExprKind::Let { value, .. } => contains_call(value),
+            HirExprKind::Block(exprs) | HirExprKind::Tuple(exprs) => {
+                exprs.iter().any(contains_call)
+            }
+            HirExprKind::Lambda { body, .. } => contains_call(body),
+            HirExprKind::RecordLit { fields, .. } | HirExprKind::RecordUpdate { fields, .. } => {
+                fields.iter().any(|(_, field_expr)| contains_call(field_expr))
+            }
+            HirExprKind::FieldAccess { expr, .. } | HirExprKind::SumPayloadAccess { expr, .. } => {
+                contains_call(expr)
+            }
+            HirExprKind::SumConstructor { fields, .. } => fields.iter().any(contains_call),
+            HirExprKind::Catch { expr } => contains_call(expr),
+            HirExprKind::Handle {
+                expr,
+                clauses,
+                then_clause,
+            } => {
+                contains_call(expr)
+                    || clauses.iter().any(|clause| contains_call(&clause.body))
+                    || then_clause.as_ref().is_some_and(|then_expr| contains_call(then_expr))
+            }
+            HirExprKind::Resume { value } => contains_call(value),
+        }
+    }
+
     fn extract_var_alias_let(expr: &HirExpr) -> Option<(&str, &str)> {
         match &expr.kind {
             HirExprKind::Let { pattern, value }
@@ -3338,6 +3379,26 @@ fn matches_higher_order_forwarder_body(
                 return false;
             }
             false
+        }
+        HirExprKind::If {
+            condition,
+            then_branch,
+            else_branch,
+        } => {
+            let Some(else_branch) = else_branch.as_ref() else {
+                return false;
+            };
+            !contains_call(condition)
+                && matches_higher_order_forwarder_body(
+                    then_branch,
+                    forwarder_param_name,
+                    unique_param_name,
+                )
+                && matches_higher_order_forwarder_body(
+                    else_branch,
+                    forwarder_param_name,
+                    unique_param_name,
+                )
         }
         _ => false,
     }
