@@ -4229,7 +4229,7 @@ fn compile_local_payload_sum_if_join_call_escape_counts_alloc_in_stats() {
 }
 
 #[test]
-fn compile_local_mixed_sum_kernel_reports_no_mixed_exclusion_in_stats() {
+fn compile_local_mixed_sum_kernel_elides_alloc_and_release_in_stats() {
     let source_path = write_temp_source(
         "fn main() -> Int\n  case Some(20)\n    Some(v) -> v\n    None -> 0\n",
         "kea-cli-mixed-sum-direct-case-stats",
@@ -4249,9 +4249,15 @@ fn compile_local_mixed_sum_kernel_reports_no_mixed_exclusion_in_stats() {
         compiled.stats
     );
     let alloc_count: usize = app_main_stats.iter().map(|f| f.alloc_count).sum();
-    assert!(
-        alloc_count >= 1,
-        "expected current mixed-sum source shape to remain heap-lowered due release-driven escape path, stats: {:?}",
+    assert_eq!(
+        alloc_count, 0,
+        "expected no heap alloc ops for local mixed sum kernel, stats: {:?}",
+        compiled.stats
+    );
+    let release_count: usize = app_main_stats.iter().map(|f| f.release_count).sum();
+    assert_eq!(
+        release_count, 0,
+        "expected no release ops for stack-lowered local mixed sum kernel, stats: {:?}",
         compiled.stats
     );
     let mixed_excluded_count: usize = app_main_stats

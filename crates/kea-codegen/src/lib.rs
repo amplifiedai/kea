@@ -962,6 +962,8 @@ fn compile_into_module<M: Module>(
             let stack_unboxed_record_inits =
                 collect_stack_eligible_unboxed_record_inits(function, layout_plan);
             let stack_sum_inits = collect_stack_eligible_sum_inits(function, layout_plan);
+            let stack_sum_release_elision_values =
+                collect_stack_sum_release_elision_values(function, &stack_sum_inits);
 
             for block in &function.blocks {
                 let clif_block =
@@ -1012,6 +1014,7 @@ fn compile_into_module<M: Module>(
                     value_types: &value_types,
                     stack_unboxed_record_inits: &stack_unboxed_record_inits,
                     stack_sum_inits: &stack_sum_inits,
+                    stack_sum_release_elision_values: &stack_sum_release_elision_values,
                     runtime_signatures: &runtime_signatures,
                     current_runtime_sig,
                 };
@@ -2002,6 +2005,7 @@ struct LowerInstCtx<'a> {
     value_types: &'a BTreeMap<MirValueId, Type>,
     stack_unboxed_record_inits: &'a BTreeSet<MirValueId>,
     stack_sum_inits: &'a BTreeSet<MirValueId>,
+    stack_sum_release_elision_values: &'a BTreeSet<MirValueId>,
     runtime_signatures: &'a BTreeMap<String, RuntimeFunctionSig>,
     current_runtime_sig: &'a RuntimeFunctionSig,
 }
@@ -2165,6 +2169,13 @@ fn is_non_escaping_unboxed_record_init(function: &MirFunction, candidate: &MirVa
 }
 
 fn is_non_escaping_sum_init(function: &MirFunction, candidate: &MirValueId) -> bool {
+    collect_non_escaping_sum_aliases(function, candidate).is_some()
+}
+
+fn collect_non_escaping_sum_aliases(
+    function: &MirFunction,
+    candidate: &MirValueId,
+) -> Option<BTreeSet<MirValueId>> {
     let block_params = function
         .blocks
         .iter()
@@ -2224,26 +2235,38 @@ fn is_non_escaping_sum_init(function: &MirFunction, candidate: &MirValueId) -> b
                 | MirInst::TryClaim { src, .. }
                 | MirInst::Freeze { src, .. }
                     if aliases.contains(src) => {}
-                _ if inst_references_any_value(inst, &aliases) => return false,
+                MirInst::Release { value } if aliases.contains(value) => {}
+                _ if inst_references_any_value(inst, &aliases) => return None,
                 _ => {}
             }
         }
         match &block.terminator {
             MirTerminator::Jump { target, args } => {
-                let Some(params) = block_params.get(target) else {
-                    return false;
-                };
+                let params = block_params.get(target)?;
                 for (arg, param) in args.iter().zip(params.iter()) {
                     if aliases.contains(arg) && !aliases.contains(param) {
-                        return false;
+                        return None;
                     }
                 }
             }
-            _ if terminator_references_any_value(&block.terminator, &aliases) => return false,
+            _ if terminator_references_any_value(&block.terminator, &aliases) => return None,
             _ => {}
         }
     }
-    true
+    Some(aliases)
+}
+
+fn collect_stack_sum_release_elision_values(
+    function: &MirFunction,
+    stack_sum_inits: &BTreeSet<MirValueId>,
+) -> BTreeSet<MirValueId> {
+    let mut elision_values = BTreeSet::new();
+    for candidate in stack_sum_inits {
+        if let Some(aliases) = collect_non_escaping_sum_aliases(function, candidate) {
+            elision_values.extend(aliases);
+        }
+    }
+    elision_values
 }
 
 fn inst_references_value(inst: &MirInst, value: &MirValueId) -> bool {
@@ -4649,6 +4672,9 @@ fn lower_instruction<M: Module>(
             Ok(false)
         }
         MirInst::Release { value } => {
+            if ctx.stack_sum_release_elision_values.contains(value) {
+                return Ok(false);
+            }
             let ptr_ty = module.target_config().pointer_type();
             let payload_ptr = get_value(values, function_name, value)?;
             let payload_ptr = coerce_value_to_clif_type(builder, payload_ptr, ptr_ty);
@@ -5856,6 +5882,8 @@ fn collect_function_stats(
     let stack_sum_inits = layout_plan
         .map(|plan| collect_stack_eligible_sum_inits(function, plan))
         .unwrap_or_default();
+    let stack_sum_release_elision_values =
+        collect_stack_sum_release_elision_values(function, &stack_sum_inits);
     let stack_sum_mixed_excluded_count = layout_plan
         .map(|plan| count_stack_excluded_mixed_sum_inits(function, plan, &stack_sum_inits))
         .unwrap_or_default();
@@ -5868,7 +5896,11 @@ fn collect_function_stats(
         for inst in &block.instructions {
             match inst {
                 MirInst::Retain { .. } => stats.retain_count += 1,
-                MirInst::Release { .. } => stats.release_count += 1,
+                MirInst::Release { value } => {
+                    if !stack_sum_release_elision_values.contains(value) {
+                        stats.release_count += 1;
+                    }
+                }
                 MirInst::ReuseToken { .. } => {
                     stats.release_count += 1;
                     stats.reuse_token_produced_count += 1;
@@ -7996,6 +8028,9 @@ mod tests {
                             sum: MirValueId(1),
                             sum_type: "MaybeInt".to_string(),
                         },
+                        MirInst::Release {
+                            value: MirValueId(1),
+                        },
                     ],
                     terminator: MirTerminator::Return {
                         value: Some(MirValueId(2)),
@@ -9987,6 +10022,7 @@ mod tests {
         assert_eq!(stats.per_function.len(), 1);
         let function = &stats.per_function[0];
         assert_eq!(function.alloc_count, 0);
+        assert_eq!(function.release_count, 0);
         assert_eq!(function.stack_sum_mixed_excluded_count, 0);
     }
 
