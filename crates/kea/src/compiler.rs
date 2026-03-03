@@ -3307,27 +3307,24 @@ fn matches_higher_order_forwarder_body(
         forwarder_aliases: &BTreeSet<String>,
         unique_aliases: &BTreeSet<String>,
     ) -> bool {
-        fn matches_passthrough_shape(
-            expr: &HirExpr,
-            unique_aliases: &BTreeSet<String>,
-        ) -> bool {
+        fn matches_alias_shape(expr: &HirExpr, aliases: &BTreeSet<String>) -> bool {
             match &expr.kind {
-                HirExprKind::Var(name) => unique_aliases.contains(name),
+                HirExprKind::Var(name) => aliases.contains(name),
                 HirExprKind::Block(exprs) if !exprs.is_empty() => {
-                    let mut unique_aliases = unique_aliases.clone();
+                    let mut aliases = aliases.clone();
                     for (index, item) in exprs.iter().enumerate() {
                         let is_last = index + 1 == exprs.len();
                         if is_last {
-                            return matches_passthrough_shape(item, &unique_aliases);
+                            return matches_alias_shape(item, &aliases);
                         }
 
                         if let Some((binding_name, source_name)) = extract_var_alias_let(item) {
-                            if unique_aliases.contains(source_name) {
-                                unique_aliases.insert(binding_name.to_string());
+                            if aliases.contains(source_name) {
+                                aliases.insert(binding_name.to_string());
                                 continue;
                             }
-                            // Benign passthrough alias lets on unrelated params
-                            // are allowed before the terminal passthrough return.
+                            // Benign alias lets on unrelated params are
+                            // allowed in call-free prelude paths.
                             continue;
                         }
 
@@ -3335,12 +3332,12 @@ fn matches_higher_order_forwarder_body(
                             HirExprKind::Let { pattern, value }
                                 if matches!(pattern, kea_hir::HirPattern::Var(_)) =>
                             {
-                                if matches_passthrough_shape(value, &unique_aliases) {
+                                if matches_alias_shape(value, &aliases) {
                                     let binding_name = match pattern {
                                         kea_hir::HirPattern::Var(name) => name,
                                         _ => unreachable!("guarded by match"),
                                     };
-                                    unique_aliases.insert(binding_name.to_string());
+                                    aliases.insert(binding_name.to_string());
                                     continue;
                                 }
                                 if !contains_call(value) {
@@ -3362,115 +3359,8 @@ fn matches_higher_order_forwarder_body(
                         return false;
                     };
                     !contains_call(condition)
-                        && matches_passthrough_shape(then_branch, unique_aliases)
-                        && matches_passthrough_shape(else_branch, unique_aliases)
-                }
-                _ => false,
-            }
-        }
-
-        fn matches_result_alias_shape(
-            expr: &HirExpr,
-            result_aliases: &BTreeSet<String>,
-        ) -> bool {
-            match &expr.kind {
-                HirExprKind::Var(name) => result_aliases.contains(name),
-                HirExprKind::Block(exprs) if !exprs.is_empty() => {
-                    let mut result_aliases = result_aliases.clone();
-                    for (index, item) in exprs.iter().enumerate() {
-                        let is_last = index + 1 == exprs.len();
-                        if is_last {
-                            return matches_result_alias_shape(item, &result_aliases);
-                        }
-
-                        match &item.kind {
-                            HirExprKind::Let { pattern, value }
-                                if matches!(pattern, kea_hir::HirPattern::Var(_)) =>
-                            {
-                                if matches_result_alias_shape(value, &result_aliases) {
-                                    let binding_name = match pattern {
-                                        kea_hir::HirPattern::Var(name) => name,
-                                        _ => unreachable!("guarded by match"),
-                                    };
-                                    result_aliases.insert(binding_name.to_string());
-                                    continue;
-                                }
-                                // Benign call-free lets that do not participate in
-                                // result alias shaping are allowed after the single
-                                // forward handoff.
-                                if !contains_call(value) {
-                                    continue;
-                                }
-                                return false;
-                            }
-                            _ => return false,
-                        }
-                    }
-                    false
-                }
-                HirExprKind::If {
-                    condition,
-                    then_branch,
-                    else_branch,
-                } => {
-                    let Some(else_branch) = else_branch.as_ref() else {
-                        return false;
-                    };
-                    !contains_call(condition)
-                        && matches_result_alias_shape(then_branch, result_aliases)
-                        && matches_result_alias_shape(else_branch, result_aliases)
-                }
-                _ => false,
-            }
-        }
-
-        fn matches_forwarder_alias_shape(
-            expr: &HirExpr,
-            forwarder_aliases: &BTreeSet<String>,
-        ) -> bool {
-            match &expr.kind {
-                HirExprKind::Var(name) => forwarder_aliases.contains(name),
-                HirExprKind::Block(exprs) if !exprs.is_empty() => {
-                    let mut forwarder_aliases = forwarder_aliases.clone();
-                    for (index, item) in exprs.iter().enumerate() {
-                        let is_last = index + 1 == exprs.len();
-                        if is_last {
-                            return matches_forwarder_alias_shape(item, &forwarder_aliases);
-                        }
-
-                        match &item.kind {
-                            HirExprKind::Let { pattern, value }
-                                if matches!(pattern, kea_hir::HirPattern::Var(_)) =>
-                            {
-                                if matches_forwarder_alias_shape(value, &forwarder_aliases) {
-                                    let binding_name = match pattern {
-                                        kea_hir::HirPattern::Var(name) => name,
-                                        _ => unreachable!("guarded by match"),
-                                    };
-                                    forwarder_aliases.insert(binding_name.to_string());
-                                    continue;
-                                }
-                                if !contains_call(value) {
-                                    continue;
-                                }
-                                return false;
-                            }
-                            _ => return false,
-                        }
-                    }
-                    false
-                }
-                HirExprKind::If {
-                    condition,
-                    then_branch,
-                    else_branch,
-                } => {
-                    let Some(else_branch) = else_branch.as_ref() else {
-                        return false;
-                    };
-                    !contains_call(condition)
-                        && matches_forwarder_alias_shape(then_branch, forwarder_aliases)
-                        && matches_forwarder_alias_shape(else_branch, forwarder_aliases)
+                        && matches_alias_shape(then_branch, aliases)
+                        && matches_alias_shape(else_branch, aliases)
                 }
                 _ => false,
             }
@@ -3509,7 +3399,7 @@ fn matches_higher_order_forwarder_body(
                             HirExprKind::Let { pattern, value }
                                 if matches!(pattern, kea_hir::HirPattern::Var(_)) =>
                             {
-                                if matches_passthrough_shape(value, &unique_aliases) {
+                                if matches_alias_shape(value, &unique_aliases) {
                                     let binding_name = match pattern {
                                         kea_hir::HirPattern::Var(name) => name,
                                         _ => unreachable!("guarded by match"),
@@ -3517,7 +3407,7 @@ fn matches_higher_order_forwarder_body(
                                     unique_aliases.insert(binding_name.to_string());
                                     continue;
                                 }
-                                if matches_forwarder_alias_shape(value, &forwarder_aliases) {
+                                if matches_alias_shape(value, &forwarder_aliases) {
                                     let binding_name = match pattern {
                                         kea_hir::HirPattern::Var(name) => name,
                                         _ => unreachable!("guarded by match"),
@@ -3549,14 +3439,14 @@ fn matches_higher_order_forwarder_body(
                     };
 
                     if is_last {
-                        return matches_result_alias_shape(item, result_aliases);
+                        return matches_alias_shape(item, result_aliases);
                     }
 
                     match &item.kind {
                         HirExprKind::Let { pattern, value }
                             if matches!(pattern, kea_hir::HirPattern::Var(_)) =>
                         {
-                            if matches_result_alias_shape(value, result_aliases) {
+                            if matches_alias_shape(value, result_aliases) {
                                 let binding_name = match pattern {
                                     kea_hir::HirPattern::Var(name) => name,
                                     _ => unreachable!("guarded by match"),
@@ -3589,8 +3479,8 @@ fn matches_higher_order_forwarder_body(
                 }
                 let then_forward = matches_shape(then_branch, forwarder_aliases, unique_aliases);
                 let else_forward = matches_shape(else_branch, forwarder_aliases, unique_aliases);
-                let then_passthrough = matches_passthrough_shape(then_branch, unique_aliases);
-                let else_passthrough = matches_passthrough_shape(else_branch, unique_aliases);
+                let then_passthrough = matches_alias_shape(then_branch, unique_aliases);
+                let else_passthrough = matches_alias_shape(else_branch, unique_aliases);
                 (then_forward && (else_forward || else_passthrough))
                     || (else_forward && then_passthrough)
             }
