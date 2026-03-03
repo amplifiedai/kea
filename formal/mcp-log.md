@@ -20008,3 +20008,50 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - The boundary capstone now captures the failure condition at theorem level for arbitrary `bodyStep` relations that cannot advance the typed metadata-mismatch witness, improving reuse beyond the fixed false-step sentinel.
+
+### 2026-03-03: added parametric no-body-step failure-route capstone and boundary projection
+
+**Context**: Added a named parametric failure-route proposition and two constructors:
+- `native_handler_step_ext_with_mismatch_metadata_mismatch_no_body_step_failure_route_prop`
+- `native_handler_step_ext_with_mismatch_metadata_mismatch_no_body_step_failure_route`
+- `native_handler_step_ext_with_mismatch_metadata_mismatch_no_body_step_failure_route_of_boundary_model_gap_slice`
+
+This packages the generalized metadata-mismatch no-body-step boundary as a reusable route theorem and a one-hop projection from `NativeHandlerBoundaryModelGapSlice`.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent self-contained handler should type-check.
+- Mismatched pure handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume in one clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Matrix` -> `ok`.
+2. Coherent Rho handler (`Rho.take() -> resume 1007`) -> `ok`.
+3. Mismatched pure handler (`handle Rho.take()` with only `Tau.take_other` clause) -> `error`, `E0001` (pure body performs `[Rho]`).
+4. Bad resume payload (`Rho.take() -> resume "bad"`) -> `error`, `E0001`.
+5. Out-of-handler resume (`fn rho_resume_outside() -> Int; resume 1007`) -> `error`, `E0012`.
+6. Forged-name out-of-handler resume (`let __kea_resume_ctx = 3; resume 1007`) -> `error`, `E0012`.
+7. Double-resume clause (`resume 1` then `resume 2`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the parametric failure-route proposition and constructors.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_metadata_mismatch_no_body_step_failure_route_prop`
+  - `native_handler_step_ext_with_mismatch_metadata_mismatch_no_body_step_failure_route`
+  - `native_handler_step_ext_with_mismatch_metadata_mismatch_no_body_step_failure_route_of_boundary_model_gap_slice`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The no-body-step metadata-mismatch boundary is now consumable as a first-class theorem route (direct and capstone-projected), tightening boundary traceability for downstream soundness/progress arguments.

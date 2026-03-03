@@ -5007,6 +5007,54 @@ theorem native_handler_boundary_model_gap_slice
   }
 
 /--
+Parametric failure-route surface: whenever the typed metadata-mismatch witness
+body cannot `bodyStep`, mismatch-extension progress and soundness both fail
+under current typing.
+-/
+def native_handler_step_ext_with_mismatch_metadata_mismatch_no_body_step_failure_route_prop
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) : Prop :=
+  ∀ bodyStep,
+    (∀ body', ¬ bodyStep
+      (.perform "Op" .bool .bool (.boolLit true) (.lam "x" .bool (.intLit 0)))
+      body') →
+    ¬ native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep
+      ∧
+    ¬ native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep
+
+/--
+Build the parametric metadata-mismatch no-body-step failure route directly from
+the generalized non-derivability theorems.
+-/
+theorem native_handler_step_ext_with_mismatch_metadata_mismatch_no_body_step_failure_route
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) :
+    native_handler_step_ext_with_mismatch_metadata_mismatch_no_body_step_failure_route_prop
+      clauseSem mismatchSem := by
+  intro bodyStep h_no_body_step
+  refine ⟨?_, ?_⟩
+  · exact not_native_handler_step_ext_with_mismatch_progress_prop_of_metadata_mismatch_without_body_step
+      clauseSem mismatchSem bodyStep h_no_body_step
+  · exact not_native_handler_step_ext_with_mismatch_soundness_prop_of_metadata_mismatch_without_body_step
+      clauseSem mismatchSem bodyStep h_no_body_step
+
+/--
+Project the same parametric metadata-mismatch no-body-step failure route from
+the packaged boundary-model gap slice.
+-/
+theorem native_handler_step_ext_with_mismatch_metadata_mismatch_no_body_step_failure_route_of_boundary_model_gap_slice
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (h_gap : NativeHandlerBoundaryModelGapSlice clauseSem mismatchSem) :
+    native_handler_step_ext_with_mismatch_metadata_mismatch_no_body_step_failure_route_prop
+      clauseSem mismatchSem := by
+  intro bodyStep h_no_body_step
+  exact ⟨
+    h_gap.mismatchProgressFalseOfMetadataMismatchNoBodyStep bodyStep h_no_body_step,
+    h_gap.mismatchSoundnessFalseOfMetadataMismatchNoBodyStep bodyStep h_no_body_step
+  ⟩
+
+/--
 Packaged strict-extension/typed-gap ladder on `bodyStep = False`:
 `native -> ext -> ext-with-mismatch`.
 -/
