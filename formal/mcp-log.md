@@ -23782,3 +23782,44 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - The integrated full-route theorem API now exposes the precise three-relation boundary model without additional reconstruction lemmas.
+
+### 2026-03-04: mismatch-subsumption bridge from mismatch soundness to extended soundness
+
+**Context**: Added a conditional semantic bridge in `Kea/Typing.lean`:
+- `native_handler_mismatch_steps_subsumed_by_ext_prop`
+- `native_handler_step_ext_progress_of_mismatch_progress_of_subsumed`
+- `native_handler_step_ext_soundness_of_mismatch_soundness_of_subsumed`
+
+This isolates the exact condition under which mismatch-extended proofs collapse back to pure extended-native proofs: when every mismatch-extended step is subsumed by an extended step.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- Coherent handler should type-check.
+- Mismatch effect-leak handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. Coherent handler (`probe_coherent_20260304be`) -> `ok`.
+2. Mismatch effect-leak handler (`probe_mismatch_20260304be`) -> `error`, `E0001`.
+3. Bad resume payload (`probe_bad_resume_20260304be`) -> `error`, `E0001`.
+4. Out-of-handler resume (`probe_outside_resume_20260304be`) -> `error`, `E0012`.
+5. Forged-name out-of-handler resume (`probe_forged_resume_ctx_20260304be`) -> `error`, `E0012`.
+6. Double-resume clause (`probe_double_resume_20260304be`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the subsumption-condition bridge theorem layer.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`: names listed in Context above.
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The corpus now explicitly states when mismatch-layer soundness/progress can be reused as ext-layer soundness/progress, rather than leaving this as an implicit inference.

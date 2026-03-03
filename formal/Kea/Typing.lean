@@ -6360,6 +6360,62 @@ def native_handler_step_ext_soundness_prop
     ∧ native_handler_step_ext_progress_prop clauseSem bodyStep
 
 /--
+Subsumption condition: every mismatch-extended step is already an extended
+native step.
+-/
+def native_handler_mismatch_steps_subsumed_by_ext_prop
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) : Prop :=
+  ∀ {e e'},
+    NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep e e' →
+    NativeHandlerStepExt clauseSem bodyStep e e'
+
+/--
+Under mismatch-step subsumption, mismatch-extended progress implies extended
+native progress.
+-/
+theorem native_handler_step_ext_progress_of_mismatch_progress_of_subsumed
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_progress :
+      native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep)
+    (h_subsumed :
+      native_handler_mismatch_steps_subsumed_by_ext_prop
+        clauseSem mismatchSem bodyStep) :
+    native_handler_step_ext_progress_prop clauseSem bodyStep := by
+  intro env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed
+  rcases h_progress env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed
+    with ⟨e', h_step_mismatch⟩
+  exact ⟨e', h_subsumed h_step_mismatch⟩
+
+/--
+Under mismatch-step subsumption, mismatch-extended soundness implies extended
+native soundness.
+-/
+theorem native_handler_step_ext_soundness_of_mismatch_soundness_of_subsumed
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_sound :
+      native_handler_step_ext_with_mismatch_soundness_prop
+        clauseSem mismatchSem bodyStep)
+    (h_subsumed :
+      native_handler_mismatch_steps_subsumed_by_ext_prop
+        clauseSem mismatchSem bodyStep) :
+    native_handler_step_ext_soundness_prop clauseSem bodyStep := by
+  refine ⟨?_, ?_⟩
+  · intro env e e' ty h_typed h_step_ext
+    have h_step_mismatch :
+        NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep e e' :=
+      native_handler_step_ext_with_mismatch_of_ext_step
+        clauseSem mismatchSem bodyStep h_step_ext
+    exact h_sound.1 env e e' ty h_typed h_step_mismatch
+  · exact native_handler_step_ext_progress_of_mismatch_progress_of_subsumed
+      clauseSem mismatchSem bodyStep h_sound.2 h_subsumed
+
+/--
 Core preservation obligation for a candidate body-step relation.
 -/
 def native_core_preservation_prop
