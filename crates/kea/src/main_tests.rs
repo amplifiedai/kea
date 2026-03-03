@@ -4229,10 +4229,10 @@ fn compile_local_payload_sum_if_join_call_escape_counts_alloc_in_stats() {
 }
 
 #[test]
-fn compile_local_mixed_sum_non_escaping_still_counts_alloc_in_stats() {
+fn compile_local_mixed_sum_kernel_reports_no_mixed_exclusion_in_stats() {
     let source_path = write_temp_source(
-        "fn main() -> Int\n  let x = Some(20)\n  case x\n    Some(v) -> v\n    None -> 0\n",
-        "kea-cli-mixed-sum-non-escaping-alloc-stats",
+        "fn main() -> Int\n  case Some(20)\n    Some(v) -> v\n    None -> 0\n",
+        "kea-cli-mixed-sum-direct-case-stats",
         "kea",
     );
 
@@ -4251,7 +4251,16 @@ fn compile_local_mixed_sum_non_escaping_still_counts_alloc_in_stats() {
     let alloc_count: usize = app_main_stats.iter().map(|f| f.alloc_count).sum();
     assert!(
         alloc_count >= 1,
-        "expected heap alloc ops for mixed/unit sum kernel (payload-only stack path is intentional), stats: {:?}",
+        "expected current mixed-sum source shape to remain heap-lowered due release-driven escape path, stats: {:?}",
+        compiled.stats
+    );
+    let mixed_excluded_count: usize = app_main_stats
+        .iter()
+        .map(|f| f.stack_sum_mixed_excluded_count)
+        .sum();
+    assert_eq!(
+        mixed_excluded_count, 0,
+        "expected no mixed-layout stack exclusion after mixed-sum eligibility widening, stats: {:?}",
         compiled.stats
     );
 

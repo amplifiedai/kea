@@ -2045,12 +2045,7 @@ fn collect_stack_eligible_sum_inits(
             let MirInst::SumInit { dest, sum_type, .. } = inst else {
                 continue;
             };
-            let Some(layout) = layout_plan.sums.get(sum_type.as_str()) else {
-                continue;
-            };
-            // Keep this conservative for now: payload-only sums avoid mixed/unit
-            // immediate-tag carrier semantics.
-            if layout.variant_field_counts.values().all(|count| *count > 0) {
+            if layout_plan.sums.contains_key(sum_type.as_str()) {
                 candidates.insert(dest.clone());
             }
         }
@@ -2065,16 +2060,26 @@ fn collect_stack_eligible_sum_inits(
 fn count_stack_excluded_mixed_sum_inits(
     function: &MirFunction,
     layout_plan: &BackendLayoutPlan,
+    stack_sum_inits: &BTreeSet<MirValueId>,
 ) -> usize {
     function
         .blocks
         .iter()
         .flat_map(|block| block.instructions.iter())
         .filter_map(|inst| match inst {
-            MirInst::SumInit { sum_type, .. } => layout_plan.sums.get(sum_type.as_str()),
+            MirInst::SumInit { dest, sum_type, .. } => {
+                let layout = layout_plan.sums.get(sum_type.as_str())?;
+                let is_mixed = layout.variant_field_counts.values().any(|count| *count == 0);
+                if !is_mixed
+                    || stack_sum_inits.contains(dest)
+                    || !is_non_escaping_sum_init(function, dest)
+                {
+                    return None;
+                }
+                Some(())
+            }
             _ => None,
         })
-        .filter(|layout| layout.variant_field_counts.values().any(|count| *count == 0))
         .count()
 }
 
@@ -5852,7 +5857,7 @@ fn collect_function_stats(
         .map(|plan| collect_stack_eligible_sum_inits(function, plan))
         .unwrap_or_default();
     let stack_sum_mixed_excluded_count = layout_plan
-        .map(|plan| count_stack_excluded_mixed_sum_inits(function, plan))
+        .map(|plan| count_stack_excluded_mixed_sum_inits(function, plan, &stack_sum_inits))
         .unwrap_or_default();
     stats.stack_sum_mixed_excluded_count = stack_sum_mixed_excluded_count;
 
@@ -9975,14 +9980,14 @@ mod tests {
     }
 
     #[test]
-    fn collect_pass_stats_counts_non_escaping_mixed_sum_init_as_allocating() {
+    fn collect_pass_stats_treats_non_escaping_mixed_sum_init_as_non_allocating() {
         let module = sample_mixed_sum_non_escaping_module();
         let stats = collect_pass_stats(&module);
 
         assert_eq!(stats.per_function.len(), 1);
         let function = &stats.per_function[0];
-        assert_eq!(function.alloc_count, 1);
-        assert_eq!(function.stack_sum_mixed_excluded_count, 1);
+        assert_eq!(function.alloc_count, 0);
+        assert_eq!(function.stack_sum_mixed_excluded_count, 0);
     }
 
     #[test]
