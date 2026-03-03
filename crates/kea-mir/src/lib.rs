@@ -417,7 +417,8 @@ pub fn lower_hir_module(module: &HirModule) -> MirModule {
 }
 
 pub fn lower_hir_module_with_config(module: &HirModule, config: &MirLoweringConfig) -> MirModule {
-    let known_functions = module
+    let import_aliases = collect_import_aliases(module);
+    let mut known_functions = module
         .declarations
         .iter()
         .filter_map(|decl| match decl {
@@ -425,7 +426,7 @@ pub fn lower_hir_module_with_config(module: &HirModule, config: &MirLoweringConf
             HirDecl::Raw(_) => None,
         })
         .collect::<BTreeSet<_>>();
-    let known_function_types = module
+    let mut known_function_types = module
         .declarations
         .iter()
         .filter_map(|decl| match decl {
@@ -433,10 +434,19 @@ pub fn lower_hir_module_with_config(module: &HirModule, config: &MirLoweringConf
             HirDecl::Raw(_) => None,
         })
         .collect::<BTreeMap<_, _>>();
+    let known_function_alias_targets =
+        collect_namespaced_alias_targets(known_function_types.keys(), &import_aliases);
+    extend_namespaced_set_with_import_aliases(&mut known_functions, &import_aliases);
+    extend_namespaced_map_with_import_aliases(&mut known_function_types, &import_aliases);
     let intrinsic_symbols = collect_intrinsic_symbols(module);
-    let effect_operations = collect_effect_operations(module);
-    let known_function_dispatch_effects =
+    let mut effect_operations = collect_effect_operations(module);
+    extend_namespaced_map_with_import_aliases(&mut effect_operations, &import_aliases);
+    let mut known_function_dispatch_effects =
         collect_function_dispatch_effects(module, &effect_operations);
+    extend_namespaced_map_with_import_aliases(
+        &mut known_function_dispatch_effects,
+        &import_aliases,
+    );
     let lambda_factories = collect_lambda_factory_templates(module, &known_functions);
     let known_const_exprs = collect_const_field_exprs(module);
     let mut layouts = MirLayoutCatalog::default();
@@ -455,6 +465,7 @@ pub fn lower_hir_module_with_config(module: &HirModule, config: &MirLoweringConf
                 &layouts,
                 &known_functions,
                 &known_function_types,
+                &known_function_alias_targets,
                 &known_const_exprs,
                 &intrinsic_symbols,
                 &effect_operations,
@@ -3496,6 +3507,79 @@ fn is_namespaced_symbol_name(name: &str) -> bool {
     name.contains('.')
 }
 
+fn collect_import_aliases(module: &HirModule) -> BTreeMap<String, String> {
+    let mut aliases = BTreeMap::new();
+    for decl in &module.declarations {
+        let HirDecl::Raw(DeclKind::Import(import)) = decl else {
+            continue;
+        };
+        let module_path = import.module.node.clone();
+        let alias = import
+            .alias
+            .as_ref()
+            .map(|alias| alias.node.clone())
+            .unwrap_or_else(|| {
+                module_path
+                    .rsplit('.')
+                    .next()
+                    .unwrap_or(module_path.as_str())
+                    .to_string()
+            });
+        aliases.insert(alias, module_path);
+    }
+    aliases
+}
+
+fn extend_namespaced_set_with_import_aliases(
+    symbols: &mut BTreeSet<String>,
+    import_aliases: &BTreeMap<String, String>,
+) {
+    let originals = symbols.iter().cloned().collect::<Vec<_>>();
+    for (alias, module_path) in import_aliases {
+        let prefix = format!("{module_path}.");
+        for original in &originals {
+            if let Some(rest) = original.strip_prefix(&prefix) {
+                symbols.insert(format!("{alias}.{rest}"));
+            }
+        }
+    }
+}
+
+fn extend_namespaced_map_with_import_aliases<T: Clone>(
+    symbols: &mut BTreeMap<String, T>,
+    import_aliases: &BTreeMap<String, String>,
+) {
+    let originals = symbols
+        .iter()
+        .map(|(name, value)| (name.clone(), value.clone()))
+        .collect::<Vec<_>>();
+    for (alias, module_path) in import_aliases {
+        let prefix = format!("{module_path}.");
+        for (original, value) in &originals {
+            if let Some(rest) = original.strip_prefix(&prefix) {
+                symbols.insert(format!("{alias}.{rest}"), value.clone());
+            }
+        }
+    }
+}
+
+fn collect_namespaced_alias_targets<'a>(
+    names: impl Iterator<Item = &'a String>,
+    import_aliases: &BTreeMap<String, String>,
+) -> BTreeMap<String, String> {
+    let mut targets = BTreeMap::new();
+    let originals = names.cloned().collect::<Vec<_>>();
+    for (alias, module_path) in import_aliases {
+        let prefix = format!("{module_path}.");
+        for original in &originals {
+            if let Some(rest) = original.strip_prefix(&prefix) {
+                targets.insert(format!("{alias}.{rest}"), original.clone());
+            }
+        }
+    }
+    targets
+}
+
 fn collect_intrinsic_symbols(module: &HirModule) -> BTreeMap<String, String> {
     let mut symbols = BTreeMap::new();
     for decl in &module.declarations {
@@ -4169,6 +4253,7 @@ fn lower_hir_function(
     layouts: &MirLayoutCatalog,
     known_functions: &BTreeSet<String>,
     known_function_types: &BTreeMap<String, Type>,
+    known_function_alias_targets: &BTreeMap<String, String>,
     known_const_exprs: &BTreeMap<String, AstExprKind>,
     intrinsic_symbols: &BTreeMap<String, String>,
     effect_operations: &BTreeMap<String, EffectOperationInfo>,
@@ -4198,6 +4283,7 @@ fn lower_hir_function(
         layouts,
         known_functions,
         known_function_types,
+        known_function_alias_targets,
         known_const_exprs,
         intrinsic_symbols,
         effect_operations,
@@ -4316,6 +4402,7 @@ struct FunctionLoweringCtx {
     local_lambdas: BTreeMap<String, LocalLambda>,
     known_functions: BTreeSet<String>,
     known_function_types: BTreeMap<String, Type>,
+    known_function_alias_targets: BTreeMap<String, String>,
     known_const_exprs: BTreeMap<String, AstExprKind>,
     intrinsic_symbols: BTreeMap<String, String>,
     effect_operations: BTreeMap<String, EffectOperationInfo>,
@@ -4399,6 +4486,7 @@ impl FunctionLoweringCtx {
         layouts: &MirLayoutCatalog,
         known_functions: &BTreeSet<String>,
         known_function_types: &BTreeMap<String, Type>,
+        known_function_alias_targets: &BTreeMap<String, String>,
         known_const_exprs: &BTreeMap<String, AstExprKind>,
         intrinsic_symbols: &BTreeMap<String, String>,
         effect_operations: &BTreeMap<String, EffectOperationInfo>,
@@ -4449,6 +4537,7 @@ impl FunctionLoweringCtx {
             local_lambdas: BTreeMap::new(),
             known_functions: known_functions.clone(),
             known_function_types: known_function_types.clone(),
+            known_function_alias_targets: known_function_alias_targets.clone(),
             known_const_exprs: known_const_exprs.clone(),
             intrinsic_symbols: intrinsic_symbols.clone(),
             effect_operations: effect_operations.clone(),
@@ -4483,6 +4572,13 @@ impl FunctionLoweringCtx {
         self.block_incoming_bindings_stack
             .last()
             .is_none_or(|names| names.contains(name))
+    }
+
+    fn canonical_known_function_name(&self, name: &str) -> String {
+        self.known_function_alias_targets
+            .get(name)
+            .cloned()
+            .unwrap_or_else(|| name.to_string())
     }
 
     fn drop_local_binding_metadata(&mut self, name: &str) {
@@ -4621,6 +4717,7 @@ impl FunctionLoweringCtx {
             &self.layouts,
             &self.known_functions,
             &self.known_function_types,
+            &self.known_function_alias_targets,
             &self.known_const_exprs,
             &self.intrinsic_symbols,
             &self.effect_operations,
@@ -5333,16 +5430,24 @@ impl FunctionLoweringCtx {
     }
 
     fn lower_named_function_to_closure_value(&mut self, name: &str) -> Option<MirValueId> {
-        let Type::Function(ft) = self.known_function_types.get(name)?.clone() else {
+        let canonical_name = self.canonical_known_function_name(name);
+        let function_ty = self
+            .known_function_types
+            .get(&canonical_name)
+            .or_else(|| self.known_function_types.get(name))?
+            .clone();
+
+        let Type::Function(ft) = function_ty else {
             let dest = self.new_value();
             self.emit_inst(MirInst::FunctionRef {
                 dest: dest.clone(),
-                function: name.to_string(),
+                function: canonical_name,
             });
             return Some(dest);
         };
 
-        let entry_name = if let Some(existing) = self.named_function_closure_entries.get(name) {
+        let entry_name = if let Some(existing) = self.named_function_closure_entries.get(&canonical_name)
+        {
             existing.clone()
         } else {
             let entry_name = self.allocate_generated_closure_entry_name("named");
@@ -5350,12 +5455,13 @@ impl FunctionLoweringCtx {
                 uses_fail_result_abi_from_type(&Type::Function(ft.clone()));
             let dispatch_effects = self
                 .known_function_dispatch_effects
-                .get(name)
+                .get(&canonical_name)
+                .or_else(|| self.known_function_dispatch_effects.get(name))
                 .cloned()
                 .unwrap_or_else(|| self.dispatch_effects_for_effect_row(&ft.effects));
             let wrapper = self.build_closure_entry_wrapper(
                 entry_name.clone(),
-                name.to_string(),
+                canonical_name.clone(),
                 Vec::new(),
                 ft.params.clone(),
                 dispatch_effects,
@@ -5366,7 +5472,7 @@ impl FunctionLoweringCtx {
             );
             self.register_generated_function(wrapper);
             self.named_function_closure_entries
-                .insert(name.to_string(), entry_name.clone());
+                .insert(canonical_name, entry_name.clone());
             entry_name
         };
 
@@ -5442,6 +5548,7 @@ impl FunctionLoweringCtx {
             &self.layouts,
             &known,
             &known_types,
+            &self.known_function_alias_targets,
             &self.known_const_exprs,
             &self.intrinsic_symbols,
             &self.effect_operations,
@@ -5558,6 +5665,7 @@ impl FunctionLoweringCtx {
             &self.layouts,
             &known,
             &known_types,
+            &self.known_function_alias_targets,
             &self.known_const_exprs,
             &self.intrinsic_symbols,
             &self.effect_operations,
@@ -6849,7 +6957,7 @@ impl FunctionLoweringCtx {
                     } else if let Some(symbol) = ptr_intrinsic_symbol(name) {
                         MirCallee::External(symbol.to_string())
                     } else if self.known_function_types.contains_key(name) {
-                        MirCallee::Local(name.clone())
+                        MirCallee::Local(self.canonical_known_function_name(name))
                     } else if is_namespaced_symbol_name(name) {
                         MirCallee::External(name.clone())
                     } else {

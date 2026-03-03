@@ -3138,7 +3138,7 @@ fn compile_rejects_fip_unique_higher_order_forwarder_wrong_unique_arg_escape() {
 
     #[test]
     #[cfg(not(target_os = "windows"))]
-    fn compile_fip_unique_higher_order_module_alias_wrapper_call_reaches_codegen_alias_gap() {
+    fn compile_and_execute_fip_unique_higher_order_module_alias_wrapper_call_exit_code() {
         let project_dir =
             temp_workspace_project_dir("kea-cli-fip-unique-higher-order-alias-wrapper");
         let src_dir = project_dir.join("src");
@@ -3155,20 +3155,10 @@ fn compile_rejects_fip_unique_higher_order_forwarder_wrong_unique_arg_escape() {
         )
         .expect("source write should succeed");
 
-        let err = run_file(&source_path)
-            .expect_err("module-alias qualified wrapper call is not lowered in codegen yet");
-        assert!(
-            !err.contains("`@fip` verification failed"),
-            "expected @fip verification to pass before codegen gap, got: {err}"
+        let run = run_file(&source_path).expect(
+            "@fip verifier and backend lowering should accept higher-order module-alias wrapper calls",
         );
-        assert!(
-            err.contains("unresolved qualified call target `A.apply_forwarder`"),
-            "expected unresolved qualified wrapper call target codegen error, got: {err}"
-        );
-        assert!(
-            err.contains("`@fip` ownership verification succeeded before backend lowering"),
-            "expected explicit @fip/backend gap separation note, got: {err}"
-        );
+        assert_eq!(run.exit_code, 0);
 
         let _ = std::fs::remove_dir_all(project_dir);
     }
@@ -3288,7 +3278,7 @@ fn compile_and_execute_fip_unique_named_import_forwarder_call_exit_code() {
 
 #[test]
 #[cfg(not(target_os = "windows"))]
-fn compile_fip_unique_module_alias_forwarder_call_reaches_codegen_alias_gap() {
+fn compile_and_execute_fip_unique_module_alias_forwarder_call_exit_code() {
     let project_dir = temp_workspace_project_dir("kea-cli-fip-unique-module-alias-forwarder");
     let src_dir = project_dir.join("src");
     std::fs::create_dir_all(&src_dir).expect("source dir should be created");
@@ -3304,27 +3294,16 @@ fn compile_fip_unique_module_alias_forwarder_call_reaches_codegen_alias_gap() {
         )
         .expect("source write should succeed");
 
-    let err = run_file(&source_path)
-        .expect_err("module-alias qualified call is not lowered in codegen yet");
-    assert!(
-        !err.contains("`@fip` verification failed"),
-        "expected @fip verification to pass before codegen gap, got: {err}"
-    );
-    assert!(
-        err.contains("unresolved qualified call target `A.forward_once`"),
-        "expected unresolved qualified call target codegen error, got: {err}"
-    );
-    assert!(
-        err.contains("`@fip` ownership verification succeeded before backend lowering"),
-        "expected explicit @fip/backend gap separation note, got: {err}"
-    );
+    let run = run_file(&source_path)
+        .expect("@fip verifier and backend lowering should accept module-alias qualified calls");
+    assert_eq!(run.exit_code, 0);
 
     let _ = std::fs::remove_dir_all(project_dir);
 }
 
 #[test]
 #[cfg(not(target_os = "windows"))]
-fn compile_fip_unique_module_alias_forwarder_call_ignores_local_operation_shadowing() {
+fn compile_and_execute_fip_unique_module_alias_forwarder_call_ignores_local_operation_shadowing() {
     let project_dir = temp_workspace_project_dir("kea-cli-fip-unique-alias-opname-shadowed-param");
     let src_dir = project_dir.join("src");
     std::fs::create_dir_all(&src_dir).expect("source dir should be created");
@@ -3340,20 +3319,10 @@ fn compile_fip_unique_module_alias_forwarder_call_ignores_local_operation_shadow
         )
         .expect("source write should succeed");
 
-    let err = run_file(&source_path)
-        .expect_err("module-alias qualified call is not lowered in codegen yet");
-    assert!(
-        !err.contains("`@fip` verification failed"),
-        "expected @fip verification to pass before codegen gap, got: {err}"
+    let run = run_file(&source_path).expect(
+        "@fip verifier and backend lowering should resolve module-alias qualified names even when local params shadow operation names",
     );
-    assert!(
-        err.contains("unresolved qualified call target `A.forward_once`"),
-        "expected unresolved qualified call target codegen error, got: {err}"
-    );
-    assert!(
-        err.contains("`@fip` ownership verification succeeded before backend lowering"),
-        "expected explicit @fip/backend gap separation note, got: {err}"
-    );
+    assert_eq!(run.exit_code, 0);
 
     let _ = std::fs::remove_dir_all(project_dir);
 }
