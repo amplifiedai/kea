@@ -9395,6 +9395,59 @@ theorem tier_pipeline_erasure_completeness
     ErasurePipelineCompletenessSlice declared erasable :=
   erasure_pipeline_completeness_slice declared erasable
 
+/--
+Supporting-material bundle matching the correspondence milestone checklist:
+1. tier structure,
+2. erasure correspondence,
+3. scheduler soundness,
+4. pipeline completeness.
+-/
+def effect_compiler_scheduler_supporting_material_prop
+    (yielding blocking declared erasable : List Label) : Prop :=
+  HandlerTierStructureSlice
+      yielding
+      blocking
+      (eraseCapabilities declared erasable)
+    ∧
+  ErasureCorrespondenceSlice
+      declared
+      erasable
+      (eraseCapabilities declared erasable)
+    ∧
+  SchedulerClassificationSoundnessSlice
+      blocking
+      (eraseCapabilities declared erasable)
+    ∧
+  ErasurePipelineCompletenessSlice declared erasable
+
+/--
+One-shot extraction of all four supporting-material statements from the
+top-level correspondence object.
+-/
+theorem effect_compiler_scheduler_supporting_material_of_correspondence
+    (yielding blocking declared erasable : List Label)
+    (h_corr : EffectCompilerSchedulerCorrespondence yielding blocking declared erasable) :
+    effect_compiler_scheduler_supporting_material_prop
+      yielding blocking declared erasable := by
+  exact ⟨
+    h_corr.correspondence.tierStructure,
+    h_corr.correspondence.erasureCorrespondence,
+    h_corr.correspondence.schedulerSoundness,
+    h_corr.correspondence.pipelineCompleteness
+  ⟩
+
+/--
+Canonical supporting-material bundle from the direct correspondence
+constructor.
+-/
+theorem effect_compiler_scheduler_supporting_material
+    (yielding blocking declared erasable : List Label) :
+    effect_compiler_scheduler_supporting_material_prop
+      yielding blocking declared erasable := by
+  exact effect_compiler_scheduler_supporting_material_of_correspondence
+    yielding blocking declared erasable
+    (effect_compiler_scheduler_correspondence yielding blocking declared erasable)
+
 /-- Declarative field typing is functional on the core slice. -/
 theorem hasFieldsType_unique
     {env : TermEnv} {fs : CoreFields} {row₁ row₂ : RowFields}

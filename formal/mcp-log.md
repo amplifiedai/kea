@@ -21895,3 +21895,51 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - The exact milestone claims are now available as directly named theorem surfaces in the corpus.
+
+### 2026-03-04: added one-shot “supporting material” bundle theorem matching the four requested statements
+
+**Context**: Added:
+- `effect_compiler_scheduler_supporting_material_prop`
+- `effect_compiler_scheduler_supporting_material_of_correspondence`
+- `effect_compiler_scheduler_supporting_material`
+
+These package exactly the four requested outputs in one proposition/theorem route:
+1) tier structure, 2) erasure correspondence, 3) scheduler soundness, 4) pipeline completeness.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent handler should type-check.
+- Mismatched pure handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Delta` + trivial fn -> `ok`.
+2. Coherent handler (`handle ProbeFG.run(); ProbeFG.run() -> resume 351`) -> `ok`.
+3. Mismatched pure handler (`handle ProbeFH.left(); ProbeFI.right() -> resume 0`) -> `error`, `E0001`.
+4. Bad resume payload (`ProbeFJ.read() -> resume true`) -> `error`, `E0001`.
+5. Out-of-handler resume (`fn fresh_outside_resume_probe_20260304n() -> Int; resume 39`) -> `error`, `E0012`.
+6. Forged-name out-of-handler resume (`let __kea_resume_ctx = 39; resume 39`) -> `error`, `E0012`.
+7. Double-resume clause (`resume 1` then `resume 2`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the one-shot supporting-material bundle proposition and constructor theorem.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `effect_compiler_scheduler_supporting_material_prop`
+  - `effect_compiler_scheduler_supporting_material_of_correspondence`
+  - `effect_compiler_scheduler_supporting_material`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The exact four-item support checklist now has a single machine-checkable theorem bundle.
