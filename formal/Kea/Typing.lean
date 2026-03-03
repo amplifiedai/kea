@@ -5008,6 +5008,38 @@ theorem native_handler_step_ext_with_mismatch_local_consequence_assumption_route
       clauseSem mismatchSem bodyStep h_core)
 
 /--
+Master suite bundling packaged global assumption routes and packaged local
+consequence routes for mismatch-extension semantics.
+-/
+def native_handler_step_ext_with_mismatch_master_suite_prop
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) : Prop :=
+  native_handler_step_ext_with_mismatch_assumption_route_suite_prop
+      clauseSem mismatchSem bodyStep
+    ∧
+    native_handler_step_ext_with_mismatch_local_consequence_assumption_route_suite_prop
+      clauseSem mismatchSem bodyStep
+
+/--
+From packaged core soundness, derive the mismatch-extension master suite
+(global routes + local consequence routes).
+-/
+theorem native_handler_step_ext_with_mismatch_master_suite_of_core_soundness
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core : native_core_soundness_prop bodyStep) :
+    native_handler_step_ext_with_mismatch_master_suite_prop
+      clauseSem mismatchSem bodyStep := by
+  have h_global :=
+    native_handler_step_ext_with_mismatch_assumption_route_suite_of_core_soundness
+      clauseSem mismatchSem bodyStep h_core
+  exact ⟨h_global,
+    native_handler_step_ext_with_mismatch_local_consequence_assumption_route_suite_of_assumption_route_suite
+      clauseSem mismatchSem bodyStep h_global⟩
+
+/--
 Specialized concrete pass-through mismatch assumption-route suite
 (progress-routes + soundness-routes).
 -/
@@ -5144,6 +5176,28 @@ theorem native_handler_step_ext_with_passThroughMismatch_local_consequence_assum
     clauseSem bodyStep
     (native_handler_step_ext_with_passThroughMismatch_soundness_assumption_routes_of_core_soundness
       clauseSem bodyStep h_core)
+
+/--
+Concrete pass-through specialization of the mismatch-extension master suite.
+-/
+def native_handler_step_ext_with_passThroughMismatch_master_suite_prop
+    (clauseSem : NativeHandlerClauseSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) : Prop :=
+  native_handler_step_ext_with_mismatch_master_suite_prop
+    clauseSem nativeHandlerMismatchPassThroughSem bodyStep
+
+/--
+From packaged core soundness, derive the concrete pass-through master suite
+(global routes + local consequence routes).
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_master_suite_of_core_soundness
+    (clauseSem : NativeHandlerClauseSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core : native_core_soundness_prop bodyStep) :
+    native_handler_step_ext_with_passThroughMismatch_master_suite_prop
+      clauseSem bodyStep := by
+  exact native_handler_step_ext_with_mismatch_master_suite_of_core_soundness
+    clauseSem nativeHandlerMismatchPassThroughSem bodyStep h_core
 
 /-- Declarative field typing is functional on the core slice. -/
 theorem hasFieldsType_unique

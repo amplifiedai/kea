@@ -18645,3 +18645,43 @@ theorems through that specialization.
 **Impact**:
 - Concrete pass-through suite derivations now use a single explicit core ->
   soundness-routes specialization before constructing global/local suites.
+
+### 2026-03-03: master suite capstones (generic + pass-through)
+
+**Context**: Added master suite props/theorems bundling global assumption-route
+suites with local consequence suites, both for generic mismatch semantics and
+concrete pass-through mismatch semantics.
+
+**MCP tools used**: `reset_session`, `type_check`
+
+**Predict (Lean side)**:
+- Coherent polymorphic reader handler should type-check as pure.
+- Clause/effect mismatch should leak body effect in pure context.
+- Resume payload mismatch should reject.
+- Out-of-handler resume should reject.
+
+**Probe (Rust side via MCP)**:
+1. Coherent polymorphic `with_reader` handler -> `ok`.
+2. Mismatched `Log.info` clause around `Reader` body -> `error`, `E0001` (pure body performs `[Reader(Int)]`).
+3. Bad `Reader Int` resume payload (`resume false`) -> `error`, `E0001`.
+4. Out-of-handler resume control (`let q = 2; resume q`) -> `error`, `E0012`.
+
+**Classify**: Agreement.
+
+**Act**:
+- Kept master-suite theorem additions.
+- Continued checkpoint loop without model revision.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_master_suite_prop`
+  - `native_handler_step_ext_with_mismatch_master_suite_of_core_soundness`
+  - `native_handler_step_ext_with_passThroughMismatch_master_suite_prop`
+  - `native_handler_step_ext_with_passThroughMismatch_master_suite_of_core_soundness`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- A single core-soundness premise now yields one named theorem witness that
+  bundles both global and local route surfaces (generic and concrete pass-through).
