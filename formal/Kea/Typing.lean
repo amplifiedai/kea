@@ -4920,6 +4920,36 @@ theorem native_handler_step_ext_with_mismatch_soundness_progress_and_native_prog
   exact ⟨h_sound, h_sound.2, h_gap.nativeProgressFalse⟩
 
 /--
+Core+strict-top contrast route surface for mismatch-extension soundness/progress
+against native minimal progress.
+-/
+def native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_prop
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) : Prop :=
+  ∀ bodyStep,
+    native_core_soundness_prop bodyStep →
+    native_handler_strict_top_typing_prop →
+    native_handler_step_ext_with_mismatch_soundness_prop clauseSem mismatchSem bodyStep
+      ∧
+    native_handler_step_ext_with_mismatch_progress_prop clauseSem mismatchSem bodyStep
+      ∧
+    ¬ native_handler_step_progress_prop clauseSem
+
+/--
+Build the core+strict-top contrast route from a packaged boundary-model gap
+slice witness.
+-/
+theorem native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_of_boundary_model_gap_slice
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (h_gap : NativeHandlerBoundaryModelGapSlice clauseSem mismatchSem) :
+    native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_prop
+      clauseSem mismatchSem := by
+  intro bodyStep h_core h_strict_top_typing
+  exact native_handler_step_ext_with_mismatch_soundness_progress_and_native_progress_gap_of_core_soundness_and_strict_top_typing_of_boundary_model_gap_slice
+    clauseSem mismatchSem bodyStep h_gap h_core h_strict_top_typing
+
+/--
 Packaged route: mismatch-extension progress from packaged core progress plus
 global strict typing, routed through strict-top typing.
 -/

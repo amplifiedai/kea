@@ -19357,3 +19357,44 @@ No MCP divergence found at this checkpoint.
 **Impact**:
 - The full strictness/typed-gap ladder is now consumable from one projection
   theorem over the boundary capstone, reducing downstream theorem plumbing.
+
+### 2026-03-03: core+strict-top contrast route packaged from boundary capstone
+
+**Context**: Added a route proposition and constructor theorem that package the
+combined mismatch soundness/progress vs native-progress gap as a reusable
+`∀ bodyStep` route derivable from `NativeHandlerBoundaryModelGapSlice`.
+
+**MCP tools used**: `reset_session`, `type_check`
+
+**Predict (Lean side)**:
+- `use` parsing should remain stable.
+- Coherent State handler should type-check.
+- Mismatched pure handler should reject with effect leak.
+- Bad resume payload should reject.
+- Out-of-handler resume should reject.
+
+**Probe (Rust side via MCP)**:
+1. `use Counter` -> `ok`.
+2. Coherent State handler (`State.get() -> resume 7`, `State.put(next) -> resume ()`) -> `ok`.
+3. Mismatched pure handler (`handle State.get()` with only `Log.info` clause) -> `error`, `E0001` (pure body performs `[State(Int)]`).
+4. Bad resume payload (`Counter.next() -> resume "oops"`) -> `error`, `E0001`.
+5. Out-of-handler resume control (`fn bad_resume7() -> Int; resume 7`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No MCP divergence found at this checkpoint.
+
+**Act**:
+- Kept core+strict-top contrast route packaging additions.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_prop`
+  - `native_handler_step_ext_with_mismatch_core_strict_top_contrast_route_of_boundary_model_gap_slice`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Consumers can now request one reusable route function from the boundary
+  capstone instead of re-threading bodyStep/core/strict-top assumptions manually.
