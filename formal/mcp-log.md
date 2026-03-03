@@ -20575,3 +20575,48 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - The strict-positive branch is now reusable beyond `bodyStep = False`, reducing dependence on one specific body-step model for constructive witness reuse.
+
+### 2026-03-04: generalized dual witness from `bodyStep = False` to arbitrary `bodyStep` under local no-body-step premise
+
+**Context**: Added generic dual-witness theorem and refactored the existing bodyStep-false theorem through it:
+- `native_handler_dual_witness_of_metadata_mismatch_without_body_step`
+- `native_handler_dual_witness_bodyStepFalse` (now via generic specialization)
+
+The positive strict-metadata branch and negative metadata-mismatch branch are now coupled at arbitrary `bodyStep`, parameterized by explicit `h_body_pres` and local `h_no_body_step`.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent handler should type-check.
+- Mismatched pure handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Matrix` + trivial fn -> `ok`.
+2. Coherent handler (`ProbeP.emit() -> resume 61`) -> `ok`.
+3. Mismatched pure handler (`handle ProbeQ.fetch()` with only `ProbeR.save`) -> `error`, `E0001`.
+4. Bad resume payload (`ProbeS.read() -> resume "bad"`) -> `error`, `E0001`.
+5. Out-of-handler resume (`fn outside_resume_probe3() -> Int; resume 10`) -> `error`, `E0012`.
+6. Forged-name out-of-handler resume (`let __kea_resume_ctx = 9; resume 10`) -> `error`, `E0012`.
+7. Double-resume clause (`resume 1` then `resume 2`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the generic dual-witness theorem and specialization refactor.
+- Continued MCP-first checkpoint loop with fresh probe names.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_dual_witness_of_metadata_mismatch_without_body_step`
+  - `native_handler_dual_witness_bodyStepFalse`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The dual positive/negative boundary witness now scales beyond the single `bodyStep = False` model, improving reuse in later mismatch-boundary arguments.

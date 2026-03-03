@@ -5043,6 +5043,58 @@ theorem native_handler_step_ext_with_mismatch_exists_and_preserves_of_matching_p
       cases h_step)
 
 /--
+Generic dual-boundary witness route:
+- positive strict-metadata branch steps with preservation, and
+- negative metadata-mismatch branch is typed, non-strict, and stuck,
+under a local no-body-step premise for the mismatch body.
+-/
+theorem native_handler_dual_witness_of_metadata_mismatch_without_body_step
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_body_pres :
+      ∀ env body body' ty,
+        HasTypeScopedTop env body ty →
+        bodyStep body body' →
+        HasTypeScopedTop env body' ty)
+    (h_no_body_step :
+      ∀ body', ¬ bodyStep
+        (.perform "Op" .bool .bool (.boolLit true) (.lam "x" .bool (.intLit 0)))
+        body') :
+    (∃ e',
+      NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep
+        native_handler_matching_perform_witness_expr
+        e'
+      ∧ HasTypeScopedTop [] e' .int)
+    ∧
+    HasTypeScopedTop [] native_handler_metadata_mismatch_witness_expr .int
+    ∧
+    ¬ HasTypeScopedStrictTop [] native_handler_metadata_mismatch_witness_expr .int
+    ∧
+    ¬ ∃ e', NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep
+      native_handler_metadata_mismatch_witness_expr
+      e' := by
+  have h_pos :=
+    native_handler_step_ext_with_mismatch_exists_and_preserves_of_matching_perform_witness
+      clauseSem mismatchSem bodyStep h_body_pres
+  have h_neg :=
+    native_handler_step_ext_with_mismatch_typed_metadata_mismatch_counterexample
+      clauseSem mismatchSem bodyStep h_no_body_step
+  have h_neg_not_strict :
+      ¬ HasTypeScopedStrictTop [] native_handler_metadata_mismatch_witness_expr .int := by
+    simpa [native_handler_metadata_mismatch_witness_expr] using
+      hasTypeScopedStrictTop_typed_metadata_mismatch_counterexample_not_typable
+  have h_neg_typed :
+      HasTypeScopedTop [] native_handler_metadata_mismatch_witness_expr .int := by
+    simpa [native_handler_metadata_mismatch_witness_expr] using h_neg.1
+  have h_neg_no_step :
+      ¬ ∃ e', NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep
+        native_handler_metadata_mismatch_witness_expr
+        e' := by
+    simpa [native_handler_metadata_mismatch_witness_expr] using h_neg.2
+  exact ⟨h_pos, h_neg_typed, h_neg_not_strict, h_neg_no_step⟩
+
+/--
 Dual boundary witness at `bodyStep = False`: a strict-typed matching-metadata
 handle that steps with preservation, paired with a typed metadata-mismatch
 handle that is non-strict and stuck.
@@ -5071,29 +5123,14 @@ theorem native_handler_dual_witness_bodyStepFalse
     (clauseSem : NativeHandlerClauseSem)
     (mismatchSem : NativeHandlerMismatchSem) :
     native_handler_dual_witness_bodyStepFalse_prop clauseSem mismatchSem := by
-  have h_pos :=
-    native_handler_step_ext_with_mismatch_exists_and_preserves_of_matching_perform_witness_bodyStepFalse
-      clauseSem mismatchSem
-  have h_neg :=
-    native_handler_step_ext_with_mismatch_typed_metadata_mismatch_counterexample
-      clauseSem mismatchSem
-      (fun _ _ => False)
-      (by
-        intro body' h_step
-        cases h_step)
-  have h_neg_not_strict :
-      ¬ HasTypeScopedStrictTop [] native_handler_metadata_mismatch_witness_expr .int := by
-    simpa [native_handler_metadata_mismatch_witness_expr] using
-      hasTypeScopedStrictTop_typed_metadata_mismatch_counterexample_not_typable
-  have h_neg_typed :
-      HasTypeScopedTop [] native_handler_metadata_mismatch_witness_expr .int := by
-    simpa [native_handler_metadata_mismatch_witness_expr] using h_neg.1
-  have h_neg_no_step :
-      ¬ ∃ e', NativeHandlerStepExtWithMismatch clauseSem mismatchSem (fun _ _ => False)
-        native_handler_metadata_mismatch_witness_expr
-        e' := by
-    simpa [native_handler_metadata_mismatch_witness_expr] using h_neg.2
-  exact ⟨h_pos, h_neg_typed, h_neg_not_strict, h_neg_no_step⟩
+  exact native_handler_dual_witness_of_metadata_mismatch_without_body_step
+    clauseSem mismatchSem (fun _ _ => False)
+    (by
+      intro env body body' ty _h_body h_step
+      cases h_step)
+    (by
+      intro body' h_step
+      cases h_step)
 
 /--
 If the metadata-mismatch counterexample body cannot take a `bodyStep`, global
