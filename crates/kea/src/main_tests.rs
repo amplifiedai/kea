@@ -3966,6 +3966,44 @@ fn compile_rejects_unboxed_struct_with_heap_field() {
 }
 
 #[test]
+fn compile_unboxed_struct_emits_no_retain_release_in_stats() {
+    let source_path = write_temp_source(
+        "@unboxed\nstruct Pair\n  left: Int\n  right: Int\n\nfn mk(n: Int) -> Pair\n  Pair { left: n, right: n + 1 }\n\nfn main() -> Int\n  let p0 = mk(20)\n  let p1 = p0\n  p1.left + p1.right\n",
+        "kea-cli-unboxed-stats",
+        "kea",
+    );
+
+    let compiled = compile_file(&source_path, CodegenMode::Jit).expect("compile should work");
+    let retain_count: usize = compiled
+        .stats
+        .per_function
+        .iter()
+        .map(|f| f.retain_count)
+        .sum();
+    let release_count: usize = compiled
+        .stats
+        .per_function
+        .iter()
+        .map(|f| f.release_count)
+        .sum();
+    assert_eq!(
+        retain_count, 0,
+        "expected no retain ops for @unboxed-only kernel, stats: {:?}",
+        compiled.stats
+    );
+    assert_eq!(
+        release_count, 0,
+        "expected no release ops for @unboxed-only kernel, stats: {:?}",
+        compiled.stats
+    );
+
+    let run = run_file(&source_path).expect("run should succeed");
+    assert_eq!(run.exit_code, 41);
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
 #[cfg(not(target_os = "windows"))]
 fn compile_build_and_execute_aot_ptr_alloc_read_write_free_exit_code() {
     let source_path = write_temp_source(

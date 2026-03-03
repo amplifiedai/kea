@@ -57,6 +57,7 @@ pub struct MirLayoutCatalog {
 #[derive(Debug, Clone, PartialEq)]
 pub struct MirRecordLayout {
     pub name: String,
+    pub is_unboxed: bool,
     pub fields: Vec<MirRecordFieldLayout>,
 }
 
@@ -2944,7 +2945,7 @@ fn record_layout_is_reuse_eligible(layouts: &MirLayoutCatalog, record_type: &str
     layout
         .fields
         .iter()
-        .all(|field| !annotation_is_heap_managed(&field.annotation))
+        .all(|field| !annotation_is_heap_managed(&field.annotation, layouts))
 }
 
 fn sum_layout_is_reuse_eligible(layouts: &MirLayoutCatalog, sum_type: &str) -> bool {
@@ -2962,30 +2963,45 @@ fn sum_layout_is_reuse_eligible(layouts: &MirLayoutCatalog, sum_type: &str) -> b
         .variants
         .iter()
         .flat_map(|variant| &variant.fields)
-        .all(|field| !annotation_is_heap_managed(&field.annotation))
+        .all(|field| !annotation_is_heap_managed(&field.annotation, layouts))
 }
 
-fn annotation_is_heap_managed(annotation: &TypeAnnotation) -> bool {
+fn annotation_is_heap_managed(annotation: &TypeAnnotation, layouts: &MirLayoutCatalog) -> bool {
     match annotation {
-        TypeAnnotation::Named(name) => !matches!(
-            name.as_str(),
-            "Int"
-                | "Bool"
-                | "Float"
-                | "Unit"
-                | "Int8"
-                | "Int16"
-                | "Int32"
-                | "Int64"
-                | "UInt8"
-                | "UInt16"
-                | "UInt32"
-                | "UInt64"
-                | "Float16"
-                | "Float32"
-                | "Float64"
-        ),
-        TypeAnnotation::Tuple(items) => items.iter().any(annotation_is_heap_managed),
+        TypeAnnotation::Named(name) => {
+            if matches!(
+                name.as_str(),
+                "Int"
+                    | "Bool"
+                    | "Float"
+                    | "Unit"
+                    | "Int8"
+                    | "Int16"
+                    | "Int32"
+                    | "Int64"
+                    | "UInt8"
+                    | "UInt16"
+                    | "UInt32"
+                    | "UInt64"
+                    | "Float16"
+                    | "Float32"
+                    | "Float64"
+            ) {
+                return false;
+            }
+            if layouts
+                .records
+                .iter()
+                .find(|record| record.name == *name)
+                .is_some_and(|record| record.is_unboxed)
+            {
+                return false;
+            }
+            true
+        }
+        TypeAnnotation::Tuple(items) => items
+            .iter()
+            .any(|item| annotation_is_heap_managed(item, layouts)),
         _ => true,
     }
 }
@@ -3900,6 +3916,10 @@ fn collect_layout_metadata(raw_decl: &DeclKind, layouts: &mut MirLayoutCatalog) 
     match raw_decl {
         DeclKind::RecordDef(record) => layouts.records.push(MirRecordLayout {
             name: record.name.node.clone(),
+            is_unboxed: record
+                .annotations
+                .iter()
+                .any(|annotation| annotation.name.node == "unboxed"),
             fields: record
                 .fields
                 .iter()
@@ -4027,6 +4047,7 @@ fn collect_anon_record_layouts_from_expr(
             if known.insert(layout_name.clone()) {
                 layouts.records.push(MirRecordLayout {
                     name: layout_name,
+                    is_unboxed: false,
                     fields: (0..fields.len())
                         .map(|index| MirRecordFieldLayout {
                             name: index.to_string(),
@@ -4104,6 +4125,7 @@ fn collect_anon_record_layouts_from_expr(
                 if known.insert(layout_name.clone()) {
                     layouts.records.push(MirRecordLayout {
                         name: layout_name,
+            is_unboxed: false,
                         fields: field_names
                             .into_iter()
                             .map(|field_name| MirRecordFieldLayout {
@@ -5777,7 +5799,7 @@ impl FunctionLoweringCtx {
                 let mut retain_target = true;
                 if let HirExprKind::Var(source_name) = &flattened_base.kind
                     && self.vars.contains_key(source_name)
-                    && is_heap_managed_type(&flattened_base.ty)
+                    && is_heap_managed_type(&flattened_base.ty, &self.layouts)
                 {
                     let source_used_later = self.name_maybe_referenced_later_in_block(source_name);
                     let source_from_outer_scope =
@@ -5979,7 +6001,7 @@ impl FunctionLoweringCtx {
                 if let (HirPattern::Var(target_name), HirExprKind::Var(source_name)) =
                     (pattern, &value.kind)
                     && self.vars.contains_key(source_name)
-                    && is_heap_managed_type(&value.ty)
+                    && is_heap_managed_type(&value.ty, &self.layouts)
                 {
                     let source_used_later = self.name_maybe_referenced_later_in_block(source_name);
                     let source_from_outer_scope =
@@ -6026,7 +6048,7 @@ impl FunctionLoweringCtx {
                         let Some(ty) = self.var_types.get(name) else {
                             continue;
                         };
-                        if !is_heap_managed_type(ty) {
+                        if !is_heap_managed_type(ty, &self.layouts) {
                             continue;
                         }
                         if last.as_ref().is_some_and(|result_id| result_id == value_id) {
@@ -7628,17 +7650,22 @@ fn lower_unaryop(op: UnaryOp) -> MirUnaryOp {
     }
 }
 
-fn is_heap_managed_type(ty: &Type) -> bool {
-    matches!(
-        ty,
+fn is_heap_managed_type(ty: &Type, layouts: &MirLayoutCatalog) -> bool {
+    match ty {
         Type::String
-            | Type::Record(_)
-            | Type::AnonRecord(_)
-            | Type::Tuple(_)
-            | Type::Result(_, _)
-            | Type::Function(_)
-            | Type::Opaque { .. }
-    ) || matches!(ty, Type::Sum(sum_ty) if sum_uses_pointer_only_runtime_representation(sum_ty))
+        | Type::AnonRecord(_)
+        | Type::Tuple(_)
+        | Type::Result(_, _)
+        | Type::Function(_)
+        | Type::Opaque { .. } => true,
+        Type::Record(record) => !layouts
+            .records
+            .iter()
+            .find(|layout| layout.name == record.name)
+            .is_some_and(|layout| layout.is_unboxed),
+        Type::Sum(sum_ty) => sum_uses_pointer_only_runtime_representation(sum_ty),
+        _ => false,
+    }
 }
 
 fn sum_uses_pointer_only_runtime_representation(sum_ty: &SumType) -> bool {
@@ -10827,6 +10854,7 @@ mod tests {
         let layouts = MirLayoutCatalog {
             records: vec![MirRecordLayout {
                 name: "Point".to_string(),
+            is_unboxed: false,
                 fields: vec![MirRecordFieldLayout {
                     name: "x".to_string(),
                     annotation: TypeAnnotation::Named("Int".to_string()),
@@ -10898,6 +10926,7 @@ mod tests {
         let layouts = MirLayoutCatalog {
             records: vec![MirRecordLayout {
                 name: "Boxed".to_string(),
+            is_unboxed: false,
                 fields: vec![MirRecordFieldLayout {
                     name: "s".to_string(),
                     annotation: TypeAnnotation::Named("String".to_string()),
@@ -10957,6 +10986,7 @@ mod tests {
         let layouts = MirLayoutCatalog {
             records: vec![MirRecordLayout {
                 name: "Point".to_string(),
+            is_unboxed: false,
                 fields: vec![MirRecordFieldLayout {
                     name: "x".to_string(),
                     annotation: TypeAnnotation::Named("Int".to_string()),
@@ -11028,6 +11058,7 @@ mod tests {
         let layouts = MirLayoutCatalog {
             records: vec![MirRecordLayout {
                 name: "Point".to_string(),
+            is_unboxed: false,
                 fields: vec![MirRecordFieldLayout {
                     name: "x".to_string(),
                     annotation: TypeAnnotation::Named("Int".to_string()),
@@ -11259,6 +11290,7 @@ mod tests {
         let layouts = MirLayoutCatalog {
             records: vec![MirRecordLayout {
                 name: "Point".to_string(),
+            is_unboxed: false,
                 fields: vec![MirRecordFieldLayout {
                     name: "x".to_string(),
                     annotation: TypeAnnotation::Named("Int".to_string()),
@@ -11349,6 +11381,7 @@ mod tests {
         let layouts = MirLayoutCatalog {
             records: vec![MirRecordLayout {
                 name: "Point".to_string(),
+            is_unboxed: false,
                 fields: vec![MirRecordFieldLayout {
                     name: "x".to_string(),
                     annotation: TypeAnnotation::Named("Int".to_string()),
@@ -11440,6 +11473,7 @@ mod tests {
         let layouts = MirLayoutCatalog {
             records: vec![MirRecordLayout {
                 name: "Point".to_string(),
+            is_unboxed: false,
                 fields: vec![MirRecordFieldLayout {
                     name: "x".to_string(),
                     annotation: TypeAnnotation::Named("Int".to_string()),
@@ -11557,6 +11591,7 @@ mod tests {
         let layouts = MirLayoutCatalog {
             records: vec![MirRecordLayout {
                 name: "Point".to_string(),
+            is_unboxed: false,
                 fields: vec![MirRecordFieldLayout {
                     name: "x".to_string(),
                     annotation: TypeAnnotation::Named("Int".to_string()),
@@ -11661,6 +11696,7 @@ mod tests {
         let layouts = MirLayoutCatalog {
             records: vec![MirRecordLayout {
                 name: "Point".to_string(),
+            is_unboxed: false,
                 fields: vec![MirRecordFieldLayout {
                     name: "x".to_string(),
                     annotation: TypeAnnotation::Named("Int".to_string()),
@@ -11750,6 +11786,7 @@ mod tests {
         let layouts = MirLayoutCatalog {
             records: vec![MirRecordLayout {
                 name: "Point".to_string(),
+            is_unboxed: false,
                 fields: vec![MirRecordFieldLayout {
                     name: "x".to_string(),
                     annotation: TypeAnnotation::Named("Int".to_string()),
@@ -11884,6 +11921,7 @@ mod tests {
         let layouts = MirLayoutCatalog {
             records: vec![MirRecordLayout {
                 name: "Point".to_string(),
+            is_unboxed: false,
                 fields: vec![MirRecordFieldLayout {
                     name: "x".to_string(),
                     annotation: TypeAnnotation::Named("Int".to_string()),
@@ -12019,6 +12057,7 @@ mod tests {
         let layouts = MirLayoutCatalog {
             records: vec![MirRecordLayout {
                 name: "Point".to_string(),
+            is_unboxed: false,
                 fields: vec![MirRecordFieldLayout {
                     name: "x".to_string(),
                     annotation: TypeAnnotation::Named("Int".to_string()),

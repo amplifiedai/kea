@@ -1668,7 +1668,20 @@ fn allocate_heap_payload_dynamic(
     Ok(builder.ins().iadd_imm(raw_ptr, 8))
 }
 
-fn is_managed_heap_type(ty: &Type) -> bool {
+fn is_unboxed_record_type(ty: &Type, layout_plan: &BackendLayoutPlan) -> bool {
+    match ty {
+        Type::Record(record) => layout_plan
+            .records
+            .get(record.name.as_str())
+            .is_some_and(|layout| layout.is_unboxed),
+        _ => false,
+    }
+}
+
+fn is_managed_heap_type(ty: &Type, layout_plan: &BackendLayoutPlan) -> bool {
+    if is_unboxed_record_type(ty, layout_plan) {
+        return false;
+    }
     matches!(
         ty,
         Type::String
@@ -1717,6 +1730,9 @@ enum StateCellRcMode {
 }
 
 fn state_cell_rc_mode_for_type(ty: &Type, layout_plan: &BackendLayoutPlan) -> StateCellRcMode {
+    if is_unboxed_record_type(ty, layout_plan) {
+        return StateCellRcMode::Never;
+    }
     let Some(sum_name) = drop_sum_name_for_type(ty) else {
         return if matches!(
             ty,
@@ -1733,7 +1749,7 @@ fn state_cell_rc_mode_for_type(ty: &Type, layout_plan: &BackendLayoutPlan) -> St
         };
     };
     let Some(layout) = layout_plan.sums.get(sum_name) else {
-        return if is_managed_heap_type(ty) {
+        return if is_managed_heap_type(ty, layout_plan) {
             StateCellRcMode::Always
         } else {
             StateCellRcMode::Never
@@ -2106,22 +2122,26 @@ fn emit_state_cell_flag_and_retain(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn emit_typed_release<M: Module>(
     module: &mut M,
     builder: &mut FunctionBuilder,
     function_name: &str,
     payload_ptr: Value,
     value_ty: Option<&Type>,
+    layout_plan: &BackendLayoutPlan,
     drop_func_ids: &DropFunctionIds,
     imports: &mut RuntimeImports,
 ) -> Result<(), CodegenError> {
-    if let Some(ty) = value_ty
-        && is_managed_heap_type(ty)
-        && let Some(drop_func_id) = drop_function_for_type(ty, drop_func_ids)
-    {
-        let drop_ref = module.declare_func_in_func(drop_func_id, builder.func);
-        let _ = builder.ins().call(drop_ref, &[payload_ptr]);
-        return Ok(());
+    if let Some(ty) = value_ty {
+        if !is_managed_heap_type(ty, layout_plan) {
+            return Ok(());
+        }
+        if let Some(drop_func_id) = drop_function_for_type(ty, drop_func_ids) {
+            let drop_ref = module.declare_func_in_func(drop_func_id, builder.func);
+            let _ = builder.ins().call(drop_ref, &[payload_ptr]);
+            return Ok(());
+        }
     }
 
     emit_generic_release(module, builder, function_name, payload_ptr, imports)
@@ -2140,7 +2160,10 @@ fn declare_drop_functions<M: Module>(
     signature.params.push(AbiParam::new(ptr_ty));
 
     let mut drop_ids = DropFunctionIds::default();
-    for record_name in layout_plan.records.keys() {
+    for (record_name, layout) in &layout_plan.records {
+        if layout.is_unboxed {
+            continue;
+        }
         let symbol = mangle_drop_symbol("__kea_drop_record", record_name);
         let func_id = module
             .declare_function(&symbol, Linkage::Local, &signature)
@@ -2165,6 +2188,7 @@ fn define_record_drop_function<M: Module>(
     module: &mut M,
     type_name: &str,
     layout: &BackendRecordLayout,
+    layout_plan: &BackendLayoutPlan,
     drop_func_ids: &DropFunctionIds,
     imports: &mut RuntimeImports,
 ) -> Result<(), CodegenError> {
@@ -2209,7 +2233,7 @@ fn define_record_drop_function<M: Module>(
 
     builder.switch_to_block(unique_block);
     for (field_name, field_ty) in &layout.field_types {
-        if !is_managed_heap_type(field_ty) {
+        if !is_managed_heap_type(field_ty, layout_plan) {
             continue;
         }
         let Some(field_offset) = layout.field_offsets.get(field_name) else {
@@ -2231,6 +2255,7 @@ fn define_record_drop_function<M: Module>(
             type_name,
             field_ptr,
             Some(field_ty),
+            layout_plan,
             drop_func_ids,
             imports,
         )?;
@@ -2260,6 +2285,7 @@ fn define_sum_drop_function<M: Module>(
     module: &mut M,
     type_name: &str,
     layout: &BackendSumLayout,
+    layout_plan: &BackendLayoutPlan,
     drop_func_ids: &DropFunctionIds,
     imports: &mut RuntimeImports,
 ) -> Result<(), CodegenError> {
@@ -2354,7 +2380,10 @@ fn define_sum_drop_function<M: Module>(
                     }
                 }
             }
-            if field_types.iter().any(is_managed_heap_type) {
+            if field_types
+                .iter()
+                .any(|field_ty| is_managed_heap_type(field_ty, layout_plan))
+            {
                 Some((
                     *tag,
                     field_types.as_slice(),
@@ -2437,7 +2466,7 @@ fn define_sum_drop_function<M: Module>(
             builder.switch_to_block(variant_release_block);
             let mut next_chain_payload = None;
             for (field_idx, field_ty) in field_types.iter().enumerate() {
-                if !is_managed_heap_type(field_ty) {
+                if !is_managed_heap_type(field_ty, layout_plan) {
                     continue;
                 }
                 let field_offset = payload_offset
@@ -2471,6 +2500,7 @@ fn define_sum_drop_function<M: Module>(
                     type_name,
                     field_ptr,
                     Some(field_ty),
+                    layout_plan,
                     drop_func_ids,
                     imports,
                 )?;
@@ -2553,7 +2583,7 @@ fn define_sum_drop_function<M: Module>(
 
                 builder.switch_to_block(variant_release_block);
                 for (field_idx, field_ty) in field_types.iter().enumerate() {
-                    if !is_managed_heap_type(field_ty) {
+                    if !is_managed_heap_type(field_ty, layout_plan) {
                         continue;
                     }
                     let field_offset = payload_offset
@@ -2581,6 +2611,7 @@ fn define_sum_drop_function<M: Module>(
                         type_name,
                         field_ptr,
                         Some(field_ty),
+                        layout_plan,
                         drop_func_ids,
                         imports,
                     )?;
@@ -2627,10 +2658,27 @@ fn define_drop_functions<M: Module>(
     imports: &mut RuntimeImports,
 ) -> Result<(), CodegenError> {
     for (record_name, layout) in &layout_plan.records {
-        define_record_drop_function(module, record_name, layout, drop_func_ids, imports)?;
+        if layout.is_unboxed {
+            continue;
+        }
+        define_record_drop_function(
+            module,
+            record_name,
+            layout,
+            layout_plan,
+            drop_func_ids,
+            imports,
+        )?;
     }
     for (sum_name, layout) in &layout_plan.sums {
-        define_sum_drop_function(module, sum_name, layout, drop_func_ids, imports)?;
+        define_sum_drop_function(
+            module,
+            sum_name,
+            layout,
+            layout_plan,
+            drop_func_ids,
+            imports,
+        )?;
     }
     Ok(())
 }
@@ -2759,6 +2807,7 @@ fn lower_instruction<M: Module>(
                 function_name,
                 source_ptr,
                 source_ty,
+                ctx.layout_plan,
                 ctx.drop_func_ids,
                 imports,
             )?;
@@ -2969,6 +3018,7 @@ fn lower_instruction<M: Module>(
                 function_name,
                 source_ptr,
                 source_ty,
+                ctx.layout_plan,
                 ctx.drop_func_ids,
                 imports,
             )?;
@@ -3235,7 +3285,7 @@ fn lower_instruction<M: Module>(
             let value = builder
                 .ins()
                 .load(value_ty, MemFlags::new(), base, payload_offset);
-            if is_managed_heap_type(field_ty)
+            if is_managed_heap_type(field_ty, ctx.layout_plan)
                 && !sum_type_has_immediate_variants(field_ty, ctx.layout_plan)
             {
                 let ptr_ty = module.target_config().pointer_type();
@@ -3281,7 +3331,7 @@ fn lower_instruction<M: Module>(
             };
             let value_ty = clif_type(&resolved_field_ty)?;
             let value = builder.ins().load(value_ty, MemFlags::new(), addr, 0);
-            if is_managed_heap_type(&resolved_field_ty)
+            if is_managed_heap_type(&resolved_field_ty, ctx.layout_plan)
                 && !sum_type_has_immediate_variants(&resolved_field_ty, ctx.layout_plan)
             {
                 let ptr_ty = module.target_config().pointer_type();
@@ -4300,6 +4350,7 @@ fn lower_instruction<M: Module>(
                 function_name,
                 payload_ptr,
                 value_ty,
+                ctx.layout_plan,
                 ctx.drop_func_ids,
                 imports,
             )?;
@@ -4333,6 +4384,7 @@ fn lower_instruction<M: Module>(
                 function_name,
                 source_ptr,
                 source_ty,
+                ctx.layout_plan,
                 ctx.drop_func_ids,
                 imports,
             )?;
@@ -5158,6 +5210,7 @@ struct BackendLayoutPlan {
 struct BackendRecordLayout {
     size_bytes: u32,
     align_bytes: u32,
+    is_unboxed: bool,
     field_offsets: BTreeMap<String, u32>,
     field_types: BTreeMap<String, Type>,
 }
@@ -5279,6 +5332,7 @@ fn plan_layout_catalog(module: &MirModule) -> Result<BackendLayoutPlan, CodegenE
             BackendRecordLayout {
                 size_bytes,
                 align_bytes: WORD_BYTES,
+                is_unboxed: record.is_unboxed,
                 field_offsets,
                 field_types,
             },
@@ -6876,6 +6930,7 @@ mod tests {
             layouts: MirLayoutCatalog {
                 records: vec![MirRecordLayout {
                     name: "User".to_string(),
+                        is_unboxed: false,
                     fields: vec![
                         MirRecordFieldLayout {
                             name: "name".to_string(),
@@ -6931,6 +6986,7 @@ mod tests {
             layouts: MirLayoutCatalog {
                 records: vec![MirRecordLayout {
                     name: "User".to_string(),
+                        is_unboxed: false,
                     fields: vec![MirRecordFieldLayout {
                         name: "age".to_string(),
                         annotation: kea_ast::TypeAnnotation::Named("Int".to_string()),
@@ -6990,6 +7046,7 @@ mod tests {
             layouts: MirLayoutCatalog {
                 records: vec![MirRecordLayout {
                     name: "User".to_string(),
+                        is_unboxed: false,
                     fields: vec![MirRecordFieldLayout {
                         name: "age".to_string(),
                         annotation: kea_ast::TypeAnnotation::Named("Int".to_string()),
@@ -7053,6 +7110,7 @@ mod tests {
             layouts: MirLayoutCatalog {
                 records: vec![MirRecordLayout {
                     name: "User".to_string(),
+                        is_unboxed: false,
                     fields: vec![MirRecordFieldLayout {
                         name: "age".to_string(),
                         annotation: kea_ast::TypeAnnotation::Named("Int".to_string()),
@@ -7133,6 +7191,7 @@ mod tests {
             layouts: MirLayoutCatalog {
                 records: vec![MirRecordLayout {
                     name: "User".to_string(),
+                        is_unboxed: false,
                     fields: vec![MirRecordFieldLayout {
                         name: "age".to_string(),
                         annotation: kea_ast::TypeAnnotation::Named("Int".to_string()),
@@ -7934,6 +7993,7 @@ mod tests {
         let mut module = sample_codegen_module();
         module.layouts.records.push(MirRecordLayout {
             name: "User".to_string(),
+                        is_unboxed: false,
             fields: vec![
                 MirRecordFieldLayout {
                     name: "name".to_string(),
@@ -7990,6 +8050,7 @@ mod tests {
         let mut module = sample_codegen_module();
         module.layouts.records.push(MirRecordLayout {
             name: "User".to_string(),
+                        is_unboxed: false,
             fields: vec![
                 MirRecordFieldLayout {
                     name: "name".to_string(),
