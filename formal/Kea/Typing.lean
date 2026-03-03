@@ -4833,6 +4833,26 @@ def native_handler_step_ext_with_mismatch_local_consequence_assumption_route_sui
       clauseSem mismatchSem bodyStep
 
 /--
+Lift a packaged global assumption-route suite into the packaged local
+consequence route suite.
+-/
+theorem native_handler_step_ext_with_mismatch_local_consequence_assumption_route_suite_of_assumption_route_suite
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_suite :
+      native_handler_step_ext_with_mismatch_assumption_route_suite_prop
+        clauseSem mismatchSem bodyStep) :
+    native_handler_step_ext_with_mismatch_local_consequence_assumption_route_suite_prop
+      clauseSem mismatchSem bodyStep := by
+  rcases h_suite with ⟨h_progress_routes, h_sound_routes⟩
+  refine ⟨?_, ?_⟩
+  · exact native_handler_step_ext_with_mismatch_local_step_assumption_routes_of_progress_assumption_routes
+      clauseSem mismatchSem bodyStep h_progress_routes
+  · exact native_handler_step_ext_with_mismatch_local_exists_and_preserves_assumption_routes_of_soundness_assumption_routes
+      clauseSem mismatchSem bodyStep h_sound_routes
+
+/--
 From packaged core soundness, derive the combined packaged local consequence
 route suite (`step` routes and `step`+preserves routes).
 -/
@@ -4843,11 +4863,10 @@ theorem native_handler_step_ext_with_mismatch_local_consequence_assumption_route
     (h_core : native_core_soundness_prop bodyStep) :
     native_handler_step_ext_with_mismatch_local_consequence_assumption_route_suite_prop
       clauseSem mismatchSem bodyStep := by
-  refine ⟨?_, ?_⟩
-  · exact native_handler_step_ext_with_mismatch_local_step_assumption_routes_of_core_progress
-      clauseSem mismatchSem bodyStep h_core.2
-  · exact native_handler_step_ext_with_mismatch_local_exists_and_preserves_assumption_routes_of_core_soundness
-      clauseSem mismatchSem bodyStep h_core
+  exact native_handler_step_ext_with_mismatch_local_consequence_assumption_route_suite_of_assumption_route_suite
+    clauseSem mismatchSem bodyStep
+    (native_handler_step_ext_with_mismatch_assumption_route_suite_of_core_soundness
+      clauseSem mismatchSem bodyStep h_core)
 
 /--
 Specialized concrete pass-through mismatch assumption-route suite
@@ -4883,6 +4902,21 @@ def native_handler_step_ext_with_passThroughMismatch_local_consequence_assumptio
     clauseSem nativeHandlerMismatchPassThroughSem bodyStep
 
 /--
+Lift the concrete pass-through global assumption-route suite into the concrete
+pass-through local consequence route suite.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_local_consequence_assumption_route_suite_of_assumption_route_suite
+    (clauseSem : NativeHandlerClauseSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_suite :
+      native_handler_step_ext_with_passThroughMismatch_assumption_route_suite_prop
+        clauseSem bodyStep) :
+    native_handler_step_ext_with_passThroughMismatch_local_consequence_assumption_route_suite_prop
+      clauseSem bodyStep := by
+  exact native_handler_step_ext_with_mismatch_local_consequence_assumption_route_suite_of_assumption_route_suite
+    clauseSem nativeHandlerMismatchPassThroughSem bodyStep h_suite
+
+/--
 From packaged core soundness, derive the concrete pass-through mismatch local
 consequence route suite.
 -/
@@ -4892,8 +4926,10 @@ theorem native_handler_step_ext_with_passThroughMismatch_local_consequence_assum
     (h_core : native_core_soundness_prop bodyStep) :
     native_handler_step_ext_with_passThroughMismatch_local_consequence_assumption_route_suite_prop
       clauseSem bodyStep := by
-  exact native_handler_step_ext_with_mismatch_local_consequence_assumption_route_suite_of_core_soundness
-    clauseSem nativeHandlerMismatchPassThroughSem bodyStep h_core
+  exact native_handler_step_ext_with_passThroughMismatch_local_consequence_assumption_route_suite_of_assumption_route_suite
+    clauseSem bodyStep
+    (native_handler_step_ext_with_passThroughMismatch_assumption_route_suite_of_core_soundness
+      clauseSem bodyStep h_core)
 
 /-- Declarative field typing is functional on the core slice. -/
 theorem hasFieldsType_unique

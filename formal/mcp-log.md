@@ -18437,3 +18437,45 @@ local route theorems to consume those lifts.
 - The proof spine is now explicit and reusable: global route bundles are lifted
   once into local consequence bundles, and core-derived local routes reuse that
   single bridge.
+
+### 2026-03-03: suite-level lift (global suite -> local suite)
+
+**Context**: Added an explicit suite-level lift theorem from the global
+assumption-route suite to the local consequence suite, then refactored
+core-soundness local-suite derivations (including pass-through specialization)
+to route through it.
+
+**MCP tools used**: `reset_session`, `type_check`
+
+**Predict (Lean side)**:
+- Coherent polymorphic reader handler should type-check as pure.
+- Clause/effect mismatch should leak body effect in pure context.
+- Resume payload mismatch should reject.
+- Out-of-handler resume should reject.
+
+**Probe (Rust side via MCP)**:
+1. Coherent `with_reader` handler (`Reader.ask() -> resume env`) -> `ok`.
+2. Mismatched `Math` clause around `Reader` body -> `error`, `E0001` (pure body performs `[Reader(Int)]`).
+3. Bad `Reader Int` resume payload (`resume ()`) -> `error`, `E0001`.
+4. Out-of-handler resume control (`let z = 1; resume z`) -> `error`, `E0012`.
+
+**Classify**: Agreement.
+
+**Act**:
+- Kept suite-level lift theorem additions and routing refactor.
+- Continued checkpoint loop without model revision.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_local_consequence_assumption_route_suite_of_assumption_route_suite`
+  - `native_handler_step_ext_with_passThroughMismatch_local_consequence_assumption_route_suite_of_assumption_route_suite`
+  - refactors:
+    - `native_handler_step_ext_with_mismatch_local_consequence_assumption_route_suite_of_core_soundness`
+    - `native_handler_step_ext_with_passThroughMismatch_local_consequence_assumption_route_suite_of_core_soundness`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Local suite derivations now follow one explicit theorem spine: global suite
+  first, then suite-level lift into local consequences (generic and pass-through).
