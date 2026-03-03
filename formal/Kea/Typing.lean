@@ -4851,6 +4851,57 @@ theorem native_handler_extension_ladder_local_no_body_step
       clauseSem mismatchSem bodyStep h_op_ne h_no_body_step
 
 /--
+Specialize the local no-body-step ladder package to `bodyStep = False` on a
+canonical mismatched handled site (`"OpBody"` vs `"OpHandle"`).
+-/
+theorem native_handler_extension_ladder_local_no_body_step_bodyStepFalse
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) :
+    native_handler_step_ext_with_mismatch_strictly_extends_ext_prop
+      clauseSem mismatchSem (fun _ _ => False)
+      ∧
+    (∃ env argName resumeName clauseBody ty,
+      HasTypeScopedTop env
+        (.handle
+          (.perform "OpBody" .int .int (.intLit 1) (.lam "x" .int (.intLit 0)))
+          "OpHandle" argName resumeName .int .int clauseBody)
+        ty
+      ∧
+      (∃ e', NativeHandlerStepExtWithMismatch clauseSem mismatchSem (fun _ _ => False)
+        (.handle
+          (.perform "OpBody" .int .int (.intLit 1) (.lam "x" .int (.intLit 0)))
+          "OpHandle" argName resumeName .int .int clauseBody)
+        e')
+      ∧
+      ¬ ∃ e', NativeHandlerStepExt clauseSem (fun _ _ => False)
+        (.handle
+          (.perform "OpBody" .int .int (.intLit 1) (.lam "x" .int (.intLit 0)))
+          "OpHandle" argName resumeName .int .int clauseBody)
+        e') := by
+  have h_op_ne : ("OpBody" : Label) ≠ "OpHandle" := by
+    decide
+  have h_no_body_step :
+      ∀ body' : CoreExpr, ¬ (fun _ _ => False)
+        (CoreExpr.perform "OpBody" .int .int (.intLit 1) (.lam "x" .int (.intLit 0)))
+        body' := by
+    intro body' h_step
+    cases h_step
+  exact native_handler_extension_ladder_local_no_body_step
+    clauseSem mismatchSem (fun _ _ => False) h_op_ne h_no_body_step
+
+/--
+Projection: bodyStep-false canonical local ladder yields generic strictness of
+`ext-with-mismatch` over `ext` at `bodyStep = False`.
+-/
+theorem native_handler_step_ext_with_mismatch_strictly_extends_ext_bodyStepFalse_generic
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) :
+    native_handler_step_ext_with_mismatch_strictly_extends_ext_prop
+      clauseSem mismatchSem (fun _ _ => False) := by
+  exact (native_handler_extension_ladder_local_no_body_step_bodyStepFalse
+    clauseSem mismatchSem).1
+
+/--
 Original native handler steps embed into the extended relation.
 -/
 theorem native_handler_step_ext_of_native_handler_step

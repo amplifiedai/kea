@@ -19602,3 +19602,45 @@ No MCP divergence found at this checkpoint.
 
 **Impact**:
 - The generic mismatch boundary now has a compact local capstone surface for arbitrary `bodyStep`, reducing theorem plumbing when moving from local witness assumptions to relation-level contrast + typed-gap consequences.
+
+### 2026-03-03: bodyStep-false specialization bridge for local ladder -> generic strictness
+
+**Context**: Added bodyStep-false specialization/projection bridges:
+- `native_handler_extension_ladder_local_no_body_step_bodyStepFalse`
+- `native_handler_step_ext_with_mismatch_strictly_extends_ext_bodyStepFalse_generic`
+These connect the new local ladder package to the generic strict-extension API at `bodyStep = False`.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent self-contained handlers should type-check.
+- Pure-body `handle` sentinel should type-check.
+- Mismatched pure handlers should reject (`E0001`).
+- Double-resume and out-of-handler `resume` should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Math` -> `ok`.
+2. Coherent Pulse handler (`Pulse.beat() -> resume 21`) -> `ok`.
+3. Pure-body sentinel (`handle 21` with `Pulse.beat` clause) -> `ok`.
+4. Mismatched pure handler (`handle Pulse.beat()` with only `Tempo.tick` clause) -> `error`, `E0001` (pure body performs `[Pulse]`).
+5. Double-resume control -> `error`, `E0012`.
+6. Out-of-handler resume (`fn out_resume_body_false() -> Int; resume 21`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No MCP divergence found at this checkpoint.
+
+**Act**:
+- Kept bodyStep-false specialization/projection bridges.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_extension_ladder_local_no_body_step_bodyStepFalse`
+  - `native_handler_step_ext_with_mismatch_strictly_extends_ext_bodyStepFalse_generic`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The canonical `bodyStep = False` boundary now projects directly into the generic strict-extension theorem family, improving interoperability between old specialized and new generalized boundary APIs.
