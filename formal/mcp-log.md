@@ -19961,3 +19961,50 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - The remaining handler progress/soundness gap is now stated at the right granularity: not merely `bodyStep = False`, but any `bodyStep` that cannot advance the typed metadata-mismatch witness body.
+
+### 2026-03-03: boundary capstone now carries parametric no-body-step mismatch failure routes
+
+**Context**: Extended `NativeHandlerBoundaryModelGapSlice` so the capstone exports the generalized metadata-mismatch no-body-step non-derivability routes directly (not only the `bodyStep = False` specialization).
+
+New capstone fields:
+- `mismatchProgressFalseOfMetadataMismatchNoBodyStep`
+- `mismatchSoundnessFalseOfMetadataMismatchNoBodyStep`
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent self-contained handler should type-check.
+- Mismatched pure handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume in one clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Tensor` -> `ok`.
+2. Coherent Kappa handler (`Kappa.next() -> resume 915`) -> `ok`.
+3. Mismatched pure handler (`handle Kappa.next()` with only `Sigma.pull` clause) -> `error`, `E0001` (pure body performs `[Kappa]`).
+4. Bad resume payload (`Kappa.next() -> resume "oops"`) -> `error`, `E0001`.
+5. Out-of-handler resume (`fn kappa_resume_outside() -> Int; resume 915`) -> `error`, `E0012`.
+6. Forged-name out-of-handler resume (`let __kea_resume_ctx = 2; resume 915`) -> `error`, `E0012`.
+7. Double-resume clause (`resume 1` then `resume 2`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the new parametric no-body-step fields on `NativeHandlerBoundaryModelGapSlice`.
+- Updated the canonical boundary capstone constructor to populate those fields.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `NativeHandlerBoundaryModelGapSlice.mismatchProgressFalseOfMetadataMismatchNoBodyStep`
+  - `NativeHandlerBoundaryModelGapSlice.mismatchSoundnessFalseOfMetadataMismatchNoBodyStep`
+  - `native_handler_boundary_model_gap_slice` (updated constructor)
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The boundary capstone now captures the failure condition at theorem level for arbitrary `bodyStep` relations that cannot advance the typed metadata-mismatch witness, improving reuse beyond the fixed false-step sentinel.

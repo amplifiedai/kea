@@ -4896,6 +4896,20 @@ structure NativeHandlerBoundaryModelGapSlice
     (mismatchSem : NativeHandlerMismatchSem) : Prop where
   nativeProgressFalse :
     ¬ native_handler_step_progress_prop clauseSem
+  mismatchProgressFalseOfMetadataMismatchNoBodyStep :
+    ∀ bodyStep,
+      (∀ body', ¬ bodyStep
+        (.perform "Op" .bool .bool (.boolLit true) (.lam "x" .bool (.intLit 0)))
+        body') →
+      ¬ native_handler_step_ext_with_mismatch_progress_prop
+        clauseSem mismatchSem bodyStep
+  mismatchSoundnessFalseOfMetadataMismatchNoBodyStep :
+    ∀ bodyStep,
+      (∀ body', ¬ bodyStep
+        (.perform "Op" .bool .bool (.boolLit true) (.lam "x" .bool (.intLit 0)))
+        body') →
+      ¬ native_handler_step_ext_with_mismatch_soundness_prop
+        clauseSem mismatchSem bodyStep
   mismatchProgressFalseBodyStepFalse :
     ¬ native_handler_step_ext_with_mismatch_progress_prop
       clauseSem mismatchSem (fun _ _ => False)
@@ -4945,6 +4959,14 @@ theorem native_handler_boundary_model_gap_slice
     NativeHandlerBoundaryModelGapSlice clauseSem mismatchSem := by
   refine {
     nativeProgressFalse := native_handler_step_progress_prop_false clauseSem
+    mismatchProgressFalseOfMetadataMismatchNoBodyStep := by
+      intro bodyStep h_no_body_step
+      exact not_native_handler_step_ext_with_mismatch_progress_prop_of_metadata_mismatch_without_body_step
+        clauseSem mismatchSem bodyStep h_no_body_step
+    mismatchSoundnessFalseOfMetadataMismatchNoBodyStep := by
+      intro bodyStep h_no_body_step
+      exact not_native_handler_step_ext_with_mismatch_soundness_prop_of_metadata_mismatch_without_body_step
+        clauseSem mismatchSem bodyStep h_no_body_step
     mismatchProgressFalseBodyStepFalse :=
       not_native_handler_step_ext_with_mismatch_progress_prop_of_bodyStepFalse
         clauseSem mismatchSem
