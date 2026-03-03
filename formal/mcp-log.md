@@ -18151,3 +18151,44 @@ under fixed core obligations.
 - The direct strict-top vs strict-typing assumption boundary is now explicit at
   the proposition level for both progress and soundness, completing direct
   pairwise assumption-iff surfaces across the current handler assumption set.
+
+### 2026-03-03: assumption-equivalence matrix capstones (progress and soundness)
+
+**Context**: Added matrix-level capstone propositions/theorems that package all
+direct pairwise assumption-route equivalences for mismatch-extension progress
+and soundness.
+
+**MCP tools used**: `reset_session`, `type_check`
+
+**Predict (Lean side)**:
+- Coherent handler with clause arguments should type-check and discharge to pure.
+- Clause/effect mismatch should leak the original body effect in pure context.
+- Polymorphic state resume payload mismatch should reject.
+- Out-of-handler resume should reject.
+
+**Probe (Rust side via MCP)**:
+1. Coherent argful `Math.add(a, b) -> resume a + b` handler -> `ok` (`main : () -> Int`).
+2. Mismatched `State` clauses around `Log` body -> `error`, `E0001` (pure body performs `[Log]`).
+3. Bad polymorphic `State Int` resume payload (`resume "bad"`) -> `error`, `E0001`.
+4. Out-of-handler resume control (`resume 2`) -> `error`, `E0012`.
+
+**Classify**: Agreement.
+
+**Act**:
+- Kept matrix capstone additions.
+- Continued checkpoint loop without model revision.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_progress_assumption_equivalence_matrix_prop`
+  - `native_handler_step_ext_with_mismatch_progress_assumption_equivalence_matrix`
+  - `native_handler_step_ext_with_mismatch_soundness_assumption_equivalence_matrix_prop`
+  - `native_handler_step_ext_with_mismatch_soundness_assumption_equivalence_matrix`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- A single matrix-level theorem witness now captures complete direct pairwise
+  assumption-route equivalence for both mismatch-extension progress and
+  soundness, reducing theorem-by-theorem threading at call sites.
