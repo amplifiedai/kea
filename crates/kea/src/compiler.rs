@@ -3369,6 +3369,52 @@ fn matches_higher_order_forwarder_body(
             }
         }
 
+        fn matches_result_alias_shape(
+            expr: &HirExpr,
+            result_aliases: &BTreeSet<String>,
+        ) -> bool {
+            match &expr.kind {
+                HirExprKind::Var(name) => result_aliases.contains(name),
+                HirExprKind::Block(exprs) if !exprs.is_empty() => {
+                    let mut result_aliases = result_aliases.clone();
+                    for (index, item) in exprs.iter().enumerate() {
+                        let is_last = index + 1 == exprs.len();
+                        if is_last {
+                            return matches_result_alias_shape(item, &result_aliases);
+                        }
+
+                        match &item.kind {
+                            HirExprKind::Let { pattern, value }
+                                if matches!(pattern, kea_hir::HirPattern::Var(_))
+                                    && matches_result_alias_shape(value, &result_aliases) =>
+                            {
+                                let binding_name = match pattern {
+                                    kea_hir::HirPattern::Var(name) => name,
+                                    _ => unreachable!("guarded by match"),
+                                };
+                                result_aliases.insert(binding_name.to_string());
+                            }
+                            _ => return false,
+                        }
+                    }
+                    false
+                }
+                HirExprKind::If {
+                    condition,
+                    then_branch,
+                    else_branch,
+                } => {
+                    let Some(else_branch) = else_branch.as_ref() else {
+                        return false;
+                    };
+                    !contains_call(condition)
+                        && matches_result_alias_shape(then_branch, result_aliases)
+                        && matches_result_alias_shape(else_branch, result_aliases)
+                }
+                _ => false,
+            }
+        }
+
         match &expr.kind {
             HirExprKind::Call { .. } => {
                 matches_forwarder_call(expr, forwarder_aliases, unique_aliases)
@@ -3421,21 +3467,23 @@ fn matches_higher_order_forwarder_body(
                     };
 
                     if is_last {
-                        return matches!(
-                            &item.kind,
-                            HirExprKind::Var(name) if result_aliases.contains(name)
-                        );
+                        return matches_result_alias_shape(item, result_aliases);
                     }
 
-                    if let Some((binding_name, source_name)) = extract_var_alias_let(item) {
-                        if !result_aliases.contains(source_name) {
-                            return false;
+                    match &item.kind {
+                        HirExprKind::Let { pattern, value }
+                            if matches!(pattern, kea_hir::HirPattern::Var(_))
+                                && matches_result_alias_shape(value, result_aliases) =>
+                        {
+                            let binding_name = match pattern {
+                                kea_hir::HirPattern::Var(name) => name,
+                                _ => unreachable!("guarded by match"),
+                            };
+                            result_aliases.insert(binding_name.to_string());
+                            continue;
                         }
-                        result_aliases.insert(binding_name.to_string());
-                        continue;
+                        _ => return false,
                     }
-
-                    return false;
                 }
                 false
             }

@@ -3314,6 +3314,23 @@ fn compile_and_execute_fip_unique_higher_order_forwarder_result_alias_chain_call
 
 #[test]
 #[cfg(not(target_os = "windows"))]
+fn compile_and_execute_fip_unique_higher_order_forwarder_result_if_alias_chain_call_exit_code() {
+    let source_path = write_temp_source(
+        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_result_if_alias(f: fn(Unique Int) -> Unique Int, x: Unique Int, flag: Bool) -> Unique Int\n  let out0 = f(x)\n  let out1 = if flag\n    out0\n  else\n    out0\n  let out2 = out1\n  out2\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_result_if_alias(forward_once, x, true)\n\nfn main() -> Int\n  0\n",
+        "kea-cli-fip-unique-higher-order-forwarder-result-if-alias-chain",
+        "kea",
+    );
+
+    let run = run_file(&source_path).expect(
+        "@fip verifier should accept higher-order wrappers that perform call-free if-selection over forwarded result aliases",
+    );
+    assert_eq!(run.exit_code, 0);
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
 fn compile_rejects_fip_unique_higher_order_forwarder_param_escape() {
     let source_path = write_temp_source(
         "fn apply_forwarder(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  f(x)\n\n@fip\nfn call_via_apply(x: Unique Int, f: fn(Unique Int) -> Unique Int) -> Unique Int\n  apply_forwarder(f, x)\n\nfn main() -> Int\n  0\n",
@@ -3410,7 +3427,7 @@ fn compile_rejects_fip_unique_higher_order_forwarder_wrong_unique_arg_escape() {
 
     #[test]
     #[cfg(not(target_os = "windows"))]
-    fn compile_and_execute_fip_unique_higher_order_module_alias_wrapper_call_exit_code() {
+fn compile_and_execute_fip_unique_higher_order_module_alias_wrapper_call_exit_code() {
         let project_dir =
             temp_workspace_project_dir("kea-cli-fip-unique-higher-order-alias-wrapper");
         let src_dir = project_dir.join("src");
@@ -3487,6 +3504,34 @@ fn compile_and_execute_fip_unique_known_qualified_forwarder_call_exit_code() {
 
     let run = run_file(&source_path)
         .expect("@fip verifier should accept qualified known safe forwarder calls");
+    assert_eq!(run.exit_code, 0);
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn compile_and_execute_fip_unique_higher_order_module_alias_wrapper_result_if_alias_chain_call_exit_code(
+) {
+    let project_dir =
+        temp_workspace_project_dir("kea-cli-fip-unique-higher-order-alias-result-if-alias");
+    let src_dir = project_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+    let source_path = src_dir.join("main.kea");
+    std::fs::write(
+        src_dir.join("alpha.kea"),
+        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_result_if_alias(f: fn(Unique Int) -> Unique Int, x: Unique Int, flag: Bool) -> Unique Int\n  let out0 = f(x)\n  let out1 = if flag\n    out0\n  else\n    out0\n  let out2 = out1\n  out2\n",
+    )
+    .expect("alpha module write should succeed");
+    std::fs::write(
+        &source_path,
+        "use Alpha as A\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_result_if_alias(A.forward_once, x, true)\n\nfn main() -> Int\n  0\n",
+    )
+    .expect("source write should succeed");
+
+    let run = run_file(&source_path).expect(
+        "@fip verifier and backend lowering should accept module-alias wrappers with call-free result-if alias selection",
+    );
     assert_eq!(run.exit_code, 0);
 
     let _ = std::fs::remove_dir_all(project_dir);
@@ -3685,6 +3730,30 @@ fn compile_rejects_fip_unique_higher_order_forwarder_result_alias_chain_with_ext
 
     let err = run_file(&source_path).expect_err(
         "@fip verifier should reject wrappers that do extra calls after forwarding and before returning result aliases",
+    );
+    assert!(
+        err.contains("`@fip` verification failed for `call_via_apply`"),
+        "expected @fip verification failure, got: {err}"
+    );
+    assert!(
+        err.contains("Unique parameter `x` escapes through 1 call argument(s)"),
+        "expected escape diagnostic for `x`, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn compile_rejects_fip_unique_higher_order_forwarder_result_if_alias_with_callful_condition() {
+    let source_path = write_temp_source(
+        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn bool_id(flag: Bool) -> Bool\n  flag\n\nfn apply_result_if_alias_with_callful_condition(f: fn(Unique Int) -> Unique Int, x: Unique Int, flag: Bool) -> Unique Int\n  let out0 = f(x)\n  let out1 = if bool_id(flag)\n    out0\n  else\n    out0\n  out1\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_result_if_alias_with_callful_condition(forward_once, x, true)\n\nfn main() -> Int\n  0\n",
+        "kea-cli-fip-unique-higher-order-forwarder-result-if-alias-callful-condition",
+        "kea",
+    );
+
+    let err = run_file(&source_path).expect_err(
+        "@fip verifier should reject wrappers when result-if alias selection uses a callful condition",
     );
     assert!(
         err.contains("`@fip` verification failed for `call_via_apply`"),
