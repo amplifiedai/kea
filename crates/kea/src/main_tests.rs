@@ -3539,6 +3539,52 @@ fn compile_and_execute_fip_unique_higher_order_module_alias_wrapper_result_if_al
 
 #[test]
 #[cfg(not(target_os = "windows"))]
+fn compile_and_execute_fip_unique_higher_order_forwarder_mixed_result_and_passthrough_if_exit_code()
+{
+    let source_path = write_temp_source(
+        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_mixed(flag: Bool, inner: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let out = if flag\n    let r0 = f(x)\n    let r1 = if inner\n      r0\n    else\n      r0\n    r1\n  else\n    let p0 = if inner\n      x\n    else\n      x\n    let p1 = p0\n    p1\n  let ret = out\n  ret\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_mixed(true, false, forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "kea-cli-fip-unique-higher-order-forwarder-mixed-result-passthrough-if",
+        "kea",
+    );
+
+    let run = run_file(&source_path).expect(
+        "@fip verifier should accept wrappers that combine forwarded-result alias shaping with passthrough fallback branches",
+    );
+    assert_eq!(run.exit_code, 0);
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn compile_and_execute_fip_unique_higher_order_module_alias_wrapper_mixed_result_and_passthrough_if_exit_code(
+) {
+    let project_dir =
+        temp_workspace_project_dir("kea-cli-fip-unique-higher-order-alias-mixed-result-pass");
+    let src_dir = project_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+    let source_path = src_dir.join("main.kea");
+    std::fs::write(
+        src_dir.join("alpha.kea"),
+        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_mixed(flag: Bool, inner: Bool, f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let out = if flag\n    let r0 = f(x)\n    let r1 = if inner\n      r0\n    else\n      r0\n    r1\n  else\n    let p0 = if inner\n      x\n    else\n      x\n    let p1 = p0\n    p1\n  let ret = out\n  ret\n",
+    )
+    .expect("alpha module write should succeed");
+    std::fs::write(
+        &source_path,
+        "use Alpha as A\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_mixed(true, false, A.forward_once, x)\n\nfn main() -> Int\n  0\n",
+    )
+    .expect("source write should succeed");
+
+    let run = run_file(&source_path).expect(
+        "@fip verifier and backend lowering should accept module-alias wrappers that mix forwarded-result and passthrough branch forms",
+    );
+    assert_eq!(run.exit_code, 0);
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
 fn compile_and_execute_fip_unique_qualified_forwarder_with_ambiguous_short_names_exit_code() {
     let project_dir = temp_workspace_project_dir("kea-cli-fip-unique-qualified-ambiguous");
     let src_dir = project_dir.join("src");
