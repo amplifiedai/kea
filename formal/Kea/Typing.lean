@@ -1160,6 +1160,40 @@ theorem hasTypeScopedTop_handle_does_not_imply_clause_resumeSummary_atMostOnce :
     hasTypeScoped_doubleResumeWitnessExpr_not_atMostOnce
   ⟩
 
+/--
+Boundary proposition: native top-level handle typing would enforce clause-body
+saturated resume at-most-once if true.
+-/
+def native_handler_clause_resumeSummary_linearity_prop : Prop :=
+  ∀ env body op argName resumeName argTy opRetTy clauseBody ty,
+    HasTypeScopedTop env
+      (.handle body op argName resumeName argTy opRetTy clauseBody) ty →
+    resumeSummary_atMostOnce (resumeSummary clauseBody)
+
+/--
+The current native top-level handle typing rules do not satisfy
+`native_handler_clause_resumeSummary_linearity_prop`.
+-/
+theorem native_handler_clause_resumeSummary_linearity_false :
+    ¬ native_handler_clause_resumeSummary_linearity_prop := by
+  intro h_linear
+  rcases hasTypeScopedTop_handle_does_not_imply_clause_resumeSummary_atMostOnce with
+    ⟨env, body, op, argName, resumeName, argTy, opRetTy, clauseBody, ty, h_typed, h_not_atMostOnce⟩
+  exact h_not_atMostOnce
+    (h_linear env body op argName resumeName argTy opRetTy clauseBody ty h_typed)
+
+/--
+Current boundary characterization: clause-body resume linearity under native
+top-level handle typing is propositionally equivalent to `False`.
+-/
+theorem native_handler_clause_resumeSummary_linearity_prop_iff_false :
+    native_handler_clause_resumeSummary_linearity_prop ↔ False := by
+  constructor
+  · intro h_linear
+    exact native_handler_clause_resumeSummary_linearity_false h_linear
+  · intro h_false
+    exact False.elim h_false
+
 /- =========================================================================
    Native handler-step judgment on `Typing.CoreExpr`
    ========================================================================= -/

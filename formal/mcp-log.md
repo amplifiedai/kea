@@ -24152,3 +24152,44 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - The corpus now machine-checks that native top-level handle typing and at-most-once resume linearity are distinct at the clause-body level, not just in standalone expressions.
+
+### 2026-03-04: explicit false proposition for handler-typing-implies-linearity
+
+**Context**: Added an explicit boundary proposition and falsity proof in `Kea/Typing.lean`:
+- `native_handler_clause_resumeSummary_linearity_prop`
+- `native_handler_clause_resumeSummary_linearity_false`
+- `native_handler_clause_resumeSummary_linearity_prop_iff_false`
+
+This turns the line “current native handle typing does not enforce clause linearity” into a precise machine-checked proposition-level statement.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- Coherent handler should type-check.
+- Mismatch effect-leak handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. Coherent handler (`probe_coherent_20260304bn`) -> `ok`.
+2. Mismatch effect-leak handler (`probe_mismatch_20260304bn`) -> `error`, `E0001`.
+3. Bad resume payload (`probe_bad_resume_20260304bn`) -> `error`, `E0001`.
+4. Out-of-handler resume (`probe_outside_resume_20260304bn`) -> `error`, `E0012`.
+5. Forged-name out-of-handler resume (`probe_forged_resume_ctx_20260304bn`) -> `error`, `E0012`.
+6. Double-resume clause (`probe_double_resume_20260304bn`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the explicit false-proposition boundary layer for handle-typing-implies-linearity.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`: theorem/def names listed in Context above.
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The corpus now carries a direct theorem-level “current linearity bridge is not implied by native handle typing” boundary claim, suitable as a concrete target for future strengthened judgments.
