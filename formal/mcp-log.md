@@ -23576,3 +23576,82 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - Integrated full-route capstone now has complete components-route parity and explicit pass-through components APIs.
+
+### 2026-03-04: added direct snapshot/vacuity projections from integrated full-route capstone
+
+**Context**: Added status-diagnostic projection wrappers from integrated full-route capstones in `Kea/Typing.lean`:
+- Generic:
+  - `native_handler_full_route_integration_capstone_bodyStepFalse_snapshot`
+  - `native_handler_full_route_integration_capstone_strict_top_vacuity_profile`
+- Pass-through:
+  - `native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_bodyStepFalse_snapshot`
+  - `native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_strict_top_vacuity_profile`
+
+This exposes status-level diagnostics directly from the top-level integrated witness, removing mandatory intermediate status-capstone threading.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- Coherent handler should type-check.
+- Mismatch effect-leak handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. Coherent handler (`probe_coherent_20260304ay`) -> `ok`.
+2. Mismatch effect-leak handler (`probe_mismatch_20260304ay`) -> `error`, `E0001`.
+3. Bad resume payload (`probe_bad_resume_20260304ay`) -> `error`, `E0001`.
+4. Out-of-handler resume (`probe_outside_resume_20260304ay`) -> `error`, `E0012`.
+5. Forged-name out-of-handler resume (`probe_forged_resume_ctx_20260304ay`) -> `error`, `E0012`.
+6. Double-resume clause (`probe_double_resume_20260304ay`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept generic+pass-through integrated-capstone snapshot/vacuity wrappers.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`: theorem names listed in Context above.
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Top-level integrated full-route capstone now directly exports status-level boundary diagnostics.
+
+### 2026-03-04: commit-gate revalidation of integrated-capstone snapshot/vacuity slice
+
+**Context**: Before committing the integrated-capstone status-diagnostic wrappers (`native_handler_full_route_integration_capstone_{bodyStepFalse_snapshot,strict_top_vacuity_profile}` and pass-through counterparts), re-ran the full MCP sentinel matrix with fresh probe IDs to satisfy per-checkpoint verification.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- Coherent handler should type-check.
+- Mismatch effect-leak handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. Coherent handler (`probe_coherent_20260304az`) -> `ok`.
+2. Mismatch effect-leak handler (`probe_mismatch_20260304az`) -> `error`, `E0001`.
+3. Bad resume payload (`probe_bad_resume_20260304az`) -> `error`, `E0001`.
+4. Out-of-handler resume (`probe_outside_resume_20260304az`) -> `error`, `E0012`.
+5. Forged-name out-of-handler resume (`probe_forged_resume_ctx_20260304az`) -> `error`, `E0012`.
+6. Double-resume clause (`probe_double_resume_20260304az`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Proceeded to commit the pending integrated-capstone snapshot/vacuity wrapper slice.
+
+**Traceability**:
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Confirms the pending wrapper slice remains aligned with current MCP semantics at commit time.

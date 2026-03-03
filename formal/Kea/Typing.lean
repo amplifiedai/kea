@@ -9820,6 +9820,68 @@ theorem native_handler_step_ext_with_passThroughMismatch_full_route_integration_
     clauseSem nativeHandlerMismatchPassThroughSem h_cap bodyStep h_core h_strict_top
 
 /--
+From the integrated full-route capstone, extract the `bodyStep = False`
+snapshot.
+-/
+theorem native_handler_full_route_integration_capstone_bodyStepFalse_snapshot
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (h_cap : NativeHandlerFullRouteIntegrationCapstone clauseSem mismatchSem) :
+    native_handler_soundness_boundary_status_bodyStepFalse_snapshot_prop
+      clauseSem mismatchSem := by
+  exact native_handler_soundness_boundary_status_bodyStepFalse_snapshot
+    clauseSem mismatchSem h_cap.status
+
+/--
+From the integrated full-route capstone, extract the strict-top vacuity
+profile.
+-/
+theorem native_handler_full_route_integration_capstone_strict_top_vacuity_profile
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (h_cap : NativeHandlerFullRouteIntegrationCapstone clauseSem mismatchSem) :
+    (¬ Nonempty native_handler_strict_top_typing_prop)
+      ∧
+    (∃ body op argName resumeName argTy opRetTy clauseBody ty,
+      HasTypeScopedStrictTop []
+        (.handle body op argName resumeName argTy opRetTy clauseBody)
+        ty) := by
+  exact native_handler_soundness_boundary_status_strict_top_vacuity_profile
+    clauseSem mismatchSem h_cap.status
+
+/--
+Pass-through specialization: extract the `bodyStep = False` snapshot from the
+integrated full-route capstone.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_bodyStepFalse_snapshot
+    (clauseSem : NativeHandlerClauseSem)
+    (h_cap :
+      native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_prop
+        clauseSem) :
+    native_handler_soundness_boundary_status_bodyStepFalse_snapshot_prop
+      clauseSem nativeHandlerMismatchPassThroughSem := by
+  exact native_handler_full_route_integration_capstone_bodyStepFalse_snapshot
+    clauseSem nativeHandlerMismatchPassThroughSem h_cap
+
+/--
+Pass-through specialization: extract the strict-top vacuity profile from the
+integrated full-route capstone.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_strict_top_vacuity_profile
+    (clauseSem : NativeHandlerClauseSem)
+    (h_cap :
+      native_handler_step_ext_with_passThroughMismatch_full_route_integration_capstone_prop
+        clauseSem) :
+    (¬ Nonempty native_handler_strict_top_typing_prop)
+      ∧
+    (∃ body op argName resumeName argTy opRetTy clauseBody ty,
+      HasTypeScopedStrictTop []
+        (.handle body op argName resumeName argTy opRetTy clauseBody)
+        ty) := by
+  exact native_handler_full_route_integration_capstone_strict_top_vacuity_profile
+    clauseSem nativeHandlerMismatchPassThroughSem h_cap
+
+/--
 Concrete pass-through specialization of the core+strict-top contrast route.
 -/
 def native_handler_step_ext_with_passThroughMismatch_core_strict_top_contrast_route_prop
