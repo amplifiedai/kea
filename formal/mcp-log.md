@@ -18521,3 +18521,46 @@ derivation through that simplification.
 **Impact**:
 - Global suite consumption is now cleaner: soundness-route bundles are the
   canonical source, with progress-route bundles derived by theorem projection.
+
+### 2026-03-03: local projection simplification (`step` from `step+preserves`)
+
+**Context**: Added local-route projection theorems showing local `step` routes
+are derivable from local `step`+preserves routes, proved local-suite
+equivalence against `step`+preserves routes, and refactored global-suite ->
+local-suite lifting to consume only soundness-derived local routes.
+
+**MCP tools used**: `reset_session`, `type_check`
+
+**Predict (Lean side)**:
+- Coherent reader handler should type-check as pure.
+- Clause/effect mismatch should leak body effect in pure context.
+- Bad resume payload should reject.
+- Out-of-handler resume should reject.
+
+**Probe (Rust side via MCP)**:
+1. Coherent `handle Reader.ask(); Reader.ask() -> resume 41` -> `ok`.
+2. Mismatched `Log.info` clause around `Reader.ask()` body -> `error`, `E0001` (pure body performs `[Reader(Int)]`).
+3. Bad `Reader Int` resume payload (`resume "oops"`) -> `error`, `E0001` (type mismatch rejection).
+4. Out-of-handler resume control (`let n = 4; resume n`) -> `error`, `E0012`.
+
+**Classify**: Agreement.
+
+**Act**:
+- Kept local projection/iff theorem additions and routing refactor.
+- Continued checkpoint loop without model revision.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_local_step_assumption_routes_of_local_exists_and_preserves_assumption_routes`
+  - `native_handler_step_ext_with_mismatch_local_consequence_assumption_route_suite_of_local_exists_and_preserves_assumption_routes`
+  - `native_handler_step_ext_with_mismatch_local_consequence_assumption_route_suite_prop_iff_local_exists_and_preserves_assumption_routes`
+  - `native_handler_step_ext_with_mismatch_local_consequence_assumption_route_suite_of_soundness_assumption_routes`
+  - refactor:
+    - `native_handler_step_ext_with_mismatch_local_consequence_assumption_route_suite_of_assumption_route_suite`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Local suite consumption is now canonicalized around local `step`+preserves
+  routes, with local `step` routes projected automatically.

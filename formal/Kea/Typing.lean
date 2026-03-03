@@ -4879,6 +4879,34 @@ theorem native_handler_step_ext_with_mismatch_local_exists_and_preserves_assumpt
       clauseSem mismatchSem bodyStep h_core)
 
 /--
+Packaged local `step`+preserves routes imply packaged local `step` routes by
+projection.
+-/
+theorem native_handler_step_ext_with_mismatch_local_step_assumption_routes_of_local_exists_and_preserves_assumption_routes
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_local_exists_preserves :
+      native_handler_step_ext_with_mismatch_local_exists_and_preserves_assumption_routes_prop
+        clauseSem mismatchSem bodyStep) :
+    native_handler_step_ext_with_mismatch_local_step_assumption_routes_prop
+      clauseSem mismatchSem bodyStep := by
+  rcases h_local_exists_preserves with ⟨h_top, h_strict, h_lift, h_meta⟩
+  refine ⟨?_, ?_, ?_, ?_⟩
+  · intro h_strict_top env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed
+    rcases h_top h_strict_top h_typed with ⟨e', h_step, _h_typed'⟩
+    exact ⟨e', h_step⟩
+  · intro h_strict_typing env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed
+    rcases h_strict h_strict_typing h_typed with ⟨e', h_step, _h_typed'⟩
+    exact ⟨e', h_step⟩
+  · intro h_scoped_lift env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed
+    rcases h_lift h_scoped_lift h_typed with ⟨e', h_step, _h_typed'⟩
+    exact ⟨e', h_step⟩
+  · intro h_coherence env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed
+    rcases h_meta h_coherence h_typed with ⟨e', h_step, _h_typed'⟩
+    exact ⟨e', h_step⟩
+
+/--
 Combined packaged local consequence route suite (`step` routes and
 `step`+preserves routes).
 -/
@@ -4893,6 +4921,61 @@ def native_handler_step_ext_with_mismatch_local_consequence_assumption_route_sui
       clauseSem mismatchSem bodyStep
 
 /--
+Build the combined packaged local consequence route suite from packaged local
+`step`+preserves routes alone.
+-/
+theorem native_handler_step_ext_with_mismatch_local_consequence_assumption_route_suite_of_local_exists_and_preserves_assumption_routes
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_local_exists_preserves :
+      native_handler_step_ext_with_mismatch_local_exists_and_preserves_assumption_routes_prop
+        clauseSem mismatchSem bodyStep) :
+    native_handler_step_ext_with_mismatch_local_consequence_assumption_route_suite_prop
+      clauseSem mismatchSem bodyStep := by
+  refine ⟨?_, h_local_exists_preserves⟩
+  exact native_handler_step_ext_with_mismatch_local_step_assumption_routes_of_local_exists_and_preserves_assumption_routes
+    clauseSem mismatchSem bodyStep h_local_exists_preserves
+
+/--
+The packaged local consequence route suite is equivalent to packaged local
+`step`+preserves routes: local `step` routes are derivable by projection.
+-/
+theorem native_handler_step_ext_with_mismatch_local_consequence_assumption_route_suite_prop_iff_local_exists_and_preserves_assumption_routes
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) :
+    native_handler_step_ext_with_mismatch_local_consequence_assumption_route_suite_prop
+      clauseSem mismatchSem bodyStep
+      ↔
+    native_handler_step_ext_with_mismatch_local_exists_and_preserves_assumption_routes_prop
+      clauseSem mismatchSem bodyStep := by
+  constructor
+  · intro h_local_suite
+    exact h_local_suite.2
+  · intro h_local_exists_preserves
+    exact native_handler_step_ext_with_mismatch_local_consequence_assumption_route_suite_of_local_exists_and_preserves_assumption_routes
+      clauseSem mismatchSem bodyStep h_local_exists_preserves
+
+/--
+Lift packaged global soundness assumption-routes into the combined packaged
+local consequence route suite.
+-/
+theorem native_handler_step_ext_with_mismatch_local_consequence_assumption_route_suite_of_soundness_assumption_routes
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_sound_routes :
+      native_handler_step_ext_with_mismatch_soundness_assumption_routes_prop
+        clauseSem mismatchSem bodyStep) :
+    native_handler_step_ext_with_mismatch_local_consequence_assumption_route_suite_prop
+      clauseSem mismatchSem bodyStep := by
+  exact native_handler_step_ext_with_mismatch_local_consequence_assumption_route_suite_of_local_exists_and_preserves_assumption_routes
+    clauseSem mismatchSem bodyStep
+    (native_handler_step_ext_with_mismatch_local_exists_and_preserves_assumption_routes_of_soundness_assumption_routes
+      clauseSem mismatchSem bodyStep h_sound_routes)
+
+/--
 Lift a packaged global assumption-route suite into the packaged local
 consequence route suite.
 -/
@@ -4905,12 +4988,8 @@ theorem native_handler_step_ext_with_mismatch_local_consequence_assumption_route
         clauseSem mismatchSem bodyStep) :
     native_handler_step_ext_with_mismatch_local_consequence_assumption_route_suite_prop
       clauseSem mismatchSem bodyStep := by
-  rcases h_suite with ⟨h_progress_routes, h_sound_routes⟩
-  refine ⟨?_, ?_⟩
-  · exact native_handler_step_ext_with_mismatch_local_step_assumption_routes_of_progress_assumption_routes
-      clauseSem mismatchSem bodyStep h_progress_routes
-  · exact native_handler_step_ext_with_mismatch_local_exists_and_preserves_assumption_routes_of_soundness_assumption_routes
-      clauseSem mismatchSem bodyStep h_sound_routes
+  exact native_handler_step_ext_with_mismatch_local_consequence_assumption_route_suite_of_soundness_assumption_routes
+    clauseSem mismatchSem bodyStep h_suite.2
 
 /--
 From packaged core soundness, derive the combined packaged local consequence
