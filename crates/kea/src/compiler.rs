@@ -2780,15 +2780,18 @@ fn hir_call_safe_unique_handoff_arg_index(
         .get(&name)
         .copied()
         .or_else(|| safe_higher_order_handoff_callees.get(short_name).copied());
-    if let Some(spec) = spec
-        && let Some(index) = hir_call_safe_unique_handoff_arg_index_from_spec(
+    if let Some(spec) = spec {
+        // When we have a body-derived higher-order wrapper spec for this callee,
+        // do not fall back to shape-only callable-type inference if the spec
+        // doesn't validate at this call site. Falling back can incorrectly accept
+        // calls where a different safe function argument is present but the wrapper
+        // body forwards through an unresolved/local function slot.
+        return hir_call_safe_unique_handoff_arg_index_from_spec(
             &spec,
             args,
             safe_handoff_callees,
             local_bindings,
-        )
-    {
-        return Some(index);
+        );
     }
     hir_call_safe_unique_handoff_arg_index_from_callable_type(
         func,

@@ -3015,10 +3015,10 @@ fn compile_rejects_fip_unique_higher_order_forwarder_param_escape() {
 
 #[test]
 #[cfg(not(target_os = "windows"))]
-fn compile_rejects_fip_unique_higher_order_forwarder_wrong_unique_arg_escape() {
-    let source_path = write_temp_source(
-        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_wrong(f: fn(Unique Int) -> Unique Int, x: Unique Int, y: Unique Int) -> Unique Int\n  f(y)\n\n@fip\nfn call_via_apply(x: Unique Int, y: Unique Int) -> Unique Int\n  apply_wrong(forward_once, x, y)\n\nfn main() -> Int\n  0\n",
-        "kea-cli-fip-unique-higher-order-forwarder-wrong-arg-escape",
+    fn compile_rejects_fip_unique_higher_order_forwarder_wrong_unique_arg_escape() {
+        let source_path = write_temp_source(
+            "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_wrong(f: fn(Unique Int) -> Unique Int, x: Unique Int, y: Unique Int) -> Unique Int\n  f(y)\n\n@fip\nfn call_via_apply(x: Unique Int, y: Unique Int) -> Unique Int\n  apply_wrong(forward_once, x, y)\n\nfn main() -> Int\n  0\n",
+            "kea-cli-fip-unique-higher-order-forwarder-wrong-arg-escape",
         "kea",
     );
 
@@ -3034,8 +3034,32 @@ fn compile_rejects_fip_unique_higher_order_forwarder_wrong_unique_arg_escape() {
         "expected escape diagnostic for `x`, got: {err}"
     );
 
-    let _ = std::fs::remove_file(source_path);
-}
+        let _ = std::fs::remove_file(source_path);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn compile_rejects_fip_unique_higher_order_wrapper_when_safe_forwarder_is_not_body_slot() {
+        let source_path = write_temp_source(
+            "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_pick_first(f: fn(Unique Int) -> Unique Int, g: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  f(x)\n\n@fip\nfn call_via_apply(x: Unique Int, f: fn(Unique Int) -> Unique Int) -> Unique Int\n  apply_pick_first(f, forward_once, x)\n\nfn main() -> Int\n  0\n",
+            "kea-cli-fip-unique-higher-order-forwarder-nonbody-slot",
+            "kea",
+        );
+
+        let err = run_file(&source_path).expect_err(
+            "@fip verifier should reject when the known-safe function item is not passed in the wrapper's body-selected forwarder slot",
+        );
+        assert!(
+            err.contains("`@fip` verification failed for `call_via_apply`"),
+            "expected @fip verification failure, got: {err}"
+        );
+        assert!(
+            err.contains("Unique parameter `x` escapes through 1 call argument(s)"),
+            "expected escape diagnostic for `x`, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(source_path);
+    }
 
 #[test]
 #[cfg(not(target_os = "windows"))]
