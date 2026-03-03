@@ -3924,7 +3924,7 @@ mod tests {
             panic!("expected lowered function declaration");
         };
 
-        assert_eq!(function.ty.to_string(), "(String) -[IO | e0]> ()");
+        assert_eq!(function.ty.to_string(), "(String) -[IO | e0]> Unit");
         assert_eq!(function.effects.to_string(), "[IO | e0]");
     }
 

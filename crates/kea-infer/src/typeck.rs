@@ -12261,12 +12261,15 @@ fn infer_expr_bidir(
             let lambda_ambient = unifier.fresh_row_var();
             env.push_ambient_effect_row(lambda_ambient);
 
-            let mut body_ty = infer_expr_bidir(body, env, unifier, records, traits, sum_types);
-            if let Some(ann) = return_annotation {
+            // When a return annotation is present, use check mode directly
+            // instead of infer-then-check.  This avoids processing the body
+            // twice (which causes duplicate diagnostics for handle expressions,
+            // duplicate constraint generation, etc.).
+            let body_ty = if let Some(ann) = return_annotation {
                 if let Some(declared_ret) =
                     resolve_annotation_or_bare_df(&ann.node, records, Some(sum_types), unifier)
                 {
-                    body_ty = check_expr_bidir(
+                    check_expr_bidir(
                         body,
                         &declared_ret,
                         Reason::LetAnnotation,
@@ -12275,13 +12278,18 @@ fn infer_expr_bidir(
                         records,
                         traits,
                         sum_types,
-                    );
-                } else if let Some((name, expected, got)) =
-                    annotation_type_arity_mismatch(&ann.node, records, Some(sum_types))
-                {
-                    push_annotation_arity_mismatch(unifier, ann.span, &name, expected, got);
+                    )
+                } else {
+                    if let Some((name, expected, got)) =
+                        annotation_type_arity_mismatch(&ann.node, records, Some(sum_types))
+                    {
+                        push_annotation_arity_mismatch(unifier, ann.span, &name, expected, got);
+                    }
+                    infer_expr_bidir(body, env, unifier, records, traits, sum_types)
                 }
-            }
+            } else {
+                infer_expr_bidir(body, env, unifier, records, traits, sum_types)
+            };
 
             env.pop_ambient_effect_row();
             env.pop_scope();
