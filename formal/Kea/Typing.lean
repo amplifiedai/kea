@@ -7084,6 +7084,105 @@ theorem native_handler_soundness_boundary_status_capstone_of_boundary_model_gap_
   }
 
 /--
+Strengthened unified status capstone: packages the strengthened
+soundness-boundary capstone together with the current strict/coherence
+typing-gap witness and the concrete dual witness.
+-/
+structure NativeHandlerSoundnessBoundaryStatusCapstoneStrengthened
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) : Prop where
+  boundary :
+    NativeHandlerSoundnessBoundaryCapstoneStrengthened clauseSem mismatchSem
+  typingGap :
+    NativeHandlerCurrentTypingGapSlice
+  dualWitnessBodyStepFalse :
+    native_handler_dual_witness_bodyStepFalse_prop clauseSem mismatchSem
+
+/--
+Canonical strengthened unified status capstone from direct route construction.
+-/
+theorem native_handler_soundness_boundary_status_capstone_strengthened
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) :
+    NativeHandlerSoundnessBoundaryStatusCapstoneStrengthened clauseSem mismatchSem := by
+  exact {
+    boundary := native_handler_soundness_boundary_capstone_strengthened clauseSem mismatchSem
+    typingGap := native_handler_current_typing_gap_slice
+    dualWitnessBodyStepFalse := native_handler_dual_witness_bodyStepFalse clauseSem mismatchSem
+  }
+
+/--
+Strengthened unified status capstone built from the packaged boundary-model gap
+slice.
+-/
+theorem native_handler_soundness_boundary_status_capstone_strengthened_of_boundary_model_gap_slice
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (h_gap : NativeHandlerBoundaryModelGapSlice clauseSem mismatchSem) :
+    NativeHandlerSoundnessBoundaryStatusCapstoneStrengthened clauseSem mismatchSem := by
+  exact {
+    boundary :=
+      native_handler_soundness_boundary_capstone_strengthened_of_boundary_model_gap_slice
+        clauseSem mismatchSem h_gap
+    typingGap := native_handler_current_typing_gap_slice
+    dualWitnessBodyStepFalse := native_handler_dual_witness_bodyStepFalse clauseSem mismatchSem
+  }
+
+/--
+Project the legacy unified status capstone from the strengthened unified
+status capstone.
+-/
+theorem native_handler_soundness_boundary_status_capstone_of_strengthened
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (h_status :
+      NativeHandlerSoundnessBoundaryStatusCapstoneStrengthened clauseSem mismatchSem) :
+    NativeHandlerSoundnessBoundaryStatusCapstone clauseSem mismatchSem := by
+  exact {
+    boundary :=
+      native_handler_soundness_boundary_capstone_of_strengthened
+        clauseSem mismatchSem h_status.boundary
+    typingGap := h_status.typingGap
+    dualWitnessBodyStepFalse := h_status.dualWitnessBodyStepFalse
+  }
+
+/--
+Lift the legacy unified status capstone to the strengthened unified status
+capstone.
+-/
+theorem native_handler_soundness_boundary_status_capstone_strengthened_of_legacy
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (h_status :
+      NativeHandlerSoundnessBoundaryStatusCapstone clauseSem mismatchSem) :
+    NativeHandlerSoundnessBoundaryStatusCapstoneStrengthened clauseSem mismatchSem := by
+  exact {
+    boundary :=
+      native_handler_soundness_boundary_capstone_strengthened_of_legacy
+        clauseSem mismatchSem h_status.boundary
+    typingGap := h_status.typingGap
+    dualWitnessBodyStepFalse := h_status.dualWitnessBodyStepFalse
+  }
+
+/--
+Status-capstone-level equivalence between legacy and strengthened boundary
+status packages.
+-/
+theorem native_handler_soundness_boundary_status_capstone_iff_strengthened
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) :
+    NativeHandlerSoundnessBoundaryStatusCapstone clauseSem mismatchSem
+      ↔
+    NativeHandlerSoundnessBoundaryStatusCapstoneStrengthened clauseSem mismatchSem := by
+  constructor
+  · intro h_status
+    exact native_handler_soundness_boundary_status_capstone_strengthened_of_legacy
+      clauseSem mismatchSem h_status
+  · intro h_status
+    exact native_handler_soundness_boundary_status_capstone_of_strengthened
+      clauseSem mismatchSem h_status
+
+/--
 `bodyStep = False` snapshot extracted from a unified status capstone:
 - concrete dual witness,
 - mismatch-extension progress/soundness failure,

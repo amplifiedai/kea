@@ -21553,3 +21553,53 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - Pass-through capstone consumers now have full legacy/strengthened/status API symmetry with generic mismatch semantics.
+
+### 2026-03-04: added strengthened status-capstone object with legacy↔strengthened status equivalence
+
+**Context**: Added strengthened status-capstone layer:
+- `NativeHandlerSoundnessBoundaryStatusCapstoneStrengthened`
+- `native_handler_soundness_boundary_status_capstone_strengthened`
+- `native_handler_soundness_boundary_status_capstone_strengthened_of_boundary_model_gap_slice`
+- `native_handler_soundness_boundary_status_capstone_of_strengthened`
+- `native_handler_soundness_boundary_status_capstone_strengthened_of_legacy`
+- `native_handler_soundness_boundary_status_capstone_iff_strengthened`
+
+This lifts the strengthened boundary packaging into the unified status layer and makes legacy/strengthened status routes interchangeable.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent handler should type-check.
+- Mismatched pure handler should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Data` + trivial fn -> `ok`.
+2. Coherent handler (`handle ProbeDX.run(); ProbeDX.run() -> resume 281`) -> `ok`.
+3. Mismatched pure handler (`handle ProbeDY.left(); ProbeDZ.right() -> resume 0`) -> `error`, `E0001`.
+4. Bad resume payload (`ProbeEA.read() -> resume "bad"`) -> `error`, `E0001`.
+5. Out-of-handler resume (`fn fresh_outside_resume_probe_20260304g() -> Int; resume 32`) -> `error`, `E0012`.
+6. Forged-name out-of-handler resume (`let __kea_resume_ctx = 32; resume 32`) -> `error`, `E0012`.
+7. Double-resume clause (`resume 1` then `resume 2`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept strengthened status-capstone constructors and legacy↔strengthened status equivalence bridges.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `NativeHandlerSoundnessBoundaryStatusCapstoneStrengthened`
+  - `native_handler_soundness_boundary_status_capstone_iff_strengthened`
+  - `native_handler_soundness_boundary_status_capstone_strengthened_of_legacy`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Unified status-capstone consumers can now move between legacy and strengthened status surfaces with an explicit theorem-level `↔`, matching the boundary-capstone layer.
