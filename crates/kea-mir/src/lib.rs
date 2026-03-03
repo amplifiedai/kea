@@ -4557,6 +4557,75 @@ impl FunctionLoweringCtx {
 
     /// Build a MIR callback wrapper that augments an inner callback with chain
     /// building for callback stacking. The wrapper:
+    /// Wrap an inner callback with chain augmentation for non-tail resume.
+    ///
+    /// This is the unified entry point for all non-tail handler clause wrapping.
+    /// It builds the post-resume chain function, creates the identity closure and
+    /// chain cell, registers in stacking_chains, and calls build_chain_augmented_callback.
+    #[allow(clippy::too_many_arguments)]
+    fn wrap_with_chain_augmentation(
+        &mut self,
+        inner_callback: MirValueId,
+        target_effect: &str,
+        operation: &str,
+        split: &NonTailResumeSplit,
+        clause_args: &[kea_hir::HirPattern],
+        pre_resume_capture_cells: &[MirValueId],
+        span: kea_ast::Span,
+    ) -> Option<MirValueId> {
+        // Combine clause arg captures + binding captures for the chain function
+        let mut all_extra_captures: Vec<String> = split.clause_arg_captures.clone();
+        all_extra_captures.extend(split.captured_bindings.clone());
+
+        let post_resume_entry = self.build_post_resume_chain_function(
+            target_effect,
+            operation,
+            split,
+            &all_extra_captures,
+            span,
+        )?;
+
+        let identity = self.create_identity_closure()?;
+        let chain_cell = self.new_value();
+        self.emit_inst(MirInst::StateCellNew {
+            dest: chain_cell.clone(),
+            initial: identity,
+        });
+        self.stacking_chains.insert(
+            (target_effect.to_string(), operation.to_string()),
+            StackingChain {
+                chain_cell: chain_cell.clone(),
+            },
+        );
+
+        // Map clause arg capture names to their indices in the callback params
+        let clause_arg_names: Vec<String> = clause_args
+            .iter()
+            .filter_map(|p| {
+                if let kea_hir::HirPattern::Var(n) = p {
+                    Some(n.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+        let capture_indices: Vec<usize> = split
+            .clause_arg_captures
+            .iter()
+            .filter_map(|name| clause_arg_names.iter().position(|n| n == name))
+            .collect();
+
+        let arity = clause_args.len();
+        self.build_chain_augmented_callback(
+            inner_callback,
+            chain_cell,
+            &post_resume_entry,
+            arity,
+            &capture_indices,
+            pre_resume_capture_cells,
+        )
+    }
+
     /// 1. Calls the inner callback to get the resume value
     /// 2. Loads the previous chain from chain_cell
     /// 3. Creates a new chain closure wrapping prev with the post-resume transform
@@ -5874,32 +5943,14 @@ impl FunctionLoweringCtx {
                     let get_callback = self.build_state_get_callback(state_cell.clone())?;
                     // If non-tail, wrap with chain augmentation
                     let final_callback = if let Some(split) = non_tail_split.take() {
-                        let post_resume_entry = self.build_post_resume_chain_function(
+                        self.wrap_with_chain_augmentation(
+                            get_callback,
                             &target_effect,
                             &clause.operation,
                             &split,
-                            &[], // stateful get: no clause arg captures
+                            &clause.args,
+                            &[],
                             clause.span,
-                        )?;
-                        let identity = self.create_identity_closure()?;
-                        let chain_cell = self.new_value();
-                        self.emit_inst(MirInst::StateCellNew {
-                            dest: chain_cell.clone(),
-                            initial: identity,
-                        });
-                        self.stacking_chains.insert(
-                            (target_effect.clone(), clause.operation.clone()),
-                            StackingChain {
-                                chain_cell: chain_cell.clone(),
-                            },
-                        );
-                        self.build_chain_augmented_callback(
-                            get_callback,
-                            chain_cell,
-                            &post_resume_entry,
-                            0,   // zero-arg
-                            &[], // no clause arg captures
-                            &[], // no binding capture cells
                         )?
                     } else {
                         get_callback
@@ -5927,49 +5978,14 @@ impl FunctionLoweringCtx {
                     let put_callback = self.build_state_put_callback(state_cell.clone())?;
                     // If non-tail, wrap with chain augmentation
                     let final_callback = if let Some(split) = non_tail_split.take() {
-                        let post_resume_entry = self.build_post_resume_chain_function(
+                        self.wrap_with_chain_augmentation(
+                            put_callback,
                             &target_effect,
                             &clause.operation,
                             &split,
-                            &split.clause_arg_captures.clone(),
+                            &clause.args,
+                            &[],
                             clause.span,
-                        )?;
-                        let identity = self.create_identity_closure()?;
-                        let chain_cell = self.new_value();
-                        self.emit_inst(MirInst::StateCellNew {
-                            dest: chain_cell.clone(),
-                            initial: identity,
-                        });
-                        self.stacking_chains.insert(
-                            (target_effect.clone(), clause.operation.clone()),
-                            StackingChain {
-                                chain_cell: chain_cell.clone(),
-                            },
-                        );
-                        // Compute clause arg capture indices for this operation
-                        let clause_arg_names: Vec<String> = clause
-                            .args
-                            .iter()
-                            .filter_map(|p| {
-                                if let HirPattern::Var(n) = p {
-                                    Some(n.clone())
-                                } else {
-                                    None
-                                }
-                            })
-                            .collect();
-                        let capture_indices: Vec<usize> = split
-                            .clause_arg_captures
-                            .iter()
-                            .filter_map(|name| clause_arg_names.iter().position(|n| n == name))
-                            .collect();
-                        self.build_chain_augmented_callback(
-                            put_callback,
-                            chain_cell,
-                            &post_resume_entry,
-                            1, // one-arg
-                            &capture_indices,
-                            &[], // no binding capture cells
                         )?
                     } else {
                         put_callback
@@ -6192,52 +6208,14 @@ impl FunctionLoweringCtx {
             };
             // If this is a non-tail callback, wrap with chain augmentation
             let final_callback = if let Some(split) = needs_chain_augment {
-                // Combine clause arg captures + binding captures for the chain function
-                let mut all_extra_captures: Vec<String> = split.clause_arg_captures.clone();
-                all_extra_captures.extend(split.captured_bindings.clone());
-                let post_resume_entry = self.build_post_resume_chain_function(
+                self.wrap_with_chain_augmentation(
+                    callback_value,
                     &target_effect,
                     &clause.operation,
                     &split,
-                    &all_extra_captures,
-                    clause.span,
-                )?;
-                let identity = self.create_identity_closure()?;
-                let chain_cell = self.new_value();
-                self.emit_inst(MirInst::StateCellNew {
-                    dest: chain_cell.clone(),
-                    initial: identity,
-                });
-                self.stacking_chains.insert(
-                    (target_effect.clone(), clause.operation.clone()),
-                    StackingChain {
-                        chain_cell: chain_cell.clone(),
-                    },
-                );
-                // Map clause arg capture names to their indices in callback_params
-                let clause_arg_names: Vec<String> = clause
-                    .args
-                    .iter()
-                    .filter_map(|p| {
-                        if let HirPattern::Var(n) = p {
-                            Some(n.clone())
-                        } else {
-                            None
-                        }
-                    })
-                    .collect();
-                let capture_indices: Vec<usize> = split
-                    .clause_arg_captures
-                    .iter()
-                    .filter_map(|name| clause_arg_names.iter().position(|n| n == name))
-                    .collect();
-                self.build_chain_augmented_callback(
-                    callback_value,
-                    chain_cell,
-                    &post_resume_entry,
-                    callback_params.len(),
-                    &capture_indices,
+                    &clause.args,
                     &pre_resume_capture_cells,
+                    clause.span,
                 )?
             } else {
                 callback_value
