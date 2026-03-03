@@ -18395,3 +18395,45 @@ suite, both derivable from packaged core soundness.
 - The concrete pass-through mismatch path now has direct, one-hop suite
   theorems from core soundness for both global route bundles and local
   consequence route bundles.
+
+### 2026-03-03: generic lift spine (global routes -> local routes)
+
+**Context**: Added generic lift theorems from global assumption-route bundles
+to local consequence bundles, then refactored core-progress/core-soundness
+local route theorems to consume those lifts.
+
+**MCP tools used**: `reset_session`, `type_check`
+
+**Predict (Lean side)**:
+- Coherent nested/disjoint handler composition should type-check as pure.
+- Clause/effect mismatch should leak body effect in pure context.
+- Resume payload mismatch should reject.
+- Out-of-handler resume should reject.
+
+**Probe (Rust side via MCP)**:
+1. Coherent nested `State` + `Log` handlers -> `ok` (`main : () -> Int`).
+2. Mismatched `State` clauses around `Log` body -> `error`, `E0001` (pure body performs `[Log]`).
+3. Bad `State.put` resume payload (`resume 1` where op returns `Unit`) -> `error`, `E0001`.
+4. Out-of-handler resume control (`let y = 0; resume y`) -> `error`, `E0012`.
+
+**Classify**: Agreement.
+
+**Act**:
+- Kept the generic lift theorems and local-route refactor.
+- Continued checkpoint loop without model revision.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_local_step_assumption_routes_of_progress_assumption_routes`
+  - `native_handler_step_ext_with_mismatch_local_exists_and_preserves_assumption_routes_of_soundness_assumption_routes`
+  - refactors:
+    - `native_handler_step_ext_with_mismatch_local_step_assumption_routes_of_core_progress`
+    - `native_handler_step_ext_with_mismatch_local_exists_and_preserves_assumption_routes_of_core_soundness`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The proof spine is now explicit and reusable: global route bundles are lifted
+  once into local consequence bundles, and core-derived local routes reuse that
+  single bridge.

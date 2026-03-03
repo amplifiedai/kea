@@ -4684,19 +4684,18 @@ def native_handler_step_ext_with_mismatch_local_step_assumption_routes_prop
         clauseSem mismatchSem bodyStep)
 
 /--
-From packaged core progress, derive all four packaged local typed-handle
-`step` consequence routes.
+Lift packaged global progress assumption-routes into packaged local typed-
+handle `step` consequence routes.
 -/
-theorem native_handler_step_ext_with_mismatch_local_step_assumption_routes_of_core_progress
+theorem native_handler_step_ext_with_mismatch_local_step_assumption_routes_of_progress_assumption_routes
     (clauseSem : NativeHandlerClauseSem)
     (mismatchSem : NativeHandlerMismatchSem)
     (bodyStep : CoreExpr → CoreExpr → Prop)
-    (h_core_progress : native_core_progress_prop bodyStep) :
+    (h_progress_routes :
+      native_handler_step_ext_with_mismatch_progress_assumption_routes_prop
+        clauseSem mismatchSem bodyStep) :
     native_handler_step_ext_with_mismatch_local_step_assumption_routes_prop
       clauseSem mismatchSem bodyStep := by
-  have h_progress_routes :=
-    native_handler_step_ext_with_mismatch_progress_assumption_routes_of_core_progress
-      clauseSem mismatchSem bodyStep h_core_progress
   rcases h_progress_routes with ⟨h_top, h_strict, h_lift, h_meta⟩
   refine ⟨?_, ?_, ?_, ?_⟩
   · intro h_strict_top env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed
@@ -4707,6 +4706,22 @@ theorem native_handler_step_ext_with_mismatch_local_step_assumption_routes_of_co
     exact h_lift h_scoped_lift env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed
   · intro h_coherence env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed
     exact h_meta h_coherence env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed
+
+/--
+From packaged core progress, derive all four packaged local typed-handle
+`step` consequence routes.
+-/
+theorem native_handler_step_ext_with_mismatch_local_step_assumption_routes_of_core_progress
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core_progress : native_core_progress_prop bodyStep) :
+    native_handler_step_ext_with_mismatch_local_step_assumption_routes_prop
+      clauseSem mismatchSem bodyStep := by
+  exact native_handler_step_ext_with_mismatch_local_step_assumption_routes_of_progress_assumption_routes
+    clauseSem mismatchSem bodyStep
+    (native_handler_step_ext_with_mismatch_progress_assumption_routes_of_core_progress
+      clauseSem mismatchSem bodyStep h_core_progress)
 
 /--
 Packaged local typed-handle consequence surface (`step` + preserved typing).
@@ -4756,19 +4771,18 @@ def native_handler_step_ext_with_mismatch_local_exists_and_preserves_assumption_
         clauseSem mismatchSem bodyStep)
 
 /--
-From packaged core soundness, derive all four packaged local typed-handle
-`step` + preserved-typing consequence routes.
+Lift packaged global soundness assumption-routes into packaged local typed-
+handle `step` + preserved-typing consequence routes.
 -/
-theorem native_handler_step_ext_with_mismatch_local_exists_and_preserves_assumption_routes_of_core_soundness
+theorem native_handler_step_ext_with_mismatch_local_exists_and_preserves_assumption_routes_of_soundness_assumption_routes
     (clauseSem : NativeHandlerClauseSem)
     (mismatchSem : NativeHandlerMismatchSem)
     (bodyStep : CoreExpr → CoreExpr → Prop)
-    (h_core : native_core_soundness_prop bodyStep) :
+    (h_sound_routes :
+      native_handler_step_ext_with_mismatch_soundness_assumption_routes_prop
+        clauseSem mismatchSem bodyStep) :
     native_handler_step_ext_with_mismatch_local_exists_and_preserves_assumption_routes_prop
       clauseSem mismatchSem bodyStep := by
-  have h_sound_routes :=
-    native_handler_step_ext_with_mismatch_soundness_assumption_routes_of_core_soundness
-      clauseSem mismatchSem bodyStep h_core
   rcases h_sound_routes with ⟨h_top, h_strict, h_lift, h_meta⟩
   refine ⟨?_, ?_, ?_, ?_⟩
   · intro h_strict_top env body opHandle argName resumeName argTy opRetTy clauseBody ty h_typed
@@ -4787,6 +4801,22 @@ theorem native_handler_step_ext_with_mismatch_local_exists_and_preserves_assumpt
     exact native_handler_step_ext_with_mismatch_exists_and_preserves_of_soundness
       clauseSem mismatchSem bodyStep
       (h_meta h_coherence) h_typed
+
+/--
+From packaged core soundness, derive all four packaged local typed-handle
+`step` + preserved-typing consequence routes.
+-/
+theorem native_handler_step_ext_with_mismatch_local_exists_and_preserves_assumption_routes_of_core_soundness
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_core : native_core_soundness_prop bodyStep) :
+    native_handler_step_ext_with_mismatch_local_exists_and_preserves_assumption_routes_prop
+      clauseSem mismatchSem bodyStep := by
+  exact native_handler_step_ext_with_mismatch_local_exists_and_preserves_assumption_routes_of_soundness_assumption_routes
+    clauseSem mismatchSem bodyStep
+    (native_handler_step_ext_with_mismatch_soundness_assumption_routes_of_core_soundness
+      clauseSem mismatchSem bodyStep h_core)
 
 /--
 Combined packaged local consequence route suite (`step` routes and
