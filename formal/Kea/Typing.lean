@@ -1995,6 +1995,60 @@ theorem native_handler_step_ext_with_mismatch_vs_ext_typed_op_mismatch_gap_bodyS
   exact ⟨env, argName, resumeName, clauseBody, ty, h_typed, h_mismatch_exists, h_no_ext⟩
 
 /--
+Generic typed mismatched-op gap witness between mismatch-extension stepping and
+base extended stepping under a local no-body-step premise.
+-/
+theorem native_handler_step_ext_with_mismatch_vs_ext_typed_op_mismatch_gap_of_no_body_step
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    {opBody opHandle : Label}
+    (h_op_ne : opBody ≠ opHandle)
+    (h_no_body_step :
+      ∀ body', ¬ bodyStep
+        (.perform opBody .int .int (.intLit 1) (.lam "x" .int (.intLit 0)))
+        body') :
+    ∃ env argName resumeName clauseBody ty,
+      HasTypeScopedTop env
+        (.handle
+          (.perform opBody .int .int (.intLit 1) (.lam "x" .int (.intLit 0)))
+          opHandle argName resumeName .int .int clauseBody)
+        ty
+      ∧
+      (∃ e', NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep
+        (.handle
+          (.perform opBody .int .int (.intLit 1) (.lam "x" .int (.intLit 0)))
+          opHandle argName resumeName .int .int clauseBody)
+        e')
+      ∧
+      ¬ ∃ e', NativeHandlerStepExt clauseSem bodyStep
+        (.handle
+          (.perform opBody .int .int (.intLit 1) (.lam "x" .int (.intLit 0)))
+          opHandle argName resumeName .int .int clauseBody)
+        e' := by
+  rcases native_handler_step_ext_typed_mismatch_counterexample
+      clauseSem bodyStep
+      (opBody := opBody)
+      (opHandle := opHandle)
+      h_op_ne h_no_body_step with
+    ⟨env, argName, resumeName, clauseBody, ty, h_typed, h_no_ext⟩
+  have h_mismatch_exists :
+      ∃ e', NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep
+        (.handle
+          (.perform opBody .int .int (.intLit 1) (.lam "x" .int (.intLit 0)))
+          opHandle argName resumeName .int .int clauseBody)
+        e' := by
+    refine ⟨
+      mismatchSem.mismatchTarget
+        opBody .int .int (.intLit 1) (.lam "x" .int (.intLit 0))
+        opHandle argName resumeName .int .int clauseBody,
+      ?_⟩
+    exact NativeHandlerStepExtWithMismatch.handle_perform_op_mismatch
+      opBody opHandle .int .int (.intLit 1) (.lam "x" .int (.intLit 0))
+      argName resumeName clauseBody h_op_ne
+  exact ⟨env, argName, resumeName, clauseBody, ty, h_typed, h_mismatch_exists, h_no_ext⟩
+
+/--
 With `bodyStep = False`, mismatch-extension strictly extends the base extended
 handler-step relation.
 -/

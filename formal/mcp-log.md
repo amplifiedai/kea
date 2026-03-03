@@ -19481,3 +19481,42 @@ No MCP divergence found at this checkpoint.
 
 **Impact**:
 - The `ext -> ext-with-mismatch` strictness claim now has a reusable generic theorem surface parameterized by local no-body-step evidence, reducing dependence on the stronger global `bodyStep = False` assumption.
+
+### 2026-03-03: generalized typed mismatch-gap witness under local no-body-step premise
+
+**Context**: Added `native_handler_step_ext_with_mismatch_vs_ext_typed_op_mismatch_gap_of_no_body_step`, generalizing the prior typed mismatch-gap witness from global `bodyStep = False` to arbitrary `bodyStep` with a local no-body-step premise on the mismatched handled `perform` site.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent self-contained handlers should type-check.
+- Pure-body `handle` sentinel should type-check.
+- Mismatched pure handlers should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler `resume` should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Log` -> `ok`.
+2. Coherent self-contained Queue handler (`Queue.pop() -> resume 9`) -> `ok`.
+3. Pure-body sentinel (`handle 5` with `Queue.pop` clause) -> `ok`.
+4. Mismatched pure handler (`handle Alpha.ping()` with only `Beta.pong` clause) -> `error`, `E0001` (pure body performs `[Alpha]`).
+5. Bad resume payload (`Notify.send(m) -> resume 1` for `send : String -> Unit`) -> `error`, `E0001`.
+6. Out-of-handler resume (`fn out_resume_gap() -> Int; resume 10`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No MCP divergence found at this checkpoint.
+
+**Act**:
+- Kept generalized typed mismatch-gap theorem addition.
+- Continued MCP-first checkpoint loop with fresh slice-specific probes.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_vs_ext_typed_op_mismatch_gap_of_no_body_step`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Typed mismatch-gap evidence is now available without requiring global `bodyStep = False`, making the boundary theorem surface align better with local premise-driven progress arguments.
