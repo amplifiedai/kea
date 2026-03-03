@@ -19439,3 +19439,45 @@ No MCP divergence found at this checkpoint.
 
 **Impact**:
 - Inclusion routes into `NativeHandlerStepExtWithMismatch` are now explicit at theorem level, reducing downstream proof friction when lifting facts from native/base-ext layers into mismatch-extension arguments.
+
+### 2026-03-03: generic strict-extension of mismatch over ext under local no-body-step witness
+
+**Context**: Added a generic strict-extension layer for `NativeHandlerStepExtWithMismatch` over `NativeHandlerStepExt` that no longer hardcodes `bodyStep = False`; strictness is derived from a local mismatched-perform no-body-step witness.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent self-contained handlers should type-check.
+- Pure-body `handle` remains accepted (sentinel aligned with local no-body-step witness shape).
+- Mismatched pure handlers should reject with effect leakage (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Double-resume and out-of-handler `resume` should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Reader` -> `ok`.
+2. Coherent self-contained handler (`effect Gate`; `handle Gate.open(1)` with `Gate.open(v) -> resume (v + 1)`) -> `ok`.
+3. Pure-body sentinel (`handle 2` with `Gate.open` clause) -> `ok`.
+4. Mismatch/no-step control (`handle Foo.ping()` with only `Bar.pong` clause) -> `error`, `E0001` (pure body performs `[Foo]`).
+5. Bad resume payload (`Store.put(n) -> resume 9` for `put : Int -> Unit`) -> `error`, `E0001`.
+6. Double-resume control -> `error`, `E0012` (`handler clause may resume at most once`).
+7. Out-of-handler resume control (`resume 4`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No MCP divergence found at this checkpoint.
+
+**Act**:
+- Kept the generic strict-extension additions.
+- Continued MCP-first checkpoint loop with slice-specific controls.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_mismatch_strictly_extends_ext_prop`
+  - `native_handler_step_ext_with_mismatch_ext_gap_of_op_mismatch_no_body_step`
+  - `native_handler_step_ext_with_mismatch_strictly_extends_ext_of_op_mismatch_no_body_step`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- The `ext -> ext-with-mismatch` strictness claim now has a reusable generic theorem surface parameterized by local no-body-step evidence, reducing dependence on the stronger global `bodyStep = False` assumption.

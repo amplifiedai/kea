@@ -2036,6 +2036,103 @@ theorem native_handler_step_ext_with_mismatch_strictly_extends_ext_bodyStepFalse
     exact h_no_ext ⟨e', h_ext⟩
 
 /--
+Generic strict-extension contract: every base-extended step is a mismatch-
+extended step, and some mismatch-extended step is not base-extended.
+-/
+def native_handler_step_ext_with_mismatch_strictly_extends_ext_prop
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) : Prop :=
+  (∀ e e',
+      NativeHandlerStepExt clauseSem bodyStep e e' →
+      NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep e e')
+    ∧
+  (∃ e e',
+      NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep e e' ∧
+      ¬ NativeHandlerStepExt clauseSem bodyStep e e')
+
+/--
+Under a local no-body-step premise for one mismatched handled `perform`,
+`ext-with-mismatch` has a strictness witness over `ext` at that site.
+-/
+theorem native_handler_step_ext_with_mismatch_ext_gap_of_op_mismatch_no_body_step
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    {opBody opHandle : Label}
+    {argName resumeName : String}
+    {argTy opRetTy : Ty}
+    {arg k clauseBody : CoreExpr}
+    (h_op_ne : opBody ≠ opHandle)
+    (h_no_body_step :
+      ∀ body', ¬ bodyStep (.perform opBody argTy opRetTy arg k) body') :
+    ∃ e e',
+      NativeHandlerStepExtWithMismatch clauseSem mismatchSem bodyStep e e' ∧
+      ¬ NativeHandlerStepExt clauseSem bodyStep e e' := by
+  let handled : CoreExpr :=
+    .handle (.perform opBody argTy opRetTy arg k)
+      opHandle argName resumeName argTy opRetTy clauseBody
+  let mismatchTarget : CoreExpr :=
+    mismatchSem.mismatchTarget
+      opBody argTy opRetTy arg k opHandle argName resumeName argTy opRetTy clauseBody
+  have h_no_ext :
+      ¬ ∃ e'', NativeHandlerStepExt clauseSem bodyStep handled e'' :=
+    native_handler_step_ext_not_exists_of_op_mismatch_without_body_step
+      clauseSem bodyStep
+      (opBody := opBody)
+      (opHandle := opHandle)
+      (argName := argName)
+      (resumeName := resumeName)
+      (argTy := argTy)
+      (opRetTy := opRetTy)
+      (arg := arg)
+      (k := k)
+      (clauseBody := clauseBody)
+      h_op_ne h_no_body_step
+  exact ⟨handled, mismatchTarget,
+    NativeHandlerStepExtWithMismatch.handle_perform_op_mismatch
+      opBody opHandle argTy opRetTy arg k argName resumeName clauseBody h_op_ne,
+    by
+    intro h_ext
+    exact h_no_ext ⟨mismatchTarget, h_ext⟩⟩
+
+/--
+Strict extension of mismatch-extension over base extension under a local
+mismatched-perform no-body-step witness.
+-/
+theorem native_handler_step_ext_with_mismatch_strictly_extends_ext_of_op_mismatch_no_body_step
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    {opBody opHandle : Label}
+    {argName resumeName : String}
+    {argTy opRetTy : Ty}
+    {arg k clauseBody : CoreExpr}
+    (h_op_ne : opBody ≠ opHandle)
+    (h_no_body_step :
+      ∀ body', ¬ bodyStep (.perform opBody argTy opRetTy arg k) body') :
+    native_handler_step_ext_with_mismatch_strictly_extends_ext_prop
+      clauseSem mismatchSem bodyStep := by
+  refine ⟨?_, ?_⟩
+  · intro e e' h_ext
+    exact native_handler_step_ext_with_mismatch_of_ext_step
+      clauseSem mismatchSem bodyStep h_ext
+  · exact native_handler_step_ext_with_mismatch_ext_gap_of_op_mismatch_no_body_step
+      (clauseSem := clauseSem)
+      (mismatchSem := mismatchSem)
+      (bodyStep := bodyStep)
+      (opBody := opBody)
+      (opHandle := opHandle)
+      (argName := argName)
+      (resumeName := resumeName)
+      (argTy := argTy)
+      (opRetTy := opRetTy)
+      (arg := arg)
+      (k := k)
+      (clauseBody := clauseBody)
+      h_op_ne h_no_body_step
+
+/--
 Preservation target for the mismatched-perform-extended native relation.
 -/
 def native_handler_step_ext_with_mismatch_preservation_prop
