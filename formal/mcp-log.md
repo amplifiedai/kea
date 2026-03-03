@@ -18935,3 +18935,47 @@ Prior MCP tooling divergence is resolved.
 **Impact**:
 - MCP checkpoint protocol no longer requires the temporary no-`use` workaround.
 - Handler/resume validation expectations remain stable post-fix.
+
+### 2026-03-03: packaged boundary-model gap slice (native/ext/mismatch surfaces)
+
+**Context**: Added a packaged boundary-model slice theorem combining four
+currently relevant facts: native progress failure, mismatch-extension progress
+failure under no-body-step semantics, strict native->extended relation
+extension, and a one-hop typed native-vs-extended gap witness.
+
+**MCP tools used**: `reset_session`, `type_check`
+
+**Predict (Lean side)**:
+- `use` declarations should continue parsing in MCP (`status: ok`).
+- Coherent higher-order handler should type-check.
+- Mismatched pure handler should reject.
+- Bad resume payload should reject.
+- Out-of-handler resume should reject.
+
+**Probe (Rust side via MCP)**:
+1. `use Reader` -> `ok`.
+2. Coherent higher-order factory handler (`Factory.build(seed) -> resume (|x| x + seed)`) -> `ok`.
+3. Mismatched pure handler (`handle Store.save(1)` with only `Gate.read` clause) -> `error`, `E0001` (includes pure-body effect leak `[Store]`).
+4. Bad state resume payload (`State.get() -> resume "bad"` in `State Int` program) -> `error`, `E0001`.
+5. Out-of-handler resume control (`let n = 9; resume n`) -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No MCP divergence found at this checkpoint.
+
+**Act**:
+- Kept packaged boundary-model gap slice additions.
+- Continued MCP-first checkpoint loop with import-enabled probes.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_vs_native_typed_int_body_gap_prop`
+  - `NativeHandlerBoundaryModelGapSlice`
+  - `native_handler_boundary_model_gap_slice`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Current proof boundary is now consumable as one theorem-level object, rather
+  than spread across separate facts.
+- MCP verification loop is back to normal operation with `use` parsing intact.

@@ -1622,21 +1622,30 @@ theorem native_handler_step_ext_exists_of_int_body
 Typed boundary witness for the native-vs-extended step gap: on the same typed
 handle, the extended relation steps while the native minimal relation does not.
 -/
+def native_handler_step_ext_vs_native_typed_int_body_gap_prop
+    (clauseSem : NativeHandlerClauseSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) : Prop :=
+  ∃ env op argName resumeName argTy opRetTy clauseBody ty,
+    HasTypeScopedTop env
+      (.handle (.intLit 0) op argName resumeName argTy opRetTy clauseBody)
+      ty
+    ∧
+    (∃ e', NativeHandlerStepExt clauseSem bodyStep
+      (.handle (.intLit 0) op argName resumeName argTy opRetTy clauseBody)
+      e')
+    ∧
+    ¬ ∃ e', NativeHandlerStep clauseSem
+      (.handle (.intLit 0) op argName resumeName argTy opRetTy clauseBody)
+      e'
+
+/--
+Typed boundary witness for `native_handler_step_ext_vs_native_typed_int_body_gap_prop`.
+-/
 theorem native_handler_step_ext_vs_native_typed_int_body_witness
     (clauseSem : NativeHandlerClauseSem)
     (bodyStep : CoreExpr → CoreExpr → Prop) :
-    ∃ env op argName resumeName argTy opRetTy clauseBody ty,
-      HasTypeScopedTop env
-        (.handle (.intLit 0) op argName resumeName argTy opRetTy clauseBody)
-        ty
-      ∧
-      (∃ e', NativeHandlerStepExt clauseSem bodyStep
-        (.handle (.intLit 0) op argName resumeName argTy opRetTy clauseBody)
-        e')
-      ∧
-      ¬ ∃ e', NativeHandlerStep clauseSem
-        (.handle (.intLit 0) op argName resumeName argTy opRetTy clauseBody)
-        e' := by
+    native_handler_step_ext_vs_native_typed_int_body_gap_prop
+      clauseSem bodyStep := by
   refine ⟨[], "Op", "x", "k", .int, .int, (.intLit 1), .int, ?_, ?_, ?_⟩
   · exact HasTypeScoped.handle none [] (.intLit 0) "Op" "x" "k" .int .int .int (.intLit 1)
       (HasTypeScoped.int none [] 0)
@@ -4228,6 +4237,44 @@ theorem not_native_handler_step_ext_with_mismatch_soundness_prop_of_bodyStepFals
   intro h_sound
   exact not_native_handler_step_ext_with_mismatch_progress_prop_of_bodyStepFalse
     clauseSem mismatchSem h_sound.2
+
+/--
+Packaged boundary-model status slice for current native vs extended handler-step
+relations.
+-/
+structure NativeHandlerBoundaryModelGapSlice
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) : Prop where
+  nativeProgressFalse :
+    ¬ native_handler_step_progress_prop clauseSem
+  mismatchProgressFalseBodyStepFalse :
+    ¬ native_handler_step_ext_with_mismatch_progress_prop
+      clauseSem mismatchSem (fun _ _ => False)
+  extStrictlyExtendsNativeBodyStepFalse :
+    native_handler_step_ext_strictly_extends_native_prop
+      clauseSem (fun _ _ => False)
+  typedExtVsNativeGapBodyStepFalse :
+    native_handler_step_ext_vs_native_typed_int_body_gap_prop
+      clauseSem (fun _ _ => False)
+
+/--
+Canonical packaged boundary-model status witness.
+-/
+theorem native_handler_boundary_model_gap_slice
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem) :
+    NativeHandlerBoundaryModelGapSlice clauseSem mismatchSem := by
+  refine {
+    nativeProgressFalse := native_handler_step_progress_prop_false clauseSem
+    mismatchProgressFalseBodyStepFalse :=
+      not_native_handler_step_ext_with_mismatch_progress_prop_of_bodyStepFalse
+        clauseSem mismatchSem
+    extStrictlyExtendsNativeBodyStepFalse :=
+      native_handler_step_ext_strictly_extends_native clauseSem
+    typedExtVsNativeGapBodyStepFalse :=
+      native_handler_step_ext_vs_native_typed_int_body_witness
+        clauseSem (fun _ _ => False)
+  }
 
 /--
 Original native handler steps embed into the extended relation.
