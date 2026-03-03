@@ -5018,6 +5018,21 @@ def native_handler_step_ext_with_passThroughMismatch_assumption_route_suite_prop
     clauseSem nativeHandlerMismatchPassThroughSem bodyStep
 
 /--
+Concrete pass-through global route suite is equivalent to concrete pass-through
+global soundness routes.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_assumption_route_suite_prop_iff_soundness_assumption_routes
+    (clauseSem : NativeHandlerClauseSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) :
+    native_handler_step_ext_with_passThroughMismatch_assumption_route_suite_prop
+      clauseSem bodyStep
+      ↔
+    native_handler_step_ext_with_mismatch_soundness_assumption_routes_prop
+      clauseSem nativeHandlerMismatchPassThroughSem bodyStep := by
+  exact native_handler_step_ext_with_mismatch_assumption_route_suite_prop_iff_soundness_assumption_routes
+    clauseSem nativeHandlerMismatchPassThroughSem bodyStep
+
+/--
 From packaged core soundness, derive the concrete pass-through mismatch
 assumption-route suite.
 -/
@@ -5039,6 +5054,36 @@ def native_handler_step_ext_with_passThroughMismatch_local_consequence_assumptio
     (bodyStep : CoreExpr → CoreExpr → Prop) : Prop :=
   native_handler_step_ext_with_mismatch_local_consequence_assumption_route_suite_prop
     clauseSem nativeHandlerMismatchPassThroughSem bodyStep
+
+/--
+Concrete pass-through local consequence route suite is equivalent to concrete
+pass-through local `step`+preserves routes.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_local_consequence_assumption_route_suite_prop_iff_local_exists_and_preserves_assumption_routes
+    (clauseSem : NativeHandlerClauseSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop) :
+    native_handler_step_ext_with_passThroughMismatch_local_consequence_assumption_route_suite_prop
+      clauseSem bodyStep
+      ↔
+    native_handler_step_ext_with_mismatch_local_exists_and_preserves_assumption_routes_prop
+      clauseSem nativeHandlerMismatchPassThroughSem bodyStep := by
+  exact native_handler_step_ext_with_mismatch_local_consequence_assumption_route_suite_prop_iff_local_exists_and_preserves_assumption_routes
+    clauseSem nativeHandlerMismatchPassThroughSem bodyStep
+
+/--
+Lift concrete pass-through global soundness routes into the concrete
+pass-through local consequence route suite.
+-/
+theorem native_handler_step_ext_with_passThroughMismatch_local_consequence_assumption_route_suite_of_soundness_assumption_routes
+    (clauseSem : NativeHandlerClauseSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (h_sound_routes :
+      native_handler_step_ext_with_mismatch_soundness_assumption_routes_prop
+        clauseSem nativeHandlerMismatchPassThroughSem bodyStep) :
+    native_handler_step_ext_with_passThroughMismatch_local_consequence_assumption_route_suite_prop
+      clauseSem bodyStep := by
+  exact native_handler_step_ext_with_mismatch_local_consequence_assumption_route_suite_of_soundness_assumption_routes
+    clauseSem nativeHandlerMismatchPassThroughSem bodyStep h_sound_routes
 
 /--
 Lift the concrete pass-through global assumption-route suite into the concrete

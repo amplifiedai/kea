@@ -18564,3 +18564,43 @@ local-suite lifting to consume only soundness-derived local routes.
 **Impact**:
 - Local suite consumption is now canonicalized around local `step`+preserves
   routes, with local `step` routes projected automatically.
+
+### 2026-03-03: concrete pass-through projection/iff surfaces
+
+**Context**: Added concrete pass-through projection/iff theorem surfaces for
+global suite vs soundness routes and local suite vs local `step`+preserves
+routes, plus direct concrete lifting from pass-through global soundness routes
+to pass-through local suites.
+
+**MCP tools used**: `reset_session`, `type_check`
+
+**Predict (Lean side)**:
+- Coherent `Log` handler with external `IO` effect in clause body should type-check with `-[IO]>`.
+- Clause/effect mismatch should leak source effect in pure context.
+- Resume payload mismatch should reject.
+- Out-of-handler resume should reject.
+
+**Probe (Rust side via MCP)**:
+1. Coherent `with_stdout_logger` handler (`Log.info -> IO.stdout; resume ()`) -> `ok`.
+2. Mismatched `Log` clause around `Reader` body -> `error`, `E0001` (pure body performs `[Reader(Int)]`).
+3. Bad `Log.info` resume payload (`resume 0` where op returns `Unit`) -> `error`, `E0001`.
+4. Out-of-handler resume control (`resume 5`) -> `error`, `E0012`.
+
+**Classify**: Agreement.
+
+**Act**:
+- Kept concrete pass-through projection/iff theorem additions.
+- Continued checkpoint loop without model revision.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_handler_step_ext_with_passThroughMismatch_assumption_route_suite_prop_iff_soundness_assumption_routes`
+  - `native_handler_step_ext_with_passThroughMismatch_local_consequence_assumption_route_suite_prop_iff_local_exists_and_preserves_assumption_routes`
+  - `native_handler_step_ext_with_passThroughMismatch_local_consequence_assumption_route_suite_of_soundness_assumption_routes`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Concrete pass-through consumption now has first-class projection and iff
+  surfaces matching the generic theorem spine, reducing specialization friction.
