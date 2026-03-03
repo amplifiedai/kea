@@ -2943,7 +2943,8 @@ fn validate_fip_annotations(module: &Module, hir: &HirModule) -> Vec<Diagnostic>
         .map(|stats| (stats.function.as_str(), stats))
         .collect::<BTreeMap<_, _>>();
     let mut safe_handoff_callees = collect_safe_unique_forwarders(hir, &mir);
-    let mut safe_higher_order_handoff_callees = collect_safe_unique_higher_order_forwarders(hir);
+    let mut safe_higher_order_handoff_callees =
+        collect_safe_unique_higher_order_forwarders(hir, &mir);
     let import_aliases = collect_import_aliases(module);
     extend_safe_forwarders_with_import_aliases(&mut safe_handoff_callees, &import_aliases);
     extend_safe_higher_order_forwarders_with_import_aliases(
@@ -3166,6 +3167,7 @@ struct FipMirProfile {
     explicit_release_count: usize,
     reuse_token_produced_count: usize,
     reuse_token_consumed_count: usize,
+    call_count: usize,
 }
 
 fn collect_fip_mir_profile(function: &kea_mir::MirFunction) -> FipMirProfile {
@@ -3173,6 +3175,7 @@ fn collect_fip_mir_profile(function: &kea_mir::MirFunction) -> FipMirProfile {
     for block in &function.blocks {
         for inst in &block.instructions {
             match inst {
+                kea_mir::MirInst::Call { .. } => profile.call_count += 1,
                 kea_mir::MirInst::Retain { .. } => profile.retain_count += 1,
                 kea_mir::MirInst::Release { .. } => profile.explicit_release_count += 1,
                 kea_mir::MirInst::ReuseToken { .. } => profile.reuse_token_produced_count += 1,
@@ -3191,6 +3194,13 @@ fn collect_fip_mir_profile(function: &kea_mir::MirFunction) -> FipMirProfile {
         }
     }
     profile
+}
+
+fn mir_profile_is_non_allocating_forwarder(profile: &FipMirProfile) -> bool {
+    profile.disallowed_alloc_count == 0
+        && profile.retain_count == 0
+        && profile.explicit_release_count == 0
+        && profile.reuse_token_consumed_count <= profile.reuse_token_produced_count
 }
 
 fn is_unique_type_annotation(annotation: &TypeAnnotation) -> bool {
@@ -3520,9 +3530,14 @@ fn matches_higher_order_forwarder_body(
 
 fn collect_safe_unique_forwarders(
     hir: &HirModule,
-    _mir: &kea_mir::MirModule,
+    mir: &kea_mir::MirModule,
 ) -> BTreeMap<String, usize> {
     let mut safe = BTreeMap::new();
+    let mir_profiles = mir
+        .functions
+        .iter()
+        .map(|function| (function.name.clone(), collect_fip_mir_profile(function)))
+        .collect::<BTreeMap<_, _>>();
     let mut short_name_counts = BTreeMap::new();
     for decl in &hir.declarations {
         let HirDecl::Function(function) = decl else {
@@ -3572,6 +3587,14 @@ fn collect_safe_unique_forwarders(
         let Some(safe_arg_index) = safe_arg_index else {
             continue;
         };
+        let Some(profile) = mir_profiles.get(&function.name) else {
+            continue;
+        };
+        // Safe direct-call boundary proofs must be zero-overhead handoffs:
+        // no hidden alloc/retain/release churn and no nested calls.
+        if !mir_profile_is_non_allocating_forwarder(profile) || profile.call_count > 0 {
+            continue;
+        }
 
         safe.insert(function.name.clone(), safe_arg_index);
         let short = function
@@ -3589,8 +3612,14 @@ fn collect_safe_unique_forwarders(
 
 fn collect_safe_unique_higher_order_forwarders(
     hir: &HirModule,
+    mir: &kea_mir::MirModule,
 ) -> BTreeMap<String, SafeHigherOrderForwarder> {
     let mut safe = BTreeMap::new();
+    let mir_profiles = mir
+        .functions
+        .iter()
+        .map(|function| (function.name.clone(), collect_fip_mir_profile(function)))
+        .collect::<BTreeMap<_, _>>();
     let mut short_name_counts = BTreeMap::new();
     for decl in &hir.declarations {
         let HirDecl::Function(function) = decl else {
@@ -3647,6 +3676,14 @@ fn collect_safe_unique_higher_order_forwarders(
         let Some(spec) = matched else {
             continue;
         };
+        let Some(profile) = mir_profiles.get(&function.name) else {
+            continue;
+        };
+        // Higher-order wrappers can contain a forward call, but must remain
+        // allocation-free and retain/release neutral for transitive @fip safety.
+        if !mir_profile_is_non_allocating_forwarder(profile) {
+            continue;
+        }
         safe.insert(function.name.clone(), spec);
         let short = function
             .name

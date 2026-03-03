@@ -3297,7 +3297,7 @@ fn compile_and_execute_fip_unique_higher_order_forwarder_function_alias_chain_ca
 
 #[test]
 #[cfg(not(target_os = "windows"))]
-fn compile_fip_unique_higher_order_forwarder_tuple_alias_chain_reaches_codegen_tuple_pattern_gap() {
+fn compile_rejects_fip_unique_higher_order_forwarder_tuple_alias_chain() {
     let source_path = write_temp_source(
         "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_tuple_alias(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let (g, y) = (f, x)\n  g(y)\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_tuple_alias(forward_once, x)\n\nfn main() -> Int\n  0\n",
         "kea-cli-fip-unique-higher-order-forwarder-tuple-alias-chain",
@@ -3305,15 +3305,15 @@ fn compile_fip_unique_higher_order_forwarder_tuple_alias_chain_reaches_codegen_t
     );
 
     let err = run_file(&source_path).expect_err(
-        "tuple-pattern wrapper should pass @fip and then hit the known tuple-let codegen gap",
+        "@fip verifier should reject tuple-pattern wrapper boundaries until tuple-let lowering is allocation-free",
     );
     assert!(
-        err.contains("unsupported MIR operation in `apply_tuple_alias`"),
-        "expected tuple-pattern codegen gap, got: {err}"
+        err.contains("unsupported_call_boundaries=1"),
+        "expected unresolved call-boundary failure, got: {err}"
     );
     assert!(
-        !err.contains("`@fip` verification failed"),
-        "expected @fip acceptance before codegen gap, got: {err}"
+        err.contains("apply_tuple_alias"),
+        "expected tuple-wrapper call site in diagnostics, got: {err}"
     );
 
     let _ = std::fs::remove_file(source_path);
@@ -3549,7 +3549,7 @@ fn compile_and_execute_fip_unique_higher_order_module_alias_wrapper_call_exit_co
 
 #[test]
 #[cfg(not(target_os = "windows"))]
-fn compile_fip_unique_higher_order_module_alias_wrapper_tuple_alias_chain_reaches_codegen_tuple_pattern_gap()
+fn compile_rejects_fip_unique_higher_order_module_alias_wrapper_tuple_alias_chain()
 {
     let project_dir =
         temp_workspace_project_dir("kea-cli-fip-unique-higher-order-alias-wrapper-tuple-alias");
@@ -3568,15 +3568,15 @@ fn compile_fip_unique_higher_order_module_alias_wrapper_tuple_alias_chain_reache
     .expect("source write should succeed");
 
     let err = run_file(&source_path).expect_err(
-        "module-alias tuple-pattern wrapper should pass @fip and then hit the known tuple-let codegen gap",
+        "@fip verifier should reject module-alias tuple-pattern wrapper boundaries until tuple-let lowering is allocation-free",
     );
     assert!(
-        err.contains("unsupported MIR operation in `apply_tuple_alias`"),
-        "expected tuple-pattern codegen gap, got: {err}"
+        err.contains("unsupported_call_boundaries=1"),
+        "expected unresolved call-boundary failure, got: {err}"
     );
     assert!(
-        !err.contains("`@fip` verification failed"),
-        "expected @fip acceptance before codegen gap, got: {err}"
+        err.contains("A.apply_tuple_alias"),
+        "expected tuple-wrapper module-alias call site in diagnostics, got: {err}"
     );
 
     let _ = std::fs::remove_dir_all(project_dir);
@@ -4234,6 +4234,78 @@ fn compile_rejects_fip_when_call_boundary_is_unproven() {
     assert!(
         err.contains("unsupported_call_boundaries="),
         "expected unsupported call-boundary detail in @fip diagnostics, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn compile_rejects_fip_when_candidate_safe_forwarder_allocates() {
+    let source_path = write_temp_source(
+        "struct Box\n  n: Int\n\nfn alloc_and_return(x: Unique Int) -> Unique Int\n  let b = Box { n: 1 }\n  x\n\n@fip\nfn outer(x: Unique Int) -> Unique Int\n  alloc_and_return(x)\n\nfn main() -> Int\n  0\n",
+        "kea-cli-fip-candidate-forwarder-allocates",
+        "kea",
+    );
+
+    let err = run_file(&source_path).expect_err(
+        "@fip verifier should reject cross-function handoff proofs through allocating callees",
+    );
+    assert!(
+        err.contains("unsupported_call_boundaries=1"),
+        "expected unproven call-boundary count in diagnostics, got: {err}"
+    );
+    assert!(
+        err.contains("alloc_and_return"),
+        "expected rejected call-boundary site in diagnostics, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn compile_rejects_fip_when_candidate_safe_forwarder_makes_unrelated_call() {
+    let source_path = write_temp_source(
+        "fn helper() -> Int\n  1\n\nfn calls_then_returns(x: Unique Int) -> Unique Int\n  let t = helper()\n  x\n\n@fip\nfn outer(x: Unique Int) -> Unique Int\n  calls_then_returns(x)\n\nfn main() -> Int\n  0\n",
+        "kea-cli-fip-candidate-forwarder-calls-helper",
+        "kea",
+    );
+
+    let err = run_file(&source_path).expect_err(
+        "@fip verifier should reject cross-function handoff proofs through callees that make nested calls",
+    );
+    assert!(
+        err.contains("unsupported_call_boundaries=1"),
+        "expected unproven call-boundary count in diagnostics, got: {err}"
+    );
+    assert!(
+        err.contains("calls_then_returns"),
+        "expected rejected call-boundary site in diagnostics, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn compile_rejects_fip_when_candidate_higher_order_wrapper_allocates() {
+    let source_path = write_temp_source(
+        "struct Box\n  n: Int\n\nfn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_with_alloc(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let b = Box { n: 1 }\n  f(x)\n\n@fip\nfn outer(x: Unique Int) -> Unique Int\n  apply_with_alloc(forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "kea-cli-fip-candidate-ho-wrapper-allocates",
+        "kea",
+    );
+
+    let err = run_file(&source_path).expect_err(
+        "@fip verifier should reject higher-order wrapper proofs through allocating wrappers",
+    );
+    assert!(
+        err.contains("unsupported_call_boundaries=1"),
+        "expected unproven call-boundary count in diagnostics, got: {err}"
+    );
+    assert!(
+        err.contains("apply_with_alloc"),
+        "expected rejected call-boundary site in diagnostics, got: {err}"
     );
 
     let _ = std::fs::remove_file(source_path);
