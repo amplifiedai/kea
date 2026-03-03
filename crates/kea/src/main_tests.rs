@@ -3297,6 +3297,30 @@ fn compile_and_execute_fip_unique_higher_order_forwarder_function_alias_chain_ca
 
 #[test]
 #[cfg(not(target_os = "windows"))]
+fn compile_fip_unique_higher_order_forwarder_tuple_alias_chain_reaches_codegen_tuple_pattern_gap() {
+    let source_path = write_temp_source(
+        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_tuple_alias(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let (g, y) = (f, x)\n  g(y)\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_tuple_alias(forward_once, x)\n\nfn main() -> Int\n  0\n",
+        "kea-cli-fip-unique-higher-order-forwarder-tuple-alias-chain",
+        "kea",
+    );
+
+    let err = run_file(&source_path).expect_err(
+        "tuple-pattern wrapper should pass @fip and then hit the known tuple-let codegen gap",
+    );
+    assert!(
+        err.contains("unsupported MIR operation in `apply_tuple_alias`"),
+        "expected tuple-pattern codegen gap, got: {err}"
+    );
+    assert!(
+        !err.contains("`@fip` verification failed"),
+        "expected @fip acceptance before codegen gap, got: {err}"
+    );
+
+    let _ = std::fs::remove_file(source_path);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
 fn compile_and_execute_fip_unique_higher_order_forwarder_result_alias_chain_call_exit_code() {
     let source_path = write_temp_source(
         "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_alias_result(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let y = x\n  let z = y\n  let out0 = f(z)\n  let out1 = out0\n  out1\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  apply_alias_result(forward_once, x)\n\nfn main() -> Int\n  0\n",
@@ -3520,12 +3544,47 @@ fn compile_and_execute_fip_unique_higher_order_module_alias_wrapper_call_exit_co
         );
         assert_eq!(run.exit_code, 0);
 
-        let _ = std::fs::remove_dir_all(project_dir);
-    }
+    let _ = std::fs::remove_dir_all(project_dir);
+}
 
-    #[test]
-    #[cfg(not(target_os = "windows"))]
-    fn compile_rejects_fip_unique_higher_order_module_alias_wrapper_param_escape() {
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn compile_fip_unique_higher_order_module_alias_wrapper_tuple_alias_chain_reaches_codegen_tuple_pattern_gap()
+{
+    let project_dir =
+        temp_workspace_project_dir("kea-cli-fip-unique-higher-order-alias-wrapper-tuple-alias");
+    let src_dir = project_dir.join("src");
+    std::fs::create_dir_all(&src_dir).expect("source dir should be created");
+    let source_path = src_dir.join("main.kea");
+    std::fs::write(
+        src_dir.join("alpha.kea"),
+        "fn forward_once(x: Unique Int) -> Unique Int\n  x\n\nfn apply_tuple_alias(f: fn(Unique Int) -> Unique Int, x: Unique Int) -> Unique Int\n  let (g, y) = (f, x)\n  g(y)\n",
+    )
+    .expect("alpha module write should succeed");
+    std::fs::write(
+        &source_path,
+        "use Alpha as A\n\n@fip\nfn call_via_apply(x: Unique Int) -> Unique Int\n  A.apply_tuple_alias(A.forward_once, x)\n\nfn main() -> Int\n  0\n",
+    )
+    .expect("source write should succeed");
+
+    let err = run_file(&source_path).expect_err(
+        "module-alias tuple-pattern wrapper should pass @fip and then hit the known tuple-let codegen gap",
+    );
+    assert!(
+        err.contains("unsupported MIR operation in `apply_tuple_alias`"),
+        "expected tuple-pattern codegen gap, got: {err}"
+    );
+    assert!(
+        !err.contains("`@fip` verification failed"),
+        "expected @fip acceptance before codegen gap, got: {err}"
+    );
+
+    let _ = std::fs::remove_dir_all(project_dir);
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn compile_rejects_fip_unique_higher_order_module_alias_wrapper_param_escape() {
         let project_dir = temp_workspace_project_dir("kea-cli-fip-unique-higher-order-alias-param");
         let src_dir = project_dir.join("src");
         std::fs::create_dir_all(&src_dir).expect("source dir should be created");

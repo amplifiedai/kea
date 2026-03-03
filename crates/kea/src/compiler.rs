@@ -4,8 +4,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use kea_ast::{
-    DeclKind, Expr, ExprDecl, ExprKind, FileId, FnDecl, ImportItems, Module, RecordDef, Span,
-    Spanned, TestDecl, TypeAnnotation, TypeDef, collect_pattern_bindings_pub,
+    DeclKind, Expr, ExprDecl, ExprKind, FileId, FnDecl, ImportItems, Module, PatternKind,
+    RecordDef, Span, Spanned, TestDecl, TypeAnnotation, TypeDef, collect_pattern_bindings_pub,
 };
 use kea_codegen::{
     Backend, BackendConfig, CodegenMode, CraneliftBackend, PassStats, collect_pass_stats,
@@ -3268,23 +3268,48 @@ fn matches_higher_order_forwarder_body(
         }
     }
 
-    fn extract_var_alias_let(expr: &HirExpr) -> Option<(&str, &str)> {
+    fn extract_alias_bindings_let(expr: &HirExpr) -> Option<Vec<(String, String)>> {
         match &expr.kind {
-            HirExprKind::Let { pattern, value }
-                if matches!(pattern, kea_hir::HirPattern::Var(_))
-                    && matches!(value.kind, HirExprKind::Var(_)) =>
-            {
-                let source_name = match &value.kind {
-                    HirExprKind::Var(name) => name.as_str(),
-                    _ => unreachable!("guarded by match"),
-                };
-                let binding_name = match pattern {
-                    kea_hir::HirPattern::Var(name) => name.as_str(),
-                    _ => unreachable!("guarded by match"),
-                };
-                Some((binding_name, source_name))
-            }
+            HirExprKind::Let { pattern, value } => match (pattern, &value.kind) {
+                (kea_hir::HirPattern::Var(binding_name), HirExprKind::Var(source_name)) => {
+                    Some(vec![(binding_name.clone(), source_name.clone())])
+                }
+                (kea_hir::HirPattern::Raw(PatternKind::Tuple(patterns)), HirExprKind::Tuple(values))
+                    if patterns.len() == values.len() =>
+                {
+                    let mut aliases = Vec::with_capacity(patterns.len());
+                    for (pattern, value) in patterns.iter().zip(values.iter()) {
+                        let PatternKind::Var(binding_name) = &pattern.node else {
+                            return None;
+                        };
+                        let HirExprKind::Var(source_name) = &value.kind else {
+                            return None;
+                        };
+                        aliases.push((binding_name.clone(), source_name.clone()));
+                    }
+                    Some(aliases)
+                }
+                _ => None,
+            },
             _ => None,
+        }
+    }
+
+    fn absorb_alias_bindings(
+        bindings: &[(String, String)],
+        unique_aliases: &mut BTreeSet<String>,
+        forwarder_aliases: Option<&mut BTreeSet<String>>,
+    ) {
+        let mut forwarder_aliases = forwarder_aliases;
+        for (binding_name, source_name) in bindings {
+            if unique_aliases.contains(source_name) {
+                unique_aliases.insert(binding_name.clone());
+            }
+            if let Some(forwarder_aliases) = forwarder_aliases.as_deref_mut()
+                && forwarder_aliases.contains(source_name)
+            {
+                forwarder_aliases.insert(binding_name.clone());
+            }
         }
     }
 
@@ -3318,10 +3343,11 @@ fn matches_higher_order_forwarder_body(
                             return matches_alias_shape(item, &aliases);
                         }
 
-                        if let Some((binding_name, source_name)) = extract_var_alias_let(item) {
-                            if aliases.contains(source_name) {
-                                aliases.insert(binding_name.to_string());
-                                continue;
+                        if let Some(bindings) = extract_alias_bindings_let(item) {
+                            for (binding_name, source_name) in &bindings {
+                                if aliases.contains(source_name) {
+                                    aliases.insert(binding_name.clone());
+                                }
                             }
                             // Benign alias lets on unrelated params are
                             // allowed in call-free prelude paths.
@@ -3381,15 +3407,12 @@ fn matches_higher_order_forwarder_body(
                             return matches_shape(item, &forwarder_aliases, &unique_aliases);
                         }
 
-                        if let Some((binding_name, source_name)) = extract_var_alias_let(item) {
-                            if unique_aliases.contains(source_name) {
-                                unique_aliases.insert(binding_name.to_string());
-                                continue;
-                            }
-                            if forwarder_aliases.contains(source_name) {
-                                forwarder_aliases.insert(binding_name.to_string());
-                                continue;
-                            }
+                        if let Some(bindings) = extract_alias_bindings_let(item) {
+                            absorb_alias_bindings(
+                                &bindings,
+                                &mut unique_aliases,
+                                Some(&mut forwarder_aliases),
+                            );
                             // Benign passthrough alias lets on unrelated params
                             // are allowed before the unique handoff call.
                             continue;
