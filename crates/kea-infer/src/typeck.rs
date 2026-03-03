@@ -724,46 +724,6 @@ impl TypeEnv {
         None
     }
 
-    /// Resolve effect-signature template for a qualified function reference.
-    pub fn resolve_qualified_effect_signature(
-        &self,
-        module_short: &str,
-        field: &str,
-    ) -> Option<&FunctionEffectSignature> {
-        if let Some(module_path) = self.resolve_module_path(module_short)
-            && let Some(candidates) = self.module_functions.get(&module_path)
-        {
-            // Try module-qualified key first to avoid collision with bare-name globals.
-            let qualified_key = format!("{module_path}.{field}");
-            if candidates.iter().any(|name| name == field) {
-                if !self.module_item_accessible(&module_path, field) {
-                    return None;
-                }
-                if let Some(sig) = self.function_effect_signature(&qualified_key) {
-                    return Some(sig);
-                }
-                if let Some(sig) = self.function_effect_signature(field) {
-                    return Some(sig);
-                }
-                let prefixed = format!("{}_{}", module_short.to_lowercase(), field);
-                return self.function_effect_signature(&prefixed);
-            }
-            let prefixed = format!("{}_{}", module_short.to_lowercase(), field);
-            if candidates.iter().any(|name| name == &prefixed) {
-                if !self.module_item_accessible(&module_path, &prefixed) {
-                    return None;
-                }
-                let prefixed_qualified = format!("{module_path}.{prefixed}");
-                if let Some(sig) = self.function_effect_signature(&prefixed_qualified) {
-                    return Some(sig);
-                }
-                return self.function_effect_signature(&prefixed);
-            }
-        }
-        // Fall through to trait-qualified lookup: `Comprehensible.map`, etc.
-        let trait_key = format!("{module_short}.{field}");
-        self.function_effect_signature(&trait_key)
-    }
     /// Resolve call-signature metadata for a qualified function reference.
     pub fn resolve_qualified_function_signature(
         &self,
