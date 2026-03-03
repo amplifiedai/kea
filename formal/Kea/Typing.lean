@@ -11028,6 +11028,38 @@ theorem tier_scheduler_pair_of_residual_eq_if_empty_else_blocking_then_yield_spl
       · simp [h_empty, h_blocking, h_yielding, handlerTierOfResidual, schedulerClassOfResidual]
       · simp [h_empty, h_blocking, h_yielding, handlerTierOfResidual, schedulerClassOfResidual]
 
+/--
+General determinism bridge: runtime scheduler class is fully determined by
+compiler tier classification on the same residual capability set.
+-/
+theorem schedulerClassOfResidual_eq_of_handlerTier
+    (yielding blocking residual : List Label) :
+    schedulerClassOfResidual blocking residual =
+      match handlerTierOfResidual yielding blocking residual with
+      | .tier1 => .pure
+      | .tier2 => .cooperative
+      | .tier3 => .cooperative
+      | .tier4 => .blocking := by
+  cases h_tier : handlerTierOfResidual yielding blocking residual with
+  | tier1 =>
+      have h_pure : schedulerClassOfResidual blocking residual = .pure :=
+        (schedulerClassOfResidual_eq_pure_iff_tier1 yielding blocking residual).2 h_tier
+      simpa [h_tier] using h_pure
+  | tier2 =>
+      have h_coop : schedulerClassOfResidual blocking residual = .cooperative :=
+        (schedulerClassOfResidual_eq_cooperative_iff_tier2_or_tier3 yielding blocking residual).2
+          (Or.inl h_tier)
+      simpa [h_tier] using h_coop
+  | tier3 =>
+      have h_coop : schedulerClassOfResidual blocking residual = .cooperative :=
+        (schedulerClassOfResidual_eq_cooperative_iff_tier2_or_tier3 yielding blocking residual).2
+          (Or.inr h_tier)
+      simpa [h_tier] using h_coop
+  | tier4 =>
+      have h_block : schedulerClassOfResidual blocking residual = .blocking :=
+        (schedulerClassOfResidual_eq_blocking_iff_tier4 yielding blocking residual).2 h_tier
+      simpa [h_tier] using h_block
+
 /-- Declarative field typing is functional on the core slice. -/
 theorem hasFieldsType_unique
     {env : TermEnv} {fs : CoreFields} {row₁ row₂ : RowFields}
