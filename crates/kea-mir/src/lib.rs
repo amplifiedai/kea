@@ -2468,6 +2468,9 @@ fn emit_reuse_tokens_for_trailing_release_alloc(
                     record_type,
                     fields,
                 } => {
+                    if dest == &released_value {
+                        None
+                    } else {
                     let alloc_layout = format!("record:{record_type}");
                     let layout_matches = alloc_layout == *release_layout;
                     let layout_is_reusable = record_layout_is_reuse_eligible(layouts, record_type);
@@ -2483,6 +2486,7 @@ fn emit_reuse_tokens_for_trailing_release_alloc(
                     } else {
                         None
                     }
+                    }
                 }
                 MirInst::SumInit {
                     dest,
@@ -2491,6 +2495,9 @@ fn emit_reuse_tokens_for_trailing_release_alloc(
                     tag,
                     fields,
                 } => {
+                    if dest == &released_value {
+                        None
+                    } else {
                     let alloc_layout = format!("sum:{sum_type}");
                     let layout_matches = alloc_layout == *release_layout;
                     let layout_is_reusable = sum_layout_is_reuse_eligible(layouts, sum_type);
@@ -2506,6 +2513,7 @@ fn emit_reuse_tokens_for_trailing_release_alloc(
                         })
                     } else {
                         None
+                    }
                     }
                 }
                 _ => None,
@@ -12174,6 +12182,71 @@ mod tests {
             function.blocks[0].instructions[2],
             MirInst::RecordInitFromToken { .. }
         ));
+    }
+
+    #[test]
+    fn emit_reuse_tokens_for_trailing_release_alloc_skips_self_released_init() {
+        let layouts = MirLayoutCatalog {
+            records: vec![MirRecordLayout {
+                name: "Point".to_string(),
+                is_unboxed: false,
+                fields: vec![MirRecordFieldLayout {
+                    name: "x".to_string(),
+                    annotation: TypeAnnotation::Named("Int".to_string()),
+                }],
+            }],
+            sums: vec![],
+        };
+        let mut function = MirFunction {
+            name: "consume".to_string(),
+            signature: MirFunctionSignature {
+                params: vec![],
+                ret: Type::Unit,
+                effects: EffectRow::pure(),
+            },
+            entry: MirBlockId(0),
+            blocks: vec![MirBlock {
+                id: MirBlockId(0),
+                params: vec![],
+                instructions: vec![
+                    MirInst::Const {
+                        dest: MirValueId(0),
+                        literal: MirLiteral::Int(1),
+                    },
+                    MirInst::RecordInit {
+                        dest: MirValueId(1),
+                        record_type: "Point".to_string(),
+                        fields: vec![("x".to_string(), MirValueId(0))],
+                    },
+                    MirInst::Release {
+                        value: MirValueId(1),
+                    },
+                ],
+                terminator: MirTerminator::Return { value: None },
+            }],
+        };
+
+        emit_reuse_tokens_for_trailing_release_alloc(&mut function, &layouts);
+
+        assert!(matches!(
+            function.blocks[0].instructions[1],
+            MirInst::RecordInit { .. }
+        ));
+        assert!(matches!(
+            function.blocks[0].instructions[2],
+            MirInst::Release {
+                value: MirValueId(1)
+            }
+        ));
+        assert!(
+            !function.blocks[0]
+                .instructions
+                .iter()
+                .any(|inst| matches!(
+                    inst,
+                    MirInst::ReuseToken { .. } | MirInst::RecordInitFromToken { .. }
+                ))
+        );
     }
 
     #[test]
