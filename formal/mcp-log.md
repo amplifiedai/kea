@@ -22511,3 +22511,47 @@ No Lean↔MCP semantic divergence found at this checkpoint.
 
 **Impact**:
 - The typed native-handle correspondence boundary now has a full exact scheduler classification partition.
+
+### 2026-03-04: added closed-form scheduler classification equation for singleton typed-handle boundary
+
+**Context**: Added `native_typed_handle_correspondence_capstone_schedulerClass_eq_if_erased_then_pure_else_blocking_split` in `Kea/Typing.lean`, giving a single closed-form equation:
+
+`cls = if erased then pure else if blocking then blocking else cooperative`.
+
+This consolidates the exact boundary partition into one directly executable theorem surface.
+
+**MCP tools used**: `reset_session`, `type_check` (direct in-session `kea` MCP)
+
+**Predict (Lean side)**:
+- `use` parsing remains stable.
+- Coherent handler should type-check.
+- Mismatched clause that leaks an unhandled effect should reject (`E0001`).
+- Bad resume payload should reject (`E0001`).
+- Out-of-handler and forged-name out-of-handler `resume` should reject (`E0012`).
+- Double-resume clause should reject (`E0012`).
+
+**Probe (Rust side via MCP)**:
+1. `use Surface` + trivial fn -> `ok`.
+2. Coherent handler (`handle runProbeHT(); ProbeHT.run() -> resume 491`) -> `ok`.
+3. Mismatched handler clause (effect leak remains `[ProbeHU]`) -> `error`, `E0001`.
+4. Bad resume payload -> `error`, `E0001`.
+5. Out-of-handler resume (`fresh_outside_resume_probe_20260304aa`) -> `error`, `E0012`.
+6. Forged-name out-of-handler resume (`forged_ctx_probe_20260304aa`) -> `error`, `E0012`.
+7. Double-resume clause -> `error`, `E0012`.
+
+**Classify**: Agreement.  
+No Lean↔MCP semantic divergence found at this checkpoint.
+
+**Act**:
+- Kept the closed-form singleton boundary classification theorem.
+- Continued MCP-first checkpoint loop.
+
+**Traceability**:
+- Lean edits in `formal/Kea/Typing.lean`:
+  - `native_typed_handle_correspondence_capstone_schedulerClass_eq_if_erased_then_pure_else_blocking_split`
+- Build evidence:
+  - `cd formal && lake build Kea.Typing`
+  - `cd formal && lake build`
+
+**Impact**:
+- Scheduler classification at the typed-handle singleton boundary is now available as a single decision equation theorem.

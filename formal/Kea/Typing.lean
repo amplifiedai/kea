@@ -10513,6 +10513,55 @@ theorem native_typed_handle_correspondence_capstone_cooperative_iff_not_erasable
       env body opHandle argName resumeName argTy opRetTy clauseBody ty
       h_cap h.1 h.2
 
+/--
+Closed-form scheduler classification at the singleton typed-handle boundary:
+classification is exactly determined by (1) whether handled capability is
+erased and (2) whether it is runtime-blocking when not erased.
+-/
+theorem native_typed_handle_correspondence_capstone_schedulerClass_eq_if_erased_then_pure_else_blocking_split
+    (clauseSem : NativeHandlerClauseSem)
+    (mismatchSem : NativeHandlerMismatchSem)
+    (bodyStep : CoreExpr → CoreExpr → Prop)
+    (yielding blocking erasable : List Label)
+    (env : TermEnv)
+    (body : CoreExpr)
+    (opHandle : Label)
+    (argName resumeName : String)
+    (argTy opRetTy : Ty)
+    (clauseBody : CoreExpr)
+    (ty : Ty)
+    (h_cap :
+      NativeTypedHandleCorrespondenceCapstone
+        clauseSem mismatchSem bodyStep
+        yielding blocking erasable
+        env body opHandle argName resumeName argTy opRetTy clauseBody ty) :
+    schedulerClassOfResidual blocking (eraseCapabilities [opHandle] erasable)
+      =
+    (if opHandle ∈ erasable then .pure else if opHandle ∈ blocking then .blocking else .cooperative) := by
+  by_cases h_erasable : opHandle ∈ erasable
+  · have h_cls :
+      schedulerClassOfResidual blocking (eraseCapabilities [opHandle] erasable) = .pure :=
+      native_typed_handle_correspondence_capstone_handled_erased_implies_pure
+        clauseSem mismatchSem bodyStep yielding blocking erasable
+        env body opHandle argName resumeName argTy opRetTy clauseBody ty
+        h_cap h_erasable
+    simp [h_erasable, h_cls]
+  · by_cases h_blocking : opHandle ∈ blocking
+    · have h_cls :
+        schedulerClassOfResidual blocking (eraseCapabilities [opHandle] erasable) = .blocking :=
+        native_typed_handle_correspondence_capstone_not_erasable_and_blocking_implies_blocking
+          clauseSem mismatchSem bodyStep yielding blocking erasable
+          env body opHandle argName resumeName argTy opRetTy clauseBody ty
+          h_cap h_erasable h_blocking
+      simp [h_erasable, h_blocking, h_cls]
+    · have h_cls :
+        schedulerClassOfResidual blocking (eraseCapabilities [opHandle] erasable) = .cooperative :=
+        native_typed_handle_correspondence_capstone_not_erasable_and_not_blocking_implies_cooperative
+          clauseSem mismatchSem bodyStep yielding blocking erasable
+          env body opHandle argName resumeName argTy opRetTy clauseBody ty
+          h_cap h_erasable h_blocking
+      simp [h_erasable, h_blocking, h_cls]
+
 /-- Declarative field typing is functional on the core slice. -/
 theorem hasFieldsType_unique
     {env : TermEnv} {fs : CoreFields} {row₁ row₂ : RowFields}
