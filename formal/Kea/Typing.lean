@@ -11007,6 +11007,27 @@ theorem native_typed_handle_correspondence_capstone_pair_eq_tier3_cooperative_if
     rw [h_pair]
     simp [h.1, h.2.1, h.2.2]
 
+/--
+General closed-form joint classification law: compiler tier and runtime
+scheduler class are computed from the same residual capability state.
+-/
+theorem tier_scheduler_pair_of_residual_eq_if_empty_else_blocking_then_yield_split
+    (yielding blocking residual : List Label) :
+    (handlerTierOfResidual yielding blocking residual,
+      schedulerClassOfResidual blocking residual)
+      =
+    (if residual = [] then (.tier1, .pure)
+     else if hasBlockingCapability blocking residual then (.tier4, .blocking)
+     else if allYieldingCapabilities yielding residual then (.tier2, .cooperative)
+     else (.tier3, .cooperative)) := by
+  by_cases h_empty : residual = []
+  · simp [h_empty, handlerTierOfResidual, schedulerClassOfResidual]
+  · by_cases h_blocking : hasBlockingCapability blocking residual = true
+    · simp [h_empty, h_blocking, handlerTierOfResidual, schedulerClassOfResidual]
+    · by_cases h_yielding : allYieldingCapabilities yielding residual = true
+      · simp [h_empty, h_blocking, h_yielding, handlerTierOfResidual, schedulerClassOfResidual]
+      · simp [h_empty, h_blocking, h_yielding, handlerTierOfResidual, schedulerClassOfResidual]
+
 /-- Declarative field typing is functional on the core slice. -/
 theorem hasFieldsType_unique
     {env : TermEnv} {fs : CoreFields} {row₁ row₂ : RowFields}
